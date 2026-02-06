@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { useColorScheme } from 'react-native'
 import { Theme, lightTheme, darkTheme } from '../constants/theme'
 
@@ -15,7 +15,7 @@ interface ThemeProviderProps {
   children: ReactNode
 }
 
-export function ThemeProvider({ children }: ThemeProviderProps): JSX.Element {
+export function ThemeProvider({ children }: ThemeProviderProps): React.ReactElement {
   const systemColorScheme = useColorScheme()
   const [isDark, setIsDark] = useState(systemColorScheme === 'dark')
 

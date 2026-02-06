@@ -15,7 +15,7 @@ export default function HomeScreen(): React.ReactElement {
   }
 
   const handleNewNote = (): void => {
-    router.push('/notes')
+    router.push('/note/new')
   }
 
   return (

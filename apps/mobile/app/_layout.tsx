@@ -12,6 +12,13 @@ function RootLayoutNav(): React.ReactElement {
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="note/[id]"
+          options={{
+            presentation: 'card',
+            animation: 'slide_from_right'
+          }}
+        />
       </Stack>
     </>
   )
