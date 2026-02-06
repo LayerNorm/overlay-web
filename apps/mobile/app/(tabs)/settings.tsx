@@ -1,9 +1,20 @@
-import React from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView } from 'react-native'
+import React, { useState, useCallback, useEffect } from 'react'
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Switch,
+  ScrollView,
+  TextInput,
+  Alert
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { useTheme } from '../../hooks/useTheme'
 import { spacing, fontSize, borderRadius } from '../../constants/theme'
+import { PROVIDER_COLORS } from '../../services/chatTypes'
+import { getApiKey, setApiKey, deleteApiKey, type AIProvider } from '../../services/aiService'
 
 interface SettingsRowProps {
   icon: string
@@ -33,6 +44,95 @@ function SettingsRow({ icon, title, description, onPress, rightElement }: Settin
         </View>
       </View>
       {rightElement || (onPress && <Feather name="chevron-right" size={20} color={theme.textSecondary} />)}
+    </TouchableOpacity>
+  )
+}
+
+interface APIKeyRowProps {
+  provider: AIProvider
+  label: string
+  theme: ReturnType<typeof useTheme>['theme']
+}
+
+function APIKeyRow({ provider, label, theme }: APIKeyRowProps): React.ReactElement {
+  const [key, setKey] = useState('')
+  const [hasKey, setHasKey] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+
+  useEffect(() => {
+    getApiKey(provider).then((k) => {
+      setHasKey(!!k)
+    })
+  }, [provider])
+
+  const handleSave = useCallback(async () => {
+    if (key.trim()) {
+      await setApiKey(provider, key.trim())
+      setHasKey(true)
+      setIsEditing(false)
+      setKey('')
+    }
+  }, [key, provider])
+
+  const handleRemove = useCallback(() => {
+    Alert.alert('Remove API Key', `Remove ${label} API key?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteApiKey(provider)
+          setHasKey(false)
+        }
+      }
+    ])
+  }, [provider, label])
+
+  const color = PROVIDER_COLORS[provider] || theme.textSecondary
+
+  if (isEditing) {
+    return (
+      <View style={[styles.apiKeyRow, { borderBottomColor: theme.border }]}>
+        <View style={[styles.providerDot, { backgroundColor: color }]} />
+        <TextInput
+          style={[styles.apiKeyInput, { color: theme.text, backgroundColor: theme.background }]}
+          placeholder={`Paste ${label} key...`}
+          placeholderTextColor={theme.textDisabled}
+          value={key}
+          onChangeText={setKey}
+          autoFocus
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <TouchableOpacity onPress={handleSave} style={styles.apiKeyAction}>
+          <Feather name="check" size={18} color="#10B981" />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => { setIsEditing(false); setKey('') }} style={styles.apiKeyAction}>
+          <Feather name="x" size={18} color={theme.textSecondary} />
+        </TouchableOpacity>
+      </View>
+    )
+  }
+
+  return (
+    <TouchableOpacity
+      style={[styles.apiKeyRow, { borderBottomColor: theme.border }]}
+      onPress={() => setIsEditing(true)}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.providerDot, { backgroundColor: color }]} />
+      <Text style={[styles.apiKeyLabel, { color: theme.text }]}>{label}</Text>
+      {hasKey ? (
+        <View style={styles.apiKeyStatus}>
+          <Feather name="check-circle" size={14} color="#10B981" />
+          <TouchableOpacity onPress={handleRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Feather name="trash-2" size={14} color={theme.textDisabled} />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <Text style={[styles.apiKeyPlaceholder, { color: theme.textDisabled }]}>Not set</Text>
+      )}
     </TouchableOpacity>
   )
 }
@@ -67,27 +167,17 @@ export default function SettingsScreen(): React.ReactElement {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>GENERAL</Text>
+          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>API KEYS</Text>
           <View style={[styles.sectionContent, { backgroundColor: theme.surface }]}>
-            <SettingsRow icon="key" title="API Keys" description="Configure AI provider keys" onPress={() => {}} />
-            <SettingsRow icon="bell" title="Notifications" description="Manage notifications" onPress={() => {}} />
+            <APIKeyRow provider="groq" label="Groq" theme={theme} />
+            <APIKeyRow provider="google" label="Google" theme={theme} />
+            <APIKeyRow provider="openai" label="OpenAI" theme={theme} />
+            <APIKeyRow provider="anthropic" label="Anthropic" theme={theme} />
+            <APIKeyRow provider="xai" label="xAI" theme={theme} />
           </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>CHAT</Text>
-          <View style={[styles.sectionContent, { backgroundColor: theme.surface }]}>
-            <SettingsRow icon="cpu" title="Default Model" description="Select default AI model" onPress={() => {}} />
-            <SettingsRow icon="message-circle" title="Chat History" description="Manage chat data" onPress={() => {}} />
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>NOTES</Text>
-          <View style={[styles.sectionContent, { backgroundColor: theme.surface }]}>
-            <SettingsRow icon="edit-3" title="Editor" description="Editor preferences" onPress={() => {}} />
-            <SettingsRow icon="save" title="Auto-save" description="Configure auto-save" onPress={() => {}} />
-          </View>
+          <Text style={[styles.sectionHint, { color: theme.textDisabled }]}>
+            API keys are stored securely on-device using the system keychain.
+          </Text>
         </View>
 
         <View style={styles.section}>
@@ -106,33 +196,38 @@ export default function SettingsScreen(): React.ReactElement {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flex: 1
   },
   header: {
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
+    paddingVertical: spacing.lg
   },
   title: {
     fontSize: fontSize.xxl,
-    fontWeight: '600',
+    fontWeight: '600'
   },
   content: {
     flex: 1,
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.xl
   },
   section: {
-    marginBottom: spacing.xxl,
+    marginBottom: spacing.xxl
   },
   sectionTitle: {
     fontSize: 11,
     fontWeight: '500',
     letterSpacing: 0.5,
     marginBottom: spacing.sm,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.xs
+  },
+  sectionHint: {
+    fontSize: fontSize.xs,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.xs
   },
   sectionContent: {
     borderRadius: borderRadius.lg,
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   settingsRow: {
     flexDirection: 'row',
@@ -140,26 +235,62 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
-    borderBottomWidth: 1,
+    borderBottomWidth: 1
   },
   settingsRowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    flex: 1,
+    flex: 1
   },
   settingsRowText: {
-    flex: 1,
+    flex: 1
   },
   settingsRowTitle: {
     fontSize: fontSize.md,
-    fontWeight: '500',
+    fontWeight: '500'
   },
   settingsRowDescription: {
     fontSize: fontSize.xs,
-    marginTop: 2,
+    marginTop: 2
+  },
+  apiKeyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: 1
+  },
+  providerDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5
+  },
+  apiKeyLabel: {
+    flex: 1,
+    fontSize: fontSize.md,
+    fontWeight: '500'
+  },
+  apiKeyInput: {
+    flex: 1,
+    fontSize: fontSize.sm,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  apiKeyAction: {
+    padding: 4
+  },
+  apiKeyStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  apiKeyPlaceholder: {
+    fontSize: fontSize.xs
   },
   bottomPadding: {
-    height: 40,
-  },
+    height: 40
+  }
 })

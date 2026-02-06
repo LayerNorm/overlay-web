@@ -19,6 +19,13 @@ function RootLayoutNav(): React.ReactElement {
             animation: 'slide_from_right'
           }}
         />
+        <Stack.Screen
+          name="chat/[id]"
+          options={{
+            presentation: 'card',
+            animation: 'slide_from_right'
+          }}
+        />
       </Stack>
     </>
   )

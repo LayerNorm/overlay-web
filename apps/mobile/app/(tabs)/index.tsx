@@ -11,7 +11,7 @@ export default function HomeScreen(): React.ReactElement {
   const router = useRouter()
 
   const handleNewChat = (): void => {
-    router.push('/chats')
+    router.push('/chat/new')
   }
 
   const handleNewNote = (): void => {
