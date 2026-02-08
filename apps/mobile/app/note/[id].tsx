@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator
+  ActivityIndicator,
+  ScrollView
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -16,7 +17,6 @@ import { useTheme } from '../../hooks/useTheme'
 import { spacing, fontSize, borderRadius } from '../../constants/theme'
 import { Note, generateNoteId } from '../../services/types'
 import { loadNote, saveNote } from '../../services/noteStorage'
-import { useRichTextEditor } from '../../hooks/useRichTextEditor'
 
 export default function NoteEditorScreen(): React.ReactElement {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -24,13 +24,13 @@ export default function NoteEditorScreen(): React.ReactElement {
   const { theme } = useTheme()
 
   const [noteTitle, setNoteTitle] = useState('Untitled')
+  const [noteBody, setNoteBody] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const noteRef = useRef<Note | null>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleInputRef = useRef<TextInput>(null)
-
-  const { editorComponent, getContent, setContent } = useRichTextEditor(theme)
+  const bodyInputRef = useRef<TextInput>(null)
 
   const performSave = useCallback(async (title: string, content: string) => {
     if (!noteRef.current) return
@@ -39,7 +39,8 @@ export default function NoteEditorScreen(): React.ReactElement {
       await saveNote({
         ...noteRef.current,
         title,
-        content
+        content,
+        updatedAt: Date.now()
       })
     } finally {
       setIsSaving(false)
@@ -70,7 +71,7 @@ export default function NoteEditorScreen(): React.ReactElement {
         await saveNote(newNote)
         noteRef.current = newNote
         setNoteTitle('Untitled')
-        setContent('')
+        setNoteBody('')
         setIsLoading(false)
         setTimeout(() => {
           titleInputRef.current?.focus()
@@ -80,28 +81,35 @@ export default function NoteEditorScreen(): React.ReactElement {
         if (existing) {
           noteRef.current = existing
           setNoteTitle(existing.title)
-          setContent(existing.content)
+          setNoteBody(existing.content)
         }
         setIsLoading(false)
       }
     }
     initNote()
-  }, [id, setContent])
+  }, [id])
 
   const handleTitleChange = useCallback((text: string) => {
     setNoteTitle(text)
-    const content = getContent()
-    debouncedSave(text, content)
-  }, [debouncedSave, getContent])
+    debouncedSave(text, noteBody)
+  }, [debouncedSave, noteBody])
+
+  const handleBodyChange = useCallback((text: string) => {
+    setNoteBody(text)
+    debouncedSave(noteTitle, text)
+  }, [debouncedSave, noteTitle])
+
+  const handleTitleSubmit = useCallback(() => {
+    bodyInputRef.current?.focus()
+  }, [])
 
   const handleGoBack = useCallback(async () => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current)
     }
-    const content = getContent()
-    await performSave(noteTitle, content)
+    await performSave(noteTitle, noteBody)
     router.back()
-  }, [noteTitle, getContent, performSave, router])
+  }, [noteTitle, noteBody, performSave, router])
 
   useEffect(() => {
     return () => {
@@ -144,20 +152,36 @@ export default function NoteEditorScreen(): React.ReactElement {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
-        <TextInput
-          ref={titleInputRef}
-          style={[styles.titleInput, { color: theme.text }]}
-          value={noteTitle}
-          onChangeText={handleTitleChange}
-          placeholder="Untitled"
-          placeholderTextColor={theme.textDisabled}
-          returnKeyType="next"
-          blurOnSubmit={true}
-        />
+        <ScrollView
+          style={styles.scrollContainer}
+          contentContainerStyle={styles.scrollContent}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+        >
+          <TextInput
+            ref={titleInputRef}
+            style={[styles.titleInput, { color: theme.text }]}
+            value={noteTitle}
+            onChangeText={handleTitleChange}
+            placeholder="Untitled"
+            placeholderTextColor={theme.textDisabled}
+            returnKeyType="next"
+            blurOnSubmit={true}
+            onSubmitEditing={handleTitleSubmit}
+          />
 
-        <View style={styles.editorWrapper}>
-          {editorComponent}
-        </View>
+          <TextInput
+            ref={bodyInputRef}
+            style={[styles.bodyInput, { color: theme.text }]}
+            value={noteBody}
+            onChangeText={handleBodyChange}
+            placeholder="Start writing..."
+            placeholderTextColor={theme.textDisabled}
+            multiline
+            textAlignVertical="top"
+            scrollEnabled={false}
+          />
+        </ScrollView>
       </KeyboardAvoidingView>
 
       <TouchableOpacity
@@ -205,6 +229,12 @@ const styles = StyleSheet.create({
   editorContainer: {
     flex: 1
   },
+  scrollContainer: {
+    flex: 1
+  },
+  scrollContent: {
+    flexGrow: 1
+  },
   titleInput: {
     fontSize: fontSize.xxl,
     fontWeight: '700',
@@ -212,9 +242,14 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm
   },
-  editorWrapper: {
+  bodyInput: {
     flex: 1,
-    paddingHorizontal: spacing.lg
+    fontSize: fontSize.md,
+    lineHeight: 24,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xl,
+    minHeight: 300
   },
   voiceFab: {
     position: 'absolute',

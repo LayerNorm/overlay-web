@@ -1,10 +1,12 @@
 import React from 'react'
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { useTheme } from '../../hooks/useTheme'
-import { spacing, fontSize, borderRadius } from '../../constants/theme'
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const dawnLogo = require('../../assets/images/logo-big-no-bg.png')
 
 export default function HomeScreen(): React.ReactElement {
   const { theme } = useTheme()
@@ -21,35 +23,31 @@ export default function HomeScreen(): React.ReactElement {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.content}>
-        <View style={styles.logoContainer}>
-          <View style={[styles.logoCircle, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Feather name="sun" size={28} color={theme.text} />
-          </View>
+        {/* Logo + dawn text — centered, matching desktop */}
+        <View style={styles.logoSection}>
+          <Image source={dawnLogo} style={styles.logoImage} resizeMode="contain" />
           <Text style={[styles.appName, { color: theme.text }]}>dawn</Text>
         </View>
 
-        <View style={styles.startSection}>
-          <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>START</Text>
+        {/* Action buttons — centered below */}
+        <View style={styles.actionButtons}>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: 'transparent' }]}
+            onPress={handleNewChat}
+            activeOpacity={0.7}
+          >
+            <Feather name="message-square" size={22} color={theme.textSecondary} />
+            <Text style={[styles.actionButtonText, { color: theme.text }]}>New Chat</Text>
+          </TouchableOpacity>
 
-          <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: theme.surface }]}
-              onPress={handleNewChat}
-              activeOpacity={0.7}
-            >
-              <Feather name="message-square" size={20} color={theme.textSecondary} />
-              <Text style={[styles.actionButtonText, { color: theme.text }]}>New Chat</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: theme.surface }]}
-              onPress={handleNewNote}
-              activeOpacity={0.7}
-            >
-              <Feather name="file-text" size={20} color={theme.textSecondary} />
-              <Text style={[styles.actionButtonText, { color: theme.text }]}>New Note</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: 'transparent' }]}
+            onPress={handleNewNote}
+            activeOpacity={0.7}
+          >
+            <Feather name="file-text" size={22} color={theme.textSecondary} />
+            <Text style={[styles.actionButtonText, { color: theme.text }]}>New Note</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </SafeAreaView>
@@ -58,56 +56,43 @@ export default function HomeScreen(): React.ReactElement {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flex: 1
   },
   content: {
     flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-    marginTop: -60,
-  },
-  logoContainer: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    marginBottom: 40,
+    marginTop: -60
   },
-  logoCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 1,
+  logoSection: {
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 32
+  },
+  logoImage: {
+    width: 72,
+    height: 72
   },
   appName: {
-    fontFamily: 'Georgia',
-    fontSize: fontSize.display,
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 56,
     fontWeight: '400',
     letterSpacing: -0.5,
-  },
-  startSection: {
-    gap: spacing.lg,
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    lineHeight: 56
   },
   actionButtons: {
-    gap: spacing.xs,
+    gap: 6
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.md,
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10
   },
   actionButtonText: {
-    fontSize: fontSize.md,
-    fontWeight: '400',
-  },
+    fontSize: 17,
+    fontWeight: '400'
+  }
 })

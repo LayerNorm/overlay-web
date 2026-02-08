@@ -7,12 +7,7 @@ interface ThemedTextProps extends TextProps {
   size?: keyof typeof fontSize
 }
 
-export function ThemedText({ 
-  style, 
-  variant = 'default', 
-  size = 'md',
-  ...props 
-}: ThemedTextProps) {
+export function ThemedText({ style, variant = 'default', size = 'md', ...props }: ThemedTextProps) {
   const { theme } = useTheme()
 
   const getColor = () => {
@@ -41,9 +36,9 @@ export function ThemedText({
         {
           color: getColor(),
           fontSize: fontSize[size],
-          fontFamily: getFontFamily(),
+          fontFamily: getFontFamily()
         },
-        style,
+        style
       ]}
       {...props}
     />

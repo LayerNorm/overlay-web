@@ -1,7 +1,9 @@
 import React from 'react'
+import { View, ActivityIndicator } from 'react-native'
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+import { useFonts } from 'expo-font'
 import { ThemeProvider, useTheme } from '../hooks/useTheme'
 
 function RootLayoutNav(): React.ReactElement {
@@ -32,6 +34,21 @@ function RootLayoutNav(): React.ReactElement {
 }
 
 export default function RootLayout(): React.ReactElement {
+  const [fontsLoaded] = useFonts({
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    'InstrumentSerif-Regular': require('../assets/fonts/InstrumentSerif-Regular.ttf'),
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    'InstrumentSerif-Italic': require('../assets/fonts/InstrumentSerif-Italic.ttf')
+  })
+
+  if (!fontsLoaded) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator />
+      </View>
+    )
+  }
+
   return (
     <SafeAreaProvider>
       <ThemeProvider>

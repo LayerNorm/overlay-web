@@ -5,11 +5,7 @@ interface ThemedViewProps extends ViewProps {
   variant?: 'background' | 'surface'
 }
 
-export function ThemedView({ 
-  style, 
-  variant = 'background', 
-  ...props 
-}: ThemedViewProps) {
+export function ThemedView({ style, variant = 'background', ...props }: ThemedViewProps) {
   const { theme } = useTheme()
 
   const getBackgroundColor = () => {
@@ -21,13 +17,5 @@ export function ThemedView({
     }
   }
 
-  return (
-    <View
-      style={[
-        { backgroundColor: getBackgroundColor() },
-        style,
-      ]}
-      {...props}
-    />
-  )
+  return <View style={[{ backgroundColor: getBackgroundColor() }, style]} {...props} />
 }

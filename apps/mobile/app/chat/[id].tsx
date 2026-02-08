@@ -9,7 +9,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Modal,
   ScrollView
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -35,7 +34,7 @@ import { MessageBubble } from '../../components/chat/MessageBubble'
 export default function ChatConversationScreen(): React.ReactElement {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
-  const { theme } = useTheme()
+  const { theme, isDark } = useTheme()
 
   const [, setChat] = useState<Chat | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -377,17 +376,21 @@ export default function ChatConversationScreen(): React.ReactElement {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Model Picker Modal */}
-      <Modal visible={showModelPicker} transparent animationType="slide">
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowModelPicker(false)}
-        >
-          <View
-            style={[styles.modalContent, { backgroundColor: theme.background }]}
-            onStartShouldSetResponder={() => true}
-          >
+      {/* Model Picker Overlay — header stays visible, chat blurred beneath */}
+      {showModelPicker && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          {/* Blur layer behind header — covers only the messages/input area */}
+          <TouchableOpacity
+            style={[
+              styles.blurOverlay,
+              { backgroundColor: isDark ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.7)' }
+            ]}
+            activeOpacity={1}
+            onPress={() => setShowModelPicker(false)}
+          />
+
+          {/* Model selector panel — positioned below header */}
+          <View style={[styles.modelPanel, { backgroundColor: theme.background }]}>
             <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
               <Text style={[styles.modalTitle, { color: theme.text }]}>Select Model</Text>
               <TouchableOpacity onPress={() => setShowModelPicker(false)}>
@@ -453,8 +456,8 @@ export default function ChatConversationScreen(): React.ReactElement {
               })}
             </ScrollView>
           </View>
-        </TouchableOpacity>
-      </Modal>
+        </View>
+      )}
     </SafeAreaView>
   )
 }
@@ -561,15 +564,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center'
   },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.4)'
+  blurOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden'
   },
-  modalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '70%'
+  modelPanel: {
+    position: 'absolute',
+    top: 52,
+    left: 0,
+    right: 0,
+    maxHeight: '60%',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8
   },
   modalHeader: {
     flexDirection: 'row',

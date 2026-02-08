@@ -14,7 +14,8 @@
       "backgroundColor": "#0a0a0a"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.dawn-mobile"
     },
     "android": {
       "adaptiveIcon": {

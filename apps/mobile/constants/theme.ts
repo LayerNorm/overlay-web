@@ -68,7 +68,7 @@ export const spacing = {
   md: 12,
   lg: 16,
   xl: 20,
-  xxl: 24,
+  xxl: 24
 } as const
 
 export const borderRadius = {
@@ -76,7 +76,7 @@ export const borderRadius = {
   md: 10,
   lg: 12,
   xl: 16,
-  full: 9999,
+  full: 9999
 } as const
 
 export const fontSize = {
@@ -86,5 +86,5 @@ export const fontSize = {
   lg: 16,
   xl: 18,
   xxl: 24,
-  display: 36,
+  display: 36
 } as const

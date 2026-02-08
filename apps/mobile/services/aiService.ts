@@ -277,127 +277,71 @@ function formatOpenAIMessages(messages: ChatMessage[]): any[] {
 }
 
 async function* parseSSEStream(response: Response): AsyncGenerator<StreamChunk> {
-  const reader = response.body?.getReader()
-  if (!reader) {
-    yield { type: 'error', content: 'No response body' }
-    return
-  }
+  // React Native's fetch may not support ReadableStream, so fall back to text
+  const text = await response.text()
+  const lines = text.split('\n')
 
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed || !trimmed.startsWith('data: ')) continue
-        const data = trimmed.slice(6)
-        if (data === '[DONE]') {
-          yield { type: 'done', content: '' }
-          return
-        }
-        try {
-          const parsed = JSON.parse(data)
-          const content = parsed.choices?.[0]?.delta?.content
-          if (content) {
-            yield { type: 'text', content }
-          }
-        } catch {
-          // skip malformed JSON
-        }
-      }
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed || !trimmed.startsWith('data: ')) continue
+    const data = trimmed.slice(6)
+    if (data === '[DONE]') {
+      yield { type: 'done', content: '' }
+      return
     }
-    yield { type: 'done', content: '' }
-  } finally {
-    reader.releaseLock()
+    try {
+      const parsed = JSON.parse(data)
+      const content = parsed.choices?.[0]?.delta?.content
+      if (content) {
+        yield { type: 'text', content }
+      }
+    } catch {
+      // skip malformed JSON
+    }
   }
+  yield { type: 'done', content: '' }
 }
 
 async function* parseAnthropicSSE(response: Response): AsyncGenerator<StreamChunk> {
-  const reader = response.body?.getReader()
-  if (!reader) {
-    yield { type: 'error', content: 'No response body' }
-    return
-  }
+  const text = await response.text()
+  const lines = text.split('\n')
 
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed || !trimmed.startsWith('data: ')) continue
-        const data = trimmed.slice(6)
-        try {
-          const parsed = JSON.parse(data)
-          if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
-            yield { type: 'text', content: parsed.delta.text }
-          } else if (parsed.type === 'message_stop') {
-            yield { type: 'done', content: '' }
-            return
-          }
-        } catch {
-          // skip malformed JSON
-        }
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed || !trimmed.startsWith('data: ')) continue
+    const data = trimmed.slice(6)
+    try {
+      const parsed = JSON.parse(data)
+      if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+        yield { type: 'text', content: parsed.delta.text }
+      } else if (parsed.type === 'message_stop') {
+        yield { type: 'done', content: '' }
+        return
       }
+    } catch {
+      // skip malformed JSON
     }
-    yield { type: 'done', content: '' }
-  } finally {
-    reader.releaseLock()
   }
+  yield { type: 'done', content: '' }
 }
 
 async function* parseGoogleSSE(response: Response): AsyncGenerator<StreamChunk> {
-  const reader = response.body?.getReader()
-  if (!reader) {
-    yield { type: 'error', content: 'No response body' }
-    return
-  }
+  const text = await response.text()
+  const lines = text.split('\n')
 
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed || !trimmed.startsWith('data: ')) continue
-        const data = trimmed.slice(6)
-        try {
-          const parsed = JSON.parse(data)
-          const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text
-          if (text) {
-            yield { type: 'text', content: text }
-          }
-        } catch {
-          // skip malformed JSON
-        }
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed || !trimmed.startsWith('data: ')) continue
+    const data = trimmed.slice(6)
+    try {
+      const parsed = JSON.parse(data)
+      const content = parsed.candidates?.[0]?.content?.parts?.[0]?.text
+      if (content) {
+        yield { type: 'text', content }
       }
+    } catch {
+      // skip malformed JSON
     }
-    yield { type: 'done', content: '' }
-  } finally {
-    reader.releaseLock()
   }
+  yield { type: 'done', content: '' }
 }
