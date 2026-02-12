@@ -18,6 +18,7 @@ import * as Clipboard from 'expo-clipboard'
 import * as ImagePicker from 'expo-image-picker'
 import * as Haptics from 'expo-haptics'
 import { useTheme } from '../../hooks/useTheme'
+import { useVoiceInput } from '../../hooks/useVoiceInput'
 import { spacing, fontSize } from '../../constants/theme'
 import {
   Chat,
@@ -49,6 +50,18 @@ export default function ChatConversationScreen(): React.ReactElement {
   const flatListRef = useRef<FlatList>(null)
   const chatRef = useRef<Chat | null>(null)
   const abortRef = useRef(false)
+
+  const { isRecording, isProcessing: isTranscribing, toggleRecording } = useVoiceInput()
+
+  const handleVoiceToggle = useCallback(async () => {
+    const result = await toggleRecording()
+    if (result?.text) {
+      setInputValue((prev) => {
+        const separator = prev.length > 0 && !prev.endsWith(' ') && !prev.endsWith('\n') ? ' ' : ''
+        return prev + separator + result.text
+      })
+    }
+  }, [toggleRecording])
 
   useEffect(() => {
     async function init(): Promise<void> {
@@ -323,6 +336,18 @@ export default function ChatConversationScreen(): React.ReactElement {
 
         {/* Input */}
         <View style={[styles.inputContainer, { borderTopColor: theme.border, backgroundColor: theme.background }]}>
+          {isRecording && (
+            <View style={[styles.recordingBar, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
+              <View style={styles.recordingDot} />
+              <Text style={styles.recordingText}>Recording... tap mic to stop</Text>
+            </View>
+          )}
+          {isTranscribing && (
+            <View style={[styles.recordingBar, { backgroundColor: theme.surface }]}>
+              <ActivityIndicator size="small" color={theme.textSecondary} />
+              <Text style={[styles.recordingText, { color: theme.textSecondary }]}>Transcribing...</Text>
+            </View>
+          )}
           {imageBase64 && (
             <View style={[styles.imagePreview, { backgroundColor: theme.surface }]}>
               <Feather name="image" size={14} color={theme.textSecondary} />
@@ -341,6 +366,30 @@ export default function ChatConversationScreen(): React.ReactElement {
               activeOpacity={0.7}
             >
               <Feather name="image" size={20} color={theme.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleVoiceToggle}
+              disabled={isTranscribing}
+              style={[
+                styles.micButton,
+                {
+                  backgroundColor: isRecording
+                    ? '#EF4444'
+                    : theme.buttonBg
+                }
+              ]}
+              activeOpacity={0.7}
+            >
+              {isTranscribing ? (
+                <ActivityIndicator size="small" color={theme.textSecondary} />
+              ) : (
+                <Feather
+                  name={isRecording ? 'square' : 'mic'}
+                  size={isRecording ? 14 : 18}
+                  color={isRecording ? '#FFFFFF' : theme.toggleThumb}
+                />
+              )}
             </TouchableOpacity>
 
             <TextInput
@@ -548,6 +597,13 @@ const styles = StyleSheet.create({
     padding: 8,
     justifyContent: 'center'
   },
+  micButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   textInput: {
     flex: 1,
     borderRadius: 20,
@@ -641,5 +697,25 @@ const styles = StyleSheet.create({
   },
   modelOptionDesc: {
     fontSize: fontSize.xs
+  },
+  recordingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 8
+  },
+  recordingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444'
+  },
+  recordingText: {
+    fontSize: fontSize.xs,
+    fontWeight: '500',
+    color: '#EF4444'
   }
 })

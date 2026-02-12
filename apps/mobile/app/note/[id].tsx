@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
 import { useTheme } from '../../hooks/useTheme'
+import { useVoiceInput } from '../../hooks/useVoiceInput'
 import { spacing, fontSize, borderRadius } from '../../constants/theme'
 import { Note, generateNoteId } from '../../services/types'
 import { loadNote, saveNote } from '../../services/noteStorage'
@@ -31,6 +32,9 @@ export default function NoteEditorScreen(): React.ReactElement {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleInputRef = useRef<TextInput>(null)
   const bodyInputRef = useRef<TextInput>(null)
+  const bodyCursorRef = useRef<number>(0)
+
+  const { isRecording, isProcessing, error: voiceError, toggleRecording } = useVoiceInput()
 
   const performSave = useCallback(async (title: string, content: string) => {
     if (!noteRef.current) return
@@ -55,6 +59,23 @@ export default function NoteEditorScreen(): React.ReactElement {
       performSave(title, content)
     }, 500)
   }, [performSave])
+
+  const handleVoiceToggle = useCallback(async () => {
+    const result = await toggleRecording()
+    if (result?.text) {
+      // Insert transcribed text at cursor position in the body
+      const cursor = bodyCursorRef.current
+      const before = noteBody.slice(0, cursor)
+      const after = noteBody.slice(cursor)
+      const separator = before.length > 0 && !before.endsWith(' ') && !before.endsWith('\n') ? ' ' : ''
+      const newBody = before + separator + result.text + after
+      setNoteBody(newBody)
+      debouncedSave(noteTitle, newBody)
+      // Move cursor to end of inserted text
+      const newCursor = cursor + separator.length + result.text.length
+      bodyCursorRef.current = newCursor
+    }
+  }, [toggleRecording, noteBody, noteTitle, debouncedSave])
 
   useEffect(() => {
     async function initNote(): Promise<void> {
@@ -180,16 +201,46 @@ export default function NoteEditorScreen(): React.ReactElement {
             multiline
             textAlignVertical="top"
             scrollEnabled={false}
+            onSelectionChange={(e) => {
+              bodyCursorRef.current = e.nativeEvent.selection.end
+            }}
           />
         </ScrollView>
       </KeyboardAvoidingView>
 
       <TouchableOpacity
-        style={[styles.voiceFab, { backgroundColor: theme.buttonBg }]}
+        style={[
+          styles.voiceFab,
+          {
+            backgroundColor: isRecording
+              ? '#EF4444'
+              : isProcessing
+                ? theme.surface
+                : theme.buttonBg
+          }
+        ]}
+        onPress={handleVoiceToggle}
+        disabled={isProcessing}
         activeOpacity={0.7}
       >
-        <Feather name="mic" size={22} color={theme.surface} />
+        {isProcessing ? (
+          <ActivityIndicator size="small" color={theme.textSecondary} />
+        ) : (
+          <Feather
+            name={isRecording ? 'square' : 'mic'}
+            size={isRecording ? 18 : 22}
+            color={isRecording ? '#FFFFFF' : theme.toggleThumb}
+          />
+        )}
       </TouchableOpacity>
+
+      {(isRecording || voiceError) && (
+        <View style={[styles.voiceStatus, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.voiceStatusText, { color: isRecording ? '#EF4444' : theme.textSecondary }]}>
+            {isRecording ? 'Recording... tap to stop' : voiceError}
+          </Text>
+        </View>
+      )}
     </SafeAreaView>
   )
 }
@@ -265,5 +316,23 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 5
+  },
+  voiceStatus: {
+    position: 'absolute',
+    bottom: 24,
+    left: 20,
+    right: 80,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  voiceStatusText: {
+    fontSize: fontSize.xs,
+    fontWeight: '500'
   }
 })

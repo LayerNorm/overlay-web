@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.dawn-mobile"
+      "bundleIdentifier": "com.anonymous.dawn-mobile",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Dawn needs microphone access to transcribe your voice into text."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -31,7 +34,13 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Dawn needs microphone access to transcribe your voice into text."
+        }
+      ]
     ]
   }
 }
