@@ -8,7 +8,8 @@ import {
   ScrollView,
   TextInput,
   Alert,
-  Linking
+  Linking,
+  NativeModules
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
@@ -17,6 +18,17 @@ import { useTheme } from '../../hooks/useTheme'
 import { spacing, fontSize, borderRadius } from '../../constants/theme'
 import { PROVIDER_COLORS } from '../../services/chatTypes'
 import { getApiKey, setApiKey, deleteApiKey, type AIProvider } from '../../services/aiService'
+
+const syncGroqKeyToAppGroup = async () => {
+  try {
+    const groqKey = await getApiKey('groq')
+    if (groqKey && NativeModules.SharedKeyStore) {
+      NativeModules.SharedKeyStore.setGroqKey(groqKey)
+    }
+  } catch {
+    // Native module not available
+  }
+}
 
 interface SettingsRowProps {
   icon: string
@@ -147,6 +159,8 @@ export default function SettingsScreen(): React.ReactElement {
     Audio.getPermissionsAsync().then(({ status }) => {
       setMicPermission(status === 'granted' ? 'granted' : status === 'denied' ? 'denied' : 'undetermined')
     })
+    // Sync Groq key to App Group for keyboard extension
+    syncGroqKeyToAppGroup()
   }, [])
 
   const requestMicPermission = useCallback(async () => {

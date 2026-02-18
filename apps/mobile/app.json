@@ -17,7 +17,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.layernorm.overlay-mobile",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Overlay needs microphone access to transcribe your voice into text."
+        "NSMicrophoneUsageDescription": "Overlay needs microphone access to transcribe your voice into text.",
+        "UIBackgroundModes": ["audio"]
       }
     },
     "android": {
