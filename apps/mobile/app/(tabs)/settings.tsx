@@ -7,10 +7,12 @@ import {
   Switch,
   ScrollView,
   TextInput,
-  Alert
+  Alert,
+  Linking
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
+import { Audio } from 'expo-av'
 import { useTheme } from '../../hooks/useTheme'
 import { spacing, fontSize, borderRadius } from '../../constants/theme'
 import { PROVIDER_COLORS } from '../../services/chatTypes'
@@ -139,6 +141,28 @@ function APIKeyRow({ provider, label, theme }: APIKeyRowProps): React.ReactEleme
 
 export default function SettingsScreen(): React.ReactElement {
   const { theme, isDark, toggleTheme } = useTheme()
+  const [micPermission, setMicPermission] = useState<'undetermined' | 'granted' | 'denied'>('undetermined')
+
+  useEffect(() => {
+    Audio.getPermissionsAsync().then(({ status }) => {
+      setMicPermission(status === 'granted' ? 'granted' : status === 'denied' ? 'denied' : 'undetermined')
+    })
+  }, [])
+
+  const requestMicPermission = useCallback(async () => {
+    const { status } = await Audio.requestPermissionsAsync()
+    setMicPermission(status === 'granted' ? 'granted' : 'denied')
+    if (status === 'denied') {
+      Alert.alert(
+        'Microphone Access Denied',
+        'Please enable microphone access in Settings to use voice transcription.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openURL('app-settings:') }
+        ]
+      )
+    }
+  }, [])
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -177,6 +201,57 @@ export default function SettingsScreen(): React.ReactElement {
           </View>
           <Text style={[styles.sectionHint, { color: theme.textDisabled }]}>
             API keys are stored securely on-device using the system keychain.
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>VOICE KEYBOARD</Text>
+          <View style={[styles.sectionContent, { backgroundColor: theme.surface }]}>
+            <TouchableOpacity
+              style={[styles.micPermissionRow, { borderBottomColor: theme.border }]}
+              onPress={micPermission !== 'granted' ? requestMicPermission : undefined}
+              activeOpacity={micPermission !== 'granted' ? 0.7 : 1}
+            >
+              <View style={[styles.stepBadge, { backgroundColor: micPermission === 'granted' ? '#10B981' : '#EF4444' }]}>
+                <Feather name={micPermission === 'granted' ? 'check' : 'mic'} size={12} color="white" />
+              </View>
+              <View style={styles.micPermissionText}>
+                <Text style={[styles.micPermissionTitle, { color: theme.text }]}>Microphone Access</Text>
+                <Text style={[styles.micPermissionStatus, { color: micPermission === 'granted' ? '#10B981' : theme.textSecondary }]}>
+                  {micPermission === 'granted' ? 'Granted' : micPermission === 'denied' ? 'Denied — tap to open Settings' : 'Tap to grant permission'}
+                </Text>
+              </View>
+              {micPermission !== 'granted' && <Feather name="chevron-right" size={18} color={theme.textSecondary} />}
+            </TouchableOpacity>
+            <View style={[styles.keyboardStep, { borderBottomColor: theme.border }]}>
+              <View style={[styles.stepBadge, { backgroundColor: theme.border }]}>
+                <Text style={[styles.stepNumber, { color: theme.textSecondary }]}>1</Text>
+              </View>
+              <Text style={[styles.stepText, { color: theme.text }]}>Settings → General → Keyboard → Keyboards → Add New Keyboard…</Text>
+            </View>
+            <View style={[styles.keyboardStep, { borderBottomColor: theme.border }]}>
+              <View style={[styles.stepBadge, { backgroundColor: theme.border }]}>
+                <Text style={[styles.stepNumber, { color: theme.textSecondary }]}>2</Text>
+              </View>
+              <Text style={[styles.stepText, { color: theme.text }]}>Select <Text style={{ fontWeight: '600' }}>Overlay</Text> from the list</Text>
+            </View>
+            <View style={[styles.keyboardStep, { borderBottomColor: theme.border }]}>
+              <View style={[styles.stepBadge, { backgroundColor: theme.border }]}>
+                <Text style={[styles.stepNumber, { color: theme.textSecondary }]}>3</Text>
+              </View>
+              <Text style={[styles.stepText, { color: theme.text }]}>Tap <Text style={{ fontWeight: '600' }}>Overlay</Text> → enable <Text style={{ fontWeight: '600' }}>Allow Full Access</Text> (required for mic + network)</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.openSettingsBtn, { borderTopColor: theme.border }]}
+              onPress={() => Linking.openURL('app-settings:')}
+              activeOpacity={0.7}
+            >
+              <Feather name="external-link" size={16} color={theme.textSecondary} />
+              <Text style={[styles.openSettingsText, { color: theme.text }]}>Open Settings</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.sectionHint, { color: theme.textDisabled }]}>
+            Your Groq API key must be saved above — the keyboard reads it to transcribe your voice.
           </Text>
         </View>
 
@@ -292,5 +367,61 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 40
+  },
+  keyboardStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: 1
+  },
+  stepBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1
+  },
+  stepNumber: {
+    fontSize: 11,
+    fontWeight: '600'
+  },
+  stepText: {
+    flex: 1,
+    fontSize: fontSize.sm,
+    lineHeight: 20
+  },
+  openSettingsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderTopWidth: 1
+  },
+  openSettingsText: {
+    fontSize: fontSize.md,
+    fontWeight: '500'
+  },
+  micPermissionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: 1
+  },
+  micPermissionText: {
+    flex: 1
+  },
+  micPermissionTitle: {
+    fontSize: fontSize.md,
+    fontWeight: '500'
+  },
+  micPermissionStatus: {
+    fontSize: fontSize.xs,
+    marginTop: 2
   }
 })

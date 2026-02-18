@@ -1,32 +1,52 @@
 import React from 'react'
-import { DynamicColorIOS } from 'react-native'
-import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs'
-
-const labelColor = DynamicColorIOS({ dark: 'white', light: 'black' })
-const tintColorValue = DynamicColorIOS({ dark: 'white', light: 'black' })
+import { Tabs } from 'expo-router'
+import { Feather } from '@expo/vector-icons'
+import { useTheme } from '../../hooks/useTheme'
 
 export default function TabLayout(): React.ReactElement {
+  const { theme } = useTheme()
+
   return (
-    <NativeTabs
-      labelStyle={{ color: labelColor }}
-      tintColor={tintColorValue}
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: theme.surface,
+          borderTopColor: theme.border,
+          borderTopWidth: 1,
+        },
+        tabBarActiveTintColor: theme.text,
+        tabBarInactiveTintColor: theme.textSecondary,
+      }}
     >
-      <NativeTabs.Trigger name="index">
-        <Label>Home</Label>
-        <Icon sf={{ default: 'house', selected: 'house.fill' }} />
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="chats">
-        <Label>Chats</Label>
-        <Icon sf={{ default: 'bubble.left', selected: 'bubble.left.fill' }} />
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="notes">
-        <Label>Notes</Label>
-        <Icon sf={{ default: 'doc.text', selected: 'doc.text.fill' }} />
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="settings">
-        <Label>Settings</Label>
-        <Icon sf="gear" />
-      </NativeTabs.Trigger>
-    </NativeTabs>
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ color, size }) => <Feather name="home" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="chats"
+        options={{
+          title: 'Chats',
+          tabBarIcon: ({ color, size }) => <Feather name="message-square" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="notes"
+        options={{
+          title: 'Notes',
+          tabBarIcon: ({ color, size }) => <Feather name="file-text" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color, size }) => <Feather name="settings" size={size} color={color} />,
+        }}
+      />
+    </Tabs>
   )
 }

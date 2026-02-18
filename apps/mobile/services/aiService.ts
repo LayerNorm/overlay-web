@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store'
+import { NativeModules } from 'react-native'
 import { ChatModel, AVAILABLE_MODELS } from './chatTypes'
 
 const API_KEY_PREFIX = 'overlay-api-key-'
@@ -15,10 +16,16 @@ export async function getApiKey(provider: AIProvider): Promise<string | null> {
 
 export async function setApiKey(provider: AIProvider, key: string): Promise<void> {
   await SecureStore.setItemAsync(`${API_KEY_PREFIX}${provider}`, key)
+  if (provider === 'groq') {
+    try { NativeModules.SharedKeyStore?.setGroqKey(key) } catch { /* not available in Expo Go */ }
+  }
 }
 
 export async function deleteApiKey(provider: AIProvider): Promise<void> {
   await SecureStore.deleteItemAsync(`${API_KEY_PREFIX}${provider}`)
+  if (provider === 'groq') {
+    try { NativeModules.SharedKeyStore?.clearGroqKey() } catch { /* not available in Expo Go */ }
+  }
 }
 
 export async function getAvailableModels(): Promise<ChatModel[]> {
