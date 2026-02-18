@@ -36,6 +36,11 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# generated native folders
-/ios
-/android
+# native source folders are tracked in this repo
+ios/Pods/
+ios/build/
+ios/.xcode.env.local
+ios/**/xcuserdata/
+ios/**/project.xcworkspace/xcuserdata/
+android/.gradle/
+android/app/build/

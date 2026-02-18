@@ -7,6 +7,7 @@ private let resultKey = "overlay_kb_result"
 private let audioLevelKey = "overlay_kb_audio_level"
 private let commandKey = "overlay_kb_command"
 private let backgroundModeKey = "overlay_kb_background_mode_enabled"
+private let disableBackgroundCommand = "disable_bg_mode"
 private let groqKeyName = "groq_api_key"
 
 class RecordingViewController: UIViewController {
@@ -115,6 +116,7 @@ class RecordingViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        backgroundModeSwitch.setOn(isBackgroundModeEnabled, animated: false)
         if isBackgroundModeEnabled {
             startCommandPolling()
             let command = defaults?.string(forKey: commandKey) ?? "idle"
@@ -239,45 +241,7 @@ class RecordingViewController: UIViewController {
     }
 
     @objc private func backgroundModeSwitchChanged(_ sender: UISwitch) {
-        defaults?.set(sender.isOn, forKey: backgroundModeKey)
-        defaults?.synchronize()
-
-        if sender.isOn {
-            writeCommand("idle")
-            pendingBackgroundStart = false
-            nextStartRetryAt = .distantPast
-            startRetryBackoff = 0.4
-            startCommandPolling()
-            requestMicrophonePermission { [weak self] granted in
-                guard let self = self else { return }
-                if granted {
-                    if self.audioRecorder?.isRecording != true {
-                        self.statusLabel.text = "🟢 Background mic mode is on"
-                    }
-                    self.ensureStandbyCaptureIfNeeded(reason: "toggle-on")
-                    NSLog("[Recording] Background mic mode enabled")
-                } else {
-                    self.statusLabel.text = "❌ Mic access denied"
-                    self.writeStatus("error")
-                    NSLog("[Recording] Background mic enable failed: no mic permission")
-                }
-            }
-            return
-        }
-
-        pendingBackgroundStart = false
-        nextStartRetryAt = .distantPast
-        startRetryBackoff = 0.4
-        stopStandbyCapture()
-
-        if audioRecorder?.isRecording != true {
-            stopCommandPolling()
-            writeCommand("idle")
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-            isAudioSessionConfigured = false
-            writeStatus("idle")
-        }
-        NSLog("[Recording] Background mic mode disabled")
+        applyBackgroundModeEnabled(sender.isOn, source: "app-toggle")
     }
 
     func restartForNewDictationRequest() {
@@ -513,8 +477,17 @@ class RecordingViewController: UIViewController {
         commandTimer?.invalidate()
         commandTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self = self else { return }
+
+            if self.syncBackgroundModeFromSharedDefaultsIfNeeded(source: "shared-defaults") {
+                return
+            }
+
             let command = self.defaults?.string(forKey: commandKey) ?? "idle"
-            if command == "start" {
+            if command == disableBackgroundCommand {
+                self.writeCommand("idle")
+                self.applyBackgroundModeEnabled(false, source: "keyboard-command")
+                return
+            } else if command == "start" {
                 self.writeCommand("idle")
                 if self.audioRecorder?.isRecording == true {
                     self.pendingBackgroundStart = false
@@ -649,6 +622,70 @@ class RecordingViewController: UIViewController {
         startRetryBackoff = 0.4
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         isAudioSessionConfigured = false
+    }
+
+    private func applyBackgroundModeEnabled(_ enabled: Bool, source: String) {
+        defaults?.set(enabled, forKey: backgroundModeKey)
+        defaults?.synchronize()
+
+        if backgroundModeSwitch.isOn != enabled {
+            backgroundModeSwitch.setOn(enabled, animated: true)
+        }
+
+        if enabled {
+            pendingBackgroundStart = false
+            nextStartRetryAt = .distantPast
+            startRetryBackoff = 0.4
+            writeCommand("idle")
+            startCommandPolling()
+            requestMicrophonePermission { [weak self] granted in
+                guard let self = self else { return }
+                if granted {
+                    if self.audioRecorder?.isRecording != true {
+                        self.statusLabel.text = "🟢 Background mic mode is on"
+                    }
+                    self.ensureStandbyCaptureIfNeeded(reason: "enable-\(source)")
+                    NSLog("[Recording] Background mic mode enabled (\(source))")
+                } else {
+                    self.statusLabel.text = "❌ Mic access denied"
+                    self.writeStatus("error")
+                    NSLog("[Recording] Background mic enable failed (\(source)): no mic permission")
+                }
+            }
+            return
+        }
+
+        pendingBackgroundStart = false
+        nextStartRetryAt = .distantPast
+        startRetryBackoff = 0.4
+        writeCommand("idle")
+        stopMetering()
+        stopStandbyCapture()
+
+        if let recorder = audioRecorder, recorder.isRecording {
+            recorder.stop()
+            audioRecorder = nil
+            NSLog("[Recording] Active recording stopped while disabling BG mode (\(source))")
+        } else {
+            audioRecorder = nil
+        }
+
+        recordingURL = nil
+        stopCommandPolling()
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        isAudioSessionConfigured = false
+        writeStatus("idle")
+        writeAudioLevel(0)
+        statusLabel.text = "⚪️ Background mic mode is off"
+        NSLog("[Recording] Background mic mode disabled (\(source))")
+    }
+
+    @discardableResult
+    private func syncBackgroundModeFromSharedDefaultsIfNeeded(source: String) -> Bool {
+        let sharedEnabled = defaults?.bool(forKey: backgroundModeKey) ?? false
+        guard sharedEnabled != backgroundModeSwitch.isOn else { return false }
+        applyBackgroundModeEnabled(sharedEnabled, source: source)
+        return true
     }
 
     // MARK: - App Group
