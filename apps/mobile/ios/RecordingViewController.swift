@@ -76,9 +76,9 @@ class RecordingViewController: UIViewController {
 
     // MARK: - State
     private var audioRecorder: AVAudioRecorder?
-    private let standbyEngine = AVAudioEngine()
+    private var standbyRecorder: AVAudioRecorder?
+    private var standbyRecordingURL: URL?
     private var isStandbyCaptureActive = false
-    private var hasInstalledStandbyTap = false
     private var meteringTimer: Timer?
     private var commandTimer: Timer?
     private var recordingURL: URL?
@@ -594,8 +594,8 @@ class RecordingViewController: UIViewController {
             return
         }
 
-        // Check minimum duration (Groq requires at least 0.1s, bills minimum 10s)
-        if duration < 0.5 {
+        // Groq requires at least ~0.1s. Keep threshold low so short dictations still go through.
+        if duration < 0.1 {
             NSLog("[Recording] Recording too short: \(duration)s")
             writeStatus("error")
             writeResult("")
@@ -609,8 +609,18 @@ class RecordingViewController: UIViewController {
                 let text = try await transcribeWithGroq(url: url, apiKey: key)
                 try? FileManager.default.removeItem(at: url)
                 await MainActor.run {
-                    NSLog("[Recording] Transcription success: \(text)")
-                    self.writeResult(text)
+                    let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !normalized.isEmpty else {
+                        NSLog("[Recording] Transcription empty result")
+                        self.writeStatus("error")
+                        self.writeResult("")
+                        self.statusLabel.text = "❌ Didn't catch that"
+                        self.keepListeningForCommandsIfNeeded()
+                        return
+                    }
+
+                    NSLog("[Recording] Transcription success: \(normalized)")
+                    self.writeResult(normalized)
                     self.writeStatus("done")
                     self.statusLabel.text = "✅ Done! Return to keyboard."
                     self.keepListeningForCommandsIfNeeded()
@@ -731,7 +741,7 @@ class RecordingViewController: UIViewController {
         guard !pendingBackgroundStart else { return }
         guard !isStartInProgress else { return }
 
-        if isStandbyCaptureActive && standbyEngine.isRunning {
+        if isStandbyCaptureActive && (standbyRecorder?.isRecording == true) {
             return
         }
 
@@ -750,44 +760,61 @@ class RecordingViewController: UIViewController {
             return
         }
 
-        let inputNode = standbyEngine.inputNode
-        let format = inputNode.inputFormat(forBus: 0)
-        if hasInstalledStandbyTap {
-            inputNode.removeTap(onBus: 0)
-            hasInstalledStandbyTap = false
+        if let recorder = standbyRecorder, recorder.isRecording {
+            isStandbyCaptureActive = true
+            return
         }
 
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { _, _ in
-            // Keep input route active to avoid background suspension when BG mode is enabled.
-        }
-        hasInstalledStandbyTap = true
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        let fileURL = tempDir.appendingPathComponent("overlay_bg_standby.m4a")
+        standbyRecordingURL = fileURL
 
-        standbyEngine.prepare()
         do {
-            try standbyEngine.start()
+            // Keep file size bounded during long-running standby mode.
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+               let size = attrs[.size] as? NSNumber,
+               size.int64Value > 5_000_000 {
+                try? FileManager.default.removeItem(at: fileURL)
+            }
+
+            let settings: [String: Any] = [
+                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                AVSampleRateKey: 16000.0,
+                AVNumberOfChannelsKey: 1,
+                AVEncoderAudioQualityKey: AVAudioQuality.low.rawValue,
+                AVEncoderBitRateKey: 12000
+            ]
+
+            let recorder = try AVAudioRecorder(url: fileURL, settings: settings)
+            recorder.isMeteringEnabled = false
+            let prepared = recorder.prepareToRecord()
+            let started = prepared ? recorder.record() : false
+            guard prepared && started else {
+                throw NSError(domain: "Recording", code: -1, userInfo: [
+                    NSLocalizedDescriptionKey: "Standby recorder failed (prepared=\(prepared), started=\(started))"
+                ])
+            }
+
+            standbyRecorder = recorder
             isStandbyCaptureActive = true
             writeStatus("idle")
             writeAudioLevel(0)
             NSLog("[Recording] Standby capture active (\(reason))")
         } catch {
             isStandbyCaptureActive = false
-            if hasInstalledStandbyTap {
-                inputNode.removeTap(onBus: 0)
-                hasInstalledStandbyTap = false
-            }
+            standbyRecorder = nil
             NSLog("[Recording] Standby capture start failed (\(reason)): \(error)")
         }
     }
 
     private func stopStandbyCapture() {
-        if hasInstalledStandbyTap {
-            standbyEngine.inputNode.removeTap(onBus: 0)
-            hasInstalledStandbyTap = false
-        }
-        if standbyEngine.isRunning {
-            standbyEngine.stop()
-        }
+        standbyRecorder?.stop()
+        standbyRecorder = nil
         isStandbyCaptureActive = false
+        if let standbyRecordingURL {
+            try? FileManager.default.removeItem(at: standbyRecordingURL)
+        }
+        standbyRecordingURL = nil
     }
 
     private func registerLifecycleObservers() {
@@ -835,6 +862,14 @@ class RecordingViewController: UIViewController {
                 self.ensureStandbyCaptureIfNeeded(reason: "mediaServicesReset")
             }
         })
+
+        notificationTokens.append(center.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            self?.handleAudioRouteChange(note)
+        })
     }
 
     private func unregisterLifecycleObservers() {
@@ -873,6 +908,26 @@ class RecordingViewController: UIViewController {
             attemptPendingBackgroundStart(reason: "interruption-ended")
         } else {
             ensureStandbyCaptureIfNeeded(reason: "interruption-ended")
+        }
+    }
+
+    private func handleAudioRouteChange(_ note: Notification) {
+        guard isBackgroundModeEnabled else { return }
+        if audioRecorder?.isRecording == true { return }
+        guard
+            let info = note.userInfo,
+            let rawReason = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
+            let reason = AVAudioSession.RouteChangeReason(rawValue: rawReason)
+        else {
+            ensureStandbyCaptureIfNeeded(reason: "routeChange-unknown")
+            return
+        }
+
+        switch reason {
+        case .oldDeviceUnavailable, .newDeviceAvailable, .routeConfigurationChange, .categoryChange, .override:
+            ensureStandbyCaptureIfNeeded(reason: "routeChange-\(reason.rawValue)")
+        default:
+            break
         }
     }
 
