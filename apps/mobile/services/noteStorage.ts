@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Note, NoteMeta } from './types'
 
-const NOTES_INDEX_KEY = 'dawn-notes-index'
-const NOTE_PREFIX = 'dawn-note-'
+const NOTES_INDEX_KEY = 'overlay-notes-index'
+const NOTE_PREFIX = 'overlay-note-'
 
 export async function loadNotesIndex(): Promise<NoteMeta[]> {
   try {

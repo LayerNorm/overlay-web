@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store'
 import { ChatModel, AVAILABLE_MODELS } from './chatTypes'
 
-const API_KEY_PREFIX = 'dawn-api-key-'
+const API_KEY_PREFIX = 'overlay-api-key-'
 
 export type AIProvider = 'openai' | 'anthropic' | 'google' | 'groq' | 'xai'
 

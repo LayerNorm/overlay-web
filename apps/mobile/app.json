@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "Dawn",
-    "slug": "dawn-mobile",
+    "name": "Overlay",
+    "slug": "overlay-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "scheme": "dawn",
+    "scheme": "overlay",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -15,9 +15,9 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.dawn-mobile",
+      "bundleIdentifier": "com.layernorm.overlay-mobile",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Dawn needs microphone access to transcribe your voice into text."
+        "NSMicrophoneUsageDescription": "Overlay needs microphone access to transcribe your voice into text."
       }
     },
     "android": {
@@ -38,7 +38,7 @@
       [
         "expo-av",
         {
-          "microphonePermission": "Dawn needs microphone access to transcribe your voice into text."
+          "microphonePermission": "Overlay needs microphone access to transcribe your voice into text."
         }
       ]
     ]

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Folder, generateFolderId } from './types'
 
-const NOTE_FOLDERS_KEY = 'dawn-note-folders'
+const NOTE_FOLDERS_KEY = 'overlay-note-folders'
 
 export async function loadNoteFolders(): Promise<Folder[]> {
   try {

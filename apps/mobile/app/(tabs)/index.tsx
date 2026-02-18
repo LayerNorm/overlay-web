@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router'
 import { useTheme } from '../../hooks/useTheme'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const dawnLogo = require('../../assets/images/logo-big-no-bg.png')
+const overlayLogo = require('../../assets/images/logo-big-no-bg.png')
 
 export default function HomeScreen(): React.ReactElement {
   const { theme } = useTheme()
@@ -23,10 +23,10 @@ export default function HomeScreen(): React.ReactElement {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.content}>
-        {/* Logo + dawn text — centered, matching desktop */}
+        {/* Logo + overlay text — centered, matching desktop */}
         <View style={styles.logoSection}>
-          <Image source={dawnLogo} style={styles.logoImage} resizeMode="contain" />
-          <Text style={[styles.appName, { color: theme.text }]}>dawn</Text>
+          <Image source={overlayLogo} style={styles.logoImage} resizeMode="contain" />
+          <Text style={[styles.appName, { color: theme.text }]}>overlay</Text>
         </View>
 
         {/* Action buttons — centered below */}

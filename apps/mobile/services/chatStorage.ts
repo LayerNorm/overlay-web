@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Chat, ChatMeta, Message, generateChatId } from './chatTypes'
 
-const CHATS_META_KEY = 'dawn-chats-meta'
-const CHAT_PREFIX = 'dawn-chat-'
-const LAST_CHAT_ID_KEY = 'dawn-last-chat-id'
+const CHATS_META_KEY = 'overlay-chats-meta'
+const CHAT_PREFIX = 'overlay-chat-'
+const LAST_CHAT_ID_KEY = 'overlay-last-chat-id'
 
 export async function loadChatsMeta(): Promise<ChatMeta[]> {
   try {
