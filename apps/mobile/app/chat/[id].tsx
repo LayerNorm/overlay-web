@@ -9,9 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  ScrollView,
-  NativeSyntheticEvent,
-  TextInputSelectionChangeEventData
+  ScrollView
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -33,16 +31,6 @@ import {
 import { loadChat, saveChat, createNewChat } from '../../services/chatStorage'
 import { chatStream, getAvailableModels } from '../../services/aiService'
 import { MessageBubble } from '../../components/chat/MessageBubble'
-import { DictationAccessoryStrip } from '../../components/voice/DictationAccessoryStrip'
-import {
-  TextSelectionRange,
-  deleteBackwardAtSelection,
-  formatTranscriptForInsertion,
-  insertTextAtSelection
-} from '../../services/textInputEditing'
-
-const CHAT_VOICE_ACCESSORY_ID = 'chat-voice-accessory'
-const USES_ACCESSORY_STRIP = Platform.OS === 'ios'
 
 export default function ChatConversationScreen(): React.ReactElement {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -60,101 +48,20 @@ export default function ChatConversationScreen(): React.ReactElement {
   const [imageBase64, setImageBase64] = useState<string | null>(null)
 
   const flatListRef = useRef<FlatList>(null)
-  const messageInputRef = useRef<TextInput>(null)
   const chatRef = useRef<Chat | null>(null)
   const abortRef = useRef(false)
-  const inputValueRef = useRef('')
-  const inputSelectionRef = useRef<TextSelectionRange>({ start: 0, end: 0 })
 
-  const {
-    isRecording,
-    isProcessing: isTranscribing,
-    error: voiceError,
-    startRecording,
-    stopRecording,
-    toggleRecording
-  } = useVoiceInput()
+  const { isRecording, isProcessing: isTranscribing, toggleRecording } = useVoiceInput()
 
-  useEffect(() => {
-    inputValueRef.current = inputValue
-  }, [inputValue])
-
-  const syncInputSelection = useCallback((cursor: number) => {
-    inputSelectionRef.current = { start: cursor, end: cursor }
-    requestAnimationFrame(() => {
-      messageInputRef.current?.setNativeProps({
-        selection: { start: cursor, end: cursor }
-      })
-    })
-  }, [])
-
-  const applyInputEdit = useCallback((nextText: string, cursor: number) => {
-    inputValueRef.current = nextText
-    setInputValue(nextText)
-    syncInputSelection(cursor)
-  }, [syncInputSelection])
-
-  const insertTextInComposer = useCallback((text: string) => {
-    const edit = insertTextAtSelection(
-      inputValueRef.current,
-      inputSelectionRef.current,
-      text
-    )
-    applyInputEdit(edit.nextText, edit.nextSelection.start)
-  }, [applyInputEdit])
-
-  const deleteBackwardInComposer = useCallback(() => {
-    const edit = deleteBackwardAtSelection(inputValueRef.current, inputSelectionRef.current)
-    applyInputEdit(edit.nextText, edit.nextSelection.start)
-  }, [applyInputEdit])
-
-  const insertTranscript = useCallback((transcript: string) => {
-    const selection = inputSelectionRef.current
-    const current = inputValueRef.current
-    const formatted = formatTranscriptForInsertion(transcript, current.slice(selection.end))
-    if (!formatted) {
-      return
-    }
-
-    const edit = insertTextAtSelection(current, selection, formatted)
-    applyInputEdit(edit.nextText, edit.nextSelection.start)
-  }, [applyInputEdit])
-
-  const handleMicTap = useCallback(async () => {
+  const handleVoiceToggle = useCallback(async () => {
     const result = await toggleRecording()
     if (result?.text) {
-      insertTranscript(result.text)
+      setInputValue((prev) => {
+        const separator = prev.length > 0 && !prev.endsWith(' ') && !prev.endsWith('\n') ? ' ' : ''
+        return prev + separator + result.text
+      })
     }
-  }, [insertTranscript, toggleRecording])
-
-  const handleMicHoldStart = useCallback(async () => {
-    if (isTranscribing || isRecording) {
-      return
-    }
-    await startRecording()
-  }, [isRecording, isTranscribing, startRecording])
-
-  const handleMicHoldEnd = useCallback(async () => {
-    if (isTranscribing) {
-      return
-    }
-    const result = await stopRecording()
-    if (result?.text) {
-      insertTranscript(result.text)
-    }
-  }, [insertTranscript, isTranscribing, stopRecording])
-
-  const handleComposerSelectionChange = useCallback(
-    (event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
-      inputSelectionRef.current = event.nativeEvent.selection
-    },
-    []
-  )
-
-  const handleComposerTextChange = useCallback((text: string) => {
-    inputValueRef.current = text
-    setInputValue(text)
-  }, [])
+  }, [toggleRecording])
 
   useEffect(() => {
     async function init(): Promise<void> {
@@ -211,8 +118,6 @@ export default function ChatConversationScreen(): React.ReactElement {
     const updatedMessages = [...messages, userMessage]
     setMessages(updatedMessages)
     setInputValue('')
-    inputValueRef.current = ''
-    inputSelectionRef.current = { start: 0, end: 0 }
     setImageBase64(null)
     scrollToBottom()
 
@@ -431,13 +336,13 @@ export default function ChatConversationScreen(): React.ReactElement {
 
         {/* Input */}
         <View style={[styles.inputContainer, { borderTopColor: theme.border, backgroundColor: theme.background }]}>
-          {!USES_ACCESSORY_STRIP && isRecording && (
+          {isRecording && (
             <View style={[styles.recordingBar, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
               <View style={styles.recordingDot} />
               <Text style={styles.recordingText}>Recording... tap mic to stop</Text>
             </View>
           )}
-          {!USES_ACCESSORY_STRIP && isTranscribing && (
+          {isTranscribing && (
             <View style={[styles.recordingBar, { backgroundColor: theme.surface }]}>
               <ActivityIndicator size="small" color={theme.textSecondary} />
               <Text style={[styles.recordingText, { color: theme.textSecondary }]}>Transcribing...</Text>
@@ -463,41 +368,36 @@ export default function ChatConversationScreen(): React.ReactElement {
               <Feather name="image" size={20} color={theme.textSecondary} />
             </TouchableOpacity>
 
-            {!USES_ACCESSORY_STRIP && (
-              <TouchableOpacity
-                onPress={handleMicTap}
-                disabled={isTranscribing}
-                style={[
-                  styles.micButton,
-                  {
-                    backgroundColor: isRecording
-                      ? '#EF4444'
-                      : theme.buttonBg
-                  }
-                ]}
-                activeOpacity={0.7}
-              >
-                {isTranscribing ? (
-                  <ActivityIndicator size="small" color={theme.textSecondary} />
-                ) : (
-                  <Feather
-                    name={isRecording ? 'square' : 'mic'}
-                    size={isRecording ? 14 : 18}
-                    color={isRecording ? '#FFFFFF' : theme.toggleThumb}
-                  />
-                )}
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              onPress={handleVoiceToggle}
+              disabled={isTranscribing}
+              style={[
+                styles.micButton,
+                {
+                  backgroundColor: isRecording
+                    ? '#EF4444'
+                    : theme.buttonBg
+                }
+              ]}
+              activeOpacity={0.7}
+            >
+              {isTranscribing ? (
+                <ActivityIndicator size="small" color={theme.textSecondary} />
+              ) : (
+                <Feather
+                  name={isRecording ? 'square' : 'mic'}
+                  size={isRecording ? 14 : 18}
+                  color={isRecording ? '#FFFFFF' : theme.toggleThumb}
+                />
+              )}
+            </TouchableOpacity>
 
             <TextInput
-              ref={messageInputRef}
               style={[styles.textInput, { color: theme.text, backgroundColor: theme.surface }]}
               placeholder="Type a message..."
               placeholderTextColor={theme.textDisabled}
               value={inputValue}
-              onChangeText={handleComposerTextChange}
-              onSelectionChange={handleComposerSelectionChange}
-              inputAccessoryViewID={USES_ACCESSORY_STRIP ? CHAT_VOICE_ACCESSORY_ID : undefined}
+              onChangeText={setInputValue}
               multiline
               maxLength={10000}
               returnKeyType="default"
@@ -524,20 +424,6 @@ export default function ChatConversationScreen(): React.ReactElement {
           </View>
         </View>
       </KeyboardAvoidingView>
-
-      <DictationAccessoryStrip
-        accessoryID={CHAT_VOICE_ACCESSORY_ID}
-        theme={theme}
-        isRecording={isRecording}
-        isProcessing={isTranscribing}
-        error={voiceError}
-        onMicTap={handleMicTap}
-        onMicHoldStart={handleMicHoldStart}
-        onMicHoldEnd={handleMicHoldEnd}
-        onInsertText={insertTextInComposer}
-        onDeleteBackward={deleteBackwardInComposer}
-        onReturn={() => insertTextInComposer('\n')}
-      />
 
       {/* Model Picker Overlay — header stays visible, chat blurred beneath */}
       {showModelPicker && (

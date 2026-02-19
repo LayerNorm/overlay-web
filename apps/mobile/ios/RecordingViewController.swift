@@ -488,13 +488,15 @@ class RecordingViewController: UIViewController {
                 self.applyBackgroundModeEnabled(false, source: "keyboard-command")
                 return
             } else if command == "start" {
-                self.writeCommand("idle")
                 if self.audioRecorder?.isRecording == true {
+                    self.writeCommand("idle")
                     self.pendingBackgroundStart = false
                     self.ensureRecordingStatus()
                     return
                 }
-                NSLog("[Recording] Received start command from keyboard")
+                if !self.pendingBackgroundStart {
+                    NSLog("[Recording] Received start command from keyboard")
+                }
                 self.pendingBackgroundStart = true
                 self.nextStartRetryAt = .distantPast
                 self.attemptPendingBackgroundStart(reason: "command")
@@ -682,7 +684,9 @@ class RecordingViewController: UIViewController {
 
     @discardableResult
     private func syncBackgroundModeFromSharedDefaultsIfNeeded(source: String) -> Bool {
-        let sharedEnabled = defaults?.bool(forKey: backgroundModeKey) ?? false
+        guard let defaults = defaults else { return false }
+        guard defaults.object(forKey: backgroundModeKey) != nil else { return false }
+        let sharedEnabled = defaults.bool(forKey: backgroundModeKey)
         guard sharedEnabled != backgroundModeSwitch.isOn else { return false }
         applyBackgroundModeEnabled(sharedEnabled, source: source)
         return true
@@ -746,9 +750,11 @@ class RecordingViewController: UIViewController {
         }
 
         let candidates: [(label: String, category: AVAudioSession.Category, mode: AVAudioSession.Mode, options: AVAudioSession.CategoryOptions)] = [
-            ("playAndRecord/default", .playAndRecord, .default, [.allowBluetoothHFP, .duckOthers]),
+            ("playAndRecord/voiceChat/mix", .playAndRecord, .voiceChat, [.mixWithOthers, .allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker]),
+            ("record/measurement/mix", .record, .measurement, [.mixWithOthers]),
+            ("playAndRecord/default/mix", .playAndRecord, .default, [.mixWithOthers, .allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker]),
             ("record/default", .record, .default, []),
-            ("playAndRecord/measurement", .playAndRecord, .measurement, [.allowBluetoothHFP])
+            ("playAndRecord/measurement", .playAndRecord, .measurement, [.allowBluetooth])
         ]
 
         var failures: [String] = []
@@ -762,11 +768,22 @@ class RecordingViewController: UIViewController {
             } catch {
                 let err = error as NSError
                 failures.append("\(candidate.label): \(err.domain) (\(err.code)) \(err.localizedDescription)")
+                if shouldRetryImmediatelyForAudioError(err) {
+                    do {
+                        try session.setActive(false, options: .notifyOthersOnDeactivation)
+                    } catch { }
+                    Thread.sleep(forTimeInterval: 0.08)
+                }
             }
         }
 
         NSLog("[Recording] Audio session error: \(failures.joined(separator: " | "))")
         return false
+    }
+
+    private func shouldRetryImmediatelyForAudioError(_ error: NSError) -> Bool {
+        guard error.domain == NSOSStatusErrorDomain else { return false }
+        return error.code == 561015905 || error.code == 560557684 || error.code == 561017449
     }
 
     private func ensureStandbyCaptureIfNeeded(reason: String) {

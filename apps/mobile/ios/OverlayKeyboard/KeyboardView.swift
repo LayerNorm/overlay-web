@@ -1,265 +1,1042 @@
 import SwiftUI
+import Combine
+
+final class KeyboardContext: ObservableObject {
+    @Published var needsInputModeSwitchKey: Bool = true
+    @Published var returnKeyTitle: String = "Return"
+}
+
+private enum KeyboardPage {
+    case letters
+    case numbers
+    case symbols
+    case emoji
+}
+
+private enum ShiftState {
+    case lower
+    case upper
+    case caps
+}
+
+private enum EmojiCategory: String, CaseIterable, Identifiable {
+    case all
+    case smileys
+    case gestures
+    case hearts
+    case animals
+    case food
+    case travel
+    case objects
+
+    var id: String { rawValue }
+
+    var symbolName: String {
+        switch self {
+        case .all: return "clock"
+        case .smileys: return "face.smiling"
+        case .gestures: return "hand.thumbsup"
+        case .hearts: return "heart"
+        case .animals: return "pawprint"
+        case .food: return "fork.knife"
+        case .travel: return "car"
+        case .objects: return "lightbulb"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .all: return "Search Emoji"
+        case .smileys: return "Smileys"
+        case .gestures: return "Gestures"
+        case .hearts: return "Hearts"
+        case .animals: return "Animals"
+        case .food: return "Food"
+        case .travel: return "Travel"
+        case .objects: return "Objects"
+        }
+    }
+}
+
+private enum KeyboardPalette {
+    static let background = Color.clear
+    static let key = Color(red: 113.0 / 255.0, green: 113.0 / 255.0, blue: 113.0 / 255.0)
+    static let keyPressed = Color(red: 98.0 / 255.0, green: 98.0 / 255.0, blue: 98.0 / 255.0)
+    static let functionKey = Color(red: 0.33, green: 0.33, blue: 0.35)
+    static let actionKey = Color(red: 0.31, green: 0.31, blue: 0.33)
+    static let keyStroke = Color.white.opacity(0.10)
+    static let text = Color.white.opacity(0.96)
+    static let secondaryText = Color.white.opacity(0.82)
+    static let recording = Color(red: 0.96, green: 0.29, blue: 0.27)
+    static let mode = Color(red: 0.25, green: 0.25, blue: 0.27)
+}
 
 struct KeyboardView: View {
     let hasFullAccess: Bool
     @ObservedObject var transcriptionService: TranscriptionService
+    @ObservedObject var context: KeyboardContext
+    let onInsertText: (String) -> Void
+    let onBackspace: () -> Void
+    let onReturn: () -> Void
+    let onNextKeyboard: () -> Void
 
-    init(hasFullAccess: Bool, transcriptionService: TranscriptionService) {
+    init(
+        hasFullAccess: Bool,
+        transcriptionService: TranscriptionService,
+        context: KeyboardContext,
+        onInsertText: @escaping (String) -> Void,
+        onBackspace: @escaping () -> Void,
+        onReturn: @escaping () -> Void,
+        onNextKeyboard: @escaping () -> Void
+    ) {
         self.hasFullAccess = hasFullAccess
         self.transcriptionService = transcriptionService
+        self.context = context
+        self.onInsertText = onInsertText
+        self.onBackspace = onBackspace
+        self.onReturn = onReturn
+        self.onNextKeyboard = onNextKeyboard
     }
 
     var body: some View {
         ZStack {
-            Color(red: 0.07, green: 0.07, blue: 0.07)
+            Color.clear
                 .ignoresSafeArea()
 
             if !hasFullAccess {
                 NoAccessView()
             } else {
-                RecordingView(service: transcriptionService)
+                OverlayKeyboardView(
+                    service: transcriptionService,
+                    context: context,
+                    onInsertText: onInsertText,
+                    onBackspace: onBackspace,
+                    onReturn: onReturn,
+                    onNextKeyboard: onNextKeyboard
+                )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-struct RecordingView: View {
+private struct OverlayKeyboardView: View {
     @ObservedObject var service: TranscriptionService
+    @ObservedObject var context: KeyboardContext
+
+    let onInsertText: (String) -> Void
+    let onBackspace: () -> Void
+    let onReturn: () -> Void
+    let onNextKeyboard: () -> Void
+
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
-    var body: some View {
-        keyboardContent(compact: verticalSizeClass == .compact)
+    @State private var page: KeyboardPage = .letters
+    @State private var shiftState: ShiftState = .lower
+    @State private var lastShiftTapTime: Date = .distantPast
+    @State private var selectedEmojiCategory: EmojiCategory = .all
+
+    private var compact: Bool {
+        verticalSizeClass == .compact
     }
 
-    private func handleButtonTap() {
+    private var keyHeight: CGFloat {
+        compact ? 36 : 45
+    }
+
+    private var keyHorizontalSpacing: CGFloat {
+        compact ? 5 : 6
+    }
+
+    private var keyRowSpacing: CGFloat {
+        compact ? 6 : 7
+    }
+
+    private var cornerRadius: CGFloat {
+        compact ? 6 : 7
+    }
+
+    private var topControlCornerRadius: CGFloat {
+        compact ? 10 : 11
+    }
+
+    private var keyLabelYOffset: CGFloat {
+        compact ? -0.6 : -1.0
+    }
+
+    private var sideKeyWidth: CGFloat {
+        compact ? 44 : 50
+    }
+
+    private var modeKeyWidth: CGFloat {
+        compact ? 56 : 64
+    }
+
+    private var globeKeyWidth: CGFloat {
+        compact ? 40 : 46
+    }
+
+    private var emojiToggleKeyWidth: CGFloat {
+        compact ? 40 : 46
+    }
+
+    private var returnKeyWidth: CGFloat {
+        compact ? 84 : 96
+    }
+
+    private var topControlHeight: CGFloat {
+        compact ? 36 : 44
+    }
+
+    private var middleRowEdgeHitWidth: CGFloat {
+        compact ? 17 : 20
+    }
+
+    private var emojiCellSize: CGFloat {
+        compact ? 34 : 38
+    }
+
+    private var emojiGridRows: [GridItem] {
+        [
+            GridItem(.fixed(emojiCellSize), spacing: keyRowSpacing),
+            GridItem(.fixed(emojiCellSize), spacing: keyRowSpacing),
+            GridItem(.fixed(emojiCellSize), spacing: keyRowSpacing),
+            GridItem(.fixed(emojiCellSize), spacing: keyRowSpacing)
+        ]
+    }
+
+    private var emojiGridHeight: CGFloat {
+        emojiCellSize * 4 + keyRowSpacing * 3
+    }
+
+    private var categoryBarHeight: CGFloat {
+        compact ? 20 : 22
+    }
+
+    private var emojiCategories: [EmojiCategory] {
+        EmojiCategory.allCases
+    }
+
+    private var emojisByCategory: [EmojiCategory: [String]] {
+        [
+            .smileys: ["😀", "😄", "😁", "😂", "🤣", "😊", "🙂", "😉", "😍", "😘", "😎", "🤓", "🤗", "🤔", "😴", "🤯", "🥳", "😭", "😡", "🥶", "😇", "🤩", "🤭", "🤪", "😵", "🙃", "🫠", "😶‍🌫️", "🥹", "😌"],
+            .gestures: ["👍", "👎", "👏", "🙌", "🤝", "🙏", "👋", "🤙", "👌", "✌️", "🤞", "🤟", "🤘", "✍️", "💪", "🫶", "👊", "🤛", "🤜", "🫱", "🫲", "🖐️", "✋", "🫸", "🫷", "🤌", "☝️", "👇", "👈", "👉"],
+            .hearts: ["❤️", "🩷", "🧡", "💛", "💚", "🩵", "💙", "💜", "🤍", "🖤", "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "❤️‍🔥", "❤️‍🩹", "💟", "💌"],
+            .animals: ["🐶", "🐱", "🐭", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🦆", "🦅", "🦉", "🦇", "🐺", "🦄", "🐝", "🐙", "🐬", "🦋"],
+            .food: ["🍎", "🍌", "🍓", "🍇", "🍉", "🍒", "🥑", "🥕", "🌮", "🍕", "🍔", "🍟", "🍗", "🍣", "🍜", "🍩", "🍪", "🍫", "🍿", "🥨", "🥗", "🍰", "☕️", "🍵", "🥤", "🍺"],
+            .travel: ["🚗", "🚕", "🚌", "🚎", "🚓", "🚑", "🚒", "🚐", "🚚", "🚜", "🏎️", "🚂", "🚆", "🚇", "✈️", "🛫", "🛬", "🚁", "🛥️", "🚤", "⛵️", "🚢", "🛴", "🚲", "🛼", "🛹"],
+            .objects: ["💡", "📱", "💻", "⌚️", "📷", "🎥", "🎧", "🎮", "⌨️", "🖱️", "📦", "🔋", "🔌", "🧲", "🧪", "🧬", "🧠", "🔭", "🪐", "🛠️", "🔐", "🧯", "🕯️", "🧸", "🎁", "📚"]
+        ]
+    }
+
+    private var displayedEmojis: [String] {
+        if selectedEmojiCategory == .all {
+            var ordered: [String] = []
+            var seen = Set<String>()
+            for category in emojiCategories where category != .all {
+                for emoji in emojisByCategory[category] ?? [] where !seen.contains(emoji) {
+                    seen.insert(emoji)
+                    ordered.append(emoji)
+                }
+            }
+            return ordered
+        }
+        return emojisByCategory[selectedEmojiCategory] ?? []
+    }
+
+    var body: some View {
+        VStack(spacing: keyRowSpacing) {
+            topControls
+
+            switch page {
+            case .letters:
+                lettersPage
+            case .numbers:
+                numbersPage
+            case .symbols:
+                symbolsPage
+            case .emoji:
+                emojiPage
+            }
+        }
+        .padding(.horizontal, compact ? 6 : 8)
+        .padding(.top, compact ? 3 : 4)
+        .padding(.bottom, 0)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .ignoresSafeArea(.container, edges: .bottom)
+    }
+
+    @ViewBuilder
+    private var topControls: some View {
+        if service.state == .recording {
+            recordingTopControls
+        } else if page == .emoji {
+            emojiSearchControls
+        } else {
+            idleTopControls
+        }
+    }
+
+    private var idleTopControls: some View {
+        HStack(spacing: keyHorizontalSpacing) {
+            Button {
+                service.setBackgroundModeEnabled(!service.backgroundModeEnabled)
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: service.backgroundModeEnabled ? "waveform.and.mic" : "mic.slash")
+                        .font(.system(size: compact ? 11 : 12, weight: .semibold))
+                    Text(service.backgroundModeEnabled ? "BG Mic On" : "BG Mic Off")
+                        .font(.system(size: compact ? 11 : 12, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .foregroundColor(KeyboardPalette.text)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .buttonStyle(TopControlButtonStyle(fill: KeyboardPalette.mode, cornerRadius: topControlCornerRadius))
+            .frame(width: compact ? 104 : 118)
+            .frame(height: topControlHeight)
+
+            Button {
+                cycleKeyboardMode()
+            } label: {
+                Text("Modes")
+                    .font(.system(size: compact ? 11 : 12, weight: .semibold))
+                    .foregroundColor(KeyboardPalette.secondaryText)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .buttonStyle(TopControlButtonStyle(fill: KeyboardPalette.mode, cornerRadius: topControlCornerRadius))
+            .frame(width: compact ? 64 : 74)
+            .frame(height: topControlHeight)
+
+            Button {
+                handleSpeakTap()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: compact ? 11 : 12, weight: .semibold))
+                    Text("Speak")
+                        .font(.system(size: compact ? 19 : 20, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .foregroundColor(KeyboardPalette.text)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .disabled(service.state == .processing)
+            .buttonStyle(TopControlButtonStyle(fill: KeyboardPalette.key, cornerRadius: topControlCornerRadius))
+            .frame(height: topControlHeight)
+            .opacity(service.state == .processing ? 0.55 : 1.0)
+        }
+        .frame(height: topControlHeight)
+    }
+
+    private var recordingTopControls: some View {
+        HStack(spacing: keyHorizontalSpacing) {
+            Button {
+                service.cancelRecording()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: compact ? 12 : 13, weight: .bold))
+                    Text("Cancel")
+                        .font(.system(size: compact ? 12 : 13, weight: .semibold))
+                }
+                .foregroundColor(KeyboardPalette.text)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .buttonStyle(TopControlButtonStyle(fill: KeyboardPalette.mode, cornerRadius: topControlCornerRadius))
+            .frame(width: compact ? 86 : 98)
+            .frame(height: topControlHeight)
+
+            ZStack {
+                Capsule(style: .continuous)
+                    .fill(KeyboardPalette.mode)
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(KeyboardPalette.keyStroke, lineWidth: 1)
+                    )
+
+                RecordingWaveform(level: service.audioLevel, active: true, compact: compact)
+                    .padding(.horizontal, compact ? 10 : 14)
+            }
+            .frame(height: topControlHeight)
+
+            Button {
+                service.stopRecording()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: compact ? 11 : 12, weight: .bold))
+                    Text("Stop")
+                        .font(.system(size: compact ? 12 : 13, weight: .semibold))
+                }
+                .foregroundColor(KeyboardPalette.text)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .buttonStyle(TopControlButtonStyle(fill: KeyboardPalette.recording, cornerRadius: topControlCornerRadius))
+            .frame(width: compact ? 78 : 90)
+            .frame(height: topControlHeight)
+        }
+        .frame(height: topControlHeight)
+    }
+
+    private var emojiSearchControls: some View {
+        HStack(spacing: keyHorizontalSpacing) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: compact ? 13 : 14, weight: .medium))
+                    .foregroundColor(KeyboardPalette.secondaryText)
+
+                Text(selectedEmojiCategory.title)
+                    .font(.system(size: compact ? 13 : 15, weight: .regular))
+                    .foregroundColor(KeyboardPalette.secondaryText)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, compact ? 10 : 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: topControlCornerRadius, style: .continuous)
+                    .fill(KeyboardPalette.mode)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: topControlCornerRadius, style: .continuous)
+                            .stroke(KeyboardPalette.keyStroke, lineWidth: 1)
+                    )
+            )
+
+            Button {
+                selectedEmojiCategory = .all
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: compact ? 16 : 17, weight: .semibold))
+                    .foregroundColor(KeyboardPalette.text)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .buttonStyle(TopControlButtonStyle(fill: KeyboardPalette.mode, cornerRadius: topControlCornerRadius))
+            .frame(width: compact ? 44 : 50)
+            .frame(height: topControlHeight)
+        }
+        .frame(height: topControlHeight)
+    }
+
+    private var lettersPage: some View {
+        VStack(spacing: keyRowSpacing) {
+            characterRow(["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"])
+            middleLetterRow(["a", "s", "d", "f", "g", "h", "j", "k", "l"], edgeHitWidth: middleRowEdgeHitWidth)
+
+            HStack(spacing: keyHorizontalSpacing) {
+                functionKey(width: sideKeyWidth, fill: KeyboardPalette.functionKey, action: handleShiftTap) {
+                    Image(systemName: shiftIconName)
+                        .font(.system(size: compact ? 16 : 18, weight: .semibold))
+                        .foregroundColor(KeyboardPalette.text)
+                }
+
+                ForEach(["z", "x", "c", "v", "b", "n", "m"], id: \.self) { key in
+                    characterKey(key)
+                }
+
+                functionKey(width: sideKeyWidth, fill: KeyboardPalette.functionKey, action: onBackspace) {
+                    Image(systemName: "delete.left")
+                        .font(.system(size: compact ? 16 : 18, weight: .semibold))
+                        .foregroundColor(KeyboardPalette.text)
+                }
+            }
+
+            bottomRow(modeTitle: "123", modeAction: {
+                page = .numbers
+                shiftState = .lower
+            })
+        }
+    }
+
+    private var numbersPage: some View {
+        VStack(spacing: keyRowSpacing) {
+            characterRow(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"])
+            characterRow(["-", "/", ":", ";", "(", ")", "$", "&", "@", "\""])
+
+            HStack(spacing: keyHorizontalSpacing) {
+                functionKey(width: modeKeyWidth, fill: KeyboardPalette.actionKey, action: {
+                    page = .symbols
+                }) {
+                    Text("#+=")
+                        .font(.system(size: compact ? 17 : 18, weight: .semibold))
+                        .foregroundColor(KeyboardPalette.text)
+                        .offset(y: keyLabelYOffset)
+                }
+
+                ForEach([".", ",", "?", "!", "'"], id: \.self) { key in
+                    characterInputKey(
+                        label: key,
+                        action: { onInsertText(key) },
+                        fontSize: compact ? 20 : 22
+                    )
+                }
+
+                functionKey(width: sideKeyWidth, fill: KeyboardPalette.functionKey, action: onBackspace) {
+                    Image(systemName: "delete.left")
+                        .font(.system(size: compact ? 16 : 18, weight: .semibold))
+                        .foregroundColor(KeyboardPalette.text)
+                }
+            }
+
+            bottomRow(modeTitle: "ABC", modeAction: {
+                page = .letters
+                shiftState = .lower
+            })
+        }
+    }
+
+    private var symbolsPage: some View {
+        VStack(spacing: keyRowSpacing) {
+            characterRow(["[", "]", "{", "}", "#", "%", "^", "*", "+", "="])
+            characterRow(["_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•"])
+
+            HStack(spacing: keyHorizontalSpacing) {
+                functionKey(width: modeKeyWidth, fill: KeyboardPalette.actionKey, action: {
+                    page = .numbers
+                }) {
+                    Text("123")
+                        .font(.system(size: compact ? 17 : 18, weight: .semibold))
+                        .foregroundColor(KeyboardPalette.text)
+                        .offset(y: keyLabelYOffset)
+                }
+
+                ForEach([".", ",", "?", "!", "'"], id: \.self) { key in
+                    characterInputKey(
+                        label: key,
+                        action: { onInsertText(key) },
+                        fontSize: compact ? 20 : 22
+                    )
+                }
+
+                functionKey(width: sideKeyWidth, fill: KeyboardPalette.functionKey, action: onBackspace) {
+                    Image(systemName: "delete.left")
+                        .font(.system(size: compact ? 16 : 18, weight: .semibold))
+                        .foregroundColor(KeyboardPalette.text)
+                }
+            }
+
+            bottomRow(modeTitle: "ABC", modeAction: {
+                page = .letters
+                shiftState = .lower
+            })
+        }
+    }
+
+    private var emojiPage: some View {
+        VStack(spacing: keyRowSpacing) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHGrid(rows: emojiGridRows, spacing: keyHorizontalSpacing) {
+                    ForEach(displayedEmojis, id: \.self) { emoji in
+                        emojiKey(emoji)
+                    }
+                }
+                .padding(.horizontal, 1)
+            }
+            .frame(height: emojiGridHeight)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: keyHorizontalSpacing) {
+                    ForEach(emojiCategories) { category in
+                        Button {
+                            selectedEmojiCategory = category
+                        } label: {
+                            Image(systemName: category.symbolName)
+                                .font(.system(size: compact ? 12 : 13, weight: .regular))
+                                .symbolRenderingMode(.monochrome)
+                                .foregroundColor(KeyboardPalette.text)
+                                .frame(width: compact ? 20 : 22, height: compact ? 20 : 22)
+                                .background(
+                                    Circle()
+                                        .fill(Color.clear)
+                                )
+                                .overlay(
+                                    Circle()
+                                        .stroke(selectedEmojiCategory == category ? KeyboardPalette.keyStroke : Color.clear, lineWidth: 0.8)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 1)
+            }
+            .frame(height: categoryBarHeight)
+
+            bottomRow(modeTitle: "ABC", modeAction: {
+                page = .letters
+                shiftState = .lower
+            })
+        }
+    }
+
+    private func characterRow(_ keys: [String]) -> some View {
+        HStack(spacing: keyHorizontalSpacing) {
+            ForEach(keys, id: \.self) { key in
+                characterKey(key)
+            }
+        }
+    }
+
+    private func middleLetterRow(_ keys: [String], edgeHitWidth: CGFloat) -> some View {
+        HStack(spacing: keyHorizontalSpacing) {
+            if let firstKey = keys.first {
+                edgeExtendedHitArea(for: firstKey, width: edgeHitWidth)
+            }
+
+            ForEach(keys, id: \.self) { key in
+                characterKey(key)
+            }
+
+            if let lastKey = keys.last {
+                edgeExtendedHitArea(for: lastKey, width: edgeHitWidth)
+            }
+        }
+    }
+
+    private func edgeExtendedHitArea(for key: String, width: CGFloat) -> some View {
+        Button {
+            insertCharacter(key)
+        } label: {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(width: width, height: keyHeight)
+    }
+
+    private func characterKey(_ rawValue: String) -> some View {
+        characterInputKey(
+            label: displayedCharacter(for: rawValue),
+            action: { insertCharacter(rawValue) },
+            fontSize: compact ? 26 : 28
+        )
+    }
+
+    private func characterInputKey(
+        label: String,
+        action: @escaping () -> Void,
+        fontSize: CGFloat
+    ) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: fontSize, weight: .regular))
+                .minimumScaleFactor(0.8)
+                .foregroundColor(KeyboardPalette.text)
+                .offset(y: keyLabelYOffset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        }
+        .buttonStyle(
+            CharacterKeyButtonStyle(
+                fill: KeyboardPalette.key,
+                cornerRadius: cornerRadius,
+                previewText: label,
+                compact: compact
+            )
+        )
+        .frame(maxWidth: .infinity)
+        .frame(height: keyHeight)
+    }
+
+    private func emojiKey(_ emoji: String) -> some View {
+        Button {
+            onInsertText(emoji)
+        } label: {
+            Text(emoji)
+                .font(.system(size: compact ? 28 : 31))
+                .frame(width: emojiCellSize, height: emojiCellSize)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(EmojiGlyphButtonStyle())
+        .frame(width: emojiCellSize, height: emojiCellSize)
+    }
+
+    private func bottomRow(modeTitle: String, modeAction: @escaping () -> Void) -> some View {
+        HStack(spacing: keyHorizontalSpacing) {
+            functionKey(width: modeKeyWidth, fill: KeyboardPalette.actionKey, action: modeAction) {
+                Text(modeTitle)
+                    .font(.system(size: compact ? 17 : 18, weight: .regular))
+                    .foregroundColor(KeyboardPalette.text)
+                    .offset(y: keyLabelYOffset)
+            }
+
+            functionKey(
+                width: emojiToggleKeyWidth,
+                fill: page == .emoji ? KeyboardPalette.functionKey : KeyboardPalette.actionKey,
+                action: {
+                    if page == .emoji {
+                        page = .letters
+                        shiftState = .lower
+                    } else {
+                        page = .emoji
+                    }
+                }
+            ) {
+                Text("😀")
+                    .font(.system(size: compact ? 22 : 24))
+                    .offset(y: keyLabelYOffset)
+            }
+
+            keyButton(fill: KeyboardPalette.key, action: {
+                onInsertText(" ")
+            }) {
+                Text("space")
+                    .font(.system(size: compact ? 21 : 24, weight: .regular))
+                    .foregroundColor(KeyboardPalette.text)
+                    .offset(y: keyLabelYOffset)
+            }
+
+            functionKey(width: returnKeyWidth, fill: KeyboardPalette.actionKey, action: onReturn) {
+                Text(context.returnKeyTitle)
+                    .font(.system(size: compact ? 18 : 20, weight: .regular))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .foregroundColor(KeyboardPalette.text)
+                    .offset(y: keyLabelYOffset)
+            }
+
+            if context.needsInputModeSwitchKey {
+                functionKey(width: globeKeyWidth, fill: KeyboardPalette.functionKey, action: onNextKeyboard) {
+                    Image(systemName: "globe")
+                        .font(.system(size: compact ? 16 : 18, weight: .regular))
+                        .foregroundColor(KeyboardPalette.text)
+                }
+            }
+        }
+    }
+
+    private func functionKey<Content: View>(
+        width: CGFloat,
+        fill: Color,
+        action: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        keyButton(width: width, fill: fill, action: action) {
+            content()
+        }
+    }
+
+    private func keyButton<Content: View>(
+        width: CGFloat? = nil,
+        fill: Color,
+        action: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Button(action: action) {
+            content()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        }
+        .buttonStyle(OverlayKeyButtonStyle(fill: fill, cornerRadius: cornerRadius))
+        .frame(width: width)
+        .frame(maxWidth: width == nil ? .infinity : nil)
+        .frame(height: keyHeight)
+    }
+
+    private var shiftIconName: String {
+        switch shiftState {
+        case .lower:
+            return "shift"
+        case .upper:
+            return "shift.fill"
+        case .caps:
+            return "capslock.fill"
+        }
+    }
+
+    private func handleShiftTap() {
+        let now = Date()
+        let tappedTwice = now.timeIntervalSince(lastShiftTapTime) < 0.35
+
+        switch shiftState {
+        case .lower:
+            if tappedTwice {
+                shiftState = .caps
+                lastShiftTapTime = .distantPast
+            } else {
+                shiftState = .upper
+                lastShiftTapTime = now
+            }
+        case .upper:
+            if tappedTwice {
+                shiftState = .caps
+                lastShiftTapTime = .distantPast
+            } else {
+                shiftState = .lower
+                lastShiftTapTime = now
+            }
+        case .caps:
+            shiftState = .lower
+            lastShiftTapTime = .distantPast
+        }
+    }
+
+    private func insertCharacter(_ rawValue: String) {
+        if page == .letters {
+            let output = shiftState == .lower ? rawValue.lowercased() : rawValue.uppercased()
+            onInsertText(output)
+            if shiftState == .upper {
+                shiftState = .lower
+            }
+            return
+        }
+
+        onInsertText(rawValue)
+    }
+
+    private func displayedCharacter(for rawValue: String) -> String {
+        guard page == .letters else { return rawValue }
+        return shiftState == .lower ? rawValue.lowercased() : rawValue.uppercased()
+    }
+
+    private func cycleKeyboardMode() {
+        switch page {
+        case .letters:
+            page = .numbers
+        case .numbers:
+            page = .symbols
+        case .symbols:
+            page = .emoji
+        case .emoji:
+            page = .letters
+            shiftState = .lower
+        }
+    }
+
+    private func handleSpeakTap() {
         switch service.state {
         case .idle:
             service.startRecording()
         case .recording:
             service.stopRecording()
         case .processing:
-            break // Can't interrupt
+            break
         case .done, .error:
             service.startRecording()
         }
     }
+}
 
-    @ViewBuilder
-    private func keyboardContent(compact: Bool) -> some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.08, green: 0.09, blue: 0.11),
-                    Color(red: 0.05, green: 0.06, blue: 0.08)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 18))
+private struct OverlayKeyButtonStyle: ButtonStyle {
+    let fill: Color
+    let cornerRadius: CGFloat
 
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-
-            VStack(spacing: compact ? 7 : 10) {
-                topBar(compact: compact)
-
-                if service.state == .recording {
-                    WaveformView(level: service.audioLevel)
-                        .frame(height: compact ? 24 : 36)
-                        .padding(.horizontal, compact ? 18 : 24)
-                }
-
-                recordButton(compact: compact)
-                statusChip(compact: compact)
-            }
-            .padding(.horizontal, compact ? 10 : 14)
-            .padding(.vertical, compact ? 8 : 10)
-            .frame(maxWidth: .infinity, alignment: .top)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    @ViewBuilder
-    private func topBar(compact: Bool) -> some View {
-        HStack(spacing: 10) {
-            Label("Background Mic", systemImage: service.backgroundModeEnabled ? "waveform.and.mic" : "mic.slash")
-                .font(.system(size: compact ? 10 : 11, weight: .semibold))
-                .foregroundColor(service.backgroundModeEnabled ? Color(red: 0.3, green: 0.9, blue: 0.5) : Color(white: 0.7))
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .layoutPriority(1)
-
-            Spacer(minLength: 6)
-
-            Toggle("", isOn: Binding(
-                get: { service.backgroundModeEnabled },
-                set: { service.setBackgroundModeEnabled($0) }
-            ))
-            .labelsHidden()
-            .toggleStyle(SwitchToggleStyle(tint: Color.green))
-            .scaleEffect(compact ? 0.9 : 1.0)
-        }
-        .padding(.horizontal, compact ? 9 : 10)
-        .padding(.vertical, compact ? 5 : 6)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white.opacity(0.06))
-        )
-        .fixedSize(horizontal: false, vertical: true)
-    }
-
-    @ViewBuilder
-    private func recordButton(compact: Bool) -> some View {
-        Button {
-            handleButtonTap()
-        } label: {
-            ZStack {
-                if service.state == .recording {
-                    Circle()
-                        .stroke(Color.red.opacity(0.35), lineWidth: compact ? 2.5 : 3)
-                        .frame(width: compact ? 68 : 78, height: compact ? 68 : 78)
-                        .scaleEffect(1.0 + CGFloat(service.audioLevel) * 0.2)
-                        .animation(.easeOut(duration: 0.1), value: service.audioLevel)
-                }
-
-                Circle()
-                    .fill(buttonBackground)
-                    .frame(width: compact ? 54 : 62, height: compact ? 54 : 62)
-                    .shadow(color: buttonBackground.opacity(0.45), radius: compact ? 5 : 8, y: 2)
-
-                buttonIcon
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    @ViewBuilder
-    private func statusChip(compact: Bool) -> some View {
-        Text(statusLabel)
-            .font(.system(size: compact ? 11 : 12, weight: .medium))
-            .foregroundColor(statusColor)
-            .multilineTextAlignment(.center)
-            .lineLimit(2)
-            .minimumScaleFactor(0.75)
-            .padding(.horizontal, compact ? 10 : 12)
-            .padding(.vertical, compact ? 5 : 6)
-            .frame(maxWidth: .infinity)
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
             .background(
-                Capsule()
-                    .fill(Color.white.opacity(0.06))
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(configuration.isPressed ? KeyboardPalette.keyPressed : fill)
             )
-    }
-
-    private var buttonBackground: Color {
-        switch service.state {
-        case .idle:       return Color(white: 0.22)
-        case .recording:  return Color.red
-        case .processing: return Color(white: 0.3)
-        case .done:       return Color(red: 0.2, green: 0.7, blue: 0.4)
-        case .error:      return Color.orange
-        }
-    }
-
-    @ViewBuilder
-    private var buttonIcon: some View {
-        switch service.state {
-        case .idle, .done, .error:
-            Image(systemName: "mic.fill")
-                .font(.system(size: 24, weight: .medium))
-                .foregroundColor(.white)
-        case .recording:
-            Image(systemName: "stop.fill")
-                .font(.system(size: 22, weight: .medium))
-                .foregroundColor(.white)
-        case .processing:
-            ProgressView()
-                .tint(.white)
-                .scaleEffect(1.1)
-        }
-    }
-
-    private var statusLabel: String {
-        switch service.state {
-        case .idle:
-            return "Tap to dictate"
-        case .recording:
-            return "Recording… tap to stop"
-        case .processing:
-            return "Transcribing…"
-        case .done(let text):
-            let preview = text.count > 30 ? String(text.prefix(30)) + "…" : text
-            return "✓ \(preview)"
-        case .error(let msg):
-            return msg
-        }
-    }
-
-    private var statusColor: Color {
-        switch service.state {
-        case .idle:       return Color(white: 0.55)
-        case .recording:  return Color.red
-        case .processing: return Color(red: 1, green: 0.7, blue: 0.2)
-        case .done:       return Color(red: 0.3, green: 0.9, blue: 0.5)
-        case .error:      return Color.orange
-        }
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(KeyboardPalette.keyStroke, lineWidth: 0.8)
+            )
+            .shadow(color: Color.black.opacity(0.28), radius: 0, x: 0, y: 1)
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
     }
 }
 
-// MARK: - Waveform
+private struct CharacterKeyButtonStyle: ButtonStyle {
+    let fill: Color
+    let cornerRadius: CGFloat
+    let previewText: String
+    let compact: Bool
 
-struct WaveformView: View {
-    let level: Float
-    private let barCount = 9
-
-    var body: some View {
-        HStack(spacing: 3) {
-            ForEach(0..<barCount, id: \.self) { index in
-                WaveformBar(level: level, index: index, total: barCount)
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(configuration.isPressed ? KeyboardPalette.keyPressed : fill)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(KeyboardPalette.keyStroke, lineWidth: 0.8)
+            )
+            .shadow(color: Color.black.opacity(0.28), radius: 0, x: 0, y: 1)
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .overlay(alignment: .top) {
+                if configuration.isPressed {
+                    CharacterPreviewBubble(
+                        text: previewText,
+                        compact: compact,
+                        fill: fill
+                    )
+                    .offset(y: compact ? -44 : -53)
+                }
             }
-        }
     }
 }
 
-struct WaveformBar: View {
-    let level: Float
-    let index: Int
-    let total: Int
+private struct TopControlButtonStyle: ButtonStyle {
+    let fill: Color
+    let cornerRadius: CGFloat
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(configuration.isPressed ? KeyboardPalette.keyPressed : fill)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(KeyboardPalette.keyStroke, lineWidth: 1)
+            )
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+    }
+}
+
+private struct EmojiGlyphButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                Circle()
+                    .fill(configuration.isPressed ? Color.white.opacity(0.12) : Color.clear)
+            )
+            .scaleEffect(configuration.isPressed ? 0.93 : 1.0)
+    }
+}
+
+private struct CharacterPreviewBubble: View {
+    let text: String
+    let compact: Bool
+    let fill: Color
+
+    private var bubbleWidth: CGFloat { compact ? 58 : 64 }
+    private var bubbleHeight: CGFloat { compact ? 66 : 74 }
+    private var bubbleCornerRadius: CGFloat { compact ? 10 : 11 }
 
     var body: some View {
-        let centerDistance = abs(CGFloat(index) - CGFloat(total - 1) / 2.0) / (CGFloat(total) / 2.0)
-        let noise = CGFloat.random(in: 0.6...1.4)
-        let baseHeight: CGFloat = 4
-        let maxHeight: CGFloat = 36
-        let height = baseHeight + (maxHeight - baseHeight) * CGFloat(level) * (1.0 - centerDistance * 0.4) * noise
-
-        RoundedRectangle(cornerRadius: 2)
-            .fill(Color.red)
-            .frame(width: 4, height: max(baseHeight, min(maxHeight, height)))
-            .animation(.easeOut(duration: 0.08), value: level)
+        ConnectedPreviewBubbleShape(cornerRadius: bubbleCornerRadius)
+            .fill(fill)
+            .overlay(
+                ConnectedPreviewBubbleShape(cornerRadius: bubbleCornerRadius)
+                    .stroke(KeyboardPalette.keyStroke, lineWidth: 0.8)
+            )
+            .frame(width: bubbleWidth, height: bubbleHeight)
+            .overlay(
+                Text(text)
+                    .font(.system(size: compact ? 42 : 48, weight: .regular))
+                    .foregroundColor(KeyboardPalette.text)
+                    .offset(y: compact ? -9 : -10.5)
+            )
+        .shadow(color: Color.black.opacity(0.28), radius: 1.2, x: 0, y: 1)
     }
 }
 
-// MARK: - No Access
+private struct ConnectedPreviewBubbleShape: Shape {
+    let cornerRadius: CGFloat
 
-struct NoAccessView: View {
+    func path(in rect: CGRect) -> Path {
+        let width = rect.width
+        let height = rect.height
+        let topHeight = height * 0.62
+        let stemWidth = width * 0.56
+        let stemX = (width - stemWidth) / 2
+        let stemBottomRadius = min(8, stemWidth * 0.18)
+        let shoulder = min(6, (width - stemWidth) * 0.32)
+        let radius = min(cornerRadius, topHeight * 0.24)
+
+        var path = Path()
+
+        path.move(to: CGPoint(x: radius, y: 0))
+        path.addLine(to: CGPoint(x: width - radius, y: 0))
+        path.addQuadCurve(
+            to: CGPoint(x: width, y: radius),
+            control: CGPoint(x: width, y: 0)
+        )
+        path.addLine(to: CGPoint(x: width, y: topHeight - radius))
+        path.addQuadCurve(
+            to: CGPoint(x: width - radius, y: topHeight),
+            control: CGPoint(x: width, y: topHeight)
+        )
+
+        path.addLine(to: CGPoint(x: stemX + stemWidth + shoulder, y: topHeight))
+        path.addQuadCurve(
+            to: CGPoint(x: stemX + stemWidth, y: topHeight + shoulder),
+            control: CGPoint(x: stemX + stemWidth, y: topHeight)
+        )
+        path.addLine(to: CGPoint(x: stemX + stemWidth, y: height - stemBottomRadius))
+        path.addQuadCurve(
+            to: CGPoint(x: stemX + stemWidth - stemBottomRadius, y: height),
+            control: CGPoint(x: stemX + stemWidth, y: height)
+        )
+        path.addLine(to: CGPoint(x: stemX + stemBottomRadius, y: height))
+        path.addQuadCurve(
+            to: CGPoint(x: stemX, y: height - stemBottomRadius),
+            control: CGPoint(x: stemX, y: height)
+        )
+        path.addLine(to: CGPoint(x: stemX, y: topHeight + shoulder))
+        path.addQuadCurve(
+            to: CGPoint(x: stemX - shoulder, y: topHeight),
+            control: CGPoint(x: stemX, y: topHeight)
+        )
+
+        path.addLine(to: CGPoint(x: radius, y: topHeight))
+        path.addQuadCurve(
+            to: CGPoint(x: 0, y: topHeight - radius),
+            control: CGPoint(x: 0, y: topHeight)
+        )
+        path.addLine(to: CGPoint(x: 0, y: radius))
+        path.addQuadCurve(
+            to: CGPoint(x: radius, y: 0),
+            control: CGPoint(x: 0, y: 0)
+        )
+
+        path.closeSubpath()
+        return path
+    }
+}
+
+private struct RecordingWaveform: View {
+    let level: Float
+    let active: Bool
+    let compact: Bool
+
+    private let barCount = 11
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.06, paused: !active)) { timeline in
+            let timestamp = timeline.date.timeIntervalSinceReferenceDate
+            HStack(spacing: compact ? 3 : 4) {
+                ForEach(0..<barCount, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(KeyboardPalette.text)
+                        .frame(width: compact ? 4 : 5, height: barHeight(for: index, timestamp: timestamp))
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func barHeight(for index: Int, timestamp: TimeInterval) -> CGFloat {
+        let center = Double(barCount - 1) / 2.0
+        let distance = abs(Double(index) - center) / center
+        let falloff = max(0.2, 1.0 - distance * 0.8)
+        let idleHeight: CGFloat = compact ? 9 : 12
+        let maxHeight: CGFloat = compact ? 26 : 32
+
+        let wave = sin(timestamp * 8 + Double(index) * 0.8) * 0.5 + 0.5
+        let energy = Double(max(0.08, level)) * 0.7 + wave * 0.3
+        return idleHeight + (maxHeight - idleHeight) * CGFloat(energy) * CGFloat(falloff)
+    }
+}
+
+private struct NoAccessView: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: "lock.fill")
-                .font(.system(size: 22))
-                .foregroundColor(Color(white: 0.45))
+                .font(.system(size: 20, weight: .medium))
+                .foregroundColor(KeyboardPalette.secondaryText)
 
             Text("Full Access Required")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.white)
+                .foregroundColor(KeyboardPalette.text)
 
-            Text("Settings → General → Keyboard → Overlay → Allow Full Access")
-                .font(.system(size: 11))
-                .foregroundColor(Color(white: 0.45))
+            Text("Settings -> General -> Keyboard -> Overlay -> Allow Full Access")
+                .font(.system(size: 11, weight: .regular))
+                .foregroundColor(KeyboardPalette.secondaryText)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+                .padding(.horizontal, 24)
         }
     }
 }

@@ -1,24 +1,34 @@
 import UIKit
 import SwiftUI
 
-class KeyboardViewController: UIInputViewController {
+class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedback {
 
     private var hostingController: UIHostingController<KeyboardView>?
     private let transcriptionService = TranscriptionService()
+    private let keyboardContext = KeyboardContext()
     private var keyboardHeightConstraint: NSLayoutConstraint?
     private var pendingInsertionText: String?
     private var insertionRetryWorkItem: DispatchWorkItem?
     private var insertionAttemptCount = 0
     private let maxInsertionAttempts = 16
-    private let normalKeyboardHeight: CGFloat = 248
-    private let compactKeyboardHeight: CGFloat = 216
+    private let normalKeyboardHeight: CGFloat = 252
+    private let compactKeyboardHeight: CGFloat = 210
+    private let keyboardBaseColor = UIColor.clear
 
     deinit {
         cancelInsertionRetry()
     }
 
+    var enableInputClicksWhenVisible: Bool {
+        true
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
+        view.backgroundColor = keyboardBaseColor
+        view.isOpaque = false
+        inputView?.backgroundColor = keyboardBaseColor
+        inputView?.isOpaque = false
 
         // Wire up URL opener via KVC
         transcriptionService.openURL = { url in
@@ -38,12 +48,26 @@ class KeyboardViewController: UIInputViewController {
 
         let keyboardView = KeyboardView(
             hasFullAccess: self.hasFullAccess,
-            transcriptionService: transcriptionService
+            transcriptionService: transcriptionService,
+            context: keyboardContext,
+            onInsertText: { [weak self] text in
+                self?.insertTextFromKey(text)
+            },
+            onBackspace: { [weak self] in
+                self?.handleBackspace()
+            },
+            onReturn: { [weak self] in
+                self?.handleReturnKey()
+            },
+            onNextKeyboard: { [weak self] in
+                self?.handleNextKeyboard()
+            }
         )
 
         let host = UIHostingController(rootView: keyboardView)
         host.view.translatesAutoresizingMaskIntoConstraints = false
-        host.view.backgroundColor = .clear
+        host.view.backgroundColor = keyboardBaseColor
+        host.view.isOpaque = false
 
         addChild(host)
         view.addSubview(host.view)
@@ -58,39 +82,44 @@ class KeyboardViewController: UIInputViewController {
 
         hostingController = host
         configureKeyboardHeight()
+        refreshKeyboardContext()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         applyPreferredKeyboardHeight()
+        refreshKeyboardContext()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         transcriptionService.resumeFromSharedState()
         attemptPendingInsert()
+        refreshKeyboardContext()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         applyPreferredKeyboardHeight()
+        refreshKeyboardContext()
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         applyPreferredKeyboardHeight()
+        refreshKeyboardContext()
     }
 
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
         attemptPendingInsert()
+        refreshKeyboardContext()
     }
 
     private func enqueueTranscriptionForInsert(_ text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard let normalized = normalizeTranscriptionForInsert(text) else { return }
         cancelInsertionRetry()
-        pendingInsertionText = trimmed
+        pendingInsertionText = normalized
         insertionAttemptCount = 0
         attemptPendingInsert()
     }
@@ -157,6 +186,86 @@ class KeyboardViewController: UIInputViewController {
     private func cancelInsertionRetry() {
         insertionRetryWorkItem?.cancel()
         insertionRetryWorkItem = nil
+    }
+
+    private func normalizeTranscriptionForInsert(_ rawText: String) -> String? {
+        let trimmed = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let punctuationSet = CharacterSet(charactersIn: ".,!?;:'\")]}").union(.newlines)
+        if let lastScalar = trimmed.unicodeScalars.last, punctuationSet.contains(lastScalar) {
+            return trimmed
+        }
+
+        if let afterContext = textDocumentProxy.documentContextAfterInput,
+           let first = afterContext.unicodeScalars.first,
+           CharacterSet.whitespacesAndNewlines.contains(first) {
+            return trimmed
+        }
+
+        return "\(trimmed) "
+    }
+
+    private func insertTextFromKey(_ text: String) {
+        guard !text.isEmpty else { return }
+        cancelInsertionRetry()
+        textDocumentProxy.insertText(text)
+        UIDevice.current.playInputClick()
+        refreshKeyboardContext()
+    }
+
+    private func handleBackspace() {
+        cancelInsertionRetry()
+        textDocumentProxy.deleteBackward()
+        UIDevice.current.playInputClick()
+        refreshKeyboardContext()
+    }
+
+    private func handleReturnKey() {
+        cancelInsertionRetry()
+        textDocumentProxy.insertText("\n")
+        UIDevice.current.playInputClick()
+        refreshKeyboardContext()
+    }
+
+    private func handleNextKeyboard() {
+        advanceToNextInputMode()
+        UIDevice.current.playInputClick()
+        refreshKeyboardContext()
+    }
+
+    private func refreshKeyboardContext() {
+        keyboardContext.needsInputModeSwitchKey = needsInputModeSwitchKey
+        keyboardContext.returnKeyTitle = returnKeyTitle(for: textDocumentProxy.returnKeyType ?? .default)
+    }
+
+    private func returnKeyTitle(for keyType: UIReturnKeyType) -> String {
+        switch keyType {
+        case .go:
+            return "Go"
+        case .google:
+            return "Google"
+        case .join:
+            return "Join"
+        case .next:
+            return "Next"
+        case .route:
+            return "Route"
+        case .search:
+            return "Search"
+        case .send:
+            return "Send"
+        case .yahoo:
+            return "Yahoo"
+        case .done:
+            return "Done"
+        case .emergencyCall:
+            return "Emergency"
+        case .continue:
+            return "Continue"
+        default:
+            return "Return"
+        }
     }
 
     private func configureKeyboardHeight() {

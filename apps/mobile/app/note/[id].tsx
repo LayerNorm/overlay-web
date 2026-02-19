@@ -8,9 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  ScrollView,
-  NativeSyntheticEvent,
-  TextInputSelectionChangeEventData
+  ScrollView
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -20,16 +18,6 @@ import { useVoiceInput } from '../../hooks/useVoiceInput'
 import { spacing, fontSize, borderRadius } from '../../constants/theme'
 import { Note, generateNoteId } from '../../services/types'
 import { loadNote, saveNote } from '../../services/noteStorage'
-import { DictationAccessoryStrip } from '../../components/voice/DictationAccessoryStrip'
-import {
-  TextSelectionRange,
-  deleteBackwardAtSelection,
-  formatTranscriptForInsertion,
-  insertTextAtSelection
-} from '../../services/textInputEditing'
-
-const NOTE_VOICE_ACCESSORY_ID = 'note-voice-accessory'
-const USES_ACCESSORY_STRIP = Platform.OS === 'ios'
 
 export default function NoteEditorScreen(): React.ReactElement {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -44,21 +32,9 @@ export default function NoteEditorScreen(): React.ReactElement {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleInputRef = useRef<TextInput>(null)
   const bodyInputRef = useRef<TextInput>(null)
-  const bodyTextRef = useRef('')
-  const bodySelectionRef = useRef<TextSelectionRange>({ start: 0, end: 0 })
+  const bodyCursorRef = useRef<number>(0)
 
-  const {
-    isRecording,
-    isProcessing,
-    error: voiceError,
-    startRecording,
-    stopRecording,
-    toggleRecording
-  } = useVoiceInput()
-
-  useEffect(() => {
-    bodyTextRef.current = noteBody
-  }, [noteBody])
+  const { isRecording, isProcessing, error: voiceError, toggleRecording } = useVoiceInput()
 
   const performSave = useCallback(async (title: string, content: string) => {
     if (!noteRef.current) return
@@ -84,76 +60,22 @@ export default function NoteEditorScreen(): React.ReactElement {
     }, 500)
   }, [performSave])
 
-  const syncBodySelection = useCallback((cursor: number) => {
-    bodySelectionRef.current = { start: cursor, end: cursor }
-    requestAnimationFrame(() => {
-      bodyInputRef.current?.setNativeProps({
-        selection: { start: cursor, end: cursor }
-      })
-    })
-  }, [])
-
-  const applyBodyEdit = useCallback((nextText: string, cursor: number) => {
-    bodyTextRef.current = nextText
-    setNoteBody(nextText)
-    debouncedSave(noteTitle, nextText)
-    syncBodySelection(cursor)
-  }, [debouncedSave, noteTitle, syncBodySelection])
-
-  const insertTextInBody = useCallback((text: string) => {
-    const edit = insertTextAtSelection(bodyTextRef.current, bodySelectionRef.current, text)
-    applyBodyEdit(edit.nextText, edit.nextSelection.start)
-  }, [applyBodyEdit])
-
-  const deleteBackwardInBody = useCallback(() => {
-    const edit = deleteBackwardAtSelection(bodyTextRef.current, bodySelectionRef.current)
-    applyBodyEdit(edit.nextText, edit.nextSelection.start)
-  }, [applyBodyEdit])
-
-  const insertTranscriptIntoBody = useCallback((transcript: string) => {
-    const selection = bodySelectionRef.current
-    const current = bodyTextRef.current
-    const formatted = formatTranscriptForInsertion(transcript, current.slice(selection.end))
-
-    if (!formatted) {
-      return
-    }
-
-    const edit = insertTextAtSelection(current, selection, formatted)
-    applyBodyEdit(edit.nextText, edit.nextSelection.start)
-  }, [applyBodyEdit])
-
-  const handleMicTap = useCallback(async () => {
+  const handleVoiceToggle = useCallback(async () => {
     const result = await toggleRecording()
     if (result?.text) {
-      insertTranscriptIntoBody(result.text)
+      // Insert transcribed text at cursor position in the body
+      const cursor = bodyCursorRef.current
+      const before = noteBody.slice(0, cursor)
+      const after = noteBody.slice(cursor)
+      const separator = before.length > 0 && !before.endsWith(' ') && !before.endsWith('\n') ? ' ' : ''
+      const newBody = before + separator + result.text + after
+      setNoteBody(newBody)
+      debouncedSave(noteTitle, newBody)
+      // Move cursor to end of inserted text
+      const newCursor = cursor + separator.length + result.text.length
+      bodyCursorRef.current = newCursor
     }
-  }, [insertTranscriptIntoBody, toggleRecording])
-
-  const handleMicHoldStart = useCallback(async () => {
-    if (isProcessing || isRecording) {
-      return
-    }
-    await startRecording()
-  }, [isProcessing, isRecording, startRecording])
-
-  const handleMicHoldEnd = useCallback(async () => {
-    if (isProcessing) {
-      return
-    }
-
-    const result = await stopRecording()
-    if (result?.text) {
-      insertTranscriptIntoBody(result.text)
-    }
-  }, [insertTranscriptIntoBody, isProcessing, stopRecording])
-
-  const handleBodySelectionChange = useCallback(
-    (event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
-      bodySelectionRef.current = event.nativeEvent.selection
-    },
-    []
-  )
+  }, [toggleRecording, noteBody, noteTitle, debouncedSave])
 
   useEffect(() => {
     async function initNote(): Promise<void> {
@@ -171,7 +93,6 @@ export default function NoteEditorScreen(): React.ReactElement {
         noteRef.current = newNote
         setNoteTitle('Untitled')
         setNoteBody('')
-        bodyTextRef.current = ''
         setIsLoading(false)
         setTimeout(() => {
           titleInputRef.current?.focus()
@@ -182,22 +103,19 @@ export default function NoteEditorScreen(): React.ReactElement {
           noteRef.current = existing
           setNoteTitle(existing.title)
           setNoteBody(existing.content)
-          bodyTextRef.current = existing.content
         }
         setIsLoading(false)
       }
     }
-
     initNote()
   }, [id])
 
   const handleTitleChange = useCallback((text: string) => {
     setNoteTitle(text)
-    debouncedSave(text, bodyTextRef.current)
-  }, [debouncedSave])
+    debouncedSave(text, noteBody)
+  }, [debouncedSave, noteBody])
 
   const handleBodyChange = useCallback((text: string) => {
-    bodyTextRef.current = text
     setNoteBody(text)
     debouncedSave(noteTitle, text)
   }, [debouncedSave, noteTitle])
@@ -210,9 +128,9 @@ export default function NoteEditorScreen(): React.ReactElement {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current)
     }
-    await performSave(noteTitle, bodyTextRef.current)
+    await performSave(noteTitle, noteBody)
     router.back()
-  }, [noteTitle, performSave, router])
+  }, [noteTitle, noteBody, performSave, router])
 
   useEffect(() => {
     return () => {
@@ -278,63 +196,48 @@ export default function NoteEditorScreen(): React.ReactElement {
             style={[styles.bodyInput, { color: theme.text }]}
             value={noteBody}
             onChangeText={handleBodyChange}
-            inputAccessoryViewID={USES_ACCESSORY_STRIP ? NOTE_VOICE_ACCESSORY_ID : undefined}
             placeholder="Start writing..."
             placeholderTextColor={theme.textDisabled}
             multiline
             textAlignVertical="top"
             scrollEnabled={false}
-            onSelectionChange={handleBodySelectionChange}
+            onSelectionChange={(e) => {
+              bodyCursorRef.current = e.nativeEvent.selection.end
+            }}
           />
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {USES_ACCESSORY_STRIP ? (
-        <DictationAccessoryStrip
-          accessoryID={NOTE_VOICE_ACCESSORY_ID}
-          theme={theme}
-          isRecording={isRecording}
-          isProcessing={isProcessing}
-          error={voiceError}
-          onMicTap={handleMicTap}
-          onMicHoldStart={handleMicHoldStart}
-          onMicHoldEnd={handleMicHoldEnd}
-          onInsertText={insertTextInBody}
-          onDeleteBackward={deleteBackwardInBody}
-          onReturn={() => insertTextInBody('\n')}
-        />
-      ) : (
-        <TouchableOpacity
-          style={[
-            styles.voiceFab,
-            {
-              backgroundColor: isRecording
-                ? '#EF4444'
-                : isProcessing
-                  ? theme.surface
-                  : theme.buttonBg
-            }
-          ]}
-          onPress={handleMicTap}
-          disabled={isProcessing}
-          activeOpacity={0.7}
-        >
-          {isProcessing ? (
-            <ActivityIndicator size="small" color={theme.textSecondary} />
-          ) : (
-            <Feather
-              name={isRecording ? 'square' : 'mic'}
-              size={isRecording ? 18 : 22}
-              color={isRecording ? '#FFFFFF' : theme.toggleThumb}
-            />
-          )}
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity
+        style={[
+          styles.voiceFab,
+          {
+            backgroundColor: isRecording
+              ? '#EF4444'
+              : isProcessing
+                ? theme.surface
+                : theme.buttonBg
+          }
+        ]}
+        onPress={handleVoiceToggle}
+        disabled={isProcessing}
+        activeOpacity={0.7}
+      >
+        {isProcessing ? (
+          <ActivityIndicator size="small" color={theme.textSecondary} />
+        ) : (
+          <Feather
+            name={isRecording ? 'square' : 'mic'}
+            size={isRecording ? 18 : 22}
+            color={isRecording ? '#FFFFFF' : theme.toggleThumb}
+          />
+        )}
+      </TouchableOpacity>
 
-      {!USES_ACCESSORY_STRIP && (isRecording || voiceError) && (
+      {(isRecording || voiceError) && (
         <View style={[styles.voiceStatus, { backgroundColor: theme.surface }]}>
           <Text style={[styles.voiceStatusText, { color: isRecording ? '#EF4444' : theme.textSecondary }]}>
-            {isRecording ? 'Recording... tap mic to stop' : voiceError}
+            {isRecording ? 'Recording... tap to stop' : voiceError}
           </Text>
         </View>
       )}

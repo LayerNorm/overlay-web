@@ -49,6 +49,8 @@ class TranscriptionService: NSObject, ObservableObject {
 
     private var pollingTimer: Timer?
     private var startFallbackWorkItem: DispatchWorkItem?
+    private var shouldDiscardNextResult = false
+    private var pendingForegroundFallback = false
 
     private var defaults: UserDefaults? {
         UserDefaults(suiteName: appGroupID)
@@ -71,9 +73,15 @@ class TranscriptionService: NSObject, ObservableObject {
             state = .error("Shared storage unavailable")
             return
         }
+        shouldDiscardNextResult = false
+        pendingForegroundFallback = false
 
         consumeDoneStateIfPresent(defaults)
         let currentStatus = defaults.string(forKey: statusKey) ?? "idle"
+        let sharedBackgroundMode = defaults.bool(forKey: backgroundModeKey)
+        if backgroundModeEnabled != sharedBackgroundMode {
+            backgroundModeEnabled = sharedBackgroundMode
+        }
         if currentStatus == "done" {
             // Deliver pending text before a new cycle starts.
             return
@@ -100,10 +108,11 @@ class TranscriptionService: NSObject, ObservableObject {
         startPolling()
         pollAppGroup()
 
-        if backgroundModeEnabled {
+        if sharedBackgroundMode {
             // App stays in background and starts recording on command.
             defaults.set("start", forKey: commandKey)
             defaults.synchronize()
+            pendingForegroundFallback = true
             scheduleStartTimeoutNotice()
             return
         }
@@ -114,16 +123,32 @@ class TranscriptionService: NSObject, ObservableObject {
     // Called when user taps stop button in keyboard
     func stopRecording() {
         cancelStartFallback()
+        shouldDiscardNextResult = false
         // Send stop command to main app via App Group
         defaults?.set("stop", forKey: commandKey)
         defaults?.synchronize()
         state = .processing
+        pendingForegroundFallback = false
+        startPolling()
+    }
+
+    // Called when user cancels recording from keyboard strip.
+    func cancelRecording() {
+        guard state == .recording else { return }
+        shouldDiscardNextResult = true
+        cancelStartFallback()
+        defaults?.set("stop", forKey: commandKey)
+        defaults?.synchronize()
+        state = .idle
+        audioLevel = 0
+        pendingForegroundFallback = false
         startPolling()
     }
 
     func resumeFromSharedState() {
         backgroundModeEnabled = defaults?.bool(forKey: backgroundModeKey) ?? false
         cancelStartFallback()
+        pendingForegroundFallback = false
         startPolling()
         pollAppGroup()
     }
@@ -155,6 +180,7 @@ class TranscriptionService: NSObject, ObservableObject {
         switch status {
         case "recording":
             cancelStartFallback()
+            pendingForegroundFallback = false
             if state != .recording {
                 state = .recording
             }
@@ -162,16 +188,19 @@ class TranscriptionService: NSObject, ObservableObject {
 
         case "processing":
             cancelStartFallback()
+            pendingForegroundFallback = false
             state = .processing
             audioLevel = 0
 
         case "done":
             cancelStartFallback()
+            pendingForegroundFallback = false
             stopPolling()
             consumeDoneStateIfPresent(defaults)
 
         case "error":
             cancelStartFallback()
+            pendingForegroundFallback = false
             stopPolling()
             state = .error("Recording failed")
             audioLevel = 0
@@ -195,21 +224,41 @@ class TranscriptionService: NSObject, ObservableObject {
             if sharedStatus == "recording" || sharedStatus == "processing" || self.state == .recording || self.state == .processing {
                 return
             }
-            self.state = .error("Mic busy. Retrying...")
+            self.state = .error("Opening app to start mic")
             NSLog("[OverlayKeyboard] Waiting for app-side recorder response in background mode")
+            if self.pendingForegroundFallback {
+                self.pendingForegroundFallback = false
+                self.defaults?.set("start", forKey: self.commandKey)
+                self.defaults?.synchronize()
+                self.openDictationApp()
+            }
         }
         startFallbackWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: workItem)
     }
 
     private func cancelStartFallback() {
         startFallbackWorkItem?.cancel()
         startFallbackWorkItem = nil
+        pendingForegroundFallback = false
     }
 
     private func consumeDoneStateIfPresent(_ defaults: UserDefaults) {
         guard defaults.string(forKey: statusKey) == "done" else { return }
         let text = defaults.string(forKey: resultKey) ?? ""
+
+        if shouldDiscardNextResult {
+            shouldDiscardNextResult = false
+            defaults.set("idle", forKey: statusKey)
+            defaults.set("idle", forKey: commandKey)
+            defaults.removeObject(forKey: resultKey)
+            defaults.synchronize()
+            state = .idle
+            audioLevel = 0
+            pendingForegroundFallback = false
+            return
+        }
+
         state = .done(text)
         audioLevel = 0
 
@@ -224,6 +273,8 @@ class TranscriptionService: NSObject, ObservableObject {
         defaults.set("idle", forKey: commandKey)
         defaults.removeObject(forKey: resultKey)
         defaults.synchronize()
+        shouldDiscardNextResult = false
+        pendingForegroundFallback = false
         state = .idle
         audioLevel = 0
     }
@@ -237,7 +288,10 @@ class TranscriptionService: NSObject, ObservableObject {
         if enabled {
             // Enable is explicitly confirmed in app. Open app, keep toggle synced to shared truth.
             state = .error("Enable BG mic in app")
+            pendingForegroundFallback = true
             openDictationApp()
+            startPolling()
+            pollAppGroup()
             backgroundModeEnabled = defaults.bool(forKey: backgroundModeKey)
             return
         }
@@ -247,6 +301,7 @@ class TranscriptionService: NSObject, ObservableObject {
         backgroundModeEnabled = false
         state = .idle
         audioLevel = 0
+        pendingForegroundFallback = false
         defaults.set(false, forKey: backgroundModeKey)
         defaults.set(disableBackgroundCommand, forKey: commandKey)
         defaults.set("idle", forKey: statusKey)
@@ -259,6 +314,8 @@ class TranscriptionService: NSObject, ObservableObject {
     func reset() {
         cancelStartFallback()
         stopPolling()
+        shouldDiscardNextResult = false
+        pendingForegroundFallback = false
         state = .idle
         audioLevel = 0
         defaults?.set("idle", forKey: statusKey)
