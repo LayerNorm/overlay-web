@@ -1,441 +1,660 @@
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Switch,
-  ScrollView,
-  TextInput,
   Alert,
   Linking,
-  NativeModules
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { Audio } from 'expo-av'
+import { useLocalSearchParams, useRouter } from 'expo-router'
+import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { useTheme } from '../../hooks/useTheme'
-import { spacing, fontSize, borderRadius } from '../../constants/theme'
-import { PROVIDER_COLORS } from '../../services/chatTypes'
-import { getApiKey, setApiKey, deleteApiKey, type AIProvider } from '../../services/aiService'
+import { useAuth } from '../../contexts/AuthContext'
+import { AuthPanel } from '../../components/auth/AuthPanel'
+import { getAppBootstrap } from '../../services/bootstrapService'
+import type { AppBootstrap } from '../../services/appContracts'
 
-const syncGroqKeyToAppGroup = async () => {
-  try {
-    const groqKey = await getApiKey('groq')
-    if (groqKey && NativeModules.SharedKeyStore) {
-      NativeModules.SharedKeyStore.setGroqKey(groqKey)
-    }
-  } catch {
-    // Native module not available
-  }
-}
+type SettingsTab = 'account' | 'general' | 'models' | 'voice' | 'about'
 
-interface SettingsRowProps {
-  icon: string
-  title: string
-  description?: string
-  onPress?: () => void
-  rightElement?: React.ReactNode
-}
+const APP_VERSION = '1.0.0'
+const SOURCE_CODE_URL = 'https://github.com/DevelopedByDev/overlay'
+const CONTACT_URL = 'https://www.getoverlay.ai'
 
-function SettingsRow({ icon, title, description, onPress, rightElement }: SettingsRowProps): React.ReactElement {
-  const { theme } = useTheme()
+const SETTINGS_TABS: Array<{
+  id: SettingsTab
+  label: string
+  description: string
+  icon: keyof typeof Feather.glyphMap
+}> = [
+  {
+    id: 'account',
+    label: 'Account',
+    description: 'Sign in, plan, and credits',
+    icon: 'user',
+  },
+  {
+    id: 'general',
+    label: 'General',
+    description: 'Appearance and sync behavior',
+    icon: 'settings',
+  },
+  {
+    id: 'models',
+    label: 'Models',
+    description: 'Server-backed model catalog',
+    icon: 'cpu',
+  },
+  {
+    id: 'voice',
+    label: 'Voice',
+    description: 'Microphone and hosted transcription',
+    icon: 'mic',
+  },
+  {
+    id: 'about',
+    label: 'About',
+    description: 'Build info and links',
+    icon: 'info',
+  },
+]
+
+function SidebarItem({
+  id,
+  label,
+  description,
+  icon,
+  isActive,
+  isCompact,
+  onPress,
+}: {
+  id: SettingsTab
+  label: string
+  description: string
+  icon: keyof typeof Feather.glyphMap
+  isActive: boolean
+  isCompact: boolean
+  onPress: (id: SettingsTab) => void
+}): React.ReactElement {
+  const { theme, isDark } = useTheme()
+  const activeBackground = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)'
 
   return (
     <TouchableOpacity
-      style={[styles.settingsRow, { borderBottomColor: theme.border }]}
-      onPress={onPress}
-      activeOpacity={onPress ? 0.7 : 1}
-      disabled={!onPress}
+      onPress={() => onPress(id)}
+      activeOpacity={0.82}
+      style={[
+        styles.sidebarItem,
+        isCompact ? styles.sidebarItemCompact : styles.sidebarItemRail,
+        { backgroundColor: isActive ? activeBackground : 'transparent' },
+      ]}
     >
-      <View style={styles.settingsRowLeft}>
-        <Feather name={icon as keyof typeof Feather.glyphMap} size={20} color={theme.textSecondary} />
-        <View style={styles.settingsRowText}>
-          <Text style={[styles.settingsRowTitle, { color: theme.text }]}>{title}</Text>
-          {description && (
-            <Text style={[styles.settingsRowDescription, { color: theme.textSecondary }]}>{description}</Text>
-          )}
-        </View>
+      {!isCompact && isActive ? (
+        <View style={[styles.sidebarIndicator, { backgroundColor: theme.text }]} />
+      ) : null}
+      <Feather name={icon} size={18} color={isActive ? theme.text : theme.textSecondary} />
+      <View style={styles.sidebarTextWrap}>
+        <Text style={[styles.sidebarLabel, { color: isActive ? theme.text : theme.textSecondary }]}>
+          {label}
+        </Text>
+        {!isCompact ? (
+          <Text style={[styles.sidebarDescription, { color: theme.textDisabled }]}>{description}</Text>
+        ) : null}
       </View>
-      {rightElement || (onPress && <Feather name="chevron-right" size={20} color={theme.textSecondary} />)}
     </TouchableOpacity>
   )
 }
 
-interface APIKeyRowProps {
-  provider: AIProvider
-  label: string
-  theme: ReturnType<typeof useTheme>['theme']
+function SettingsPanel({
+  eyebrow,
+  title,
+  description,
+  children,
+}: {
+  eyebrow: string
+  title: string
+  description?: string
+  children: React.ReactNode
+}): React.ReactElement {
+  const { theme } = useTheme()
+
+  return (
+    <View style={[styles.panel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <View style={styles.panelHeader}>
+        <Text style={[styles.panelEyebrow, { color: theme.textSecondary }]}>{eyebrow}</Text>
+        <Text style={[styles.panelTitle, { color: theme.text }]}>{title}</Text>
+        {description ? (
+          <Text style={[styles.panelDescription, { color: theme.textSecondary }]}>{description}</Text>
+        ) : null}
+      </View>
+      <View style={styles.panelBody}>{children}</View>
+    </View>
+  )
 }
 
-function APIKeyRow({ provider, label, theme }: APIKeyRowProps): React.ReactElement {
-  const [key, setKey] = useState('')
-  const [hasKey, setHasKey] = useState(false)
-  const [isEditing, setIsEditing] = useState(false)
-
-  useEffect(() => {
-    getApiKey(provider).then((k) => {
-      setHasKey(!!k)
-    })
-  }, [provider])
-
-  const handleSave = useCallback(async () => {
-    if (key.trim()) {
-      await setApiKey(provider, key.trim())
-      setHasKey(true)
-      setIsEditing(false)
-      setKey('')
-    }
-  }, [key, provider])
-
-  const handleRemove = useCallback(() => {
-    Alert.alert('Remove API Key', `Remove ${label} API key?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteApiKey(provider)
-          setHasKey(false)
-        }
-      }
-    ])
-  }, [provider, label])
-
-  const color = PROVIDER_COLORS[provider] || theme.textSecondary
-
-  if (isEditing) {
-    return (
-      <View style={[styles.apiKeyRow, { borderBottomColor: theme.border }]}>
-        <View style={[styles.providerDot, { backgroundColor: color }]} />
-        <TextInput
-          style={[styles.apiKeyInput, { color: theme.text, backgroundColor: theme.background }]}
-          placeholder={`Paste ${label} key...`}
-          placeholderTextColor={theme.textDisabled}
-          value={key}
-          onChangeText={setKey}
-          autoFocus
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <TouchableOpacity onPress={handleSave} style={styles.apiKeyAction}>
-          <Feather name="check" size={18} color="#10B981" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => { setIsEditing(false); setKey('') }} style={styles.apiKeyAction}>
-          <Feather name="x" size={18} color={theme.textSecondary} />
-        </TouchableOpacity>
-      </View>
-    )
-  }
+function SettingsRow({
+  icon,
+  title,
+  description,
+  onPress,
+  rightElement,
+  isLast = false,
+}: {
+  icon: keyof typeof Feather.glyphMap
+  title: string
+  description?: string
+  onPress?: () => void
+  rightElement?: React.ReactNode
+  isLast?: boolean
+}): React.ReactElement {
+  const { theme } = useTheme()
 
   return (
     <TouchableOpacity
-      style={[styles.apiKeyRow, { borderBottomColor: theme.border }]}
-      onPress={() => setIsEditing(true)}
-      activeOpacity={0.7}
+      style={[
+        styles.settingsRow,
+        {
+          borderBottomColor: isLast ? 'transparent' : theme.border,
+        },
+      ]}
+      onPress={onPress}
+      activeOpacity={onPress ? 0.72 : 1}
+      disabled={!onPress}
     >
-      <View style={[styles.providerDot, { backgroundColor: color }]} />
-      <Text style={[styles.apiKeyLabel, { color: theme.text }]}>{label}</Text>
-      {hasKey ? (
-        <View style={styles.apiKeyStatus}>
-          <Feather name="check-circle" size={14} color="#10B981" />
-          <TouchableOpacity onPress={handleRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Feather name="trash-2" size={14} color={theme.textDisabled} />
-          </TouchableOpacity>
+      <View style={styles.settingsRowLeft}>
+        <View style={[styles.rowIconWrap, { backgroundColor: theme.background }]}>
+          <Feather name={icon} size={16} color={theme.textSecondary} />
         </View>
-      ) : (
-        <Text style={[styles.apiKeyPlaceholder, { color: theme.textDisabled }]}>Not set</Text>
-      )}
+        <View style={styles.settingsRowText}>
+          <Text style={[styles.settingsRowTitle, { color: theme.text }]}>{title}</Text>
+          {description ? (
+            <Text style={[styles.settingsRowDescription, { color: theme.textSecondary }]}>
+              {description}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+      {rightElement || (onPress ? <Feather name="chevron-right" size={18} color={theme.textSecondary} /> : null)}
     </TouchableOpacity>
   )
 }
 
 export default function SettingsScreen(): React.ReactElement {
+  const router = useRouter()
+  const { tab } = useLocalSearchParams<{ tab?: SettingsTab }>()
   const { theme, isDark, toggleTheme } = useTheme()
+  const { width } = useWindowDimensions()
+  const { entitlements } = useAuth()
+  const [activeTab, setActiveTab] = useState<SettingsTab>(tab && SETTINGS_TABS.some((item) => item.id === tab) ? tab : 'account')
   const [micPermission, setMicPermission] = useState<'undetermined' | 'granted' | 'denied'>('undetermined')
+  const [bootstrap, setBootstrap] = useState<AppBootstrap | null>(null)
+
+  const isRailLayout = width >= 720
 
   useEffect(() => {
     Audio.getPermissionsAsync().then(({ status }) => {
       setMicPermission(status === 'granted' ? 'granted' : status === 'denied' ? 'denied' : 'undetermined')
     })
-    // Sync Groq key to App Group for keyboard extension
-    syncGroqKeyToAppGroup()
+
+    getAppBootstrap()
+      .then(setBootstrap)
+      .catch(() => {
+        setBootstrap(null)
+      })
   }, [])
+
+  useEffect(() => {
+    if (tab && SETTINGS_TABS.some((item) => item.id === tab)) {
+      setActiveTab(tab)
+    }
+  }, [tab])
 
   const requestMicPermission = useCallback(async () => {
     const { status } = await Audio.requestPermissionsAsync()
-    setMicPermission(status === 'granted' ? 'granted' : 'denied')
-    if (status === 'denied') {
+    const next = status === 'granted' ? 'granted' : 'denied'
+    setMicPermission(next)
+
+    if (next === 'denied') {
       Alert.alert(
         'Microphone Access Denied',
-        'Please enable microphone access in Settings to use voice transcription.',
+        'Enable microphone access in system settings to use hosted voice transcription.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => Linking.openURL('app-settings:') }
-        ]
+          { text: 'Open Settings', onPress: () => Linking.openURL('app-settings:') },
+        ],
       )
     }
   }, [])
 
+  const activeTabMeta = SETTINGS_TABS.find((tab) => tab.id === activeTab) ?? SETTINGS_TABS[0]
+  const featureFlags = bootstrap?.featureFlags
+
+  const modelSummary = useMemo(
+    () => ({
+      chat: bootstrap?.chatModels.length ?? 0,
+      image: bootstrap?.imageModels.length ?? 0,
+      video: bootstrap?.videoModels.length ?? 0,
+    }),
+    [bootstrap],
+  )
+
+  const renderContent = (): React.ReactElement => {
+    switch (activeTab) {
+      case 'account':
+        return (
+          <View style={styles.contentStack}>
+            <SettingsPanel
+              eyebrow="Account"
+              title="Overlay Identity"
+              description="Mobile now relies on the same hosted auth and entitlements as the web app."
+            >
+              <AuthPanel
+                context="settings"
+                onSignedOut={() => router.replace('/onboarding?startAtAuth=true')}
+              />
+            </SettingsPanel>
+          </View>
+        )
+
+      case 'general':
+        return (
+          <View style={styles.contentStack}>
+            <SettingsPanel
+              eyebrow="General"
+              title="Appearance"
+              description="Theme and app behavior are synced through Overlay settings."
+            >
+              <SettingsRow
+                icon="moon"
+                title="Dark Mode"
+                description="Uses the same server-backed theme preference as the web app."
+                isLast
+                rightElement={
+                  <Switch
+                    value={isDark}
+                    onValueChange={toggleTheme}
+                    trackColor={{ false: theme.toggleBg, true: theme.toggleBgActive }}
+                    thumbColor={theme.toggleThumb}
+                  />
+                }
+              />
+            </SettingsPanel>
+
+            <SettingsPanel
+              eyebrow="Sync"
+              title="Parity Defaults"
+              description="The mobile shell is adapted for touch, but product state now comes from the web-side Overlay APIs."
+            >
+              <SettingsRow
+                icon="refresh-cw"
+                title="Data Source"
+                description="Chats, notes, settings, outputs, and entitlements sync from Overlay."
+              />
+              <SettingsRow
+                icon="hard-drive"
+                title="Offline Cache"
+                description="Local storage is used for session restore, cached bootstrap data, and draft resume only."
+                isLast
+              />
+            </SettingsPanel>
+          </View>
+        )
+
+      case 'models':
+        return (
+          <View style={styles.contentStack}>
+            <SettingsPanel
+              eyebrow="Models"
+              title="Server Catalog"
+              description="The model picker now comes from the same canonical catalog used by the web app."
+            >
+              <SettingsRow
+                icon="message-square"
+                title="Chat Models"
+                description={`${modelSummary.chat} synced model${modelSummary.chat === 1 ? '' : 's'} available`}
+              />
+              <SettingsRow
+                icon="image"
+                title="Image Models"
+                description={`${modelSummary.image} image generator${modelSummary.image === 1 ? '' : 's'}`}
+              />
+              <SettingsRow
+                icon="video"
+                title="Video Models"
+                description={`${modelSummary.video} video generator${modelSummary.video === 1 ? '' : 's'}`}
+                isLast
+              />
+            </SettingsPanel>
+
+            <SettingsPanel
+              eyebrow="Entitlements"
+              title="Access Control"
+              description="Free and paid model access is enforced by Overlay APIs instead of device-local provider keys."
+            >
+              <SettingsRow
+                icon="shield"
+                title="Current Tier"
+                description={entitlements ? entitlements.tier.toUpperCase() : 'Signed-out or still syncing'}
+              />
+              <SettingsRow
+                icon="zap"
+                title="Credits"
+                description={
+                  entitlements
+                    ? `${entitlements.creditsUsed} / ${entitlements.creditsTotal} used`
+                    : 'Credits load with your account session'
+                }
+                isLast
+              />
+            </SettingsPanel>
+          </View>
+        )
+
+      case 'voice':
+        return (
+          <View style={styles.contentStack}>
+            <SettingsPanel
+              eyebrow="Voice"
+              title="Hosted Transcription"
+              description="Voice input sends audio to Overlay transcription endpoints instead of direct device-side provider keys."
+            >
+              <SettingsRow
+                icon={micPermission === 'granted' ? 'check-circle' : 'mic'}
+                title="Microphone Access"
+                description={
+                  micPermission === 'granted'
+                    ? 'Granted'
+                    : micPermission === 'denied'
+                      ? 'Denied. Tap to open system settings.'
+                      : 'Tap to grant microphone permission.'
+                }
+                onPress={micPermission === 'granted' ? undefined : requestMicPermission}
+                rightElement={
+                  <View
+                    style={[
+                      styles.permissionPill,
+                      {
+                        backgroundColor:
+                          micPermission === 'granted'
+                            ? 'rgba(16, 185, 129, 0.12)'
+                            : 'rgba(239, 68, 68, 0.12)',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.permissionPillText,
+                        { color: micPermission === 'granted' ? '#10B981' : '#EF4444' },
+                      ]}
+                    >
+                      {micPermission === 'granted' ? 'Ready' : 'Needs Setup'}
+                    </Text>
+                  </View>
+                }
+              />
+              <SettingsRow
+                icon="radio"
+                title="Voice Feature Flag"
+                description={featureFlags?.canUseVoiceTranscription ? 'Enabled for this account' : 'Not enabled for this account'}
+                isLast
+              />
+            </SettingsPanel>
+          </View>
+        )
+
+      case 'about':
+      default:
+        return (
+          <View style={styles.contentStack}>
+            <SettingsPanel
+              eyebrow="About"
+              title="Build Info"
+              description="Version details and external links."
+            >
+              <SettingsRow icon="box" title="Version" description={APP_VERSION} />
+              <SettingsRow
+                icon="github"
+                title="Source Code"
+                description="View the Overlay repository."
+                onPress={() => Linking.openURL(SOURCE_CODE_URL)}
+              />
+              <SettingsRow
+                icon="life-buoy"
+                title="Contact"
+                description="Open the main Overlay site."
+                onPress={() => Linking.openURL(CONTACT_URL)}
+                isLast
+              />
+            </SettingsPanel>
+          </View>
+        )
+    }
+  }
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.text }]}>Settings</Text>
+        <Text style={[styles.headerEyebrow, { color: theme.textSecondary }]}>Settings</Text>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>{activeTabMeta.label}</Text>
+        <Text style={[styles.headerDescription, { color: theme.textSecondary }]}>
+          {activeTabMeta.description}
+        </Text>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>APPEARANCE</Text>
-          <View style={[styles.sectionContent, { backgroundColor: theme.surface }]}>
-            <SettingsRow
-              icon="moon"
-              title="Dark Mode"
-              description="Use dark theme"
-              rightElement={
-                <Switch
-                  value={isDark}
-                  onValueChange={toggleTheme}
-                  trackColor={{ false: theme.toggleBg, true: theme.toggleBgActive }}
-                  thumbColor={theme.toggleThumb}
-                />
-              }
-            />
+      <View style={[styles.body, { flexDirection: isRailLayout ? 'row' : 'column' }]}>
+        {isRailLayout ? (
+          <View style={[styles.sidebarRail, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            {SETTINGS_TABS.map((tab) => (
+              <SidebarItem
+                key={tab.id}
+                id={tab.id}
+                label={tab.label}
+                description={tab.description}
+                icon={tab.icon}
+                isActive={activeTab === tab.id}
+                isCompact={false}
+                onPress={setActiveTab}
+              />
+            ))}
           </View>
-        </View>
+        ) : (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.compactSidebarContent}
+            style={styles.compactSidebarScroll}
+          >
+            {SETTINGS_TABS.map((tab) => (
+              <SidebarItem
+                key={tab.id}
+                id={tab.id}
+                label={tab.label}
+                description={tab.description}
+                icon={tab.icon}
+                isActive={activeTab === tab.id}
+                isCompact
+                onPress={setActiveTab}
+              />
+            ))}
+          </ScrollView>
+        )}
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>API KEYS</Text>
-          <View style={[styles.sectionContent, { backgroundColor: theme.surface }]}>
-            <APIKeyRow provider="groq" label="Groq" theme={theme} />
-            <APIKeyRow provider="google" label="Google" theme={theme} />
-            <APIKeyRow provider="openai" label="OpenAI" theme={theme} />
-            <APIKeyRow provider="anthropic" label="Anthropic" theme={theme} />
-            <APIKeyRow provider="xai" label="xAI" theme={theme} />
-          </View>
-          <Text style={[styles.sectionHint, { color: theme.textDisabled }]}>
-            API keys are stored securely on-device using the system keychain.
-          </Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>VOICE KEYBOARD</Text>
-          <View style={[styles.sectionContent, { backgroundColor: theme.surface }]}>
-            <TouchableOpacity
-              style={[styles.micPermissionRow, { borderBottomColor: theme.border }]}
-              onPress={micPermission !== 'granted' ? requestMicPermission : undefined}
-              activeOpacity={micPermission !== 'granted' ? 0.7 : 1}
-            >
-              <View style={[styles.stepBadge, { backgroundColor: micPermission === 'granted' ? '#10B981' : '#EF4444' }]}>
-                <Feather name={micPermission === 'granted' ? 'check' : 'mic'} size={12} color="white" />
-              </View>
-              <View style={styles.micPermissionText}>
-                <Text style={[styles.micPermissionTitle, { color: theme.text }]}>Microphone Access</Text>
-                <Text style={[styles.micPermissionStatus, { color: micPermission === 'granted' ? '#10B981' : theme.textSecondary }]}>
-                  {micPermission === 'granted' ? 'Granted' : micPermission === 'denied' ? 'Denied — tap to open Settings' : 'Tap to grant permission'}
-                </Text>
-              </View>
-              {micPermission !== 'granted' && <Feather name="chevron-right" size={18} color={theme.textSecondary} />}
-            </TouchableOpacity>
-            <View style={[styles.keyboardStep, { borderBottomColor: theme.border }]}>
-              <View style={[styles.stepBadge, { backgroundColor: theme.border }]}>
-                <Text style={[styles.stepNumber, { color: theme.textSecondary }]}>1</Text>
-              </View>
-              <Text style={[styles.stepText, { color: theme.text }]}>Settings → General → Keyboard → Keyboards → Add New Keyboard…</Text>
-            </View>
-            <View style={[styles.keyboardStep, { borderBottomColor: theme.border }]}>
-              <View style={[styles.stepBadge, { backgroundColor: theme.border }]}>
-                <Text style={[styles.stepNumber, { color: theme.textSecondary }]}>2</Text>
-              </View>
-              <Text style={[styles.stepText, { color: theme.text }]}>Select <Text style={{ fontWeight: '600' }}>Overlay</Text> from the list</Text>
-            </View>
-            <View style={[styles.keyboardStep, { borderBottomColor: theme.border }]}>
-              <View style={[styles.stepBadge, { backgroundColor: theme.border }]}>
-                <Text style={[styles.stepNumber, { color: theme.textSecondary }]}>3</Text>
-              </View>
-              <Text style={[styles.stepText, { color: theme.text }]}>Tap <Text style={{ fontWeight: '600' }}>Overlay</Text> → enable <Text style={{ fontWeight: '600' }}>Allow Full Access</Text> (required for mic + network)</Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.openSettingsBtn, { borderTopColor: theme.border }]}
-              onPress={() => Linking.openURL('app-settings:')}
-              activeOpacity={0.7}
-            >
-              <Feather name="external-link" size={16} color={theme.textSecondary} />
-              <Text style={[styles.openSettingsText, { color: theme.text }]}>Open Settings</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={[styles.sectionHint, { color: theme.textDisabled }]}>
-            Your Groq API key must be saved above — the keyboard reads it to transcribe your voice.
-          </Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>ABOUT</Text>
-          <View style={[styles.sectionContent, { backgroundColor: theme.surface }]}>
-            <SettingsRow icon="info" title="Version" description="1.0.0" />
-            <SettingsRow icon="github" title="Source Code" description="View on GitHub" onPress={() => {}} />
-          </View>
-        </View>
-
-        <View style={styles.bottomPadding} />
-      </ScrollView>
+        <ScrollView
+          style={styles.contentScroll}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.contentScrollInner, !isRailLayout && styles.contentScrollInnerCompact]}
+        >
+          {renderContent()}
+        </ScrollView>
+      </View>
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1
+    flex: 1,
   },
   header: {
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
   },
-  title: {
-    fontSize: fontSize.xxl,
-    fontWeight: '600'
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: spacing.xl
-  },
-  section: {
-    marginBottom: spacing.xxl
-  },
-  sectionTitle: {
+  headerEyebrow: {
     fontSize: 11,
-    fontWeight: '500',
-    letterSpacing: 0.5,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.xs
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 6,
   },
-  sectionHint: {
+  headerTitle: {
+    fontSize: 30,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  headerDescription: {
+    fontSize: fontSize.md,
+    lineHeight: 22,
+  },
+  body: {
+    flex: 1,
+    gap: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xl,
+  },
+  sidebarRail: {
+    width: 280,
+    borderWidth: 1,
+    borderRadius: 24,
+    padding: spacing.sm,
+    gap: spacing.xs,
+    alignSelf: 'flex-start',
+  },
+  compactSidebarScroll: {
+    flexGrow: 0,
+  },
+  compactSidebarContent: {
+    gap: spacing.sm,
+    paddingRight: spacing.md,
+  },
+  sidebarItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderRadius: 18,
+  },
+  sidebarItemRail: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  sidebarItemCompact: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+  },
+  sidebarIndicator: {
+    width: 3,
+    height: 18,
+    borderRadius: 999,
+  },
+  sidebarTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  sidebarLabel: {
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
+  sidebarDescription: {
     fontSize: fontSize.xs,
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.xs
+    lineHeight: 18,
   },
-  sectionContent: {
-    borderRadius: borderRadius.lg,
-    overflow: 'hidden'
+  contentScroll: {
+    flex: 1,
+  },
+  contentScrollInner: {
+    paddingBottom: spacing.xl,
+  },
+  contentScrollInnerCompact: {
+    paddingTop: spacing.md,
+  },
+  contentStack: {
+    gap: spacing.lg,
+  },
+  panel: {
+    borderWidth: 1,
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  panelHeader: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    gap: 4,
+  },
+  panelEyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  panelTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: '700',
+  },
+  panelDescription: {
+    fontSize: fontSize.sm,
+    lineHeight: 20,
+  },
+  panelBody: {
+    paddingTop: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
   },
   settingsRow: {
+    minHeight: 72,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: 1
+    gap: spacing.md,
+    borderBottomWidth: 1,
   },
   settingsRowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    flex: 1
+    flex: 1,
+  },
+  rowIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   settingsRowText: {
-    flex: 1
+    flex: 1,
+    gap: 3,
   },
   settingsRowTitle: {
     fontSize: fontSize.md,
-    fontWeight: '500'
+    fontWeight: '600',
   },
   settingsRowDescription: {
-    fontSize: fontSize.xs,
-    marginTop: 2
-  },
-  apiKeyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: 1
-  },
-  providerDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5
-  },
-  apiKeyLabel: {
-    flex: 1,
-    fontSize: fontSize.md,
-    fontWeight: '500'
-  },
-  apiKeyInput: {
-    flex: 1,
     fontSize: fontSize.sm,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6
+    lineHeight: 19,
   },
-  apiKeyAction: {
-    padding: 4
+  permissionPill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: borderRadius.full,
   },
-  apiKeyStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10
+  permissionPillText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
-  apiKeyPlaceholder: {
-    fontSize: fontSize.xs
-  },
-  bottomPadding: {
-    height: 40
-  },
-  keyboardStep: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: 1
-  },
-  stepBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 1
-  },
-  stepNumber: {
-    fontSize: 11,
-    fontWeight: '600'
-  },
-  stepText: {
-    flex: 1,
-    fontSize: fontSize.sm,
-    lineHeight: 20
-  },
-  openSettingsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderTopWidth: 1
-  },
-  openSettingsText: {
-    fontSize: fontSize.md,
-    fontWeight: '500'
-  },
-  micPermissionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: 1
-  },
-  micPermissionText: {
-    flex: 1
-  },
-  micPermissionTitle: {
-    fontSize: fontSize.md,
-    fontWeight: '500'
-  },
-  micPermissionStatus: {
-    fontSize: fontSize.xs,
-    marginTop: 2
-  }
 })

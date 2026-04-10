@@ -43,9 +43,11 @@ class TranscriptionService: NSObject, ObservableObject {
     private let statusKey = "overlay_kb_status"
     private let resultKey = "overlay_kb_result"
     private let audioLevelKey = "overlay_kb_audio_level"
+    private let recordingHeartbeatKey = "overlay_kb_recording_heartbeat"
     private let commandKey = "overlay_kb_command"
     private let backgroundModeKey = "overlay_kb_background_mode_enabled"
     private let disableBackgroundCommand = "disable_bg_mode"
+    private let staleRecordingTimeout: TimeInterval = 1.0
 
     private var pollingTimer: Timer?
     private var startFallbackWorkItem: DispatchWorkItem?
@@ -77,7 +79,11 @@ class TranscriptionService: NSObject, ObservableObject {
         pendingForegroundFallback = false
 
         consumeDoneStateIfPresent(defaults)
-        let currentStatus = defaults.string(forKey: statusKey) ?? "idle"
+        var currentStatus = defaults.string(forKey: statusKey) ?? "idle"
+        if currentStatus == "recording" && !recordingHeartbeatIsFresh(defaults) {
+            clearStaleRecordingState(defaults)
+            currentStatus = "idle"
+        }
         let sharedBackgroundMode = defaults.bool(forKey: backgroundModeKey)
         if backgroundModeEnabled != sharedBackgroundMode {
             backgroundModeEnabled = sharedBackgroundMode
@@ -179,6 +185,11 @@ class TranscriptionService: NSObject, ObservableObject {
 
         switch status {
         case "recording":
+            if !recordingHeartbeatIsFresh(defaults) {
+                clearStaleRecordingState(defaults)
+                NSLog("[OverlayKeyboard] Cleared stale recording state from shared storage")
+                return
+            }
             cancelStartFallback()
             pendingForegroundFallback = false
             if state != .recording {
@@ -241,6 +252,23 @@ class TranscriptionService: NSObject, ObservableObject {
         startFallbackWorkItem?.cancel()
         startFallbackWorkItem = nil
         pendingForegroundFallback = false
+    }
+
+    private func recordingHeartbeatIsFresh(_ defaults: UserDefaults) -> Bool {
+        guard defaults.object(forKey: recordingHeartbeatKey) != nil else { return false }
+        let lastHeartbeat = defaults.double(forKey: recordingHeartbeatKey)
+        guard lastHeartbeat > 0 else { return false }
+        return Date().timeIntervalSince1970 - lastHeartbeat < staleRecordingTimeout
+    }
+
+    private func clearStaleRecordingState(_ defaults: UserDefaults) {
+        defaults.set("idle", forKey: statusKey)
+        defaults.set("idle", forKey: commandKey)
+        defaults.set(Float(0), forKey: audioLevelKey)
+        defaults.synchronize()
+        state = .idle
+        audioLevel = 0
+        cancelStartFallback()
     }
 
     private func consumeDoneStateIfPresent(_ defaults: UserDefaults) {

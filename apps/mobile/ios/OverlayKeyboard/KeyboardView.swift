@@ -22,38 +22,44 @@ private enum ShiftState {
 private enum EmojiCategory: String, CaseIterable, Identifiable {
     case all
     case smileys
-    case gestures
-    case hearts
+    case people
     case animals
     case food
+    case activities
     case travel
     case objects
+    case symbols
+    case flags
 
     var id: String { rawValue }
 
     var symbolName: String {
         switch self {
-        case .all: return "clock"
+        case .all: return "square.grid.2x2"
         case .smileys: return "face.smiling"
-        case .gestures: return "hand.thumbsup"
-        case .hearts: return "heart"
+        case .people: return "person.2"
         case .animals: return "pawprint"
         case .food: return "fork.knife"
+        case .activities: return "gamecontroller"
         case .travel: return "car"
         case .objects: return "lightbulb"
+        case .symbols: return "number"
+        case .flags: return "flag"
         }
     }
 
-    var title: String {
+    var menuTitle: String {
         switch self {
-        case .all: return "Search Emoji"
+        case .all: return "All"
         case .smileys: return "Smileys"
-        case .gestures: return "Gestures"
-        case .hearts: return "Hearts"
+        case .people: return "People"
         case .animals: return "Animals"
         case .food: return "Food"
+        case .activities: return "Activity"
         case .travel: return "Travel"
         case .objects: return "Objects"
+        case .symbols: return "Symbols"
+        case .flags: return "Flags"
         }
     }
 }
@@ -141,15 +147,15 @@ private struct OverlayKeyboardView: View {
     }
 
     private var keyHeight: CGFloat {
-        compact ? 36 : 45
+        compact ? 35 : 44
     }
 
     private var keyHorizontalSpacing: CGFloat {
-        compact ? 5 : 6
+        compact ? 4 : 5
     }
 
     private var keyRowSpacing: CGFloat {
-        compact ? 6 : 7
+        compact ? 5 : 6
     }
 
     private var cornerRadius: CGFloat {
@@ -189,11 +195,11 @@ private struct OverlayKeyboardView: View {
     }
 
     private var middleRowEdgeHitWidth: CGFloat {
-        compact ? 17 : 20
+        compact ? 24 : 28
     }
 
     private var emojiCellSize: CGFloat {
-        compact ? 34 : 38
+        compact ? 29 : 34
     }
 
     private var emojiGridRows: [GridItem] {
@@ -210,7 +216,7 @@ private struct OverlayKeyboardView: View {
     }
 
     private var categoryBarHeight: CGFloat {
-        compact ? 20 : 22
+        compact ? 24 : 26
     }
 
     private var emojiCategories: [EmojiCategory] {
@@ -219,13 +225,15 @@ private struct OverlayKeyboardView: View {
 
     private var emojisByCategory: [EmojiCategory: [String]] {
         [
-            .smileys: ["😀", "😄", "😁", "😂", "🤣", "😊", "🙂", "😉", "😍", "😘", "😎", "🤓", "🤗", "🤔", "😴", "🤯", "🥳", "😭", "😡", "🥶", "😇", "🤩", "🤭", "🤪", "😵", "🙃", "🫠", "😶‍🌫️", "🥹", "😌"],
-            .gestures: ["👍", "👎", "👏", "🙌", "🤝", "🙏", "👋", "🤙", "👌", "✌️", "🤞", "🤟", "🤘", "✍️", "💪", "🫶", "👊", "🤛", "🤜", "🫱", "🫲", "🖐️", "✋", "🫸", "🫷", "🤌", "☝️", "👇", "👈", "👉"],
-            .hearts: ["❤️", "🩷", "🧡", "💛", "💚", "🩵", "💙", "💜", "🤍", "🖤", "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "❤️‍🔥", "❤️‍🩹", "💟", "💌"],
-            .animals: ["🐶", "🐱", "🐭", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🦆", "🦅", "🦉", "🦇", "🐺", "🦄", "🐝", "🐙", "🐬", "🦋"],
-            .food: ["🍎", "🍌", "🍓", "🍇", "🍉", "🍒", "🥑", "🥕", "🌮", "🍕", "🍔", "🍟", "🍗", "🍣", "🍜", "🍩", "🍪", "🍫", "🍿", "🥨", "🥗", "🍰", "☕️", "🍵", "🥤", "🍺"],
-            .travel: ["🚗", "🚕", "🚌", "🚎", "🚓", "🚑", "🚒", "🚐", "🚚", "🚜", "🏎️", "🚂", "🚆", "🚇", "✈️", "🛫", "🛬", "🚁", "🛥️", "🚤", "⛵️", "🚢", "🛴", "🚲", "🛼", "🛹"],
-            .objects: ["💡", "📱", "💻", "⌚️", "📷", "🎥", "🎧", "🎮", "⌨️", "🖱️", "📦", "🔋", "🔌", "🧲", "🧪", "🧬", "🧠", "🔭", "🪐", "🛠️", "🔐", "🧯", "🕯️", "🧸", "🎁", "📚"]
+            .smileys: ["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "🥲", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚", "😋", "😛", "😝", "😜", "🤪", "🤨", "🧐", "🤓", "😎", "🥸", "🤩", "🥳", "😏", "😒", "😔", "😕", "🙁", "☹️", "😣", "😖", "😫", "😩", "🥺", "😭", "😤", "😠", "😡", "🤯", "😳", "🥵", "🥶", "😱", "😰", "😥", "😓", "🤗", "🫠", "🫣", "🫡"],
+            .people: ["👍", "👎", "👏", "🙌", "🤝", "🙏", "👋", "🤙", "👌", "✌️", "🤞", "🤟", "🤘", "🫶", "👊", "🤛", "🤜", "🫱", "🫲", "🖐️", "✋", "🫸", "🫷", "🤌", "☝️", "👇", "👈", "👉", "✍️", "💪", "🧑", "👩", "👨", "🧒", "👶", "🧔", "👩‍⚕️", "👨‍💻", "🧑‍🎓", "👮", "🕵️", "👷", "👩‍🍳", "👨‍🚀", "💃", "🕺", "🧘", "🏃", "🚶", "🧍"],
+            .animals: ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🦆", "🦅", "🦉", "🦇", "🐺", "🦄", "🐝", "🪲", "🐞", "🦋", "🐢", "🐍", "🦎", "🐙", "🦑", "🐬", "🐳", "🦈", "🐊", "🦌", "🐘", "🦒", "🦘", "🌵", "🌴", "🌲", "🌸", "🌼", "🌻"],
+            .food: ["🍎", "🍏", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍒", "🥭", "🍍", "🥥", "🥑", "🥕", "🌽", "🥦", "🧄", "🧅", "🥔", "🍅", "🍞", "🥐", "🥨", "🧀", "🥚", "🥞", "🧇", "🥓", "🍗", "🍖", "🌭", "🍔", "🍟", "🍕", "🌮", "🌯", "🥙", "🍜", "🍝", "🍣", "🍛", "🍤", "🍩", "🍪", "🍫", "🍿", "☕️", "🍵", "🥤", "🧋", "🍺", "🍷"],
+            .activities: ["⚽️", "🏀", "🏈", "⚾️", "🎾", "🏐", "🏉", "🥏", "🎱", "🏓", "🏸", "🥊", "🥋", "🥅", "⛳️", "🎣", "🤿", "🛹", "🛼", "🚴", "🏃", "🏋️", "🤸", "🧘", "🎯", "🎮", "🕹️", "🎲", "🧩", "♟️", "🎹", "🥁", "🎸", "🎺", "🎻", "🎤", "🎧", "🎬", "🎨", "🧵", "📚", "🧪", "🧘‍♀️", "🏆"],
+            .travel: ["🚗", "🚕", "🚌", "🚎", "🚓", "🚑", "🚒", "🚐", "🚚", "🚜", "🏎️", "🚂", "🚆", "🚇", "🚊", "✈️", "🛫", "🛬", "🚁", "🛥️", "🚤", "⛵️", "🚢", "🛴", "🚲", "🛼", "🛹", "🛻", "⛽️", "🗺️", "🧭", "🏠", "🏡", "🏢", "🏨", "🏝️", "🏖️", "🏔️", "🌋", "🗽", "🌉", "🌃", "🌆", "🌌", "🛣️", "🛤️"],
+            .objects: ["💡", "🔦", "🕯️", "📱", "💻", "⌚️", "📷", "🎥", "🎧", "⌨️", "🖱️", "🖨️", "📦", "🔋", "🔌", "🧲", "🧪", "🧬", "🧠", "🔭", "🪐", "🛠️", "🔧", "🔨", "⚙️", "🪛", "🔩", "🔐", "🧯", "🧰", "🧸", "🎁", "🛒", "💰", "📎", "📌", "📖", "📚", "📝", "✂️", "🔑", "🚪", "🪑", "🛏️", "🧼", "🪥"],
+            .symbols: ["❤️", "🩷", "🧡", "💛", "💚", "🩵", "💙", "💜", "🤍", "🖤", "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "❤️‍🔥", "❤️‍🩹", "💟", "💌", "☮️", "✝️", "☪️", "☸️", "✡️", "🔯", "🕉️", "☯️", "☦️", "🛐", "⛎", "♈️", "♉️", "♊️", "♋️", "♌️", "♍️", "♎️", "♏️", "♐️", "♑️", "♒️", "♓️", "🆘", "✅", "❌", "⚠️", "🚫", "♻️", "™️"],
+            .flags: ["🏳️", "🏴", "🏁", "🚩", "🏳️‍🌈", "🏳️‍⚧️", "🇺🇸", "🇨🇦", "🇲🇽", "🇧🇷", "🇦🇷", "🇬🇧", "🇮🇪", "🇫🇷", "🇩🇪", "🇮🇹", "🇪🇸", "🇵🇹", "🇳🇱", "🇸🇪", "🇳🇴", "🇫🇮", "🇩🇰", "🇵🇱", "🇺🇦", "🇹🇷", "🇸🇦", "🇦🇪", "🇮🇳", "🇵🇰", "🇧🇩", "🇨🇳", "🇯🇵", "🇰🇷", "🇹🇭", "🇻🇳", "🇦🇺", "🇳🇿", "🇿🇦", "🇪🇬", "🇳🇬", "🇰🇪"]
         ]
     }
 
@@ -246,7 +254,9 @@ private struct OverlayKeyboardView: View {
 
     var body: some View {
         VStack(spacing: keyRowSpacing) {
-            topControls
+            if service.state == .recording || page != .emoji {
+                topControls
+            }
 
             switch page {
             case .letters:
@@ -270,8 +280,6 @@ private struct OverlayKeyboardView: View {
     private var topControls: some View {
         if service.state == .recording {
             recordingTopControls
-        } else if page == .emoji {
-            emojiSearchControls
         } else {
             idleTopControls
         }
@@ -379,46 +387,6 @@ private struct OverlayKeyboardView: View {
         .frame(height: topControlHeight)
     }
 
-    private var emojiSearchControls: some View {
-        HStack(spacing: keyHorizontalSpacing) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: compact ? 13 : 14, weight: .medium))
-                    .foregroundColor(KeyboardPalette.secondaryText)
-
-                Text(selectedEmojiCategory.title)
-                    .font(.system(size: compact ? 13 : 15, weight: .regular))
-                    .foregroundColor(KeyboardPalette.secondaryText)
-                    .lineLimit(1)
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, compact ? 10 : 12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: topControlCornerRadius, style: .continuous)
-                    .fill(KeyboardPalette.mode)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: topControlCornerRadius, style: .continuous)
-                            .stroke(KeyboardPalette.keyStroke, lineWidth: 1)
-                    )
-            )
-
-            Button {
-                selectedEmojiCategory = .all
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: compact ? 16 : 17, weight: .semibold))
-                    .foregroundColor(KeyboardPalette.text)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .buttonStyle(TopControlButtonStyle(fill: KeyboardPalette.mode, cornerRadius: topControlCornerRadius))
-            .frame(width: compact ? 44 : 50)
-            .frame(height: topControlHeight)
-        }
-        .frame(height: topControlHeight)
-    }
-
     private var lettersPage: some View {
         VStack(spacing: keyRowSpacing) {
             characterRow(["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"])
@@ -431,9 +399,7 @@ private struct OverlayKeyboardView: View {
                         .foregroundColor(KeyboardPalette.text)
                 }
 
-                ForEach(["z", "x", "c", "v", "b", "n", "m"], id: \.self) { key in
-                    characterKey(key)
-                }
+                characterClusterRow(["z", "x", "c", "v", "b", "n", "m"])
 
                 functionKey(width: sideKeyWidth, fill: KeyboardPalette.functionKey, action: onBackspace) {
                     Image(systemName: "delete.left")
@@ -464,12 +430,8 @@ private struct OverlayKeyboardView: View {
                         .offset(y: keyLabelYOffset)
                 }
 
-                ForEach([".", ",", "?", "!", "'"], id: \.self) { key in
-                    characterInputKey(
-                        label: key,
-                        action: { onInsertText(key) },
-                        fontSize: compact ? 20 : 22
-                    )
+                inputClusterRow([".", ",", "?", "!", "'"], fontSize: compact ? 20 : 22) { key in
+                    onInsertText(key)
                 }
 
                 functionKey(width: sideKeyWidth, fill: KeyboardPalette.functionKey, action: onBackspace) {
@@ -501,12 +463,8 @@ private struct OverlayKeyboardView: View {
                         .offset(y: keyLabelYOffset)
                 }
 
-                ForEach([".", ",", "?", "!", "'"], id: \.self) { key in
-                    characterInputKey(
-                        label: key,
-                        action: { onInsertText(key) },
-                        fontSize: compact ? 20 : 22
-                    )
+                inputClusterRow([".", ",", "?", "!", "'"], fontSize: compact ? 20 : 22) { key in
+                    onInsertText(key)
                 }
 
                 functionKey(width: sideKeyWidth, fill: KeyboardPalette.functionKey, action: onBackspace) {
@@ -541,19 +499,31 @@ private struct OverlayKeyboardView: View {
                         Button {
                             selectedEmojiCategory = category
                         } label: {
-                            Image(systemName: category.symbolName)
-                                .font(.system(size: compact ? 12 : 13, weight: .regular))
-                                .symbolRenderingMode(.monochrome)
-                                .foregroundColor(KeyboardPalette.text)
-                                .frame(width: compact ? 20 : 22, height: compact ? 20 : 22)
-                                .background(
-                                    Circle()
-                                        .fill(Color.clear)
-                                )
-                                .overlay(
-                                    Circle()
-                                        .stroke(selectedEmojiCategory == category ? KeyboardPalette.keyStroke : Color.clear, lineWidth: 0.8)
-                                )
+                            HStack(spacing: compact ? 4 : 5) {
+                                Image(systemName: category.symbolName)
+                                    .font(.system(size: compact ? 11 : 12, weight: .regular))
+                                    .symbolRenderingMode(.monochrome)
+
+                                Text(category.menuTitle)
+                                    .font(.system(size: compact ? 10 : 11, weight: .medium))
+                                    .lineLimit(1)
+                            }
+                            .foregroundColor(KeyboardPalette.text)
+                            .padding(.horizontal, compact ? 8 : 10)
+                            .frame(height: categoryBarHeight - (compact ? 4 : 6))
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(selectedEmojiCategory == category ? KeyboardPalette.mode : Color.clear)
+                                    .overlay(
+                                        Capsule(style: .continuous)
+                                            .stroke(
+                                                selectedEmojiCategory == category
+                                                ? KeyboardPalette.keyStroke
+                                                : KeyboardPalette.keyStroke.opacity(0.45),
+                                                lineWidth: 0.8
+                                            )
+                                    )
+                            )
                         }
                         .buttonStyle(.plain)
                     }
@@ -570,46 +540,148 @@ private struct OverlayKeyboardView: View {
     }
 
     private func characterRow(_ keys: [String]) -> some View {
-        HStack(spacing: keyHorizontalSpacing) {
-            ForEach(keys, id: \.self) { key in
-                characterKey(key)
+        ZStack {
+            rowGapFallbackLayer(for: keys)
+
+            HStack(spacing: keyHorizontalSpacing) {
+                ForEach(keys, id: \.self) { key in
+                    characterKey(key)
+                }
             }
         }
+        .frame(height: keyHeight)
     }
 
     private func middleLetterRow(_ keys: [String], edgeHitWidth: CGFloat) -> some View {
-        HStack(spacing: keyHorizontalSpacing) {
-            if let firstKey = keys.first {
-                edgeExtendedHitArea(for: firstKey, width: edgeHitWidth)
+        ZStack {
+            rowGapFallbackLayer(for: keys, horizontalInset: edgeHitWidth)
+
+            HStack(spacing: keyHorizontalSpacing) {
+                ForEach(keys, id: \.self) { key in
+                    characterKey(key)
+                }
+            }
+            .padding(.horizontal, edgeHitWidth)
+        }
+        .frame(height: keyHeight)
+    }
+
+    private func characterClusterRow(_ keys: [String]) -> some View {
+        ZStack {
+            rowGapFallbackLayer(for: keys)
+
+            HStack(spacing: keyHorizontalSpacing) {
+                ForEach(keys, id: \.self) { key in
+                    characterKey(key)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: keyHeight)
+    }
+
+    private func inputClusterRow(
+        _ keys: [String],
+        fontSize: CGFloat,
+        action: @escaping (String) -> Void
+    ) -> some View {
+        ZStack {
+            GeometryReader { proxy in
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onEnded { value in
+                                insertNearestInput(
+                                    from: keys,
+                                    atX: value.location.x,
+                                    totalWidth: proxy.size.width,
+                                    action: action
+                                )
+                            }
+                    )
             }
 
-            ForEach(keys, id: \.self) { key in
-                characterKey(key)
+            HStack(spacing: keyHorizontalSpacing) {
+                ForEach(keys, id: \.self) { key in
+                    characterInputKey(
+                        label: key,
+                        action: { action(key) },
+                        fontSize: fontSize
+                    )
+                }
             }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: keyHeight)
+    }
 
-            if let lastKey = keys.last {
-                edgeExtendedHitArea(for: lastKey, width: edgeHitWidth)
-            }
+    private func rowGapFallbackLayer(for keys: [String], horizontalInset: CGFloat = 0) -> some View {
+        GeometryReader { proxy in
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onEnded { value in
+                            insertNearestCharacter(
+                                from: keys,
+                                atX: value.location.x,
+                                totalWidth: proxy.size.width,
+                                horizontalInset: horizontalInset
+                            )
+                        }
+                )
         }
     }
 
-    private func edgeExtendedHitArea(for key: String, width: CGFloat) -> some View {
-        Button {
-            insertCharacter(key)
-        } label: {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .frame(width: width, height: keyHeight)
+    private func insertNearestCharacter(
+        from keys: [String],
+        atX x: CGFloat,
+        totalWidth: CGFloat,
+        horizontalInset: CGFloat
+    ) {
+        guard !keys.isEmpty else { return }
+
+        let usableWidth = max(1, totalWidth - (horizontalInset * 2))
+        let availableX = x - horizontalInset
+        let clampedX = min(max(availableX, 0), usableWidth)
+        let keyCount = CGFloat(keys.count)
+        let totalSpacing = keyHorizontalSpacing * CGFloat(max(keys.count - 1, 0))
+        let keyWidth = (usableWidth - totalSpacing) / keyCount
+        guard keyWidth > 0 else { return }
+
+        let pitch = keyWidth + keyHorizontalSpacing
+        let rawIndex = Int(round((clampedX - (keyWidth / 2)) / pitch))
+        let index = min(max(rawIndex, 0), keys.count - 1)
+        insertCharacter(keys[index])
+    }
+
+    private func insertNearestInput(
+        from keys: [String],
+        atX x: CGFloat,
+        totalWidth: CGFloat,
+        action: (String) -> Void
+    ) {
+        guard !keys.isEmpty else { return }
+
+        let usableWidth = max(1, totalWidth)
+        let clampedX = min(max(x, 0), usableWidth)
+        let keyCount = CGFloat(keys.count)
+        let totalSpacing = keyHorizontalSpacing * CGFloat(max(keys.count - 1, 0))
+        let keyWidth = (usableWidth - totalSpacing) / keyCount
+        guard keyWidth > 0 else { return }
+
+        let pitch = keyWidth + keyHorizontalSpacing
+        let rawIndex = Int(round((clampedX - (keyWidth / 2)) / pitch))
+        let index = min(max(rawIndex, 0), keys.count - 1)
+        action(keys[index])
     }
 
     private func characterKey(_ rawValue: String) -> some View {
         characterInputKey(
             label: displayedCharacter(for: rawValue),
             action: { insertCharacter(rawValue) },
-            fontSize: compact ? 26 : 28
+            fontSize: compact ? 25 : 27
         )
     }
 
@@ -656,7 +728,7 @@ private struct OverlayKeyboardView: View {
         HStack(spacing: keyHorizontalSpacing) {
             functionKey(width: modeKeyWidth, fill: KeyboardPalette.actionKey, action: modeAction) {
                 Text(modeTitle)
-                    .font(.system(size: compact ? 17 : 18, weight: .regular))
+                    .font(.system(size: compact ? 16 : 17, weight: .regular))
                     .foregroundColor(KeyboardPalette.text)
                     .offset(y: keyLabelYOffset)
             }
@@ -673,23 +745,24 @@ private struct OverlayKeyboardView: View {
                     }
                 }
             ) {
-                Text("😀")
-                    .font(.system(size: compact ? 22 : 24))
-                    .offset(y: keyLabelYOffset)
+                Image(systemName: "face.smiling")
+                    .font(.system(size: compact ? 17 : 19, weight: .regular))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundColor(KeyboardPalette.text)
             }
 
             keyButton(fill: KeyboardPalette.key, action: {
                 onInsertText(" ")
             }) {
                 Text("space")
-                    .font(.system(size: compact ? 21 : 24, weight: .regular))
+                    .font(.system(size: compact ? 19 : 21, weight: .regular))
                     .foregroundColor(KeyboardPalette.text)
                     .offset(y: keyLabelYOffset)
             }
 
             functionKey(width: returnKeyWidth, fill: KeyboardPalette.actionKey, action: onReturn) {
                 Text(context.returnKeyTitle)
-                    .font(.system(size: compact ? 18 : 20, weight: .regular))
+                    .font(.system(size: compact ? 16 : 18, weight: .regular))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .foregroundColor(KeyboardPalette.text)
@@ -832,7 +905,6 @@ private struct OverlayKeyButtonStyle: ButtonStyle {
                     .stroke(KeyboardPalette.keyStroke, lineWidth: 0.8)
             )
             .shadow(color: Color.black.opacity(0.28), radius: 0, x: 0, y: 1)
-            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
     }
 }
 
@@ -853,7 +925,6 @@ private struct CharacterKeyButtonStyle: ButtonStyle {
                     .stroke(KeyboardPalette.keyStroke, lineWidth: 0.8)
             )
             .shadow(color: Color.black.opacity(0.28), radius: 0, x: 0, y: 1)
-            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
             .overlay(alignment: .top) {
                 if configuration.isPressed {
                     CharacterPreviewBubble(
@@ -861,8 +932,13 @@ private struct CharacterKeyButtonStyle: ButtonStyle {
                         compact: compact,
                         fill: fill
                     )
+                    .allowsHitTesting(false)
                     .offset(y: compact ? -44 : -53)
+                    .transition(.identity)
                 }
+            }
+            .transaction { transaction in
+                transaction.animation = nil
             }
     }
 }
@@ -993,9 +1069,15 @@ private struct RecordingWaveform: View {
     let compact: Bool
 
     private let barCount = 11
+    private var normalizedLevel: Double {
+        min(max(Double(level), 0), 1)
+    }
+    private var shouldAnimate: Bool {
+        active && normalizedLevel > 0.03
+    }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.06, paused: !active)) { timeline in
+        TimelineView(.animation(minimumInterval: 0.06, paused: !shouldAnimate)) { timeline in
             let timestamp = timeline.date.timeIntervalSinceReferenceDate
             HStack(spacing: compact ? 3 : 4) {
                 ForEach(0..<barCount, id: \.self) { index in
@@ -1014,9 +1096,14 @@ private struct RecordingWaveform: View {
         let falloff = max(0.2, 1.0 - distance * 0.8)
         let idleHeight: CGFloat = compact ? 9 : 12
         let maxHeight: CGFloat = compact ? 26 : 32
+        let baseHeight = idleHeight + (maxHeight - idleHeight) * CGFloat(0.16) * CGFloat(falloff)
+
+        guard shouldAnimate else {
+            return baseHeight
+        }
 
         let wave = sin(timestamp * 8 + Double(index) * 0.8) * 0.5 + 0.5
-        let energy = Double(max(0.08, level)) * 0.7 + wave * 0.3
+        let energy = normalizedLevel * 0.75 + wave * 0.25
         return idleHeight + (maxHeight - idleHeight) * CGFloat(energy) * CGFloat(falloff)
     }
 }

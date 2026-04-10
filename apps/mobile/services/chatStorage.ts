@@ -1,69 +1,142 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { Chat, ChatMeta, Message, generateChatId } from './chatTypes'
+import { appJson, appRequest } from './appApi'
+import type {
+  ConversationMessage,
+  ConversationSummary,
+} from './appContracts'
+import {
+  generateChatId,
+  getConversationSummaryLastMessage,
+  type Chat,
+  type ChatMeta,
+  type Message,
+} from './chatTypes'
 
-const CHATS_META_KEY = 'overlay-chats-meta'
-const CHAT_PREFIX = 'overlay-chat-'
 const LAST_CHAT_ID_KEY = 'overlay-last-chat-id'
 
-export async function loadChatsMeta(): Promise<ChatMeta[]> {
-  try {
-    const data = await AsyncStorage.getItem(CHATS_META_KEY)
-    if (!data) return []
-    const metas: ChatMeta[] = JSON.parse(data)
-    return metas.sort((a, b) => b.updatedAt - a.updatedAt)
-  } catch {
-    return []
+function toMessageContent(parts: ConversationMessage['parts']): string {
+  return parts
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text || '')
+    .join('')
+}
+
+function mapConversationMessageToMessage(message: ConversationMessage): Message {
+  const text = toMessageContent(message.parts)
+  const generatedFiles = message.parts
+    .filter(
+      (part): part is Extract<ConversationMessage['parts'][number], { type: 'file' }> =>
+        part.type === 'file' && !!part.url,
+    )
+    .map((part) => ({
+      url: part.url!,
+      mediaType: part.mediaType || 'application/octet-stream',
+    }))
+
+  const toolInvocations = message.parts
+    .filter((part) => part.type === 'tool-invocation')
+    .map((part) => ({
+      toolCallId: part.toolInvocation.toolCallId,
+      toolName: part.toolInvocation.toolName,
+      state: part.toolInvocation.state,
+      toolInput: part.toolInvocation.toolInput,
+      toolOutput: part.toolInvocation.toolOutput,
+    }))
+
+  return {
+    id: message.id,
+    turnId: message.turnId,
+    role: message.role,
+    content: text,
+    timestamp: Date.now(),
+    selectedModelId: message.model,
+    responses:
+      message.role === 'assistant'
+        ? [
+            {
+              modelId: message.model || message.routedModelId || 'overlay',
+              modelName: message.routedModelId || message.model || 'Overlay',
+              provider: 'overlay',
+              content: text,
+              isLoading: false,
+            },
+          ]
+        : undefined,
+    generatedFiles: generatedFiles.length > 0 ? generatedFiles : undefined,
+    toolInvocations: toolInvocations.length > 0 ? toolInvocations : undefined,
+    mode: message.mode,
+    replyToTurnId: message.replyToTurnId,
+    replySnippet: message.replySnippet,
+    routedModelId: message.routedModelId,
   }
 }
 
-async function saveChatsMeta(metas: ChatMeta[]): Promise<void> {
-  await AsyncStorage.setItem(CHATS_META_KEY, JSON.stringify(metas))
+function mapConversationSummary(summary: ConversationSummary): ChatMeta {
+  return {
+    id: summary._id,
+    title: summary.title,
+    createdAt: summary.createdAt,
+    updatedAt: summary.updatedAt,
+    lastMessage: undefined,
+    projectId: summary.projectId,
+    lastMode: summary.lastMode,
+    askModelIds: summary.askModelIds,
+    actModelId: summary.actModelId,
+    clientId: summary.clientId,
+  }
+}
+
+export async function loadChatsMeta(projectId?: string): Promise<ChatMeta[]> {
+  const summaries = await appJson<ConversationSummary[]>('/api/app/conversations', {
+    query: { projectId: projectId || undefined },
+  })
+  return summaries
+    .map(mapConversationSummary)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
 export async function saveChat(chat: Chat): Promise<void> {
-  await AsyncStorage.setItem(`${CHAT_PREFIX}${chat.id}`, JSON.stringify(chat))
-
-  const metas = await loadChatsMeta()
-  const existingIndex = metas.findIndex((m) => m.id === chat.id)
-
-  const lastMsg = chat.messages.length > 0
-    ? chat.messages[chat.messages.length - 1].content
-    : undefined
-
-  const meta: ChatMeta = {
-    id: chat.id,
-    title: chat.title,
-    createdAt: chat.createdAt,
-    updatedAt: chat.updatedAt,
-    lastMessage: lastMsg ? (lastMsg.length > 80 ? lastMsg.slice(0, 80) + '...' : lastMsg) : undefined,
-    folderId: chat.folderId
-  }
-
-  if (existingIndex >= 0) {
-    metas[existingIndex] = meta
-  } else {
-    metas.unshift(meta)
-  }
-
-  await saveChatsMeta(metas)
+  await appJson('/api/app/conversations', {
+    method: 'PATCH',
+    json: {
+      conversationId: chat.id,
+      title: chat.title,
+      askModelIds: chat.askModelIds,
+      actModelId: chat.actModelId || chat.modelId,
+      lastMode: chat.lastMode,
+      projectId: chat.projectId,
+    },
+  })
 }
 
 export async function loadChat(id: string): Promise<Chat | null> {
   try {
-    const data = await AsyncStorage.getItem(`${CHAT_PREFIX}${id}`)
-    if (!data) return null
-    return JSON.parse(data)
+    const [summary, messagesResponse] = await Promise.all([
+      appJson<ConversationSummary>(`/api/app/conversations`, {
+        query: { conversationId: id },
+      }),
+      appJson<{ messages: ConversationMessage[] }>(`/api/app/conversations`, {
+        query: { conversationId: id, messages: true },
+      }),
+    ])
+
+    const messages = messagesResponse.messages.map(mapConversationMessageToMessage)
+    return {
+      ...mapConversationSummary(summary),
+      lastMessage: getConversationSummaryLastMessage(summary, messagesResponse.messages),
+      modelId: summary.actModelId || summary.askModelIds[0],
+      messages,
+    }
   } catch {
     return null
   }
 }
 
 export async function deleteChat(id: string): Promise<void> {
-  await AsyncStorage.removeItem(`${CHAT_PREFIX}${id}`)
-
-  const metas = await loadChatsMeta()
-  const filtered = metas.filter((m) => m.id !== id)
-  await saveChatsMeta(filtered)
+  await appRequest('/api/app/conversations', {
+    method: 'DELETE',
+    query: { conversationId: id },
+  })
 
   const lastId = await getLastOpenedChatId()
   if (lastId === id) {
@@ -80,35 +153,43 @@ export async function setLastOpenedChatId(id: string): Promise<void> {
 }
 
 export async function updateChatTitle(id: string, title: string): Promise<void> {
-  const chat = await loadChat(id)
-  if (chat) {
-    chat.title = title
-    chat.updatedAt = Date.now()
-    await saveChat(chat)
-  }
+  await appJson('/api/app/conversations', {
+    method: 'PATCH',
+    json: { conversationId: id, title },
+  })
 }
 
-export async function updateChatMessages(id: string, messages: Message[]): Promise<void> {
-  const chat = await loadChat(id)
-  if (chat) {
-    chat.messages = messages
-    chat.updatedAt = Date.now()
-    await saveChat(chat)
-  }
+export async function updateChatMessages(_id: string, _messages: Message[]): Promise<void> {
+  void _id
+  void _messages
 }
 
-export async function createNewChat(modelId?: string): Promise<Chat> {
-  const id = generateChatId()
-  const now = Date.now()
-  const chat: Chat = {
-    id,
-    title: 'New Chat',
-    createdAt: now,
-    updatedAt: now,
+export async function createNewChat(
+  modelId?: string,
+  options: { projectId?: string; title?: string } = {},
+): Promise<Chat> {
+  const clientId = generateChatId()
+  const response = await appJson<{
+    id: string
+    conversation: ConversationSummary
+  }>('/api/app/conversations', {
+    method: 'POST',
+    json: {
+      clientId,
+      title: options.title || 'New Chat',
+      askModelIds: modelId ? [modelId] : undefined,
+      actModelId: modelId,
+      lastMode: 'act',
+      projectId: options.projectId,
+    },
+  })
+
+  const conversation = response.conversation
+  return {
+    ...mapConversationSummary(conversation),
+    id: conversation._id,
+    modelId: conversation.actModelId || conversation.askModelIds[0],
     messages: [],
-    modelId
+    clientId,
   }
-  await saveChat(chat)
-  await setLastOpenedChatId(id)
-  return chat
 }

@@ -1,136 +1,182 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
-  ScrollView
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
+import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { useTheme } from '../../hooks/useTheme'
 import { useVoiceInput } from '../../hooks/useVoiceInput'
-import { spacing, fontSize, borderRadius } from '../../constants/theme'
-import { Note, generateNoteId } from '../../services/types'
-import { loadNote, saveNote } from '../../services/noteStorage'
+import { useRichTextEditor } from '../../hooks/useRichTextEditor'
+import { IconAction, MetricTile, PanelCard, SectionLabel } from '../../components/ui/PanelPrimitives'
+import type { Note } from '../../services/types'
+import { createNote, loadNote, saveNote } from '../../services/noteStorage'
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function normalizeHtml(content: string): string {
+  const trimmed = content.trim()
+  if (!trimmed) {
+    return '<p></p>'
+  }
+
+  if (trimmed.startsWith('<')) {
+    return trimmed
+  }
+
+  return trimmed
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br/>')}</p>`)
+    .join('')
+}
+
+function stripHtml(content: string): string {
+  return content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function appendParagraph(content: string, text: string): string {
+  const nextParagraph = `<p>${escapeHtml(text)}</p>`
+  const trimmed = content.trim()
+  if (!trimmed || trimmed === '<p></p>') {
+    return nextParagraph
+  }
+  return `${trimmed}${nextParagraph}`
+}
 
 export default function NoteEditorScreen(): React.ReactElement {
-  const { id } = useLocalSearchParams<{ id: string }>()
+  const { id, projectId, projectName } = useLocalSearchParams<{
+    id: string
+    projectId?: string
+    projectName?: string
+  }>()
   const router = useRouter()
   const { theme } = useTheme()
 
   const [noteTitle, setNoteTitle] = useState('Untitled')
-  const [noteBody, setNoteBody] = useState('')
+  const [editorHtml, setEditorHtml] = useState('<p></p>')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
+
   const noteRef = useRef<Note | null>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleInputRef = useRef<TextInput>(null)
-  const bodyInputRef = useRef<TextInput>(null)
-  const bodyCursorRef = useRef<number>(0)
 
   const { isRecording, isProcessing, error: voiceError, toggleRecording } = useVoiceInput()
 
   const performSave = useCallback(async (title: string, content: string) => {
     if (!noteRef.current) return
+
     setIsSaving(true)
+
     try {
-      await saveNote({
+      const nextNote: Note = {
         ...noteRef.current,
-        title,
+        title: title.trim() || 'Untitled',
         content,
-        updatedAt: Date.now()
-      })
+        updatedAt: Date.now(),
+      }
+
+      noteRef.current = nextNote
+      await saveNote(nextNote)
+      setLastSavedAt(Date.now())
     } finally {
       setIsSaving(false)
     }
   }, [])
 
-  const debouncedSave = useCallback((title: string, content: string) => {
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current)
-    }
-    saveTimeoutRef.current = setTimeout(() => {
-      performSave(title, content)
-    }, 500)
-  }, [performSave])
+  const scheduleSave = useCallback(
+    (title: string, content: string) => {
+      if (!noteRef.current) return
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
 
-  const handleVoiceToggle = useCallback(async () => {
-    const result = await toggleRecording()
-    if (result?.text) {
-      // Insert transcribed text at cursor position in the body
-      const cursor = bodyCursorRef.current
-      const before = noteBody.slice(0, cursor)
-      const after = noteBody.slice(cursor)
-      const separator = before.length > 0 && !before.endsWith(' ') && !before.endsWith('\n') ? ' ' : ''
-      const newBody = before + separator + result.text + after
-      setNoteBody(newBody)
-      debouncedSave(noteTitle, newBody)
-      // Move cursor to end of inserted text
-      const newCursor = cursor + separator.length + result.text.length
-      bodyCursorRef.current = newCursor
-    }
-  }, [toggleRecording, noteBody, noteTitle, debouncedSave])
+      saveTimeoutRef.current = setTimeout(() => {
+        void performSave(title, content)
+      }, 450)
+    },
+    [performSave],
+  )
+
+  const { editorComponent, getContent, setContent } = useRichTextEditor(theme, {
+    initialContent: editorHtml,
+    onContentChange: (html) => {
+      setEditorHtml(html)
+      scheduleSave(noteTitle, html)
+    },
+  })
 
   useEffect(() => {
-    async function initNote(): Promise<void> {
-      const noteId = id === 'new' ? generateNoteId() : id
-      if (id === 'new') {
-        const newNote: Note = {
-          id: noteId,
-          title: 'Untitled',
-          content: '',
-          updatedAt: Date.now(),
-          createdAt: Date.now(),
-          folderId: null
+    let isMounted = true
+
+    async function initializeNote(): Promise<void> {
+      try {
+        let activeNote: Note | null = null
+
+        if (id === 'new') {
+          activeNote = await createNote({
+            title: 'Untitled',
+            content: '<p></p>',
+            projectId,
+          })
+          if (isMounted) {
+            router.replace(`/note/${activeNote.id}`)
+          }
+        } else if (id) {
+          activeNote = await loadNote(id)
         }
-        await saveNote(newNote)
-        noteRef.current = newNote
-        setNoteTitle('Untitled')
-        setNoteBody('')
+
+        if (!isMounted) return
+
+        if (!activeNote) {
+          router.back()
+          return
+        }
+
+        const normalizedContent = normalizeHtml(activeNote.content)
+        noteRef.current = {
+          ...activeNote,
+          content: normalizedContent,
+        }
+        setNoteTitle(activeNote.title || 'Untitled')
+        setEditorHtml(normalizedContent)
+        setContent(normalizedContent)
+        setLastSavedAt(activeNote.updatedAt)
         setIsLoading(false)
+
         setTimeout(() => {
           titleInputRef.current?.focus()
-        }, 100)
-      } else {
-        const existing = await loadNote(noteId)
-        if (existing) {
-          noteRef.current = existing
-          setNoteTitle(existing.title)
-          setNoteBody(existing.content)
+        }, 120)
+      } catch {
+        if (isMounted) {
+          setIsLoading(false)
+          router.back()
         }
-        setIsLoading(false)
       }
     }
-    initNote()
-  }, [id])
 
-  const handleTitleChange = useCallback((text: string) => {
-    setNoteTitle(text)
-    debouncedSave(text, noteBody)
-  }, [debouncedSave, noteBody])
+    void initializeNote()
 
-  const handleBodyChange = useCallback((text: string) => {
-    setNoteBody(text)
-    debouncedSave(noteTitle, text)
-  }, [debouncedSave, noteTitle])
-
-  const handleTitleSubmit = useCallback(() => {
-    bodyInputRef.current?.focus()
-  }, [])
-
-  const handleGoBack = useCallback(async () => {
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current)
+    return () => {
+      isMounted = false
     }
-    await performSave(noteTitle, noteBody)
-    router.back()
-  }, [noteTitle, noteBody, performSave, router])
+  }, [id, projectId, router, setContent])
 
   useEffect(() => {
     return () => {
@@ -140,199 +186,275 @@ export default function NoteEditorScreen(): React.ReactElement {
     }
   }, [])
 
+  const plainTextBody = useMemo(() => stripHtml(editorHtml), [editorHtml])
+
+  const handleTitleChange = useCallback(
+    (text: string) => {
+      setNoteTitle(text)
+      scheduleSave(text, getContent() || editorHtml)
+    },
+    [editorHtml, getContent, scheduleSave],
+  )
+
+  const handleVoiceToggle = useCallback(async () => {
+    const result = await toggleRecording()
+    if (!result?.text) return
+
+    const nextContent = appendParagraph(getContent() || editorHtml, result.text)
+    setEditorHtml(nextContent)
+    setContent(nextContent)
+    scheduleSave(noteTitle, nextContent)
+  }, [editorHtml, getContent, noteTitle, scheduleSave, setContent, toggleRecording])
+
+  const handleBack = useCallback(async () => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
+    }
+
+    await performSave(noteTitle, getContent() || editorHtml)
+    router.back()
+  }, [editorHtml, getContent, noteTitle, performSave, router])
+
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.textSecondary} />
-        </View>
+      <SafeAreaView style={[styles.loadingScreen, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.textSecondary} />
       </SafeAreaView>
     )
   }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-      <View style={[styles.header, { borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={handleGoBack} style={styles.backButton} activeOpacity={0.7}>
-          <Feather name="chevron-left" size={24} color={theme.text} />
-        </TouchableOpacity>
+      <View style={[styles.ambientGlow, styles.ambientGlowLeft, { backgroundColor: theme.surface }]} />
+      <View style={[styles.ambientGlow, styles.ambientGlowRight, { backgroundColor: theme.surface }]} />
 
-        <View style={styles.headerCenter}>
-          {isSaving && (
-            <Text style={[styles.savingIndicator, { color: theme.textSecondary }]}>Saving...</Text>
-          )}
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={styles.screenPadding}>
+          <View style={styles.header}>
+            <TouchableOpacity
+              onPress={() => {
+                void handleBack()
+              }}
+              activeOpacity={0.82}
+              style={[styles.backButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+            >
+              <Feather name="chevron-left" size={20} color={theme.text} />
+            </TouchableOpacity>
+
+            <View style={styles.headerCopy}>
+              <SectionLabel theme={theme}>Notebook</SectionLabel>
+              <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
+                {noteTitle || 'Untitled'}
+              </Text>
+              {projectName ? (
+                <Text style={[styles.headerProject, { color: theme.textSecondary }]} numberOfLines={1}>
+                  {projectName}
+                </Text>
+              ) : null}
+            </View>
+
+            <IconAction
+              theme={theme}
+              icon={isRecording ? 'square' : 'mic'}
+              onPress={() => {
+                void handleVoiceToggle()
+              }}
+              active={isRecording}
+            />
+          </View>
+
+          <PanelCard theme={theme}>
+            <View style={styles.heroCopy}>
+              <Text style={[styles.heroTitle, { color: theme.text }]}>Server-backed notebook editor</Text>
+              <Text style={[styles.heroDescription, { color: theme.textSecondary }]}>
+                Notes autosave to the same Overlay document store used on the web app.
+              </Text>
+            </View>
+
+            <View style={styles.metricRow}>
+              <MetricTile
+                theme={theme}
+                label="Words"
+                value={String(plainTextBody ? plainTextBody.split(/\s+/).length : 0)}
+              />
+              <MetricTile
+                theme={theme}
+                label="Status"
+                value={isSaving ? 'Saving' : lastSavedAt ? 'Saved' : 'Draft'}
+                accent={isSaving ? '#F59E0B' : undefined}
+              />
+            </View>
+
+            {isRecording || isProcessing || voiceError ? (
+              <View style={[styles.voiceBar, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                {isProcessing ? (
+                  <ActivityIndicator size="small" color={theme.textSecondary} />
+                ) : (
+                  <View style={styles.recordingDot} />
+                )}
+                <Text style={[styles.voiceBarText, { color: isRecording ? '#EF4444' : theme.textSecondary }]}>
+                  {isRecording
+                    ? 'Recording voice note…'
+                    : isProcessing
+                      ? 'Transcribing into the note…'
+                      : voiceError}
+                </Text>
+              </View>
+            ) : null}
+          </PanelCard>
+
+          <PanelCard theme={theme}>
+            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Title</Text>
+            <TextInput
+              ref={titleInputRef}
+              value={noteTitle}
+              onChangeText={handleTitleChange}
+              placeholder="Untitled"
+              placeholderTextColor={theme.textDisabled}
+              style={[styles.titleInput, { color: theme.text }]}
+            />
+          </PanelCard>
+
+          <View style={styles.editorShell}>
+            <PanelCard theme={theme} padded={false}>
+              <View style={[styles.editorHeader, { borderBottomColor: theme.border }]}>
+                <Text style={[styles.editorHeaderText, { color: theme.text }]}>Body</Text>
+                <Text style={[styles.editorHeaderMeta, { color: theme.textSecondary }]}>Rich text editor</Text>
+              </View>
+              <View style={styles.editorContent}>{editorComponent}</View>
+            </PanelCard>
+          </View>
         </View>
-
-        <TouchableOpacity style={styles.headerAction} activeOpacity={0.7}>
-          <Feather name="more-horizontal" size={20} color={theme.textSecondary} />
-        </TouchableOpacity>
-      </View>
-
-      <KeyboardAvoidingView
-        style={styles.editorContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
-      >
-        <ScrollView
-          style={styles.scrollContainer}
-          contentContainerStyle={styles.scrollContent}
-          keyboardDismissMode="interactive"
-          keyboardShouldPersistTaps="handled"
-        >
-          <TextInput
-            ref={titleInputRef}
-            style={[styles.titleInput, { color: theme.text }]}
-            value={noteTitle}
-            onChangeText={handleTitleChange}
-            placeholder="Untitled"
-            placeholderTextColor={theme.textDisabled}
-            returnKeyType="next"
-            blurOnSubmit={true}
-            onSubmitEditing={handleTitleSubmit}
-          />
-
-          <TextInput
-            ref={bodyInputRef}
-            style={[styles.bodyInput, { color: theme.text }]}
-            value={noteBody}
-            onChangeText={handleBodyChange}
-            placeholder="Start writing..."
-            placeholderTextColor={theme.textDisabled}
-            multiline
-            textAlignVertical="top"
-            scrollEnabled={false}
-            onSelectionChange={(e) => {
-              bodyCursorRef.current = e.nativeEvent.selection.end
-            }}
-          />
-        </ScrollView>
       </KeyboardAvoidingView>
-
-      <TouchableOpacity
-        style={[
-          styles.voiceFab,
-          {
-            backgroundColor: isRecording
-              ? '#EF4444'
-              : isProcessing
-                ? theme.surface
-                : theme.buttonBg
-          }
-        ]}
-        onPress={handleVoiceToggle}
-        disabled={isProcessing}
-        activeOpacity={0.7}
-      >
-        {isProcessing ? (
-          <ActivityIndicator size="small" color={theme.textSecondary} />
-        ) : (
-          <Feather
-            name={isRecording ? 'square' : 'mic'}
-            size={isRecording ? 18 : 22}
-            color={isRecording ? '#FFFFFF' : theme.toggleThumb}
-          />
-        )}
-      </TouchableOpacity>
-
-      {(isRecording || voiceError) && (
-        <View style={[styles.voiceStatus, { backgroundColor: theme.surface }]}>
-          <Text style={[styles.voiceStatusText, { color: isRecording ? '#EF4444' : theme.textSecondary }]}>
-            {isRecording ? 'Recording... tap to stop' : voiceError}
-          </Text>
-        </View>
-      )}
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1
-  },
-  loadingContainer: {
+  loadingScreen: {
     flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center'
+  },
+  container: {
+    flex: 1,
+  },
+  flex: {
+    flex: 1,
+  },
+  ambientGlow: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    opacity: 0.18,
+  },
+  ambientGlowLeft: {
+    top: -60,
+    left: -90,
+  },
+  ambientGlowRight: {
+    top: 120,
+    right: -100,
+  },
+  screenPadding: {
+    flex: 1,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    gap: spacing.lg,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1
+    gap: spacing.md,
   },
   backButton: {
-    padding: spacing.sm,
-    borderRadius: borderRadius.sm
-  },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center'
-  },
-  savingIndicator: {
-    fontSize: fontSize.xs
-  },
-  headerAction: {
-    padding: spacing.sm,
-    borderRadius: borderRadius.sm
-  },
-  editorContainer: {
-    flex: 1
-  },
-  scrollContainer: {
-    flex: 1
-  },
-  scrollContent: {
-    flexGrow: 1
-  },
-  titleInput: {
-    fontSize: fontSize.xxl,
-    fontWeight: '700',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.sm
-  },
-  bodyInput: {
-    flex: 1,
-    fontSize: fontSize.md,
-    lineHeight: 24,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.xl,
-    minHeight: 300
-  },
-  voiceFab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 20,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 42,
+    height: 42,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 5
   },
-  voiceStatus: {
-    position: 'absolute',
-    bottom: 24,
-    left: 20,
-    right: 80,
-    paddingHorizontal: 16,
+  headerCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  headerTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: '700',
+  },
+  headerProject: {
+    fontSize: fontSize.sm,
+  },
+  heroCopy: {
+    gap: 6,
+  },
+  heroTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: '700',
+  },
+  heroDescription: {
+    fontSize: fontSize.sm,
+    lineHeight: 20,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  voiceBar: {
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: spacing.md,
     paddingVertical: 10,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
-  voiceStatusText: {
-    fontSize: fontSize.xs,
-    fontWeight: '500'
-  }
+  recordingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#EF4444',
+  },
+  voiceBarText: {
+    fontSize: fontSize.sm,
+  },
+  fieldLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
+  },
+  titleInput: {
+    fontSize: 24,
+    fontWeight: '700',
+    paddingVertical: 2,
+  },
+  editorShell: {
+    flex: 1,
+    minHeight: 320,
+  },
+  editorHeader: {
+    minHeight: 56,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  editorHeaderText: {
+    fontSize: fontSize.md,
+    fontWeight: '700',
+  },
+  editorHeaderMeta: {
+    fontSize: fontSize.sm,
+  },
+  editorContent: {
+    minHeight: 360,
+  },
 })

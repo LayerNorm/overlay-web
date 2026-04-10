@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { useColorScheme } from 'react-native'
 import { Theme, lightTheme, darkTheme } from '../constants/theme'
+import {
+  DEFAULT_UI_SETTINGS,
+  loadCachedUiSettings,
+  updateUiSettings,
+} from '../services/settingsService'
 
 interface ThemeContextType {
   theme: Theme
@@ -17,20 +22,46 @@ interface ThemeProviderProps {
 
 export function ThemeProvider({ children }: ThemeProviderProps): React.ReactElement {
   const systemColorScheme = useColorScheme()
-  const [isDark, setIsDark] = useState(systemColorScheme === 'dark')
+  const [isDark, setIsDark] = useState(
+    (DEFAULT_UI_SETTINGS.theme ?? (systemColorScheme === 'dark' ? 'dark' : 'light')) === 'dark',
+  )
 
   useEffect(() => {
-    setIsDark(systemColorScheme === 'dark')
+    let isMounted = true
+
+    loadCachedUiSettings()
+      .then((cached) => {
+        if (!isMounted) return
+        if (cached?.theme) {
+          setIsDark(cached.theme === 'dark')
+        } else {
+          setIsDark(systemColorScheme === 'dark')
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setIsDark(systemColorScheme === 'dark')
+        }
+      })
+
+    return () => {
+      isMounted = false
+    }
   }, [systemColorScheme])
 
   const theme = isDark ? darkTheme : lightTheme
 
   const toggleTheme = (): void => {
-    setIsDark((prev) => !prev)
+    setIsDark((prev) => {
+      const next = !prev
+      void updateUiSettings({ theme: next ? 'dark' : 'light' }).catch(() => {})
+      return next
+    })
   }
 
   const setDarkMode = (dark: boolean): void => {
     setIsDark(dark)
+    void updateUiSettings({ theme: dark ? 'dark' : 'light' }).catch(() => {})
   }
 
   return (

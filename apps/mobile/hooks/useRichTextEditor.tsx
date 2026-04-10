@@ -15,13 +15,24 @@ interface UseRichTextEditorReturn {
   setContent: (html: string) => void
 }
 
-export function useRichTextEditor(theme: Theme): UseRichTextEditorReturn {
+interface UseRichTextEditorOptions {
+  initialContent?: string
+  placeholder?: string
+  onContentChange?: (html: string) => void
+}
+
+export function useRichTextEditor(
+  theme: Theme,
+  options: UseRichTextEditorOptions = {}
+): UseRichTextEditorReturn {
   const contentRef = useRef<string>('')
+  const initialContent = options.initialContent || ''
+  const onContentChange = options.onContentChange
 
   const editor = useEditorBridge({
     autofocus: false,
     avoidIosKeyboard: true,
-    initialContent: '',
+    initialContent,
     theme: {
       toolbar: {
         toolbarBody: {
@@ -43,8 +54,16 @@ export function useRichTextEditor(theme: Theme): UseRichTextEditorReturn {
   React.useEffect(() => {
     if (content) {
       contentRef.current = content
+      onContentChange?.(content)
     }
-  }, [content])
+  }, [content, onContentChange])
+
+  React.useEffect(() => {
+    if (initialContent !== undefined) {
+      contentRef.current = initialContent
+      editor.setContent(initialContent)
+    }
+  }, [editor, initialContent])
 
   const getContent = useCallback((): string => {
     return contentRef.current

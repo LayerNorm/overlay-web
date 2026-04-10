@@ -1,354 +1,180 @@
-import * as SecureStore from 'expo-secure-store'
-import { NativeModules } from 'react-native'
-import { ChatModel, AVAILABLE_MODELS } from './chatTypes'
-
-const API_KEY_PREFIX = 'overlay-api-key-'
-
-export type AIProvider = 'openai' | 'anthropic' | 'google' | 'groq' | 'xai'
-
-export async function getApiKey(provider: AIProvider): Promise<string | null> {
-  try {
-    return await SecureStore.getItemAsync(`${API_KEY_PREFIX}${provider}`)
-  } catch {
-    return null
-  }
-}
-
-export async function setApiKey(provider: AIProvider, key: string): Promise<void> {
-  await SecureStore.setItemAsync(`${API_KEY_PREFIX}${provider}`, key)
-  if (provider === 'groq') {
-    try { NativeModules.SharedKeyStore?.setGroqKey(key) } catch { /* not available in Expo Go */ }
-  }
-}
-
-export async function deleteApiKey(provider: AIProvider): Promise<void> {
-  await SecureStore.deleteItemAsync(`${API_KEY_PREFIX}${provider}`)
-  if (provider === 'groq') {
-    try { NativeModules.SharedKeyStore?.clearGroqKey() } catch { /* not available in Expo Go */ }
-  }
-}
-
-export async function getAvailableModels(): Promise<ChatModel[]> {
-  const providers: AIProvider[] = ['openai', 'anthropic', 'google', 'groq', 'xai']
-  const hasKey: Record<string, boolean> = {}
-
-  for (const p of providers) {
-    const key = await getApiKey(p)
-    hasKey[p] = !!key && key.length > 0
-  }
-
-  return AVAILABLE_MODELS.filter((m) => hasKey[m.provider])
-}
+import { appRequest, readJsonSseStream } from './appApi'
+import { getAppBootstrap } from './bootstrapService'
+import type { ChatModel } from './chatTypes'
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   imageData?: string
+  replyToTurnId?: string
+  replySnippet?: string
 }
 
-interface StreamChunk {
-  type: 'text' | 'error' | 'done'
+export interface StreamChunk {
+  type:
+    | 'text'
+    | 'reasoning'
+    | 'tool'
+    | 'file'
+    | 'start'
+    | 'finish'
+    | 'error'
+    | 'done'
   content: string
+  id?: string
+  toolCallId?: string
+  toolName?: string
+  state?: string
+  input?: unknown
+  output?: unknown
+  url?: string
+  mediaType?: string
+  metadata?: unknown
+}
+
+interface ChatStreamOptions {
+  mode?: 'ask' | 'act'
+  conversationId?: string
+  turnId?: string
+  variantIndex?: number
+}
+
+type UiMessageChunk =
+  | { type: 'text-delta'; delta: string; id?: string }
+  | { type: 'reasoning-delta'; delta: string; id?: string }
+  | {
+      type: 'tool-input-available'
+      toolCallId?: string
+      toolName: string
+      input?: unknown
+    }
+  | {
+      type: 'tool-output-available'
+      toolCallId?: string
+      toolName?: string
+      output?: unknown
+    }
+  | {
+      type: 'tool-output-error'
+      toolCallId?: string
+      toolName?: string
+      errorText: string
+    }
+  | { type: 'file'; url: string; mediaType?: string }
+  | { type: 'start'; messageMetadata?: unknown }
+  | { type: 'finish'; messageMetadata?: unknown }
+  | { type: 'error'; errorText: string }
+
+let cachedModels: ChatModel[] | null = null
+
+export async function getAvailableModels(): Promise<ChatModel[]> {
+  if (cachedModels) return cachedModels
+  const bootstrap = await getAppBootstrap()
+  cachedModels = bootstrap.chatModels
+  return bootstrap.chatModels
+}
+
+export async function getModelById(modelId: string): Promise<ChatModel | undefined> {
+  const models = await getAvailableModels()
+  return models.find((model) => model.id === modelId)
+}
+
+function toUiMessages(messages: ChatMessage[]) {
+  return messages.map((message) => ({
+    role: message.role,
+    parts: [
+      ...(message.imageData
+        ? [{ type: 'file' as const, url: message.imageData, mediaType: 'image/jpeg' }]
+        : []),
+      ...(message.content ? [{ type: 'text' as const, text: message.content }] : []),
+    ],
+    ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId } : {}),
+    ...(message.replySnippet ? { replySnippet: message.replySnippet } : {}),
+  }))
 }
 
 export async function* chatStream(
   modelId: string,
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  options: ChatStreamOptions = {},
 ): AsyncGenerator<StreamChunk> {
-  const model = AVAILABLE_MODELS.find((m) => m.id === modelId)
-  if (!model) {
-    yield { type: 'error', content: `Unknown model: ${modelId}` }
-    return
-  }
-
-  const apiKey = await getApiKey(model.provider)
-  if (!apiKey) {
-    yield { type: 'error', content: `No API key configured for ${model.provider}` }
-    return
-  }
-
   try {
-    switch (model.provider) {
-      case 'openai':
-        yield* streamOpenAI(apiKey, modelId, messages)
-        break
-      case 'anthropic':
-        yield* streamAnthropic(apiKey, modelId, messages)
-        break
-      case 'google':
-        yield* streamGoogle(apiKey, modelId, messages)
-        break
-      case 'groq':
-        yield* streamGroq(apiKey, modelId, messages)
-        break
-      case 'xai':
-        yield* streamXAI(apiKey, modelId, messages)
-        break
-      default:
-        yield { type: 'error', content: `Unsupported provider: ${model.provider}` }
+    const endpoint =
+      options.mode === 'ask' ? '/api/app/conversations/ask' : '/api/app/conversations/act'
+    const pendingChunks: StreamChunk[] = []
+    const response = await appRequest(endpoint, {
+      method: 'POST',
+      json: {
+        modelId,
+        conversationId: options.conversationId,
+        turnId: options.turnId,
+        variantIndex: options.variantIndex,
+        messages: toUiMessages(messages),
+      },
+    })
+
+    await readJsonSseStream<UiMessageChunk>(response, (chunk) => {
+      switch (chunk.type) {
+        case 'text-delta':
+          pendingChunks.push({ type: 'text', content: chunk.delta, id: chunk.id })
+          break
+        case 'reasoning-delta':
+          pendingChunks.push({ type: 'reasoning', content: chunk.delta, id: chunk.id })
+          break
+        case 'tool-input-available':
+          pendingChunks.push({
+            type: 'tool',
+            content: '',
+            toolCallId: chunk.toolCallId,
+            toolName: chunk.toolName,
+            state: 'input-available',
+            input: chunk.input,
+          })
+          break
+        case 'tool-output-available':
+          pendingChunks.push({
+            type: 'tool',
+            content: '',
+            toolCallId: chunk.toolCallId,
+            state: 'output-available',
+            output: chunk.output,
+          })
+          break
+        case 'tool-output-error':
+          pendingChunks.push({
+            type: 'tool',
+            content: chunk.errorText,
+            toolCallId: chunk.toolCallId,
+            state: 'output-error',
+          })
+          break
+        case 'file':
+          pendingChunks.push({
+            type: 'file',
+            content: '',
+            url: chunk.url,
+            mediaType: chunk.mediaType,
+          })
+          break
+        case 'start':
+          pendingChunks.push({ type: 'start', content: '', metadata: chunk.messageMetadata })
+          break
+        case 'finish':
+          pendingChunks.push({ type: 'finish', content: '', metadata: chunk.messageMetadata })
+          break
+        case 'error':
+          pendingChunks.push({ type: 'error', content: chunk.errorText })
+          break
+        default:
+          break
+      }
+    })
+
+    for (const chunk of pendingChunks) {
+      yield chunk
     }
+    yield { type: 'done', content: '' }
   } catch (error) {
     yield { type: 'error', content: String(error) }
   }
-}
-
-async function* streamOpenAI(
-  apiKey: string,
-  modelId: string,
-  messages: ChatMessage[]
-): AsyncGenerator<StreamChunk> {
-  const body = {
-    model: modelId,
-    messages: formatOpenAIMessages(messages),
-    stream: true
-  }
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify(body)
-  })
-
-  if (!response.ok) {
-    const err = await response.text()
-    yield { type: 'error', content: `OpenAI error: ${err}` }
-    return
-  }
-
-  yield* parseSSEStream(response)
-}
-
-async function* streamAnthropic(
-  apiKey: string,
-  modelId: string,
-  messages: ChatMessage[]
-): AsyncGenerator<StreamChunk> {
-  const formattedMessages = messages
-    .filter((m) => m.role !== 'system')
-    .map((m) => ({
-      role: m.role,
-      content: m.imageData && m.role === 'user'
-        ? [
-            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: m.imageData.replace(/^data:image\/\w+;base64,/, '') } },
-            { type: 'text', text: m.content }
-          ]
-        : m.content
-    }))
-
-  const systemMsg = messages.find((m) => m.role === 'system')
-
-  const body: Record<string, unknown> = {
-    model: modelId,
-    messages: formattedMessages,
-    max_tokens: 4096,
-    stream: true
-  }
-  if (systemMsg) {
-    body.system = systemMsg.content
-  }
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify(body)
-  })
-
-  if (!response.ok) {
-    const err = await response.text()
-    yield { type: 'error', content: `Anthropic error: ${err}` }
-    return
-  }
-
-  yield* parseAnthropicSSE(response)
-}
-
-async function* streamGoogle(
-  apiKey: string,
-  modelId: string,
-  messages: ChatMessage[]
-): AsyncGenerator<StreamChunk> {
-  const contents = messages
-    .filter((m) => m.role !== 'system')
-    .map((m) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: m.imageData && m.role === 'user'
-        ? [
-            { inlineData: { mimeType: 'image/jpeg', data: m.imageData.replace(/^data:image\/\w+;base64,/, '') } },
-            { text: m.content }
-          ]
-        : [{ text: m.content }]
-    }))
-
-  const systemMsg = messages.find((m) => m.role === 'system')
-  const body: Record<string, unknown> = { contents }
-  if (systemMsg) {
-    body.systemInstruction = { parts: [{ text: systemMsg.content }] }
-  }
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?alt=sse&key=${apiKey}`
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  })
-
-  if (!response.ok) {
-    const err = await response.text()
-    yield { type: 'error', content: `Google error: ${err}` }
-    return
-  }
-
-  yield* parseGoogleSSE(response)
-}
-
-async function* streamGroq(
-  apiKey: string,
-  modelId: string,
-  messages: ChatMessage[]
-): AsyncGenerator<StreamChunk> {
-  const body = {
-    model: modelId,
-    messages: formatOpenAIMessages(messages),
-    stream: true
-  }
-
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify(body)
-  })
-
-  if (!response.ok) {
-    const err = await response.text()
-    yield { type: 'error', content: `Groq error: ${err}` }
-    return
-  }
-
-  yield* parseSSEStream(response)
-}
-
-async function* streamXAI(
-  apiKey: string,
-  modelId: string,
-  messages: ChatMessage[]
-): AsyncGenerator<StreamChunk> {
-  const body = {
-    model: modelId,
-    messages: formatOpenAIMessages(messages),
-    stream: true
-  }
-
-  const response = await fetch('https://api.x.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify(body)
-  })
-
-  if (!response.ok) {
-    const err = await response.text()
-    yield { type: 'error', content: `xAI error: ${err}` }
-    return
-  }
-
-  yield* parseSSEStream(response)
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function formatOpenAIMessages(messages: ChatMessage[]): any[] {
-  return messages.map((m) => {
-    if (m.imageData && m.role === 'user') {
-      return {
-        role: m.role,
-        content: [
-          { type: 'image_url' as const, image_url: { url: m.imageData } },
-          { type: 'text' as const, text: m.content }
-        ]
-      }
-    }
-    return { role: m.role, content: m.content }
-  })
-}
-
-async function* parseSSEStream(response: Response): AsyncGenerator<StreamChunk> {
-  // React Native's fetch may not support ReadableStream, so fall back to text
-  const text = await response.text()
-  const lines = text.split('\n')
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed || !trimmed.startsWith('data: ')) continue
-    const data = trimmed.slice(6)
-    if (data === '[DONE]') {
-      yield { type: 'done', content: '' }
-      return
-    }
-    try {
-      const parsed = JSON.parse(data)
-      const content = parsed.choices?.[0]?.delta?.content
-      if (content) {
-        yield { type: 'text', content }
-      }
-    } catch {
-      // skip malformed JSON
-    }
-  }
-  yield { type: 'done', content: '' }
-}
-
-async function* parseAnthropicSSE(response: Response): AsyncGenerator<StreamChunk> {
-  const text = await response.text()
-  const lines = text.split('\n')
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed || !trimmed.startsWith('data: ')) continue
-    const data = trimmed.slice(6)
-    try {
-      const parsed = JSON.parse(data)
-      if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
-        yield { type: 'text', content: parsed.delta.text }
-      } else if (parsed.type === 'message_stop') {
-        yield { type: 'done', content: '' }
-        return
-      }
-    } catch {
-      // skip malformed JSON
-    }
-  }
-  yield { type: 'done', content: '' }
-}
-
-async function* parseGoogleSSE(response: Response): AsyncGenerator<StreamChunk> {
-  const text = await response.text()
-  const lines = text.split('\n')
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed || !trimmed.startsWith('data: ')) continue
-    const data = trimmed.slice(6)
-    try {
-      const parsed = JSON.parse(data)
-      const content = parsed.candidates?.[0]?.content?.parts?.[0]?.text
-      if (content) {
-        yield { type: 'text', content }
-      }
-    } catch {
-      // skip malformed JSON
-    }
-  }
-  yield { type: 'done', content: '' }
 }

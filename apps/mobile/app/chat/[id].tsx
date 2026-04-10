@@ -1,721 +1,1052 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
+  ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
-  ScrollView
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
-import * as ImagePicker from 'expo-image-picker'
 import * as Haptics from 'expo-haptics'
+import * as ImagePicker from 'expo-image-picker'
+import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { useTheme } from '../../hooks/useTheme'
 import { useVoiceInput } from '../../hooks/useVoiceInput'
-import { spacing, fontSize } from '../../constants/theme'
-import {
-  Chat,
-  Message,
-  ChatModel,
-  PROVIDER_COLORS,
-  generateMessageId,
-  generateTempTitle
-} from '../../services/chatTypes'
-import { loadChat, saveChat, createNewChat } from '../../services/chatStorage'
-import { chatStream, getAvailableModels } from '../../services/aiService'
 import { MessageBubble } from '../../components/chat/MessageBubble'
+import { IconAction, PanelCard, SectionLabel } from '../../components/ui/PanelPrimitives'
+import { Chat, ChatModel, Message, PROVIDER_COLORS, generateMessageId, generateTempTitle } from '../../services/chatTypes'
+import { chatStream, getAvailableModels, type StreamChunk } from '../../services/aiService'
+import { createNewChat, loadChat, saveChat, setLastOpenedChatId } from '../../services/chatStorage'
+
+const PROMPT_SUGGESTIONS = [
+  'Summarize what I need to focus on today.',
+  'Turn this into an action plan.',
+  'Help me write a sharper response.',
+  'Explain this simply, then go deeper.',
+]
+
+function upsertToolInvocation(message: Message, chunk: StreamChunk): Message {
+  if (chunk.type !== 'tool') return message
+
+  const toolInvocations = [...(message.toolInvocations || [])]
+  const index = toolInvocations.findIndex(
+    (tool) =>
+      (chunk.toolCallId && tool.toolCallId === chunk.toolCallId) ||
+      (!!chunk.toolName && tool.toolName === chunk.toolName),
+  )
+
+  const nextTool = {
+    toolCallId: chunk.toolCallId,
+    toolName: chunk.toolName || toolInvocations[index]?.toolName || 'Tool',
+    state: chunk.state,
+    toolInput:
+      chunk.state === 'input-available'
+        ? (chunk.input as Record<string, unknown> | undefined)
+        : toolInvocations[index]?.toolInput,
+    toolOutput:
+      chunk.state === 'output-available'
+        ? chunk.output
+        : chunk.state === 'output-error'
+          ? { error: chunk.content }
+          : toolInvocations[index]?.toolOutput,
+  }
+
+  if (index >= 0) {
+    toolInvocations[index] = {
+      ...toolInvocations[index],
+      ...nextTool,
+    }
+  } else {
+    toolInvocations.push(nextTool)
+  }
+
+  return {
+    ...message,
+    toolInvocations,
+  }
+}
+
+function applyStreamChunk(
+  messages: Message[],
+  assistantId: string,
+  selectedModel: ChatModel,
+  chunk: StreamChunk,
+): Message[] {
+  return messages.map((message) => {
+    if (message.id !== assistantId) return message
+
+    const response = message.responses?.[0] || {
+      modelId: selectedModel.id,
+      modelName: selectedModel.name,
+      provider: selectedModel.provider,
+      content: '',
+      isLoading: true,
+    }
+
+    if (chunk.type === 'text') {
+      const content = `${message.content}${chunk.content}`
+      return {
+        ...message,
+        content,
+        responses: [
+          {
+            ...response,
+            content,
+            isLoading: true,
+          },
+        ],
+      }
+    }
+
+    if (chunk.type === 'reasoning') {
+      return {
+        ...message,
+        reasoning: `${message.reasoning || ''}${chunk.content}`,
+      }
+    }
+
+    if (chunk.type === 'tool') {
+      return upsertToolInvocation(message, chunk)
+    }
+
+    if (chunk.type === 'file' && chunk.url) {
+      return {
+        ...message,
+        generatedFiles: [
+          ...(message.generatedFiles || []),
+          {
+            url: chunk.url,
+            mediaType: chunk.mediaType || 'application/octet-stream',
+          },
+        ],
+      }
+    }
+
+    if (chunk.type === 'error') {
+      const content = message.content || `Error: ${chunk.content}`
+      return {
+        ...message,
+        content,
+        responses: [
+          {
+            ...response,
+            content,
+            isLoading: false,
+            error: chunk.content,
+          },
+        ],
+      }
+    }
+
+    if (chunk.type === 'finish' || chunk.type === 'done') {
+      return {
+        ...message,
+        responses: [
+          {
+            ...response,
+            content: message.content,
+            isLoading: false,
+          },
+        ],
+      }
+    }
+
+    return message
+  })
+}
+
+function buildApiMessages(messages: Message[]) {
+  return messages.map((message) => ({
+    role: message.role,
+    content: message.content,
+    imageData: message.imageData,
+    replyToTurnId: message.replyToTurnId,
+    replySnippet: message.replySnippet,
+  }))
+}
+
+function capabilityTags(model: ChatModel): string[] {
+  const tags = [`IQ ${model.intelligence}`]
+  if (model.supportsVision) tags.push('Vision')
+  if (model.supportsReasoning) tags.push('Reasoning')
+  if (model.supportsSearch) tags.push('Search')
+  tags.push(model.cost === 0 ? 'Free' : `Tier ${model.cost}`)
+  return tags
+}
 
 export default function ChatConversationScreen(): React.ReactElement {
-  const { id } = useLocalSearchParams<{ id: string }>()
+  const { id, projectId, projectName } = useLocalSearchParams<{
+    id: string
+    projectId?: string
+    projectName?: string
+  }>()
   const router = useRouter()
   const { theme, isDark } = useTheme()
 
-  const [, setChat] = useState<Chat | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
+  const [chatTitle, setChatTitle] = useState('New Chat')
   const [inputValue, setInputValue] = useState('')
-  const [isLoading, setIsLoading] = useState(true)
-  const [isSending, setIsSending] = useState(false)
+  const [imageBase64, setImageBase64] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<ChatModel | null>(null)
   const [availableModels, setAvailableModels] = useState<ChatModel[]>([])
+  const [currentMode, setCurrentMode] = useState<'ask' | 'act'>('act')
   const [showModelPicker, setShowModelPicker] = useState(false)
-  const [imageBase64, setImageBase64] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSending, setIsSending] = useState(false)
 
-  const flatListRef = useRef<FlatList>(null)
   const chatRef = useRef<Chat | null>(null)
+  const flatListRef = useRef<FlatList<Message>>(null)
   const abortRef = useRef(false)
 
   const { isRecording, isProcessing: isTranscribing, toggleRecording } = useVoiceInput()
 
+  const syncConversationMeta = useCallback(
+    async (overrides: Partial<Chat> = {}) => {
+      if (!chatRef.current) return
+
+      const resolvedModelId = overrides.modelId || selectedModel?.id || chatRef.current.modelId
+      const resolvedMode = overrides.lastMode || currentMode
+
+      const nextChat: Chat = {
+        ...chatRef.current,
+        ...overrides,
+        title: overrides.title ?? chatRef.current.title,
+        updatedAt: Date.now(),
+        modelId: resolvedModelId,
+        askModelIds: resolvedModelId ? [resolvedModelId] : chatRef.current.askModelIds,
+        actModelId: resolvedModelId || chatRef.current.actModelId,
+        lastMode: resolvedMode,
+      }
+
+      chatRef.current = nextChat
+      setChatTitle(nextChat.title)
+      await saveChat(nextChat)
+    },
+    [currentMode, selectedModel?.id],
+  )
+
+  const hydrateChat = useCallback(
+    async (chatId: string, models: ChatModel[]) => {
+      const chat = await loadChat(chatId)
+      if (!chat) return
+
+      chatRef.current = chat
+      setChatTitle(chat.title)
+      setMessages(chat.messages)
+      setCurrentMode(chat.lastMode || 'act')
+      await setLastOpenedChatId(chat.id)
+
+      const preferredModelId = chat.actModelId || chat.askModelIds?.[0] || chat.modelId
+      const nextSelected = models.find((model) => model.id === preferredModelId) || models[0] || null
+      setSelectedModel(nextSelected)
+    },
+    [],
+  )
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function initialize(): Promise<void> {
+      try {
+        const models = await getAvailableModels()
+        if (!isMounted) return
+
+        setAvailableModels(models)
+        setSelectedModel(models[0] || null)
+
+        if (id === 'new') {
+          const created = await createNewChat(models[0]?.id, {
+            projectId,
+            title: 'New Chat',
+          })
+          if (!isMounted) return
+          chatRef.current = created
+          setChatTitle(created.title)
+          setMessages([])
+          setCurrentMode(created.lastMode || 'act')
+          setSelectedModel(models.find((model) => model.id === created.modelId) || models[0] || null)
+          await setLastOpenedChatId(created.id)
+          router.replace(`/chat/${created.id}`)
+        } else if (id) {
+          await hydrateChat(id, models)
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    void initialize()
+
+    return () => {
+      isMounted = false
+    }
+  }, [hydrateChat, id, projectId, router])
+
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      flatListRef.current?.scrollToEnd({ animated: true })
+    })
+  }, [])
+
   const handleVoiceToggle = useCallback(async () => {
     const result = await toggleRecording()
     if (result?.text) {
-      setInputValue((prev) => {
-        const separator = prev.length > 0 && !prev.endsWith(' ') && !prev.endsWith('\n') ? ' ' : ''
-        return prev + separator + result.text
+      setInputValue((current) => {
+        const separator = current.trim().length > 0 ? ' ' : ''
+        return `${current}${separator}${result.text}`.trimStart()
       })
     }
   }, [toggleRecording])
 
-  useEffect(() => {
-    async function init(): Promise<void> {
-      const models = await getAvailableModels()
-      setAvailableModels(models)
-      if (models.length > 0) {
-        setSelectedModel(models[0])
-      }
+  const handleModeChange = useCallback(
+    async (mode: 'ask' | 'act') => {
+      setCurrentMode(mode)
+      await syncConversationMeta({ lastMode: mode })
+    },
+    [syncConversationMeta],
+  )
 
-      let loadedChat: Chat | null = null
-      if (id === 'new') {
-        loadedChat = await createNewChat(models[0]?.id)
-      } else {
-        loadedChat = await loadChat(id)
-      }
-
-      if (loadedChat) {
-        setChat(loadedChat)
-        chatRef.current = loadedChat
-        setMessages(loadedChat.messages)
-        if (loadedChat.modelId) {
-          const m = models.find((model) => model.id === loadedChat.modelId)
-          if (m) setSelectedModel(m)
-        }
-      }
-      setIsLoading(false)
-    }
-    init()
-  }, [id])
-
-  const scrollToBottom = useCallback(() => {
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true })
-    }, 100)
-  }, [])
+  const handleModelSelect = useCallback(
+    async (model: ChatModel) => {
+      setSelectedModel(model)
+      setShowModelPicker(false)
+      await syncConversationMeta({
+        modelId: model.id,
+        askModelIds: [model.id],
+        actModelId: model.id,
+      })
+    },
+    [syncConversationMeta],
+  )
 
   const handleSend = useCallback(async () => {
-    if (!inputValue.trim() && !imageBase64) return
-    if (!selectedModel || !chatRef.current) return
-    if (isSending) return
+    const activeChat = chatRef.current
+    if ((!inputValue.trim() && !imageBase64) || !selectedModel || !activeChat || isSending) {
+      return
+    }
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    setIsSending(true)
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     abortRef.current = false
+    setIsSending(true)
 
     const userMessage: Message = {
       id: generateMessageId(),
       role: 'user',
       content: inputValue.trim(),
       timestamp: Date.now(),
-      imageData: imageBase64 || undefined
+      imageData: imageBase64 || undefined,
+      mode: currentMode,
     }
 
-    const updatedMessages = [...messages, userMessage]
-    setMessages(updatedMessages)
-    setInputValue('')
-    setImageBase64(null)
-    scrollToBottom()
+    const nextTitle =
+      chatTitle === 'New Chat' && userMessage.content
+        ? generateTempTitle(userMessage.content)
+        : chatTitle
 
-    // Update title from first message
-    if (chatRef.current.title === 'New Chat' && updatedMessages.length === 1) {
-      chatRef.current.title = generateTempTitle(userMessage.content)
-      setChat({ ...chatRef.current })
-    }
-
-    // Create placeholder assistant message
-    const assistantMsgId = generateMessageId()
-    const assistantMessage: Message = {
-      id: assistantMsgId,
+    const userMessageList = [...messages, userMessage]
+    const assistantId = generateMessageId()
+    const placeholderAssistant: Message = {
+      id: assistantId,
+      turnId: assistantId,
       role: 'assistant',
       content: '',
       timestamp: Date.now(),
       selectedModelId: selectedModel.id,
-      responses: [{
-        modelId: selectedModel.id,
-        modelName: selectedModel.name,
-        provider: selectedModel.provider,
-        content: '',
-        isLoading: true
-      }]
+      responses: [
+        {
+          modelId: selectedModel.id,
+          modelName: selectedModel.name,
+          provider: selectedModel.provider,
+          content: '',
+          isLoading: true,
+        },
+      ],
+      mode: currentMode,
     }
 
-    const withAssistant = [...updatedMessages, assistantMessage]
-    setMessages(withAssistant)
+    const optimisticMessages = [...userMessageList, placeholderAssistant]
+    setMessages(optimisticMessages)
+    setInputValue('')
+    setImageBase64(null)
+    await syncConversationMeta({
+      title: nextTitle,
+      modelId: selectedModel.id,
+      askModelIds: [selectedModel.id],
+      actModelId: selectedModel.id,
+      lastMode: currentMode,
+    })
     scrollToBottom()
 
-    // Build conversation history for API
-    const apiMessages = updatedMessages.map((m) => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.content,
-      imageData: m.imageData
-    }))
-
-    let fullContent = ''
     try {
-      const stream = chatStream(selectedModel.id, apiMessages)
-      for await (const chunk of stream) {
+      for await (const chunk of chatStream(selectedModel.id, buildApiMessages(userMessageList), {
+        mode: currentMode,
+        conversationId: activeChat.id,
+        turnId: assistantId,
+      })) {
         if (abortRef.current) break
-
-        if (chunk.type === 'text') {
-          fullContent += chunk.content
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsgId
-                ? {
-                    ...m,
-                    content: fullContent,
-                    responses: [{
-                      modelId: selectedModel.id,
-                      modelName: selectedModel.name,
-                      provider: selectedModel.provider,
-                      content: fullContent,
-                      isLoading: true
-                    }]
-                  }
-                : m
-            )
-          )
+        setMessages((current) => applyStreamChunk(current, assistantId, selectedModel, chunk))
+        if (chunk.type === 'text' || chunk.type === 'reasoning' || chunk.type === 'tool' || chunk.type === 'file') {
           scrollToBottom()
-        } else if (chunk.type === 'error') {
-          fullContent = `Error: ${chunk.content}`
         }
       }
     } catch (error) {
-      fullContent = `Error: ${String(error)}`
+      setMessages((current) =>
+        applyStreamChunk(current, assistantId, selectedModel, {
+          type: 'error',
+          content: String(error),
+        }),
+      )
+    } finally {
+      setIsSending(false)
     }
 
-    // Finalize message
-    const finalMessages = withAssistant.map((m) =>
-      m.id === assistantMsgId
-        ? {
-            ...m,
-            content: fullContent,
-            responses: [{
-              modelId: selectedModel.id,
-              modelName: selectedModel.name,
-              provider: selectedModel.provider,
-              content: fullContent,
-              isLoading: false
-            }]
-          }
-        : m
-    )
-    setMessages(finalMessages)
-
-    // Save chat
-    const chatToSave: Chat = {
-      ...chatRef.current!,
-      messages: finalMessages,
-      updatedAt: Date.now(),
-      modelId: selectedModel.id
+    const refreshed = await loadChat(activeChat.id)
+    if (refreshed) {
+      chatRef.current = refreshed
+      setChatTitle(refreshed.title)
+      setMessages(refreshed.messages)
+      setCurrentMode(refreshed.lastMode || currentMode)
+    } else {
+      setMessages((current) => applyStreamChunk(current, assistantId, selectedModel, { type: 'done', content: '' }))
     }
-    chatRef.current = chatToSave
-    setChat(chatToSave)
-    await saveChat(chatToSave)
 
-    setIsSending(false)
     scrollToBottom()
-  }, [inputValue, imageBase64, selectedModel, messages, isSending, scrollToBottom])
+  }, [
+    chatTitle,
+    currentMode,
+    imageBase64,
+    inputValue,
+    isSending,
+    messages,
+    scrollToBottom,
+    selectedModel,
+    syncConversationMeta,
+  ])
 
-  const handleCopy = useCallback(async (content: string) => {
-    await Clipboard.setStringAsync(content)
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-  }, [])
-
-  const handleDeleteMessage = useCallback(async (messageId: string) => {
-    const filtered = messages.filter((m) => m.id !== messageId)
-    setMessages(filtered)
-    if (chatRef.current) {
-      chatRef.current.messages = filtered
-      chatRef.current.updatedAt = Date.now()
-      await saveChat(chatRef.current)
-    }
-  }, [messages])
-
-  const handlePickImage = useCallback(async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      base64: true,
-      quality: 0.7
-    })
-
-    if (!result.canceled && result.assets[0].base64) {
-      const mimeType = result.assets[0].mimeType || 'image/jpeg'
-      setImageBase64(`data:${mimeType};base64,${result.assets[0].base64}`)
-    }
-  }, [])
-
-  const handleGoBack = useCallback(() => {
-    abortRef.current = true
-    router.back()
-  }, [router])
+  const sortedModels = useMemo(() => availableModels, [availableModels])
 
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.textSecondary} />
-        </View>
+      <SafeAreaView style={[styles.loadingScreen, { backgroundColor: theme.background }]}>
+        <ActivityIndicator color={theme.textSecondary} size="large" />
       </SafeAreaView>
     )
   }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={handleGoBack} style={styles.backButton} activeOpacity={0.7}>
-          <Feather name="chevron-left" size={24} color={theme.text} />
-        </TouchableOpacity>
+      <View style={[styles.ambientGlow, styles.ambientGlowLeft, { backgroundColor: theme.surface }]} />
+      <View style={[styles.ambientGlow, styles.ambientGlowRight, { backgroundColor: theme.surface }]} />
 
-        <TouchableOpacity
-          style={styles.modelButton}
-          onPress={() => setShowModelPicker(true)}
-          activeOpacity={0.7}
-        >
-          {selectedModel && (
-            <View style={styles.modelButtonContent}>
-              <View
-                style={[
-                  styles.providerDot,
-                  { backgroundColor: PROVIDER_COLORS[selectedModel.provider] || theme.textSecondary }
-                ]}
-              />
-              <Text style={[styles.modelName, { color: theme.text }]} numberOfLines={1}>
-                {selectedModel.name}
+      <View style={styles.screenPadding}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => {
+              abortRef.current = true
+              router.back()
+            }}
+            activeOpacity={0.82}
+            style={[styles.backButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+          >
+            <Feather name="chevron-left" size={20} color={theme.text} />
+          </TouchableOpacity>
+
+          <View style={styles.headerCopy}>
+              <SectionLabel theme={theme}>Chat</SectionLabel>
+              <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
+                {chatTitle}
               </Text>
-              <Feather name="chevron-down" size={14} color={theme.textSecondary} />
+              {projectName ? (
+                <Text style={[styles.headerProject, { color: theme.textSecondary }]} numberOfLines={1}>
+                  {projectName}
+                </Text>
+              ) : null}
             </View>
-          )}
-          {!selectedModel && (
-            <Text style={[styles.modelName, { color: theme.textSecondary }]}>No models</Text>
-          )}
-        </TouchableOpacity>
 
-        <TouchableOpacity style={styles.headerAction} activeOpacity={0.7}>
-          <Feather name="more-horizontal" size={20} color={theme.textSecondary} />
-        </TouchableOpacity>
-      </View>
+          <IconAction theme={theme} icon="sliders" onPress={() => setShowModelPicker(true)} />
+        </View>
 
-      {/* Messages */}
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
-      >
-        {messages.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Feather name="message-square" size={40} color={theme.textDisabled} />
-            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-              Start a conversation
-            </Text>
+        <PanelCard theme={theme}>
+          <View style={styles.topCard}>
+            <View style={styles.topCardCopy}>
+              <Text style={[styles.topCardTitle, { color: theme.text }]}>Shared Overlay conversation flow</Text>
+              <Text style={[styles.topCardDescription, { color: theme.textSecondary }]}>
+                Mobile now uses the same conversation APIs, model ordering, and ask or act modes as the web app.
+              </Text>
+            </View>
+
+            <View style={styles.topCardControls}>
+              <View style={[styles.modeSwitch, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                {(['ask', 'act'] as const).map((mode) => (
+                  <TouchableOpacity
+                    key={mode}
+                    onPress={() => {
+                      void handleModeChange(mode)
+                    }}
+                    activeOpacity={0.82}
+                    style={[
+                      styles.modePill,
+                      {
+                        backgroundColor: currentMode === mode ? theme.buttonBg : 'transparent',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.modePillText,
+                        { color: currentMode === mode ? theme.surface : theme.textSecondary },
+                      ]}
+                    >
+                      {mode === 'ask' ? 'Ask' : 'Act'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity
+                style={[styles.modelPill, { backgroundColor: theme.background, borderColor: theme.border }]}
+                onPress={() => setShowModelPicker(true)}
+                activeOpacity={0.82}
+              >
+                {selectedModel ? (
+                  <>
+                    <View
+                      style={[
+                        styles.providerDot,
+                        { backgroundColor: PROVIDER_COLORS[selectedModel.provider] || theme.textSecondary },
+                      ]}
+                    />
+                    <Text style={[styles.modelPillText, { color: theme.text }]} numberOfLines={1}>
+                      {selectedModel.name}
+                    </Text>
+                    <Feather name="chevron-down" size={15} color={theme.textSecondary} />
+                  </>
+                ) : (
+                  <Text style={[styles.modelPillText, { color: theme.textSecondary }]}>No models</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
-        ) : (
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <MessageBubble
-                message={item}
-                theme={theme}
-                onCopy={handleCopy}
-                onDelete={handleDeleteMessage}
+        </PanelCard>
+
+        <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <PanelCard theme={theme} padded={false}>
+            {messages.length === 0 ? (
+              <View style={styles.emptyThread}>
+                <View style={[styles.emptyThreadIcon, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                  <Feather name="message-square" size={28} color={theme.textSecondary} />
+                </View>
+                <Text style={[styles.emptyThreadTitle, { color: theme.text }]}>Start with a sharper prompt</Text>
+                <Text style={[styles.emptyThreadDescription, { color: theme.textSecondary }]}>
+                  Choose ask for a direct answer or act for tool-enabled work, then send text, image context, or voice input.
+                </Text>
+
+                <View style={styles.suggestionGrid}>
+                  {PROMPT_SUGGESTIONS.map((prompt) => (
+                    <TouchableOpacity
+                      key={prompt}
+                      onPress={() => setInputValue(prompt)}
+                      activeOpacity={0.82}
+                      style={[styles.suggestionCard, { backgroundColor: theme.background, borderColor: theme.border }]}
+                    >
+                      <Text style={[styles.suggestionText, { color: theme.text }]}>{prompt}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ) : (
+              <FlatList
+                ref={flatListRef}
+                data={messages}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <MessageBubble
+                    message={item}
+                    theme={theme}
+                    onCopy={async (content) => {
+                      await Clipboard.setStringAsync(content)
+                      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+                    }}
+                  />
+                )}
+                contentContainerStyle={styles.messageList}
+                showsVerticalScrollIndicator={false}
+                onContentSizeChange={scrollToBottom}
               />
             )}
-            contentContainerStyle={styles.messagesList}
-            showsVerticalScrollIndicator={false}
-            onContentSizeChange={scrollToBottom}
-          />
-        )}
+          </PanelCard>
 
-        {/* Input */}
-        <View style={[styles.inputContainer, { borderTopColor: theme.border, backgroundColor: theme.background }]}>
-          {isRecording && (
-            <View style={[styles.recordingBar, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
-              <View style={styles.recordingDot} />
-              <Text style={styles.recordingText}>Recording... tap mic to stop</Text>
-            </View>
-          )}
-          {isTranscribing && (
-            <View style={[styles.recordingBar, { backgroundColor: theme.surface }]}>
-              <ActivityIndicator size="small" color={theme.textSecondary} />
-              <Text style={[styles.recordingText, { color: theme.textSecondary }]}>Transcribing...</Text>
-            </View>
-          )}
-          {imageBase64 && (
-            <View style={[styles.imagePreview, { backgroundColor: theme.surface }]}>
-              <Feather name="image" size={14} color={theme.textSecondary} />
-              <Text style={[styles.imagePreviewText, { color: theme.textSecondary }]}>
-                Image attached
-              </Text>
-              <TouchableOpacity onPress={() => setImageBase64(null)}>
-                <Feather name="x" size={14} color={theme.textSecondary} />
-              </TouchableOpacity>
-            </View>
-          )}
-          <View style={styles.inputRow}>
-            <TouchableOpacity
-              onPress={handlePickImage}
-              style={styles.attachButton}
-              activeOpacity={0.7}
-            >
-              <Feather name="image" size={20} color={theme.textSecondary} />
-            </TouchableOpacity>
+          <View style={styles.composerWrap}>
+            <PanelCard theme={theme}>
+              {imageBase64 ? (
+                <View style={[styles.attachmentBar, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                  <Feather name="image" size={15} color={theme.textSecondary} />
+                  <Text style={[styles.attachmentText, { color: theme.textSecondary }]}>Image attached</Text>
+                  <TouchableOpacity
+                    onPress={() => setImageBase64(null)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Feather name="x" size={15} color={theme.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              ) : null}
 
-            <TouchableOpacity
-              onPress={handleVoiceToggle}
-              disabled={isTranscribing}
-              style={[
-                styles.micButton,
-                {
-                  backgroundColor: isRecording
-                    ? '#EF4444'
-                    : theme.buttonBg
-                }
-              ]}
-              activeOpacity={0.7}
-            >
-              {isTranscribing ? (
-                <ActivityIndicator size="small" color={theme.textSecondary} />
-              ) : (
-                <Feather
-                  name={isRecording ? 'square' : 'mic'}
-                  size={isRecording ? 14 : 18}
-                  color={isRecording ? '#FFFFFF' : theme.toggleThumb}
-                />
-              )}
-            </TouchableOpacity>
-
-            <TextInput
-              style={[styles.textInput, { color: theme.text, backgroundColor: theme.surface }]}
-              placeholder="Type a message..."
-              placeholderTextColor={theme.textDisabled}
-              value={inputValue}
-              onChangeText={setInputValue}
-              multiline
-              maxLength={10000}
-              returnKeyType="default"
-            />
-
-            <TouchableOpacity
-              onPress={handleSend}
-              disabled={(!inputValue.trim() && !imageBase64) || isSending}
-              style={[
-                styles.sendButton,
-                {
-                  backgroundColor:
-                    inputValue.trim() || imageBase64 ? theme.buttonBg : theme.surface
-                }
-              ]}
-              activeOpacity={0.7}
-            >
-              <Feather
-                name="arrow-up"
-                size={18}
-                color={inputValue.trim() || imageBase64 ? '#FFFFFF' : theme.textDisabled}
-              />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-
-      {/* Model Picker Overlay — header stays visible, chat blurred beneath */}
-      {showModelPicker && (
-        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          {/* Blur layer behind header — covers only the messages/input area */}
-          <TouchableOpacity
-            style={[
-              styles.blurOverlay,
-              { backgroundColor: isDark ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.7)' }
-            ]}
-            activeOpacity={1}
-            onPress={() => setShowModelPicker(false)}
-          />
-
-          {/* Model selector panel — positioned below header */}
-          <View style={[styles.modelPanel, { backgroundColor: theme.background }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Select Model</Text>
-              <TouchableOpacity onPress={() => setShowModelPicker(false)}>
-                <Feather name="x" size={20} color={theme.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={styles.modalScroll}>
-              {availableModels.length === 0 && (
-                <View style={styles.noModels}>
-                  <Text style={[styles.noModelsText, { color: theme.textSecondary }]}>
-                    No API keys configured. Add them in Settings.
+              {isRecording || isTranscribing ? (
+                <View style={[styles.statusBar, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                  {isTranscribing ? (
+                    <ActivityIndicator size="small" color={theme.textSecondary} />
+                  ) : (
+                    <View style={styles.recordingDot} />
+                  )}
+                  <Text style={[styles.statusText, { color: isRecording ? '#EF4444' : theme.textSecondary }]}>
+                    {isRecording ? 'Recording voice input…' : 'Transcribing voice input…'}
                   </Text>
                 </View>
-              )}
-              {(['groq', 'google', 'openai', 'anthropic', 'xai'] as const).map((provider) => {
-                const providerModels = availableModels.filter((m) => m.provider === provider)
-                if (providerModels.length === 0) return null
-                return (
-                  <View key={provider}>
-                    <View style={styles.providerHeader}>
+              ) : null}
+
+              <View style={styles.composerActions}>
+                <View style={styles.leftActions}>
+                  <IconAction
+                    theme={theme}
+                    icon="image"
+                    onPress={async () => {
+                      const result = await ImagePicker.launchImageLibraryAsync({
+                        mediaTypes: ['images'],
+                        base64: true,
+                        quality: 0.7,
+                      })
+
+                      if (!result.canceled && result.assets[0].base64) {
+                        const mimeType = result.assets[0].mimeType || 'image/jpeg'
+                        setImageBase64(`data:${mimeType};base64,${result.assets[0].base64}`)
+                      }
+                    }}
+                  />
+                  <IconAction
+                    theme={theme}
+                    icon={isRecording ? 'square' : 'mic'}
+                    onPress={() => {
+                      void handleVoiceToggle()
+                    }}
+                    active={isRecording}
+                  />
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    void handleSend()
+                  }}
+                  activeOpacity={0.82}
+                  disabled={(!inputValue.trim() && !imageBase64) || isSending}
+                  style={[
+                    styles.sendButton,
+                    {
+                      backgroundColor: inputValue.trim() || imageBase64 ? theme.buttonBg : theme.background,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
+                  {isSending ? (
+                    <ActivityIndicator size="small" color={theme.surface} />
+                  ) : (
+                    <Feather
+                      name="arrow-up"
+                      size={18}
+                      color={inputValue.trim() || imageBase64 ? theme.surface : theme.textDisabled}
+                    />
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <TextInput
+                value={inputValue}
+                onChangeText={setInputValue}
+                placeholder={currentMode === 'ask' ? 'Ask Overlay anything…' : 'Tell Overlay what to do…'}
+                placeholderTextColor={theme.textDisabled}
+                multiline
+                maxLength={10000}
+                style={[styles.composerInput, { color: theme.text }]}
+              />
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promptRow}>
+                {PROMPT_SUGGESTIONS.map((prompt) => (
+                  <TouchableOpacity
+                    key={prompt}
+                    onPress={() => setInputValue(prompt)}
+                    activeOpacity={0.82}
+                    style={[styles.promptChip, { backgroundColor: theme.background, borderColor: theme.border }]}
+                  >
+                    <Text style={[styles.promptChipText, { color: theme.textSecondary }]} numberOfLines={1}>
+                      {prompt}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </PanelCard>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+
+      {showModelPicker ? (
+        <View style={[styles.overlayScrim, { backgroundColor: isDark ? 'rgba(0,0,0,0.48)' : 'rgba(10,10,10,0.18)' }]}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowModelPicker(false)} />
+          <View style={[styles.modelSheet, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={styles.modelSheetHeader}>
+              <Text style={[styles.modelSheetTitle, { color: theme.text }]}>Choose model</Text>
+              <IconAction theme={theme} icon="x" onPress={() => setShowModelPicker(false)} />
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {sortedModels.map((model) => (
+                <TouchableOpacity
+                  key={model.id}
+                  onPress={() => {
+                    void handleModelSelect(model)
+                  }}
+                  activeOpacity={0.82}
+                  style={[
+                    styles.modelOption,
+                    {
+                      backgroundColor: selectedModel?.id === model.id ? theme.background : 'transparent',
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
+                  <View style={styles.modelOptionCopy}>
+                    <View style={styles.modelOptionTopLine}>
                       <View
                         style={[
-                          styles.providerDotLarge,
-                          { backgroundColor: PROVIDER_COLORS[provider] }
+                          styles.providerDot,
+                          { backgroundColor: PROVIDER_COLORS[model.provider] || theme.textSecondary },
                         ]}
                       />
-                      <Text style={[styles.providerName, { color: theme.textSecondary }]}>
-                        {provider.charAt(0).toUpperCase() + provider.slice(1)}
-                      </Text>
+                      <Text style={[styles.modelOptionName, { color: theme.text }]}>{model.name}</Text>
                     </View>
-                    {providerModels.map((model) => (
-                      <TouchableOpacity
-                        key={model.id}
-                        style={[
-                          styles.modelOption,
-                          selectedModel?.id === model.id && { backgroundColor: theme.surface }
-                        ]}
-                        onPress={() => {
-                          setSelectedModel(model)
-                          setShowModelPicker(false)
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.modelOptionContent}>
-                          <Text style={[styles.modelOptionName, { color: theme.text }]}>
-                            {model.name}
-                          </Text>
-                          {model.description && (
-                            <Text
-                              style={[styles.modelOptionDesc, { color: theme.textSecondary }]}
-                            >
-                              {model.description}
-                            </Text>
-                          )}
+                    <Text style={[styles.modelOptionDescription, { color: theme.textSecondary }]}>
+                      {model.description || 'General purpose model'}
+                    </Text>
+                    <View style={styles.capabilityRow}>
+                      {capabilityTags(model).map((tag) => (
+                        <View key={`${model.id}-${tag}`} style={[styles.capabilityTag, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                          <Text style={[styles.capabilityTagText, { color: theme.textSecondary }]}>{tag}</Text>
                         </View>
-                        {selectedModel?.id === model.id && (
-                          <Feather name="check" size={16} color={theme.buttonBg} />
-                        )}
-                      </TouchableOpacity>
-                    ))}
+                      ))}
+                    </View>
                   </View>
-                )
-              })}
+                  {selectedModel?.id === model.id ? <Feather name="check" size={16} color={theme.text} /> : null}
+                </TouchableOpacity>
+              ))}
             </ScrollView>
           </View>
         </View>
-      )}
+      ) : null}
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1
-  },
-  flex: {
-    flex: 1
-  },
-  loadingContainer: {
+  loadingScreen: {
     flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center'
+  },
+  container: {
+    flex: 1,
+  },
+  ambientGlow: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    opacity: 0.18,
+  },
+  ambientGlowLeft: {
+    top: -60,
+    left: -90,
+  },
+  ambientGlowRight: {
+    top: 120,
+    right: -100,
+  },
+  screenPadding: {
+    flex: 1,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    gap: spacing.lg,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1
+    gap: spacing.md,
   },
   backButton: {
-    padding: spacing.sm
+    width: 42,
+    height: 42,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  modelButton: {
+  headerCopy: {
     flex: 1,
-    alignItems: 'center'
+    gap: 3,
   },
-  modelButtonContent: {
+  headerTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: '700',
+  },
+  headerProject: {
+    fontSize: fontSize.sm,
+  },
+  topCard: {
+    gap: spacing.md,
+  },
+  topCardCopy: {
+    gap: 6,
+  },
+  topCardTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: '700',
+  },
+  topCardDescription: {
+    fontSize: fontSize.sm,
+    lineHeight: 20,
+  },
+  topCardControls: {
+    gap: spacing.sm,
+  },
+  modeSwitch: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderRadius: borderRadius.full,
+    padding: 4,
+    gap: 4,
+  },
+  modePill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: borderRadius.full,
+  },
+  modePillText: {
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+  },
+  modelPill: {
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: borderRadius.full,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16
+    paddingVertical: 8,
+    maxWidth: '100%',
   },
   providerDot: {
     width: 8,
     height: 8,
-    borderRadius: 4
+    borderRadius: 999,
   },
-  modelName: {
+  modelPillText: {
     fontSize: fontSize.sm,
-    fontWeight: '500'
-  },
-  headerAction: {
-    padding: spacing.sm
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12
-  },
-  emptyText: {
-    fontSize: fontSize.md
-  },
-  messagesList: {
-    paddingVertical: spacing.md
-  },
-  inputContainer: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderTopWidth: 1
-  },
-  imagePreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginBottom: 8
-  },
-  imagePreviewText: {
-    flex: 1,
-    fontSize: fontSize.xs
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8
-  },
-  attachButton: {
-    padding: 8,
-    justifyContent: 'center'
-  },
-  micButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  textInput: {
-    flex: 1,
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: fontSize.md,
-    maxHeight: 120,
-    minHeight: 40
-  },
-  sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  blurOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden'
-  },
-  modelPanel: {
-    position: 'absolute',
-    top: 52,
-    left: 0,
-    right: 0,
-    maxHeight: '60%',
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
-    borderBottomWidth: 1
-  },
-  modalTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: '600'
-  },
-  modalScroll: {
-    paddingBottom: 40
-  },
-  noModels: {
-    padding: spacing.xl,
-    alignItems: 'center'
-  },
-  noModelsText: {
-    fontSize: fontSize.md,
-    textAlign: 'center'
-  },
-  providerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.sm
-  },
-  providerDotLarge: {
-    width: 10,
-    height: 10,
-    borderRadius: 5
-  },
-  providerName: {
-    fontSize: 11,
     fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5
+    maxWidth: 220,
   },
-  modelOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md
-  },
-  modelOptionContent: {
+  flex: {
     flex: 1,
-    gap: 2
+    gap: spacing.lg,
   },
-  modelOptionName: {
-    fontSize: fontSize.md,
-    fontWeight: '500'
+  emptyThread: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    gap: spacing.md,
   },
-  modelOptionDesc: {
-    fontSize: fontSize.xs
+  emptyThreadIcon: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  recordingBar: {
+  emptyThreadTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: '700',
+  },
+  emptyThreadDescription: {
+    fontSize: fontSize.sm,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  suggestionGrid: {
+    width: '100%',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  suggestionCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: spacing.md,
+  },
+  suggestionText: {
+    fontSize: fontSize.sm,
+    lineHeight: 20,
+  },
+  messageList: {
+    paddingVertical: spacing.lg,
+  },
+  composerWrap: {
+    paddingBottom: spacing.sm,
+  },
+  attachmentBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginBottom: 8
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    marginBottom: spacing.md,
+  },
+  attachmentText: {
+    flex: 1,
+    fontSize: fontSize.sm,
+  },
+  statusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    marginBottom: spacing.md,
   },
   recordingDot: {
     width: 8,
     height: 8,
-    borderRadius: 4,
-    backgroundColor: '#EF4444'
+    borderRadius: 999,
+    backgroundColor: '#EF4444',
   },
-  recordingText: {
-    fontSize: fontSize.xs,
-    fontWeight: '500',
-    color: '#EF4444'
-  }
+  statusText: {
+    fontSize: fontSize.sm,
+  },
+  composerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  leftActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  sendButton: {
+    width: 42,
+    height: 42,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  composerInput: {
+    minHeight: 112,
+    maxHeight: 180,
+    fontSize: fontSize.md,
+    lineHeight: 24,
+    textAlignVertical: 'top',
+    marginBottom: spacing.md,
+  },
+  promptRow: {
+    gap: spacing.sm,
+  },
+  promptChip: {
+    borderWidth: 1,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  promptChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  overlayScrim: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    padding: spacing.lg,
+  },
+  modelSheet: {
+    width: '100%',
+    maxHeight: '70%',
+    borderWidth: 1,
+    borderRadius: 24,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  modelSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  modelSheetTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: '700',
+  },
+  modelOption: {
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  modelOptionCopy: {
+    flex: 1,
+    gap: 8,
+  },
+  modelOptionTopLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  modelOptionName: {
+    fontSize: fontSize.md,
+    fontWeight: '700',
+  },
+  modelOptionDescription: {
+    fontSize: fontSize.sm,
+    lineHeight: 20,
+  },
+  capabilityRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  capabilityTag: {
+    borderWidth: 1,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  capabilityTagText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
 })

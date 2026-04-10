@@ -1,5 +1,5 @@
 import React from 'react'
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
+import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Markdown from 'react-native-markdown-display'
 import { Feather } from '@expo/vector-icons'
 import { Message } from '../../services/chatTypes'
@@ -26,6 +26,9 @@ export function MessageBubble({
        message.responses?.[0]?.content ||
        message.content)
   const isLoading = message.responses?.some((r) => r.isLoading) ?? false
+  const hasReasoning = !isUser && !!message.reasoning?.trim()
+  const toolInvocations = !isUser ? message.toolInvocations || [] : []
+  const generatedFiles = !isUser ? message.generatedFiles || [] : []
 
   const markdownStyles = {
     body: {
@@ -108,31 +111,117 @@ export function MessageBubble({
 
   return (
     <View style={[styles.container, isUser ? styles.userContainer : styles.assistantContainer]}>
-      {!isUser && (
-        <View style={styles.avatarRow}>
-          <View style={[styles.avatar, { backgroundColor: theme.surface }]}>
-            <Feather name="cpu" size={12} color={theme.textSecondary} />
+      <View style={styles.metaRow}>
+        {!isUser ? (
+          <View style={[styles.assistantMeta, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={[styles.avatar, { backgroundColor: theme.background }]}>
+              <Feather name="cpu" size={12} color={theme.textSecondary} />
+            </View>
+            <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>
+              {message.responses?.[0]?.modelName || 'Overlay'}
+            </Text>
           </View>
-        </View>
-      )}
+        ) : (
+          <View style={[styles.userMeta, { backgroundColor: theme.buttonBg }]}>
+            <Text style={styles.userMetaText}>You</Text>
+          </View>
+        )}
+      </View>
 
       <View
         style={[
           styles.bubble,
           isUser
             ? [styles.userBubble, { backgroundColor: theme.buttonBg }]
-            : [styles.assistantBubble, { backgroundColor: 'transparent' }]
+            : [styles.assistantBubble, { backgroundColor: theme.surface, borderColor: theme.border }]
         ]}
       >
+        {message.imageData ? (
+          <View style={[styles.attachmentTag, { backgroundColor: isUser ? 'rgba(255,255,255,0.12)' : theme.background }]}>
+            <Feather
+              name="image"
+              size={13}
+              color={isUser ? '#FFFFFF' : theme.textSecondary}
+            />
+            <Text
+              style={[
+                styles.attachmentTagText,
+                { color: isUser ? '#FFFFFF' : theme.textSecondary }
+              ]}
+            >
+              Image attached
+            </Text>
+          </View>
+        ) : null}
+
         {isLoading && !displayContent ? (
           <View style={styles.loadingRow}>
             <Feather name="loader" size={14} color={theme.textSecondary} />
             <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Thinking...</Text>
           </View>
-        ) : (
+        ) : displayContent ? (
           <Markdown style={markdownStyles}>{displayContent}</Markdown>
+        ) : (
+          <Text style={[styles.emptyAssistantText, { color: theme.textSecondary }]}>
+            Waiting for model output…
+          </Text>
         )}
       </View>
+
+      {hasReasoning ? (
+        <View style={[styles.supplementaryBlock, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <Text style={[styles.supplementaryLabel, { color: theme.textSecondary }]}>Reasoning</Text>
+          <Markdown style={markdownStyles}>{message.reasoning!.trim()}</Markdown>
+        </View>
+      ) : null}
+
+      {toolInvocations.length > 0 ? (
+        <View style={[styles.supplementaryBlock, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <Text style={[styles.supplementaryLabel, { color: theme.textSecondary }]}>Tools</Text>
+          {toolInvocations.map((tool, index) => (
+            <View
+              key={`${tool.toolCallId || tool.toolName}-${index}`}
+              style={[styles.toolRow, { borderBottomColor: theme.border }]}
+            >
+              <View style={styles.toolHeader}>
+                <Feather name="cpu" size={13} color={theme.textSecondary} />
+                <Text style={[styles.toolName, { color: theme.text }]}>{tool.toolName}</Text>
+              </View>
+              <Text style={[styles.toolState, { color: theme.textSecondary }]}>
+                {tool.state || 'completed'}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {generatedFiles.length > 0 ? (
+        <View style={[styles.supplementaryBlock, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <Text style={[styles.supplementaryLabel, { color: theme.textSecondary }]}>Outputs</Text>
+          {generatedFiles.map((file, index) => (
+            <TouchableOpacity
+              key={`${file.url}-${index}`}
+              onPress={() => {
+                void Linking.openURL(file.url)
+              }}
+              activeOpacity={0.82}
+              style={[styles.fileRow, { borderBottomColor: theme.border }]}
+            >
+              <View style={styles.toolHeader}>
+                <Feather name="link" size={13} color={theme.textSecondary} />
+                <Text style={[styles.fileLabel, { color: theme.text }]}>
+                  {file.mediaType.startsWith('image/')
+                    ? 'Generated image'
+                    : file.mediaType.startsWith('video/')
+                      ? 'Generated video'
+                      : 'Generated file'}
+                </Text>
+              </View>
+              <Feather name="external-link" size={14} color={theme.textSecondary} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
 
       {!isUser && displayContent && !isLoading && (
         <View style={styles.actions}>
@@ -156,7 +245,7 @@ export function MessageBubble({
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 4,
+    marginVertical: 8,
     paddingHorizontal: spacing.lg
   },
   userContainer: {
@@ -165,10 +254,27 @@ const styles = StyleSheet.create({
   assistantContainer: {
     alignItems: 'flex-start'
   },
-  avatarRow: {
+  metaRow: {
+    marginBottom: 6
+  },
+  assistantMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  userMeta: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  userMetaText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700'
   },
   avatar: {
     width: 24,
@@ -177,18 +283,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center'
   },
+  metaLabel: {
+    fontSize: 12,
+    fontWeight: '700'
+  },
   bubble: {
-    maxWidth: '85%',
-    borderRadius: 16,
+    maxWidth: '92%',
+    borderRadius: 22,
     paddingHorizontal: 14,
-    paddingVertical: 10
+    paddingVertical: 12
   },
   userBubble: {
-    borderBottomRightRadius: 4
+    borderBottomRightRadius: 8
   },
   assistantBubble: {
-    borderBottomLeftRadius: 4,
-    paddingHorizontal: 0
+    borderBottomLeftRadius: 8,
+    borderWidth: 1
   },
   loadingRow: {
     flexDirection: 'row',
@@ -198,10 +308,71 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: fontSize.sm
   },
+  emptyAssistantText: {
+    fontSize: fontSize.sm,
+    lineHeight: 20
+  },
+  attachmentTag: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 8
+  },
+  attachmentTagText: {
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  supplementaryBlock: {
+    maxWidth: '92%',
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 12,
+    marginTop: 8
+  },
+  supplementaryLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8
+  },
+  toolRow: {
+    paddingVertical: 10,
+    borderBottomWidth: 1
+  },
+  toolHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  toolName: {
+    fontSize: fontSize.sm,
+    fontWeight: '600'
+  },
+  toolState: {
+    fontSize: 12,
+    marginTop: 4
+  },
+  fileRow: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm
+  },
+  fileLabel: {
+    fontSize: fontSize.sm,
+    fontWeight: '600'
+  },
   actions: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 4,
+    marginTop: 8,
     paddingLeft: 4
   }
 })

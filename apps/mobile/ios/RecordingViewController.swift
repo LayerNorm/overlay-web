@@ -5,6 +5,7 @@ private let appGroupID = "group.com.layernorm.overlay-mobile"
 private let statusKey = "overlay_kb_status"
 private let resultKey = "overlay_kb_result"
 private let audioLevelKey = "overlay_kb_audio_level"
+private let recordingHeartbeatKey = "overlay_kb_recording_heartbeat"
 private let commandKey = "overlay_kb_command"
 private let backgroundModeKey = "overlay_kb_background_mode_enabled"
 private let disableBackgroundCommand = "disable_bg_mode"
@@ -696,11 +697,15 @@ class RecordingViewController: UIViewController {
 
     private func writeStatus(_ status: String) {
         defaults?.set(status, forKey: statusKey)
+        if status == "recording" {
+            defaults?.set(Date().timeIntervalSince1970, forKey: recordingHeartbeatKey)
+        }
         defaults?.synchronize()
     }
 
     private func writeAudioLevel(_ level: Float) {
         defaults?.set(level, forKey: audioLevelKey)
+        defaults?.set(Date().timeIntervalSince1970, forKey: recordingHeartbeatKey)
     }
 
     private func writeCommand(_ command: String) {
@@ -716,6 +721,7 @@ class RecordingViewController: UIViewController {
     private func ensureRecordingStatus() {
         guard defaults?.string(forKey: statusKey) != "recording" else { return }
         defaults?.set("recording", forKey: statusKey)
+        defaults?.set(Date().timeIntervalSince1970, forKey: recordingHeartbeatKey)
     }
 
     private func keepListeningForCommandsIfNeeded() {

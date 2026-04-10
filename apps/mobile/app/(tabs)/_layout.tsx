@@ -22,14 +22,13 @@ export default function TabLayout(): React.ReactElement {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color, size }) => <Feather name="home" size={size} color={color} />,
+          href: null,
         }}
       />
       <Tabs.Screen
-        name="chats"
+        name="chat"
         options={{
-          title: 'Chats',
+          title: 'Chat',
           tabBarIcon: ({ color, size }) => <Feather name="message-square" size={size} color={color} />,
         }}
       />
@@ -41,8 +40,36 @@ export default function TabLayout(): React.ReactElement {
         }}
       />
       <Tabs.Screen
+        name="knowledge"
+        options={{
+          title: 'Knowledge',
+          tabBarIcon: ({ color, size }) => <Feather name="archive" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="projects"
+        options={{
+          title: 'Projects',
+          tabBarIcon: ({ color, size }) => <Feather name="folder" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="more"
+        options={{
+          title: 'More',
+          tabBarIcon: ({ color, size }) => <Feather name="menu" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="chats"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
+          href: null,
           title: 'Settings',
           tabBarIcon: ({ color, size }) => <Feather name="settings" size={size} color={color} />,
         }}

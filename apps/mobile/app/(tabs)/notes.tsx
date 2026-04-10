@@ -1,505 +1,653 @@
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  SectionList,
   Alert,
+  SectionList,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { useRouter, useFocusEffect } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import * as Haptics from 'expo-haptics'
+import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { useTheme } from '../../hooks/useTheme'
-import { spacing, fontSize, borderRadius } from '../../constants/theme'
-import { NoteMeta, Folder, formatDate, getDateLabel } from '../../services/types'
-import { loadNotesIndex, deleteNote } from '../../services/noteStorage'
-import {
-  loadNoteFolders,
-  createNoteFolder,
-  deleteNoteFolder,
-  toggleNoteFolderExpanded
-} from '../../services/folderStorage'
+import { IconAction, MetricTile, PanelCard, SectionLabel } from '../../components/ui/PanelPrimitives'
+import { deleteNote, loadNotesIndex } from '../../services/noteStorage'
+import type { NoteMeta } from '../../services/types'
+import { formatDate, getDateLabel } from '../../services/types'
 
-interface NoteRowProps {
-  note: NoteMeta
-  theme: ReturnType<typeof useTheme>['theme']
-  onPress: () => void
-  onDelete: () => void
+function withOpacity(color: string, opacity: number): string {
+  if (!color.startsWith('#')) return color
+
+  const hex = color.slice(1)
+  const normalized =
+    hex.length === 3
+      ? hex
+          .split('')
+          .map((char) => char + char)
+          .join('')
+      : hex
+
+  const value = Number.parseInt(normalized, 16)
+  const red = (value >> 16) & 255
+  const green = (value >> 8) & 255
+  const blue = value & 255
+
+  return `rgba(${red}, ${green}, ${blue}, ${opacity})`
 }
 
-function NoteRow({ note, theme, onPress, onDelete }: NoteRowProps): React.ReactElement {
-  const handleDelete = (): void => {
-    Alert.alert(
-      'Delete Note',
-      `Are you sure you want to delete "${note.title}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-            onDelete()
-          }
-        }
+function getAccent(seed: string, isDark: boolean): {
+  tint: string
+  wash: string
+  line: string
+} {
+  const accents = isDark
+    ? [
+        { tint: '#fde68a', wash: 'rgba(253, 230, 138, 0.14)', line: 'rgba(253, 230, 138, 0.34)' },
+        { tint: '#a5f3fc', wash: 'rgba(165, 243, 252, 0.14)', line: 'rgba(165, 243, 252, 0.34)' },
+        { tint: '#f9a8d4', wash: 'rgba(249, 168, 212, 0.14)', line: 'rgba(249, 168, 212, 0.34)' },
+        { tint: '#c4b5fd', wash: 'rgba(196, 181, 253, 0.14)', line: 'rgba(196, 181, 253, 0.34)' },
       ]
-    )
-  }
+    : [
+        { tint: '#92400e', wash: 'rgba(146, 64, 14, 0.10)', line: 'rgba(146, 64, 14, 0.22)' },
+        { tint: '#155e75', wash: 'rgba(21, 94, 117, 0.10)', line: 'rgba(21, 94, 117, 0.22)' },
+        { tint: '#9d174d', wash: 'rgba(157, 23, 77, 0.10)', line: 'rgba(157, 23, 77, 0.22)' },
+        { tint: '#5b21b6', wash: 'rgba(91, 33, 182, 0.10)', line: 'rgba(91, 33, 182, 0.22)' },
+      ]
+
+  const hash = seed.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
+  return accents[hash % accents.length]
+}
+
+function getFreshnessLabel(timestamp: number): string {
+  const diffHours = Math.floor((Date.now() - timestamp) / (1000 * 60 * 60))
+
+  if (diffHours <= 1) return 'Just edited'
+  if (diffHours < 24) return `${diffHours}h ago`
+
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 7) return `${diffDays}d ago`
+  return 'Older'
+}
+
+function NoteRow({
+  note,
+  isDark,
+  onPress,
+  onDelete,
+}: {
+  note: NoteMeta
+  isDark: boolean
+  onPress: () => void
+  onDelete: () => void
+}): React.ReactElement {
+  const { theme } = useTheme()
+  const accent = getAccent(note.id, isDark)
 
   return (
     <TouchableOpacity
       onPress={onPress}
-      onLongPress={handleDelete}
-      activeOpacity={0.7}
-      style={[styles.noteRow, { backgroundColor: theme.background }]}
+      onLongPress={onDelete}
+      activeOpacity={0.86}
+      style={[styles.itemRow, { borderBottomColor: theme.border }]}
     >
-      <View style={styles.noteRowContent}>
-        <View style={styles.noteRowIcon}>
-          <Feather name="file-text" size={16} color={theme.textSecondary} />
-        </View>
-        <View style={styles.noteRowText}>
-          <Text style={[styles.noteTitle, { color: theme.text }]} numberOfLines={1}>
+      <View style={[styles.rowRail, { backgroundColor: accent.tint }]} />
+
+      <View style={[styles.rowIconWrap, { backgroundColor: accent.wash, borderColor: accent.line }]}>
+        <Feather name="file-text" size={16} color={accent.tint} />
+      </View>
+
+      <View style={styles.itemBody}>
+        <View style={styles.itemTitleLine}>
+          <Text style={[styles.itemTitle, { color: theme.text }]} numberOfLines={1}>
             {note.title || 'Untitled'}
           </Text>
-          <Text style={[styles.noteDate, { color: theme.textSecondary }]}>
-            {formatDate(note.updatedAt)}
+
+          <View style={[styles.itemBadge, { backgroundColor: withOpacity(theme.text, isDark ? 0.12 : 0.05) }]}>
+            <Text style={[styles.itemBadgeText, { color: theme.textSecondary }]}>
+              {getFreshnessLabel(note.updatedAt)}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.noteMetaRow}>
+          <View style={[styles.metaPill, { backgroundColor: accent.wash, borderColor: accent.line }]}>
+            <Text style={[styles.metaPillText, { color: accent.tint }]}>Synced note</Text>
+          </View>
+          <Text style={[styles.itemMeta, { color: theme.textSecondary }]}>
+            Updated {formatDate(note.updatedAt)}
           </Text>
         </View>
-        <Feather name="chevron-right" size={16} color={theme.textDisabled} />
       </View>
-    </TouchableOpacity>
-  )
-}
 
-interface FolderRowProps {
-  folder: Folder
-  noteCount: number
-  theme: ReturnType<typeof useTheme>['theme']
-  onToggle: () => void
-  onDelete: () => void
-}
-
-function FolderRow({ folder, noteCount, theme, onToggle, onDelete }: FolderRowProps): React.ReactElement {
-  const handleDelete = (): void => {
-    Alert.alert(
-      'Delete Folder',
-      `Are you sure you want to delete "${folder.name}"? Notes inside will be moved to root.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-            onDelete()
-          }
-        }
-      ]
-    )
-  }
-
-  return (
-    <TouchableOpacity
-      onPress={onToggle}
-      onLongPress={handleDelete}
-      activeOpacity={0.7}
-      style={[styles.folderRow, { backgroundColor: theme.background }]}
-    >
-      <View style={styles.folderRowContent}>
-        <Feather
-          name={folder.isExpanded ? 'chevron-down' : 'chevron-right'}
-          size={14}
-          color={theme.textSecondary}
-        />
-        <Feather name="folder" size={16} color={theme.textSecondary} />
-        <Text style={[styles.folderName, { color: theme.text }]} numberOfLines={1}>
-          {folder.name}
-        </Text>
-        <Text style={[styles.folderCount, { color: theme.textDisabled }]}>
-          {noteCount}
-        </Text>
-      </View>
+      <Feather name="chevron-right" size={18} color={theme.textDisabled} />
     </TouchableOpacity>
   )
 }
 
 export default function NotesScreen(): React.ReactElement {
-  const { theme } = useTheme()
   const router = useRouter()
+  const { theme, isDark } = useTheme()
 
   const [notes, setNotes] = useState<NoteMeta[]>([])
-  const [folders, setFolders] = useState<Folder[]>([])
   const [searchQuery, setSearchQuery] = useState('')
-  const [isLoading, setIsLoading] = useState(true)
   const [showSearch, setShowSearch] = useState(false)
 
   const refreshData = useCallback(async () => {
-    const [loadedNotes, loadedFolders] = await Promise.all([
-      loadNotesIndex(),
-      loadNoteFolders()
-    ])
-    setNotes(loadedNotes.sort((a, b) => b.updatedAt - a.updatedAt))
-    setFolders(loadedFolders)
-    setIsLoading(false)
+    const nextNotes = await loadNotesIndex()
+    setNotes(nextNotes.sort((a, b) => b.updatedAt - a.updatedAt))
   }, [])
 
   useFocusEffect(
     useCallback(() => {
-      refreshData()
-    }, [refreshData])
+      void refreshData()
+    }, [refreshData]),
   )
 
-  const handleNewNote = (): void => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    router.push('/note/new')
-  }
-
-  const handleOpenNote = useCallback((id: string) => {
-    router.push(`/note/${id}`)
-  }, [router])
-
-  const handleDeleteNote = useCallback(async (id: string) => {
-    await deleteNote(id)
-    await refreshData()
-  }, [refreshData])
-
-  const handleCreateFolder = useCallback(async () => {
-    Alert.prompt(
-      'New Folder',
-      'Enter folder name',
-      async (name) => {
-        if (name?.trim()) {
-          await createNoteFolder(name.trim())
-          await refreshData()
-        }
-      },
-      'plain-text',
-      'New Folder'
-    )
-  }, [refreshData])
-
-  const handleToggleFolder = useCallback(async (folderId: string) => {
-    await toggleNoteFolderExpanded(folderId)
-    await refreshData()
-  }, [refreshData])
-
-  const handleDeleteFolder = useCallback(async (folderId: string) => {
-    await deleteNoteFolder(folderId)
-    await refreshData()
-  }, [refreshData])
+  const handleDeleteNote = useCallback(
+    (note: NoteMeta) => {
+      Alert.alert('Delete note', `Delete "${note.title}"?`, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteNote(note.id)
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+            await refreshData()
+          },
+        },
+      ])
+    },
+    [refreshData],
+  )
 
   const filteredNotes = useMemo(() => {
-    if (!searchQuery.trim()) return notes
-    const lowerQuery = searchQuery.toLowerCase()
-    return notes.filter((n) => n.title.toLowerCase().includes(lowerQuery))
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return notes
+    return notes.filter((note) => note.title.toLowerCase().includes(query))
   }, [notes, searchQuery])
 
-  const rootFolders = useMemo(
-    () => folders.filter((f) => f.parentId === null),
-    [folders]
-  )
-
-  const rootNotes = useMemo(
-    () => filteredNotes.filter((n) => !n.folderId),
-    [filteredNotes]
-  )
-
   const sections = useMemo(() => {
-    const result: { title: string; data: (NoteMeta | { type: 'folder'; folder: Folder; notes: NoteMeta[] })[] }[] = []
+    const groups: Record<string, NoteMeta[]> = {}
 
-    if (rootFolders.length > 0 && !searchQuery) {
-      const folderItems = rootFolders.map((folder) => ({
-        type: 'folder' as const,
-        folder,
-        notes: filteredNotes.filter((n) => n.folderId === folder.id)
-      }))
-      result.push({ title: 'FOLDERS', data: folderItems })
-    }
-
-    const grouped: Record<string, NoteMeta[]> = {}
-    for (const note of rootNotes) {
+    for (const note of filteredNotes) {
       const label = getDateLabel(note.updatedAt)
-      if (!grouped[label]) grouped[label] = []
-      grouped[label].push(note)
+      if (!groups[label]) groups[label] = []
+      groups[label].push(note)
     }
 
-    for (const [label, groupNotes] of Object.entries(grouped)) {
-      result.push({ title: label, data: groupNotes })
-    }
+    return Object.entries(groups).map(([title, data]) => ({ title, data }))
+  }, [filteredNotes])
 
-    return result
-  }, [rootFolders, rootNotes, filteredNotes, searchQuery])
-
-  const hasNotes = notes.length > 0
+  const latestNote = notes[0]
+  const recentNotesCount = notes.filter((note) => Date.now() - note.updatedAt < 7 * 24 * 60 * 60 * 1000).length
+  const todayCount = notes.filter((note) => getDateLabel(note.updatedAt) === 'TODAY').length
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>Notes</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            onPress={() => setShowSearch(!showSearch)}
-            style={styles.headerButton}
-            activeOpacity={0.7}
-          >
-            <Feather name="search" size={20} color={theme.textSecondary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleCreateFolder}
-            style={styles.headerButton}
-            activeOpacity={0.7}
-          >
-            <Feather name="folder-plus" size={20} color={theme.textSecondary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.newButton, { backgroundColor: theme.buttonBg }]}
-            onPress={handleNewNote}
-            activeOpacity={0.7}
-          >
-            <Feather name="plus" size={20} color={theme.surface} />
-          </TouchableOpacity>
-        </View>
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <View
+          style={[
+            styles.backgroundOrb,
+            styles.backgroundOrbPrimary,
+            { backgroundColor: isDark ? 'rgba(253, 230, 138, 0.12)' : 'rgba(251, 191, 36, 0.12)' },
+          ]}
+        />
+        <View
+          style={[
+            styles.backgroundOrb,
+            styles.backgroundOrbSecondary,
+            { backgroundColor: isDark ? 'rgba(165, 243, 252, 0.08)' : 'rgba(14, 165, 233, 0.10)' },
+          ]}
+        />
       </View>
 
-      {showSearch && (
-        <View style={[styles.searchContainer, { borderBottomColor: theme.border }]}>
-          <Feather name="search" size={16} color={theme.textSecondary} />
-          <TextInput
-            style={[styles.searchInput, { color: theme.text }]}
-            placeholder="Search notes..."
-            placeholderTextColor={theme.textDisabled}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoFocus
-            returnKeyType="search"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Feather name="x" size={16} color={theme.textSecondary} />
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => item.id}
+        stickySectionHeadersEnabled={false}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.content}
+        ListHeaderComponent={
+          <View style={styles.headerStack}>
+            <View style={styles.topBar}>
+              <View style={styles.titleBlock}>
+                <Text style={[styles.eyebrow, { color: theme.textSecondary }]}>Writing Desk</Text>
+                <Text style={[styles.title, { color: theme.text }]}>Notes</Text>
+                <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+                  The mobile notebook now uses the same server-backed note store as the web app.
+                </Text>
+              </View>
 
-      {!hasNotes && !isLoading ? (
-        <View style={styles.emptyContent}>
-          <View style={styles.emptyState}>
-            <View style={[styles.emptyIcon, { backgroundColor: theme.surface }]}>
-              <Feather name="file-text" size={32} color={theme.textSecondary} />
+              <View style={styles.topBarActions}>
+                <IconAction
+                  theme={theme}
+                  icon={showSearch ? 'x' : 'search'}
+                  onPress={() => setShowSearch((value) => !value)}
+                  active={showSearch}
+                />
+                <TouchableOpacity
+                  onPress={() => router.push('/note/new')}
+                  activeOpacity={0.86}
+                  style={[styles.primaryFab, { backgroundColor: theme.buttonBg }]}
+                >
+                  <Feather name="plus" size={18} color={theme.surface} />
+                </TouchableOpacity>
+              </View>
             </View>
-            <Text style={[styles.emptyTitle, { color: theme.text }]}>No notes yet</Text>
-            <Text style={[styles.emptyDescription, { color: theme.textSecondary }]}>
-              Create your first note to get started
-            </Text>
-            <TouchableOpacity
-              style={[styles.emptyButton, { backgroundColor: theme.buttonBg }]}
-              onPress={handleNewNote}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.emptyButtonText, { color: theme.surface }]}>New Note</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : (
-        <SectionList
-          sections={sections}
-          keyExtractor={(item) => {
-            if ('type' in item && item.type === 'folder') return `folder-${item.folder.id}`
-            return (item as NoteMeta).id
-          }}
-          renderSectionHeader={({ section }) => (
-            <View style={[styles.sectionHeader, { backgroundColor: theme.background }]}>
-              <Text style={[styles.sectionHeaderText, { color: theme.textSecondary }]}>
-                {section.title}
-              </Text>
-            </View>
-          )}
-          renderItem={({ item }) => {
-            if ('type' in item && item.type === 'folder') {
-              return (
-                <View>
-                  <FolderRow
-                    folder={item.folder}
-                    noteCount={item.notes.length}
-                    theme={theme}
-                    onToggle={() => handleToggleFolder(item.folder.id)}
-                    onDelete={() => handleDeleteFolder(item.folder.id)}
-                  />
-                  {item.folder.isExpanded && item.notes.map((note) => (
-                    <View key={note.id} style={styles.folderNoteIndent}>
-                      <NoteRow
-                        note={note}
-                        theme={theme}
-                        onPress={() => handleOpenNote(note.id)}
-                        onDelete={() => handleDeleteNote(note.id)}
-                      />
+
+            <PanelCard theme={theme}>
+              <View
+                style={[
+                  styles.heroCard,
+                  {
+                    backgroundColor: isDark ? withOpacity('#fde68a', 0.08) : withOpacity('#fffbeb', 0.96),
+                    borderColor: withOpacity(theme.text, isDark ? 0.16 : 0.06),
+                  },
+                ]}
+              >
+                <View style={styles.heroTopRow}>
+                  <View style={styles.heroCopy}>
+                    <View
+                      style={[
+                        styles.heroChip,
+                        { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.75)' },
+                      ]}
+                    >
+                      <Feather name="edit-3" size={13} color={theme.textSecondary} />
+                      <Text style={[styles.heroChipText, { color: theme.textSecondary }]}>
+                        {latestNote ? 'Synced notebook active' : 'Blank page ready'}
+                      </Text>
                     </View>
-                  ))}
-                </View>
-              )
-            }
 
-            const note = item as NoteMeta
-            return (
-              <NoteRow
-                note={note}
-                theme={theme}
-                onPress={() => handleOpenNote(note.id)}
-                onDelete={() => handleDeleteNote(note.id)}
-              />
-            )
-          }}
-          stickySectionHeadersEnabled={false}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-        />
-      )}
+                    <Text style={[styles.heroTitle, { color: theme.text }]}>A notebook that stays in sync</Text>
+                    <Text style={[styles.heroDescription, { color: theme.textSecondary }]}>
+                      Create, edit, and resume notes with the same backend documents used across Overlay.
+                    </Text>
+                  </View>
+
+                  <View style={styles.heroActionRow}>
+                    <TouchableOpacity
+                      onPress={() => router.push('/note/new')}
+                      activeOpacity={0.86}
+                      style={[styles.heroPrimaryCta, { backgroundColor: theme.buttonBg }]}
+                    >
+                      <Text style={[styles.heroPrimaryCtaText, { color: theme.surface }]}>New note</Text>
+                      <Feather name="arrow-up-right" size={16} color={theme.surface} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.metricRow}>
+                  <MetricTile theme={theme} label="Notes" value={String(notes.length)} />
+                  <MetricTile theme={theme} label="Recent" value={String(recentNotesCount)} />
+                  <MetricTile theme={theme} label="Today" value={String(todayCount)} />
+                </View>
+
+                {latestNote ? (
+                  <TouchableOpacity
+                    onPress={() => router.push(`/note/${latestNote.id}`)}
+                    activeOpacity={0.86}
+                    style={[
+                      styles.resumeCard,
+                      {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.78)',
+                        borderColor: withOpacity(theme.text, isDark ? 0.14 : 0.08),
+                      },
+                    ]}
+                  >
+                    <View style={[styles.resumeIconWrap, { backgroundColor: withOpacity(theme.text, isDark ? 0.12 : 0.05) }]}>
+                      <Feather name="bookmark" size={16} color={theme.textSecondary} />
+                    </View>
+
+                    <View style={styles.resumeCopy}>
+                      <Text style={[styles.resumeLabel, { color: theme.textSecondary }]}>Continue writing</Text>
+                      <Text style={[styles.resumeTitle, { color: theme.text }]} numberOfLines={1}>
+                        {latestNote.title || 'Untitled'}
+                      </Text>
+                      <Text style={[styles.resumeMeta, { color: theme.textSecondary }]}>
+                        Synced note · Updated {formatDate(latestNote.updatedAt)}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </PanelCard>
+
+            {showSearch ? (
+              <PanelCard theme={theme} padded={false}>
+                <View
+                  style={[
+                    styles.searchRow,
+                    { backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.45)' },
+                  ]}
+                >
+                  <View style={[styles.searchIconWrap, { backgroundColor: withOpacity(theme.text, isDark ? 0.12 : 0.05) }]}>
+                    <Feather name="search" size={16} color={theme.textSecondary} />
+                  </View>
+                  <TextInput
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    placeholder="Search note titles"
+                    placeholderTextColor={theme.textDisabled}
+                    style={[styles.searchInput, { color: theme.text }]}
+                    autoFocus
+                  />
+                  {searchQuery ? (
+                    <Text style={[styles.searchCount, { color: theme.textSecondary }]}>{filteredNotes.length}</Text>
+                  ) : null}
+                </View>
+              </PanelCard>
+            ) : null}
+
+            {filteredNotes.length === 0 ? (
+              <PanelCard theme={theme}>
+                <View style={styles.emptyState}>
+                  <View style={[styles.emptyIcon, { backgroundColor: withOpacity(theme.text, isDark ? 0.10 : 0.05), borderColor: theme.border }]}>
+                    <Feather name="file-plus" size={28} color={theme.textSecondary} />
+                  </View>
+                  <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                    {notes.length === 0 ? 'No notes yet' : 'No matching notes'}
+                  </Text>
+                  <Text style={[styles.emptyDescription, { color: theme.textSecondary }]}>
+                    {notes.length === 0
+                      ? 'Create your first note to start the shared notebook history.'
+                      : 'Try another title, or jump into your latest draft from the spotlight card above.'}
+                  </Text>
+                </View>
+              </PanelCard>
+            ) : null}
+          </View>
+        }
+        renderSectionHeader={({ section }) =>
+          section.data.length > 0 ? (
+            <View style={styles.sectionHeader}>
+              <SectionLabel theme={theme}>{section.title}</SectionLabel>
+            </View>
+          ) : null
+        }
+        renderItem={({ item, section, index }) => (
+          <PanelCard theme={theme} padded={false}>
+            <NoteRow
+              note={item}
+              isDark={isDark}
+              onPress={() => router.push(`/note/${item.id}`)}
+              onDelete={() => handleDeleteNote(item)}
+            />
+            {index === section.data.length - 1 ? <View style={styles.lastRowSpacer} /> : null}
+          </PanelCard>
+        )}
+        SectionSeparatorComponent={() => <View style={{ height: spacing.lg }} />}
+      />
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1
+    flex: 1,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  content: {
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg
+    paddingBottom: 140,
   },
-  headerTitle: {
-    fontSize: fontSize.xxl,
-    fontWeight: '600'
+  backgroundOrb: {
+    position: 'absolute',
+    width: 250,
+    height: 250,
+    borderRadius: 250,
   },
-  headerActions: {
+  backgroundOrbPrimary: {
+    top: -40,
+    left: -70,
+  },
+  backgroundOrbSecondary: {
+    top: 250,
+    right: -90,
+  },
+  headerStack: {
+    gap: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+  },
+  topBar: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.md,
   },
-  headerButton: {
-    padding: spacing.sm
+  titleBlock: {
+    flex: 1,
+    gap: 4,
   },
-  newButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center'
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
-  searchContainer: {
+  title: {
+    fontSize: 32,
+    fontWeight: '700',
+  },
+  subtitle: {
+    fontSize: fontSize.md,
+    lineHeight: 22,
+    maxWidth: 420,
+  },
+  topBarActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginHorizontal: spacing.xl,
+  },
+  primaryFab: {
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroCard: {
+    borderWidth: 1,
+    borderRadius: 22,
+    padding: spacing.lg,
+    gap: spacing.lg,
+  },
+  heroTopRow: {
+    gap: spacing.lg,
+  },
+  heroCopy: {
+    gap: spacing.sm,
+  },
+  heroChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    borderRadius: borderRadius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  heroChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  heroTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: '700',
+  },
+  heroDescription: {
+    fontSize: fontSize.sm,
+    lineHeight: 20,
+  },
+  heroActionRow: {
+    flexDirection: 'row',
+  },
+  heroPrimaryCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    marginBottom: spacing.sm
+    paddingVertical: 12,
+    borderRadius: borderRadius.full,
+  },
+  heroPrimaryCtaText: {
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+  },
+  metricRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  resumeCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  resumeIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resumeCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  resumeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  resumeTitle: {
+    fontSize: fontSize.md,
+    fontWeight: '700',
+  },
+  resumeMeta: {
+    fontSize: fontSize.sm,
+  },
+  searchRow: {
+    minHeight: 64,
+    paddingHorizontal: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  searchIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   searchInput: {
     flex: 1,
     fontSize: fontSize.md,
-    paddingVertical: spacing.xs
   },
-  listContent: {
-    paddingBottom: 100
-  },
-  sectionHeader: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
-    paddingTop: spacing.lg
-  },
-  sectionHeaderText: {
-    fontSize: 11,
+  searchCount: {
+    fontSize: fontSize.sm,
     fontWeight: '600',
-    letterSpacing: 0.5
-  },
-  noteRow: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md
-  },
-  noteRowContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md
-  },
-  noteRowIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  noteRowText: {
-    flex: 1,
-    gap: 2
-  },
-  noteTitle: {
-    fontSize: fontSize.md,
-    fontWeight: '500'
-  },
-  noteDate: {
-    fontSize: fontSize.xs
-  },
-  folderRow: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md
-  },
-  folderRowContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm
-  },
-  folderName: {
-    flex: 1,
-    fontSize: fontSize.md,
-    fontWeight: '500'
-  },
-  folderCount: {
-    fontSize: fontSize.xs
-  },
-  folderNoteIndent: {
-    paddingLeft: spacing.xl
-  },
-  emptyContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl
   },
   emptyState: {
     alignItems: 'center',
-    gap: spacing.md
+    gap: spacing.md,
+    paddingVertical: spacing.xl,
   },
   emptyIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.sm
   },
   emptyTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: '600'
+    fontSize: fontSize.xl,
+    fontWeight: '700',
   },
   emptyDescription: {
     fontSize: fontSize.sm,
-    textAlign: 'center'
+    lineHeight: 20,
+    textAlign: 'center',
+    maxWidth: 320,
   },
-  emptyButton: {
-    paddingHorizontal: spacing.xl,
+  sectionHeader: {
+    marginBottom: spacing.sm,
+  },
+  itemRow: {
+    minHeight: 82,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderBottomWidth: 1,
+    paddingHorizontal: spacing.md,
+  },
+  rowRail: {
+    width: 4,
+    alignSelf: 'stretch',
+    borderRadius: 999,
+  },
+  rowIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemBody: {
+    flex: 1,
+    gap: 6,
     paddingVertical: spacing.md,
-    borderRadius: borderRadius.md,
-    marginTop: spacing.md
   },
-  emptyButtonText: {
+  itemTitleLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  itemTitle: {
+    flex: 1,
     fontSize: fontSize.md,
-    fontWeight: '500'
-  }
+    fontWeight: '700',
+  },
+  itemBadge: {
+    borderRadius: borderRadius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  itemBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  noteMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  metaPill: {
+    borderWidth: 1,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  metaPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  itemMeta: {
+    fontSize: fontSize.sm,
+  },
+  lastRowSpacer: {
+    height: spacing.xs,
+  },
 })

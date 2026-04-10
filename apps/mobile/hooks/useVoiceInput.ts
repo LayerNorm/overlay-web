@@ -8,7 +8,6 @@ import {
   transcribeAudio,
   cleanupAudioFile
 } from '../services/transcriptionService'
-import { getApiKey } from '../services/aiService'
 
 export interface VoiceInputResult {
   text: string
@@ -33,15 +32,6 @@ export function useVoiceInput(): UseVoiceInputReturn {
 
   const startRecording = useCallback(async (): Promise<void> => {
     setError(null)
-
-    // Check for Groq API key before starting
-    const groqKey = await getApiKey('groq')
-    if (!groqKey) {
-      const msg = 'No Groq API key configured. Add it in Settings → API Keys.'
-      setError(msg)
-      Alert.alert('Voice Input', msg)
-      return
-    }
 
     try {
       await startAudioRecording()
