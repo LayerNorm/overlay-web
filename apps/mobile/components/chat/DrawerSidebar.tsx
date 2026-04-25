@@ -24,7 +24,7 @@ import { GlassSurface } from '../ui/GlassSurface'
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.82, 320)
 const CLOSE_THRESHOLD = DRAWER_WIDTH * 0.3
-const OVERLAY_LOGO = require('../../../overlay-landing/overlay-logo.png')
+const OVERLAY_LOGO = require('../../../overlay-logo.png')
 
 interface NavItem {
   label: string

@@ -57,7 +57,7 @@ import { UpgradePrompt } from '../auth/UpgradePrompt'
 import { GlassSurface } from '../ui/GlassSurface'
 import { useAuth } from '../../contexts/AuthContext'
 
-const OVERLAY_LOGO = require('../../../overlay-landing/overlay-logo.png')
+const OVERLAY_LOGO = require('../../../overlay-logo.png')
 
 function createSyntheticModel(modelId?: string | null): ChatModel | null {
   if (!modelId) {
@@ -754,7 +754,7 @@ export function ChatScreen({
         keyboardVerticalOffset={Platform.OS === 'ios' ? 6 : 0}
       >
         <View style={styles.screenPadding}>
-          <GlassSurface style={[styles.topBar, { backgroundColor: theme.glassBg, borderColor: theme.glassBorder }]}>
+          <View style={[styles.topBar, { backgroundColor: theme.background }]}>
             {routeKind === 'detail' ? (
               <View style={styles.topBarNativeBackSpacer} />
             ) : (
@@ -786,7 +786,7 @@ export function ChatScreen({
                 void startFreshConversation()
               }}
             />
-          </GlassSurface>
+          </View>
 
           <View style={styles.threadSurface}>
             {messages.length === 0 ? (
@@ -996,13 +996,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginHorizontal: spacing.sm,
-    marginTop: 2,
     paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.full,
-    overflow: 'hidden',
+    paddingVertical: 8,
   },
   topBarNativeBackSpacer: {
     width: 38,

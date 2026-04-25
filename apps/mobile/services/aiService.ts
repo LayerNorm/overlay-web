@@ -1,4 +1,4 @@
-import { appRequest, streamJsonSse } from './appApi'
+import { appXhrStreamSse } from './appApi'
 import type { ChatModel } from './chatTypes'
 import { AUTH_BASE_URL } from './appConfig'
 
@@ -112,9 +112,10 @@ export async function* chatStream(
       modelId,
       messages.length,
     )
-    const response = await appRequest('/api/app/conversations/act', {
+    let inThinkTag = false
+
+    for await (const chunk of appXhrStreamSse<UiMessageChunk>('/api/app/conversations/act', {
       method: 'POST',
-      timeoutMs: 300_000,
       json: {
         modelId,
         conversationId: options.conversationId,
@@ -122,14 +123,44 @@ export async function* chatStream(
         variantIndex: options.variantIndex,
         messages: toUiMessages(messages),
       },
-    })
-    console.log('[aiService] act: response status=%d ok=%s url=%s', response.status, response.ok, response.url)
-
-    for await (const chunk of streamJsonSse<UiMessageChunk>(response)) {
+    })) {
       switch (chunk.type) {
-        case 'text-delta':
-          yield { type: 'text', content: chunk.delta, id: chunk.id }
+        case 'text-delta': {
+          let delta = chunk.delta
+          if (!inThinkTag) {
+            const openIdx = delta.indexOf('<think>')
+            if (openIdx >= 0) {
+              const before = delta.slice(0, openIdx)
+              if (before) yield { type: 'text', content: before, id: chunk.id }
+              inThinkTag = true
+              delta = delta.slice(openIdx + 7)
+              const closeIdx = delta.indexOf('</think>')
+              if (closeIdx >= 0) {
+                const thinking = delta.slice(0, closeIdx)
+                if (thinking) yield { type: 'reasoning', content: thinking, id: chunk.id }
+                inThinkTag = false
+                const after = delta.slice(closeIdx + 8)
+                if (after) yield { type: 'text', content: after, id: chunk.id }
+              } else {
+                if (delta) yield { type: 'reasoning', content: delta, id: chunk.id }
+              }
+            } else {
+              yield { type: 'text', content: delta, id: chunk.id }
+            }
+          } else {
+            const closeIdx = delta.indexOf('</think>')
+            if (closeIdx >= 0) {
+              const thinking = delta.slice(0, closeIdx)
+              if (thinking) yield { type: 'reasoning', content: thinking, id: chunk.id }
+              inThinkTag = false
+              const after = delta.slice(closeIdx + 8)
+              if (after) yield { type: 'text', content: after, id: chunk.id }
+            } else {
+              yield { type: 'reasoning', content: delta, id: chunk.id }
+            }
+          }
           break
+        }
         case 'reasoning-delta':
           yield { type: 'reasoning', content: chunk.delta, id: chunk.id }
           break

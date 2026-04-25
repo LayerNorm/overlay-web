@@ -171,6 +171,130 @@ export async function* streamJsonSse<T>(response: Response): AsyncGenerator<T> {
   }
 }
 
+function xhrRawStream(
+  url: string,
+  method: string,
+  headers: Record<string, string>,
+  body?: string,
+): AsyncGenerator<string> {
+  const queue: Array<{ text: string } | { error: Error } | null> = []
+  let notify: (() => void) | null = null
+  let finished = false
+
+  const xhr = new XMLHttpRequest()
+  xhr.open(method, url)
+  for (const [key, value] of Object.entries(headers)) {
+    xhr.setRequestHeader(key, value)
+  }
+
+  let position = 0
+
+  function push(item: { text: string } | { error: Error } | null) {
+    queue.push(item)
+    const fn = notify
+    notify = null
+    fn?.()
+  }
+
+  xhr.onprogress = () => {
+    const newText = xhr.responseText.slice(position)
+    if (newText.length > 0) {
+      position = xhr.responseText.length
+      push({ text: newText })
+    }
+  }
+
+  xhr.onload = () => {
+    const newText = xhr.responseText.slice(position)
+    if (newText.length > 0) {
+      position = xhr.responseText.length
+      push({ text: newText })
+    }
+    finished = true
+    push(null)
+  }
+
+  xhr.onerror = () => {
+    finished = true
+    push({ error: new Error(`XHR request failed (status ${xhr.status})`) })
+  }
+
+  xhr.ontimeout = () => {
+    finished = true
+    push({ error: new Error('XHR request timed out') })
+  }
+
+  xhr.send(body)
+
+  async function* gen(): AsyncGenerator<string> {
+    while (true) {
+      if (queue.length > 0) {
+        const item = queue.shift()!
+        if (item === null) return
+        if ('error' in item) throw item.error
+        yield item.text
+      } else if (finished) {
+        return
+      } else {
+        await new Promise<void>((resolve) => {
+          notify = resolve
+        })
+      }
+    }
+  }
+
+  return gen()
+}
+
+async function* xhrStreamSse<T>(
+  url: string,
+  method: string,
+  headers: Record<string, string>,
+  body?: string,
+): AsyncGenerator<T> {
+  let buffer = ''
+
+  for await (const chunk of xhrRawStream(url, method, headers, body)) {
+    buffer += chunk
+    let delimiterIndex = buffer.indexOf('\n\n')
+    while (delimiterIndex >= 0) {
+      const rawEvent = buffer.slice(0, delimiterIndex)
+      buffer = buffer.slice(delimiterIndex + 2)
+      const result = parseSseEvent<T>(rawEvent)
+      if (result.done) return
+      if (result.value !== undefined) yield result.value
+      delimiterIndex = buffer.indexOf('\n\n')
+    }
+  }
+
+  if (buffer.trim()) {
+    const result = parseSseEvent<T>(buffer)
+    if (!result.done && result.value !== undefined) yield result.value
+  }
+}
+
+export async function* appXhrStreamSse<T>(
+  path: string,
+  options: AppRequestOptions = {},
+): AsyncGenerator<T> {
+  const session = await getSession()
+  const headers: Record<string, string> = { ...options.headers }
+  if (session?.accessToken) {
+    headers['Authorization'] = `Bearer ${session.accessToken}`
+  }
+  let body: string | undefined
+  if (options.json) {
+    headers['Content-Type'] = 'application/json'
+    body = JSON.stringify({
+      ...options.json,
+      accessToken: session?.accessToken,
+      userId: session?.user.id,
+    })
+  }
+  const url = createUrl(path, session, options.query)
+  yield* xhrStreamSse<T>(url, options.method ?? 'POST', headers, body)
+}
+
 function* parseSseText<T>(text: string): Generator<T> {
   const normalized = text.replace(/\r\n/g, '\n')
   const events = normalized.split('\n\n')

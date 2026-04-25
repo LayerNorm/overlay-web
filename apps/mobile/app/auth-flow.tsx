@@ -24,7 +24,7 @@ import { GlassSurface } from '../components/ui/GlassSurface'
 
 WebBrowser.maybeCompleteAuthSession()
 
-const OVERLAY_LOGO = require('../../overlay-landing/overlay-logo.png')
+const OVERLAY_LOGO = require('../../overlay-logo.png')
 const TRANSFER_REDIRECT_URI = 'overlay://auth/transfer'
 
 export default function AuthFlowScreen(): React.ReactElement {
