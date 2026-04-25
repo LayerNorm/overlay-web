@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useFonts } from 'expo-font'
 import { ThemeProvider, useTheme } from '../hooks/useTheme'
 import { AuthProvider } from '../contexts/AuthContext'
+import { AppSessionProvider } from '../contexts/AppSessionContext'
 
 function RootLayoutNav(): React.ReactElement {
   const { isDark } = useTheme()
@@ -13,24 +14,36 @@ function RootLayoutNav(): React.ReactElement {
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          headerTransparent: true,
+          headerShadowVisible: false,
+          headerLargeTitle: false,
+          headerLargeStyle: { backgroundColor: 'transparent' },
+          headerBlurEffect: 'none',
+          headerBackButtonDisplayMode: 'minimal',
+        }}
+      >
         <Stack.Screen name="index" />
+        <Stack.Screen name="(tabs)" />
         <Stack.Screen
           name="auth-flow"
           options={{
-            presentation: 'modal',
-            animation: 'slide_from_bottom'
-          }}
-        />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen
-          name="chat/[id]"
-          options={{
-            presentation: 'card',
-            animation: 'slide_from_right'
+            presentation: 'fullScreenModal',
+            animation: 'fade_from_bottom',
           }}
         />
         <Stack.Screen name="auth/transfer" />
+        <Stack.Screen
+          name="chat/[id]"
+          options={{
+            headerShown: true,
+            title: '',
+            presentation: 'card',
+            animation: 'slide_from_right',
+          }}
+        />
       </Stack>
     </>
   )
@@ -58,7 +71,9 @@ export default function RootLayout(): React.ReactElement {
     <SafeAreaProvider>
       <AuthProvider>
         <ThemeProvider>
-          <RootLayoutNav />
+          <AppSessionProvider>
+            <RootLayoutNav />
+          </AppSessionProvider>
         </ThemeProvider>
       </AuthProvider>
     </SafeAreaProvider>

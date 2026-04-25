@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
+  PanResponder,
   Platform,
   ScrollView,
   StyleSheet,
@@ -11,7 +13,6 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  useWindowDimensions,
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFocusEffect, useRouter } from 'expo-router'
@@ -43,19 +44,20 @@ import { chatStream, DEFAULT_CHAT_MODEL_ID, getAvailableModels, type StreamChunk
 import { useTheme } from '../../hooks/useTheme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { MessageBubble } from './MessageBubble'
-import { ChatHistorySheet } from './ChatHistorySheet'
+import { DrawerSidebar } from './DrawerSidebar'
 import {
   BottomSheet,
   StatusPill,
   TopBarIconButton,
 } from '../ui/AppChrome'
+import { useDrawer } from '../../contexts/DrawerContext'
+import { AUTH_BASE_URL } from '../../services/appConfig'
+import { useAppSession } from '../../contexts/AppSessionContext'
+import { UpgradePrompt } from '../auth/UpgradePrompt'
+import { GlassSurface } from '../ui/GlassSurface'
+import { useAuth } from '../../contexts/AuthContext'
 
-const PROMPT_SUGGESTIONS = [
-  'Summarize the key point here.',
-  'Turn this into a concrete plan.',
-  'Draft a sharper reply.',
-  'Explain this simply, then go deeper.',
-] as const
+const OVERLAY_LOGO = require('../../../overlay-landing/overlay-logo.png')
 
 function createSyntheticModel(modelId?: string | null): ChatModel | null {
   if (!modelId) {
@@ -74,10 +76,6 @@ function createSyntheticModel(modelId?: string | null): ChatModel | null {
   }
 }
 
-function isAuthRequiredError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error)
-  return message.toLowerCase().includes('authentication required')
-}
 
 function createDraftChat(modelId?: string, projectId?: string): Chat {
   const now = Date.now()
@@ -244,6 +242,13 @@ function capabilityTags(model: ChatModel): string[] {
   return tags
 }
 
+function getTimeGreeting(): string {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'morning'
+  if (hour < 17) return 'afternoon'
+  return 'evening'
+}
+
 function getNextTitle(currentTitle: string, inputValue: string): string {
   if (currentTitle === 'New Chat' && inputValue.trim()) {
     return generateTempTitle(inputValue.trim())
@@ -265,7 +270,9 @@ export function ChatScreen({
 }): React.ReactElement {
   const router = useRouter()
   const { theme } = useTheme()
-  const { width } = useWindowDimensions()
+  const { openDrawer } = useDrawer()
+  const { entitlements } = useAppSession()
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
   const insets = useSafeAreaInsets()
 
   const [messages, setMessages] = useState<Message[]>([])
@@ -278,18 +285,16 @@ export function ChatScreen({
   const [isLoading, setIsLoading] = useState(true)
   const [isSwitchingChat, setIsSwitchingChat] = useState(false)
   const [isSending, setIsSending] = useState(false)
-  const [historyVisible, setHistoryVisible] = useState(false)
   const [history, setHistory] = useState<ChatMeta[]>([])
   const [modelPickerVisible, setModelPickerVisible] = useState(false)
+  const [upgradeVisible, setUpgradeVisible] = useState(false)
 
   const chatRef = useRef<Chat | null>(null)
   const flatListRef = useRef<FlatList<Message>>(null)
   const abortRef = useRef(false)
 
-  const showInlineControls = width >= 720
-  const bottomTabClearance = routeKind === 'tab' ? 76 : 0
-  const composerBottomPadding = Math.max(insets.bottom, spacing.sm) + bottomTabClearance
-  const messageBottomPadding = spacing.md + bottomTabClearance
+  const composerBottomPadding = Math.max(insets.bottom, spacing.sm)
+  const messageBottomPadding = spacing.md
 
   const refreshHistory = useCallback(async () => {
     const nextHistory = await loadChatsMeta(projectId).catch(() => [])
@@ -443,12 +448,7 @@ export function ChatScreen({
         }
 
         await createConversation(models)
-      } catch (error) {
-        if (isMounted && isAuthRequiredError(error)) {
-          router.replace('/auth-flow?mode=sign-in&force=true')
-          return
-        }
-
+      } catch {
         if (isMounted) {
           const models = await getAvailableModels().catch(() => [])
           const draft = createDraftChat(models[0]?.id, projectId)
@@ -471,13 +471,15 @@ export function ChatScreen({
     }
   }, [conversationId, createConversation, hydrateConversation, routeKind])
 
+  useEffect(() => {
+    if (!isAuthLoading && !isAuthenticated) {
+      router.replace('/auth-flow?force=true')
+    }
+  }, [isAuthLoading, isAuthenticated, router])
+
   useFocusEffect(
     useCallback(() => {
-      void refreshHistory().catch((error) => {
-        if (isAuthRequiredError(error)) {
-          router.replace('/auth-flow?mode=sign-in&force=true')
-        }
-      })
+      void refreshHistory().catch(() => {})
     }, [refreshHistory]),
   )
 
@@ -527,10 +529,7 @@ export function ChatScreen({
     async (chatId: string) => {
       try {
         await deleteChat(chatId)
-      } catch (error) {
-        if (isAuthRequiredError(error)) {
-          router.replace('/auth-flow?mode=sign-in&force=true')
-        }
+      } catch {
         return
       }
 
@@ -555,10 +554,7 @@ export function ChatScreen({
     async (chatId: string, title: string) => {
       try {
         await updateChatTitle(chatId, title)
-      } catch (error) {
-        if (isAuthRequiredError(error)) {
-          router.replace('/auth-flow?mode=sign-in&force=true')
-        }
+      } catch {
         return
       }
       if (chatRef.current?.id === chatId) {
@@ -596,6 +592,11 @@ export function ChatScreen({
   )
 
   const handleSend = useCallback(async () => {
+    if (!isAuthLoading && !isAuthenticated) {
+      router.push('/auth-flow?force=true')
+      return
+    }
+
     const activeChat = chatRef.current
     if ((!inputValue.trim() && !imageBase64) || !selectedModel || !activeChat || isSending) {
       return
@@ -648,16 +649,13 @@ export function ChatScreen({
         actModelId: selectedModel.id,
         lastMode: 'act',
       })
-    } catch (error) {
-      if (isAuthRequiredError(error)) {
-        router.replace('/auth-flow?mode=sign-in&force=true')
-        setIsSending(false)
-        return
-      }
+    } catch {
+      // ignore sync errors
     }
     scrollToBottom()
 
     try {
+      console.log('[ChatScreen] send: conversationId=%s modelId=%s baseUrl=%s', activeChat.id, selectedModel.id, AUTH_BASE_URL)
       for await (const chunk of chatStream(selectedModel.id, buildApiMessages(userMessageList), {
         conversationId: activeChat.id,
         turnId: assistantId,
@@ -674,6 +672,7 @@ export function ChatScreen({
         }
       }
     } catch (error) {
+      console.error('[ChatScreen] send failed:', error)
       setMessages((current) =>
         applyStreamChunk(current, assistantId, selectedModel, {
           type: 'error',
@@ -701,15 +700,37 @@ export function ChatScreen({
     chatTitle,
     imageBase64,
     inputValue,
+    isAuthLoading,
+    isAuthenticated,
     isSending,
     messages,
     refreshHistory,
+    router,
     scrollToBottom,
     selectedModel,
     syncConversationMeta,
   ])
 
   const sortedModels = useMemo(() => availableModels, [availableModels])
+
+  useEffect(() => {
+    if (entitlements?.tier === 'free') {
+      setUpgradeVisible(true)
+    }
+  }, [entitlements?.tier])
+
+  const edgePanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: (_, gs) => gs.x0 < 24,
+      onMoveShouldSetPanResponder: (_, gs) =>
+        gs.x0 < 24 && gs.dx > 10 && Math.abs(gs.dx) > Math.abs(gs.dy),
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dx > 40) {
+          openDrawer()
+        }
+      },
+    }),
+  ).current
 
   if (isLoading) {
     return (
@@ -721,42 +742,42 @@ export function ChatScreen({
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+      {/* Transparent left-edge zone to capture swipe-to-open gesture */}
+      <View
+        style={styles.edgePanZone}
+        {...edgePanResponder.panHandlers}
+        pointerEvents="box-only"
+      />
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 6 : 0}
       >
         <View style={styles.screenPadding}>
-          <View style={[styles.topBar, { borderBottomColor: theme.border, backgroundColor: theme.background }]}>
-            <TopBarIconButton
-              theme={theme}
-              icon={routeKind === 'detail' ? 'chevron-left' : 'menu'}
-              onPress={() => {
-                if (routeKind === 'detail') {
-                  if (router.canGoBack()) {
-                    router.back()
-                  } else {
-                    router.replace('/(tabs)/chat')
-                  }
-                  return
-                }
+          <GlassSurface style={[styles.topBar, { backgroundColor: theme.glassBg, borderColor: theme.glassBorder }]}>
+            {routeKind === 'detail' ? (
+              <View style={styles.topBarNativeBackSpacer} />
+            ) : (
+              <TopBarIconButton
+                theme={theme}
+                icon="menu"
+                onPress={openDrawer}
+              />
+            )}
 
-                setHistoryVisible(true)
-              }}
-            />
-
-            <View style={styles.topBarCenter}>
-              <Text style={[styles.topTitle, { color: theme.text }]} numberOfLines={1}>
-                {chatTitle}
+            <TouchableOpacity
+              activeOpacity={0.82}
+              onPress={() => setModelPickerVisible(true)}
+              style={styles.topBarModelButton}
+            >
+              {isSwitchingChat ? (
+                <ActivityIndicator size="small" color={theme.textSecondary} />
+              ) : null}
+              <Text style={[styles.topBarModelName, { color: theme.text }]} numberOfLines={1}>
+                {selectedModel?.name ?? 'Select model'}
               </Text>
-              <View style={styles.topMetaRow}>
-                {isSwitchingChat ? <ActivityIndicator size="small" color={theme.textSecondary} /> : null}
-                <Text style={[styles.topMeta, { color: theme.textSecondary }]}>
-                  {projectName || 'Overlay'}
-                </Text>
-                {projectName ? <StatusPill theme={theme} label={projectName} tone="default" /> : null}
-              </View>
-            </View>
+              <Feather name="chevron-down" size={14} color={theme.textSecondary} />
+            </TouchableOpacity>
 
             <TopBarIconButton
               theme={theme}
@@ -765,97 +786,15 @@ export function ChatScreen({
                 void startFreshConversation()
               }}
             />
-          </View>
-
-          <View style={[styles.controlStrip, showInlineControls && styles.controlStripInline]}>
-            <View style={[styles.modalityTabs, { backgroundColor: theme.surfaceSubtle, borderColor: theme.border }]}>
-              {([
-                { value: 'text', icon: 'message-square', label: 'Text' },
-                { value: 'image', icon: 'image', label: 'Image' },
-                { value: 'video', icon: 'video', label: 'Video' },
-              ] as const).map((item) => {
-                const active = activeModality === item.value
-                return (
-                  <TouchableOpacity
-                    key={item.value}
-                    activeOpacity={0.82}
-                    onPress={() => {
-                      setActiveModality(item.value)
-                      if (item.value === 'image') {
-                        void pickImage()
-                      }
-                    }}
-                    style={[
-                      styles.modalityTab,
-                      { backgroundColor: active ? theme.foreground : 'transparent' },
-                    ]}
-                  >
-                    <Feather
-                      name={item.icon}
-                      size={13}
-                      color={active ? theme.background : theme.textSecondary}
-                    />
-                    <Text style={[styles.modalityText, { color: active ? theme.background : theme.textSecondary }]}>
-                      {item.label}
-                    </Text>
-                  </TouchableOpacity>
-                )
-              })}
-            </View>
-
-            <TouchableOpacity
-              activeOpacity={0.82}
-              onPress={() => setModelPickerVisible(true)}
-              style={[styles.modelButton, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
-            >
-              {selectedModel ? (
-                <>
-                  <View
-                    style={[
-                      styles.providerDot,
-                      { backgroundColor: PROVIDER_COLORS[selectedModel.provider] || theme.textSecondary },
-                    ]}
-                  />
-                  <Text style={[styles.modelButtonText, { color: theme.text }]} numberOfLines={1}>
-                    {selectedModel.name}
-                  </Text>
-                </>
-              ) : (
-                <Text style={[styles.modelButtonText, { color: theme.textSecondary }]}>No models</Text>
-              )}
-              <Feather name="chevron-down" size={15} color={theme.textSecondary} />
-            </TouchableOpacity>
-          </View>
+          </GlassSurface>
 
           <View style={styles.threadSurface}>
             {messages.length === 0 ? (
               <View style={styles.emptySurface}>
-                <View style={[styles.brandMark, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}>
-                  <Text style={[styles.brandGlyph, { color: theme.text }]}>O</Text>
-                </View>
-                <Text style={[styles.emptyTitle, { color: theme.text }]}>Ask Overlay</Text>
-                <Text style={[styles.emptyDescription, { color: theme.textSecondary }]}>
-                  Ask a question, attach an image, or describe a video. Replies stream in as they arrive.
+                <Image source={OVERLAY_LOGO} style={styles.overlayLogo} resizeMode="contain" />
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                  {'How can I help you this ' + getTimeGreeting() + '?'}
                 </Text>
-
-                <ScrollView
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={styles.promptRow}
-                >
-                  {PROMPT_SUGGESTIONS.map((prompt) => (
-                    <TouchableOpacity
-                      key={prompt}
-                      onPress={() => setInputValue(prompt)}
-                      activeOpacity={0.82}
-                      style={[
-                        styles.promptChip,
-                        { backgroundColor: theme.surfaceElevated, borderColor: theme.border },
-                      ]}
-                    >
-                      <Text style={[styles.promptChipText, { color: theme.textSecondary }]}>{prompt}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
               </View>
             ) : (
               <FlatList
@@ -881,7 +820,7 @@ export function ChatScreen({
 
           <View style={[styles.composerSurface, { paddingBottom: composerBottomPadding }]}>
             {imageBase64 ? (
-              <View style={[styles.attachmentBar, { backgroundColor: theme.surfaceSubtle, borderColor: theme.border }]}>
+              <View style={[styles.attachmentBar, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
                 <View style={styles.attachmentInfo}>
                   <Feather name="image" size={14} color={theme.textSecondary} />
                   <Text style={[styles.attachmentText, { color: theme.textSecondary }]}>Image attached</Text>
@@ -890,25 +829,16 @@ export function ChatScreen({
               </View>
             ) : null}
 
-            {activeModality === 'video' ? (
-              <View style={[styles.statusBar, { backgroundColor: theme.surfaceSubtle, borderColor: theme.border }]}>
-                <Feather name="video" size={14} color={theme.textSecondary} />
-                <Text style={[styles.statusText, { color: theme.textSecondary }]}>
-                  Video mode sends your prompt to Act with video-generation intent.
-                </Text>
-              </View>
-            ) : null}
-
-            <View style={[styles.composerBox, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+            <GlassSurface style={[styles.composerBox, { backgroundColor: theme.glassBg, borderColor: theme.glassBorder }]}>
               <TextInput
                 value={inputValue}
                 onChangeText={setInputValue}
                 placeholder={
                   activeModality === 'video'
-                    ? 'Describe the video you want...'
+                    ? 'Describe the video you want'
                     : activeModality === 'image'
-                      ? 'Ask about the image or describe what to create...'
-                      : 'Ask Overlay anything...'
+                      ? 'Ask about the image'
+                      : 'Chat with Overlay'
                 }
                 placeholderTextColor={theme.textDisabled}
                 multiline
@@ -917,73 +847,69 @@ export function ChatScreen({
               />
 
               <View style={styles.composerFooter}>
-                <View style={styles.leftComposerActions}>
-                  <TopBarIconButton
-                    theme={theme}
-                    icon="image"
-                    onPress={() => {
-                      setActiveModality('image')
-                      void pickImage()
-                    }}
-                  />
-                  <TopBarIconButton
-                    theme={theme}
-                    icon="video"
+                <TouchableOpacity
+                  activeOpacity={0.82}
+                  onPress={() => {
+                    setActiveModality('image')
+                    void pickImage()
+                  }}
+                  style={[styles.composerIconButton]}
+                >
+                  <Feather name="plus" size={22} color={theme.textSecondary} />
+                </TouchableOpacity>
+
+                <View style={styles.composerRightActions}>
+                  <TouchableOpacity
+                    activeOpacity={0.82}
+                    style={[
+                      styles.composerIconButton,
+                      activeModality === 'video' && { backgroundColor: theme.surfaceSubtle },
+                    ]}
                     onPress={() => {
                       setActiveModality('video')
                     }}
-                    active={activeModality === 'video'}
-                  />
-                </View>
+                  >
+                    <Feather name="video" size={19} color={theme.textSecondary} />
+                  </TouchableOpacity>
 
-                <TouchableOpacity
-                  onPress={() => {
-                    void handleSend()
-                  }}
-                  activeOpacity={0.82}
-                  disabled={(!inputValue.trim() && !imageBase64) || isSending}
-                  style={[
-                    styles.sendButton,
-                    {
-                      backgroundColor:
-                        inputValue.trim() || imageBase64 ? theme.buttonPrimaryBg : theme.surfaceSubtle,
-                      borderColor: theme.border,
-                    },
-                  ]}
-                >
-                  {isSending ? (
-                    <ActivityIndicator size="small" color={theme.buttonPrimaryText} />
-                  ) : (
-                    <Feather
-                      name="arrow-up"
-                      size={18}
-                      color={
-                        inputValue.trim() || imageBase64 ? theme.buttonPrimaryText : theme.textDisabled
-                      }
-                    />
-                  )}
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      void handleSend()
+                    }}
+                    activeOpacity={0.82}
+                    disabled={isSending}
+                    style={[
+                      styles.sendButton,
+                      {
+                        backgroundColor: inputValue.trim() || imageBase64 ? theme.foreground : theme.foreground,
+                      },
+                    ]}
+                  >
+                    {isSending ? (
+                      <ActivityIndicator size="small" color={theme.background} />
+                    ) : inputValue.trim() || imageBase64 ? (
+                      <Feather name="arrow-up" size={18} color={theme.background} />
+                    ) : (
+                      <Feather name="activity" size={18} color={theme.background} />
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
+            </GlassSurface>
           </View>
         </View>
       </KeyboardAvoidingView>
 
-      <ChatHistorySheet
+      <DrawerSidebar
         theme={theme}
-        visible={historyVisible}
         chats={history}
         activeChatId={chatRef.current?.id || null}
-        streamingChatId={isSending ? chatRef.current?.id || null : null}
-        onClose={() => setHistoryVisible(false)}
         onSelectChat={(chatId) => {
           void openConversation(chatId)
         }}
         onCreateChat={() => {
           void startFreshConversation()
         }}
-        onDeleteChat={handleDeleteConversation}
-        onRenameChat={handleRenameConversation}
       />
 
       <BottomSheet
@@ -1035,6 +961,12 @@ export function ChatScreen({
           })}
         </View>
       </BottomSheet>
+
+      <UpgradePrompt
+        visible={upgradeVisible}
+        theme={theme}
+        onClose={() => setUpgradeVisible(false)}
+      />
     </SafeAreaView>
   )
 }
@@ -1048,6 +980,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  edgePanZone: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: 20,
+    zIndex: 10,
+  },
   screenPadding: {
     flex: 1,
     paddingBottom: spacing.sm,
@@ -1056,81 +996,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    marginHorizontal: spacing.sm,
+    marginTop: 2,
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 7,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: borderRadius.full,
+    overflow: 'hidden',
   },
-  topBarCenter: {
+  topBarNativeBackSpacer: {
+    width: 38,
+    height: 38,
+  },
+  topBarModelButton: {
     flex: 1,
-    alignItems: 'center',
-    gap: 2,
-  },
-  topTitle: {
-    maxWidth: '100%',
-    fontSize: fontSize.md,
-    fontWeight: '700',
-  },
-  topMetaRow: {
-    minHeight: 17,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  topMeta: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  controlStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  controlStripInline: {
     justifyContent: 'center',
-  },
-  modalityTabs: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: borderRadius.full,
-    padding: 3,
-    gap: 2,
-  },
-  modalityTab: {
-    minHeight: 30,
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 5,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: 9,
   },
-  modalityText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  modelButton: {
-    minHeight: 36,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 8,
-    maxWidth: 180,
+  topBarModelName: {
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    flexShrink: 1,
   },
   providerDot: {
     width: 8,
     height: 8,
     borderRadius: 999,
-  },
-  modelButtonText: {
-    flexShrink: 1,
-    fontSize: 12,
-    fontWeight: '700',
   },
   threadSurface: {
     flex: 1,
@@ -1140,53 +1033,21 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.md,
+    gap: spacing.lg,
     paddingHorizontal: spacing.xl,
-    paddingBottom: 18,
+    paddingBottom: 60,
   },
-  brandMark: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  brandGlyph: {
-    fontSize: 24,
-    lineHeight: 30,
-    fontWeight: '700',
-    fontFamily: 'LibreBaskerville',
+  overlayLogo: {
+    width: 56,
+    height: 56,
   },
   emptyTitle: {
-    marginTop: spacing.xs,
-    fontSize: 30,
+    fontSize: 28,
     lineHeight: 36,
-    fontWeight: '700',
+    fontWeight: '400',
     fontFamily: 'LibreBaskerville',
     textAlign: 'center',
-  },
-  emptyDescription: {
-    maxWidth: 320,
-    fontSize: fontSize.sm,
-    lineHeight: 22,
-    textAlign: 'center',
-  },
-  promptRow: {
-    width: '100%',
-    gap: 8,
-    paddingTop: spacing.sm,
-  },
-  promptChip: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 11,
-  },
-  promptChipText: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '500',
+    maxWidth: 300,
   },
   messageList: {
     paddingTop: spacing.lg,
@@ -1215,26 +1076,14 @@ const styles = StyleSheet.create({
   attachmentText: {
     fontSize: fontSize.sm,
   },
-  statusBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-  },
-  statusText: {
-    fontSize: fontSize.sm,
-    flex: 1,
-  },
   composerBox: {
     borderWidth: 1,
-    borderRadius: 20,
+    borderRadius: 26,
     paddingHorizontal: spacing.md,
     paddingTop: 10,
     paddingBottom: 8,
     gap: spacing.sm,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowRadius: 18,
@@ -1252,16 +1101,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  leftComposerActions: {
+  composerIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  composerRightActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },
   sendButton: {
-    width: 38,
-    height: 38,
+    width: 40,
+    height: 40,
     borderRadius: borderRadius.full,
-    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -4,6 +4,7 @@ import { AUTH_BASE_URL } from './appConfig'
 
 const AUTH_STORAGE_KEY = 'overlay-auth-session'
 const PKCE_VERIFIER_STORAGE_KEY = 'overlay-native-pkce-verifier'
+const NATIVE_AUTH_PENDING_STORAGE_KEY = 'overlay-native-auth-pending'
 
 const PKCE_VERIFIER_CHARSET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'
@@ -78,6 +79,22 @@ interface NativeRefreshResponse {
   error?: string
 }
 
+interface NativeAuthorizeResponse {
+  authorizationUrl: string
+  error?: string
+}
+
+interface NativeExchangeResponse {
+  success: boolean
+  session?: AuthSession
+  error?: string
+}
+
+interface PendingNativeAuthRequest {
+  codeVerifier: string
+  state: string
+}
+
 export async function loadAuthSession(): Promise<AuthSession | null> {
   console.log('[Auth] loadAuthSession: reading from SecureStore')
   try {
@@ -104,6 +121,7 @@ export async function clearAuthSession(): Promise<void> {
   await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY)
   try {
     await SecureStore.deleteItemAsync(PKCE_VERIFIER_STORAGE_KEY)
+    await SecureStore.deleteItemAsync(NATIVE_AUTH_PENDING_STORAGE_KEY)
   } catch {
     // ignore if missing
   }
@@ -151,9 +169,123 @@ export async function buildCustomAuthUrl(
     authUrl.searchParams.set('force', 'true')
   }
 
-  const result = authUrl.toString()
-  console.log('[Auth] buildCustomAuthUrl: result URL =', result)
-  return result
+  return authUrl.toString()
+}
+
+export type NativeAuthProvider = 'GoogleOAuth' | 'AppleOAuth' | 'MicrosoftOAuth' | 'authkit'
+
+export async function buildNativeAuthRequest(args: {
+  provider: NativeAuthProvider
+  redirectUri: string
+  forceSignIn?: boolean
+}): Promise<{ authorizationUrl: string; codeVerifier: string; state: string }> {
+  const codeVerifier = await generateCodeVerifier()
+  const codeChallenge = await sha256Base64Url(codeVerifier)
+  const state = base64ToBase64Url(
+    await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      `${codeVerifier}:${Date.now()}:${Math.random()}`,
+      { encoding: Crypto.CryptoEncoding.BASE64 },
+    ),
+  )
+
+  const response = await fetchWithTimeout(`${AUTH_BASE_URL}/api/auth/native/authorize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      provider: args.provider,
+      redirectUri: args.redirectUri,
+      codeChallenge,
+      state,
+      forceSignIn: args.forceSignIn === true,
+    }),
+  })
+
+  const data = (await response.json().catch(() => ({}))) as NativeAuthorizeResponse
+  if (!response.ok || !data.authorizationUrl) {
+    throw new Error(data.error || `Native authorization failed with status ${response.status}`)
+  }
+
+  await SecureStore.setItemAsync(
+    NATIVE_AUTH_PENDING_STORAGE_KEY,
+    JSON.stringify({ codeVerifier, state } satisfies PendingNativeAuthRequest),
+  )
+
+  return { authorizationUrl: data.authorizationUrl, codeVerifier, state }
+}
+
+export async function exchangeNativeAuthCode(args: {
+  code: string
+  codeVerifier: string
+}): Promise<AuthSession> {
+  const response = await fetchWithTimeout(`${AUTH_BASE_URL}/api/auth/native/exchange`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      code: args.code,
+      codeVerifier: args.codeVerifier,
+    }),
+  })
+
+  const data = (await response.json().catch(() => ({}))) as NativeExchangeResponse
+  if (!response.ok || !data.session) {
+    throw new Error(data.error || `Native session exchange failed with status ${response.status}`)
+  }
+
+  return data.session
+}
+
+export async function completeNativeAuthCallback(callbackUrl: string): Promise<AuthSession | null> {
+  let parsedUrl: URL
+  try {
+    parsedUrl = new URL(callbackUrl)
+  } catch {
+    return null
+  }
+
+  if (
+    parsedUrl.protocol !== 'https:' ||
+    parsedUrl.hostname !== 'www.getoverlay.io' ||
+    parsedUrl.pathname !== '/auth/native/callback'
+  ) {
+    return null
+  }
+
+  const error = parsedUrl.searchParams.get('error')
+  if (error) {
+    throw new Error(parsedUrl.searchParams.get('error_description') || error)
+  }
+
+  const code = parsedUrl.searchParams.get('code')
+  const state = parsedUrl.searchParams.get('state')
+  if (!code || !state) {
+    throw new Error('No authorization code was returned.')
+  }
+
+  const pendingJson = await SecureStore.getItemAsync(NATIVE_AUTH_PENDING_STORAGE_KEY)
+  if (!pendingJson) {
+    throw new Error('No pending sign-in was found. Start sign-in from Overlay again.')
+  }
+
+  let pending: PendingNativeAuthRequest
+  try {
+    pending = JSON.parse(pendingJson) as PendingNativeAuthRequest
+  } catch {
+    await SecureStore.deleteItemAsync(NATIVE_AUTH_PENDING_STORAGE_KEY)
+    throw new Error('Pending sign-in state was corrupted. Start sign-in from Overlay again.')
+  }
+
+  if (state !== pending.state) {
+    throw new Error('Authentication state did not match. Try signing in again.')
+  }
+
+  const session = await exchangeNativeAuthCode({
+    code,
+    codeVerifier: pending.codeVerifier,
+  })
+
+  await SecureStore.deleteItemAsync(NATIVE_AUTH_PENDING_STORAGE_KEY)
+  return session
 }
 
 export function getAccountUrl(): string {
@@ -161,7 +293,7 @@ export function getAccountUrl(): string {
 }
 
 export function extractTransferToken(url: string): string | null {
-  console.log('[Auth] extractTransferToken: incoming URL =', url)
+  console.log('[Auth] extractTransferToken: incoming URL received')
   try {
     const parsedUrl = new URL(url)
     const path = parsedUrl.hostname || parsedUrl.pathname.replace(/^\/+/, '')
@@ -191,7 +323,7 @@ export async function consumeTransferToken(token: string): Promise<AuthSession> 
   console.log('[Auth] consumeTransferToken: PKCE verifier found, length=%d', codeVerifier.trim().length)
 
   const endpoint = `${AUTH_BASE_URL}/api/auth/desktop-link?token=${encodeURIComponent(token)}`
-  console.log('[Auth] consumeTransferToken: POST to', endpoint)
+  console.log('[Auth] consumeTransferToken: POST to desktop-link endpoint')
   const response = await fetchWithTimeout(endpoint, {
     headers: {
       'x-overlay-code-verifier': codeVerifier.trim(),
@@ -212,7 +344,7 @@ export async function consumeTransferToken(token: string): Promise<AuthSession> 
   }
 
   const data = (await response.json()) as TransferResponse
-  console.log('[Auth] consumeTransferToken: success, userId=%s email=%s', data.userId, data.email)
+  console.log('[Auth] consumeTransferToken: success, userId=%s', data.userId)
 
   return {
     accessToken: data.accessToken,

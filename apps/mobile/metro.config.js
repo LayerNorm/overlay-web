@@ -7,6 +7,7 @@ const workspaceRoot = path.resolve(projectRoot, '..')
 const config = getDefaultConfig(projectRoot)
 
 config.watchFolders = [
+  path.resolve(workspaceRoot, 'overlay-landing'),
   path.resolve(workspaceRoot, 'packages/overlay-app-core'),
 ]
 

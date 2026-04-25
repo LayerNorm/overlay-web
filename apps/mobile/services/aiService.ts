@@ -1,5 +1,6 @@
 import { appRequest, streamJsonSse } from './appApi'
 import type { ChatModel } from './chatTypes'
+import { AUTH_BASE_URL } from './appConfig'
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
@@ -104,9 +105,16 @@ export async function* chatStream(
   options: ChatStreamOptions = {},
 ): AsyncGenerator<StreamChunk> {
   try {
+    console.log(
+      '[aiService] act: baseUrl=%s conversationId=%s modelId=%s messages=%d',
+      AUTH_BASE_URL,
+      options.conversationId ?? 'new',
+      modelId,
+      messages.length,
+    )
     const response = await appRequest('/api/app/conversations/act', {
       method: 'POST',
-      timeoutMs: 120_000,
+      timeoutMs: 300_000,
       json: {
         modelId,
         conversationId: options.conversationId,
@@ -115,6 +123,7 @@ export async function* chatStream(
         messages: toUiMessages(messages),
       },
     })
+    console.log('[aiService] act: response status=%d ok=%s url=%s', response.status, response.ok, response.url)
 
     for await (const chunk of streamJsonSse<UiMessageChunk>(response)) {
       switch (chunk.type) {
@@ -175,6 +184,19 @@ export async function* chatStream(
 
     yield { type: 'done', content: '' }
   } catch (error) {
-    yield { type: 'error', content: String(error) }
+    console.error('[aiService] act failed:', error)
+    yield { type: 'error', content: getChatErrorMessage(error) }
   }
+}
+
+function getChatErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.name === 'AbortError') {
+    return 'The backend did not return a chat response before the mobile request timed out.'
+  }
+
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return String(error)
 }

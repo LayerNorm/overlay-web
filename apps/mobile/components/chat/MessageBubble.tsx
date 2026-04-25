@@ -41,7 +41,7 @@ export function MessageBubble({
       marginBottom: 8
     },
     code_inline: {
-      backgroundColor: isUser ? 'rgba(255,255,255,0.14)' : theme.surfaceSubtle,
+      backgroundColor: isUser ? 'rgba(255,255,255,0.14)' : theme.surfaceMuted,
       color: isUser ? theme.buttonPrimaryText : theme.text,
       paddingHorizontal: 5,
       paddingVertical: 2,
@@ -49,7 +49,7 @@ export function MessageBubble({
       fontSize: 13
     },
     fence: {
-      backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceSubtle,
+      backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceMuted,
       borderColor: isUser ? 'rgba(255,255,255,0.2)' : theme.border,
       borderWidth: 1,
       borderRadius: 8,
@@ -94,7 +94,7 @@ export function MessageBubble({
       marginVertical: 2
     },
     blockquote: {
-      backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceSubtle,
+      backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceMuted,
       borderLeftColor: isUser ? 'rgba(255,255,255,0.4)' : theme.border,
       borderLeftWidth: 3,
       paddingLeft: 12,
@@ -120,7 +120,7 @@ export function MessageBubble({
         ]}
       >
         {message.imageData ? (
-          <View style={[styles.attachmentTag, { backgroundColor: isUser ? 'rgba(255,255,255,0.12)' : theme.background }]}>
+          <View style={[styles.attachmentTag, { backgroundColor: isUser ? 'rgba(255,255,255,0.12)' : theme.surfaceMuted }]}>
             <Feather
               name="image"
               size={13}

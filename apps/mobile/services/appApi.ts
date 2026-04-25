@@ -9,7 +9,7 @@ interface AppRequestOptions {
   json?: Record<string, unknown>
   formData?: FormData
   headers?: Record<string, string>
-  timeoutMs?: number
+  timeoutMs?: number | null
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000
@@ -58,21 +58,32 @@ export async function appRequest(
     })
   }
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => {
-    controller.abort()
-  }, options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS)
+  const requestUrl = createUrl(path, session, options.query)
+  const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
+  const controller = timeoutMs > 0 ? new AbortController() : null
+  const timer = controller
+    ? setTimeout(() => {
+        console.warn(
+          '[appApi] request timed out after %d ms: %s',
+          timeoutMs,
+          requestUrl,
+        )
+        controller.abort()
+      }, timeoutMs)
+    : null
 
   let response: Response
   try {
-    response = await fetch(createUrl(path, session, options.query), {
+    response = await fetch(requestUrl, {
       method: options.method ?? 'GET',
       headers,
       body,
-      signal: controller.signal,
+      signal: controller?.signal,
     })
   } finally {
-    clearTimeout(timer)
+    if (timer) {
+      clearTimeout(timer)
+    }
   }
 
   return response
@@ -107,7 +118,11 @@ export async function* streamJsonSse<T>(response: Response): AsyncGenerator<T> {
 
   const reader = response.body?.getReader()
   if (!reader) {
-    throw new Error('No response stream available')
+    const text = await response.text()
+    for (const chunk of parseSseText<T>(text)) {
+      yield chunk
+    }
+    return
   }
 
   const decoder = new TextDecoder()
@@ -119,28 +134,25 @@ export async function* streamJsonSse<T>(response: Response): AsyncGenerator<T> {
       const rawEvent = buffer.slice(0, delimiterIndex)
       buffer = buffer.slice(delimiterIndex + 2)
 
-      const line = rawEvent
-        .split('\n')
-        .find((part) => part.startsWith('data:'))
-
-      if (line) {
-        const payload = line.slice(5).trim()
-        if (payload === '[DONE]') {
-          return
-        }
-        if (payload) {
-          yield JSON.parse(payload) as T
-        }
+      const chunk = parseSseEvent<T>(rawEvent)
+      if (chunk.done) {
+        return
+      }
+      if (chunk.value !== undefined) {
+        yield chunk.value
       }
 
       delimiterIndex = buffer.indexOf('\n\n')
     }
 
     if (flush && buffer.trim().length > 0) {
-      const payload = buffer.replace(/^data:\s*/, '').trim()
+      const chunk = parseSseEvent<T>(buffer)
       buffer = ''
-      if (payload && payload !== '[DONE]') {
-        yield JSON.parse(payload) as T
+      if (chunk.done) {
+        return
+      }
+      if (chunk.value !== undefined) {
+        yield chunk.value
       }
     }
   }
@@ -157,4 +169,40 @@ export async function* streamJsonSse<T>(response: Response): AsyncGenerator<T> {
       return
     }
   }
+}
+
+function* parseSseText<T>(text: string): Generator<T> {
+  const normalized = text.replace(/\r\n/g, '\n')
+  const events = normalized.split('\n\n')
+
+  for (const rawEvent of events) {
+    const chunk = parseSseEvent<T>(rawEvent)
+    if (chunk.done) {
+      return
+    }
+    if (chunk.value !== undefined) {
+      yield chunk.value
+    }
+  }
+}
+
+function parseSseEvent<T>(
+  rawEvent: string,
+): { done: true; value?: never } | { done: false; value?: T } {
+  const payload = rawEvent
+    .split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trim())
+    .join('\n')
+    .trim()
+
+  if (!payload) {
+    return { done: false }
+  }
+
+  if (payload === '[DONE]') {
+    return { done: true }
+  }
+
+  return { done: false, value: JSON.parse(payload) as T }
 }

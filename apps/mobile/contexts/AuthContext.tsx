@@ -11,6 +11,7 @@ import {
   type AuthSession,
   type AuthUser,
   clearAuthSession,
+  completeNativeAuthCallback,
   consumeTransferToken,
   extractTransferToken,
   loadAuthSession,
@@ -25,6 +26,7 @@ interface AuthContextValue {
   isAuthenticated: boolean
   authError: string | null
   refreshSession: () => Promise<void>
+  completeNativeSignIn: (session: AuthSession) => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -109,8 +111,16 @@ export function AuthProvider({
       console.log('[AuthContext] consumeIncomingUrl: received URL =', url)
       const token = extractTransferToken(url)
       if (!token) {
-        console.log('[AuthContext] consumeIncomingUrl: no transfer token found, ignoring')
-        return false
+        const nativeSession = await completeNativeAuthCallback(url)
+        if (!nativeSession) {
+          console.log('[AuthContext] consumeIncomingUrl: no auth payload found, ignoring')
+          return false
+        }
+
+        await saveAuthSession(nativeSession)
+        await hydrateSession(nativeSession)
+        console.log('[AuthContext] consumeIncomingUrl: native session established for user', nativeSession.user?.id)
+        return true
       }
 
       console.log('[AuthContext] consumeIncomingUrl: transfer token extracted, consuming...')
@@ -143,6 +153,15 @@ export function AuthProvider({
     applySignedOutState()
     setAuthError(null)
   }, [applySignedOutState])
+
+  const completeNativeSignIn = useCallback(
+    async (nextSession: AuthSession) => {
+      await saveAuthSession(nextSession)
+      await hydrateSession(nextSession)
+      setAuthError(null)
+    },
+    [hydrateSession],
+  )
 
   useEffect(() => {
     let isMounted = true
@@ -212,9 +231,10 @@ export function AuthProvider({
       isAuthenticated: !!user?.id,
       authError,
       refreshSession,
+      completeNativeSignIn,
       signOut,
     }),
-    [authError, isLoading, refreshSession, session, signOut, user],
+    [authError, completeNativeSignIn, isLoading, refreshSession, session, signOut, user],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

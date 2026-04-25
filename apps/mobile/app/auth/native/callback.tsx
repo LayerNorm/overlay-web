@@ -1,0 +1,61 @@
+import React, { useEffect } from 'react'
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
+import { useRouter } from 'expo-router'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { useAuth } from '../../../contexts/AuthContext'
+import { useTheme } from '../../../hooks/useTheme'
+
+export default function NativeAuthCallbackScreen(): React.ReactElement {
+  const router = useRouter()
+  const { theme } = useTheme()
+  const { isAuthenticated, isLoading, authError } = useAuth()
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && !authError) {
+      router.replace('/(tabs)/chat')
+    }
+  }, [authError, isAuthenticated, isLoading, router])
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <View style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+        <ActivityIndicator color={theme.textSecondary} />
+        <Text style={[styles.title, { color: theme.text }]}>Finishing sign-in</Text>
+        <Text style={[styles.description, { color: authError ? '#EF4444' : theme.textSecondary }]}>
+          {authError || 'Returning to Overlay...'}
+        </Text>
+      </View>
+    </SafeAreaView>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    borderWidth: 1,
+    borderRadius: 24,
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+  },
+  title: {
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '700',
+    fontFamily: 'LibreBaskerville',
+    textAlign: 'center',
+  },
+  description: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+})

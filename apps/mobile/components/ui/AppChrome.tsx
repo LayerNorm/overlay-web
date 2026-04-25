@@ -12,6 +12,7 @@ import {
 import { Feather } from '@expo/vector-icons'
 import type { Theme } from '../../constants/theme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
+import { GlassSurface } from './GlassSurface'
 
 export function TopBarIconButton({
   theme,
@@ -25,19 +26,20 @@ export function TopBarIconButton({
   active?: boolean
 }): React.ReactElement {
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.82}
+    <GlassSurface
+      interactive
       style={[
         styles.iconButton,
         {
-          backgroundColor: active ? theme.surfaceMuted : theme.surfaceElevated,
-          borderColor: theme.border,
+          backgroundColor: theme.glassBg,
+          borderColor: theme.glassBorder,
         },
       ]}
     >
-      <Feather name={icon} size={16} color={active ? theme.text : theme.textSecondary} />
-    </TouchableOpacity>
+      <TouchableOpacity onPress={onPress} activeOpacity={0.82} style={styles.iconButtonTouch}>
+        <Feather name={icon} size={16} color={active ? theme.text : theme.textSecondary} />
+      </TouchableOpacity>
+    </GlassSurface>
   )
 }
 
@@ -219,7 +221,7 @@ export function BottomSheet({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalRoot}>
         <Pressable style={[styles.scrim, { backgroundColor: theme.scrim }]} onPress={onClose} />
-        <View style={[styles.sheet, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+        <GlassSurface style={[styles.sheet, { backgroundColor: theme.glassBg, borderColor: theme.glassBorder }]}>
           <View style={styles.sheetHandleWrap}>
             <View style={[styles.sheetHandle, { backgroundColor: theme.border }]} />
           </View>
@@ -237,7 +239,7 @@ export function BottomSheet({
           >
             {children}
           </ScrollView>
-        </View>
+        </GlassSurface>
       </View>
     </Modal>
   )
@@ -249,6 +251,10 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: borderRadius.full,
     borderWidth: 1,
+    overflow: 'hidden',
+  },
+  iconButtonTouch: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -369,6 +375,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 26,
     borderWidth: 1,
     borderBottomWidth: 0,
+    overflow: 'hidden',
   },
   sheetHandleWrap: {
     alignItems: 'center',

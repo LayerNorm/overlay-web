@@ -16,14 +16,34 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.layernorm.overlay-mobile",
-      "infoPlist": {
-      }
+      "infoPlist": {},
+      "associatedDomains": [
+        "applinks:www.getoverlay.io",
+        "applinks:www.getoverlay.io?mode=developer"
+      ]
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/auth/native/callback"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
@@ -43,7 +63,8 @@
           "barStyle": "dark",
           "visibility": "visible"
         }
-      ]
+      ],
+      "expo-web-browser"
     ]
   }
 }

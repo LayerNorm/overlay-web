@@ -1,47 +1,18 @@
-import React, { useEffect, useState } from 'react'
-import { ActivityIndicator, View } from 'react-native'
+import React, { useEffect } from 'react'
 import { useRouter } from 'expo-router'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { useTheme } from '../hooks/useTheme'
 import { useAuth } from '../contexts/AuthContext'
 
-export default function AppEntryScreen(): React.ReactElement {
+export default function AppEntryScreen(): React.ReactElement | null {
   const router = useRouter()
-  const { theme } = useTheme()
-  const { isLoading: authLoading, isAuthenticated } = useAuth()
-  const [isResolving, setIsResolving] = useState(true)
+  const { isAuthenticated, isLoading } = useAuth()
 
   useEffect(() => {
-    let isMounted = true
-
-    async function resolveRoute(): Promise<void> {
-      if (authLoading) {
-        return
-      }
-
-      if (isAuthenticated) {
-        router.replace('/(tabs)')
-      } else {
-        router.replace('/auth-flow?mode=sign-in&force=true')
-      }
-
-      if (isMounted) {
-        setIsResolving(false)
-      }
+    if (isLoading) {
+      return
     }
 
-    resolveRoute()
+    router.replace(isAuthenticated ? '/(tabs)/chat' : '/auth-flow?mode=sign-in&force=true')
+  }, [isAuthenticated, isLoading, router])
 
-    return () => {
-      isMounted = false
-    }
-  }, [authLoading, isAuthenticated, router])
-
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        {isResolving && <ActivityIndicator size="large" color={theme.textSecondary} />}
-      </View>
-    </SafeAreaView>
-  )
+  return null
 }

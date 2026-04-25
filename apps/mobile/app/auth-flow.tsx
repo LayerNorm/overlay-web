@@ -1,270 +1,238 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
+  Image,
   Linking,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native'
+import * as WebBrowser from 'expo-web-browser'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { borderRadius, fontSize, spacing } from '../constants/theme'
+import { borderRadius, fontSize } from '../constants/theme'
 import { useTheme } from '../hooks/useTheme'
 import { useAuth } from '../contexts/AuthContext'
-import { buildCustomAuthUrl, clearPkceVerifier } from '../services/authService'
+import {
+  buildCustomAuthUrl,
+  consumeTransferToken,
+  extractTransferToken,
+} from '../services/authService'
+import { GlassSurface } from '../components/ui/GlassSurface'
+
+WebBrowser.maybeCompleteAuthSession()
+
+const OVERLAY_LOGO = require('../../overlay-landing/overlay-logo.png')
+const TRANSFER_REDIRECT_URI = 'overlay://auth/transfer'
 
 export default function AuthFlowScreen(): React.ReactElement {
   const router = useRouter()
-  const params = useLocalSearchParams<{ mode?: string; force?: string }>()
+  const params = useLocalSearchParams<{ force?: string }>()
   const { theme } = useTheme()
-  const { isAuthenticated } = useAuth()
-  const [isOpeningBrowser, setIsOpeningBrowser] = useState(false)
+  const { isAuthenticated, completeNativeSignIn } = useAuth()
+  const [isSigningIn, setIsSigningIn] = useState(false)
   const [browserError, setBrowserError] = useState<string | null>(null)
-  const hasOpenedRef = useRef(false)
-
-  const mode = params.mode === 'sign-up' ? 'sign-up' : 'sign-in'
   const forceLogin = params.force === 'true'
 
-  const [authUrl, setAuthUrl] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    console.log('[AuthFlow] building auth URL: mode=%s forceLogin=%s', mode, forceLogin)
-
-    void (async () => {
-      try {
-        const next = await buildCustomAuthUrl(mode, { forceLogin })
-        console.log('[AuthFlow] auth URL ready:', next)
-        if (!cancelled) {
-          setAuthUrl(next)
-        }
-      } catch (err) {
-        console.error('[AuthFlow] failed to build auth URL:', err)
-        if (!cancelled) {
-          setBrowserError('Could not start sign-in. Try again.')
-        }
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [forceLogin, mode])
-
   const handleClose = useCallback(() => {
-    void clearPkceVerifier()
     if (router.canGoBack()) {
       router.back()
       return
     }
 
-    router.replace('/(tabs)')
+    router.replace('/(tabs)/chat')
   }, [router])
 
-  const openInBrowser = useCallback(async () => {
-    if (!authUrl) {
-      console.warn('[AuthFlow] openInBrowser called but authUrl is null')
-      return
-    }
+  const startAuth = useCallback(
+    async () => {
+      setIsSigningIn(true)
+      setBrowserError(null)
 
-    console.log('[AuthFlow] opening browser with URL:', authUrl)
-    setIsOpeningBrowser(true)
-    setBrowserError(null)
+      try {
+        const authUrl = await buildCustomAuthUrl('sign-in', { forceLogin })
+        const result = await WebBrowser.openAuthSessionAsync(
+          authUrl,
+          TRANSFER_REDIRECT_URI,
+          {
+            preferEphemeralSession: false,
+          },
+        )
 
-    try {
-      await Linking.openURL(authUrl)
-      console.log('[AuthFlow] Linking.openURL resolved (browser handed off)')
-    } catch (error) {
-      console.error('[AuthFlow] Linking.openURL failed:', error)
-      setBrowserError(error instanceof Error ? error.message : 'Unable to open browser')
-    } finally {
-      setIsOpeningBrowser(false)
-    }
-  }, [authUrl])
+        if (result.type !== 'success') {
+          if (result.type === 'cancel') {
+            return
+          }
+          throw new Error('Authentication was not completed.')
+        }
+
+        const token = extractTransferToken(result.url)
+        if (!token) {
+          throw new Error('Authentication returned an unexpected callback. Start sign-in again.')
+        }
+
+        const session = await consumeTransferToken(token)
+        await completeNativeSignIn(session)
+        router.replace('/(tabs)/chat')
+      } catch (error) {
+        setBrowserError(error instanceof Error ? error.message : 'Unable to sign in')
+      } finally {
+        setIsSigningIn(false)
+      }
+    },
+    [completeNativeSignIn, forceLogin, router],
+  )
 
   useEffect(() => {
-    console.log('[AuthFlow] isAuthenticated changed:', isAuthenticated)
-    if (!isAuthenticated) {
-      return
+    if (isAuthenticated) {
+      router.replace('/(tabs)/chat')
     }
-
-    console.log('[AuthFlow] authenticated — closing auth flow')
-    handleClose()
-  }, [handleClose, isAuthenticated])
-
-  useEffect(() => {
-    if (!authUrl || hasOpenedRef.current) {
-      return
-    }
-
-    hasOpenedRef.current = true
-    void openInBrowser()
-  }, [authUrl, openInBrowser])
+  }, [isAuthenticated, router])
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.header, { borderBottomColor: theme.border }]}>
-        <View style={styles.headerCopy}>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>
-            {mode === 'sign-up' ? 'Create your account' : 'Sign in to Overlay'}
-          </Text>
-          <Text style={[styles.headerDescription, { color: theme.textSecondary }]}>
-            This is the same hosted account flow used on web.
-          </Text>
-        </View>
-
+      <GlassSurface style={[styles.panel, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
         <TouchableOpacity
           onPress={handleClose}
           activeOpacity={0.82}
-          style={[styles.closeButton, { borderColor: theme.border, backgroundColor: theme.surface }]}
+          style={[styles.closeButton, { backgroundColor: theme.surfaceSubtle }]}
         >
-          <Feather name="x" size={18} color={theme.text} />
+          <Feather name="x" size={28} color={theme.text} />
         </TouchableOpacity>
-      </View>
 
-      <View style={styles.content}>
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <View style={[styles.iconWrap, { backgroundColor: theme.background, borderColor: theme.border }]}>
-            <Feather name="external-link" size={22} color={theme.text} />
-          </View>
+        <View style={styles.brandBlock}>
+          <Image source={OVERLAY_LOGO} resizeMode="contain" style={styles.logo} />
+          <Text style={[styles.title, { color: theme.text }]}>Overlay</Text>
+          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Sign in or create an account</Text>
+        </View>
 
-          <Text style={[styles.cardTitle, { color: theme.text }]}>
-            Continue in your browser
-          </Text>
-          <Text style={[styles.cardDescription, { color: theme.textSecondary }]}>
-            Google sign-in is not allowed inside embedded web views. Overlay opens the hosted account flow in Safari and returns here automatically after sign-in.
-          </Text>
-
+        <View style={styles.providerStack}>
           <TouchableOpacity
+            activeOpacity={0.86}
+            disabled={isSigningIn}
             onPress={() => {
-              void openInBrowser()
+              void startAuth()
             }}
-            activeOpacity={0.82}
-            style={[styles.primaryButton, { backgroundColor: theme.buttonBg }]}
+            style={[
+              styles.providerButton,
+              {
+                backgroundColor: theme.foreground,
+              },
+            ]}
           >
-            {isOpeningBrowser ? (
-              <ActivityIndicator color={theme.surface} />
+            {isSigningIn ? (
+              <ActivityIndicator color={theme.background} />
             ) : (
               <>
-                <Text style={[styles.primaryButtonText, { color: theme.surface }]}>
-                  Open Safari
+                <Feather name="log-in" size={22} color={theme.background} />
+                <Text style={[styles.providerText, { color: theme.background }]}>
+                  Continue to sign in
                 </Text>
-                <Feather name="arrow-up-right" size={16} color={theme.surface} />
               </>
             )}
           </TouchableOpacity>
 
-          <View style={[styles.infoPanel, { backgroundColor: theme.background, borderColor: theme.border }]}>
-            <Text style={[styles.infoTitle, { color: theme.text }]}>What to expect</Text>
-            <Text style={[styles.infoText, { color: theme.textSecondary }]}>
-              Sign in in Safari, then the auth site will deep link back into the app.
-            </Text>
-          </View>
-
-          {browserError ? (
-            <Text style={styles.errorText}>{browserError}</Text>
-          ) : null}
+          <Text style={[styles.providerHint, { color: theme.textSecondary }]}>
+            Choose Google, Apple, Microsoft, or email on the secure Overlay sign-in page.
+          </Text>
         </View>
-      </View>
+
+        {browserError ? <Text style={[styles.errorText, { color: '#EF4444' }]}>{browserError}</Text> : null}
+
+        <View style={styles.footer}>
+          <TouchableOpacity onPress={() => void Linking.openURL('https://www.getoverlay.io/privacy')}>
+            <Text style={[styles.footerLink, { color: theme.textSecondary }]}>Privacy policy</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => void Linking.openURL('https://www.getoverlay.io/terms')}>
+            <Text style={[styles.footerLink, { color: theme.textSecondary }]}>Terms of service</Text>
+          </TouchableOpacity>
+        </View>
+      </GlassSurface>
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1
-  },
-  headerCopy: {
     flex: 1,
-    gap: 4
+    justifyContent: 'flex-end',
+    paddingHorizontal: 20,
+    paddingBottom: 20,
   },
-  headerTitle: {
-    fontSize: fontSize.xl,
-    fontWeight: '700'
-  },
-  headerDescription: {
-    fontSize: fontSize.sm,
-    lineHeight: 19
+  panel: {
+    minHeight: '74%',
+    borderWidth: 1,
+    borderRadius: 34,
+    paddingHorizontal: 24,
+    paddingTop: 34,
+    paddingBottom: 24,
+    gap: 26,
   },
   closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl
-  },
-  card: {
-    borderWidth: 1,
-    borderRadius: 28,
-    padding: spacing.xl,
-    gap: spacing.lg
-  },
-  iconWrap: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
     width: 52,
     height: 52,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
+    borderRadius: 26,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    zIndex: 2,
   },
-  cardTitle: {
-    fontSize: 30,
-    lineHeight: 34,
-    fontWeight: '700',
-    fontFamily: 'LibreBaskerville'
+  brandBlock: {
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 86,
   },
-  cardDescription: {
+  logo: {
+    width: 72,
+    height: 72,
+  },
+  title: {
+    fontSize: 58,
+    lineHeight: 64,
+    fontWeight: '400',
+    fontFamily: 'LibreBaskerville',
+  },
+  subtitle: {
     fontSize: fontSize.md,
-    lineHeight: 24
+    fontWeight: '600',
   },
-  primaryButton: {
-    minHeight: 52,
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing.lg,
+  providerStack: {
+    gap: 14,
+    marginTop: 22,
+  },
+  providerButton: {
+    minHeight: 58,
+    borderRadius: borderRadius.full,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm
+    gap: 10,
   },
-  primaryButtonText: {
-    fontSize: fontSize.md,
-    fontWeight: '700'
+  providerText: {
+    fontSize: 20,
+    fontWeight: '700',
   },
-  infoPanel: {
-    borderWidth: 1,
-    borderRadius: 18,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    gap: 4
-  },
-  infoTitle: {
+  providerHint: {
     fontSize: fontSize.sm,
-    fontWeight: '700'
-  },
-  infoText: {
-    fontSize: fontSize.sm,
-    lineHeight: 20
+    lineHeight: 20,
+    textAlign: 'center',
+    paddingHorizontal: 12,
   },
   errorText: {
-    color: '#EF4444',
     fontSize: fontSize.sm,
-    lineHeight: 20
-  }
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  footer: {
+    marginTop: 'auto',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  footerLink: {
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+  },
 })

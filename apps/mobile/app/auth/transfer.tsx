@@ -39,7 +39,7 @@ export default function AuthTransferScreen(): React.ReactElement {
       }
 
       if (!cancelled) {
-        router.replace('/(tabs)')
+        router.replace('/(tabs)/chat')
       }
     }
 
