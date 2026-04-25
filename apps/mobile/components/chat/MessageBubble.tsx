@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import {
   Image,
   Linking,
@@ -25,6 +25,33 @@ import { spacing, fontSize, borderRadius } from '../../constants/theme'
 const OVERLAY_LOGO = require('../../../overlay-logo.png')
 
 const DONE_STATES = new Set(['output-available', 'output-error', 'output-denied'])
+
+// ─── Think-tag extraction ─────────────────────────────────────────────────────
+// Handles both <think>...</think> and <think>...</redacted_thinking> patterns.
+// This runs on both streaming and loaded messages so <think> never leaks to body text.
+
+function extractThinkContent(text: string): { cleanText: string; reasoning: string } {
+  let reasoning = ''
+  const cleanText = text
+    .replace(/<think>([\s\S]*?)<\/think>/gi, (_, inner: string) => {
+      reasoning += inner
+      return ''
+    })
+    .replace(/<think>([\s\S]*?)<\/redacted_thinking>/gi, (_, inner: string) => {
+      reasoning += inner
+      return ''
+    })
+    .trim()
+  return { cleanText, reasoning }
+}
+
+// ─── Text normalization ───────────────────────────────────────────────────────
+// Port of normalizeAgentAssistantText from the web app (core parts only).
+
+function normalizeDisplayText(text: string): string {
+  if (!text.trim()) return text
+  return text.replace(/([a-z])\.([A-Z])/g, '$1. $2')
+}
 
 // ─── Tool label helpers ───────────────────────────────────────────────────────
 
@@ -59,6 +86,77 @@ function titleCaseUnderscore(id: string): string {
 
 function getToolLabel(toolName: string): string {
   return TOOL_LABEL_MAP[toolName] ?? titleCaseUnderscore(toolName)
+}
+
+// ─── Web source extraction ────────────────────────────────────────────────────
+
+interface WebSource {
+  url: string
+  title?: string
+  snippet?: string
+}
+
+function extractWebSources(toolInvocations: ToolInvocationSummary[]): WebSource[] {
+  const sources: WebSource[] = []
+  const seen = new Set<string>()
+
+  function tryAdd(item: unknown) {
+    if (!item || typeof item !== 'object') return
+    const it = item as Record<string, unknown>
+    const url =
+      typeof it.url === 'string'
+        ? it.url
+        : typeof it.link === 'string'
+          ? it.link
+          : null
+    if (!url || seen.has(url)) return
+    seen.add(url)
+    sources.push({
+      url,
+      title: typeof it.title === 'string' ? it.title : undefined,
+      snippet: typeof it.snippet === 'string' ? it.snippet : undefined,
+    })
+  }
+
+  for (const tool of toolInvocations) {
+    if (!DONE_STATES.has(tool.state ?? '') || !tool.toolOutput) continue
+    const output = tool.toolOutput
+
+    if (Array.isArray(output)) {
+      output.forEach(tryAdd)
+      continue
+    }
+
+    if (typeof output !== 'object') continue
+    const obj = output as Record<string, unknown>
+
+    if (Array.isArray(obj.results)) obj.results.forEach(tryAdd)
+    if (Array.isArray(obj.sources)) obj.sources.forEach(tryAdd)
+    if (Array.isArray(obj.citations)) {
+      obj.citations.forEach((c) => {
+        if (typeof c === 'string' && !seen.has(c)) {
+          seen.add(c)
+          sources.push({ url: c })
+        } else {
+          tryAdd(c)
+        }
+      })
+    }
+    if (typeof obj.url === 'string' && !seen.has(obj.url)) {
+      seen.add(obj.url)
+      sources.push({ url: obj.url, title: typeof obj.title === 'string' ? obj.title : undefined })
+    }
+  }
+
+  return sources
+}
+
+function getSourceHostname(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return url
+  }
 }
 
 // ─── Shimmer animation ────────────────────────────────────────────────────────
@@ -192,8 +290,77 @@ function ToolCallRow({ tool, theme }: { tool: ToolInvocationSummary; theme: Them
   )
 }
 
+// ─── Sources section ──────────────────────────────────────────────────────────
+
+function SourcesSection({ sources, theme }: { sources: WebSource[]; theme: Theme }) {
+  const [expanded, setExpanded] = useState(false)
+  if (sources.length === 0) return null
+
+  return (
+    <View style={[styles.sourcesBlock, { borderColor: theme.border }]}>
+      <TouchableOpacity
+        style={styles.sourcesHeader}
+        onPress={() => setExpanded((v) => !v)}
+        activeOpacity={0.82}
+      >
+        <View style={styles.sourcesHeaderLeft}>
+          <Feather name="globe" size={13} color={theme.textSecondary} />
+          <Text style={[styles.sourcesHeaderText, { color: theme.textSecondary }]}>
+            {sources.length} source{sources.length !== 1 ? 's' : ''}
+          </Text>
+        </View>
+        <Feather
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={13}
+          color={theme.textSecondary}
+        />
+      </TouchableOpacity>
+      {expanded ? (
+        <View style={[styles.sourcesList, { borderTopColor: theme.border }]}>
+          {sources.map((source, i) => (
+            <TouchableOpacity
+              key={`${source.url}-${i}`}
+              style={[styles.sourceRow, { borderBottomColor: theme.border }]}
+              onPress={() => void Linking.openURL(source.url)}
+              activeOpacity={0.82}
+            >
+              <View style={styles.sourceRowContent}>
+                <Text style={[styles.sourceTitle, { color: theme.text }]} numberOfLines={1}>
+                  {source.title || getSourceHostname(source.url)}
+                </Text>
+                {source.snippet ? (
+                  <Text
+                    style={[styles.sourceSnippet, { color: theme.textSecondary }]}
+                    numberOfLines={2}
+                  >
+                    {source.snippet}
+                  </Text>
+                ) : null}
+              </View>
+              <Feather name="external-link" size={12} color={theme.textSecondary} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  )
+}
+
+// ─── Memoized stable markdown ─────────────────────────────────────────────────
+// Only re-renders when text OR style reference changes. Since markdownStyles is
+// built with useMemo (theme + isUser deps), style only changes on theme switch —
+// not on every streaming chunk.
+
+const StableMd = React.memo(
+  function StableMd({ text, style }: { text: string; style: object }) {
+    return <Markdown style={style as Record<string, unknown>}>{text}</Markdown>
+  },
+  (prev, next) => prev.text === next.text && prev.style === next.style,
+)
+
 // ─── Streaming text display ───────────────────────────────────────────────────
-// Complete lines rendered as Markdown; the partial trailing line as plain text + cursor.
+// Stable committed lines → StableMd (memoized, no re-parse).
+// Active trailing line → plain Text in-place (no remount animation → no blink).
 
 function StreamingMarkdown({
   text,
@@ -202,32 +369,19 @@ function StreamingMarkdown({
 }: {
   text: string
   theme: Theme
-  markdownStyles: Record<string, unknown>
+  markdownStyles: object
 }) {
-  // Find the last newline that isn't at the very end so we can split stable vs current line
   const lastNl = text.lastIndexOf('\n', text.length - 2)
   const stableText = lastNl >= 0 ? text.slice(0, lastNl + 1) : ''
   const currentLine = lastNl >= 0 ? text.slice(lastNl + 1) : text
 
-  // Animate the current-line view in each time it changes
-  const [lineKey, setLineKey] = useState(0)
-  const prevCurrentLine = React.useRef('')
-  useEffect(() => {
-    if (currentLine !== prevCurrentLine.current) {
-      prevCurrentLine.current = currentLine
-      setLineKey((k) => k + 1)
-    }
-  }, [currentLine])
-
   return (
     <View>
-      {stableText ? <Markdown style={markdownStyles}>{stableText}</Markdown> : null}
+      {stableText ? <StableMd text={stableText} style={markdownStyles} /> : null}
       <View style={styles.streamingLine}>
-        <Animated.View key={lineKey} entering={FadeIn.duration(80)} style={styles.streamingLineText}>
-          <Text style={[{ color: theme.text, fontSize: 15, lineHeight: 23 }]}>
-            {currentLine}
-          </Text>
-        </Animated.View>
+        <Text style={{ color: theme.text, fontSize: 15, lineHeight: 23, flexShrink: 1 }}>
+          {currentLine}
+        </Text>
         <StreamingCursor />
       </View>
     </View>
@@ -249,79 +403,115 @@ export const MessageBubble = React.memo(function MessageBubble({
   onCopy,
 }: MessageBubbleProps): React.ReactElement {
   const isUser = message.role === 'user'
-  const displayContent = isUser
+
+  const rawContent = isUser
     ? message.content
     : (message.responses?.find((r) => r.modelId === message.selectedModelId)?.content ||
        message.responses?.[0]?.content ||
        message.content)
-  const isLoading = (message.responses?.some((r) => r.isLoading) ?? false)
-  const hasReasoning = !isUser && !!message.reasoning?.trim()
+
+  // Strip <think>...</think> from whatever the server sends back.
+  // During streaming: aiService.ts already routes think→reasoning, so cleanText ≈ rawContent.
+  // After loadChat: server returns raw model output with <think> tags → extract them here.
+  const { cleanText: displayContent, reasoning: extractedReasoning } = useMemo(
+    () => (isUser ? { cleanText: rawContent, reasoning: '' } : extractThinkContent(rawContent || '')),
+    [isUser, rawContent],
+  )
+
+  const isLoading = message.responses?.some((r) => r.isLoading) ?? false
+  const reasoningText = (message.reasoning || '') + extractedReasoning
+  const hasReasoning = !isUser && !!reasoningText.trim()
   const toolInvocations: ToolInvocationSummary[] = !isUser ? (message.toolInvocations || []) : []
   const generatedFiles = !isUser ? (message.generatedFiles || []) : []
 
-  const markdownStyles = {
-    body: {
-      color: isUser ? theme.buttonPrimaryText : theme.text,
-      fontSize: 15,
-      lineHeight: 23,
-    },
-    paragraph: { marginTop: 0, marginBottom: 8 },
-    code_inline: {
-      backgroundColor: isUser ? 'rgba(255,255,255,0.14)' : theme.surfaceMuted,
-      color: isUser ? theme.buttonPrimaryText : theme.text,
-      paddingHorizontal: 5,
-      paddingVertical: 2,
-      borderRadius: 4,
-      fontSize: 13,
-    },
-    fence: {
-      backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceMuted,
-      borderColor: isUser ? 'rgba(255,255,255,0.2)' : theme.border,
-      borderWidth: 1,
-      borderRadius: 8,
-      padding: 12,
-      marginVertical: 8,
-    },
-    code_block: {
-      color: isUser ? theme.buttonPrimaryText : theme.text,
-      fontSize: 13,
-    },
-    link: { color: isUser ? '#93C5FD' : '#3B82F6' },
-    heading1: {
-      color: isUser ? theme.buttonPrimaryText : theme.text,
-      fontSize: 20,
-      fontWeight: '700' as const,
-      marginTop: 16,
-      marginBottom: 8,
-    },
-    heading2: {
-      color: isUser ? theme.buttonPrimaryText : theme.text,
-      fontSize: 18,
-      fontWeight: '600' as const,
-      marginTop: 12,
-      marginBottom: 6,
-    },
-    heading3: {
-      color: isUser ? theme.buttonPrimaryText : theme.text,
-      fontSize: 16,
-      fontWeight: '600' as const,
-      marginTop: 10,
-      marginBottom: 4,
-    },
-    bullet_list: { marginVertical: 4 },
-    ordered_list: { marginVertical: 4 },
-    list_item: { marginVertical: 2 },
-    blockquote: {
-      backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceMuted,
-      borderLeftColor: isUser ? 'rgba(255,255,255,0.4)' : theme.border,
-      borderLeftWidth: 3,
-      paddingLeft: 12,
-      paddingVertical: 4,
-      marginVertical: 8,
-    },
-    strong: { fontWeight: '700' as const },
-    em: { fontStyle: 'italic' as const },
-  }
+  const webSources = useMemo(
+    () => extractWebSources(toolInvocations),
+    // Stable until tool states change; length + last state as lightweight proxy
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [toolInvocations.length, toolInvocations[toolInvocations.length - 1]?.state],
+  )
+
+  const markdownStyles = useMemo(
+    () => ({
+      body: {
+        color: isUser ? theme.buttonPrimaryText : theme.text,
+        fontSize: 15,
+        lineHeight: 23,
+      },
+      paragraph: { marginTop: 0, marginBottom: 8 },
+      code_inline: {
+        backgroundColor: isUser ? 'rgba(255,255,255,0.14)' : theme.surfaceMuted,
+        color: isUser ? theme.buttonPrimaryText : theme.text,
+        paddingHorizontal: 5,
+        paddingVertical: 2,
+        borderRadius: 4,
+        fontSize: 13,
+        fontFamily: 'monospace',
+      },
+      fence: {
+        backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceMuted,
+        borderColor: isUser ? 'rgba(255,255,255,0.2)' : theme.border,
+        borderWidth: 1,
+        borderRadius: 8,
+        padding: 12,
+        marginVertical: 8,
+      },
+      code_block: {
+        color: isUser ? theme.buttonPrimaryText : theme.text,
+        fontSize: 13,
+        fontFamily: 'monospace',
+      },
+      link: { color: isUser ? '#93C5FD' : '#3B82F6' },
+      heading1: {
+        color: isUser ? theme.buttonPrimaryText : theme.text,
+        fontSize: 20,
+        fontWeight: '700' as const,
+        marginTop: 16,
+        marginBottom: 8,
+      },
+      heading2: {
+        color: isUser ? theme.buttonPrimaryText : theme.text,
+        fontSize: 18,
+        fontWeight: '600' as const,
+        marginTop: 12,
+        marginBottom: 6,
+      },
+      heading3: {
+        color: isUser ? theme.buttonPrimaryText : theme.text,
+        fontSize: 16,
+        fontWeight: '600' as const,
+        marginTop: 10,
+        marginBottom: 4,
+      },
+      bullet_list: { marginVertical: 4 },
+      ordered_list: { marginVertical: 4 },
+      list_item: { marginVertical: 2 },
+      blockquote: {
+        backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceMuted,
+        borderLeftColor: isUser ? 'rgba(255,255,255,0.4)' : theme.border,
+        borderLeftWidth: 3,
+        paddingLeft: 12,
+        paddingVertical: 4,
+        marginVertical: 8,
+      },
+      strong: { fontWeight: '700' as const },
+      em: { fontStyle: 'italic' as const },
+      table: {
+        borderColor: theme.border,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: 4,
+        marginVertical: 8,
+      },
+      th: {
+        backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceMuted,
+        padding: 8,
+        fontWeight: '600' as const,
+      },
+      td: { padding: 8, borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth },
+      hr: { backgroundColor: theme.border, height: 1, marginVertical: 12 },
+    }),
+    [isUser, theme],
+  )
 
   // ── User bubble ──────────────────────────────────────────────────────────────
   if (isUser) {
@@ -343,15 +533,17 @@ export const MessageBubble = React.memo(function MessageBubble({
   }
 
   // ── Assistant bubble ─────────────────────────────────────────────────────────
-  const showInitialCursor = isLoading && !displayContent && !hasReasoning && toolInvocations.length === 0
+  const showInitialCursor =
+    isLoading && !displayContent && !hasReasoning && toolInvocations.length === 0
+  const isReasoningStreaming = isLoading && !displayContent
 
   return (
     <View style={[styles.container, styles.assistantContainer]}>
       {/* Reasoning block */}
       {hasReasoning ? (
         <ReasoningBlock
-          text={message.reasoning!}
-          isStreaming={isLoading && !displayContent}
+          text={reasoningText}
+          isStreaming={isReasoningStreaming}
           theme={theme}
         />
       ) : null}
@@ -374,17 +566,27 @@ export const MessageBubble = React.memo(function MessageBubble({
         isLoading ? (
           <StreamingMarkdown text={displayContent} theme={theme} markdownStyles={markdownStyles} />
         ) : (
-          <Markdown style={markdownStyles}>{displayContent}</Markdown>
+          <StableMd text={normalizeDisplayText(displayContent)} style={markdownStyles} />
         )
+      ) : null}
+
+      {/* Sources (collapsed by default) */}
+      {!isLoading && webSources.length > 0 ? (
+        <SourcesSection sources={webSources} theme={theme} />
       ) : null}
 
       {/* Generated files */}
       {generatedFiles.length > 0 ? (
-        <View style={[styles.filesBlock, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+        <View
+          style={[
+            styles.filesBlock,
+            { backgroundColor: theme.surfaceElevated, borderColor: theme.border },
+          ]}
+        >
           {generatedFiles.map((file, index) => (
             <TouchableOpacity
               key={`${file.url}-${index}`}
-              onPress={() => { void Linking.openURL(file.url) }}
+              onPress={() => void Linking.openURL(file.url)}
               activeOpacity={0.82}
               style={[styles.fileRow, { borderBottomColor: theme.border }]}
             >
@@ -463,7 +665,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Tool call rows
+  // Tool / reasoning rows
   toolRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -513,11 +715,8 @@ const styles = StyleSheet.create({
     gap: 4,
     flexWrap: 'wrap',
   },
-  streamingLineText: {
-    flexShrink: 1,
-  },
 
-  // Streaming cursor (overlay logo)
+  // Streaming cursor
   cursor: {
     width: 14,
     height: 14,
@@ -528,10 +727,59 @@ const styles = StyleSheet.create({
     height: 14,
   },
 
-  // Initial loading state (just the cursor)
+  // Initial loading cursor
   initialCursor: {
     paddingVertical: 8,
     paddingLeft: 2,
+  },
+
+  // Sources section
+  sourcesBlock: {
+    width: '100%',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  sourcesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  sourcesHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  sourcesHeaderText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  sourcesList: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  sourceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  sourceRowContent: {
+    flex: 1,
+    gap: 2,
+  },
+  sourceTitle: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  sourceSnippet: {
+    fontSize: 11,
+    lineHeight: 15,
   },
 
   // Files block
