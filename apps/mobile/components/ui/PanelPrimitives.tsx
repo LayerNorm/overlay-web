@@ -18,9 +18,14 @@ export function PanelCard({
       style={[
         styles.card,
         {
-          backgroundColor: theme.surface,
+          backgroundColor: theme.surfaceElevated,
           borderColor: theme.border,
-          padding: padded ? spacing.lg : 0
+          padding: padded ? spacing.lg : 0,
+          shadowColor: theme.preference === 'dark' ? '#000000' : '#09090b',
+          shadowOpacity: theme.preference === 'dark' ? 0.24 : 0.06,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 10 },
+          elevation: theme.preference === 'dark' ? 0 : 2
         }
       ]}
     >
@@ -47,12 +52,12 @@ export function IconAction({
       style={[
         styles.iconButton,
         {
-          backgroundColor: active ? theme.text : theme.surface,
+          backgroundColor: active ? theme.buttonPrimaryBg : theme.surfaceSubtle,
           borderColor: theme.border
         }
       ]}
     >
-      <Feather name={icon} size={17} color={active ? theme.surface : theme.textSecondary} />
+      <Feather name={icon} size={17} color={active ? theme.buttonPrimaryText : theme.textSecondary} />
     </TouchableOpacity>
   )
 }
@@ -83,7 +88,7 @@ export function MetricTile({
       style={[
         styles.metricTile,
         {
-          backgroundColor: theme.surface,
+          backgroundColor: theme.surfaceSubtle,
           borderColor: theme.border
         }
       ]}
@@ -97,7 +102,7 @@ export function MetricTile({
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderRadius: 24,
+    borderRadius: borderRadius.xl,
     overflow: 'hidden'
   },
   iconButton: {

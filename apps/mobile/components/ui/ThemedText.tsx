@@ -25,7 +25,7 @@ export function ThemedText({ style, variant = 'default', size = 'md', ...props }
 
   const getFontFamily = () => {
     if (variant === 'display') {
-      return 'Georgia'
+      return theme.serifFontFamily
     }
     return undefined
   }

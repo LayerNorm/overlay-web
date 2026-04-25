@@ -5,7 +5,7 @@ import type {
   NoteDoc,
   ProjectSummary,
   SkillSummary,
-} from './appContracts'
+} from '@overlay/app-core'
 
 export async function listProjects(): Promise<ProjectSummary[]> {
   return appJson<ProjectSummary[]>('/api/app/projects')

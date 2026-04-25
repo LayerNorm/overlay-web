@@ -9,7 +9,10 @@ interface AppRequestOptions {
   json?: Record<string, unknown>
   formData?: FormData
   headers?: Record<string, string>
+  timeoutMs?: number
 }
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 10_000
 
 function createUrl(
   path: string,
@@ -55,11 +58,22 @@ export async function appRequest(
     })
   }
 
-  const response = await fetch(createUrl(path, session, options.query), {
-    method: options.method ?? 'GET',
-    headers,
-    body,
-  })
+  const controller = new AbortController()
+  const timer = setTimeout(() => {
+    controller.abort()
+  }, options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS)
+
+  let response: Response
+  try {
+    response = await fetch(createUrl(path, session, options.query), {
+      method: options.method ?? 'GET',
+      headers,
+      body,
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timer)
+  }
 
   return response
 }
@@ -80,6 +94,12 @@ export async function readJsonSseStream<T>(
   response: Response,
   onChunk: (chunk: T) => void,
 ): Promise<void> {
+  for await (const chunk of streamJsonSse<T>(response)) {
+    onChunk(chunk)
+  }
+}
+
+export async function* streamJsonSse<T>(response: Response): AsyncGenerator<T> {
   if (!response.ok) {
     const text = await response.text().catch(() => '')
     throw new Error(text || `Stream failed with status ${response.status}`)
@@ -93,10 +113,7 @@ export async function readJsonSseStream<T>(
   const decoder = new TextDecoder()
   let buffer = ''
 
-  while (true) {
-    const { done, value } = await reader.read()
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
-
+  function* parseBuffer(flush = false): Generator<T> {
     let delimiterIndex = buffer.indexOf('\n\n')
     while (delimiterIndex >= 0) {
       const rawEvent = buffer.slice(0, delimiterIndex)
@@ -112,20 +129,31 @@ export async function readJsonSseStream<T>(
           return
         }
         if (payload) {
-          onChunk(JSON.parse(payload) as T)
+          yield JSON.parse(payload) as T
         }
       }
 
       delimiterIndex = buffer.indexOf('\n\n')
     }
 
-    if (done) {
-      if (buffer.trim().length > 0) {
-        const payload = buffer.replace(/^data:\s*/, '').trim()
-        if (payload && payload !== '[DONE]') {
-          onChunk(JSON.parse(payload) as T)
-        }
+    if (flush && buffer.trim().length > 0) {
+      const payload = buffer.replace(/^data:\s*/, '').trim()
+      buffer = ''
+      if (payload && payload !== '[DONE]') {
+        yield JSON.parse(payload) as T
       }
+    }
+  }
+
+  while (true) {
+    const { done, value } = await reader.read()
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+
+    for (const chunk of parseBuffer(done)) {
+      yield chunk
+    }
+
+    if (done) {
       return
     }
   }

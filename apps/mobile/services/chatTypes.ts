@@ -2,7 +2,7 @@ import type {
   ChatModel as ServerChatModel,
   ConversationMessage,
   ConversationSummary,
-} from './appContracts'
+} from '@overlay/app-core'
 
 export type ChatModel = ServerChatModel
 
@@ -77,6 +77,7 @@ export const PROVIDER_COLORS: Record<string, string> = {
   anthropic: '#D97706',
   groq: '#F97316',
   xai: '#6366F1',
+  nvidia: '#76B900',
   openrouter: '#111827',
   minimax: '#0F766E',
   moonshotai: '#9333EA',

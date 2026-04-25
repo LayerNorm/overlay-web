@@ -17,8 +17,6 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.layernorm.overlay-mobile",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Overlay needs microphone access to transcribe your voice into text.",
-        "UIBackgroundModes": ["audio"]
       }
     },
     "android": {
@@ -37,9 +35,13 @@
       "expo-font",
       "expo-secure-store",
       [
-        "expo-av",
+        "expo-navigation-bar",
         {
-          "microphonePermission": "Overlay needs microphone access to transcribe your voice into text."
+          "position": "absolute",
+          "backgroundColor": "#00000000",
+          "borderColor": "#00000000",
+          "barStyle": "dark",
+          "visibility": "visible"
         }
       ]
     ]

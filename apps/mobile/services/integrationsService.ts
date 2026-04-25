@@ -1,5 +1,5 @@
 import { appJson } from './appApi'
-import type { IntegrationSummary, SkillSummary } from './appContracts'
+import type { IntegrationSummary, SkillSummary } from '@overlay/app-core'
 
 export async function listConnectedIntegrations(): Promise<{ connected: string[] }> {
   return appJson<{ connected: string[] }>('/api/app/integrations')

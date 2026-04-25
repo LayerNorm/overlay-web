@@ -4,30 +4,23 @@ import React, {
   useContext,
   useEffect,
   useMemo,
-  useState
+  useState,
 } from 'react'
 import { Linking } from 'react-native'
 import {
-  AuthEntitlements,
-  AuthProfile,
-  AuthSession,
-  AuthUser,
+  type AuthSession,
+  type AuthUser,
   clearAuthSession,
   consumeTransferToken,
   extractTransferToken,
-  getEntitlements,
-  getUserProfile,
   loadAuthSession,
   refreshAuthSession,
   saveAuthSession,
-  syncUserProfile
 } from '../services/authService'
 
 interface AuthContextValue {
   user: AuthUser | null
   session: AuthSession | null
-  profile: AuthProfile | null
-  entitlements: AuthEntitlements | null
   isLoading: boolean
   isAuthenticated: boolean
   authError: string | null
@@ -41,82 +34,94 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Authentication failed'
 }
 
-export function AuthProvider({ children }: { children: React.ReactNode }): React.ReactElement {
+export function AuthProvider({
+  children,
+}: {
+  children: React.ReactNode
+}): React.ReactElement {
   const [session, setSession] = useState<AuthSession | null>(null)
-  const [profile, setProfile] = useState<AuthProfile | null>(null)
-  const [entitlements, setEntitlements] = useState<AuthEntitlements | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [authError, setAuthError] = useState<string | null>(null)
 
   const applySignedOutState = useCallback(() => {
     setSession(null)
-    setProfile(null)
-    setEntitlements(null)
   }, [])
 
   const hydrateSession = useCallback(async (nextSession: AuthSession) => {
     setSession(nextSession)
-
-    try {
-      await syncUserProfile(nextSession)
-    } catch {
-      // Convex sync is additive. Keep the session even if the profile sync is unavailable.
-    }
-
-    try {
-      const [nextProfile, nextEntitlements] = await Promise.all([
-        getUserProfile(nextSession),
-        getEntitlements(nextSession)
-      ])
-
-      setProfile(nextProfile)
-      setEntitlements(nextEntitlements)
-    } catch {
-      setProfile(null)
-      setEntitlements(null)
-    }
   }, [])
 
   const restoreStoredSession = useCallback(async () => {
+    console.log('[AuthContext] restoreStoredSession: start')
     const storedSession = await loadAuthSession()
 
+    if (!storedSession) {
+      console.log('[AuthContext] restoreStoredSession: no stored session, signing out')
+      applySignedOutState()
+      return
+    }
+
+    console.log('[AuthContext] restoreStoredSession: hydrating stored session for user', storedSession.user?.id)
+    await hydrateSession(storedSession)
+
+    void refreshAuthSession(storedSession)
+      .then(async (nextSession) => {
+        await saveAuthSession(nextSession)
+        await hydrateSession(nextSession)
+        console.log('[AuthContext] restoreStoredSession: background refresh saved')
+      })
+      .catch(async (error) => {
+        const message = getErrorMessage(error)
+        console.warn('[AuthContext] restoreStoredSession: background refresh failed -', message)
+        if (message.toLowerCase().includes('invalid') || message.toLowerCase().includes('expired')) {
+          console.log('[AuthContext] restoreStoredSession: clearing invalid/expired session')
+          await clearAuthSession()
+          applySignedOutState()
+          setAuthError(message)
+        }
+      })
+
+  }, [applySignedOutState, hydrateSession])
+
+  const validateStoredSession = useCallback(async () => {
+    const storedSession = await loadAuthSession()
     if (!storedSession) {
       applySignedOutState()
       return
     }
 
-    let nextSession = storedSession
-
     try {
-      nextSession = await refreshAuthSession(storedSession)
+      const nextSession = await refreshAuthSession(storedSession)
       await saveAuthSession(nextSession)
+      await hydrateSession(nextSession)
     } catch (error) {
       const message = getErrorMessage(error)
       if (message.toLowerCase().includes('invalid') || message.toLowerCase().includes('expired')) {
         await clearAuthSession()
         applySignedOutState()
         setAuthError(message)
-        return
       }
     }
-
-    await hydrateSession(nextSession)
   }, [applySignedOutState, hydrateSession])
 
   const consumeIncomingUrl = useCallback(
     async (url: string): Promise<boolean> => {
+      console.log('[AuthContext] consumeIncomingUrl: received URL =', url)
       const token = extractTransferToken(url)
       if (!token) {
+        console.log('[AuthContext] consumeIncomingUrl: no transfer token found, ignoring')
         return false
       }
 
+      console.log('[AuthContext] consumeIncomingUrl: transfer token extracted, consuming...')
       setAuthError(null)
       const transferredSession = await consumeTransferToken(token)
       await saveAuthSession(transferredSession)
       await hydrateSession(transferredSession)
+      console.log('[AuthContext] consumeIncomingUrl: session established for user', transferredSession.user?.id)
       return true
     },
-    [hydrateSession]
+    [hydrateSession],
   )
 
   const refreshSession = useCallback(async () => {
@@ -124,14 +129,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     setAuthError(null)
 
     try {
-      await restoreStoredSession()
+      await validateStoredSession()
     } catch (error) {
       applySignedOutState()
       setAuthError(getErrorMessage(error))
     } finally {
       setIsLoading(false)
     }
-  }, [applySignedOutState, restoreStoredSession])
+  }, [applySignedOutState, validateStoredSession])
 
   const signOut = useCallback(async () => {
     await clearAuthSession()
@@ -143,36 +148,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     let isMounted = true
 
     async function bootstrap(): Promise<void> {
+      console.log('[AuthContext] bootstrap: start')
       setIsLoading(true)
       setAuthError(null)
 
       try {
         const initialUrl = await Linking.getInitialURL()
+        console.log('[AuthContext] bootstrap: initialUrl =', initialUrl)
         const didConsumeTransfer = initialUrl ? await consumeIncomingUrl(initialUrl) : false
+        console.log('[AuthContext] bootstrap: didConsumeTransfer =', didConsumeTransfer)
 
         if (!didConsumeTransfer) {
           await restoreStoredSession()
         }
       } catch (error) {
+        console.error('[AuthContext] bootstrap: error -', getErrorMessage(error), error)
         if (isMounted) {
           applySignedOutState()
           setAuthError(getErrorMessage(error))
         }
       } finally {
         if (isMounted) {
+          console.log('[AuthContext] bootstrap: done, isAuthenticated will update via session state')
           setIsLoading(false)
         }
       }
     }
 
-    bootstrap()
+    void bootstrap()
 
     const subscription = Linking.addEventListener('url', (event) => {
+      console.log('[AuthContext] Linking event: url =', event.url)
       setIsLoading(true)
       setAuthError(null)
 
       void consumeIncomingUrl(event.url)
         .catch((error) => {
+          console.error('[AuthContext] Linking event: consumeIncomingUrl error -', getErrorMessage(error), error)
           if (isMounted) {
             setAuthError(getErrorMessage(error))
           }
@@ -190,37 +202,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     }
   }, [applySignedOutState, consumeIncomingUrl, restoreStoredSession])
 
-  const user = useMemo<AuthUser | null>(() => {
-    if (!session) {
-      return null
-    }
-
-    if (!profile?.profile) {
-      return session.user
-    }
-
-    return {
-      ...session.user,
-      email: profile.profile.email,
-      firstName: profile.profile.firstName || session.user.firstName,
-      lastName: profile.profile.lastName || session.user.lastName,
-      profilePictureUrl: profile.profile.profilePictureUrl || session.user.profilePictureUrl
-    }
-  }, [profile, session])
+  const user = useMemo<AuthUser | null>(() => session?.user ?? null, [session])
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       session,
-      profile,
-      entitlements,
       isLoading,
       isAuthenticated: !!user?.id,
       authError,
       refreshSession,
-      signOut
+      signOut,
     }),
-    [authError, entitlements, isLoading, profile, refreshSession, session, signOut, user]
+    [authError, isLoading, refreshSession, session, signOut, user],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

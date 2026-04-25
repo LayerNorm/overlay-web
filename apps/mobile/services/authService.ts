@@ -1,8 +1,50 @@
+import * as Crypto from 'expo-crypto'
 import * as SecureStore from 'expo-secure-store'
 import { AUTH_BASE_URL } from './appConfig'
-import { convexClient } from './convexClient'
 
 const AUTH_STORAGE_KEY = 'overlay-auth-session'
+const PKCE_VERIFIER_STORAGE_KEY = 'overlay-native-pkce-verifier'
+
+const PKCE_VERIFIER_CHARSET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'
+
+const FETCH_TIMEOUT_MS = 10_000
+
+async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => {
+    console.warn('[Auth] fetchWithTimeout: timed out after', FETCH_TIMEOUT_MS, 'ms for', url)
+    controller.abort()
+  }, FETCH_TIMEOUT_MS)
+  try {
+    return await fetch(url, { ...options, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function base64ToBase64Url(b64: string): string {
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+async function sha256Base64Url(input: string): Promise<string> {
+  const hash = await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    input,
+    { encoding: Crypto.CryptoEncoding.BASE64 },
+  )
+  return base64ToBase64Url(hash)
+}
+
+async function generateCodeVerifier(): Promise<string> {
+  const bytes = await Crypto.getRandomBytesAsync(64)
+  let out = ''
+  const len = PKCE_VERIFIER_CHARSET.length
+  for (let i = 0; i < bytes.length; i++) {
+    out += PKCE_VERIFIER_CHARSET[bytes[i]! % len]
+  }
+  return out
+}
 
 export interface AuthUser {
   id: string
@@ -18,64 +60,6 @@ export interface AuthSession {
   refreshToken: string
   user: AuthUser
   expiresAt?: number
-}
-
-export interface AuthProfile {
-  profile: {
-    userId: string
-    email: string
-    name?: string
-    firstName?: string
-    lastName?: string
-    profilePictureUrl?: string
-    lastLoginAt?: number
-  }
-  subscription: {
-    tier: 'free' | 'pro' | 'max'
-    status: 'active' | 'canceled' | 'past_due' | 'trialing'
-    stripeCustomerId?: string
-    stripeSubscriptionId?: string
-    currentPeriodStart?: number
-    currentPeriodEnd?: number
-  }
-  usage: {
-    creditsUsed: number
-    creditsTotal: number
-    inputTokens: number
-    outputTokens: number
-    cachedInputTokens: number
-  }
-  dailyUsage: {
-    askCount: number
-    writeCount: number
-    agentCount: number
-    transcriptionSeconds: number
-    voiceChatCount: number
-    noteBrowserCount: number
-    browserSearchCount: number
-  }
-}
-
-export interface AuthEntitlements {
-  tier: 'free' | 'pro' | 'max'
-  creditsUsed: number
-  creditsTotal: number
-  dailyUsage: {
-    ask: number
-    write: number
-    agent: number
-  }
-  dailyLimits: {
-    ask: number
-    write: number
-    agent: number
-  }
-  transcriptionSecondsUsed: number
-  transcriptionSecondsLimit: number
-  localTranscriptionEnabled: boolean
-  resetAt: string
-  billingPeriodEnd: string
-  lastSyncedAt: number
 }
 
 interface TransferResponse {
@@ -95,14 +79,19 @@ interface NativeRefreshResponse {
 }
 
 export async function loadAuthSession(): Promise<AuthSession | null> {
+  console.log('[Auth] loadAuthSession: reading from SecureStore')
   try {
     const stored = await SecureStore.getItemAsync(AUTH_STORAGE_KEY)
     if (!stored) {
+      console.log('[Auth] loadAuthSession: no stored session found')
       return null
     }
 
-    return JSON.parse(stored) as AuthSession
-  } catch {
+    const session = JSON.parse(stored) as AuthSession
+    console.log('[Auth] loadAuthSession: found session for user', session.user?.id)
+    return session
+  } catch (e) {
+    console.warn('[Auth] loadAuthSession: failed to parse stored session', e)
     return null
   }
 }
@@ -113,20 +102,58 @@ export async function saveAuthSession(session: AuthSession): Promise<void> {
 
 export async function clearAuthSession(): Promise<void> {
   await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY)
+  try {
+    await SecureStore.deleteItemAsync(PKCE_VERIFIER_STORAGE_KEY)
+  } catch {
+    // ignore if missing
+  }
 }
 
-export function buildCustomAuthUrl(
+/**
+ * Hosted auth for mobile requires PKCE: we send codeChallenge on the sign-in URL,
+ * store code_verifier locally, and send the verifier when redeeming overlay:// transfer tokens.
+ */
+export async function clearPkceVerifier(): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(PKCE_VERIFIER_STORAGE_KEY)
+    console.log('[Auth] clearPkceVerifier: cleared')
+  } catch {
+    // ignore if missing
+  }
+}
+
+export async function buildCustomAuthUrl(
   mode: 'sign-in' | 'sign-up',
-  options: { forceLogin?: boolean } = {}
-): string {
+  options: { forceLogin?: boolean } = {},
+): Promise<string> {
+  console.log('[Auth] buildCustomAuthUrl: mode=%s forceLogin=%s AUTH_BASE_URL=%s', mode, options.forceLogin, AUTH_BASE_URL)
+
+  // Reuse an existing verifier if one is already stored — this handles the case
+  // where the app reloaded or crashed mid-flow and buildCustomAuthUrl is called
+  // again. Overwriting the verifier would break the in-progress PKCE exchange.
+  let verifier = await SecureStore.getItemAsync(PKCE_VERIFIER_STORAGE_KEY)
+  if (verifier) {
+    console.log('[Auth] buildCustomAuthUrl: reusing existing PKCE verifier (app reloaded mid-flow)')
+  } else {
+    verifier = await generateCodeVerifier()
+    await SecureStore.setItemAsync(PKCE_VERIFIER_STORAGE_KEY, verifier)
+    console.log('[Auth] buildCustomAuthUrl: new PKCE verifier stored')
+  }
+
+  const codeChallenge = await sha256Base64Url(verifier)
+  console.log('[Auth] buildCustomAuthUrl: codeChallenge length=%d', codeChallenge.length)
+
   const authUrl = new URL(`${AUTH_BASE_URL}${mode === 'sign-up' ? '/auth/sign-up' : '/auth/sign-in'}`)
   authUrl.searchParams.set('redirect', '/auth/mobile-complete')
+  authUrl.searchParams.set('codeChallenge', codeChallenge)
 
   if (options.forceLogin && mode === 'sign-in') {
     authUrl.searchParams.set('force', 'true')
   }
 
-  return authUrl.toString()
+  const result = authUrl.toString()
+  console.log('[Auth] buildCustomAuthUrl: result URL =', result)
+  return result
 }
 
 export function getAccountUrl(): string {
@@ -134,29 +161,58 @@ export function getAccountUrl(): string {
 }
 
 export function extractTransferToken(url: string): string | null {
+  console.log('[Auth] extractTransferToken: incoming URL =', url)
   try {
     const parsedUrl = new URL(url)
     const path = parsedUrl.hostname || parsedUrl.pathname.replace(/^\/+/, '')
+    console.log('[Auth] extractTransferToken: scheme=%s hostname=%s pathname=%s path=%s', parsedUrl.protocol, parsedUrl.hostname, parsedUrl.pathname, path)
 
     if (path === 'auth' && parsedUrl.pathname.includes('/transfer')) {
-      return parsedUrl.searchParams.get('token')
+      const token = parsedUrl.searchParams.get('token')
+      console.log('[Auth] extractTransferToken: token found, length=%d', token?.length ?? 0)
+      return token
     }
 
+    console.log('[Auth] extractTransferToken: URL did not match auth/transfer pattern')
     return null
-  } catch {
+  } catch (e) {
+    console.warn('[Auth] extractTransferToken: failed to parse URL', e)
     return null
   }
 }
 
 export async function consumeTransferToken(token: string): Promise<AuthSession> {
-  const response = await fetch(`${AUTH_BASE_URL}/api/auth/desktop-link?token=${encodeURIComponent(token)}`)
+  console.log('[Auth] consumeTransferToken: exchanging token, length=%d', token.length)
+  const codeVerifier = await SecureStore.getItemAsync(PKCE_VERIFIER_STORAGE_KEY)
+  if (!codeVerifier?.trim()) {
+    console.error('[Auth] consumeTransferToken: PKCE verifier missing from SecureStore')
+    throw new Error('Missing PKCE verifier — open Sign in from the app again and complete auth in one session.')
+  }
+  console.log('[Auth] consumeTransferToken: PKCE verifier found, length=%d', codeVerifier.trim().length)
 
+  const endpoint = `${AUTH_BASE_URL}/api/auth/desktop-link?token=${encodeURIComponent(token)}`
+  console.log('[Auth] consumeTransferToken: POST to', endpoint)
+  const response = await fetchWithTimeout(endpoint, {
+    headers: {
+      'x-overlay-code-verifier': codeVerifier.trim(),
+    },
+  })
+
+  console.log('[Auth] consumeTransferToken: response status=%d ok=%s', response.status, response.ok)
   if (!response.ok) {
     const errorText = await response.text()
+    console.error('[Auth] consumeTransferToken: failed -', response.status, errorText)
     throw new Error(`Session transfer failed: ${response.status} ${errorText}`)
   }
 
+  try {
+    await SecureStore.deleteItemAsync(PKCE_VERIFIER_STORAGE_KEY)
+  } catch {
+    // ignore
+  }
+
   const data = (await response.json()) as TransferResponse
+  console.log('[Auth] consumeTransferToken: success, userId=%s email=%s', data.userId, data.email)
 
   return {
     accessToken: data.accessToken,
@@ -172,7 +228,8 @@ export async function consumeTransferToken(token: string): Promise<AuthSession> 
 }
 
 export async function refreshAuthSession(session: AuthSession): Promise<AuthSession> {
-  const response = await fetch(`${AUTH_BASE_URL}/api/auth/native/refresh`, {
+  console.log('[Auth] refreshAuthSession: refreshing for user=%s', session.user?.id)
+  const response = await fetchWithTimeout(`${AUTH_BASE_URL}/api/auth/native/refresh`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -183,36 +240,14 @@ export async function refreshAuthSession(session: AuthSession): Promise<AuthSess
     })
   })
 
+  console.log('[Auth] refreshAuthSession: response status=%d ok=%s', response.status, response.ok)
   const data = (await response.json().catch(() => ({}))) as NativeRefreshResponse
 
   if (!response.ok || !data.session) {
+    console.error('[Auth] refreshAuthSession: failed -', data.error ?? `status ${response.status}`)
     throw new Error(data.error || `Session refresh failed with status ${response.status}`)
   }
 
+  console.log('[Auth] refreshAuthSession: success')
   return data.session
-}
-
-export async function syncUserProfile(session: AuthSession): Promise<void> {
-  await convexClient.mutation('users:syncUserProfile', {
-    accessToken: session.accessToken,
-    userId: session.user.id,
-    email: session.user.email,
-    firstName: session.user.firstName,
-    lastName: session.user.lastName,
-    profilePictureUrl: session.user.profilePictureUrl
-  })
-}
-
-export async function getUserProfile(session: AuthSession): Promise<AuthProfile | null> {
-  return convexClient.query<AuthProfile>('users:getUserProfile', {
-    accessToken: session.accessToken,
-    userId: session.user.id
-  })
-}
-
-export async function getEntitlements(session: AuthSession): Promise<AuthEntitlements | null> {
-  return convexClient.query<AuthEntitlements>('usage:getEntitlements', {
-    accessToken: session.accessToken,
-    userId: session.user.id
-  })
 }

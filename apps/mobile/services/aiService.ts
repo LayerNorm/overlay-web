@@ -1,5 +1,4 @@
-import { appRequest, readJsonSseStream } from './appApi'
-import { getAppBootstrap } from './bootstrapService'
+import { appRequest, streamJsonSse } from './appApi'
 import type { ChatModel } from './chatTypes'
 
 interface ChatMessage {
@@ -33,7 +32,6 @@ export interface StreamChunk {
 }
 
 interface ChatStreamOptions {
-  mode?: 'ask' | 'act'
   conversationId?: string
   turnId?: string
   variantIndex?: number
@@ -65,13 +63,20 @@ type UiMessageChunk =
   | { type: 'finish'; messageMetadata?: unknown }
   | { type: 'error'; errorText: string }
 
-let cachedModels: ChatModel[] | null = null
+export const DEFAULT_CHAT_MODEL_ID = 'moonshotai/kimi-k2-thinking'
+
+const AVAILABLE_CHAT_MODELS: ChatModel[] = [
+  { id: 'minimaxai/minimax-m2.7', name: 'Free: Minimax 2.7', provider: 'nvidia', description: 'Best free agentic model', intelligence: 1.85, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'deepseek-ai/deepseek-v4-pro', name: 'Free: DeepSeek V4 Pro', provider: 'nvidia', description: 'Strong free reasoning', intelligence: 1.8, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'deepseek-ai/deepseek-v4-flash', name: 'Free: DeepSeek V4 Flash', provider: 'nvidia', description: 'Fast free reasoning', intelligence: 1.75, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'moonshotai/kimi-k2-thinking', name: 'Free: Kimi K2 Thinking', provider: 'nvidia', description: 'Default free reasoning model', intelligence: 1.7, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'deepseek-ai/deepseek-v3.2', name: 'Free: DeepSeek V3.2', provider: 'nvidia', description: 'General free chat', intelligence: 1.65, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'qwen/qwen3.6-plus', name: 'Qwen 3.6 Plus', provider: 'alibaba', description: 'Free agentic coding', intelligence: 1.6, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'openrouter/free', name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 1.25, cost: 0, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+]
 
 export async function getAvailableModels(): Promise<ChatModel[]> {
-  if (cachedModels) return cachedModels
-  const bootstrap = await getAppBootstrap()
-  cachedModels = bootstrap.chatModels
-  return bootstrap.chatModels
+  return AVAILABLE_CHAT_MODELS
 }
 
 export async function getModelById(modelId: string): Promise<ChatModel | undefined> {
@@ -99,11 +104,9 @@ export async function* chatStream(
   options: ChatStreamOptions = {},
 ): AsyncGenerator<StreamChunk> {
   try {
-    const endpoint =
-      options.mode === 'ask' ? '/api/app/conversations/ask' : '/api/app/conversations/act'
-    const pendingChunks: StreamChunk[] = []
-    const response = await appRequest(endpoint, {
+    const response = await appRequest('/api/app/conversations/act', {
       method: 'POST',
+      timeoutMs: 120_000,
       json: {
         modelId,
         conversationId: options.conversationId,
@@ -113,66 +116,63 @@ export async function* chatStream(
       },
     })
 
-    await readJsonSseStream<UiMessageChunk>(response, (chunk) => {
+    for await (const chunk of streamJsonSse<UiMessageChunk>(response)) {
       switch (chunk.type) {
         case 'text-delta':
-          pendingChunks.push({ type: 'text', content: chunk.delta, id: chunk.id })
+          yield { type: 'text', content: chunk.delta, id: chunk.id }
           break
         case 'reasoning-delta':
-          pendingChunks.push({ type: 'reasoning', content: chunk.delta, id: chunk.id })
+          yield { type: 'reasoning', content: chunk.delta, id: chunk.id }
           break
         case 'tool-input-available':
-          pendingChunks.push({
+          yield {
             type: 'tool',
             content: '',
             toolCallId: chunk.toolCallId,
             toolName: chunk.toolName,
             state: 'input-available',
             input: chunk.input,
-          })
+          }
           break
         case 'tool-output-available':
-          pendingChunks.push({
+          yield {
             type: 'tool',
             content: '',
             toolCallId: chunk.toolCallId,
             state: 'output-available',
             output: chunk.output,
-          })
+          }
           break
         case 'tool-output-error':
-          pendingChunks.push({
+          yield {
             type: 'tool',
             content: chunk.errorText,
             toolCallId: chunk.toolCallId,
             state: 'output-error',
-          })
+          }
           break
         case 'file':
-          pendingChunks.push({
+          yield {
             type: 'file',
             content: '',
             url: chunk.url,
             mediaType: chunk.mediaType,
-          })
+          }
           break
         case 'start':
-          pendingChunks.push({ type: 'start', content: '', metadata: chunk.messageMetadata })
+          yield { type: 'start', content: '', metadata: chunk.messageMetadata }
           break
         case 'finish':
-          pendingChunks.push({ type: 'finish', content: '', metadata: chunk.messageMetadata })
+          yield { type: 'finish', content: '', metadata: chunk.messageMetadata }
           break
         case 'error':
-          pendingChunks.push({ type: 'error', content: chunk.errorText })
+          yield { type: 'error', content: chunk.errorText }
           break
         default:
           break
       }
-    })
-
-    for (const chunk of pendingChunks) {
-      yield chunk
     }
+
     yield { type: 'done', content: '' }
   } catch (error) {
     yield { type: 'error', content: String(error) }

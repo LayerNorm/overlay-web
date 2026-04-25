@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Linking,
@@ -13,11 +13,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { borderRadius, fontSize, spacing } from '../constants/theme'
 import { useTheme } from '../hooks/useTheme'
 import { useAuth } from '../contexts/AuthContext'
-import { buildCustomAuthUrl } from '../services/authService'
+import { buildCustomAuthUrl, clearPkceVerifier } from '../services/authService'
 
 export default function AuthFlowScreen(): React.ReactElement {
   const router = useRouter()
-  const params = useLocalSearchParams<{ mode?: string; force?: string; startAtAuth?: string }>()
+  const params = useLocalSearchParams<{ mode?: string; force?: string }>()
   const { theme } = useTheme()
   const { isAuthenticated } = useAuth()
   const [isOpeningBrowser, setIsOpeningBrowser] = useState(false)
@@ -26,29 +26,58 @@ export default function AuthFlowScreen(): React.ReactElement {
 
   const mode = params.mode === 'sign-up' ? 'sign-up' : 'sign-in'
   const forceLogin = params.force === 'true'
-  const startAtAuth = params.startAtAuth === 'true'
 
-  const authUrl = useMemo(
-    () => buildCustomAuthUrl(mode, { forceLogin }),
-    [forceLogin, mode]
-  )
+  const [authUrl, setAuthUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    console.log('[AuthFlow] building auth URL: mode=%s forceLogin=%s', mode, forceLogin)
+
+    void (async () => {
+      try {
+        const next = await buildCustomAuthUrl(mode, { forceLogin })
+        console.log('[AuthFlow] auth URL ready:', next)
+        if (!cancelled) {
+          setAuthUrl(next)
+        }
+      } catch (err) {
+        console.error('[AuthFlow] failed to build auth URL:', err)
+        if (!cancelled) {
+          setBrowserError('Could not start sign-in. Try again.')
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [forceLogin, mode])
 
   const handleClose = useCallback(() => {
+    void clearPkceVerifier()
     if (router.canGoBack()) {
       router.back()
       return
     }
 
-    router.replace(startAtAuth ? '/onboarding?startAtAuth=true' : '/(tabs)')
-  }, [router, startAtAuth])
+    router.replace('/(tabs)')
+  }, [router])
 
   const openInBrowser = useCallback(async () => {
+    if (!authUrl) {
+      console.warn('[AuthFlow] openInBrowser called but authUrl is null')
+      return
+    }
+
+    console.log('[AuthFlow] opening browser with URL:', authUrl)
     setIsOpeningBrowser(true)
     setBrowserError(null)
 
     try {
       await Linking.openURL(authUrl)
+      console.log('[AuthFlow] Linking.openURL resolved (browser handed off)')
     } catch (error) {
+      console.error('[AuthFlow] Linking.openURL failed:', error)
       setBrowserError(error instanceof Error ? error.message : 'Unable to open browser')
     } finally {
       setIsOpeningBrowser(false)
@@ -56,21 +85,23 @@ export default function AuthFlowScreen(): React.ReactElement {
   }, [authUrl])
 
   useEffect(() => {
+    console.log('[AuthFlow] isAuthenticated changed:', isAuthenticated)
     if (!isAuthenticated) {
       return
     }
 
+    console.log('[AuthFlow] authenticated — closing auth flow')
     handleClose()
   }, [handleClose, isAuthenticated])
 
   useEffect(() => {
-    if (hasOpenedRef.current) {
+    if (!authUrl || hasOpenedRef.current) {
       return
     }
 
     hasOpenedRef.current = true
     void openInBrowser()
-  }, [openInBrowser])
+  }, [authUrl, openInBrowser])
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -80,7 +111,7 @@ export default function AuthFlowScreen(): React.ReactElement {
             {mode === 'sign-up' ? 'Create your account' : 'Sign in to Overlay'}
           </Text>
           <Text style={[styles.headerDescription, { color: theme.textSecondary }]}>
-            This is the same hosted auth flow used on desktop.
+            This is the same hosted account flow used on web.
           </Text>
         </View>
 
@@ -103,7 +134,7 @@ export default function AuthFlowScreen(): React.ReactElement {
             Continue in your browser
           </Text>
           <Text style={[styles.cardDescription, { color: theme.textSecondary }]}>
-            Google sign-in is not allowed inside embedded web views. Overlay now opens the hosted auth flow in Safari and returns here automatically after sign-in.
+            Google sign-in is not allowed inside embedded web views. Overlay opens the hosted account flow in Safari and returns here automatically after sign-in.
           </Text>
 
           <TouchableOpacity
@@ -196,7 +227,8 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 30,
     lineHeight: 34,
-    fontWeight: '700'
+    fontWeight: '700',
+    fontFamily: 'LibreBaskerville'
   },
   cardDescription: {
     fontSize: fontSize.md,

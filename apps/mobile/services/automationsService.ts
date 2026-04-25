@@ -3,7 +3,7 @@ import type {
   AutomationRunDetail,
   AutomationRunSummary,
   AutomationSummary,
-} from './appContracts'
+} from '@overlay/app-core'
 
 export async function listAutomations(): Promise<AutomationSummary[]> {
   return appJson<AutomationSummary[]>('/api/app/automations')

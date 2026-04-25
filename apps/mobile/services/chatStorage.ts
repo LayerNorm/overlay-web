@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { appJson, appRequest } from './appApi'
 import type {
   ConversationMessage,
   ConversationSummary,
-} from './appContracts'
+} from '@overlay/app-core'
+import { appJson, appRequest } from './appApi'
 import {
   generateChatId,
   getConversationSummaryLastMessage,

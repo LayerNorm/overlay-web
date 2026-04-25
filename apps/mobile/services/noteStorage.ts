@@ -1,5 +1,5 @@
+import type { NoteDoc } from '@overlay/app-core'
 import { appJson, appRequest } from './appApi'
-import type { NoteDoc } from './appContracts'
 import type { Note, NoteMeta } from './types'
 
 function mapNote(note: NoteDoc): Note {

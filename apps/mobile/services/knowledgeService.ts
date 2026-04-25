@@ -1,5 +1,5 @@
 import { appJson } from './appApi'
-import type { KnowledgeFile, MemoryRow, OutputSummary } from './appContracts'
+import type { KnowledgeFile, MemoryRow, OutputSummary } from '@overlay/app-core'
 
 export async function listMemories(): Promise<MemoryRow[]> {
   return appJson<MemoryRow[]>('/api/app/memory')

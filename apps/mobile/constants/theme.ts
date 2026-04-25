@@ -1,10 +1,18 @@
-export interface Theme {
-  background: string
+import {
+  appFontSizes,
+  appRadii,
+  appSpacing,
+  getAppColorTheme,
+  SERIF_FONT_FAMILY,
+  SERIF_FONT_FAMILY_ITALIC,
+  type AppColorTheme,
+} from '@overlay/app-core'
+
+export interface Theme extends AppColorTheme {
   surface: string
   text: string
   textSecondary: string
   textDisabled: string
-  border: string
   buttonBg: string
   buttonHover: string
   toggleBg: string
@@ -16,75 +24,60 @@ export interface Theme {
   modalBackground: string
   modalSurface: string
   modalBorder: string
+  serifFontFamily: string
+  serifFontFamilyItalic: string
 }
 
-export const lightTheme: Theme = {
-  background: '#fafafa',
-  surface: '#ffffff',
-  text: '#0a0a0a',
-  textSecondary: '#71717a',
-  textDisabled: '#a1a1aa',
-  border: '#e4e4e7',
-  buttonBg: '#0a0a0a',
-  buttonHover: '#27272a',
-  toggleBg: '#e4e4e7',
-  toggleBgActive: '#0a0a0a',
-  toggleThumb: '#ffffff',
-  accent: '#0a0a0a',
-  accentHover: '#27272a',
-  scrim: 'rgba(0, 0, 0, 0.5)',
-  modalBackground: '#fafafa',
-  modalSurface: '#ffffff',
-  modalBorder: '#e4e4e7'
+function createTheme(preference: 'light' | 'dark'): Theme {
+  const semantic = getAppColorTheme(preference)
+
+  return {
+    ...semantic,
+    surface: semantic.surfaceElevated,
+    text: semantic.foreground,
+    textSecondary: semantic.muted,
+    textDisabled: semantic.mutedLight,
+    buttonBg: semantic.buttonPrimaryBg,
+    buttonHover: semantic.chatBadgeUpgradeHover,
+    toggleBg: semantic.surfaceSubtle,
+    toggleBgActive: semantic.buttonPrimaryBg,
+    toggleThumb: semantic.buttonPrimaryText,
+    accent: semantic.foreground,
+    accentHover: semantic.muted,
+    scrim: semantic.overlayScrim,
+    modalBackground: semantic.background,
+    modalSurface: semantic.surfaceElevated,
+    modalBorder: semantic.border,
+    serifFontFamily: SERIF_FONT_FAMILY,
+    serifFontFamilyItalic: SERIF_FONT_FAMILY_ITALIC,
+  }
 }
 
-export const darkTheme: Theme = {
-  background: '#0a0a0a',
-  surface: '#18181b',
-  text: '#fafafa',
-  textSecondary: '#a1a1aa',
-  textDisabled: '#71717a',
-  border: '#27272a',
-  buttonBg: '#fafafa',
-  buttonHover: '#e4e4e7',
-  toggleBg: '#27272a',
-  toggleBgActive: '#fafafa',
-  toggleThumb: '#0a0a0a',
-  accent: '#fafafa',
-  accentHover: '#e4e4e7',
-  scrim: 'rgba(0, 0, 0, 0.7)',
-  modalBackground: '#0a0a0a',
-  modalSurface: '#18181b',
-  modalBorder: '#27272a'
-}
+export const lightTheme: Theme = createTheme('light')
+export const darkTheme: Theme = createTheme('dark')
 
 export function getTheme(darkMode: boolean): Theme {
   return darkMode ? darkTheme : lightTheme
 }
 
-export const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  xxl: 24
-} as const
+export const spacing = appSpacing
 
 export const borderRadius = {
-  sm: 8,
-  md: 10,
-  lg: 12,
-  xl: 16,
-  full: 9999
+  sm: appRadii.sm,
+  md: appRadii.md,
+  lg: appRadii.lg,
+  xl: appRadii.xl,
+  xxl: appRadii.xxl,
+  full: appRadii.pill,
 } as const
 
 export const fontSize = {
-  xs: 12,
-  sm: 13,
-  md: 14,
-  lg: 16,
-  xl: 18,
-  xxl: 24,
-  display: 36
+  xs: appFontSizes.xs,
+  sm: appFontSizes.sm,
+  md: appFontSizes.md,
+  lg: appFontSizes.lg,
+  xl: appFontSizes.xl,
+  xxl: appFontSizes.xxl,
+  display: appFontSizes.display,
+  hero: appFontSizes.hero,
 } as const

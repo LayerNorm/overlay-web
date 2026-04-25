@@ -1,24 +1,24 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import {
+  DEFAULT_APP_SETTINGS,
+  type AppSettings,
+} from '@overlay/app-core'
 import { appJson } from './appApi'
-import type { UiSettings } from './appContracts'
 
 const SETTINGS_CACHE_KEY = 'overlay-ui-settings'
 
-export const DEFAULT_UI_SETTINGS: UiSettings = {
-  theme: 'light',
-  useSecondarySidebar: false,
-}
+export const DEFAULT_UI_SETTINGS: AppSettings = DEFAULT_APP_SETTINGS
 
-export async function getUiSettings(): Promise<UiSettings> {
-  const settings = await appJson<UiSettings>('/api/app/settings')
+export async function getUiSettings(): Promise<AppSettings> {
+  const settings = await appJson<AppSettings>('/api/app/settings')
   await AsyncStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings))
   return settings
 }
 
 export async function updateUiSettings(
-  patch: Partial<UiSettings>,
-): Promise<UiSettings> {
-  const settings = await appJson<UiSettings>('/api/app/settings', {
+  patch: Partial<AppSettings>,
+): Promise<AppSettings> {
+  const settings = await appJson<AppSettings>('/api/app/settings', {
     method: 'PATCH',
     json: patch as Record<string, unknown>,
   })
@@ -26,12 +26,23 @@ export async function updateUiSettings(
   return settings
 }
 
-export async function loadCachedUiSettings(): Promise<UiSettings | null> {
+export async function loadCachedUiSettings(): Promise<AppSettings | null> {
   const cached = await AsyncStorage.getItem(SETTINGS_CACHE_KEY)
   if (!cached) return null
   try {
-    return JSON.parse(cached) as UiSettings
+    return {
+      ...DEFAULT_APP_SETTINGS,
+      ...(JSON.parse(cached) as Partial<AppSettings>),
+    }
   } catch {
     return null
   }
+}
+
+export async function persistUiSettings(settings: AppSettings): Promise<void> {
+  await AsyncStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings))
+}
+
+export async function clearUiSettingsCache(): Promise<void> {
+  await AsyncStorage.removeItem(SETTINGS_CACHE_KEY)
 }

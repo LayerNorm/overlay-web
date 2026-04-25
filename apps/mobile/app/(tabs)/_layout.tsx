@@ -1,79 +1,45 @@
 import React from 'react'
-import { Tabs } from 'expo-router'
-import { Feather } from '@expo/vector-icons'
+import { DynamicColorIOS, Platform } from 'react-native'
+import { NativeTabs } from 'expo-router/unstable-native-tabs'
 import { useTheme } from '../../hooks/useTheme'
+
+function dynamicTabColor(light: string, dark: string): string {
+  if (Platform.OS !== 'ios') {
+    return light
+  }
+
+  return DynamicColorIOS({ light, dark }) as unknown as string
+}
 
 export default function TabLayout(): React.ReactElement {
   const { theme } = useTheme()
+  const tintColor = dynamicTabColor('#111111', '#FFFFFF')
+  const mutedColor = dynamicTabColor('#737373', '#A3A3A3')
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: theme.surface,
-          borderTopColor: theme.border,
-          borderTopWidth: 1,
-        },
-        tabBarActiveTintColor: theme.text,
-        tabBarInactiveTintColor: theme.textSecondary,
+    <NativeTabs
+      backgroundColor={dynamicTabColor('rgba(250, 250, 249, 0.82)', 'rgba(18, 18, 18, 0.82)')}
+      blurEffect="systemChromeMaterial"
+      disableTransparentOnScrollEdge
+      iconColor={{ default: mutedColor, selected: tintColor }}
+      tintColor={tintColor}
+      labelStyle={{
+        color: mutedColor,
+        fontSize: 11,
+        fontWeight: '600',
       }}
+      minimizeBehavior="never"
+      shadowColor={theme.border}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
+      <NativeTabs.Trigger name="index" hidden />
+      <NativeTabs.Trigger
         name="chat"
         options={{
           title: 'Chat',
-          tabBarIcon: ({ color, size }) => <Feather name="message-square" size={size} color={color} />,
+          icon: { sf: 'message' },
+          selectedIcon: { sf: 'message.fill' },
         }}
       />
-      <Tabs.Screen
-        name="notes"
-        options={{
-          title: 'Notes',
-          tabBarIcon: ({ color, size }) => <Feather name="file-text" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="knowledge"
-        options={{
-          title: 'Knowledge',
-          tabBarIcon: ({ color, size }) => <Feather name="archive" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="projects"
-        options={{
-          title: 'Projects',
-          tabBarIcon: ({ color, size }) => <Feather name="folder" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="more"
-        options={{
-          title: 'More',
-          tabBarIcon: ({ color, size }) => <Feather name="menu" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="chats"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          href: null,
-          title: 'Settings',
-          tabBarIcon: ({ color, size }) => <Feather name="settings" size={size} color={color} />,
-        }}
-      />
-    </Tabs>
+    </NativeTabs>
   )
 }

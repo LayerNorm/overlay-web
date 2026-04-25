@@ -3,7 +3,6 @@ import { ActivityIndicator, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTheme } from '../hooks/useTheme'
-import { getOnboardingState } from '../services/onboardingStorage'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function AppEntryScreen(): React.ReactElement {
@@ -20,18 +19,15 @@ export default function AppEntryScreen(): React.ReactElement {
         return
       }
 
-      const onboardingState = await getOnboardingState()
-      if (!isMounted) return
-
-      if (!onboardingState.completed) {
-        router.replace('/onboarding')
-      } else if (isAuthenticated) {
+      if (isAuthenticated) {
         router.replace('/(tabs)')
       } else {
-        router.replace('/onboarding?startAtAuth=true')
+        router.replace('/auth-flow?mode=sign-in&force=true')
       }
 
-      setIsResolving(false)
+      if (isMounted) {
+        setIsResolving(false)
+      }
     }
 
     resolveRoute()

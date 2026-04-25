@@ -20,8 +20,3 @@ export const AUTH_BASE_URL =
   readEnv('EXPO_PUBLIC_AUTH_BASE_URL') ??
   readString(extra.authBaseUrl) ??
   'https://getoverlay.io'
-
-export const CONVEX_URL =
-  readEnv('EXPO_PUBLIC_CONVEX_URL') ??
-  readString(extra.convexUrl) ??
-  ''

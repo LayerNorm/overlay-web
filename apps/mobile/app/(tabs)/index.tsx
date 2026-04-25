@@ -9,7 +9,7 @@ export default function IndexRedirect(): React.ReactElement {
   const { theme } = useTheme()
 
   useEffect(() => {
-    router.replace('/chat')
+    router.replace('/(tabs)/chat')
   }, [router])
 
   return (

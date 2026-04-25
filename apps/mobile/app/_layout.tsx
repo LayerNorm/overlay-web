@@ -15,7 +15,6 @@ function RootLayoutNav(): React.ReactElement {
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
-        <Stack.Screen name="onboarding" />
         <Stack.Screen
           name="auth-flow"
           options={{
@@ -25,54 +24,13 @@ function RootLayoutNav(): React.ReactElement {
         />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen
-          name="note/[id]"
-          options={{
-            presentation: 'card',
-            animation: 'slide_from_right'
-          }}
-        />
-        <Stack.Screen
           name="chat/[id]"
           options={{
             presentation: 'card',
             animation: 'slide_from_right'
           }}
         />
-        <Stack.Screen
-          name="file/[id]"
-          options={{
-            presentation: 'card',
-            animation: 'slide_from_right'
-          }}
-        />
-        <Stack.Screen
-          name="project/[id]"
-          options={{
-            presentation: 'card',
-            animation: 'slide_from_right'
-          }}
-        />
-        <Stack.Screen
-          name="more/extensions"
-          options={{
-            presentation: 'card',
-            animation: 'slide_from_right'
-          }}
-        />
-        <Stack.Screen
-          name="more/automations"
-          options={{
-            presentation: 'card',
-            animation: 'slide_from_right'
-          }}
-        />
-        <Stack.Screen
-          name="more/automation/[id]"
-          options={{
-            presentation: 'card',
-            animation: 'slide_from_right'
-          }}
-        />
+        <Stack.Screen name="auth/transfer" />
       </Stack>
     </>
   )
@@ -81,9 +39,11 @@ function RootLayoutNav(): React.ReactElement {
 export default function RootLayout(): React.ReactElement {
   const [fontsLoaded] = useFonts({
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    'InstrumentSerif-Regular': require('../assets/fonts/InstrumentSerif-Regular.ttf'),
+    LibreBaskerville: require('../assets/fonts/libre-baskerville/static/LibreBaskerville-Regular.ttf'),
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    'InstrumentSerif-Italic': require('../assets/fonts/InstrumentSerif-Italic.ttf')
+    'LibreBaskerville-Italic': require('../assets/fonts/libre-baskerville/static/LibreBaskerville-Italic.ttf'),
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    'LibreBaskerville-Bold': require('../assets/fonts/libre-baskerville/static/LibreBaskerville-Bold.ttf'),
   })
 
   if (!fontsLoaded) {
@@ -96,11 +56,11 @@ export default function RootLayout(): React.ReactElement {
 
   return (
     <SafeAreaProvider>
-      <ThemeProvider>
-        <AuthProvider>
+      <AuthProvider>
+        <ThemeProvider>
           <RootLayoutNav />
-        </AuthProvider>
-      </ThemeProvider>
+        </ThemeProvider>
+      </AuthProvider>
     </SafeAreaProvider>
   )
 }

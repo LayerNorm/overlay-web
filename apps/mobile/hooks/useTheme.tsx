@@ -1,11 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, type ReactNode } from 'react'
 import { useColorScheme } from 'react-native'
-import { Theme, lightTheme, darkTheme } from '../constants/theme'
-import {
-  DEFAULT_UI_SETTINGS,
-  loadCachedUiSettings,
-  updateUiSettings,
-} from '../services/settingsService'
+import { DEFAULT_APP_SETTINGS } from '@overlay/app-core'
+import { getTheme, type Theme } from '../constants/theme'
 
 interface ThemeContextType {
   theme: Theme
@@ -20,48 +16,22 @@ interface ThemeProviderProps {
   children: ReactNode
 }
 
-export function ThemeProvider({ children }: ThemeProviderProps): React.ReactElement {
+export function ThemeProvider({
+  children,
+}: ThemeProviderProps): React.ReactElement {
   const systemColorScheme = useColorScheme()
-  const [isDark, setIsDark] = useState(
-    (DEFAULT_UI_SETTINGS.theme ?? (systemColorScheme === 'dark' ? 'dark' : 'light')) === 'dark',
-  )
-
-  useEffect(() => {
-    let isMounted = true
-
-    loadCachedUiSettings()
-      .then((cached) => {
-        if (!isMounted) return
-        if (cached?.theme) {
-          setIsDark(cached.theme === 'dark')
-        } else {
-          setIsDark(systemColorScheme === 'dark')
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setIsDark(systemColorScheme === 'dark')
-        }
-      })
-
-    return () => {
-      isMounted = false
-    }
-  }, [systemColorScheme])
-
-  const theme = isDark ? darkTheme : lightTheme
+  const preference =
+    DEFAULT_APP_SETTINGS.theme ??
+    (systemColorScheme === 'dark' ? 'dark' : 'light')
+  const isDark = preference === 'dark'
+  const theme = getTheme(isDark)
 
   const toggleTheme = (): void => {
-    setIsDark((prev) => {
-      const next = !prev
-      void updateUiSettings({ theme: next ? 'dark' : 'light' }).catch(() => {})
-      return next
-    })
+    void isDark
   }
 
   const setDarkMode = (dark: boolean): void => {
-    setIsDark(dark)
-    void updateUiSettings({ theme: dark ? 'dark' : 'light' }).catch(() => {})
+    void dark
   }
 
   return (

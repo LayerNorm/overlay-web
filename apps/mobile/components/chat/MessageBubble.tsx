@@ -32,24 +32,24 @@ export function MessageBubble({
 
   const markdownStyles = {
     body: {
-      color: isUser ? '#FFFFFF' : theme.text,
+      color: isUser ? theme.buttonPrimaryText : theme.text,
       fontSize: 15,
-      lineHeight: 22
+      lineHeight: 23
     },
     paragraph: {
       marginTop: 0,
       marginBottom: 8
     },
     code_inline: {
-      backgroundColor: isUser ? 'rgba(255,255,255,0.15)' : theme.surface,
-      color: isUser ? '#FFFFFF' : theme.text,
+      backgroundColor: isUser ? 'rgba(255,255,255,0.14)' : theme.surfaceSubtle,
+      color: isUser ? theme.buttonPrimaryText : theme.text,
       paddingHorizontal: 5,
       paddingVertical: 2,
       borderRadius: 4,
       fontSize: 13
     },
     fence: {
-      backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surface,
+      backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceSubtle,
       borderColor: isUser ? 'rgba(255,255,255,0.2)' : theme.border,
       borderWidth: 1,
       borderRadius: 8,
@@ -57,28 +57,28 @@ export function MessageBubble({
       marginVertical: 8
     },
     code_block: {
-      color: isUser ? '#FFFFFF' : theme.text,
+      color: isUser ? theme.buttonPrimaryText : theme.text,
       fontSize: 13
     },
     link: {
       color: isUser ? '#93C5FD' : '#3B82F6'
     },
     heading1: {
-      color: isUser ? '#FFFFFF' : theme.text,
+      color: isUser ? theme.buttonPrimaryText : theme.text,
       fontSize: 20,
       fontWeight: '700' as const,
       marginTop: 16,
       marginBottom: 8
     },
     heading2: {
-      color: isUser ? '#FFFFFF' : theme.text,
+      color: isUser ? theme.buttonPrimaryText : theme.text,
       fontSize: 18,
       fontWeight: '600' as const,
       marginTop: 12,
       marginBottom: 6
     },
     heading3: {
-      color: isUser ? '#FFFFFF' : theme.text,
+      color: isUser ? theme.buttonPrimaryText : theme.text,
       fontSize: 16,
       fontWeight: '600' as const,
       marginTop: 10,
@@ -94,7 +94,7 @@ export function MessageBubble({
       marginVertical: 2
     },
     blockquote: {
-      backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surface,
+      backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceSubtle,
       borderLeftColor: isUser ? 'rgba(255,255,255,0.4)' : theme.border,
       borderLeftWidth: 3,
       paddingLeft: 12,
@@ -111,29 +111,12 @@ export function MessageBubble({
 
   return (
     <View style={[styles.container, isUser ? styles.userContainer : styles.assistantContainer]}>
-      <View style={styles.metaRow}>
-        {!isUser ? (
-          <View style={[styles.assistantMeta, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <View style={[styles.avatar, { backgroundColor: theme.background }]}>
-              <Feather name="cpu" size={12} color={theme.textSecondary} />
-            </View>
-            <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>
-              {message.responses?.[0]?.modelName || 'Overlay'}
-            </Text>
-          </View>
-        ) : (
-          <View style={[styles.userMeta, { backgroundColor: theme.buttonBg }]}>
-            <Text style={styles.userMetaText}>You</Text>
-          </View>
-        )}
-      </View>
-
       <View
         style={[
           styles.bubble,
           isUser
-            ? [styles.userBubble, { backgroundColor: theme.buttonBg }]
-            : [styles.assistantBubble, { backgroundColor: theme.surface, borderColor: theme.border }]
+            ? [styles.userBubble, { backgroundColor: theme.buttonPrimaryBg }]
+            : styles.assistantBubble
         ]}
       >
         {message.imageData ? (
@@ -156,7 +139,7 @@ export function MessageBubble({
 
         {isLoading && !displayContent ? (
           <View style={styles.loadingRow}>
-            <Feather name="loader" size={14} color={theme.textSecondary} />
+            <View style={[styles.pulseDot, { backgroundColor: theme.textSecondary }]} />
             <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Thinking...</Text>
           </View>
         ) : displayContent ? (
@@ -169,14 +152,14 @@ export function MessageBubble({
       </View>
 
       {hasReasoning ? (
-        <View style={[styles.supplementaryBlock, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={[styles.supplementaryBlock, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
           <Text style={[styles.supplementaryLabel, { color: theme.textSecondary }]}>Reasoning</Text>
           <Markdown style={markdownStyles}>{message.reasoning!.trim()}</Markdown>
         </View>
       ) : null}
 
       {toolInvocations.length > 0 ? (
-        <View style={[styles.supplementaryBlock, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={[styles.supplementaryBlock, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
           <Text style={[styles.supplementaryLabel, { color: theme.textSecondary }]}>Tools</Text>
           {toolInvocations.map((tool, index) => (
             <View
@@ -196,7 +179,7 @@ export function MessageBubble({
       ) : null}
 
       {generatedFiles.length > 0 ? (
-        <View style={[styles.supplementaryBlock, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={[styles.supplementaryBlock, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
           <Text style={[styles.supplementaryLabel, { color: theme.textSecondary }]}>Outputs</Text>
           {generatedFiles.map((file, index) => (
             <TouchableOpacity
@@ -225,6 +208,9 @@ export function MessageBubble({
 
       {!isUser && displayContent && !isLoading && (
         <View style={styles.actions}>
+          <Text style={[styles.metaLabel, { color: theme.textDisabled }]}>
+            {message.responses?.[0]?.modelName || 'Overlay'}
+          </Text>
           <TouchableOpacity
             onPress={() => onCopy?.(displayContent)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -246,71 +232,51 @@ export function MessageBubble({
 const styles = StyleSheet.create({
   container: {
     marginVertical: 8,
-    paddingHorizontal: spacing.lg
+    paddingHorizontal: spacing.md,
   },
   userContainer: {
-    alignItems: 'flex-end'
+    alignItems: 'flex-end',
   },
   assistantContainer: {
-    alignItems: 'flex-start'
-  },
-  metaRow: {
-    marginBottom: 6
-  },
-  assistantMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6
-  },
-  userMeta: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6
-  },
-  userMetaText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700'
-  },
-  avatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center'
+    alignItems: 'flex-start',
   },
   metaLabel: {
-    fontSize: 12,
-    fontWeight: '700'
+    fontSize: 11,
+    fontWeight: '600',
   },
   bubble: {
-    maxWidth: '92%',
-    borderRadius: 22,
-    paddingHorizontal: 14,
-    paddingVertical: 12
+    maxWidth: '100%',
   },
   userBubble: {
-    borderBottomRightRadius: 8
+    maxWidth: '86%',
+    borderRadius: 18,
+    borderBottomRightRadius: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   assistantBubble: {
-    borderBottomLeftRadius: 8,
-    borderWidth: 1
+    width: '100%',
+    paddingHorizontal: 2,
+    paddingVertical: 2,
   },
   loadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8
+    gap: 8,
+    paddingVertical: 8,
+  },
+  pulseDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    opacity: 0.8,
   },
   loadingText: {
-    fontSize: fontSize.sm
+    fontSize: fontSize.sm,
   },
   emptyAssistantText: {
     fontSize: fontSize.sm,
-    lineHeight: 20
+    lineHeight: 20,
   },
   attachmentTag: {
     alignSelf: 'flex-start',
@@ -320,42 +286,42 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    marginBottom: 8
+    marginBottom: 6,
   },
   attachmentTagText: {
     fontSize: 12,
-    fontWeight: '600'
+    fontWeight: '600',
   },
   supplementaryBlock: {
-    maxWidth: '92%',
+    width: '100%',
     borderWidth: 1,
-    borderRadius: 18,
+    borderRadius: 10,
     padding: 12,
-    marginTop: 8
+    marginTop: 6,
   },
   supplementaryLabel: {
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 8
+    marginBottom: 8,
   },
   toolRow: {
     paddingVertical: 10,
-    borderBottomWidth: 1
+    borderBottomWidth: 1,
   },
   toolHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8
+    gap: 8,
   },
   toolName: {
     fontSize: fontSize.sm,
-    fontWeight: '600'
+    fontWeight: '600',
   },
   toolState: {
     fontSize: 12,
-    marginTop: 4
+    marginTop: 4,
   },
   fileRow: {
     paddingVertical: 10,
@@ -363,16 +329,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.sm
+    gap: spacing.sm,
   },
   fileLabel: {
     fontSize: fontSize.sm,
-    fontWeight: '600'
+    fontWeight: '600',
   },
   actions: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
-    marginTop: 8,
-    paddingLeft: 4
-  }
+    marginTop: 4,
+    paddingLeft: 2,
+  },
 })

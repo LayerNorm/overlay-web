@@ -6,7 +6,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
@@ -16,29 +16,15 @@ import { useAuth } from '../../contexts/AuthContext'
 import { getAccountUrl } from '../../services/authService'
 
 interface AuthPanelProps {
-  context?: 'onboarding' | 'settings'
   onSignedOut?: () => void
 }
 
-function TierBadge({ tier }: { tier: 'free' | 'pro' | 'max' }): React.ReactElement {
-  const { theme } = useTheme()
-
-  return (
-    <View style={[styles.tierBadge, { backgroundColor: theme.background, borderColor: theme.border }]}>
-      <Text style={[styles.tierBadgeText, { color: theme.text }]}>
-        {tier === 'free' ? 'Free' : tier === 'pro' ? 'Pro' : 'Max'}
-      </Text>
-    </View>
-  )
-}
-
 export function AuthPanel({
-  context = 'settings',
-  onSignedOut
+  onSignedOut,
 }: AuthPanelProps): React.ReactElement {
   const router = useRouter()
   const { theme } = useTheme()
-  const { user, entitlements, isLoading, isAuthenticated, authError, signOut } = useAuth()
+  const { isLoading, isAuthenticated, authError, signOut, user } = useAuth()
 
   const openAuthFlow = useCallback(
     (mode: 'sign-in' | 'sign-up') => {
@@ -47,15 +33,14 @@ export function AuthPanel({
         params: {
           mode,
           force: mode === 'sign-in' ? 'true' : 'false',
-          startAtAuth: context === 'onboarding' ? 'true' : 'false'
-        }
+        },
       })
     },
-    [context, router]
+    [router],
   )
 
   const handleManageAccount = useCallback(() => {
-    Linking.openURL(getAccountUrl())
+    void Linking.openURL(getAccountUrl())
   }, [])
 
   const handleSignOut = useCallback(async () => {
@@ -68,7 +53,7 @@ export function AuthPanel({
       <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <ActivityIndicator color={theme.textSecondary} />
         <Text style={[styles.helperText, { color: theme.textSecondary }]}>
-          Restoring your account session…
+          Restoring your chat session…
         </Text>
       </View>
     )
@@ -79,16 +64,12 @@ export function AuthPanel({
       <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <View style={styles.copyBlock}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>
-            {context === 'onboarding' ? 'Sign in to continue' : 'Connect your Overlay account'}
+            Connect your Overlay account
           </Text>
           <Text style={[styles.helperText, { color: theme.textSecondary }]}>
-            {context === 'onboarding'
-              ? 'Use the same landing-page auth flow as desktop. After sign-in, Overlay returns here automatically.'
-              : 'Sign in with the landing auth flow to sync your Overlay account, plan, and Convex-backed profile.'}
+            Use the same hosted account flow as web. After sign-in, Overlay returns here automatically.
           </Text>
-          {authError ? (
-            <Text style={[styles.errorText, { color: '#EF4444' }]}>{authError}</Text>
-          ) : null}
+          {authError ? <Text style={[styles.errorText, { color: '#EF4444' }]}>{authError}</Text> : null}
         </View>
 
         <View style={styles.buttonRow}>
@@ -119,8 +100,7 @@ export function AuthPanel({
     )
   }
 
-  const displayName =
-    [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email
+  const displayName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email
 
   return (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -141,23 +121,6 @@ export function AuthPanel({
           </Text>
           <Text style={[styles.helperText, { color: theme.textSecondary }]} numberOfLines={1}>
             {user.email}
-          </Text>
-        </View>
-
-        <TierBadge tier={entitlements?.tier || 'free'} />
-      </View>
-
-      <View style={styles.metricRow}>
-        <View style={[styles.metricCard, { backgroundColor: theme.background, borderColor: theme.border }]}>
-          <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Credits</Text>
-          <Text style={[styles.metricValue, { color: theme.text }]}>
-            {entitlements ? `${entitlements.creditsUsed} / ${entitlements.creditsTotal}` : 'Synced'}
-          </Text>
-        </View>
-        <View style={[styles.metricCard, { backgroundColor: theme.background, borderColor: theme.border }]}>
-          <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Plan</Text>
-          <Text style={[styles.metricValue, { color: theme.text }]}>
-            {entitlements?.tier ? entitlements.tier.toUpperCase() : 'Overlay'}
           </Text>
         </View>
       </View>
@@ -188,39 +151,39 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 24,
     padding: spacing.lg,
-    gap: spacing.md
+    gap: spacing.md,
   },
   copyBlock: {
-    gap: 6
+    gap: 6,
   },
   cardTitle: {
     fontSize: fontSize.xl,
-    fontWeight: '700'
+    fontWeight: '700',
   },
   helperText: {
     fontSize: fontSize.sm,
-    lineHeight: 19
+    lineHeight: 19,
   },
   errorText: {
     fontSize: fontSize.sm,
     lineHeight: 19,
-    marginTop: spacing.xs
+    marginTop: spacing.xs,
   },
   buttonRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    flexWrap: 'wrap'
+    flexWrap: 'wrap',
   },
   primaryButton: {
     minHeight: 46,
     paddingHorizontal: spacing.lg,
     borderRadius: borderRadius.lg,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   primaryButtonText: {
     fontSize: fontSize.md,
-    fontWeight: '700'
+    fontWeight: '700',
   },
   secondaryButton: {
     minHeight: 46,
@@ -228,11 +191,11 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     borderWidth: 1,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   secondaryButtonText: {
     fontSize: fontSize.md,
-    fontWeight: '600'
+    fontWeight: '600',
   },
   inlineCallout: {
     borderWidth: 1,
@@ -240,22 +203,22 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: spacing.sm
+    gap: spacing.sm,
   },
   inlineCalloutText: {
     flex: 1,
     fontSize: fontSize.sm,
-    lineHeight: 19
+    lineHeight: 19,
   },
   userRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md
+    gap: spacing.md,
   },
   avatarImage: {
     width: 52,
     height: 52,
-    borderRadius: 26
+    borderRadius: 26,
   },
   avatarFallback: {
     width: 52,
@@ -263,45 +226,14 @@ const styles = StyleSheet.create({
     borderRadius: 26,
     borderWidth: 1,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   avatarFallbackText: {
     fontSize: 20,
-    fontWeight: '700'
+    fontWeight: '700',
   },
   userCopy: {
     flex: 1,
-    gap: 2
+    gap: 2,
   },
-  tierBadge: {
-    borderWidth: 1,
-    borderRadius: borderRadius.full,
-    paddingVertical: 6,
-    paddingHorizontal: 10
-  },
-  tierBadgeText: {
-    fontSize: 12,
-    fontWeight: '700'
-  },
-  metricRow: {
-    flexDirection: 'row',
-    gap: spacing.sm
-  },
-  metricCard: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    gap: 4
-  },
-  metricLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4
-  },
-  metricValue: {
-    fontSize: fontSize.lg,
-    fontWeight: '700'
-  }
 })
