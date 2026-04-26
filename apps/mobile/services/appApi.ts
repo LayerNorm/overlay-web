@@ -205,6 +205,12 @@ function xhrRawStream(
   }
 
   xhr.onload = () => {
+    if (xhr.status < 200 || xhr.status >= 300) {
+      finished = true
+      push({ error: new Error(`HTTP ${xhr.status}: ${xhr.statusText || 'Request failed'} — ${xhr.responseText.slice(0, 200)}`) })
+      push(null)
+      return
+    }
     const newText = xhr.responseText.slice(position)
     if (newText.length > 0) {
       position = xhr.responseText.length

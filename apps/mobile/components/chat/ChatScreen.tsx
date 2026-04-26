@@ -40,7 +40,7 @@ import {
   setLastOpenedChatId,
   updateChatTitle,
 } from '../../services/chatStorage'
-import { chatStream, DEFAULT_CHAT_MODEL_ID, getAvailableModels, type StreamChunk } from '../../services/aiService'
+import { chatStream, DEFAULT_CHAT_MODEL_ID, getAvailableModels, getLastSelectedModelId, setLastSelectedModelId, type StreamChunk } from '../../services/aiService'
 import { useTheme } from '../../hooks/useTheme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { MessageBubble } from './MessageBubble'
@@ -271,7 +271,7 @@ export function ChatScreen({
   const router = useRouter()
   const { theme } = useTheme()
   const { openDrawer } = useDrawer()
-  const { entitlements } = useAppSession()
+  const { entitlements, chatModels } = useAppSession()
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
   const insets = useSafeAreaInsets()
 
@@ -376,14 +376,19 @@ export function ChatScreen({
 
   const createConversation = useCallback(
     async (models: ChatModel[], options: { replaceRoute?: boolean } = {}) => {
+      const preferredId = await getLastSelectedModelId().catch(() => null)
+      const modelId = preferredId
+        ? (models.find((m) => m.id === preferredId)?.id ?? models[0]?.id)
+        : models[0]?.id
+
       let created: Chat
       try {
-        created = await createNewChat(models[0]?.id, {
+        created = await createNewChat(modelId, {
           projectId,
           title: 'New Chat',
         })
       } catch {
-        created = createDraftChat(models[0]?.id, projectId)
+        created = createDraftChat(modelId, projectId)
       }
 
       chatRef.current = created
@@ -419,15 +424,35 @@ export function ChatScreen({
   useEffect(() => {
     let isMounted = true
 
+    // Guard: skip re-initialization if we already have an active chat session.
+    if (chatRef.current !== null && !conversationId) {
+      return
+    }
+
+    async function resolveModels(): Promise<ChatModel[]> {
+      if (chatModels.length > 0) return chatModels
+      return getAvailableModels()
+    }
+
+    async function resolvePreferredModel(models: ChatModel[]): Promise<ChatModel | null> {
+      const persistedId = await getLastSelectedModelId().catch(() => null)
+      if (persistedId) {
+        const match = models.find((m) => m.id === persistedId)
+        if (match) return match
+      }
+      return models[0] || null
+    }
+
     async function initialize(): Promise<void> {
       setIsLoading(true)
 
       try {
-        const models = await getAvailableModels()
+        const models = await resolveModels()
         if (!isMounted) return
 
         setAvailableModels(models)
-        setSelectedModel(models[0] || null)
+        const preferred = await resolvePreferredModel(models)
+        if (isMounted) setSelectedModel(preferred)
 
         if (conversationId === 'new') {
           await createConversation(models, { replaceRoute: routeKind === 'detail' })
@@ -450,12 +475,13 @@ export function ChatScreen({
         await createConversation(models)
       } catch {
         if (isMounted) {
-          const models = await getAvailableModels().catch(() => [])
-          const draft = createDraftChat(models[0]?.id, projectId)
+          const models = await resolveModels().catch(() => [])
+          const preferred = await resolvePreferredModel(models)
+          const draft = createDraftChat(preferred?.id ?? models[0]?.id, projectId)
           chatRef.current = draft
           setChatTitle(draft.title)
           setMessages([])
-          setSelectedModel(models[0] || createSyntheticModel(draft.modelId))
+          setSelectedModel(preferred ?? models[0] ?? createSyntheticModel(draft.modelId))
         }
       } finally {
         if (isMounted) {
@@ -469,7 +495,13 @@ export function ChatScreen({
     return () => {
       isMounted = false
     }
-  }, [conversationId, createConversation, hydrateConversation, routeKind])
+  }, [chatModels, conversationId, createConversation, hydrateConversation, routeKind])
+
+  useEffect(() => {
+    if (chatModels.length > 0) {
+      setAvailableModels(chatModels)
+    }
+  }, [chatModels])
 
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {
@@ -582,6 +614,7 @@ export function ChatScreen({
     async (model: ChatModel) => {
       setSelectedModel(model)
       setModelPickerVisible(false)
+      await setLastSelectedModelId(model.id).catch(() => {})
       await syncConversationMeta({
         modelId: model.id,
         askModelIds: [model.id],

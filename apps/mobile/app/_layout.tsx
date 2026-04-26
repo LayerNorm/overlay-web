@@ -44,6 +44,15 @@ function RootLayoutNav(): React.ReactElement {
             animation: 'slide_from_right',
           }}
         />
+        <Stack.Screen
+          name="note/[id]"
+          options={{
+            headerShown: true,
+            title: '',
+            presentation: 'card',
+            animation: 'slide_from_right',
+          }}
+        />
       </Stack>
     </>
   )

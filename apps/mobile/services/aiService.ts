@@ -1,6 +1,17 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { appXhrStreamSse } from './appApi'
 import type { ChatModel } from './chatTypes'
 import { AUTH_BASE_URL } from './appConfig'
+
+const LAST_SELECTED_MODEL_KEY = 'overlay-last-selected-model-id'
+
+export async function getLastSelectedModelId(): Promise<string | null> {
+  return AsyncStorage.getItem(LAST_SELECTED_MODEL_KEY)
+}
+
+export async function setLastSelectedModelId(modelId: string): Promise<void> {
+  await AsyncStorage.setItem(LAST_SELECTED_MODEL_KEY, modelId)
+}
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system'

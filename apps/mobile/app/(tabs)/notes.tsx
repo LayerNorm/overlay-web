@@ -1,6 +1,6 @@
 import React from 'react'
-import { PlaceholderScreen } from '../../components/ui/PlaceholderScreen'
+import { NotesScreen } from '../../components/notes/NotesScreen'
 
-export default function NotesScreen(): React.ReactElement {
-  return <PlaceholderScreen title="Notes" icon="book-open" />
+export default function NotesTabScreen(): React.ReactElement {
+  return <NotesScreen />
 }
