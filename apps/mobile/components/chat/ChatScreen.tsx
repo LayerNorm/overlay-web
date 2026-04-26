@@ -57,7 +57,7 @@ import { UpgradePrompt } from '../auth/UpgradePrompt'
 import { GlassSurface } from '../ui/GlassSurface'
 import { useAuth } from '../../contexts/AuthContext'
 
-const OVERLAY_LOGO = require('../../../overlay-logo.png')
+const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
 function createSyntheticModel(modelId?: string | null): ChatModel | null {
   if (!modelId) {
@@ -270,7 +270,7 @@ export function ChatScreen({
 }): React.ReactElement {
   const router = useRouter()
   const { theme } = useTheme()
-  const { openDrawer } = useDrawer()
+  const { openDrawer, drawerVisible } = useDrawer()
   const { entitlements, chatModels } = useAppSession()
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
   const insets = useSafeAreaInsets()
@@ -297,9 +297,11 @@ export function ChatScreen({
   const messageBottomPadding = spacing.md
 
   const refreshHistory = useCallback(async () => {
-    const nextHistory = await loadChatsMeta(projectId).catch(() => [])
-    setHistory(nextHistory)
-    return nextHistory
+    const nextHistory = await loadChatsMeta(projectId).catch(() => null)
+    if (nextHistory) {
+      setHistory(nextHistory)
+    }
+    return nextHistory ?? []
   }, [projectId])
 
   const syncConversationMeta = useCallback(
@@ -509,9 +511,35 @@ export function ChatScreen({
     }
   }, [isAuthLoading, isAuthenticated, router])
 
+  // Refresh history once auth is ready (catches the race where useFocusEffect
+  // fired before the session was restored from storage).
+  useEffect(() => {
+    if (!isAuthLoading && isAuthenticated) {
+      void refreshHistory().catch(() => {})
+    }
+  }, [isAuthLoading, isAuthenticated, refreshHistory])
+
+  // Refresh history every time the drawer opens so the list is never stale.
+  useEffect(() => {
+    if (drawerVisible) {
+      void refreshHistory().catch(() => {})
+    }
+  }, [drawerVisible, refreshHistory])
+
+  // Poll the conversation list while this screen is focused for near-real-time
+  // sync with the web app and other devices.
   useFocusEffect(
     useCallback(() => {
+      let intervalId: ReturnType<typeof setInterval> | null = null
+
       void refreshHistory().catch(() => {})
+      intervalId = setInterval(() => {
+        void refreshHistory().catch(() => {})
+      }, 15000)
+
+      return () => {
+        if (intervalId) clearInterval(intervalId)
+      }
     }, [refreshHistory]),
   )
 

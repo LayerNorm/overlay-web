@@ -22,7 +22,7 @@ import type { Message, ToolInvocationSummary } from '../../services/chatTypes'
 import type { Theme } from '../../constants/theme'
 import { spacing, fontSize, borderRadius } from '../../constants/theme'
 
-const OVERLAY_LOGO = require('../../../overlay-logo.png')
+const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
 const DONE_STATES = new Set(['output-available', 'output-error', 'output-denied'])
 
