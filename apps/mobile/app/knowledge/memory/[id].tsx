@@ -1,0 +1,185 @@
+import React, { useCallback, useEffect, useState } from 'react'
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native'
+import { Feather } from '@expo/vector-icons'
+import { useLocalSearchParams, useRouter } from 'expo-router'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { useTheme } from '../../../hooks/useTheme'
+import { borderRadius, fontSize, spacing } from '../../../constants/theme'
+import { listMemories, updateMemory } from '../../../services/knowledgeService'
+import type { MemoryRow } from '@overlay/app-core'
+
+export default function MemoryDetailScreen(): React.ReactElement {
+  const { id } = useLocalSearchParams<{ id: string }>()
+  const { theme } = useTheme()
+  const router = useRouter()
+  const [memory, setMemory] = useState<MemoryRow | null>(null)
+  const [content, setContent] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+
+  const loadMemory = useCallback(async () => {
+    if (!id) return
+    setIsLoading(true)
+    try {
+      const all = await listMemories()
+      const found = all.find((m) => m.memoryId === id)
+      if (found) {
+        setMemory(found)
+        setContent(found.fullContent || found.content)
+      }
+    } catch {
+      Alert.alert('Error', 'Could not load memory')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [id])
+
+  useEffect(() => {
+    void loadMemory()
+  }, [loadMemory])
+
+  async function handleSave() {
+    if (!id) return
+    setIsSaving(true)
+    try {
+      await updateMemory(id, content)
+      Alert.alert('Saved', 'Memory updated')
+    } catch {
+      Alert.alert('Error', 'Could not save memory')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={styles.centered}>
+          <ActivityIndicator color={theme.textSecondary} />
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  if (!memory) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={styles.centered}>
+          <Text style={{ color: theme.textSecondary }}>Memory not found</Text>
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['bottom']}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={[styles.backButton, { borderColor: theme.border }]}>
+          <Feather name="arrow-left" size={18} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
+          Memory
+        </Text>
+        <TouchableOpacity
+          onPress={handleSave}
+          disabled={isSaving}
+          style={[styles.saveButton, { opacity: isSaving ? 0.4 : 1 }]}
+        >
+          <Text style={[styles.saveButtonText, { color: theme.foreground }]}>{isSaving ? 'Saving…' : 'Save'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <TextInput
+          value={content}
+          onChangeText={setContent}
+          multiline
+          textAlignVertical="top"
+          placeholder="Memory content..."
+          placeholderTextColor={theme.textDisabled}
+          style={[
+            styles.editor,
+            {
+              color: theme.text,
+              backgroundColor: theme.surfaceMuted,
+              borderColor: theme.border,
+            },
+          ]}
+        />
+        {memory.source ? (
+          <Text style={[styles.source, { color: theme.textSecondary }]}>Source: {memory.source}</Text>
+        ) : null}
+      </ScrollView>
+    </SafeAreaView>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 24,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    fontFamily: 'LibreBaskerville',
+    textAlign: 'center',
+  },
+  saveButton: {
+    paddingHorizontal: 12,
+  },
+  saveButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+    gap: spacing.md,
+  },
+  editor: {
+    minHeight: 300,
+    borderWidth: 1,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    fontSize: fontSize.md,
+    lineHeight: 22,
+  },
+  source: {
+    fontSize: fontSize.sm,
+  },
+})

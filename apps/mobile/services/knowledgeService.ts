@@ -1,6 +1,7 @@
-import { appJson } from './appApi'
+import { appJson, appRequest } from './appApi'
 import type { KnowledgeFile, MemoryRow, OutputSummary } from '@overlay/app-core'
 
+// ── Memories ──
 export async function listMemories(): Promise<MemoryRow[]> {
   return appJson<MemoryRow[]>('/api/app/memory')
 }
@@ -33,6 +34,11 @@ export async function deleteMemory(memoryId: string): Promise<void> {
   })
 }
 
+export async function bulkDeleteMemories(memoryIds: string[]): Promise<void> {
+  await Promise.all(memoryIds.map((id) => deleteMemory(id)))
+}
+
+// ── Files ──
 export async function listKnowledgeFiles(projectId?: string): Promise<KnowledgeFile[]> {
   return appJson<KnowledgeFile[]>('/api/app/files', {
     query: { projectId: projectId || undefined },
@@ -45,6 +51,14 @@ export async function getKnowledgeFile(fileId: string): Promise<KnowledgeFile> {
   })
 }
 
+export async function getKnowledgeFileContent(fileId: string): Promise<string> {
+  const response = await appRequest(`/api/app/files/${fileId}/content`)
+  if (!response.ok) {
+    throw new Error(`Failed to fetch file content: ${response.status}`)
+  }
+  return response.text()
+}
+
 export async function createKnowledgeFile(
   input: { name: string; content?: string; projectId?: string; parentId?: string | null },
 ): Promise<{ id: string }> {
@@ -54,6 +68,20 @@ export async function createKnowledgeFile(
       name: input.name,
       type: 'file',
       content: input.content || '',
+      projectId: input.projectId,
+      parentId: input.parentId ?? undefined,
+    },
+  })
+}
+
+export async function createKnowledgeFolder(
+  input: { name: string; projectId?: string; parentId?: string | null },
+): Promise<{ id: string }> {
+  return appJson<{ id: string }>('/api/app/files', {
+    method: 'POST',
+    json: {
+      name: input.name,
+      type: 'folder',
       projectId: input.projectId,
       parentId: input.parentId ?? undefined,
     },
@@ -77,6 +105,55 @@ export async function deleteKnowledgeFile(fileId: string): Promise<void> {
   })
 }
 
+export async function bulkDeleteKnowledgeFiles(fileIds: string[]): Promise<void> {
+  await Promise.all(fileIds.map((id) => deleteKnowledgeFile(id)))
+}
+
+// Upload helpers
+export async function getUploadUrl(options: {
+  name: string
+  mimeType: string
+  sizeBytes: number
+}): Promise<{ r2Key: string; presignedUrl: string; expiresIn: number }> {
+  return appJson<{ r2Key: string; presignedUrl: string; expiresIn: number }>('/api/app/files/presign', {
+    query: {
+      name: options.name,
+      mimeType: options.mimeType,
+      sizeBytes: options.sizeBytes,
+    },
+  })
+}
+
+export async function uploadToR2(presignedUrl: string, body: ArrayBuffer | Uint8Array, mimeType: string): Promise<void> {
+  const buffer = body instanceof Uint8Array ? body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) : body
+  const blob = new Blob([buffer as ArrayBuffer], { type: mimeType })
+  const response = await fetch(presignedUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': mimeType },
+    body: blob,
+  })
+  if (!response.ok) {
+    throw new Error(`Upload failed: ${response.status}`)
+  }
+}
+
+export async function createFileWithStorage(
+  input: { name: string; r2Key: string; sizeBytes: number; parentId?: string | null; projectId?: string },
+): Promise<{ id: string }> {
+  return appJson<{ id: string }>('/api/app/files', {
+    method: 'POST',
+    json: {
+      name: input.name,
+      type: 'file',
+      r2Key: input.r2Key,
+      sizeBytes: input.sizeBytes,
+      parentId: input.parentId ?? undefined,
+      projectId: input.projectId,
+    },
+  })
+}
+
+// ── Outputs ──
 export async function listOutputs(
   options: { type?: string; conversationId?: string } = {},
 ): Promise<OutputSummary[]> {
@@ -86,4 +163,15 @@ export async function listOutputs(
       conversationId: options.conversationId,
     },
   })
+}
+
+export async function deleteOutput(outputId: string): Promise<void> {
+  await appJson('/api/app/outputs', {
+    method: 'DELETE',
+    query: { outputId },
+  })
+}
+
+export async function bulkDeleteOutputs(outputIds: string[]): Promise<void> {
+  await Promise.all(outputIds.map((id) => deleteOutput(id)))
 }

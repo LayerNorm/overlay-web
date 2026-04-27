@@ -1,6 +1,6 @@
 import React from 'react'
-import { PlaceholderScreen } from '../../components/ui/PlaceholderScreen'
+import { KnowledgeScreen } from '../../components/knowledge/KnowledgeScreen'
 
-export default function KnowledgeScreen(): React.ReactElement {
-  return <PlaceholderScreen title="Knowledge" icon="cpu" />
+export default function KnowledgeTab(): React.ReactElement {
+  return <KnowledgeScreen />
 }

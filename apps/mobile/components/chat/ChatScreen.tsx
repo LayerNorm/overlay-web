@@ -45,6 +45,7 @@ import { useTheme } from '../../hooks/useTheme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { MessageBubble } from './MessageBubble'
 import { DrawerSidebar } from './DrawerSidebar'
+import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
 import {
   BottomSheet,
   StatusPill,
@@ -802,7 +803,23 @@ export function ChatScreen({
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+    <ScreenWithDrawer
+      drawer={
+        <DrawerSidebar
+          variant="slide"
+          theme={theme}
+          chats={history}
+          activeChatId={chatRef.current?.id || null}
+          onSelectChat={(chatId) => {
+            void openConversation(chatId)
+          }}
+          onCreateChat={() => {
+            void startFreshConversation()
+          }}
+        />
+      }
+    >
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       {/* Transparent left-edge zone to capture swipe-to-open gesture */}
       <View
         style={styles.edgePanZone}
@@ -815,7 +832,7 @@ export function ChatScreen({
         keyboardVerticalOffset={Platform.OS === 'ios' ? 6 : 0}
       >
         <View style={styles.screenPadding}>
-          <View style={[styles.topBar, { backgroundColor: theme.background }]}>
+          <GlassSurface interactive style={[styles.topBar, { backgroundColor: theme.background }]}>
             {routeKind === 'detail' ? (
               <View style={styles.topBarNativeBackSpacer} />
             ) : (
@@ -847,7 +864,7 @@ export function ChatScreen({
                 void startFreshConversation()
               }}
             />
-          </View>
+          </GlassSurface>
 
           <View style={styles.threadSurface}>
             {messages.length === 0 ? (
@@ -961,18 +978,6 @@ export function ChatScreen({
         </View>
       </KeyboardAvoidingView>
 
-      <DrawerSidebar
-        theme={theme}
-        chats={history}
-        activeChatId={chatRef.current?.id || null}
-        onSelectChat={(chatId) => {
-          void openConversation(chatId)
-        }}
-        onCreateChat={() => {
-          void startFreshConversation()
-        }}
-      />
-
       <BottomSheet
         theme={theme}
         visible={modelPickerVisible}
@@ -1029,6 +1034,7 @@ export function ChatScreen({
         onClose={() => setUpgradeVisible(false)}
       />
     </SafeAreaView>
+    </ScreenWithDrawer>
   )
 }
 

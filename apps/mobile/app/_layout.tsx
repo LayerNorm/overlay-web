@@ -53,6 +53,33 @@ function RootLayoutNav(): React.ReactElement {
             animation: 'slide_from_right',
           }}
         />
+        <Stack.Screen
+          name="knowledge/memory/[id]"
+          options={{
+            headerShown: true,
+            title: '',
+            presentation: 'card',
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="knowledge/file/[id]"
+          options={{
+            headerShown: true,
+            title: '',
+            presentation: 'card',
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="knowledge/output/[id]"
+          options={{
+            headerShown: true,
+            title: '',
+            presentation: 'card',
+            animation: 'slide_from_right',
+          }}
+        />
       </Stack>
     </>
   )

@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons'
 import { useTheme } from '../../hooks/useTheme'
 import { useDrawer } from '../../contexts/DrawerContext'
 import { DrawerSidebar } from '../chat/DrawerSidebar'
+import { ScreenWithDrawer } from './ScreenWithDrawer'
 import { fontSize, spacing } from '../../constants/theme'
 
 export function PlaceholderScreen({
@@ -18,34 +19,39 @@ export function PlaceholderScreen({
   const { openDrawer } = useDrawer()
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.topBar, { borderBottomColor: theme.border }]}>
-        <TouchableOpacity
-          onPress={openDrawer}
-          style={[styles.iconButton, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}
-          activeOpacity={0.7}
-        >
-          <Feather name="menu" size={16} color={theme.muted} />
-        </TouchableOpacity>
-        <Text style={[styles.topBarTitle, { color: theme.text, fontFamily: 'LibreBaskerville' }]}>
-          {title}
-        </Text>
-        <View style={styles.iconButton} />
-      </View>
+    <ScreenWithDrawer
+      drawer={
+        <DrawerSidebar
+          variant="slide"
+          theme={theme}
+          chats={[]}
+          activeChatId={null}
+          onSelectChat={() => {}}
+          onCreateChat={() => {}}
+        />
+      }
+    >
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+        <View style={[styles.topBar, { borderBottomColor: theme.border }]}>
+          <TouchableOpacity
+            onPress={openDrawer}
+            style={[styles.iconButton, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}
+            activeOpacity={0.7}
+          >
+            <Feather name="menu" size={16} color={theme.muted} />
+          </TouchableOpacity>
+          <Text style={[styles.topBarTitle, { color: theme.text, fontFamily: 'LibreBaskerville' }]}>
+            {title}
+          </Text>
+          <View style={styles.iconButton} />
+        </View>
 
-      <View style={styles.body}>
-        <Feather name={icon} size={40} color={theme.mutedLight} />
-        <Text style={[styles.label, { color: theme.mutedLight }]}>Coming soon</Text>
-      </View>
-
-      <DrawerSidebar
-        theme={theme}
-        chats={[]}
-        activeChatId={null}
-        onSelectChat={() => {}}
-        onCreateChat={() => {}}
-      />
-    </SafeAreaView>
+        <View style={styles.body}>
+          <Feather name={icon} size={40} color={theme.mutedLight} />
+          <Text style={[styles.label, { color: theme.mutedLight }]}>Coming soon</Text>
+        </View>
+      </SafeAreaView>
+    </ScreenWithDrawer>
   )
 }
 

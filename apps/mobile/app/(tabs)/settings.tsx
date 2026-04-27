@@ -15,7 +15,9 @@ import { useTheme } from '../../hooks/useTheme'
 import { useDrawer } from '../../contexts/DrawerContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { DrawerSidebar } from '../../components/chat/DrawerSidebar'
+import { ScreenWithDrawer } from '../../components/ui/ScreenWithDrawer'
 import { TopBarIconButton } from '../../components/ui/AppChrome'
+import { GlassSurface } from '../../components/ui/GlassSurface'
 
 const APPEARANCE_OPTIONS = [
   { label: 'Light', value: 'light' },
@@ -51,13 +53,25 @@ export default function SettingsScreen(): React.ReactElement {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+    <ScreenWithDrawer
+      drawer={
+        <DrawerSidebar
+          variant="slide"
+          theme={theme}
+          chats={[]}
+          activeChatId={null}
+          onSelectChat={() => {}}
+          onCreateChat={() => {}}
+        />
+      }
+    >
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <View style={styles.screenPadding}>
-        <View style={[styles.topBar, { backgroundColor: theme.glassBg, borderColor: theme.glassBorder }]}>
+        <GlassSurface interactive style={[styles.topBar, { backgroundColor: theme.glassBg, borderColor: theme.glassBorder }]}>
           <TopBarIconButton theme={theme} icon="menu" onPress={openDrawer} />
           <Text style={[styles.topBarTitle, { color: theme.text }]}>Settings</Text>
           <View style={styles.topBarSpacer} />
-        </View>
+        </GlassSurface>
 
         <View style={styles.content}>
           <View style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
@@ -130,14 +144,8 @@ export default function SettingsScreen(): React.ReactElement {
         </View>
       </View>
 
-      <DrawerSidebar
-        theme={theme}
-        chats={[]}
-        activeChatId={null}
-        onSelectChat={() => {}}
-        onCreateChat={() => {}}
-      />
     </SafeAreaView>
+    </ScreenWithDrawer>
   )
 }
 

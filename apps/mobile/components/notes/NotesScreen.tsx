@@ -17,7 +17,9 @@ import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { useTheme } from '../../hooks/useTheme'
 import { useDrawer } from '../../contexts/DrawerContext'
 import { DrawerSidebar } from '../chat/DrawerSidebar'
+import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
 import { TopBarIconButton } from '../ui/AppChrome'
+import { GlassSurface } from '../ui/GlassSurface'
 import { loadNotesIndex, createNote, deleteNote } from '../../services/noteStorage'
 import type { NoteMeta } from '../../services/types'
 import { formatDate } from '../../services/types'
@@ -81,9 +83,25 @@ export function NotesScreen(): React.ReactElement {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+    <ScreenWithDrawer
+      drawer={
+        <DrawerSidebar
+          variant="slide"
+          theme={theme}
+          chats={[]}
+          activeChatId={null}
+          onSelectChat={() => {}}
+          onCreateChat={() => {}}
+          notes={notes}
+          activeNoteId={null}
+          onSelectNote={(id) => router.push({ pathname: '/note/[id]', params: { id } })}
+          onCreateNote={handleCreateNote}
+        />
+      }
+    >
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <View style={styles.screenPadding}>
-        <View style={[styles.topBar, { backgroundColor: theme.background }]}>
+        <GlassSurface interactive style={[styles.topBar, { backgroundColor: theme.background }]}>
           <TopBarIconButton theme={theme} icon="menu" onPress={openDrawer} />
           <Text style={[styles.topBarTitle, { color: theme.text }]}>Notes</Text>
           <TopBarIconButton
@@ -93,7 +111,7 @@ export function NotesScreen(): React.ReactElement {
               void handleCreateNote()
             }}
           />
-        </View>
+        </GlassSurface>
 
         <View style={[styles.searchBar, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
           <Feather name="search" size={16} color={theme.textSecondary} />
@@ -165,14 +183,8 @@ export function NotesScreen(): React.ReactElement {
         )}
       </View>
 
-      <DrawerSidebar
-        theme={theme}
-        chats={[]}
-        activeChatId={null}
-        onSelectChat={() => {}}
-        onCreateChat={() => {}}
-      />
     </SafeAreaView>
+    </ScreenWithDrawer>
   )
 }
 
