@@ -993,35 +993,41 @@ export function ChatScreen({
                 onPress={() => {
                   void handleModelSelect(model)
                 }}
-                activeOpacity={0.82}
+                activeOpacity={0.7}
                 style={[
                   styles.modelRow,
-                  {
-                    backgroundColor: isSelected ? theme.surfaceSubtle : theme.surfaceElevated,
-                    borderColor: theme.border,
-                  },
+                  isSelected && { backgroundColor: theme.surfaceSubtle },
                 ]}
               >
-                <View style={styles.modelRowCopy}>
-                  <View style={styles.modelRowTitleLine}>
-                    <View
-                      style={[
-                        styles.providerDot,
-                        { backgroundColor: PROVIDER_COLORS[model.provider] || theme.textSecondary },
-                      ]}
-                    />
-                    <Text style={[styles.modelRowTitle, { color: theme.text }]}>{model.name}</Text>
-                  </View>
-                  <Text style={[styles.modelRowDescription, { color: theme.textSecondary }]}>
-                    {model.description || 'General purpose model'}
+                <View style={styles.modelRowLeft}>
+                  {isSelected ? (
+                    <Feather name="check" size={14} color={theme.text} />
+                  ) : (
+                    <View style={{ width: 14 }} />
+                  )}
+                  <Text style={[styles.modelRowTitle, { color: isSelected ? theme.text : theme.textSecondary }]}>
+                    {model.name}
                   </Text>
-                  <View style={styles.modelTagRow}>
-                    {capabilityTags(model).map((tag) => (
-                      <StatusPill key={`${model.id}-${tag}`} theme={theme} label={tag} />
-                    ))}
-                  </View>
                 </View>
-                {isSelected ? <Feather name="check" size={16} color={theme.text} /> : null}
+                <View style={styles.modelCapabilityIcons}>
+                  {model.supportsVision && (
+                    <View style={[styles.capabilityBadge, { backgroundColor: theme.surfaceSubtle }]}>
+                      <Feather name="eye" size={10} color={theme.textSecondary} />
+                    </View>
+                  )}
+                  {model.supportsReasoning && (
+                    <View style={[styles.capabilityBadge, { backgroundColor: theme.surfaceSubtle }]}>
+                      <Feather name="zap" size={10} color={theme.textSecondary} />
+                    </View>
+                  )}
+                  {model.cost > 0 && (
+                    <View style={[styles.costBadge, { backgroundColor: theme.surfaceSubtle }]}>
+                      <Text style={[styles.costBadgeText, { color: theme.textSecondary }]}>
+                        {model.cost === 3 ? '$$$' : model.cost === 2 ? '$$' : '$'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </TouchableOpacity>
             )
           })}
@@ -1183,37 +1189,47 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modelList: {
-    gap: spacing.sm,
+    gap: 2,
   },
   modelRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.md,
-    borderWidth: 1,
-    borderRadius: borderRadius.xl,
-    padding: spacing.md,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
   },
-  modelRowCopy: {
-    flex: 1,
-    gap: 8,
-  },
-  modelRowTitleLine: {
+  modelRowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    flex: 1,
   },
   modelRowTitle: {
-    fontSize: fontSize.md,
-    fontWeight: '700',
-  },
-  modelRowDescription: {
     fontSize: fontSize.sm,
-    lineHeight: 20,
+    fontWeight: '500',
   },
-  modelTagRow: {
+  modelCapabilityIcons: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+    alignItems: 'center',
+    gap: 4,
+  },
+  capabilityBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  costBadge: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+    minWidth: 18,
+    alignItems: 'center',
+  },
+  costBadgeText: {
+    fontSize: 9,
+    fontWeight: '600',
   },
 })

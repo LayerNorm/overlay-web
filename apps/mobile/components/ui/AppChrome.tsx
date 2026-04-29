@@ -1,5 +1,6 @@
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import {
+  Animated,
   Modal,
   Pressable,
   ScrollView,
@@ -217,11 +218,58 @@ export function BottomSheet({
   headerAction?: React.ReactNode
   children: React.ReactNode
 }): React.ReactElement {
+  const translateY = useRef(new Animated.Value(500)).current
+  const scrimOpacity = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(translateY, {
+          toValue: 0,
+          tension: 85,
+          friction: 18,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scrimOpacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start()
+    } else {
+      Animated.parallel([
+        Animated.spring(translateY, {
+          toValue: 500,
+          tension: 100,
+          friction: 20,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scrimOpacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start()
+    }
+  }, [visible, translateY, scrimOpacity])
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <View style={styles.modalRoot}>
-        <Pressable style={[styles.scrim, { backgroundColor: theme.scrim }]} onPress={onClose} />
-        <GlassSurface style={[styles.sheet, { backgroundColor: theme.glassBg, borderColor: theme.glassBorder }]}>
+        <Animated.View style={[styles.scrim, { backgroundColor: theme.scrim, opacity: scrimOpacity }]}>
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
+        </Animated.View>
+        <Animated.View
+          style={[
+            styles.sheet,
+            {
+              backgroundColor: theme.glassBg,
+              borderColor: theme.glassBorder,
+              transform: [{ translateY }],
+            },
+          ]}
+        >
+          <GlassSurface style={StyleSheet.absoluteFillObject} />
           <View style={styles.sheetHandleWrap}>
             <View style={[styles.sheetHandle, { backgroundColor: theme.border }]} />
           </View>
@@ -239,7 +287,7 @@ export function BottomSheet({
           >
             {children}
           </ScrollView>
-        </GlassSurface>
+        </Animated.View>
       </View>
     </Modal>
   )

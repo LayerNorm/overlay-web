@@ -293,9 +293,12 @@ function DrawerContent({
 
   return (
     <>
-      {/* Header */}
-      <View style={[styles.drawerHeader, { borderBottomColor: theme.border }]}>
-        <Image source={OVERLAY_LOGO} style={styles.drawerLogo} resizeMode="contain" />
+      {/* Header with Logo and Brand */}
+      <View style={[styles.drawerHeader, { borderBottomColor: theme.border, paddingTop: insets.top + spacing.md }]}>
+        <View style={styles.brandContainer}>
+          <Image source={OVERLAY_LOGO} style={styles.drawerLogo} resizeMode="contain" />
+          <Text style={[styles.brandText, { color: theme.text }]}>overlay</Text>
+        </View>
       </View>
 
       {/* Navigation */}
@@ -318,7 +321,7 @@ function DrawerContent({
             >
               <Feather
                 name={item.icon}
-                size={15}
+                size={18}
                 color={item.disabled ? theme.mutedLight : active ? theme.text : theme.muted}
               />
               <Text
@@ -464,13 +467,25 @@ const styles = StyleSheet.create({
   },
   drawerHeader: {
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  brandContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingTop: spacing.sm,
+  },
   drawerLogo: {
-    width: 36,
-    height: 36,
+    width: 28,
+    height: 28,
+  },
+  brandText: {
+    fontSize: 22,
+    fontWeight: '600',
+    letterSpacing: -0.5,
+    fontFamily: 'LibreBaskerville',
   },
   navSection: {
     paddingHorizontal: spacing.sm,
@@ -479,18 +494,19 @@ const styles = StyleSheet.create({
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 9,
+    gap: 12,
+    paddingVertical: 14,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.md,
+    marginBottom: 4,
   },
   navItemDisabled: {
     opacity: 0.6,
   },
   navLabel: {
     flex: 1,
-    fontSize: fontSize.sm,
-    fontWeight: '400',
+    fontSize: fontSize.md,
+    fontWeight: '500',
   },
   soonBadge: {
     fontSize: fontSize.xs,
