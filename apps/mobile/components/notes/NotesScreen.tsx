@@ -102,9 +102,10 @@ export function NotesScreen(): React.ReactElement {
     >
       <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <View style={styles.screenPadding}>
-        <View style={[styles.topBar, { backgroundColor: theme.background }]}>
+        <View style={styles.floatingLeft}>
           <TopBarIconButton theme={theme} icon="menu" onPress={openDrawer} />
-          <Text style={[styles.topBarTitle, { color: theme.text }]}>Notes</Text>
+        </View>
+        <View style={styles.floatingRight}>
           <TopBarIconButton
             theme={theme}
             icon="plus"
@@ -204,17 +205,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
   },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    paddingHorizontal: spacing.sm,
+  floatingLeft: {
+    position: 'absolute',
+    top: 8,
+    left: spacing.sm,
+    zIndex: 100,
   },
-  topBarTitle: {
-    fontSize: fontSize.md,
-    fontWeight: '600',
-    fontFamily: 'LibreBaskerville',
+  floatingRight: {
+    position: 'absolute',
+    top: 8,
+    right: spacing.sm,
+    zIndex: 100,
   },
   searchBar: {
     flexDirection: 'row',
@@ -224,7 +225,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.full,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
-    marginTop: spacing.sm,
+    marginTop: 60,
     marginBottom: spacing.md,
     overflow: 'hidden',
   },

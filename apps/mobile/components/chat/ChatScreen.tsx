@@ -58,6 +58,10 @@ import { useAppSession } from '../../contexts/AppSessionContext'
 import { UpgradePrompt } from '../auth/UpgradePrompt'
 import { GlassSurface } from '../ui/GlassSurface'
 import { useAuth } from '../../contexts/AuthContext'
+import * as DocumentPicker from 'expo-document-picker'
+import * as FileSystem from 'expo-file-system'
+import { BlurView } from 'expo-blur'
+import { LinearGradient } from 'expo-linear-gradient'
 
 const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
@@ -244,6 +248,14 @@ function capabilityTags(model: ChatModel): string[] {
   return tags
 }
 
+function getModelDescription(model: ChatModel): string {
+  if (model.intelligence >= 5) return 'Most capable for ambitious work'
+  if (model.intelligence >= 4) return 'Powerful and versatile'
+  if (model.cost === 0) return 'Fast and free'
+  if (model.intelligence <= 2) return 'Fastest for quick answers'
+  return 'Efficient for everyday tasks'
+}
+
 function getTimeGreeting(): string {
   const hour = new Date().getHours()
   if (hour < 12) return 'morning'
@@ -271,7 +283,7 @@ export function ChatScreen({
   routeKind: 'tab' | 'detail'
 }): React.ReactElement {
   const router = useRouter()
-  const { theme } = useTheme()
+  const { theme, isDark } = useTheme()
   const { openDrawer, drawerVisible } = useDrawer()
   const { entitlements, chatModels } = useAppSession()
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
@@ -292,6 +304,8 @@ export function ChatScreen({
   const [upgradeVisible, setUpgradeVisible] = useState(false)
   const [composerFocused, setComposerFocused] = useState(false)
   const [keyboardShown, setKeyboardShown] = useState(false)
+  const [attachPickerVisible, setAttachPickerVisible] = useState(false)
+  const [attachedFile, setAttachedFile] = useState<{ name: string; uri: string; mimeType: string } | null>(null)
 
   const chatRef = useRef<Chat | null>(null)
   const flatListRef = useRef<FlatList<Message>>(null)
@@ -667,6 +681,36 @@ export function ChatScreen({
     }
   }, [])
 
+  const pickImageFromCamera = useCallback(async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync()
+    if (status !== 'granted') {
+      Alert.alert('Camera access needed', 'Please allow camera access in Settings.')
+      return
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      base64: true,
+      quality: 0.7,
+    })
+    if (!result.canceled && result.assets[0].base64) {
+      const mimeType = result.assets[0].mimeType || 'image/jpeg'
+      setImageBase64(`data:${mimeType};base64,${result.assets[0].base64}`)
+    }
+  }, [])
+
+  const pickFile = useCallback(async () => {
+    const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true })
+    if (result.canceled) return
+    const asset = result.assets[0]
+    const mimeType = asset.mimeType ?? 'application/octet-stream'
+    if (mimeType.startsWith('image/')) {
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' })
+      setImageBase64(`data:${mimeType};base64,${base64}`)
+    } else {
+      setAttachedFile({ name: asset.name, uri: asset.uri, mimeType })
+    }
+  }, [])
+
   const handleModelSelect = useCallback(
     async (model: ChatModel) => {
       setSelectedModel(model)
@@ -688,7 +732,7 @@ export function ChatScreen({
     }
 
     const activeChat = chatRef.current
-    if ((!inputValue.trim() && !imageBase64) || !selectedModel || !activeChat || isSending) {
+    if ((!inputValue.trim() && !imageBase64 && !attachedFile) || !selectedModel || !activeChat || isSending) {
       return
     }
 
@@ -696,16 +740,31 @@ export function ChatScreen({
     abortRef.current = false
     setIsSending(true)
 
+    let fileContext = ''
+    if (attachedFile) {
+      try {
+        const isText = attachedFile.mimeType.startsWith('text/') || attachedFile.name.endsWith('.md') || attachedFile.name.endsWith('.json')
+        if (isText) {
+          const content = await FileSystem.readAsStringAsync(attachedFile.uri)
+          fileContext = `\n\n[File: ${attachedFile.name}]\n${content}`
+        } else {
+          fileContext = `\n\n[Attached file: ${attachedFile.name}]`
+        }
+      } catch {
+        fileContext = `\n\n[Attached file: ${attachedFile.name}]`
+      }
+    }
+
     const userMessage: Message = {
       id: generateMessageId(),
       role: 'user',
-      content: inputValue.trim(),
+      content: inputValue.trim() + fileContext,
       timestamp: Date.now(),
       imageData: imageBase64 || undefined,
       mode: 'act',
     }
 
-    const nextTitle = getNextTitle(chatTitle, userMessage.content)
+    const nextTitle = getNextTitle(chatTitle, inputValue.trim() || attachedFile?.name || '')
     const userMessageList = [...messages, userMessage]
     const assistantId = generateMessageId()
     const placeholderAssistant: Message = {
@@ -730,6 +789,7 @@ export function ChatScreen({
     setMessages([...userMessageList, placeholderAssistant])
     setInputValue('')
     setImageBase64(null)
+    setAttachedFile(null)
 
     try {
       await syncConversationMeta({
@@ -787,6 +847,7 @@ export function ChatScreen({
     await refreshHistory()
     scrollToBottom()
   }, [
+    attachedFile,
     chatTitle,
     imageBase64,
     inputValue,
@@ -841,21 +902,29 @@ export function ChatScreen({
         keyboardVerticalOffset={Platform.OS === 'ios' ? 6 : 0}
       >
         <View style={styles.screenPadding} {...swipeDownPanResponder.panHandlers}>
-          <View style={[styles.topBar, { backgroundColor: theme.background }]}>
-            {routeKind === 'detail' ? (
-              <View style={styles.topBarNativeBackSpacer} />
+          <View style={styles.headerBlur} pointerEvents="none">
+            <BlurView
+              intensity={55}
+              tint={isDark ? 'dark' : 'light'}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <LinearGradient
+              colors={['transparent', theme.background as string]}
+              style={StyleSheet.absoluteFillObject}
+            />
+          </View>
+
+          <View style={styles.topRow}>
+            {routeKind !== 'detail' ? (
+              <TopBarIconButton theme={theme} icon="menu" onPress={openDrawer} />
             ) : (
-              <TopBarIconButton
-                theme={theme}
-                icon="menu"
-                onPress={openDrawer}
-              />
+              <View style={{ width: 44 }} />
             )}
 
             <TouchableOpacity
               activeOpacity={0.82}
               onPress={() => setModelPickerVisible(true)}
-              style={styles.topBarModelButton}
+              style={styles.floatingModelPill}
             >
               {isSwitchingChat ? (
                 <ActivityIndicator size="small" color={theme.textSecondary} />
@@ -916,6 +985,15 @@ export function ChatScreen({
                 <TopBarIconButton theme={theme} icon="x" onPress={() => setImageBase64(null)} />
               </View>
             ) : null}
+            {attachedFile ? (
+              <View style={[styles.attachmentBar, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+                <View style={styles.attachmentInfo}>
+                  <Feather name="file-text" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.attachmentText, { color: theme.textSecondary }]} numberOfLines={1}>{attachedFile.name}</Text>
+                </View>
+                <TopBarIconButton theme={theme} icon="x" onPress={() => setAttachedFile(null)} />
+              </View>
+            ) : null}
 
             <GlassSurface interactive style={[styles.composerBox, { backgroundColor: theme.glassBg, borderColor: composerFocused ? theme.border : theme.glassBorder }]}>
               <TextInput
@@ -939,10 +1017,7 @@ export function ChatScreen({
                 <GlassSurface interactive style={[styles.composerIconButton, { backgroundColor: theme.surfaceSubtle }]}>
                   <TouchableOpacity
                     activeOpacity={0.82}
-                    onPress={() => {
-                      setActiveModality('image')
-                      void pickImage()
-                    }}
+                    onPress={() => setAttachPickerVisible(true)}
                     style={[styles.composerIconButton]}
                   >
                     <Feather name="plus" size={22} color={theme.textSecondary} />
@@ -980,50 +1055,32 @@ export function ChatScreen({
         title="Choose model"
       >
         <View style={styles.modelList}>
-          {sortedModels.map((model) => {
+          {sortedModels.map((model, index) => {
             const isSelected = selectedModel?.id === model.id
+            const isLast = index === sortedModels.length - 1
             return (
-              <TouchableOpacity
-                key={model.id}
-                onPress={() => {
-                  void handleModelSelect(model)
-                }}
-                activeOpacity={0.7}
-                style={[
-                  styles.modelRow,
-                  isSelected && { backgroundColor: theme.surfaceSubtle },
-                ]}
-              >
-                <View style={styles.modelRowLeft}>
-                  {isSelected ? (
-                    <Feather name="check" size={14} color={theme.text} />
-                  ) : (
-                    <View style={{ width: 14 }} />
+              <React.Fragment key={model.id}>
+                <TouchableOpacity
+                  onPress={() => { void handleModelSelect(model) }}
+                  activeOpacity={0.7}
+                  style={styles.modelRow}
+                >
+                  <View style={styles.modelRowContent}>
+                    <Text style={[styles.modelRowTitle, { color: theme.text }]}>
+                      {model.name}
+                    </Text>
+                    <Text style={[styles.modelRowDesc, { color: theme.textSecondary }]}>
+                      {getModelDescription(model)}
+                    </Text>
+                  </View>
+                  {isSelected && (
+                    <Feather name="check" size={18} color={theme.text} />
                   )}
-                  <Text style={[styles.modelRowTitle, { color: isSelected ? theme.text : theme.textSecondary }]}>
-                    {model.name}
-                  </Text>
-                </View>
-                <View style={styles.modelCapabilityIcons}>
-                  {model.supportsVision && (
-                    <View style={[styles.capabilityBadge, { backgroundColor: theme.surfaceSubtle }]}>
-                      <Feather name="eye" size={10} color={theme.textSecondary} />
-                    </View>
-                  )}
-                  {model.supportsReasoning && (
-                    <View style={[styles.capabilityBadge, { backgroundColor: theme.surfaceSubtle }]}>
-                      <Feather name="zap" size={10} color={theme.textSecondary} />
-                    </View>
-                  )}
-                  {model.cost > 0 && (
-                    <View style={[styles.costBadge, { backgroundColor: theme.surfaceSubtle }]}>
-                      <Text style={[styles.costBadgeText, { color: theme.textSecondary }]}>
-                        {model.cost === 3 ? '$$$' : model.cost === 2 ? '$$' : '$'}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </TouchableOpacity>
+                </TouchableOpacity>
+                {!isLast && (
+                  <View style={[styles.modelSeparator, { backgroundColor: theme.border }]} />
+                )}
+              </React.Fragment>
             )
           })}
         </View>
@@ -1034,6 +1091,50 @@ export function ChatScreen({
         theme={theme}
         onClose={() => setUpgradeVisible(false)}
       />
+
+      <BottomSheet
+        theme={theme}
+        visible={attachPickerVisible}
+        onClose={() => setAttachPickerVisible(false)}
+        title="Add to Chat"
+      >
+        <View style={styles.attachSheetGrid}>
+          <TouchableOpacity
+            style={[styles.attachSheetCell, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
+            activeOpacity={0.82}
+            onPress={() => {
+              setAttachPickerVisible(false)
+              void pickImageFromCamera()
+            }}
+          >
+            <Feather name="camera" size={24} color={theme.text} />
+            <Text style={[styles.attachSheetLabel, { color: theme.text }]}>Camera</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.attachSheetCell, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
+            activeOpacity={0.82}
+            onPress={() => {
+              setAttachPickerVisible(false)
+              setActiveModality('image')
+              void pickImage()
+            }}
+          >
+            <Feather name="image" size={24} color={theme.text} />
+            <Text style={[styles.attachSheetLabel, { color: theme.text }]}>Photos</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.attachSheetCell, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
+            activeOpacity={0.82}
+            onPress={() => {
+              setAttachPickerVisible(false)
+              void pickFile()
+            }}
+          >
+            <Feather name="file" size={24} color={theme.text} />
+            <Text style={[styles.attachSheetLabel, { color: theme.text }]}>Files</Text>
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
     </SafeAreaView>
     </ScreenWithDrawer>
   )
@@ -1052,18 +1153,26 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingBottom: spacing.sm,
   },
-  topBar: {
+  headerBlur: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 110,
+    zIndex: 99,
+  },
+  topRow: {
+    position: 'absolute',
+    top: 8,
+    left: spacing.md,
+    right: spacing.md,
+    zIndex: 100,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
   },
-  topBarNativeBackSpacer: {
-    width: 38,
-    height: 38,
-  },
-  topBarModelButton: {
+  floatingModelPill: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1178,47 +1287,45 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modelList: {
-    gap: 2,
+    gap: 0,
   },
   modelRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
   },
-  modelRowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+  modelRowContent: {
     flex: 1,
+    gap: 3,
   },
   modelRowTitle: {
-    fontSize: fontSize.sm,
+    fontSize: fontSize.lg,
     fontWeight: '500',
   },
-  modelCapabilityIcons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  modelRowDesc: {
+    fontSize: fontSize.sm,
   },
-  capabilityBadge: {
-    width: 18,
-    height: 18,
-    borderRadius: 4,
+  modelSeparator: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: 4,
+  },
+  attachSheetGrid: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  attachSheetCell: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderRadius: borderRadius.xl,
+    paddingVertical: spacing.lg,
   },
-  costBadge: {
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    borderRadius: 4,
-    minWidth: 18,
-    alignItems: 'center',
-  },
-  costBadgeText: {
-    fontSize: 9,
+  attachSheetLabel: {
+    fontSize: fontSize.sm,
     fontWeight: '600',
   },
 })
