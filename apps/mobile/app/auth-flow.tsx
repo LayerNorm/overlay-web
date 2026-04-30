@@ -5,13 +5,21 @@ import {
   Linking,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
+  type ViewStyle,
 } from 'react-native'
 import * as WebBrowser from 'expo-web-browser'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { Feather } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withDelay,
+  Easing,
+} from 'react-native-reanimated'
 import { borderRadius, fontSize } from '../constants/theme'
 import { useTheme } from '../hooks/useTheme'
 import { useAuth } from '../contexts/AuthContext'
@@ -20,12 +28,70 @@ import {
   consumeTransferToken,
   extractTransferToken,
 } from '../services/authService'
-import { GlassSurface } from '../components/ui/GlassSurface'
 
 WebBrowser.maybeCompleteAuthSession()
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const OVERLAY_LOGO = require('../assets/overlay-logo.png')
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const GOOGLE_ICON = require('../assets/google.svg')
 const TRANSFER_REDIRECT_URI = 'overlay://auth/transfer'
+
+const FADE_DURATION = 400
+const STAGGER_DELAY = 100
+
+function GoogleIcon() {
+  return (
+    <Image source={GOOGLE_ICON} style={styles.googleIconImage} resizeMode="contain" accessibilityLabel="Google" />
+  )
+}
+
+function MicrosoftIcon() {
+  return (
+    <View style={styles.microsoftContainer}>
+      <View style={[styles.microsoftSquare, { backgroundColor: '#F25022' }]} />
+      <View style={[styles.microsoftSquare, { backgroundColor: '#00A4EF' }]} />
+      <View style={[styles.microsoftSquare, { backgroundColor: '#7FBA00' }]} />
+      <View style={[styles.microsoftSquare, { backgroundColor: '#FFB900' }]} />
+    </View>
+  )
+}
+
+interface FadeInViewProps {
+  children: React.ReactNode
+  delay?: number
+  style?: ViewStyle
+}
+
+function FadeInView({ children, delay = 0, style }: FadeInViewProps) {
+  const opacity = useSharedValue(0)
+  const translateY = useSharedValue(10)
+
+  useEffect(() => {
+    // reanimated shared values are designed to be modified in effects
+    opacity.value = withDelay( // eslint-disable-line
+      delay,
+      withTiming(1, {
+        duration: FADE_DURATION,
+        easing: Easing.out(Easing.ease),
+      })
+    )
+    translateY.value = withDelay( // eslint-disable-line
+      delay,
+      withTiming(0, {
+        duration: FADE_DURATION,
+        easing: Easing.out(Easing.ease),
+      })
+    )
+  }, [delay, opacity, translateY])
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: translateY.value }],
+  }))
+
+  return <Animated.View style={[style, animatedStyle]}>{children}</Animated.View>
+}
 
 export default function AuthFlowScreen(): React.ReactElement {
   const router = useRouter()
@@ -34,16 +100,8 @@ export default function AuthFlowScreen(): React.ReactElement {
   const { isAuthenticated, completeNativeSignIn } = useAuth()
   const [isSigningIn, setIsSigningIn] = useState(false)
   const [browserError, setBrowserError] = useState<string | null>(null)
+  const [email, setEmail] = useState('')
   const forceLogin = params.force === 'true'
-
-  const handleClose = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back()
-      return
-    }
-
-    router.replace('/(tabs)/chat')
-  }, [router])
 
   const startAuth = useCallback(
     async () => {
@@ -91,64 +149,128 @@ export default function AuthFlowScreen(): React.ReactElement {
   }, [isAuthenticated, router])
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <GlassSurface style={[styles.panel, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-        <TouchableOpacity
-          onPress={handleClose}
-          activeOpacity={0.82}
-          style={[styles.closeButton, { backgroundColor: theme.surfaceSubtle }]}
-        >
-          <Feather name="x" size={28} color={theme.text} />
-        </TouchableOpacity>
+    <SafeAreaView style={[styles.container, { backgroundColor: '#0a0a0a' }]} edges={['top', 'left', 'right', 'bottom']}>
+      <View style={styles.content}>
+        <FadeInView delay={STAGGER_DELAY * 0} style={styles.brandBlock}>
+          <Image source={OVERLAY_LOGO} resizeMode="contain" style={styles.logo} accessibilityLabel="Overlay logo" />
+          <Text style={[styles.title, { color: '#ffffff' }]}>overlay</Text>
+        </FadeInView>
 
-        <View style={styles.brandBlock}>
-          <Image source={OVERLAY_LOGO} resizeMode="contain" style={styles.logo} />
-          <Text style={[styles.title, { color: theme.text }]}>Overlay</Text>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Sign in or create an account</Text>
+        <View style={styles.buttonStack}>
+          <FadeInView delay={STAGGER_DELAY * 1}>
+            <TouchableOpacity
+              activeOpacity={0.86}
+              disabled={isSigningIn}
+              onPress={() => {
+                void startAuth()
+              }}
+              style={styles.providerButton}
+            >
+              {isSigningIn ? (
+                <ActivityIndicator color={theme.text} />
+              ) : (
+                <>
+                  <Text style={styles.appleIcon}></Text>
+                  <Text style={[styles.providerButtonText, { color: theme.text }]}>Continue with Apple</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </FadeInView>
+
+          <FadeInView delay={STAGGER_DELAY * 2}>
+            <TouchableOpacity
+              activeOpacity={0.86}
+              disabled={isSigningIn}
+              onPress={() => {
+                void startAuth()
+              }}
+              style={styles.providerButton}
+            >
+              {isSigningIn ? (
+                <ActivityIndicator color={theme.text} />
+              ) : (
+                <>
+                  <GoogleIcon />
+                  <Text style={[styles.providerButtonText, { color: theme.text }]}>Continue with Google</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </FadeInView>
+
+          <FadeInView delay={STAGGER_DELAY * 3}>
+            <TouchableOpacity
+              activeOpacity={0.86}
+              disabled={isSigningIn}
+              onPress={() => {
+                void startAuth()
+              }}
+              style={styles.providerButton}
+            >
+              {isSigningIn ? (
+                <ActivityIndicator color={theme.text} />
+              ) : (
+                <>
+                  <MicrosoftIcon />
+                  <Text style={[styles.providerButtonText, { color: theme.text }]}>Continue with Microsoft</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </FadeInView>
+
+          <FadeInView delay={STAGGER_DELAY * 4} style={styles.dividerContainer}>
+            <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
+            <Text style={[styles.dividerText, { color: theme.textSecondary }]}>or</Text>
+            <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
+          </FadeInView>
+
+          <FadeInView delay={STAGGER_DELAY * 5}>
+            <View style={styles.emailRow}>
+              <TextInput
+                style={[styles.emailInput, { 
+                  backgroundColor: theme.surfaceElevated,
+                  borderColor: theme.border,
+                  color: theme.text,
+                }]}
+                placeholder="Enter your email"
+                placeholderTextColor={theme.textSecondary}
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                editable={!isSigningIn}
+              />
+              <TouchableOpacity
+                activeOpacity={0.86}
+                disabled={isSigningIn}
+                onPress={() => {
+                  void startAuth()
+                }}
+                style={[styles.continueButton, { 
+                  backgroundColor: theme.surfaceSubtle,
+                  borderColor: theme.border,
+                }]}
+              >
+                <Text style={[styles.continueButtonText, { color: theme.text }]}>Continue</Text>
+              </TouchableOpacity>
+            </View>
+          </FadeInView>
         </View>
 
-        <View style={styles.providerStack}>
-          <TouchableOpacity
-            activeOpacity={0.86}
-            disabled={isSigningIn}
-            onPress={() => {
-              void startAuth()
-            }}
-            style={[
-              styles.providerButton,
-              {
-                backgroundColor: theme.foreground,
-              },
-            ]}
-          >
-            {isSigningIn ? (
-              <ActivityIndicator color={theme.background} />
-            ) : (
-              <>
-                <Feather name="log-in" size={22} color={theme.background} />
-                <Text style={[styles.providerText, { color: theme.background }]}>
-                  Continue to sign in
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
+        {browserError ? (
+          <FadeInView delay={STAGGER_DELAY * 6}>
+            <Text style={[styles.errorText, { color: '#EF4444' }]}>{browserError}</Text>
+          </FadeInView>
+        ) : null}
 
-          <Text style={[styles.providerHint, { color: theme.textSecondary }]}>
-            Choose Google, Apple, Microsoft, or email on the secure Overlay sign-in page.
-          </Text>
-        </View>
-
-        {browserError ? <Text style={[styles.errorText, { color: '#EF4444' }]}>{browserError}</Text> : null}
-
-        <View style={styles.footer}>
+        <FadeInView delay={STAGGER_DELAY * 7} style={styles.footer}>
           <TouchableOpacity onPress={() => void Linking.openURL('https://www.getoverlay.io/privacy')}>
             <Text style={[styles.footerLink, { color: theme.textSecondary }]}>Privacy policy</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => void Linking.openURL('https://www.getoverlay.io/terms')}>
             <Text style={[styles.footerLink, { color: theme.textSecondary }]}>Terms of service</Text>
           </TouchableOpacity>
-        </View>
-      </GlassSurface>
+        </FadeInView>
+      </View>
     </SafeAreaView>
   )
 }
@@ -156,83 +278,119 @@ export default function AuthFlowScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'flex-end',
+    backgroundColor: '#0a0a0a',
+  },
+  content: {
+    flex: 1,
     paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  panel: {
-    minHeight: '74%',
-    borderWidth: 1,
-    borderRadius: 34,
-    paddingHorizontal: 24,
-    paddingTop: 34,
     paddingBottom: 24,
-    gap: 26,
-  },
-  closeButton: {
-    position: 'absolute',
-    top: 20,
-    right: 20,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
   },
   brandBlock: {
     alignItems: 'center',
-    gap: 8,
-    paddingTop: 86,
+    marginTop: 100,
+    gap: 12,
   },
   logo: {
-    width: 72,
-    height: 72,
+    width: 64,
+    height: 64,
   },
   title: {
-    fontSize: 58,
-    lineHeight: 64,
+    fontSize: 42,
+    lineHeight: 48,
     fontWeight: '400',
     fontFamily: 'LibreBaskerville',
+    color: '#ffffff',
   },
-  subtitle: {
-    fontSize: fontSize.md,
-    fontWeight: '600',
-  },
-  providerStack: {
-    gap: 14,
-    marginTop: 22,
+  buttonStack: {
+    gap: 10,
+    marginTop: 48,
   },
   providerButton: {
-    minHeight: 58,
+    height: 50,
     borderRadius: borderRadius.full,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
+    backgroundColor: '#ffffff',
   },
-  providerText: {
+  providerButtonText: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  appleIcon: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: '400',
+    marginTop: -2,
   },
-  providerHint: {
-    fontSize: fontSize.sm,
-    lineHeight: 20,
-    textAlign: 'center',
-    paddingHorizontal: 12,
+  googleIconImage: {
+    width: 18,
+    height: 18,
+  },
+  microsoftContainer: {
+    width: 18,
+    height: 18,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 1,
+  },
+  microsoftSquare: {
+    width: 8,
+    height: 8,
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginVertical: 8,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  dividerText: {
+    fontSize: 14,
+    fontWeight: '400',
+  },
+  emailRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  emailInput: {
+    flex: 1,
+    height: 46,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    fontSize: 16,
+  },
+  continueButton: {
+    height: 46,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  continueButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   errorText: {
     fontSize: fontSize.sm,
     lineHeight: 20,
     textAlign: 'center',
+    marginTop: 16,
   },
   footer: {
     marginTop: 'auto',
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    gap: 24,
+    paddingBottom: 8,
   },
   footerLink: {
     fontSize: fontSize.sm,
-    fontWeight: '600',
+    fontWeight: '400',
   },
 })
