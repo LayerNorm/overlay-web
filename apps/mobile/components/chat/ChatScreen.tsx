@@ -1149,8 +1149,8 @@ const styles = StyleSheet.create({
   composerInput: {
     minHeight: 58,
     maxHeight: 150,
-    fontSize: fontSize.md,
-    lineHeight: 24,
+    fontSize: 17,
+    lineHeight: 26,
     textAlignVertical: 'top',
   },
   composerFooter: {

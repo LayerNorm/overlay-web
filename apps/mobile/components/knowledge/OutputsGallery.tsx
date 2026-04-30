@@ -31,6 +31,18 @@ type OutputFilter = (typeof OUTPUT_FILTERS)[number]['value']
 const { width } = Dimensions.get('window')
 const IMAGE_SIZE = (width - 48 - 16) / 2
 
+function OutputImageThumb({ url, style }: { url: string; style: object }) {
+  const [failed, setFailed] = useState(false)
+  if (failed || !url) {
+    return (
+      <View style={[style, { alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+        <Feather name="image" size={24} color="rgba(255,255,255,0.3)" />
+      </View>
+    )
+  }
+  return <Image source={{ uri: url }} style={style} onError={() => setFailed(true)} />
+}
+
 export function OutputsGallery(): React.ReactElement {
   const { theme } = useTheme()
   const router = useRouter()
@@ -233,13 +245,7 @@ export function OutputsGallery(): React.ReactElement {
                         },
                       ]}
                     >
-                      {item.url ? (
-                        <Image source={{ uri: item.url }} style={styles.imageThumb} />
-                      ) : (
-                        <View style={[styles.imageThumb, { backgroundColor: theme.surfaceMuted, alignItems: 'center', justifyContent: 'center' }]}>
-                          <Feather name="image" size={24} color={theme.textSecondary} />
-                        </View>
-                      )}
+                      <OutputImageThumb url={item.url ?? ''} style={styles.imageThumb} />
                       {selectMode && (
                         <View
                           style={[
@@ -392,6 +398,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
   imageThumb: {
     width: '100%',

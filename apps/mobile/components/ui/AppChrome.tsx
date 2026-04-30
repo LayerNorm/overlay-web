@@ -297,8 +297,8 @@ export function BottomSheet({
 
 const styles = StyleSheet.create({
   iconButton: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     borderRadius: borderRadius.full,
     borderWidth: 1,
     overflow: 'hidden',
