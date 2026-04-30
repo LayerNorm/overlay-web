@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   PanResponder,
   Platform,
@@ -290,6 +291,7 @@ export function ChatScreen({
   const [modelPickerVisible, setModelPickerVisible] = useState(false)
   const [upgradeVisible, setUpgradeVisible] = useState(false)
   const [composerFocused, setComposerFocused] = useState(false)
+  const [keyboardShown, setKeyboardShown] = useState(false)
 
   const chatRef = useRef<Chat | null>(null)
   const flatListRef = useRef<FlatList<Message>>(null)
@@ -312,7 +314,15 @@ export function ChatScreen({
     }),
   ).current
 
-  const composerBottomPadding = Math.max(insets.bottom, spacing.md)
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
+    const show = Keyboard.addListener(showEvent, () => setKeyboardShown(true))
+    const hide = Keyboard.addListener(hideEvent, () => setKeyboardShown(false))
+    return () => { show.remove(); hide.remove() }
+  }, [])
+
+  const composerBottomPadding = keyboardShown ? spacing.xs : Math.max(insets.bottom, spacing.md)
   const messageBottomPadding = spacing.md
 
   const refreshHistory = useCallback(async () => {

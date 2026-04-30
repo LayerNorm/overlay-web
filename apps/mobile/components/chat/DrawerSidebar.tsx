@@ -19,7 +19,6 @@ import { fontSize, spacing, borderRadius } from '../../constants/theme'
 import type { ChatMeta } from '../../services/chatTypes'
 import type { NoteMeta } from '../../services/types'
 import { useDrawer } from '../../contexts/DrawerContext'
-import { GlassSurface } from '../ui/GlassSurface'
 import { DRAWER_WIDTH } from '../ui/ScreenWithDrawer'
 
 const CLOSE_THRESHOLD = DRAWER_WIDTH * 0.3
@@ -146,7 +145,6 @@ export function DrawerSidebar({
   if (variant === 'slide') {
     return (
       <View style={[styles.slideWrapper, { backgroundColor: theme.sidebarSurface }]}>
-        <GlassSurface pointerEvents="none" style={StyleSheet.absoluteFillObject} />
         <DrawerContent
           theme={theme}
           insets={insets}
@@ -210,7 +208,6 @@ export function DrawerSidebar({
         ]}
         {...panResponder.panHandlers}
       >
-        <GlassSurface pointerEvents="none" style={StyleSheet.absoluteFillObject} />
         <DrawerContent
           theme={theme}
           insets={insets}

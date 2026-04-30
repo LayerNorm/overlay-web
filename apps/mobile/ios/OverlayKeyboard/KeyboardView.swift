@@ -141,13 +141,6 @@ private struct OverlayKeyboardView: View {
     private var emojiGridHeight: CGFloat { emojiCellSize * 4 + keySpacingV * 3 }
     private var categoryBarH: CGFloat   { compact ? 24 : 26 }
 
-    private var emojiGridRows: [GridItem] {
-        [.init(.fixed(emojiCellSize), spacing: keySpacingV),
-         .init(.fixed(emojiCellSize), spacing: keySpacingV),
-         .init(.fixed(emojiCellSize), spacing: keySpacingV),
-         .init(.fixed(emojiCellSize), spacing: keySpacingV)]
-    }
-
     private var emojisByCategory: [EmojiCategory: [String]] {[
         .smileys:    ["😀","😃","😄","😁","😆","😅","😂","🤣","🥲","😊","😇","🙂","🙃","😉","😌","😍","🥰","😘","😗","😙","😚","😋","😛","😝","😜","🤪","🤨","🧐","🤓","😎","🥸","🤩","🥳","😏","😒","😔","😕","🙁","☹️","😣","😖","😫","😩","🥺","😭","😤","😠","😡","🤯","😳","🥵","🥶","😱","😰","😥","😓","🤗","🫠","🫣","🫡"],
         .people:     ["👍","👎","👏","🙌","🤝","🙏","👋","🤙","👌","✌️","🤞","🤟","🤘","🫶","👊","🤛","🤜","🫱","🫲","🖐️","✋","🫸","🫷","🤌","☝️","👇","👈","👉","✍️","💪","🧑","👩","👨","🧒","👶","🧔","👩‍⚕️","👨‍💻","🧑‍🎓","👮","🕵️","👷","👩‍🍳","👨‍🚀","💃","🕺","🧘","🏃","🚶","🧍"],
@@ -286,58 +279,67 @@ private struct OverlayKeyboardView: View {
 
     // MARK: — Normal keyboard content
 
+    private var micCircleSize: CGFloat { compact ? 30 : 36 }
+
     private var keyboardContent: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: keySpacingV) {
-                switch page {
-                case .letters:  lettersPage
-                case .numbers:  numbersPage
-                case .symbols:  symbolsPage
-                case .emoji:    emojiPage
+        ZStack(alignment: .topTrailing) {
+            // Full keyboard layout at original height — spacing: 0 so rowTouchHeight
+            // covers the inter-row gaps and every tap reaches the nearest key
+            VStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    switch page {
+                    case .letters:  lettersPage
+                    case .numbers:  numbersPage
+                    case .symbols:  symbolsPage
+                    case .emoji:    emojiPage
+                    }
                 }
-            }
-            .padding(.horizontal, horizPad)
-            .padding(.top, topPad)
-
-            // Accessory bar — globe (optional) + mic
-            accessoryRow
                 .padding(.horizontal, horizPad)
-                .padding(.top, accessorySpacing)
-                .padding(.bottom, 0)
-        }
-    }
+                .padding(.top, topPad)
 
-    // MARK: — Accessory row (globe + mic)
-
-    private var accessoryRow: some View {
-        HStack {
-            if context.needsInputModeSwitchKey {
-                Button(action: onNextKeyboard) {
-                    Image(systemName: "globe")
-                        .font(.system(size: compact ? 16 : 18, weight: .regular))
-                        .foregroundColor(KP.secondary)
+                if context.needsInputModeSwitchKey {
+                    accessoryRow
+                        .padding(.horizontal, horizPad)
+                        .padding(.top, accessorySpacing)
                 }
-                .buttonStyle(.plain)
-                .frame(width: compact ? 36 : 44, height: accessoryH)
-                .contentShape(Rectangle())
             }
 
-            Spacer()
-
-            // Mic button — long-press toggles BG mode
+            // Floating mic button — overlaid at top-right, no height cost
             Button(action: handleMicTap) {
-                Image(systemName: bgMicIconName)
-                    .font(.system(size: compact ? 17 : 19, weight: .regular))
-                    .foregroundColor(service.backgroundModeEnabled ? KP.recording : KP.secondary)
+                ZStack {
+                    Circle()
+                        .fill(service.backgroundModeEnabled ? KP.recording.opacity(0.18) : KP.fnKey)
+                    Image(systemName: bgMicIconName)
+                        .font(.system(size: compact ? 13 : 15, weight: .medium))
+                        .foregroundColor(service.backgroundModeEnabled ? KP.recording : KP.text)
+                }
+                .frame(width: micCircleSize, height: micCircleSize)
             }
             .buttonStyle(.plain)
-            .frame(width: compact ? 36 : 44, height: accessoryH)
-            .contentShape(Rectangle())
+            .padding(.top, topPad)
+            .padding(.trailing, horizPad)
             .simultaneousGesture(
                 LongPressGesture(minimumDuration: 0.5).onEnded { _ in
                     service.setBackgroundModeEnabled(!service.backgroundModeEnabled)
                 }
             )
+        }
+    }
+
+    // MARK: — Accessory row (globe only — mic is now floating)
+
+    private var accessoryRow: some View {
+        HStack {
+            Button(action: onNextKeyboard) {
+                Image(systemName: "globe")
+                    .font(.system(size: compact ? 16 : 18, weight: .regular))
+                    .foregroundColor(KP.secondary)
+            }
+            .buttonStyle(.plain)
+            .frame(width: compact ? 36 : 44, height: accessoryH)
+            .contentShape(Rectangle())
+
+            Spacer()
         }
         .frame(height: accessoryH)
     }
@@ -360,7 +362,7 @@ private struct OverlayKeyboardView: View {
     // MARK: — Letters page
 
     private var lettersPage: some View {
-        VStack(spacing: keySpacingV) {
+        VStack(spacing: 0) {
             characterRow(["q","w","e","r","t","y","u","i","o","p"])
             middleLetterRow(["a","s","d","f","g","h","j","k","l"])
 
@@ -377,16 +379,17 @@ private struct OverlayKeyboardView: View {
                         .foregroundColor(KP.text)
                 }
             }
-            .frame(height: keyHeight)
+            .frame(height: rowTouchHeight)
 
             bottomRow(modeTitle: "123", modeAction: { page = .numbers; shiftState = .lower })
+                .frame(height: rowTouchHeight)
         }
     }
 
     // MARK: — Numbers page
 
     private var numbersPage: some View {
-        VStack(spacing: keySpacingV) {
+        VStack(spacing: 0) {
             characterRow(["1","2","3","4","5","6","7","8","9","0"])
             characterRow(["-","/",":",";","(",")",  "$","&","@","\""])
 
@@ -402,16 +405,17 @@ private struct OverlayKeyboardView: View {
                         .foregroundColor(KP.text)
                 }
             }
-            .frame(height: keyHeight)
+            .frame(height: rowTouchHeight)
 
             bottomRow(modeTitle: "ABC", modeAction: { page = .letters; shiftState = .lower })
+                .frame(height: rowTouchHeight)
         }
     }
 
     // MARK: — Symbols page
 
     private var symbolsPage: some View {
-        VStack(spacing: keySpacingV) {
+        VStack(spacing: 0) {
             characterRow(["[","]","{","}","#","%","^","*","+","="])
             characterRow(["_","\\","|","~","<",">","€","£","¥","•"])
 
@@ -427,62 +431,69 @@ private struct OverlayKeyboardView: View {
                         .foregroundColor(KP.text)
                 }
             }
-            .frame(height: keyHeight)
+            .frame(height: rowTouchHeight)
 
             bottomRow(modeTitle: "ABC", modeAction: { page = .letters; shiftState = .lower })
+                .frame(height: rowTouchHeight)
         }
     }
 
     // MARK: — Emoji page
 
+    private var emojiColumns: Int { compact ? 10 : 10 }
+    private var emojiScrollHeight: CGFloat { emojiGridHeight }
+
     private var emojiPage: some View {
-        VStack(spacing: keySpacingV) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHGrid(rows: emojiGridRows, spacing: keySpacingH) {
+        VStack(spacing: 0) {
+            // Vertical-scrolling emoji grid — native iOS style
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: keySpacingH), count: emojiColumns),
+                    spacing: keySpacingV
+                ) {
                     ForEach(displayedEmojis, id: \.self) { emoji in
                         Button { onInsertText(emoji) } label: {
                             Text(emoji)
-                                .font(.system(size: compact ? 28 : 31))
-                                .frame(width: emojiCellSize, height: emojiCellSize)
+                                .font(.system(size: compact ? 26 : 29))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: emojiCellSize)
                         }
                         .buttonStyle(EmojiGlyphStyle())
-                        .frame(width: emojiCellSize, height: emojiCellSize)
                     }
                 }
-                .padding(.horizontal, 1)
+                .padding(.vertical, compact ? 4 : 6)
             }
-            .frame(height: emojiGridHeight)
+            .frame(height: emojiScrollHeight)
 
+            // Icon-only category bar — matches iOS emoji keyboard
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: keySpacingH) {
+                HStack(spacing: 0) {
                     ForEach(EmojiCategory.allCases) { cat in
                         Button { selectedEmojiCategory = cat } label: {
-                            HStack(spacing: compact ? 4 : 5) {
+                            VStack(spacing: 2) {
                                 Image(systemName: cat.symbolName)
-                                    .font(.system(size: compact ? 11 : 12, weight: .regular))
+                                    .font(.system(size: compact ? 14 : 16, weight: .regular))
                                     .symbolRenderingMode(.monochrome)
-                                Text(cat.menuTitle)
-                                    .font(.system(size: compact ? 10 : 11, weight: .medium))
-                                    .lineLimit(1)
+                                    .foregroundColor(selectedEmojiCategory == cat ? KP.text : KP.secondary)
+                                    .frame(width: compact ? 28 : 32, height: compact ? 20 : 22)
+
+                                // Active indicator dot
+                                Circle()
+                                    .fill(selectedEmojiCategory == cat ? KP.secondary : .clear)
+                                    .frame(width: 4, height: 4)
                             }
-                            .foregroundColor(KP.text)
-                            .padding(.horizontal, compact ? 8 : 10)
-                            .frame(height: categoryBarH - (compact ? 4 : 6))
-                            .background(
-                                Capsule(style: .continuous)
-                                    .fill(selectedEmojiCategory == cat ? KP.fnKey : .clear)
-                                    .overlay(Capsule(style: .continuous)
-                                        .stroke(KP.stroke.opacity(selectedEmojiCategory == cat ? 0.6 : 0.3), lineWidth: 0.7))
-                            )
+                            .frame(width: compact ? 32 : 36, height: categoryBarH)
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 1)
+                .padding(.horizontal, 4)
             }
             .frame(height: categoryBarH)
+            .padding(.bottom, compact ? 2 : 3)
 
             bottomRow(modeTitle: "ABC", modeAction: { page = .letters; shiftState = .lower })
+                .frame(height: keyHeight)
         }
     }
 
@@ -530,7 +541,8 @@ private struct OverlayKeyboardView: View {
                     .offset(y: labelOffsetY)
             }
         }
-        .frame(height: keyHeight)
+        .frame(maxHeight: .infinity)
+        .contentShape(Rectangle())
     }
 
     // MARK: — Row builders

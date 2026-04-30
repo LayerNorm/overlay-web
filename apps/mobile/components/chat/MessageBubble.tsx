@@ -22,6 +22,8 @@ import type { Message, ToolInvocationSummary } from '../../services/chatTypes'
 import type { Theme } from '../../constants/theme'
 import { spacing, fontSize, borderRadius } from '../../constants/theme'
 
+type MarkdownStyle = React.ComponentProps<typeof Markdown>['style']
+
 const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
 const DONE_STATES = new Set(['output-available', 'output-error', 'output-denied'])
@@ -352,8 +354,8 @@ function SourcesSection({ sources, theme }: { sources: WebSource[]; theme: Theme
 // not on every streaming chunk.
 
 const StableMd = React.memo(
-  function StableMd({ text, style }: { text: string; style: object }) {
-    return <Markdown style={style as Record<string, unknown>}>{text}</Markdown>
+  function StableMd({ text, style }: { text: string; style: MarkdownStyle }) {
+    return <Markdown style={style}>{text}</Markdown>
   },
   (prev, next) => prev.text === next.text && prev.style === next.style,
 )
@@ -369,7 +371,7 @@ function StreamingMarkdown({
 }: {
   text: string
   theme: Theme
-  markdownStyles: object
+  markdownStyles: MarkdownStyle
 }) {
   const lastNl = text.lastIndexOf('\n', text.length - 2)
   const stableText = lastNl >= 0 ? text.slice(0, lastNl + 1) : ''
@@ -435,8 +437,8 @@ export const MessageBubble = React.memo(function MessageBubble({
     () => ({
       body: {
         color: isUser ? theme.buttonPrimaryText : theme.text,
-        fontSize: 15,
-        lineHeight: 23,
+        fontSize: 17,
+        lineHeight: 26,
       },
       paragraph: { marginTop: 0, marginBottom: 8 },
       code_inline: {

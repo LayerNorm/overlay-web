@@ -272,8 +272,8 @@ const styles = StyleSheet.create({
   contentInput: {
     flex: 1,
     minHeight: 200,
-    fontSize: fontSize.md,
-    lineHeight: 26,
+    fontSize: 17,
+    lineHeight: 28,
     paddingVertical: 0,
   },
 })
