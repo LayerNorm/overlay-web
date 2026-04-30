@@ -112,12 +112,15 @@ export function SearchField({
   placeholder: string
   autoFocus?: boolean
 }): React.ReactElement {
+  const [focused, setFocused] = React.useState(false)
   return (
-    <View style={[styles.searchField, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+    <GlassSurface interactive style={[styles.searchField, { backgroundColor: theme.glassBg, borderColor: focused ? theme.border : theme.glassBorder }]}>
       <Feather name="search" size={15} color={theme.textSecondary} />
       <TextInput
         value={value}
         onChangeText={onChangeText}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         placeholder={placeholder}
         placeholderTextColor={theme.textDisabled}
         autoFocus={autoFocus}
@@ -128,7 +131,7 @@ export function SearchField({
           <Feather name="x" size={15} color={theme.textDisabled} />
         </TouchableOpacity>
       ) : null}
-    </View>
+    </GlassSurface>
   )
 }
 
@@ -362,6 +365,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: borderRadius.lg,
     paddingHorizontal: spacing.md,
+    overflow: 'hidden',
   },
   searchInput: {
     flex: 1,

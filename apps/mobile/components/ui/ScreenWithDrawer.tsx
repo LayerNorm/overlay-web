@@ -10,9 +10,9 @@ import {
 import { useDrawer } from '../../contexts/DrawerContext'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
-const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.85, 340)
+export const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.85, 320)
 const CONTENT_PUSH = DRAWER_WIDTH
-const EDGE_SWIPE_THRESHOLD = Math.min(SCREEN_WIDTH * 0.5, 200)
+const EDGE_SWIPE_START = 30
 
 export function ScreenWithDrawer({
   children,
@@ -26,25 +26,31 @@ export function ScreenWithDrawer({
   const drawerTranslateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current
   const scrimOpacity = useRef(new Animated.Value(0)).current
 
+  // Keep a ref so PanResponder closures always see current value
+  const drawerVisibleRef = useRef(drawerVisible)
+  useEffect(() => {
+    drawerVisibleRef.current = drawerVisible
+  }, [drawerVisible])
+
   const animate = useCallback(
     (toOpen: boolean) => {
       if (toOpen) {
         Animated.parallel([
           Animated.spring(drawerTranslateX, {
             toValue: 0,
-            tension: 85,
-            friction: 18,
+            tension: 65,
+            friction: 14,
             useNativeDriver: true,
           }),
           Animated.spring(contentTranslateX, {
             toValue: CONTENT_PUSH,
-            tension: 85,
-            friction: 18,
+            tension: 65,
+            friction: 14,
             useNativeDriver: true,
           }),
           Animated.timing(scrimOpacity, {
             toValue: 0.25,
-            duration: 250,
+            duration: 220,
             useNativeDriver: true,
           }),
         ]).start()
@@ -52,19 +58,19 @@ export function ScreenWithDrawer({
         Animated.parallel([
           Animated.spring(drawerTranslateX, {
             toValue: -DRAWER_WIDTH,
-            tension: 100,
-            friction: 20,
+            tension: 80,
+            friction: 16,
             useNativeDriver: true,
           }),
           Animated.spring(contentTranslateX, {
             toValue: 0,
-            tension: 100,
-            friction: 20,
+            tension: 80,
+            friction: 16,
             useNativeDriver: true,
           }),
           Animated.timing(scrimOpacity, {
             toValue: 0,
-            duration: 200,
+            duration: 180,
             useNativeDriver: true,
           }),
         ]).start()
@@ -77,23 +83,21 @@ export function ScreenWithDrawer({
     animate(drawerVisible)
   }, [drawerVisible, animate])
 
-  // Edge swipe gesture to open drawer
+  // Edge-swipe PanResponder on the container — uses onMoveShouldSetPanResponder so
+  // it never blocks taps (buttons, inputs etc). Only claimed when the finger started
+  // within EDGE_SWIPE_START px of the left edge and is moving rightward.
   const edgePanResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gs) => {
-        // Respond to rightward swipes starting from left half of screen
-        return !drawerVisible && gs.moveX < EDGE_SWIPE_THRESHOLD && gs.dx > 10 && Math.abs(gs.dx) > Math.abs(gs.dy)
+        if (drawerVisibleRef.current) return false
+        return gs.x0 < EDGE_SWIPE_START && gs.dx > 12 && gs.dx > Math.abs(gs.dy) * 1.2
       },
-      onPanResponderGrant: () => {
-        // no-op
-      },
+      onPanResponderGrant: () => {},
       onPanResponderMove: (_, gs) => {
         const progress = Math.min(1, Math.max(0, gs.dx / DRAWER_WIDTH))
-        const drawerX = -DRAWER_WIDTH + (progress * DRAWER_WIDTH)
-        const contentX = progress * CONTENT_PUSH
-        drawerTranslateX.setValue(drawerX)
-        contentTranslateX.setValue(contentX)
+        drawerTranslateX.setValue(-DRAWER_WIDTH + progress * DRAWER_WIDTH)
+        contentTranslateX.setValue(progress * CONTENT_PUSH)
         scrimOpacity.setValue(progress * 0.25)
       },
       onPanResponderRelease: (_, gs) => {
@@ -101,23 +105,22 @@ export function ScreenWithDrawer({
         if (progress > 0.3 || gs.vx > 0.5) {
           openDrawer()
         } else {
-          // Snap back closed
           Animated.parallel([
             Animated.spring(drawerTranslateX, {
               toValue: -DRAWER_WIDTH,
-              tension: 100,
-              friction: 20,
+              tension: 80,
+              friction: 16,
               useNativeDriver: true,
             }),
             Animated.spring(contentTranslateX, {
               toValue: 0,
-              tension: 100,
-              friction: 20,
+              tension: 80,
+              friction: 16,
               useNativeDriver: true,
             }),
             Animated.timing(scrimOpacity, {
               toValue: 0,
-              duration: 200,
+              duration: 180,
               useNativeDriver: true,
             }),
           ]).start()
@@ -127,20 +130,11 @@ export function ScreenWithDrawer({
   ).current
 
   return (
-    <View style={styles.container}>
-      {/* Edge swipe detection area */}
-      {/* Always render edge swipe area for better responsiveness */}
-      {!drawerVisible && (
-        <View
-          style={styles.edgeSwipeArea}
-          {...edgePanResponder.panHandlers}
-        />
-      )}
+    <View style={styles.container} {...edgePanResponder.panHandlers}>
       <Animated.View style={[styles.content, { transform: [{ translateX: contentTranslateX }] }]}>
         {children}
       </Animated.View>
 
-      {/* Always render drawer off-screen to eliminate flicker */}
       <Animated.View
         style={[StyleSheet.absoluteFillObject, styles.scrim, { opacity: scrimOpacity }]}
         pointerEvents={drawerVisible ? 'auto' : 'none'}
@@ -175,25 +169,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     zIndex: 1,
   },
-  edgeSwipeArea: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: EDGE_SWIPE_THRESHOLD,
-    zIndex: 10,
-  },
   drawer: {
     position: 'absolute',
     top: 0,
     left: 0,
     bottom: 0,
     zIndex: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 24,
-    shadowOffset: { width: 10, height: 0 },
-    elevation: 20,
     overflow: 'hidden',
   },
 })

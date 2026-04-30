@@ -32,6 +32,7 @@ export function NotesScreen(): React.ReactElement {
   const [notes, setNotes] = useState<NoteMeta[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchFocused, setSearchFocused] = useState(false)
 
   const refreshNotes = useCallback(async () => {
     setIsLoading(true)
@@ -113,11 +114,13 @@ export function NotesScreen(): React.ReactElement {
           />
         </View>
 
-        <View style={[styles.searchBar, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+        <GlassSurface interactive style={[styles.searchBar, { backgroundColor: theme.glassBg, borderColor: searchFocused ? theme.border : theme.glassBorder }]}>
           <Feather name="search" size={16} color={theme.textSecondary} />
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
             placeholder="Search notes"
             placeholderTextColor={theme.textDisabled}
             style={[styles.searchInput, { color: theme.text }]}
@@ -127,7 +130,7 @@ export function NotesScreen(): React.ReactElement {
               <Feather name="x" size={16} color={theme.textSecondary} />
             </TouchableOpacity>
           ) : null}
-        </View>
+        </GlassSurface>
 
         {isLoading ? (
           <View style={styles.centered}>
@@ -140,15 +143,17 @@ export function NotesScreen(): React.ReactElement {
               {searchQuery ? 'No notes match your search' : 'No notes yet'}
             </Text>
             {!searchQuery ? (
-              <TouchableOpacity
-                activeOpacity={0.82}
-                onPress={() => {
-                  void handleCreateNote()
-                }}
-                style={[styles.createButton, { backgroundColor: theme.foreground }]}
-              >
-                <Text style={[styles.createButtonText, { color: theme.background }]}>Create a note</Text>
-              </TouchableOpacity>
+              <GlassSurface interactive style={[styles.createButton, { backgroundColor: theme.foreground }]}>
+                <TouchableOpacity
+                  activeOpacity={0.82}
+                  onPress={() => {
+                    void handleCreateNote()
+                  }}
+                  style={styles.createButton}
+                >
+                  <Text style={[styles.createButtonText, { color: theme.background }]}>Create a note</Text>
+                </TouchableOpacity>
+              </GlassSurface>
             ) : null}
           </View>
         ) : (
@@ -158,10 +163,11 @@ export function NotesScreen(): React.ReactElement {
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             renderItem={({ item }) => (
+              <GlassSurface interactive style={[styles.noteCard, { backgroundColor: theme.glassBg, borderColor: theme.glassBorder }]}>
               <TouchableOpacity
                 activeOpacity={0.82}
                 onPress={() => router.push({ pathname: '/note/[id]', params: { id: item.id } })}
-                style={[styles.noteCard, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
+                style={styles.noteCardInner}
               >
                 <View style={styles.noteRow}>
                   <View style={styles.noteCopy}>
@@ -178,6 +184,7 @@ export function NotesScreen(): React.ReactElement {
                   </TouchableOpacity>
                 </View>
               </TouchableOpacity>
+              </GlassSurface>
             )}
           />
         )}
@@ -213,12 +220,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderRadius: borderRadius.full,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
     marginTop: spacing.sm,
     marginBottom: spacing.md,
+    overflow: 'hidden',
   },
   searchInput: {
     flex: 1,
@@ -255,8 +263,11 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
   },
   noteCard: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderRadius: borderRadius.xl,
+    overflow: 'hidden',
+  },
+  noteCardInner: {
     padding: spacing.md,
   },
   noteRow: {

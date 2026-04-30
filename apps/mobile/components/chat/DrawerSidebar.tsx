@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
   Animated,
-  Dimensions,
   Image,
   Modal,
   PanResponder,
@@ -21,9 +20,8 @@ import type { ChatMeta } from '../../services/chatTypes'
 import type { NoteMeta } from '../../services/types'
 import { useDrawer } from '../../contexts/DrawerContext'
 import { GlassSurface } from '../ui/GlassSurface'
+import { DRAWER_WIDTH } from '../ui/ScreenWithDrawer'
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window')
-const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.82, 320)
 const CLOSE_THRESHOLD = DRAWER_WIDTH * 0.3
 const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
@@ -147,7 +145,7 @@ export function DrawerSidebar({
 
   if (variant === 'slide') {
     return (
-      <View style={[styles.slideWrapper, { backgroundColor: theme.sidebarSurface, borderRightColor: theme.glassBorder }]}>
+      <View style={[styles.slideWrapper, { backgroundColor: theme.sidebarSurface }]}>
         <GlassSurface pointerEvents="none" style={StyleSheet.absoluteFillObject} />
         <DrawerContent
           theme={theme}
@@ -205,7 +203,6 @@ export function DrawerSidebar({
           {
             width: DRAWER_WIDTH,
             backgroundColor: theme.sidebarSurface,
-            borderRightColor: theme.glassBorder,
             transform: [{ translateX }],
             paddingTop: insets.top,
             paddingBottom: Math.max(insets.bottom, spacing.md),
@@ -294,7 +291,7 @@ function DrawerContent({
   return (
     <>
       {/* Header with Logo and Brand */}
-      <View style={[styles.drawerHeader, { borderBottomColor: theme.border, paddingTop: insets.top + spacing.md }]}>
+      <View style={[styles.drawerHeader, { paddingTop: insets.top + spacing.md }]}>
         <View style={styles.brandContainer}>
           <Image source={OVERLAY_LOGO} style={styles.drawerLogo} resizeMode="contain" />
           <Text style={[styles.brandText, { color: theme.text }]}>overlay</Text>
@@ -348,7 +345,7 @@ function DrawerContent({
 
       {/* Chat recents — shown only when on chat route */}
       {isChatActive && chats.length > 0 && (
-        <View style={[styles.recentsSection, { borderTopColor: theme.border }]}>
+        <View style={[styles.recentsSection, {}]}>
           <View style={styles.recentsHeaderRow}>
             <Text style={[styles.recentsLabel, { color: theme.mutedLight }]}>Recents</Text>
             <TouchableOpacity
@@ -356,7 +353,7 @@ function DrawerContent({
                 onCreateChat()
                 closeDrawer()
               }}
-              style={[styles.newChatButton, { borderColor: theme.border }]}
+              style={[styles.newChatButton, {}]}
               activeOpacity={0.7}
             >
               <Feather name="plus" size={12} color={theme.muted} />
@@ -395,7 +392,7 @@ function DrawerContent({
 
       {/* Notes recents — shown only when on notes route */}
       {isNotesActive && notes && notes.length > 0 && (
-        <View style={[styles.recentsSection, { borderTopColor: theme.border }]}>
+        <View style={[styles.recentsSection, {}]}>
           <View style={styles.recentsHeaderRow}>
             <Text style={[styles.recentsLabel, { color: theme.mutedLight }]}>Recent notes</Text>
             <TouchableOpacity
@@ -403,7 +400,7 @@ function DrawerContent({
                 onCreateNote?.()
                 closeDrawer()
               }}
-              style={[styles.newChatButton, { borderColor: theme.border }]}
+              style={[styles.newChatButton, {}]}
               activeOpacity={0.7}
             >
               <Feather name="plus" size={12} color={theme.muted} />
@@ -452,24 +449,16 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     bottom: 0,
-    shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 24,
-    shadowOffset: { width: 10, height: 0 },
-    elevation: 20,
-    borderRightWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
   slideWrapper: {
     flex: 1,
-    borderRightWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
   drawerHeader: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xl,
     paddingBottom: spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   brandContainer: {
     flexDirection: 'row',
@@ -516,7 +505,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
   recentsHeaderRow: {
@@ -536,7 +524,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: borderRadius.md,
     paddingVertical: 4,
     paddingHorizontal: 8,

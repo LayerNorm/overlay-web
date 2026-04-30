@@ -289,24 +289,22 @@ export function ChatScreen({
   const [history, setHistory] = useState<ChatMeta[]>([])
   const [modelPickerVisible, setModelPickerVisible] = useState(false)
   const [upgradeVisible, setUpgradeVisible] = useState(false)
+  const [composerFocused, setComposerFocused] = useState(false)
 
   const chatRef = useRef<Chat | null>(null)
   const flatListRef = useRef<FlatList<Message>>(null)
   const textInputRef = useRef<TextInput>(null)
   const abortRef = useRef(false)
 
-  // PanResponder to dismiss keyboard on downward swipe
+  // PanResponder to dismiss keyboard on downward swipe — attached to the whole screen
+  // Uses onMoveShouldSetPanResponder so it never blocks taps or typing
   const swipeDownPanResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gs) => {
-        // Only respond to downward swipes (dy > threshold and more vertical than horizontal)
-        return gs.dy > 15 && Math.abs(gs.dy) > Math.abs(gs.dx)
-      },
+      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 20 && Math.abs(gs.dy) > Math.abs(gs.dx) * 1.5,
       onPanResponderGrant: () => {},
       onPanResponderMove: () => {},
       onPanResponderRelease: (_, gs) => {
-        // If swiped down more than 40 pixels, dismiss keyboard
         if (gs.dy > 40) {
           textInputRef.current?.blur()
         }
@@ -314,7 +312,7 @@ export function ChatScreen({
     }),
   ).current
 
-  const composerBottomPadding = Math.max(insets.bottom, spacing.sm)
+  const composerBottomPadding = Math.max(insets.bottom, spacing.md)
   const messageBottomPadding = spacing.md
 
   const refreshHistory = useCallback(async () => {
@@ -801,19 +799,6 @@ export function ChatScreen({
     }
   }, [entitlements?.tier])
 
-  const edgePanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: (_, gs) => gs.x0 < 24,
-      onMoveShouldSetPanResponder: (_, gs) =>
-        gs.x0 < 24 && gs.dx > 10 && Math.abs(gs.dx) > Math.abs(gs.dy),
-      onPanResponderRelease: (_, gs) => {
-        if (gs.dx > 40) {
-          openDrawer()
-        }
-      },
-    }),
-  ).current
-
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.loadingScreen, { backgroundColor: theme.background }]}>
@@ -840,18 +825,12 @@ export function ChatScreen({
       }
     >
       <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-      {/* Transparent left-edge zone to capture swipe-to-open gesture */}
-      <View
-        style={styles.edgePanZone}
-        {...edgePanResponder.panHandlers}
-        pointerEvents="box-only"
-      />
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 6 : 0}
       >
-        <View style={styles.screenPadding}>
+        <View style={styles.screenPadding} {...swipeDownPanResponder.panHandlers}>
           <View style={[styles.topBar, { backgroundColor: theme.background }]}>
             {routeKind === 'detail' ? (
               <View style={styles.topBarNativeBackSpacer} />
@@ -886,7 +865,7 @@ export function ChatScreen({
             />
           </View>
 
-          <View style={styles.threadSurface} {...swipeDownPanResponder.panHandlers}>
+          <View style={styles.threadSurface}>
             {messages.length === 0 ? (
               <View style={styles.emptySurface}>
                 <Image source={OVERLAY_LOGO} style={styles.overlayLogo} resizeMode="contain" />
@@ -911,11 +890,8 @@ export function ChatScreen({
                 )}
                 contentContainerStyle={[styles.messageList, { paddingBottom: messageBottomPadding }]}
                 showsVerticalScrollIndicator={false}
+                keyboardDismissMode="on-drag"
                 onContentSizeChange={scrollToBottom}
-                onScrollBeginDrag={() => {
-                  // Dismiss keyboard when user starts scrolling
-                  textInputRef.current?.blur()
-                }}
               />
             )}
           </View>
@@ -931,11 +907,13 @@ export function ChatScreen({
               </View>
             ) : null}
 
-            <GlassSurface style={[styles.composerBox, { backgroundColor: theme.glassBg, borderColor: theme.glassBorder }]}>
+            <GlassSurface interactive style={[styles.composerBox, { backgroundColor: theme.glassBg, borderColor: composerFocused ? theme.border : theme.glassBorder }]}>
               <TextInput
                 ref={textInputRef}
                 value={inputValue}
                 onChangeText={setInputValue}
+                onFocus={() => setComposerFocused(true)}
+                onBlur={() => setComposerFocused(false)}
                 placeholder={
                   activeModality === 'image'
                     ? 'Ask about the image'
@@ -948,37 +926,36 @@ export function ChatScreen({
               />
 
               <View style={styles.composerFooter}>
-                <TouchableOpacity
-                  activeOpacity={0.82}
-                  onPress={() => {
-                    setActiveModality('image')
-                    void pickImage()
-                  }}
-                  style={[styles.composerIconButton]}
-                >
-                  <Feather name="plus" size={22} color={theme.textSecondary} />
-                </TouchableOpacity>
+                <GlassSurface interactive style={[styles.composerIconButton, { backgroundColor: theme.surfaceSubtle }]}>
+                  <TouchableOpacity
+                    activeOpacity={0.82}
+                    onPress={() => {
+                      setActiveModality('image')
+                      void pickImage()
+                    }}
+                    style={[styles.composerIconButton]}
+                  >
+                    <Feather name="plus" size={22} color={theme.textSecondary} />
+                  </TouchableOpacity>
+                </GlassSurface>
 
                 <View style={styles.composerRightActions}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      void handleSend()
-                    }}
-                    activeOpacity={0.82}
-                    disabled={isSending}
-                    style={[
-                      styles.sendButton,
-                      {
-                        backgroundColor: inputValue.trim() || imageBase64 ? theme.foreground : theme.foreground,
-                      },
-                    ]}
-                  >
-                    {isSending ? (
-                      <ActivityIndicator size="small" color={theme.background} />
-                    ) : (
-                      <Feather name="arrow-up" size={18} color={theme.background} />
-                    )}
-                  </TouchableOpacity>
+                  <GlassSurface interactive style={[styles.sendButton, { backgroundColor: theme.foreground }]}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        void handleSend()
+                      }}
+                      activeOpacity={0.82}
+                      disabled={isSending}
+                      style={styles.sendButton}
+                    >
+                      {isSending ? (
+                        <ActivityIndicator size="small" color={theme.background} />
+                      ) : (
+                        <Feather name="arrow-up" size={18} color={theme.background} />
+                      )}
+                    </TouchableOpacity>
+                  </GlassSurface>
                 </View>
               </View>
             </GlassSurface>
@@ -1061,14 +1038,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  edgePanZone: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    bottom: 0,
-    width: 20,
-    zIndex: 10,
-  },
   screenPadding: {
     flex: 1,
     paddingBottom: spacing.sm,
@@ -1131,7 +1100,8 @@ const styles = StyleSheet.create({
   },
   composerSurface: {
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.xs,
+    paddingTop: spacing.sm,
+    marginTop: spacing.sm,
     gap: spacing.sm,
   },
   attachmentBar: {

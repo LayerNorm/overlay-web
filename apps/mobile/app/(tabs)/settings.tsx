@@ -124,22 +124,24 @@ export default function SettingsScreen(): React.ReactElement {
               </View>
             </View>
 
-            <TouchableOpacity
-              activeOpacity={0.82}
-              onPress={() => {
-                void handleSignOut()
-              }}
-              style={[styles.signOutButton, { borderColor: theme.border, backgroundColor: theme.surfaceSubtle }]}
-            >
-              {isSigningOut ? (
-                <ActivityIndicator size="small" color={theme.text} />
-              ) : (
-                <>
-                  <Feather name="log-out" size={16} color={theme.text} />
-                  <Text style={[styles.signOutText, { color: theme.text }]}>Sign out</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            <GlassSurface interactive style={[styles.signOutButton, { backgroundColor: theme.surfaceSubtle }]}>
+              <TouchableOpacity
+                activeOpacity={0.82}
+                onPress={() => {
+                  void handleSignOut()
+                }}
+                style={styles.signOutButton}
+              >
+                {isSigningOut ? (
+                  <ActivityIndicator size="small" color={theme.text} />
+                ) : (
+                  <>
+                    <Feather name="log-out" size={16} color={theme.text} />
+                    <Text style={[styles.signOutText, { color: theme.text }]}>Sign out</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </GlassSurface>
           </View>
         </View>
       </View>
