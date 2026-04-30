@@ -267,7 +267,6 @@ export function BottomSheet({
             styles.sheet,
             {
               backgroundColor: theme.glassBg,
-              borderColor: theme.glassBorder,
               transform: [{ translateY }],
             },
           ]}
@@ -276,7 +275,7 @@ export function BottomSheet({
           <View style={styles.sheetHandleWrap}>
             <View style={[styles.sheetHandle, { backgroundColor: theme.border }]} />
           </View>
-          <View style={[styles.sheetHeader, { borderBottomColor: theme.border }]}>
+          <View style={styles.sheetHeader}>
             <Text style={[styles.sheetTitle, { color: theme.text }]}>{title}</Text>
             <View style={styles.sheetHeaderActions}>
               {headerAction}
@@ -425,8 +424,6 @@ const styles = StyleSheet.create({
     maxHeight: '78%',
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
-    borderWidth: 1,
-    borderBottomWidth: 0,
     overflow: 'hidden',
   },
   sheetHandleWrap: {
@@ -445,7 +442,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
-    borderBottomWidth: 1,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },

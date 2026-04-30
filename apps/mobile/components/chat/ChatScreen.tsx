@@ -1064,6 +1064,7 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: '600',
     flexShrink: 1,
+    fontFamily: 'LibreBaskerville',
   },
   providerDot: {
     width: 8,

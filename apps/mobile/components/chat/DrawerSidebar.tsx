@@ -494,7 +494,7 @@ const styles = StyleSheet.create({
   },
   navLabel: {
     flex: 1,
-    fontSize: fontSize.md,
+    fontSize: fontSize.lg,
     fontWeight: '500',
   },
   soonBadge: {
@@ -542,7 +542,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   recentTitle: {
-    fontSize: fontSize.sm,
+    fontSize: fontSize.md,
     fontWeight: '400',
   },
 })
