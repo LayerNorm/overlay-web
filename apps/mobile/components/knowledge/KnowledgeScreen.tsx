@@ -40,11 +40,11 @@ export function KnowledgeScreen(): React.ReactElement {
     >
       <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
         <View style={styles.screenPadding}>
-          <GlassSurface interactive style={[styles.topBar, { backgroundColor: theme.background }]}>
+          <View style={[styles.topBar, { backgroundColor: theme.background }]}>
             <TopBarIconButton theme={theme} icon="menu" onPress={openDrawer} />
             <Text style={[styles.topBarTitle, { color: theme.text }]}>Knowledge</Text>
             <View style={{ width: 38 }} />
-          </GlassSurface>
+          </View>
 
           <View style={styles.tabBar}>
             <SegmentedControl theme={theme} value={activeTab} options={TABS} onChange={setActiveTab} />

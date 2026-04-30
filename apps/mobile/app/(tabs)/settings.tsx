@@ -67,11 +67,11 @@ export default function SettingsScreen(): React.ReactElement {
     >
       <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <View style={styles.screenPadding}>
-        <GlassSurface interactive style={[styles.topBar, { backgroundColor: theme.glassBg, borderColor: theme.glassBorder }]}>
+        <View style={[styles.topBar, { backgroundColor: theme.background }]}>
           <TopBarIconButton theme={theme} icon="menu" onPress={openDrawer} />
           <Text style={[styles.topBarTitle, { color: theme.text }]}>Settings</Text>
           <View style={styles.topBarSpacer} />
-        </GlassSurface>
+        </View>
 
         <View style={styles.content}>
           <View style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>

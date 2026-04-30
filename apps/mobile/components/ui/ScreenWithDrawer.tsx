@@ -12,7 +12,7 @@ import { useDrawer } from '../../contexts/DrawerContext'
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.85, 340)
 const CONTENT_PUSH = DRAWER_WIDTH
-const EDGE_SWIPE_THRESHOLD = 32
+const EDGE_SWIPE_THRESHOLD = Math.min(SCREEN_WIDTH * 0.5, 200)
 
 export function ScreenWithDrawer({
   children,
@@ -82,8 +82,8 @@ export function ScreenWithDrawer({
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gs) => {
-        // Only respond to rightward swipes starting from left edge
-        return !drawerVisible && gs.moveX < EDGE_SWIPE_THRESHOLD && gs.dx > 8
+        // Respond to rightward swipes starting from left half of screen
+        return !drawerVisible && gs.moveX < EDGE_SWIPE_THRESHOLD && gs.dx > 10 && Math.abs(gs.dx) > Math.abs(gs.dy)
       },
       onPanResponderGrant: () => {
         // no-op

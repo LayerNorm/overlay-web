@@ -101,7 +101,7 @@ export function NotesScreen(): React.ReactElement {
     >
       <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <View style={styles.screenPadding}>
-        <GlassSurface interactive style={[styles.topBar, { backgroundColor: theme.background }]}>
+        <View style={[styles.topBar, { backgroundColor: theme.background }]}>
           <TopBarIconButton theme={theme} icon="menu" onPress={openDrawer} />
           <Text style={[styles.topBarTitle, { color: theme.text }]}>Notes</Text>
           <TopBarIconButton
@@ -111,7 +111,7 @@ export function NotesScreen(): React.ReactElement {
               void handleCreateNote()
             }}
           />
-        </GlassSurface>
+        </View>
 
         <View style={[styles.searchBar, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
           <Feather name="search" size={16} color={theme.textSecondary} />

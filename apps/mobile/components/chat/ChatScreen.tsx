@@ -292,7 +292,27 @@ export function ChatScreen({
 
   const chatRef = useRef<Chat | null>(null)
   const flatListRef = useRef<FlatList<Message>>(null)
+  const textInputRef = useRef<TextInput>(null)
   const abortRef = useRef(false)
+
+  // PanResponder to dismiss keyboard on downward swipe
+  const swipeDownPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gs) => {
+        // Only respond to downward swipes (dy > threshold and more vertical than horizontal)
+        return gs.dy > 15 && Math.abs(gs.dy) > Math.abs(gs.dx)
+      },
+      onPanResponderGrant: () => {},
+      onPanResponderMove: () => {},
+      onPanResponderRelease: (_, gs) => {
+        // If swiped down more than 40 pixels, dismiss keyboard
+        if (gs.dy > 40) {
+          textInputRef.current?.blur()
+        }
+      },
+    }),
+  ).current
 
   const composerBottomPadding = Math.max(insets.bottom, spacing.sm)
   const messageBottomPadding = spacing.md
@@ -832,7 +852,7 @@ export function ChatScreen({
         keyboardVerticalOffset={Platform.OS === 'ios' ? 6 : 0}
       >
         <View style={styles.screenPadding}>
-          <GlassSurface interactive style={[styles.topBar, { backgroundColor: theme.background }]}>
+          <View style={[styles.topBar, { backgroundColor: theme.background }]}>
             {routeKind === 'detail' ? (
               <View style={styles.topBarNativeBackSpacer} />
             ) : (
@@ -864,9 +884,9 @@ export function ChatScreen({
                 void startFreshConversation()
               }}
             />
-          </GlassSurface>
+          </View>
 
-          <View style={styles.threadSurface}>
+          <View style={styles.threadSurface} {...swipeDownPanResponder.panHandlers}>
             {messages.length === 0 ? (
               <View style={styles.emptySurface}>
                 <Image source={OVERLAY_LOGO} style={styles.overlayLogo} resizeMode="contain" />
@@ -892,6 +912,10 @@ export function ChatScreen({
                 contentContainerStyle={[styles.messageList, { paddingBottom: messageBottomPadding }]}
                 showsVerticalScrollIndicator={false}
                 onContentSizeChange={scrollToBottom}
+                onScrollBeginDrag={() => {
+                  // Dismiss keyboard when user starts scrolling
+                  textInputRef.current?.blur()
+                }}
               />
             )}
           </View>
@@ -909,14 +933,13 @@ export function ChatScreen({
 
             <GlassSurface style={[styles.composerBox, { backgroundColor: theme.glassBg, borderColor: theme.glassBorder }]}>
               <TextInput
+                ref={textInputRef}
                 value={inputValue}
                 onChangeText={setInputValue}
                 placeholder={
-                  activeModality === 'video'
-                    ? 'Describe the video you want'
-                    : activeModality === 'image'
-                      ? 'Ask about the image'
-                      : 'Chat with Overlay'
+                  activeModality === 'image'
+                    ? 'Ask about the image'
+                    : 'Chat with Overlay'
                 }
                 placeholderTextColor={theme.textDisabled}
                 multiline
@@ -938,19 +961,6 @@ export function ChatScreen({
 
                 <View style={styles.composerRightActions}>
                   <TouchableOpacity
-                    activeOpacity={0.82}
-                    style={[
-                      styles.composerIconButton,
-                      activeModality === 'video' && { backgroundColor: theme.surfaceSubtle },
-                    ]}
-                    onPress={() => {
-                      setActiveModality('video')
-                    }}
-                  >
-                    <Feather name="video" size={19} color={theme.textSecondary} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
                     onPress={() => {
                       void handleSend()
                     }}
@@ -965,10 +975,8 @@ export function ChatScreen({
                   >
                     {isSending ? (
                       <ActivityIndicator size="small" color={theme.background} />
-                    ) : inputValue.trim() || imageBase64 ? (
-                      <Feather name="arrow-up" size={18} color={theme.background} />
                     ) : (
-                      <Feather name="activity" size={18} color={theme.background} />
+                      <Feather name="arrow-up" size={18} color={theme.background} />
                     )}
                   </TouchableOpacity>
                 </View>
