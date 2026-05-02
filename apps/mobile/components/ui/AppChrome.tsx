@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import {
   Animated,
   Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -223,6 +224,40 @@ export function BottomSheet({
 }): React.ReactElement {
   const translateY = useRef(new Animated.Value(500)).current
   const scrimOpacity = useRef(new Animated.Value(0)).current
+  const dragY = useRef(new Animated.Value(0)).current
+  const panResponderRef = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: (_, gestureState) => {
+        // Only allow dragging down
+        if (gestureState.dy > 0) {
+          dragY.setValue(gestureState.dy)
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        // Close if dragged down more than 100px or with velocity
+        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+          onClose()
+        } else {
+          // Snap back to open position
+          Animated.spring(dragY, {
+            toValue: 0,
+            tension: 300,
+            friction: 30,
+            useNativeDriver: true,
+          }).start()
+        }
+      },
+    })
+  ).current
+
+  // Reset drag when opening
+  useEffect(() => {
+    if (visible) {
+      dragY.setValue(0)
+    }
+  }, [visible, dragY])
 
   useEffect(() => {
     if (visible) {
@@ -256,6 +291,9 @@ export function BottomSheet({
     }
   }, [visible, translateY, scrimOpacity])
 
+  // Combine translateY animation with drag
+  const animatedTranslateY = Animated.add(translateY, dragY)
+
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <View style={styles.modalRoot}>
@@ -267,19 +305,19 @@ export function BottomSheet({
             styles.sheet,
             {
               backgroundColor: theme.glassBg,
-              transform: [{ translateY }],
+              transform: [{ translateY: animatedTranslateY }],
             },
           ]}
         >
           <GlassSurface style={StyleSheet.absoluteFillObject} />
-          <View style={styles.sheetHandleWrap}>
-            <View style={[styles.sheetHandle, { backgroundColor: theme.border }]} />
-          </View>
-          <View style={styles.sheetHeader}>
-            <Text style={[styles.sheetTitle, { color: theme.text }]}>{title}</Text>
-            <View style={styles.sheetHeaderActions}>
-              {headerAction}
-              <TopBarIconButton theme={theme} icon="x" onPress={onClose} />
+          {/* Draggable handle area */}
+          <View {...panResponderRef.panHandlers} style={styles.dragHandleArea}>
+            <View style={styles.sheetHandleWrap}>
+              <View style={[styles.sheetHandle, { backgroundColor: theme.border }]} />
+            </View>
+            <View style={styles.sheetHeader}>
+              <Text style={[styles.sheetTitle, { color: theme.text }]}>{title}</Text>
+              {headerAction ? <View style={styles.sheetHeaderActions}>{headerAction}</View> : null}
             </View>
           </View>
           <ScrollView
@@ -425,6 +463,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     overflow: 'hidden',
+  },
+  dragHandleArea: {
+    cursor: 'pointer',
   },
   sheetHandleWrap: {
     alignItems: 'center',

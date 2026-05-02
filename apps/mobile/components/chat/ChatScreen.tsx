@@ -15,7 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
@@ -872,9 +872,9 @@ export function ChatScreen({
 
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.loadingScreen, { backgroundColor: theme.background }]}>
+      <View style={[styles.loadingScreen, { backgroundColor: theme.background }]}>
         <ActivityIndicator color={theme.textSecondary} size="large" />
-      </SafeAreaView>
+      </View>
     )
   }
 
@@ -895,26 +895,29 @@ export function ChatScreen({
         />
       }
     >
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 6 : 0}
       >
         <View style={styles.screenPadding} {...swipeDownPanResponder.panHandlers}>
-          <View style={styles.headerBlur} pointerEvents="none">
+          {/* Extended header background covering status bar and header area */}
+          <View style={[styles.headerBlur, { height: insets.top + 60 }]} pointerEvents="none">
             <BlurView
-              intensity={55}
+              intensity={70}
               tint={isDark ? 'dark' : 'light'}
               style={StyleSheet.absoluteFillObject}
             />
+            {/* Glass gradient: more opaque at top, fading to transparent */}
             <LinearGradient
-              colors={['transparent', theme.background as string]}
+              colors={[isDark ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.7)', 'transparent']}
+              locations={[0, 1]}
               style={StyleSheet.absoluteFillObject}
             />
           </View>
 
-          <View style={styles.topRow}>
+          <View style={[styles.topRow, { top: insets.top + 6 }]}>
             {routeKind !== 'detail' ? (
               <TopBarIconButton theme={theme} icon="menu" onPress={openDrawer} />
             ) : (
@@ -1100,7 +1103,7 @@ export function ChatScreen({
       >
         <View style={styles.attachSheetGrid}>
           <TouchableOpacity
-            style={[styles.attachSheetCell, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
+            style={[styles.attachSheetCell, { backgroundColor: theme.surfaceElevated }]}
             activeOpacity={0.82}
             onPress={() => {
               setAttachPickerVisible(false)
@@ -1111,7 +1114,7 @@ export function ChatScreen({
             <Text style={[styles.attachSheetLabel, { color: theme.text }]}>Camera</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.attachSheetCell, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
+            style={[styles.attachSheetCell, { backgroundColor: theme.surfaceElevated }]}
             activeOpacity={0.82}
             onPress={() => {
               setAttachPickerVisible(false)
@@ -1123,7 +1126,7 @@ export function ChatScreen({
             <Text style={[styles.attachSheetLabel, { color: theme.text }]}>Photos</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.attachSheetCell, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
+            style={[styles.attachSheetCell, { backgroundColor: theme.surfaceElevated }]}
             activeOpacity={0.82}
             onPress={() => {
               setAttachPickerVisible(false)
@@ -1135,7 +1138,7 @@ export function ChatScreen({
           </TouchableOpacity>
         </View>
       </BottomSheet>
-    </SafeAreaView>
+    </View>
     </ScreenWithDrawer>
   )
 }
@@ -1158,12 +1161,10 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 110,
     zIndex: 99,
   },
   topRow: {
     position: 'absolute',
-    top: 8,
     left: spacing.md,
     right: spacing.md,
     zIndex: 100,
@@ -1320,7 +1321,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    borderWidth: 1,
     borderRadius: borderRadius.xl,
     paddingVertical: spacing.lg,
   },

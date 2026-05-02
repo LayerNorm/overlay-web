@@ -4,6 +4,7 @@ export interface NoteMeta {
   updatedAt: number
   createdAt: number
   folderId: string | null
+  isLocked?: boolean
 }
 
 export interface Note extends NoteMeta {

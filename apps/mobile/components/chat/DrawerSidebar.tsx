@@ -13,13 +13,17 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter, usePathname } from 'expo-router'
-import { Feather } from '@expo/vector-icons'
+import { Feather, Ionicons } from '@expo/vector-icons'
+import { BlurView } from 'expo-blur'
 import type { Theme } from '../../constants/theme'
 import { fontSize, spacing, borderRadius } from '../../constants/theme'
 import type { ChatMeta } from '../../services/chatTypes'
 import type { NoteMeta } from '../../services/types'
 import { useDrawer } from '../../contexts/DrawerContext'
+import { useAuth } from '../../contexts/AuthContext'
+import { useTheme } from '../../hooks/useTheme'
 import { DRAWER_WIDTH } from '../ui/ScreenWithDrawer'
+import { GlassSurface } from '../ui/GlassSurface'
 
 const CLOSE_THRESHOLD = DRAWER_WIDTH * 0.3
 const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
@@ -34,8 +38,19 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: 'Chat', icon: 'message-circle', route: '/(tabs)/chat' },
   { label: 'Notes', icon: 'book-open', route: '/(tabs)/notes' },
-  { label: 'Knowledge', icon: 'database', route: '/(tabs)/knowledge' },
   { label: 'Settings', icon: 'settings', route: '/(tabs)/settings' },
+]
+
+interface KnowledgeSubItem {
+  label: string
+  icon: React.ComponentProps<typeof Feather>['name']
+  route: string
+}
+
+const KNOWLEDGE_SUBITEMS: KnowledgeSubItem[] = [
+  { label: 'Memory', icon: 'cpu', route: '/(tabs)/knowledge' },
+  { label: 'Files', icon: 'folder', route: '/knowledge/file' },
+  { label: 'Outputs', icon: 'file-text', route: '/knowledge/output' },
 ]
 
 export function DrawerSidebar({
@@ -263,6 +278,9 @@ function DrawerContent({
   const router = useRouter()
   const pathname = usePathname()
   const { closeDrawer } = useDrawer()
+  const { user } = useAuth()
+  const { isDark } = useTheme()
+  const [knowledgeExpanded, setKnowledgeExpanded] = useState(false)
 
   function isRouteActive(route: string): boolean {
     if (externalIsRouteActive) return externalIsRouteActive(route)
@@ -276,6 +294,8 @@ function DrawerContent({
     return pathname.includes(segment)
   }
 
+  const isKnowledgeActive = pathname.startsWith('/knowledge') || pathname.includes('/(tabs)/knowledge')
+
   function navigate(route: string): void {
     if (externalNavigate) {
       externalNavigate(route)
@@ -285,8 +305,18 @@ function DrawerContent({
     router.push(route as Parameters<typeof router.push>[0])
   }
 
+  const getInitials = () => {
+    if (user?.firstName && user?.lastName) {
+      return `${user.firstName[0]}${user.lastName[0]}`.toUpperCase()
+    }
+    if (user?.email) {
+      return user.email[0].toUpperCase()
+    }
+    return 'U'
+  }
+
   return (
-    <>
+    <View style={styles.drawerContent}>
       {/* Header with Logo and Brand */}
       <View style={[styles.drawerHeader, { paddingTop: insets.top + spacing.md }]}>
         <View style={styles.brandContainer}>
@@ -295,145 +325,268 @@ function DrawerContent({
         </View>
       </View>
 
-      {/* Navigation */}
-      <View style={styles.navSection}>
-        {NAV_ITEMS.map((item) => {
-          const active = isRouteActive(item.route)
-          return (
-            <TouchableOpacity
-              key={item.label}
-              style={[
-                styles.navItem,
-                active && { backgroundColor: theme.surfaceSubtle },
-                item.disabled && styles.navItemDisabled,
-              ]}
-              activeOpacity={item.disabled ? 1 : 0.65}
-              disabled={item.disabled}
-              onPress={() => {
-                if (!item.disabled) navigate(item.route)
-              }}
-            >
-              <Feather
-                name={item.icon}
-                size={18}
-                color={item.disabled ? theme.mutedLight : active ? theme.text : theme.muted}
-              />
-              <Text
+      {/* Main Content Area */}
+      <View style={styles.mainContent}>
+        {/* Navigation */}
+        <View style={styles.navSection}>
+          {NAV_ITEMS.map((item) => {
+            const active = isRouteActive(item.route)
+            return (
+              <TouchableOpacity
+                key={item.label}
                 style={[
-                  styles.navLabel,
-                  {
-                    color: item.disabled
-                      ? theme.mutedLight
-                      : active
-                        ? theme.text
-                        : theme.muted,
-                  },
+                  styles.navItem,
+                  active && { backgroundColor: theme.surfaceSubtle },
+                  item.disabled && styles.navItemDisabled,
                 ]}
+                activeOpacity={item.disabled ? 1 : 0.65}
+                disabled={item.disabled}
+                onPress={() => {
+                  if (!item.disabled) navigate(item.route)
+                }}
               >
-                {item.label}
-              </Text>
-              {item.disabled ? (
-                <Text style={[styles.soonBadge, { color: theme.mutedLight }]}>Soon</Text>
-              ) : null}
-            </TouchableOpacity>
-          )
-        })}
+                <Feather
+                  name={item.icon}
+                  size={18}
+                  color={item.disabled ? theme.mutedLight : active ? theme.text : theme.muted}
+                />
+                <Text
+                  style={[
+                    styles.navLabel,
+                    {
+                      color: item.disabled
+                        ? theme.mutedLight
+                        : active
+                          ? theme.text
+                          : theme.muted,
+                    },
+                  ]}
+                >
+                  {item.label}
+                </Text>
+                {item.disabled ? (
+                  <Text style={[styles.soonBadge, { color: theme.mutedLight }]}>Soon</Text>
+                ) : null}
+              </TouchableOpacity>
+            )
+          })}
+
+          {/* Knowledge Dropdown */}
+          <TouchableOpacity
+            style={[
+              styles.navItem,
+              isKnowledgeActive && { backgroundColor: theme.surfaceSubtle },
+            ]}
+            activeOpacity={0.65}
+            onPress={() => setKnowledgeExpanded(!knowledgeExpanded)}
+          >
+            <Feather
+              name="database"
+              size={18}
+              color={isKnowledgeActive ? theme.text : theme.muted}
+            />
+            <Text
+              style={[
+                styles.navLabel,
+                { color: isKnowledgeActive ? theme.text : theme.muted },
+              ]}
+            >
+              Knowledge
+            </Text>
+            <Feather
+              name={knowledgeExpanded ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={theme.muted}
+            />
+          </TouchableOpacity>
+
+          {/* Knowledge Sub-items */}
+          {knowledgeExpanded && (
+            <View style={styles.subItemsContainer}>
+              {KNOWLEDGE_SUBITEMS.map((subItem) => {
+                const isActive = pathname.includes(subItem.route.replace('/(tabs)', ''))
+                return (
+                  <TouchableOpacity
+                    key={subItem.label}
+                    style={[
+                      styles.subItem,
+                      isActive && { backgroundColor: theme.surfaceSubtle },
+                    ]}
+                    activeOpacity={0.65}
+                    onPress={() => navigate(subItem.route)}
+                  >
+                    <Feather
+                      name={subItem.icon}
+                      size={16}
+                      color={isActive ? theme.text : theme.muted}
+                      style={styles.subItemIcon}
+                    />
+                    <Text
+                      style={[
+                        styles.subItemLabel,
+                        { color: isActive ? theme.text : theme.muted },
+                      ]}
+                    >
+                      {subItem.label}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+          )}
+        </View>
+
+        {/* Chat recents — shown only when on chat route */}
+        {isChatActive && chats.length > 0 && (
+          <View style={[styles.recentsSection, {}]}>
+            <View style={styles.recentsHeaderRow}>
+              <Text style={[styles.recentsLabel, { color: theme.mutedLight }]}>Recents</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  onCreateChat()
+                  closeDrawer()
+                }}
+                style={[styles.newChatButton, {}]}
+                activeOpacity={0.7}
+              >
+                <Feather name="plus" size={12} color={theme.muted} />
+                <Text style={[styles.newChatLabel, { color: theme.muted }]}>New chat</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={styles.recentsList}
+              contentContainerStyle={styles.recentsContent}
+            >
+              {chats.slice(0, 20).map((chat) => (
+                <TouchableOpacity
+                  key={chat.id}
+                  onPress={() => {
+                    onSelectChat(chat.id)
+                    closeDrawer()
+                  }}
+                  activeOpacity={0.65}
+                  style={[
+                    styles.recentItem,
+                    activeChatId === chat.id && {
+                      backgroundColor: theme.surfaceSubtle,
+                      borderRadius: borderRadius.md,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.recentTitle, { color: theme.text }]} numberOfLines={1}>
+                    {chat.title || 'New chat'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Notes recents — shown only when on notes route */}
+        {isNotesActive && notes && notes.length > 0 && (
+          <View style={[styles.recentsSection, {}]}>
+            <View style={styles.recentsHeaderRow}>
+              <Text style={[styles.recentsLabel, { color: theme.mutedLight }]}>Recents</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  onCreateNote?.()
+                  closeDrawer()
+                }}
+                style={[styles.newChatButton, {}]}
+                activeOpacity={0.7}
+              >
+                <Feather name="plus" size={12} color={theme.muted} />
+                <Text style={[styles.newChatLabel, { color: theme.muted }]}>New note</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={styles.recentsList}
+              contentContainerStyle={styles.recentsContent}
+            >
+              {notes.slice(0, 20).map((note) => (
+                <TouchableOpacity
+                  key={note.id}
+                  onPress={() => {
+                    onSelectNote?.(note.id)
+                    closeDrawer()
+                  }}
+                  activeOpacity={0.65}
+                  style={[
+                    styles.recentItem,
+                    activeNoteId === note.id && {
+                      backgroundColor: theme.surfaceSubtle,
+                      borderRadius: borderRadius.md,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.recentTitle, { color: theme.text }]} numberOfLines={1}>
+                    {note.title || 'Untitled note'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
       </View>
 
-      {/* Chat recents — shown only when on chat route */}
-      {isChatActive && chats.length > 0 && (
-        <View style={[styles.recentsSection, {}]}>
-          <View style={styles.recentsHeaderRow}>
-            <Text style={[styles.recentsLabel, { color: theme.mutedLight }]}>Recents</Text>
+      {/* Bottom Floating Bar with Account & Search */}
+      <BlurView
+        intensity={80}
+        tint={isDark ? 'dark' : 'light'}
+        style={[styles.bottomBar, { bottom: insets.bottom + spacing.sm }]}
+      >
+        <View style={styles.bottomBarContent}>
+          {/* Account Button */}
+          <GlassSurface interactive style={[styles.accountButton, { backgroundColor: theme.glassBg }]}>
             <TouchableOpacity
-              onPress={() => {
-                onCreateChat()
-                closeDrawer()
-              }}
-              style={[styles.newChatButton, {}]}
+              style={styles.accountButtonInner}
+              onPress={() => navigate('/(tabs)/settings')}
               activeOpacity={0.7}
             >
-              <Feather name="plus" size={12} color={theme.muted} />
-              <Text style={[styles.newChatLabel, { color: theme.muted }]}>New chat</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            style={styles.recentsList}
-            contentContainerStyle={styles.recentsContent}
-          >
-            {chats.slice(0, 20).map((chat) => (
-              <TouchableOpacity
-                key={chat.id}
-                onPress={() => {
-                  onSelectChat(chat.id)
-                  closeDrawer()
-                }}
-                activeOpacity={0.65}
-                style={[
-                  styles.recentItem,
-                  activeChatId === chat.id && {
-                    backgroundColor: theme.surfaceSubtle,
-                    borderRadius: borderRadius.md,
-                  },
-                ]}
+              {user?.profilePictureUrl ? (
+                <Image
+                  source={{ uri: user.profilePictureUrl }}
+                  style={styles.profileImage}
+                />
+              ) : (
+                <View style={[styles.profileInitials, { backgroundColor: theme.accent }]}>
+                  <Text style={[styles.profileInitialsText, { color: theme.background }]}>
+                    {getInitials()}
+                  </Text>
+                </View>
+              )}
+              <Text
+                style={[styles.accountName, { color: theme.text }]}
+                numberOfLines={1}
               >
-                <Text style={[styles.recentTitle, { color: theme.text }]} numberOfLines={1}>
-                  {chat.title || 'New chat'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
+                {user?.firstName && user?.lastName
+                  ? `${user.firstName} ${user.lastName}`
+                  : user?.email || 'Account'}
+              </Text>
+            </TouchableOpacity>
+          </GlassSurface>
 
-      {/* Notes recents — shown only when on notes route */}
-      {isNotesActive && notes && notes.length > 0 && (
-        <View style={[styles.recentsSection, {}]}>
-          <View style={styles.recentsHeaderRow}>
-            <Text style={[styles.recentsLabel, { color: theme.mutedLight }]}>Recent notes</Text>
+          {/* Search Button */}
+          <GlassSurface
+            interactive
+            style={[styles.searchButton, { backgroundColor: theme.glassBg }]}
+          >
             <TouchableOpacity
+              style={styles.searchButtonInner}
               onPress={() => {
-                onCreateNote?.()
+                // Open search - could navigate to a search screen
                 closeDrawer()
               }}
-              style={[styles.newChatButton, {}]}
               activeOpacity={0.7}
             >
-              <Feather name="plus" size={12} color={theme.muted} />
-              <Text style={[styles.newChatLabel, { color: theme.muted }]}>New note</Text>
+              <Ionicons name="search" size={22} color={theme.text} />
             </TouchableOpacity>
-          </View>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            style={styles.recentsList}
-            contentContainerStyle={styles.recentsContent}
-          >
-            {notes.slice(0, 20).map((note) => (
-              <TouchableOpacity
-                key={note.id}
-                onPress={() => {
-                  onSelectNote?.(note.id)
-                  closeDrawer()
-                }}
-                activeOpacity={0.65}
-                style={[
-                  styles.recentItem,
-                  activeNoteId === note.id && {
-                    backgroundColor: theme.surfaceSubtle,
-                    borderRadius: borderRadius.md,
-                  },
-                ]}
-              >
-                <Text style={[styles.recentTitle, { color: theme.text }]} numberOfLines={1}>
-                  {note.title || 'Untitled note'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          </GlassSurface>
         </View>
-      )}
-    </>
+      </BlurView>
+    </View>
   )
 }
 
@@ -541,5 +694,94 @@ const styles = StyleSheet.create({
   recentTitle: {
     fontSize: fontSize.md,
     fontWeight: '400',
+  },
+  drawerContent: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+  mainContent: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+  subItemsContainer: {
+    paddingLeft: spacing.xl,
+    paddingRight: spacing.sm,
+  },
+  subItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    marginBottom: 2,
+  },
+  subItemIcon: {
+    marginLeft: 2,
+  },
+  subItemLabel: {
+    flex: 1,
+    fontSize: fontSize.md,
+    fontWeight: '400',
+  },
+  bottomBar: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
+    borderRadius: borderRadius.xl,
+    overflow: 'hidden',
+  },
+  bottomBarContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.sm,
+  },
+  accountButton: {
+    flex: 1,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+  },
+  accountButtonInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+  },
+  profileImage: {
+    width: 32,
+    height: 32,
+    borderRadius: borderRadius.full,
+  },
+  profileInitials: {
+    width: 32,
+    height: 32,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileInitialsText: {
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+  },
+  accountName: {
+    flex: 1,
+    fontSize: fontSize.md,
+    fontWeight: '500',
+  },
+  searchButton: {
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchButtonInner: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 })
