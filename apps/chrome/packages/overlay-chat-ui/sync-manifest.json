@@ -1,0 +1,62 @@
+{
+  "generatedAt": "2026-04-17T11:56:49.278Z",
+  "landingRoot": "../overlay-landing",
+  "files": {
+    "lib/markdown-table-fix.ts": {
+      "kind": "synced",
+      "source": "src/lib/markdown-table-fix.ts",
+      "sourceHash": "3fb6977a94504368",
+      "outputHash": "3fb6977a94504368"
+    },
+    "lib/shim-incomplete-markdown.ts": {
+      "kind": "synced",
+      "source": "src/lib/shim-incomplete-markdown.ts",
+      "sourceHash": "533a35c249809799",
+      "outputHash": "533a35c249809799"
+    },
+    "lib/agent-assistant-text.ts": {
+      "kind": "synced",
+      "source": "src/lib/agent-assistant-text.ts",
+      "sourceHash": "28067aa4cdf785f0",
+      "outputHash": "28067aa4cdf785f0"
+    },
+    "lib/web-sources.ts": {
+      "kind": "synced",
+      "source": "src/lib/web-sources.ts",
+      "sourceHash": "7fd7e93e3a8f2e51",
+      "outputHash": "7fd7e93e3a8f2e51"
+    },
+    "src/components/app/MarkdownMessage.tsx": {
+      "kind": "tracked",
+      "sourceHash": "1d8acc230c07b4dd"
+    },
+    "src/components/app/ChatInterface.tsx": {
+      "kind": "tracked",
+      "sourceHash": "9c7e51f88c88c568"
+    },
+    "src/components/app/AppSettingsProvider.tsx": {
+      "kind": "tracked",
+      "sourceHash": "c56c2f630106008e"
+    },
+    "src/components/app/WebSourceTooltip.tsx": {
+      "kind": "tracked",
+      "sourceHash": "854eecbe0b98f856"
+    },
+    "src/components/app/SlashMenu.tsx": {
+      "kind": "tracked",
+      "sourceHash": "0e3d229c4c0c7588"
+    },
+    "src/components/app/DelayedTooltip.tsx": {
+      "kind": "tracked",
+      "sourceHash": "7f70822db988fea2"
+    },
+    "src/components/app/GenerationModeToggle.tsx": {
+      "kind": "tracked",
+      "sourceHash": "54dbb47e067664aa"
+    },
+    "src/app/globals.css": {
+      "kind": "tracked",
+      "sourceHash": "f68c5ce415c64b8a"
+    }
+  }
+}

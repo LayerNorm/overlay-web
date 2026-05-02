@@ -1,0 +1,37 @@
+{
+  "name": "overlay-chrome",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "sync:chat-ui": "node scripts/sync-chat-ui.mjs",
+    "sync:chat-ui:check": "node scripts/verify-chat-ui.mjs",
+    "check": "npm run sync:chat-ui:check && npm run typecheck && npm run test && npm run build"
+  },
+  "dependencies": {
+    "@overlay/chat-ui": "file:./packages/overlay-chat-ui",
+    "@overlay/extension-contracts": "file:./packages/overlay-extension-contracts",
+    "framer-motion": "^11.18.2",
+    "lucide-react": "^0.575.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.11",
+    "@types/chrome": "^0.0.316",
+    "@types/node": "^22.15.21",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "@vitejs/plugin-react": "^5.0.2",
+    "tailwindcss": "^4.1.11",
+    "typescript": "^5.8.3",
+    "vite": "^7.1.6",
+    "vitest": "^4.1.4"
+  }
+}
