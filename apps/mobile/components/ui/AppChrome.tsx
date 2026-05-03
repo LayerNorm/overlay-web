@@ -178,24 +178,25 @@ export function StatusPill({
   )
 }
 
-export function SearchField({
-  theme,
-  value,
-  onChangeText,
-  placeholder,
-  autoFocus = false,
-}: {
-  theme: Theme
-  value: string
-  onChangeText: (value: string) => void
-  placeholder: string
-  autoFocus?: boolean
-}): React.ReactElement {
+export const SearchField = React.forwardRef<
+  TextInput,
+  {
+    theme: Theme
+    value: string
+    onChangeText: (value: string) => void
+    placeholder: string
+    autoFocus?: boolean
+  }
+>(function SearchField(
+  { theme, value, onChangeText, placeholder, autoFocus = false },
+  ref,
+): React.ReactElement {
   const [focused, setFocused] = React.useState(false)
   return (
     <GlassSurface interactive style={[styles.searchField, { backgroundColor: theme.glassBg, borderColor: focused ? theme.border : theme.glassBorder }]}>
       <Feather name="search" size={15} color={theme.textSecondary} />
       <TextInput
+        ref={ref}
         value={value}
         onChangeText={onChangeText}
         onFocus={() => setFocused(true)}
@@ -212,7 +213,7 @@ export function SearchField({
       ) : null}
     </GlassSurface>
   )
-}
+})
 
 export function SegmentedControl<T extends string>({
   theme,

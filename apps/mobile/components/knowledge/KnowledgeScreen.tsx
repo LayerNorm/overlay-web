@@ -114,11 +114,17 @@ export function KnowledgeScreen(): React.ReactElement {
           }
           rightSlot={<TopBarIconButton theme={theme} icon="more-horizontal" onPress={() => setMenuOpen(true)} />}
         />
-        <View style={[styles.screenPadding, { paddingTop: insets.top + 58 }]}>
+        <View style={styles.screenPadding}>
           <View style={styles.tabContent}>
-            {activeTab === 'memories' && <MemoriesList headerAction={actionRequest} hideInlineToolbar />}
-            {activeTab === 'files' && <FilesTree headerAction={actionRequest} hideInlineToolbar />}
-            {activeTab === 'outputs' && <OutputsGallery headerAction={actionRequest} hideInlineToolbar />}
+            {activeTab === 'memories' && (
+              <MemoriesList headerAction={actionRequest} hideInlineToolbar topInset={insets.top + 58} />
+            )}
+            {activeTab === 'files' && (
+              <FilesTree headerAction={actionRequest} hideInlineToolbar topInset={insets.top + 58} />
+            )}
+            {activeTab === 'outputs' && (
+              <OutputsGallery headerAction={actionRequest} hideInlineToolbar topInset={insets.top + 58} />
+            )}
           </View>
         </View>
         <BottomSheet theme={theme} visible={menuOpen} onClose={() => setMenuOpen(false)} title={TITLES[activeTab]}>

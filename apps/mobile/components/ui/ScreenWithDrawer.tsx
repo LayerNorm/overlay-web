@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef } from 'react'
 import {
   Animated,
   Dimensions,
+  Keyboard,
   PanResponder,
   Pressable,
   StyleSheet,
@@ -31,6 +32,23 @@ export function ScreenWithDrawer({
   useEffect(() => {
     drawerVisibleRef.current = drawerVisible
   }, [drawerVisible])
+
+  // Track keyboard visibility so the edge-swipe gesture never competes with
+  // horizontal interactions in on-screen toolbars (e.g. the Notes markdown
+  // toolbar) while the user is typing.
+  const keyboardVisibleRef = useRef(false)
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      keyboardVisibleRef.current = true
+    })
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      keyboardVisibleRef.current = false
+    })
+    return () => {
+      showSub.remove()
+      hideSub.remove()
+    }
+  }, [])
 
   const animate = useCallback(
     (toOpen: boolean) => {
@@ -91,6 +109,7 @@ export function ScreenWithDrawer({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gs) => {
         if (drawerVisibleRef.current) return false
+        if (keyboardVisibleRef.current) return false
         return gs.x0 < EDGE_SWIPE_START && gs.dx > 12 && gs.dx > Math.abs(gs.dy) * 1.2
       },
       onPanResponderGrant: () => {},

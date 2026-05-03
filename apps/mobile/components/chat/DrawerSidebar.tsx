@@ -278,7 +278,7 @@ function DrawerContent({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { closeDrawer } = useDrawer()
+  const { closeDrawer, requestSearch } = useDrawer()
   const { user } = useAuth()
   const { isDark } = useTheme()
   const [knowledgeExpanded, setKnowledgeExpanded] = useState(false)
@@ -654,8 +654,10 @@ function DrawerContent({
             <TouchableOpacity
               style={styles.searchButtonInner}
               onPress={() => {
-                // Open search - could navigate to a search screen
                 closeDrawer()
+                // Fire after the drawer close animation begins so the search
+                // input on the underlying screen can claim focus cleanly.
+                setTimeout(() => requestSearch(), 150)
               }}
               activeOpacity={0.7}
             >

@@ -25,6 +25,7 @@ import { loadNote, saveNote } from '../../services/noteStorage'
 import { normalizeHtmlForMobileMarkdown, toStoredHtml } from '../../services/noteContentFormat'
 import type { Note } from '../../services/types'
 import { MainScreenHeader, TopBarIconButton } from '../ui/AppChrome'
+import { FloatingSearchBar } from '../ui/FloatingSearchBar'
 
 const SAVE_DEBOUNCE_MS = 1200
 const HEADER_HEIGHT = 56
@@ -150,6 +151,7 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
 
   const [note, setNote] = useState<Note | null>(null)
   const [title, setTitle] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [markdownContent, setMarkdownContent] = useState('')
   const [isEditing, setIsEditing] = useState(false)
@@ -289,7 +291,8 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
     }
   }, [])
 
-  const toolbarBottomInset = keyboardHeight > 0 ? keyboardHeight : Math.max(insets.bottom, 2) + 2
+  const toolbarBottomInset =
+    keyboardHeight > 0 ? Math.max(keyboardHeight - 8, 0) : Math.max(insets.bottom, 0)
 
   const runInlineCommand = useCallback((command: () => void) => {
     setIsEditing(true)
@@ -326,17 +329,14 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
     </TouchableOpacity>
   )
 
+  const toolbarGradientColors = isDark
+    ? (['rgba(40,40,40,0.8)', 'rgba(30,30,30,0.9)'] as const)
+    : (['rgba(255,255,255,0.7)', 'rgba(245,245,245,0.85)'] as const)
+
   const FloatingToolbar = () => (
     <View style={[styles.floatingToolbarWrapper, { bottom: toolbarBottomInset }]}>
       <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={styles.floatingBlur}>
-        <LinearGradient
-          colors={
-            isDark
-              ? ['rgba(40,40,40,0.8)', 'rgba(30,30,30,0.9)']
-              : ['rgba(255,255,255,0.7)', 'rgba(245,245,245,0.85)']
-          }
-          style={styles.floatingGradient}
-        >
+        <LinearGradient colors={toolbarGradientColors} style={styles.floatingGradient}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -362,17 +362,21 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
             <ToolbarButton icon="message-square" onPress={() => { void applyMarkdownTransform(prefixSelectedLines('> ')) }} />
             <ToolbarButton icon="code" onPress={() => { void applyMarkdownTransform(wrapSelection('`')) }} />
             <ToolbarButton label="```" onPress={insertCodeBlock} />
-
-            <View style={[styles.toolbarDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' }]} />
-
-            <ToolbarButton
-              icon="chevron-down"
-              onPress={() => {
-                Keyboard.dismiss()
-                setIsEditing(false)
-              }}
-            />
           </ScrollView>
+        </LinearGradient>
+      </BlurView>
+
+      <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={styles.dismissBlur}>
+        <LinearGradient colors={toolbarGradientColors} style={styles.floatingGradient}>
+          <TouchableOpacity
+            onPress={() => {
+              Keyboard.dismiss()
+              setIsEditing(false)
+            }}
+            style={styles.dismissButton}
+          >
+            <Feather name="chevron-down" size={20} color={theme.text} />
+          </TouchableOpacity>
         </LinearGradient>
       </BlurView>
     </View>
@@ -477,7 +481,7 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
           rightSlot={<TopBarIconButton theme={theme} icon="plus" onPress={() => onCreateNew?.()} />}
         />
 
-        <View style={[styles.editorContainer, { paddingTop: insets.top + HEADER_HEIGHT }]}>
+        <View style={styles.editorContainer}>
           {isEditing ? (
             <EnrichedMarkdownTextInput
               key={noteId}
@@ -493,7 +497,10 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
               autoFocus={markdownContent.trim().length === 0}
               cursorColor={theme.accent}
               selectionColor={theme.accent}
-              style={StyleSheet.flatten([styles.editor, { color: theme.text }])}
+              style={StyleSheet.flatten([
+                styles.editor,
+                { color: theme.text, paddingTop: insets.top + HEADER_HEIGHT },
+              ])}
               markdownStyle={{
                 strong: { color: theme.text },
                 em: { color: theme.text },
@@ -504,7 +511,7 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
           ) : (
             <ScrollView
               style={styles.previewScroll}
-              contentContainerStyle={styles.previewContent}
+              contentContainerStyle={[styles.previewContent, { paddingTop: insets.top + HEADER_HEIGHT }]}
               keyboardShouldPersistTaps="handled"
             >
               <TouchableOpacity activeOpacity={0.9} onPress={focusEditor} style={styles.previewTapTarget}>
@@ -524,6 +531,13 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
         </View>
 
         {isEditing ? <FloatingToolbar /> : null}
+        <FloatingSearchBar
+          theme={theme}
+          isDark={isDark}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search this note"
+        />
       </View>
     </SafeAreaView>
   )
@@ -609,11 +623,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 8,
     zIndex: 100,
   },
   floatingBlur: {
-    width: '96%',
+    flex: 1,
     height: 48,
     borderRadius: 24,
     overflow: 'hidden',
@@ -622,6 +639,22 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 10,
     elevation: 8,
+  },
+  dismissBlur: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  dismissButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   floatingGradient: {
     flex: 1,

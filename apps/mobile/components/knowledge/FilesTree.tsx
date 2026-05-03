@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -15,6 +15,7 @@ import { useTheme } from '../../hooks/useTheme'
 import { useRouter } from 'expo-router'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { SearchField, EmptyState, BottomSheet } from '../ui/AppChrome'
+import { useDrawer } from '../../contexts/DrawerContext'
 import * as DocumentPicker from 'expo-document-picker'
 import { getInfoAsync, readAsStringAsync, EncodingType } from 'expo-file-system/legacy'
 import {
@@ -78,12 +79,17 @@ function buildTree(files: KnowledgeFile[], expandedIds: Set<string>, searchQuery
 export function FilesTree({
   headerAction,
   hideInlineToolbar = false,
+  topInset = 0,
 }: {
   headerAction?: { type: string; nonce: number } | null
   hideInlineToolbar?: boolean
+  topInset?: number
 }): React.ReactElement {
   const { theme } = useTheme()
   const router = useRouter()
+  const { searchNonce } = useDrawer()
+  const searchInputRef = useRef<TextInput>(null)
+  const flatListRef = useRef<FlatList<TreeNode>>(null)
   const [files, setFiles] = useState<KnowledgeFile[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -115,6 +121,12 @@ export function FilesTree({
       void refresh()
     }, [refresh]),
   )
+
+  useEffect(() => {
+    if (searchNonce === 0) return
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true })
+    requestAnimationFrame(() => searchInputRef.current?.focus())
+  }, [searchNonce])
 
   const tree = useMemo(
     () => buildTree(files, expandedIds, searchQuery),
@@ -281,9 +293,9 @@ export function FilesTree({
     setCreateSheetOpen(true)
   }
 
-  return (
-    <View style={styles.container}>
-      <SearchField theme={theme} value={searchQuery} onChangeText={setSearchQuery} placeholder="Search files" />
+  const listHeader = (
+    <View style={{ paddingTop: topInset, gap: spacing.md }}>
+      <SearchField ref={searchInputRef} theme={theme} value={searchQuery} onChangeText={setSearchQuery} placeholder="Search files" />
 
       {(!hideInlineToolbar || selectMode) ? (
       <View style={styles.toolbar}>
@@ -342,13 +354,22 @@ export function FilesTree({
         )}
       </View>
       ) : null}
+    </View>
+  )
 
+  return (
+    <View style={styles.container}>
       {isLoading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator color={theme.textSecondary} />
-        </View>
+        <>
+          {listHeader}
+          <View style={styles.centered}>
+            <ActivityIndicator color={theme.textSecondary} />
+          </View>
+        </>
       ) : tree.length === 0 ? (
-        <EmptyState
+        <>
+          {listHeader}
+          <EmptyState
           theme={theme}
           icon="file-text"
           title={searchQuery ? 'No files match your search' : 'No files yet'}
@@ -372,10 +393,13 @@ export function FilesTree({
             ) : undefined
           }
         />
+        </>
       ) : (
         <FlatList
+          ref={flatListRef}
           data={tree}
           keyExtractor={(item) => item._id}
+          ListHeaderComponent={listHeader}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {

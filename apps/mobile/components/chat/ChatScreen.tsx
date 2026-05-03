@@ -53,6 +53,7 @@ import {
   TopBarIconButton,
 } from '../ui/AppChrome'
 import { useDrawer } from '../../contexts/DrawerContext'
+import { FloatingSearchBar } from '../ui/FloatingSearchBar'
 import { AUTH_BASE_URL } from '../../services/appConfig'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { UpgradePrompt } from '../auth/UpgradePrompt'
@@ -327,6 +328,17 @@ export function ChatScreen({
   const flatListRef = useRef<FlatList<Message>>(null)
   const textInputRef = useRef<TextInput>(null)
   const abortRef = useRef(false)
+  const hasAutoScrolledRef = useRef(false)
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const visibleMessages = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return messages
+    return messages.filter((m) => {
+      const text = typeof m.content === 'string' ? m.content.toLowerCase() : ''
+      return text.includes(q)
+    })
+  }, [messages, searchQuery])
 
   // PanResponder to dismiss keyboard on downward swipe — attached to the whole screen
   // Uses onMoveShouldSetPanResponder so it never blocks taps or typing
@@ -382,18 +394,6 @@ export function ChatScreen({
   const syncConversationMeta = useCallback(
     async (overrides: Partial<Chat> = {}) => {
       if (!chatRef.current) return
-      if (!history.some((item) => item.id === chatRef.current?.id)) {
-        chatRef.current = {
-          ...chatRef.current,
-          ...overrides,
-          updatedAt: Date.now(),
-          title: overrides.title ?? chatRef.current.title,
-          modelId: overrides.modelId || selectedModel?.id || chatRef.current.modelId,
-          lastMode: 'act',
-        }
-        setChatTitle(chatRef.current.title)
-        return
-      }
 
       const resolvedModelId = overrides.modelId || selectedModel?.id || chatRef.current.modelId
       const nextChat: Chat = {
@@ -409,10 +409,13 @@ export function ChatScreen({
 
       chatRef.current = nextChat
       setChatTitle(nextChat.title)
-      await saveChat(nextChat)
+      // Always persist — previously we skipped saveChat for drafts (not yet
+      // in history), which meant chats disappeared from the sidebar even
+      // after the first user message.
+      await saveChat(nextChat).catch(() => {})
       await refreshHistory()
     },
-    [history, refreshHistory, selectedModel?.id],
+    [refreshHistory, selectedModel?.id],
   )
 
   const hydrateConversation = useCallback(
@@ -429,6 +432,7 @@ export function ChatScreen({
 
         chatRef.current = chat
         setChatTitle(chat.title)
+        hasAutoScrolledRef.current = false
         setMessages(chat.messages)
         setInputValue('')
         setImageBase64(null)
@@ -841,14 +845,6 @@ export function ChatScreen({
       })) {
         if (abortRef.current) break
         setMessages((current) => applyStreamChunk(current, assistantId, selectedModel, chunk))
-        if (
-          chunk.type === 'text' ||
-          chunk.type === 'reasoning' ||
-          chunk.type === 'tool' ||
-          chunk.type === 'file'
-        ) {
-          scrollToBottom()
-        }
       }
     } catch (error) {
       console.error('[ChatScreen] send failed:', error)
@@ -874,7 +870,6 @@ export function ChatScreen({
     }
 
     await refreshHistory()
-    scrollToBottom()
   }, [
     attachedFile,
     chatTitle,
@@ -975,7 +970,7 @@ export function ChatScreen({
             ) : (
               <FlatList
                 ref={flatListRef}
-                data={messages}
+                data={visibleMessages}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
                   <MessageBubble
@@ -990,7 +985,12 @@ export function ChatScreen({
                 contentContainerStyle={[styles.messageList, { paddingTop: insets.top + 70, paddingBottom: messageBottomPadding }]}
                 showsVerticalScrollIndicator={false}
                 keyboardDismissMode="on-drag"
-                onContentSizeChange={scrollToBottom}
+                onContentSizeChange={() => {
+                  if (!hasAutoScrolledRef.current) {
+                    hasAutoScrolledRef.current = true
+                    scrollToBottom()
+                  }
+                }}
               />
             )}
           </View>
@@ -1169,6 +1169,13 @@ export function ChatScreen({
           </TouchableOpacity>
         </View>
       </BottomSheet>
+      <FloatingSearchBar
+        theme={theme}
+        isDark={isDark}
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        placeholder="Search this chat"
+      />
     </View>
     </ScreenWithDrawer>
   )

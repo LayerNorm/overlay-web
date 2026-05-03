@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -15,6 +15,7 @@ import { useTheme } from '../../hooks/useTheme'
 import { useRouter } from 'expo-router'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { SearchField, EmptyState, BottomSheet } from '../ui/AppChrome'
+import { useDrawer } from '../../contexts/DrawerContext'
 import {
   listMemories,
   createMemory,
@@ -28,12 +29,17 @@ type MemoryHeaderAction = 'new' | 'import' | 'selectMemories'
 export function MemoriesList({
   headerAction,
   hideInlineToolbar = false,
+  topInset = 0,
 }: {
   headerAction?: { type: string; nonce: number } | null
   hideInlineToolbar?: boolean
+  topInset?: number
 }): React.ReactElement {
   const { theme } = useTheme()
   const router = useRouter()
+  const { searchNonce } = useDrawer()
+  const searchInputRef = useRef<TextInput>(null)
+  const flatListRef = useRef<FlatList<MemoryRow>>(null)
   const [memories, setMemories] = useState<MemoryRow[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -64,6 +70,13 @@ export function MemoriesList({
       void refresh()
     }, [refresh]),
   )
+
+  // Focus the inline search field when the sidebar search button is pressed.
+  useEffect(() => {
+    if (searchNonce === 0) return
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true })
+    requestAnimationFrame(() => searchInputRef.current?.focus())
+  }, [searchNonce])
 
   const filtered = searchQuery.trim()
     ? memories.filter((m) => m.content.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -170,9 +183,10 @@ export function MemoriesList({
     router.push(`/knowledge/memory/${encodeURIComponent(memory.memoryId)}`)
   }
 
-  return (
-    <View style={styles.container}>
+  const listHeader = (
+    <View style={{ paddingTop: topInset, gap: spacing.md }}>
       <SearchField
+        ref={searchInputRef}
         theme={theme}
         value={searchQuery}
         onChangeText={setSearchQuery}
@@ -228,32 +242,44 @@ export function MemoriesList({
         )}
       </View>
       ) : null}
+    </View>
+  )
 
+  return (
+    <View style={styles.container}>
       {isLoading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator color={theme.textSecondary} />
-        </View>
+        <>
+          {listHeader}
+          <View style={styles.centered}>
+            <ActivityIndicator color={theme.textSecondary} />
+          </View>
+        </>
       ) : filtered.length === 0 ? (
-        <EmptyState
-          theme={theme}
-          icon="box"
-          title={searchQuery ? 'No memories match your search' : 'No memories yet'}
-          description={searchQuery ? 'Try a different search term' : 'Add or import your first memory'}
-          action={
-            !searchQuery ? (
-              <TouchableOpacity
-                onPress={() => setAddSheetOpen(true)}
-                style={[styles.emptyAction, { backgroundColor: theme.foreground }]}
-              >
-                <Text style={[styles.emptyActionText, { color: theme.background }]}>Add your first memory</Text>
-              </TouchableOpacity>
-            ) : undefined
-          }
-        />
+        <>
+          {listHeader}
+          <EmptyState
+            theme={theme}
+            icon="box"
+            title={searchQuery ? 'No memories match your search' : 'No memories yet'}
+            description={searchQuery ? 'Try a different search term' : 'Add or import your first memory'}
+            action={
+              !searchQuery ? (
+                <TouchableOpacity
+                  onPress={() => setAddSheetOpen(true)}
+                  style={[styles.emptyAction, { backgroundColor: theme.foreground }]}
+                >
+                  <Text style={[styles.emptyActionText, { color: theme.background }]}>Add your first memory</Text>
+                </TouchableOpacity>
+              ) : undefined
+            }
+          />
+        </>
       ) : (
         <FlatList
+          ref={flatListRef}
           data={filtered}
           keyExtractor={(item) => item.memoryId}
+          ListHeaderComponent={listHeader}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {

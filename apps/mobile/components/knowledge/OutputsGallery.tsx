@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -6,6 +6,7 @@ import {
   FlatList,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native'
@@ -15,7 +16,8 @@ import { useFocusEffect } from 'expo-router'
 import { useTheme } from '../../hooks/useTheme'
 import { useRouter } from 'expo-router'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
-import { EmptyState } from '../ui/AppChrome'
+import { EmptyState, SearchField } from '../ui/AppChrome'
+import { useDrawer } from '../../contexts/DrawerContext'
 import { listOutputs, deleteOutput, bulkDeleteOutputs } from '../../services/knowledgeService'
 import type { OutputSummary } from '@overlay/app-core'
 import { AUTH_BASE_URL } from '../../services/appConfig'
@@ -93,19 +95,31 @@ function OutputImageThumb({
 export function OutputsGallery({
   headerAction,
   hideInlineToolbar = false,
+  topInset = 0,
 }: {
   headerAction?: { type: string; nonce: number } | null
   hideInlineToolbar?: boolean
+  topInset?: number
 }): React.ReactElement {
   const { theme } = useTheme()
   const router = useRouter()
   const { session } = useAuth()
   const accessToken = session?.accessToken ?? null
+  const { searchNonce } = useDrawer()
+  const searchInputRef = useRef<TextInput>(null)
+  const flatListRef = useRef<FlatList<OutputSummary>>(null)
   const [outputs, setOutputs] = useState<OutputSummary[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [filter, setFilter] = useState<OutputFilter>('all')
+  const [searchQuery, setSearchQuery] = useState('')
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (searchNonce === 0) return
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true })
+    requestAnimationFrame(() => searchInputRef.current?.focus())
+  }, [searchNonce])
 
   const refresh = useCallback(async () => {
     setIsLoading(true)
@@ -127,14 +141,23 @@ export function OutputsGallery({
   )
 
   const filtered = useMemo(() => {
-    if (filter === 'all') return outputs
-    return outputs.filter((o) => {
-      if (filter === 'image') return o.type === 'image'
-      if (filter === 'video') return o.type === 'video'
-      if (filter === 'files') return o.type !== 'image' && o.type !== 'video'
-      return true
+    const byType = filter === 'all'
+      ? outputs
+      : outputs.filter((o) => {
+          if (filter === 'image') return o.type === 'image'
+          if (filter === 'video') return o.type === 'video'
+          if (filter === 'files') return o.type !== 'image' && o.type !== 'video'
+          return true
+        })
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return byType
+    return byType.filter((o) => {
+      const haystack = [o.type, (o as { name?: string }).name ?? '', (o as { prompt?: string }).prompt ?? '']
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(q)
     })
-  }, [outputs, filter])
+  }, [outputs, filter, searchQuery])
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -209,8 +232,15 @@ export function OutputsGallery({
     router.push(`/knowledge/output/${encodeURIComponent(output._id)}`)
   }
 
-  return (
-    <View style={styles.container}>
+  const listHeader = (
+    <View style={{ paddingTop: topInset, gap: spacing.md }}>
+      <SearchField
+        ref={searchInputRef}
+        theme={theme}
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        placeholder="Search outputs"
+      />
       {(!hideInlineToolbar || selectMode) ? (
       <View style={styles.toolbar}>
         {selectMode ? (
@@ -249,22 +279,34 @@ export function OutputsGallery({
         )}
       </View>
       ) : null}
+    </View>
+  )
 
+  return (
+    <View style={styles.container}>
       {isLoading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator color={theme.textSecondary} />
-        </View>
+        <>
+          {listHeader}
+          <View style={styles.centered}>
+            <ActivityIndicator color={theme.textSecondary} />
+          </View>
+        </>
       ) : filtered.length === 0 ? (
-        <EmptyState
-          theme={theme}
-          icon="image"
-          title="No outputs yet"
-          description="Generate images, videos, or files from chat to see them here"
-        />
+        <>
+          {listHeader}
+          <EmptyState
+            theme={theme}
+            icon="image"
+            title="No outputs yet"
+            description="Generate images, videos, or files from chat to see them here"
+          />
+        </>
       ) : (
         <FlatList
+          ref={flatListRef}
           data={filtered}
           keyExtractor={(item) => item._id}
+          ListHeaderComponent={listHeader}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {
