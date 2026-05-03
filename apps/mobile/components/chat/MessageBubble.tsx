@@ -433,7 +433,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         color: theme.text,
         fontSize: 17,
         lineHeight: 26,
-        fontFamily: isUser ? undefined : 'LibreBaskerville',
+        fontFamily: 'LibreBaskerville',
         marginTop: 0,
         marginBottom: 8,
       },
@@ -443,7 +443,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         fontWeight: '700',
         marginTop: 16,
         marginBottom: 8,
-        fontFamily: isUser ? undefined : 'LibreBaskerville',
+        fontFamily: 'LibreBaskerville',
       },
       h2: {
         color: theme.text,
@@ -451,7 +451,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         fontWeight: '600',
         marginTop: 12,
         marginBottom: 6,
-        fontFamily: isUser ? undefined : 'LibreBaskerville',
+        fontFamily: 'LibreBaskerville',
       },
       h3: {
         color: theme.text,
@@ -459,7 +459,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         fontWeight: '600',
         marginTop: 10,
         marginBottom: 4,
-        fontFamily: isUser ? undefined : 'LibreBaskerville',
+        fontFamily: 'LibreBaskerville',
       },
       h4: {
         color: theme.text,
@@ -509,7 +509,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         lineHeight: 26,
         bulletColor: theme.text,
         markerColor: theme.text,
-        fontFamily: isUser ? undefined : 'LibreBaskerville',
+        fontFamily: 'LibreBaskerville',
       },
       blockquote: {
         backgroundColor: theme.surfaceMuted,
@@ -518,7 +518,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         marginTop: 8,
         marginBottom: 8,
         color: theme.text,
-        fontFamily: isUser ? undefined : 'LibreBaskerville',
+        fontFamily: 'LibreBaskerville',
       },
       table: {
         borderColor: theme.border,
@@ -528,6 +528,8 @@ export const MessageBubble = React.memo(function MessageBubble({
         marginBottom: 8,
         headerBackgroundColor: theme.surfaceMuted,
         headerTextColor: theme.text,
+        rowEvenBackgroundColor: theme.surfaceSubtle,
+        rowOddBackgroundColor: theme.surfaceMuted,
         color: theme.text,
       },
       thematicBreak: { color: theme.border, height: 1, marginTop: 12, marginBottom: 12 },

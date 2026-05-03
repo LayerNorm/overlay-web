@@ -4,12 +4,12 @@ import {
   Alert,
   Dimensions,
   FlatList,
-  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native'
+import { Image } from 'expo-image'
 import { Feather } from '@expo/vector-icons'
 import { useFocusEffect } from 'expo-router'
 import { useTheme } from '../../hooks/useTheme'
@@ -45,17 +45,32 @@ function OutputImageThumb({
   url,
   style,
   accessToken,
+  fallbackIcon = 'image',
+  placeholderBg,
+  placeholderFg,
 }: {
   url: string
   style: object
   accessToken: string | null
+  fallbackIcon?: React.ComponentProps<typeof Feather>['name']
+  placeholderBg?: string
+  placeholderFg?: string
 }) {
   const [failed, setFailed] = useState(false)
   const uri = resolveOutputUri(url)
   if (failed || !uri) {
     return (
-      <View style={[style, { alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.06)' }]}>
-        <Feather name="image" size={24} color="rgba(255,255,255,0.3)" />
+      <View
+        style={[
+          style,
+          {
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: placeholderBg ?? 'rgba(127,127,127,0.1)',
+          },
+        ]}
+      >
+        <Feather name={fallbackIcon} size={24} color={placeholderFg ?? 'rgba(127,127,127,0.5)'} />
       </View>
     )
   }
@@ -64,7 +79,13 @@ function OutputImageThumb({
     <Image
       source={{ uri, headers }}
       style={style}
-      onError={() => setFailed(true)}
+      contentFit="cover"
+      transition={150}
+      cachePolicy="memory-disk"
+      onError={(event) => {
+        console.warn('[OutputImageThumb] image load failed', { uri, error: event?.error })
+        setFailed(true)
+      }}
     />
   )
 }
@@ -248,7 +269,8 @@ export function OutputsGallery({
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {
             const isSelected = selectedIds.has(item._id)
-            if (item.type === 'image') {
+            const isMedia = item.type === 'image' || item.type === 'video'
+            if (isMedia) {
               return (
                 <TouchableOpacity
                   activeOpacity={0.82}
@@ -264,11 +286,24 @@ export function OutputsGallery({
                     styles.imageCell,
                     {
                       borderColor: isSelected ? theme.foreground : theme.border,
+                      backgroundColor: theme.surfaceMuted,
                       height: IMAGE_SIZE,
                     },
                   ]}
                 >
-                  <OutputImageThumb url={item.url ?? ''} style={styles.imageThumb} accessToken={accessToken} />
+                  <OutputImageThumb
+                    url={item.url ?? ''}
+                    style={styles.imageThumb}
+                    accessToken={accessToken}
+                    fallbackIcon={item.type === 'video' ? 'film' : 'image'}
+                    placeholderBg={theme.surfaceMuted}
+                    placeholderFg={theme.textSecondary}
+                  />
+                  {item.type === 'video' && (
+                    <View style={styles.videoBadge}>
+                      <Feather name="play" size={14} color="#ffffff" />
+                    </View>
+                  )}
                   {selectMode && (
                     <View
                       style={[
@@ -422,6 +457,17 @@ const styles = StyleSheet.create({
   imageThumb: {
     width: '100%',
     height: '100%',
+  },
+  videoBadge: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   imageCheckbox: {
     position: 'absolute',

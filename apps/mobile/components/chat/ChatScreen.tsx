@@ -458,15 +458,10 @@ export function ChatScreen({
         ? (models.find((m) => m.id === preferredId)?.id ?? models[0]?.id)
         : models[0]?.id
 
-      let created: Chat
-      try {
-        created = await createNewChat(modelId, {
-          projectId,
-          title: 'New Chat',
-        })
-      } catch {
-        created = createDraftChat(modelId, projectId)
-      }
+      // Create a client-side draft only. The server-side conversation is
+      // created lazily on the first user message (via chatStream), so
+      // merely navigating to the Chat tab never produces an empty chat.
+      const created: Chat = createDraftChat(modelId, projectId)
 
       chatRef.current = created
       setChatTitle(created.title)
@@ -480,7 +475,6 @@ export function ChatScreen({
       setInputValue('')
       setImageBase64(null)
       await setLastOpenedChatId(created.id)
-      await refreshHistory().catch(() => [])
 
       if (options.replaceRoute) {
         router.replace({
@@ -495,7 +489,7 @@ export function ChatScreen({
 
       return created
     },
-    [projectId, projectName, refreshHistory, router],
+    [projectId, projectName, router],
   )
 
   useEffect(() => {
