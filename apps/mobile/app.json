@@ -64,7 +64,8 @@
           "visibility": "visible"
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "react-native-enriched-markdown"
     ],
     "extra": {
       "router": {},

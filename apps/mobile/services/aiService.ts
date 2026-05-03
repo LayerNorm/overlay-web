@@ -75,16 +75,35 @@ type UiMessageChunk =
   | { type: 'finish'; messageMetadata?: unknown }
   | { type: 'error'; errorText: string }
 
-export const DEFAULT_CHAT_MODEL_ID = 'moonshotai/kimi-k2-thinking'
+export const DEFAULT_CHAT_MODEL_ID = 'claude-sonnet-4-6'
 
 const AVAILABLE_CHAT_MODELS: ChatModel[] = [
-  { id: 'minimaxai/minimax-m2.7', name: 'Free: Minimax 2.7', provider: 'nvidia', description: 'Best free agentic model', intelligence: 1.85, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
-  { id: 'deepseek-ai/deepseek-v4-pro', name: 'Free: DeepSeek V4 Pro', provider: 'nvidia', description: 'Strong free reasoning', intelligence: 1.8, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
-  { id: 'deepseek-ai/deepseek-v4-flash', name: 'Free: DeepSeek V4 Flash', provider: 'nvidia', description: 'Fast free reasoning', intelligence: 1.75, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
-  { id: 'moonshotai/kimi-k2-thinking', name: 'Free: Kimi K2 Thinking', provider: 'nvidia', description: 'Default free reasoning model', intelligence: 1.7, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
-  { id: 'deepseek-ai/deepseek-v3.2', name: 'Free: DeepSeek V3.2', provider: 'nvidia', description: 'General free chat', intelligence: 1.65, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
-  { id: 'qwen/qwen3.6-plus', name: 'Qwen 3.6 Plus', provider: 'alibaba', description: 'Free agentic coding', intelligence: 1.6, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  // Google
+  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', provider: 'google', description: 'Most capable', intelligence: 2, cost: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', provider: 'google', description: 'Fast & efficient', intelligence: 1.5, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'google/gemma-4-26b-a4b-it', name: 'Gemma 4 26B A4B', provider: 'google', description: 'Efficient open model', intelligence: 1.1, cost: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  // OpenAI
+  { id: 'gpt-5.4', name: 'GPT-5.4', provider: 'openai', description: 'Powerful', intelligence: 2, cost: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini', provider: 'openai', description: 'Compact', intelligence: 1.45, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'gpt-4.1-2025-04-14', name: 'GPT-4.1', provider: 'openai', description: 'Reliable', intelligence: 1.5, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  // Anthropic
+  { id: 'anthropic/claude-opus-4.7', name: 'Claude Opus 4.7', provider: 'openrouter', description: 'Most capable', intelligence: 2, cost: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'anthropic', description: 'Best balance', intelligence: 1.75, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', provider: 'anthropic', description: 'Fast & light', intelligence: 1.25, cost: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  // xAI
+  { id: 'xai/grok-4.20-reasoning', name: 'Grok 4.20', provider: 'xai', description: 'Flagship reasoning', intelligence: 1.8, cost: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  // Frontier / open models
+  { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', provider: 'deepseek', description: 'Flagship reasoning', intelligence: 1.9, cost: 3, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', provider: 'deepseek', description: 'Fast reasoning', intelligence: 1.8, cost: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'minimax/minimax-m2.7', name: 'MiniMax M2.7', provider: 'minimax', description: 'Strong agentic coding', intelligence: 1.85, cost: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'moonshotai/kimi-k2.6', name: 'Kimi K2.6', provider: 'moonshotai', description: 'Multimodal long-context', intelligence: 1.7, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'z-ai/glm-5.1', name: 'GLM 5.1', provider: 'zai', description: 'Long-horizon coding', intelligence: 1.55, cost: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', provider: 'groq', description: 'Open weights', intelligence: 1.25, cost: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  // Free models (OpenRouter auto-router + NVIDIA NIM)
   { id: 'openrouter/free', name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 1.25, cost: 0, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'qwen/qwen3.6-plus', name: 'Qwen 3.6 Plus', provider: 'alibaba', description: 'Agentic coding', intelligence: 1.6, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'moonshotai/kimi-k2-thinking', name: 'Free: Kimi K2 Thinking', provider: 'nvidia', description: 'Free model', intelligence: 1.7, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  { id: 'deepseek-ai/deepseek-v3.2', name: 'Free: DeepSeek V3.2', provider: 'nvidia', description: 'Free model', intelligence: 1.65, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
 ]
 
 export async function getAvailableModels(): Promise<ChatModel[]> {

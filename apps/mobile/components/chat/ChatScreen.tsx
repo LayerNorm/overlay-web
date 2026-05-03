@@ -576,9 +576,12 @@ export function ChatScreen({
     }
   }, [isAuthLoading, isAuthenticated, refreshHistory])
 
-  // Refresh history every time the drawer opens so the list is never stale.
+  // Refresh history every time the drawer opens so the list is never stale,
+  // and force the composer to drop focus so the keyboard slides away.
   useEffect(() => {
     if (drawerVisible) {
+      textInputRef.current?.blur()
+      Keyboard.dismiss()
       void refreshHistory().catch(() => {})
     }
   }, [drawerVisible, refreshHistory])

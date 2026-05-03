@@ -18,6 +18,15 @@ import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { EmptyState } from '../ui/AppChrome'
 import { listOutputs, deleteOutput, bulkDeleteOutputs } from '../../services/knowledgeService'
 import type { OutputSummary } from '@overlay/app-core'
+import { AUTH_BASE_URL } from '../../services/appConfig'
+import { useAuth } from '../../contexts/AuthContext'
+
+function resolveOutputUri(rawUrl: string | undefined): string {
+  if (!rawUrl) return ''
+  if (/^https?:\/\//i.test(rawUrl)) return rawUrl
+  if (rawUrl.startsWith('/')) return `${AUTH_BASE_URL}${rawUrl}`
+  return rawUrl
+}
 
 const OUTPUT_FILTERS = [
   { label: 'All', value: 'all' },
@@ -32,16 +41,32 @@ type OutputHeaderAction = 'selectOutputs' | 'outputAll' | 'outputImage' | 'outpu
 const { width } = Dimensions.get('window')
 const IMAGE_SIZE = (width - 48 - 16) / 2
 
-function OutputImageThumb({ url, style }: { url: string; style: object }) {
+function OutputImageThumb({
+  url,
+  style,
+  accessToken,
+}: {
+  url: string
+  style: object
+  accessToken: string | null
+}) {
   const [failed, setFailed] = useState(false)
-  if (failed || !url) {
+  const uri = resolveOutputUri(url)
+  if (failed || !uri) {
     return (
       <View style={[style, { alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.06)' }]}>
         <Feather name="image" size={24} color="rgba(255,255,255,0.3)" />
       </View>
     )
   }
-  return <Image source={{ uri: url }} style={style} onError={() => setFailed(true)} />
+  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
+  return (
+    <Image
+      source={{ uri, headers }}
+      style={style}
+      onError={() => setFailed(true)}
+    />
+  )
 }
 
 export function OutputsGallery({
@@ -53,6 +78,8 @@ export function OutputsGallery({
 }): React.ReactElement {
   const { theme } = useTheme()
   const router = useRouter()
+  const { session } = useAuth()
+  const accessToken = session?.accessToken ?? null
   const [outputs, setOutputs] = useState<OutputSummary[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [filter, setFilter] = useState<OutputFilter>('all')
@@ -241,7 +268,7 @@ export function OutputsGallery({
                     },
                   ]}
                 >
-                  <OutputImageThumb url={item.url ?? ''} style={styles.imageThumb} />
+                  <OutputImageThumb url={item.url ?? ''} style={styles.imageThumb} accessToken={accessToken} />
                   {selectMode && (
                     <View
                       style={[

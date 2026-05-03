@@ -79,14 +79,14 @@ export function KnowledgeScreen(): React.ReactElement {
             { key: 'new', label: 'New', icon: 'file-plus' },
             { key: 'uploadFile', label: 'Upload File', icon: 'upload' },
             { key: 'uploadFolder', label: 'Upload Folder', icon: 'folder-plus' },
-            { key: 'selectFiles', label: 'Select for Files', icon: 'check-square' },
+            { key: 'selectFiles', label: 'Select', icon: 'check-square' },
           ]
         : [
             { key: 'outputAll', label: 'All', icon: 'grid' },
             { key: 'outputImage', label: 'Image', icon: 'image' },
             { key: 'outputVideo', label: 'Video', icon: 'film' },
             { key: 'outputFiles', label: 'Files', icon: 'file' },
-            { key: 'selectOutputs', label: 'Select for Outputs', icon: 'check-square' },
+            { key: 'selectOutputs', label: 'Select', icon: 'check-square' },
           ]
 
   return (

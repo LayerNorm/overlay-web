@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -102,6 +102,8 @@ export function NotesScreen(): React.ReactElement {
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
+  // Prevent re-navigating to the last note every time the notes array updates
+  const hasCheckedLastNote = useRef(false)
 
   const refreshNotes = useCallback(async () => {
     setIsLoading(true)
@@ -165,13 +167,16 @@ export function NotesScreen(): React.ReactElement {
     router.push({ pathname: '/note/[id]', params: { id: noteId } })
   }, [router])
 
-  // On mount, check if we should redirect to last note
+  // On first load, check if we should restore the last-opened note.
+  // Guard with a ref so this only fires once — not every time notes refreshes.
   useEffect(() => {
+    if (hasCheckedLastNote.current || notes.length === 0) return
+    hasCheckedLastNote.current = true
+
     const checkLastNote = async () => {
       try {
         const lastNoteId = await AsyncStorage.getItem('overlay:last-note-id')
         if (lastNoteId && notes.find(n => n.id === lastNoteId)) {
-          // Navigate to last note
           router.push({ pathname: '/note/[id]', params: { id: lastNoteId } })
         }
       } catch {

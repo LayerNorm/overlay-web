@@ -16,13 +16,14 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated'
-import Markdown from 'react-native-markdown-display'
+import { EnrichedMarkdownText } from 'react-native-enriched-markdown'
+import type { MarkdownStyle as EnrichedMarkdownStyle } from 'react-native-enriched-markdown'
 import { Feather } from '@expo/vector-icons'
 import type { Message, ToolInvocationSummary } from '../../services/chatTypes'
 import type { Theme } from '../../constants/theme'
 import { spacing, fontSize, borderRadius } from '../../constants/theme'
 
-type MarkdownStyle = React.ComponentProps<typeof Markdown>['style']
+type MarkdownStyle = EnrichedMarkdownStyle
 
 const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
@@ -354,10 +355,30 @@ function SourcesSection({ sources, theme }: { sources: WebSource[]; theme: Theme
 // not on every streaming chunk.
 
 const StableMd = React.memo(
-  function StableMd({ text, style }: { text: string; style: MarkdownStyle }) {
-    return <Markdown style={style}>{text}</Markdown>
+  function StableMd({
+    text,
+    style,
+    streaming,
+  }: {
+    text: string
+    style: MarkdownStyle
+    streaming?: boolean
+  }) {
+    return (
+      <EnrichedMarkdownText
+        markdown={text}
+        markdownStyle={style}
+        flavor="github"
+        md4cFlags={{ latexMath: true }}
+        streamingAnimation={streaming}
+        selectable
+      />
+    )
   },
-  (prev, next) => prev.text === next.text && prev.style === next.style,
+  (prev, next) =>
+    prev.text === next.text &&
+    prev.style === next.style &&
+    prev.streaming === next.streaming,
 )
 
 // Assistant replies stream chunk-by-chunk; we still render markdown on the whole string
@@ -406,85 +427,123 @@ export const MessageBubble = React.memo(function MessageBubble({
     [toolInvocations.length, toolInvocations[toolInvocations.length - 1]?.state],
   )
 
-  const markdownStyles = useMemo(
+  const markdownStyles = useMemo<MarkdownStyle>(
     () => ({
-      body: {
+      paragraph: {
         color: isUser ? theme.buttonPrimaryText : theme.text,
         fontSize: 17,
         lineHeight: 26,
         fontFamily: isUser ? undefined : 'LibreBaskerville',
+        marginTop: 0,
+        marginBottom: 8,
       },
-      paragraph: { marginTop: 0, marginBottom: 8 },
-      code_inline: {
+      h1: {
+        color: isUser ? theme.buttonPrimaryText : theme.text,
+        fontSize: 22,
+        fontWeight: '700',
+        marginTop: 16,
+        marginBottom: 8,
+        fontFamily: isUser ? undefined : 'LibreBaskerville',
+      },
+      h2: {
+        color: isUser ? theme.buttonPrimaryText : theme.text,
+        fontSize: 19,
+        fontWeight: '600',
+        marginTop: 12,
+        marginBottom: 6,
+        fontFamily: isUser ? undefined : 'LibreBaskerville',
+      },
+      h3: {
+        color: isUser ? theme.buttonPrimaryText : theme.text,
+        fontSize: 17,
+        fontWeight: '600',
+        marginTop: 10,
+        marginBottom: 4,
+        fontFamily: isUser ? undefined : 'LibreBaskerville',
+      },
+      h4: {
+        color: isUser ? theme.buttonPrimaryText : theme.text,
+        fontSize: 16,
+        fontWeight: '600',
+        marginTop: 8,
+        marginBottom: 4,
+      },
+      h5: {
+        color: isUser ? theme.buttonPrimaryText : theme.text,
+        fontSize: 15,
+        fontWeight: '600',
+        marginTop: 6,
+        marginBottom: 4,
+      },
+      h6: {
+        color: isUser ? theme.buttonPrimaryText : theme.text,
+        fontSize: 14,
+        fontWeight: '600',
+        marginTop: 6,
+        marginBottom: 4,
+      },
+      code: {
         backgroundColor: isUser ? 'rgba(255,255,255,0.14)' : theme.surfaceMuted,
         color: isUser ? theme.buttonPrimaryText : theme.text,
-        paddingHorizontal: 5,
-        paddingVertical: 2,
-        borderRadius: 4,
         fontSize: 13,
         fontFamily: 'monospace',
       },
-      fence: {
+      codeBlock: {
         backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceMuted,
         borderColor: isUser ? 'rgba(255,255,255,0.2)' : theme.border,
         borderWidth: 1,
         borderRadius: 8,
         padding: 12,
-        marginVertical: 8,
-      },
-      code_block: {
+        marginTop: 8,
+        marginBottom: 8,
         color: isUser ? theme.buttonPrimaryText : theme.text,
         fontSize: 13,
         fontFamily: 'monospace',
       },
-      link: { color: isUser ? '#93C5FD' : '#3B82F6' },
-      heading1: {
+      link: { color: isUser ? '#93C5FD' : '#3B82F6', underline: true },
+      strong: { fontWeight: 'bold' },
+      em: { fontStyle: 'italic' },
+      list: {
         color: isUser ? theme.buttonPrimaryText : theme.text,
-        fontSize: 20,
-        fontWeight: '700' as const,
-        marginTop: 16,
-        marginBottom: 8,
+        fontSize: 17,
+        lineHeight: 26,
+        bulletColor: isUser ? theme.buttonPrimaryText : theme.text,
+        markerColor: isUser ? theme.buttonPrimaryText : theme.text,
+        fontFamily: isUser ? undefined : 'LibreBaskerville',
       },
-      heading2: {
-        color: isUser ? theme.buttonPrimaryText : theme.text,
-        fontSize: 18,
-        fontWeight: '600' as const,
-        marginTop: 12,
-        marginBottom: 6,
-      },
-      heading3: {
-        color: isUser ? theme.buttonPrimaryText : theme.text,
-        fontSize: 16,
-        fontWeight: '600' as const,
-        marginTop: 10,
-        marginBottom: 4,
-      },
-      bullet_list: { marginVertical: 4 },
-      ordered_list: { marginVertical: 4 },
-      list_item: { marginVertical: 2 },
       blockquote: {
         backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceMuted,
-        borderLeftColor: isUser ? 'rgba(255,255,255,0.4)' : theme.border,
-        borderLeftWidth: 3,
-        paddingLeft: 12,
-        paddingVertical: 4,
-        marginVertical: 8,
+        borderColor: isUser ? 'rgba(255,255,255,0.4)' : theme.border,
+        borderWidth: 3,
+        marginTop: 8,
+        marginBottom: 8,
+        color: isUser ? theme.buttonPrimaryText : theme.text,
+        fontFamily: isUser ? undefined : 'LibreBaskerville',
       },
-      strong: { fontWeight: '700' as const },
-      em: { fontStyle: 'italic' as const },
       table: {
         borderColor: theme.border,
         borderWidth: StyleSheet.hairlineWidth,
         borderRadius: 4,
-        marginVertical: 8,
+        marginTop: 8,
+        marginBottom: 8,
+        headerBackgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceMuted,
+        headerTextColor: isUser ? theme.buttonPrimaryText : theme.text,
+        color: isUser ? theme.buttonPrimaryText : theme.text,
       },
-      th: {
-        backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceMuted,
-        padding: 8,
-        fontWeight: '600' as const,
+      thematicBreak: { color: theme.border, height: 1, marginTop: 12, marginBottom: 12 },
+      math: {
+        color: isUser ? theme.buttonPrimaryText : theme.text,
+        fontSize: 17,
+        marginTop: 8,
+        marginBottom: 8,
+        textAlign: 'center',
       },
-      td: { padding: 8, borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth },
-      hr: { backgroundColor: theme.border, height: 1, marginVertical: 12 },
+      inlineMath: { color: isUser ? theme.buttonPrimaryText : theme.text },
+      taskList: {
+        checkedColor: isUser ? theme.buttonPrimaryText : theme.accent,
+        borderColor: isUser ? 'rgba(255,255,255,0.4)' : theme.border,
+        checkmarkColor: isUser ? theme.buttonPrimaryBg : theme.background,
+      },
     }),
     [isUser, theme],
   )
@@ -500,7 +559,7 @@ export const MessageBubble = React.memo(function MessageBubble({
               <Text style={[styles.attachmentTagText, { color: '#FFFFFF' }]}>Image attached</Text>
             </View>
           ) : null}
-          <StableMd text={message.content} style={markdownStyles} />
+          <StableMd text={message.content} style={markdownStyles} streaming={false} />
         </View>
       </Animated.View>
     )
@@ -538,7 +597,11 @@ export const MessageBubble = React.memo(function MessageBubble({
         </View>
       ) : displayContent ? (
         <View>
-          <StableMd text={normalizeDisplayText(displayContent)} style={markdownStyles} />
+          <StableMd
+            text={normalizeDisplayText(displayContent)}
+            style={markdownStyles}
+            streaming={isLoading}
+          />
           {isLoading ? (
             <View style={styles.streamingLine}>
               <StreamingCursor />
