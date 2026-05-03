@@ -167,11 +167,11 @@ export default function AuthFlowScreen(): React.ReactElement {
               style={styles.providerButton}
             >
               {isSigningIn ? (
-                <ActivityIndicator color={theme.text} />
+                <ActivityIndicator color="#000000" />
               ) : (
                 <>
-                  <Text style={styles.appleIcon}></Text>
-                  <Text style={[styles.providerButtonText, { color: theme.text }]}>Continue with Apple</Text>
+                  <Text style={[styles.appleIcon, { color: '#000000' }]}></Text>
+                  <Text style={[styles.providerButtonText, { color: '#000000' }]}>Continue with Apple</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -187,11 +187,11 @@ export default function AuthFlowScreen(): React.ReactElement {
               style={styles.providerButton}
             >
               {isSigningIn ? (
-                <ActivityIndicator color={theme.text} />
+                <ActivityIndicator color="#000000" />
               ) : (
                 <>
                   <GoogleIcon />
-                  <Text style={[styles.providerButtonText, { color: theme.text }]}>Continue with Google</Text>
+                  <Text style={[styles.providerButtonText, { color: '#000000' }]}>Continue with Google</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -207,11 +207,11 @@ export default function AuthFlowScreen(): React.ReactElement {
               style={styles.providerButton}
             >
               {isSigningIn ? (
-                <ActivityIndicator color={theme.text} />
+                <ActivityIndicator color="#000000" />
               ) : (
                 <>
                   <MicrosoftIcon />
-                  <Text style={[styles.providerButtonText, { color: theme.text }]}>Continue with Microsoft</Text>
+                  <Text style={[styles.providerButtonText, { color: '#000000' }]}>Continue with Microsoft</Text>
                 </>
               )}
             </TouchableOpacity>
