@@ -347,7 +347,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: fontSize.lg,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   notesCount: {
     fontSize: fontSize.sm,

@@ -13,6 +13,7 @@ import {
 } from 'react-native'
 import { BlurView } from 'expo-blur'
 import { LinearGradient } from 'expo-linear-gradient'
+import MaskedView from '@react-native-masked-view/masked-view'
 import { Feather } from '@expo/vector-icons'
 import type { Theme } from '../../constants/theme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
@@ -70,16 +71,49 @@ export function MainScreenHeader({
   rightSlot?: React.ReactNode
 }): React.ReactElement {
   const bandH = blurHeight ?? topInset + 58
+
   return (
     <>
-      <View style={[styles.mainHeaderBlur, { height: bandH }]} pointerEvents="none">
-        <BlurView intensity={70} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFillObject} />
-        <LinearGradient
-          colors={[isDark ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.7)', 'transparent']}
-          locations={[0, 1]}
+      {/* Frosted glass header that fades to fully transparent at the bottom.
+          MaskedView applies a vertical linear-gradient alpha mask to a uniform
+          BlurView + tint, so blur strength tapers smoothly to zero — no hard
+          edge or visible cut-off line. */}
+      <MaskedView
+        style={[styles.mainHeaderBlur, { height: bandH }]}
+        pointerEvents="none"
+        maskElement={
+          <LinearGradient
+            colors={[
+              'rgba(0,0,0,1)',
+              'rgba(0,0,0,1)',
+              'rgba(0,0,0,0.98)',
+              'rgba(0,0,0,0.92)',
+              'rgba(0,0,0,0.82)',
+              'rgba(0,0,0,0.65)',
+              'rgba(0,0,0,0.42)',
+              'rgba(0,0,0,0.2)',
+              'rgba(0,0,0,0.05)',
+              'rgba(0,0,0,0)',
+            ]}
+            locations={[0, 0.45, 0.55, 0.65, 0.72, 0.8, 0.87, 0.93, 0.97, 1]}
+            style={{ flex: 1 }}
+          />
+        }
+      >
+        <BlurView
+          intensity={15}
+          tint={isDark ? 'dark' : 'light'}
           style={StyleSheet.absoluteFillObject}
         />
-      </View>
+        <View
+          style={[
+            StyleSheet.absoluteFillObject,
+            {
+              backgroundColor: isDark ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.35)',
+            },
+          ]}
+        />
+      </MaskedView>
       <View style={[styles.mainHeaderRow, { top: topInset + 6 }]}>
         <View style={styles.mainHeaderSide}>{leftSlot ?? <View style={{ width: 44 }} />}</View>
         <View style={styles.mainHeaderCenter}>{centerSlot}</View>
@@ -385,6 +419,12 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 99,
   },
+  blurLayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    overflow: 'hidden',
+  },
   mainHeaderRow: {
     position: 'absolute',
     left: spacing.md,
@@ -572,8 +612,9 @@ const styles = StyleSheet.create({
     flexGrow: 0,
   },
   sheetContent: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.xxl,
+    gap: spacing.md,
   },
 })

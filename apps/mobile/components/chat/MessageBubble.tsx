@@ -430,7 +430,7 @@ export const MessageBubble = React.memo(function MessageBubble({
   const markdownStyles = useMemo<MarkdownStyle>(
     () => ({
       paragraph: {
-        color: isUser ? theme.buttonPrimaryText : theme.text,
+        color: theme.text,
         fontSize: 17,
         lineHeight: 26,
         fontFamily: isUser ? undefined : 'LibreBaskerville',
@@ -438,7 +438,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         marginBottom: 8,
       },
       h1: {
-        color: isUser ? theme.buttonPrimaryText : theme.text,
+        color: theme.text,
         fontSize: 22,
         fontWeight: '700',
         marginTop: 16,
@@ -446,7 +446,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         fontFamily: isUser ? undefined : 'LibreBaskerville',
       },
       h2: {
-        color: isUser ? theme.buttonPrimaryText : theme.text,
+        color: theme.text,
         fontSize: 19,
         fontWeight: '600',
         marginTop: 12,
@@ -454,7 +454,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         fontFamily: isUser ? undefined : 'LibreBaskerville',
       },
       h3: {
-        color: isUser ? theme.buttonPrimaryText : theme.text,
+        color: theme.text,
         fontSize: 17,
         fontWeight: '600',
         marginTop: 10,
@@ -462,62 +462,62 @@ export const MessageBubble = React.memo(function MessageBubble({
         fontFamily: isUser ? undefined : 'LibreBaskerville',
       },
       h4: {
-        color: isUser ? theme.buttonPrimaryText : theme.text,
+        color: theme.text,
         fontSize: 16,
         fontWeight: '600',
         marginTop: 8,
         marginBottom: 4,
       },
       h5: {
-        color: isUser ? theme.buttonPrimaryText : theme.text,
+        color: theme.text,
         fontSize: 15,
         fontWeight: '600',
         marginTop: 6,
         marginBottom: 4,
       },
       h6: {
-        color: isUser ? theme.buttonPrimaryText : theme.text,
+        color: theme.text,
         fontSize: 14,
         fontWeight: '600',
         marginTop: 6,
         marginBottom: 4,
       },
       code: {
-        backgroundColor: isUser ? 'rgba(255,255,255,0.14)' : theme.surfaceMuted,
-        color: isUser ? theme.buttonPrimaryText : theme.text,
+        backgroundColor: theme.surfaceMuted,
+        color: theme.text,
         fontSize: 13,
         fontFamily: 'monospace',
       },
       codeBlock: {
-        backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceMuted,
-        borderColor: isUser ? 'rgba(255,255,255,0.2)' : theme.border,
+        backgroundColor: theme.surfaceMuted,
+        borderColor: theme.border,
         borderWidth: 1,
         borderRadius: 8,
         padding: 12,
         marginTop: 8,
         marginBottom: 8,
-        color: isUser ? theme.buttonPrimaryText : theme.text,
+        color: theme.text,
         fontSize: 13,
         fontFamily: 'monospace',
       },
-      link: { color: isUser ? '#93C5FD' : '#3B82F6', underline: true },
+      link: { color: '#3B82F6', underline: true },
       strong: { fontWeight: 'bold' },
       em: { fontStyle: 'italic' },
       list: {
-        color: isUser ? theme.buttonPrimaryText : theme.text,
+        color: theme.text,
         fontSize: 17,
         lineHeight: 26,
-        bulletColor: isUser ? theme.buttonPrimaryText : theme.text,
-        markerColor: isUser ? theme.buttonPrimaryText : theme.text,
+        bulletColor: theme.text,
+        markerColor: theme.text,
         fontFamily: isUser ? undefined : 'LibreBaskerville',
       },
       blockquote: {
-        backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceMuted,
-        borderColor: isUser ? 'rgba(255,255,255,0.4)' : theme.border,
+        backgroundColor: theme.surfaceMuted,
+        borderColor: theme.border,
         borderWidth: 3,
         marginTop: 8,
         marginBottom: 8,
-        color: isUser ? theme.buttonPrimaryText : theme.text,
+        color: theme.text,
         fontFamily: isUser ? undefined : 'LibreBaskerville',
       },
       table: {
@@ -526,23 +526,23 @@ export const MessageBubble = React.memo(function MessageBubble({
         borderRadius: 4,
         marginTop: 8,
         marginBottom: 8,
-        headerBackgroundColor: isUser ? 'rgba(255,255,255,0.1)' : theme.surfaceMuted,
-        headerTextColor: isUser ? theme.buttonPrimaryText : theme.text,
-        color: isUser ? theme.buttonPrimaryText : theme.text,
+        headerBackgroundColor: theme.surfaceMuted,
+        headerTextColor: theme.text,
+        color: theme.text,
       },
       thematicBreak: { color: theme.border, height: 1, marginTop: 12, marginBottom: 12 },
       math: {
-        color: isUser ? theme.buttonPrimaryText : theme.text,
+        color: theme.text,
         fontSize: 17,
         marginTop: 8,
         marginBottom: 8,
         textAlign: 'center',
       },
-      inlineMath: { color: isUser ? theme.buttonPrimaryText : theme.text },
+      inlineMath: { color: theme.text },
       taskList: {
-        checkedColor: isUser ? theme.buttonPrimaryText : theme.accent,
-        borderColor: isUser ? 'rgba(255,255,255,0.4)' : theme.border,
-        checkmarkColor: isUser ? theme.buttonPrimaryBg : theme.background,
+        checkedColor: theme.accent,
+        borderColor: theme.border,
+        checkmarkColor: theme.background,
       },
     }),
     [isUser, theme],
@@ -552,11 +552,11 @@ export const MessageBubble = React.memo(function MessageBubble({
   if (isUser) {
     return (
       <Animated.View entering={FadeIn.duration(150)} style={[styles.container, styles.userContainer]}>
-        <View style={[styles.userBubble, { backgroundColor: theme.buttonPrimaryBg }]}>
+        <View style={[styles.userBubble, { backgroundColor: theme.surfaceSubtle }]}>
           {message.imageData ? (
-            <View style={[styles.attachmentTag, { backgroundColor: 'rgba(255,255,255,0.12)' }]}>
-              <Feather name="image" size={13} color="#FFFFFF" />
-              <Text style={[styles.attachmentTagText, { color: '#FFFFFF' }]}>Image attached</Text>
+            <View style={[styles.attachmentTag, { backgroundColor: theme.surfaceMuted }]}>
+              <Feather name="image" size={13} color={theme.text} />
+              <Text style={[styles.attachmentTagText, { color: theme.text }]}>Image attached</Text>
             </View>
           ) : null}
           <StableMd text={message.content} style={markdownStyles} streaming={false} />
@@ -758,13 +758,13 @@ const styles = StyleSheet.create({
 
   // Streaming cursor
   cursor: {
-    width: 14,
-    height: 14,
+    width: 24,
+    height: 24,
     marginBottom: 3,
   },
   cursorImage: {
-    width: 14,
-    height: 14,
+    width: 24,
+    height: 24,
   },
 
   // Initial loading cursor

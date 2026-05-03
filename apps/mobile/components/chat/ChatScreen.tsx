@@ -63,6 +63,24 @@ import * as FileSystem from 'expo-file-system'
 
 const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
+// Provider logo mapping
+const PROVIDER_LOGOS: Record<string, ReturnType<typeof require>> = {
+  google: require('../../assets/model-logos/google.svg'),
+  openai: require('../../assets/model-logos/openai.svg'),
+  anthropic: require('../../assets/model-logos/anthropic.svg'),
+  xai: require('../../assets/model-logos/xai.svg'),
+  deepseek: require('../../assets/model-logos/deepseek.svg'),
+  groq: require('../../assets/model-logos/groq.svg'),
+  nvidia: require('../../assets/model-logos/nvidia.svg'),
+  openrouter: require('../../assets/model-logos/openrouter.svg'),
+  meta: require('../../assets/model-logos/meta.svg'),
+  mistral: require('../../assets/model-logos/mistral.svg'),
+}
+
+function getProviderLogo(provider: string): ReturnType<typeof require> | null {
+  return PROVIDER_LOGOS[provider.toLowerCase()] ?? null
+}
+
 function createSyntheticModel(modelId?: string | null): ChatModel | null {
   if (!modelId) {
     return null
@@ -1072,13 +1090,28 @@ export function ChatScreen({
                   activeOpacity={0.7}
                   style={styles.modelRow}
                 >
-                  <View style={styles.modelRowContent}>
-                    <Text style={[styles.modelRowTitle, { color: theme.text }]}>
-                      {model.name}
-                    </Text>
-                    <Text style={[styles.modelRowDesc, { color: theme.textSecondary }]}>
-                      {getModelDescription(model)}
-                    </Text>
+                  <View style={styles.modelRowLeft}>
+                    {getProviderLogo(model.provider) ? (
+                      <Image
+                        source={getProviderLogo(model.provider)}
+                        style={styles.providerLogo}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <View style={[styles.providerLogoPlaceholder, { backgroundColor: theme.surfaceElevated }]}>
+                        <Text style={[styles.providerInitial, { color: theme.textSecondary }]}>
+                          {model.provider.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.modelRowContent}>
+                      <Text style={[styles.modelRowTitle, { color: theme.text }]}>
+                        {model.name}
+                      </Text>
+                      <Text style={[styles.modelRowDesc, { color: theme.textSecondary }]}>
+                        {getModelDescription(model)}
+                      </Text>
+                    </View>
                   </View>
                   {isSelected && (
                     <Feather name="check" size={18} color={theme.text} />
@@ -1169,7 +1202,7 @@ const styles = StyleSheet.create({
   },
   topBarModelName: {
     fontSize: fontSize.md,
-    fontWeight: '600',
+    fontWeight: '700',
     flexShrink: 1,
     fontFamily: 'LibreBaskerville',
   },
@@ -1298,6 +1331,28 @@ const styles = StyleSheet.create({
   modelSeparator: {
     height: StyleSheet.hairlineWidth,
     marginHorizontal: 4,
+  },
+  modelRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  providerLogo: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+  },
+  providerLogoPlaceholder: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  providerInitial: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   attachSheetGrid: {
     flexDirection: 'row',

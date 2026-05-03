@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: fontSize.md,
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'center',
   },
   content: {
@@ -226,7 +226,6 @@ const styles = StyleSheet.create({
   },
   signOutButton: {
     minHeight: 48,
-    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: borderRadius.lg,
     flexDirection: 'row',
     alignItems: 'center',

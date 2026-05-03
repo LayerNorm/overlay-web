@@ -428,10 +428,10 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
       borderColor: theme.border,
       borderWidth: 1,
       borderRadius: borderRadius.md,
-      headerBackgroundColor: theme.surface,
+      headerBackgroundColor: theme.surfaceMuted,
       headerTextColor: theme.text,
-      rowEvenBackgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-      rowOddBackgroundColor: 'transparent',
+      rowEvenBackgroundColor: theme.surfaceSubtle,
+      rowOddBackgroundColor: theme.surfaceMuted,
       cellPaddingHorizontal: spacing.sm,
       cellPaddingVertical: spacing.xs,
     },
@@ -657,7 +657,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: fontSize.lg,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   emptyContent: {
     flex: 1,

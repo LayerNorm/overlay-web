@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flexShrink: 1,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
     fontFamily: 'LibreBaskerville',
     textAlign: 'center',
   },

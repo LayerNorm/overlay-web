@@ -16,7 +16,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter, usePathname } from 'expo-router'
 import { Feather, Ionicons } from '@expo/vector-icons'
-import { BlurView } from 'expo-blur'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { Theme } from '../../constants/theme'
 import { fontSize, spacing, borderRadius } from '../../constants/theme'
@@ -613,10 +612,8 @@ function DrawerContent({
       </View>
 
       {/* Bottom Floating Bar with Account & Search */}
-      <BlurView
-        intensity={80}
-        tint={isDark ? 'dark' : 'light'}
-        style={[styles.bottomBar, { bottom: insets.bottom + spacing.sm }]}
+      <View
+        style={[styles.bottomBar, { bottom: insets.bottom }]}
       >
         <View style={styles.bottomBarContent}>
           {/* Account Button */}
@@ -691,7 +688,7 @@ function DrawerContent({
             </TouchableOpacity>
           </GlassSurface>
         </View>
-      </BlurView>
+      </View>
     </View>
   )
 }

@@ -19,6 +19,7 @@
     "@expo/vector-icons": "^15.0.3",
     "@overlay/app-core": "file:../packages/overlay-app-core",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-masked-view/masked-view": "0.3.2",
     "expo": "~55.0.17",
     "expo-auth-session": "~55.0.15",
     "expo-blur": "~55.0.14",
@@ -48,6 +49,7 @@
     "react-native-reanimated": "~3.19.5",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.23.0",
+    "react-native-svg": "15.15.3",
     "react-native-web": "^0.21.0",
     "react-native-webview": "13.16.0"
   },
