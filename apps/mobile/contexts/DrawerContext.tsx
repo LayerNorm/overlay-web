@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState } from 'react'
+import React, { createContext, useContext, useState, useCallback } from 'react'
+import { Keyboard } from 'react-native'
 
 interface DrawerContextValue {
   drawerVisible: boolean
@@ -14,12 +15,22 @@ const DrawerContext = createContext<DrawerContextValue>({
 
 export function DrawerProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const [drawerVisible, setDrawerVisible] = useState(false)
+
+  const openDrawer = useCallback(() => {
+    Keyboard.dismiss()
+    setDrawerVisible(true)
+  }, [])
+
+  const closeDrawer = useCallback(() => {
+    setDrawerVisible(false)
+  }, [])
+
   return (
     <DrawerContext.Provider
       value={{
         drawerVisible,
-        openDrawer: () => setDrawerVisible(true),
-        closeDrawer: () => setDrawerVisible(false),
+        openDrawer,
+        closeDrawer,
       }}
     >
       {children}

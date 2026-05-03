@@ -11,6 +11,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
+import { BlurView } from 'expo-blur'
+import { LinearGradient } from 'expo-linear-gradient'
 import { Feather } from '@expo/vector-icons'
 import type { Theme } from '../../constants/theme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
@@ -42,6 +44,48 @@ export function TopBarIconButton({
         <Feather name={icon} size={16} color={active ? theme.text : theme.textSecondary} />
       </TouchableOpacity>
     </GlassSurface>
+  )
+}
+
+/**
+ * Shared chrome: frosted header band + top row (menu / back, center, trailing).
+ * Used by Chat, Notes, Knowledge, and knowledge detail screens.
+ */
+export function MainScreenHeader({
+  theme: _theme,
+  isDark,
+  topInset,
+  blurHeight,
+  leftSlot,
+  centerSlot,
+  rightSlot,
+}: {
+  theme: Theme
+  isDark: boolean
+  topInset: number
+  /** Total height of the blur band from the top of the screen */
+  blurHeight?: number
+  leftSlot?: React.ReactNode
+  centerSlot: React.ReactNode
+  rightSlot?: React.ReactNode
+}): React.ReactElement {
+  const bandH = blurHeight ?? topInset + 58
+  return (
+    <>
+      <View style={[styles.mainHeaderBlur, { height: bandH }]} pointerEvents="none">
+        <BlurView intensity={70} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFillObject} />
+        <LinearGradient
+          colors={[isDark ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.7)', 'transparent']}
+          locations={[0, 1]}
+          style={StyleSheet.absoluteFillObject}
+        />
+      </View>
+      <View style={[styles.mainHeaderRow, { top: topInset + 6 }]}>
+        <View style={styles.mainHeaderSide}>{leftSlot ?? <View style={{ width: 44 }} />}</View>
+        <View style={styles.mainHeaderCenter}>{centerSlot}</View>
+        <View style={styles.mainHeaderSide}>{rightSlot ?? <View style={{ width: 44 }} />}</View>
+      </View>
+    </>
   )
 }
 
@@ -334,6 +378,34 @@ export function BottomSheet({
 }
 
 const styles = StyleSheet.create({
+  mainHeaderBlur: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 99,
+  },
+  mainHeaderRow: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
+    zIndex: 100,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  mainHeaderSide: {
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mainHeaderCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
   iconButton: {
     width: 44,
     height: 44,

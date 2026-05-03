@@ -5,7 +5,6 @@ import {
   FlatList,
   Image,
   Keyboard,
-  KeyboardAvoidingView,
   PanResponder,
   Platform,
   ScrollView,
@@ -49,6 +48,7 @@ import { DrawerSidebar } from './DrawerSidebar'
 import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
 import {
   BottomSheet,
+  MainScreenHeader,
   StatusPill,
   TopBarIconButton,
 } from '../ui/AppChrome'
@@ -60,8 +60,6 @@ import { GlassSurface } from '../ui/GlassSurface'
 import { useAuth } from '../../contexts/AuthContext'
 import * as DocumentPicker from 'expo-document-picker'
 import * as FileSystem from 'expo-file-system'
-import { BlurView } from 'expo-blur'
-import { LinearGradient } from 'expo-linear-gradient'
 
 const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
@@ -303,7 +301,7 @@ export function ChatScreen({
   const [modelPickerVisible, setModelPickerVisible] = useState(false)
   const [upgradeVisible, setUpgradeVisible] = useState(false)
   const [composerFocused, setComposerFocused] = useState(false)
-  const [keyboardShown, setKeyboardShown] = useState(false)
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
   const [attachPickerVisible, setAttachPickerVisible] = useState(false)
   const [attachedFile, setAttachedFile] = useState<{ name: string; uri: string; mimeType: string } | null>(null)
 
@@ -331,13 +329,29 @@ export function ChatScreen({
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
-    const show = Keyboard.addListener(showEvent, () => setKeyboardShown(true))
-    const hide = Keyboard.addListener(hideEvent, () => setKeyboardShown(false))
-    return () => { show.remove(); hide.remove() }
+    const show = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardHeight(e.endCoordinates.height)
+    })
+    const hide = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0))
+    return () => {
+      show.remove()
+      hide.remove()
+    }
   }, [])
 
-  const composerBottomPadding = keyboardShown ? spacing.xs : Math.max(insets.bottom, spacing.md)
-  const messageBottomPadding = spacing.md
+  /** Lift composer above keyboard (KAV fails with edge‑to‑edge / some Android IME stacks). */
+  const composerFooterInset = Math.max(insets.bottom, spacing.md)
+  const composerBottomPadding =
+    keyboardHeight > 0 ? keyboardHeight + spacing.sm : composerFooterInset
+  /** Keeps latest messages reachable above the lifted composer area. */
+  const messageBottomPadding =
+    keyboardHeight > 0 ? keyboardHeight + 160 + spacing.md : spacing.md
+
+  const handleOpenDrawer = useCallback(() => {
+    textInputRef.current?.blur()
+    Keyboard.dismiss()
+    openDrawer()
+  }, [openDrawer])
 
   const refreshHistory = useCallback(async () => {
     const nextHistory = await loadChatsMeta(projectId).catch(() => null)
@@ -896,56 +910,44 @@ export function ChatScreen({
       }
     >
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 6 : 0}
-      >
         <View style={styles.screenPadding} {...swipeDownPanResponder.panHandlers}>
-          {/* Extended header background covering status bar and header area */}
-          <View style={[styles.headerBlur, { height: insets.top + 60 }]} pointerEvents="none">
-            <BlurView
-              intensity={70}
-              tint={isDark ? 'dark' : 'light'}
-              style={StyleSheet.absoluteFillObject}
-            />
-            {/* Glass gradient: more opaque at top, fading to transparent */}
-            <LinearGradient
-              colors={[isDark ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.7)', 'transparent']}
-              locations={[0, 1]}
-              style={StyleSheet.absoluteFillObject}
-            />
-          </View>
-
-          <View style={[styles.topRow, { top: insets.top + 6 }]}>
-            {routeKind !== 'detail' ? (
-              <TopBarIconButton theme={theme} icon="menu" onPress={openDrawer} />
-            ) : (
-              <View style={{ width: 44 }} />
-            )}
-
-            <TouchableOpacity
-              activeOpacity={0.82}
-              onPress={() => setModelPickerVisible(true)}
-              style={styles.floatingModelPill}
-            >
-              {isSwitchingChat ? (
-                <ActivityIndicator size="small" color={theme.textSecondary} />
-              ) : null}
-              <Text style={[styles.topBarModelName, { color: theme.text }]} numberOfLines={1}>
-                {selectedModel?.name ?? 'Select model'}
-              </Text>
-              <Feather name="chevron-down" size={14} color={theme.textSecondary} />
-            </TouchableOpacity>
-
-            <TopBarIconButton
-              theme={theme}
-              icon="plus"
-              onPress={() => {
-                void startFreshConversation()
-              }}
-            />
-          </View>
+          <MainScreenHeader
+            theme={theme}
+            isDark={isDark}
+            topInset={insets.top}
+            blurHeight={insets.top + 60}
+            leftSlot={
+              routeKind !== 'detail' ? (
+                <TopBarIconButton theme={theme} icon="menu" onPress={handleOpenDrawer} />
+              ) : (
+                <View style={{ width: 44 }} />
+              )
+            }
+            centerSlot={
+              <TouchableOpacity
+                activeOpacity={0.82}
+                onPress={() => setModelPickerVisible(true)}
+                style={styles.floatingModelPill}
+              >
+                {isSwitchingChat ? (
+                  <ActivityIndicator size="small" color={theme.textSecondary} />
+                ) : null}
+                <Text style={[styles.topBarModelName, { color: theme.text }]} numberOfLines={1}>
+                  {selectedModel?.name ?? 'Select model'}
+                </Text>
+                <Feather name="chevron-down" size={14} color={theme.textSecondary} />
+              </TouchableOpacity>
+            }
+            rightSlot={
+              <TopBarIconButton
+                theme={theme}
+                icon="plus"
+                onPress={() => {
+                  void startFreshConversation()
+                }}
+              />
+            }
+          />
 
           <View style={styles.threadSurface}>
             {messages.length === 0 ? (
@@ -970,7 +972,7 @@ export function ChatScreen({
                     }}
                   />
                 )}
-                contentContainerStyle={[styles.messageList, { paddingBottom: messageBottomPadding }]}
+                contentContainerStyle={[styles.messageList, { paddingTop: insets.top + 70, paddingBottom: messageBottomPadding }]}
                 showsVerticalScrollIndicator={false}
                 keyboardDismissMode="on-drag"
                 onContentSizeChange={scrollToBottom}
@@ -1049,7 +1051,6 @@ export function ChatScreen({
             </GlassSurface>
           </View>
         </View>
-      </KeyboardAvoidingView>
 
       <BottomSheet
         theme={theme}
@@ -1155,23 +1156,6 @@ const styles = StyleSheet.create({
   screenPadding: {
     flex: 1,
     paddingBottom: spacing.sm,
-  },
-  headerBlur: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 99,
-  },
-  topRow: {
-    position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
-    zIndex: 100,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
   },
   floatingModelPill: {
     flex: 1,

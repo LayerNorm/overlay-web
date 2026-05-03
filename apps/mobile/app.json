@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Overlay",
-    "slug": "overlay-mobile",
+    "slug": "overlay",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -65,6 +65,20 @@
         }
       ],
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "expo-navigation-bar": {
+        "position": "absolute",
+        "backgroundColor": "#00000000",
+        "borderColor": "#00000000",
+        "barStyle": "dark",
+        "visibility": "visible"
+      },
+      "eas": {
+        "projectId": "268cf4d6-4a66-43bc-88cd-8b308a53c2ff"
+      }
+    },
+    "owner": "layernorm-inc"
   }
 }

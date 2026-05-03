@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -34,6 +34,8 @@ interface TreeNode extends KnowledgeFile {
   isExpanded: boolean
   hasChildren: boolean
 }
+
+type FileHeaderAction = 'new' | 'selectFiles' | 'uploadFile' | 'uploadFolder'
 
 function buildTree(files: KnowledgeFile[], expandedIds: Set<string>, searchQuery: string): TreeNode[] {
   if (searchQuery.trim()) {
@@ -73,7 +75,13 @@ function buildTree(files: KnowledgeFile[], expandedIds: Set<string>, searchQuery
   return result
 }
 
-export function FilesTree(): React.ReactElement {
+export function FilesTree({
+  headerAction,
+  hideInlineToolbar = false,
+}: {
+  headerAction?: { type: string; nonce: number } | null
+  hideInlineToolbar?: boolean
+}): React.ReactElement {
   const { theme } = useTheme()
   const router = useRouter()
   const [files, setFiles] = useState<KnowledgeFile[]>([])
@@ -112,6 +120,21 @@ export function FilesTree(): React.ReactElement {
     () => buildTree(files, expandedIds, searchQuery),
     [files, expandedIds, searchQuery],
   )
+
+  useEffect(() => {
+    if (!headerAction) return
+
+    const action = headerAction.type as FileHeaderAction
+    if (action === 'new') {
+      openCreateSheet('file')
+    } else if (action === 'selectFiles') {
+      setSelectMode(true)
+    } else if (action === 'uploadFile') {
+      void handleUploadFile()
+    } else if (action === 'uploadFolder') {
+      Alert.alert('Upload folder', 'Folder upload is not available on this device yet. Upload individual files for now.')
+    }
+  }, [headerAction])
 
   function toggleExpand(id: string) {
     setExpandedIds((prev) => {
@@ -247,7 +270,7 @@ export function FilesTree(): React.ReactElement {
     if (file.type === 'folder') {
       toggleExpand(file._id)
     } else {
-      router.push({ pathname: '/knowledge/file/[id]', params: { id: file._id } })
+      router.push(`/knowledge/file/${encodeURIComponent(file._id)}`)
     }
   }
 
@@ -262,6 +285,7 @@ export function FilesTree(): React.ReactElement {
     <View style={styles.container}>
       <SearchField theme={theme} value={searchQuery} onChangeText={setSearchQuery} placeholder="Search files" />
 
+      {(!hideInlineToolbar || selectMode) ? (
       <View style={styles.toolbar}>
         {selectMode ? (
           <View style={styles.toolbarRow}>
@@ -317,6 +341,7 @@ export function FilesTree(): React.ReactElement {
           </View>
         )}
       </View>
+      ) : null}
 
       {isLoading ? (
         <View style={styles.centered}>

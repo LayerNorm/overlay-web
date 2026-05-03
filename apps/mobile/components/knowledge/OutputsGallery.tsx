@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -27,6 +27,7 @@ const OUTPUT_FILTERS = [
 ] as const
 
 type OutputFilter = (typeof OUTPUT_FILTERS)[number]['value']
+type OutputHeaderAction = 'selectOutputs' | 'outputAll' | 'outputImage' | 'outputVideo' | 'outputFiles'
 
 const { width } = Dimensions.get('window')
 const IMAGE_SIZE = (width - 48 - 16) / 2
@@ -43,7 +44,13 @@ function OutputImageThumb({ url, style }: { url: string; style: object }) {
   return <Image source={{ uri: url }} style={style} onError={() => setFailed(true)} />
 }
 
-export function OutputsGallery(): React.ReactElement {
+export function OutputsGallery({
+  headerAction,
+  hideInlineToolbar = false,
+}: {
+  headerAction?: { type: string; nonce: number } | null
+  hideInlineToolbar?: boolean
+}): React.ReactElement {
   const { theme } = useTheme()
   const router = useRouter()
   const [outputs, setOutputs] = useState<OutputSummary[]>([])
@@ -81,9 +88,6 @@ export function OutputsGallery(): React.ReactElement {
     })
   }, [outputs, filter])
 
-  const imageOutputs = filtered.filter((o) => o.type === 'image')
-  const otherOutputs = filtered.filter((o) => o.type !== 'image')
-
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev)
@@ -97,6 +101,23 @@ export function OutputsGallery(): React.ReactElement {
     setSelectMode(false)
     setSelectedIds(new Set())
   }
+
+  useEffect(() => {
+    if (!headerAction) return
+
+    const action = headerAction.type as OutputHeaderAction
+    if (action === 'selectOutputs') {
+      setSelectMode(true)
+    } else if (action === 'outputAll') {
+      setFilter('all')
+    } else if (action === 'outputImage') {
+      setFilter('image')
+    } else if (action === 'outputVideo') {
+      setFilter('video')
+    } else if (action === 'outputFiles') {
+      setFilter('files')
+    }
+  }, [headerAction])
 
   async function handleDelete(outputId: string) {
     Alert.alert('Delete output', 'Are you sure?', [
@@ -137,34 +158,12 @@ export function OutputsGallery(): React.ReactElement {
   }
 
   function openOutput(output: OutputSummary) {
-    router.push({ pathname: '/knowledge/output/[id]', params: { id: output._id } })
+    router.push(`/knowledge/output/${encodeURIComponent(output._id)}`)
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.filterBar}>
-        {OUTPUT_FILTERS.map((f) => {
-          const active = filter === f.value
-          return (
-            <TouchableOpacity
-              key={f.value}
-              onPress={() => setFilter(f.value)}
-              style={[
-                styles.filterChip,
-                {
-                  backgroundColor: active ? theme.foreground : 'transparent',
-                  borderColor: active ? theme.foreground : theme.border,
-                },
-              ]}
-            >
-              <Text style={[styles.filterChipText, { color: active ? theme.background : theme.textSecondary }]}>
-                {f.label}
-              </Text>
-            </TouchableOpacity>
-          )
-        })}
-      </View>
-
+      {(!hideInlineToolbar || selectMode) ? (
       <View style={styles.toolbar}>
         {selectMode ? (
           <View style={styles.toolbarRow}>
@@ -201,6 +200,7 @@ export function OutputsGallery(): React.ReactElement {
           </View>
         )}
       </View>
+      ) : null}
 
       {isLoading ? (
         <View style={styles.centered}>
@@ -215,63 +215,55 @@ export function OutputsGallery(): React.ReactElement {
         />
       ) : (
         <FlatList
-          data={otherOutputs}
+          data={filtered}
           keyExtractor={(item) => item._id}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          ListHeaderComponent={
-            imageOutputs.length > 0 ? (
-              <View style={styles.imageGrid}>
-                {imageOutputs.map((item) => {
-                  const isSelected = selectedIds.has(item._id)
-                  return (
-                    <TouchableOpacity
-                      key={item._id}
-                      activeOpacity={0.82}
-                      onPress={() => {
-                        if (selectMode) toggleSelect(item._id)
-                        else openOutput(item)
-                      }}
-                      onLongPress={() => {
-                        if (!selectMode) setSelectMode(true)
-                        toggleSelect(item._id)
-                      }}
+          renderItem={({ item }) => {
+            const isSelected = selectedIds.has(item._id)
+            if (item.type === 'image') {
+              return (
+                <TouchableOpacity
+                  activeOpacity={0.82}
+                  onPress={() => {
+                    if (selectMode) toggleSelect(item._id)
+                    else openOutput(item)
+                  }}
+                  onLongPress={() => {
+                    if (!selectMode) setSelectMode(true)
+                    toggleSelect(item._id)
+                  }}
+                  style={[
+                    styles.imageCell,
+                    {
+                      borderColor: isSelected ? theme.foreground : theme.border,
+                      height: IMAGE_SIZE,
+                    },
+                  ]}
+                >
+                  <OutputImageThumb url={item.url ?? ''} style={styles.imageThumb} />
+                  {selectMode && (
+                    <View
                       style={[
-                        styles.imageCell,
+                        styles.imageCheckbox,
                         {
                           borderColor: isSelected ? theme.foreground : theme.border,
-                          width: IMAGE_SIZE,
-                          height: IMAGE_SIZE,
+                          backgroundColor: isSelected ? theme.foreground : 'rgba(0,0,0,0.4)',
                         },
                       ]}
                     >
-                      <OutputImageThumb url={item.url ?? ''} style={styles.imageThumb} />
-                      {selectMode && (
-                        <View
-                          style={[
-                            styles.imageCheckbox,
-                            {
-                              borderColor: isSelected ? theme.foreground : theme.border,
-                              backgroundColor: isSelected ? theme.foreground : 'rgba(0,0,0,0.4)',
-                            },
-                          ]}
-                        >
-                          {isSelected && <Feather name="check" size={12} color={theme.background} />}
-                        </View>
-                      )}
-                      {item.status === 'pending' && (
-                        <View style={styles.pendingOverlay}>
-                          <ActivityIndicator size="small" />
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  )
-                })}
-              </View>
-            ) : null
-          }
-          renderItem={({ item }) => {
-            const isSelected = selectedIds.has(item._id)
+                      {isSelected && <Feather name="check" size={12} color={theme.background} />}
+                    </View>
+                  )}
+                  {item.status === 'pending' && (
+                    <View style={styles.pendingOverlay}>
+                      <ActivityIndicator size="small" />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )
+            }
+
             return (
               <TouchableOpacity
                 activeOpacity={0.82}

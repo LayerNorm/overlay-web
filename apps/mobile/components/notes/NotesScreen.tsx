@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +14,7 @@ import { Feather, Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { useFocusEffect } from 'expo-router'
 import { BlurView } from 'expo-blur'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { useTheme } from '../../hooks/useTheme'
 import { GlassSurface } from '../ui/GlassSurface'
@@ -154,10 +155,36 @@ export function NotesScreen(): React.ReactElement {
     ])
   }
 
+  const handleOpenNote = useCallback(async (noteId: string) => {
+    // Track last opened note
+    try {
+      await AsyncStorage.setItem('overlay:last-note-id', noteId)
+    } catch {
+      // ignore
+    }
+    router.push({ pathname: '/note/[id]', params: { id: noteId } })
+  }, [router])
+
+  // On mount, check if we should redirect to last note
+  useEffect(() => {
+    const checkLastNote = async () => {
+      try {
+        const lastNoteId = await AsyncStorage.getItem('overlay:last-note-id')
+        if (lastNoteId && notes.find(n => n.id === lastNoteId)) {
+          // Navigate to last note
+          router.push({ pathname: '/note/[id]', params: { id: lastNoteId } })
+        }
+      } catch {
+        // ignore
+      }
+    }
+    void checkLastNote()
+  }, [notes, router])
+
   const renderNoteItem = ({ item }: { item: NoteMeta }) => (
     <TouchableOpacity
       activeOpacity={0.7}
-      onPress={() => router.push({ pathname: '/note/[id]', params: { id: item.id } })}
+      onPress={() => handleOpenNote(item.id)}
       style={[styles.noteCard, { backgroundColor: theme.surface }]}
     >
       <View style={styles.noteRow}>

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -23,7 +23,15 @@ import {
 } from '../../services/knowledgeService'
 import type { MemoryRow } from '@overlay/app-core'
 
-export function MemoriesList(): React.ReactElement {
+type MemoryHeaderAction = 'new' | 'import' | 'selectMemories'
+
+export function MemoriesList({
+  headerAction,
+  hideInlineToolbar = false,
+}: {
+  headerAction?: { type: string; nonce: number } | null
+  hideInlineToolbar?: boolean
+}): React.ReactElement {
   const { theme } = useTheme()
   const router = useRouter()
   const [memories, setMemories] = useState<MemoryRow[]>([])
@@ -74,6 +82,19 @@ export function MemoriesList(): React.ReactElement {
     setSelectMode(false)
     setSelectedIds(new Set())
   }
+
+  useEffect(() => {
+    if (!headerAction) return
+
+    const action = headerAction.type as MemoryHeaderAction
+    if (action === 'new') {
+      setAddSheetOpen(true)
+    } else if (action === 'import') {
+      setImportSheetOpen(true)
+    } else if (action === 'selectMemories') {
+      setSelectMode(true)
+    }
+  }, [headerAction])
 
   async function handleAddMemory() {
     const text = addText.trim()
@@ -146,7 +167,7 @@ export function MemoriesList(): React.ReactElement {
   }
 
   function openMemory(memory: MemoryRow) {
-    router.push({ pathname: '/knowledge/memory/[id]', params: { id: memory.memoryId } })
+    router.push(`/knowledge/memory/${encodeURIComponent(memory.memoryId)}`)
   }
 
   return (
@@ -158,6 +179,7 @@ export function MemoriesList(): React.ReactElement {
         placeholder="Search memories"
       />
 
+      {(!hideInlineToolbar || selectMode) ? (
       <View style={styles.toolbar}>
         {selectMode ? (
           <View style={styles.toolbarRow}>
@@ -205,6 +227,7 @@ export function MemoriesList(): React.ReactElement {
           </View>
         )}
       </View>
+      ) : null}
 
       {isLoading ? (
         <View style={styles.centered}>

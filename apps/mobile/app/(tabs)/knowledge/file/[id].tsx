@@ -11,16 +11,18 @@ import {
 } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { useTheme } from '../../../hooks/useTheme'
-import { borderRadius, fontSize, spacing } from '../../../constants/theme'
-import { getKnowledgeFile, getKnowledgeFileContent, updateKnowledgeFile } from '../../../services/knowledgeService'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useTheme } from '../../../../hooks/useTheme'
+import { borderRadius, fontSize, spacing } from '../../../../constants/theme'
+import { MainScreenHeader, TopBarIconButton } from '../../../../components/ui/AppChrome'
+import { getKnowledgeFile, getKnowledgeFileContent, updateKnowledgeFile } from '../../../../services/knowledgeService'
 import type { KnowledgeFile } from '@overlay/app-core'
 
 export default function FileDetailScreen(): React.ReactElement {
   const { id } = useLocalSearchParams<{ id: string }>()
-  const { theme } = useTheme()
+  const { theme, isDark } = useTheme()
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const [file, setFile] = useState<KnowledgeFile | null>(null)
   const [content, setContent] = useState('')
   const [isLoading, setIsLoading] = useState(true)
@@ -99,24 +101,35 @@ export default function FileDetailScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['bottom']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={[styles.backButton, { borderColor: theme.border }]}>
-          <Feather name="arrow-left" size={18} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
-          {file.name}
-        </Text>
-        <TouchableOpacity
-          onPress={handleSave}
-          disabled={isSaving || !isTextFile}
-          style={[styles.saveButton, { opacity: isSaving || !isTextFile ? 0.4 : 1 }]}
-        >
-          <Text style={[styles.saveButtonText, { color: theme.foreground }]}>{isSaving ? 'Saving…' : 'Save'}</Text>
-        </TouchableOpacity>
-      </View>
+      <MainScreenHeader
+        theme={theme}
+        isDark={isDark}
+        topInset={insets.top}
+        blurHeight={insets.top + 52}
+        leftSlot={<TopBarIconButton theme={theme} icon="arrow-left" onPress={() => router.back()} />}
+        centerSlot={
+          <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
+            {file.name}
+          </Text>
+        }
+        rightSlot={
+          <TouchableOpacity
+            onPress={handleSave}
+            disabled={isSaving || !isTextFile}
+            style={[styles.saveButtonInline, { opacity: isSaving || !isTextFile ? 0.4 : 1 }]}
+          >
+            <Text style={[styles.saveButtonText, { color: theme.foreground }]}>
+              {isSaving ? 'Saving…' : 'Save'}
+            </Text>
+          </TouchableOpacity>
+        }
+      />
 
       {isTextFile ? (
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 54 }]}
+        >
           <TextInput
             value={content}
             onChangeText={setContent}
@@ -135,7 +148,7 @@ export default function FileDetailScreen(): React.ReactElement {
           />
         </ScrollView>
       ) : (
-        <View style={styles.centered}>
+        <View style={[styles.centered, { paddingTop: insets.top + 54 }]}>
           <Feather name="file" size={40} color={theme.textSecondary} />
           <Text style={[styles.binaryHint, { color: theme.textSecondary }]}>
             {file.isStorageBacked
@@ -159,31 +172,18 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 24,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  backButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 999,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   headerTitle: {
-    flex: 1,
-    fontSize: 16,
+    flexShrink: 1,
+    fontSize: 15,
     fontWeight: '600',
     fontFamily: 'LibreBaskerville',
     textAlign: 'center',
   },
-  saveButton: {
-    paddingHorizontal: 12,
+  saveButtonInline: {
+    paddingHorizontal: 8,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   saveButtonText: {
     fontSize: 14,

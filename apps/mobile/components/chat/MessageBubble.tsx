@@ -360,35 +360,8 @@ const StableMd = React.memo(
   (prev, next) => prev.text === next.text && prev.style === next.style,
 )
 
-// ─── Streaming text display ───────────────────────────────────────────────────
-// Stable committed lines → StableMd (memoized, no re-parse).
-// Active trailing line → plain Text in-place (no remount animation → no blink).
-
-function StreamingMarkdown({
-  text,
-  theme,
-  markdownStyles,
-}: {
-  text: string
-  theme: Theme
-  markdownStyles: MarkdownStyle
-}) {
-  const lastNl = text.lastIndexOf('\n', text.length - 2)
-  const stableText = lastNl >= 0 ? text.slice(0, lastNl + 1) : ''
-  const currentLine = lastNl >= 0 ? text.slice(lastNl + 1) : text
-
-  return (
-    <View>
-      {stableText ? <StableMd text={stableText} style={markdownStyles} /> : null}
-      <View style={styles.streamingLine}>
-        <Text style={{ color: theme.text, fontSize: 15, lineHeight: 23, flexShrink: 1 }}>
-          {currentLine}
-        </Text>
-        <StreamingCursor />
-      </View>
-    </View>
-  )
-}
+// Assistant replies stream chunk-by-chunk; we still render markdown on the whole string
+// so lists, headings, and code fences stay coherent (newline-splitting mangled markup).
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
@@ -439,6 +412,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         color: isUser ? theme.buttonPrimaryText : theme.text,
         fontSize: 17,
         lineHeight: 26,
+        fontFamily: isUser ? undefined : 'LibreBaskerville',
       },
       paragraph: { marginTop: 0, marginBottom: 8 },
       code_inline: {
@@ -526,9 +500,7 @@ export const MessageBubble = React.memo(function MessageBubble({
               <Text style={[styles.attachmentTagText, { color: '#FFFFFF' }]}>Image attached</Text>
             </View>
           ) : null}
-          <Text style={[styles.userText, { color: theme.buttonPrimaryText }]}>
-            {message.content}
-          </Text>
+          <StableMd text={message.content} style={markdownStyles} />
         </View>
       </Animated.View>
     )
@@ -565,11 +537,14 @@ export const MessageBubble = React.memo(function MessageBubble({
           <StreamingCursor />
         </View>
       ) : displayContent ? (
-        isLoading ? (
-          <StreamingMarkdown text={displayContent} theme={theme} markdownStyles={markdownStyles} />
-        ) : (
+        <View>
           <StableMd text={normalizeDisplayText(displayContent)} style={markdownStyles} />
-        )
+          {isLoading ? (
+            <View style={styles.streamingLine}>
+              <StreamingCursor />
+            </View>
+          ) : null}
+        </View>
       ) : null}
 
       {/* Sources (collapsed by default) */}

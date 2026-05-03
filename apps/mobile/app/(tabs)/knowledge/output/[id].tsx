@@ -6,23 +6,24 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { useTheme } from '../../../hooks/useTheme'
-import { borderRadius, fontSize, spacing } from '../../../constants/theme'
-import { listOutputs } from '../../../services/knowledgeService'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useTheme } from '../../../../hooks/useTheme'
+import { borderRadius, fontSize, spacing } from '../../../../constants/theme'
+import { MainScreenHeader, TopBarIconButton } from '../../../../components/ui/AppChrome'
+import { listOutputs } from '../../../../services/knowledgeService'
 import type { OutputSummary } from '@overlay/app-core'
 
 const { width } = Dimensions.get('window')
 
 export default function OutputDetailScreen(): React.ReactElement {
   const { id } = useLocalSearchParams<{ id: string }>()
-  const { theme } = useTheme()
+  const { theme, isDark } = useTheme()
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const [output, setOutput] = useState<OutputSummary | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -66,17 +67,21 @@ export default function OutputDetailScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['bottom']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={[styles.backButton, { borderColor: theme.border }]}>
-          <Feather name="arrow-left" size={18} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
-          Output
-        </Text>
-        <View style={{ width: 38 }} />
-      </View>
+      <MainScreenHeader
+        theme={theme}
+        isDark={isDark}
+        topInset={insets.top}
+        blurHeight={insets.top + 52}
+        leftSlot={<TopBarIconButton theme={theme} icon="arrow-left" onPress={() => router.back()} />}
+        centerSlot={
+          <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
+            Output
+          </Text>
+        }
+        rightSlot={<View style={{ width: 44 }} />}
+      />
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 54 }]}>
         {output.type === 'image' && output.url ? (
           <Image source={{ uri: output.url }} style={[styles.image, { borderColor: theme.border }]} resizeMode="contain" />
         ) : output.type === 'video' && output.url ? (
@@ -125,25 +130,9 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 24,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  backButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 999,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   headerTitle: {
-    flex: 1,
-    fontSize: 16,
+    flexShrink: 1,
+    fontSize: 15,
     fontWeight: '600',
     fontFamily: 'LibreBaskerville',
     textAlign: 'center',

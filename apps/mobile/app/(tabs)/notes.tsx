@@ -1,6 +1,6 @@
 import React from 'react'
-import { NotesScreen } from '../../components/notes/NotesScreen'
+import { NotesEditorScreen } from '../../components/notes/NotesEditorScreen'
 
 export default function NotesTabScreen(): React.ReactElement {
-  return <NotesScreen />
+  return <NotesEditorScreen />
 }

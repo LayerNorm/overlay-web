@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
@@ -16,7 +16,7 @@ import { useDrawer } from '../../contexts/DrawerContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { DrawerSidebar } from '../../components/chat/DrawerSidebar'
 import { ScreenWithDrawer } from '../../components/ui/ScreenWithDrawer'
-import { TopBarIconButton } from '../../components/ui/AppChrome'
+import { MainScreenHeader, TopBarIconButton } from '../../components/ui/AppChrome'
 import { GlassSurface } from '../../components/ui/GlassSurface'
 
 const APPEARANCE_OPTIONS = [
@@ -27,7 +27,8 @@ const APPEARANCE_OPTIONS = [
 
 export default function SettingsScreen(): React.ReactElement {
   const router = useRouter()
-  const { theme, appearanceMode, setAppearanceMode } = useTheme()
+  const { theme, isDark, appearanceMode, setAppearanceMode } = useTheme()
+  const insets = useSafeAreaInsets()
   const { openDrawer } = useDrawer()
   const { user, signOut } = useAuth()
   const [isSigningOut, setIsSigningOut] = useState(false)
@@ -65,14 +66,17 @@ export default function SettingsScreen(): React.ReactElement {
         />
       }
     >
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-      <View style={styles.screenPadding}>
-        <View style={[styles.topBar, { backgroundColor: theme.background }]}>
-          <TopBarIconButton theme={theme} icon="menu" onPress={openDrawer} />
-          <Text style={[styles.topBarTitle, { color: theme.text }]}>Settings</Text>
-          <View style={styles.topBarSpacer} />
-        </View>
-
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['bottom']}>
+      <MainScreenHeader
+        theme={theme}
+        isDark={isDark}
+        topInset={insets.top}
+        blurHeight={insets.top + 56}
+        leftSlot={<TopBarIconButton theme={theme} icon="menu" onPress={openDrawer} />}
+        centerSlot={<Text style={[styles.headerTitle, { color: theme.text }]}>Settings</Text>}
+        rightSlot={<View style={{ width: 44 }} />}
+      />
+      <View style={[styles.screenPadding, { paddingTop: insets.top + 58 }]}>
         <View style={styles.content}>
           <View style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
             <View style={styles.cardHeader}>
@@ -160,25 +164,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
   },
-  topBar: {
-    marginTop: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    overflow: 'hidden',
-  },
-  topBarTitle: {
+  headerTitle: {
     fontSize: fontSize.md,
     fontWeight: '600',
-    fontFamily: 'LibreBaskerville',
-  },
-  topBarSpacer: {
-    width: 38,
-    height: 38,
+    textAlign: 'center',
   },
   content: {
     gap: spacing.md,

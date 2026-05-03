@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import {
   Animated,
   Image,
+  Keyboard,
   Modal,
   PanResponder,
   Pressable,
@@ -10,11 +11,13 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Alert,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter, usePathname } from 'expo-router'
 import { Feather, Ionicons } from '@expo/vector-icons'
 import { BlurView } from 'expo-blur'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { Theme } from '../../constants/theme'
 import { fontSize, spacing, borderRadius } from '../../constants/theme'
 import type { ChatMeta } from '../../services/chatTypes'
@@ -38,7 +41,6 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: 'Chat', icon: 'message-circle', route: '/(tabs)/chat' },
   { label: 'Notes', icon: 'book-open', route: '/(tabs)/notes' },
-  { label: 'Settings', icon: 'settings', route: '/(tabs)/settings' },
 ]
 
 interface KnowledgeSubItem {
@@ -48,9 +50,9 @@ interface KnowledgeSubItem {
 }
 
 const KNOWLEDGE_SUBITEMS: KnowledgeSubItem[] = [
-  { label: 'Memory', icon: 'cpu', route: '/(tabs)/knowledge' },
-  { label: 'Files', icon: 'folder', route: '/knowledge/file' },
-  { label: 'Outputs', icon: 'file-text', route: '/knowledge/output' },
+  { label: 'Memories', icon: 'cpu', route: '/(tabs)/knowledge?tab=memories' },
+  { label: 'Files', icon: 'folder', route: '/(tabs)/knowledge?tab=files' },
+  { label: 'Outputs', icon: 'file-text', route: '/(tabs)/knowledge?tab=outputs' },
 ]
 
 export function DrawerSidebar({
@@ -86,7 +88,6 @@ export function DrawerSidebar({
 
   const isChatActive = pathname === '/chat' || pathname.startsWith('/(tabs)/chat')
   const isNotesActive = pathname === '/notes' || pathname.startsWith('/(tabs)/notes') || pathname.startsWith('/note/')
-  const isSettingsActive = pathname.startsWith('/settings') || pathname.startsWith('/(tabs)/settings')
 
   useEffect(() => {
     if (drawerVisible) {
@@ -192,6 +193,7 @@ export function DrawerSidebar({
   }
 
   function navigate(route: string): void {
+    Keyboard.dismiss()
     closeDrawer()
     router.push(route as Parameters<typeof router.push>[0])
   }
@@ -281,6 +283,7 @@ function DrawerContent({
   const { user } = useAuth()
   const { isDark } = useTheme()
   const [knowledgeExpanded, setKnowledgeExpanded] = useState(false)
+  const [showNewMenu, setShowNewMenu] = useState(false)
 
   function isRouteActive(route: string): boolean {
     if (externalIsRouteActive) return externalIsRouteActive(route)
@@ -296,14 +299,112 @@ function DrawerContent({
 
   const isKnowledgeActive = pathname.startsWith('/knowledge') || pathname.includes('/(tabs)/knowledge')
 
+  const navigateToLastNote = useCallback(async () => {
+    try {
+      const lastNoteId = await AsyncStorage.getItem('overlay:last-note-id')
+      if (lastNoteId && notes?.find(n => n.id === lastNoteId)) {
+        onSelectNote?.(lastNoteId)
+        closeDrawer()
+        return
+      }
+    } catch {
+      // ignore
+    }
+    // Fallback to notes list
+    if (externalNavigate) {
+      externalNavigate('/(tabs)/notes')
+    } else {
+      closeDrawer()
+      router.push('/(tabs)/notes')
+    }
+  }, [notes, onSelectNote, externalNavigate, closeDrawer, router])
+
+  const navigateToLastKnowledgeView = useCallback(async () => {
+    try {
+      const lastView = await AsyncStorage.getItem('overlay:last-knowledge-view')
+      if (lastView && ['memories', 'files', 'outputs'].includes(lastView)) {
+        const subItem = KNOWLEDGE_SUBITEMS.find(s => s.label.toLowerCase() === lastView)
+        if (subItem) {
+          // Track the view
+          await AsyncStorage.setItem('overlay:last-knowledge-view', lastView)
+          if (externalNavigate) {
+            externalNavigate(subItem.route)
+          } else {
+            closeDrawer()
+            router.push(subItem.route as Parameters<typeof router.push>[0])
+          }
+          return
+        }
+      }
+    } catch {
+      // ignore
+    }
+    // Default to first knowledge item
+    const defaultRoute = KNOWLEDGE_SUBITEMS[0]?.route ?? '/(tabs)/knowledge'
+    if (externalNavigate) {
+      externalNavigate(defaultRoute)
+    } else {
+      closeDrawer()
+      router.push(defaultRoute as Parameters<typeof router.push>[0])
+    }
+  }, [externalNavigate, closeDrawer, router])
+
   function navigate(route: string): void {
     if (externalNavigate) {
       externalNavigate(route)
       return
     }
+    Keyboard.dismiss()
     closeDrawer()
     router.push(route as Parameters<typeof router.push>[0])
   }
+
+  const handleNavItemPress = useCallback((item: NavItem) => {
+    if (item.disabled) return
+    if (item.route === '/(tabs)/notes') {
+      void navigateToLastNote()
+    } else if (item.route === '/(tabs)/knowledge') {
+      void navigateToLastKnowledgeView()
+    } else {
+      navigate(item.route)
+    }
+  }, [navigateToLastNote, navigateToLastKnowledgeView, navigate])
+
+  const handleKnowledgeSubItemPress = useCallback(async (subItem: KnowledgeSubItem) => {
+    const viewName = subItem.label.toLowerCase()
+    try {
+      await AsyncStorage.setItem('overlay:last-knowledge-view', viewName)
+    } catch {
+      // ignore
+    }
+    navigate(subItem.route)
+  }, [navigate])
+
+  const handleLongPressChat = useCallback((chat: ChatMeta) => {
+    Alert.alert(
+      chat.title || 'Chat',
+      'Choose an action',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => {
+          // TODO: Implement delete
+        }},
+      ]
+    )
+  }, [])
+
+  const handleLongPressNote = useCallback((note: NoteMeta) => {
+    Alert.alert(
+      note.title || 'Note',
+      'Choose an action',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => {
+          // TODO: Implement delete
+        }},
+      ]
+    )
+  }, [])
 
   const getInitials = () => {
     if (user?.firstName && user?.lastName) {
@@ -341,9 +442,7 @@ function DrawerContent({
                 ]}
                 activeOpacity={item.disabled ? 1 : 0.65}
                 disabled={item.disabled}
-                onPress={() => {
-                  if (!item.disabled) navigate(item.route)
-                }}
+                onPress={() => handleNavItemPress(item)}
               >
                 <Feather
                   name={item.icon}
@@ -413,7 +512,7 @@ function DrawerContent({
                       isActive && { backgroundColor: theme.surfaceSubtle },
                     ]}
                     activeOpacity={0.65}
-                    onPress={() => navigate(subItem.route)}
+                    onPress={() => handleKnowledgeSubItemPress(subItem)}
                   >
                     <Feather
                       name={subItem.icon}
@@ -441,17 +540,6 @@ function DrawerContent({
           <View style={[styles.recentsSection, {}]}>
             <View style={styles.recentsHeaderRow}>
               <Text style={[styles.recentsLabel, { color: theme.mutedLight }]}>Recents</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  onCreateChat()
-                  closeDrawer()
-                }}
-                style={[styles.newChatButton, {}]}
-                activeOpacity={0.7}
-              >
-                <Feather name="plus" size={12} color={theme.muted} />
-                <Text style={[styles.newChatLabel, { color: theme.muted }]}>New chat</Text>
-              </TouchableOpacity>
             </View>
             <ScrollView
               showsVerticalScrollIndicator={false}
@@ -465,6 +553,8 @@ function DrawerContent({
                     onSelectChat(chat.id)
                     closeDrawer()
                   }}
+                  onLongPress={() => handleLongPressChat(chat)}
+                  delayLongPress={500}
                   activeOpacity={0.65}
                   style={[
                     styles.recentItem,
@@ -488,17 +578,6 @@ function DrawerContent({
           <View style={[styles.recentsSection, {}]}>
             <View style={styles.recentsHeaderRow}>
               <Text style={[styles.recentsLabel, { color: theme.mutedLight }]}>Recents</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  onCreateNote?.()
-                  closeDrawer()
-                }}
-                style={[styles.newChatButton, {}]}
-                activeOpacity={0.7}
-              >
-                <Feather name="plus" size={12} color={theme.muted} />
-                <Text style={[styles.newChatLabel, { color: theme.muted }]}>New note</Text>
-              </TouchableOpacity>
             </View>
             <ScrollView
               showsVerticalScrollIndicator={false}
@@ -512,6 +591,8 @@ function DrawerContent({
                     onSelectNote?.(note.id)
                     closeDrawer()
                   }}
+                  onLongPress={() => handleLongPressNote(note)}
+                  delayLongPress={500}
                   activeOpacity={0.65}
                   style={[
                     styles.recentItem,
@@ -582,6 +663,31 @@ function DrawerContent({
               activeOpacity={0.7}
             >
               <Ionicons name="search" size={22} color={theme.text} />
+            </TouchableOpacity>
+          </GlassSurface>
+
+          {/* New Button */}
+          <GlassSurface
+            interactive
+            style={[styles.newButton, { backgroundColor: theme.glassBg }]}
+          >
+            <TouchableOpacity
+              style={styles.newButtonInner}
+              onPress={() => {
+                // Create new based on current context
+                if (isChatActive) {
+                  onCreateChat()
+                } else if (isNotesActive) {
+                  onCreateNote?.()
+                } else {
+                  // Default to new chat
+                  onCreateChat()
+                }
+                closeDrawer()
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="add" size={24} color={theme.text} />
             </TouchableOpacity>
           </GlassSurface>
         </View>
@@ -769,6 +875,20 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: fontSize.md,
     fontWeight: '500',
+  },
+  newButton: {
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  newButtonInner: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   searchButton: {
     width: 44,
