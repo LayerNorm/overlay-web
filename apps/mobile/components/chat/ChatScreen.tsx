@@ -66,7 +66,6 @@ const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
 // Provider logo mapping
 const PROVIDER_LOGOS: Record<string, ReturnType<typeof require>> = {
-  google: require('../../assets/model-logos/google.svg'),
   openai: require('../../assets/model-logos/openai.svg'),
   anthropic: require('../../assets/model-logos/anthropic.svg'),
   xai: require('../../assets/model-logos/xai.svg'),
@@ -76,9 +75,13 @@ const PROVIDER_LOGOS: Record<string, ReturnType<typeof require>> = {
   openrouter: require('../../assets/model-logos/openrouter.svg'),
   meta: require('../../assets/model-logos/meta.svg'),
   mistral: require('../../assets/model-logos/mistral.svg'),
+  google: require('../../assets/model-logos/google.svg'),
 }
 
 function getProviderLogo(provider: string): ReturnType<typeof require> | null {
+  if (provider.toLowerCase() === 'google') {
+    return PROVIDER_LOGOS.google
+  }
   return PROVIDER_LOGOS[provider.toLowerCase()] ?? null
 }
 
