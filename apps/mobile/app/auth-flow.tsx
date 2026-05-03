@@ -11,6 +11,7 @@ import {
   type ViewStyle,
 } from 'react-native'
 import * as WebBrowser from 'expo-web-browser'
+import { Svg, Path, G, Defs, LinearGradient, Stop, RadialGradient, ClipPath } from 'react-native-svg'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import Animated, {
