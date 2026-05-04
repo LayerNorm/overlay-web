@@ -109,12 +109,8 @@ private struct OverlayKeyboardView: View {
     @State private var page: KeyboardPage = .letters
     @State private var shiftState: ShiftState = .lower
     @State private var lastShiftTapTime: Date = .distantPast
-    @State private var selectedEmojiCategory: EmojiCategory = .all
-
-    // Whether we're in the recording / processing overlay
-    private var isShowingRecordingOverlay: Bool {
-        service.state == .recording || service.state == .processing
-    }
+    @State private var isPaused: Bool = false
+    @State private var selectedEmojiCategory: EmojiCategory = .smileys
 
     private var compact: Bool { verticalSizeClass == .compact }
 
@@ -138,10 +134,11 @@ private struct OverlayKeyboardView: View {
     private var rowTouchHeight: CGFloat { keyHeight + keySpacingV }
 
     private var emojiCellSize: CGFloat  { compact ? 29 : 34 }
-    private var emojiGridHeight: CGFloat { emojiCellSize * 4 + keySpacingV * 3 }
-    private var categoryBarH: CGFloat   { compact ? 24 : 26 }
+    private var emojiColumns: Int      { compact ? 8 : 9 }
+    private var categoryBarH: CGFloat  { compact ? 36 : 40 }
 
-    private var emojisByCategory: [EmojiCategory: [String]] {[
+    private var emojisByCategory: [EmojiCategory: [String]] {[ 
+
         .smileys:    ["😀","😃","😄","😁","😆","😅","😂","🤣","🥲","😊","😇","🙂","🙃","😉","😌","😍","🥰","😘","😗","😙","😚","😋","😛","😝","😜","🤪","🤨","🧐","🤓","😎","🥸","🤩","🥳","😏","😒","😔","😕","🙁","☹️","😣","😖","😫","😩","🥺","😭","😤","😠","😡","🤯","😳","🥵","🥶","😱","😰","😥","😓","🤗","🫠","🫣","🫡"],
         .people:     ["👍","👎","👏","🙌","🤝","🙏","👋","🤙","👌","✌️","🤞","🤟","🤘","🫶","👊","🤛","🤜","🫱","🫲","🖐️","✋","🫸","🫷","🤌","☝️","👇","👈","👉","✍️","💪","🧑","👩","👨","🧒","👶","🧔","👩‍⚕️","👨‍💻","🧑‍🎓","👮","🕵️","👷","👩‍🍳","👨‍🚀","💃","🕺","🧘","🏃","🚶","🧍"],
         .animals:    ["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🐔","🐧","🦆","🦅","🦉","🦇","🐺","🦄","🐝","🪲","🐞","🦋","🐢","🐍","🦎","🐙","🦑","🐬","🐳","🦈","🐊","🦌","🐘","🦒","🦘","🌵","🌴","🌲","🌸","🌼","🌻"],
@@ -153,176 +150,141 @@ private struct OverlayKeyboardView: View {
         .flags:      ["🏳️","🏴","🏁","🚩","🏳️‍🌈","🏳️‍⚧️","🇺🇸","🇨🇦","🇲🇽","🇧🇷","🇦🇷","🇬🇧","🇮🇪","🇫🇷","🇩🇪","🇮🇹","🇪🇸","🇵🇹","🇳🇱","🇸🇪","🇳🇴","🇫🇮","🇩🇰","🇵🇱","🇺🇦","🇹🇷","🇸🇦","🇦🇪","🇮🇳","🇵🇰","🇧🇩","🇨🇳","🇯🇵","🇰🇷","🇹🇭","🇻🇳","🇦🇺","🇳🇿","🇿🇦","🇪🇬","🇳🇬","🇰🇪"]
     ]}
 
-    private var displayedEmojis: [String] {
-        if selectedEmojiCategory == .all {
-            var ordered: [String] = []
-            var seen = Set<String>()
-            for cat in EmojiCategory.allCases where cat != .all {
-                for e in emojisByCategory[cat] ?? [] where !seen.contains(e) {
-                    seen.insert(e); ordered.append(e)
-                }
-            }
-            return ordered
-        }
-        return emojisByCategory[selectedEmojiCategory] ?? []
-    }
-
     var body: some View {
-        ZStack {
-            // Recording / processing full-screen overlay
-            if isShowingRecordingOverlay {
-                recordingOverlay
-                    .transition(.opacity.animation(.easeInOut(duration: 0.18)))
-            } else {
-                keyboardContent
-                    .transition(.opacity.animation(.easeInOut(duration: 0.18)))
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .ignoresSafeArea(.container, edges: .bottom)
+        keyboardContent
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .ignoresSafeArea(.container, edges: .bottom)
     }
 
-    // MARK: — Recording overlay (replaces keyboard while mic is active)
+    // MARK: — Recording control bar (permanent, compact, at the top)
 
-    private var recordingOverlay: some View {
-        VStack(spacing: 0) {
-            Spacer()
+    private var micCircleSize: CGFloat { compact ? 24 : 28 }
 
-            // Waveform / processing area
-            VStack(spacing: compact ? 12 : 16) {
+    private var recordingControlBar: some View {
+        HStack(spacing: 0) {
+            // Left: waveform / processing indicator / placeholder
+            HStack(spacing: compact ? 6 : 8) {
                 if service.state == .processing {
-                    processingIndicator
-                } else {
-                    micWaveformArea
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: KP.secondary))
+                        .scaleEffect(compact ? 0.8 : 0.9)
+                    Text("Processing…")
+                        .font(.system(size: compact ? 11 : 12, weight: .regular))
+                        .foregroundColor(KP.secondary)
+                } else if service.state == .recording && !isPaused {
+                    RecordingWaveform(level: service.audioLevel, active: true, compact: compact)
+                        .frame(height: compact ? 18 : 22)
+                        .frame(maxWidth: 100)
+                    Text("Listening…")
+                        .font(.system(size: compact ? 11 : 12, weight: .regular))
+                        .foregroundColor(KP.secondary)
+                } else if service.state == .recording && isPaused {
+                    Image(systemName: "pause.fill")
+                        .font(.system(size: compact ? 10 : 11, weight: .medium))
+                        .foregroundColor(KP.secondary)
+                    Text("Paused")
+                        .font(.system(size: compact ? 11 : 12, weight: .regular))
+                        .foregroundColor(KP.secondary)
                 }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Spacer()
 
-            // Cancel / Stop action row
-            HStack(spacing: 0) {
-                Button {
-                    service.cancelRecording()
-                } label: {
-                    Text("Cancel")
-                        .font(.system(size: compact ? 15 : 16, weight: .regular))
-                        .foregroundColor(KP.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                .buttonStyle(.plain)
-
-                Rectangle()
-                    .fill(KP.secondary.opacity(0.25))
-                    .frame(width: 0.5)
-                    .padding(.vertical, 10)
-
-                Button {
-                    service.stopRecording()
-                } label: {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(KP.recording)
-                            .frame(width: compact ? 10 : 12, height: compact ? 10 : 12)
-                        Text("Done")
-                            .font(.system(size: compact ? 15 : 16, weight: .semibold))
+            // Right: action buttons — standalone circular icons, no shared background
+            HStack(spacing: compact ? 8 : 12) {
+                if service.state == .recording {
+                    // Pause / Resume
+                    Button {
+                        if isPaused {
+                            isPaused = false
+                            service.resumeRecording()
+                        } else {
+                            isPaused = true
+                            service.pauseRecording()
+                        }
+                    } label: {
+                        Image(systemName: isPaused ? "play.fill" : "pause.fill")
+                            .font(.system(size: compact ? 14 : 15, weight: .medium))
                             .foregroundColor(KP.text)
+                            .frame(width: compact ? 28 : 32, height: compact ? 28 : 32)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .buttonStyle(.plain)
+
+                    // Cancel
+                    Button {
+                        isPaused = false
+                        service.cancelRecording()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: compact ? 13 : 14, weight: .medium))
+                            .foregroundColor(KP.secondary)
+                            .frame(width: compact ? 28 : 32, height: compact ? 28 : 32)
+                    }
+                    .buttonStyle(.plain)
+
+                    // Stop / Done
+                    Button {
+                        isPaused = false
+                        service.stopRecording()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(KP.recording)
+                                .frame(width: compact ? 6 : 7, height: compact ? 6 : 7)
+                            Text("Done")
+                                .font(.system(size: compact ? 12 : 13, weight: .semibold))
+                                .foregroundColor(KP.text)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    // Large solid mic button with explicit tap/long-press
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(service.backgroundModeEnabled ? KP.recording.opacity(0.25) : KP.fnKey)
+                            .frame(width: compact ? 56 : 68, height: accessoryH)
+                        Image(systemName: service.backgroundModeEnabled ? "waveform.and.mic" : "mic.fill")
+                            .font(.system(size: compact ? 18 : 22, weight: .medium))
+                            .foregroundColor(service.backgroundModeEnabled ? KP.recording : .white)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        isPaused = false
+                        service.startRecording()
+                    }
+                    .onLongPressGesture(minimumDuration: 0.5) {
+                        service.setBackgroundModeEnabled(!service.backgroundModeEnabled)
+                    }
                 }
-                .buttonStyle(.plain)
             }
-            .frame(height: compact ? 40 : 48)
-            .background(KP.fnKey)
-            .clipShape(RoundedRectangle(cornerRadius: topRadius, style: .continuous))
-            .padding(.horizontal, horizPad)
-            .padding(.bottom, compact ? 6 : 8)
         }
-        .padding(.horizontal, horizPad)
-        .padding(.top, topPad)
+        .frame(height: accessoryH)
+        .padding(.horizontal, compact ? 8 : 10)
     }
-
-    private var micWaveformArea: some View {
-        VStack(spacing: compact ? 10 : 14) {
-            ZStack {
-                Circle()
-                    .fill(KP.recording.opacity(0.15))
-                    .frame(width: compact ? 52 : 62, height: compact ? 52 : 62)
-                Circle()
-                    .fill(KP.recording)
-                    .frame(width: compact ? 36 : 44, height: compact ? 36 : 44)
-                Image(systemName: "mic.fill")
-                    .font(.system(size: compact ? 17 : 20, weight: .medium))
-                    .foregroundColor(.white)
-            }
-
-            RecordingWaveform(level: service.audioLevel, active: true, compact: compact)
-                .frame(height: compact ? 24 : 30)
-                .frame(maxWidth: 160)
-
-            Text("Listening…")
-                .font(.system(size: compact ? 12 : 13, weight: .regular))
-                .foregroundColor(KP.secondary)
-        }
-    }
-
-    private var processingIndicator: some View {
-        VStack(spacing: compact ? 10 : 14) {
-            ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: KP.secondary))
-                .scaleEffect(compact ? 1.0 : 1.2)
-            Text("Processing…")
-                .font(.system(size: compact ? 12 : 13, weight: .regular))
-                .foregroundColor(KP.secondary)
-        }
-    }
-
-    // MARK: — Normal keyboard content
-
-    private var micCircleSize: CGFloat { compact ? 30 : 36 }
 
     private var keyboardContent: some View {
-        ZStack(alignment: .topTrailing) {
-            // Full keyboard layout at original height — spacing: 0 so rowTouchHeight
-            // covers the inter-row gaps and every tap reaches the nearest key
-            VStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    switch page {
-                    case .letters:  lettersPage
-                    case .numbers:  numbersPage
-                    case .symbols:  symbolsPage
-                    case .emoji:    emojiPage
-                    }
-                }
+        VStack(spacing: 0) {
+            recordingControlBar
                 .padding(.horizontal, horizPad)
-                .padding(.top, topPad)
+                .padding(.top, compact ? 3 : 4)
+                .padding(.bottom, compact ? 2 : 3)
 
-                if context.needsInputModeSwitchKey {
-                    accessoryRow
-                        .padding(.horizontal, horizPad)
-                        .padding(.top, accessorySpacing)
+            VStack(spacing: 0) {
+                switch page {
+                case .letters:  lettersPage
+                case .numbers:  numbersPage
+                case .symbols:  symbolsPage
+                case .emoji:    emojiPage
                 }
             }
+            .padding(.horizontal, horizPad)
 
-            // Floating mic button — overlaid at top-right, no height cost
-            Button(action: handleMicTap) {
-                ZStack {
-                    Circle()
-                        .fill(service.backgroundModeEnabled ? KP.recording.opacity(0.18) : KP.fnKey)
-                    Image(systemName: bgMicIconName)
-                        .font(.system(size: compact ? 13 : 15, weight: .medium))
-                        .foregroundColor(service.backgroundModeEnabled ? KP.recording : KP.text)
-                }
-                .frame(width: micCircleSize, height: micCircleSize)
+            if context.needsInputModeSwitchKey {
+                accessoryRow
+                    .padding(.horizontal, horizPad)
+                    .padding(.top, accessorySpacing)
             }
-            .buttonStyle(.plain)
-            .padding(.top, topPad)
-            .padding(.trailing, horizPad)
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-                    service.setBackgroundModeEnabled(!service.backgroundModeEnabled)
-                }
-            )
         }
     }
 
@@ -344,21 +306,6 @@ private struct OverlayKeyboardView: View {
         .frame(height: accessoryH)
     }
 
-    private var bgMicIconName: String {
-        service.backgroundModeEnabled ? "waveform.and.mic" : "mic"
-    }
-
-    private func handleMicTap() {
-        switch service.state {
-        case .idle, .done, .error:
-            service.startRecording()
-        case .recording:
-            service.stopRecording()
-        case .processing:
-            break
-        }
-    }
-
     // MARK: — Letters page
 
     private var lettersPage: some View {
@@ -366,18 +313,20 @@ private struct OverlayKeyboardView: View {
             characterRow(["q","w","e","r","t","y","u","i","o","p"])
             middleLetterRow(["a","s","d","f","g","h","j","k","l"])
 
-            HStack(spacing: keySpacingH) {
+            HStack(spacing: 0) {
                 fnKey(width: sideKeyW, fill: KP.fnKey, action: handleShiftTap) {
                     Image(systemName: shiftIconName)
                         .font(.system(size: compact ? 16 : 18, weight: .semibold))
                         .foregroundColor(KP.text)
                 }
+                .padding(.trailing, keySpacingH / 2)
                 characterClusterRow(["z","x","c","v","b","n","m"])
                 fnKey(width: sideKeyW, fill: KP.fnKey, action: onBackspace) {
                     Image(systemName: "delete.left")
                         .font(.system(size: compact ? 16 : 18, weight: .semibold))
                         .foregroundColor(KP.text)
                 }
+                .padding(.leading, keySpacingH / 2)
             }
             .frame(height: rowTouchHeight)
 
@@ -393,17 +342,19 @@ private struct OverlayKeyboardView: View {
             characterRow(["1","2","3","4","5","6","7","8","9","0"])
             characterRow(["-","/",":",";","(",")",  "$","&","@","\""])
 
-            HStack(spacing: keySpacingH) {
+            HStack(spacing: 0) {
                 fnKey(width: modeKeyW, fill: KP.fnKey, action: { page = .symbols }) {
                     Text("#+=").font(.system(size: compact ? 16 : 17, weight: .semibold))
                         .foregroundColor(KP.text).offset(y: labelOffsetY)
                 }
+                .padding(.trailing, keySpacingH / 2)
                 inputClusterRow([".",",","?","!","'"], fontSize: compact ? 20 : 22) { onInsertText($0) }
                 fnKey(width: sideKeyW, fill: KP.fnKey, action: onBackspace) {
                     Image(systemName: "delete.left")
                         .font(.system(size: compact ? 16 : 18, weight: .semibold))
                         .foregroundColor(KP.text)
                 }
+                .padding(.leading, keySpacingH / 2)
             }
             .frame(height: rowTouchHeight)
 
@@ -419,17 +370,19 @@ private struct OverlayKeyboardView: View {
             characterRow(["[","]","{","}","#","%","^","*","+","="])
             characterRow(["_","\\","|","~","<",">","€","£","¥","•"])
 
-            HStack(spacing: keySpacingH) {
+            HStack(spacing: 0) {
                 fnKey(width: modeKeyW, fill: KP.fnKey, action: { page = .numbers }) {
                     Text("123").font(.system(size: compact ? 16 : 17, weight: .semibold))
                         .foregroundColor(KP.text).offset(y: labelOffsetY)
                 }
+                .padding(.trailing, keySpacingH / 2)
                 inputClusterRow([".",",","?","!","'"], fontSize: compact ? 20 : 22) { onInsertText($0) }
                 fnKey(width: sideKeyW, fill: KP.fnKey, action: onBackspace) {
                     Image(systemName: "delete.left")
                         .font(.system(size: compact ? 16 : 18, weight: .semibold))
                         .foregroundColor(KP.text)
                 }
+                .padding(.leading, keySpacingH / 2)
             }
             .frame(height: rowTouchHeight)
 
@@ -440,73 +393,102 @@ private struct OverlayKeyboardView: View {
 
     // MARK: — Emoji page
 
-    private var emojiColumns: Int { compact ? 10 : 10 }
-    private var emojiScrollHeight: CGFloat { emojiGridHeight }
+    private var allEmojis: [String] {
+        var ordered: [String] = []
+        var seen = Set<String>()
+        for cat in EmojiCategory.allCases where cat != .all {
+            for e in emojisByCategory[cat] ?? [] where !seen.contains(e) {
+                seen.insert(e); ordered.append(e)
+            }
+        }
+        return ordered
+    }
+
+    private var emojiGridHeight: CGFloat {
+        // Match roughly 3 rows of emoji content within the same overall height as letters page
+        3 * (emojiCellSize + keySpacingV) + (compact ? 4 : 8)
+    }
 
     private var emojiPage: some View {
         VStack(spacing: 0) {
-            // Vertical-scrolling emoji grid — native iOS style
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(), spacing: keySpacingH), count: emojiColumns),
-                    spacing: keySpacingV
-                ) {
-                    ForEach(displayedEmojis, id: \.self) { emoji in
-                        Button { onInsertText(emoji) } label: {
-                            Text(emoji)
-                                .font(.system(size: compact ? 26 : 29))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: emojiCellSize)
-                        }
-                        .buttonStyle(EmojiGlyphStyle())
-                    }
+            // Category-paged emoji grid
+            TabView(selection: $selectedEmojiCategory) {
+                ForEach(EmojiCategory.allCases.filter { $0 != .all }) { cat in
+                    emojiCategoryGrid(cat)
+                        .tag(cat)
                 }
-                .padding(.vertical, compact ? 4 : 6)
             }
-            .frame(height: emojiScrollHeight)
+            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+            .frame(height: emojiGridHeight)
 
-            // Icon-only category bar — matches iOS emoji keyboard
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 0) {
-                    ForEach(EmojiCategory.allCases) { cat in
-                        Button { selectedEmojiCategory = cat } label: {
-                            VStack(spacing: 2) {
-                                Image(systemName: cat.symbolName)
-                                    .font(.system(size: compact ? 14 : 16, weight: .regular))
-                                    .symbolRenderingMode(.monochrome)
-                                    .foregroundColor(selectedEmojiCategory == cat ? KP.text : KP.secondary)
-                                    .frame(width: compact ? 28 : 32, height: compact ? 20 : 22)
-
-                                // Active indicator dot
-                                Circle()
-                                    .fill(selectedEmojiCategory == cat ? KP.secondary : .clear)
-                                    .frame(width: 4, height: 4)
-                            }
-                            .frame(width: compact ? 32 : 36, height: categoryBarH)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 4)
-            }
-            .frame(height: categoryBarH)
-            .padding(.bottom, compact ? 2 : 3)
+            // Category icon bar
+            emojiCategoryBar
+                .frame(height: categoryBarH)
 
             bottomRow(modeTitle: "ABC", modeAction: { page = .letters; shiftState = .lower })
-                .frame(height: keyHeight)
+                .frame(height: rowTouchHeight)
+        }
+    }
+
+    private func emojiCategoryGrid(_ cat: EmojiCategory) -> some View {
+        let emojis = emojisByCategory[cat] ?? []
+        return ScrollView(.vertical, showsIndicators: false) {
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: keySpacingH), count: emojiColumns),
+                spacing: keySpacingV
+            ) {
+                ForEach(emojis, id: \.self) { emoji in
+                    Button { onInsertText(emoji) } label: {
+                        Text(emoji)
+                            .font(.system(size: compact ? 26 : 29))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: emojiCellSize)
+                    }
+                    .buttonStyle(EmojiGlyphStyle())
+                }
+            }
+            .padding(.horizontal, horizPad)
+            .padding(.vertical, compact ? 4 : 6)
+        }
+    }
+
+    private var emojiCategoryBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 0) {
+                ForEach(EmojiCategory.allCases.filter { $0 != .all }) { cat in
+                    Button { selectedEmojiCategory = cat } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: cat.symbolName)
+                                .font(.system(size: compact ? 20 : 22, weight: .regular))
+                                .symbolRenderingMode(.monochrome)
+                                .foregroundColor(selectedEmojiCategory == cat ? KP.text : KP.secondary)
+                                .frame(width: compact ? 40 : 44, height: compact ? 24 : 26)
+
+                            // Active indicator dot
+                            Circle()
+                                .fill(selectedEmojiCategory == cat ? KP.secondary : .clear)
+                                .frame(width: 6, height: 6)
+                        }
+                        .frame(width: compact ? 44 : 48, height: categoryBarH)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 4)
         }
     }
 
     // MARK: — Shared bottom row
 
     private func bottomRow(modeTitle: String, modeAction: @escaping () -> Void) -> some View {
-        HStack(spacing: keySpacingH) {
+        HStack(spacing: 0) {
             fnKey(width: modeKeyW, fill: KP.fnKey, action: modeAction) {
                 Text(modeTitle)
                     .font(.system(size: compact ? 16 : 17, weight: .regular))
                     .foregroundColor(KP.text)
                     .offset(y: labelOffsetY)
             }
+            .padding(.trailing, keySpacingH / 2)
 
             // Emoji toggle
             fnKey(
@@ -522,6 +504,7 @@ private struct OverlayKeyboardView: View {
                     .symbolRenderingMode(.monochrome)
                     .foregroundColor(KP.text)
             }
+            .padding(.horizontal, keySpacingH / 2)
 
             // Space
             keyBtn(fill: KP.key, action: { onInsertText(" ") }) {
@@ -530,6 +513,7 @@ private struct OverlayKeyboardView: View {
                     .foregroundColor(KP.text)
                     .offset(y: labelOffsetY)
             }
+            .padding(.horizontal, keySpacingH / 2)
 
             // Return
             fnKey(width: returnKeyW, fill: KP.fnKey, action: onReturn) {
@@ -540,6 +524,7 @@ private struct OverlayKeyboardView: View {
                     .foregroundColor(KP.text)
                     .offset(y: labelOffsetY)
             }
+            .padding(.leading, keySpacingH / 2)
         }
         .frame(maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -548,67 +533,80 @@ private struct OverlayKeyboardView: View {
     // MARK: — Row builders
 
     private func characterRow(_ keys: [String]) -> some View {
-        ZStack {
-            rowFallback(keys: keys)
-            HStack(spacing: keySpacingH) {
-                ForEach(keys, id: \.self) { characterKey($0) }
+        rowWithGapCatcher(keys: keys, inset: 0) {
+            HStack(spacing: 0) {
+                ForEach(keys, id: \.self) { key in
+                    characterKey(key)
+                        .padding(.horizontal, keySpacingH / 2)
+                }
             }
+        } fallback: { geo, x in
+            nearestCharacter(keys: keys, x: x, width: geo.size.width, inset: 0)
         }
-        .frame(height: rowTouchHeight)
-        .contentShape(Rectangle())
     }
 
     private func middleLetterRow(_ keys: [String]) -> some View {
         let inset: CGFloat = compact ? 24 : 28
-        return ZStack {
-            rowFallback(keys: keys, inset: inset)
-            HStack(spacing: keySpacingH) {
-                ForEach(keys, id: \.self) { characterKey($0) }
+        return rowWithGapCatcher(keys: keys, inset: inset) {
+            HStack(spacing: 0) {
+                ForEach(keys, id: \.self) { key in
+                    characterKey(key)
+                        .padding(.horizontal, keySpacingH / 2)
+                }
             }
-            .padding(.horizontal, inset)
+            .padding(.horizontal, inset - keySpacingH / 2)
+        } fallback: { geo, x in
+            nearestCharacter(keys: keys, x: x, width: geo.size.width, inset: inset)
         }
-        .frame(height: rowTouchHeight)
-        .contentShape(Rectangle())
     }
 
     private func characterClusterRow(_ keys: [String]) -> some View {
-        ZStack {
-            rowFallback(keys: keys)
-            HStack(spacing: keySpacingH) {
-                ForEach(keys, id: \.self) { characterKey($0) }
+        rowWithGapCatcher(keys: keys, inset: 0) {
+            HStack(spacing: 0) {
+                ForEach(keys, id: \.self) { key in
+                    characterKey(key)
+                        .padding(.horizontal, keySpacingH / 2)
+                }
             }
+        } fallback: { geo, x in
+            nearestCharacter(keys: keys, x: x, width: geo.size.width, inset: 0)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: keyHeight)
-        .contentShape(Rectangle())
     }
 
     private func inputClusterRow(_ keys: [String], fontSize: CGFloat, action: @escaping (String) -> Void) -> some View {
-        ZStack {
-            GeometryReader { g in
-                Color.clear.contentShape(Rectangle())
-                    .gesture(DragGesture(minimumDistance: 0).onEnded { v in
-                        nearestInput(keys: keys, x: v.location.x, width: g.size.width, action: action)
-                    })
-            }
-            HStack(spacing: keySpacingH) {
+        rowWithGapCatcher(keys: keys, inset: 0) {
+            HStack(spacing: 0) {
                 ForEach(keys, id: \.self) { key in
                     charInputKey(label: key, fontSize: fontSize, action: { action(key) })
+                        .padding(.horizontal, keySpacingH / 2)
                 }
             }
+        } fallback: { geo, x in
+            nearestInput(keys: keys, x: x, width: geo.size.width, action: action)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: keyHeight)
     }
 
-    // Transparent full-row tap fallback — maps any tap to the nearest key
-    private func rowFallback(keys: [String], inset: CGFloat = 0) -> some View {
-        GeometryReader { g in
-            Color.clear.contentShape(Rectangle())
-                .gesture(DragGesture(minimumDistance: 0).onEnded { v in
-                    nearestCharacter(keys: keys, x: v.location.x, width: g.size.width, inset: inset)
-                })
+    private func rowWithGapCatcher<Content: View>(
+        keys: [String], inset: CGFloat,
+        @ViewBuilder content: @escaping () -> Content,
+        fallback: @escaping (GeometryProxy, CGFloat) -> Void
+    ) -> some View {
+        GeometryReader { geo in
+            ZStack {
+                Rectangle()
+                    .fill(Color.clear)
+                    .contentShape(Rectangle())
+                    .allowsHitTesting(true)
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onEnded { value in
+                                fallback(geo, value.location.x)
+                            }
+                    )
+                content()
+            }
         }
+        .frame(height: rowTouchHeight)
     }
 
     // MARK: — Key builders
@@ -632,7 +630,8 @@ private struct OverlayKeyboardView: View {
         }
         .buttonStyle(CharKeyStyle(fill: KP.key, radius: radius, label: label, compact: compact))
         .frame(maxWidth: .infinity)
-        .frame(height: keyHeight)
+        .frame(height: rowTouchHeight)
+        .contentShape(Rectangle())
     }
 
     private func fnKey<C: View>(width: CGFloat, fill: Color, action: @escaping () -> Void, @ViewBuilder label: () -> C) -> some View {
@@ -643,10 +642,11 @@ private struct OverlayKeyboardView: View {
         Button(action: action) {
             label().frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .buttonStyle(FnKeyStyle(fill: fill, radius: radius))
+        .buttonStyle(FnKeyStyle(fill: fill, radius: radius, compact: compact))
         .frame(width: width)
         .frame(maxWidth: width == nil ? .infinity : nil)
-        .frame(height: keyHeight)
+        .frame(height: rowTouchHeight)
+        .contentShape(Rectangle())
     }
 
     // MARK: — Character helpers
@@ -688,8 +688,6 @@ private struct OverlayKeyboardView: View {
         }
     }
 
-    // MARK: — Nearest-key dispatch (background tap fallback)
-
     private func nearestCharacter(keys: [String], x: CGFloat, width: CGFloat, inset: CGFloat) {
         guard !keys.isEmpty else { return }
         let usable = max(1, width - inset * 2)
@@ -718,12 +716,18 @@ private struct OverlayKeyboardView: View {
 private struct FnKeyStyle: ButtonStyle {
     let fill: Color
     let radius: CGFloat
+    let compact: Bool
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(configuration.isPressed ? KP.keyPressed : fill)
+                GeometryReader { geo in
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .fill(configuration.isPressed ? KP.keyPressed : fill)
+                        .frame(width: geo.size.width, height: min(geo.size.height, CGFloat(compact ? 36 : 44)))
+                        .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                }
             )
             .shadow(color: .black.opacity(0.32), radius: 0, x: 0, y: 1)
     }
@@ -737,9 +741,14 @@ private struct CharKeyStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(configuration.isPressed ? KP.keyPressed : fill)
+                GeometryReader { geo in
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .fill(configuration.isPressed ? KP.keyPressed : fill)
+                        .frame(width: geo.size.width, height: min(geo.size.height, CGFloat(compact ? 36 : 44)))
+                        .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                }
             )
             .shadow(color: .black.opacity(0.32), radius: 0, x: 0, y: 1)
             .overlay(alignment: .top) {
@@ -863,18 +872,70 @@ private struct RecordingWaveform: View {
 
 private struct NoAccessView: View {
     var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "lock.fill")
-                .font(.system(size: 20, weight: .medium))
-                .foregroundColor(KP.secondary)
-            Text("Full Access Required")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(KP.text)
-            Text("Settings → General → Keyboard → Overlay → Allow Full Access")
-                .font(.system(size: 11, weight: .regular))
-                .foregroundColor(KP.secondary)
-                .multilineTextAlignment(.center)
+        VStack(spacing: 0) {
+            Spacer()
+
+            VStack(spacing: 16) {
+                // Icon circle
+                ZStack {
+                    Circle()
+                        .fill(KP.fnKey)
+                        .frame(width: 56, height: 56)
+                        .overlay(
+                            Circle()
+                                .stroke(KP.secondary.opacity(0.25), lineWidth: 1)
+                        )
+                    Image(systemName: "mic.slash.fill")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundColor(KP.secondary)
+                }
+
+                // Title + subtitle
+                VStack(spacing: 6) {
+                    Text("Microphone Access Required")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(KP.text)
+                    Text("Overlay needs full access to transcribe your voice into text.")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(KP.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .padding(.horizontal, 32)
+                }
+
+                // Instructions card
+                VStack(alignment: .leading, spacing: 10) {
+                    instructionRow(icon: "gearshape.fill", text: "Open Settings")
+                    instructionRow(icon: "arrow.right", text: "General → Keyboard → Keyboards")
+                    instructionRow(icon: "hand.tap.fill", text: "Tap Overlay → Allow Full Access")
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(KP.fnKey)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(KP.secondary.opacity(0.2), lineWidth: 1)
+                        )
+                )
                 .padding(.horizontal, 24)
+            }
+
+            Spacer()
+        }
+    }
+
+    private func instructionRow(icon: String, text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(KP.secondary)
+                .frame(width: 18)
+            Text(text)
+                .font(.system(size: 12, weight: .regular))
+                .foregroundColor(KP.text)
+            Spacer()
         }
     }
 }

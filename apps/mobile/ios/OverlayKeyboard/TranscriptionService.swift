@@ -151,6 +151,18 @@ class TranscriptionService: NSObject, ObservableObject {
         startPolling()
     }
 
+    func pauseRecording() {
+        guard state == .recording else { return }
+        defaults?.set("pause", forKey: commandKey)
+        defaults?.synchronize()
+    }
+
+    func resumeRecording() {
+        guard state == .recording else { return }
+        defaults?.set("resume", forKey: commandKey)
+        defaults?.synchronize()
+    }
+
     func resumeFromSharedState() {
         backgroundModeEnabled = defaults?.bool(forKey: backgroundModeKey) ?? false
         cancelStartFallback()

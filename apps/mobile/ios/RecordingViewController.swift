@@ -16,9 +16,9 @@ class RecordingViewController: UIViewController {
     // MARK: - UI (Swipe Back Screen)
     private let titleLabel: UILabel = {
         let l = UILabel()
-        l.text = "Swipe back to continue"
-        l.textColor = .white
-        l.font = .systemFont(ofSize: 28, weight: .bold)
+        l.text = "Swipe back to your app"
+        l.textColor = .black
+        l.font = .systemFont(ofSize: 26, weight: .bold)
         l.textAlignment = .center
         l.translatesAutoresizingMaskIntoConstraints = false
         return l
@@ -26,9 +26,9 @@ class RecordingViewController: UIViewController {
 
     private let subtitleLabel: UILabel = {
         let l = UILabel()
-        l.text = "We'd love for you to use Overlay directly,\nbut iOS requires switching apps to\nturn on the microphone."
-        l.textColor = UIColor(white: 0.6, alpha: 1)
-        l.font = .systemFont(ofSize: 16)
+        l.text = "We wish you didn't have to switch apps to use Overlay, but Apple now requires it to activate the microphone."
+        l.textColor = UIColor(white: 0.4, alpha: 1)
+        l.font = .systemFont(ofSize: 15)
         l.textAlignment = .center
         l.numberOfLines = 0
         l.translatesAutoresizingMaskIntoConstraints = false
@@ -37,40 +37,73 @@ class RecordingViewController: UIViewController {
 
     private let closeButton: UIButton = {
         let b = UIButton(type: .system)
-        let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
-        b.setImage(UIImage(systemName: "xmark", withConfiguration: config), for: .normal)
-        b.tintColor = UIColor(white: 0.6, alpha: 1)
+        let config = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+        b.setImage(UIImage(systemName: "xmark.circle.fill", withConfiguration: config), for: .normal)
+        b.tintColor = UIColor(white: 0.5, alpha: 1)
         b.translatesAutoresizingMaskIntoConstraints = false
         return b
     }()
 
     private let backgroundModeLabel: UILabel = {
         let l = UILabel()
-        l.text = "BG mic"
-        l.textColor = UIColor(white: 0.7, alpha: 1)
-        l.font = .systemFont(ofSize: 12, weight: .semibold)
+        l.text = "Background mic"
+        l.textColor = UIColor(white: 0.5, alpha: 1)
+        l.font = .systemFont(ofSize: 12, weight: .regular)
         l.translatesAutoresizingMaskIntoConstraints = false
         return l
     }()
 
     private let backgroundModeSwitch: UISwitch = {
         let s = UISwitch()
-        s.onTintColor = UIColor(red: 0.3, green: 0.9, blue: 0.5, alpha: 1)
+        s.onTintColor = UIColor(red: 0.2, green: 0.8, blue: 0.4, alpha: 1)
         s.translatesAutoresizingMaskIntoConstraints = false
         return s
     }()
 
-    private let phoneIconsContainer: UIView = {
+    private let phoneCardContainer: UIView = {
         let v = UIView()
+        v.backgroundColor = UIColor(white: 0.96, alpha: 1)
+        v.layer.cornerRadius = 24
+        v.layer.borderWidth = 1
+        v.layer.borderColor = UIColor(white: 0.88, alpha: 1).cgColor
         v.translatesAutoresizingMaskIntoConstraints = false
         return v
+    }()
+
+    private let swipeBar: UIView = {
+        let v = UIView()
+        v.backgroundColor = UIColor(white: 0.94, alpha: 1)
+        v.layer.cornerRadius = 12
+        v.layer.borderWidth = 1
+        v.layer.borderColor = UIColor(white: 0.85, alpha: 1).cgColor
+        v.translatesAutoresizingMaskIntoConstraints = false
+        return v
+    }()
+
+    private let swipeBarLabel: UILabel = {
+        let l = UILabel()
+        l.text = "Swipe right on the bar below"
+        l.textColor = UIColor(white: 0.4, alpha: 1)
+        l.font = .systemFont(ofSize: 13, weight: .medium)
+        l.textAlignment = .center
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }()
+
+    private let swipeHandIcon: UIImageView = {
+        let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        let iv = UIImageView(image: UIImage(systemName: "hand.draw.fill", withConfiguration: config))
+        iv.tintColor = UIColor(white: 0.5, alpha: 1)
+        iv.translatesAutoresizingMaskIntoConstraints = false
+        iv.contentMode = .scaleAspectFit
+        return iv
     }()
 
     private let statusLabel: UILabel = {
         let l = UILabel()
         l.text = "🎙️ Recording..."
-        l.textColor = UIColor(red: 0.3, green: 0.9, blue: 0.5, alpha: 1)
-        l.font = .systemFont(ofSize: 15, weight: .medium)
+        l.textColor = UIColor(red: 0.2, green: 0.7, blue: 0.4, alpha: 1)
+        l.font = .systemFont(ofSize: 14, weight: .medium)
         l.textAlignment = .center
         l.translatesAutoresizingMaskIntoConstraints = false
         return l
@@ -108,7 +141,7 @@ class RecordingViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .black
+        view.backgroundColor = .white
         setupUI()
         backgroundModeSwitch.isOn = isBackgroundModeEnabled
         registerLifecycleObservers()
@@ -153,83 +186,91 @@ class RecordingViewController: UIViewController {
 
     private func setupUI() {
         view.addSubview(closeButton)
-        view.addSubview(backgroundModeSwitch)
-        view.addSubview(backgroundModeLabel)
         view.addSubview(titleLabel)
         view.addSubview(subtitleLabel)
-        view.addSubview(phoneIconsContainer)
+        view.addSubview(phoneCardContainer)
+        view.addSubview(swipeBar)
+        swipeBar.addSubview(swipeBarLabel)
+        swipeBar.addSubview(swipeHandIcon)
         view.addSubview(statusLabel)
+        view.addSubview(backgroundModeLabel)
+        view.addSubview(backgroundModeSwitch)
 
-        // Draw two phone outlines
-        let phone1 = createPhoneOutline()
-        let phone2 = createPhoneOutline()
-        phone2.layer.borderWidth = 2
-        phoneIconsContainer.addSubview(phone1)
-        phoneIconsContainer.addSubview(phone2)
+        // Phone card content — mic waveform illustration
+        let micIcon = UIImageView(image: UIImage(systemName: "waveform.and.mic", withConfiguration: UIImage.SymbolConfiguration(pointSize: 48, weight: .medium)))
+        micIcon.tintColor = UIColor(white: 0.7, alpha: 1)
+        micIcon.translatesAutoresizingMaskIntoConstraints = false
+        micIcon.contentMode = .scaleAspectFit
+        phoneCardContainer.addSubview(micIcon)
 
-        // Add mic indicator to phone2
-        let micDot = UIView()
-        micDot.backgroundColor = UIColor(red: 0.3, green: 0.9, blue: 0.5, alpha: 1)
-        micDot.layer.cornerRadius = 8
-        micDot.translatesAutoresizingMaskIntoConstraints = false
-        phone2.addSubview(micDot)
+        let recordingDot = UIView()
+        recordingDot.backgroundColor = UIColor(red: 0.96, green: 0.29, blue: 0.27, alpha: 1)
+        recordingDot.layer.cornerRadius = 6
+        recordingDot.translatesAutoresizingMaskIntoConstraints = false
+        phoneCardContainer.addSubview(recordingDot)
 
         NSLayoutConstraint.activate([
+            // Close button
             closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
             closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            closeButton.widthAnchor.constraint(equalToConstant: 32),
-            closeButton.heightAnchor.constraint(equalToConstant: 32),
+            closeButton.widthAnchor.constraint(equalToConstant: 36),
+            closeButton.heightAnchor.constraint(equalToConstant: 36),
 
-            backgroundModeSwitch.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
-            backgroundModeSwitch.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -10),
-
-            backgroundModeLabel.centerYAnchor.constraint(equalTo: backgroundModeSwitch.centerYAnchor),
-            backgroundModeLabel.trailingAnchor.constraint(equalTo: backgroundModeSwitch.leadingAnchor, constant: -8),
-
-            titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 80),
+            // Title
+            titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 72),
             titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
             titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
 
-            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 16),
-            subtitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            subtitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+            // Subtitle
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 12),
+            subtitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            subtitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
 
-            phoneIconsContainer.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            phoneIconsContainer.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: 40),
-            phoneIconsContainer.widthAnchor.constraint(equalToConstant: 200),
-            phoneIconsContainer.heightAnchor.constraint(equalToConstant: 160),
+            // Phone card
+            phoneCardContainer.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            phoneCardContainer.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: 10),
+            phoneCardContainer.widthAnchor.constraint(equalToConstant: 180),
+            phoneCardContainer.heightAnchor.constraint(equalToConstant: 260),
 
-            phone1.leadingAnchor.constraint(equalTo: phoneIconsContainer.leadingAnchor),
-            phone1.centerYAnchor.constraint(equalTo: phoneIconsContainer.centerYAnchor),
-            phone1.widthAnchor.constraint(equalToConstant: 70),
-            phone1.heightAnchor.constraint(equalToConstant: 140),
+            micIcon.centerXAnchor.constraint(equalTo: phoneCardContainer.centerXAnchor),
+            micIcon.centerYAnchor.constraint(equalTo: phoneCardContainer.centerYAnchor, constant: -20),
+            micIcon.widthAnchor.constraint(equalToConstant: 64),
+            micIcon.heightAnchor.constraint(equalToConstant: 64),
 
-            phone2.trailingAnchor.constraint(equalTo: phoneIconsContainer.trailingAnchor),
-            phone2.centerYAnchor.constraint(equalTo: phoneIconsContainer.centerYAnchor),
-            phone2.widthAnchor.constraint(equalToConstant: 90),
-            phone2.heightAnchor.constraint(equalToConstant: 160),
+            recordingDot.centerXAnchor.constraint(equalTo: phoneCardContainer.centerXAnchor),
+            recordingDot.topAnchor.constraint(equalTo: micIcon.bottomAnchor, constant: 20),
+            recordingDot.widthAnchor.constraint(equalToConstant: 12),
+            recordingDot.heightAnchor.constraint(equalToConstant: 12),
 
-            micDot.centerXAnchor.constraint(equalTo: phone2.centerXAnchor),
-            micDot.bottomAnchor.constraint(equalTo: phone2.bottomAnchor, constant: -30),
-            micDot.widthAnchor.constraint(equalToConstant: 16),
-            micDot.heightAnchor.constraint(equalToConstant: 16),
+            // Swipe bar
+            swipeBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            swipeBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            swipeBar.heightAnchor.constraint(equalToConstant: 44),
+            swipeBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -80),
 
-            statusLabel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -60),
+            swipeHandIcon.centerYAnchor.constraint(equalTo: swipeBar.centerYAnchor),
+            swipeHandIcon.leadingAnchor.constraint(equalTo: swipeBar.leadingAnchor, constant: 16),
+            swipeHandIcon.widthAnchor.constraint(equalToConstant: 24),
+            swipeHandIcon.heightAnchor.constraint(equalToConstant: 24),
+
+            swipeBarLabel.centerYAnchor.constraint(equalTo: swipeBar.centerYAnchor),
+            swipeBarLabel.leadingAnchor.constraint(equalTo: swipeHandIcon.trailingAnchor, constant: 10),
+            swipeBarLabel.trailingAnchor.constraint(equalTo: swipeBar.trailingAnchor, constant: -16),
+
+            // Status label
+            statusLabel.bottomAnchor.constraint(equalTo: swipeBar.topAnchor, constant: -16),
             statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+
+            // Background mode (bottom-left, subtle)
+            backgroundModeSwitch.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            backgroundModeSwitch.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+
+            backgroundModeLabel.centerYAnchor.constraint(equalTo: backgroundModeSwitch.centerYAnchor),
+            backgroundModeLabel.leadingAnchor.constraint(equalTo: backgroundModeSwitch.trailingAnchor, constant: 8),
         ])
 
         closeButton.addTarget(self, action: #selector(cancelAndDismiss), for: .touchUpInside)
         backgroundModeSwitch.addTarget(self, action: #selector(backgroundModeSwitchChanged(_:)), for: .valueChanged)
-    }
-
-    private func createPhoneOutline() -> UIView {
-        let v = UIView()
-        v.backgroundColor = .clear
-        v.layer.borderColor = UIColor(white: 0.3, alpha: 1).cgColor
-        v.layer.borderWidth = 1.5
-        v.layer.cornerRadius = 12
-        v.translatesAutoresizingMaskIntoConstraints = false
-        return v
     }
 
     // MARK: - Actions
