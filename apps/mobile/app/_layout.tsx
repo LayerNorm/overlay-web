@@ -1,6 +1,6 @@
-import React from 'react'
-import { View, ActivityIndicator } from 'react-native'
-import { Stack } from 'expo-router'
+import React, { useEffect } from 'react'
+import { View, ActivityIndicator, Linking } from 'react-native'
+import { Stack, router } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useFonts } from 'expo-font'
@@ -8,8 +8,51 @@ import { ThemeProvider, useTheme } from '../hooks/useTheme'
 import { AuthProvider } from '../contexts/AuthContext'
 import { AppSessionProvider } from '../contexts/AppSessionContext'
 
+function handleDeepLink(url: string | null | undefined): void {
+  if (!url) return
+  // Dictate URLs from the keyboard land users on the Voice page so they can
+  // toggle background recording on. We pass autoEnable=1 so the page flips
+  // the switch automatically.
+  if (url.startsWith('overlay://dictate')) {
+    router.push('/(tabs)/voice?autoEnable=1')
+  }
+}
+
+function useDictateDeepLink(): void {
+  useEffect(() => {
+    void Linking.getInitialURL().then(handleDeepLink)
+    const sub = Linking.addEventListener('url', (event) => handleDeepLink(event.url))
+    return () => sub.remove()
+  }, [])
+}
+
+function useVoiceAuthSync(): void {
+  // Mirror the WorkOS access token + userId into the App Group on launch and
+  // periodically thereafter so the headless recorder can authenticate against
+  // /api/app/transcribe even after a token refresh.
+  useEffect(() => {
+    let cancelled = false
+    const sync = async () => {
+      try {
+        const { syncAuthSessionToAppGroup } = await import('../services/voiceService')
+        if (!cancelled) await syncAuthSessionToAppGroup()
+      } catch {
+        // ignore
+      }
+    }
+    void sync()
+    const interval = setInterval(() => void sync(), 60_000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [])
+}
+
 function RootLayoutNav(): React.ReactElement {
   const { isDark } = useTheme()
+  useDictateDeepLink()
+  useVoiceAuthSync()
 
   return (
     <>

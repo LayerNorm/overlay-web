@@ -40,6 +40,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: 'Chat', icon: 'message-circle', route: '/(tabs)/chat' },
   { label: 'Notes', icon: 'book-open', route: '/(tabs)/notes' },
+  { label: 'Voice', icon: 'mic', route: '/(tabs)/voice' },
 ]
 
 interface KnowledgeSubItem {

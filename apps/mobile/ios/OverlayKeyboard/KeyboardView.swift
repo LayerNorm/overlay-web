@@ -156,119 +156,129 @@ private struct OverlayKeyboardView: View {
             .ignoresSafeArea(.container, edges: .bottom)
     }
 
-    // MARK: — Recording control bar (permanent, compact, at the top)
+    // MARK: — Liquid-glass top bar (Start / cancel-waveform-stop / processing)
 
-    private var micCircleSize: CGFloat { compact ? 24 : 28 }
+    private var headerBarH: CGFloat { compact ? 44 : 52 }
+    private var pillH: CGFloat { compact ? 32 : 36 }
+    private var iconBtnSize: CGFloat { compact ? 32 : 36 }
 
-    private var recordingControlBar: some View {
-        HStack(spacing: 0) {
-            // Left: waveform / processing indicator / placeholder
-            HStack(spacing: compact ? 6 : 8) {
-                if service.state == .processing {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: KP.secondary))
-                        .scaleEffect(compact ? 0.8 : 0.9)
-                    Text("Processing…")
-                        .font(.system(size: compact ? 11 : 12, weight: .regular))
-                        .foregroundColor(KP.secondary)
-                } else if service.state == .recording && !isPaused {
-                    RecordingWaveform(level: service.audioLevel, active: true, compact: compact)
-                        .frame(height: compact ? 18 : 22)
-                        .frame(maxWidth: 100)
-                    Text("Listening…")
-                        .font(.system(size: compact ? 11 : 12, weight: .regular))
-                        .foregroundColor(KP.secondary)
-                } else if service.state == .recording && isPaused {
-                    Image(systemName: "pause.fill")
-                        .font(.system(size: compact ? 10 : 11, weight: .medium))
-                        .foregroundColor(KP.secondary)
-                    Text("Paused")
-                        .font(.system(size: compact ? 11 : 12, weight: .regular))
-                        .foregroundColor(KP.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private var headerBar: some View {
+        let isRecording = service.state == .recording
+        let isProcessing = service.state == .processing
 
-            Spacer()
-
-            // Right: action buttons — standalone circular icons, no shared background
-            HStack(spacing: compact ? 8 : 12) {
-                if service.state == .recording {
-                    // Pause / Resume
-                    Button {
-                        if isPaused {
-                            isPaused = false
-                            service.resumeRecording()
-                        } else {
-                            isPaused = true
-                            service.pauseRecording()
-                        }
-                    } label: {
-                        Image(systemName: isPaused ? "play.fill" : "pause.fill")
-                            .font(.system(size: compact ? 14 : 15, weight: .medium))
-                            .foregroundColor(KP.text)
-                            .frame(width: compact ? 28 : 32, height: compact ? 28 : 32)
-                    }
-                    .buttonStyle(.plain)
-
-                    // Cancel
-                    Button {
-                        isPaused = false
-                        service.cancelRecording()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: compact ? 13 : 14, weight: .medium))
-                            .foregroundColor(KP.secondary)
-                            .frame(width: compact ? 28 : 32, height: compact ? 28 : 32)
-                    }
-                    .buttonStyle(.plain)
-
-                    // Stop / Done
-                    Button {
-                        isPaused = false
-                        service.stopRecording()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(KP.recording)
-                                .frame(width: compact ? 6 : 7, height: compact ? 6 : 7)
-                            Text("Done")
-                                .font(.system(size: compact ? 12 : 13, weight: .semibold))
-                                .foregroundColor(KP.text)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    // Large solid mic button with explicit tap/long-press
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(service.backgroundModeEnabled ? KP.recording.opacity(0.25) : KP.fnKey)
-                            .frame(width: compact ? 56 : 68, height: accessoryH)
-                        Image(systemName: service.backgroundModeEnabled ? "waveform.and.mic" : "mic.fill")
-                            .font(.system(size: compact ? 18 : 22, weight: .medium))
-                            .foregroundColor(service.backgroundModeEnabled ? KP.recording : .white)
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        isPaused = false
-                        service.startRecording()
-                    }
-                    .onLongPressGesture(minimumDuration: 0.5) {
-                        service.setBackgroundModeEnabled(!service.backgroundModeEnabled)
-                    }
-                }
+        return ZStack {
+            if isRecording {
+                recordingHeader
+            } else if isProcessing {
+                processingHeader
+            } else {
+                idleHeader
             }
         }
-        .frame(height: accessoryH)
-        .padding(.horizontal, compact ? 8 : 10)
+        .frame(height: headerBarH)
+        .padding(.horizontal, horizPad)
+    }
+
+    /// Idle: a single liquid-glass pill on the right that says "Start".
+    private var idleHeader: some View {
+        HStack(spacing: 0) {
+            Spacer()
+            ZStack {
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                Capsule()
+                    .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                Text("Start")
+                    .font(.system(size: compact ? 14 : 15, weight: .semibold))
+                    .foregroundColor(KP.text)
+                    .padding(.horizontal, compact ? 18 : 22)
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(height: pillH)
+            .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 2)
+            .contentShape(Capsule())
+            .onTapGesture {
+                isPaused = false
+                service.startRecording()
+            }
+        }
+    }
+
+    /// Recording: cancel button on the left, live waveform centered, stop pill on the right.
+    private var recordingHeader: some View {
+        HStack(spacing: compact ? 8 : 10) {
+            // Cancel
+            ZStack {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                Circle()
+                    .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                Image(systemName: "xmark")
+                    .font(.system(size: compact ? 13 : 14, weight: .semibold))
+                    .foregroundColor(KP.secondary)
+            }
+            .frame(width: iconBtnSize, height: iconBtnSize)
+            .contentShape(Circle())
+            .onTapGesture {
+                isPaused = false
+                service.cancelRecording()
+            }
+
+            // Waveform — centered
+            RecordingWaveform(level: service.audioLevel, active: true, compact: compact)
+                .frame(maxWidth: .infinity)
+                .frame(height: compact ? 22 : 26)
+
+            // Stop
+            ZStack {
+                Capsule()
+                    .fill(KP.recording)
+                Capsule()
+                    .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                HStack(spacing: 6) {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(Color.white)
+                        .frame(width: compact ? 9 : 10, height: compact ? 9 : 10)
+                    Text("Stop")
+                        .font(.system(size: compact ? 14 : 15, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, compact ? 14 : 18)
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(height: pillH)
+            .shadow(color: KP.recording.opacity(0.4), radius: 8, x: 0, y: 2)
+            .contentShape(Capsule())
+            .onTapGesture {
+                isPaused = false
+                service.stopRecording()
+            }
+        }
+    }
+
+    /// Processing: spinner + label, no buttons.
+    private var processingHeader: some View {
+        HStack(spacing: 0) {
+            Spacer()
+            HStack(spacing: 8) {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: KP.secondary))
+                    .scaleEffect(compact ? 0.8 : 0.9)
+                Text("Transcribing…")
+                    .font(.system(size: compact ? 13 : 14, weight: .regular))
+                    .foregroundColor(KP.secondary)
+            }
+            .padding(.horizontal, compact ? 16 : 20)
+            .frame(height: pillH)
+            .background(Capsule().fill(.ultraThinMaterial))
+            .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
+            .fixedSize(horizontal: true, vertical: false)
+        }
     }
 
     private var keyboardContent: some View {
         VStack(spacing: 0) {
-            recordingControlBar
-                .padding(.horizontal, horizPad)
-                .padding(.top, compact ? 3 : 4)
-                .padding(.bottom, compact ? 2 : 3)
+            headerBar
 
             VStack(spacing: 0) {
                 switch page {
@@ -506,11 +516,11 @@ private struct OverlayKeyboardView: View {
             }
             .padding(.horizontal, keySpacingH / 2)
 
-            // Space
+            // Space — labelled "overlay" in Libre Baskerville
             keyBtn(fill: KP.key, action: { onInsertText(" ") }) {
-                Text("space")
-                    .font(.system(size: compact ? 16 : 17, weight: .regular))
-                    .foregroundColor(KP.text)
+                Text("overlay")
+                    .font(.custom("LibreBaskerville-Regular", size: compact ? 15 : 16))
+                    .foregroundColor(KP.secondary)
                     .offset(y: labelOffsetY)
             }
             .padding(.horizontal, keySpacingH / 2)

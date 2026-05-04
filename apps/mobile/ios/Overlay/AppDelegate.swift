@@ -1,6 +1,7 @@
 internal import Expo
 import React
 import ReactAppDependencyProvider
+import AVFoundation
 
 @UIApplicationMain
 class AppDelegate: ExpoAppDelegate {
@@ -8,6 +9,10 @@ class AppDelegate: ExpoAppDelegate {
 
   var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
   var reactNativeFactory: RCTReactNativeFactory?
+  // Long-lived recorder owned by the app process. When background voice is
+  // enabled, this stays alive so the keyboard's start/stop commands can drive
+  // recording without ever foregrounding a modal screen.
+  var backgroundVoiceController: RecordingViewController?
 
   override func application(
     _ application: UIApplication,
@@ -28,44 +33,66 @@ class AppDelegate: ExpoAppDelegate {
       launchOptions: launchOptions)
 #endif
 
+    // If background voice was previously toggled on, bring up the headless
+    // controller right away so the keyboard works on cold launches too.
+    DispatchQueue.main.async {
+      self.startBackgroundVoiceControllerIfNeeded()
+    }
+
+    NotificationCenter.default.addObserver(
+      forName: Notification.Name("OverlayBackgroundVoiceDidChange"),
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.startBackgroundVoiceControllerIfNeeded()
+    }
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
-  // Linking API
+  // Linking API. We no longer present a modal recorder for `overlay://dictate`;
+  // instead we hand the URL to React Native so the JS layer routes the user
+  // to the Voice page (which will auto-enable the switch).
   override func application(
     _ app: UIApplication,
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
-    // Handle keyboard extension dictation request
     if url.scheme == "overlay" && url.host == "dictate" {
-      DispatchQueue.main.async {
-        self.presentRecordingViewController()
-      }
-      return true
+      // Forward to RN linking so JS can navigate. Returning false from the
+      // override falls through to RCTLinkingManager below.
+      return RCTLinkingManager.application(app, open: url, options: options)
     }
     return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
   }
 
-  private func presentRecordingViewController() {
-    guard let rootVC = window?.rootViewController else { return }
-    var topVC = rootVC
-    if let recordingVC = topVC as? RecordingViewController {
-      recordingVC.restartForNewDictationRequest()
-      return
-    }
-    while let presented = topVC.presentedViewController {
-      // Don't stack multiple RecordingViewControllers
-      if let recordingVC = presented as? RecordingViewController {
-        recordingVC.restartForNewDictationRequest()
-        return
+  /// Headless recorder lifecycle. The controller is parked off-screen so it
+  /// never appears in the user's view hierarchy; it just owns the audio
+  /// session and command poller.
+  func startBackgroundVoiceControllerIfNeeded() {
+    let appGroupID = "group.com.layernorm.overlay-mobile"
+    let defaults = UserDefaults(suiteName: appGroupID)
+    let enabled = defaults?.bool(forKey: "overlay_kb_background_mode_enabled") ?? false
+    if enabled && backgroundVoiceController == nil {
+      let vc = RecordingViewController()
+      vc.headlessMode = true
+      // Add as a child VC of the root with zero size so it gets viewDidLoad/
+      // viewDidAppear without being visible.
+      if let root = window?.rootViewController {
+        root.addChild(vc)
+        vc.view.frame = .zero
+        vc.view.isHidden = true
+        root.view.addSubview(vc.view)
+        vc.didMove(toParent: root)
       }
-      topVC = presented
+      backgroundVoiceController = vc
+      vc.startBackgroundEngine()
+    } else if !enabled, let vc = backgroundVoiceController {
+      vc.willMove(toParent: nil)
+      vc.view.removeFromSuperview()
+      vc.removeFromParent()
+      backgroundVoiceController = nil
     }
-    let recordingVC = RecordingViewController()
-    recordingVC.modalPresentationStyle = .overFullScreen
-    recordingVC.modalTransitionStyle = .crossDissolve
-    topVC.present(recordingVC, animated: true)
   }
 
   // Universal Links

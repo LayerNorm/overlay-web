@@ -89,8 +89,12 @@ class TranscriptionService: NSObject, ObservableObject {
             backgroundModeEnabled = sharedBackgroundMode
         }
         if currentStatus == "done" {
-            // Deliver pending text before a new cycle starts.
-            return
+            // Clear any stale completed state so Start always begins a new cycle.
+            defaults.set("idle", forKey: statusKey)
+            defaults.set("idle", forKey: commandKey)
+            defaults.removeObject(forKey: resultKey)
+            defaults.synchronize()
+            currentStatus = "idle"
         }
         cancelStartFallback()
 

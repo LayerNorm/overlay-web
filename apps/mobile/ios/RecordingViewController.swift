@@ -10,6 +10,9 @@ private let commandKey = "overlay_kb_command"
 private let backgroundModeKey = "overlay_kb_background_mode_enabled"
 private let disableBackgroundCommand = "disable_bg_mode"
 private let groqKeyName = "groq_api_key"
+private let authTokenKey = "overlay_kb_auth_token"
+private let authBaseURLKey = "overlay_kb_auth_base_url"
+private let authUserIdKey = "overlay_kb_auth_user_id"
 
 class RecordingViewController: UIViewController {
 
@@ -109,6 +112,11 @@ class RecordingViewController: UIViewController {
         return l
     }()
 
+    /// When true, the controller is hosted as an invisible child of the root
+    /// view controller and skips its UI. It still owns the audio session,
+    /// command poller, and transcription pipeline. Set from AppDelegate.
+    var headlessMode: Bool = false
+
     // MARK: - State
     private var audioRecorder: AVAudioRecorder?
     private var standbyRecorder: AVAudioRecorder?
@@ -141,16 +149,23 @@ class RecordingViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .white
-        setupUI()
-        backgroundModeSwitch.isOn = isBackgroundModeEnabled
+        if !headlessMode {
+            view.backgroundColor = .white
+            setupUI()
+            backgroundModeSwitch.isOn = isBackgroundModeEnabled
+        } else {
+            view.isHidden = true
+            view.backgroundColor = .clear
+        }
         registerLifecycleObservers()
         logAppGroupDiagnostics()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        backgroundModeSwitch.setOn(isBackgroundModeEnabled, animated: false)
+        if !headlessMode {
+            backgroundModeSwitch.setOn(isBackgroundModeEnabled, animated: false)
+        }
         if isBackgroundModeEnabled {
             startCommandPolling()
             let command = defaults?.string(forKey: commandKey) ?? "idle"
@@ -284,6 +299,25 @@ class RecordingViewController: UIViewController {
 
     @objc private func backgroundModeSwitchChanged(_ sender: UISwitch) {
         applyBackgroundModeEnabled(sender.isOn, source: "app-toggle")
+    }
+
+    /// Explicitly start the background-recording lifecycle. Called from
+    /// AppDelegate after the controller is parked as a child VC so the engine
+    /// runs even before its view appears.
+    func startBackgroundEngine() {
+        DispatchQueue.main.async {
+            guard self.isBackgroundModeEnabled else { return }
+            self.startCommandPolling()
+            let command = self.defaults?.string(forKey: commandKey) ?? "idle"
+            if command == "start" {
+                self.writeCommand("idle")
+                self.pendingBackgroundStart = true
+                self.nextStartRetryAt = .distantPast
+                self.attemptPendingBackgroundStart(reason: "startBackgroundEngine")
+            } else if self.audioRecorder?.isRecording != true {
+                self.ensureStandbyCaptureIfNeeded(reason: "startBackgroundEngine")
+            }
+        }
     }
 
     func restartForNewDictationRequest() {
@@ -603,8 +637,17 @@ class RecordingViewController: UIViewController {
             return
         }
 
-        guard let key = groqAPIKey, !key.isEmpty else {
-            NSLog("[Recording] No API key")
+        let backendToken = defaults?.string(forKey: authTokenKey)
+        let backendBaseURL = defaults?.string(forKey: authBaseURLKey)
+        let backendUserId = defaults?.string(forKey: authUserIdKey)
+        let groqKey = groqAPIKey
+        let hasBackendCreds =
+            backendToken?.isEmpty == false &&
+            backendBaseURL?.isEmpty == false &&
+            backendUserId?.isEmpty == false
+        let canTranscribe = hasBackendCreds || (groqKey?.isEmpty == false)
+        guard canTranscribe else {
+            NSLog("[Recording] No transcription credentials available (no auth token or Groq key)")
             writeStatus("error")
             writeResult("")
             keepListeningForCommandsIfNeeded()
@@ -623,7 +666,16 @@ class RecordingViewController: UIViewController {
 
         Task {
             do {
-                let text = try await transcribeWithGroq(url: url, apiKey: key)
+                let text: String
+                if let token = backendToken, !token.isEmpty,
+                   let baseURL = backendBaseURL, !baseURL.isEmpty,
+                   let userId = backendUserId, !userId.isEmpty {
+                    text = try await transcribeViaBackend(url: url, token: token, baseURL: baseURL, userId: userId)
+                } else if let key = groqKey, !key.isEmpty {
+                    text = try await transcribeWithGroq(url: url, apiKey: key)
+                } else {
+                    throw NSError(domain: "Overlay", code: -1, userInfo: [NSLocalizedDescriptionKey: "No transcription provider"])
+                }
                 try? FileManager.default.removeItem(at: url)
                 await MainActor.run {
                     let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1088,7 +1140,55 @@ class RecordingViewController: UIViewController {
         return [aac44, aac22, wav16]
     }
 
-    // MARK: - Groq API
+    // MARK: - Backend transcription
+
+    /// POST audio to the Overlay backend's authenticated transcription
+    /// endpoint. The endpoint mirrors Groq's API and returns `{ text: ... }`.
+    private func transcribeViaBackend(url: URL, token: String, baseURL: String, userId: String) async throws -> String {
+        let normalizedBase = baseURL.hasSuffix("/") ? String(baseURL.dropLast()) : baseURL
+        // resolveAuthenticatedAppUser requires both Bearer and a userId query param.
+        let encodedUid = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId
+        guard let endpoint = URL(string: "\(normalizedBase)/api/app/transcribe?userId=\(encodedUid)") else {
+            throw NSError(domain: "OverlayBackend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid base URL: \(baseURL)"])
+        }
+
+        let audioData = try Data(contentsOf: url)
+        NSLog("[Backend] Audio file size: \(audioData.count) bytes; endpoint=\(endpoint.absoluteString)")
+
+        let boundary = UUID().uuidString
+        var body = Data()
+        func append(_ string: String) { body.append(string.data(using: .utf8)!) }
+
+        append("--\(boundary)\r\n")
+        append("Content-Disposition: form-data; name=\"audio\"; filename=\"audio.\(url.pathExtension.lowercased())\"\r\n")
+        append("Content-Type: \(mimeType(for: url))\r\n\r\n")
+        body.append(audioData)
+        append("\r\n--\(boundary)--\r\n")
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        request.timeoutInterval = 60
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let responseStr = String(data: data, encoding: .utf8) ?? ""
+
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            NSLog("[Backend] Transcription error \(String(describing: (response as? HTTPURLResponse)?.statusCode)): \(responseStr)")
+            throw NSError(
+                domain: "OverlayBackend",
+                code: (response as? HTTPURLResponse)?.statusCode ?? 0,
+                userInfo: [NSLocalizedDescriptionKey: responseStr]
+            )
+        }
+
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return (json?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    // MARK: - Groq API (legacy fallback)
 
     private func transcribeWithGroq(url: URL, apiKey: String) async throws -> String {
         let audioData = try Data(contentsOf: url)
