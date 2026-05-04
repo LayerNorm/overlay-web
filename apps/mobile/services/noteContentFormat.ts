@@ -334,3 +334,111 @@ export function toStoredHtml(markdown: string): string {
   if (!trimmed) return ''
   return HTML_TAG_PATTERN.test(trimmed) ? trimmed : markdownToHtml(trimmed)
 }
+
+export type MarkdownBlockType =
+  | 'paragraph'
+  | 'heading'
+  | 'unordered_list'
+  | 'ordered_list'
+  | 'task_list'
+  | 'blockquote'
+  | 'code'
+  | 'horizontal_rule'
+  | 'table'
+
+export interface MarkdownBlock {
+  type: MarkdownBlockType
+  markdown: string
+  key: string
+}
+
+function detectLineType(line: string): MarkdownBlockType | null {
+  const trimmed = line.trimStart()
+  if (trimmed.startsWith('```')) return 'code'
+  if (/^#{1,6}\s+/.test(trimmed)) return 'heading'
+  if (/^[-*]\s+\[[ xX]\]\s+/.test(trimmed)) return 'task_list'
+  if (/^[-*+]\s+/.test(trimmed)) return 'unordered_list'
+  if (/^\d+\.\s+/.test(trimmed)) return 'ordered_list'
+  if (/^>\s+/.test(trimmed)) return 'blockquote'
+  if (/^(---|___|\*\*\*)\s*$/.test(trimmed)) return 'horizontal_rule'
+  if (/^\|/.test(trimmed)) return 'table'
+  if (line.trim().length === 0) return null
+  return 'paragraph'
+}
+
+/**
+ * Split markdown into individually editable blocks.
+ * Blank lines separate blocks, except inside fenced code blocks.
+ */
+export function parseMarkdownBlocks(markdown: string): MarkdownBlock[] {
+  const lines = markdown.replace(LINE_BREAK_PATTERN, '\n').split('\n')
+  const blocks: MarkdownBlock[] = []
+  let currentType: MarkdownBlockType | null = null
+  let currentLines: string[] = []
+  let inCodeFence = false
+  let blockIndex = 0
+
+  const flush = () => {
+    if (currentLines.length === 0) return
+    const raw = currentLines.join('\n')
+    // Preserve trailing newline for blocks that are meant to have one
+    // (paragraphs often don't, lists often do) – keep raw exactly.
+    blocks.push({ type: currentType ?? 'paragraph', markdown: raw, key: `block-${blockIndex++}` })
+    currentLines = []
+    currentType = null
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+
+    if (inCodeFence) {
+      currentLines.push(line)
+      if (/^```\s*$/.test(line.trimStart())) {
+        inCodeFence = false
+        flush()
+      }
+      continue
+    }
+
+    if (/^```\s*\S*\s*$/.test(line.trimStart())) {
+      flush()
+      inCodeFence = true
+      currentType = 'code'
+      currentLines.push(line)
+      continue
+    }
+
+    if (line.trim().length === 0) {
+      flush()
+      continue
+    }
+
+    const lineType = detectLineType(line)
+
+    if (lineType === 'horizontal_rule') {
+      flush()
+      blocks.push({ type: 'horizontal_rule', markdown: line, key: `block-${blockIndex++}` })
+      continue
+    }
+
+    if (currentType === null) {
+      currentType = lineType
+      currentLines.push(line)
+    } else if (currentType === lineType) {
+      currentLines.push(line)
+    } else {
+      flush()
+      currentType = lineType
+      currentLines.push(line)
+    }
+  }
+
+  flush()
+
+  return blocks
+}
+
+/** Re-assemble blocks back into a single markdown string. */
+export function blocksToMarkdown(blocks: MarkdownBlock[]): string {
+  return blocks.map((b) => b.markdown).join('\n\n')
+}

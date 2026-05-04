@@ -22,7 +22,10 @@ import { fontSize, spacing, borderRadius } from '../../constants/theme'
 import { useTheme } from '../../hooks/useTheme'
 import { useDrawer } from '../../contexts/DrawerContext'
 import { loadNote, saveNote } from '../../services/noteStorage'
-import { normalizeHtmlForMobileMarkdown, toStoredHtml } from '../../services/noteContentFormat'
+import {
+  normalizeHtmlForMobileMarkdown,
+  toStoredHtml,
+} from '../../services/noteContentFormat'
 import type { Note } from '../../services/types'
 import { MainScreenHeader, TopBarIconButton } from '../ui/AppChrome'
 import { FloatingSearchBar } from '../ui/FloatingSearchBar'
@@ -171,7 +174,6 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
         const md = normalizeHtmlForMobileMarkdown(loaded.content ?? '')
         contentRef.current = md
         setMarkdownContent(md)
-        setIsEditing(md.trim().length === 0)
       } else {
         Alert.alert('Not found', 'This note could not be found.', [
           { text: 'OK', onPress: () => router.back() },
@@ -227,12 +229,18 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
   const handleOpenDrawer = useCallback(() => {
     editorRef.current?.blur()
     Keyboard.dismiss()
+    setIsEditing(false)
     openDrawer()
   }, [openDrawer])
 
   const focusEditor = useCallback(() => {
     setIsEditing(true)
     requestAnimationFrame(() => editorRef.current?.focus())
+  }, [])
+
+  const enterReadMode = useCallback(() => {
+    Keyboard.dismiss()
+    setIsEditing(false)
   }, [])
 
   const applyMarkdownTransform = useCallback(
@@ -277,6 +285,7 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
     if (drawerVisible) {
       editorRef.current?.blur()
       Keyboard.dismiss()
+      setIsEditing(false)
     }
   }, [drawerVisible])
 
@@ -369,13 +378,10 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
       <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={styles.dismissBlur}>
         <LinearGradient colors={toolbarGradientColors} style={styles.floatingGradient}>
           <TouchableOpacity
-            onPress={() => {
-              Keyboard.dismiss()
-              setIsEditing(false)
-            }}
+            onPress={enterReadMode}
             style={styles.dismissButton}
           >
-            <Feather name="chevron-down" size={20} color={theme.text} />
+            <Feather name="book" size={20} color={theme.text} />
           </TouchableOpacity>
         </LinearGradient>
       </BlurView>
@@ -399,9 +405,10 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
       fontSize: 17,
       lineHeight: 26,
       fontFamily: 'LibreBaskerville',
+      bulletColor: theme.textSecondary,
       markerColor: theme.textSecondary,
       marginLeft: spacing.sm,
-      gapWidth: spacing.xs,
+      gapWidth: spacing.md,
     },
     blockquote: {
       color: theme.textSecondary,
@@ -520,7 +527,7 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
               contentContainerStyle={[styles.previewContent, { paddingTop: insets.top + HEADER_HEIGHT }]}
               keyboardShouldPersistTaps="handled"
             >
-              <TouchableOpacity activeOpacity={0.9} onPress={focusEditor} style={styles.previewTapTarget}>
+              <TouchableOpacity activeOpacity={1} onPress={focusEditor} style={styles.previewTapTarget}>
                 {markdownContent.trim() ? (
                   <EnrichedMarkdownText
                     markdown={markdownContent}
@@ -537,6 +544,18 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
         </View>
 
         {isEditing ? <FloatingToolbar /> : null}
+
+        {!isEditing && (
+          <View style={[styles.fabWrapper, { bottom: Math.max(insets.bottom, 16) + 16 }]}>
+            <BlurView intensity={60} tint={isDark ? 'dark' : 'light'} style={styles.fabBlur}>
+              <LinearGradient colors={toolbarGradientColors} style={styles.fabGradient}>
+                <TouchableOpacity onPress={focusEditor} style={styles.fabButton}>
+                  <Feather name="edit-2" size={22} color={theme.text} />
+                </TouchableOpacity>
+              </LinearGradient>
+            </BlurView>
+          </View>
+        )}
         <FloatingSearchBar
           theme={theme}
           isDark={isDark}
@@ -624,6 +643,34 @@ const styles = StyleSheet.create({
   placeholderText: {
     fontSize: fontSize.md,
     lineHeight: fontSize.md * 1.6,
+  },
+  // Liquid-glass FAB
+  fabWrapper: {
+    position: 'absolute',
+    right: 16,
+    zIndex: 50,
+  },
+  fabBlur: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  fabGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fabButton: {
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // Floating glass toolbar
   floatingToolbarWrapper: {
