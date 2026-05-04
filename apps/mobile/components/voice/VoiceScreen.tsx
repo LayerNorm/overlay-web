@@ -93,14 +93,8 @@ export function VoiceScreen(): React.ReactElement {
     }
   }, [didAutoEnable, params?.autoEnable, enabled, handleToggle])
 
-  const statusText = enabled
-    ? 'On — keyboard Start button will record without leaving your current app.'
-    : 'Off — tap Start in the keyboard to enable, or flip the switch above.'
-
   const permissionWarning =
-    permission === 'denied'
-      ? 'Microphone access is denied. Open Settings to allow it.'
-      : null
+    permission === 'denied' ? 'Microphone access denied — open Settings to allow it.' : null
 
   return (
     <ScreenWithDrawer
@@ -152,22 +146,15 @@ export function VoiceScreen(): React.ReactElement {
       <View style={[styles.body, { paddingTop: insets.top + 72 }]}>
         <View style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
           <View style={styles.cardHeaderRow}>
-            <View
-              style={[
-                styles.statusDot,
-                { backgroundColor: enabled ? '#22C55E' : theme.mutedLight },
-              ]}
-            />
+            <View style={[styles.statusDot, { backgroundColor: enabled ? '#22C55E' : theme.mutedLight }]} />
             <Text style={[styles.cardTitle, { color: theme.text }]}>
-              Background voice recording
+              {enabled ? 'Background mic on' : 'Background mic off'}
             </Text>
           </View>
-          <Text style={[styles.cardBody, { color: theme.textSecondary }]}>{statusText}</Text>
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
-          <Text style={[styles.cardSubBody, { color: theme.textSecondary }]}>
-            When this is on, Overlay keeps a microphone session warm so the keyboard&apos;s Start
-            button can record while you stay in the app you were using. Audio is transcribed
-            securely through Overlay and pasted into the active text field.
+          <Text style={[styles.cardBody, { color: theme.textSecondary }]}>
+            {enabled
+              ? 'Tap Start in the keyboard. We record, transcribe, and paste — no app switching.'
+              : 'Enable to record from the keyboard without leaving the app you\'re in.'}
           </Text>
           {permissionWarning ? (
             <View style={[styles.warningRow, { borderColor: theme.border }]}>
@@ -175,36 +162,6 @@ export function VoiceScreen(): React.ReactElement {
               <Text style={[styles.warningText, { color: theme.text }]}>{permissionWarning}</Text>
             </View>
           ) : null}
-        </View>
-
-        <View style={[styles.tipsCard, { backgroundColor: theme.surfaceSubtle }]}>
-          <View style={styles.tipRow}>
-            <View style={[styles.tipBadge, { backgroundColor: theme.surfaceElevated }]}>
-              <Feather name="zap" size={14} color={theme.text} />
-            </View>
-            <Text style={[styles.tipText, { color: theme.textSecondary }]}>
-              Tap <Text style={{ color: theme.text, fontWeight: '600' }}>Start</Text> in the
-              keyboard while in any app. We listen, transcribe, and paste — no app switching.
-            </Text>
-          </View>
-          <View style={styles.tipRow}>
-            <View style={[styles.tipBadge, { backgroundColor: theme.surfaceElevated }]}>
-              <Feather name="x" size={14} color={theme.text} />
-            </View>
-            <Text style={[styles.tipText, { color: theme.textSecondary }]}>
-              Tap <Text style={{ color: theme.text, fontWeight: '600' }}>Cancel</Text> while
-              recording to throw it away.
-            </Text>
-          </View>
-          <View style={styles.tipRow}>
-            <View style={[styles.tipBadge, { backgroundColor: theme.surfaceElevated }]}>
-              <Feather name="phone-off" size={14} color={theme.text} />
-            </View>
-            <Text style={[styles.tipText, { color: theme.textSecondary }]}>
-              If you take a call or another app grabs the mic, the switch flips off — toggle
-              it back on to resume.
-            </Text>
-          </View>
         </View>
       </View>
     </SafeAreaView>
@@ -253,47 +210,16 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     lineHeight: 22,
   },
-  cardSubBody: {
-    fontSize: fontSize.sm,
-    lineHeight: 20,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginVertical: spacing.xs,
-  },
   warningRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     marginTop: spacing.xs,
   },
   warningText: {
     fontSize: fontSize.sm,
     flex: 1,
-  },
-  tipsCard: {
-    borderRadius: borderRadius.xl,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  tipRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-  },
-  tipBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tipText: {
-    flex: 1,
-    fontSize: fontSize.sm,
-    lineHeight: 20,
   },
 })

@@ -11,11 +11,10 @@ class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedback {
     private var insertionRetryWorkItem: DispatchWorkItem?
     private var insertionAttemptCount = 0
     private let maxInsertionAttempts = 16
-    // Layout budget (regular):  headerBarH(52) + 4×rowTouchHeight(4×52=208) + accessorySpacing(5) + accessoryH(30) = 295pt
-    // Layout budget (compact):  headerBarH(44) + 4×rowTouchHeight(4×43=172) + accessorySpacing(4) + accessoryH(26) = 246pt
-    // Heights match content exactly so there is no bottom slack.
-    private let normalKeyboardHeight: CGFloat = 296
-    private let compactKeyboardHeight: CGFloat = 248
+    // Layout budget (regular):  headerBarH(40) + 4×rowTouchHeight(4×52=208) + accessorySpacing(5) + accessoryH(30) = 283pt
+    // Layout budget (compact):  headerBarH(34) + 4×rowTouchHeight(4×43=172) + accessorySpacing(4) + accessoryH(26) = 236pt
+    private let normalKeyboardHeight: CGFloat = 284
+    private let compactKeyboardHeight: CGFloat = 237
     private let keyboardBaseColor = UIColor.clear
 
     deinit {

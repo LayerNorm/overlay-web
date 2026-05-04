@@ -158,9 +158,9 @@ private struct OverlayKeyboardView: View {
 
     // MARK: — Liquid-glass top bar (Start / cancel-waveform-stop / processing)
 
-    private var headerBarH: CGFloat { compact ? 44 : 52 }
-    private var pillH: CGFloat { compact ? 32 : 36 }
-    private var iconBtnSize: CGFloat { compact ? 32 : 36 }
+    private var headerBarH: CGFloat { compact ? 34 : 40 }
+    private var pillH: CGFloat { compact ? 24 : 28 }
+    private var iconBtnSize: CGFloat { compact ? 24 : 28 }
 
     private var headerBar: some View {
         let isRecording = service.state == .recording

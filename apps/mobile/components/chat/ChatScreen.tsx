@@ -513,10 +513,16 @@ export function ChatScreen({
     }
 
     async function resolvePreferredModel(models: ChatModel[]): Promise<ChatModel | null> {
+      const isFreeTier = entitlements?.tier === 'free'
       const persistedId = await getLastSelectedModelId().catch(() => null)
       if (persistedId) {
         const match = models.find((m) => m.id === persistedId)
-        if (match) return match
+        // For free tier, don't restore a previously selected premium model
+        if (match && !(isFreeTier && match.cost > 0)) return match
+      }
+      if (isFreeTier) {
+        // Default free-tier users to the free model
+        return models.find((m) => m.cost === 0) ?? models[0] ?? null
       }
       return models[0] || null
     }
@@ -773,6 +779,8 @@ export function ChatScreen({
     }
 
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    textInputRef.current?.blur()
+    Keyboard.dismiss()
     abortRef.current = false
     setIsSending(true)
 
@@ -1080,39 +1088,51 @@ export function ChatScreen({
           {sortedModels.map((model, index) => {
             const isSelected = selectedModel?.id === model.id
             const isLast = index === sortedModels.length - 1
+            const isFreeTier = entitlements?.tier === 'free'
+            const isPremium = model.cost > 0
+            const isLocked = isFreeTier && isPremium
             return (
               <React.Fragment key={model.id}>
                 <TouchableOpacity
-                  onPress={() => { void handleModelSelect(model) }}
-                  activeOpacity={0.7}
-                  style={styles.modelRow}
+                  onPress={() => {
+                    if (isLocked) {
+                      setModelPickerVisible(false)
+                      setUpgradeVisible(true)
+                      return
+                    }
+                    void handleModelSelect(model)
+                  }}
+                  activeOpacity={isLocked ? 0.4 : 0.7}
+                  style={[styles.modelRow, isLocked && styles.modelRowLocked]}
                 >
                   <View style={styles.modelRowLeft}>
                     {getProviderLogo(model.provider) ? (
                       <Image
                         source={getProviderLogo(model.provider)}
-                        style={styles.providerLogo}
+                        style={[styles.providerLogo, isLocked && styles.lockedOpacity]}
                         resizeMode="contain"
                       />
                     ) : (
-                      <View style={[styles.providerLogoPlaceholder, { backgroundColor: theme.surfaceElevated }]}>
+                      <View style={[styles.providerLogoPlaceholder, { backgroundColor: theme.surfaceElevated }, isLocked && styles.lockedOpacity]}>
                         <Text style={[styles.providerInitial, { color: theme.textSecondary }]}>
                           {model.provider.charAt(0).toUpperCase()}
                         </Text>
                       </View>
                     )}
-                    <View style={styles.modelRowContent}>
+                    <View style={[styles.modelRowContent, isLocked && styles.lockedOpacity]}>
                       <Text style={[styles.modelRowTitle, { color: theme.text }]}>
                         {model.name}
                       </Text>
                       <Text style={[styles.modelRowDesc, { color: theme.textSecondary }]}>
-                        {getModelDescription(model)}
+                        {isLocked ? 'Upgrade to unlock' : getModelDescription(model)}
                       </Text>
                     </View>
                   </View>
-                  {isSelected && (
+                  {isLocked ? (
+                    <Feather name="lock" size={14} color={theme.mutedLight} />
+                  ) : isSelected ? (
                     <Feather name="check" size={18} color={theme.text} />
-                  )}
+                  ) : null}
                 </TouchableOpacity>
                 {!isLast && (
                   <View style={[styles.modelSeparator, { backgroundColor: theme.border }]} />
@@ -1335,6 +1355,12 @@ const styles = StyleSheet.create({
   modelSeparator: {
     height: StyleSheet.hairlineWidth,
     marginHorizontal: 4,
+  },
+  modelRowLocked: {
+    opacity: 0.55,
+  },
+  lockedOpacity: {
+    opacity: 0.6,
   },
   modelRowLeft: {
     flexDirection: 'row',
