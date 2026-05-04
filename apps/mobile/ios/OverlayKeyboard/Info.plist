@@ -24,5 +24,11 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Overlay Keyboard records your voice to transcribe it into text.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>LibreBaskerville-Regular.ttf</string>
+		<string>LibreBaskerville-Bold.ttf</string>
+		<string>LibreBaskerville-Italic.ttf</string>
+	</array>
 </dict>
 </plist>

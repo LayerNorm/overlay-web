@@ -18,10 +18,10 @@ function getPricingUrl(): string {
 }
 
 const PLANS = [
-  { label: 'Cheapest', price: '$8', period: '/mo', note: 'For light monthly use' },
+  { label: 'Cheapest', price: '$8', period: '/mo', note: 'For light monthly use', highlight: false },
   { label: 'Most popular', price: '$24', period: '/mo', note: 'For regular work', highlight: true },
-  { label: 'Best value', price: '$96', period: '/mo', note: 'More storage & budget' },
-  { label: 'Custom', price: '$8–$200', period: '/mo', note: 'Pick your own budget' },
+  { label: 'Best value', price: '$96', period: '/mo', note: 'More storage & budget', highlight: false },
+  { label: 'Custom', price: '$8–$200', period: '/mo', note: 'Pick your own budget', highlight: false },
 ] as const
 
 export function UpgradePrompt({
@@ -67,17 +67,17 @@ export function UpgradePrompt({
                 onPress={openPricing}
                 style={({ pressed }) => [
                   styles.planRow,
-                  { borderColor: plan.highlight ? '#35C4D4' : theme.border },
+                  { borderColor: plan.highlight ? theme.text : theme.border },
                   pressed && styles.planRowPressed,
                 ]}
               >
                 <View style={styles.planLeft}>
-                  <Text style={[styles.planLabel, { color: plan.highlight ? '#35C4D4' : theme.text }]}>
+                  <Text style={[styles.planLabel, { color: plan.highlight ? theme.text : theme.text }]}>
                     {plan.label}
                   </Text>
                   <Text style={[styles.planNote, { color: theme.textSecondary }]}>{plan.note}</Text>
                 </View>
-                <Text style={[styles.planPrice, { color: plan.highlight ? '#35C4D4' : theme.text }]}>
+                <Text style={[styles.planPrice, { color: theme.text }]}>
                   {plan.price}
                   <Text style={[styles.planPeriod, { color: theme.textSecondary }]}>{plan.period}</Text>
                 </Text>
@@ -88,10 +88,10 @@ export function UpgradePrompt({
           {/* CTA */}
           <Pressable
             onPress={openPricing}
-            style={({ pressed }) => [styles.cta, { backgroundColor: '#35C4D4', opacity: pressed ? 0.85 : 1 }]}
+            style={({ pressed }) => [styles.cta, { backgroundColor: theme.text, opacity: pressed ? 0.85 : 1 }]}
           >
-            <Text style={styles.ctaText}>See all plans</Text>
-            <Feather name="arrow-right" size={16} color="#071114" />
+            <Text style={[styles.ctaText, { color: theme.background }]}>See all plans</Text>
+            <Feather name="arrow-right" size={16} color={theme.background} />
           </Pressable>
         </Pressable>
       </Pressable>
@@ -181,7 +181,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   ctaText: {
-    color: '#071114',
     fontSize: fontSize.md,
     fontWeight: '600',
   },
