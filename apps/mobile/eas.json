@@ -19,7 +19,9 @@
     },
     "production": {
       "autoIncrement": true,
+      "node": "22.13.0",
       "ios": {
+        "image": "macos-sequoia-15.6-xcode-26.2",
         "resourceClass": "m-medium"
       }
     }
@@ -27,7 +29,7 @@
   "submit": {
     "production": {
       "ios": {
-        "ascAppId": "<FILL_IN_YOUR_APP_STORE_APP_ID>"
+        "ascAppId": "6765998182"
       }
     }
   }
