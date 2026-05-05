@@ -151,9 +151,11 @@ private struct OverlayKeyboardView: View {
     ]}
 
     var body: some View {
-        keyboardContent
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            .ignoresSafeArea(.container, edges: .bottom)
+        GeometryReader { geo in
+            keyboardContent
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+        }
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 
     // MARK: — Liquid-glass top bar (Start / cancel-waveform-stop / processing)

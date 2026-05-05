@@ -101,9 +101,10 @@ const AVAILABLE_CHAT_MODELS: ChatModel[] = [
   { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', provider: 'groq', description: 'Open weights', intelligence: 1.25, cost: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false },
   // Free models (OpenRouter auto-router + NVIDIA NIM)
   { id: 'openrouter/free', name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 1.25, cost: 0, supportsVision: true, supportsReasoning: true, supportsSearch: false },
-  { id: 'qwen/qwen3.6-plus', name: 'Qwen 3.6 Plus', provider: 'alibaba', description: 'Agentic coding', intelligence: 1.6, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
   { id: 'moonshotai/kimi-k2-thinking', name: 'Free: Kimi K2 Thinking', provider: 'nvidia', description: 'Free model', intelligence: 1.7, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
   { id: 'deepseek-ai/deepseek-v3.2', name: 'Free: DeepSeek V3.2', provider: 'nvidia', description: 'Free model', intelligence: 1.65, cost: 0, supportsVision: false, supportsReasoning: true, supportsSearch: false },
+  // Paid Alibaba models
+  { id: 'alibaba/qwen3.6-plus', name: 'Qwen 3.6 Plus', provider: 'alibaba', description: 'Agentic coding', intelligence: 1.6, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
 ]
 
 export async function getAvailableModels(): Promise<ChatModel[]> {
