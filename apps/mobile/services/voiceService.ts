@@ -14,12 +14,20 @@ type SharedKeyStoreNative = {
   getBackgroundModeEnabled?: () => Promise<boolean>
   requestMicPermission?: () => Promise<'granted' | 'denied' | 'undetermined'>
   getMicPermission?: () => Promise<'granted' | 'denied' | 'undetermined'>
+  getTranscriptionHistory?: () => Promise<VoiceTranscription[]>
+  deleteTranscription?: (id: string) => Promise<boolean>
 }
 
 const NativeKeyStore: SharedKeyStoreNative =
   (NativeModules.SharedKeyStore as SharedKeyStoreNative | undefined) ?? {}
 
 export type VoicePermission = 'granted' | 'denied' | 'undetermined'
+
+export type VoiceTranscription = {
+  id: string
+  text: string
+  createdAt: string
+}
 
 export async function syncAuthSessionToAppGroup(): Promise<void> {
   if (Platform.OS !== 'ios') return
@@ -85,4 +93,19 @@ export async function disableBackgroundVoice(): Promise<void> {
   if (NativeKeyStore.setBackgroundModeEnabled) {
     await NativeKeyStore.setBackgroundModeEnabled(false)
   }
+}
+
+export async function getTranscriptionHistory(): Promise<VoiceTranscription[]> {
+  if (Platform.OS !== 'ios' || !NativeKeyStore.getTranscriptionHistory) return []
+  try {
+    const history = await NativeKeyStore.getTranscriptionHistory()
+    return Array.isArray(history) ? history : []
+  } catch {
+    return []
+  }
+}
+
+export async function deleteTranscription(id: string): Promise<void> {
+  if (Platform.OS !== 'ios' || !NativeKeyStore.deleteTranscription) return
+  await NativeKeyStore.deleteTranscription(id)
 }

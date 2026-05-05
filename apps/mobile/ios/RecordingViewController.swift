@@ -689,6 +689,7 @@ class RecordingViewController: UIViewController {
                     }
 
                     NSLog("[Recording] Transcription success: \(normalized)")
+                    SharedKeyStore.appendTranscription(normalized)
                     self.writeResult(normalized)
                     self.writeStatus("done")
                     self.statusLabel.text = "✅ Done! Return to keyboard."

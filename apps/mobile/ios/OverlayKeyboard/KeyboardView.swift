@@ -124,9 +124,6 @@ private struct OverlayKeyboardView: View {
     private var modeKeyW: CGFloat   { compact ? 54 : 62 }
     private var globeKeyW: CGFloat  { compact ? 40 : 46 }
     private var returnKeyW: CGFloat { compact ? 82 : 94 }
-    private var micKeyW: CGFloat    { compact ? 40 : 46 }
-    private var accessoryH: CGFloat { compact ? 26 : 30 }
-    private var accessorySpacing: CGFloat { compact ? 4 : 5 }
     private var horizPad: CGFloat   { compact ? 6 : 8 }
     private var topPad: CGFloat     { compact ? 4 : 5 }
 
@@ -292,30 +289,9 @@ private struct OverlayKeyboardView: View {
             }
             .padding(.horizontal, horizPad)
 
-            if context.needsInputModeSwitchKey {
-                accessoryRow
-                    .padding(.horizontal, horizPad)
-                    .padding(.top, accessorySpacing)
-            }
+            Spacer(minLength: 0)
         }
-    }
-
-    // MARK: — Accessory row (globe only — mic is now floating)
-
-    private var accessoryRow: some View {
-        HStack {
-            Button(action: onNextKeyboard) {
-                Image(systemName: "globe")
-                    .font(.system(size: compact ? 16 : 18, weight: .regular))
-                    .foregroundColor(KP.secondary)
-            }
-            .buttonStyle(.plain)
-            .frame(width: compact ? 36 : 44, height: accessoryH)
-            .contentShape(Rectangle())
-
-            Spacer()
-        }
-        .frame(height: accessoryH)
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: — Letters page
@@ -417,8 +393,8 @@ private struct OverlayKeyboardView: View {
     }
 
     private var emojiGridHeight: CGFloat {
-        // Match roughly 3 rows of emoji content within the same overall height as letters page
-        3 * (emojiCellSize + keySpacingV) + (compact ? 4 : 8)
+        // Fit the category bar and bottom row within the same four-row key budget.
+        (4 * rowTouchHeight) - categoryBarH - rowTouchHeight
     }
 
     private var emojiPage: some View {

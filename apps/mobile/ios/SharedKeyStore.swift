@@ -13,6 +13,8 @@ class SharedKeyStore: NSObject {
     private static let authBaseURLKey = "overlay_kb_auth_base_url"
     private static let authUserIdKey = "overlay_kb_auth_user_id"
     private static let backgroundModeKey = "overlay_kb_background_mode_enabled"
+    private static let transcriptionHistoryKey = "overlay_voice_transcription_history"
+    private static let maxTranscriptionHistoryCount = 50
 
     private static var defaults: UserDefaults? {
         UserDefaults(suiteName: appGroupID)
@@ -92,6 +94,44 @@ class SharedKeyStore: NSObject {
         resolver(enabled)
     }
 
+    // MARK: - Transcription history
+
+    static func appendTranscription(_ text: String) {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return }
+
+        var history = Self.loadTranscriptionHistory()
+        let item: [String: Any] = [
+            "id": UUID().uuidString,
+            "text": normalized,
+            "createdAt": ISO8601DateFormatter().string(from: Date())
+        ]
+        history.insert(item, at: 0)
+        if history.count > Self.maxTranscriptionHistoryCount {
+            history = Array(history.prefix(Self.maxTranscriptionHistoryCount))
+        }
+        Self.defaults?.set(history, forKey: Self.transcriptionHistoryKey)
+        Self.defaults?.synchronize()
+    }
+
+    @objc(getTranscriptionHistory:rejecter:)
+    func getTranscriptionHistory(_ resolver: @escaping RCTPromiseResolveBlock,
+                                 rejecter: @escaping RCTPromiseRejectBlock) {
+        resolver(Self.loadTranscriptionHistory())
+    }
+
+    @objc(deleteTranscription:resolver:rejecter:)
+    func deleteTranscription(_ id: String,
+                             resolver: @escaping RCTPromiseResolveBlock,
+                             rejecter: @escaping RCTPromiseRejectBlock) {
+        let history = Self.loadTranscriptionHistory().filter { item in
+            (item["id"] as? String) != id
+        }
+        Self.defaults?.set(history, forKey: Self.transcriptionHistoryKey)
+        Self.defaults?.synchronize()
+        resolver(true)
+    }
+
     // MARK: - Microphone permission
 
     @objc(getMicPermission:rejecter:)
@@ -129,6 +169,22 @@ class SharedKeyStore: NSObject {
         case .denied: return "denied"
         case .undetermined: return "undetermined"
         @unknown default: return "undetermined"
+        }
+    }
+
+    private static func loadTranscriptionHistory() -> [[String: Any]] {
+        let raw = Self.defaults?.array(forKey: Self.transcriptionHistoryKey) as? [[String: Any]] ?? []
+        return raw.compactMap { item in
+            guard
+                let id = item["id"] as? String,
+                let text = item["text"] as? String,
+                let createdAt = item["createdAt"] as? String,
+                !id.isEmpty,
+                !text.isEmpty
+            else {
+                return nil
+            }
+            return ["id": id, "text": text, "createdAt": createdAt]
         }
     }
 

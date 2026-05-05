@@ -21,4 +21,11 @@ RCT_EXTERN_METHOD(getMicPermission:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(requestMicPermission:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(getTranscriptionHistory:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(deleteTranscription:(NSString *)transcriptionId
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 @end
