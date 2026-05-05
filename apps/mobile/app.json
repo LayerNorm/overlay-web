@@ -12,7 +12,6 @@
     "updates": {
       "url": "https://u.expo.dev/268cf4d6-4a66-43bc-88cd-8b308a53c2ff"
     },
-    "newArchEnabled": true,
     "scheme": "overlay",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -23,11 +22,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.layernorm.overlay-mobile",
       "buildNumber": "1.0.0.1",
-      "infoPlist": {},
-      "associatedDomains": [
-        "applinks:www.getoverlay.io",
-        "applinks:www.getoverlay.io?mode=developer"
-      ]
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["fetch", "remote-notification"]
+      }
     },
     "android": {
       "package": "com.layernorm.overlay_mobile",
@@ -63,28 +61,11 @@
       "expo-router",
       "expo-font",
       "expo-secure-store",
-      [
-        "expo-navigation-bar",
-        {
-          "position": "absolute",
-          "backgroundColor": "#00000000",
-          "borderColor": "#00000000",
-          "barStyle": "dark",
-          "visibility": "visible"
-        }
-      ],
       "expo-web-browser",
       "react-native-enriched-markdown"
     ],
     "extra": {
       "router": {},
-      "expo-navigation-bar": {
-        "position": "absolute",
-        "backgroundColor": "#00000000",
-        "borderColor": "#00000000",
-        "barStyle": "dark",
-        "visibility": "visible"
-      },
       "eas": {
         "projectId": "268cf4d6-4a66-43bc-88cd-8b308a53c2ff"
       }
