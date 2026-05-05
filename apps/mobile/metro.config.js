@@ -1,3 +1,4 @@
+const fs = require('fs')
 const path = require('path')
 const { getDefaultConfig } = require('expo/metro-config')
 
@@ -6,10 +7,18 @@ const workspaceRoot = path.resolve(projectRoot, '..')
 
 const config = getDefaultConfig(projectRoot)
 
-config.watchFolders = [
-  workspaceRoot,
-  path.resolve(workspaceRoot, 'packages/overlay-app-core'),
-]
+// Only add watchFolders when directories exist (local dev, not EAS cloud)
+const watchFolders = []
+if (fs.existsSync(workspaceRoot)) {
+  watchFolders.push(workspaceRoot)
+}
+const overlayAppCore = path.resolve(workspaceRoot, 'packages/overlay-app-core')
+if (fs.existsSync(overlayAppCore)) {
+  watchFolders.push(overlayAppCore)
+}
+if (watchFolders.length > 0) {
+  config.watchFolders = watchFolders
+}
 
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
