@@ -40,7 +40,9 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: 'Chat', icon: 'message-circle', route: '/(tabs)/chat' },
   { label: 'Notes', icon: 'book-open', route: '/(tabs)/notes' },
-  { label: 'Voice', icon: 'mic', route: '/(tabs)/voice' },
+  // Voice is grandfathered for App Store launch and will be reintroduced
+  // alongside the OverlayKeyboard extension. Keep the route file so existing
+  // deep links don't crash, but hide the entry point from the sidebar.
 ]
 
 interface KnowledgeSubItem {

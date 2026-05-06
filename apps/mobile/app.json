@@ -23,8 +23,7 @@
       "bundleIdentifier": "com.layernorm.overlay-mobile",
       "buildNumber": "1.0.0.1",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": ["fetch", "remote-notification"]
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {

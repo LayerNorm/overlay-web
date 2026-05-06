@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -51,6 +52,27 @@ export default function SettingsScreen(): React.ReactElement {
     } finally {
       setIsSigningOut(false)
     }
+  }
+
+  function handleOpenLegalUrl(url: string): void {
+    void Linking.openURL(url)
+  }
+
+  function handleDeleteAccount(): void {
+    Alert.alert(
+      'Delete account',
+      'This permanently deletes your Overlay account, chats, notes, knowledge, and saved memories. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue to delete',
+          style: 'destructive',
+          onPress: () => {
+            void Linking.openURL('https://www.getoverlay.io/account?delete=1')
+          },
+        },
+      ],
+    )
   }
 
   return (
@@ -147,6 +169,49 @@ export default function SettingsScreen(): React.ReactElement {
               </TouchableOpacity>
             </GlassSurface>
           </View>
+
+          <View style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+            <View style={styles.cardHeader}>
+              <View style={[styles.cardIcon, { backgroundColor: theme.surfaceSubtle, borderColor: theme.border }]}>
+                <Feather name="shield" size={18} color={theme.textSecondary} />
+              </View>
+              <View style={styles.cardCopy}>
+                <Text style={[styles.cardTitle, { color: theme.text }]}>Legal & privacy</Text>
+                <Text style={[styles.cardDescription, { color: theme.textSecondary }]}>
+                  Review how Overlay handles your data, or permanently delete your account.
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.82}
+              onPress={() => handleOpenLegalUrl('https://www.getoverlay.io/privacy')}
+              style={[styles.legalRow, { borderColor: theme.border }]}
+            >
+              <Text style={[styles.legalRowLabel, { color: theme.text }]}>Privacy policy</Text>
+              <Feather name="external-link" size={16} color={theme.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.82}
+              onPress={() => handleOpenLegalUrl('https://www.getoverlay.io/terms')}
+              style={[styles.legalRow, { borderColor: theme.border }]}
+            >
+              <Text style={[styles.legalRowLabel, { color: theme.text }]}>Terms of service</Text>
+              <Feather name="external-link" size={16} color={theme.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.82}
+              onPress={handleDeleteAccount}
+              style={[styles.legalRow, styles.legalRowDestructive, { borderColor: theme.border }]}
+            >
+              <Text style={[styles.legalRowLabel, styles.legalRowDestructiveLabel]}>
+                Delete account
+              </Text>
+              <Feather name="trash-2" size={16} color="#EF4444" />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -235,5 +300,23 @@ const styles = StyleSheet.create({
   signOutText: {
     fontSize: fontSize.md,
     fontWeight: '600',
+  },
+  legalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  legalRowDestructive: {
+    paddingTop: 14,
+  },
+  legalRowLabel: {
+    fontSize: fontSize.md,
+    fontWeight: '500',
+  },
+  legalRowDestructiveLabel: {
+    color: '#EF4444',
   },
 })

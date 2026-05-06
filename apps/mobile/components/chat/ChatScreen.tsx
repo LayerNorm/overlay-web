@@ -899,11 +899,9 @@ export function ChatScreen({
 
   const sortedModels = useMemo(() => availableModels, [availableModels])
 
-  useEffect(() => {
-    if (entitlements?.tier === 'free') {
-      setUpgradeVisible(true)
-    }
-  }, [entitlements?.tier])
+  // The upgrade modal is now only shown when a user explicitly taps a locked
+  // premium model. Auto-opening it on every free-tier session is removed for
+  // App Store compliance and to avoid a confusing initial popup.
 
   if (isLoading) {
     return (

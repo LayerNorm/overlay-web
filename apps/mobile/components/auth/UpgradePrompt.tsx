@@ -1,6 +1,5 @@
 import React from 'react'
 import {
-  Linking,
   Modal,
   Pressable,
   StyleSheet,
@@ -11,18 +10,13 @@ import {
 import { Feather } from '@expo/vector-icons'
 import type { Theme } from '../../constants/theme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
-import { getAccountUrl } from '../../services/authService'
 
-function getPricingUrl(): string {
-  return getAccountUrl().replace('/account', '/pricing')
-}
-
-const PLANS = [
-  { label: 'Cheapest', price: '$8', period: '/mo', note: 'For light monthly use', highlight: false },
-  { label: 'Most popular', price: '$24', period: '/mo', note: 'For regular work', highlight: true },
-  { label: 'Best value', price: '$96', period: '/mo', note: 'More storage & budget', highlight: false },
-  { label: 'Custom', price: '$8–$200', period: '/mo', note: 'Pick your own budget', highlight: false },
-] as const
+// NOTE: For App Store compliance with Apple guidelines 3.1.1 / 3.1.3, this
+// modal intentionally displays NO pricing and NO external checkout links.
+// Premium plan management lives on the web; users who already have a paid
+// plan continue to receive the matching entitlements when signed in.
+// When StoreKit IAP or the External Link Account Entitlement is added,
+// pricing UX can be restored from git history.
 
 export function UpgradePrompt({
   visible,
@@ -33,18 +27,12 @@ export function UpgradePrompt({
   theme: Theme
   onClose: () => void
 }): React.ReactElement {
-  function openPricing() {
-    void Linking.openURL(getPricingUrl())
-    onClose()
-  }
-
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={[styles.backdrop, { backgroundColor: theme.scrim }]} onPress={onClose}>
         <Pressable style={[styles.dialog, { backgroundColor: theme.background, borderColor: theme.border }]}>
-          {/* Header */}
           <View style={styles.header}>
-            <Text style={[styles.title, { color: theme.text }]}>Upgrade your plan</Text>
+            <Text style={[styles.title, { color: theme.text }]}>Premium model</Text>
             <TouchableOpacity
               onPress={onClose}
               activeOpacity={0.8}
@@ -56,42 +44,15 @@ export function UpgradePrompt({
           </View>
 
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            Premium models, browser tasks, agents, and more.
+            This model is available on a paid Overlay plan. The free models
+            in the picker are unlocked for everyone — pick one to keep chatting.
           </Text>
 
-          {/* Plan options */}
-          <View style={styles.plans}>
-            {PLANS.map((plan) => (
-              <Pressable
-                key={plan.label}
-                onPress={openPricing}
-                style={({ pressed }) => [
-                  styles.planRow,
-                  { borderColor: plan.highlight ? theme.text : theme.border },
-                  pressed && styles.planRowPressed,
-                ]}
-              >
-                <View style={styles.planLeft}>
-                  <Text style={[styles.planLabel, { color: plan.highlight ? theme.text : theme.text }]}>
-                    {plan.label}
-                  </Text>
-                  <Text style={[styles.planNote, { color: theme.textSecondary }]}>{plan.note}</Text>
-                </View>
-                <Text style={[styles.planPrice, { color: theme.text }]}>
-                  {plan.price}
-                  <Text style={[styles.planPeriod, { color: theme.textSecondary }]}>{plan.period}</Text>
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          {/* CTA */}
           <Pressable
-            onPress={openPricing}
+            onPress={onClose}
             style={({ pressed }) => [styles.cta, { backgroundColor: theme.text, opacity: pressed ? 0.85 : 1 }]}
           >
-            <Text style={[styles.ctaText, { color: theme.background }]}>See all plans</Text>
-            <Feather name="arrow-right" size={16} color={theme.background} />
+            <Text style={[styles.ctaText, { color: theme.background }]}>Got it</Text>
           </Pressable>
         </Pressable>
       </Pressable>
@@ -136,40 +97,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: fontSize.sm,
     lineHeight: 20,
-  },
-  plans: {
-    gap: 8,
-  },
-  planRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  planRowPressed: {
-    opacity: 0.7,
-  },
-  planLeft: {
-    flex: 1,
-    gap: 2,
-  },
-  planLabel: {
-    fontSize: fontSize.md,
-    fontWeight: '500',
-  },
-  planNote: {
-    fontSize: fontSize.sm,
-  },
-  planPrice: {
-    fontSize: fontSize.md,
-    fontWeight: '600',
-  },
-  planPeriod: {
-    fontSize: fontSize.sm,
-    fontWeight: '400',
   },
   cta: {
     flexDirection: 'row',
