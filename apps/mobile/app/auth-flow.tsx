@@ -66,6 +66,17 @@ function GoogleIcon() {
   )
 }
 
+function AppleIcon() {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 814 1000" accessibilityLabel="Apple">
+      <Path
+        fill="#000000"
+        d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8-61.8 0-105.8-57.4-155.9-125.5C72.1 791.2 0 653.3 0 521.5c0-204.9 132.9-313.4 263.5-313.4 69.5 0 127.3 45.6 171 45.6 41.7 0 106.4-48.3 183.2-48.3 29.7 0 136.1 2.8 200.4 106.5zM554.1 125.4c36.4-43.9 61.4-104.6 61.4-165.4 0-8.5-.7-17.1-2.1-25.4-58.5 2.2-127.7 39.1-169.3 88-33.4 38.5-63 104.9-63 165.9 0 9.6 1.6 19.2 2.1 22.2 3.7.7 9.6 1.1 15.5 1.1 52.5 0 118.6-35.4 155.7-86.4z"
+      />
+    </Svg>
+  )
+}
+
 function MicrosoftIcon() {
   return (
     <View style={styles.microsoftContainer}>
@@ -210,7 +221,7 @@ export default function AuthFlowScreen(): React.ReactElement {
                 <ActivityIndicator color="#000000" />
               ) : (
                 <>
-                  <Text style={[styles.appleIcon, { color: '#000000' }]}></Text>
+                  <AppleIcon />
                   <Text style={[styles.providerButtonText, { color: '#000000' }]}>Continue with Apple</Text>
                 </>
               )}

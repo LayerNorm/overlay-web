@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { appXhrStreamSse } from './appApi'
+import { appRequest, appXhrStreamSse } from './appApi'
 import type { ChatModel } from './chatTypes'
 import { AUTH_BASE_URL } from './appConfig'
 
@@ -43,10 +43,17 @@ export interface StreamChunk {
   metadata?: unknown
 }
 
+export interface IndexedAttachment {
+  name: string
+  fileIds: string[]
+}
+
 interface ChatStreamOptions {
   conversationId?: string
   turnId?: string
   variantIndex?: number
+  indexedFileNames?: string[]
+  indexedAttachments?: IndexedAttachment[]
 }
 
 type UiMessageChunk =
@@ -87,7 +94,7 @@ const AVAILABLE_CHAT_MODELS: ChatModel[] = [
   { id: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini', provider: 'openai', description: 'Compact', intelligence: 1.45, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
   { id: 'gpt-4.1-2025-04-14', name: 'GPT-4.1', provider: 'openai', description: 'Reliable', intelligence: 1.5, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
   // Anthropic
-  { id: 'anthropic/claude-opus-4.7', name: 'Claude Opus 4.7', provider: 'openrouter', description: 'Most capable', intelligence: 2, cost: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
+  { id: 'anthropic/claude-opus-4.7', name: 'Claude Opus 4.7', provider: 'anthropic', description: 'Most capable', intelligence: 2, cost: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false },
   { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'anthropic', description: 'Best balance', intelligence: 1.75, cost: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false },
   { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', provider: 'anthropic', description: 'Fast & light', intelligence: 1.25, cost: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false },
   // xAI
@@ -145,15 +152,21 @@ export async function* chatStream(
     )
     let inThinkTag = false
 
+    const body: Record<string, unknown> = {
+      modelId,
+      conversationId: options.conversationId,
+      turnId: options.turnId,
+      variantIndex: options.variantIndex,
+      messages: toUiMessages(messages),
+    }
+    if (options.indexedFileNames && options.indexedFileNames.length > 0) {
+      body.indexedFileNames = options.indexedFileNames
+      body.indexedAttachments = options.indexedAttachments ?? []
+    }
+
     for await (const chunk of appXhrStreamSse<UiMessageChunk>('/api/app/conversations/act', {
       method: 'POST',
-      json: {
-        modelId,
-        conversationId: options.conversationId,
-        turnId: options.turnId,
-        variantIndex: options.variantIndex,
-        messages: toUiMessages(messages),
-      },
+      json: body,
     })) {
       switch (chunk.type) {
         case 'text-delta': {
@@ -249,6 +262,22 @@ export async function* chatStream(
     console.error('[aiService] act failed:', error)
     yield { type: 'error', content: getChatErrorMessage(error) }
   }
+}
+
+export async function uploadDocument(uri: string, name: string, mimeType: string): Promise<{ ids: string[]; name: string }> {
+  const form = new FormData()
+  form.append('file', { uri, name, type: mimeType } as unknown as Blob)
+  const res = await appRequest('/api/app/files/ingest-document', {
+    method: 'POST',
+    formData: form,
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(text || 'Could not index file')
+  }
+  const data = (await res.json().catch(() => ({}))) as { ids?: string[]; name?: string }
+  const ids = Array.isArray(data.ids) ? data.ids.map((id) => String(id)) : []
+  return { ids, name: data.name ?? name }
 }
 
 function getChatErrorMessage(error: unknown): string {

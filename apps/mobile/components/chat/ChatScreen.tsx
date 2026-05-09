@@ -40,7 +40,7 @@ import {
   setLastOpenedChatId,
   updateChatTitle,
 } from '../../services/chatStorage'
-import { chatStream, DEFAULT_CHAT_MODEL_ID, getAvailableModels, getLastSelectedModelId, setLastSelectedModelId, type StreamChunk } from '../../services/aiService'
+import { chatStream, DEFAULT_CHAT_MODEL_ID, getAvailableModels, getLastSelectedModelId, setLastSelectedModelId, uploadDocument, type StreamChunk, type IndexedAttachment } from '../../services/aiService'
 import { useTheme } from '../../hooks/useTheme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { MessageBubble } from './MessageBubble'
@@ -60,7 +60,6 @@ import { UpgradePrompt } from '../auth/UpgradePrompt'
 import { GlassSurface } from '../ui/GlassSurface'
 import { useAuth } from '../../contexts/AuthContext'
 import * as DocumentPicker from 'expo-document-picker'
-import * as FileSystem from 'expo-file-system'
 
 const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
@@ -76,6 +75,10 @@ const PROVIDER_LOGOS: Record<string, ReturnType<typeof require>> = {
   meta: require('../../assets/model-logos/meta.png'),
   mistral: require('../../assets/model-logos/mistral.png'),
   google: require('../../assets/model-logos/google.png'),
+  minimax: require('../../assets/model-logos/minimax.png'),
+  moonshotai: require('../../assets/model-logos/moonshotai.png'),
+  zai: require('../../assets/model-logos/zai.png'),
+  alibaba: require('../../assets/model-logos/alibaba.png'),
 }
 
 function getProviderLogo(provider: string): ReturnType<typeof require> | null {
@@ -85,15 +88,49 @@ function getProviderLogo(provider: string): ReturnType<typeof require> | null {
   return PROVIDER_LOGOS[provider.toLowerCase()] ?? null
 }
 
+function sanitizeModelProvider(model: ChatModel): ChatModel {
+  const id = model.id.toLowerCase()
+  let provider = model.provider
+  if (id.includes('anthropic') || id.includes('claude')) provider = 'anthropic'
+  else if (id.includes('openai') || id.includes('gpt')) provider = 'openai'
+  else if (id.includes('gemini') || id.includes('google')) provider = 'google'
+  else if (id.includes('grok')) provider = 'xai'
+  else if (id.includes('deepseek')) provider = 'deepseek'
+  else if (id.includes('meta') || id.includes('llama')) provider = 'meta'
+  else if (id.includes('mistral')) provider = 'mistral'
+  else if (id.includes('groq')) provider = 'groq'
+  else if (id.includes('nvidia') || id.includes('nemotron')) provider = 'nvidia'
+  else if (id.includes('kimi')) provider = 'moonshotai'
+  else if (id.includes('minimax')) provider = 'minimax'
+  else if (id.includes('glm')) provider = 'zai'
+  else if (id.includes('qwen')) provider = 'alibaba'
+  return { ...model, provider }
+}
+
 function createSyntheticModel(modelId?: string | null): ChatModel | null {
   if (!modelId) {
     return null
   }
 
+  let provider = 'openrouter'
+  if (modelId.includes('deepseek')) provider = 'deepseek'
+  else if (modelId.includes('kimi')) provider = 'moonshotai'
+  else if (modelId.includes('minimax')) provider = 'minimax'
+  else if (modelId.includes('glm')) provider = 'zai'
+  else if (modelId.includes('qwen')) provider = 'alibaba'
+  else if (modelId.includes('anthropic') || modelId.includes('claude')) provider = 'anthropic'
+  else if (modelId.includes('openai') || modelId.includes('gpt')) provider = 'openai'
+  else if (modelId.includes('gemini') || modelId.includes('google')) provider = 'google'
+  else if (modelId.includes('grok')) provider = 'xai'
+  else if (modelId.includes('meta') || modelId.includes('llama')) provider = 'meta'
+  else if (modelId.includes('mistral')) provider = 'mistral'
+  else if (modelId.includes('groq')) provider = 'groq'
+  else if (modelId.includes('nvidia') || modelId.includes('nemotron')) provider = 'nvidia'
+
   return {
     id: modelId,
     name: modelId === DEFAULT_CHAT_MODEL_ID ? 'Free: Kimi K2 Thinking' : modelId,
-    provider: modelId.includes('deepseek') || modelId.includes('kimi') || modelId.includes('minimaxai') ? 'nvidia' : 'openrouter',
+    provider,
     intelligence: 3,
     cost: 0,
     supportsVision: true,
@@ -325,7 +362,15 @@ export function ChatScreen({
   const [composerFocused, setComposerFocused] = useState(false)
   const [keyboardHeight, setKeyboardHeight] = useState(0)
   const [attachPickerVisible, setAttachPickerVisible] = useState(false)
-  const [attachedFile, setAttachedFile] = useState<{ name: string; uri: string; mimeType: string } | null>(null)
+  interface PendingDocument {
+    clientId: string
+    name: string
+    fileIds: string[]
+    status: 'uploading' | 'ready' | 'error'
+    error?: string
+  }
+  const [pendingDocuments, setPendingDocuments] = useState<PendingDocument[]>([])
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
 
   const chatRef = useRef<Chat | null>(null)
   const flatListRef = useRef<FlatList<Message>>(null)
@@ -439,6 +484,8 @@ export function ChatScreen({
         setMessages(chat.messages)
         setInputValue('')
         setImageBase64(null)
+        setPendingDocuments([])
+        setAttachmentError(null)
         await setLastOpenedChatId(chat.id)
 
         const preferredModelId = chat.actModelId || chat.askModelIds?.[0] || chat.modelId
@@ -508,7 +555,7 @@ export function ChatScreen({
     }
 
     async function resolveModels(): Promise<ChatModel[]> {
-      if (chatModels.length > 0) return chatModels
+      if (chatModels.length > 0) return chatModels.map(sanitizeModelProvider)
       return getAvailableModels()
     }
 
@@ -583,7 +630,7 @@ export function ChatScreen({
 
   useEffect(() => {
     if (chatModels.length > 0) {
-      setAvailableModels(chatModels)
+      setAvailableModels(chatModels.map(sanitizeModelProvider))
     }
   }, [chatModels])
 
@@ -711,6 +758,11 @@ export function ChatScreen({
   )
 
   const pickImage = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (status !== 'granted') {
+      Alert.alert('Photo Library Access Needed', 'Please allow photo access in Settings to attach images.')
+      return
+    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       base64: true,
@@ -740,18 +792,38 @@ export function ChatScreen({
     }
   }, [])
 
+  const queueDocumentUpload = useCallback(async (uri: string, name: string, mimeType: string) => {
+    const clientId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    setAttachmentError(null)
+    setPendingDocuments((prev) => [...prev, { clientId, name, fileIds: [], status: 'uploading' }])
+    try {
+      const result = await uploadDocument(uri, name, mimeType)
+      setPendingDocuments((prev) =>
+        prev.map((d) =>
+          d.clientId === clientId
+            ? { ...d, status: 'ready', fileIds: result.ids, name: result.name }
+            : d,
+        ),
+      )
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not index file'
+      setPendingDocuments((prev) =>
+        prev.map((d) => (d.clientId === clientId ? { ...d, status: 'error', error: msg } : d)),
+      )
+    }
+  }, [])
+
   const pickFile = useCallback(async () => {
     const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true })
     if (result.canceled) return
     const asset = result.assets[0]
     const mimeType = asset.mimeType ?? 'application/octet-stream'
     if (mimeType.startsWith('image/')) {
-      const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' })
-      setImageBase64(`data:${mimeType};base64,${base64}`)
+      void queueDocumentUpload(asset.uri, asset.name, mimeType)
     } else {
-      setAttachedFile({ name: asset.name, uri: asset.uri, mimeType })
+      void queueDocumentUpload(asset.uri, asset.name, mimeType)
     }
-  }, [])
+  }, [queueDocumentUpload])
 
   const handleModelSelect = useCallback(
     async (model: ChatModel) => {
@@ -774,7 +846,17 @@ export function ChatScreen({
     }
 
     const activeChat = chatRef.current
-    if ((!inputValue.trim() && !imageBase64 && !attachedFile) || !selectedModel || !activeChat || isSending) {
+    const hasReadyDocs = pendingDocuments.some((d) => d.status === 'ready')
+    if ((!inputValue.trim() && !imageBase64 && !hasReadyDocs) || !selectedModel || !activeChat || isSending) {
+      return
+    }
+
+    if (pendingDocuments.some((d) => d.status === 'uploading')) {
+      setAttachmentError('Wait for documents to finish indexing.')
+      return
+    }
+    if (pendingDocuments.some((d) => d.status === 'error')) {
+      setAttachmentError('Remove failed documents before sending.')
       return
     }
 
@@ -783,20 +865,15 @@ export function ChatScreen({
     Keyboard.dismiss()
     abortRef.current = false
     setIsSending(true)
+    setAttachmentError(null)
+
+    const readyDocs = pendingDocuments.filter((d) => d.status === 'ready')
+    const indexedAttachments: IndexedAttachment[] = readyDocs.map((d) => ({ name: d.name, fileIds: d.fileIds }))
+    const indexedFileNames = readyDocs.map((d) => d.name)
 
     let fileContext = ''
-    if (attachedFile) {
-      try {
-        const isText = attachedFile.mimeType.startsWith('text/') || attachedFile.name.endsWith('.md') || attachedFile.name.endsWith('.json')
-        if (isText) {
-          const content = await FileSystem.readAsStringAsync(attachedFile.uri)
-          fileContext = `\n\n[File: ${attachedFile.name}]\n${content}`
-        } else {
-          fileContext = `\n\n[Attached file: ${attachedFile.name}]`
-        }
-      } catch {
-        fileContext = `\n\n[Attached file: ${attachedFile.name}]`
-      }
+    if (indexedFileNames.length > 0) {
+      fileContext = `\n\n[Indexed documents: ${indexedFileNames.join(', ')}]`
     }
 
     const userMessage: Message = {
@@ -808,7 +885,7 @@ export function ChatScreen({
       mode: 'act',
     }
 
-    const nextTitle = getNextTitle(chatTitle, inputValue.trim() || attachedFile?.name || '')
+    const nextTitle = getNextTitle(chatTitle, inputValue.trim() || indexedFileNames[0] || '')
     const userMessageList = [...messages, userMessage]
     const assistantId = generateMessageId()
     const placeholderAssistant: Message = {
@@ -833,7 +910,7 @@ export function ChatScreen({
     setMessages([...userMessageList, placeholderAssistant])
     setInputValue('')
     setImageBase64(null)
-    setAttachedFile(null)
+    setPendingDocuments([])
 
     try {
       await syncConversationMeta({
@@ -853,6 +930,8 @@ export function ChatScreen({
       for await (const chunk of chatStream(selectedModel.id, buildApiMessages(userMessageList), {
         conversationId: activeChat.id,
         turnId: assistantId,
+        indexedFileNames: indexedFileNames.length > 0 ? indexedFileNames : undefined,
+        indexedAttachments: indexedAttachments.length > 0 ? indexedAttachments : undefined,
       })) {
         if (abortRef.current) break
         setMessages((current) => applyStreamChunk(current, assistantId, selectedModel, chunk))
@@ -882,7 +961,6 @@ export function ChatScreen({
 
     await refreshHistory()
   }, [
-    attachedFile,
     chatTitle,
     imageBase64,
     inputValue,
@@ -890,6 +968,7 @@ export function ChatScreen({
     isAuthenticated,
     isSending,
     messages,
+    pendingDocuments,
     refreshHistory,
     router,
     scrollToBottom,
@@ -1014,13 +1093,41 @@ export function ChatScreen({
                 <TopBarIconButton theme={theme} icon="x" onPress={() => setImageBase64(null)} />
               </View>
             ) : null}
-            {attachedFile ? (
-              <View style={[styles.attachmentBar, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-                <View style={styles.attachmentInfo}>
-                  <Feather name="file-text" size={14} color={theme.textSecondary} />
-                  <Text style={[styles.attachmentText, { color: theme.textSecondary }]} numberOfLines={1}>{attachedFile.name}</Text>
-                </View>
-                <TopBarIconButton theme={theme} icon="x" onPress={() => setAttachedFile(null)} />
+            {pendingDocuments.length > 0 ? (
+              <View style={styles.pendingDocsRow}>
+                {pendingDocuments.map((doc) => (
+                  <View
+                    key={doc.clientId}
+                    style={[styles.pendingDocChip, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
+                  >
+                    <View style={styles.pendingDocChipInner}>
+                      <Feather name="file-text" size={13} color={theme.textSecondary} />
+                      <Text style={[styles.pendingDocChipText, { color: theme.text }]} numberOfLines={1}>{doc.name}</Text>
+                      {doc.status === 'uploading' && (
+                        <ActivityIndicator size="small" color={theme.textSecondary} />
+                      )}
+                      {doc.status === 'ready' && (
+                        <Feather name="check" size={12} color="#22c55e" />
+                      )}
+                      {doc.status === 'error' && (
+                        <Feather name="alert-circle" size={12} color="#EF4444" />
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      activeOpacity={0.65}
+                      onPress={() => setPendingDocuments((prev) => prev.filter((d) => d.clientId !== doc.clientId))}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Feather name="x" size={14} color={theme.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {attachmentError ? (
+              <View style={[styles.attachmentErrorBar, { backgroundColor: '#fee2e2', borderColor: '#fca5a5' }]}>
+                <Feather name="alert-circle" size={14} color="#EF4444" />
+                <Text style={[styles.attachmentErrorText, { color: '#991b1b' }]}>{attachmentError}</Text>
               </View>
             ) : null}
 
@@ -1284,6 +1391,49 @@ const styles = StyleSheet.create({
   },
   attachmentText: {
     fontSize: fontSize.sm,
+  },
+  pendingDocsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 8,
+    paddingHorizontal: 2,
+  },
+  pendingDocChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    maxWidth: '100%',
+  },
+  pendingDocChipInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 1,
+  },
+  pendingDocChipText: {
+    fontSize: fontSize.sm,
+    fontWeight: '500',
+    maxWidth: 160,
+  },
+  attachmentErrorBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  attachmentErrorText: {
+    fontSize: fontSize.sm,
+    fontWeight: '500',
+    flexShrink: 1,
   },
   composerBox: {
     borderWidth: 1,

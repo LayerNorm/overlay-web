@@ -584,21 +584,25 @@ export const MessageBubble = React.memo(function MessageBubble({
       ) : null}
 
       {/* Tool call rows */}
-      {toolInvocations.map((tool, idx) => (
-        <ToolCallRow
-          key={tool.toolCallId || `${tool.toolName}-${idx}`}
-          tool={tool}
-          theme={theme}
-        />
-      ))}
+      {toolInvocations.length > 0 ? (
+        <View style={{ marginTop: 8, marginBottom: 8 }}>
+          {toolInvocations.map((tool, idx) => (
+            <ToolCallRow
+              key={tool.toolCallId || `${tool.toolName}-${idx}`}
+              tool={tool}
+              theme={theme}
+            />
+          ))}
+        </View>
+      ) : null}
 
       {/* Text content */}
       {showInitialCursor ? (
-        <View style={styles.initialCursor}>
+        <View style={[styles.initialCursor, { marginTop: 8 }]}>
           <StreamingCursor />
         </View>
       ) : displayContent ? (
-        <View>
+        <View style={{ marginTop: 8 }}>
           <StableMd
             text={normalizeDisplayText(displayContent)}
             style={markdownStyles}
@@ -650,7 +654,7 @@ export const MessageBubble = React.memo(function MessageBubble({
 
       {/* Footer */}
       {!isLoading && displayContent ? (
-        <View style={styles.actions}>
+        <View style={[styles.actions, { marginTop: 12 }]}>
           <Text style={[styles.metaLabel, { color: theme.textDisabled }]}>
             {message.responses?.[0]?.modelName || 'Overlay'}
           </Text>
@@ -658,7 +662,7 @@ export const MessageBubble = React.memo(function MessageBubble({
             onPress={() => onCopy?.(displayContent)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Feather name="copy" size={13} color={theme.textDisabled} />
+            <Feather name="copy" size={15} color={theme.textDisabled} />
           </TouchableOpacity>
         </View>
       ) : null}
@@ -712,8 +716,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    paddingVertical: 3,
-    minHeight: 24,
+    paddingVertical: 6,
+    minHeight: 28,
   },
   logoCol: {
     width: 16,
@@ -734,8 +738,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   toolLabel: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 15,
+    lineHeight: 20,
   },
 
   // Reasoning scroll
@@ -855,11 +859,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginTop: 4,
+    marginTop: 12,
     paddingLeft: 2,
   },
   metaLabel: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '600',
   },
 })

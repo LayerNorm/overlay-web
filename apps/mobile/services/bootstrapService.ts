@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { AppBootstrap } from '@overlay/app-core'
 import { appJson } from './appApi'
 
-const BOOTSTRAP_CACHE_KEY = 'overlay-app-bootstrap'
+const BOOTSTRAP_CACHE_KEY = 'overlay-app-bootstrap-v2'
 
 let inMemoryBootstrap: AppBootstrap | null = null
 
