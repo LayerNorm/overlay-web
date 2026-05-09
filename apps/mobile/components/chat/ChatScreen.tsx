@@ -75,10 +75,10 @@ const PROVIDER_LOGOS: Record<string, ReturnType<typeof require>> = {
   meta: require('../../assets/model-logos/meta.png'),
   mistral: require('../../assets/model-logos/mistral.png'),
   google: require('../../assets/model-logos/google.png'),
-  minimax: require('../../assets/model-logos/minimax.png'),
+  minimax: require('../../assets/model-logos/minimax-color.png'),
   moonshotai: require('../../assets/model-logos/moonshotai.png'),
-  zai: require('../../assets/model-logos/zai.png'),
-  alibaba: require('../../assets/model-logos/alibaba.png'),
+  zai: require('../../assets/model-logos/zai-actual.png'),
+  alibaba: require('../../assets/model-logos/qwen.png'),
 }
 
 function getProviderLogo(provider: string): ReturnType<typeof require> | null {
@@ -1212,13 +1212,15 @@ export function ChatScreen({
                 >
                   <View style={styles.modelRowLeft}>
                     {getProviderLogo(model.provider) ? (
-                      <Image
-                        source={getProviderLogo(model.provider)}
-                        style={[styles.providerLogo, isLocked && styles.lockedOpacity]}
-                        resizeMode="contain"
-                      />
+                      <View style={[styles.logoContainer, isLocked && styles.lockedOpacity]}>
+                        <Image
+                          source={getProviderLogo(model.provider)}
+                          style={styles.providerLogo}
+                          resizeMode="contain"
+                        />
+                      </View>
                     ) : (
-                      <View style={[styles.providerLogoPlaceholder, { backgroundColor: theme.surfaceElevated }, isLocked && styles.lockedOpacity]}>
+                      <View style={[styles.logoContainer, { backgroundColor: theme.surfaceElevated }, isLocked && styles.lockedOpacity]}>
                         <Text style={[styles.providerInitial, { color: theme.textSecondary }]}>
                           {model.provider.charAt(0).toUpperCase()}
                         </Text>
@@ -1516,15 +1518,24 @@ const styles = StyleSheet.create({
     gap: 12,
     flex: 1,
   },
-  providerLogo: {
+  logoContainer: {
     width: 24,
     height: 24,
     borderRadius: 4,
+    backgroundColor: '#FFFFFF',
+    padding: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  providerLogo: {
+    width: '100%',
+    height: '100%',
   },
   providerLogoPlaceholder: {
     width: 24,
     height: 24,
     borderRadius: 4,
+    padding: 3,
     alignItems: 'center',
     justifyContent: 'center',
   },
