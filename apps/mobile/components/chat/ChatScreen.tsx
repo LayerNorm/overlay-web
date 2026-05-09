@@ -64,18 +64,18 @@ import * as FileSystem from 'expo-file-system'
 
 const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
-// Provider logo mapping
+// Provider logo mapping (PNG so React Native Image can render them)
 const PROVIDER_LOGOS: Record<string, ReturnType<typeof require>> = {
-  openai: require('../../assets/model-logos/openai.svg'),
-  anthropic: require('../../assets/model-logos/anthropic.svg'),
-  xai: require('../../assets/model-logos/xai.svg'),
-  deepseek: require('../../assets/model-logos/deepseek.svg'),
-  groq: require('../../assets/model-logos/groq.svg'),
-  nvidia: require('../../assets/model-logos/nvidia.svg'),
-  openrouter: require('../../assets/model-logos/openrouter.svg'),
-  meta: require('../../assets/model-logos/meta.svg'),
-  mistral: require('../../assets/model-logos/mistral.svg'),
-  google: require('../../assets/model-logos/google.svg'),
+  openai: require('../../assets/model-logos/openai.png'),
+  anthropic: require('../../assets/model-logos/anthropic.png'),
+  xai: require('../../assets/model-logos/xai.png'),
+  deepseek: require('../../assets/model-logos/deepseek.png'),
+  groq: require('../../assets/model-logos/groq.png'),
+  nvidia: require('../../assets/model-logos/nvidia.png'),
+  openrouter: require('../../assets/model-logos/openrouter.png'),
+  meta: require('../../assets/model-logos/meta.png'),
+  mistral: require('../../assets/model-logos/mistral.png'),
+  google: require('../../assets/model-logos/google.png'),
 }
 
 function getProviderLogo(provider: string): ReturnType<typeof require> | null {

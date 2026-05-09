@@ -3,6 +3,7 @@ import {
   Animated,
   Image,
   Keyboard,
+  Linking,
   Modal,
   PanResponder,
   Pressable,
@@ -535,6 +536,20 @@ function DrawerContent({
               })}
             </View>
           )}
+
+          {/* Web */}
+          <TouchableOpacity
+            style={styles.navItem}
+            activeOpacity={0.65}
+            onPress={() => {
+              closeDrawer()
+              void Linking.openURL('https://getoverlay.io')
+            }}
+          >
+            <Feather name="globe" size={18} color={theme.muted} />
+            <Text style={[styles.navLabel, { color: theme.muted }]}>Web</Text>
+            <Feather name="external-link" size={14} color={theme.mutedLight} />
+          </TouchableOpacity>
         </View>
 
         {/* Chat recents — shown only when on chat route */}

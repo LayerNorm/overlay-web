@@ -71,6 +71,7 @@ interface TransferResponse {
   profilePictureUrl?: string
   accessToken: string
   refreshToken: string
+  expiresAt?: number
 }
 
 interface NativeRefreshResponse {
@@ -344,11 +345,12 @@ export async function consumeTransferToken(token: string): Promise<AuthSession> 
   }
 
   const data = (await response.json()) as TransferResponse
-  console.log('[Auth] consumeTransferToken: success, userId=%s', data.userId)
+  console.log('[Auth] consumeTransferToken: success, userId=%s expiresAt=%s', data.userId, data.expiresAt ?? 'none')
 
   return {
     accessToken: data.accessToken,
     refreshToken: data.refreshToken,
+    expiresAt: data.expiresAt,
     user: {
       id: data.userId,
       email: data.email,

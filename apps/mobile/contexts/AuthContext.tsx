@@ -6,7 +6,7 @@ import React, {
   useMemo,
   useState,
 } from 'react'
-import { Linking } from 'react-native'
+import { AppState, Linking } from 'react-native'
 import {
   type AuthSession,
   type AuthUser,
@@ -220,6 +220,18 @@ export function AuthProvider({
       subscription.remove()
     }
   }, [applySignedOutState, consumeIncomingUrl, restoreStoredSession])
+
+  // Refresh the session when the app comes back from background so that
+  // expired access tokens are rotated before the user types their next message.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        console.log('[AuthContext] App became active, refreshing session')
+        void refreshSession()
+      }
+    })
+    return () => subscription.remove()
+  }, [refreshSession])
 
   const user = useMemo<AuthUser | null>(() => session?.user ?? null, [session])
 

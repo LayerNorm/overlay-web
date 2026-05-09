@@ -1,5 +1,11 @@
 import { AUTH_BASE_URL } from './appConfig'
-import { loadAuthSession, type AuthSession } from './authService'
+import {
+  loadAuthSession,
+  saveAuthSession,
+  refreshAuthSession,
+  clearAuthSession,
+  type AuthSession,
+} from './authService'
 
 type QueryValue = string | number | boolean | null | undefined
 
@@ -32,15 +38,68 @@ function createUrl(
   return url.toString()
 }
 
-async function getSession(): Promise<AuthSession | null> {
-  return loadAuthSession()
+// How many ms before the actual expiry we consider a token "about to expire"
+// and proactively refresh it. WorkOS access tokens last 15 min; refreshing
+// 5 min early avoids racing against the clock during long API calls.
+const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000
+
+/**
+ * Return a session with a still-valid access token, refreshing it proactively
+ * if it has expired (or is about to expire). If refresh fails, the stored
+ * session is cleared and an error is thrown so callers can redirect to sign-in.
+ */
+async function getValidSession(): Promise<AuthSession | null> {
+  const session = await loadAuthSession()
+  if (!session) return null
+
+  const now = Date.now()
+  const expiresAt = session.expiresAt ?? 0
+
+  // If we don't know when the token expires (legacy session from before the
+  // expiresAt field was added), still try to refresh it once so we get a
+  // session that DOES carry an expiry. After that refresh, future calls will
+  // have expiresAt and can be checked normally.
+  if (!expiresAt) {
+    console.log('[appApi] getValidSession: no expiresAt, forcing refresh')
+    try {
+      const refreshed = await refreshAuthSession(session)
+      await saveAuthSession(refreshed)
+      return refreshed
+    } catch (error) {
+      console.error('[appApi] getValidSession: refresh failed for legacy session', error)
+      await clearAuthSession()
+      throw new Error('Session expired. Please sign in again.')
+    }
+  }
+
+  // Token is still valid (with buffer) — use it as-is.
+  if (expiresAt > now + TOKEN_REFRESH_BUFFER_MS) {
+    return session
+  }
+
+  // Token has expired or is about to expire — refresh it.
+  console.log(
+    '[appApi] getValidSession: token expiring (expiresAt=%d now=%d), refreshing',
+    expiresAt,
+    now,
+  )
+  try {
+    const refreshed = await refreshAuthSession(session)
+    await saveAuthSession(refreshed)
+    console.log('[appApi] getValidSession: refresh succeeded')
+    return refreshed
+  } catch (error) {
+    console.error('[appApi] getValidSession: refresh failed', error)
+    await clearAuthSession()
+    throw new Error('Session expired. Please sign in again.')
+  }
 }
 
 export async function appRequest(
   path: string,
   options: AppRequestOptions = {},
 ): Promise<Response> {
-  const session = await getSession()
+  const session = await getValidSession()
   const headers = new Headers(options.headers)
   if (session?.accessToken) {
     headers.set('Authorization', `Bearer ${session.accessToken}`)
@@ -283,7 +342,7 @@ export async function* appXhrStreamSse<T>(
   path: string,
   options: AppRequestOptions = {},
 ): AsyncGenerator<T> {
-  const session = await getSession()
+  const session = await getValidSession()
   const headers: Record<string, string> = { ...options.headers }
   if (session?.accessToken) {
     headers['Authorization'] = `Bearer ${session.accessToken}`
