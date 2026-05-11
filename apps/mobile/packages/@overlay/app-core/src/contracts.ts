@@ -41,9 +41,15 @@ export interface ChatModel {
   description?: string
   intelligence: number
   cost: 0 | 1 | 2 | 3
+  /** Relative latency: 1 = heavier/slower, 3 = faster/lighter. */
+  speedTier: 1 | 2 | 3
   supportsVision: boolean
   supportsReasoning: boolean
   supportsSearch: boolean
+  /** Price per 1M blended tokens ($). */
+  pricePer1mTokens?: number
+  /** Median output tokens per second. */
+  medianOutputTokensPerSecond?: number
 }
 
 export interface ImageModel {

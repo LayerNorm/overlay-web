@@ -76,7 +76,7 @@ const PROVIDER_LOGOS: Record<string, ReturnType<typeof require>> = {
   mistral: require('../../assets/model-logos/mistral.png'),
   google: require('../../assets/model-logos/google.png'),
   minimax: require('../../assets/model-logos/minimax-color.png'),
-  moonshotai: require('../../assets/model-logos/moonshotai.png'),
+  moonshotai: require('../../assets/model-logos/moonshot.png'),
   zai: require('../../assets/model-logos/zai-actual.png'),
   alibaba: require('../../assets/model-logos/qwen.png'),
 }
@@ -105,6 +105,23 @@ function sanitizeModelProvider(model: ChatModel): ChatModel {
   else if (id.includes('glm')) provider = 'zai'
   else if (id.includes('qwen')) provider = 'alibaba'
   return { ...model, provider }
+}
+
+async function applyLocalModelMetrics(models: ChatModel[]): Promise<ChatModel[]> {
+  const localModels = await getAvailableModels()
+  const localById = new Map(localModels.map((model) => [model.id, model]))
+  return models.map((model) => {
+    const local = localById.get(model.id)
+    if (!local) return sanitizeModelProvider(model)
+    return sanitizeModelProvider({
+      ...model,
+      intelligence: local.intelligence,
+      cost: local.cost,
+      speedTier: local.speedTier,
+      pricePer1mTokens: local.pricePer1mTokens,
+      medianOutputTokensPerSecond: local.medianOutputTokensPerSecond,
+    })
+  })
 }
 
 function createSyntheticModel(modelId?: string | null): ChatModel | null {
@@ -297,7 +314,7 @@ function buildApiMessages(messages: Message[]) {
 }
 
 function capabilityTags(model: ChatModel): string[] {
-  const tags = [`IQ ${model.intelligence}`]
+  const tags = [`IQ ${Math.round(model.intelligence)}`]
   if (model.supportsVision) tags.push('Vision')
   if (model.supportsReasoning) tags.push('Reasoning')
   if (model.supportsSearch) tags.push('Search')
@@ -306,10 +323,11 @@ function capabilityTags(model: ChatModel): string[] {
 }
 
 function getModelDescription(model: ChatModel): string {
-  if (model.intelligence >= 5) return 'Most capable for ambitious work'
-  if (model.intelligence >= 4) return 'Powerful and versatile'
   if (model.cost === 0) return 'Fast and free'
-  if (model.intelligence <= 2) return 'Fastest for quick answers'
+  if (model.intelligence >= 50) return 'Most capable for ambitious work'
+  if (model.intelligence >= 40) return 'Powerful and versatile'
+  if (model.speedTier >= 3 && model.cost <= 1) return 'Fast & efficient'
+  if (model.intelligence <= 15) return 'Fastest for quick answers'
   return 'Efficient for everyday tasks'
 }
 
@@ -371,6 +389,7 @@ export function ChatScreen({
   }
   const [pendingDocuments, setPendingDocuments] = useState<PendingDocument[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [expandedModelId, setExpandedModelId] = useState<string | null>(null)
 
   const chatRef = useRef<Chat | null>(null)
   const flatListRef = useRef<FlatList<Message>>(null)
@@ -555,7 +574,7 @@ export function ChatScreen({
     }
 
     async function resolveModels(): Promise<ChatModel[]> {
-      if (chatModels.length > 0) return chatModels.map(sanitizeModelProvider)
+      if (chatModels.length > 0) return applyLocalModelMetrics(chatModels)
       return getAvailableModels()
     }
 
@@ -629,8 +648,14 @@ export function ChatScreen({
   }, [chatModels, conversationId, createConversation, hydrateConversation, routeKind])
 
   useEffect(() => {
+    let isMounted = true
     if (chatModels.length > 0) {
-      setAvailableModels(chatModels.map(sanitizeModelProvider))
+      void applyLocalModelMetrics(chatModels).then((models) => {
+        if (isMounted) setAvailableModels(models)
+      })
+    }
+    return () => {
+      isMounted = false
     }
   }, [chatModels])
 
@@ -1186,7 +1211,10 @@ export function ChatScreen({
       <BottomSheet
         theme={theme}
         visible={modelPickerVisible}
-        onClose={() => setModelPickerVisible(false)}
+        onClose={() => {
+          setModelPickerVisible(false)
+          setExpandedModelId(null)
+        }}
         title="Choose model"
       >
         <View style={styles.modelList}>
@@ -1196,6 +1224,7 @@ export function ChatScreen({
             const isFreeTier = entitlements?.tier === 'free'
             const isPremium = model.cost > 0
             const isLocked = isFreeTier && isPremium
+            const isExpanded = expandedModelId === model.id
             return (
               <React.Fragment key={model.id}>
                 <TouchableOpacity
@@ -1235,18 +1264,76 @@ export function ChatScreen({
                       </Text>
                     </View>
                   </View>
-                  {isLocked ? (
-                    <Feather name="lock" size={14} color={theme.mutedLight} />
-                  ) : isSelected ? (
-                    <Feather name="check" size={18} color={theme.text} />
-                  ) : null}
+                  <View style={styles.modelRowRight}>
+                    {isLocked ? (
+                      <Feather name="lock" size={14} color={theme.mutedLight} />
+                    ) : isSelected ? (
+                      <Feather name="check" size={18} color={theme.text} />
+                    ) : null}
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={(e) => {
+                        e.stopPropagation()
+                        setExpandedModelId(isExpanded ? null : model.id)
+                      }}
+                      style={styles.chevronButton}
+                    >
+                      <Feather
+                        name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                        size={16}
+                        color={theme.textSecondary}
+                      />
+                    </TouchableOpacity>
+                  </View>
                 </TouchableOpacity>
+                {isExpanded && (
+                  <View style={[styles.metricsContainer, { backgroundColor: theme.surfaceSubtle }]}>
+                    <View style={styles.metricRow}>
+                      <View style={styles.metricLabelGroup}>
+                        <Feather name="activity" size={13} color={theme.textSecondary} />
+                        <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
+                          Intelligence
+                        </Text>
+                      </View>
+                      <Text style={[styles.metricValue, { color: theme.text }]}>
+                        {Math.round(model.intelligence)}
+                      </Text>
+                    </View>
+                    <View style={styles.metricRow}>
+                      <View style={styles.metricLabelGroup}>
+                        <Feather name="dollar-sign" size={13} color={theme.textSecondary} />
+                        <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
+                          Cost
+                        </Text>
+                      </View>
+                      <Text style={[styles.metricValue, { color: theme.text }]}>
+                        {model.cost === 0 ? 'Free' : `$${(model.pricePer1mTokens ?? model.cost).toFixed(2)}/M`}
+                      </Text>
+                    </View>
+                    <View style={styles.metricRow}>
+                      <View style={styles.metricLabelGroup}>
+                        <Feather name="zap" size={13} color={theme.textSecondary} />
+                        <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
+                          Speed
+                        </Text>
+                      </View>
+                      <Text style={[styles.metricValue, { color: theme.text }]}>
+                        {model.medianOutputTokensPerSecond ? `${Math.round(model.medianOutputTokensPerSecond)} t/s` : 'N/A'}
+                      </Text>
+                    </View>
+                  </View>
+                )}
                 {!isLast && (
                   <View style={[styles.modelSeparator, { backgroundColor: theme.border }]} />
                 )}
               </React.Fragment>
             )
           })}
+          <View style={styles.attributionContainer}>
+            <Text style={[styles.attributionText, { color: theme.textSecondary }]}>
+              Intelligence data via Artificial Analysis
+            </Text>
+          </View>
         </View>
       </BottomSheet>
 
@@ -1558,5 +1645,51 @@ const styles = StyleSheet.create({
   attachSheetLabel: {
     fontSize: fontSize.sm,
     fontWeight: '600',
+  },
+  modelRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  chevronButton: {
+    padding: 4,
+  },
+  metricsContainer: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    gap: 6,
+    borderRadius: borderRadius.md,
+    marginHorizontal: 4,
+    marginBottom: 8,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  metricLabelGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  metricLabel: {
+    fontSize: fontSize.sm,
+    fontWeight: '500',
+  },
+  metricValue: {
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+  },
+  attributionContainer: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(128,128,128,0.2)',
+    marginTop: 4,
+  },
+  attributionText: {
+    fontSize: fontSize.xs,
+    fontWeight: '500',
   },
 })
