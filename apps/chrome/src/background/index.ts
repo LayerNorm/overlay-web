@@ -9,6 +9,7 @@ import {
   takeHandoffVerifier,
 } from './extension-auth'
 import { getExtensionStorage } from './storage'
+import { normalizeTrustedOverlayBaseUrl } from './trusted-origins'
 import {
   bootstrapRuntime,
   captureBrowserContextEnvelope,
@@ -64,7 +65,7 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
         return
       }
       const { preferences } = await getExtensionStorage()
-      const baseUrl = preferences?.baseUrl?.replace(/\/+$/, '').trim() || 'https://getoverlay.io'
+      const baseUrl = normalizeTrustedOverlayBaseUrl(preferences?.baseUrl)
       const verifier = await takeHandoffVerifier()
       if (!verifier) {
         sendResponse({

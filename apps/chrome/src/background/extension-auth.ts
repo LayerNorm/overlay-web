@@ -1,4 +1,5 @@
 import { getExtensionStorage } from './storage'
+import { assertTrustedOverlayBaseUrl, normalizeTrustedOverlayBaseUrl } from './trusted-origins'
 
 const HANDOFF_VERIFIER_KEY = 'overlay.extension.handoffVerifier'
 
@@ -37,7 +38,7 @@ export async function takeHandoffVerifier(): Promise<string | null> {
  * signed-in page can mint a short-lived transfer token for this extension.
  */
 export function buildExtensionSignInUrl(args: { baseUrl: string; extensionId: string; codeChallenge: string }): string {
-  const origin = new URL(args.baseUrl.replace(/\/+$/, '') || 'https://getoverlay.io').origin
+  const origin = assertTrustedOverlayBaseUrl(args.baseUrl)
   const account = new URL('/account', origin)
   account.searchParams.set('desktop_code_challenge', args.codeChallenge)
   account.searchParams.set('extension_handoff', '1')
@@ -50,7 +51,7 @@ export function buildExtensionSignInUrl(args: { baseUrl: string; extensionId: st
 
 export async function prepareExtensionSignInTabUrl(): Promise<{ url: string }> {
   const { preferences } = await getExtensionStorage()
-  const baseUrl = preferences?.baseUrl?.replace(/\/+$/, '').trim() || 'https://getoverlay.io'
+  const baseUrl = normalizeTrustedOverlayBaseUrl(preferences?.baseUrl)
   const verifier = randomVerifier()
   await storeHandoffVerifier(verifier)
   const challenge = await codeChallengeFromVerifier(verifier)
@@ -73,7 +74,8 @@ export async function fetchSessionTransferPayload(args: {
   token: string
   codeVerifier: string
 }): Promise<SessionTransferPayload> {
-  const url = new URL(joinUrl(args.baseUrl, '/api/auth/desktop-link'))
+  const baseUrl = assertTrustedOverlayBaseUrl(args.baseUrl)
+  const url = new URL(joinUrl(baseUrl, '/api/auth/desktop-link'))
   url.searchParams.set('token', args.token)
 
   const response = await fetch(url.toString(), {

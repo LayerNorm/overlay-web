@@ -73,6 +73,7 @@ import {
   setSession,
   setToolHistory,
 } from './storage'
+import { normalizeTrustedOverlayBaseUrl } from './trusted-origins'
 
 const DEFAULT_PREFERENCES: ExtensionPreferences = {
   baseUrl: 'https://getoverlay.io',
@@ -88,7 +89,7 @@ function mergeStoredPreferences(preferences: ExtensionPreferences | null | undef
   return {
     ...DEFAULT_PREFERENCES,
     ...restIn,
-    baseUrl: restIn.baseUrl?.replace(/\/+$/, '').trim() || DEFAULT_PREFERENCES.baseUrl,
+    baseUrl: normalizeTrustedOverlayBaseUrl(restIn.baseUrl),
     modelId:
       restIn.modelId?.trim() ||
       legacyAskId?.trim() ||
@@ -755,7 +756,7 @@ export function applyAskChunkToMessage(message: ConversationMessage, chunk: Reco
 }
 
 async function resolveDefaultBaseUrl(preferences: ExtensionPreferences | null): Promise<string> {
-  if (preferences?.baseUrl?.trim()) return preferences.baseUrl.trim()
+  if (preferences?.baseUrl?.trim()) return normalizeTrustedOverlayBaseUrl(preferences.baseUrl)
 
   const tabs = await chrome.tabs.query({ currentWindow: true })
   const preferredTab = tabs.find((tab) => tab.url?.startsWith('http://localhost:3000'))
@@ -1112,7 +1113,7 @@ export async function saveConversationSettings(
 export async function saveSessionState(session: ExtensionSession): Promise<PublicExtensionSession> {
   const sanitized: ExtensionSession = {
     ...session,
-    baseUrl: session.baseUrl.replace(/\/+$/, '') || 'https://getoverlay.io',
+    baseUrl: normalizeTrustedOverlayBaseUrl(session.baseUrl),
     status: 'connected',
     lastValidatedAt: session.lastValidatedAt ?? Date.now(),
     refreshError: null,

@@ -17,14 +17,14 @@ import {
   type WindowSnapshot,
   type WindowTabSnapshot,
 } from '@overlay/extension-contracts'
+import { appendUserIdParam, assertTrustedOverlayBaseUrl } from './trusted-origins'
 
 function joinUrl(baseUrl: string, path: string): string {
-  return `${baseUrl.replace(/\/+$/, '')}${path}`
+  return `${assertTrustedOverlayBaseUrl(baseUrl)}${path}`
 }
 
-function authBody(session: ExtensionSession): { accessToken: string; userId: string } {
+function authBody(session: ExtensionSession): { userId: string } {
   return {
-    accessToken: session.accessToken,
     userId: session.user.id || '',
   }
 }
@@ -46,7 +46,7 @@ async function parseRemoteJson<T>(response: Response): Promise<T> {
 }
 
 async function remoteGet<T>(baseUrl: string, session: ExtensionSession, path: string): Promise<T> {
-  const response = await fetch(joinUrl(baseUrl, path), {
+  const response = await fetch(joinUrl(baseUrl, appendUserIdParam(path, session.user.id || '')), {
     method: 'GET',
     headers: remoteHeaders(session, false),
     credentials: 'omit',
@@ -102,7 +102,7 @@ async function sendHostTabMessage<T>(
 }
 
 async function findHostTab(baseUrl: string): Promise<number | null> {
-  const origin = new URL(baseUrl).origin
+  const origin = new URL(assertTrustedOverlayBaseUrl(baseUrl)).origin
   const tabs = await chrome.tabs.query({})
   const tab = tabs.find((item) => {
     if (!item.id || !item.url) return false
@@ -636,7 +636,6 @@ function buildActPlannerPayload(args: {
     pageContext: args.pageContext,
     windowTabs: args.windowTabs,
     windows: args.windows,
-    accessToken: args.session?.accessToken,
     userId: args.session?.user?.id,
   }
 }
@@ -838,7 +837,6 @@ export async function streamRemoteChatTurn(args: {
       modelId: args.modelId,
       systemPrompt: args.systemPrompt,
       mode: 'chat',
-      accessToken: args.session.accessToken,
       userId: args.session.user.id,
       multiModelSlotIndex: args.variantIndex,
       multiModelTotal: args.variantTotal,
@@ -922,10 +920,9 @@ export async function fetchRemoteChatTitle(args: {
 
   const response = await fetch(joinUrl(args.baseUrl, '/api/app/generate-title'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: remoteHeaders(args.session),
     body: JSON.stringify({
       text: args.text,
-      accessToken: args.session.accessToken,
       userId,
     }),
   }).catch(() => null)
@@ -958,10 +955,9 @@ export async function fetchRemoteTabGroupLabel(args: {
 
   const response = await fetch(joinUrl(args.baseUrl, '/api/app/generate-tab-group-label'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: remoteHeaders(args.session),
     body: JSON.stringify({
       text: args.text,
-      accessToken: args.session.accessToken,
       userId,
     }),
   }).catch(() => null)
@@ -988,14 +984,13 @@ export async function runRemoteGenerateImage(args: {
 
   const response = await fetch(joinUrl(args.baseUrl, '/api/app/generate-image'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: remoteHeaders(args.session),
     body: JSON.stringify({
       prompt: args.prompt,
       modelId: args.modelId,
       conversationId: args.conversationId,
       turnId: args.turnId,
       imageUrl: args.imageUrl,
-      accessToken: args.session.accessToken,
       userId,
     }),
   })
@@ -1111,13 +1106,12 @@ export async function runRemoteGenerateVideo(args: {
 
   const response = await fetch(joinUrl(args.baseUrl, '/api/app/generate-video'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: remoteHeaders(args.session),
     body: JSON.stringify({
       prompt: args.prompt,
       modelId: args.modelId,
       conversationId: args.conversationId,
       turnId: args.turnId,
-      accessToken: args.session.accessToken,
       userId,
     }),
   })

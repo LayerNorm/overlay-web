@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-13T06:59:01.635Z",
+  "generatedAt": "2026-05-13T09:28:12.964Z",
   "landingRoot": "..",
   "files": {
     "lib/markdown-table-fix.ts": {
@@ -36,7 +36,7 @@
     },
     "src/components/app/AppSettingsProvider.tsx": {
       "kind": "tracked",
-      "sourceHash": "8f80c40c8d583f62"
+      "sourceHash": "50e7d17dd59169f4"
     },
     "src/components/app/WebSourceTooltip.tsx": {
       "kind": "tracked",
