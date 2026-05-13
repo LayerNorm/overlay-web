@@ -1,6 +1,6 @@
 import React from 'react'
-import { PlaceholderScreen } from '../../components/ui/PlaceholderScreen'
+import { AutomationsScreen as AutomationsScreenView } from '../../components/automations/AutomationsScreen'
 
 export default function AutomationsScreen(): React.ReactElement {
-  return <PlaceholderScreen title="Automations" icon="zap" />
+  return <AutomationsScreenView />
 }

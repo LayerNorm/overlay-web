@@ -154,10 +154,34 @@ export async function appJson<T>(
 ): Promise<T> {
   const response = await appRequest(path, options)
   if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    throw new Error(text || `Request failed with status ${response.status}`)
+    throw new Error(await readApiErrorMessage(response))
   }
   return response.json() as Promise<T>
+}
+
+async function readApiErrorMessage(response: Response): Promise<string> {
+  const text = await response.text().catch(() => '')
+  let payload: { error?: unknown; message?: unknown } | null = null
+  try {
+    payload = text ? JSON.parse(text) as { error?: unknown; message?: unknown } : null
+  } catch {
+    payload = null
+  }
+
+  const raw = String(payload?.message || payload?.error || text || '').trim()
+  const lower = raw.toLowerCase()
+  if (response.status === 401) return 'Session expired. Please sign in again.'
+  if (response.status === 403 && (lower.includes('storage') || lower.includes('quota'))) {
+    return 'Not enough Overlay storage remaining.'
+  }
+  if (response.status === 403 && (lower.includes('paid plan') || lower.includes('upgrade'))) {
+    return 'This feature requires a paid Overlay plan.'
+  }
+  if (response.status === 402 || lower.includes('budget') || lower.includes('credits')) {
+    return 'Your Overlay budget is exhausted. Review billing on the web app.'
+  }
+  if (response.status >= 500) return raw || 'Overlay backend is temporarily unavailable.'
+  return raw || `Request failed with status ${response.status}`
 }
 
 export async function readJsonSseStream<T>(

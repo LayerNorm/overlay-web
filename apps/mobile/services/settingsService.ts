@@ -9,9 +9,25 @@ const SETTINGS_CACHE_KEY = 'overlay-ui-settings'
 
 export const DEFAULT_UI_SETTINGS: AppSettings = DEFAULT_APP_SETTINGS
 
+type UiSettingsListener = (settings: AppSettings) => void
+
+const uiSettingsListeners = new Set<UiSettingsListener>()
+
+function notifyUiSettings(settings: AppSettings): void {
+  uiSettingsListeners.forEach((listener) => listener(settings))
+}
+
+export function subscribeUiSettings(listener: UiSettingsListener): () => void {
+  uiSettingsListeners.add(listener)
+  return () => {
+    uiSettingsListeners.delete(listener)
+  }
+}
+
 export async function getUiSettings(): Promise<AppSettings> {
   const settings = await appJson<AppSettings>('/api/app/settings')
   await AsyncStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings))
+  notifyUiSettings(settings)
   return settings
 }
 
@@ -23,6 +39,7 @@ export async function updateUiSettings(
     json: patch as Record<string, unknown>,
   })
   await AsyncStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings))
+  notifyUiSettings(settings)
   return settings
 }
 
@@ -41,8 +58,10 @@ export async function loadCachedUiSettings(): Promise<AppSettings | null> {
 
 export async function persistUiSettings(settings: AppSettings): Promise<void> {
   await AsyncStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings))
+  notifyUiSettings(settings)
 }
 
 export async function clearUiSettingsCache(): Promise<void> {
   await AsyncStorage.removeItem(SETTINGS_CACHE_KEY)
+  notifyUiSettings(DEFAULT_APP_SETTINGS)
 }

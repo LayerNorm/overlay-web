@@ -1,6 +1,11 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@overlay/app-core": ["../packages/overlay-app-core/src/index.ts"],
+      "@overlay/app-core/*": ["../packages/overlay-app-core/src/*"]
+    }
   }
 }

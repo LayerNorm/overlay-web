@@ -135,7 +135,8 @@ export async function clearAuthSession(): Promise<void> {
 export async function clearPkceVerifier(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(PKCE_VERIFIER_STORAGE_KEY)
-    console.log('[Auth] clearPkceVerifier: cleared')
+    await SecureStore.deleteItemAsync(NATIVE_AUTH_PENDING_STORAGE_KEY)
+    console.log('[Auth] clearPkceVerifier: cleared handoff state')
   } catch {
     // ignore if missing
   }

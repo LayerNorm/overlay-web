@@ -1,5 +1,6 @@
 import { appJson } from './appApi'
 import type {
+  AutomationSchedule,
   AutomationRunDetail,
   AutomationRunSummary,
   AutomationSummary,
@@ -9,39 +10,69 @@ export async function listAutomations(): Promise<AutomationSummary[]> {
   return appJson<AutomationSummary[]>('/api/app/automations')
 }
 
-export async function runAutomation(automationId: string): Promise<{
-  success?: boolean
-  automationRunId?: string
-  resultSummary?: string
-}> {
-  return appJson('/api/app/automations/run-now', {
+export async function createAutomation(input: {
+  name: string
+  description: string
+  instructions: string
+  enabled?: boolean
+  schedule: AutomationSchedule
+  timezone?: string
+  projectId?: string
+  modelId?: string
+  concurrencyPolicy?: 'skip' | 'queue'
+}): Promise<{ success: boolean; id: string }> {
+  return appJson<{ success: boolean; id: string }>('/api/app/automations', {
     method: 'POST',
-    json: { automationId },
+    json: input,
+  })
+}
+
+export async function updateAutomation(
+  automationId: string,
+  patch: {
+    name?: string
+    description?: string
+    instructions?: string
+    enabled?: boolean
+    schedule?: AutomationSchedule
+    timezone?: string
+    projectId?: string
+    modelId?: string
+    concurrencyPolicy?: 'skip' | 'queue'
+  },
+): Promise<void> {
+  await appJson('/api/app/automations', {
+    method: 'PATCH',
+    json: { automationId, ...patch },
+  })
+}
+
+export async function setAutomationEnabled(automationId: string, enabled: boolean): Promise<void> {
+  await appJson('/api/app/automations', {
+    method: 'PATCH',
+    json: { automationId, action: enabled ? 'resume' : 'pause' },
+  })
+}
+
+export async function deleteAutomation(automationId: string): Promise<void> {
+  await appJson('/api/app/automations', {
+    method: 'DELETE',
+    query: { automationId },
   })
 }
 
 export async function listAutomationRuns(
   automationId: string,
 ): Promise<AutomationRunSummary[]> {
-  return appJson<AutomationRunSummary[]>('/api/app/automations/runs', {
-    query: { automationId },
+  return appJson<AutomationRunSummary[]>('/api/app/automations', {
+    query: { automationId, runs: true },
   })
 }
 
 export async function getAutomationRunDetail(
+  automationId: string,
   automationRunId: string,
-): Promise<AutomationRunDetail> {
-  return appJson<AutomationRunDetail>('/api/app/automations/runs/detail', {
-    query: { automationRunId },
-  })
-}
-
-export async function retryAutomationRun(automationRunId: string): Promise<{
-  success?: boolean
-  automationRunId?: string
-}> {
-  return appJson('/api/app/automations/runs/retry', {
-    method: 'POST',
-    json: { automationRunId },
-  })
+): Promise<AutomationRunDetail | null> {
+  const runs = await listAutomationRuns(automationId)
+  return (runs.find((run) => run._id === automationRunId) as AutomationRunDetail | undefined) ?? null
 }

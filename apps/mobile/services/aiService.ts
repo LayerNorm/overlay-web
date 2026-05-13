@@ -291,6 +291,20 @@ export async function uploadDocument(uri: string, name: string, mimeType: string
   return { ids, name: data.name ?? name }
 }
 
+export async function stopConversation(conversationId: string, messageId?: string): Promise<void> {
+  const res = await appRequest('/api/app/conversations/stop', {
+    method: 'POST',
+    json: {
+      conversationId,
+      messageId,
+    },
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(text || 'Could not stop generation')
+  }
+}
+
 function getChatErrorMessage(error: unknown): string {
   if (error instanceof Error && error.name === 'AbortError') {
     return 'The backend did not return a chat response before the mobile request timed out.'

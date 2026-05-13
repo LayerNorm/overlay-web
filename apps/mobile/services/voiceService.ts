@@ -43,6 +43,15 @@ export async function syncAuthSessionToAppGroup(): Promise<void> {
   }
 }
 
+export async function clearVoiceAuthSessionFromAppGroup(): Promise<void> {
+  if (Platform.OS !== 'ios' || !NativeKeyStore.clearAuthSession) return
+  try {
+    NativeKeyStore.clearAuthSession()
+  } catch {
+    // ignore native cleanup failures
+  }
+}
+
 export async function getMicPermission(): Promise<VoicePermission> {
   if (Platform.OS !== 'ios' || !NativeKeyStore.getMicPermission) return 'undetermined'
   try {
@@ -108,4 +117,27 @@ export async function getTranscriptionHistory(): Promise<VoiceTranscription[]> {
 export async function deleteTranscription(id: string): Promise<void> {
   if (Platform.OS !== 'ios' || !NativeKeyStore.deleteTranscription) return
   await NativeKeyStore.deleteTranscription(id)
+}
+
+export async function clearTranscriptionHistory(): Promise<void> {
+  const history = await getTranscriptionHistory()
+  await Promise.all(history.map((item) => deleteTranscription(item.id)))
+}
+
+export async function pruneTranscriptionHistory(retentionDays: number): Promise<void> {
+  if (retentionDays <= 0) {
+    await clearTranscriptionHistory()
+    return
+  }
+
+  const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000
+  const history = await getTranscriptionHistory()
+  await Promise.all(
+    history
+      .filter((item) => {
+        const createdAt = new Date(item.createdAt).getTime()
+        return Number.isFinite(createdAt) && createdAt < cutoff
+      })
+      .map((item) => deleteTranscription(item.id)),
+  )
 }

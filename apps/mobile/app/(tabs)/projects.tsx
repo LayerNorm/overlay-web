@@ -1,6 +1,6 @@
 import React from 'react'
-import { PlaceholderScreen } from '../../components/ui/PlaceholderScreen'
+import { ProjectsScreen as ProjectsScreenView } from '../../components/projects/ProjectsScreen'
 
 export default function ProjectsScreen(): React.ReactElement {
-  return <PlaceholderScreen title="Projects" icon="folder" />
+  return <ProjectsScreenView />
 }

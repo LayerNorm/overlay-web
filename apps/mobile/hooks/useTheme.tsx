@@ -1,9 +1,19 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useColorScheme } from 'react-native'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import type { ThemePresetId } from '@overlay/app-core'
 import { getTheme, type Theme } from '../constants/theme'
-
-export type AppearanceMode = 'light' | 'dark' | 'auto'
+import {
+  DEFAULT_MOBILE_PREFERENCES,
+  loadMobilePreferences,
+  subscribeMobilePreferences,
+  updateMobilePreferences,
+  type AppearanceMode,
+} from '../services/mobilePreferencesService'
+import {
+  DEFAULT_UI_SETTINGS,
+  loadCachedUiSettings,
+  subscribeUiSettings,
+} from '../services/settingsService'
 
 interface ThemeContextType {
   theme: Theme
@@ -15,7 +25,11 @@ interface ThemeContextType {
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
-const APPEARANCE_MODE_STORAGE_KEY = 'overlay-appearance-mode'
+
+interface ThemePresetState {
+  lightThemePreset: ThemePresetId
+  darkThemePreset: ThemePresetId
+}
 
 interface ThemeProviderProps {
   children: ReactNode
@@ -25,27 +39,63 @@ export function ThemeProvider({
   children,
 }: ThemeProviderProps): React.ReactElement {
   const systemColorScheme = useColorScheme()
-  const [appearanceMode, setAppearanceModeState] = useState<AppearanceMode>('auto')
+  const [appearanceMode, setAppearanceModeState] = useState<AppearanceMode>(
+    DEFAULT_MOBILE_PREFERENCES.appearanceMode,
+  )
+  const [themePresets, setThemePresets] = useState<ThemePresetState>({
+    lightThemePreset: DEFAULT_UI_SETTINGS.lightThemePreset,
+    darkThemePreset: DEFAULT_UI_SETTINGS.darkThemePreset,
+  })
 
   useEffect(() => {
     let cancelled = false
 
     void (async () => {
-      const stored = await AsyncStorage.getItem(APPEARANCE_MODE_STORAGE_KEY)
-      if (!cancelled && (stored === 'light' || stored === 'dark' || stored === 'auto')) {
-        setAppearanceModeState(stored)
-      }
+      const stored = await loadMobilePreferences()
+      if (!cancelled) setAppearanceModeState(stored.appearanceMode)
     })()
+
+    const unsubscribe = subscribeMobilePreferences((preferences) => {
+      setAppearanceModeState(preferences.appearanceMode)
+    })
 
     return () => {
       cancelled = true
+      unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    void (async () => {
+      const cached = await loadCachedUiSettings()
+      if (!cancelled && cached) {
+        setThemePresets({
+          lightThemePreset: cached.lightThemePreset,
+          darkThemePreset: cached.darkThemePreset,
+        })
+      }
+    })()
+
+    const unsubscribe = subscribeUiSettings((settings) => {
+      setThemePresets({
+        lightThemePreset: settings.lightThemePreset,
+        darkThemePreset: settings.darkThemePreset,
+      })
+    })
+
+    return () => {
+      cancelled = true
+      unsubscribe()
     }
   }, [])
 
   const resolvedMode =
     appearanceMode === 'auto' ? (systemColorScheme === 'dark' ? 'dark' : 'light') : appearanceMode
   const isDark = resolvedMode === 'dark'
-  const theme = useMemo(() => getTheme(isDark), [isDark])
+  const activeThemePreset = isDark ? themePresets.darkThemePreset : themePresets.lightThemePreset
+  const theme = useMemo(() => getTheme(isDark, activeThemePreset), [activeThemePreset, isDark])
 
   const toggleTheme = (): void => {
     void setAppearanceMode(isDark ? 'light' : 'dark')
@@ -57,7 +107,7 @@ export function ThemeProvider({
 
   const setAppearanceMode = async (mode: AppearanceMode): Promise<void> => {
     setAppearanceModeState(mode)
-    await AsyncStorage.setItem(APPEARANCE_MODE_STORAGE_KEY, mode)
+    await updateMobilePreferences({ appearanceMode: mode })
   }
 
   return (

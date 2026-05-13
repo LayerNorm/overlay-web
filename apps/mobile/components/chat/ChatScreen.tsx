@@ -40,7 +40,7 @@ import {
   setLastOpenedChatId,
   updateChatTitle,
 } from '../../services/chatStorage'
-import { chatStream, DEFAULT_CHAT_MODEL_ID, getAvailableModels, getLastSelectedModelId, setLastSelectedModelId, uploadDocument, type StreamChunk, type IndexedAttachment } from '../../services/aiService'
+import { chatStream, DEFAULT_CHAT_MODEL_ID, getAvailableModels, getLastSelectedModelId, setLastSelectedModelId, stopConversation, uploadDocument, type StreamChunk, type IndexedAttachment } from '../../services/aiService'
 import { useTheme } from '../../hooks/useTheme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { MessageBubble } from './MessageBubble'
@@ -60,6 +60,7 @@ import { UpgradePrompt } from '../auth/UpgradePrompt'
 import { GlassSurface } from '../ui/GlassSurface'
 import { useAuth } from '../../contexts/AuthContext'
 import * as DocumentPicker from 'expo-document-picker'
+import { useMobilePreferences } from '../../hooks/useMobilePreferences'
 
 const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
@@ -150,6 +151,7 @@ function createSyntheticModel(modelId?: string | null): ChatModel | null {
     provider,
     intelligence: 3,
     cost: 0,
+    speedTier: 2,
     supportsVision: true,
     supportsReasoning: true,
     supportsSearch: true,
@@ -360,7 +362,8 @@ export function ChatScreen({
   const router = useRouter()
   const { theme, isDark } = useTheme()
   const { openDrawer, drawerVisible } = useDrawer()
-  const { entitlements, chatModels } = useAppSession()
+  const { entitlements, chatModels, uiSettings } = useAppSession()
+  const { preferences: mobilePreferences } = useMobilePreferences()
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
   const insets = useSafeAreaInsets()
 
@@ -526,9 +529,13 @@ export function ChatScreen({
 
   const createConversation = useCallback(
     async (models: ChatModel[], options: { replaceRoute?: boolean } = {}) => {
-      const preferredId = await getLastSelectedModelId().catch(() => null)
-      const modelId = preferredId
-        ? (models.find((m) => m.id === preferredId)?.id ?? models[0]?.id)
+      const isFreeTier = entitlements?.tier === 'free'
+      const preferredId = uiSettings.defaultActModelId || await getLastSelectedModelId().catch(() => null)
+      const preferredModel = preferredId ? models.find((m) => m.id === preferredId) : undefined
+      const modelId = preferredModel && !(isFreeTier && preferredModel.cost > 0)
+        ? preferredModel.id
+        : isFreeTier
+          ? (models.find((m) => m.cost === 0)?.id ?? models[0]?.id)
         : models[0]?.id
 
       // Create a client-side draft only. The server-side conversation is
@@ -562,7 +569,7 @@ export function ChatScreen({
 
       return created
     },
-    [projectId, projectName, router],
+    [entitlements?.tier, projectId, projectName, router, uiSettings.defaultActModelId],
   )
 
   useEffect(() => {
@@ -580,7 +587,7 @@ export function ChatScreen({
 
     async function resolvePreferredModel(models: ChatModel[]): Promise<ChatModel | null> {
       const isFreeTier = entitlements?.tier === 'free'
-      const persistedId = await getLastSelectedModelId().catch(() => null)
+      const persistedId = uiSettings.defaultActModelId || await getLastSelectedModelId().catch(() => null)
       if (persistedId) {
         const match = models.find((m) => m.id === persistedId)
         // For free tier, don't restore a previously selected premium model
@@ -645,7 +652,15 @@ export function ChatScreen({
     return () => {
       isMounted = false
     }
-  }, [chatModels, conversationId, createConversation, hydrateConversation, routeKind])
+  }, [
+    chatModels,
+    conversationId,
+    createConversation,
+    entitlements?.tier,
+    hydrateConversation,
+    routeKind,
+    uiSettings.defaultActModelId,
+  ])
 
   useEffect(() => {
     let isMounted = true
@@ -741,6 +756,22 @@ export function ChatScreen({
 
     await createConversation(availableModels)
   }, [availableModels, createConversation, projectId, projectName, routeKind, router])
+
+  const handleStopGeneration = useCallback(async () => {
+    abortRef.current = true
+    setIsSending(false)
+    const activeChat = chatRef.current
+    const messageId = [...messages]
+      .reverse()
+      .find((message) => message.role === 'assistant' && message.responses?.some((response) => response.isLoading))
+      ?.id
+    if (!activeChat?.id) return
+    try {
+      await stopConversation(activeChat.id, messageId)
+    } catch {
+      // Local abort still stops the mobile stream if the server already finished.
+    }
+  }, [messages])
 
   const handleDeleteConversation = useCallback(
     async (chatId: string) => {
@@ -885,7 +916,9 @@ export function ChatScreen({
       return
     }
 
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    if (mobilePreferences.hapticsEnabled) {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    }
     textInputRef.current?.blur()
     Keyboard.dismiss()
     abortRef.current = false
@@ -1189,14 +1222,17 @@ export function ChatScreen({
                   <GlassSurface interactive style={[styles.sendButton, { backgroundColor: theme.foreground }]}>
                     <TouchableOpacity
                       onPress={() => {
-                        void handleSend()
+                        if (isSending) {
+                          void handleStopGeneration()
+                        } else {
+                          void handleSend()
+                        }
                       }}
                       activeOpacity={0.82}
-                      disabled={isSending}
                       style={styles.sendButton}
                     >
                       {isSending ? (
-                        <ActivityIndicator size="small" color={theme.background} />
+                        <Feather name="square" size={14} color={theme.background} />
                       ) : (
                         <Feather name="arrow-up" size={18} color={theme.background} />
                       )}

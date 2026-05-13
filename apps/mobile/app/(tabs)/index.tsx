@@ -3,13 +3,23 @@ import { View, ActivityIndicator } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTheme } from '../../hooks/useTheme'
+import { loadMobilePreferences, type StartDestination } from '../../services/mobilePreferencesService'
+
+function destinationPath(destination: StartDestination): '/(tabs)/chat' | '/(tabs)/voice' | '/(tabs)/projects' | '/(tabs)/knowledge' {
+  if (destination === 'voice') return '/(tabs)/voice'
+  if (destination === 'projects') return '/(tabs)/projects'
+  if (destination === 'knowledge') return '/(tabs)/knowledge'
+  return '/(tabs)/chat'
+}
 
 export default function IndexRedirect(): React.ReactElement {
   const router = useRouter()
   const { theme } = useTheme()
 
   useEffect(() => {
-    router.replace('/(tabs)/chat')
+    void loadMobilePreferences().then((preferences) => {
+      router.replace(destinationPath(preferences.startDestination))
+    })
   }, [router])
 
   return (

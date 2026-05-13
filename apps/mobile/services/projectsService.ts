@@ -28,6 +28,23 @@ export async function createProject(input: {
   })
 }
 
+export async function updateProject(
+  projectId: string,
+  patch: { name?: string; instructions?: string; parentId?: string | null },
+): Promise<{ success: boolean; project?: ProjectSummary }> {
+  return appJson<{ success: boolean; project?: ProjectSummary }>('/api/app/projects', {
+    method: 'PATCH',
+    json: { projectId, ...patch },
+  })
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+  await appJson('/api/app/projects', {
+    method: 'DELETE',
+    query: { projectId },
+  })
+}
+
 export async function listProjectChats(projectId: string): Promise<ConversationSummary[]> {
   return appJson<ConversationSummary[]>('/api/app/conversations', {
     query: { projectId },

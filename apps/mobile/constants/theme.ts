@@ -6,6 +6,7 @@ import {
   SERIF_FONT_FAMILY,
   SERIF_FONT_FAMILY_ITALIC,
   type AppColorTheme,
+  type ThemePresetId,
 } from '@overlay/app-core'
 
 export interface Theme extends AppColorTheme {
@@ -28,8 +29,8 @@ export interface Theme extends AppColorTheme {
   serifFontFamilyItalic: string
 }
 
-function createTheme(preference: 'light' | 'dark'): Theme {
-  const semantic = getAppColorTheme(preference)
+function createTheme(preference: 'light' | 'dark', presetId?: ThemePresetId): Theme {
+  const semantic = getAppColorTheme(preference, presetId)
 
   return {
     ...semantic,
@@ -56,8 +57,8 @@ function createTheme(preference: 'light' | 'dark'): Theme {
 export const lightTheme: Theme = createTheme('light')
 export const darkTheme: Theme = createTheme('dark')
 
-export function getTheme(darkMode: boolean): Theme {
-  return darkMode ? darkTheme : lightTheme
+export function getTheme(darkMode: boolean, presetId?: ThemePresetId): Theme {
+  return createTheme(darkMode ? 'dark' : 'light', presetId)
 }
 
 export const spacing = appSpacing

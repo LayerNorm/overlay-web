@@ -1,6 +1,6 @@
 import React from 'react'
-import { PlaceholderScreen } from '../../components/ui/PlaceholderScreen'
+import { ToolsScreen as ToolsScreenView } from '../../components/tools/ToolsScreen'
 
 export default function ToolsScreen(): React.ReactElement {
-  return <PlaceholderScreen title="Extensions" icon="grid" />
+  return <ToolsScreenView />
 }

@@ -18,6 +18,9 @@ import {
   refreshAuthSession,
   saveAuthSession,
 } from '../services/authService'
+import { clearBootstrapCache } from '../services/bootstrapService'
+import { clearUiSettingsCache } from '../services/settingsService'
+import { clearVoiceAuthSessionFromAppGroup, disableBackgroundVoice } from '../services/voiceService'
 
 interface AuthContextValue {
   user: AuthUser | null
@@ -150,6 +153,12 @@ export function AuthProvider({
 
   const signOut = useCallback(async () => {
     await clearAuthSession()
+    await Promise.allSettled([
+      clearBootstrapCache(),
+      clearUiSettingsCache(),
+      disableBackgroundVoice(),
+      clearVoiceAuthSessionFromAppGroup(),
+    ])
     applySignedOutState()
     setAuthError(null)
   }, [applySignedOutState])

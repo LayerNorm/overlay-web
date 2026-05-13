@@ -12,6 +12,10 @@ const ignoredDirs = new Set([
 
 const forbiddenPatterns = [
   {
+    pattern: /from\s+['"]convex(?:\/|['"])|require\(['"]convex(?:\/|['"])/g,
+    message: 'direct Convex imports are forbidden in overlay-mobile',
+  },
+  {
     pattern: /convexClient/g,
     message: 'direct convex client usage is forbidden in overlay-mobile',
   },
@@ -22,6 +26,10 @@ const forbiddenPatterns = [
   {
     pattern: /users:getUserProfile|users:syncUserProfile|usage:getEntitlements/g,
     message: 'product data must flow through overlay-landing /api/app/* APIs only',
+  },
+  {
+    pattern: /from\s+['"](?:@workos-inc\/|stripe|@ai-sdk\/|openai|anthropic|groq-sdk|@aws-sdk\/|@convex-dev\/)|require\(['"](?:@workos-inc\/|stripe|@ai-sdk\/|openai|anthropic|groq-sdk|@aws-sdk\/|@convex-dev\/)/g,
+    message: 'server/provider SDKs must not be imported from overlay-mobile',
   },
 ]
 
