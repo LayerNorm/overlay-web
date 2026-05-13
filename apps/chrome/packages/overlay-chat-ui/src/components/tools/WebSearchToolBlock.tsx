@@ -5,6 +5,8 @@ import {
   collectWebSourcesFromToolPart,
   faviconUrl,
   hostFromUrl,
+} from '../../lib/web-tool-sources'
+import {
   webSourceDisplayKey,
 } from '../../lib/web-sources'
 import { getDescriptiveToolLabel, pickFirstStringFromInput } from '../../lib/tool-labels'

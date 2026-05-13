@@ -1,6 +1,7 @@
 /**
  * Web search / browser tool sources for chat UI (citation chips + sidebar).
  */
+import { safeHttpUrl } from './safe-url'
 
 export type WebSourceItem = {
   url: string
@@ -33,14 +34,12 @@ export function webCitationRunLabel(sources: WebSourceItem[], indicesOneBased: n
 
 /** Short host label for inline chips (matches common citation UIs). */
 export function webSourceDisplayKey(url: string): string {
+  const safe = safeHttpUrl(url)
+  if (!safe) return 'source'
   try {
-    let host = new URL(url).hostname.toLowerCase()
+    let host = new URL(safe).hostname.toLowerCase()
     if (host.startsWith('www.')) host = host.slice(4)
-    const parts = host.split('.').filter(Boolean)
-    if (parts.length >= 3) {
-      return `${parts[0]}.${parts[1]}`
-    }
-    return parts[0] ?? host
+    return host
   } catch {
     return 'source'
   }
@@ -119,127 +118,4 @@ export function linkifyInlineWebCitations(
       })
       .join('\n')
   })
-}
-
-function safeReadString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
-}
-
-function normalizeWebUrl(raw: string): string | null {
-  try {
-    return new URL(raw).toString()
-  } catch {
-    return null
-  }
-}
-
-function pickSourceTitle(entry: Record<string, unknown>, fallbackUrl: string): string {
-  const candidate =
-    safeReadString(entry.title) ??
-    safeReadString(entry.name) ??
-    safeReadString(entry.domain) ??
-    safeReadString(entry.host)
-  if (candidate) return candidate
-  try {
-    const parsed = new URL(fallbackUrl)
-    return parsed.hostname.replace(/^www\./i, '')
-  } catch {
-    return fallbackUrl
-  }
-}
-
-/** Walk arbitrary tool output JSON for URLs (used by web-search preview rows). */
-export function collectSourceCandidatesFromUnknown(
-  value: unknown,
-  origin: 'web-search' | 'browser',
-  acc: WebSourceItem[],
-  seen: Set<string>,
-  depth = 0,
-): void {
-  if (depth > 5) return
-  if (Array.isArray(value)) {
-    for (const item of value) collectSourceCandidatesFromUnknown(item, origin, acc, seen, depth + 1)
-    return
-  }
-  if (!value || typeof value !== 'object') {
-    if (typeof value === 'string') {
-      const urlMatches = value.match(/https?:\/\/[^\s)\]]+/g)
-      if (!urlMatches) return
-      for (const rawUrl of urlMatches) {
-        const normalized = normalizeWebUrl(rawUrl)
-        if (!normalized || seen.has(normalized)) continue
-        seen.add(normalized)
-        acc.push({
-          url: normalized,
-          title: pickSourceTitle({}, normalized),
-          origin,
-        })
-      }
-    }
-    return
-  }
-
-  const rec = value as Record<string, unknown>
-  const possibleUrl =
-    safeReadString(rec.url) ??
-    safeReadString(rec.link) ??
-    safeReadString(rec.href) ??
-    safeReadString(rec.sourceUrl) ??
-    safeReadString(rec.source_url)
-  if (possibleUrl) {
-    const normalized = normalizeWebUrl(possibleUrl)
-    if (normalized && !seen.has(normalized)) {
-      seen.add(normalized)
-      acc.push({
-        url: normalized,
-        title: pickSourceTitle(rec, normalized),
-        snippet:
-          safeReadString(rec.snippet) ??
-          safeReadString(rec.summary) ??
-          safeReadString(rec.description) ??
-          undefined,
-        origin,
-      })
-    }
-  }
-
-  for (const child of Object.values(rec)) {
-    if (child && (typeof child === 'object' || typeof child === 'string')) {
-      collectSourceCandidatesFromUnknown(child, origin, acc, seen, depth + 1)
-    }
-  }
-}
-
-/** Sources extracted from a completed Perplexity / browser tool part. */
-export function collectWebSourcesFromToolPart(
-  toolName: string,
-  output: unknown,
-  state: string,
-): WebSourceItem[] {
-  if (state !== 'output-available') return []
-  const items: WebSourceItem[] = []
-  const seen = new Set<string>()
-  const origin =
-    toolName === 'perplexity_search' ? 'web-search' : toolName === 'browser_run_task' || toolName === 'interactive_browser_session' ? 'browser' : 'web-search'
-  if (toolName === 'perplexity_search' || toolName === 'browser_run_task' || toolName === 'interactive_browser_session') {
-    collectSourceCandidatesFromUnknown(output, origin, items, seen)
-  }
-  return items
-}
-
-export function faviconUrl(pageUrl: string): string {
-  try {
-    const host = new URL(pageUrl).hostname
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`
-  } catch {
-    return ''
-  }
-}
-
-export function hostFromUrl(pageUrl: string): string {
-  try {
-    return new URL(pageUrl).hostname.replace(/^www\./i, '')
-  } catch {
-    return ''
-  }
 }

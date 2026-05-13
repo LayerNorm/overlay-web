@@ -17,6 +17,7 @@ import {
   deleteConversation,
   ingestDocument,
   refreshEntitlements,
+  refreshParitySnapshot,
   refreshSessionState,
   resolveApproval,
   saveConversationSettings,
@@ -24,8 +25,10 @@ import {
   saveSessionState,
   selectConversation,
   startActRun,
+  startChatRun,
   startMediaGeneration,
   stopActRun,
+  stopChatRun,
   transcribeAudio,
 } from './runtime'
 import { registerStreamPort } from './stream-bus'
@@ -216,6 +219,24 @@ chrome.runtime.onMessage.addListener((message: RuntimeRequest, _sender, sendResp
             attachments: message.attachments,
           }),
         } satisfies RuntimeResponse
+      case 'overlay.runtime.chat.start':
+        return {
+          ok: true,
+          type: 'overlay.runtime.chat.started',
+          runs: await startChatRun({
+            conversationId: message.conversationId,
+            prompt: message.prompt,
+            scope: message.scope,
+            sourceTabId: message.sourceTabId,
+            attachments: message.attachments,
+          }),
+        } satisfies RuntimeResponse
+      case 'overlay.runtime.chat.stop':
+        await stopChatRun(message.conversationId)
+        return {
+          ok: true,
+          type: 'overlay.runtime.chat.stopped',
+        } satisfies RuntimeResponse
       case 'overlay.runtime.act.stop':
         await stopActRun(message.conversationId)
         return {
@@ -251,6 +272,12 @@ chrome.runtime.onMessage.addListener((message: RuntimeRequest, _sender, sendResp
           ok: true,
           type: 'overlay.runtime.entitlements.refreshed',
           entitlements: await refreshEntitlements(),
+        } satisfies RuntimeResponse
+      case 'overlay.runtime.parity.refresh':
+        return {
+          ok: true,
+          type: 'overlay.runtime.parity.refreshed',
+          parity: await refreshParitySnapshot(),
         } satisfies RuntimeResponse
       case 'overlay.runtime.files.ingest': {
         const result = await ingestDocument({

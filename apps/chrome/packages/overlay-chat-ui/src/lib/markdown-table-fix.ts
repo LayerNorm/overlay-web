@@ -114,6 +114,57 @@ function mergeTableBlock(lines: string[]): string[] {
   return out
 }
 
+function isSeparatorRowLine(line: string): boolean {
+  const t = line.trim()
+  return t.startsWith('|') && /-{3,}/.test(t)
+}
+
+/**
+ * Models often insert plain newlines inside a cell (e.g. "Key factors" column). GFM has no
+ * multiline cells — those lines must be folded into the previous pipe row.
+ */
+function isPlainMultiLineCellContinuation(line: string): boolean {
+  const t = line.trim()
+  if (t.length < 2 || t.length > 220) return false
+  if (t.includes('|')) return false
+  if (/^#{1,6}\s|^>\s|^```|^-{3,}\s*$/.test(t)) return false
+  if (/^https?:\/\//i.test(t)) return false
+  const words = t.split(/\s+/).filter(Boolean)
+  if (words.length > 28) return false
+  if (/^(Sources|References|Note|The following|Here is|In summary|As (shown|noted))\b/i.test(t)) {
+    return false
+  }
+  // Avoid long run-on prose masquerading as a cell fragment
+  if (t.includes('. ') && t.length > 110) return false
+  return true
+}
+
+/** Lines models emit after a table row without any `|` — breaks GFM unless folded back. */
+function isOrphanTableContinuation(line: string): boolean {
+  const t = line.trimStart()
+  if (t.length === 0) return false
+  if (t.length > 500) return false
+  if (/^#{1,6}\s/.test(t)) return false
+  if (/^>\s/.test(t)) return false
+  if (/^```/.test(t)) return false
+  if (/^https?:\/\//i.test(t)) return false
+  // Bullet / sub-line / numbered continuation
+  if (/^\s*[•]\s/.test(line) || /^\s*[*\-]\s+\S/.test(line) || /^\s*\d+[.)]\s/.test(line)) {
+    return true
+  }
+  return isPlainMultiLineCellContinuation(line)
+}
+
+function mergeOrphanIntoLastRow(rowLine: string, orphan: string): string {
+  const cells = splitRowCells(rowLine)
+  if (cells.length < 1) return `${rowLine}\n${orphan}`
+  let target = cells.length - 1
+  while (target >= 0 && cells[target]!.trim() === '') target--
+  if (target < 0) target = cells.length - 1
+  cells[target] = `${cells[target]!.trim()} <br /> ${orphan.trim()}`
+  return `| ${cells.join(' | ')} |`
+}
+
 export function mergeGfmTableContinuationLines(markdown: string): string {
   const lines = markdown.split('\n')
   const out: string[] = []
@@ -132,7 +183,20 @@ export function mergeGfmTableContinuationLines(markdown: string): string {
       block.push(lines[i]!)
       i++
     }
-    out.push(...mergeTableBlock(block))
+    let merged = mergeTableBlock(block)
+    // Lines immediately after a pipe run that have no `|` but look like table continuations
+    // (bullets, etc.) — merge into the last data row so the grid does not collapse.
+    while (i < lines.length && merged.length >= 3) {
+      const next = lines[i]!
+      if (next.trim() === '') break
+      if (next.trimStart().startsWith('|')) break
+      if (!isOrphanTableContinuation(next)) break
+      const last = merged[merged.length - 1]!
+      if (isSeparatorRowLine(last)) break
+      merged = [...merged.slice(0, -1), mergeOrphanIntoLastRow(last, next)]
+      i++
+    }
+    out.push(...merged)
   }
 
   return out.join('\n')

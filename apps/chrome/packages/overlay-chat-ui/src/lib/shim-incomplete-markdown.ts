@@ -1,4 +1,37 @@
 /**
+ * Count `$$` delimiter pairs outside fenced code blocks (``` … ```).
+ * An odd count means a display math span is still open — remark/KaTeX will mis-parse the tail.
+ */
+function countDoubleDollarDelimsOutsideFences(text: string): number {
+  let count = 0
+  let inFence = false
+  let i = 0
+  while (i < text.length) {
+    if (!inFence && text.startsWith('```', i)) {
+      inFence = true
+      i += 3
+      continue
+    }
+    if (inFence) {
+      if (text.startsWith('```', i)) {
+        inFence = false
+        i += 3
+      } else {
+        i += 1
+      }
+      continue
+    }
+    if (text[i] === '$' && text[i + 1] === '$') {
+      count += 1
+      i += 2
+      continue
+    }
+    i += 1
+  }
+  return count
+}
+
+/**
  * Close open markdown structures so partial text renders styled while streaming.
  *
  * Called every render on the streaming tail; idempotent — when the real closer arrives
@@ -6,7 +39,7 @@
  *
  * Handled:
  *   - unclosed fenced code block (odd number of ``` lines) → appends a closing ```
- *   - unclosed math block ($$ … without a trailing $$) → appends $$
+ *   - unclosed math (`$$` …) — odd `$$` count outside code fences → appends `$$`
  *   - unclosed GFM table header (header row + pipe continuation but no `| --- |`
  *     separator yet) → synthesizes a separator so rows render as a <table>
  *   - unclosed inline span (bold ** / italic * / inline code `) → appends matching token
@@ -26,10 +59,9 @@ export function shimIncompleteMarkdown(text: string): string {
     return text + (needsNewline ? '\n' : '') + '```'
   }
 
-  // 2. Math block $$ — count standalone lines of exactly `$$`.
-  const mathMatches = text.match(/^\$\$\s*$/gm)
-  const mathCount = mathMatches ? mathMatches.length : 0
-  if (mathCount % 2 === 1) {
+  // 2. Math `$$` — any odd number of `$$` sequences outside code fences (covers both
+  //    flow fences and one-line `$$\frac{…` tails that never got a closing `$$`).
+  if (countDoubleDollarDelimsOutsideFences(text) % 2 === 1) {
     const needsNewline = !text.endsWith('\n')
     return text + (needsNewline ? '\n' : '') + '$$'
   }
@@ -124,15 +156,24 @@ function shimIncompleteInlineSpans(text: string): string {
     closers += '`'
     considered += '`'
   }
-  if (countUnescapedPair(considered, '**') % 2 === 1) {
+  if (
+    countUnescapedPair(considered, '**') % 2 === 1 &&
+    !lastDelimiterWrapsInlineMath(considered, '**')
+  ) {
     closers += '**'
     considered += '**'
   }
-  if (countStandaloneAsterisks(considered) % 2 === 1) {
+  if (
+    countStandaloneAsterisks(considered) % 2 === 1 &&
+    !lastDelimiterWrapsInlineMath(considered, '*')
+  ) {
     closers += '*'
     considered += '*'
   }
-  if (countUnescaped(considered, '_') % 2 === 1) {
+  if (
+    countUnescaped(considered, '_') % 2 === 1 &&
+    !lastDelimiterWrapsInlineMath(considered, '_')
+  ) {
     closers += '_'
   }
 
@@ -172,4 +213,20 @@ function countStandaloneAsterisks(s: string): number {
     count++
   }
   return count
+}
+
+/**
+ * True when the last occurrence of `delim` on the line is immediately followed by a `$`
+ * (start of inline math) with no closing `$` yet. In that case the delimiter is likely
+ * wrapping an in-flight math expression (e.g. `**$L` → `**$L$**`) and shimming it would
+ * break the intended structure once the closing `$` and delimiter arrive.
+ */
+function lastDelimiterWrapsInlineMath(s: string, delim: string): boolean {
+  const lastIdx = s.lastIndexOf(delim)
+  if (lastIdx < 0) return false
+  const after = s.slice(lastIdx + delim.length)
+  // If the delimiter appears again later, it's not a simple wrapper.
+  if (after.includes(delim)) return false
+  // A `$` immediately after the delimiter signals an inline-math wrapper.
+  return after.includes('$')
 }

@@ -1,11 +1,17 @@
 import {
+  type BackendListItem,
+  type BackendParitySnapshot,
   type BrowserScope,
   type BrowserScopeMode,
   type ConversationMessage,
+  type ConversationMessagePart,
   type ExtensionPreferences,
   type ExtensionSession,
   resolveChatModelId,
   type LocalToolName,
+  type MessageFilePart,
+  type MessageTextPart,
+  type MessageToolPart,
   type PageContextSnapshot,
   type StoredConversation,
   type WindowSnapshot,
@@ -14,6 +20,54 @@ import {
 
 function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, '')}${path}`
+}
+
+function authBody(session: ExtensionSession): { accessToken: string; userId: string } {
+  return {
+    accessToken: session.accessToken,
+    userId: session.user.id || '',
+  }
+}
+
+function remoteHeaders(session: ExtensionSession, json = true): HeadersInit {
+  return {
+    ...(json ? { 'Content-Type': 'application/json' } : {}),
+    Authorization: `Bearer ${session.accessToken}`,
+  }
+}
+
+async function parseRemoteJson<T>(response: Response): Promise<T> {
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const err = payload as { error?: string; message?: string }
+    throw new Error(err.message || err.error || `Overlay API request failed (${response.status}).`)
+  }
+  return payload as T
+}
+
+async function remoteGet<T>(baseUrl: string, session: ExtensionSession, path: string): Promise<T> {
+  const response = await fetch(joinUrl(baseUrl, path), {
+    method: 'GET',
+    headers: remoteHeaders(session, false),
+    credentials: 'omit',
+  })
+  return parseRemoteJson<T>(response)
+}
+
+async function remoteJson<T>(
+  baseUrl: string,
+  session: ExtensionSession,
+  path: string,
+  method: 'POST' | 'PATCH' | 'DELETE',
+  body: Record<string, unknown> = {},
+): Promise<T> {
+  const response = await fetch(joinUrl(baseUrl, path), {
+    method,
+    headers: remoteHeaders(session),
+    credentials: 'omit',
+    body: JSON.stringify({ ...body, ...authBody(session) }),
+  })
+  return parseRemoteJson<T>(response)
 }
 
 function sanitizeChatTitle(title: string | null | undefined, fallback = 'New Chat'): string {
@@ -306,6 +360,263 @@ export async function probeRemoteAccount(baseUrl: string): Promise<{
   return response.user ?? null
 }
 
+type RemoteConversationSummary = {
+  _id: string
+  title: string
+  lastModified?: number
+  updatedAt?: number
+  createdAt?: number
+  lastMode?: 'ask' | 'act'
+  askModelIds?: string[]
+  actModelId?: string
+  projectId?: string
+}
+
+type RemoteConversationMessage = {
+  id: string
+  turnId: string
+  role: 'user' | 'assistant'
+  mode?: 'ask' | 'act'
+  contentType?: 'text' | 'image' | 'video'
+  variantIndex?: number
+  parts?: Array<Record<string, unknown>>
+  model?: string
+  routedModelId?: string
+  status?: 'generating' | 'completed' | 'error'
+}
+
+function partId(prefix = 'part'): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function textFromRemoteParts(parts: ConversationMessagePart[]): string {
+  return parts
+    .filter((part): part is MessageTextPart => part.type === 'text')
+    .map((part) => part.text.trim())
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+function mapRemotePart(part: Record<string, unknown>): ConversationMessagePart | null {
+  if (part.type === 'text') {
+    return {
+      type: 'text',
+      id: typeof part.id === 'string' ? part.id : partId(),
+      text: typeof part.text === 'string' ? part.text : '',
+    } satisfies MessageTextPart
+  }
+  if (part.type === 'file') {
+    return {
+      type: 'file',
+      id: typeof part.id === 'string' ? part.id : partId(),
+      url: typeof part.url === 'string' ? part.url : '',
+      mediaType: typeof part.mediaType === 'string' ? part.mediaType : 'application/octet-stream',
+    } satisfies MessageFilePart
+  }
+  if (part.type === 'tool-invocation' && part.toolInvocation && typeof part.toolInvocation === 'object') {
+    const invocation = part.toolInvocation as Record<string, unknown>
+    const state = typeof invocation.state === 'string' ? invocation.state : 'output-available'
+    const mappedState: MessageToolPart['state'] =
+      state === 'input-streaming' ||
+      state === 'input-available' ||
+      state === 'input-error' ||
+      state === 'output-available' ||
+      state === 'output-error' ||
+      state === 'output-denied'
+        ? state
+        : state.includes('error')
+          ? 'output-error'
+          : 'output-available'
+    return {
+      type: 'tool',
+      id: typeof invocation.toolCallId === 'string' ? invocation.toolCallId : partId('tool'),
+      toolCallId: typeof invocation.toolCallId === 'string' ? invocation.toolCallId : partId('tool-call'),
+      toolName: typeof invocation.toolName === 'string' ? invocation.toolName : 'tool',
+      state: mappedState,
+      input: invocation.toolInput,
+      output: invocation.toolOutput,
+    } satisfies MessageToolPart
+  }
+  return null
+}
+
+function mapRemoteMessage(message: RemoteConversationMessage): ConversationMessage {
+  const parts = (message.parts ?? [])
+    .map(mapRemotePart)
+    .filter((part): part is ConversationMessagePart => Boolean(part))
+  const safeParts = parts.length > 0 ? parts : [{ type: 'text' as const, id: partId(), text: '' }]
+  return {
+    id: message.id,
+    role: message.role,
+    parts: safeParts,
+    createdAt: Date.now(),
+    turnId: message.turnId,
+    variantIndex: message.variantIndex,
+    modelId: message.routedModelId || message.model,
+    metadata: {
+      mode: message.mode,
+      contentType: message.contentType,
+      status: message.status,
+    },
+  }
+}
+
+function previewFromMessages(messages: ConversationMessage[]): string {
+  const last = [...messages].reverse().find((message) => textFromRemoteParts(message.parts).trim())
+  return last ? textFromRemoteParts(last.parts).replace(/\s+/g, ' ').slice(0, 110) : ''
+}
+
+function mapRemoteConversation(
+  summary: RemoteConversationSummary,
+  messages: RemoteConversationMessage[] = [],
+): StoredConversation {
+  const mappedMessages = messages.map(mapRemoteMessage)
+  const updatedAt = summary.updatedAt ?? summary.lastModified ?? summary.createdAt ?? Date.now()
+  return {
+    id: summary._id,
+    title: summary.title || 'New Chat',
+    preview: previewFromMessages(mappedMessages),
+    updatedAt,
+    messages: mappedMessages,
+    version: 3,
+  }
+}
+
+export async function fetchRemoteAppBootstrap(args: {
+  baseUrl: string
+  session: ExtensionSession
+}): Promise<{
+  entitlements?: {
+    tier: 'free' | 'pro' | 'max'
+    planKind?: 'free' | 'paid'
+    creditsUsed?: number
+    creditsTotal?: number
+  } | null
+  uiSettings?: Record<string, unknown> | null
+  defaults?: { chatModelId?: string; imageModelId?: string; videoModelId?: string }
+} | null> {
+  if (!args.session.accessToken?.trim() || !args.session.user?.id?.trim()) return null
+  return remoteGet<{
+    entitlements?: {
+      tier: 'free' | 'pro' | 'max'
+      planKind?: 'free' | 'paid'
+      creditsUsed?: number
+      creditsTotal?: number
+    } | null
+    uiSettings?: Record<string, unknown> | null
+    defaults?: { chatModelId?: string; imageModelId?: string; videoModelId?: string }
+  }>(args.baseUrl, args.session, '/api/app/bootstrap').catch(() => null)
+}
+
+export async function fetchRemoteConversations(args: {
+  baseUrl: string
+  session: ExtensionSession
+  activeConversationId?: string | null
+}): Promise<StoredConversation[]> {
+  if (!args.session.accessToken?.trim() || !args.session.user?.id?.trim()) return []
+  const summaries = await remoteGet<RemoteConversationSummary[]>(args.baseUrl, args.session, '/api/app/conversations')
+  const activeId = args.activeConversationId && summaries.some((item) => item._id === args.activeConversationId)
+    ? args.activeConversationId
+    : summaries[0]?._id
+  if (!activeId) return summaries.map((summary) => mapRemoteConversation(summary))
+
+  const activeMessages = await remoteGet<{ messages?: RemoteConversationMessage[] }>(
+    args.baseUrl,
+    args.session,
+    `/api/app/conversations?conversationId=${encodeURIComponent(activeId)}&messages=true`,
+  ).catch(() => ({ messages: [] }))
+
+  return summaries.map((summary) => (
+    summary._id === activeId
+      ? mapRemoteConversation(summary, activeMessages.messages ?? [])
+      : mapRemoteConversation(summary)
+  ))
+}
+
+export async function fetchRemoteConversationWithMessages(args: {
+  baseUrl: string
+  session: ExtensionSession
+  conversationId: string
+}): Promise<StoredConversation | null> {
+  const [summary, messages] = await Promise.all([
+    remoteGet<RemoteConversationSummary>(
+      args.baseUrl,
+      args.session,
+      `/api/app/conversations?conversationId=${encodeURIComponent(args.conversationId)}`,
+    ),
+    remoteGet<{ messages?: RemoteConversationMessage[] }>(
+      args.baseUrl,
+      args.session,
+      `/api/app/conversations?conversationId=${encodeURIComponent(args.conversationId)}&messages=true`,
+    ),
+  ]).catch(() => [null, null] as const)
+  if (!summary) return null
+  return mapRemoteConversation(summary, messages?.messages ?? [])
+}
+
+export async function createRemoteConversation(args: {
+  baseUrl: string
+  session: ExtensionSession
+  title?: string
+  askModelIds?: string[]
+  actModelId?: string
+}): Promise<StoredConversation> {
+  const payload = await remoteJson<{ id?: string; conversation?: RemoteConversationSummary }>(
+    args.baseUrl,
+    args.session,
+    '/api/app/conversations',
+    'POST',
+    {
+      title: args.title || 'New Chat',
+      askModelIds: args.askModelIds,
+      actModelId: args.actModelId,
+      lastMode: 'act',
+    },
+  )
+  const summary = payload.conversation ?? {
+    _id: payload.id || partId('conversation'),
+    title: args.title || 'New Chat',
+    updatedAt: Date.now(),
+  }
+  return mapRemoteConversation(summary)
+}
+
+export async function deleteRemoteConversation(args: {
+  baseUrl: string
+  session: ExtensionSession
+  conversationId: string
+}): Promise<void> {
+  await remoteJson(
+    args.baseUrl,
+    args.session,
+    `/api/app/conversations?conversationId=${encodeURIComponent(args.conversationId)}`,
+    'DELETE',
+  )
+}
+
+export async function updateRemoteConversation(args: {
+  baseUrl: string
+  session: ExtensionSession
+  conversationId: string
+  title?: string
+  askModelIds?: string[]
+  actModelId?: string
+}): Promise<StoredConversation | null> {
+  const payload = await remoteJson<{ conversation?: RemoteConversationSummary }>(
+    args.baseUrl,
+    args.session,
+    '/api/app/conversations',
+    'PATCH',
+    {
+      conversationId: args.conversationId,
+      title: args.title,
+      askModelIds: args.askModelIds,
+      actModelId: args.actModelId,
+    },
+  )
+  return payload.conversation ? mapRemoteConversation(payload.conversation) : null
+}
+
 function buildActPlannerPayload(args: {
   preferences: ExtensionPreferences
   session: ExtensionSession | null
@@ -482,6 +793,123 @@ export async function runRemoteBrowserTask(args: {
       ? `Could not reach ${args.preferences.baseUrl}. Check your network and try again.`
       : `Sign in to Overlay: open Account settings → Connect and complete sign-in in the browser.`,
   )
+}
+
+export async function streamRemoteChatTurn(args: {
+  baseUrl: string
+  session: ExtensionSession
+  conversationId: string
+  turnId: string
+  prompt: string
+  systemPrompt?: string
+  modelId: string
+  variantIndex: number
+  variantTotal: number
+  attachments?: Array<{ kind: string; name: string; mimeType: string; dataUrl?: string; documentId?: string; status?: string }>
+  signal?: AbortSignal
+  onChunk: (chunk: Record<string, unknown>) => Promise<void> | void
+}): Promise<void> {
+  const userParts: Array<Record<string, unknown>> = [{ type: 'text', text: args.prompt }]
+  const indexedFileNames: string[] = []
+  const attachmentNames: string[] = []
+  for (const attachment of args.attachments ?? []) {
+    attachmentNames.push(attachment.name)
+    if (attachment.kind === 'image' && attachment.dataUrl) {
+      userParts.push({ type: 'file', url: attachment.dataUrl, mediaType: attachment.mimeType })
+    }
+    if (attachment.kind === 'document' && attachment.status === 'ready') {
+      indexedFileNames.push(attachment.name)
+    }
+  }
+  const message = {
+    id: args.turnId,
+    role: 'user',
+    parts: userParts,
+  }
+  const response = await fetch(joinUrl(args.baseUrl, '/api/app/conversations/act'), {
+    method: 'POST',
+    headers: remoteHeaders(args.session),
+    credentials: 'omit',
+    signal: args.signal,
+    body: JSON.stringify({
+      messages: [message],
+      conversationId: args.conversationId,
+      turnId: args.turnId,
+      modelId: args.modelId,
+      systemPrompt: args.systemPrompt,
+      mode: 'chat',
+      accessToken: args.session.accessToken,
+      userId: args.session.user.id,
+      multiModelSlotIndex: args.variantIndex,
+      multiModelTotal: args.variantTotal,
+      ...(indexedFileNames.length > 0 ? { indexedFileNames } : {}),
+      ...(attachmentNames.length > 0 ? { attachmentNames } : {}),
+    }),
+  })
+  if (!response.ok || !response.body) {
+    const payload = await response.json().catch(() => ({})) as { error?: string; message?: string }
+    throw new Error(payload.message || payload.error || `Chat stream failed (${response.status}).`)
+  }
+  await consumeUiMessageEventStream(response.body, args.onChunk)
+}
+
+function listItemsFromArray(items: unknown, mapper: (item: Record<string, unknown>) => BackendListItem | null): BackendListItem[] {
+  if (!Array.isArray(items)) return []
+  return items
+    .map((item) => (item && typeof item === 'object' ? mapper(item as Record<string, unknown>) : null))
+    .filter((item): item is BackendListItem => Boolean(item))
+}
+
+function compactItem(item: Record<string, unknown>, fallbackKind?: string): BackendListItem | null {
+  const id = String(item._id ?? item.id ?? '').trim()
+  const title = String(item.title ?? item.name ?? item.label ?? item.fileName ?? '').trim()
+  if (!id || !title) return null
+  const updatedAtRaw = item.updatedAt ?? item.lastModified ?? item.createdAt
+  return {
+    id,
+    title,
+    subtitle: typeof item.description === 'string'
+      ? item.description
+      : typeof item.kind === 'string'
+        ? item.kind
+        : undefined,
+    href: typeof item.url === 'string' ? item.url : undefined,
+    kind: typeof item.kind === 'string' ? item.kind : fallbackKind,
+    updatedAt: typeof updatedAtRaw === 'number' ? updatedAtRaw : undefined,
+  }
+}
+
+export async function fetchRemoteParitySnapshot(args: {
+  baseUrl: string
+  session: ExtensionSession
+}): Promise<BackendParitySnapshot | null> {
+  if (!args.session.accessToken?.trim() || !args.session.user?.id?.trim()) return null
+  const [projects, files, outputs, memories, automations, skills, mcps, integrations, settings] = await Promise.all([
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/projects').catch(() => []),
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/files').catch(() => []),
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/outputs').catch(() => []),
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/memory').catch(() => []),
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/automations').catch(() => []),
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/skills').catch(() => []),
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/mcps').catch(() => []),
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/integrations').catch(() => ({ items: [] })),
+    remoteGet<Record<string, unknown>>(args.baseUrl, args.session, '/api/app/settings').catch(() => null),
+  ])
+  const integrationItems = integrations && typeof integrations === 'object' && 'items' in integrations
+    ? (integrations as { items?: unknown }).items
+    : integrations
+  return {
+    projects: listItemsFromArray(projects, (item) => compactItem(item, 'project')),
+    files: listItemsFromArray(files, (item) => compactItem(item, typeof item.kind === 'string' ? item.kind : 'file')),
+    outputs: listItemsFromArray(outputs, (item) => compactItem(item, 'output')),
+    memories: listItemsFromArray(memories, (item) => compactItem(item, 'memory')),
+    automations: listItemsFromArray(automations, (item) => compactItem(item, 'automation')),
+    skills: listItemsFromArray(skills, (item) => compactItem(item, 'skill')),
+    mcps: listItemsFromArray(mcps, (item) => compactItem(item, 'mcp')),
+    integrations: listItemsFromArray(integrationItems, (item) => compactItem(item, 'integration')),
+    settings,
+    fetchedAt: Date.now(),
+  }
 }
 
 export async function fetchRemoteChatTitle(args: {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ExternalLink, Menu, MoreHorizontal, Plus, Settings, Trash2, PanelLeftClose } from 'lucide-react'
+import { ExternalLink, Menu, MessageSquare, MoreHorizontal, MousePointer2, Plus, Settings, Trash2, PanelLeftClose } from 'lucide-react'
 import {
   BrandMark,
   ChatComposer,
@@ -12,6 +12,7 @@ import {
   type ActApprovalMode,
   type ActiveRunState,
   type AttachmentDraft,
+  type BackendListItem,
   type BrowserScopeMode,
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_MODEL_ID,
@@ -90,6 +91,41 @@ function toConversationItems(conversations: StoredConversation[]): ConversationI
   }))
 }
 
+function BackendSurfaceSection({
+  label,
+  items,
+  emptyLabel,
+}: {
+  label: string
+  items: BackendListItem[]
+  emptyLabel: string
+}) {
+  return (
+    <section className="border-t border-[var(--border)] px-3 py-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--muted)]">{label}</p>
+        <span className="text-[10px] tabular-nums text-[var(--muted-light)]">{items.length}</span>
+      </div>
+      {items.length > 0 ? (
+        <div className="space-y-1">
+          {items.slice(0, 5).map((item) => (
+            <div
+              key={`${label}:${item.id}`}
+              className="min-w-0 rounded-md px-2 py-1.5 text-xs text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
+              title={item.subtitle || item.title}
+            >
+              <p className="truncate">{item.title}</p>
+              {item.subtitle ? <p className="mt-0.5 truncate text-[10px] text-[var(--muted)]">{item.subtitle}</p> : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="px-2 py-1 text-xs text-[var(--muted)]">{emptyLabel}</p>
+      )}
+    </section>
+  )
+}
+
 export default function App() {
   const [bootstrap, setBootstrap] = useState<RuntimeBootstrap | null>(null)
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
@@ -105,6 +141,7 @@ export default function App() {
     videoModelId: DEFAULT_VIDEO_MODEL_ID,
   })
   const [attachments, setAttachments] = useState<AttachmentDraft[]>([])
+  const [runMode, setRunMode] = useState<'chat' | 'act'>('chat')
   const [isRecording, setIsRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -604,28 +641,37 @@ export default function App() {
       if (sourceTabId == null) {
         throw new Error('Could not determine the active tab for this query.')
       }
-      const actPolicy: 'approval' | 'autonomous' = actApprovalMode === 'auto' ? 'autonomous' : 'approval'
-      const response = await sendRuntimeMessage({
-        type: 'overlay.runtime.act.start',
-        conversationId,
-        prompt: question,
-        scope: browserScope,
-        sourceTabId,
-        actPolicy,
-        attachments: attachments.length > 0 ? attachments : undefined,
-      })
-      if (!response.ok || response.type !== 'overlay.runtime.act.started') {
+      const response = runMode === 'act'
+        ? await sendRuntimeMessage({
+            type: 'overlay.runtime.act.start',
+            conversationId,
+            prompt: question,
+            scope: browserScope,
+            sourceTabId,
+            actPolicy: actApprovalMode === 'auto' ? 'autonomous' : 'approval',
+            attachments: attachments.length > 0 ? attachments : undefined,
+          })
+        : await sendRuntimeMessage({
+            type: 'overlay.runtime.chat.start',
+            conversationId,
+            prompt: question,
+            scope: browserScope,
+            sourceTabId,
+            attachments: attachments.length > 0 ? attachments : undefined,
+          })
+      if (!response.ok || (response.type !== 'overlay.runtime.act.started' && response.type !== 'overlay.runtime.chat.started')) {
         throw new Error(response.ok ? 'Send failed.' : response.error)
       }
       setDraft('')
       setAttachments([])
+      const runs = response.type === 'overlay.runtime.act.started' ? [response.run] : response.runs
       setBootstrap((current) =>
         current
           ? {
               ...current,
               activeRuns: {
                 ...current.activeRuns,
-                [activeRunKey(conversationId, response.run.variantIndex)]: response.run,
+                ...Object.fromEntries(runs.map((run) => [activeRunKey(conversationId, run.variantIndex), run])),
               },
             }
           : current,
@@ -641,10 +687,10 @@ export default function App() {
     setError(null)
     try {
       const response = await sendRuntimeMessage({
-        type: 'overlay.runtime.act.stop',
+        type: runMode === 'act' ? 'overlay.runtime.act.stop' : 'overlay.runtime.chat.stop',
         conversationId: activeConversationId,
       })
-      if (!response.ok || response.type !== 'overlay.runtime.act.stopped') {
+      if (!response.ok || (response.type !== 'overlay.runtime.act.stopped' && response.type !== 'overlay.runtime.chat.stopped')) {
         throw new Error(response.ok ? 'Could not stop run.' : response.error)
       }
       setBootstrap((current) => {
@@ -760,6 +806,15 @@ export default function App() {
                 void handleSelectConversation(conversationId)
               }}
             />
+            {bootstrap?.parity ? (
+              <div className="max-h-[42vh] shrink-0 overflow-y-auto border-t border-[var(--border)]">
+                <BackendSurfaceSection label="Projects" items={bootstrap.parity.projects} emptyLabel="No projects yet" />
+                <BackendSurfaceSection label="Files" items={[...bootstrap.parity.files, ...bootstrap.parity.outputs]} emptyLabel="No files yet" />
+                <BackendSurfaceSection label="Knowledge" items={bootstrap.parity.memories} emptyLabel="No memories yet" />
+                <BackendSurfaceSection label="Automations" items={bootstrap.parity.automations} emptyLabel="No automations yet" />
+                <BackendSurfaceSection label="Extensions" items={[...bootstrap.parity.integrations, ...bootstrap.parity.skills, ...bootstrap.parity.mcps]} emptyLabel="No extensions connected" />
+              </div>
+            ) : null}
             <div className="mt-auto shrink-0 border-t border-[var(--border)] p-3">
               <div className="mb-3 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5">
                 <p className="truncate text-sm font-medium text-[var(--foreground)]">{displayName}</p>
@@ -996,7 +1051,7 @@ export default function App() {
               Upgrade to a paid plan to generate images and video.
             </div>
           ) : null}
-          {actApprovalMode === 'auto' ? (
+          {runMode === 'act' && actApprovalMode === 'auto' ? (
             <div className="px-3 pt-1 md:px-4">
               <ActAutonomousWarning />
             </div>
@@ -1004,13 +1059,45 @@ export default function App() {
 
           <ChatComposer
             toolbarAboveTextarea={
-              <ActApprovalModeMenu
-                value={actApprovalMode}
-                onChange={(next) => {
-                  void persistConversationSettings({ actApprovalMode: next })
-                }}
-                disabled={isRunStreaming}
-              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="inline-flex rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setRunMode('chat')}
+                    disabled={isRunStreaming}
+                    className={`inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs transition-colors ${
+                      runMode === 'chat'
+                        ? 'bg-[var(--foreground)] text-[var(--background)]'
+                        : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                    } disabled:opacity-50`}
+                  >
+                    <MessageSquare size={12} strokeWidth={1.75} />
+                    Chat
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRunMode('act')}
+                    disabled={isRunStreaming}
+                    className={`inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs transition-colors ${
+                      runMode === 'act'
+                        ? 'bg-[var(--foreground)] text-[var(--background)]'
+                        : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                    } disabled:opacity-50`}
+                  >
+                    <MousePointer2 size={12} strokeWidth={1.75} />
+                    Act
+                  </button>
+                </div>
+                {runMode === 'act' ? (
+                  <ActApprovalModeMenu
+                    value={actApprovalMode}
+                    onChange={(next) => {
+                      void persistConversationSettings({ actApprovalMode: next })
+                    }}
+                    disabled={isRunStreaming}
+                  />
+                ) : null}
+              </div>
             }
             attachments={attachments}
             onAddFiles={(files) => {

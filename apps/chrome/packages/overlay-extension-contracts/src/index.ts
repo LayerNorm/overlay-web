@@ -178,6 +178,28 @@ export interface EntitlementsSnapshot {
   fetchedAt: number
 }
 
+export interface BackendListItem {
+  id: string
+  title: string
+  subtitle?: string
+  href?: string
+  kind?: string
+  updatedAt?: number
+}
+
+export interface BackendParitySnapshot {
+  projects: BackendListItem[]
+  files: BackendListItem[]
+  outputs: BackendListItem[]
+  memories: BackendListItem[]
+  automations: BackendListItem[]
+  skills: BackendListItem[]
+  mcps: BackendListItem[]
+  integrations: BackendListItem[]
+  settings?: Record<string, unknown> | null
+  fetchedAt: number
+}
+
 /**
  * Draft attachment held in the composer before send. Images and audio are
  * inlined as data URLs; documents are uploaded through the background (which
@@ -367,6 +389,8 @@ export interface RuntimeBootstrap {
   controlIndicator: ControlIndicatorState | null
   /** Cached subscription snapshot; null when unauthenticated or not yet loaded. */
   entitlements: EntitlementsSnapshot | null
+  /** Compact backend-backed lists used by the side panel parity surfaces. */
+  parity: BackendParitySnapshot | null
 }
 
 export interface AskResult {
@@ -529,6 +553,16 @@ export type RuntimeRequest =
   | { type: 'overlay.runtime.ping' }
   | { type: 'overlay.runtime.bootstrap' }
   | {
+      type: 'overlay.runtime.chat.start'
+      conversationId: string
+      prompt: string
+      scope: BrowserScopeMode
+      sourceTabId: number
+      attachments?: AttachmentDraft[]
+    }
+  | { type: 'overlay.runtime.chat.stop'; conversationId: string }
+  | { type: 'overlay.runtime.parity.refresh' }
+  | {
       type: 'overlay.runtime.media.generate'
       conversationId: string
       prompt: string
@@ -600,6 +634,9 @@ export type RuntimeResponse =
   | { ok: true; type: 'overlay.runtime.pong'; timestamp: number }
   | { ok: true; type: 'overlay.runtime.bootstrap'; bootstrap: RuntimeBootstrap }
   | { ok: true; type: 'overlay.runtime.media.generated' }
+  | { ok: true; type: 'overlay.runtime.chat.started'; runs: ActiveRunState[] }
+  | { ok: true; type: 'overlay.runtime.chat.stopped' }
+  | { ok: true; type: 'overlay.runtime.parity.refreshed'; parity: BackendParitySnapshot | null }
   | { ok: true; type: 'overlay.runtime.entitlements.refreshed'; entitlements: EntitlementsSnapshot | null }
   | {
       ok: true

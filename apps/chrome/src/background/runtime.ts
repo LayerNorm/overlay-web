@@ -39,8 +39,14 @@ import {
 } from '@overlay/extension-contracts'
 import {
   buildBrowserContextPrompt,
+  createRemoteConversation,
+  deleteRemoteConversation,
   fetchRemoteChatTitle,
+  fetchRemoteAppBootstrap,
+  fetchRemoteConversationWithMessages,
+  fetchRemoteConversations,
   fetchRemoteEntitlements,
+  fetchRemoteParitySnapshot,
   fetchRemoteTabGroupLabel,
   ingestRemoteDocument,
   probeRemoteAccount,
@@ -49,6 +55,7 @@ import {
   runRemoteBrowserTask,
   runRemoteGenerateImage,
   runRemoteGenerateVideo,
+  streamRemoteChatTurn,
   transcribeRemoteAudio,
   type ActPlannerToolRequest,
 } from './overlay-api'
@@ -90,6 +97,14 @@ function mergeStoredPreferences(preferences: ExtensionPreferences | null | undef
     imageModelId: restIn.imageModelId?.trim() || DEFAULT_PREFERENCES.imageModelId,
     videoModelId: restIn.videoModelId?.trim() || DEFAULT_PREFERENCES.videoModelId,
   }
+}
+
+function resolveAskModelIds(preferences: ExtensionPreferences): string[] {
+  const requested = Array.isArray(preferences.askModelIds)
+    ? preferences.askModelIds.map((id) => id.trim()).filter(Boolean)
+    : []
+  const ids = requested.length > 0 ? requested : [preferences.modelId || DEFAULT_MODEL_ID]
+  return [...new Set(ids)].slice(0, 4)
 }
 
 async function renameConversationTitleFromRemote(args: {
@@ -140,6 +155,7 @@ export const PANEL_STATE: PanelRuntimeState = {
 }
 
 const actRunControllers = new Map<string, { cancelled: boolean }>()
+const chatRunControllers = new Map<string, AbortController>()
 
 function isDefined<T>(value: T | null | undefined): value is T {
   return value != null
@@ -909,11 +925,12 @@ async function emitControlUpdate(controlIndicator: ControlIndicatorState | null)
 }
 
 export async function bootstrapRuntime(): Promise<RuntimeBootstrap> {
-  const [{ session, conversations, activeConversationId, approvals, toolHistory, preferences, activeRuns, controlIndicator, entitlements }, pageContext, windowTabs] = await Promise.all([
+  const [storage, pageContext, windowTabs] = await Promise.all([
     loadNormalizedStorage(),
     captureActivePageContext(),
     captureCurrentWindowTabs(),
   ])
+  const { session, activeConversationId, approvals, toolHistory, preferences, activeRuns, controlIndicator } = storage
 
   const resolvedPreferences: ExtensionPreferences = {
     ...mergeStoredPreferences(preferences),
@@ -932,6 +949,40 @@ export async function bootstrapRuntime(): Promise<RuntimeBootstrap> {
     refreshError: null,
   } : null)
 
+  let conversations = storage.conversations
+  let entitlements = storage.entitlements
+  let parity = null
+  if (session?.accessToken?.trim() && session.user?.id?.trim()) {
+    const [remoteBootstrap, remoteConversations, remoteParity] = await Promise.all([
+      fetchRemoteAppBootstrap({ baseUrl: resolvedPreferences.baseUrl, session }).catch(() => null),
+      fetchRemoteConversations({
+        baseUrl: resolvedPreferences.baseUrl,
+        session,
+        activeConversationId: activeConversationId ?? storage.conversations[0]?.id ?? null,
+      }).catch(() => null),
+      fetchRemoteParitySnapshot({ baseUrl: resolvedPreferences.baseUrl, session }).catch(() => null),
+    ])
+    if (remoteConversations) {
+      conversations = remoteConversations
+      await setConversations(remoteConversations)
+    }
+    if (remoteBootstrap?.entitlements?.tier) {
+      entitlements = {
+        tier: remoteBootstrap.entitlements.tier,
+        planKind: remoteBootstrap.entitlements.planKind,
+        isPaid:
+          remoteBootstrap.entitlements.planKind === 'paid' ||
+          remoteBootstrap.entitlements.tier === 'pro' ||
+          remoteBootstrap.entitlements.tier === 'max',
+        creditsUsed: remoteBootstrap.entitlements.creditsUsed,
+        creditsTotal: remoteBootstrap.entitlements.creditsTotal,
+        fetchedAt: Date.now(),
+      }
+      await setEntitlements(entitlements)
+    }
+    parity = remoteParity
+  }
+
   return {
     capabilities: CAPABILITIES,
     panelState: PANEL_STATE,
@@ -946,26 +997,45 @@ export async function bootstrapRuntime(): Promise<RuntimeBootstrap> {
     activeRuns,
     controlIndicator,
     entitlements,
+    parity,
   }
 }
 
 export async function createConversation(): Promise<StoredConversation> {
-  const { conversations } = await loadNormalizedStorage()
-  const conversation: StoredConversation = {
-    id: createId('conversation'),
-    title: 'New Chat',
-    preview: 'Ask about the current page or the tabs in this window.',
-    updatedAt: Date.now(),
-    messages: [],
-    version: 2,
+  const storage = await loadNormalizedStorage()
+  const resolvedPreferences: ExtensionPreferences = {
+    ...mergeStoredPreferences(storage.preferences),
+    baseUrl: await resolveDefaultBaseUrl(storage.preferences),
   }
-  await setConversations(withUpdatedConversation(conversations, conversation))
+  const conversation: StoredConversation =
+    storage.session?.accessToken?.trim() && storage.session.user?.id?.trim()
+      ? await createRemoteConversation({
+          baseUrl: resolvedPreferences.baseUrl,
+          session: storage.session,
+          title: 'New Chat',
+          askModelIds: resolveAskModelIds(resolvedPreferences),
+          actModelId: resolvedPreferences.modelId,
+        })
+      : {
+          id: createId('conversation'),
+          title: 'New Chat',
+          preview: 'Ask about the current page or the tabs in this window.',
+          updatedAt: Date.now(),
+          messages: [],
+          version: 3,
+        }
+  await setConversations(withUpdatedConversation(storage.conversations, conversation))
   await setActiveConversationId(conversation.id)
   return conversation
 }
 
 export async function deleteConversation(conversationId: string) {
-  const { conversations, activeConversationId, activeRuns } = await loadNormalizedStorage()
+  const storage = await loadNormalizedStorage()
+  const { conversations, activeConversationId, activeRuns } = storage
+  if (storage.session?.accessToken?.trim() && storage.session.user?.id?.trim()) {
+    const baseUrl = await resolveDefaultBaseUrl(storage.preferences)
+    await deleteRemoteConversation({ baseUrl, session: storage.session, conversationId }).catch(() => {})
+  }
   const next = conversations.filter((conversation) => conversation.id !== conversationId)
   await setConversations(next)
   if (activeConversationId === conversationId) {
@@ -974,14 +1044,15 @@ export async function deleteConversation(conversationId: string) {
   if (activeRuns[conversationId]) {
     await stopActRun(conversationId)
   }
-  const storage = await getExtensionStorage()
-  const nextGroups = { ...storage.conversationTabGroups }
+  const rawStorage = await getExtensionStorage()
+  const nextGroups = { ...rawStorage.conversationTabGroups }
   delete nextGroups[conversationId]
   await setConversationTabGroupsMap(nextGroups)
 }
 
 export async function selectConversation(conversationId: string) {
-  const { activeConversationId: prevId, conversations } = await loadNormalizedStorage()
+  const storage = await loadNormalizedStorage()
+  const { activeConversationId: prevId, conversations } = storage
   // When leaving a conversation, wipe its ephemeral Act allowlist so the next
   // time the user revisits it they are prompted for destructive tools again.
   // Allowlist decisions via `approve-allowlist` are intentionally short-lived.
@@ -997,6 +1068,18 @@ export async function selectConversation(conversationId: string) {
     }
   }
   await setActiveConversationId(conversationId)
+  if (storage.session?.accessToken?.trim() && storage.session.user?.id?.trim()) {
+    const baseUrl = await resolveDefaultBaseUrl(storage.preferences)
+    const remote = await fetchRemoteConversationWithMessages({
+      baseUrl,
+      session: storage.session,
+      conversationId,
+    }).catch(() => null)
+    if (remote) {
+      await setConversations(withUpdatedConversation(conversations, remote))
+      await emitConversationUpdate(remote, conversationId)
+    }
+  }
 }
 
 /**
@@ -1801,6 +1884,214 @@ async function finalizeActRun(runId: string, status: ActiveRunState['status'], e
   }
 }
 
+export async function startChatRun(params: {
+  conversationId: string
+  prompt: string
+  scope: BrowserScopeMode
+  sourceTabId: number
+  attachments?: AttachmentDraft[]
+}): Promise<ActiveRunState[]> {
+  const storage = await loadNormalizedStorage()
+  const hasLive = Object.keys(storage.activeRuns).some(
+    (key) => key === params.conversationId || key.startsWith(`${params.conversationId}#`),
+  )
+  if (hasLive) {
+    throw new Error('A chat run is already in progress for this conversation.')
+  }
+  if (!storage.session?.accessToken?.trim() || !storage.session.user?.id?.trim()) {
+    throw new Error('Sign in on Overlay to chat.')
+  }
+
+  const resolvedPreferences: ExtensionPreferences = {
+    ...mergeStoredPreferences(storage.preferences),
+    baseUrl: await resolveDefaultBaseUrl(storage.preferences),
+  }
+  const modelIds = resolveAskModelIds(resolvedPreferences)
+  const [pageContext, windowTabs] = await Promise.all([
+    capturePageContextForTab(params.sourceTabId),
+    captureCurrentWindowTabs(),
+  ])
+  const promptForModel = buildBrowserContextPrompt({
+    question: params.prompt,
+    scope: params.scope,
+    pageContext,
+    windowTabs,
+  })
+  const attachmentFileParts: MessageFilePart[] = (params.attachments ?? [])
+    .filter((attachment) => attachment.kind === 'image' && attachment.dataUrl)
+    .map((attachment) => createFilePart(attachment.dataUrl!, attachment.mimeType))
+  const indexedDocuments = (params.attachments ?? [])
+    .filter((attachment) => attachment.kind === 'document' && attachment.status === 'ready')
+    .map((attachment) => attachment.name)
+
+  let conversation = storage.conversations.find((item) => item.id === params.conversationId)
+  if (!conversation) {
+    conversation = await createRemoteConversation({
+      baseUrl: resolvedPreferences.baseUrl,
+      session: storage.session,
+      title: 'New Chat',
+      askModelIds: modelIds,
+      actModelId: modelIds[0],
+    })
+  }
+
+  const createdAt = Date.now()
+  const turnId = createId('turn')
+  const userParts: ConversationMessagePart[] = [createTextPart(params.prompt), ...attachmentFileParts]
+  if (indexedDocuments.length > 0) {
+    userParts.push(createTextPart(`[Indexed documents: ${indexedDocuments.join(', ')}]`))
+  }
+  const userMessage: ConversationMessage = {
+    id: turnId,
+    role: 'user',
+    parts: userParts,
+    createdAt,
+    turnId,
+    metadata: indexedDocuments.length > 0 ? { indexedDocuments } : undefined,
+  }
+  const assistantMessages = modelIds.map((modelId, variantIndex): ConversationMessage => ({
+    id: createId('message'),
+    role: 'assistant',
+    parts: [],
+    createdAt: createdAt + 1 + variantIndex,
+    turnId,
+    variantIndex,
+    modelId,
+    metadata: {
+      statusLabel: 'Thinking',
+      modelId,
+    },
+  }))
+
+  let nextConversation: StoredConversation = {
+    ...conversation,
+    title: conversation.messages.length === 0 ? truncate(params.prompt, 42) || conversation.title : conversation.title,
+    messages: [...conversation.messages, userMessage, ...assistantMessages],
+    updatedAt: Date.now(),
+    preview: '',
+    version: 3,
+    browserScope: params.scope,
+  }
+  nextConversation.preview = makeConversationPreview(nextConversation)
+  const nextConversations = withUpdatedConversation(storage.conversations, nextConversation)
+  await setConversations(nextConversations)
+  await setActiveConversationId(nextConversation.id)
+  await emitConversationUpdate(nextConversation, nextConversation.id)
+
+  const runs = assistantMessages.map((assistant, variantIndex): ActiveRunState => ({
+    id: createId('run'),
+    conversationId: nextConversation.id,
+    mode: 'act',
+    status: 'streaming',
+    startedAt: Date.now(),
+    updatedAt: Date.now(),
+    assistantMessageId: assistant.id,
+    sourceTabId: params.sourceTabId,
+    turnId,
+    variantIndex,
+    modelId: modelIds[variantIndex],
+  }))
+  for (const run of runs) {
+    await setRunForConversation(nextConversation.id, run, run.variantIndex)
+    await emitRunUpdate(nextConversation.id, run)
+  }
+
+  runs.forEach((run) => {
+    const controller = new AbortController()
+    chatRunControllers.set(run.id, controller)
+    void streamRemoteChatTurn({
+      baseUrl: resolvedPreferences.baseUrl,
+      session: storage.session!,
+      conversationId: nextConversation.id,
+      turnId,
+      prompt: params.prompt,
+      systemPrompt: promptForModel,
+      modelId: run.modelId || modelIds[0]!,
+      variantIndex: run.variantIndex ?? 0,
+      variantTotal: modelIds.length,
+      attachments: params.attachments,
+      signal: controller.signal,
+      onChunk: async (chunk) => {
+        const fresh = await loadNormalizedStorage()
+        const updated = updateConversation(fresh.conversations, nextConversation.id, (currentConversation) => {
+          const withChunk = updateConversationMessage(currentConversation, run.assistantMessageId!, (message) =>
+            applyAskChunkToMessage(message, chunk),
+          )
+          return {
+            ...withChunk,
+            updatedAt: Date.now(),
+            preview: makeConversationPreview(withChunk),
+          }
+        })
+        await persistConversationState(updated, nextConversation.id, nextConversation.id)
+      },
+    })
+      .then(async () => {
+        chatRunControllers.delete(run.id)
+        await setRunForConversation(nextConversation.id, null, run.variantIndex)
+        await emitRunUpdate(nextConversation.id, null, run.variantIndex)
+        const remote = await fetchRemoteConversationWithMessages({
+          baseUrl: resolvedPreferences.baseUrl,
+          session: storage.session!,
+          conversationId: nextConversation.id,
+        }).catch(() => null)
+        if (remote) {
+          const fresh = await loadNormalizedStorage()
+          await persistConversationState(withUpdatedConversation(fresh.conversations, remote), remote.id, remote.id)
+        }
+        if (conversation!.messages.length === 0) {
+          void renameConversationTitleFromRemote({
+            conversationId: nextConversation.id,
+            baseUrl: resolvedPreferences.baseUrl,
+            session: storage.session!,
+            sourceText: params.prompt,
+          }).catch(() => {})
+        }
+      })
+      .catch(async (error) => {
+        chatRunControllers.delete(run.id)
+        const message = error instanceof Error && error.name === 'AbortError'
+          ? 'Chat stopped.'
+          : error instanceof Error
+            ? error.message
+            : 'Chat failed.'
+        const fresh = await loadNormalizedStorage()
+        const updated = updateConversation(fresh.conversations, nextConversation.id, (currentConversation) => {
+          const withError = updateConversationMessage(currentConversation, run.assistantMessageId!, (assistant) => ({
+            ...assistant,
+            parts: assistant.parts.length > 0 ? assistant.parts : [createTextPart(message)],
+            metadata: { ...(assistant.metadata ?? {}), streamError: message },
+          }))
+          return {
+            ...withError,
+            updatedAt: Date.now(),
+            preview: makeConversationPreview(withError),
+          }
+        })
+        await persistConversationState(updated, nextConversation.id, nextConversation.id)
+        await setRunForConversation(nextConversation.id, null, run.variantIndex)
+        await emitRunUpdate(nextConversation.id, null, run.variantIndex)
+        if (message !== 'Chat stopped.') {
+          emitRuntimeStreamEvent({ type: 'overlay.runtime.stream.error', error: message })
+        }
+      })
+  })
+
+  return runs
+}
+
+export async function stopChatRun(conversationId: string) {
+  const storage = await loadNormalizedStorage()
+  for (const [key, run] of Object.entries(storage.activeRuns)) {
+    if (key !== conversationId && !key.startsWith(`${conversationId}#`)) continue
+    const controller = chatRunControllers.get(run.id)
+    controller?.abort()
+    chatRunControllers.delete(run.id)
+    await setRunForConversation(conversationId, null, run.variantIndex)
+    await emitRunUpdate(conversationId, null, run.variantIndex)
+  }
+}
+
 async function continueActRun(runId: string): Promise<void> {
   const controller = getRunController(runId)
   if (controller.cancelled) return
@@ -2325,6 +2616,15 @@ export async function refreshEntitlements(): Promise<EntitlementsSnapshot | null
   }
   await setEntitlements(snapshot)
   return snapshot
+}
+
+export async function refreshParitySnapshot() {
+  const storage = await loadNormalizedStorage()
+  const baseUrl = await resolveDefaultBaseUrl(storage.preferences)
+  if (!storage.session?.accessToken?.trim() || !storage.session.user?.id?.trim()) {
+    return null
+  }
+  return fetchRemoteParitySnapshot({ baseUrl, session: storage.session }).catch(() => null)
 }
 
 export async function ingestDocument(args: {
