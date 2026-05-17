@@ -16,7 +16,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { BrandMark, MessageList } from '@overlay/chat-ui'
+import { BrandMark, MessageList } from '@overlay/chat-react'
 import {
   type ActiveRunState,
   type ConversationMessage,

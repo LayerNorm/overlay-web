@@ -9,12 +9,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sync:chat-ui": "node scripts/sync-chat-ui.mjs",
-    "sync:chat-ui:check": "node scripts/verify-chat-ui.mjs",
-    "check": "npm run sync:chat-ui:check && npm run typecheck && npm run test && npm run build"
+    "check": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
-    "@overlay/chat-ui": "file:./packages/overlay-chat-ui",
+    "@overlay/chat-core": "file:../packages/overlay-chat-core",
+    "@overlay/chat-react": "file:../packages/overlay-chat-react",
     "@overlay/extension-contracts": "file:./packages/overlay-extension-contracts",
     "framer-motion": "^11.18.2",
     "lucide-react": "^0.575.0",

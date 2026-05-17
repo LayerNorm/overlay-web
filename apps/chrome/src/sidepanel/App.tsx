@@ -7,7 +7,7 @@ import {
   ConversationList,
   type ConversationItem,
   DropdownSelect,
-} from '@overlay/chat-ui'
+} from '@overlay/chat-react'
 import {
   type ActApprovalMode,
   type ActiveRunState,
@@ -17,6 +17,8 @@ import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_MODEL_ID,
   DEFAULT_VIDEO_MODEL_ID,
+  IMAGE_MODELS,
+  VIDEO_MODELS,
   type EntitlementsSnapshot,
   type ExtensionPreferences,
   type GenerationMode,
@@ -150,9 +152,10 @@ export default function App() {
   const conversations = bootstrap?.conversations ?? []
   const activeConversation = conversations.find((item) => item.id === activeConversationId) ?? conversations[0]
   const conversationItems = useMemo(() => toConversationItems(conversations), [conversations])
+  const textModels = useMemo(() => getModelsByIntelligence(false), [])
   const textModelOptions = useMemo(
-    () => getModelsByIntelligence(false).map((m) => ({ value: m.id, label: m.name })),
-    [],
+    () => textModels.map((m) => ({ value: m.id, label: m.name })),
+    [textModels],
   )
   const preferences = bootstrap?.preferences ?? preferencesForm
   const entitlements: EntitlementsSnapshot | null = bootstrap?.entitlements ?? null
@@ -914,6 +917,9 @@ export default function App() {
               generationMode={generationMode}
               preferences={preferences}
               onPreferencesChange={persistPickerPreferences}
+              chatModels={textModels}
+              imageModels={IMAGE_MODELS}
+              videoModels={VIDEO_MODELS}
               disabled={isRunStreaming}
               className="min-w-0 flex-1"
             />

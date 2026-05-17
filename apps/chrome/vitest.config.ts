@@ -8,12 +8,23 @@ export default defineConfig({
     environment: 'node',
   },
   resolve: {
-    alias: {
-      '@overlay/extension-contracts': path.resolve(
-        __dirname,
-        'packages/overlay-extension-contracts/src/index.ts',
-      ),
-      '@overlay/chat-ui': path.resolve(__dirname, 'packages/overlay-chat-ui/src/index.ts'),
-    },
+    alias: [
+      {
+        find: /^@overlay\/chat-react$/,
+        replacement: path.resolve(__dirname, '../packages/overlay-chat-react/src/index.ts'),
+      },
+      {
+        find: /^@overlay\/chat-react\/styles\.css$/,
+        replacement: path.resolve(__dirname, '../packages/overlay-chat-react/src/styles/overlay-theme.css'),
+      },
+      {
+        find: /^@overlay\/chat-core$/,
+        replacement: path.resolve(__dirname, '../packages/overlay-chat-core/src/index.ts'),
+      },
+      {
+        find: '@overlay/extension-contracts',
+        replacement: path.resolve(__dirname, 'packages/overlay-extension-contracts/src/index.ts'),
+      },
+    ],
   },
 })

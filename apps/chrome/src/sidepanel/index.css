@@ -1,1 +1,4 @@
-/* Fonts and design tokens live in @overlay/chat-ui overlay-theme.css (imported via package entry). */
+@import "tailwindcss";
+@source "../../../packages/overlay-chat-react/src";
+
+/* Fonts and design tokens live in @overlay/chat-react overlay-theme.css (imported by main.tsx). */
