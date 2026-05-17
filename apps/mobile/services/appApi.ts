@@ -148,6 +148,29 @@ export async function appRequest(
   return response
 }
 
+export async function appFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  const session = await getValidSession()
+  const headers = new Headers(init.headers)
+  if (session?.accessToken) {
+    headers.set('Authorization', `Bearer ${session.accessToken}`)
+  }
+
+  const path =
+    typeof input === 'string'
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : input.url
+  const requestUrl = createUrl(path, session)
+  return fetch(requestUrl, {
+    ...init,
+    headers,
+  })
+}
+
 export async function appJson<T>(
   path: string,
   options: AppRequestOptions = {},

@@ -3,6 +3,7 @@ import type {
   ConversationMessage,
   ConversationSummary,
 } from '@overlay/app-core'
+import type { ChatMode } from '@overlay/chat-core'
 
 export type ChatModel = ServerChatModel
 
@@ -47,7 +48,7 @@ export interface Message {
   reasoning?: string
   toolInvocations?: ToolInvocationSummary[]
   generatedFiles?: GeneratedFilePart[]
-  mode?: 'ask' | 'act'
+  mode?: ChatMode
   replyToTurnId?: string
   replySnippet?: string
   routedModelId?: string
@@ -60,7 +61,7 @@ export interface ChatMeta {
   updatedAt: number
   lastMessage?: string
   projectId?: string
-  lastMode?: 'ask' | 'act'
+  lastMode?: ChatMode
   askModelIds?: string[]
   actModelId?: string
   clientId?: string

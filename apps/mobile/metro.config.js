@@ -16,6 +16,14 @@ const overlayAppCore = path.resolve(workspaceRoot, 'packages/overlay-app-core')
 if (fs.existsSync(overlayAppCore)) {
   watchFolders.push(overlayAppCore)
 }
+const overlayApiClient = path.resolve(workspaceRoot, 'packages/overlay-api-client')
+if (fs.existsSync(overlayApiClient)) {
+  watchFolders.push(overlayApiClient)
+}
+const overlayChatCore = path.resolve(workspaceRoot, 'packages/overlay-chat-core')
+if (fs.existsSync(overlayChatCore)) {
+  watchFolders.push(overlayChatCore)
+}
 if (watchFolders.length > 0) {
   config.watchFolders = watchFolders
 }
@@ -26,7 +34,9 @@ config.resolver.nodeModulesPaths = [
 ]
 config.resolver.extraNodeModules = {
   ...(config.resolver.extraNodeModules || {}),
+  '@overlay/api-client': overlayApiClient,
   '@overlay/app-core': overlayAppCore,
+  '@overlay/chat-core': overlayChatCore,
 }
 
 module.exports = config

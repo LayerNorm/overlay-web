@@ -4,8 +4,12 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
+      "@overlay/api-client": ["../packages/overlay-api-client/src/index.ts"],
+      "@overlay/api-client/*": ["../packages/overlay-api-client/src/*"],
       "@overlay/app-core": ["../packages/overlay-app-core/src/index.ts"],
-      "@overlay/app-core/*": ["../packages/overlay-app-core/src/*"]
+      "@overlay/app-core/*": ["../packages/overlay-app-core/src/*"],
+      "@overlay/chat-core": ["../packages/overlay-chat-core/src/index.ts"],
+      "@overlay/chat-core/*": ["../packages/overlay-chat-core/src/*"]
     }
   }
 }

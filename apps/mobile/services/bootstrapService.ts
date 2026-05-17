@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { AppBootstrap } from '@overlay/app-core'
-import { appJson } from './appApi'
+import { mobileOverlayAppClient } from './overlayClient'
 
 const BOOTSTRAP_CACHE_KEY = 'overlay-app-bootstrap-v2'
 
@@ -25,7 +25,7 @@ export async function getAppBootstrap(
     }
   }
 
-  const bootstrap = await appJson<AppBootstrap>('/api/app/bootstrap')
+  const bootstrap = await mobileOverlayAppClient.bootstrap.get()
   inMemoryBootstrap = bootstrap
   await AsyncStorage.setItem(BOOTSTRAP_CACHE_KEY, JSON.stringify(bootstrap))
   return bootstrap
