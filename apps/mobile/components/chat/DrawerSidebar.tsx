@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import {
   Animated,
   Image,
@@ -24,11 +24,11 @@ import type { ChatMeta } from '../../services/chatTypes'
 import type { NoteMeta } from '../../services/types'
 import { useDrawer } from '../../contexts/DrawerContext'
 import { useAuth } from '../../contexts/AuthContext'
-import { useTheme } from '../../hooks/useTheme'
 import { DRAWER_WIDTH } from '../ui/ScreenWithDrawer'
 import { GlassSurface } from '../ui/GlassSurface'
 
 const CLOSE_THRESHOLD = DRAWER_WIDTH * 0.3
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
 interface NavItem {
@@ -86,15 +86,15 @@ export function DrawerSidebar({
   const pathname = usePathname()
   const { drawerVisible, closeDrawer } = useDrawer()
   const [shouldRender, setShouldRender] = useState(drawerVisible)
-  const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current
-  const scrimOpacity = useRef(new Animated.Value(0)).current
+  const translateX = useMemo(() => new Animated.Value(-DRAWER_WIDTH), [])
+  const scrimOpacity = useMemo(() => new Animated.Value(0), [])
 
   const isChatActive = pathname === '/chat' || pathname.startsWith('/(tabs)/chat')
   const isNotesActive = pathname === '/notes' || pathname.startsWith('/(tabs)/notes') || pathname.startsWith('/note/')
 
   useEffect(() => {
     if (drawerVisible) {
-      setShouldRender(true)
+      requestAnimationFrame(() => setShouldRender(true))
       Animated.parallel([
         Animated.spring(translateX, {
           toValue: 0,
@@ -127,39 +127,41 @@ export function DrawerSidebar({
     }
   }, [drawerVisible, translateX, scrimOpacity])
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gs) => {
-        return gs.dx < -8 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5
-      },
-      onPanResponderMove: (_, gs) => {
-        const newX = Math.min(0, gs.dx)
-        translateX.setValue(newX)
-        const progress = (newX + DRAWER_WIDTH) / DRAWER_WIDTH
-        scrimOpacity.setValue(progress * 0.45)
-      },
-      onPanResponderRelease: (_, gs) => {
-        if (gs.dx < -CLOSE_THRESHOLD || gs.vx < -0.5) {
-          closeDrawer()
-        } else {
-          Animated.parallel([
-            Animated.spring(translateX, {
-              toValue: 0,
-              tension: 85,
-              friction: 18,
-              useNativeDriver: true,
-            }),
-            Animated.timing(scrimOpacity, {
-              toValue: 0.45,
-              duration: 150,
-              useNativeDriver: true,
-            }),
-          ]).start()
-        }
-      },
-    }),
-  ).current
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, gs) => {
+          return gs.dx < -8 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5
+        },
+        onPanResponderMove: (_, gs) => {
+          const newX = Math.min(0, gs.dx)
+          translateX.setValue(newX)
+          const progress = (newX + DRAWER_WIDTH) / DRAWER_WIDTH
+          scrimOpacity.setValue(progress * 0.45)
+        },
+        onPanResponderRelease: (_, gs) => {
+          if (gs.dx < -CLOSE_THRESHOLD || gs.vx < -0.5) {
+            closeDrawer()
+          } else {
+            Animated.parallel([
+              Animated.spring(translateX, {
+                toValue: 0,
+                tension: 85,
+                friction: 18,
+                useNativeDriver: true,
+              }),
+              Animated.timing(scrimOpacity, {
+                toValue: 0.45,
+                duration: 150,
+                useNativeDriver: true,
+              }),
+            ]).start()
+          }
+        },
+      }),
+    [closeDrawer, scrimOpacity, translateX],
+  )
 
   if (variant === 'slide') {
     return (
@@ -284,9 +286,7 @@ function DrawerContent({
   const pathname = usePathname()
   const { closeDrawer, requestSearch } = useDrawer()
   const { user } = useAuth()
-  const { isDark } = useTheme()
   const [knowledgeExpanded, setKnowledgeExpanded] = useState(false)
-  const [showNewMenu, setShowNewMenu] = useState(false)
 
   function isRouteActive(route: string): boolean {
     if (externalIsRouteActive) return externalIsRouteActive(route)
@@ -352,7 +352,7 @@ function DrawerContent({
     }
   }, [externalNavigate, closeDrawer, router])
 
-  function navigate(route: string): void {
+  const navigate = useCallback((route: string): void => {
     if (externalNavigate) {
       externalNavigate(route)
       return
@@ -360,7 +360,7 @@ function DrawerContent({
     Keyboard.dismiss()
     closeDrawer()
     router.push(route as Parameters<typeof router.push>[0])
-  }
+  }, [closeDrawer, externalNavigate, router])
 
   const handleNavItemPress = useCallback((item: NavItem) => {
     if (item.disabled) return
@@ -424,7 +424,7 @@ function DrawerContent({
       {/* Header with Logo and Brand */}
       <View style={[styles.drawerHeader, { paddingTop: insets.top + spacing.md }]}>
         <View style={styles.brandContainer}>
-          <Image source={OVERLAY_LOGO} style={styles.drawerLogo} resizeMode="contain" />
+          <Image source={OVERLAY_LOGO} style={styles.drawerLogo} resizeMode="contain" alt="Overlay logo" />
           <Text style={[styles.brandText, { color: theme.text }]}>overlay</Text>
         </View>
       </View>
@@ -645,6 +645,7 @@ function DrawerContent({
                 <Image
                   source={{ uri: user.profilePictureUrl }}
                   style={styles.profileImage}
+                  alt="Profile picture"
                 />
               ) : (
                 <View style={[styles.profileInitials, { backgroundColor: theme.accent }]}>

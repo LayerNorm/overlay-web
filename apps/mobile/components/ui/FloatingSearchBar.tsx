@@ -37,16 +37,16 @@ export function FloatingSearchBar({
   const { searchNonce } = useDrawer()
   const insets = useSafeAreaInsets()
   const inputRef = useRef<TextInput>(null)
-  const [visible, setVisible] = useState(false)
+  const [dismissedNonce, setDismissedNonce] = useState(0)
   const [keyboardHeight, setKeyboardHeight] = useState(0)
+  const visible = searchNonce !== 0 && searchNonce !== dismissedNonce
 
   // Open + focus when the sidebar search button is pressed.
   useEffect(() => {
-    if (searchNonce === 0) return
-    setVisible(true)
+    if (!visible) return
     // Next tick so the input is mounted before focus.
     requestAnimationFrame(() => inputRef.current?.focus())
-  }, [searchNonce])
+  }, [visible])
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
@@ -66,7 +66,7 @@ export function FloatingSearchBar({
   const handleClose = () => {
     Keyboard.dismiss()
     onChangeText('')
-    setVisible(false)
+    setDismissedNonce(searchNonce)
   }
 
   return (

@@ -83,7 +83,12 @@ export default function OutputDetailScreen(): React.ReactElement {
 
       <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 54 }]}>
         {output.type === 'image' && output.url ? (
-          <Image source={{ uri: output.url }} style={[styles.image, { borderColor: theme.border }]} resizeMode="contain" />
+          <Image
+            source={{ uri: output.url }}
+            style={[styles.image, { borderColor: theme.border }]}
+            resizeMode="contain"
+            alt={output.prompt || output.fileName || 'Generated output'}
+          />
         ) : output.type === 'video' && output.url ? (
           <View style={[styles.videoPlaceholder, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
             <Feather name="film" size={40} color={theme.textSecondary} />

@@ -30,14 +30,7 @@ function resolveOutputUri(rawUrl: string | undefined): string {
   return rawUrl
 }
 
-const OUTPUT_FILTERS = [
-  { label: 'All', value: 'all' },
-  { label: 'Image', value: 'image' },
-  { label: 'Video', value: 'video' },
-  { label: 'Files', value: 'files' },
-] as const
-
-type OutputFilter = (typeof OUTPUT_FILTERS)[number]['value']
+type OutputFilter = 'all' | 'image' | 'video' | 'files'
 type OutputHeaderAction = 'selectOutputs' | 'outputAll' | 'outputImage' | 'outputVideo' | 'outputFiles'
 
 const { width } = Dimensions.get('window')
@@ -84,6 +77,7 @@ function OutputImageThumb({
       contentFit="cover"
       transition={150}
       cachePolicy="memory-disk"
+      alt="Generated output"
       onError={(event) => {
         console.warn('[OutputImageThumb] image load failed', { uri, error: event?.error })
         setFailed(true)

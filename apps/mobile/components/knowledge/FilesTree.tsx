@@ -133,21 +133,6 @@ export function FilesTree({
     [files, expandedIds, searchQuery],
   )
 
-  useEffect(() => {
-    if (!headerAction) return
-
-    const action = headerAction.type as FileHeaderAction
-    if (action === 'new') {
-      openCreateSheet('file')
-    } else if (action === 'selectFiles') {
-      setSelectMode(true)
-    } else if (action === 'uploadFile') {
-      void handleUploadFile()
-    } else if (action === 'uploadFolder') {
-      Alert.alert('Upload folder', 'Folder upload is not available on this device yet. Upload individual files for now.')
-    }
-  }, [headerAction])
-
   function toggleExpand(id: string) {
     setExpandedIds((prev) => {
       const next = new Set(prev)
@@ -171,7 +156,7 @@ export function FilesTree({
     setSelectedIds(new Set())
   }
 
-  async function handleUploadFile() {
+  const handleUploadFile = useCallback(async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
@@ -217,7 +202,22 @@ export function FilesTree({
     } finally {
       setIsUploading(false)
     }
-  }
+  }, [createParentId, refresh])
+
+  useEffect(() => {
+    if (!headerAction) return
+
+    const action = headerAction.type as FileHeaderAction
+    if (action === 'new') {
+      openCreateSheet('file')
+    } else if (action === 'selectFiles') {
+      setSelectMode(true)
+    } else if (action === 'uploadFile') {
+      void handleUploadFile()
+    } else if (action === 'uploadFolder') {
+      Alert.alert('Upload folder', 'Folder upload is not available on this device yet. Upload individual files for now.')
+    }
+  }, [headerAction, handleUploadFile])
 
   async function handleCreate() {
     const name = createName.trim()

@@ -106,7 +106,7 @@ export function AuthPanel({
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
       <View style={styles.userRow}>
         {user.profilePictureUrl ? (
-          <Image source={{ uri: user.profilePictureUrl }} style={styles.avatarImage} />
+          <Image source={{ uri: user.profilePictureUrl }} style={styles.avatarImage} alt="Profile picture" />
         ) : (
           <View style={[styles.avatarFallback, { backgroundColor: theme.background, borderColor: theme.border }]}>
             <Text style={[styles.avatarFallbackText, { color: theme.text }]}>

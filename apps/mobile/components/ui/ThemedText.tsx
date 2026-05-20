@@ -1,4 +1,4 @@
-import { Text, TextProps, StyleSheet } from 'react-native'
+import { Text, TextProps } from 'react-native'
 import { useTheme } from '../../hooks/useTheme'
 import { fontSize } from '../../constants/theme'
 

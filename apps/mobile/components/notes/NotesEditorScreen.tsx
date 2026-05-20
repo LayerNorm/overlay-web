@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, StyleSheet, View } from 'react-native'
-import { useRouter } from 'expo-router'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '../../hooks/useTheme'
 import { loadNotesIndex, createNote } from '../../services/noteStorage'
 import type { NoteMeta } from '../../services/types'
@@ -11,9 +9,7 @@ import { DrawerSidebar } from '../chat/DrawerSidebar'
 import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
 
 export function NotesEditorScreen(): React.ReactElement {
-  const router = useRouter()
   const { theme } = useTheme()
-  const insets = useSafeAreaInsets()
 
   const [notes, setNotes] = useState<NoteMeta[]>([])
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null)

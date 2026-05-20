@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLocalSearchParams } from 'expo-router'
@@ -38,29 +38,33 @@ export function KnowledgeScreen(): React.ReactElement {
   const insets = useSafeAreaInsets()
   const { openDrawer } = useDrawer()
   const { tab } = useLocalSearchParams<{ tab?: string }>()
-  const [activeTab, setActiveTab] = useState<KnowledgeTab>('memories')
+  const routeTab: KnowledgeTab | null =
+    tab === 'memories' || tab === 'files' || tab === 'outputs' ? tab : null
+  const [storedTab, setStoredTab] = useState<KnowledgeTab>('memories')
+  const activeTab = routeTab ?? storedTab
   const [menuOpen, setMenuOpen] = useState(false)
   const [actionRequest, setActionRequest] = useState<{ type: KnowledgeHeaderAction; nonce: number } | null>(null)
+  const actionNonceRef = useRef(0)
 
   useEffect(() => {
-    if (tab === 'memories' || tab === 'files' || tab === 'outputs') {
-      setActiveTab(tab)
-      void AsyncStorage.setItem('overlay:last-knowledge-view', tab).catch(() => {})
+    if (routeTab) {
+      void AsyncStorage.setItem('overlay:last-knowledge-view', routeTab).catch(() => {})
       return
     }
 
     void AsyncStorage.getItem('overlay:last-knowledge-view')
       .then((lastView) => {
         if (lastView === 'memories' || lastView === 'files' || lastView === 'outputs') {
-          setActiveTab(lastView)
+          setStoredTab(lastView)
         }
       })
       .catch(() => {})
-  }, [tab])
+  }, [routeTab])
 
   function requestAction(type: KnowledgeHeaderAction): void {
     setMenuOpen(false)
-    setActionRequest({ type, nonce: Date.now() })
+    actionNonceRef.current += 1
+    setActionRequest({ type, nonce: actionNonceRef.current })
   }
 
   const menuItems: Array<{

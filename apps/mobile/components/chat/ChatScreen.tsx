@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -7,7 +8,6 @@ import {
   Keyboard,
   PanResponder,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -22,7 +22,6 @@ import * as Haptics from 'expo-haptics'
 import * as ImagePicker from 'expo-image-picker'
 import type { ChatModel } from '../../services/chatTypes'
 import {
-  PROVIDER_COLORS,
   generateChatId,
   generateMessageId,
   generateTempTitle,
@@ -31,14 +30,11 @@ import {
   type Message,
 } from '../../services/chatTypes'
 import {
-  createNewChat,
-  deleteChat,
   getLastOpenedChatId,
   loadChat,
   loadChatsMeta,
   saveChat,
   setLastOpenedChatId,
-  updateChatTitle,
 } from '../../services/chatStorage'
 import { chatStream, DEFAULT_CHAT_MODEL_ID, getAvailableModels, getLastSelectedModelId, setLastSelectedModelId, stopConversation, uploadDocument, type StreamChunk, type IndexedAttachment } from '../../services/aiService'
 import { useTheme } from '../../hooks/useTheme'
@@ -49,7 +45,6 @@ import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
 import {
   BottomSheet,
   MainScreenHeader,
-  StatusPill,
   TopBarIconButton,
 } from '../ui/AppChrome'
 import { useDrawer } from '../../contexts/DrawerContext'
@@ -315,15 +310,6 @@ function buildApiMessages(messages: Message[]) {
   }))
 }
 
-function capabilityTags(model: ChatModel): string[] {
-  const tags = [`IQ ${Math.round(model.intelligence)}`]
-  if (model.supportsVision) tags.push('Vision')
-  if (model.supportsReasoning) tags.push('Reasoning')
-  if (model.supportsSearch) tags.push('Search')
-  tags.push(model.cost === 0 ? 'Free' : `Tier ${model.cost}`)
-  return tags
-}
-
 function getModelDescription(model: ChatModel): string {
   if (model.cost === 0) return 'Fast and free'
   if (model.intelligence >= 50) return 'Most capable for ambitious work'
@@ -412,8 +398,9 @@ export function ChatScreen({
 
   // PanResponder to dismiss keyboard on downward swipe — attached to the whole screen
   // Uses onMoveShouldSetPanResponder so it never blocks taps or typing
-  const swipeDownPanResponder = useRef(
-    PanResponder.create({
+  const swipeDownPanResponder = useMemo(
+    () =>
+      PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gs) => gs.dy > 20 && Math.abs(gs.dy) > Math.abs(gs.dx) * 1.5,
       onPanResponderGrant: () => {},
@@ -424,7 +411,8 @@ export function ChatScreen({
         }
       },
     }),
-  ).current
+    [],
+  )
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
@@ -658,6 +646,7 @@ export function ChatScreen({
     createConversation,
     entitlements?.tier,
     hydrateConversation,
+    projectId,
     routeKind,
     uiSettings.defaultActModelId,
   ])
@@ -772,46 +761,6 @@ export function ChatScreen({
       // Local abort still stops the mobile stream if the server already finished.
     }
   }, [messages])
-
-  const handleDeleteConversation = useCallback(
-    async (chatId: string) => {
-      try {
-        await deleteChat(chatId)
-      } catch {
-        return
-      }
-
-      const nextHistory = await refreshHistory()
-
-      if (chatRef.current?.id !== chatId) {
-        return
-      }
-
-      const fallback = nextHistory.find((chat) => chat.id !== chatId)
-      if (fallback) {
-        await openConversation(fallback.id)
-        return
-      }
-
-      await startFreshConversation()
-    },
-    [openConversation, refreshHistory, startFreshConversation],
-  )
-
-  const handleRenameConversation = useCallback(
-    async (chatId: string, title: string) => {
-      try {
-        await updateChatTitle(chatId, title)
-      } catch {
-        return
-      }
-      if (chatRef.current?.id === chatId) {
-        setChatTitle(title)
-      }
-      await refreshHistory()
-    },
-    [refreshHistory],
-  )
 
   const pickImage = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
@@ -1026,6 +975,7 @@ export function ChatScreen({
     isAuthenticated,
     isSending,
     messages,
+    mobilePreferences.hapticsEnabled,
     pendingDocuments,
     refreshHistory,
     router,
@@ -1108,7 +1058,7 @@ export function ChatScreen({
           <View style={styles.threadSurface}>
             {messages.length === 0 ? (
               <View style={styles.emptySurface}>
-                <Image source={OVERLAY_LOGO} style={styles.overlayLogo} resizeMode="contain" />
+                <Image source={OVERLAY_LOGO} style={styles.overlayLogo} resizeMode="contain" alt="Overlay logo" />
                 <Text style={[styles.emptyTitle, { color: theme.text }]}>
                   {'How can I help you this ' + getTimeGreeting() + '?'}
                 </Text>
@@ -1282,6 +1232,7 @@ export function ChatScreen({
                           source={getProviderLogo(model.provider)}
                           style={styles.providerLogo}
                           resizeMode="contain"
+                          alt={`${model.provider} logo`}
                         />
                       </View>
                     ) : (

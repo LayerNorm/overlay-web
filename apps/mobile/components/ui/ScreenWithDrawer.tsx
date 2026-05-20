@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Animated,
   Dimensions,
@@ -23,26 +23,20 @@ export function ScreenWithDrawer({
   drawer: React.ReactNode
 }): React.ReactElement {
   const { drawerVisible, closeDrawer, openDrawer } = useDrawer()
-  const contentTranslateX = useRef(new Animated.Value(0)).current
-  const drawerTranslateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current
-  const scrimOpacity = useRef(new Animated.Value(0)).current
-
-  // Keep a ref so PanResponder closures always see current value
-  const drawerVisibleRef = useRef(drawerVisible)
-  useEffect(() => {
-    drawerVisibleRef.current = drawerVisible
-  }, [drawerVisible])
+  const contentTranslateX = useMemo(() => new Animated.Value(0), [])
+  const drawerTranslateX = useMemo(() => new Animated.Value(-DRAWER_WIDTH), [])
+  const scrimOpacity = useMemo(() => new Animated.Value(0), [])
 
   // Track keyboard visibility so the edge-swipe gesture never competes with
   // horizontal interactions in on-screen toolbars (e.g. the Notes markdown
   // toolbar) while the user is typing.
-  const keyboardVisibleRef = useRef(false)
+  const [keyboardVisible, setKeyboardVisible] = useState(false)
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', () => {
-      keyboardVisibleRef.current = true
+      setKeyboardVisible(true)
     })
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
-      keyboardVisibleRef.current = false
+      setKeyboardVisible(false)
     })
     return () => {
       showSub.remove()
@@ -104,49 +98,51 @@ export function ScreenWithDrawer({
   // Edge-swipe PanResponder on the container — uses onMoveShouldSetPanResponder so
   // it never blocks taps (buttons, inputs etc). Only claimed when the finger started
   // within EDGE_SWIPE_START px of the left edge and is moving rightward.
-  const edgePanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gs) => {
-        if (drawerVisibleRef.current) return false
-        if (keyboardVisibleRef.current) return false
-        return gs.x0 < EDGE_SWIPE_START && gs.dx > 12 && gs.dx > Math.abs(gs.dy) * 1.2
-      },
-      onPanResponderGrant: () => {},
-      onPanResponderMove: (_, gs) => {
-        const progress = Math.min(1, Math.max(0, gs.dx / DRAWER_WIDTH))
-        drawerTranslateX.setValue(-DRAWER_WIDTH + progress * DRAWER_WIDTH)
-        contentTranslateX.setValue(progress * CONTENT_PUSH)
-        scrimOpacity.setValue(progress * 0.25)
-      },
-      onPanResponderRelease: (_, gs) => {
-        const progress = gs.dx / DRAWER_WIDTH
-        if (progress > 0.3 || gs.vx > 0.5) {
-          openDrawer()
-        } else {
-          Animated.parallel([
-            Animated.spring(drawerTranslateX, {
-              toValue: -DRAWER_WIDTH,
-              tension: 80,
-              friction: 16,
-              useNativeDriver: true,
-            }),
-            Animated.spring(contentTranslateX, {
-              toValue: 0,
-              tension: 80,
-              friction: 16,
-              useNativeDriver: true,
-            }),
-            Animated.timing(scrimOpacity, {
-              toValue: 0,
-              duration: 180,
-              useNativeDriver: true,
-            }),
-          ]).start()
-        }
-      },
-    }),
-  ).current
+  const edgePanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, gs) => {
+          if (drawerVisible) return false
+          if (keyboardVisible) return false
+          return gs.x0 < EDGE_SWIPE_START && gs.dx > 12 && gs.dx > Math.abs(gs.dy) * 1.2
+        },
+        onPanResponderGrant: () => {},
+        onPanResponderMove: (_, gs) => {
+          const progress = Math.min(1, Math.max(0, gs.dx / DRAWER_WIDTH))
+          drawerTranslateX.setValue(-DRAWER_WIDTH + progress * DRAWER_WIDTH)
+          contentTranslateX.setValue(progress * CONTENT_PUSH)
+          scrimOpacity.setValue(progress * 0.25)
+        },
+        onPanResponderRelease: (_, gs) => {
+          const progress = gs.dx / DRAWER_WIDTH
+          if (progress > 0.3 || gs.vx > 0.5) {
+            openDrawer()
+          } else {
+            Animated.parallel([
+              Animated.spring(drawerTranslateX, {
+                toValue: -DRAWER_WIDTH,
+                tension: 80,
+                friction: 16,
+                useNativeDriver: true,
+              }),
+              Animated.spring(contentTranslateX, {
+                toValue: 0,
+                tension: 80,
+                friction: 16,
+                useNativeDriver: true,
+              }),
+              Animated.timing(scrimOpacity, {
+                toValue: 0,
+                duration: 180,
+                useNativeDriver: true,
+              }),
+            ]).start()
+          }
+        },
+      }),
+    [contentTranslateX, drawerTranslateX, drawerVisible, keyboardVisible, openDrawer, scrimOpacity],
+  )
 
   return (
     <View style={styles.container} {...edgePanResponder.panHandlers}>

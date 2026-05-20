@@ -8,7 +8,6 @@ import React, {
 } from 'react'
 import {
   CANONICAL_APP_DESTINATIONS,
-  DEFAULT_APP_SETTINGS,
   type AppBootstrap,
   type AppDestinationConfig,
   type AppFeatureFlags,

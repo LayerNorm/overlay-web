@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import {
   Animated,
   Modal,
@@ -53,7 +53,6 @@ export function TopBarIconButton({
  * Used by Chat, Notes, Knowledge, and knowledge detail screens.
  */
 export function MainScreenHeader({
-  theme: _theme,
   isDark,
   topInset,
   blurHeight,
@@ -301,35 +300,37 @@ export function BottomSheet({
   headerAction?: React.ReactNode
   children: React.ReactNode
 }): React.ReactElement {
-  const translateY = useRef(new Animated.Value(500)).current
-  const scrimOpacity = useRef(new Animated.Value(0)).current
-  const dragY = useRef(new Animated.Value(0)).current
-  const panResponderRef = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderMove: (_, gestureState) => {
-        // Only allow dragging down
-        if (gestureState.dy > 0) {
-          dragY.setValue(gestureState.dy)
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        // Close if dragged down more than 100px or with velocity
-        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-          onClose()
-        } else {
-          // Snap back to open position
-          Animated.spring(dragY, {
-            toValue: 0,
-            tension: 300,
-            friction: 30,
-            useNativeDriver: true,
-          }).start()
-        }
-      },
-    })
-  ).current
+  const translateY = useMemo(() => new Animated.Value(500), [])
+  const scrimOpacity = useMemo(() => new Animated.Value(0), [])
+  const dragY = useMemo(() => new Animated.Value(0), [])
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderMove: (_, gestureState) => {
+          // Only allow dragging down
+          if (gestureState.dy > 0) {
+            dragY.setValue(gestureState.dy)
+          }
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          // Close if dragged down more than 100px or with velocity
+          if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+            onClose()
+          } else {
+            // Snap back to open position
+            Animated.spring(dragY, {
+              toValue: 0,
+              tension: 300,
+              friction: 30,
+              useNativeDriver: true,
+            }).start()
+          }
+        },
+      }),
+    [dragY, onClose],
+  )
 
   // Reset drag when opening
   useEffect(() => {
@@ -371,7 +372,7 @@ export function BottomSheet({
   }, [visible, translateY, scrimOpacity])
 
   // Combine translateY animation with drag
-  const animatedTranslateY = Animated.add(translateY, dragY)
+  const animatedTranslateY = useMemo(() => Animated.add(translateY, dragY), [dragY, translateY])
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -390,7 +391,7 @@ export function BottomSheet({
         >
           <GlassSurface style={StyleSheet.absoluteFillObject} />
           {/* Draggable handle area */}
-          <View {...panResponderRef.panHandlers} style={styles.dragHandleArea}>
+          <View {...panResponder.panHandlers} style={styles.dragHandleArea}>
             <View style={styles.sheetHandleWrap}>
               <View style={[styles.sheetHandle, { backgroundColor: theme.border }]} />
             </View>

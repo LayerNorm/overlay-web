@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 import React, { useEffect, useState, useMemo } from 'react'
 import {
   Image,
@@ -167,6 +168,7 @@ function getSourceHostname(url: string): string {
 function useShimmerStyle() {
   const opacity = useSharedValue(0.5)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability
     opacity.value = withRepeat(
       withSequence(
         withTiming(1, { duration: 700 }),
@@ -184,6 +186,7 @@ function useShimmerStyle() {
 function StreamingCursor() {
   const opacity = useSharedValue(1)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability
     opacity.value = withRepeat(
       withSequence(
         withTiming(0.1, { duration: 420 }),
@@ -196,7 +199,7 @@ function StreamingCursor() {
   const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }))
   return (
     <Animated.View style={[styles.cursor, animStyle]}>
-      <Image source={OVERLAY_LOGO} style={styles.cursorImage} resizeMode="contain" />
+      <Image source={OVERLAY_LOGO} style={styles.cursorImage} resizeMode="contain" alt="Overlay loading indicator" />
     </Animated.View>
   )
 }
@@ -220,7 +223,7 @@ function ReasoningBlock({
   return (
     <View style={styles.toolRow}>
       <View style={styles.logoCol}>
-        <Image source={OVERLAY_LOGO} style={styles.toolLogo} resizeMode="contain" />
+        <Image source={OVERLAY_LOGO} style={styles.toolLogo} resizeMode="contain" alt="Overlay" />
       </View>
       <View style={styles.toolContent}>
         <View style={styles.toolHeaderRow}>
@@ -271,7 +274,7 @@ function ToolCallRow({ tool, theme }: { tool: ToolInvocationSummary; theme: Them
   return (
     <View style={styles.toolRow}>
       <View style={styles.logoCol}>
-        <Image source={OVERLAY_LOGO} style={styles.toolLogo} resizeMode="contain" />
+        <Image source={OVERLAY_LOGO} style={styles.toolLogo} resizeMode="contain" alt="Overlay" />
       </View>
       <View style={styles.toolContent}>
         {isDone || isError ? (
@@ -547,7 +550,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         checkmarkColor: theme.background,
       },
     }),
-    [isUser, theme],
+    [theme],
   )
 
   // ── User bubble ──────────────────────────────────────────────────────────────

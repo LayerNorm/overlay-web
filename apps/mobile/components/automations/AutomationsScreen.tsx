@@ -37,10 +37,6 @@ function formatSchedule(schedule?: AutomationSchedule): string {
   return `Monthly, day ${schedule.dayOfMonthUTC ?? 1}`
 }
 
-function defaultSchedule(): AutomationSchedule {
-  return { kind: 'interval', intervalMinutes: 60 }
-}
-
 export function AutomationsScreen(): React.ReactElement {
   const { theme, isDark } = useTheme()
   const insets = useSafeAreaInsets()

@@ -35,7 +35,6 @@ import {
   clearDownloadedFileCache,
   resetMobilePreferences,
   type AppearanceMode,
-  type MobilePreferences,
   type StartDestination,
   type TranscriptionRetentionDays,
 } from '../../services/mobilePreferencesService'

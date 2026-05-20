@@ -183,7 +183,7 @@ export default function AuthFlowScreen(): React.ReactElement {
     <SafeAreaView style={[styles.container, { backgroundColor: '#0a0a0a' }]} edges={['top', 'left', 'right', 'bottom']}>
       <View style={styles.content}>
         <FadeInView delay={STAGGER_DELAY * 0} style={styles.brandBlock}>
-          <Image source={OVERLAY_LOGO} resizeMode="contain" style={styles.logo} accessibilityLabel="Overlay logo" />
+          <Image source={OVERLAY_LOGO} resizeMode="contain" style={styles.logo} alt="Overlay logo" />
           <Text style={[styles.title, { color: '#ffffff' }]}>overlay</Text>
         </FadeInView>
 
