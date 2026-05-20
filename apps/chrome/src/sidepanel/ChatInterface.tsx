@@ -61,7 +61,7 @@ export function ChatInterface({
     (run) => run && (run.status === 'streaming' || run.status === 'executing_tool'),
   )
 
-  const messages = conversation?.messages ?? []
+  const messages = useMemo(() => conversation?.messages ?? [], [conversation?.messages])
   const turns = useMemo(() => conversationTurnsFromMessages(messages), [messages])
   const multiVariantTurns = useMemo(
     () => turns.filter((turn) => turn.variants.length > 1),
@@ -72,21 +72,11 @@ export function ChatInterface({
   // to variant 0 or the leader variant present in `activeRunsByVariant`.
   const [selectedVariantByTurn, setSelectedVariantByTurn] = useState<Record<string, number>>({})
 
-  // Prune selections when turns disappear (e.g. conversation switched).
-  useEffect(() => {
-    setSelectedVariantByTurn((prev) => {
-      const validTurnIds = new Set(turns.map((t) => t.turnId))
-      const next: Record<string, number> = {}
-      for (const [tid, idx] of Object.entries(prev)) {
-        if (validTurnIds.has(tid)) next[tid] = idx
-      }
-      return next
-    })
-  }, [turns])
-
   // Keyboard shortcuts — ported 1:1 from landing/ChatInterface.tsx.
   const anyVariantStreamingRef = useRef(anyVariantStreaming)
-  anyVariantStreamingRef.current = anyVariantStreaming
+  useEffect(() => {
+    anyVariantStreamingRef.current = anyVariantStreaming
+  }, [anyVariantStreaming])
   useEffect(() => {
     function onGlobalKeyDown(e: KeyboardEvent) {
       const meta = e.metaKey || e.ctrlKey

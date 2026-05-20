@@ -75,6 +75,22 @@ async function sendRuntimeMessage(request: RuntimeRequest): Promise<RuntimeRespo
   return chrome.runtime.sendMessage(request) as Promise<RuntimeResponse>
 }
 
+function assertNoBearerLeak(payload: unknown) {
+  // Dev-only defense-in-depth: strip-in-prod to avoid perf cost on every
+  // bootstrap. `process.env.NODE_ENV` is inlined by the bundler.
+  if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'production') return
+  try {
+    const json = JSON.stringify(payload)
+    if (/"accessToken"\s*:\s*"[^"]+"/.test(json) || /"refreshToken"\s*:/.test(json)) {
+      // Hard-fail in development so a regression can't ship unnoticed.
+      console.error('[overlay] bearer-leak check failed: runtime response contained accessToken/refreshToken')
+      throw new Error('Runtime response leaked a Bearer token into the side panel.')
+    }
+  } catch {
+    // Ignore serialization errors (e.g., circular refs) — the check is best-effort.
+  }
+}
+
 function timeAgo(ts: number): string {
   const diffMinutes = Math.max(0, Math.floor((Date.now() - ts) / 60_000))
   if (diffMinutes < 1) return 'now'
@@ -149,7 +165,7 @@ export default function App() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
 
-  const conversations = bootstrap?.conversations ?? []
+  const conversations = useMemo(() => bootstrap?.conversations ?? [], [bootstrap?.conversations])
   const activeConversation = conversations.find((item) => item.id === activeConversationId) ?? conversations[0]
   const conversationItems = useMemo(() => toConversationItems(conversations), [conversations])
   const textModels = useMemo(() => getModelsByIntelligence(false), [])
@@ -162,7 +178,7 @@ export default function App() {
   const generationMode: GenerationMode = preferences.generationMode ?? 'text'
   const isPaid = entitlements?.isPaid ?? false
   const voiceEnabled = preferences.voiceEnabled ?? false
-  const activeRuns = bootstrap?.activeRuns ?? {}
+  const activeRuns = useMemo(() => bootstrap?.activeRuns ?? {}, [bootstrap?.activeRuns])
   const activeRunsByVariant = useMemo<Record<number, ActiveRunState>>(() => {
     if (!activeConversationId) return {}
     const result: Record<number, ActiveRunState> = {}
@@ -199,7 +215,7 @@ export default function App() {
   )
   const controlIndicator = bootstrap?.controlIndicator ?? null
   const windowTabs = bootstrap?.windowTabs ?? []
-  const toolHistory = bootstrap?.toolHistory ?? []
+  const toolHistory = useMemo(() => bootstrap?.toolHistory ?? [], [bootstrap?.toolHistory])
   const scopedToolHistory = useMemo(
     () =>
       !activeConversationId
@@ -218,7 +234,7 @@ export default function App() {
     ? `${bootstrap.session.user.firstName} ${bootstrap.session.user.lastName || ''}`.trim()
     : accountLabel
 
-  function applyConversationUpdate(conversation: StoredConversation, nextActiveConversationId: string | null) {
+  const applyConversationUpdate = useCallback((conversation: StoredConversation, nextActiveConversationId: string | null) => {
     setBootstrap((current) => {
       if (!current) return current
       const nextConversations = [...current.conversations.filter((item) => item.id !== conversation.id), conversation]
@@ -230,26 +246,9 @@ export default function App() {
       }
     })
     setActiveConversationId(nextActiveConversationId)
-  }
+  }, [])
 
-  function assertNoBearerLeak(payload: unknown) {
-    // Dev-only defense-in-depth: strip-in-prod to avoid perf cost on every
-    // bootstrap. `process.env.NODE_ENV` is inlined by the bundler.
-    if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'production') return
-    try {
-      const json = JSON.stringify(payload)
-      if (/"accessToken"\s*:\s*"[^"]+"/.test(json) || /"refreshToken"\s*:/.test(json)) {
-        // Hard-fail in development so a regression can't ship unnoticed.
-        // eslint-disable-next-line no-console
-        console.error('[overlay] bearer-leak check failed: runtime response contained accessToken/refreshToken')
-        throw new Error('Runtime response leaked a Bearer token into the side panel.')
-      }
-    } catch {
-      // Ignore serialization errors (e.g., circular refs) — the check is best-effort.
-    }
-  }
-
-  async function refreshBootstrap() {
+  const refreshBootstrap = useCallback(async () => {
     const response = await sendRuntimeMessage({ type: 'overlay.runtime.bootstrap' })
     if (!response.ok || response.type !== 'overlay.runtime.bootstrap') {
       throw new Error(response.ok ? 'Failed to refresh bootstrap.' : response.error)
@@ -258,9 +257,9 @@ export default function App() {
     setBootstrap(response.bootstrap)
     setActiveConversationId(response.bootstrap.activeConversationId)
     setPreferencesForm(response.bootstrap.preferences)
-  }
+  }, [])
 
-  async function refreshEntitlements() {
+  const refreshEntitlements = useCallback(async () => {
     try {
       const response = await sendRuntimeMessage({ type: 'overlay.runtime.entitlements.refresh' })
       if (!response.ok || response.type !== 'overlay.runtime.entitlements.refreshed') return
@@ -268,13 +267,13 @@ export default function App() {
     } catch {
       // Silent — entitlements refresh is best-effort.
     }
-  }
+  }, [])
 
   useEffect(() => {
     void refreshBootstrap().catch((runtimeError) => {
       setError(runtimeError instanceof Error ? runtimeError.message : 'Failed to load extension runtime.')
     })
-  }, [])
+  }, [refreshBootstrap])
 
   useEffect(() => {
     const port = chrome.runtime.connect({ name: 'overlay-runtime-stream' })
@@ -317,7 +316,7 @@ export default function App() {
       port.onMessage.removeListener(handleStreamEvent)
       port.disconnect()
     }
-  }, [])
+  }, [applyConversationUpdate])
 
   useEffect(() => {
     function handleFocus() {
@@ -330,7 +329,7 @@ export default function App() {
       window.removeEventListener('focus', handleFocus)
       document.removeEventListener('visibilitychange', handleFocus)
     }
-  }, [])
+  }, [refreshBootstrap])
 
   useEffect(() => {
     if (!moreMenuOpen) return
@@ -516,8 +515,10 @@ export default function App() {
     setAttachments((current) => current.filter((item) => item.id !== id))
   }, [])
 
+  const hasSession = Boolean(bootstrap?.session)
+
   useEffect(() => {
-    if (!bootstrap?.session) return
+    if (!hasSession) return
     const id = window.setInterval(
       () => {
         if (document.visibilityState === 'hidden') return
@@ -526,7 +527,7 @@ export default function App() {
       5 * 60 * 1000,
     )
     return () => window.clearInterval(id)
-  }, [bootstrap?.session?.user.email])
+  }, [hasSession, refreshEntitlements])
 
   useEffect(() => {
     function handlePaste(event: ClipboardEvent) {

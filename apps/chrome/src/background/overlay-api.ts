@@ -1,7 +1,6 @@
 import {
   type BackendListItem,
   type BackendParitySnapshot,
-  type BrowserScope,
   type BrowserScopeMode,
   type ConversationMessage,
   type ConversationMessagePart,

@@ -136,8 +136,13 @@ export type PublicExtensionSession = Omit<ExtensionSession, 'accessToken' | 'ref
 
 export function toPublicSession(session: ExtensionSession | null): PublicExtensionSession | null {
   if (!session) return null
-  const { accessToken: _accessToken, refreshToken: _refreshToken, ...rest } = session
-  return rest
+  return {
+    status: session.status,
+    baseUrl: session.baseUrl,
+    user: session.user,
+    ...(session.lastValidatedAt === undefined ? {} : { lastValidatedAt: session.lastValidatedAt }),
+    ...(session.refreshError === undefined ? {} : { refreshError: session.refreshError }),
+  }
 }
 
 export interface ExtensionPreferences {

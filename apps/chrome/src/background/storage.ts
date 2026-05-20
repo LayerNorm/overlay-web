@@ -47,12 +47,12 @@ function isRecordOfRuns(value: unknown): value is Record<string, ActiveRunState>
 export function normalizeExtensionPreferencesModelFields(
   preferences: ExtensionPreferences & { askModelId?: string },
 ): ExtensionPreferences {
+  const { actModelId, askModelId, ...rest } = preferences
   const modelId =
     preferences.modelId?.trim() ||
-    preferences.askModelId?.trim() ||
-    preferences.actModelId?.trim() ||
+    askModelId?.trim() ||
+    actModelId?.trim() ||
     DEFAULT_MODEL_ID
-  const { actModelId: _a, askModelId: _b, ...rest } = preferences
   return { ...rest, modelId }
 }
 

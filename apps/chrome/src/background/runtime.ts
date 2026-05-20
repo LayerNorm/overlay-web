@@ -5,7 +5,6 @@ import {
   type AttachmentDraft,
   type EntitlementsSnapshot,
   type BrowserContextEnvelope,
-  type BrowserScope,
   type BrowserScopeMode,
   activeRunKey,
   type ControlIndicatorState,
@@ -22,7 +21,6 @@ import {
   resolveVideoModelId,
   type MessageDataPart,
   type MessageFilePart,
-  type MessageReasoningPart,
   type MessageSourcePart,
   type MessageTextPart,
   type MessageToolPart,
@@ -178,29 +176,6 @@ function createTextPart(text: string, id = createId('part')): MessageTextPart {
     id,
     text,
   }
-}
-
-function summarizeConversationPart(part: ConversationMessagePart): string {
-  switch (part.type) {
-    case 'text':
-      return part.text.trim()
-    case 'reasoning':
-      return part.text.trim()
-    case 'tool':
-      if (part.output != null) return `${part.toolName}: ${truncate(stringifyUnknown(part.output), 140)}`
-      if (part.input != null) return `${part.toolName}: ${truncate(stringifyUnknown(part.input), 140)}`
-      return part.title || part.toolName
-    case 'source':
-      return part.title || part.url || part.filename || ''
-    case 'file':
-      return `[File: ${part.mediaType}]`
-    case 'data':
-      return ''
-  }
-}
-
-function getConversationMessageText(message: ConversationMessage): string {
-  return message.parts.map(summarizeConversationPart).filter(Boolean).join('\n\n').trim()
 }
 
 /** Sidebar preview: prefer readable text; never surface raw tool JSON. */
@@ -1317,23 +1292,6 @@ export async function startMediaGeneration(params: {
   }
 }
 
-function appendConversationMessage(
-  conversations: StoredConversation[],
-  conversationId: string,
-  message: ConversationMessage,
-): StoredConversation[] {
-  const existing = conversations.find((conversation) => conversation.id === conversationId)
-  if (!existing) return conversations
-  const updated: StoredConversation = {
-    ...existing,
-    messages: [...existing.messages, message],
-    updatedAt: message.createdAt,
-    version: 2,
-  }
-  updated.preview = makeConversationPreview(updated)
-  return withUpdatedConversation(conversations, updated)
-}
-
 function updateConversation(
   conversations: StoredConversation[],
   conversationId: string,
@@ -1964,7 +1922,7 @@ export async function startChatRun(params: {
     },
   }))
 
-  let nextConversation: StoredConversation = {
+  const nextConversationBase: StoredConversation = {
     ...conversation,
     title: conversation.messages.length === 0 ? truncate(params.prompt, 42) || conversation.title : conversation.title,
     messages: [...conversation.messages, userMessage, ...assistantMessages],
@@ -1973,7 +1931,10 @@ export async function startChatRun(params: {
     version: 3,
     browserScope: params.scope,
   }
-  nextConversation.preview = makeConversationPreview(nextConversation)
+  const nextConversation: StoredConversation = {
+    ...nextConversationBase,
+    preview: makeConversationPreview(nextConversationBase),
+  }
   const nextConversations = withUpdatedConversation(storage.conversations, nextConversation)
   await setConversations(nextConversations)
   await setActiveConversationId(nextConversation.id)
@@ -2257,7 +2218,7 @@ async function continueActRun(runId: string): Promise<void> {
 
     const execution = await executeToolRequest({ run: executingRun, toolRequest: plan.toolRequest })
     const refreshedStorage = await loadNormalizedStorage()
-    let refreshedConversations = updateConversation(refreshedStorage.conversations, run.conversationId, (currentConversation) => {
+    const refreshedConversations = updateConversation(refreshedStorage.conversations, run.conversationId, (currentConversation) => {
       const updatedConversation = upsertAssistantTool(currentConversation, run.assistantMessageId!, {
         ...toolPart,
         state: execution.success ? 'output-available' : 'output-error',
@@ -2376,7 +2337,7 @@ export async function startActRun(params: {
     },
   }
 
-  let nextConversation: StoredConversation = {
+  const nextConversationBase: StoredConversation = {
     ...conversation,
     title: conversation.messages.length === 0 ? truncate(params.prompt, 42) || conversation.title : conversation.title,
     messages: [...conversation.messages, userMessage, assistantMessage],
@@ -2384,7 +2345,10 @@ export async function startActRun(params: {
     preview: '',
     version: 3,
   }
-  nextConversation.preview = makeConversationPreview(nextConversation)
+  const nextConversation: StoredConversation = {
+    ...nextConversationBase,
+    preview: makeConversationPreview(nextConversationBase),
+  }
 
   const nextConversations = withUpdatedConversation(storage.conversations, nextConversation)
   await setConversations(nextConversations)
