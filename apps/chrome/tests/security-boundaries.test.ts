@@ -28,14 +28,14 @@ describe('trusted Overlay origins', () => {
 
 describe('authenticated GET query shaping', () => {
   it('adds userId without replacing existing query parameters', () => {
-    expect(appendUserIdParam('/api/app/conversations?messages=true', 'user_123')).toBe(
-      '/api/app/conversations?messages=true&userId=user_123',
+    expect(appendUserIdParam('/api/v1/conversations?messages=true', 'user_123')).toBe(
+      '/api/v1/conversations?messages=true&userId=user_123',
     )
   })
 
   it('does not overwrite an existing userId parameter', () => {
-    expect(appendUserIdParam('/api/app/conversations?userId=user_existing', 'user_123')).toBe(
-      '/api/app/conversations?userId=user_existing',
+    expect(appendUserIdParam('/api/v1/conversations?userId=user_existing', 'user_123')).toBe(
+      '/api/v1/conversations?userId=user_existing',
     )
   })
 })

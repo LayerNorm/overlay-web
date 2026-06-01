@@ -106,34 +106,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true
   }
 
-  if (message?.type === 'overlay.host.ask') {
-    void fetch('/api/app/conversations/ask', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(message.payload),
-    })
-      .then(async (response) => {
-        const text = await response.text()
-        sendResponse({
-          ok: response.ok,
-          status: response.status,
-          text,
-        })
-      })
-      .catch((error) => {
-        sendResponse({
-          ok: false,
-          error: error instanceof Error ? error.message : 'Host ask failed',
-        })
-      })
-    return true
-  }
-
   if (message?.type === 'overlay.host.act-plan') {
-    void fetch('/api/app/conversations/act/extension-plan', {
+    void fetch('/api/v1/conversations/act/extension-plan', {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -159,7 +133,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message?.type === 'overlay.host.browser-task') {
-    void fetch('/api/app/browser-task', {
+    void fetch('/api/v1/browser-task', {
       method: 'POST',
       credentials: 'include',
       headers: {

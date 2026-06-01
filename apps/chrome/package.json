@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run typecheck && npm run test && npm run build"
+    "check:no-legacy-app-api": "node ./scripts/ensure-no-legacy-app-api.cjs",
+    "check": "npm run check:no-legacy-app-api && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "@overlay/chat-core": "file:../packages/overlay-chat-core",

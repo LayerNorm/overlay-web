@@ -170,7 +170,7 @@ export interface ExtensionPreferences {
 }
 
 /**
- * Subscription + credit snapshot mirrored from `/api/app/subscription`.
+ * Subscription + credit snapshot mirrored from `/api/v1/subscription`.
  * Populated best-effort in the bootstrap; absent when unauthenticated or
  * when the remote fetch fails.
  */

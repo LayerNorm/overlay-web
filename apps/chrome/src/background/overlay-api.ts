@@ -504,7 +504,7 @@ export async function fetchRemoteAppBootstrap(args: {
     } | null
     uiSettings?: Record<string, unknown> | null
     defaults?: { chatModelId?: string; imageModelId?: string; videoModelId?: string }
-  }>(args.baseUrl, args.session, '/api/app/bootstrap').catch(() => null)
+  }>(args.baseUrl, args.session, '/api/v1/bootstrap').catch(() => null)
 }
 
 export async function fetchRemoteConversations(args: {
@@ -513,7 +513,7 @@ export async function fetchRemoteConversations(args: {
   activeConversationId?: string | null
 }): Promise<StoredConversation[]> {
   if (!args.session.accessToken?.trim() || !args.session.user?.id?.trim()) return []
-  const summaries = await remoteGet<RemoteConversationSummary[]>(args.baseUrl, args.session, '/api/app/conversations')
+  const summaries = await remoteGet<RemoteConversationSummary[]>(args.baseUrl, args.session, '/api/v1/conversations')
   const activeId = args.activeConversationId && summaries.some((item) => item._id === args.activeConversationId)
     ? args.activeConversationId
     : summaries[0]?._id
@@ -522,7 +522,7 @@ export async function fetchRemoteConversations(args: {
   const activeMessages = await remoteGet<{ messages?: RemoteConversationMessage[] }>(
     args.baseUrl,
     args.session,
-    `/api/app/conversations?conversationId=${encodeURIComponent(activeId)}&messages=true`,
+    `/api/v1/conversations?conversationId=${encodeURIComponent(activeId)}&messages=true`,
   ).catch(() => ({ messages: [] }))
 
   return summaries.map((summary) => (
@@ -541,12 +541,12 @@ export async function fetchRemoteConversationWithMessages(args: {
     remoteGet<RemoteConversationSummary>(
       args.baseUrl,
       args.session,
-      `/api/app/conversations?conversationId=${encodeURIComponent(args.conversationId)}`,
+      `/api/v1/conversations?conversationId=${encodeURIComponent(args.conversationId)}`,
     ),
     remoteGet<{ messages?: RemoteConversationMessage[] }>(
       args.baseUrl,
       args.session,
-      `/api/app/conversations?conversationId=${encodeURIComponent(args.conversationId)}&messages=true`,
+      `/api/v1/conversations?conversationId=${encodeURIComponent(args.conversationId)}&messages=true`,
     ),
   ]).catch(() => [null, null] as const)
   if (!summary) return null
@@ -563,7 +563,7 @@ export async function createRemoteConversation(args: {
   const payload = await remoteJson<{ id?: string; conversation?: RemoteConversationSummary }>(
     args.baseUrl,
     args.session,
-    '/api/app/conversations',
+    '/api/v1/conversations',
     'POST',
     {
       title: args.title || 'New Chat',
@@ -588,7 +588,7 @@ export async function deleteRemoteConversation(args: {
   await remoteJson(
     args.baseUrl,
     args.session,
-    `/api/app/conversations?conversationId=${encodeURIComponent(args.conversationId)}`,
+    `/api/v1/conversations?conversationId=${encodeURIComponent(args.conversationId)}`,
     'DELETE',
   )
 }
@@ -604,7 +604,7 @@ export async function updateRemoteConversation(args: {
   const payload = await remoteJson<{ conversation?: RemoteConversationSummary }>(
     args.baseUrl,
     args.session,
-    '/api/app/conversations',
+    '/api/v1/conversations',
     'PATCH',
     {
       conversationId: args.conversationId,
@@ -657,7 +657,7 @@ export async function runRemoteActPlanner(args: {
   windows: WindowSnapshot[]
 }): Promise<ActPlannerResponse> {
   const payload = buildActPlannerPayload(args)
-  const endpoint = '/api/app/conversations/act/extension-plan'
+  const endpoint = '/api/v1/conversations/act/extension-plan'
   const hasBearer = Boolean(args.session?.accessToken?.trim() && args.session?.user?.id?.trim())
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -725,7 +725,7 @@ export async function runRemoteBrowserTask(args: {
   billing?: unknown
 }> {
   const payload = { task: args.task }
-  const endpoint = '/api/app/browser-task'
+  const endpoint = '/api/v1/browser-task'
   const hasBearer = Boolean(args.session?.accessToken?.trim() && args.session?.user?.id?.trim())
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -824,7 +824,7 @@ export async function streamRemoteChatTurn(args: {
     role: 'user',
     parts: userParts,
   }
-  const response = await fetch(joinUrl(args.baseUrl, '/api/app/conversations/act'), {
+  const response = await fetch(joinUrl(args.baseUrl, '/api/v1/conversations/act'), {
     method: 'POST',
     headers: remoteHeaders(args.session),
     credentials: 'omit',
@@ -882,15 +882,15 @@ export async function fetchRemoteParitySnapshot(args: {
 }): Promise<BackendParitySnapshot | null> {
   if (!args.session.accessToken?.trim() || !args.session.user?.id?.trim()) return null
   const [projects, files, outputs, memories, automations, skills, mcps, integrations, settings] = await Promise.all([
-    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/projects').catch(() => []),
-    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/files').catch(() => []),
-    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/outputs').catch(() => []),
-    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/memory').catch(() => []),
-    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/automations').catch(() => []),
-    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/skills').catch(() => []),
-    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/mcps').catch(() => []),
-    remoteGet<unknown>(args.baseUrl, args.session, '/api/app/integrations').catch(() => ({ items: [] })),
-    remoteGet<Record<string, unknown>>(args.baseUrl, args.session, '/api/app/settings').catch(() => null),
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/v1/projects').catch(() => []),
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/v1/files').catch(() => []),
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/v1/outputs').catch(() => []),
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/v1/memory').catch(() => []),
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/v1/automations').catch(() => []),
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/v1/skills').catch(() => []),
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/v1/mcps').catch(() => []),
+    remoteGet<unknown>(args.baseUrl, args.session, '/api/v1/integrations').catch(() => ({ items: [] })),
+    remoteGet<Record<string, unknown>>(args.baseUrl, args.session, '/api/v1/settings').catch(() => null),
   ])
   const integrationItems = integrations && typeof integrations === 'object' && 'items' in integrations
     ? (integrations as { items?: unknown }).items
@@ -917,7 +917,7 @@ export async function fetchRemoteChatTitle(args: {
   const userId = args.session.user?.id?.trim()
   if (!userId) return null
 
-  const response = await fetch(joinUrl(args.baseUrl, '/api/app/generate-title'), {
+  const response = await fetch(joinUrl(args.baseUrl, '/api/v1/generate-title'), {
     method: 'POST',
     headers: remoteHeaders(args.session),
     body: JSON.stringify({
@@ -952,7 +952,7 @@ export async function fetchRemoteTabGroupLabel(args: {
   const userId = args.session.user?.id?.trim()
   if (!userId) return null
 
-  const response = await fetch(joinUrl(args.baseUrl, '/api/app/generate-tab-group-label'), {
+  const response = await fetch(joinUrl(args.baseUrl, '/api/v1/generate-tab-group-label'), {
     method: 'POST',
     headers: remoteHeaders(args.session),
     body: JSON.stringify({
@@ -981,7 +981,7 @@ export async function runRemoteGenerateImage(args: {
   const userId = args.session.user?.id?.trim()
   if (!userId) throw new Error('Sign in to generate images.')
 
-  const response = await fetch(joinUrl(args.baseUrl, '/api/app/generate-image'), {
+  const response = await fetch(joinUrl(args.baseUrl, '/api/v1/generate-image'), {
     method: 'POST',
     headers: remoteHeaders(args.session),
     body: JSON.stringify({
@@ -1103,7 +1103,7 @@ export async function runRemoteGenerateVideo(args: {
   const userId = args.session.user?.id?.trim()
   if (!userId) throw new Error('Sign in to generate video.')
 
-  const response = await fetch(joinUrl(args.baseUrl, '/api/app/generate-video'), {
+  const response = await fetch(joinUrl(args.baseUrl, '/api/v1/generate-video'), {
     method: 'POST',
     headers: remoteHeaders(args.session),
     body: JSON.stringify({
@@ -1142,7 +1142,7 @@ export async function fetchRemoteEntitlements(args: {
 } | null> {
   if (!args.session.accessToken?.trim() || !args.session.user?.id?.trim()) return null
   try {
-    const response = await fetch(joinUrl(args.baseUrl, '/api/app/subscription'), {
+    const response = await fetch(joinUrl(args.baseUrl, '/api/v1/subscription'), {
       method: 'GET',
       headers: createBearerHeaders(args.session),
       credentials: 'include',
@@ -1193,7 +1193,7 @@ export async function ingestRemoteDocument(args: {
   const form = new FormData()
   form.append('file', blob, args.fileName)
 
-  const response = await fetch(joinUrl(args.baseUrl, '/api/app/files/ingest-document'), {
+  const response = await fetch(joinUrl(args.baseUrl, '/api/v1/files/ingest-document'), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${args.session.accessToken}`,
@@ -1231,7 +1231,7 @@ export async function transcribeRemoteAudio(args: {
   const form = new FormData()
   form.append('audio', blob, `voice.${args.mimeType.split('/')[1] || 'webm'}`)
 
-  const response = await fetch(joinUrl(args.baseUrl, '/api/app/transcribe'), {
+  const response = await fetch(joinUrl(args.baseUrl, '/api/v1/transcribe'), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${args.session.accessToken}`,
