@@ -25,7 +25,7 @@ export function subscribeUiSettings(listener: UiSettingsListener): () => void {
 }
 
 export async function getUiSettings(): Promise<AppSettings> {
-  const settings = await appJson<AppSettings>('/api/app/settings')
+  const settings = await appJson<AppSettings>('/api/v1/settings')
   await AsyncStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings))
   notifyUiSettings(settings)
   return settings
@@ -34,7 +34,7 @@ export async function getUiSettings(): Promise<AppSettings> {
 export async function updateUiSettings(
   patch: Partial<AppSettings>,
 ): Promise<AppSettings> {
-  const settings = await appJson<AppSettings>('/api/app/settings', {
+  const settings = await appJson<AppSettings>('/api/v1/settings', {
     method: 'PATCH',
     json: patch as Record<string, unknown>,
   })

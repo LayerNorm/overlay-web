@@ -24,7 +24,7 @@ function mapNoteMeta(note: NoteDoc): NoteMeta {
 }
 
 export async function loadNotesIndex(projectId?: string): Promise<NoteMeta[]> {
-  const notes = await appJson<NoteDoc[]>('/api/app/notes', {
+  const notes = await appJson<NoteDoc[]>('/api/v1/notes', {
     query: { projectId: projectId || undefined },
   })
   return notes.map(mapNoteMeta).sort((a, b) => b.updatedAt - a.updatedAt)
@@ -33,7 +33,7 @@ export async function loadNotesIndex(projectId?: string): Promise<NoteMeta[]> {
 export async function createNote(
   initial?: Partial<Note> & { projectId?: string },
 ): Promise<Note> {
-  const response = await appJson<{ id: string; note: NoteDoc }>('/api/app/notes', {
+  const response = await appJson<{ id: string; note: NoteDoc }>('/api/v1/notes', {
     method: 'POST',
     json: {
       title: initial?.title || 'Untitled',
@@ -47,7 +47,7 @@ export async function createNote(
 
 export async function loadNote(id: string): Promise<Note | null> {
   try {
-    const note = await appJson<NoteDoc>('/api/app/notes', {
+    const note = await appJson<NoteDoc>('/api/v1/notes', {
       query: { noteId: id },
     })
     return mapNote(note)
@@ -57,7 +57,7 @@ export async function loadNote(id: string): Promise<Note | null> {
 }
 
 export async function saveNote(note: Note): Promise<void> {
-  await appJson('/api/app/notes', {
+  await appJson('/api/v1/notes', {
     method: 'PATCH',
     json: {
       noteId: note.id,
@@ -69,14 +69,14 @@ export async function saveNote(note: Note): Promise<void> {
 }
 
 export async function deleteNote(id: string): Promise<void> {
-  await appRequest('/api/app/notes', {
+  await appRequest('/api/v1/notes', {
     method: 'DELETE',
     query: { noteId: id },
   })
 }
 
 export async function updateNoteTitle(id: string, title: string): Promise<void> {
-  await appJson('/api/app/notes', {
+  await appJson('/api/v1/notes', {
     method: 'PATCH',
     json: { noteId: id, title },
   })

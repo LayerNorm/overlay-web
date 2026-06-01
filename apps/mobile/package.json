@@ -9,7 +9,9 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "check": "npm run check:no-legacy-app-api && npm run check:no-direct-backend && npm run check:no-secret-env && npm run typecheck",
     "typecheck": "tsc --noEmit",
+    "check:no-legacy-app-api": "node ./scripts/ensure-no-legacy-app-api.cjs",
     "check:no-direct-backend": "node ./scripts/ensure-no-direct-backend.cjs",
     "check:no-secret-env": "node ./scripts/ensure-no-secret-env.cjs"
   },

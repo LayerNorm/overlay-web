@@ -3,14 +3,14 @@ import type { KnowledgeFile, MemoryRow, OutputSummary } from '@overlay/app-core'
 
 // ── Memories ──
 export async function listMemories(): Promise<MemoryRow[]> {
-  return appJson<MemoryRow[]>('/api/app/memory')
+  return appJson<MemoryRow[]>('/api/v1/memory')
 }
 
 export async function createMemory(
   content: string,
   options: { projectId?: string } = {},
 ): Promise<void> {
-  await appJson('/api/app/memory', {
+  await appJson('/api/v1/memory', {
     method: 'POST',
     json: {
       content,
@@ -21,14 +21,14 @@ export async function createMemory(
 }
 
 export async function updateMemory(memoryId: string, content: string): Promise<void> {
-  await appJson('/api/app/memory', {
+  await appJson('/api/v1/memory', {
     method: 'PATCH',
     json: { memoryId, content },
   })
 }
 
 export async function deleteMemory(memoryId: string): Promise<void> {
-  await appJson('/api/app/memory', {
+  await appJson('/api/v1/memory', {
     method: 'DELETE',
     json: { memoryId },
   })
@@ -40,19 +40,19 @@ export async function bulkDeleteMemories(memoryIds: string[]): Promise<void> {
 
 // ── Files ──
 export async function listKnowledgeFiles(projectId?: string): Promise<KnowledgeFile[]> {
-  return appJson<KnowledgeFile[]>('/api/app/files', {
+  return appJson<KnowledgeFile[]>('/api/v1/files', {
     query: { projectId: projectId || undefined },
   })
 }
 
 export async function getKnowledgeFile(fileId: string): Promise<KnowledgeFile> {
-  return appJson<KnowledgeFile>('/api/app/files', {
+  return appJson<KnowledgeFile>('/api/v1/files', {
     query: { fileId },
   })
 }
 
 export async function getKnowledgeFileContent(fileId: string): Promise<string> {
-  const response = await appRequest(`/api/app/files/${fileId}/content`)
+  const response = await appRequest(`/api/v1/files/${fileId}/content`)
   if (!response.ok) {
     throw new Error(`Failed to fetch file content: ${response.status}`)
   }
@@ -62,7 +62,7 @@ export async function getKnowledgeFileContent(fileId: string): Promise<string> {
 export async function createKnowledgeFile(
   input: { name: string; content?: string; projectId?: string; parentId?: string | null },
 ): Promise<{ id: string }> {
-  return appJson<{ id: string }>('/api/app/files', {
+  return appJson<{ id: string }>('/api/v1/files', {
     method: 'POST',
     json: {
       name: input.name,
@@ -77,7 +77,7 @@ export async function createKnowledgeFile(
 export async function createKnowledgeFolder(
   input: { name: string; projectId?: string; parentId?: string | null },
 ): Promise<{ id: string }> {
-  return appJson<{ id: string }>('/api/app/files', {
+  return appJson<{ id: string }>('/api/v1/files', {
     method: 'POST',
     json: {
       name: input.name,
@@ -92,14 +92,14 @@ export async function updateKnowledgeFile(
   fileId: string,
   patch: { name?: string; content?: string },
 ): Promise<void> {
-  await appJson('/api/app/files', {
+  await appJson('/api/v1/files', {
     method: 'PATCH',
     json: { fileId, ...patch },
   })
 }
 
 export async function deleteKnowledgeFile(fileId: string): Promise<void> {
-  await appJson('/api/app/files', {
+  await appJson('/api/v1/files', {
     method: 'DELETE',
     json: { fileId },
   })
@@ -115,7 +115,7 @@ export async function getUploadUrl(options: {
   mimeType: string
   sizeBytes: number
 }): Promise<{ r2Key: string; presignedUrl: string; expiresIn: number }> {
-  return appJson<{ r2Key: string; presignedUrl: string; expiresIn: number }>('/api/app/files/presign', {
+  return appJson<{ r2Key: string; presignedUrl: string; expiresIn: number }>('/api/v1/files/presign', {
     query: {
       name: options.name,
       mimeType: options.mimeType,
@@ -140,7 +140,7 @@ export async function uploadToR2(presignedUrl: string, body: ArrayBuffer | Uint8
 export async function createFileWithStorage(
   input: { name: string; r2Key: string; sizeBytes: number; parentId?: string | null; projectId?: string },
 ): Promise<{ id: string }> {
-  return appJson<{ id: string }>('/api/app/files', {
+  return appJson<{ id: string }>('/api/v1/files', {
     method: 'POST',
     json: {
       name: input.name,
@@ -157,7 +157,7 @@ export async function createFileWithStorage(
 export async function listOutputs(
   options: { type?: string; conversationId?: string } = {},
 ): Promise<OutputSummary[]> {
-  return appJson<OutputSummary[]>('/api/app/outputs', {
+  return appJson<OutputSummary[]>('/api/v1/outputs', {
     query: {
       type: options.type,
       conversationId: options.conversationId,
@@ -166,7 +166,7 @@ export async function listOutputs(
 }
 
 export async function deleteOutput(outputId: string): Promise<void> {
-  await appJson('/api/app/outputs', {
+  await appJson('/api/v1/outputs', {
     method: 'DELETE',
     query: { outputId },
   })

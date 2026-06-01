@@ -29,7 +29,7 @@ function useDictateDeepLink(): void {
 function useVoiceAuthSync(): void {
   // Mirror the WorkOS access token + userId into the App Group on launch and
   // periodically thereafter so the headless recorder can authenticate against
-  // /api/app/transcribe even after a token refresh.
+  // /api/v1/transcribe even after a token refresh.
   useEffect(() => {
     let cancelled = false
     const sync = async () => {

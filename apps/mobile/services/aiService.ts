@@ -175,7 +175,7 @@ export async function* chatStream(
       body.indexedAttachments = options.indexedAttachments ?? []
     }
 
-    for await (const chunk of appXhrStreamSse<UiMessageChunk>('/api/app/conversations/act', {
+    for await (const chunk of appXhrStreamSse<UiMessageChunk>('/api/v1/conversations/act', {
       method: 'POST',
       json: body,
     })) {
@@ -278,7 +278,7 @@ export async function* chatStream(
 export async function uploadDocument(uri: string, name: string, mimeType: string): Promise<{ ids: string[]; name: string }> {
   const form = new FormData()
   form.append('file', { uri, name, type: mimeType } as unknown as Blob)
-  const res = await appRequest('/api/app/files/ingest-document', {
+  const res = await appRequest('/api/v1/files/ingest-document', {
     method: 'POST',
     formData: form,
   })
@@ -292,7 +292,7 @@ export async function uploadDocument(uri: string, name: string, mimeType: string
 }
 
 export async function stopConversation(conversationId: string, messageId?: string): Promise<void> {
-  const res = await appRequest('/api/app/conversations/stop', {
+  const res = await appRequest('/api/v1/conversations/stop', {
     method: 'POST',
     json: {
       conversationId,

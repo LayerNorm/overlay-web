@@ -1149,7 +1149,7 @@ class RecordingViewController: UIViewController {
         let normalizedBase = baseURL.hasSuffix("/") ? String(baseURL.dropLast()) : baseURL
         // resolveAuthenticatedAppUser requires both Bearer and a userId query param.
         let encodedUid = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId
-        guard let endpoint = URL(string: "\(normalizedBase)/api/app/transcribe?userId=\(encodedUid)") else {
+        guard let endpoint = URL(string: "\(normalizedBase)/api/v1/transcribe?userId=\(encodedUid)") else {
             throw NSError(domain: "OverlayBackend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid base URL: \(baseURL)"])
         }
 

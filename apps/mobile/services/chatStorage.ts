@@ -87,7 +87,7 @@ function mapConversationSummary(summary: ConversationSummary): ChatMeta {
 }
 
 export async function loadChatsMeta(projectId?: string): Promise<ChatMeta[]> {
-  const summaries = await appJson<ConversationSummary[]>('/api/app/conversations', {
+  const summaries = await appJson<ConversationSummary[]>('/api/v1/conversations', {
     query: { projectId: projectId || undefined },
   })
   return summaries
@@ -96,7 +96,7 @@ export async function loadChatsMeta(projectId?: string): Promise<ChatMeta[]> {
 }
 
 export async function saveChat(chat: Chat): Promise<void> {
-  await appJson('/api/app/conversations', {
+  await appJson('/api/v1/conversations', {
     method: 'PATCH',
     json: {
       conversationId: chat.id,
@@ -112,10 +112,10 @@ export async function saveChat(chat: Chat): Promise<void> {
 export async function loadChat(id: string): Promise<Chat | null> {
   try {
     const [summary, messagesResponse] = await Promise.all([
-      appJson<ConversationSummary>(`/api/app/conversations`, {
+      appJson<ConversationSummary>(`/api/v1/conversations`, {
         query: { conversationId: id },
       }),
-      appJson<{ messages: ConversationMessage[] }>(`/api/app/conversations`, {
+      appJson<{ messages: ConversationMessage[] }>(`/api/v1/conversations`, {
         query: { conversationId: id, messages: true },
       }),
     ])
@@ -133,7 +133,7 @@ export async function loadChat(id: string): Promise<Chat | null> {
 }
 
 export async function deleteChat(id: string): Promise<void> {
-  await appRequest('/api/app/conversations', {
+  await appRequest('/api/v1/conversations', {
     method: 'DELETE',
     query: { conversationId: id },
   })
@@ -153,7 +153,7 @@ export async function setLastOpenedChatId(id: string): Promise<void> {
 }
 
 export async function updateChatTitle(id: string, title: string): Promise<void> {
-  await appJson('/api/app/conversations', {
+  await appJson('/api/v1/conversations', {
     method: 'PATCH',
     json: { conversationId: id, title },
   })
@@ -172,7 +172,7 @@ export async function createNewChat(
   const response = await appJson<{
     id: string
     conversation: ConversationSummary
-  }>('/api/app/conversations', {
+  }>('/api/v1/conversations', {
     method: 'POST',
     json: {
       clientId,

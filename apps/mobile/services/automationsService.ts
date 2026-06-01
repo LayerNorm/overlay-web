@@ -7,7 +7,7 @@ import type {
 } from '@overlay/app-core'
 
 export async function listAutomations(): Promise<AutomationSummary[]> {
-  return appJson<AutomationSummary[]>('/api/app/automations')
+  return appJson<AutomationSummary[]>('/api/v1/automations')
 }
 
 export async function createAutomation(input: {
@@ -21,7 +21,7 @@ export async function createAutomation(input: {
   modelId?: string
   concurrencyPolicy?: 'skip' | 'queue'
 }): Promise<{ success: boolean; id: string }> {
-  return appJson<{ success: boolean; id: string }>('/api/app/automations', {
+  return appJson<{ success: boolean; id: string }>('/api/v1/automations', {
     method: 'POST',
     json: input,
   })
@@ -41,21 +41,21 @@ export async function updateAutomation(
     concurrencyPolicy?: 'skip' | 'queue'
   },
 ): Promise<void> {
-  await appJson('/api/app/automations', {
+  await appJson('/api/v1/automations', {
     method: 'PATCH',
     json: { automationId, ...patch },
   })
 }
 
 export async function setAutomationEnabled(automationId: string, enabled: boolean): Promise<void> {
-  await appJson('/api/app/automations', {
+  await appJson('/api/v1/automations', {
     method: 'PATCH',
     json: { automationId, action: enabled ? 'resume' : 'pause' },
   })
 }
 
 export async function deleteAutomation(automationId: string): Promise<void> {
-  await appJson('/api/app/automations', {
+  await appJson('/api/v1/automations', {
     method: 'DELETE',
     query: { automationId },
   })
@@ -64,7 +64,7 @@ export async function deleteAutomation(automationId: string): Promise<void> {
 export async function listAutomationRuns(
   automationId: string,
 ): Promise<AutomationRunSummary[]> {
-  return appJson<AutomationRunSummary[]>('/api/app/automations', {
+  return appJson<AutomationRunSummary[]>('/api/v1/automations', {
     query: { automationId, runs: true },
   })
 }

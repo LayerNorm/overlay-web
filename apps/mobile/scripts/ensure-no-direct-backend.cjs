@@ -26,7 +26,7 @@ const forbiddenPatterns = [
   },
   {
     pattern: /users:getUserProfile|users:syncUserProfile|usage:getEntitlements/g,
-    message: 'product data must flow through overlay-landing /api/app/* APIs only',
+    message: 'product data must flow through overlay-landing /api/v1 APIs only',
   },
   {
     pattern: /from\s+['"](?:@workos-inc\/|stripe|@ai-sdk\/|openai|anthropic|groq-sdk|@aws-sdk\/|@convex-dev\/)|require\(['"](?:@workos-inc\/|stripe|@ai-sdk\/|openai|anthropic|groq-sdk|@aws-sdk\/|@convex-dev\/)/g,

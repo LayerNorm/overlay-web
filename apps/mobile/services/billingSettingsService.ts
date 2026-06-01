@@ -12,7 +12,7 @@ export interface BillingSettings {
 }
 
 export async function getBillingSettings(): Promise<BillingSettings> {
-  return appJson<BillingSettings>('/api/app/subscription/settings')
+  return appJson<BillingSettings>('/api/v1/subscription/settings')
 }
 
 export async function updateBillingSettings(input: {
@@ -20,7 +20,7 @@ export async function updateBillingSettings(input: {
   topUpAmountCents: number
   grantOffSessionConsent?: boolean
 }): Promise<{ success: boolean }> {
-  return appJson<{ success: boolean }>('/api/app/subscription/settings', {
+  return appJson<{ success: boolean }>('/api/v1/subscription/settings', {
     method: 'POST',
     json: input,
   })
