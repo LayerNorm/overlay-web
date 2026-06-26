@@ -82,7 +82,7 @@ const RETENTION_OPTIONS: { label: string; value: TranscriptionRetentionDays }[] 
 const IMAGE_ASPECT_RATIOS = ['1:1', '4:3', '3:4', '16:9', '9:16']
 const VIDEO_ASPECT_RATIOS = ['16:9', '9:16', '1:1']
 
-type PickerKind = 'act-model' | 'ask-models' | 'image-model' | 'video-model'
+type PickerKind = 'act-model' | 'image-model' | 'video-model'
 
 export default function SettingsScreen(): React.ReactElement {
   const router = useRouter()
@@ -283,9 +283,6 @@ export default function SettingsScreen(): React.ReactElement {
   }
 
   const activeChatModel = findById(chatModels, uiSettings.defaultActModelId ?? defaults?.chatModelId)
-  const activeAskModels = uiSettings.defaultAskModelIds
-    .map((id) => findById(chatModels, id))
-    .filter((model): model is ChatModel => Boolean(model))
   const activeImageModel = findById(imageModels, uiSettings.defaultImageModelId ?? defaults?.imageModelId)
   const activeVideoModel = findById(videoModels, uiSettings.defaultVideoModelId ?? defaults?.videoModelId)
 
@@ -406,25 +403,12 @@ export default function SettingsScreen(): React.ReactElement {
             </SettingsSection>
 
             <SettingsSection theme={theme} title="Chat Defaults" icon="message-square">
-              <SegmentedControl
-                theme={theme}
-                value={uiSettings.defaultChatMode}
-                options={[{ label: 'Ask', value: 'ask' }, { label: 'Act', value: 'act' }]}
-                onChange={(defaultChatMode) => { void updateSettings({ defaultChatMode: defaultChatMode as 'ask' | 'act' }) }}
-              />
               <ActionRow
                 theme={theme}
                 icon="cpu"
-                title="Act model"
+                title="Default model"
                 detail={activeChatModel?.name ?? 'Backend default'}
                 onPress={() => setPicker('act-model')}
-              />
-              <ActionRow
-                theme={theme}
-                icon="columns"
-                title="Ask comparison models"
-                detail={activeAskModels.length ? activeAskModels.map((model) => model.name).join(', ') : 'Backend default'}
-                onPress={() => setPicker('ask-models')}
               />
               <ToggleRow
                 theme={theme}
@@ -558,25 +542,12 @@ export default function SettingsScreen(): React.ReactElement {
           chatModels={chatModels}
           imageModels={imageModels}
           videoModels={videoModels}
-          selectedAskModelIds={uiSettings.defaultAskModelIds}
           selectedActModelId={uiSettings.defaultActModelId}
           selectedImageModelId={uiSettings.defaultImageModelId}
           selectedVideoModelId={uiSettings.defaultVideoModelId}
           isFreeTier={entitlements?.tier === 'free'}
           onClose={() => setPicker(null)}
           onSelectAct={(defaultActModelId) => { void updateSettings({ defaultActModelId }); setPicker(null) }}
-          onToggleAsk={(modelId) => {
-            const current = new Set(uiSettings.defaultAskModelIds)
-            if (current.has(modelId)) current.delete(modelId)
-            else {
-              if (current.size >= 4) {
-                Alert.alert('Model limit reached', 'Choose up to four default Ask comparison models.')
-                return
-              }
-              current.add(modelId)
-            }
-            void updateSettings({ defaultAskModelIds: Array.from(current) })
-          }}
           onSelectImage={(defaultImageModelId) => { void updateSettings({ defaultImageModelId }); setPicker(null) }}
           onSelectVideo={(defaultVideoModelId) => { void updateSettings({ defaultVideoModelId }); setPicker(null) }}
         />
@@ -789,14 +760,12 @@ function ModelPickerSheet({
   chatModels,
   imageModels,
   videoModels,
-  selectedAskModelIds,
   selectedActModelId,
   selectedImageModelId,
   selectedVideoModelId,
   isFreeTier,
   onClose,
   onSelectAct,
-  onToggleAsk,
   onSelectImage,
   onSelectVideo,
 }: {
@@ -805,25 +774,21 @@ function ModelPickerSheet({
   chatModels: ChatModel[]
   imageModels: ImageModel[]
   videoModels: VideoModel[]
-  selectedAskModelIds: string[]
   selectedActModelId?: string
   selectedImageModelId?: string
   selectedVideoModelId?: string
   isFreeTier: boolean
   onClose: () => void
   onSelectAct: (modelId: string) => void
-  onToggleAsk: (modelId: string) => void
   onSelectImage: (modelId: string) => void
   onSelectVideo: (modelId: string) => void
 }): React.ReactElement {
   const title =
     picker === 'act-model'
-      ? 'Default Act Model'
-      : picker === 'ask-models'
-        ? 'Default Ask Models'
-        : picker === 'image-model'
-          ? 'Default Image Model'
-          : 'Default Video Model'
+      ? 'Default Model'
+      : picker === 'image-model'
+        ? 'Default Image Model'
+        : 'Default Video Model'
   const rows =
     picker === 'image-model'
       ? imageModels
@@ -838,20 +803,18 @@ function ModelPickerSheet({
           <Text style={[styles.helperText, { color: theme.textSecondary }]}>Models will appear after app bootstrap refreshes.</Text>
         ) : rows.map((model) => {
           const selected =
-            picker === 'ask-models'
-              ? selectedAskModelIds.includes(model.id)
-              : picker === 'act-model'
-                ? selectedActModelId === model.id
-                : picker === 'image-model'
-                  ? selectedImageModelId === model.id
-                  : selectedVideoModelId === model.id
+            picker === 'act-model'
+              ? selectedActModelId === model.id
+              : picker === 'image-model'
+                ? selectedImageModelId === model.id
+                : selectedVideoModelId === model.id
           return (
             <TouchableOpacity
               key={model.id}
               activeOpacity={0.82}
               onPress={() => {
                 if (
-                  (picker === 'ask-models' || picker === 'act-model') &&
+                  picker === 'act-model' &&
                   isFreeTier &&
                   'cost' in model &&
                   model.cost > 0
@@ -859,8 +822,7 @@ function ModelPickerSheet({
                   Alert.alert('Premium model', 'Free accounts can save only free models as mobile chat defaults.')
                   return
                 }
-                if (picker === 'ask-models') onToggleAsk(model.id)
-                else if (picker === 'act-model') onSelectAct(model.id)
+                if (picker === 'act-model') onSelectAct(model.id)
                 else if (picker === 'image-model') onSelectImage(model.id)
                 else onSelectVideo(model.id)
               }}
@@ -871,7 +833,7 @@ function ModelPickerSheet({
                 {'provider' in model && model.provider ? (
                   <Text style={[styles.rowDetail, { color: theme.textSecondary }]}>
                     {model.provider}
-                    {(picker === 'ask-models' || picker === 'act-model') && isFreeTier && 'cost' in model && model.cost > 0
+                    {picker === 'act-model' && isFreeTier && 'cost' in model && model.cost > 0
                       ? ' · Premium'
                       : ''}
                   </Text>
