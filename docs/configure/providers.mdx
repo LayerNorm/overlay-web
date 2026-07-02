@@ -1,52 +1,60 @@
 ---
 title: "Providers"
-description: "Auth, billing, storage, and LLM provider options for Overlay Web."
+description: "Provider choices, support status, and data-processing boundaries for Overlay Web."
 ---
 
-## Auth
+Provider selection is controlled by runtime config v2 under `providers`, with backward-compatible mirrors in `auth`, `billing`, `storage`, `llm`, `database`, and `capabilities`.
 
-Supported runtime choices:
+Use `none` plus the matching feature flag when a provider family must be disabled. Disabled features are hidden from UI and blocked by server-side gates with `capability_disabled` responses.
 
-- `workos`: hosted SaaS default.
-- `oidc`: enterprise OIDC access-token verification.
-- `keycloak`: Keycloak-shaped OIDC verification.
-- `none`: local or on-prem no-op auth mode.
+## Core Providers
 
-Browser sessions use the signed `overlay_session` cookie. Native or service clients use bearer access tokens only where the route supports them.
+| Purpose | Values | Current support |
+| --- | --- | --- |
+| Auth | `workos`, `oidc`, `keycloak`, `none` | `workos` is the hosted default. `oidc` and `keycloak` verify bearer/access tokens through discovery JWKS; browser callback wiring is deployment-specific. |
+| Billing | `stripe`, `none` | `stripe` supports subscriptions, top-ups, portal sessions, and webhooks. Use `none` for private deployments. |
+| Object storage | `r2`, `s3`, `none` | `r2` is the hosted default. `s3` covers AWS S3 and compatible enterprise object stores. Keep compatible stores under `s3`; set `storage.s3.forcePathStyle=true` only when required. |
+| Models | `openrouter`, `ai-gateway`, `openai`, `anthropic`, `groq`, `none` | All listed model providers have active routing paths except `none`, which intentionally disables generation. |
+| Database | `convex`, `postgres` | `convex` is supported. `postgres` is declared for future adapter work and rejected at boot today. |
 
-## Billing
+## Enterprise Provider Families
 
-Supported runtime choices:
+| Purpose | Values | Data processed | Current support |
+| --- | --- | --- | --- |
+| Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | `convex` and `none` are supported. `pgvector` and `pinecone` are declared but rejected until adapters exist. |
+| Embeddings | `ai-gateway`, `openai`, `azure-openai`, `none` | Text chunks sent for embedding | `ai-gateway`, `openai`, and `none` are current paths. `azure-openai` is declared but rejected until implemented. |
+| Integrations | `composio`, `mcp`, `none` | Connected-account metadata and tool inputs/outputs | `composio` and `none` are supported. `mcp` is declared but rejected as a provider family until bootstrap wiring exists. |
+| Browser use | `browser-use`, `self-hosted-playwright`, `none` | Browser tasks, page content, and entered credentials | `browser-use` and `none` are supported. `self-hosted-playwright` is declared but rejected until an adapter exists. |
+| Sandboxes | `daytona`, `e2b`, `local-firecracker`, `none` | Commands, staged files, and generated artifacts | `daytona` and `none` are supported. `e2b` and `local-firecracker` are declared but rejected until adapters exist. |
+| Web search | `ai-gateway`, `perplexity`, `tavily`, `none` | Search queries and result snippets | `ai-gateway` and `none` are supported. Direct `perplexity` and `tavily` are declared but rejected until adapters exist. |
+| Analytics | `posthog`, `none` | Pageviews and product events | `posthog` and `none` are supported. Set feature and provider to disabled values to avoid SDK initialization. |
+| Error reporting | `sentry`, `none` | Error events and sanitized stack/request metadata | `sentry` and `none` are supported. Set feature and provider to disabled values to avoid initialization. |
+| Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | `env` is the general runtime path. `workos-vault` exists for selected provider-key flows. AWS Secrets Manager and Vault are declared but rejected for runtime secret loading. |
+| Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | `convex`, `memory`, and `none` are supported. `redis` is declared but rejected until enterprise config wiring exists. |
 
-- `stripe`: subscriptions, top-ups, portal sessions, and webhooks.
-- `none`: billing UI and billing routes are disabled or blocked.
+## Disable External Processors
 
-For local Stripe webhook testing:
+For a private deployment, disable high-risk external processors explicitly:
 
-```bash
-stripe listen --forward-to localhost:3000/api/webhooks/stripe
+```json
+{
+  "features": {
+    "integrations": false,
+    "browserUse": false,
+    "sandboxes": false,
+    "webSearch": false,
+    "analytics": false,
+    "errorReporting": false
+  },
+  "providers": {
+    "integrations": { "provider": "none" },
+    "browser": { "provider": "none" },
+    "sandbox": { "provider": "none" },
+    "webSearch": { "provider": "none" },
+    "analytics": { "provider": "none" },
+    "errorReporting": { "provider": "none" }
+  }
+}
 ```
 
-## Storage
-
-Supported runtime choices:
-
-- `r2`: Cloudflare R2, the hosted default.
-- `s3`: AWS S3 or compatible storage.
-- `none`: uploads are intentionally unavailable.
-
-Object access must remain private and owner-scoped. Browser clients should receive only short-lived, validated upload or download URLs.
-For S3-compatible storage that requires path-style access, keep `provider` as `s3` and set `storage.s3.forcePathStyle=true`.
-
-## LLM gateway
-
-Supported runtime choices:
-
-- `openrouter`
-- `ai-gateway`
-- `openai`
-- `anthropic`
-- `groq`
-- `none`
-
-The browser app should not call provider APIs directly. Route handlers and provider adapters mediate model access, key use, usage accounting, and capability checks.
+For strict deployments, combine this with `compliance.allowExternalProcessors=false` and allowlist only approved processors such as `models:openai` or `objectStorage:s3`.

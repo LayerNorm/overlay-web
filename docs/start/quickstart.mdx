@@ -11,6 +11,10 @@ description: "Run Overlay Web locally against the development Convex backend."
 - WorkOS credentials for sign-in flows.
 - Stripe test credentials when testing billing.
 
+## What This Runs
+
+The local web app starts the Next.js browser shell, `/api/v1` route wrappers, server-side provider adapters, and Convex-backed app state. External processors such as browser automation, sandboxes, web search, analytics, and error reporting are controlled by runtime config and can be disabled for private deployments.
+
 ## Install
 
 ```bash

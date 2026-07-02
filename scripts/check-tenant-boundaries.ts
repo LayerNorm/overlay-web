@@ -9,7 +9,7 @@ type ConvexTableAuditRow = {
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const schemaPath = path.join(root, 'convex/schema.ts')
-const tenancyDocPath = path.join(root, 'docs/TENANCY.md')
+const tenancyDocPath = path.join(root, 'docs/deploy-operate/tenancy.mdx')
 
 async function main() {
   const [schemaSource, tenancyDoc] = await Promise.all([
@@ -38,18 +38,20 @@ async function main() {
 
   if (stale.length > 0) {
     failed = true
-    console.error('FAIL tenant-boundaries: docs/TENANCY.md lists tables not found in convex/schema.ts:')
+    console.error('FAIL tenant-boundaries: docs/deploy-operate/tenancy.mdx lists tables not found in convex/schema.ts:')
     for (const tableName of stale) console.error(`  - ${tableName}`)
   }
 
   if (!tenancyDoc.includes('API keys') || !tenancyDoc.includes('Webhook')) {
     failed = true
-    console.error('FAIL tenant-boundaries: docs/TENANCY.md must state tenant behavior for API keys and webhooks')
+    console.error('FAIL tenant-boundaries: docs/deploy-operate/tenancy.mdx must state tenant behavior for API keys and webhooks')
   }
 
-  if (!tenancyDoc.includes('single-customer deployment') || !tenancyDoc.includes('Phase 6b')) {
+  if (!tenancyDoc.includes('single-customer deployment') || !tenancyDoc.includes('shared multi-tenant deployment')) {
     failed = true
-    console.error('FAIL tenant-boundaries: docs/TENANCY.md must state the current single-customer model and Phase 6b boundary')
+    console.error(
+      'FAIL tenant-boundaries: docs/deploy-operate/tenancy.mdx must state the current single-customer model and shared multi-tenant boundary',
+    )
   }
 
   if (failed) process.exit(1)

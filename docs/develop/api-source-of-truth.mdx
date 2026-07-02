@@ -2,9 +2,6 @@
 title: "API Routes As Source Of Truth"
 description: "Why the web app owns backend route contracts and how other surfaces should consume them."
 ---
-
-<!-- DO NOT EDIT — synced from docs/ by scripts/sync-docs-to-site.mjs — run `npm run docs:sync` to regenerate -->
-
 The web app owns backend route contracts for every surface. Desktop, mobile, Chrome, and future surfaces should call the same `/api/v1/*` endpoints through `@overlay/api-client` rather than copying route-specific fetch logic.
 
 ## Rules

@@ -188,7 +188,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-For complete environment setup, see [`docs/development.md`](docs/development.md).
+For complete environment setup, see [`docs/start/quickstart.mdx`](docs/start/quickstart.mdx) and [`docs/configure/environment.mdx`](docs/configure/environment.mdx).
 
 ### Convex Workflow
 
@@ -231,7 +231,7 @@ Overlay uses a split license model:
 - Reusable SDKs, contracts, protocol packages, and shared UI packages are licensed under `Apache-2.0`.
 - Overlay branding is governed by the trademark policy.
 
-See [`LICENSE.md`](LICENSE.md), [`docs/LICENSING.md`](docs/LICENSING.md), and [`TRADEMARKS.md`](TRADEMARKS.md).
+See [`LICENSE.md`](LICENSE.md), [`docs/legal/licensing.mdx`](docs/legal/licensing.mdx), and [`TRADEMARKS.md`](TRADEMARKS.md).
 
 ---
 

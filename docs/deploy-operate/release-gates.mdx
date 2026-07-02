@@ -2,18 +2,15 @@
 title: "Release Gates"
 description: "Checks to run before shipping web app or self-hosting changes."
 ---
-
-<!-- DO NOT EDIT — synced from docs/ by scripts/sync-docs-to-site.mjs — run `npm run docs:sync` to regenerate -->
-
-Run this gate before handing an on-prem build to a customer or merging Phase 6 runtime/provider changes toward production:
+Run this gate before handing an on-prem build to a customer or merging runtime/provider changes toward production:
 
 ```bash
 npm run check:phase6
 ```
 
-The command runs config validation, self-hosting docs validation, license checks, shared/module boundary checks, provider checks, targeted Phase 6 route tests, typecheck, and `next build`.
+The command runs config validation, docs health checks, license checks, shared/module boundary checks, provider checks, targeted enterprise route tests, typecheck, and `next build`.
 
-For faster local iteration on only the Phase 6 route/provider contract:
+For faster local iteration on only the enterprise route/provider contract:
 
 ```bash
 npm run test:phase6-routes
@@ -78,10 +75,16 @@ When a capability is disabled, the UI must hide or disable the feature and the s
 | `vectorSearch` | Knowledge search and memory-only routes are blocked; basic file listing and file content routes remain available. |
 | `automations` | Automation navigation and runner callbacks are blocked or hidden. |
 | `sso` | SSO buttons and provider callbacks are hidden or disabled when auth is intentionally disabled. |
+| `integrations` | Integration account linking, Composio preload, and integration tools are unavailable. |
+| `browserUse` | Browser task UI and `/api/v1/browser-task` return disabled capability responses. |
+| `sandboxes` | Sandbox execution UI and `/api/v1/daytona/run` return disabled capability responses. |
+| `webSearch` | Gateway search tools are not exposed to model/tool routing. |
+| `analytics` | PostHog client/server initialization and capture are disabled. |
+| `errorReporting` | Sentry client/server initialization and capture are disabled. |
 
 ## Manual UI Gate
 
-Manual QA is required because Phase 6.7 intentionally does not add browser automation tooling.
+Manual QA is required for enterprise handoff because these checks cover customer-visible integration states that are not fully represented by route tests.
 
 SaaS staging:
 

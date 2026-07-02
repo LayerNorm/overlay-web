@@ -151,7 +151,7 @@ export function createArchitectureBoundaryConfigs() {
     },
   })
 
-  // Existing Phase 1 migration debt is documented in docs/migration-notes.md.
+  // Existing migration debt is documented in internal-docs/migration-notes.md.
   // Keep these visible as warnings so production builds do not fail before the
   // remaining feature composition work burns the debt down. New files still fail.
   configs.push({

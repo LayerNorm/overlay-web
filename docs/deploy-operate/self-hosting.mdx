@@ -2,14 +2,11 @@
 title: "Self-Hosting"
 description: "Run Overlay Web outside the hosted SaaS environment."
 ---
+This guide covers the current runtime configuration path for running Overlay outside the default Vercel, WorkOS, Stripe, and Cloudflare R2 SaaS setup.
 
-<!-- DO NOT EDIT — synced from docs/ by scripts/sync-docs-to-site.mjs — run `npm run docs:sync` to regenerate -->
+For tenant boundaries and enterprise role modeling, see [Tenancy And Role Model](/deploy-operate/tenancy). The short version: self-hosted and managed-cloud enterprise deployments are single-customer deployments; students, teachers, parents, admins, departments, and classes are roles or groups inside that deployment, not tenants.
 
-This guide covers the Phase 6 runtime configuration path for running Overlay outside the default Vercel, WorkOS, Stripe, and Cloudflare R2 SaaS setup.
-
-For tenant boundaries and enterprise role modeling, see [Tenancy And Role Model](tenancy). The short version: self-hosted and managed-cloud enterprise deployments are single-customer deployments; students, teachers, parents, admins, departments, and classes are roles or groups inside that deployment, not tenants.
-
-For licensing and brand constraints, see [Licensing](../legal/licensing) and [Legal Self-Hosting Notes](../legal/self-hosting-obligations). The short version: core product code is `AGPL-3.0-or-later`, reusable SDK/contract packages are `Apache-2.0`, and modified distributions need their own branding unless LayerNorm Inc. gives written permission.
+For licensing and brand constraints, see [Licensing](/legal/licensing) and [Legal Self-Hosting Notes](/legal/self-hosting-obligations). The short version: core product code is `AGPL-3.0-or-later`, reusable SDK/contract packages are `Apache-2.0`, and modified distributions need their own branding unless LayerNorm Inc. gives written permission.
 
 The app now loads configuration from three layers, highest precedence first:
 
@@ -17,7 +14,7 @@ The app now loads configuration from three layers, highest precedence first:
 2. `OVERLAY_CONFIG_FILE`, normally `overlay.config.json`.
 3. The default config in `src/shared/config/defaultOverlayRuntimeConfig.ts`.
 
-Use the examples in [Deployment Profiles](#deployment-profiles) as starting points. They are validated by `npm run docs:check:self-hosting`.
+Use the examples in [Deployment Profiles](#deployment-profiles) as starting points. They are validated by `npm run docs:health`.
 
 ## Required Environment Variables
 
@@ -114,16 +111,16 @@ Validate a config before booting the app:
 
 ```bash
 OVERLAY_CONFIG_FILE=overlay.config.json npm run check:config
-npm run docs:check:self-hosting
+npm run docs:health
 ```
 
-Before an on-prem release, run the complete Phase 6 gate:
+Before an on-prem release, run the complete enterprise release gate:
 
 ```bash
 npm run check:phase6
 ```
 
-The manual UI checklist is in [Phase 6 Release Gates](release-gates).
+The manual UI checklist is in [Release Gates](/deploy-operate/release-gates).
 
 ## Deployment Profiles
 
@@ -370,31 +367,12 @@ npm run dev:with-convex
 
 Do not pass `.env.local` to production `convex deploy`; that file usually points at the dev slug. Use the package scripts so prod and dev deploys stay separate.
 
-## Phase 5 API Route Cleanup Migration Notes
-
-The legacy app API compatibility surface has been removed. Clients must call `/api/v1/*`.
-
-Required client changes:
-
-- File content URLs must use `/api/v1/files/...`.
-- Output content URLs must use `/api/v1/outputs/...` when output routes are present.
-- Automation runner callbacks must use `/api/v1/automations/...`.
-- Generated URLs from Convex must match the web route surface deployed in front of them.
-
-Deployment ordering:
-
-1. Deploy the web app that supports `/api/v1/*`.
-2. Then push Convex functions that produce `/api/v1/*` URLs.
-3. Do not push production Convex URL producer changes before the production web app supports those routes.
-
-If staging points at the dev Convex deployment, keep staging web env and dev Convex producers aligned. If production points at prod Convex, keep production web env and prod Convex producers aligned.
-
 ## Verification
 
 Programmatic checks:
 
 ```bash
-npm run docs:check:self-hosting
+npm run docs:health
 npm run check:config
 npm run typecheck
 ```

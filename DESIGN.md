@@ -8,13 +8,13 @@ Overlay should market itself the way the app behaves: calm, direct, neutral, fas
 
 Reference URLs: [Aqua](https://aquavoice.com/), [Applied Intuition](https://www.appliedintuition.com/), [Context](https://context.ai/). Local reference: `Aqua Voice - Fast and Accurate Voice Dictation for Mac and Windows.html`.
 
-![Aqua supplied reference](docs/design-assets/reference-aqua-hero.png)
+![Aqua supplied reference](internal-docs/design-assets/reference-aqua-hero.png)
 
-![Applied Intuition supplied reference](docs/design-assets/reference-applied-intuition.png)
+![Applied Intuition supplied reference](internal-docs/design-assets/reference-applied-intuition.png)
 
-![Live Aqua capture](docs/design-assets/browser-aqua-home.png)
+![Live Aqua capture](internal-docs/design-assets/browser-aqua-home.png)
 
-![Live Context capture](docs/design-assets/browser-context-home.png)
+![Live Context capture](internal-docs/design-assets/browser-context-home.png)
 
 Keep from Aqua: minimal copy, soft white space, one strong product action, demonstrative first viewport.
 
@@ -26,19 +26,19 @@ Avoid copying any one site. Overlay should feel like a precise desktop product, 
 
 ## Current Overlay Evidence
 
-![Current home light](docs/design-assets/overlay-current-home-light.png)
+![Current home light](internal-docs/design-assets/overlay-current-home-light.png)
 
-![Current home dark](docs/design-assets/overlay-current-home-dark.png)
+![Current home dark](internal-docs/design-assets/overlay-current-home-dark.png)
 
 The current marketing pages match the app tokens but not the app experience. They are mostly centered copy and repeated cards. The new pages need more product surface in the first viewport.
 
-![App chat light](docs/design-assets/overlay-current-app-chat-light.png)
+![App chat light](internal-docs/design-assets/overlay-current-app-chat-light.png)
 
-![App chat dark](docs/design-assets/overlay-current-app-chat-dark.png)
+![App chat dark](internal-docs/design-assets/overlay-current-app-chat-dark.png)
 
-![Model picker light](docs/design-assets/overlay-model-menu-light.png)
+![Model picker light](internal-docs/design-assets/overlay-model-menu-light.png)
 
-![Connect tools light](docs/design-assets/overlay-connect-tools-light.png)
+![Connect tools light](internal-docs/design-assets/overlay-connect-tools-light.png)
 
 The app language to preserve:
 
@@ -51,7 +51,7 @@ The app language to preserve:
 
 ## Target Concept
 
-![Overlay marketing concept board](docs/design-assets/overlay-marketing-concept-board.png)
+![Overlay marketing concept board](internal-docs/design-assets/overlay-marketing-concept-board.png)
 
 This board is directional only. Use its structure and density, not its exact generated text.
 

@@ -2,10 +2,7 @@
 title: "Web Architecture"
 description: "How Overlay Web routes, services, schemas, and feature modules fit together."
 ---
-
-<!-- DO NOT EDIT — synced from docs/ by scripts/sync-docs-to-site.mjs — run `npm run docs:sync` to regenerate -->
-
-Overlay is a Next.js app backed by Convex, WorkOS, Stripe, R2, and server-mediated AI/tool providers.
+Overlay is a Next.js app backed by Convex, server-mediated provider adapters, and runtime-configurable auth, billing, storage, model, tool, and telemetry providers.
 
 ## Source Of Truth
 
@@ -18,12 +15,12 @@ Overlay is a Next.js app backed by Convex, WorkOS, Stripe, R2, and server-mediat
 - `packages/overlay-app-core/**` holds shared cross-surface contracts and UI settings types.
 - `packages/overlay-api-client/**` holds typed transport wrappers for `/api/v1/**`.
 
-Clients should not call model providers, Stripe, WorkOS admin APIs, R2, or Convex directly unless a route explicitly exists for that surface.
+Clients should not call model providers, billing providers, identity admin APIs, object storage, or Convex directly unless a route explicitly exists for that surface.
 
 ## Auth
 
 - Browser auth uses the signed httpOnly `overlay_session` cookie.
-- Native/mobile/desktop auth uses WorkOS bearer access tokens against the same `/api/v1/*` backend.
+- Native/mobile/desktop auth uses supported bearer access tokens against the same `/api/v1/*` backend.
 - Internal server-to-server calls use short-lived service auth from `src/server/auth/service-auth.ts`.
 - Shared route authentication flows through the API boundary helpers in `src/server/auth/app-api-auth.ts`.
 
@@ -37,7 +34,7 @@ New clients should start from this route and reuse existing API contracts before
 
 ## Billing
 
-Stripe is used for subscriptions, top-ups, auto top-up preferences, customer portal sessions, and webhook events. Convex is the durable entitlement/usage source of truth after webhook processing.
+Stripe is the hosted billing provider for subscriptions, top-ups, auto top-up preferences, customer portal sessions, and webhook events. Private deployments can disable billing with runtime config. Convex is the durable entitlement/usage source of truth after webhook processing.
 
 Important code:
 
@@ -54,7 +51,7 @@ Important code:
 
 ## Storage
 
-Uploaded files and generated assets are stored through server-mediated flows. R2 object access must remain private and owner-scoped; users should only receive short-lived, validated access.
+Uploaded files and generated assets are stored through server-mediated flows. R2 and S3-compatible object access must remain private and owner-scoped; users should only receive short-lived, validated access.
 
 ## Convex
 

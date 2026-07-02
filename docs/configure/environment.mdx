@@ -3,44 +3,64 @@ title: "Environment Variables"
 description: "Required and optional web runtime variables for Overlay Web."
 ---
 
-## Required web runtime
+Environment variables override `overlay.config.json`. Put secrets in the runtime secret manager; keep JSON config focused on non-secret deployment shape.
 
-Set real values locally and in deployed environments:
+## Base Runtime
+
+| Variable | Required when | Notes |
+| --- | --- | --- |
+| `NEXT_PUBLIC_APP_URL` | Deployed environments | Public browser URL for the web app. |
+| `NEXT_PUBLIC_CONVEX_URL` | App talks to Convex | Public Convex deployment URL for the selected environment. |
+| `DEV_NEXT_PUBLIC_CONVEX_URL` | Local dev with separate dev backend | Preferred for local work against the development Convex deployment. |
+| `OVERLAY_CONFIG_FILE` | JSON runtime config | Absolute or repo-relative path, usually `overlay.config.json`; Docker mounts it at `/app/overlay.config.json`. |
+| `INTERNAL_API_SECRET` | Always | Shared app-to-Convex secret. The matching Convex deployment must have the same value. |
+| `INTERNAL_SERVICE_AUTH_SECRET` | App runtime only | Internal service auth secret. Do not put this in Convex. |
+| `SESSION_SECRET` | Cookie sessions | Long, random, environment-specific app secret. |
+| `SESSION_TRANSFER_KEY` | Native/session transfer flows | App runtime only. |
+| `SESSION_COOKIE_ENCRYPTION_KEY` | Encrypted session cookie payloads | App runtime only. |
+| `API_KEY_HASH_SECRET` | `apiKeys` enabled | HMAC pepper for API key hashes. |
+
+## Provider Variables
+
+| Provider family | Variables |
+| --- | --- |
+| WorkOS auth | `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`; dev fallback uses `DEV_WORKOS_CLIENT_ID`, `DEV_WORKOS_API_KEY`. |
+| OIDC auth | `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_AUDIENCE`. |
+| Keycloak auth | `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`, `KEYCLOAK_REALM`. |
+| Stripe billing | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PAID_UNIT_PRICE_ID`, `STRIPE_TOPUP_UNIT_PRICE_ID`, `STRIPE_PORTAL_CONFIGURATION_ID`; dev fallback uses `DEV_STRIPE_SECRET_KEY`, `DEV_STRIPE_WEBHOOK_SECRET`. |
+| R2 storage | `R2_ACCOUNT_ID`, `R2_BUCKET_NAME`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `S3_API`. |
+| S3-compatible storage | `S3_BUCKET_NAME`, `S3_REGION`, `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE`. |
+| Models | `OPENROUTER_API_KEY`, `AI_GATEWAY_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `LLM_API_KEY_ENV_VAR`, `DEFAULT_CHAT_MODEL_ID`, `LLM_MODEL_ALLOWLIST`. |
+| Integrations and provider keys | `PROVIDER_KEYS_SECRET`, `HOOKS_TOKEN_SALT`. |
+| Telemetry | `NEXT_PUBLIC_POSTHOG_TOKEN`, `NEXT_PUBLIC_POSTHOG_HOST`, `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`. |
+
+## Private Deployment Defaults
+
+For private deployments, disable unapproved processors in both server and client-visible env:
 
 ```bash
-NEXT_PUBLIC_CONVEX_URL=
-DEV_NEXT_PUBLIC_CONVEX_URL=
-NEXT_PUBLIC_APP_URL=
-DEV_NEXT_PUBLIC_APP_URL=
+OVERLAY_FEATURE_INTEGRATIONS=false
+OVERLAY_FEATURE_BROWSER_USE=false
+OVERLAY_FEATURE_SANDBOXES=false
+OVERLAY_FEATURE_WEB_SEARCH=false
+OVERLAY_FEATURE_ANALYTICS=false
+OVERLAY_FEATURE_ERROR_REPORTING=false
+NEXT_PUBLIC_OVERLAY_FEATURE_ANALYTICS=false
+NEXT_PUBLIC_OVERLAY_FEATURE_ERROR_REPORTING=false
 
-SESSION_SECRET=
-INTERNAL_API_SECRET=
-SESSION_TRANSFER_KEY=
-SESSION_COOKIE_ENCRYPTION_KEY=
-PROVIDER_KEYS_SECRET=
-HOOKS_TOKEN_SALT=
-
-WORKOS_CLIENT_ID=
-WORKOS_API_KEY=
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
+OVERLAY_PROVIDER_INTEGRATIONS=none
+OVERLAY_PROVIDER_BROWSER=none
+OVERLAY_PROVIDER_SANDBOX=none
+OVERLAY_PROVIDER_WEB_SEARCH=none
+OVERLAY_PROVIDER_ANALYTICS=none
+OVERLAY_PROVIDER_ERROR_REPORTING=none
 ```
 
-Use separate values for development and production. Production app variables must point at the production Convex deployment, WorkOS app, Stripe mode, and public app URL.
+## Convex Placement
 
-## Optional integrations
+Convex needs only the secrets used by Convex functions. For the normal web path, configure:
 
-```bash
-AI_GATEWAY_API_KEY=
-NEXT_PUBLIC_POSTHOG_TOKEN=
-NEXT_PUBLIC_POSTHOG_HOST=
-SENTRY_DSN=
-NEXT_PUBLIC_SENTRY_DSN=
-```
-
-Provider-specific keys are needed only when exercising those features.
-
-## Secret placement
+- `INTERNAL_API_SECRET`, matching the app runtime.
 
 Session and crypto secrets belong only on the Next.js app runtime:
 
@@ -49,14 +69,10 @@ Session and crypto secrets belong only on the Next.js app runtime:
 - `SESSION_COOKIE_ENCRYPTION_KEY`
 - `INTERNAL_SERVICE_AUTH_SECRET`
 
-Convex deployments need `INTERNAL_API_SECRET` matching the app environment. Do not put browser session encryption secrets in Convex.
-
-## Development vs production Convex
-
-Development commonly uses `DEV_NEXT_PUBLIC_CONVEX_URL` with `.env.development.local`. Production uses `NEXT_PUBLIC_CONVEX_URL`.
-
-After editing `convex/`, run:
+After editing `convex/`, push both deployments:
 
 ```bash
 npm run convex:push:all
 ```
+
+Do not pass `.env.local` to production Convex deploy commands; use the package scripts so production and development deployments receive the right environment.

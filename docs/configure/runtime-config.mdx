@@ -1,6 +1,6 @@
 ---
 title: "Runtime Config"
-description: "Configure Overlay Web with overlay.config.json and environment overrides."
+description: "Configure Overlay Web with overlay.config.json, feature gates, and environment overrides."
 ---
 
 Overlay Web loads runtime configuration in this precedence order:
@@ -9,34 +9,102 @@ Overlay Web loads runtime configuration in this precedence order:
 2. `OVERLAY_CONFIG_FILE`, normally `overlay.config.json`.
 3. Defaults in `src/shared/config/defaultOverlayRuntimeConfig.ts`.
 
-Use environment variables for secrets. Use JSON config for non-secret deployment shape such as provider choices, storage bucket names, capability flags, and CSP additions.
+Use environment variables for secrets. Use JSON config for non-secret deployment shape: provider choices, storage buckets, feature gates, compliance metadata, CSP additions, and model defaults.
 
-## Create a config file
-
-```bash
-cp docs/config/onprem-minimal.example.json overlay.config.json
-OVERLAY_CONFIG_FILE=overlay.config.json npm run dev
-```
-
-Validate before booting or deploying:
+## Create A Config
 
 ```bash
+cp docs/config/enterprise-private.example.json overlay.config.json
 OVERLAY_CONFIG_FILE=overlay.config.json npm run check:config
-npm run docs:check:self-hosting
+npm run docs:health
 ```
 
-## Main sections
+For Docker-based on-prem startup:
+
+```bash
+cp .env.onprem.example .env.onprem
+cp docs/config/enterprise-private.example.json overlay.config.json
+docker compose -f docker-compose.onprem.yml up --build
+```
+
+## Top-Level Shape
 
 | Section | Purpose |
 | --- | --- |
+| `configVersion` | Use `2` for explicit enterprise runtime config. Older config shapes are normalized internally. |
+| `preset` | Deployment preset: `saas-default`, `onprem-minimal`, `enterprise-private`, or `dpdp-strict`. |
 | `app` | Public URL, deployment environment, CSP connect-src additions, and public env keys. |
-| `auth` | WorkOS, OIDC, Keycloak, or disabled auth selection. |
-| `billing` | Stripe or disabled billing. |
-| `storage` | R2, S3-compatible storage, or disabled object storage. |
-| `llm` | Gateway provider, provider key source, default model, and allowlist. |
-| `database` | Convex URL/deployment and internal API secret mapping. |
-| `capabilities` | Feature booleans consumed by browser UI and route guards. |
+| `compliance` | Compliance profile, minor mode metadata, external processor policy, allowed processors/regions, and retention defaults. |
+| `features` | Boolean gates for product areas and external processor surfaces. |
+| `providers` | Grouped provider selectors for auth, database, storage, models, tools, telemetry, secrets, and rate limits. |
+| `auth`, `billing`, `storage`, `llm`, `database`, `capabilities` | Backward-compatible provider/config sections still consumed by current adapters. |
 
-## Capability flags
+## Presets
 
-Capability flags hide unsupported UI and also gate server routes. UI hiding is not an authorization boundary. Routes must still return deterministic disabled-capability responses when a feature is unavailable.
+| Preset | Intended use |
+| --- | --- |
+| `saas-default` | Current hosted WorkOS, Stripe, R2, OpenRouter-style deployment. |
+| `onprem-minimal` | Shell/config smoke tests with risky providers disabled. |
+| `enterprise-private` | OIDC, S3-compatible storage, direct model provider, no billing, no telemetry by default. |
+| `dpdp-strict` | Minor-mode metadata, external processors disabled by default, and explicit allowlists for approved processors. |
+
+## Feature Gates
+
+Feature gates must be enforced in UI and server routes. Disabled server routes return `capability_disabled`.
+
+| Feature | Typical enterprise use |
+| --- | --- |
+| `chat`, `files`, `memory`, `knowledge`, `automations` | Core product surfaces that can be enabled independently. |
+| `integrations`, `browserUse`, `sandboxes`, `webSearch` | External processor surfaces; disable by default until the enterprise approves the processor. |
+| `analytics`, `errorReporting` | Telemetry surfaces; disable for private/no-telemetry deployments. |
+| `billing`, `webhooks`, `apiKeys`, `vectorSearch`, `modelRouting`, `sso` | Commercial, platform, retrieval, model, and auth surfaces. |
+| `multiTenant` | Reserved. The schema rejects enabling this until shared multi-tenant isolation exists. |
+
+## Environment Overrides
+
+Common overrides:
+
+```bash
+OVERLAY_CONFIG_VERSION=2
+OVERLAY_CONFIG_PRESET=enterprise-private
+OVERLAY_COMPLIANCE_PROFILE=enterprise-private
+OVERLAY_ALLOW_EXTERNAL_PROCESSORS=false
+OVERLAY_ALLOWED_PROCESSORS=models:openai,objectStorage:s3
+
+OVERLAY_FEATURE_BROWSER_USE=false
+OVERLAY_FEATURE_SANDBOXES=false
+OVERLAY_FEATURE_INTEGRATIONS=false
+OVERLAY_FEATURE_WEB_SEARCH=false
+OVERLAY_FEATURE_ANALYTICS=false
+OVERLAY_FEATURE_ERROR_REPORTING=false
+
+OVERLAY_PROVIDER_BROWSER=none
+OVERLAY_PROVIDER_SANDBOX=none
+OVERLAY_PROVIDER_INTEGRATIONS=none
+OVERLAY_PROVIDER_WEB_SEARCH=none
+OVERLAY_PROVIDER_ANALYTICS=none
+OVERLAY_PROVIDER_ERROR_REPORTING=none
+```
+
+Storage overrides:
+
+```bash
+STORAGE_PROVIDER=s3
+S3_BUCKET_NAME=overlay-enterprise
+S3_REGION=us-east-1
+S3_ENDPOINT_URL=https://s3.enterprise.example.com
+S3_ACCESS_KEY_ID=replace_with_s3_access_key
+S3_SECRET_ACCESS_KEY=replace_with_s3_secret
+S3_FORCE_PATH_STYLE=false
+```
+
+## Validation
+
+Run these before booting or publishing config docs:
+
+```bash
+OVERLAY_CONFIG_FILE=overlay.config.json npm run check:config
+npm run docs:health
+```
+
+The config parser rejects unsupported-but-declared providers with explicit boot errors. That means a future value such as `postgres`, `pgvector`, `e2b`, or `self-hosted-playwright` can exist in schema/docs, but selecting it before an adapter exists fails fast instead of silently falling back.

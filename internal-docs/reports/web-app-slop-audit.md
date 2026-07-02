@@ -14,7 +14,7 @@ The codebase is **better than typical** on the metrics that usually scream "slop
 near-zero `TODO/FIXME` (1), few `any` annotations (9), no exact-duplicate file groups, and a
 clean architecture with **enforced** layer boundaries, an isomorphic-shared checker, and a
 complexity budget tracked in CI tooling (`scripts/report-web-complexity.mjs`). The team is
-already running phased cleanup (`docs/reports/web-dead-code-audit.md`,
+already running phased cleanup (`internal-docs/reports/web-dead-code-audit.md`,
 `web-complexity-phase1-audit.md`).
 
 The real slop is concentrated in a handful of high-leverage places:
@@ -52,7 +52,7 @@ A single client component conflates almost every chat concern. Measured hook den
 
 It is recognized as the worst offender by the repo's own tooling — it's in both the
 `largeProductionFiles` allowlist and `complexFunctionCounts` of
-`docs/reports/web-app-complexity-baseline.json`, and is one of the documented legacy
+`internal-docs/reports/web-app-complexity-baseline.json`, and is one of the documented legacy
 boundary-debt files.
 
 ### What's conflated in one file
@@ -237,7 +237,7 @@ makes future refactors noisy.
 2. **Unused re-export file:** `src/features/chat/components/GenerationModeToggle.tsx` re-exports
    from `@overlay/ui/chat` but nothing imports it (verified via grep). **Fix:** delete it.
 
-3. The dead-code/complexity audits in `docs/reports/` should be regenerated periodically
+3. The dead-code/complexity audits in `internal-docs/reports/` should be regenerated periodically
    (`npm run report:web-complexity`) so the baseline keeps ratcheting down.
 
 ---
@@ -280,7 +280,7 @@ makes future refactors noisy.
 
 ### Phase 3 — sustain
 - Keep migrating the documented boundary-debt files; only let the complexity/LOC baselines
-  decrease; re-run `report:web-complexity` each release and update `docs/reports/`.
+  decrease; re-run `report:web-complexity` each release and update `internal-docs/reports/`.
 
 ---
 

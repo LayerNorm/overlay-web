@@ -601,13 +601,13 @@
                     "type": "string",
                     "minLength": 1
                   },
-                  "automationId": {
+                  "runId": {
                     "type": "string",
                     "minLength": 1
                   }
                 },
                 "required": [
-                  "automationId"
+                  "runId"
                 ],
                 "additionalProperties": true
               }
@@ -1611,6 +1611,9 @@
                   "automationExecution": {
                     "type": "boolean"
                   },
+                  "automationId": {
+                    "type": "string"
+                  },
                   "mediaToolIntent": {
                     "type": "string",
                     "enum": [
@@ -1815,6 +1818,9 @@
                   },
                   "automationExecution": {
                     "type": "boolean"
+                  },
+                  "automationId": {
+                    "type": "string"
                   },
                   "mediaToolIntent": {
                     "type": "string",

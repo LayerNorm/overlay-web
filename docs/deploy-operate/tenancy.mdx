@@ -2,9 +2,6 @@
 title: "Tenancy And Role Model"
 description: "Single-customer deployment boundary, role model, and multi-tenant roadmap."
 ---
-
-<!-- DO NOT EDIT — synced from docs/ by scripts/sync-docs-to-site.mjs — run `npm run docs:sync` to regenerate -->
-
 Overlay currently uses a **single-customer deployment** model.
 
 That means the deployment boundary is the tenant boundary:
@@ -35,7 +32,7 @@ Do not add `tenantId` just to represent students, teachers, parents, departments
 | --- | --- | --- |
 | Self-hosted enterprise | Supported target | One customer per deployment. |
 | Managed-cloud enterprise | Supported target | One customer per dedicated managed deployment. |
-| Shared multi-tenant cloud | Future Phase 6b only | Multiple customers in one backend, blocked until tenant isolation is implemented. |
+| Shared multi-tenant cloud | Not supported today | Multiple customers in one backend, blocked until tenant isolation is implemented. |
 
 The current config schema rejects `capabilities.multiTenant=true`. Admin/system surfaces should report `single-customer deployment`; no tenant switcher or tenant-admin UI should appear.
 
@@ -50,7 +47,7 @@ Single-customer deployment:
 - Storage keys and generated URLs are scoped to the deployment’s object-store namespace and user checks.
 - Operational isolation comes from separate Convex deployments, object-store buckets or prefixes, secrets, domains, logs, and provider credentials.
 
-This is the required model for enterprise customers until Phase 6b exists.
+This is the required model for enterprise customers until shared multi-tenant deployment support exists.
 
 ## API Keys And Webhooks
 
@@ -59,19 +56,19 @@ API keys:
 - Current behavior: API keys are deployment-local and user-owned through `apiKeys.userId`.
 - No tenant claim is encoded or enforced because the deployment is the tenant boundary.
 - A dedicated managed-cloud enterprise must have its own `API_KEY_HASH_SECRET`.
-- Phase 6b requirement: API keys must include tenant ownership, tenant-aware scopes, tenant-aware rate-limit keys, tenant-aware audit entries, and validation that the key tenant matches the request tenant.
+- Shared multi-tenant requirement: API keys must include tenant ownership, tenant-aware scopes, tenant-aware rate-limit keys, tenant-aware audit entries, and validation that the key tenant matches the request tenant.
 
 Webhooks:
 
 - Current behavior: webhook subscriptions and deliveries are deployment-local and user-owned through `webhookSubscriptions.userId` and `webhookDeliveries.userId`.
 - No tenant routing field exists because the deployment is the tenant boundary.
-- Phase 6b requirement: webhook subscriptions, deliveries, event ownership, signing secrets, retries, and delivery runner queries must include tenant context.
+- Shared multi-tenant requirement: webhook subscriptions, deliveries, event ownership, signing secrets, retries, and delivery runner queries must include tenant context.
 
 ## Convex Table Tenant Decisions
 
 These user-owned tables intentionally do **not** have `tenantId` today because the deployment is the tenant boundary. `npm run check:tenant-boundaries` verifies that every current `userId`-owned Convex table is listed here.
 
-| Table | Current owner | Tenant decision | Phase 6b shared-deployment requirement |
+| Table | Current owner | Tenant decision | Shared multi-tenant requirement |
 | --- | --- | --- | --- |
 | `userUiSettings` | `userId` | Deployment boundary | Add `tenantId` to row and `by_tenantId_userId` indexes. |
 | `subscriptions` | `userId` | Deployment boundary | Add `tenantId`; Stripe customer/subscription indexes must include tenant ownership. |
@@ -103,14 +100,14 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `webhookSubscriptions` | `userId` | Deployment boundary | Add `tenantId`; subscriptions, signing secrets, and event ownership must be tenant-scoped. |
 | `webhookDeliveries` | `userId` | Deployment boundary | Add `tenantId`; delivery runner claims and retries must enforce tenant ownership. |
 
-The following tables are not user-owned tenant data today. They still need review in Phase 6b, but the static check only requires explicit documentation for `userId`-owned tables:
+The following tables are not user-owned tenant data today. They still need review before shared multi-tenant deployments, but the static check only requires explicit documentation for `userId`-owned tables:
 
 - `processedWebhookEvents`
 - `rateLimitWindows`
 - `serviceAuthReplayNonces`
 - `sessionTransferTokens`
 
-## Phase 6b Checklist
+## Shared Multi-Tenant Checklist
 
 Do not enable shared multi-tenant deployments until this checklist is complete:
 

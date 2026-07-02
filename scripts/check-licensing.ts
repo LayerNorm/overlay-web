@@ -44,8 +44,8 @@ const requiredDocs = [
   'LICENSE.md',
   'NOTICE.md',
   'TRADEMARKS.md',
-  'docs/LICENSING.md',
-  'docs/LEGAL_SELF_HOSTING_NOTES.md',
+  'docs/legal/licensing.mdx',
+  'docs/legal/self-hosting-obligations.mdx',
 ]
 
 const requiredDocSnippets = [
