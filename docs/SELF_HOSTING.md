@@ -42,7 +42,7 @@ Provider-specific variables:
 | `DEV_STRIPE_SECRET_KEY`, `DEV_STRIPE_WEBHOOK_SECRET` | Staging Stripe | Preferred for non-production. |
 | `STRIPE_PAID_UNIT_PRICE_ID`, `STRIPE_TOPUP_UNIT_PRICE_ID`, `STRIPE_PORTAL_CONFIGURATION_ID` | Stripe billing UI | Use matching test or live mode IDs for the selected environment. |
 | `R2_ACCOUNT_ID`, `R2_BUCKET_NAME`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `S3_API` | `storage.provider="r2"` | `S3_API` is the R2 S3-compatible endpoint. |
-| `S3_BUCKET_NAME`, `S3_REGION`, `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` | `storage.provider="s3"` or `"minio"` | Use `S3_FORCE_PATH_STYLE=true` for MinIO. |
+| `S3_BUCKET_NAME`, `S3_REGION`, `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` | `storage.provider="s3"` | Use `S3_ENDPOINT_URL` and `S3_FORCE_PATH_STYLE=true` for S3-compatible enterprise storage that needs path-style access. |
 | `OPENROUTER_API_KEY` | `llm.gatewayProvider="openrouter"` | Default SaaS-style model gateway. |
 | `AI_GATEWAY_API_KEY` | `llm.gatewayProvider="ai-gateway"` | Vercel AI Gateway compatible path. |
 | `OPENAI_API_KEY` | `llm.gatewayProvider="openai"` | Used by the active OpenAI provider adapter. |
@@ -88,7 +88,7 @@ The normalized shape is:
 | `app` | Base URL, deployment environment, CSP connect-src additions, and public env keys. |
 | `auth` | WorkOS, OIDC, Keycloak, or no-op auth selection. |
 | `billing` | Stripe or disabled billing. |
-| `storage` | R2, S3, MinIO, or no-op object store. |
+| `storage` | R2, S3-compatible storage, or no-op object store. |
 | `llm` | Gateway provider, provider key source, default model, and allowlist. |
 | `database` | Convex URL/deployment and internal server secrets. |
 | `capabilities` | Feature booleans consumed by browser UI and server route guards. |
@@ -127,7 +127,7 @@ Validated examples live under `docs/config`:
 | Profile | File | Use case |
 | --- | --- | --- |
 | SaaS staging | [saas-staging.example.json](./config/saas-staging.example.json) | WorkOS, Stripe test mode, R2, OpenRouter, API key infrastructure enabled. |
-| On-prem minimal | [onprem-minimal.example.json](./config/onprem-minimal.example.json) | No WorkOS, no Stripe, MinIO-compatible storage, no external LLM key. Good for shell and config smoke tests. |
+| On-prem minimal | [onprem-minimal.example.json](./config/onprem-minimal.example.json) | No WorkOS, no Stripe, S3-compatible storage, no external LLM key. Good for shell and config smoke tests. |
 | On-prem S3/OIDC/OpenAI | [onprem-s3-oidc-openai.example.json](./config/onprem-s3-oidc-openai.example.json) | Enterprise OIDC, S3-compatible storage, no billing, OpenAI model gateway. |
 | Enterprise private | [enterprise-private.example.json](./config/enterprise-private.example.json) | OIDC, S3, direct OpenAI model provider, no billing, no browser/sandbox/integrations/search/telemetry. |
 | DPDP strict | [dpdp-strict.example.json](./config/dpdp-strict.example.json) | Minor mode metadata, external processors disabled by default, no model routing/search/tools/telemetry. |
@@ -158,7 +158,6 @@ Storage providers:
 | --- | --- | --- |
 | `r2` | `storage.r2` | Cloudflare R2. Default SaaS storage. |
 | `s3` | `storage.s3` | S3-compatible object store. Use for AWS S3 or compatible enterprise stores. |
-| `minio` | `storage.s3` with `forcePathStyle=true` | Local/on-prem MinIO. |
 | `none` | none | No-op object store. Use only when upload flows are intentionally unavailable. |
 
 LLM providers:
@@ -177,7 +176,7 @@ Enterprise provider matrix:
 | --- | --- | --- | --- | --- |
 | Auth | `workos`, `oidc`, `keycloak`, `none` | Identity profile, session tokens, org/user metadata | Depends on IdP | Supported. OIDC/Keycloak verify bearer/access tokens through discovery JWKS; browser login wiring is deployment-specific. |
 | Database | `convex`, `postgres` | App records, messages, files metadata, usage state | Convex deployment region today | `convex` supported. `postgres` is declared but rejected until repository adapters exist. |
-| Object storage | `r2`, `s3`, `minio`, `none` | Uploaded files and generated artifacts | Bucket/provider region | Supported for R2/S3/MinIO. |
+| Object storage | `r2`, `s3`, `none` | Uploaded files and generated artifacts | Bucket/provider region | Supported for Cloudflare R2 and S3-compatible enterprise object stores. |
 | Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | Database/vector provider region | `convex` and `none` supported. `pgvector` and `pinecone` are declared but rejected until adapters exist. |
 | Embeddings | `ai-gateway`, `openai`, `azure-openai`, `none` | Text chunks sent for embedding | Provider region/policy | `ai-gateway`, `openai`, and `none` declared for current wiring. `azure-openai` is rejected until an adapter exists. |
 | Models | `openrouter`, `ai-gateway`, `openai`, `anthropic`, `groq`, `none` | User prompts, context, tool results | Model provider policy | Supported. Use `features.modelRouting=false` plus `providers.models.provider="none"` to disable. |
@@ -269,51 +268,36 @@ With OIDC instead of WorkOS:
 
 ## Docker Compose Example
 
-This is a local shape for app plus MinIO. It does not include Convex because Convex remains a hosted deployment in the current architecture.
+This is a minimal on-prem shape for the app container. It assumes the customer already has S3-compatible object storage and does not include Convex because Convex remains a hosted deployment in the current architecture.
+
+Quick start:
+
+```bash
+cp .env.onprem.example .env.onprem
+cp docs/config/enterprise-private.example.json overlay.config.json
+docker compose -f docker-compose.onprem.yml up --build
+```
+
+The root `Dockerfile` builds the Next.js app, and `docker-compose.onprem.yml` mounts `overlay.config.json` into the container. The compose file intentionally does not run object storage, auth, database, browser automation, or sandbox services; those are enterprise-owned providers selected through config.
 
 ```yaml
 services:
-  web:
-    image: node:22-bookworm
-    working_dir: /app
-    command: sh -c "npm ci && npm run build && npm run start"
+  overlay-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: overlay-web:onprem
     ports:
-      - "3000:3000"
+      - "${OVERLAY_HTTP_PORT:-3000}:3000"
+    env_file:
+      - .env.onprem
     volumes:
-      - .:/app
+      - ./overlay.config.json:/app/overlay.config.json:ro
     environment:
       OVERLAY_CONFIG_FILE: /app/overlay.config.json
-      NEXT_PUBLIC_APP_URL: http://localhost:3000
-      NEXT_PUBLIC_CONVEX_URL: https://convex-local.example.com
-      INTERNAL_API_SECRET: replace_with_local_internal_api_secret
-      INTERNAL_SERVICE_AUTH_SECRET: replace_with_local_service_auth_secret
-      SESSION_SECRET: replace_with_local_session_secret
-      SESSION_TRANSFER_KEY: replace_with_local_transfer_key
-      SESSION_COOKIE_ENCRYPTION_KEY: replace_with_local_cookie_key
-    depends_on:
-      - minio
-
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: minio_access_key_placeholder
-      MINIO_ROOT_PASSWORD: minio_secret_key_placeholder
-    volumes:
-      - minio-data:/data
-
-volumes:
-  minio-data:
-```
-
-Create the bucket from the MinIO console or CLI before testing upload flows:
-
-```bash
-mc alias set overlay-local http://localhost:9000 minio_access_key_placeholder minio_secret_key_placeholder
-mc mb overlay-local/overlay-local
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    restart: unless-stopped
 ```
 
 ## Secrets Placement
@@ -329,7 +313,7 @@ App runtime only:
 - `HOOKS_TOKEN_SALT`
 - WorkOS API key, OIDC client secret, Keycloak client secret
 - Stripe secret key, Stripe webhook secret
-- R2/S3/MinIO access key secrets
+- R2/S3 access key secrets
 - LLM provider API keys
 
 Convex:
@@ -424,6 +408,6 @@ Verify:
 - Settings loads at `http://localhost:3000/app/settings`. In the minimal no-auth profile it should show the normal sign-in gate with SSO buttons hidden.
 - Redacted system/capability state is available at `http://localhost:3000/api/v1/capabilities` in non-production environments. `/api/v1/bootstrap` also includes redacted system state after normal app authentication.
 - Billing, SSO, automations, webhooks, API key management, and vector search routes return clear disabled responses when their capabilities are false.
-- File upload requires a signed-in user and the configured object store. With the minimal no-auth profile, upload routes should return `Unauthorized`; with MinIO enabled, create the bucket first before testing authenticated uploads.
+- File upload requires a signed-in user and the configured object store. With the minimal no-auth profile, upload routes should return `Unauthorized`; with S3 enabled, create the bucket before testing authenticated uploads.
 
 If screenshots are added to this document later, verify they do not show secrets, API keys, private hostnames, or customer data.

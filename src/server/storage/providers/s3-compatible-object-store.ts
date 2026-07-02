@@ -12,7 +12,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import type { ObjectStore, ObjectSummary } from '@overlay/app-core'
 
 export interface S3CompatibleObjectStoreConfig {
-  provider?: 's3' | 'minio'
+  provider?: 's3'
   bucketName: string
   region: string
   endpointUrl?: string
@@ -27,7 +27,7 @@ export class S3CompatibleObjectStore implements ObjectStore {
   private readonly bucketName: string
   private readonly presignTtlSeconds: number
   readonly providerConfigSummary: {
-    provider: 's3' | 'minio'
+    provider: 's3'
     bucketName: string
     region: string
     endpointUrl?: string
@@ -45,7 +45,7 @@ export class S3CompatibleObjectStore implements ObjectStore {
     this.client = new S3Client({
       region: config.region,
       ...(config.endpointUrl ? { endpoint: config.endpointUrl } : {}),
-      forcePathStyle: config.forcePathStyle ?? config.provider === 'minio',
+      forcePathStyle: config.forcePathStyle,
       credentials: {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey,

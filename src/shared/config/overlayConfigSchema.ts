@@ -11,7 +11,7 @@ export const OverlayDeploymentEnvironmentSchema = z.enum([
 
 export const OverlayAuthProviderSchema = z.enum(['workos', 'oidc', 'keycloak', 'none'])
 export const OverlayBillingProviderSchema = z.enum(['stripe', 'none'])
-export const OverlayStorageProviderSchema = z.enum(['r2', 's3', 'minio', 'none'])
+export const OverlayStorageProviderSchema = z.enum(['r2', 's3', 'none'])
 export const OverlayLlmGatewayProviderSchema = z.enum([
   'openrouter',
   'ai-gateway',

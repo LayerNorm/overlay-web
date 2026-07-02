@@ -3,7 +3,7 @@
     "baseUrl": "http://localhost:3000",
     "deploymentEnvironment": "onprem",
     "cspConnectSrc": [
-      "http://localhost:9000"
+      "https://s3.enterprise.example.com"
     ],
     "publicEnv": {
       "NEXT_PUBLIC_APP_URL": "http://localhost:3000"
@@ -21,16 +21,16 @@
     "stripe": {}
   },
   "storage": {
-    "provider": "minio",
+    "provider": "s3",
     "publicUrlPolicy": "presigned",
     "r2": {},
     "s3": {
       "bucketName": "overlay-local",
       "region": "us-east-1",
-      "endpointUrl": "http://localhost:9000",
-      "accessKeyId": "minio_access_key_placeholder",
-      "secretAccessKey": "minio_secret_key_placeholder",
-      "forcePathStyle": true
+      "endpointUrl": "https://s3.enterprise.example.com",
+      "accessKeyId": "s3_access_key_placeholder",
+      "secretAccessKey": "s3_secret_key_placeholder",
+      "forcePathStyle": false
     }
   },
   "llm": {

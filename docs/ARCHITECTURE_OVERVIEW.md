@@ -20,7 +20,7 @@ Overlay is an **open-source AI workspace** unifying chat, voice notes, browser t
 | Database | Convex (real-time, reactive) |
 | Auth | WorkOS AuthKit (OIDC/Keycloak/NoOp alternatives) |
 | Billing | Stripe (subscriptions + usage-based) |
-| Object Storage | Cloudflare R2 (or S3/MinIO) |
+| Object Storage | Cloudflare R2 or S3-compatible storage |
 | LLM Gateway | OpenRouter (default), OpenAI, Anthropic, Groq |
 | AI SDK | Vercel AI SDK (`ai` v6) |
 | Code Sandbox | Daytona SDK |
@@ -132,7 +132,7 @@ Two tiers: legacy BFF routes (`/api/auth`, `/api/checkout`, `/api/webhooks`, etc
 |---|---|
 | `auth` | WorkOS, OIDC, Keycloak, NoOp |
 | `billing` | Stripe, NoOp |
-| `objectStore` | R2, S3, MinIO, NoOp |
+| `objectStore` | R2, S3-compatible, NoOp |
 | `vectorStore` | Convex, InMemory |
 | `llmGateway` | OpenRouter, OpenAI, Anthropic, Groq, NoOp |
 | `rateLimiter` | Convex, InMemory |

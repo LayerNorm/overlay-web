@@ -191,6 +191,20 @@ test('OverlayRuntimeConfigSchema rejects declared but unsupported providers', ()
   )
 })
 
+test('OverlayRuntimeConfigSchema rejects MinIO as a named storage provider', () => {
+  assert.throws(
+    () =>
+      OverlayRuntimeConfigSchema.parse({
+        ...minimalSaasConfig,
+        storage: {
+          ...minimalSaasConfig.storage,
+          provider: 'minio',
+        },
+      }),
+    /Invalid enum value[\s\S]*minio/,
+  )
+})
+
 test('OverlayRuntimeConfigSchema rejects dpdp-strict external processors unless disabled or allowlisted', () => {
   assert.throws(
     () =>
@@ -247,7 +261,7 @@ test('OverlayRuntimeConfigSchema validates on-prem OIDC/S3/OpenAI config with bi
     app: {
       baseUrl: 'https://overlay.internal.example.com',
       deploymentEnvironment: 'onprem',
-      cspConnectSrc: ['https://minio.internal.example.com'],
+      cspConnectSrc: ['https://s3.internal.example.com'],
       publicEnv: {},
     },
     auth: {
@@ -273,9 +287,9 @@ test('OverlayRuntimeConfigSchema validates on-prem OIDC/S3/OpenAI config with bi
       s3: {
         bucketName: 'overlay',
         region: 'us-east-1',
-        endpointUrl: 'https://minio.internal.example.com',
-        accessKeyId: 'minio_access',
-        secretAccessKey: 'minio_secret',
+        endpointUrl: 'https://s3.internal.example.com',
+        accessKeyId: 's3_access',
+        secretAccessKey: 's3_secret',
         forcePathStyle: true,
       },
     },

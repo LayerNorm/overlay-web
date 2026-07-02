@@ -360,7 +360,7 @@
         <tr><td><span class="tag tag-purple">Database</span></td><td>Convex (real-time, reactive queries)</td></tr>
         <tr><td><span class="tag tag-orange">Auth</span></td><td>WorkOS AuthKit (OIDC / Keycloak / NoOp alternatives)</td></tr>
         <tr><td><span class="tag tag-yellow">Billing</span></td><td>Stripe (subscriptions + usage-based top-ups)</td></tr>
-        <tr><td><span class="tag tag-orange">Storage</span></td><td>Cloudflare R2 (or S3 / MinIO)</td></tr>
+        <tr><td><span class="tag tag-orange">Storage</span></td><td>Cloudflare R2 or S3-compatible storage</td></tr>
         <tr><td><span class="tag tag-green">LLM</span></td><td>OpenRouter (default), OpenAI, Anthropic, Groq</td></tr>
         <tr><td><span class="tag tag-blue">AI SDK</span></td><td>Vercel AI SDK (<code>ai</code> v6)</td></tr>
         <tr><td><span class="tag tag-purple">Sandbox</span></td><td>Daytona SDK (code execution for agents)</td></tr>
@@ -528,7 +528,7 @@
       <tbody>
         <tr><td><code>auth</code></td><td>WorkOS, OIDC, Keycloak, NoOp</td></tr>
         <tr><td><code>billing</code></td><td>Stripe, NoOp</td></tr>
-        <tr><td><code>objectStore</code></td><td>R2, S3, MinIO, NoOp</td></tr>
+        <tr><td><code>objectStore</code></td><td>R2, S3-compatible, NoOp</td></tr>
         <tr><td><code>vectorStore</code></td><td>Convex, InMemory</td></tr>
         <tr><td><code>llmGateway</code></td><td>OpenRouter, OpenAI, Anthropic, Groq, NoOp</td></tr>
         <tr><td><code>rateLimiter</code></td><td>Convex, InMemory</td></tr>
@@ -817,7 +817,7 @@
     <pre><code>{
   auth: { provider: 'workos' | 'oidc' | 'keycloak' | 'none' },
   billing: { provider: 'stripe' | 'none' },
-  storage: { provider: 'r2' | 's3' | 'minio' | 'none' },
+  storage: { provider: 'r2' | 's3' | 'none' },
   llm: { gatewayProvider: 'openrouter' | 'openai' | 'anthropic' | 'groq' | 'none' },
   capabilities: { vectorSearch: boolean },
   app: { deploymentEnvironment: 'saas' | 'onprem' }

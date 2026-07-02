@@ -33,10 +33,10 @@ Supported runtime choices:
 
 - `r2`: Cloudflare R2, the hosted default.
 - `s3`: AWS S3 or compatible storage.
-- `minio`: S3-compatible local or on-prem storage with path-style access.
 - `none`: uploads are intentionally unavailable.
 
 Object access must remain private and owner-scoped. Browser clients should receive only short-lived, validated upload or download URLs.
+For S3-compatible storage that requires path-style access, keep `provider` as `s3` and set `storage.s3.forcePathStyle=true`.
 
 ## LLM gateway
 

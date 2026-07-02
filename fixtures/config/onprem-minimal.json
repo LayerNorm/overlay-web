@@ -3,7 +3,7 @@
     "baseUrl": "https://overlay.internal.example.com",
     "deploymentEnvironment": "onprem",
     "cspConnectSrc": [
-      "https://minio.internal.example.com"
+      "https://s3.internal.example.com"
     ],
     "publicEnv": {}
   },
@@ -30,10 +30,10 @@
     "s3": {
       "bucketName": "overlay",
       "region": "us-east-1",
-      "endpointUrl": "https://minio.internal.example.com",
-      "accessKeyId": "minio_fixture_access",
-      "secretAccessKey": "minio_fixture_secret",
-      "forcePathStyle": true
+      "endpointUrl": "https://s3.internal.example.com",
+      "accessKeyId": "s3_fixture_access",
+      "secretAccessKey": "s3_fixture_secret",
+      "forcePathStyle": false
     }
   },
   "llm": {

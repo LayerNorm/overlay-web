@@ -155,9 +155,8 @@ function createObjectStore(config: OverlayRuntimeConfig | null): ObjectStore {
     case 'r2':
       return new R2ObjectStore(config.storage.r2)
     case 's3':
-    case 'minio':
       return new S3CompatibleObjectStore({
-        provider: storageProvider as 's3' | 'minio',
+        provider: 's3',
         bucketName: config.storage.s3.bucketName ?? '',
         region: config.storage.s3.region ?? 'us-east-1',
         endpointUrl: config.storage.s3.endpointUrl,
@@ -279,15 +278,12 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
       issues.push('storage.r2.accountId or storage.r2.endpointUrl is required when storage.provider is r2')
     }
   }
-  if (storageProvider === 's3' || storageProvider === 'minio') {
+  if (storageProvider === 's3') {
     const s3 = config.storage.s3
-    if (!s3.bucketName) issues.push('storage.s3.bucketName is required when storage.provider is s3/minio')
-    if (!s3.region) issues.push('storage.s3.region is required when storage.provider is s3/minio')
-    if (!s3.accessKeyId) issues.push('storage.s3.accessKeyId is required when storage.provider is s3/minio')
-    if (!s3.secretAccessKey) issues.push('storage.s3.secretAccessKey is required when storage.provider is s3/minio')
-    if (storageProvider === 'minio' && !s3.endpointUrl) {
-      issues.push('storage.s3.endpointUrl is required when storage.provider is minio')
-    }
+    if (!s3.bucketName) issues.push('storage.s3.bucketName is required when storage.provider is s3')
+    if (!s3.region) issues.push('storage.s3.region is required when storage.provider is s3')
+    if (!s3.accessKeyId) issues.push('storage.s3.accessKeyId is required when storage.provider is s3')
+    if (!s3.secretAccessKey) issues.push('storage.s3.secretAccessKey is required when storage.provider is s3')
   }
   if (capabilities.modelRouting && modelProvider !== 'none' && config.llm.keySource === 'config') {
     issues.push('llm.keySource=config is reserved until encrypted runtime config secrets are implemented')
