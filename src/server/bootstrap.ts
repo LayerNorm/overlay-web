@@ -27,6 +27,7 @@ import { BUILT_IN_MODELS } from '@overlay/llm-gateway/models'
 import type {
   AuthProvider,
   BillingProvider,
+  CapabilityCheck,
   LLMGateway,
   ObjectStore,
   OverlayAppConfig,
@@ -34,6 +35,7 @@ import type {
   RateLimiter,
   VectorStore,
 } from '@overlay/app-core'
+import { deriveOverlayCapabilities as resolveOverlayCapabilities } from '@overlay/app-core'
 
 export interface OverlayServerContext extends OverlayProviderContext {
   noteRepository: NoteRepository
@@ -109,7 +111,7 @@ function normalizeCreateContextInput(
 function createAuthProvider(config: OverlayRuntimeConfig | null): AuthProvider {
   if (!config) return new WorkOSAuthProvider()
 
-  switch (config.auth.provider) {
+  switch (selectedProvider(config, 'auth', config.auth.provider)) {
     case 'workos':
       return new WorkOSAuthProvider({
         ...config.auth.workos,
@@ -122,10 +124,14 @@ function createAuthProvider(config: OverlayRuntimeConfig | null): AuthProvider {
     case 'none':
       return new NoOpAuthProvider()
   }
+  throw new OverlayConfigError('Overlay provider configuration is invalid', [
+    `Unsupported auth provider: ${selectedProvider(config, 'auth', config.auth.provider)}`,
+  ])
 }
 
 function createBillingProvider(config: OverlayRuntimeConfig | null): BillingProvider {
   if (!config) return new StripeBillingProvider()
+  if (!runtimeCapabilities(config).billing) return new NoOpBillingProvider()
 
   switch (config.billing.provider) {
     case 'stripe':
@@ -136,18 +142,22 @@ function createBillingProvider(config: OverlayRuntimeConfig | null): BillingProv
     case 'none':
       return new NoOpBillingProvider()
   }
+  throw new OverlayConfigError('Overlay provider configuration is invalid', [
+    `Unsupported billing provider: ${config.billing.provider}`,
+  ])
 }
 
 function createObjectStore(config: OverlayRuntimeConfig | null): ObjectStore {
   if (!config) return new R2ObjectStore()
 
-  switch (config.storage.provider) {
+  const storageProvider = selectedProvider(config, 'objectStorage', config.storage.provider)
+  switch (storageProvider) {
     case 'r2':
       return new R2ObjectStore(config.storage.r2)
     case 's3':
     case 'minio':
       return new S3CompatibleObjectStore({
-        provider: config.storage.provider,
+        provider: storageProvider as 's3' | 'minio',
         bucketName: config.storage.s3.bucketName ?? '',
         region: config.storage.s3.region ?? 'us-east-1',
         endpointUrl: config.storage.s3.endpointUrl,
@@ -158,10 +168,13 @@ function createObjectStore(config: OverlayRuntimeConfig | null): ObjectStore {
     case 'none':
       return new NoOpObjectStore()
   }
+  throw new OverlayConfigError('Overlay provider configuration is invalid', [
+    `Unsupported object storage provider: ${storageProvider}`,
+  ])
 }
 
 function createVectorStore(config: OverlayRuntimeConfig | null): VectorStore {
-  if (config && !config.capabilities.vectorSearch) {
+  if (config && (!runtimeCapabilities(config).vectorSearch || selectedProvider(config, 'vectorSearch', 'convex') === 'none')) {
     return new InMemoryVectorStore()
   }
   return new ConvexVectorStore()
@@ -169,12 +182,14 @@ function createVectorStore(config: OverlayRuntimeConfig | null): VectorStore {
 
 function createLlmGateway(config: OverlayRuntimeConfig | null): LLMGateway {
   if (!config) return new OpenRouterGateway()
+  if (!runtimeCapabilities(config).modelRouting) return new NoOpLLMGateway()
 
-  switch (config.llm.gatewayProvider) {
+  const modelProvider = selectedProvider(config, 'models', config.llm.gatewayProvider)
+  switch (modelProvider) {
     case 'openrouter':
     case 'ai-gateway':
       return new OpenRouterGateway({
-        gatewayProvider: config.llm.gatewayProvider,
+        gatewayProvider: modelProvider,
         apiKeyEnvVar: config.llm.apiKeyEnvVar,
         defaultChatModelId: config.llm.defaultChatModelId,
         modelAllowlist: config.llm.modelAllowlist,
@@ -198,6 +213,9 @@ function createLlmGateway(config: OverlayRuntimeConfig | null): LLMGateway {
     case 'none':
       return new NoOpLLMGateway()
   }
+  throw new OverlayConfigError('Overlay provider configuration is invalid', [
+    `Unsupported model provider: ${modelProvider}`,
+  ])
 }
 
 function resolveConfiguredEnvSecret(envVarName: string): string | null {
@@ -211,7 +229,10 @@ function filterRuntimeModels(modelAllowlist: readonly string[] | undefined) {
 }
 
 function createRateLimiter(config: OverlayRuntimeConfig | null): RateLimiter {
-  if (config?.app.deploymentEnvironment === 'onprem') {
+  const provider = config
+    ? selectedProvider(config, 'rateLimit', config.app.deploymentEnvironment === 'onprem' ? 'memory' : 'convex')
+    : 'convex'
+  if (provider === 'memory' || provider === 'none') {
     return new InMemoryRateLimiter()
   }
   return new ConvexRateLimiter()
@@ -219,8 +240,14 @@ function createRateLimiter(config: OverlayRuntimeConfig | null): RateLimiter {
 
 function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
   const issues: string[] = []
+  const capabilities = runtimeCapabilities(config)
+  const authProvider = selectedProvider(config, 'auth', config.auth.provider)
+  const storageProvider = selectedProvider(config, 'objectStorage', config.storage.provider)
+  const modelProvider = selectedProvider(config, 'models', config.llm.gatewayProvider)
+  const vectorSearchProvider = selectedProvider(config, 'vectorSearch', capabilities.vectorSearch ? 'convex' : 'none')
+  const rateLimitProvider = selectedProvider(config, 'rateLimit', config.app.deploymentEnvironment === 'onprem' ? 'memory' : 'convex')
 
-  if (config.auth.provider === 'workos') {
+  if (authProvider === 'workos') {
     const clientId = config.auth.workos.clientId ??
       (config.auth.allowDevFallbacks ? config.auth.workos.devClientId : undefined)
     const apiKey = config.auth.workos.apiKey ??
@@ -228,11 +255,11 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
     if (!clientId) issues.push('auth.workos.clientId is required when auth.provider is workos')
     if (!apiKey) issues.push('auth.workos.apiKey is required when auth.provider is workos')
   }
-  if (config.auth.provider === 'oidc') {
+  if (authProvider === 'oidc') {
     if (!config.auth.oidc.issuerUrl) issues.push('auth.oidc.issuerUrl is required when auth.provider is oidc')
     if (!config.auth.oidc.clientId) issues.push('auth.oidc.clientId is required when auth.provider is oidc')
   }
-  if (config.auth.provider === 'keycloak') {
+  if (authProvider === 'keycloak') {
     if (!config.auth.keycloak.issuerUrl) {
       issues.push('auth.keycloak.issuerUrl is required when auth.provider is keycloak')
     }
@@ -240,10 +267,10 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
       issues.push('auth.keycloak.clientId is required when auth.provider is keycloak')
     }
   }
-  if (config.billing.provider === 'stripe' && !config.billing.stripe.secretKey) {
+  if (capabilities.billing && config.billing.provider === 'stripe' && !config.billing.stripe.secretKey) {
     issues.push('billing.stripe.secretKey is required when billing.provider is stripe')
   }
-  if (config.storage.provider === 'r2') {
+  if (storageProvider === 'r2') {
     const r2 = config.storage.r2
     if (!r2.bucketName) issues.push('storage.r2.bucketName is required when storage.provider is r2')
     if (!r2.accessKeyId) issues.push('storage.r2.accessKeyId is required when storage.provider is r2')
@@ -252,21 +279,43 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
       issues.push('storage.r2.accountId or storage.r2.endpointUrl is required when storage.provider is r2')
     }
   }
-  if (config.storage.provider === 's3' || config.storage.provider === 'minio') {
+  if (storageProvider === 's3' || storageProvider === 'minio') {
     const s3 = config.storage.s3
     if (!s3.bucketName) issues.push('storage.s3.bucketName is required when storage.provider is s3/minio')
     if (!s3.region) issues.push('storage.s3.region is required when storage.provider is s3/minio')
     if (!s3.accessKeyId) issues.push('storage.s3.accessKeyId is required when storage.provider is s3/minio')
     if (!s3.secretAccessKey) issues.push('storage.s3.secretAccessKey is required when storage.provider is s3/minio')
-    if (config.storage.provider === 'minio' && !s3.endpointUrl) {
+    if (storageProvider === 'minio' && !s3.endpointUrl) {
       issues.push('storage.s3.endpointUrl is required when storage.provider is minio')
     }
   }
-  if (config.llm.gatewayProvider !== 'none' && config.llm.keySource === 'config') {
+  if (capabilities.modelRouting && modelProvider !== 'none' && config.llm.keySource === 'config') {
     issues.push('llm.keySource=config is reserved until encrypted runtime config secrets are implemented')
+  }
+  if (config.database.provider === 'postgres' || selectedProvider(config, 'database', config.database.provider) === 'postgres') {
+    issues.push('database.provider=postgres is declared but not implemented. Use convex until repository adapters exist.')
+  }
+  if (vectorSearchProvider !== 'convex' && vectorSearchProvider !== 'none') {
+    issues.push(`providers.vectorSearch.provider=${vectorSearchProvider} is declared but not implemented. Use convex or none.`)
+  }
+  if (rateLimitProvider === 'redis') {
+    issues.push('providers.rateLimit.provider=redis is declared but not wired. Use convex, memory, or none.')
   }
 
   if (issues.length > 0) {
     throw new OverlayConfigError('Overlay provider configuration is invalid', issues)
   }
+}
+
+function runtimeCapabilities(config: OverlayRuntimeConfig): CapabilityCheck {
+  return resolveOverlayCapabilities(config)
+}
+
+function selectedProvider(
+  config: OverlayRuntimeConfig,
+  key: keyof NonNullable<OverlayRuntimeConfig['providers']>,
+  fallback: string,
+): string {
+  const provider = config.providers[key]?.provider
+  return provider ?? fallback
 }

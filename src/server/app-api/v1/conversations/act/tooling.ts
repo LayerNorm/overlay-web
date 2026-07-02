@@ -1,6 +1,14 @@
 import { logger } from '@/server/observability/logger'
 import type { ToolSet } from '@/server/ai/sdk'
 import {
+  getOverlayRuntimeConfig,
+  getOverlayRuntimeConfigSync,
+} from '@/server/config'
+import {
+  deriveOverlayCapabilities,
+  type CapabilityCheck,
+} from '@overlay/app-core'
+import {
   getGatewayParallelSearchTool,
   getGatewayPerplexitySearchTool,
 } from '@/server/ai/model-runtime'
@@ -52,6 +60,14 @@ export function preloadActExternalToolTasks(params: {
   serverSecret: string
   userId: string
 }): ActToolPreloadTasks {
+  try {
+    if (!getActCapabilitiesSync().integrations) {
+      return { composioToolsTask: Promise.resolve({} as ToolSet) }
+    }
+  } catch (_error) {
+    return { composioToolsTask: Promise.resolve({} as ToolSet) }
+  }
+
   const composioToolsTask = createBrowserUnifiedTools({
     userId: params.userId,
     accessToken: params.accessToken,
@@ -85,20 +101,24 @@ export async function prepareActTooling(params: {
   turnId: string
   userId: string
 }): Promise<ActTooling> {
-  const memoryEnabled = params.memoryEnabled !== false
-  const allowedOverlayToolIds = withRequestedOverlayToolIds(
-    allowedOverlayToolIdsForTurn({
-      latestUserText: params.latestUserText ?? '',
-      automationMode: params.automationMode === true || params.mode === 'automate',
-      automationExecution: params.automationExecution === true,
-      mediaToolIntent: params.mediaToolIntent,
-    }),
-    params.requestedToolIds ?? [],
-    memoryEnabled,
+  const capabilities = await getActCapabilities()
+  const memoryEnabled = params.memoryEnabled !== false && capabilities.memory && capabilities.vectorSearch
+  const allowedOverlayToolIds = applyRuntimeToolGates(
+    withRequestedOverlayToolIds(
+      allowedOverlayToolIdsForTurn({
+        latestUserText: params.latestUserText ?? '',
+        automationMode: params.automationMode === true || params.mode === 'automate',
+        automationExecution: params.automationExecution === true,
+        mediaToolIntent: params.mediaToolIntent,
+      }),
+      params.requestedToolIds ?? [],
+      memoryEnabled,
+    ),
+    capabilities,
   )
 
   const mcpCatalogStartedAt = performance.now()
-  const mcpToolsTask = params.isMultiModelFollowUpSlot
+  const mcpToolsTask = params.isMultiModelFollowUpSlot || !capabilities.integrations
     ? Promise.resolve({} as ToolSet)
     : createMcpLazyMetaTools({
         userId: params.userId,
@@ -109,7 +129,7 @@ export async function prepareActTooling(params: {
         modelId: params.effectiveModelId,
       })
   const [composioRaw, mcpToolsRaw, webToolSet, perplexityTool, parallelTool] = await Promise.all([
-    params.preloadTasks.composioToolsTask,
+    capabilities.integrations ? params.preloadTasks.composioToolsTask : Promise.resolve({} as ToolSet),
     mcpToolsTask,
     Promise.resolve(
       createWebTools({
@@ -127,10 +147,10 @@ export async function prepareActTooling(params: {
         memoryEnabled,
       }),
     ),
-    params.paid
+    params.paid && capabilities.webSearch
       ? getGatewayPerplexitySearchTool(params.accessToken, params.effectiveModelId)
       : Promise.resolve(null),
-    params.paid
+    params.paid && capabilities.webSearch
       ? getGatewayParallelSearchTool(params.accessToken, params.effectiveModelId)
       : Promise.resolve(null),
   ])
@@ -271,4 +291,47 @@ function withRequestedOverlayToolIds(
   }
 
   return Array.from(allowed)
+}
+
+function applyRuntimeToolGates(
+  toolIds: string[],
+  capabilities: CapabilityCheck,
+): string[] {
+  const allowed = new Set(toolIds)
+  if (!capabilities.memory || !capabilities.vectorSearch) {
+    allowed.delete('search_knowledge')
+    allowed.delete('save_memory')
+    allowed.delete('save_memory_batch')
+    allowed.delete('update_memory')
+    allowed.delete('delete_memory')
+  }
+  if (!capabilities.knowledge) {
+    allowed.delete('search_knowledge')
+  }
+  if (!capabilities.browserUse) {
+    allowed.delete('interactive_browser_session')
+  }
+  if (!capabilities.sandboxes) {
+    allowed.delete('run_daytona_sandbox')
+  }
+  if (!capabilities.automations) {
+    allowed.delete('schedule_automation')
+    allowed.delete('list_automations')
+    allowed.delete('cancel_automation')
+  }
+  return Array.from(allowed)
+}
+
+function getActCapabilitiesSync(): CapabilityCheck {
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return deriveOverlayCapabilities()
+  }
+  return deriveOverlayCapabilities(getOverlayRuntimeConfigSync())
+}
+
+async function getActCapabilities(): Promise<CapabilityCheck> {
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return deriveOverlayCapabilities()
+  }
+  return deriveOverlayCapabilities(await getOverlayRuntimeConfig())
 }

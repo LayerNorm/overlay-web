@@ -3,6 +3,11 @@
 import { useEffect } from "react";
 import * as Sentry from "@sentry/nextjs";
 
+function errorReportingEnabled(): boolean {
+  const value = process.env.NEXT_PUBLIC_OVERLAY_FEATURE_ERROR_REPORTING;
+  return !["0", "false", "no", "off"].includes((value ?? "").trim().toLowerCase());
+}
+
 export default function GlobalError({
   error,
   reset,
@@ -11,6 +16,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
+    if (!errorReportingEnabled()) return;
     Sentry.captureException(error);
   }, [error]);
 

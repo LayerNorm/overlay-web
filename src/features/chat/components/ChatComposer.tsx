@@ -235,7 +235,7 @@ function ComposerControls(props: ComposerControlsProps) {
         </button>
       </DelayedTooltip>
       <div className="flex min-w-0 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {!props.memoryEnabled && (
+        {props.capabilities.memory && props.capabilities.vectorSearch && !props.memoryEnabled && (
           <DelayedTooltip label="Memory is off for this message." side="top">
             <div className="shrink-0">
               <ToolRequestChip
@@ -246,7 +246,7 @@ function ComposerControls(props: ComposerControlsProps) {
             </div>
           </DelayedTooltip>
         )}
-        {props.selectedToolIds.map((toolId) => {
+        {props.selectedToolIds.filter((toolId) => isToolRequestEnabled(toolId, props)).map((toolId) => {
           const tool = TOOL_REQUEST_BY_ID.get(toolId)
           if (!tool) return null
           return (
@@ -307,16 +307,18 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
       </DelayedTooltip>
       {props.showAttachMenu && (
         <div className={`absolute left-0 z-20 w-64 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg ${menuDirection === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
-          <AttachMenuButton
-            onClick={() => {
-              props.mixedFileInputRef.current?.click()
-              props.setShowAttachMenu(false)
-            }}
-            icon={<FileText size={13} strokeWidth={1.75} />}
-            label="Attach photos and files"
-            suffix="Images, docs"
-          />
-          {TOOL_REQUEST_OPTIONS.map((tool) => {
+          {props.capabilities.files && (
+            <AttachMenuButton
+              onClick={() => {
+                props.mixedFileInputRef.current?.click()
+                props.setShowAttachMenu(false)
+              }}
+              icon={<FileText size={13} strokeWidth={1.75} />}
+              label="Attach photos and files"
+              suffix="Images, docs"
+            />
+          )}
+          {TOOL_REQUEST_OPTIONS.filter((tool) => isToolRequestEnabled(tool.id, props)).map((tool) => {
             const active = props.selectedToolIds.includes(tool.id)
             const Icon = tool.Icon
             return (
@@ -336,22 +338,37 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
           })}
           <AttachMenuButton onClick={() => { props.onModeChange('image'); props.setShowAttachMenu(false) }} icon={<ImageIcon size={13} className="text-[var(--foreground)]" />} label="Generate images" />
           <AttachMenuButton onClick={() => { props.onModeChange('video'); props.setShowAttachMenu(false) }} icon={<Video size={13} className="text-[var(--foreground)]" />} label="Generate videos" />
-          <div className="my-1 border-t border-[var(--border)]" />
-          <AttachMenuButton
-            active={props.memoryEnabled}
-            onClick={() => {
-              props.onToggleMemory()
-              props.setShowAttachMenu(false)
-            }}
-            icon={<Brain size={13} strokeWidth={1.75} />}
-            label="Memory"
-            showSwitch
-            neutralWhenActive
-          />
+          {props.capabilities.memory && props.capabilities.vectorSearch && (
+            <>
+              <div className="my-1 border-t border-[var(--border)]" />
+              <AttachMenuButton
+                active={props.memoryEnabled}
+                onClick={() => {
+                  props.onToggleMemory()
+                  props.setShowAttachMenu(false)
+                }}
+                icon={<Brain size={13} strokeWidth={1.75} />}
+                label="Memory"
+                showSwitch
+                neutralWhenActive
+              />
+            </>
+          )}
         </div>
       )}
     </div>
   )
+}
+
+function isToolRequestEnabled(
+  toolId: ChatToolRequestId,
+  props: Pick<ComposerViewProps, 'capabilities'>,
+): boolean {
+  if (toolId === 'web_search') return props.capabilities.webSearch
+  if (toolId === 'browser') return props.capabilities.browserUse
+  if (toolId === 'sandbox') return props.capabilities.sandboxes
+  if (toolId === 'memory') return props.capabilities.memory && props.capabilities.vectorSearch
+  return true
 }
 
 function AttachMenuButton({

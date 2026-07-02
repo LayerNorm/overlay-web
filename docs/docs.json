@@ -37,11 +37,11 @@
       },
       {
         "group": "Develop",
-        "pages": ["develop/architecture", "develop/convex-workflow", "develop/local-integrations"]
+        "pages": ["develop/architecture", "develop/convex-workflow", "develop/local-integrations", "develop/customization", "develop/feature-modules", "develop/api-source-of-truth"]
       },
       {
         "group": "Deploy & Operate",
-        "pages": ["deploy-operate/self-hosting", "deploy-operate/release-gates", "deploy-operate/security"]
+        "pages": ["deploy-operate/self-hosting", "deploy-operate/release-gates", "deploy-operate/security", "deploy-operate/tenancy"]
       },
       {
         "group": "API Reference",

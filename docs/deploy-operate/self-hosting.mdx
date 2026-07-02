@@ -1,10 +1,15 @@
-# Self Hosting
+---
+title: "Self-Hosting"
+description: "Run Overlay Web outside the hosted SaaS environment."
+---
+
+<!-- DO NOT EDIT — synced from docs/ by scripts/sync-docs-to-site.mjs — run `npm run docs:sync` to regenerate -->
 
 This guide covers the Phase 6 runtime configuration path for running Overlay outside the default Vercel, WorkOS, Stripe, and Cloudflare R2 SaaS setup.
 
-For tenant boundaries and enterprise role modeling, see [Tenancy And Role Model](./TENANCY.md). The short version: self-hosted and managed-cloud enterprise deployments are single-customer deployments; students, teachers, parents, admins, departments, and classes are roles or groups inside that deployment, not tenants.
+For tenant boundaries and enterprise role modeling, see [Tenancy And Role Model](tenancy). The short version: self-hosted and managed-cloud enterprise deployments are single-customer deployments; students, teachers, parents, admins, departments, and classes are roles or groups inside that deployment, not tenants.
 
-For licensing and brand constraints, see [Licensing](./LICENSING.md) and [Legal Self-Hosting Notes](./LEGAL_SELF_HOSTING_NOTES.md). The short version: core product code is `AGPL-3.0-or-later`, reusable SDK/contract packages are `Apache-2.0`, and modified distributions need their own branding unless LayerNorm Inc. gives written permission.
+For licensing and brand constraints, see [Licensing](../legal/licensing) and [Legal Self-Hosting Notes](../legal/self-hosting-obligations). The short version: core product code is `AGPL-3.0-or-later`, reusable SDK/contract packages are `Apache-2.0`, and modified distributions need their own branding unless LayerNorm Inc. gives written permission.
 
 The app now loads configuration from three layers, highest precedence first:
 
@@ -118,7 +123,7 @@ Before an on-prem release, run the complete Phase 6 gate:
 npm run check:phase6
 ```
 
-The manual UI checklist is in [Phase 6 Release Gates](./PHASE6_RELEASE_GATES.md).
+The manual UI checklist is in [Phase 6 Release Gates](release-gates).
 
 ## Deployment Profiles
 
@@ -126,11 +131,11 @@ Validated examples live under `docs/config`:
 
 | Profile | File | Use case |
 | --- | --- | --- |
-| SaaS staging | [saas-staging.example.json](./config/saas-staging.example.json) | WorkOS, Stripe test mode, R2, OpenRouter, API key infrastructure enabled. |
-| On-prem minimal | [onprem-minimal.example.json](./config/onprem-minimal.example.json) | No WorkOS, no Stripe, MinIO-compatible storage, no external LLM key. Good for shell and config smoke tests. |
-| On-prem S3/OIDC/OpenAI | [onprem-s3-oidc-openai.example.json](./config/onprem-s3-oidc-openai.example.json) | Enterprise OIDC, S3-compatible storage, no billing, OpenAI model gateway. |
-| Enterprise private | [enterprise-private.example.json](./config/enterprise-private.example.json) | OIDC, S3, direct OpenAI model provider, no billing, no browser/sandbox/integrations/search/telemetry. |
-| DPDP strict | [dpdp-strict.example.json](./config/dpdp-strict.example.json) | Minor mode metadata, external processors disabled by default, no model routing/search/tools/telemetry. |
+| SaaS staging | [saas-staging.example.json](../config/saas-staging.example.json) | WorkOS, Stripe test mode, R2, OpenRouter, API key infrastructure enabled. |
+| On-prem minimal | [onprem-minimal.example.json](../config/onprem-minimal.example.json) | No WorkOS, no Stripe, MinIO-compatible storage, no external LLM key. Good for shell and config smoke tests. |
+| On-prem S3/OIDC/OpenAI | [onprem-s3-oidc-openai.example.json](../config/onprem-s3-oidc-openai.example.json) | Enterprise OIDC, S3-compatible storage, no billing, OpenAI model gateway. |
+| Enterprise private | [enterprise-private.example.json](../config/enterprise-private.example.json) | OIDC, S3, direct OpenAI model provider, no billing, no browser/sandbox/integrations/search/telemetry. |
+| DPDP strict | [dpdp-strict.example.json](../config/dpdp-strict.example.json) | Minor mode metadata, external processors disabled by default, no model routing/search/tools/telemetry. |
 
 The examples contain placeholders only. Replace every `placeholder` or `replace_with` value before a real deployment.
 

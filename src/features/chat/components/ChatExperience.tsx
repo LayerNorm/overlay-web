@@ -4029,6 +4029,7 @@ export default function ChatExperience({
               attachMenuRef,
               selectedToolIds,
               memoryEnabled,
+              capabilities,
               onToggleTool: toggleComposerTool,
               onToggleMemory: () => setMemoryEnabled((current) => !current),
               onRemoveTool: removeComposerTool,

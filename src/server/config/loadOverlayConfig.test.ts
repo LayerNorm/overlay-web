@@ -121,6 +121,56 @@ test('loadOverlayConfig loads env-only config', async () => {
   assert.equal(config.capabilities.apiKeys, true)
 })
 
+test('configOverridesFromEnv maps enterprise v2 feature, provider, and compliance overrides', () => {
+  const overrides = configOverridesFromEnv({
+    OVERLAY_CONFIG_VERSION: '2',
+    OVERLAY_CONFIG_PRESET: 'dpdp-strict',
+    OVERLAY_COMPLIANCE_PROFILE: 'dpdp-strict',
+    OVERLAY_MINOR_MODE: 'true',
+    OVERLAY_ALLOW_EXTERNAL_PROCESSORS: 'false',
+    OVERLAY_ALLOWED_PROCESSORS: 'models:openai,objectStorage:s3',
+    OVERLAY_ALLOWED_REGIONS: 'in,ap-south-1',
+    OVERLAY_DATA_RESIDENCY_REQUIRED: '1',
+    OVERLAY_FEATURE_BROWSER_USE: 'false',
+    OVERLAY_FEATURE_SANDBOXES: 'false',
+    OVERLAY_FEATURE_ANALYTICS: 'false',
+    OVERLAY_PROVIDER_SANDBOX: 'none',
+    OVERLAY_PROVIDER_BROWSER: 'none',
+    OVERLAY_PROVIDER_WEB_SEARCH: 'none',
+    OVERLAY_PROVIDER_ANALYTICS: 'none',
+    OVERLAY_PROVIDER_DATABASE: 'convex',
+    OVERLAY_PROVIDER_OBJECT_STORAGE: 's3',
+    OVERLAY_PROVIDER_MODELS: 'openai',
+  })
+
+  assert.equal(overrides.configVersion, 2)
+  assert.equal(overrides.preset, 'dpdp-strict')
+  assert.deepEqual(overrides.features, {
+    browserUse: false,
+    sandboxes: false,
+    analytics: false,
+  })
+  assert.deepEqual(overrides.providers, {
+    database: { provider: 'convex' },
+    objectStorage: { provider: 's3' },
+    models: { provider: 'openai' },
+    browser: { provider: 'none' },
+    sandbox: { provider: 'none' },
+    webSearch: { provider: 'none' },
+    analytics: { provider: 'none' },
+  })
+  assert.deepEqual(overrides.compliance, {
+    profile: 'dpdp-strict',
+    minorMode: true,
+    allowExternalProcessors: false,
+    allowedProcessorIds: ['models:openai', 'objectStorage:s3'],
+    dataResidency: {
+      required: true,
+      allowedRegions: ['in', 'ap-south-1'],
+    },
+  })
+})
+
 test('production env ignores dev WorkOS fallback variables', async () => {
   const config = await load({
     env: {

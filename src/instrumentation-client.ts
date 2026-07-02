@@ -2,12 +2,19 @@ import * as Sentry from '@sentry/nextjs'
 import posthog from 'posthog-js'
 import { sanitizeSentryEvent } from '@/shared/security/sentry-sanitize'
 
-Sentry.init({
-  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-  sendDefaultPii: false,
-  tracesSampleRate: process.env.NODE_ENV === 'development' ? 1 : 0.1,
-  beforeSend: sanitizeSentryEvent,
-})
+function envFeatureEnabled(name: string): boolean {
+  const value = process.env[`NEXT_PUBLIC_${name}`] ?? process.env[name]
+  return !['0', 'false', 'no', 'off'].includes((value ?? '').trim().toLowerCase())
+}
+
+if (envFeatureEnabled('OVERLAY_FEATURE_ERROR_REPORTING')) {
+  Sentry.init({
+    dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+    sendDefaultPii: false,
+    tracesSampleRate: process.env.NODE_ENV === 'development' ? 1 : 0.1,
+    beforeSend: sanitizeSentryEvent,
+  })
+}
 
 const posthogToken = process.env.NEXT_PUBLIC_POSTHOG_TOKEN?.trim()
 const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST?.trim()
@@ -24,7 +31,7 @@ function resolvePosthogPersistence(): 'localStorage' | 'memory' {
   }
 }
 
-if (posthogToken && posthogHost) {
+if (envFeatureEnabled('OVERLAY_FEATURE_ANALYTICS') && posthogToken && posthogHost) {
   try {
     posthog.init(posthogToken, {
       api_host: posthogHost,

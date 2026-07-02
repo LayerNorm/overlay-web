@@ -1,4 +1,15 @@
 export interface CapabilityCheck {
+  chat: boolean
+  files: boolean
+  memory: boolean
+  knowledge: boolean
+  integrations: boolean
+  browserUse: boolean
+  sandboxes: boolean
+  webSearch: boolean
+  analytics: boolean
+  errorReporting: boolean
+  modelRouting: boolean
   billing: boolean
   sso: boolean
   apiKeys: boolean
@@ -11,6 +22,17 @@ export interface CapabilityCheck {
 export type OverlayCapability = keyof CapabilityCheck
 
 export const DEFAULT_OVERLAY_CAPABILITIES: CapabilityCheck = {
+  chat: true,
+  files: true,
+  memory: true,
+  knowledge: true,
+  integrations: true,
+  browserUse: true,
+  sandboxes: true,
+  webSearch: true,
+  analytics: true,
+  errorReporting: true,
+  modelRouting: true,
   billing: true,
   sso: true,
   apiKeys: false,
@@ -21,16 +43,24 @@ export const DEFAULT_OVERLAY_CAPABILITIES: CapabilityCheck = {
 }
 
 export function deriveOverlayCapabilities(
-  input?: Partial<CapabilityCheck> | { capabilities?: Partial<CapabilityCheck> } | null,
+  input?: Partial<CapabilityCheck> | {
+    capabilities?: Partial<CapabilityCheck>
+    features?: Partial<CapabilityCheck>
+  } | null,
 ): CapabilityCheck {
   const capabilities =
-    input && 'capabilities' in input
+    input && ('capabilities' in input || 'features' in input)
       ? input.capabilities
       : input
+  const features =
+    input && ('capabilities' in input || 'features' in input)
+      ? input.features
+      : undefined
 
   return {
     ...DEFAULT_OVERLAY_CAPABILITIES,
     ...(capabilities ?? {}),
+    ...(features ?? {}),
   }
 }
 

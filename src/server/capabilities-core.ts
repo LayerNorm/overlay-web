@@ -1,6 +1,17 @@
 import type { OverlayCapability } from '@overlay/app-core'
 
 export const CAPABILITY_LABELS: Record<OverlayCapability, string> = {
+  chat: 'Chat',
+  files: 'Files',
+  memory: 'Memory',
+  knowledge: 'Knowledge',
+  integrations: 'Integrations',
+  browserUse: 'Browser use',
+  sandboxes: 'Sandboxes',
+  webSearch: 'Web search',
+  analytics: 'Analytics',
+  errorReporting: 'Error reporting',
+  modelRouting: 'Model routing',
   billing: 'Billing',
   sso: 'SSO',
   apiKeys: 'API key management',
@@ -36,8 +47,13 @@ export function getRequiredCapabilityForRoute(
   if (startsWithRoute(normalizedPath, '/api/v1/webhooks')) return 'webhooks'
   if (startsWithRoute(normalizedPath, '/api/v1/api-keys')) return 'apiKeys'
   if (startsWithRoute(normalizedPath, '/api/v1/automations')) return 'automations'
-  if (startsWithRoute(normalizedPath, '/api/v1/memory')) return 'vectorSearch'
-  if (normalizedPath === '/api/v1/knowledge/search') return 'vectorSearch'
+  if (startsWithRoute(normalizedPath, '/api/v1/integrations')) return 'integrations'
+  if (startsWithRoute(normalizedPath, '/api/v1/browser-task')) return 'browserUse'
+  if (startsWithRoute(normalizedPath, '/api/v1/daytona/run')) return 'sandboxes'
+  if (startsWithRoute(normalizedPath, '/api/v1/memory')) return 'memory'
+  if (startsWithRoute(normalizedPath, '/api/v1/files')) return 'files'
+  if (startsWithRoute(normalizedPath, '/api/v1/knowledge')) return 'knowledge'
+  if (normalizedPath === '/api/v1/knowledge/search') return 'knowledge'
 
   return null
 }

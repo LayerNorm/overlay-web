@@ -79,10 +79,167 @@ const minimalSaasConfig = {
 
 test('OverlayRuntimeConfigSchema validates minimal SaaS config', () => {
   const parsed = OverlayRuntimeConfigSchema.parse(minimalSaasConfig)
+  assert.equal(parsed.configVersion, 2)
   assert.equal(parsed.auth.provider, 'workos')
   assert.equal(parsed.billing.provider, 'stripe')
   assert.equal(parsed.storage.provider, 'r2')
   assert.equal(parsed.capabilities.apiKeys, true)
+})
+
+test('OverlayRuntimeConfigSchema validates v2 enterprise-private provider selections', () => {
+  const parsed = OverlayRuntimeConfigSchema.parse({
+    ...minimalSaasConfig,
+    preset: 'enterprise-private',
+    compliance: {
+      profile: 'enterprise-private',
+      minorMode: false,
+      allowExternalProcessors: false,
+      allowedProcessorIds: [],
+    },
+    auth: {
+      ...minimalSaasConfig.auth,
+      provider: 'oidc',
+      workos: {},
+      oidc: {
+        issuerUrl: 'https://idp.enterprise.example.com',
+        clientId: 'overlay',
+      },
+    },
+    billing: {
+      provider: 'none',
+      stripe: {},
+    },
+    storage: {
+      ...minimalSaasConfig.storage,
+      provider: 's3',
+      r2: {},
+      s3: {
+        bucketName: 'overlay-private',
+        region: 'ap-south-1',
+        accessKeyId: 's3_access',
+        secretAccessKey: 's3_secret',
+      },
+    },
+    llm: {
+      ...minimalSaasConfig.llm,
+      gatewayProvider: 'openai',
+      apiKeyEnvVar: 'OPENAI_API_KEY',
+    },
+    features: {
+      billing: false,
+      integrations: false,
+      browserUse: false,
+      sandboxes: false,
+      webSearch: false,
+      analytics: false,
+      errorReporting: false,
+    },
+    providers: {
+      auth: { provider: 'oidc' },
+      database: { provider: 'convex' },
+      objectStorage: { provider: 's3' },
+      vectorSearch: { provider: 'convex' },
+      models: { provider: 'openai' },
+      integrations: { provider: 'none' },
+      browser: { provider: 'none' },
+      sandbox: { provider: 'none' },
+      webSearch: { provider: 'none' },
+      analytics: { provider: 'none' },
+      errorReporting: { provider: 'none' },
+      secrets: { provider: 'env' },
+      rateLimit: { provider: 'memory' },
+    },
+    capabilities: {
+      ...minimalSaasConfig.capabilities,
+      billing: false,
+    },
+  } satisfies OverlayRuntimeConfigInput)
+
+  assert.equal(parsed.preset, 'enterprise-private')
+  assert.equal(parsed.features.browserUse, false)
+  assert.equal(parsed.providers.objectStorage?.provider, 's3')
+})
+
+test('OverlayRuntimeConfigSchema rejects declared but unsupported providers', () => {
+  assert.throws(
+    () =>
+      OverlayRuntimeConfigSchema.parse({
+        ...minimalSaasConfig,
+        database: {
+          ...minimalSaasConfig.database,
+          provider: 'postgres',
+          postgres: {
+            connectionString: 'postgres://overlay:secret@db.internal/overlay',
+          },
+        },
+        providers: {
+          database: { provider: 'postgres' },
+        },
+      }),
+    /Postgres is declared/,
+  )
+
+  assert.throws(
+    () =>
+      OverlayRuntimeConfigSchema.parse({
+        ...minimalSaasConfig,
+        providers: {
+          sandbox: { provider: 'e2b' },
+        },
+      }),
+    /E2B sandboxes are declared/,
+  )
+})
+
+test('OverlayRuntimeConfigSchema rejects dpdp-strict external processors unless disabled or allowlisted', () => {
+  assert.throws(
+    () =>
+      OverlayRuntimeConfigSchema.parse({
+        ...minimalSaasConfig,
+        preset: 'dpdp-strict',
+        compliance: {
+          profile: 'dpdp-strict',
+          minorMode: true,
+          allowExternalProcessors: false,
+          allowedProcessorIds: [],
+        },
+        features: {
+          browserUse: true,
+        },
+        providers: {
+          browser: { provider: 'browser-use' },
+        },
+      }),
+    /requires browser to be disabled/,
+  )
+
+  const parsed = OverlayRuntimeConfigSchema.parse({
+    ...minimalSaasConfig,
+    preset: 'dpdp-strict',
+    compliance: {
+      profile: 'dpdp-strict',
+      minorMode: true,
+      allowExternalProcessors: false,
+      allowedProcessorIds: ['browser:browser-use'],
+    },
+    features: {
+      browserUse: true,
+      integrations: false,
+      sandboxes: false,
+      webSearch: false,
+      analytics: false,
+      errorReporting: false,
+    },
+    providers: {
+      browser: { provider: 'browser-use' },
+      integrations: { provider: 'none' },
+      sandbox: { provider: 'none' },
+      webSearch: { provider: 'none' },
+      analytics: { provider: 'none' },
+      errorReporting: { provider: 'none' },
+    },
+  } satisfies OverlayRuntimeConfigInput)
+  assert.deepEqual(parsed.compliance.allowedProcessorIds, ['browser:browser-use'])
 })
 
 test('OverlayRuntimeConfigSchema validates on-prem OIDC/S3/OpenAI config with billing disabled', () => {

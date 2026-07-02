@@ -1,0 +1,40 @@
+---
+title: "Security Model"
+description: "Auth, route validation, object access, and logging expectations for Overlay Web."
+---
+
+<!-- DO NOT EDIT — synced from docs/ by scripts/sync-docs-to-site.mjs — run `npm run docs:sync` to regenerate -->
+
+For vulnerability reporting policy, see [`../SECURITY.md`](../../SECURITY.md).
+
+## Release Gate
+
+Before production or enterprise-facing releases:
+
+- Rotate or explicitly confirm all production secrets that could have been exposed.
+- Verify preview deployments do not expose production secrets or production data.
+- Confirm WorkOS callback/logout URLs match approved origins.
+- Confirm Stripe webhook signing is active and portal access is bound to the authenticated customer.
+- Confirm R2 buckets remain private and object access is owner-scoped.
+- Confirm Daytona/browser/sandbox flows cannot inherit provider keys, cloud admin credentials, or long-lived tokens.
+- Confirm rate limits protect auth, billing, AI, browser, and sandbox endpoints.
+- Confirm logs and alerts cover auth failures, billing anomalies, CSP reports, rate-limit spikes, and abnormal sandbox usage.
+
+## Required Code Properties
+
+- Provider keys must never be returned to clients.
+- Billing portal, checkout, and top-up flows must bind to the authenticated user.
+- Native session transfer must validate PKCE and state.
+- Internal API calls should use short-lived service auth, not a static root secret over the wire.
+- R2 object keys must be validated against the authenticated owner.
+- Sensitive `/api/v1/*` routes must use centralized route boundary validation and must not rely on browser-detection headers.
+
+## Convex Security Workflow
+
+If `convex/` auth, authorization, billing, usage, or storage logic changes:
+
+```bash
+npm run convex:push:all
+```
+
+Use `convex:push:prod` for production and `convex:push:dev` for the dev backend. Do not pass `.env.local` to production Convex deploy commands.

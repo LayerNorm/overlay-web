@@ -13,7 +13,7 @@ type JsonObject = Record<string, unknown>
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const appApiDir = path.join(root, 'src/app/api/v1')
-const outputFile = path.join(root, 'docs-site/openapi/overlay-web.openapi.json')
+const outputFile = path.join(root, 'docs/openapi/overlay-web.openapi.json')
 
 async function main() {
   await assertRouteCoverage()

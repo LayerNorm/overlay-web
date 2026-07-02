@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import * as Sentry from '@sentry/nextjs'
 import posthog from 'posthog-js'
 import { useAuth } from '@/contexts/AuthContext'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { redactUrlForTelemetry } from '@/shared/security/safe-url'
 
 function posthogConfigured(): boolean {
@@ -17,9 +18,11 @@ export default function ObservabilityClient() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { user } = useAuth()
+  const { capabilities } = useOverlayCapabilities()
   const lastPageviewUrlRef = useRef<string | null>(null)
 
   useEffect(() => {
+    if (!capabilities.analytics) return
     if (!posthogConfigured()) return
     const query = searchParams?.toString() ?? ''
     const pathWithQuery = query ? `${pathname}?${query}` : pathname
@@ -36,12 +39,14 @@ export default function ObservabilityClient() {
     } catch {
       // ignore blocked storage / init failures (common on mobile Safari private mode)
     }
-  }, [pathname, searchParams])
+  }, [capabilities.analytics, pathname, searchParams])
 
   useEffect(() => {
     if (!user) {
-      Sentry.setUser(null)
-      if (posthogConfigured()) {
+      if (capabilities.errorReporting) {
+        Sentry.setUser(null)
+      }
+      if (capabilities.analytics && posthogConfigured()) {
         try {
           posthog.reset()
         } catch {
@@ -51,13 +56,15 @@ export default function ObservabilityClient() {
       return
     }
 
-    Sentry.setUser({
-      id: user.id,
-      email: user.email,
-      username: [user.firstName, user.lastName].filter(Boolean).join(' ') || undefined,
-    })
+    if (capabilities.errorReporting) {
+      Sentry.setUser({
+        id: user.id,
+        email: user.email,
+        username: [user.firstName, user.lastName].filter(Boolean).join(' ') || undefined,
+      })
+    }
 
-    if (!posthogConfigured()) return
+    if (!capabilities.analytics || !posthogConfigured()) return
 
     try {
       posthog.identify(user.id, {
@@ -68,7 +75,7 @@ export default function ObservabilityClient() {
     } catch {
       // ignore
     }
-  }, [user])
+  }, [capabilities.analytics, capabilities.errorReporting, user])
 
   return null
 }

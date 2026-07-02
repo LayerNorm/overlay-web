@@ -3,6 +3,7 @@ import type { GenerationMode } from '@/shared/ai/gateway/model-types'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { AttachmentPreview, AttachmentPreviewOpenOptions } from '@overlay/chat-react'
+import type { CapabilityCheck } from '@overlay/app-core'
 import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { AttachedImage, PendingChatDocument } from './chat-interface/types'
 import type { EmptyAutomateSuggestionId, EmptyChatSuggestionId } from './ChatEmptyState'
@@ -36,6 +37,7 @@ export type ChatComposerInputState = {
 export type ChatComposerToolState = {
   showAttachMenu: boolean; setShowAttachMenu: Dispatch<SetStateAction<boolean>>; attachMenuRef: RefObject<HTMLDivElement | null>
   selectedToolIds: ChatToolRequestId[]; memoryEnabled: boolean
+  capabilities: CapabilityCheck
   onToggleTool: (toolId: ChatToolRequestId) => void; onToggleMemory: () => void; onRemoveTool: (toolId: ChatToolRequestId) => void
 }
 export type ChatComposerModeState = {

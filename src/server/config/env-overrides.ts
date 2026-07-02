@@ -27,8 +27,15 @@ export function configOverridesFromEnv(env: EnvSource): OverlayRuntimeConfigLaye
   const llm = llmConfigFromEnv(env)
   const database = databaseConfigFromEnv(env, deploymentEnvironment)
   const capabilities = capabilitiesFromEnv(env)
+  const features = featuresFromEnv(env)
+  const compliance = complianceFromEnv(env)
+  const providers = providersFromEnv(env)
 
   const config: OverlayRuntimeConfigLayer = {}
+  const configVersion = readEnv(env, 'OVERLAY_CONFIG_VERSION')
+  if (configVersion === '2') config.configVersion = 2
+  const preset = readEnv(env, 'OVERLAY_CONFIG_PRESET')
+  if (preset) config.preset = preset
   const cspConnectSrc = readEnv(env, 'OVERLAY_CSP_CONNECT_SRC')
   if (appBaseUrl || deploymentEnvironment || Object.keys(publicEnv).length > 0 || cspConnectSrc) {
     config.app = {
@@ -44,6 +51,9 @@ export function configOverridesFromEnv(env: EnvSource): OverlayRuntimeConfigLaye
   if (llm) config.llm = llm
   if (database) config.database = database
   if (Object.keys(capabilities).length > 0) config.capabilities = capabilities
+  if (Object.keys(features).length > 0) config.features = features
+  if (compliance) config.compliance = compliance
+  if (Object.keys(providers).length > 0) config.providers = providers
   return config
 }
 
@@ -223,6 +233,80 @@ function capabilitiesFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
   })
 }
 
+function featuresFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
+  return compactObject({
+    chat: readFeatureBool(env, 'CHAT'),
+    files: readFeatureBool(env, 'FILES'),
+    memory: readFeatureBool(env, 'MEMORY'),
+    knowledge: readFeatureBool(env, 'KNOWLEDGE'),
+    automations: readFeatureBool(env, 'AUTOMATIONS') ?? readBool(env, 'AUTOMATIONS_ENABLED'),
+    integrations: readFeatureBool(env, 'INTEGRATIONS'),
+    browserUse: readFeatureBool(env, 'BROWSER_USE'),
+    sandboxes: readFeatureBool(env, 'SANDBOXES'),
+    webSearch: readFeatureBool(env, 'WEB_SEARCH'),
+    analytics: readFeatureBool(env, 'ANALYTICS'),
+    errorReporting: readFeatureBool(env, 'ERROR_REPORTING'),
+    billing: readFeatureBool(env, 'BILLING') ?? readBool(env, 'BILLING_ENABLED'),
+    webhooks: readFeatureBool(env, 'WEBHOOKS') ?? readBool(env, 'WEBHOOKS_ENABLED'),
+    apiKeys: readFeatureBool(env, 'API_KEYS') ?? readBool(env, 'API_KEYS_ENABLED'),
+    vectorSearch: readFeatureBool(env, 'VECTOR_SEARCH') ?? readBool(env, 'VECTOR_SEARCH_ENABLED'),
+    modelRouting: readFeatureBool(env, 'MODEL_ROUTING'),
+    sso: readFeatureBool(env, 'SSO'),
+    multiTenant: readFeatureBool(env, 'MULTI_TENANT') ?? readBool(env, 'MULTI_TENANT_ENABLED'),
+  })
+}
+
+function complianceFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
+  const profile = readEnv(env, 'OVERLAY_COMPLIANCE_PROFILE')
+  const minorMode = readBool(env, 'OVERLAY_MINOR_MODE')
+  const allowExternalProcessors = readBool(env, 'OVERLAY_ALLOW_EXTERNAL_PROCESSORS')
+  const allowedProcessorIds = readEnv(env, 'OVERLAY_ALLOWED_PROCESSORS')
+  const dataResidencyRequired = readBool(env, 'OVERLAY_DATA_RESIDENCY_REQUIRED')
+  const allowedRegions = readEnv(env, 'OVERLAY_ALLOWED_REGIONS')
+  const retention = compactObject({
+    chatDays: readNumber(env, 'OVERLAY_RETENTION_CHAT_DAYS'),
+    fileDays: readNumber(env, 'OVERLAY_RETENTION_FILE_DAYS'),
+    logsDays: readNumber(env, 'OVERLAY_RETENTION_LOGS_DAYS'),
+    sandboxArtifactDays: readNumber(env, 'OVERLAY_RETENTION_SANDBOX_ARTIFACT_DAYS'),
+    deletedUserPurgeDays: readNumber(env, 'OVERLAY_RETENTION_DELETED_USER_PURGE_DAYS'),
+  })
+
+  const dataResidency = compactObject({
+    required: dataResidencyRequired,
+    allowedRegions: allowedRegions ? splitCsv(allowedRegions) : undefined,
+  })
+
+  const compliance = compactObject({
+    profile,
+    minorMode,
+    allowExternalProcessors,
+    allowedProcessorIds: allowedProcessorIds ? splitCsv(allowedProcessorIds) : undefined,
+    dataResidency: Object.keys(dataResidency).length > 0 ? dataResidency : undefined,
+    retention: Object.keys(retention).length > 0 ? retention : undefined,
+  })
+  return Object.keys(compliance).length > 0 ? compliance : null
+}
+
+function providersFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
+  const providers = compactObject({
+    auth: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_AUTH')),
+    database: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_DATABASE')),
+    objectStorage: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_OBJECT_STORAGE')),
+    vectorSearch: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_VECTOR_SEARCH')),
+    embeddings: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_EMBEDDINGS')),
+    models: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_MODELS') ?? readEnv(env, 'LLM_GATEWAY')),
+    integrations: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_INTEGRATIONS')),
+    browser: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_BROWSER')),
+    sandbox: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_SANDBOX')),
+    webSearch: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_WEB_SEARCH')),
+    analytics: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_ANALYTICS')),
+    errorReporting: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_ERROR_REPORTING')),
+    secrets: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_SECRETS')),
+    rateLimit: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_RATE_LIMIT')),
+  })
+  return providers
+}
+
 function readAuthEnv(env: EnvSource): AuthEnvValues {
   const oidcIssuerUrl = readEnv(env, 'OIDC_ISSUER_URL') ?? readEnv(env, 'KEYCLOAK_ISSUER_URL')
   const oidcClientId = readEnv(env, 'OIDC_CLIENT_ID') ?? readEnv(env, 'KEYCLOAK_CLIENT_ID')
@@ -323,6 +407,10 @@ function readBool(env: EnvSource, name: string): boolean | undefined {
   return undefined
 }
 
+function readFeatureBool(env: EnvSource, featureName: string): boolean | undefined {
+  return readBool(env, `OVERLAY_FEATURE_${featureName}`)
+}
+
 function readNumber(env: EnvSource, name: string): number | undefined {
   const value = readEnv(env, name)
   if (!value) return undefined
@@ -341,4 +429,8 @@ function compactObject(input: Record<string, unknown>): Record<string, unknown> 
   return Object.fromEntries(
     Object.entries(input).filter(([, value]) => value !== undefined && value !== null),
   )
+}
+
+function providerOverride(provider: string | undefined): { provider: string } | undefined {
+  return provider ? { provider } : undefined
 }

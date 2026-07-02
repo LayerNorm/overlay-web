@@ -2,7 +2,7 @@
  * Shared layout + typography helpers for marketing pages.
  *
  * These consolidate the section/container/grid/eyebrow/heading strings that
- * were previously inlined (and drifted) across home, for-business, and pricing.
+ * were previously inlined (and drifted) across home, use-cases/business, and pricing.
  * All token-based — they resolve correctly under LandingThemeProvider.
  *
  * Lives in `features/marketing/` so both `features/marketing/components/*` and

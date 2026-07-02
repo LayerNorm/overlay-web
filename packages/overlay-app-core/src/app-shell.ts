@@ -66,14 +66,15 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
 ] as const
 
 export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
-  { id: 'chat', href: '/app/chat', label: 'Chat', icon: 'message-square' },
-  { id: 'files', href: '/app/files', label: 'Files', icon: 'file-text' },
+  { id: 'chat', href: '/app/chat', label: 'Chat', icon: 'message-square', requiredCapabilities: ['chat'] },
+  { id: 'files', href: '/app/files', label: 'Files', icon: 'file-text', requiredCapabilities: ['files', 'knowledge'] },
   {
     id: 'extensions',
     href: '/app/tools',
     label: 'Extensions',
     icon: 'puzzle',
     featureFlagId: 'extensions',
+    requiredCapabilities: ['integrations'],
     subviews: ['connectors', 'skills', 'mcps', 'apps', 'all'],
   },
   {
@@ -97,8 +98,8 @@ export const DEFAULT_OVERLAY_SETTINGS_SECTIONS: readonly OverlaySettingsSection[
   { id: 'general', label: 'General' },
   { id: 'account', label: 'Account' },
   { id: 'customization', label: 'Customization' },
-  { id: 'memories', label: 'Memories', featureFlagId: 'knowledge', requiredCapabilities: ['vectorSearch'] },
-  { id: 'models', label: 'Models' },
+  { id: 'memories', label: 'Memories', featureFlagId: 'knowledge', requiredCapabilities: ['memory', 'vectorSearch'] },
+  { id: 'models', label: 'Models', requiredCapabilities: ['modelRouting'] },
   { id: 'contact', label: 'Contact' },
 ] as const
 
@@ -112,6 +113,7 @@ export const DEFAULT_OVERLAY_FEATURE_MODULES: readonly OverlayFeatureModule[] = 
     componentKey: 'overlay.modules.filesKnowledge',
     packageName: '@overlay/modules-react',
     featureFlagId: 'knowledge',
+    requiredCapabilities: ['files', 'knowledge'],
     order: 10,
   },
   {
@@ -144,6 +146,7 @@ export const DEFAULT_OVERLAY_FEATURE_MODULES: readonly OverlayFeatureModule[] = 
     componentKey: 'overlay.modules.toolsExtensions',
     packageName: '@overlay/modules-react',
     featureFlagId: 'extensions',
+    requiredCapabilities: ['integrations'],
     order: 40,
   },
   {
@@ -179,6 +182,7 @@ export const DEFAULT_OVERLAY_SIDEBAR_ACTIONS: readonly OverlaySidebarAction[] = 
     searchCategory: 'file',
     requiresAuth: true,
     featureFlagId: 'knowledge',
+    requiredCapabilities: ['files', 'knowledge'],
     order: 20,
   },
   {
@@ -209,8 +213,8 @@ export const DEFAULT_OVERLAY_SETTINGS_PANELS: readonly OverlaySettingsPanel[] = 
   { id: 'general', sectionId: 'general', label: 'General', componentKey: 'overlay.settings.general', order: 10 },
   { id: 'account', sectionId: 'account', label: 'Account', componentKey: 'overlay.settings.account', order: 20 },
   { id: 'customization', sectionId: 'customization', label: 'Customization', componentKey: 'overlay.settings.customization', order: 30 },
-  { id: 'memories', sectionId: 'memories', label: 'Memories', componentKey: 'overlay.settings.memories', featureFlagId: 'knowledge', requiredCapabilities: ['vectorSearch'], order: 40 },
-  { id: 'models', sectionId: 'models', label: 'Models', componentKey: 'overlay.settings.models', order: 50 },
+  { id: 'memories', sectionId: 'memories', label: 'Memories', componentKey: 'overlay.settings.memories', featureFlagId: 'knowledge', requiredCapabilities: ['memory', 'vectorSearch'], order: 40 },
+  { id: 'models', sectionId: 'models', label: 'Models', componentKey: 'overlay.settings.models', requiredCapabilities: ['modelRouting'], order: 50 },
   { id: 'contact', sectionId: 'contact', label: 'Contact', componentKey: 'overlay.settings.contact', order: 60 },
 ] as const
 
@@ -222,6 +226,7 @@ export const DEFAULT_OVERLAY_TOOL_REGISTRY: readonly OverlayToolRegistration[] =
     category: 'browser',
     componentKey: 'overlay.tools.browserControl',
     policyGateId: 'browser-tools',
+    requiredCapabilities: ['browserUse'],
   },
   {
     id: 'knowledge-search',
@@ -230,7 +235,7 @@ export const DEFAULT_OVERLAY_TOOL_REGISTRY: readonly OverlayToolRegistration[] =
     category: 'knowledge',
     componentKey: 'overlay.tools.knowledgeSearch',
     featureFlagId: 'knowledge',
-    requiredCapabilities: ['vectorSearch'],
+    requiredCapabilities: ['knowledge', 'vectorSearch'],
   },
   {
     id: 'automation-runner',
@@ -244,17 +249,17 @@ export const DEFAULT_OVERLAY_TOOL_REGISTRY: readonly OverlayToolRegistration[] =
 ] as const
 
 export const DEFAULT_OVERLAY_INTEGRATION_REGISTRY: readonly OverlayIntegrationRegistration[] = [
-  { id: 'gmail', label: 'Gmail', providerKey: 'gmail', componentKey: 'overlay.integrations.gmail', featureFlagId: 'extensions' },
-  { id: 'google-drive', label: 'Google Drive', providerKey: 'google_drive', componentKey: 'overlay.integrations.googleDrive', featureFlagId: 'extensions' },
-  { id: 'slack', label: 'Slack', providerKey: 'slack', componentKey: 'overlay.integrations.slack', featureFlagId: 'extensions' },
-  { id: 'github', label: 'GitHub', providerKey: 'github', componentKey: 'overlay.integrations.github', featureFlagId: 'extensions' },
+  { id: 'gmail', label: 'Gmail', providerKey: 'gmail', componentKey: 'overlay.integrations.gmail', featureFlagId: 'extensions', requiredCapabilities: ['integrations'] },
+  { id: 'google-drive', label: 'Google Drive', providerKey: 'google_drive', componentKey: 'overlay.integrations.googleDrive', featureFlagId: 'extensions', requiredCapabilities: ['integrations'] },
+  { id: 'slack', label: 'Slack', providerKey: 'slack', componentKey: 'overlay.integrations.slack', featureFlagId: 'extensions', requiredCapabilities: ['integrations'] },
+  { id: 'github', label: 'GitHub', providerKey: 'github', componentKey: 'overlay.integrations.github', featureFlagId: 'extensions', requiredCapabilities: ['integrations'] },
 ] as const
 
 export const DEFAULT_OVERLAY_MODEL_PROVIDER_REGISTRY: readonly OverlayModelProviderRegistration[] = [
-  { id: 'openai', label: 'OpenAI', providerKey: 'openai', componentKey: 'overlay.modelProviders.openai' },
-  { id: 'anthropic', label: 'Anthropic', providerKey: 'anthropic', componentKey: 'overlay.modelProviders.anthropic' },
-  { id: 'google', label: 'Google', providerKey: 'google', componentKey: 'overlay.modelProviders.google' },
-  { id: 'openrouter', label: 'OpenRouter', providerKey: 'openrouter', componentKey: 'overlay.modelProviders.openrouter' },
+  { id: 'openai', label: 'OpenAI', providerKey: 'openai', componentKey: 'overlay.modelProviders.openai', requiredCapabilities: ['modelRouting'] },
+  { id: 'anthropic', label: 'Anthropic', providerKey: 'anthropic', componentKey: 'overlay.modelProviders.anthropic', requiredCapabilities: ['modelRouting'] },
+  { id: 'google', label: 'Google', providerKey: 'google', componentKey: 'overlay.modelProviders.google', requiredCapabilities: ['modelRouting'] },
+  { id: 'openrouter', label: 'OpenRouter', providerKey: 'openrouter', componentKey: 'overlay.modelProviders.openrouter', requiredCapabilities: ['modelRouting'] },
 ] as const
 
 export const DEFAULT_OVERLAY_POLICY_GATES: readonly OverlayPolicyGate[] = [

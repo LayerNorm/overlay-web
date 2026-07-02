@@ -1,0 +1,126 @@
+{
+  "configVersion": 2,
+  "preset": "enterprise-private",
+  "compliance": {
+    "profile": "enterprise-private",
+    "minorMode": false,
+    "allowExternalProcessors": false,
+    "allowedProcessorIds": [
+      "models:openai",
+      "objectStorage:s3"
+    ],
+    "dataResidency": {
+      "required": true,
+      "allowedRegions": [
+        "ap-south-1"
+      ]
+    },
+    "retention": {
+      "chatDays": 365,
+      "fileDays": 365,
+      "logsDays": 30,
+      "sandboxArtifactDays": 7,
+      "deletedUserPurgeDays": 30
+    }
+  },
+  "features": {
+    "chat": true,
+    "files": true,
+    "memory": true,
+    "knowledge": true,
+    "automations": true,
+    "integrations": false,
+    "browserUse": false,
+    "sandboxes": false,
+    "webSearch": false,
+    "analytics": false,
+    "errorReporting": false,
+    "billing": false,
+    "webhooks": false,
+    "apiKeys": false,
+    "vectorSearch": true,
+    "modelRouting": true,
+    "sso": true,
+    "multiTenant": false
+  },
+  "providers": {
+    "auth": { "provider": "oidc" },
+    "database": { "provider": "convex" },
+    "objectStorage": { "provider": "s3" },
+    "vectorSearch": { "provider": "convex" },
+    "embeddings": { "provider": "openai" },
+    "models": { "provider": "openai" },
+    "integrations": { "provider": "none" },
+    "browser": { "provider": "none" },
+    "sandbox": { "provider": "none" },
+    "webSearch": { "provider": "none" },
+    "analytics": { "provider": "none" },
+    "errorReporting": { "provider": "none" },
+    "secrets": { "provider": "env" },
+    "rateLimit": { "provider": "memory" }
+  },
+  "app": {
+    "baseUrl": "https://overlay.enterprise.example.com",
+    "deploymentEnvironment": "onprem",
+    "cspConnectSrc": [
+      "https://storage.enterprise.example.com"
+    ],
+    "publicEnv": {
+      "NEXT_PUBLIC_APP_URL": "https://overlay.enterprise.example.com"
+    }
+  },
+  "auth": {
+    "provider": "oidc",
+    "allowDevFallbacks": false,
+    "workos": {},
+    "oidc": {
+      "issuerUrl": "https://idp.enterprise.example.com",
+      "clientId": "overlay-web",
+      "clientSecret": "oidc_client_secret_placeholder",
+      "audience": "overlay-api"
+    },
+    "keycloak": {}
+  },
+  "billing": {
+    "provider": "none",
+    "stripe": {}
+  },
+  "storage": {
+    "provider": "s3",
+    "publicUrlPolicy": "presigned",
+    "r2": {},
+    "s3": {
+      "bucketName": "overlay-private",
+      "region": "ap-south-1",
+      "endpointUrl": "https://storage.enterprise.example.com",
+      "accessKeyId": "s3_access_key_placeholder",
+      "secretAccessKey": "s3_secret_key_placeholder",
+      "forcePathStyle": false
+    }
+  },
+  "llm": {
+    "gatewayProvider": "openai",
+    "keySource": "env",
+    "defaultChatModelId": "gpt-4.1",
+    "modelAllowlist": [
+      "gpt-4.1"
+    ],
+    "apiKeyEnvVar": "OPENAI_API_KEY"
+  },
+  "database": {
+    "provider": "convex",
+    "convexUrl": "https://convex-private.example.com",
+    "deployment": "dev:overlay-private",
+    "internalApiSecret": "replace_with_private_internal_api_secret",
+    "internalServiceAuthSecret": "replace_with_private_service_auth_secret"
+  },
+  "capabilities": {
+    "billing": false,
+    "sso": true,
+    "apiKeys": false,
+    "webhooks": false,
+    "vectorSearch": true,
+    "automations": true,
+    "multiTenant": false
+  }
+}

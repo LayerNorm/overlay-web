@@ -1,0 +1,117 @@
+---
+title: "Release Gates"
+description: "Checks to run before shipping web app or self-hosting changes."
+---
+
+<!-- DO NOT EDIT — synced from docs/ by scripts/sync-docs-to-site.mjs — run `npm run docs:sync` to regenerate -->
+
+Run this gate before handing an on-prem build to a customer or merging Phase 6 runtime/provider changes toward production:
+
+```bash
+npm run check:phase6
+```
+
+The command runs config validation, self-hosting docs validation, license checks, shared/module boundary checks, provider checks, targeted Phase 6 route tests, typecheck, and `next build`.
+
+For faster local iteration on only the Phase 6 route/provider contract:
+
+```bash
+npm run test:phase6-routes
+```
+
+## Required On-Prem Shape
+
+Use either OIDC or Keycloak-compatible auth, S3-compatible storage, and the OpenAI gateway for the current on-prem provider path:
+
+```bash
+AUTH_PROVIDER=keycloak
+KEYCLOAK_ISSUER_URL=https://idp.enterprise.example.com/realms/overlay
+KEYCLOAK_CLIENT_ID=overlay-web
+KEYCLOAK_CLIENT_SECRET=replace_with_keycloak_client_secret
+KEYCLOAK_REALM=overlay
+
+STORAGE_PROVIDER=s3
+S3_BUCKET_NAME=overlay-enterprise
+S3_REGION=us-east-1
+S3_ENDPOINT_URL=https://s3.enterprise.example.com
+S3_ACCESS_KEY_ID=replace_with_s3_access_key
+S3_SECRET_ACCESS_KEY=replace_with_s3_secret
+S3_FORCE_PATH_STYLE=false
+
+LLM_GATEWAY=openai
+LLM_API_KEY_ENV_VAR=OPENAI_API_KEY
+OPENAI_API_KEY=replace_with_openai_api_key
+DEFAULT_CHAT_MODEL_ID=gpt-4.1
+LLM_MODEL_ALLOWLIST=gpt-4.1,gpt-4.1-mini
+
+BILLING_PROVIDER=none
+OVERLAY_CAPABILITY_BILLING=false
+API_KEYS_ENABLED=false
+WEBHOOKS_ENABLED=false
+VECTOR_SEARCH_ENABLED=false
+AUTOMATIONS_ENABLED=false
+```
+
+For generic OIDC, replace the Keycloak values with:
+
+```bash
+AUTH_PROVIDER=oidc
+OIDC_ISSUER_URL=https://idp.enterprise.example.com
+OIDC_CLIENT_ID=overlay-web
+OIDC_CLIENT_SECRET=replace_with_oidc_client_secret
+OIDC_AUDIENCE=overlay-api
+```
+
+The same shape is captured in [`config/onprem-s3-oidc-openai.example.json`](../config/onprem-s3-oidc-openai.example.json). Keep secrets in the runtime secret manager; use JSON config for non-secret provider shape.
+
+OIDC and Keycloak provider adapters verify RS256 bearer/access tokens using the issuer discovery document and JWKS endpoint. Browser sign-in and callback routing remain deployment-specific; verify that flow against the selected IdP before customer handoff.
+
+## Disabled State Expectations
+
+When a capability is disabled, the UI must hide or disable the feature and the server route must return `capability_disabled` with HTTP 403.
+
+| Capability | Expected disabled behavior |
+| --- | --- |
+| `billing` | Checkout, portal, top-ups, subscription settings, and billing account controls are unavailable. |
+| `webhooks` | Webhook management UI is hidden; `/api/v1/webhooks` returns `capability_disabled`. |
+| `apiKeys` | API key management UI is hidden; `/api/v1/api-keys` returns `capability_disabled`. |
+| `vectorSearch` | Knowledge search and memory-only routes are blocked; basic file listing and file content routes remain available. |
+| `automations` | Automation navigation and runner callbacks are blocked or hidden. |
+| `sso` | SSO buttons and provider callbacks are hidden or disabled when auth is intentionally disabled. |
+
+## Manual UI Gate
+
+Manual QA is required because Phase 6.7 intentionally does not add browser automation tooling.
+
+SaaS staging:
+
+- App shell renders with no config error.
+- Sign-in works with WorkOS staging credentials.
+- Chat send and conversation list work.
+- File content URLs and output content URLs load.
+- Automation callback path still works when automations are enabled.
+- Settings/system shows redacted WorkOS, Stripe test, R2, OpenRouter, Convex, and capability state.
+
+On-prem minimal:
+
+- App shell renders with the minimal config.
+- Billing, SSO, webhooks, API key management, vector search, and automation entries are hidden or show the documented disabled state.
+- Primary chat and file surfaces either work with configured providers or show a precise documented disabled state.
+- Basic file listing remains available even when vector search is disabled.
+
+On-prem S3/OIDC/OpenAI:
+
+- Config view shows OIDC or Keycloak, S3-compatible storage, OpenAI gateway, and disabled billing in redacted form.
+- No secrets, access keys, session secrets, API keys, webhook secrets, or internal service tokens appear in the browser.
+- Chat uses the configured OpenAI default model/allowlist.
+- File upload/content paths use the S3-compatible provider or show a clear disabled state if storage credentials are absent.
+
+Mobile viewport:
+
+- Hidden billing, integration, SSO, webhook, and API key entries remain hidden.
+- Navigation does not leave broken gaps, empty dividers, or unreachable routes.
+- Disabled-state text fits without overlapping controls.
+
+## Release Sign-Off
+
+Record the `npm run check:phase6` result and the manual UI gate result in the release notes for any enterprise/on-prem distribution.

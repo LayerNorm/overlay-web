@@ -65,6 +65,7 @@ renders/*
 .claude/*
 .windsurf/*
 .devin/*
+.deepsec/*
 
 # surface folders
 

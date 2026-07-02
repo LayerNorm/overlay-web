@@ -1,0 +1,120 @@
+{
+  "configVersion": 2,
+  "preset": "dpdp-strict",
+  "compliance": {
+    "profile": "dpdp-strict",
+    "minorMode": true,
+    "allowExternalProcessors": false,
+    "allowedProcessorIds": [],
+    "dataResidency": {
+      "required": true,
+      "allowedRegions": [
+        "in",
+        "ap-south-1"
+      ]
+    },
+    "retention": {
+      "chatDays": 90,
+      "fileDays": 90,
+      "logsDays": 14,
+      "sandboxArtifactDays": 1,
+      "deletedUserPurgeDays": 30
+    }
+  },
+  "features": {
+    "chat": true,
+    "files": true,
+    "memory": false,
+    "knowledge": true,
+    "automations": false,
+    "integrations": false,
+    "browserUse": false,
+    "sandboxes": false,
+    "webSearch": false,
+    "analytics": false,
+    "errorReporting": false,
+    "billing": false,
+    "webhooks": false,
+    "apiKeys": false,
+    "vectorSearch": false,
+    "modelRouting": false,
+    "sso": true,
+    "multiTenant": false
+  },
+  "providers": {
+    "auth": { "provider": "oidc" },
+    "database": { "provider": "convex" },
+    "objectStorage": { "provider": "s3" },
+    "vectorSearch": { "provider": "none" },
+    "embeddings": { "provider": "none" },
+    "models": { "provider": "none" },
+    "integrations": { "provider": "none" },
+    "browser": { "provider": "none" },
+    "sandbox": { "provider": "none" },
+    "webSearch": { "provider": "none" },
+    "analytics": { "provider": "none" },
+    "errorReporting": { "provider": "none" },
+    "secrets": { "provider": "env" },
+    "rateLimit": { "provider": "memory" }
+  },
+  "app": {
+    "baseUrl": "https://overlay-dpdp.enterprise.example.com",
+    "deploymentEnvironment": "onprem",
+    "cspConnectSrc": [
+      "https://storage-dpdp.enterprise.example.com"
+    ],
+    "publicEnv": {
+      "NEXT_PUBLIC_APP_URL": "https://overlay-dpdp.enterprise.example.com"
+    }
+  },
+  "auth": {
+    "provider": "oidc",
+    "allowDevFallbacks": false,
+    "workos": {},
+    "oidc": {
+      "issuerUrl": "https://idp-dpdp.enterprise.example.com",
+      "clientId": "overlay-web",
+      "clientSecret": "oidc_client_secret_placeholder",
+      "audience": "overlay-api"
+    },
+    "keycloak": {}
+  },
+  "billing": {
+    "provider": "none",
+    "stripe": {}
+  },
+  "storage": {
+    "provider": "s3",
+    "publicUrlPolicy": "presigned",
+    "r2": {},
+    "s3": {
+      "bucketName": "overlay-dpdp",
+      "region": "ap-south-1",
+      "endpointUrl": "https://storage-dpdp.enterprise.example.com",
+      "accessKeyId": "s3_access_key_placeholder",
+      "secretAccessKey": "s3_secret_key_placeholder",
+      "forcePathStyle": false
+    }
+  },
+  "llm": {
+    "gatewayProvider": "none",
+    "keySource": "none",
+    "modelAllowlist": []
+  },
+  "database": {
+    "provider": "convex",
+    "convexUrl": "https://convex-dpdp.example.com",
+    "deployment": "dev:overlay-dpdp",
+    "internalApiSecret": "replace_with_dpdp_internal_api_secret",
+    "internalServiceAuthSecret": "replace_with_dpdp_service_auth_secret"
+  },
+  "capabilities": {
+    "billing": false,
+    "sso": true,
+    "apiKeys": false,
+    "webhooks": false,
+    "vectorSearch": false,
+    "automations": false,
+    "multiTenant": false
+  }
+}

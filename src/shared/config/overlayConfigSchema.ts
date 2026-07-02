@@ -23,6 +23,96 @@ export const OverlayLlmGatewayProviderSchema = z.enum([
 export const OverlayProviderKeySourceSchema = z.enum(['env', 'workos-vault', 'config', 'none'])
 export const OverlayPublicUrlPolicySchema = z.enum(['proxy', 'presigned', 'public'])
 export const OverlayStripeModeSchema = z.enum(['test', 'live', 'unknown'])
+export const OverlayConfigPresetSchema = z.enum([
+  'saas-default',
+  'onprem-minimal',
+  'enterprise-private',
+  'dpdp-strict',
+])
+export const OverlayComplianceProfileSchema = z.enum([
+  'saas-default',
+  'onprem-minimal',
+  'enterprise-private',
+  'dpdp-strict',
+  'custom',
+])
+export const OverlayDatabaseProviderSchema = z.enum(['convex', 'postgres'])
+export const OverlayVectorSearchProviderSchema = z.enum(['convex', 'pgvector', 'pinecone', 'none'])
+export const OverlayEmbeddingsProviderSchema = z.enum(['ai-gateway', 'openai', 'azure-openai', 'none'])
+export const OverlayIntegrationsProviderSchema = z.enum(['composio', 'mcp', 'none'])
+export const OverlayBrowserProviderSchema = z.enum(['browser-use', 'self-hosted-playwright', 'none'])
+export const OverlaySandboxProviderSchema = z.enum(['daytona', 'e2b', 'local-firecracker', 'none'])
+export const OverlayWebSearchProviderSchema = z.enum(['ai-gateway', 'perplexity', 'tavily', 'none'])
+export const OverlayAnalyticsProviderSchema = z.enum(['posthog', 'none'])
+export const OverlayErrorReportingProviderSchema = z.enum(['sentry', 'none'])
+export const OverlaySecretsProviderSchema = z.enum(['env', 'workos-vault', 'aws-secrets-manager', 'vault', 'none'])
+export const OverlayRateLimitProviderSchema = z.enum(['convex', 'redis', 'memory', 'none'])
+
+const OverlayFeatureFlagsSchema = z
+  .object({
+    chat: z.boolean().optional(),
+    files: z.boolean().optional(),
+    memory: z.boolean().optional(),
+    knowledge: z.boolean().optional(),
+    automations: z.boolean().optional(),
+    integrations: z.boolean().optional(),
+    browserUse: z.boolean().optional(),
+    sandboxes: z.boolean().optional(),
+    webSearch: z.boolean().optional(),
+    analytics: z.boolean().optional(),
+    errorReporting: z.boolean().optional(),
+    billing: z.boolean().optional(),
+    webhooks: z.boolean().optional(),
+    apiKeys: z.boolean().optional(),
+    vectorSearch: z.boolean().optional(),
+    modelRouting: z.boolean().optional(),
+    sso: z.boolean().optional(),
+    multiTenant: z.boolean().optional(),
+  })
+  .strict()
+
+const OverlayComplianceSchema = z
+  .object({
+    profile: OverlayComplianceProfileSchema.default('saas-default'),
+    minorMode: z.boolean().default(false),
+    allowExternalProcessors: z.boolean().default(true),
+    allowedProcessorIds: z.array(z.string().trim().min(1)).default([]),
+    dataResidency: z
+      .object({
+        required: z.boolean().default(false),
+        allowedRegions: z.array(z.string().trim().min(1)).default([]),
+      })
+      .default({}),
+    retention: z
+      .object({
+        chatDays: z.number().int().positive().optional(),
+        fileDays: z.number().int().positive().optional(),
+        logsDays: z.number().int().positive().optional(),
+        sandboxArtifactDays: z.number().int().positive().optional(),
+        deletedUserPurgeDays: z.number().int().positive().optional(),
+      })
+      .default({}),
+  })
+  .strict()
+
+const OverlayProvidersSchema = z
+  .object({
+    auth: z.object({ provider: OverlayAuthProviderSchema.optional() }).strict().optional(),
+    database: z.object({ provider: OverlayDatabaseProviderSchema.optional() }).strict().optional(),
+    objectStorage: z.object({ provider: OverlayStorageProviderSchema.optional() }).strict().optional(),
+    vectorSearch: z.object({ provider: OverlayVectorSearchProviderSchema.optional() }).strict().optional(),
+    embeddings: z.object({ provider: OverlayEmbeddingsProviderSchema.optional() }).strict().optional(),
+    models: z.object({ provider: OverlayLlmGatewayProviderSchema.optional() }).strict().optional(),
+    integrations: z.object({ provider: OverlayIntegrationsProviderSchema.optional() }).strict().optional(),
+    browser: z.object({ provider: OverlayBrowserProviderSchema.optional() }).strict().optional(),
+    sandbox: z.object({ provider: OverlaySandboxProviderSchema.optional() }).strict().optional(),
+    webSearch: z.object({ provider: OverlayWebSearchProviderSchema.optional() }).strict().optional(),
+    analytics: z.object({ provider: OverlayAnalyticsProviderSchema.optional() }).strict().optional(),
+    errorReporting: z.object({ provider: OverlayErrorReportingProviderSchema.optional() }).strict().optional(),
+    secrets: z.object({ provider: OverlaySecretsProviderSchema.optional() }).strict().optional(),
+    rateLimit: z.object({ provider: OverlayRateLimitProviderSchema.optional() }).strict().optional(),
+  })
+  .strict()
 
 const SecretLikePublicValuePattern =
   /(?:sk|rk)_(?:live|test)_[A-Za-z0-9]|whsec_[A-Za-z0-9]|ovl_sk_[A-Za-z0-9]|(?:api[_-]?key|secret|token)=/i
@@ -32,6 +122,11 @@ const OptionalUrlSchema = z.string().trim().url().optional()
 
 export const OverlayRuntimeConfigSchema = z
   .object({
+    configVersion: z.literal(2).default(2),
+    preset: OverlayConfigPresetSchema.default('saas-default'),
+    compliance: OverlayComplianceSchema.default({}),
+    features: OverlayFeatureFlagsSchema.default({}),
+    providers: OverlayProvidersSchema.default({}),
     app: z.object({
       baseUrl: z.string().trim().url(),
       deploymentEnvironment: OverlayDeploymentEnvironmentSchema,
@@ -113,12 +208,18 @@ export const OverlayRuntimeConfigSchema = z
       apiKeyEnvVar: OptionalStringSchema,
     }),
     database: z.object({
-      provider: z.literal('convex').default('convex'),
+      provider: OverlayDatabaseProviderSchema.default('convex'),
       convexUrl: OptionalUrlSchema,
       deployment: OptionalStringSchema,
       internalApiSecret: OptionalStringSchema,
       internalServiceAuthSecret: OptionalStringSchema,
       apiKeyHashSecret: OptionalStringSchema,
+      postgres: z
+        .object({
+          connectionString: OptionalStringSchema,
+          sslMode: OptionalStringSchema,
+        })
+        .default({}),
     }),
     capabilities: z.object({
       billing: z.boolean().default(true),
@@ -132,6 +233,27 @@ export const OverlayRuntimeConfigSchema = z
   })
   .strict()
   .superRefine((config, ctx) => {
+    const effectiveCapabilities = {
+      ...config.capabilities,
+      ...config.features,
+    }
+    const selectedProviders = {
+      auth: config.providers.auth?.provider ?? config.auth.provider,
+      database: config.providers.database?.provider ?? config.database.provider,
+      objectStorage: config.providers.objectStorage?.provider ?? config.storage.provider,
+      vectorSearch: config.providers.vectorSearch?.provider ?? (effectiveCapabilities.vectorSearch ? 'convex' : 'none'),
+      embeddings: config.providers.embeddings?.provider ?? 'ai-gateway',
+      models: config.providers.models?.provider ?? config.llm.gatewayProvider,
+      integrations: config.providers.integrations?.provider ?? (effectiveCapabilities.integrations ? 'composio' : 'none'),
+      browser: config.providers.browser?.provider ?? (effectiveCapabilities.browserUse ? 'browser-use' : 'none'),
+      sandbox: config.providers.sandbox?.provider ?? (effectiveCapabilities.sandboxes ? 'daytona' : 'none'),
+      webSearch: config.providers.webSearch?.provider ?? (effectiveCapabilities.webSearch ? 'ai-gateway' : 'none'),
+      analytics: config.providers.analytics?.provider ?? (effectiveCapabilities.analytics ? 'posthog' : 'none'),
+      errorReporting: config.providers.errorReporting?.provider ?? (effectiveCapabilities.errorReporting ? 'sentry' : 'none'),
+      secrets: config.providers.secrets?.provider ?? 'env',
+      rateLimit: config.providers.rateLimit?.provider ?? (config.app.deploymentEnvironment === 'onprem' ? 'memory' : 'convex'),
+    }
+
     for (const [key, value] of Object.entries(config.app.publicEnv)) {
       if (!key.startsWith('NEXT_PUBLIC_')) {
         ctx.addIssue({
@@ -149,35 +271,84 @@ export const OverlayRuntimeConfigSchema = z
       }
     }
 
-    if (config.billing.provider === 'none' && config.capabilities.billing) {
+    addUnsupportedProviderIssue(ctx, ['database', 'provider'], selectedProviders.database, {
+      postgres: 'Postgres is declared for enterprise config v2 but repository adapters are not implemented. Use database.provider=convex until the database migration is planned.',
+    })
+    addUnsupportedProviderIssue(ctx, ['providers', 'vectorSearch', 'provider'], selectedProviders.vectorSearch, {
+      pgvector: 'pgvector is declared for enterprise config v2 but vector repository adapters are not implemented. Use vectorSearch.provider=convex or none.',
+      pinecone: 'Pinecone is declared for enterprise config v2 but no Pinecone adapter exists yet. Use vectorSearch.provider=convex or none.',
+    })
+    addUnsupportedProviderIssue(ctx, ['providers', 'embeddings', 'provider'], selectedProviders.embeddings, {
+      'azure-openai': 'Azure OpenAI embeddings are declared for enterprise config v2 but no embeddings adapter exists yet. Use embeddings.provider=ai-gateway, openai, or none.',
+    })
+    addUnsupportedProviderIssue(ctx, ['providers', 'integrations', 'provider'], selectedProviders.integrations, {
+      mcp: 'MCP integration-provider bootstrap is declared but not implemented. Use integrations.provider=composio or none.',
+    })
+    addUnsupportedProviderIssue(ctx, ['providers', 'browser', 'provider'], selectedProviders.browser, {
+      'self-hosted-playwright': 'Self-hosted Playwright is declared for enterprise config v2 but the browser adapter is not implemented. Use browser.provider=browser-use or none.',
+    })
+    addUnsupportedProviderIssue(ctx, ['providers', 'sandbox', 'provider'], selectedProviders.sandbox, {
+      e2b: 'E2B sandboxes are declared for enterprise config v2 but no E2B adapter exists yet. Use sandbox.provider=daytona or none.',
+      'local-firecracker': 'Local Firecracker sandboxes are declared for enterprise config v2 but no local sandbox adapter exists yet. Use sandbox.provider=daytona or none.',
+    })
+    addUnsupportedProviderIssue(ctx, ['providers', 'webSearch', 'provider'], selectedProviders.webSearch, {
+      perplexity: 'Direct Perplexity web search is declared but not implemented. Use webSearch.provider=ai-gateway or none.',
+      tavily: 'Tavily web search is declared but not implemented. Use webSearch.provider=ai-gateway or none.',
+    })
+    addUnsupportedProviderIssue(ctx, ['providers', 'secrets', 'provider'], selectedProviders.secrets, {
+      'aws-secrets-manager': 'AWS Secrets Manager is declared but not implemented for runtime secret loading. Use secrets.provider=env or workos-vault.',
+      vault: 'HashiCorp Vault is declared but not implemented for runtime secret loading. Use secrets.provider=env or workos-vault.',
+    })
+    addUnsupportedProviderIssue(ctx, ['providers', 'rateLimit', 'provider'], selectedProviders.rateLimit, {
+      redis: 'Redis rate limiting is declared but not wired through enterprise config yet. Use rateLimit.provider=convex, memory, or none.',
+    })
+
+    if (config.preset === 'dpdp-strict' && config.compliance.profile !== 'dpdp-strict') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['compliance', 'profile'],
+        message: 'preset=dpdp-strict requires compliance.profile=dpdp-strict',
+      })
+    }
+
+    if (config.compliance.profile === 'dpdp-strict' && config.compliance.allowExternalProcessors === false) {
+      assertExternalProcessorAllowed(ctx, config, 'integrations', selectedProviders.integrations, effectiveCapabilities.integrations, ['providers', 'integrations', 'provider'])
+      assertExternalProcessorAllowed(ctx, config, 'browser', selectedProviders.browser, effectiveCapabilities.browserUse, ['providers', 'browser', 'provider'])
+      assertExternalProcessorAllowed(ctx, config, 'sandbox', selectedProviders.sandbox, effectiveCapabilities.sandboxes, ['providers', 'sandbox', 'provider'])
+      assertExternalProcessorAllowed(ctx, config, 'webSearch', selectedProviders.webSearch, effectiveCapabilities.webSearch, ['providers', 'webSearch', 'provider'])
+      assertExternalProcessorAllowed(ctx, config, 'analytics', selectedProviders.analytics, effectiveCapabilities.analytics, ['providers', 'analytics', 'provider'])
+      assertExternalProcessorAllowed(ctx, config, 'errorReporting', selectedProviders.errorReporting, effectiveCapabilities.errorReporting, ['providers', 'errorReporting', 'provider'])
+    }
+
+    if (config.billing.provider === 'none' && effectiveCapabilities.billing) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['capabilities', 'billing'],
         message: 'billing capability must be false when billing.provider is none',
       })
     }
-    if (config.billing.provider === 'stripe' && !config.capabilities.billing) {
+    if (config.billing.provider === 'stripe' && !effectiveCapabilities.billing && config.features.billing !== false) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['billing', 'provider'],
         message: 'billing.provider must be none when billing capability is disabled',
       })
     }
-    if (config.auth.provider === 'none' && config.capabilities.sso) {
+    if (config.auth.provider === 'none' && effectiveCapabilities.sso) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['capabilities', 'sso'],
         message: 'sso capability must be false when auth.provider is none',
       })
     }
-    if (config.capabilities.apiKeys && !config.database.apiKeyHashSecret) {
+    if (effectiveCapabilities.apiKeys && !config.database.apiKeyHashSecret) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['database', 'apiKeyHashSecret'],
         message: 'API_KEY_HASH_SECRET is required when API key capability is enabled',
       })
     }
-    if (config.capabilities.multiTenant) {
+    if (effectiveCapabilities.multiTenant) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['capabilities', 'multiTenant'],
@@ -291,7 +462,27 @@ export function isRuntimeConfigSummaryVisible(config: OverlayRuntimeConfig): boo
 }
 
 export function redactOverlayRuntimeConfig(config: OverlayRuntimeConfig) {
+  const effectiveCapabilities = {
+    ...config.capabilities,
+    ...config.features,
+  }
+
   return {
+    configVersion: config.configVersion,
+    preset: config.preset,
+    compliance: {
+      profile: config.compliance.profile,
+      minorMode: config.compliance.minorMode,
+      allowExternalProcessors: config.compliance.allowExternalProcessors,
+      allowedProcessorIds: [...config.compliance.allowedProcessorIds],
+      dataResidency: {
+        required: config.compliance.dataResidency.required,
+        allowedRegions: [...config.compliance.dataResidency.allowedRegions],
+      },
+      retention: { ...config.compliance.retention },
+    },
+    features: { ...config.features },
+    providers: cloneConfigValue(config.providers),
     app: {
       baseUrl: config.app.baseUrl,
       deploymentEnvironment: config.app.deploymentEnvironment,
@@ -367,14 +558,18 @@ export function redactOverlayRuntimeConfig(config: OverlayRuntimeConfig) {
       hasInternalApiSecret: Boolean(config.database.internalApiSecret),
       hasInternalServiceAuthSecret: Boolean(config.database.internalServiceAuthSecret),
       hasApiKeyHashSecret: Boolean(config.database.apiKeyHashSecret),
+      postgres: {
+        hasConnectionString: Boolean(config.database.postgres.connectionString),
+        sslMode: config.database.postgres.sslMode,
+      },
     },
     tenancy: {
-      mode: config.capabilities.multiTenant ? 'shared-multi-tenant' : 'single-customer-deployment',
-      boundary: config.capabilities.multiTenant ? 'tenantId' : 'deployment',
+      mode: effectiveCapabilities.multiTenant ? 'shared-multi-tenant' : 'single-customer-deployment',
+      boundary: effectiveCapabilities.multiTenant ? 'tenantId' : 'deployment',
       tenantSwitcherAvailable: false,
       phase6bRequiredForSharedDeployments: true,
     },
-    capabilities: { ...config.capabilities },
+    capabilities: effectiveCapabilities,
   }
 }
 
@@ -433,6 +628,40 @@ function usesProductionConvex(database: OverlayRuntimeConfig['database']): boole
 
 function usesDevWorkOsConfig(workos: OverlayRuntimeConfig['auth']['workos']): boolean {
   return Boolean(workos.devClientId || workos.devApiKey)
+}
+
+function addUnsupportedProviderIssue(
+  ctx: z.RefinementCtx,
+  path: Array<string | number>,
+  selectedProvider: string | undefined,
+  messages: Record<string, string>,
+): void {
+  if (!selectedProvider) return
+  const message = messages[selectedProvider]
+  if (!message) return
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path,
+    message,
+  })
+}
+
+function assertExternalProcessorAllowed(
+  ctx: z.RefinementCtx,
+  config: z.infer<typeof OverlayRuntimeConfigSchema>,
+  processorId: string,
+  provider: string | undefined,
+  featureEnabled: boolean | undefined,
+  path: Array<string | number>,
+): void {
+  if (!featureEnabled || !provider || provider === 'none') return
+  const allowed = new Set(config.compliance.allowedProcessorIds)
+  if (allowed.has(processorId) || allowed.has(provider) || allowed.has(`${processorId}:${provider}`)) return
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path,
+    message: `dpdp-strict with allowExternalProcessors=false requires ${processorId} to be disabled, set to provider=none, or explicitly allowlisted in compliance.allowedProcessorIds.`,
+  })
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

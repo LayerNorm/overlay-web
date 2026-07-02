@@ -50,8 +50,7 @@ overlay-landing/
 ├── packages/               # 16+ internal workspace packages
 ├── workers/                # Cloudflare Workers (chat-stream relay)
 ├── scripts/                # 40+ dev/ops scripts
-├── docs/                   # Documentation & design assets
-├── docs-site/              # Mintlify documentation site
+├── docs/                   # Documentation, Mintlify site, & design assets
 ├── config/                 # R2 CORS config
 ├── public/                 # Static assets
 ├── examples/               # Self-hosting examples
@@ -437,7 +436,7 @@ Stripe Webhook → /api/webhooks/stripe → Dedup check
 - **Provider swapping**: Auth, billing, storage, LLM all swappable
 - **Enterprise customization**: `examples/enterprise-customization/`
 - **Customer deployment**: `examples/customer-deployment/` (Docker Compose, Helm)
-- **Documentation**: `docs-site/` (Mintlify) covers self-hosting, config, security
+- **Documentation**: `docs/` (Mintlify) covers self-hosting, config, security
 
 ---
 
