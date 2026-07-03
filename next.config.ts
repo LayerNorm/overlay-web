@@ -11,6 +11,8 @@ const hasSentryUploadConfig = Boolean(
   process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT,
 );
 
+const mintlifyDocsOrigin = process.env.MINTLIFY_DOCS_URL?.trim().replace(/\/+$/, "").replace(/\/docs$/, "");
+
 const staticSecurityHeaders = [
   {
     key: "X-Content-Type-Options",
@@ -43,20 +45,80 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR?.trim() || ".next",
   transpilePackages: ["@overlay/app-core"],
   async rewrites() {
-    if (
-      process.env.NODE_ENV !== "development" ||
-      process.env.NEXT_PUBLIC_CHAT_STREAM_RELAY_LOCAL !== "true"
-    ) {
-      return [];
+    const rewrites: Array<{
+      source: string;
+      destination: string;
+      has?: Array<{ type: "host"; value: string }>;
+    }> = [];
+
+    if (mintlifyDocsOrigin) {
+      rewrites.push(
+        {
+          source: "/_mintlify/:path*",
+          destination: `${mintlifyDocsOrigin}/_mintlify/:path*`,
+        },
+        {
+          source: "/api/request",
+          destination: `${mintlifyDocsOrigin}/_mintlify/api/request`,
+        },
+        {
+          source: "/docs/llms.txt",
+          destination: `${mintlifyDocsOrigin}/llms.txt`,
+        },
+        {
+          source: "/docs/llms-full.txt",
+          destination: `${mintlifyDocsOrigin}/llms-full.txt`,
+        },
+        {
+          source: "/docs/sitemap.xml",
+          destination: `${mintlifyDocsOrigin}/sitemap.xml`,
+        },
+        {
+          source: "/docs/robots.txt",
+          destination: `${mintlifyDocsOrigin}/robots.txt`,
+        },
+        {
+          source: "/docs/mcp",
+          destination: `${mintlifyDocsOrigin}/mcp`,
+        },
+        {
+          source: "/docs",
+          destination: `${mintlifyDocsOrigin}/docs`,
+        },
+        {
+          source: "/docs/:match*",
+          destination: `${mintlifyDocsOrigin}/docs/:match*`,
+        },
+        {
+          source: "/mintlify-assets/:path*",
+          destination: `${mintlifyDocsOrigin}/mintlify-assets/:path*`,
+        },
+        {
+          source: "/",
+          has: [{ type: "host", value: "docs.getoverlay.io" }],
+          destination: mintlifyDocsOrigin,
+        },
+        {
+          source: "/:match*",
+          has: [{ type: "host", value: "docs.getoverlay.io" }],
+          destination: `${mintlifyDocsOrigin}/:match*`,
+        },
+      );
     }
-    const relayOrigin =
-      process.env.CHAT_STREAM_RELAY_DEV_ORIGIN?.trim() || "http://127.0.0.1:8787";
-    return [
-      {
+
+    if (
+      process.env.NODE_ENV === "development" &&
+      process.env.NEXT_PUBLIC_CHAT_STREAM_RELAY_LOCAL === "true"
+    ) {
+      const relayOrigin =
+        process.env.CHAT_STREAM_RELAY_DEV_ORIGIN?.trim() || "http://127.0.0.1:8787";
+      rewrites.push({
         source: "/api/chat-stream/:path*",
         destination: `${relayOrigin}/api/chat-stream/:path*`,
-      },
-    ];
+      });
+    }
+
+    return rewrites;
   },
   async headers() {
     return [
