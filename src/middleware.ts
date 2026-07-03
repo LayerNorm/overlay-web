@@ -21,6 +21,16 @@ const PUBLIC_ROUTES = [
   '/api/checkout/verify',
 ]
 
+function isDocsProxyRoute(pathname: string): boolean {
+  return (
+    pathname === '/docs' ||
+    pathname.startsWith('/docs/') ||
+    pathname.startsWith('/_mintlify/') ||
+    pathname === '/api/request' ||
+    pathname.startsWith('/mintlify-assets/')
+  )
+}
+
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(route + '/')
@@ -158,6 +168,10 @@ function applyBrowserSecurityHeaders(
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+
+  if (isDocsProxyRoute(pathname)) {
+    return NextResponse.next()
+  }
 
   if (
     pathname.startsWith('/_next') ||
