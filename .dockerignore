@@ -1,18 +1,33 @@
 .DS_Store
 .git
+**/.git
+.cursor
+.deepsec
+.devin
+.devin-shots
+.gstack
 .next
 .next-analyze
+.next.stale.*
 .vercel
 node_modules
+**/node_modules
 npm-debug.log*
+*.tsbuildinfo
 
 .env
 .env.*
 !.env.example
 !.env.onprem.example
+!.env.enterprise.example
 
 coverage
 renders
-docs-site/node_modules
-overlay-desktop/node_modules
-overlay-mobile/node_modules
+archives
+transcripts
+plans
+
+overlay-chrome
+overlay-desktop
+overlay-mobile
+docs-site

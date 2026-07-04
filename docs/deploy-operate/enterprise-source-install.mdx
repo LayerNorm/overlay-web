@@ -1,0 +1,130 @@
+---
+title: "Enterprise Source Install"
+description: "Clone Overlay source, run the official image, and switch to local source builds when IT teams customize the code."
+---
+
+Use this path when an enterprise IT team wants source visibility, Git history, and a clean customization workflow. The default command runs the official prebuilt image, while the repository stays available for audit, configuration, overrides, and code changes.
+
+For the fastest pilot path without source checkout, use [One-Command Install](/deploy-operate/one-command-install).
+
+## Prerequisites
+
+- Git.
+- Docker with the Compose v2 plugin.
+- Access to the Overlay source repository or customer fork.
+- A Convex deployment URL and matching `INTERNAL_API_SECRET` for the selected environment.
+- Enterprise provider credentials for the providers you enable, such as OIDC, S3-compatible storage, and a model provider.
+
+## Install From Source
+
+```bash
+git clone https://github.com/layernorm/overlay-enterprise.git
+cd overlay-enterprise
+cp .env.enterprise.example .env
+cp docs/config/enterprise-private.example.json overlay.config.json
+docker compose pull
+docker compose up -d
+```
+
+Open the configured app URL or the local forwarded port:
+
+```bash
+docker compose ps
+docker compose logs -f overlay-web
+```
+
+By default, `docker compose up -d` pulls `ghcr.io/layernorm/overlay-web:latest`. This keeps first boot fast and avoids compiling the app on the customer's server.
+
+## What The Repo Provides
+
+The source checkout is still important even when the first run uses the official image:
+
+- `src/`, `packages/`, and `convex/` for audit and source-level customization.
+- `docker-compose.yml` for the default image-based runtime.
+- `docker-compose.build.yml` for local source builds.
+- `.env.enterprise.example` for enterprise runtime variables.
+- `docs/config/*.example.json` for validated deployment profiles.
+- `overlay.config.json` for non-secret runtime config.
+
+## Customize Runtime Config
+
+Prefer runtime config before editing product code:
+
+```bash
+$EDITOR .env
+$EDITOR overlay.config.json
+docker compose up -d
+```
+
+Use `.env` for secrets and deployment-specific values. Use `overlay.config.json` for non-secret provider shape, feature gates, compliance profile, CSP additions, and capability defaults.
+
+Validate config from the source checkout:
+
+```bash
+OVERLAY_CONFIG_FILE=overlay.config.json npm run check:config
+npm run docs:health
+```
+
+## Build After Code Changes
+
+When the IT team edits source files, switch to the build override:
+
+```bash
+git checkout -b enterprise/customization
+# edit src/, packages/, convex/, docs/config/, or other source files
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
+```
+
+The build override compiles the local checkout and tags the image as `overlay-web:local` by default. Set `OVERLAY_WEB_BUILD_IMAGE` if the team wants another local tag.
+
+## Production Custom Image
+
+For production, prefer building in CI and pushing to the enterprise registry:
+
+```bash
+docker build -t registry.enterprise.example.com/overlay-web:v0.1.1-custom .
+docker push registry.enterprise.example.com/overlay-web:v0.1.1-custom
+```
+
+Then deploy that image with the same Compose runtime:
+
+```bash
+OVERLAY_WEB_IMAGE=registry.enterprise.example.com/overlay-web:v0.1.1-custom docker compose up -d
+```
+
+This keeps production servers focused on running images, while Git and CI own source edits, review, builds, scanning, and provenance.
+
+## Updating
+
+For source-visible installs without code changes:
+
+```bash
+git pull
+docker compose pull
+docker compose up -d
+```
+
+For customized forks:
+
+```bash
+git fetch upstream
+git merge upstream/main
+# resolve conflicts and run the relevant checks
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
+```
+
+For production custom-image deploys, rebuild and push a new enterprise image tag, update `OVERLAY_WEB_IMAGE`, then run:
+
+```bash
+docker compose up -d
+```
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| Compose cannot pull the image | Confirm GHCR access and the `OVERLAY_WEB_IMAGE` tag in `.env`. |
+| Port `3000` is already in use | Change `OVERLAY_HTTP_PORT` in `.env`, then run `docker compose up -d`. |
+| Config edits do not appear | Confirm `overlay.config.json` exists at the repo root and restart with `docker compose up -d`. |
+| Source build fills disk | Run the default image path unless code was edited; source builds create dependency, Next.js, and Docker cache layers. |
+| App starts but cannot load data | Check `NEXT_PUBLIC_CONVEX_URL` and ensure the same `INTERNAL_API_SECRET` is configured in the app env and Convex deployment. |

@@ -1,0 +1,6 @@
+services:
+  overlay-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${OVERLAY_WEB_BUILD_IMAGE:-overlay-web:onprem}

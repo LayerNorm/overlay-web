@@ -4,7 +4,20 @@ description: "Run Overlay Web outside the hosted SaaS environment."
 ---
 This guide covers the current runtime configuration path for running Overlay outside the default Vercel, WorkOS, Stripe, and Cloudflare R2 SaaS setup.
 
-For the simplest operator path, use the one-command installer:
+For enterprise IT teams that want source visibility and customization, use [Enterprise Source Install](/deploy-operate/enterprise-source-install):
+
+```bash
+git clone https://github.com/layernorm/overlay-enterprise.git
+cd overlay-enterprise
+cp .env.enterprise.example .env
+cp docs/config/enterprise-private.example.json overlay.config.json
+docker compose pull
+docker compose up -d
+```
+
+That path runs the official image by default while keeping the full source checkout available for audit, configuration, and source-level customization.
+
+For the simplest pilot/operator path without a source checkout, use the one-command installer:
 
 ```bash
 curl -fsSL https://getoverlay.io/install.sh | bash
@@ -276,33 +289,31 @@ With OIDC instead of WorkOS:
 }
 ```
 
-## Docker Compose From Source
+## Docker Compose
 
-Use this path when developing or validating source changes. Production self-hosting should prefer the prebuilt-image installer in [One-Command Install](/deploy-operate/one-command-install).
+Use this path when an enterprise operator wants a source checkout with a plain Compose install. The default Compose file pulls a prebuilt `ghcr.io/layernorm/overlay-web` image; local source builds are opt-in through `docker-compose.build.yml`.
 
 This is a minimal on-prem shape for the app container. It assumes the customer already has S3-compatible object storage and does not include Convex because Convex remains a hosted deployment in the current architecture.
 
 Quick start:
 
 ```bash
-cp .env.onprem.example .env.onprem
+cp .env.enterprise.example .env
 cp docs/config/enterprise-private.example.json overlay.config.json
-docker compose -f docker-compose.onprem.yml up --build
+docker compose pull
+docker compose up -d
 ```
 
-The root `Dockerfile` builds the Next.js app, and `docker-compose.onprem.yml` mounts `overlay.config.json` into the container. The compose file intentionally does not run object storage, auth, database, browser automation, or sandbox services; those are enterprise-owned providers selected through config.
+`docker-compose.yml` mounts `overlay.config.json` into the container. The compose file intentionally does not run object storage, auth, database, browser automation, or sandbox services; those are enterprise-owned providers selected through config.
 
 ```yaml
 services:
   overlay-web:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: overlay-web:onprem
+    image: ${OVERLAY_WEB_IMAGE:-ghcr.io/layernorm/overlay-web:latest}
     ports:
       - "${OVERLAY_HTTP_PORT:-3000}:3000"
     env_file:
-      - .env.onprem
+      - .env
     volumes:
       - ./overlay.config.json:/app/overlay.config.json:ro
     environment:
@@ -311,6 +322,14 @@ services:
       HOSTNAME: 0.0.0.0
     restart: unless-stopped
 ```
+
+After editing source code, build locally with the override file:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d
+```
+
+Existing `docker-compose.onprem.yml` and `.env.onprem.example` files are retained as compatibility aliases for older operator instructions.
 
 ## Secrets Placement
 

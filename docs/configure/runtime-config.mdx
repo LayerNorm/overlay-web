@@ -19,13 +19,16 @@ OVERLAY_CONFIG_FILE=overlay.config.json npm run check:config
 npm run docs:health
 ```
 
-For Docker-based on-prem startup:
+For Docker-based enterprise source startup:
 
 ```bash
-cp .env.onprem.example .env.onprem
+cp .env.enterprise.example .env
 cp docs/config/enterprise-private.example.json overlay.config.json
-docker compose -f docker-compose.onprem.yml up --build
+docker compose pull
+docker compose up -d
 ```
+
+This uses the prebuilt `ghcr.io/layernorm/overlay-web` image by default while keeping the source checkout available for audit and customization. Use `docker-compose.build.yml` only after editing source code.
 
 ## Top-Level Shape
 
