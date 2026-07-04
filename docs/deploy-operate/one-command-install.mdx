@@ -1,0 +1,192 @@
+---
+title: "One-Command Install"
+description: "Install and manage a private Overlay self-hosted runtime with overlayctl."
+---
+
+Overlay publishes a small bootstrap script at `/install.sh`. It installs a Docker-backed `overlayctl` manager and runs prebuilt GHCR images, so operators do not need to clone or build the repository.
+
+```bash
+curl -fsSL https://getoverlay.io/install.sh | bash
+```
+
+For an inspectable install:
+
+```bash
+curl -fsSLO https://getoverlay.io/install.sh
+less install.sh
+bash install.sh
+```
+
+## What It Creates
+
+Default paths:
+
+| Path | Purpose |
+| --- | --- |
+| `/opt/overlay/overlay.config.json` | User-editable runtime config. |
+| `/opt/overlay/.env` | Generated secrets and provider env vars. File mode is `0600`. |
+| `/opt/overlay/docker-compose.yml` | Compose file that runs `ghcr.io/layernorm/overlay-web`. |
+| `/opt/overlay/overlayctl` | Local Docker-backed manager wrapper. |
+| `/usr/local/bin/overlayctl` | Convenience wrapper when the installer can write to `/usr/local/bin`. |
+
+The generated deployment uses the `enterprise-private` preset and is private/off by default. Browser use, sandboxes, integrations, web search, analytics, error reporting, billing, webhooks, API keys, vector search, memory, knowledge, automations, and file upload are disabled until an operator edits config and runs:
+
+```bash
+overlayctl apply
+```
+
+Database remains `convex` for v1. Set `NEXT_PUBLIC_CONVEX_URL` in `/opt/overlay/.env`, and set the matching `INTERNAL_API_SECRET` in the Convex deployment.
+
+## Install Options
+
+```bash
+OVERLAY_HOME=/srv/overlay \
+OVERLAY_VERSION=0.1.1 \
+OVERLAY_HTTP_PORT=8080 \
+bash install.sh
+```
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `OVERLAY_HOME` | `/opt/overlay` | Where config, env, compose, and wrapper files live. |
+| `OVERLAY_VERSION` | `latest` | GHCR tag for `overlay-web` and `overlay-installer`. |
+| `OVERLAY_HTTP_PORT` | `3000` | Host port forwarded to the app container. |
+| `OVERLAY_SKIP_START` | unset | Set to `1` to generate files without starting containers. |
+
+## Commands
+
+```bash
+overlayctl status
+overlayctl apply
+overlayctl logs
+overlayctl update 0.1.1
+overlayctl doctor
+overlayctl uninstall --keep-data
+```
+
+| Command | Behavior |
+| --- | --- |
+| `overlayctl init` | Creates missing config, env, and compose files, then starts unless `OVERLAY_SKIP_START=1`. |
+| `overlayctl apply` | Validates JSON config and runs `docker compose up -d`. |
+| `overlayctl status` | Shows config paths, image, URL, and container state. |
+| `overlayctl logs` | Tails the `overlay-web` container logs. |
+| `overlayctl update [version]` | Pulls a target `overlay-web` image tag and restarts. |
+| `overlayctl doctor` | Checks Docker, Compose, config files, required env, and local app health. |
+| `overlayctl uninstall --keep-data` | Stops/removes containers and preserves config/secrets. |
+
+## Common Config Edits
+
+Disable external processors:
+
+```json
+{
+  "features": {
+    "browserUse": false,
+    "sandboxes": false,
+    "integrations": false,
+    "webSearch": false,
+    "analytics": false,
+    "errorReporting": false
+  },
+  "providers": {
+    "browser": { "provider": "none" },
+    "sandbox": { "provider": "none" },
+    "integrations": { "provider": "none" },
+    "webSearch": { "provider": "none" },
+    "analytics": { "provider": "none" },
+    "errorReporting": { "provider": "none" }
+  }
+}
+```
+
+Enable S3-compatible storage:
+
+```json
+{
+  "features": {
+    "files": true
+  },
+  "providers": {
+    "objectStorage": { "provider": "s3" }
+  },
+  "storage": {
+    "provider": "s3",
+    "s3": {
+      "bucketName": "overlay-enterprise",
+      "region": "us-east-1",
+      "endpointUrl": "https://s3.enterprise.example.com",
+      "forcePathStyle": false
+    }
+  }
+}
+```
+
+Then set S3 credentials in `/opt/overlay/.env`, not in JSON.
+
+Enable OIDC:
+
+```json
+{
+  "features": {
+    "sso": true
+  },
+  "providers": {
+    "auth": { "provider": "oidc" }
+  },
+  "auth": {
+    "provider": "oidc",
+    "oidc": {
+      "issuerUrl": "https://idp.enterprise.example.com",
+      "clientId": "overlay-web",
+      "audience": "overlay-api"
+    }
+  }
+}
+```
+
+Set `OIDC_CLIENT_SECRET` in `/opt/overlay/.env`.
+
+Enable direct OpenAI models:
+
+```json
+{
+  "features": {
+    "modelRouting": true
+  },
+  "compliance": {
+    "allowExternalProcessors": true,
+    "allowedProcessorIds": ["models:openai"]
+  },
+  "providers": {
+    "models": { "provider": "openai" }
+  },
+  "llm": {
+    "gatewayProvider": "openai",
+    "defaultChatModelId": "gpt-4.1"
+  }
+}
+```
+
+Set `OPENAI_API_KEY` in `/opt/overlay/.env`.
+
+## Troubleshooting
+
+Run:
+
+```bash
+overlayctl doctor
+overlayctl status
+overlayctl logs
+```
+
+Common issues:
+
+| Symptom | Fix |
+| --- | --- |
+| Docker is missing or daemon is unreachable | Install Docker Engine or Docker Desktop and start the daemon. |
+| Compose plugin is missing | Install Docker Compose v2. `docker compose version` must work. |
+| App starts but core flows fail | Fill `NEXT_PUBLIC_CONVEX_URL` and ensure `INTERNAL_API_SECRET` matches the Convex deployment. |
+| Config edits do not apply | Run `overlayctl apply` after editing `/opt/overlay/overlay.config.json`. |
+| Port conflict on `3000` | Reinstall with `OVERLAY_HTTP_PORT=8080` or edit `/opt/overlay/.env`, then run `overlayctl apply`. |
+
+The public script is intentionally small. The long-lived operator interface is `overlayctl` plus Docker Compose, not a privileged daemon.

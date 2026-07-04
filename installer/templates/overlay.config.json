@@ -1,0 +1,115 @@
+{
+  "configVersion": 2,
+  "preset": "enterprise-private",
+  "app": {
+    "baseUrl": "http://localhost:3000",
+    "deploymentEnvironment": "onprem",
+    "publicEnv": {
+      "NEXT_PUBLIC_APP_URL": "http://localhost:3000"
+    }
+  },
+  "compliance": {
+    "profile": "enterprise-private",
+    "minorMode": false,
+    "allowExternalProcessors": false,
+    "allowedProcessorIds": [],
+    "dataResidency": {
+      "required": false,
+      "allowedRegions": []
+    },
+    "retention": {
+      "chatDays": 365,
+      "fileDays": 365,
+      "logsDays": 3650,
+      "sandboxArtifactDays": 30,
+      "deletedUserPurgeDays": 30
+    }
+  },
+  "features": {
+    "chat": true,
+    "files": false,
+    "memory": false,
+    "knowledge": false,
+    "automations": false,
+    "integrations": false,
+    "browserUse": false,
+    "sandboxes": false,
+    "webSearch": false,
+    "analytics": false,
+    "errorReporting": false,
+    "billing": false,
+    "webhooks": false,
+    "apiKeys": false,
+    "sso": false,
+    "vectorSearch": false,
+    "modelRouting": false
+  },
+  "providers": {
+    "auth": {
+      "provider": "none"
+    },
+    "database": {
+      "provider": "convex"
+    },
+    "objectStorage": {
+      "provider": "none"
+    },
+    "vectorSearch": {
+      "provider": "none"
+    },
+    "embeddings": {
+      "provider": "none"
+    },
+    "models": {
+      "provider": "none"
+    },
+    "integrations": {
+      "provider": "none"
+    },
+    "browser": {
+      "provider": "none"
+    },
+    "sandbox": {
+      "provider": "none"
+    },
+    "webSearch": {
+      "provider": "none"
+    },
+    "analytics": {
+      "provider": "none"
+    },
+    "errorReporting": {
+      "provider": "none"
+    },
+    "secrets": {
+      "provider": "env"
+    },
+    "rateLimit": {
+      "provider": "memory"
+    }
+  },
+  "auth": {
+    "provider": "none"
+  },
+  "billing": {
+    "provider": "none"
+  },
+  "storage": {
+    "provider": "none"
+  },
+  "llm": {
+    "gatewayProvider": "none"
+  },
+  "database": {
+    "provider": "convex"
+  },
+  "capabilities": {
+    "sso": false,
+    "apiKeys": false,
+    "webhooks": false,
+    "vectorSearch": false,
+    "automations": false,
+    "billing": false,
+    "multiTenant": false
+  }
+}

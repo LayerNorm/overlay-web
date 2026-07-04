@@ -4,6 +4,14 @@ description: "Run Overlay Web outside the hosted SaaS environment."
 ---
 This guide covers the current runtime configuration path for running Overlay outside the default Vercel, WorkOS, Stripe, and Cloudflare R2 SaaS setup.
 
+For the simplest operator path, use the one-command installer:
+
+```bash
+curl -fsSL https://getoverlay.io/install.sh | bash
+```
+
+That installer creates `/opt/overlay/overlay.config.json`, `/opt/overlay/.env`, `/opt/overlay/docker-compose.yml`, and an `overlayctl` manager. See [One-Command Install](/deploy-operate/one-command-install) for install options, commands, and common config edits.
+
 For tenant boundaries and enterprise role modeling, see [Tenancy And Role Model](/deploy-operate/tenancy). The short version: self-hosted and managed-cloud enterprise deployments are single-customer deployments; students, teachers, parents, admins, departments, and classes are roles or groups inside that deployment, not tenants.
 
 For licensing and brand constraints, see [Licensing](/legal/licensing) and [Legal Self-Hosting Notes](/legal/self-hosting-obligations). The short version: core product code is `AGPL-3.0-or-later`, reusable SDK/contract packages are `Apache-2.0`, and modified distributions need their own branding unless LayerNorm Inc. gives written permission.
@@ -268,7 +276,9 @@ With OIDC instead of WorkOS:
 }
 ```
 
-## Docker Compose Example
+## Docker Compose From Source
+
+Use this path when developing or validating source changes. Production self-hosting should prefer the prebuilt-image installer in [One-Command Install](/deploy-operate/one-command-install).
 
 This is a minimal on-prem shape for the app container. It assumes the customer already has S3-compatible object storage and does not include Convex because Convex remains a hosted deployment in the current architecture.
 

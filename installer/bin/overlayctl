@@ -1,0 +1,364 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+OVERLAY_HOME="${OVERLAY_HOME:-/var/lib/overlay}"
+OVERLAY_VERSION="${OVERLAY_VERSION:-latest}"
+OVERLAY_HTTP_PORT="${OVERLAY_HTTP_PORT:-3000}"
+OVERLAY_WEB_IMAGE="${OVERLAY_WEB_IMAGE:-ghcr.io/layernorm/overlay-web:${OVERLAY_VERSION}}"
+OVERLAY_TEMPLATE_DIR="${OVERLAY_TEMPLATE_DIR:-/opt/overlay-installer/templates}"
+
+COMPOSE_FILE="${OVERLAY_HOME}/docker-compose.yml"
+ENV_FILE="${OVERLAY_HOME}/.env"
+CONFIG_FILE="${OVERLAY_HOME}/overlay.config.json"
+
+log() {
+  printf '%s\n' "$*"
+}
+
+warn() {
+  printf 'warning: %s\n' "$*" >&2
+}
+
+die() {
+  printf 'overlayctl error: %s\n' "$*" >&2
+  exit 1
+}
+
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+secret_hex() {
+  openssl rand -hex 32
+}
+
+check_docker() {
+  command_exists docker || die "Docker is not installed or not on PATH."
+  docker info >/dev/null 2>&1 || die "Docker daemon is not running or is not reachable."
+}
+
+check_compose() {
+  docker compose version >/dev/null 2>&1 || die "Docker Compose v2 plugin is required."
+}
+
+compose() {
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -p overlay "$@"
+}
+
+require_template() {
+  local name="$1"
+  [ -f "${OVERLAY_TEMPLATE_DIR}/${name}" ] || die "Template not found: ${OVERLAY_TEMPLATE_DIR}/${name}"
+}
+
+replace_token() {
+  local file="$1"
+  local token="$2"
+  local value="$3"
+  local tmp="${file}.tmp"
+
+  awk -v token="$token" -v value="$value" '{ gsub(token, value); print }' "$file" >"$tmp"
+  mv "$tmp" "$file"
+}
+
+set_env_value() {
+  local key="$1"
+  local value="$2"
+  local tmp="${ENV_FILE}.tmp"
+
+  if [ -f "$ENV_FILE" ] && grep -q "^${key}=" "$ENV_FILE"; then
+    awk -v key="$key" -v value="$value" '
+      index($0, key "=") == 1 { print key "=" value; next }
+      { print }
+    ' "$ENV_FILE" >"$tmp"
+  else
+    cp "$ENV_FILE" "$tmp"
+    printf '%s=%s\n' "$key" "$value" >>"$tmp"
+  fi
+
+  mv "$tmp" "$ENV_FILE"
+  chmod 0600 "$ENV_FILE"
+}
+
+env_value() {
+  local key="$1"
+  if [ ! -f "$ENV_FILE" ]; then
+    return 1
+  fi
+  grep "^${key}=" "$ENV_FILE" | tail -n 1 | cut -d= -f2- || true
+}
+
+ensure_home() {
+  mkdir -p "$OVERLAY_HOME"
+}
+
+write_env_if_missing() {
+  if [ -f "$ENV_FILE" ]; then
+    log "Keeping existing ${ENV_FILE}"
+    return
+  fi
+
+  require_template env
+  cp "${OVERLAY_TEMPLATE_DIR}/env" "$ENV_FILE"
+  chmod 0600 "$ENV_FILE"
+
+  replace_token "$ENV_FILE" "__OVERLAY_VERSION__" "$OVERLAY_VERSION"
+  replace_token "$ENV_FILE" "__OVERLAY_WEB_IMAGE__" "$OVERLAY_WEB_IMAGE"
+  replace_token "$ENV_FILE" "__OVERLAY_HTTP_PORT__" "$OVERLAY_HTTP_PORT"
+  replace_token "$ENV_FILE" "__NEXT_PUBLIC_APP_URL__" "http://localhost:${OVERLAY_HTTP_PORT}"
+  replace_token "$ENV_FILE" "__INTERNAL_API_SECRET__" "$(secret_hex)"
+  replace_token "$ENV_FILE" "__INTERNAL_SERVICE_AUTH_SECRET__" "$(secret_hex)"
+  replace_token "$ENV_FILE" "__SESSION_SECRET__" "$(secret_hex)"
+  replace_token "$ENV_FILE" "__SESSION_TRANSFER_KEY__" "$(secret_hex)"
+  replace_token "$ENV_FILE" "__SESSION_COOKIE_ENCRYPTION_KEY__" "$(secret_hex)"
+  replace_token "$ENV_FILE" "__API_KEY_HASH_SECRET__" "$(secret_hex)"
+  replace_token "$ENV_FILE" "__PROVIDER_KEYS_SECRET__" "$(secret_hex)"
+  replace_token "$ENV_FILE" "__HOOKS_TOKEN_SALT__" "$(secret_hex)"
+  chmod 0600 "$ENV_FILE"
+
+  log "Created ${ENV_FILE}"
+}
+
+write_compose_if_missing() {
+  if [ -f "$COMPOSE_FILE" ]; then
+    log "Keeping existing ${COMPOSE_FILE}"
+    return
+  fi
+
+  require_template docker-compose.yml
+  cp "${OVERLAY_TEMPLATE_DIR}/docker-compose.yml" "$COMPOSE_FILE"
+  log "Created ${COMPOSE_FILE}"
+}
+
+write_config_if_missing() {
+  if [ -f "$CONFIG_FILE" ]; then
+    log "Keeping existing ${CONFIG_FILE}"
+    return
+  fi
+
+  require_template overlay.config.json
+  cp "${OVERLAY_TEMPLATE_DIR}/overlay.config.json" "$CONFIG_FILE"
+  log "Created ${CONFIG_FILE}"
+}
+
+validate_files_exist() {
+  [ -f "$COMPOSE_FILE" ] || die "Missing ${COMPOSE_FILE}. Run overlayctl init first."
+  [ -f "$ENV_FILE" ] || die "Missing ${ENV_FILE}. Run overlayctl init first."
+  [ -f "$CONFIG_FILE" ] || die "Missing ${CONFIG_FILE}. Run overlayctl init first."
+}
+
+validate_config_json() {
+  jq -e 'type == "object"' "$CONFIG_FILE" >/dev/null || die "${CONFIG_FILE} is not valid JSON object config."
+}
+
+warn_missing_required_env() {
+  local missing=0
+  local key
+  for key in NEXT_PUBLIC_CONVEX_URL INTERNAL_API_SECRET INTERNAL_SERVICE_AUTH_SECRET SESSION_SECRET SESSION_TRANSFER_KEY SESSION_COOKIE_ENCRYPTION_KEY; do
+    if [ -z "$(env_value "$key")" ]; then
+      warn "${key} is empty in ${ENV_FILE}"
+      missing=1
+    fi
+  done
+
+  if [ "$missing" -eq 1 ]; then
+    warn "Overlay can start, but core app flows may fail until required provider env is configured."
+  fi
+}
+
+cmd_init() {
+  check_docker
+  check_compose
+  ensure_home
+  write_env_if_missing
+  write_compose_if_missing
+  write_config_if_missing
+  validate_config_json
+
+  if [ "${OVERLAY_SKIP_START:-}" = "1" ]; then
+    log "Overlay files initialized. Start later with: overlayctl apply"
+    return
+  fi
+
+  cmd_apply
+}
+
+cmd_apply() {
+  check_docker
+  check_compose
+  validate_files_exist
+  validate_config_json
+  warn_missing_required_env
+
+  log "Pulling ${OVERLAY_WEB_IMAGE}"
+  compose pull overlay-web || warn "Image pull failed. Docker Compose will try the local cache or report the startup error."
+
+  log "Starting Overlay"
+  compose up -d
+  cmd_status
+}
+
+cmd_status() {
+  check_docker
+  check_compose
+  validate_files_exist
+
+  log "Overlay home: ${OVERLAY_HOME}"
+  log "Config: ${CONFIG_FILE}"
+  log "Env: ${ENV_FILE}"
+  log "Image: $(env_value OVERLAY_WEB_IMAGE)"
+  log "URL: http://localhost:$(env_value OVERLAY_HTTP_PORT)"
+  log ""
+  compose ps
+}
+
+cmd_logs() {
+  check_docker
+  check_compose
+  validate_files_exist
+  compose logs -f --tail=200 overlay-web
+}
+
+cmd_update() {
+  local target_version="${1:-latest}"
+  local target_image="ghcr.io/layernorm/overlay-web:${target_version}"
+
+  check_docker
+  check_compose
+  validate_files_exist
+  validate_config_json
+
+  set_env_value OVERLAY_VERSION "$target_version"
+  set_env_value OVERLAY_WEB_IMAGE "$target_image"
+
+  log "Updating Overlay to ${target_image}"
+  compose pull overlay-web
+  compose up -d
+  cmd_status
+}
+
+doctor_check() {
+  local failures_var="$1"
+  local ok_message="$2"
+  local fail_message="$3"
+  shift 3
+
+  if "$@" >/dev/null 2>&1; then
+    log "ok: ${ok_message}"
+  else
+    log "fail: ${fail_message}"
+    eval "$failures_var=\$(( ${failures_var} + 1 ))"
+  fi
+}
+
+cmd_doctor() {
+  local failures=0
+  local warnings=0
+  local port
+  local key
+
+  doctor_check failures "Docker client is available" "Docker client is unavailable" command_exists docker
+  doctor_check failures "Docker daemon is reachable" "Docker daemon is not reachable" docker info
+  doctor_check failures "Docker Compose v2 is available" "Docker Compose v2 is unavailable" docker compose version
+  doctor_check failures "Compose file exists" "Missing ${COMPOSE_FILE}" test -f "$COMPOSE_FILE"
+  doctor_check failures "Env file exists" "Missing ${ENV_FILE}" test -f "$ENV_FILE"
+  doctor_check failures "Runtime config exists" "Missing ${CONFIG_FILE}" test -f "$CONFIG_FILE"
+
+  if [ -f "$CONFIG_FILE" ]; then
+    doctor_check failures "Runtime config is valid JSON" "Runtime config is invalid JSON" jq -e 'type == "object"' "$CONFIG_FILE"
+  fi
+
+  if [ -f "$ENV_FILE" ]; then
+    for key in NEXT_PUBLIC_APP_URL NEXT_PUBLIC_CONVEX_URL INTERNAL_API_SECRET INTERNAL_SERVICE_AUTH_SECRET SESSION_SECRET SESSION_TRANSFER_KEY SESSION_COOKIE_ENCRYPTION_KEY; do
+      if [ -n "$(env_value "$key")" ]; then
+        log "ok: ${key} is set"
+      else
+        log "warn: ${key} is empty"
+        warnings=$((warnings + 1))
+      fi
+    done
+  fi
+
+  port="$(env_value OVERLAY_HTTP_PORT || true)"
+  if [ -n "$port" ] && command_exists curl && curl -fsS "http://127.0.0.1:${port}/" >/dev/null 2>&1; then
+    log "ok: Overlay responded on http://127.0.0.1:${port}"
+  else
+    log "warn: Overlay did not respond locally. Run overlayctl status and overlayctl logs."
+    warnings=$((warnings + 1))
+  fi
+
+  if [ "$failures" -gt 0 ]; then
+    log "doctor failed with ${failures} failure(s) and ${warnings} warning(s)."
+    return 1
+  fi
+
+  log "doctor completed with ${warnings} warning(s)."
+}
+
+cmd_uninstall() {
+  local keep_data="${1:-}"
+  [ "$keep_data" = "--keep-data" ] || die "Refusing to delete operator data. Use: overlayctl uninstall --keep-data"
+
+  check_docker
+  check_compose
+  validate_files_exist
+  compose down
+  log "Overlay containers stopped and removed. Kept ${OVERLAY_HOME}."
+}
+
+cmd_help() {
+  cat <<'EOF'
+overlayctl manages a self-hosted Overlay deployment.
+
+Usage:
+  overlayctl init
+  overlayctl apply
+  overlayctl status
+  overlayctl logs
+  overlayctl update [version]
+  overlayctl doctor
+  overlayctl uninstall --keep-data
+
+Environment:
+  OVERLAY_HOME=/opt/overlay
+  OVERLAY_VERSION=latest
+  OVERLAY_HTTP_PORT=3000
+EOF
+}
+
+case "${1:-help}" in
+  init)
+    shift
+    cmd_init "$@"
+    ;;
+  apply)
+    shift
+    cmd_apply "$@"
+    ;;
+  status)
+    shift
+    cmd_status "$@"
+    ;;
+  logs)
+    shift
+    cmd_logs "$@"
+    ;;
+  update)
+    shift
+    cmd_update "$@"
+    ;;
+  doctor)
+    shift
+    cmd_doctor "$@"
+    ;;
+  uninstall)
+    shift
+    cmd_uninstall "$@"
+    ;;
+  help|--help|-h)
+    cmd_help
+    ;;
+  *)
+    cmd_help
+    die "Unknown command: $1"
+    ;;
+esac

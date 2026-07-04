@@ -1,0 +1,14 @@
+services:
+  overlay-web:
+    image: ${OVERLAY_WEB_IMAGE:-ghcr.io/layernorm/overlay-web:latest}
+    restart: unless-stopped
+    ports:
+      - "${OVERLAY_HTTP_PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+      OVERLAY_CONFIG_FILE: /app/overlay.config.json
+    volumes:
+      - ./overlay.config.json:/app/overlay.config.json:ro
