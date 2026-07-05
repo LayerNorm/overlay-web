@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { logger } from '@/server/observability/logger'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
@@ -9,7 +10,7 @@ const NO_STORE_HEADERS = {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json().catch(() => ({}))) as { providers?: unknown }
+    const body = (await request.json().catch((_error) => ({}))) as { providers?: unknown }
     const auth = await resolveAuthenticatedAppUser(request, {})
     if (!auth) {
       return NextResponse.json(
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ keys }, { headers: NO_STORE_HEADERS })
   } catch (error) {
-    console.error('[NativeProviderKeys] Error:', error)
+    logger.error('[NativeProviderKeys] Error:', error)
     return NextResponse.json(
       { error: 'Failed to fetch provider keys' },
       { status: 500, headers: NO_STORE_HEADERS }
