@@ -14,8 +14,6 @@ import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import {
   cloneConversationUiState,
   cloneGenerationResultsMap,
-  cloneOrphanModelThreadsMap,
-  cloneUiMessageThread,
   createConversationUiState,
   sameModelOrder,
 } from '@overlay/chat-core'
@@ -25,22 +23,13 @@ import {
   ChatExperienceHeader,
 } from '@overlay/chat-react'
 import type { AutomationDetail, AutomationDetailTab } from '@overlay/app-core'
-import { AUTOMATIONS_UPDATED_EVENT, normalizeAutomationDetailTab } from '@overlay/app-core/automations'
+import { AUTOMATIONS_UPDATED_EVENT } from '@overlay/app-core/automations'
 import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import {
   DEFAULT_MODEL_ID,
-  isFreeTierChatModelId,
   type GenerationMode,
-  type VideoSubMode,
 } from '@/shared/ai/gateway/model-types'
-import {
-  IMAGE_MODELS,
-  VIDEO_MODELS,
-  getChatModelDisplayName,
-  getModel,
-  getVideoModelsBySubMode,
-} from '@/shared/ai/gateway/model-data'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
 import { resolveDefaultChatModelSelection } from '@/shared/chat/default-chat-model'
 import {
@@ -61,17 +50,20 @@ import { useChatBillingControls } from './chat/useChatBillingControls'
 import { useDraftReviewActions } from './chat/useDraftReviewActions'
 import type { EmptyAutomateSuggestionId, EmptyChatSuggestionId } from './ChatEmptyState'
 import { useChatPreferences } from './chat/useChatPreferences'
-import { safeSetLocalStorage, toggleModelSelection } from './chat/model-selection-utils'
+import { safeSetLocalStorage } from './chat/model-selection-utils'
 import { useChatPanels, type AttachmentPreview } from './chat/useChatPanels'
 import { useChatShellPanels } from './chat/useChatShellPanels'
 import { useChatConversationLoader } from './chat/useChatConversationLoader'
 import { resetRuntimeState } from './chat/conversation-runtime-utils'
 import { useConversationUiState } from './chat/useConversationUiState'
+import { useChatListController } from './chat/useChatListController'
+import { useChatModelSelectionController } from './chat/useChatModelSelectionController'
+import { useChatRouteController } from './chat/useChatRouteController'
+import { useChatTitleController } from './chat/useChatTitleController'
 import { useLiveConversationSync } from './chat/useLiveConversationSync'
 import {
   getResponseForExchangeForModel as selectResponseForExchangeForModel,
   prepareAskModelThreadsForTextTurn,
-  readableModelId,
   removeTurnFromConversationRuntime,
 } from './chat/chat-runtime-helpers'
 import { useChatRuntimes } from './chat/useChatRuntimes'
@@ -79,14 +71,8 @@ import { useComposerTextState } from './chat/useComposerTextState'
 import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
 import {
   dispatchChatCreated,
-  dispatchChatModified,
-  dispatchChatTitleUpdated,
-  sanitizeChatTitle,
 } from '@/shared/chat/chat-title'
 import {
-  fetchChatList,
-  getCachedChatList,
-  primeChatList,
   type ChatListPageInfo,
   upsertCachedChat,
 } from '@/shared/chat/chat-list-cache'
@@ -113,11 +99,6 @@ import { useGeneratedUiConnectorActions } from './chat/useGeneratedUiConnectorAc
 import {
   CHAT_GEN_MODE_KEY,
   DEFAULT_CHAT_TITLE,
-  IMAGE_MODEL_SELECTION_MODE_KEY,
-  SELECTED_IMAGE_MODELS_KEY,
-  SELECTED_VIDEO_MODELS_KEY,
-  VIDEO_MODEL_SELECTION_MODE_KEY,
-  VIDEO_SUB_MODE_KEY,
 } from './chat-interface/constants'
 import {
   assistantBlocksToPlainText,
@@ -126,7 +107,6 @@ import {
   getUserTurnId,
   stripAssistantAfterUserTurn,
 } from '@overlay/chat-core'
-import { generateTitle } from '@/features/chat/lib/generate-title'
 import { scrollToExchangeTurn } from '@/features/chat/lib/scroll-to-exchange-turn'
 import type {
   AskModelSelectionMode,
@@ -171,11 +151,6 @@ const AutomationEditorPanel = dynamic(
   () => import('./chat-interface/AutomationEditor').then((mod) => ({ default: mod.AutomationEditorPanel })),
   { loading: () => null },
 )
-// Loaded lazily with its own Suspense boundary (via `loading`) so a first-load
-// suspension never bubbles up to an ancestor boundary and flashes the whole
-// page/chat when the model dropdown is opened for the first time.
-const loadModelQualitiesPanel = () => import('@overlay/chat-react/model-qualities-panel')
-
 const EMPTY_UI_MESSAGES: UIMessage[] = []
 const TEMPORARY_CHAT_ID = '__overlay_temporary_chat__'
 const PENDING_FIRST_CHAT_ID = '__overlay_pending_first_chat__'
@@ -256,6 +231,8 @@ export default function ChatExperience({
     }
   }, [])
   const pendingFirstSendRef = useRef<PendingFirstSendState | null>(null)
+  // Stores the pending title so loadChats() never overwrites it before the PATCH lands
+  const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
 
   // Clear active viewer + ref when this tab unmounts so any in-flight .then() sees isActive=false
   useEffect(() => {
@@ -265,9 +242,12 @@ export default function ChatExperience({
     }
   }, [setActiveViewer])
 
-  const [chats, setChats] = useState<Conversation[]>(() =>
-    userId ? (initialChats ?? getCachedChatList() ?? []) : [],
-  )
+  const { chats, loadChats, setChats } = useChatListController({
+    initialChatPageInfo,
+    initialChats,
+    pendingTitleRef,
+    userId,
+  })
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const {
     runtimesRef,
@@ -303,9 +283,6 @@ export default function ChatExperience({
     sourcesPanel,
   } = useChatPanels()
 
-  useEffect(() => {
-    if (userId && initialChats) primeChatList(initialChats, initialChatPageInfo)
-  }, [initialChatPageInfo, initialChats, userId])
   /** Exchange index where the user pressed Stop; cleared on chat switch / new chat. */
   const [interruptedExchangeIdx, setInterruptedExchangeIdx] = useState<number | null>(null)
   /** When true, account default-model sync must not overwrite single/multi picker mode. */
@@ -339,17 +316,6 @@ export default function ChatExperience({
   const [, setIsSwitchingChat] = useState(false)
   const generatedUiConnectorActions = useGeneratedUiConnectorActions()
 
-  const [showModelPicker, setShowModelPicker] = useState(false)
-  const [showVideoSubModePicker, setShowVideoSubModePicker] = useState(false)
-
-  // Warm the lazy ModelQualitiesPanel chunk as soon as the picker opens so the
-  // first row hover renders instantly (and never triggers a visible suspense).
-  useEffect(() => {
-    if (showModelPicker) void loadModelQualitiesPanel()
-  }, [showModelPicker])
-  const [hoveredModelId, setHoveredModelId] = useState<string | null>(null)
-  /** Viewport position for the fixed model-qualities flyout (tracks hovered row). */
-  const [modelQualitiesPos, setModelQualitiesPos] = useState<{ x: number; y: number } | null>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [showModeMenu, setShowModeMenu] = useState(false)
   const [selectedToolIds, setSelectedToolIds] = useState<ChatToolRequestId[]>(() =>
@@ -532,8 +498,6 @@ export default function ChatExperience({
   const [exitingTurnIds, setExitingTurnIds] = useState<string[]>([])
   const [, setDeletingChatIds] = useState<string[]>([])
   const [activeChatDeleting, setActiveChatDeleting] = useState(false)
-  const [editingChatId, setEditingChatId] = useState<string | null>(null)
-  const [editingChatTitle, setEditingChatTitle] = useState('')
   const [selectedAutomation, setSelectedAutomation] = useState<AutomationDetail | null>(null)
   const [selectedAutomationLoading, setSelectedAutomationLoading] = useState(false)
   const {
@@ -578,28 +542,9 @@ export default function ChatExperience({
       return next
     })
   }, [])
-  const modelPickerRef = useRef<HTMLDivElement>(null)
-  const videoSubModePickerRef = useRef<HTMLDivElement>(null)
-  const modelPickerListScrollRef = useRef<HTMLDivElement>(null)
   const attachMenuRef = useRef<HTMLDivElement>(null)
   const modeMenuRef = useRef<HTMLDivElement>(null)
-
-  const syncModelQualitiesPosition = useCallback((modelId: string | null) => {
-    if (typeof document === 'undefined' || !modelId || !modelPickerRef.current) {
-      setModelQualitiesPos(null)
-      return
-    }
-    const row = modelPickerRef.current.querySelector(`[data-model-row="${CSS.escape(modelId)}"]`)
-    if (!row || !(row instanceof HTMLElement)) {
-      setModelQualitiesPos(null)
-      return
-    }
-    const r = row.getBoundingClientRect()
-    setModelQualitiesPos({ x: r.left - 8, y: r.top + r.height / 2 })
-  }, [])
   const wasStreamingRef = useRef(false)
-  // Stores the pending title so loadChats() never overwrites it before the PATCH lands
-  const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
 
   const replaceActiveChatRoute = useCallback(() => {
     if (!hideSidebar) router.replace('/app/chat')
@@ -643,6 +588,43 @@ export default function ChatExperience({
     setSourcesPanel,
   })
 
+  const {
+    automationConversationId,
+    automationDetailTab,
+    automationIdParam,
+    hasAutomationContext,
+    idParam,
+    invalidateLoadChatRequestRef,
+    loadChatRef,
+    resetToBlankChatSurface,
+    showAutomationChatTab,
+    showAutomationHeaderControls,
+    syncStandaloneChatUrl,
+  } = useChatRouteController({
+    activeChatId,
+    activeChatIdRef,
+    applyDefaultChatModelsToView,
+    applyUiStateToView,
+    chatPrefsHydrated,
+    clearTransientComposerState,
+    emptyRuntimeRef,
+    hideSidebar,
+    mode,
+    pendingTitleRef,
+    persistActiveRuntimeUiState,
+    resetComposerToolIds,
+    routerReplace: router.replace,
+    searchParams,
+    selectedAutomation,
+    setActiveChatId,
+    setActiveChatTitle,
+    setActiveViewer,
+    setInterruptedExchangeIdx,
+    setIsTemporaryChat,
+    setRuntimeHydrationVersion,
+    setSourcesPanel,
+  })
+
   useChatListEventSync({
     activeChatIdRef,
     resetActiveChatAfterDelete,
@@ -656,28 +638,6 @@ export default function ChatExperience({
   useEffect(() => {
     persistActiveRuntimeUiState()
   }, [persistActiveRuntimeUiState])
-
-  // ── data loading ──────────────────────────────────────────────────────────
-
-  // Snapshot pendingTitleRef before the async fetch so a concurrent PATCH completing mid-flight
-  // can't clear the ref before we've applied the override to the incoming server chats.
-  const loadChats = useCallback(async () => {
-    try {
-      const pending = pendingTitleRef.current
-      const serverChats = await fetchChatList({ force: true })
-      const nextChats = pending
-        ? serverChats.map((c) => (c._id === pending.chatId ? { ...c, title: pending.title } : c))
-        : serverChats
-      setChats(nextChats)
-      if (pending) {
-        primeChatList(nextChats)
-      }
-      // Clear the ref once the server has confirmed the title
-      if (pending && serverChats.some((c) => c._id === pending.chatId && c.title === pending.title)) {
-        if (pendingTitleRef.current?.chatId === pending.chatId) pendingTitleRef.current = null
-      }
-    } catch { /* ignore */ }
-  }, [])
 
   const onRuntimeMessagesChanged = useCallback(() => {
     forceLiveSyncRender((value) => value + 1)
@@ -735,45 +695,27 @@ export default function ChatExperience({
     }
   }, [activeChatId, actChatRef, chat0Ref, chat1Ref, chat2Ref, chat3Ref, runtimeHydrationVersion, runtimesRef])
 
-  // Update title in local state + pendingTitleRef immediately, then broadcast.
-  const applyChatTitleUpdate = useCallback((chatId: string, title: string) => {
-    const nextTitle = sanitizeChatTitle(title, DEFAULT_CHAT_TITLE)
-    pendingTitleRef.current = { chatId, title: nextTitle }
-    setChats((prev) => {
-      const exists = prev.some((c) => c._id === chatId)
-      if (!exists) {
-        // Chat not yet in local state (edge case: generateTitle resolved before createNewChat state settled)
-        return [{ _id: chatId, title: nextTitle, lastModified: Date.now() }, ...prev]
-      }
-      return prev.map((c) => (c._id === chatId ? { ...c, title: nextTitle } : c))
-    })
-    updateRuntimeUiState(chatId, (prev) => ({ ...prev, activeChatTitle: nextTitle }))
-    if (activeChatIdRef.current === chatId) {
-      setActiveChatTitle((prev) => prev !== null ? nextTitle : prev)
-    }
-    dispatchChatTitleUpdated({ chatId, title: nextTitle })
-    return nextTitle
-  }, [updateRuntimeUiState])
-
-  const markChatModified = useCallback((chatId: string, title?: string | null) => {
-    const existingTitle =
-      title ||
-      activeChatTitle ||
-      chats.find((chat) => chat._id === chatId)?.title ||
-      DEFAULT_CHAT_TITLE
-    const chat = {
-      _id: chatId,
-      title: existingTitle,
-      lastModified: Date.now(),
-    }
-    upsertCachedChat(chat)
-    setChats((prev) => {
-      const existing = prev.find((item) => item._id === chatId)
-      const merged = { ...existing, ...chat, title: chat.title || existing?.title || DEFAULT_CHAT_TITLE }
-      return [merged, ...prev.filter((item) => item._id !== chatId)]
-    })
-    dispatchChatModified({ chat })
-  }, [activeChatTitle, chats])
+  const {
+    beginHeaderChatRename,
+    cancelChatRename,
+    commitChatRename,
+    editingChatId,
+    editingChatTitle,
+    headerTitleInputRef,
+    markChatModified,
+    setEditingChatTitle,
+    startFirstMessageRename,
+  } = useChatTitleController({
+    activeChatId,
+    activeChatIdRef,
+    activeChatTitle,
+    chats,
+    loadChats,
+    pendingTitleRef,
+    setActiveChatTitle,
+    setChats,
+    updateRuntimeUiState,
+  })
 
   const handleGeneratedUiChange = useCallback((messageId: string, partId: string, data: GeneratedUiData) => {
     const patchMessages = (messages: UIMessage[]): { changed: boolean; messages: UIMessage[] } => {
@@ -848,73 +790,10 @@ export default function ChatExperience({
     })
   }, [actChatRef, chat0Ref, chat1Ref, chat2Ref, chat3Ref, emptyRuntimeRef, forceLiveSyncRender, runtimesRef])
 
-  const headerTitleInputRef = useRef<HTMLInputElement>(null)
-
-  const beginHeaderChatRename = useCallback(() => {
-    if (!activeChatId) return
-    const title =
-      activeChatTitle ??
-      chats.find((c) => c._id === activeChatId)?.title ??
-      DEFAULT_CHAT_TITLE
-    setEditingChatId(activeChatId)
-    setEditingChatTitle(title)
-  }, [activeChatId, activeChatTitle, chats])
-
-  useEffect(() => {
-    if (!activeChatId || editingChatId !== activeChatId) return
-    const el = headerTitleInputRef.current
-    if (!el) return
-    el.focus()
-    el.select()
-  }, [activeChatId, editingChatId])
-
-  const cancelChatRename = useCallback(() => {
-    setEditingChatId(null)
-    setEditingChatTitle('')
-  }, [])
-
-  useEffect(() => {
-    cancelChatRename()
-  }, [activeChatId, cancelChatRename])
-
-  const commitChatRename = useCallback(async (chatId: string) => {
-    const previousTitle =
-      chats.find((chat) => chat._id === chatId)?.title ??
-      (activeChatIdRef.current === chatId ? activeChatTitle ?? DEFAULT_CHAT_TITLE : DEFAULT_CHAT_TITLE)
-    const nextTitle = sanitizeChatTitle(editingChatTitle, previousTitle)
-
-    cancelChatRename()
-    if (nextTitle === previousTitle) return
-
-    applyChatTitleUpdate(chatId, nextTitle)
-
-    try {
-      const res = await overlayAppClient.conversations.updateResponse({ conversationId: chatId, title: nextTitle })
-      if (!res.ok) throw new Error('Failed to rename chat')
-    } catch {
-      applyChatTitleUpdate(chatId, previousTitle)
-    } finally {
-      void loadChats()
-    }
-  }, [activeChatTitle, applyChatTitleUpdate, cancelChatRename, chats, editingChatTitle, loadChats])
-
   /** Hide header rename until `loadChat` has applied messages/meta (`runtime.hydrated`). */
   const activeChatHydrated = Boolean(
     activeChatId && runtimesRef.current.get(activeChatId)?.hydrated,
   )
-
-  // Called on the first message of a new chat. Titles come from the free title model;
-  // avoid persisting first-word excerpts, which read as incomplete titles.
-  const startFirstMessageRename = useCallback((chatId: string, text: string) => {
-    void generateTitle(text).then(async (aiTitle) => {
-      if (!aiTitle) return
-      const finalTitle = applyChatTitleUpdate(chatId, aiTitle)
-      try {
-        const res = await overlayAppClient.conversations.updateResponse({ conversationId: chatId, title: finalTitle })
-        if (res.ok) void loadChats()
-      } catch { /* keep local title */ }
-    })
-  }, [applyChatTitleUpdate, loadChats])
 
   const isStreamChatActive = useCallback((
     chatId: string,
@@ -952,15 +831,6 @@ export default function ChatExperience({
     return () => clearTimeout(t)
   }, [selectedModels, selectedActModel, activeChatId])
 
-  // Auto-load a specific chat when embedded in project view (`id` = conversation)
-  const idParam = searchParams?.get('id') ?? null
-  const automationIdParam = mode === 'automate' ? searchParams?.get('automationId') ?? null : null
-  const automationDetailTab = normalizeAutomationDetailTab(searchParams?.get('tab'))
-  const automationConversationId =
-    selectedAutomation?.sourceConversationId || selectedAutomation?.conversationId || null
-  const hasAutomationContext = mode === 'automate' && Boolean(automationIdParam)
-  const showAutomationChatTab = !hasAutomationContext || automationDetailTab === 'chat'
-  const showAutomationHeaderControls = mode === 'automate'
   const automationHeaderModelId = selectedAutomation?.modelId ?? selectedActModel ?? DEFAULT_MODEL_ID
 
   // Automations must always run with exactly one model. Collapse multi-model selection
@@ -982,26 +852,6 @@ export default function ChatExperience({
     setSelectedActModel,
     setSelectedModels,
   ])
-
-  const syncStandaloneChatUrl = useCallback((chatId: string | null, options: { replaceUrl?: boolean } = {}) => {
-    if (hideSidebar || options.replaceUrl === false) return
-    const replaceUrl = (href: string) => {
-      window.history.replaceState(null, '', href)
-    }
-    if (mode === 'automate') {
-      const params = new URLSearchParams()
-      if (chatId) params.set('id', chatId)
-      const automationId = searchParams?.get('automationId')
-      if (automationId) params.set('automationId', automationId)
-      const tab = normalizeAutomationDetailTab(searchParams?.get('tab'))
-      if (tab !== 'chat') params.set('tab', tab)
-      const query = params.toString()
-      replaceUrl(`/app/automations${query ? `?${query}` : ''}`)
-      return
-    }
-    const basePath = '/app/chat'
-    replaceUrl(chatId ? `${basePath}?id=${encodeURIComponent(chatId)}` : basePath)
-  }, [hideSidebar, mode, searchParams])
 
   const tryActivatePendingFirstSend = useCallback(() => {
     const pending = pendingFirstSendRef.current
@@ -1068,70 +918,8 @@ export default function ChatExperience({
     syncStandaloneChatUrl,
   })
 
-  useEffect(() => {
-    if (hideSidebar) return
-    const browserIdParam =
-      typeof window === 'undefined'
-        ? idParam
-        : new URLSearchParams(window.location.search).get('id')
-    const effectiveIdParam = idParam ?? browserIdParam
-    const shouldResetToEmptySurface =
-      (mode === 'chat' && !effectiveIdParam) ||
-      (mode === 'automate' && !effectiveIdParam && !automationIdParam)
-    if (!shouldResetToEmptySurface) return
-    if (!activeChatIdRef.current && !activeChatId) return
-
-    persistActiveRuntimeUiState()
-    activeChatIdRef.current = null
-    pendingTitleRef.current = null
-    setIsTemporaryChat(false)
-    resetComposerToolIds(false)
-    setActiveChatId(null)
-    setActiveChatTitle(null)
-    setInterruptedExchangeIdx(null)
-    setSourcesPanel(null)
-    setActiveViewer(null)
-    applyUiStateToView(applyDefaultChatModelsToView({
-      activeChatTitle: null,
-      isFirstMessage: true,
-    }))
-    clearTransientComposerState()
-  }, [
-    activeChatId,
-    applyDefaultChatModelsToView,
-    applyUiStateToView,
-    automationIdParam,
-    hideSidebar,
-    idParam,
-    mode,
-    persistActiveRuntimeUiState,
-    clearTransientComposerState,
-    resetComposerToolIds,
-    setActiveViewer,
-    setSourcesPanel,
-  ])
-
-  // Skip reloading the same chat we just created/switched to locally; otherwise the
-  // route update can race the optimistic first-turn state and snap the UI back to empty.
-  useEffect(() => {
-    if (!chatPrefsHydrated) return
-    if (!idParam || activeChatIdRef.current === idParam) return
-    void loadChat(idParam)
-    // `loadChat` is intentionally excluded so this only reacts to route changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatPrefsHydrated, idParam])
-
-  useEffect(() => {
-    function handleChatRouteSelected(event: Event) {
-      const chatId = (event as CustomEvent<{ chatId?: string }>).detail?.chatId
-      if (!chatId || activeChatIdRef.current === chatId) return
-      void loadChat(chatId, { replaceUrl: false })
-    }
-    window.addEventListener('overlay:chat-route-selected', handleChatRouteSelected)
-    return () => window.removeEventListener('overlay:chat-route-selected', handleChatRouteSelected)
-    // `loadChat` is intentionally excluded so this listener does not churn on render-only state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  loadChatRef.current = loadChat
+  invalidateLoadChatRequestRef.current = invalidateLoadChatRequest
 
   const refreshSelectedAutomation = useCallback(async (options?: { showLoading?: boolean }) => {
     if (mode !== 'automate' || !automationIdParam) {
@@ -1157,14 +945,6 @@ export default function ChatExperience({
   useEffect(() => {
     void refreshSelectedAutomation()
   }, [refreshSelectedAutomation])
-
-  useEffect(() => {
-    if (mode !== 'automate' || !automationConversationId) return
-    if (activeChatIdRef.current === automationConversationId) return
-    void loadChat(automationConversationId)
-    // `loadChat` is intentionally excluded so this only reacts to selected automation changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [automationConversationId, mode])
 
   useEffect(() => {
     if (wasStreamingRef.current && !isActiveLoading && chat0.messages.length > 0) {
@@ -1314,84 +1094,6 @@ export default function ChatExperience({
   }, [chat0.messages.length, actChat.messages.length, scrollToConversationBottom])
 
   useEffect(() => {
-    if (!showModelPicker) {
-      setHoveredModelId(null)
-      setModelQualitiesPos(null)
-      return
-    }
-    function handleOutside(e: MouseEvent) {
-      if (modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node))
-        setShowModelPicker(false)
-    }
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') setShowModelPicker(false)
-    }
-    document.addEventListener('mousedown', handleOutside, true)
-    document.addEventListener('keydown', handleEscape)
-    return () => {
-      document.removeEventListener('mousedown', handleOutside, true)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [showModelPicker])
-
-  useLayoutEffect(() => {
-    if (!showModelPicker || (!hasAutomationContext && generationMode !== 'text') || !hoveredModelId) {
-      setModelQualitiesPos(null)
-      return
-    }
-    syncModelQualitiesPosition(hoveredModelId)
-  }, [
-    showModelPicker,
-    generationMode,
-    hasAutomationContext,
-    hoveredModelId,
-    syncModelQualitiesPosition,
-  ])
-
-  useEffect(() => {
-    const el = modelPickerListScrollRef.current
-    if (!el || !showModelPicker || !hoveredModelId) return
-    const onScroll = () => syncModelQualitiesPosition(hoveredModelId)
-    el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
-  }, [showModelPicker, hoveredModelId, syncModelQualitiesPosition])
-
-  useEffect(() => {
-    if (!showModelPicker || !hoveredModelId) return
-    const onResize = () => syncModelQualitiesPosition(hoveredModelId)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [showModelPicker, hoveredModelId, syncModelQualitiesPosition])
-
-  useEffect(() => {
-    function openPicker() { setShowModelPicker(true) }
-    function closePicker() { setShowModelPicker(false) }
-    window.addEventListener('overlay:tour:open-model-picker', openPicker)
-    window.addEventListener('overlay:tour:close-model-picker', closePicker)
-    return () => {
-      window.removeEventListener('overlay:tour:open-model-picker', openPicker)
-      window.removeEventListener('overlay:tour:close-model-picker', closePicker)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!showVideoSubModePicker) return
-    function handleOutside(e: MouseEvent) {
-      if (videoSubModePickerRef.current && !videoSubModePickerRef.current.contains(e.target as Node))
-        setShowVideoSubModePicker(false)
-    }
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') setShowVideoSubModePicker(false)
-    }
-    document.addEventListener('mousedown', handleOutside, true)
-    document.addEventListener('keydown', handleEscape)
-    return () => {
-      document.removeEventListener('mousedown', handleOutside, true)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [showVideoSubModePicker])
-
-  useEffect(() => {
     if (!showAttachMenu) return
     function handleOutside(e: MouseEvent) {
       if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node))
@@ -1472,231 +1174,47 @@ export default function ChatExperience({
     scrollToExchangeTurn(turnId)
   }, [])
 
-  const handleImageModelSelectionModeChange = useCallback(
-    (next: AskModelSelectionMode) => {
-      if (isActiveLoading || generationMode !== 'image') return
-      if (next === imageModelSelectionMode) return
-      if (isFreeTier && next === 'multiple') return
-      safeSetLocalStorage(IMAGE_MODEL_SELECTION_MODE_KEY, next)
-      setImageModelSelectionMode(next)
-      if (next === 'single' && selectedImageModels.length > 1) {
-        const one = [selectedImageModels[0]!]
-        setSelectedImageModels(one)
-        safeSetLocalStorage(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(one))
-      }
-    },
-    [
-      generationMode,
-      imageModelSelectionMode,
-      isActiveLoading,
-      isFreeTier,
-      selectedImageModels,
-      setImageModelSelectionMode,
-      setSelectedImageModels,
-    ],
-  )
-
-  const handleVideoModelSelectionModeChange = useCallback(
-    (next: AskModelSelectionMode) => {
-      if (isActiveLoading || generationMode !== 'video') return
-      if (next === videoModelSelectionMode) return
-      if (isFreeTier && next === 'multiple') return
-      safeSetLocalStorage(VIDEO_MODEL_SELECTION_MODE_KEY, next)
-      setVideoModelSelectionMode(next)
-      if (next === 'single' && selectedVideoModels.length > 1) {
-        const one = [selectedVideoModels[0]!]
-        setSelectedVideoModels(one)
-        safeSetLocalStorage(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(one))
-      }
-    },
-    [
-      generationMode,
-      isActiveLoading,
-      isFreeTier,
-      selectedVideoModels,
-      setSelectedVideoModels,
-      setVideoModelSelectionMode,
-      videoModelSelectionMode,
-    ],
-  )
-
-  function handleVideoSubModeChange(subMode: VideoSubMode) {
-    if (isActiveLoading) return
-    setVideoSubMode(subMode)
-    safeSetLocalStorage(VIDEO_SUB_MODE_KEY, subMode)
-    const models = getVideoModelsBySubMode(subMode)
-    const first = models[0]?.id
-    if (first && !models.some((m) => selectedVideoModels.includes(m.id))) {
-      setSelectedVideoModels([first])
-      safeSetLocalStorage(SELECTED_VIDEO_MODELS_KEY, JSON.stringify([first]))
-    }
-  }
-
-  function toggleImageModelInPicker(modelId: string) {
-    if (isActiveLoading) return
-    const next = toggleModelSelection(selectedImageModels, modelId, imageModelSelectionMode)
-    if (sameModelOrder(next, selectedImageModels)) return
-    setSelectedImageModels(next)
-    safeSetLocalStorage(SELECTED_IMAGE_MODELS_KEY, JSON.stringify(next))
-    if (imageModelSelectionMode === 'single') setShowModelPicker(false)
-  }
-
-  function toggleVideoModelInPicker(modelId: string) {
-    if (isActiveLoading) return
-    const next = toggleModelSelection(selectedVideoModels, modelId, videoModelSelectionMode)
-    if (sameModelOrder(next, selectedVideoModels)) return
-    setSelectedVideoModels(next)
-    safeSetLocalStorage(SELECTED_VIDEO_MODELS_KEY, JSON.stringify(next))
-    if (videoModelSelectionMode === 'single') setShowModelPicker(false)
-  }
-
-  const isOnNewChatSurface = !activeChatId && !isTemporaryChat
-  const persistNewChatAskModels = useCallback((ids: string[]) => {
-    if (!isOnNewChatSurface) return
-    const normalized = normalizeChatModelSelection({ askModelIds: ids })
-    void updateSettings({
-      defaultAskModelIds: normalized.askModelIds,
-      defaultActModelId: normalized.actModelId,
-    })
-  }, [isOnNewChatSurface, updateSettings])
-  const persistNewChatActModel = useCallback((id: string) => {
-    if (!isOnNewChatSurface) return
-    const normalized = normalizeChatModelSelection({ askModelIds: selectedModels, actModelId: id })
-    void updateSettings({
-      defaultAskModelIds: normalized.askModelIds,
-      defaultActModelId: normalized.actModelId,
-    })
-  }, [isOnNewChatSurface, selectedModels, updateSettings])
-
-  useEffect(() => {
-    if (!chatPrefsHydrated) return
-    if (
-      userAskModelOverrideRef.current &&
-      askModelSelectionMode === 'single' &&
-      selectedModels.length === 1 &&
-      selectedModels[0] === selectedActModel
-    ) {
-      return
-    }
-    const normalized = normalizeChatModelSelection({
-      askModelIds:
-        askModelSelectionMode === 'single'
-          ? [selectedActModel]
-          : selectedModels,
-      actModelId: selectedActModel,
-    })
-    const resolvedAskIds =
-      askModelSelectionMode === 'single'
-        ? [normalized.actModelId]
-        : normalized.askModelIds
-    const selectionChanged =
-      normalized.actModelId !== selectedActModel ||
-      !sameModelOrder(resolvedAskIds, selectedModels)
-
-    if (selectionChanged) {
-      setSelectedModels(resolvedAskIds)
-      setSelectedActModel(normalized.actModelId)
-      if (askModelSelectionMode === 'multiple') {
-        setAskModelSelectionMode(resolvedAskIds.length > 1 ? 'multiple' : 'single')
-      }
-    }
-  }, [
+  const {
+    handleModeChange,
+    headerModelProps,
+    snapshotCurrentAskThreadsForModelPicker,
+    setShowModelPicker,
+  } = useChatModelSelectionController({
+    activeChatId,
+    activeChatIdRef,
+    activeRuntime,
     askModelSelectionMode,
     chatPrefsHydrated,
+    exchangeGenTypes,
+    exchangeModels,
+    gatewayCatalogModels,
+    gatewayModelsLoading,
+    generationMode,
+    hasAutomationContext,
+    imageModelSelectionMode,
+    isActiveLoading,
+    isFreeTier,
+    isTemporaryChat,
+    selectableTextModels,
     selectedActModel,
+    selectedImageModels,
     selectedModels,
+    selectedVideoModels,
     setAskModelSelectionMode,
+    setGenerationChip,
+    setGenerationMode,
+    setImageModelSelectionMode,
     setSelectedActModel,
+    setSelectedImageModels,
     setSelectedModels,
-  ])
-
-  const snapshotCurrentAskThreadsForModelPicker = useCallback(() => {
-    if (!activeChatIdRef.current && !isTemporaryChat) return
-    const latestTextIdx = (() => {
-      for (let i = exchangeModels.length - 1; i >= 0; i--) {
-        if ((exchangeGenTypes[i] ?? 'text') === 'text') return i
-      }
-      return -1
-    })()
-    const threadModelOrder =
-      latestTextIdx >= 0 && exchangeModels[latestTextIdx]?.length
-        ? exchangeModels[latestTextIdx]!
-        : selectedModels
-    const nextOrphans = cloneOrphanModelThreadsMap(activeRuntime.ui.orphanModelThreads)
-    threadModelOrder.slice(0, 4).forEach((modelId, slotIdx) => {
-      const messages = activeRuntime.askChats[slotIdx]?.messages as UIMessage[] | undefined
-      if (messages?.length) {
-        nextOrphans.set(modelId, cloneUiMessageThread(messages))
-      }
-    })
-    activeRuntime.ui = createConversationUiState({
-      ...activeRuntime.ui,
-      orphanModelThreads: nextOrphans,
-    })
-  }, [activeRuntime, exchangeGenTypes, exchangeModels, isTemporaryChat, selectedModels])
-
-  const handleTextModelSelectionModeChange = useCallback(
-    (next: AskModelSelectionMode) => {
-      if (generationMode !== 'text') return
-      if (next === askModelSelectionMode) return
-      if (isFreeTier && next === 'multiple') return
-      if (hasAutomationContext && next === 'multiple') return
-      userAskModelOverrideRef.current = true
-      snapshotCurrentAskThreadsForModelPicker()
-      setAskModelSelectionMode(next)
-      if (next === 'single' && selectedModels.length > 1) {
-        const one = [selectedModels[0]!]
-        setSelectedModels(one)
-        setSelectedActModel(one[0]!)
-        persistNewChatAskModels(one)
-        persistNewChatActModel(one[0]!)
-      } else if (next === 'multiple' && selectedModels.length > 0) {
-        setSelectedActModel(selectedModels[0]!)
-        persistNewChatActModel(selectedModels[0]!)
-      }
-    },
-    [
-      generationMode,
-      askModelSelectionMode,
-      isFreeTier,
-      hasAutomationContext,
-      selectedModels,
-      snapshotCurrentAskThreadsForModelPicker,
-      persistNewChatAskModels,
-      persistNewChatActModel,
-      setAskModelSelectionMode,
-      setSelectedActModel,
-      setSelectedModels,
-    ],
-  )
-
-  function toggleTextModelInPicker(modelId: string) {
-    if (isOnNewChatSurface) {
-      userAskModelOverrideRef.current = true
-    }
-    snapshotCurrentAskThreadsForModelPicker()
-    if (askModelSelectionMode === 'single') {
-      const next = toggleModelSelection(selectedModels, modelId, askModelSelectionMode)
-      if (sameModelOrder(next, selectedModels) && selectedActModel === modelId) return
-      setSelectedActModel(modelId)
-      setSelectedModels(next)
-      persistNewChatActModel(modelId)
-      persistNewChatAskModels(next)
-      setShowModelPicker(false)
-      return
-    }
-    const next = toggleModelSelection(selectedModels, modelId, askModelSelectionMode)
-    if (sameModelOrder(next, selectedModels)) return
-    setSelectedModels(next)
-    if (!next.includes(selectedActModel)) {
-      setSelectedActModel(next[0]!)
-      persistNewChatActModel(next[0]!)
-    } else if (next.length === 1) {
-      setSelectedActModel(modelId)
-      persistNewChatActModel(modelId)
-    }
-    persistNewChatAskModels(next)
-  }
+    setSelectedVideoModels,
+    setVideoModelSelectionMode,
+    setVideoSubMode,
+    updateSettings,
+    userAskModelOverrideRef,
+    videoModelSelectionMode,
+    videoSubMode,
+  })
 
   // ── chat management ────────────────────────────────────────────────────────
 
@@ -1717,33 +1235,6 @@ export default function ChatExperience({
       if (activeChatIdRef.current === chatId) applyUiStateToView(runtime.ui)
     }
     setRuntimeHydrationVersion((value) => value + 1)
-  }
-
-  function resetToBlankChatSurface(options: { temporary: boolean }) {
-    invalidateLoadChatRequest()
-    persistActiveRuntimeUiState()
-    activeChatIdRef.current = null
-    pendingTitleRef.current = null
-    setActiveViewer(null)
-    setActiveChatId(null)
-    setInterruptedExchangeIdx(null)
-    setSourcesPanel(null)
-    setIsTemporaryChat(options.temporary)
-    resetComposerToolIds(options.temporary)
-    setActiveChatTitle(options.temporary ? 'Temporary chat' : null)
-    const { askModelIds, actModelId } = resolveAppDefaultChatModels()
-    resetRuntimeState(emptyRuntimeRef.current, {
-      selectedActModel: actModelId,
-      selectedModels: askModelIds,
-      askModelSelectionMode: askModelIds.length > 1 ? 'multiple' : 'single',
-      activeChatTitle: options.temporary ? 'Temporary chat' : null,
-      isFirstMessage: true,
-    })
-    emptyRuntimeRef.current.hydrated = true
-    applyUiStateToView(emptyRuntimeRef.current.ui)
-    clearTransientComposerState()
-    setRuntimeHydrationVersion((value) => value + 1)
-    syncStandaloneChatUrl(null)
   }
 
   function handleTemporaryChatToggle() {
@@ -2608,12 +2099,6 @@ export default function ChatExperience({
     })
   }
 
-  const handleModeChange = useCallback((mode: GenerationMode) => {
-    setGenerationMode(mode)
-    setGenerationChip(null)
-    safeSetLocalStorage(CHAT_GEN_MODE_KEY, mode)
-  }, [setGenerationChip, setGenerationMode])
-
   const focusComposer = useCallback(() => {
     window.setTimeout(() => {
       textareaRef.current?.focus()
@@ -2697,7 +2182,7 @@ export default function ChatExperience({
     }
     window.addEventListener('keydown', onGlobalKeyDown, true)
     return () => window.removeEventListener('keydown', onGlobalKeyDown, true)
-  }, [setGenerationChip, setGenerationMode])
+  }, [setGenerationChip, setGenerationMode, setShowModelPicker])
 
   async function stopActiveChat() {
     if (!isActiveLoading) return
@@ -2861,20 +2346,6 @@ export default function ChatExperience({
   // ── derived values for header ─────────────────────────────────────────────
 
   const activeChat = chats.find((c) => c._id === activeChatId)
-  const selectedGatewayModelName = gatewayCatalogModels.find(
-    (model) => model.id === selectedActModel || model.gatewayId === selectedActModel,
-  )?.name
-  const registeredModelName = getChatModelDisplayName(selectedActModel)
-  const selectedTextModelName =
-    selectedGatewayModelName ||
-    (registeredModelName !== selectedActModel ? registeredModelName : readableModelId(selectedActModel))
-  const modelPickerLabel = generationMode === 'image'
-    ? (selectedImageModels.length === 1 ? (IMAGE_MODELS.find((m) => m.id === selectedImageModels[0])?.name ?? 'Select model') : `${selectedImageModels.length} models`)
-    : generationMode === 'video'
-    ? (selectedVideoModels.length === 1 ? (VIDEO_MODELS.find((m) => m.id === selectedVideoModels[0])?.name ?? 'Select model') : `${selectedVideoModels.length} models`)
-    : (askModelSelectionMode === 'multiple' && selectedModels.length > 1
-      ? `${selectedModels.length} models`
-      : (selectedTextModelName || (gatewayModelsLoading ? 'Loading models…' : 'Select model')))
 
   // Read messages directly from the runtime Chat instance so the UI never lags
   // behind the loaded state (useChat's useSyncExternalStore can be one beat late).
@@ -3041,11 +2512,6 @@ export default function ChatExperience({
     selectedAutomation?.name ||
     (isTemporaryChat ? 'Temporary chat' : activeChatTitle || activeChat?.title || (mode === 'automate' ? 'New automation' : 'New conversation'))
 
-  const onHoveredModelChange = useCallback((modelId: string | null, position: { x: number; y: number } | null) => {
-    setHoveredModelId(modelId)
-    setModelQualitiesPos(position)
-  }, [])
-
   const renderExportMenu = useCallback(() => {
     if (selectedAutomation || primaryMessages.length === 0 || (!activeChatId && !isTemporaryChat)) {
       return null
@@ -3201,48 +2667,12 @@ export default function ChatExperience({
           onGenerationModeChange={handleModeChange}
           generationMode={generationMode}
           renderExportMenu={renderExportMenu}
-          modelPickerRef={modelPickerRef}
-          videoSubModePickerRef={videoSubModePickerRef}
-          modelPickerListScrollRef={modelPickerListScrollRef}
-          showModelPicker={showModelPicker}
-          onToggleModelPicker={() => setShowModelPicker((value) => !value)}
-          onSetShowModelPicker={setShowModelPicker}
-          modelPickerLabel={modelPickerLabel}
-          hoveredModelId={hoveredModelId}
-          modelQualitiesPos={modelQualitiesPos}
-          onHoveredModelChange={onHoveredModelChange}
-          resolveModel={getModel}
-          isFreeTier={isFreeTier}
-          isFreeTierChatModelId={isFreeTierChatModelId}
+          {...headerModelProps}
           automationHeaderModelId={automationHeaderModelId}
           automationHeaderModels={automationHeaderModels}
           onSaveAutomationHeaderModel={saveAutomationHeaderModel}
-          getChatModelDisplayName={getChatModelDisplayName}
           automationDetailTab={automationDetailTab}
           onSelectAutomationDetailTab={selectAutomationDetailTab}
-          videoSubMode={videoSubMode}
-          showVideoSubModePicker={showVideoSubModePicker}
-          onToggleVideoSubModePicker={() => setShowVideoSubModePicker((value) => !value)}
-          onSetShowVideoSubModePicker={setShowVideoSubModePicker}
-          onVideoSubModeChange={handleVideoSubModeChange}
-          imageModels={IMAGE_MODELS}
-          selectedImageModels={selectedImageModels}
-          imageModelSelectionMode={imageModelSelectionMode}
-          onToggleImageModel={toggleImageModelInPicker}
-          onImageModelSelectionModeChange={handleImageModelSelectionModeChange}
-          videoModels={getVideoModelsBySubMode(videoSubMode)}
-          selectedVideoModels={selectedVideoModels}
-          videoModelSelectionMode={videoModelSelectionMode}
-          onToggleVideoModel={toggleVideoModelInPicker}
-          onVideoModelSelectionModeChange={handleVideoModelSelectionModeChange}
-          selectableTextModels={selectableTextModels}
-          textModelsLoading={gatewayModelsLoading}
-          askModelSelectionMode={askModelSelectionMode}
-          selectedActModel={selectedActModel}
-          selectedModels={selectedModels}
-          onToggleTextModel={toggleTextModelInPicker}
-          onTextModelSelectionModeChange={handleTextModelSelectionModeChange}
-          hasAutomationContext={hasAutomationContext}
         />
 
 
