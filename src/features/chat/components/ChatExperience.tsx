@@ -2,28 +2,20 @@
 
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
-import posthog from 'posthog-js'
 import {
-  FileText,
-  ImageIcon,
   ArrowUp,
   ChevronDown,
 } from 'lucide-react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import {
-  cloneConversationUiState,
-  cloneGenerationResultsMap,
   createConversationUiState,
   sameModelOrder,
 } from '@overlay/chat-core'
 import {
-  AttachmentPreviewDialog,
   BudgetTopUpComposerPrompt,
-  ChatExperienceHeader,
 } from '@overlay/chat-react'
 import type { AutomationDetail, AutomationDetailTab } from '@overlay/app-core'
-import { AUTOMATIONS_UPDATED_EVENT } from '@overlay/app-core/automations'
 import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import {
@@ -37,13 +29,7 @@ import {
   defaultMemoryEnabled,
   type ChatToolRequestId,
 } from '@/shared/chat/tool-requests'
-import { ChatComposer } from './ChatComposer'
-import { ChatMessageList } from './ChatMessageList'
-import {
-  reportTextStreamError,
-  startActRetryStream,
-  startActTextStream,
-} from './useChatTransport'
+import { ChatExperienceView } from './ChatExperienceView'
 import { useChatListEventSync } from './chat/useChatListEventSync'
 import { useChatAttachments } from './useChatAttachments'
 import { useChatBillingControls } from './chat/useChatBillingControls'
@@ -54,33 +40,29 @@ import { safeSetLocalStorage } from './chat/model-selection-utils'
 import { useChatPanels, type AttachmentPreview } from './chat/useChatPanels'
 import { useChatShellPanels } from './chat/useChatShellPanels'
 import { useChatConversationLoader } from './chat/useChatConversationLoader'
-import { resetRuntimeState } from './chat/conversation-runtime-utils'
 import { useConversationUiState } from './chat/useConversationUiState'
 import { useChatListController } from './chat/useChatListController'
 import { useChatModelSelectionController } from './chat/useChatModelSelectionController'
+import { useChatRetryController } from './chat/useChatRetryController'
 import { useChatRouteController } from './chat/useChatRouteController'
+import {
+  TEMPORARY_CHAT_ID,
+  useChatSendController,
+} from './chat/useChatSendController'
+import { useChatStopController } from './chat/useChatStopController'
 import { useChatTitleController } from './chat/useChatTitleController'
 import { useLiveConversationSync } from './chat/useLiveConversationSync'
 import {
   getResponseForExchangeForModel as selectResponseForExchangeForModel,
-  prepareAskModelThreadsForTextTurn,
   removeTurnFromConversationRuntime,
 } from './chat/chat-runtime-helpers'
 import { useChatRuntimes } from './chat/useChatRuntimes'
 import { useComposerTextState } from './chat/useComposerTextState'
-import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
-import {
-  dispatchChatCreated,
-} from '@/shared/chat/chat-title'
 import {
   type ChatListPageInfo,
-  upsertCachedChat,
 } from '@/shared/chat/chat-list-cache'
 import { TEMPORARY_CHAT_UI_EVENT } from '@/shared/chat/temporary-chat-ui'
 import {
-  beginTtftClientTurn,
-  markTtftClientMilestone,
-  setTtftClientTurnId,
   tryLogTtftClientFirstText,
 } from '@/shared/chat/ttft-client-debug'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
@@ -104,15 +86,11 @@ import {
   assistantBlocksToPlainText,
   buildAssistantVisualSequence,
   chatGreetingLine,
-  getUserTurnId,
-  stripAssistantAfterUserTurn,
 } from '@overlay/chat-core'
 import { scrollToExchangeTurn } from '@/features/chat/lib/scroll-to-exchange-turn'
 import type {
   AskModelSelectionMode,
-  ChatMessageMetadata,
   Conversation,
-  ConversationRuntime,
   ConversationUiState,
 } from './chat-interface/types'
 import type { MentionInputHandle } from './chat-interface/MentionInput'
@@ -143,28 +121,7 @@ const ExportMenu = dynamic(
   () => import('@/features/files/components/ExportMenu').then((mod) => ({ default: mod.ExportMenu })),
   { loading: () => null },
 )
-const DraftReviewModal = dynamic(
-  () => import('./chat-interface/Modals').then((mod) => ({ default: mod.DraftReviewModal })),
-  { loading: () => null },
-)
-const AutomationEditorPanel = dynamic(
-  () => import('./chat-interface/AutomationEditor').then((mod) => ({ default: mod.AutomationEditorPanel })),
-  { loading: () => null },
-)
 const EMPTY_UI_MESSAGES: UIMessage[] = []
-const TEMPORARY_CHAT_ID = '__overlay_temporary_chat__'
-const PENDING_FIRST_CHAT_ID = '__overlay_pending_first_chat__'
-
-type PendingFirstSendState = {
-  conversationClientId: string
-  previewRuntime: ConversationRuntime
-  streamDone: boolean
-  realChatId: string | null
-  wasFirst: boolean
-  renameSeed: string
-  activeChatTitleSnapshot: string | null
-}
-
 // ─── main component ───────────────────────────────────────────────────────────
 
 export default function ChatExperience({
@@ -230,7 +187,6 @@ export default function ChatExperience({
       }))
     }
   }, [])
-  const pendingFirstSendRef = useRef<PendingFirstSendState | null>(null)
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
 
@@ -795,19 +751,6 @@ export default function ChatExperience({
     activeChatId && runtimesRef.current.get(activeChatId)?.hydrated,
   )
 
-  const isStreamChatActive = useCallback((
-    chatId: string,
-    temporaryChatSnapshot: boolean,
-  ) => {
-    if (temporaryChatSnapshot) {
-      return chatId === TEMPORARY_CHAT_ID && isTemporaryChatRef.current
-    }
-    if (chatId === PENDING_FIRST_CHAT_ID) {
-      return pendingFirstSendRef.current != null
-    }
-    return activeChatIdRef.current === chatId
-  }, [])
-
   useEffect(() => {
     if (authLoading) return
     if (initialChats === undefined || (!userId && authUser?.id)) void loadChats()
@@ -851,40 +794,6 @@ export default function ChatExperience({
     setAskModelSelectionMode,
     setSelectedActModel,
     setSelectedModels,
-  ])
-
-  const tryActivatePendingFirstSend = useCallback(() => {
-    const pending = pendingFirstSendRef.current
-    if (!pending?.realChatId || !pending.streamDone) return
-
-    const realId = pending.realChatId
-    const preview = pending.previewRuntime
-    replaceConversationRuntime(
-      realId,
-      cloneConversationUiState(preview.ui),
-      preview.askChats.map((chat) => [...chat.messages]),
-      [...preview.actChat.messages],
-    )
-    markChatModified(realId, pending.activeChatTitleSnapshot)
-    if (pending.wasFirst) {
-      startFirstMessageRename(realId, pending.renameSeed)
-    }
-    activeChatIdRef.current = realId
-    setActiveViewer(realId)
-    setActiveChatId(realId)
-    syncStandaloneChatUrl(realId)
-    applyUiStateToView(preview.ui)
-    resetRuntimeState(emptyRuntimeRef.current)
-    pendingFirstSendRef.current = null
-    setRuntimeHydrationVersion((value) => value + 1)
-  }, [
-    applyUiStateToView,
-    emptyRuntimeRef,
-    markChatModified,
-    replaceConversationRuntime,
-    setActiveViewer,
-    startFirstMessageRename,
-    syncStandaloneChatUrl,
   ])
 
   const { invalidateLoadChatRequest, loadChat } = useChatConversationLoader({
@@ -1242,131 +1151,6 @@ export default function ChatExperience({
     resetToBlankChatSurface({ temporary: !isTemporaryChat })
   }
 
-  async function createNewChat(options: {
-    title?: string
-    clientId?: string
-    deferActivation?: boolean
-    prepareRuntime?: (args: {
-      chatId: string
-      runtime: ConversationRuntime
-      selectedModels: string[]
-      selectedActModel: string
-      askModelSelectionMode: AskModelSelectionMode
-    }) => void
-  } = {}): Promise<string | null> {
-    // Invalidate any in-flight loadChat request before this newly-created runtime
-    // becomes active; otherwise an older load can repaint the view after send.
-    invalidateLoadChatRequest()
-    persistActiveRuntimeUiState()
-    setIsTemporaryChat(false)
-    resetComposerToolIds(false)
-    const initialTitle = options.title ?? (mode === 'automate' ? 'New automation' : DEFAULT_CHAT_TITLE)
-    const normalizedInitialSelection = normalizeChatModelSelection({
-      askModelIds: askModelSelectionMode === 'single' ? [selectedActModel] : selectedModels.slice(0, 4),
-      actModelId: selectedActModel,
-    })
-    const initialSelectedModels = normalizedInitialSelection.askModelIds
-    const initialAskModelSelectionMode: AskModelSelectionMode = initialSelectedModels.length > 1 ? 'multiple' : 'single'
-    const trimmedClientId = options.clientId?.trim()
-    const res = await overlayAppClient.conversations.createResponse(
-      {
-        title: initialTitle,
-        askModelIds: initialSelectedModels,
-        actModelId: normalizedInitialSelection.actModelId,
-        lastMode: 'act',
-        ...(embedProjectId ? { projectId: embedProjectId } : {}),
-        ...(trimmedClientId ? { clientId: trimmedClientId } : {}),
-      },
-      { idempotencyKey: trimmedClientId ?? createIdempotencyKey() },
-    )
-    if (res.ok) {
-      const data = await res.json()
-      setInterruptedExchangeIdx(null)
-      const newChat: Conversation = {
-        _id: data.id,
-        title: initialTitle,
-        lastModified: Date.now(),
-        lastMode: 'act',
-        askModelIds: initialSelectedModels,
-        actModelId: normalizedInitialSelection.actModelId,
-      }
-      upsertCachedChat(newChat)
-      setChats((prev) => [newChat, ...prev])
-      dispatchChatCreated({ chat: newChat })
-      posthog.capture('chat_new_chat_created', { mode: 'act' })
-
-      if (options.deferActivation) {
-        const pending = pendingFirstSendRef.current
-        if (pending && trimmedClientId && pending.conversationClientId === trimmedClientId) {
-          pending.realChatId = data.id
-          if (pendingScrollTurnIdRef.current && !pendingScrollChatIdRef.current) {
-            pendingScrollChatIdRef.current = data.id
-          }
-          tryActivatePendingFirstSend()
-        }
-        return data.id
-      }
-
-      const runtime = ensureConversationRuntime(data.id, {
-        selectedActModel: normalizedInitialSelection.actModelId,
-        selectedModels: initialSelectedModels,
-        askModelSelectionMode: initialAskModelSelectionMode,
-        activeChatTitle: initialTitle,
-        isFirstMessage: true,
-      })
-      resetRuntimeState(runtime, {
-        selectedActModel: normalizedInitialSelection.actModelId,
-        selectedModels: initialSelectedModels,
-        askModelSelectionMode: initialAskModelSelectionMode,
-        activeChatTitle: initialTitle,
-        isFirstMessage: true,
-      })
-      options.prepareRuntime?.({
-        chatId: data.id,
-        runtime,
-        selectedModels: initialSelectedModels,
-        selectedActModel: normalizedInitialSelection.actModelId,
-        askModelSelectionMode: initialAskModelSelectionMode,
-      })
-      runtime.hydrated = true
-      if (pendingScrollTurnIdRef.current && !pendingScrollChatIdRef.current) {
-        pendingScrollChatIdRef.current = data.id
-      }
-      activeChatIdRef.current = data.id
-      setActiveViewer(data.id)
-      setActiveChatId(data.id)
-      syncStandaloneChatUrl(data.id)
-      applyUiStateToView(runtime.ui)
-      setRuntimeHydrationVersion((value) => value + 1)
-      resetRuntimeState(emptyRuntimeRef.current)
-      clearTransientComposerState()
-      return data.id
-    }
-    return null
-  }
-
-  const completeSessionForStream = useCallback((chatId: string, active: boolean) => {
-    if (chatId === PENDING_FIRST_CHAT_ID) {
-      const pending = pendingFirstSendRef.current
-      if (pending) {
-        pending.streamDone = true
-        if (!pending.realChatId) {
-          void createNewChat({
-            clientId: pending.conversationClientId,
-            deferActivation: true,
-          }).catch(() => {
-            setComposerNotice('Could not save chat. Your reply may still have streamed.')
-            window.setTimeout(() => setComposerNotice(null), 4000)
-          })
-        }
-      }
-      completeSession(chatId, true)
-      tryActivatePendingFirstSend()
-      return
-    }
-    completeSession(chatId, active)
-  }, [completeSession, tryActivatePendingFirstSend, setComposerNotice])
-
   async function handleBranchConversationAtTurn(turnId: string | null) {
     const sourceChatId = activeChatIdRef.current ?? activeChatId
     const targetTurnId = turnId?.trim()
@@ -1475,629 +1259,98 @@ export default function ChatExperience({
     }
   }
 
-  const handleRetryExchange = useCallback(
-    async (
-      userMsg: UIMessage,
-      exchIdx: number,
-      isActExch: boolean,
-      exchModelList: string[],
-    ) => {
-      const chatId = activeChatIdRef.current ?? activeChatId
-      if (!chatId || isActiveLoading) return
-      const turnId = getUserTurnId(userMsg)
-      if (!turnId) return
-      if (!isActExch) return
-
-      posthog.capture('chat_response_retry_clicked', {
-        exchange_index: exchIdx,
-        mode: 'act',
-      })
-
-      const runtime = ensureConversationRuntime(chatId)
-      shouldScrollRef.current = true
-
-      runtime.askChats.forEach((c) => c.stop())
-      runtime.actChat.stop()
-
-      const meta = userMsg.metadata as ChatMessageMetadata | undefined
-      const indexedFileNames = meta?.indexedDocuments ?? []
-      const indexedAttachments = meta?.indexedAttachments ?? []
-      const partsForModel =
-        userMsg.parts?.filter((p) => p.type === 'text' || p.type === 'file') ?? []
-      const replyExtra =
-        meta?.replyToTurnId && meta?.replySnippet
-          ? String(meta.replySnippet).slice(0, 16000)
-          : undefined
-
-      const normalizedRetrySelection = normalizeChatModelSelection({
-        askModelIds: exchModelList.length > 0 ? exchModelList : [selectedActModel],
-        actModelId: exchModelList[0] ?? selectedActModel,
-      })
-      const retryModelIds = normalizedRetrySelection.askModelIds
-      const multiRetry = retryModelIds.length > 1
-      const retrySlots = Math.min(4, retryModelIds.length)
-      if (multiRetry) {
-        for (let s = 0; s < retrySlots; s++) {
-          runtime.askChats[s].messages = stripAssistantAfterUserTurn(
-            runtime.askChats[s].messages,
-            turnId,
-          )
-        }
-        runtime.actChat.messages = stripAssistantAfterUserTurn(runtime.actChat.messages, turnId)
-      } else {
-        runtime.actChat.messages = stripAssistantAfterUserTurn(runtime.actChat.messages, turnId)
-        runtime.askChats[0].messages = stripAssistantAfterUserTurn(runtime.askChats[0].messages, turnId)
-      }
-      const modelId = normalizedRetrySelection.actModelId
-      const msgCountBeforeSend = runtime.askChats[0].messages.length
-      startSession(chatId, 'act', activeChatTitle ?? '', msgCountBeforeSend)
-
-      const baseBody = {
-        conversationId: chatId,
-        turnId,
-        mode,
-        automationMode: mode === 'automate',
-        ...(mode === 'automate' && automationIdParam ? { automationId: automationIdParam } : {}),
-        ...(indexedFileNames.length > 0 ? { indexedFileNames, indexedAttachments } : {}),
-        ...(replyExtra ? { replyContextForModel: replyExtra } : {}),
-      }
-
-      startActRetryStream({
-        chatId,
-        targetRuntime: runtime,
-        textModelsForTurn: multiRetry ? retryModelIds.slice(0, retrySlots) : [modelId],
-        textSlotCount: retrySlots,
-        selectedActModel: modelId,
-        turnId,
-        partsForModel: partsForModel as Array<{ type: string; text?: string; url?: string; mediaType?: string; fileName?: string }>,
-        userMetadata: meta,
-        commonBody: baseBody,
-        isChatActive: (id) => activeChatIdRef.current === id,
-        completeSession,
-        loadChats,
-        loadSubscription,
-        onError: (error, fallbackMessage) => reportTextStreamError(setComposerNotice, error, fallbackMessage),
-        logPrefix: multiRetry ? 'Act multi retry' : 'Act retry',
-      })
-    },
-    [
-      activeChatId,
-      activeChatTitle,
-      automationIdParam,
-      ensureConversationRuntime,
-      completeSession,
-      loadChats,
-      loadSubscription,
-      selectedActModel,
-      startSession,
-      isActiveLoading,
-      mode,
-    ],
-  )
+  const { handleRetryExchange } = useChatRetryController({
+    activeChatId,
+    activeChatIdRef,
+    activeChatTitle,
+    automationIdParam,
+    completeSession,
+    ensureConversationRuntime,
+    isActiveLoading,
+    loadChats,
+    loadSubscription,
+    mode,
+    selectedActModel,
+    setComposerNotice,
+    shouldScrollRef,
+    startSession,
+  })
 
   const effectiveGenType = generationChip ?? (generationMode !== 'text' ? generationMode : null)
 
   const { requireAuth } = useGuestGate()
 
-  async function handleSend() {
-    if (!userId && !authUser) {
-      try { sessionStorage.setItem('overlay:guest-draft', inputRef.current) } catch { /* ignore */ }
-      requireAuth('send')
-      return
-    }
-    const replyCtxSnapshot = replyContext
-    const text = inputRef.current.trim()
-    const normalizedTextSelection = normalizeChatModelSelection({
-      askModelIds: askModelSelectionMode === 'multiple' ? selectedModels.slice(0, 4) : [selectedActModel],
-      actModelId: selectedActModel,
-    })
-    const selectedActModelSnapshot = normalizedTextSelection.actModelId
-    const textModelsForTurn = normalizedTextSelection.askModelIds
-    const activeChatTitleSnapshot = activeChatTitle
-    const selectedImageModelsSnapshot = [...selectedImageModels]
-    const selectedVideoModelsSnapshot = [...selectedVideoModels]
-    const attachedImagesSnapshot = [...attachedImages]
-    const pendingChatDocumentsSnapshot = [...pendingChatDocuments]
-    const mentionsSnapshot = [...mentions]
-    const temporaryChatSnapshot = isTemporaryChat
-    const requestMode: 'chat' | 'automate' = temporaryChatSnapshot ? 'chat' : mode
-    const selectedToolIdsSnapshot = [...selectedToolIds]
-    const memoryEnabledSnapshot = memoryEnabled
-    const hasReadyDocs = pendingChatDocumentsSnapshot.some((d) => d.status === 'ready')
-    const clearSubmittedComposer = () => {
-      textareaRef.current?.clear()
-      setInput('')
-      setMentions([])
-      setAttachedImages([])
-      setPendingChatDocuments([])
-      setAttachmentError(null)
-      setReplyContext(null)
-      resetComposerToolIds(temporaryChatSnapshot)
-    }
-    if (isActiveLoading) return
-
-    if (pendingChatDocumentsSnapshot.some((d) => d.status === 'uploading')) {
-      setAttachmentError('Wait for documents to finish indexing.')
-      return
-    }
-    if (pendingChatDocumentsSnapshot.some((d) => d.status === 'error')) {
-      setAttachmentError('Remove failed documents before sending.')
-      return
-    }
-    if (effectiveGenType === 'image' || effectiveGenType === 'video') {
-      if (!text && attachedImagesSnapshot.length === 0) return
-    } else if (attachedImagesSnapshot.length === 0 && !text && !hasReadyDocs) {
-      return
-    }
-    if (isSendBlocked) {
-      setComposerNotice(
-        isBudgetExhaustedPaid
-          ? 'Budget exhausted. Add a top-up to continue with paid models, or switch to Auto for free chat.'
-          : 'This model requires a paid plan. Switch to Auto or upgrade.',
-      )
-      return
-    }
-
-    posthog.capture('chat_message_sent', {
-      mode: 'act',
-      generation_type: effectiveGenType,
-      has_attachments: attachedImagesSnapshot.length > 0 || pendingChatDocumentsSnapshot.length > 0,
-      is_first_message: isFirstMessage,
-    })
-
-    beginTtftClientTurn({
-      model: selectedActModelSnapshot,
-      isFirstMessage,
-    })
-    setIsOptimisticLoading(true)
-
-    // ── Image / Video generation path ──────────────────────────────────────
-    if (effectiveGenType === 'image' || effectiveGenType === 'video') {
-      const mediaGenerationModule = import('./chat/chatMediaGeneration')
-      const wasFirst = isFirstMessage
-      const promptForModel =
-        replyCtxSnapshot?.bodyForModel && text
-          ? `${text}\n\n---\n[User is replying in thread to prior content]\n${replyCtxSnapshot.bodyForModel}`
-          : text
-      const mediaSessionMode = 'act'
-      const mediaTurnId = crypto.randomUUID()
-      const activeModels = effectiveGenType === 'image' ? selectedImageModelsSnapshot : selectedVideoModelsSnapshot
-      const mediaUserMessageParts: { type: string; text?: string; url?: string; mediaType?: string; fileName?: string }[] = []
-      if (text) mediaUserMessageParts.push({ type: 'text', text })
-      for (const img of attachedImagesSnapshot) {
-        mediaUserMessageParts.push({ type: 'file', url: img.dataUrl, mediaType: img.mimeType, fileName: img.name })
-      }
-      const mediaUserMessage = {
-        id: mediaTurnId,
-        role: 'user',
-        parts: mediaUserMessageParts,
-        ...(replyCtxSnapshot?.replyToTurnId
-          ? {
-              metadata: {
-                replyToTurnId: replyCtxSnapshot.replyToTurnId,
-                replySnippet: replyCtxSnapshot.snippet,
-              },
-            }
-          : {}),
-      }
-      const mediaSlotCount = Math.max(1, activeModels.length)
-      let exchIdx = 0
-      let preparedFirstSendRuntime = false
-      clearSubmittedComposer()
-      setGenerationChip(null)
-
-      const prepareMediaRuntime = (runtime: ConversationRuntime) => {
-        const ui = runtime.ui
-        exchIdx = ui.exchangeModels.length
-        const nextGenerationResults = cloneGenerationResultsMap(ui.generationResults)
-        nextGenerationResults.set(
-          exchIdx,
-          activeModels.map(() => ({ type: effectiveGenType as 'image' | 'video', status: 'generating' as const })),
-        )
-        runtime.ui = createConversationUiState({
-          ...ui,
-          exchangeModes: [...ui.exchangeModes, 'act'],
-          exchangeModels: [...ui.exchangeModels, [...activeModels]],
-          selectedTabPerExchange: [...ui.selectedTabPerExchange, 0],
-          exchangeGenTypes: [...ui.exchangeGenTypes, effectiveGenType],
-          generationResults: nextGenerationResults,
-          isFirstMessage: false,
-        })
-        runtime.askChats.slice(0, mediaSlotCount).forEach((chat) => {
-          chat.messages = [
-            ...chat.messages,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            mediaUserMessage as any,
-          ]
-        })
-      }
-
-      const existingChatId = temporaryChatSnapshot ? TEMPORARY_CHAT_ID : (activeChatIdRef.current ?? activeChatId)
-      pendingScrollTurnIdRef.current = mediaTurnId
-      pendingScrollChatIdRef.current = temporaryChatSnapshot ? null : existingChatId
-      let chatId = existingChatId
-      let targetRuntime: ConversationRuntime
-      if (temporaryChatSnapshot) {
-        targetRuntime = emptyRuntimeRef.current
-        prepareMediaRuntime(targetRuntime)
-        targetRuntime.hydrated = true
-        applyUiStateToView(targetRuntime.ui)
-        setIsFirstMessage(false)
-        setRuntimeHydrationVersion((value) => value + 1)
-      } else if (!existingChatId) {
-        const previewRuntime = emptyRuntimeRef.current
-        resetRuntimeState(previewRuntime, {
-          selectedActModel,
-          selectedModels: activeModels,
-          askModelSelectionMode: activeModels.length > 1 ? 'multiple' : 'single',
-          activeChatTitle: activeChatTitleSnapshot ?? null,
-          isFirstMessage: false,
-        })
-        prepareMediaRuntime(previewRuntime)
-        previewRuntime.hydrated = true
-        applyUiStateToView(previewRuntime.ui)
-        setIsFirstMessage(false)
-        setRuntimeHydrationVersion((value) => value + 1)
-        chatId = await createNewChat({
-          prepareRuntime: ({ runtime }) => {
-            prepareMediaRuntime(runtime)
-            preparedFirstSendRuntime = true
-          },
-        })
-      }
-      if (!chatId) return
-      if (!temporaryChatSnapshot) markChatModified(chatId, activeChatTitleSnapshot)
-      if (!temporaryChatSnapshot) targetRuntime = ensureConversationRuntime(chatId)
-      else targetRuntime = emptyRuntimeRef.current
-
-      if (!temporaryChatSnapshot && !preparedFirstSendRuntime) {
-        updateRuntimeUiState(chatId, (prev) => {
-          exchIdx = prev.exchangeModels.length
-          const nextGenerationResults = cloneGenerationResultsMap(prev.generationResults)
-          nextGenerationResults.set(
-            exchIdx,
-            activeModels.map(() => ({ type: effectiveGenType as 'image' | 'video', status: 'generating' as const })),
-          )
-          return {
-            ...prev,
-            exchangeModes: [...prev.exchangeModes, 'act'],
-            exchangeModels: [...prev.exchangeModels, [...activeModels]],
-            selectedTabPerExchange: [...prev.selectedTabPerExchange, 0],
-            exchangeGenTypes: [...prev.exchangeGenTypes, effectiveGenType],
-            generationResults: nextGenerationResults,
-            isFirstMessage: false,
-          }
-        })
-        targetRuntime.askChats.slice(0, mediaSlotCount).forEach((chat) => {
-          chat.messages = [
-            ...chat.messages,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            mediaUserMessage as any,
-          ]
-        })
-      }
-
-      setIsFirstMessage(false)
-      if (!temporaryChatSnapshot) {
-        void overlayAppClient.conversations.addMessageResponse(
-          {
-            conversationId: chatId,
-            turnId: mediaTurnId,
-            mode: 'act',
-            role: 'user',
-            content: text,
-            parts: [{ type: 'text', text }],
-            modelId: activeModels[0],
-            ...(replyCtxSnapshot?.replyToTurnId
-              ? { replyToTurnId: replyCtxSnapshot.replyToTurnId, replySnippet: replyCtxSnapshot.snippet }
-              : {}),
-          },
-          { idempotencyKey: `${mediaTurnId}:user` },
-        )
-        if (wasFirst && text) startFirstMessageRename(chatId, text)
-      }
-      startSession(chatId, mediaSessionMode, temporaryChatSnapshot ? 'Temporary chat' : activeChatTitleSnapshot ?? '', targetRuntime.askChats[0].messages.length)
-      const updateMediaRuntimeUiState = temporaryChatSnapshot
-        ? (_chatId: string, updater: (prev: ConversationUiState) => ConversationUiState) => {
-            targetRuntime.ui = updater(cloneConversationUiState(targetRuntime.ui))
-            applyUiStateToView(targetRuntime.ui)
-            setRuntimeHydrationVersion((value) => value + 1)
-          }
-        : updateRuntimeUiState
-
-      // ── Block generation for free-tier users ───────────────────────────────
-      if (isFreeTier) {
-        const { scheduleMediaGenerationUpgradeFailure } = await mediaGenerationModule
-        scheduleMediaGenerationUpgradeFailure({
-          chatId,
-          exchIdx,
-          kind: effectiveGenType,
-          activeModels,
-          isChatActive: (id) => temporaryChatSnapshot ? (id === TEMPORARY_CHAT_ID && isTemporaryChatRef.current) : activeChatIdRef.current === id,
-          updateRuntimeUiState: updateMediaRuntimeUiState,
-          completeSession,
-        })
-        return
-      }
-
-      if (effectiveGenType === 'image') {
-        const { runImageGenerationBatch } = await mediaGenerationModule
-        // Prefer an explicitly attached reference image; fall back to the last generated image
-        const imageUrl = attachedImagesSnapshot[0]?.dataUrl ?? targetRuntime.ui.lastGeneratedImageUrl
-        runImageGenerationBatch({
-          chatId,
-          temporaryChat: temporaryChatSnapshot,
-          turnId: mediaTurnId,
-          exchIdx,
-          promptForModel,
-          userPromptText: text,
-          activeModels,
-          targetRuntime,
-          mediaSlotCount,
-          imageUrl,
-          isChatActive: (id) => temporaryChatSnapshot ? (id === TEMPORARY_CHAT_ID && isTemporaryChatRef.current) : activeChatIdRef.current === id,
-          updateRuntimeUiState: updateMediaRuntimeUiState,
-          completeSession,
-          loadChats: temporaryChatSnapshot ? (() => {}) : loadChats,
-          loadSubscription,
-        })
-      } else {
-        const { runVideoGenerationBatch } = await mediaGenerationModule
-        runVideoGenerationBatch({
-          chatId,
-          temporaryChat: temporaryChatSnapshot,
-          turnId: mediaTurnId,
-          exchIdx,
-          promptForModel,
-          userPromptText: text,
-          activeModels,
-          targetRuntime,
-          mediaSlotCount,
-          videoSubMode,
-          imageUrl: attachedImagesSnapshot[0]?.dataUrl ?? null,
-          isChatActive: (id) => temporaryChatSnapshot ? (id === TEMPORARY_CHAT_ID && isTemporaryChatRef.current) : activeChatIdRef.current === id,
-          updateRuntimeUiState: updateMediaRuntimeUiState,
-          completeSession,
-          loadChats: temporaryChatSnapshot ? (() => {}) : loadChats,
-          loadSubscription,
-        })
-      }
-      return
-    }
-
-    // ── Normal text chat path ─────────────────────────────────────────────
-    const readyDocs = pendingChatDocumentsSnapshot.filter((d) => d.status === 'ready')
-    const indexedAttachments = readyDocs.map((d) => ({ name: d.name, fileIds: d.fileIds }))
-    const indexedFileNames = readyDocs.map((d) => d.name)
-
-    // Capture before any await — isFirstMessage is true for the first message of a new/fresh chat
-    const wasFirst = isFirstMessage
-    const textTurnId = crypto.randomUUID()
-    setTtftClientTurnId(textTurnId)
-
-    type UiPart = { type: string; text?: string; url?: string; mediaType?: string; fileName?: string }
-    const partsForModel: UiPart[] = []
-    if (text.trim()) partsForModel.push({ type: 'text', text: text.trim() })
-    for (const img of attachedImagesSnapshot) {
-      partsForModel.push({ type: 'file', url: img.dataUrl, mediaType: img.mimeType, fileName: img.name })
-    }
-    const partsForPersist: UiPart[] = [...partsForModel]
-    if (indexedFileNames.length > 0) {
-      partsForPersist.push({
-        type: 'text',
-        text: `[Indexed documents: ${indexedFileNames.join(', ')}]`,
-      })
-    }
-
-    const userMeta: ChatMessageMetadata = {}
-    if (indexedFileNames.length > 0) {
-      userMeta.indexedDocuments = indexedFileNames
-      userMeta.indexedAttachments = indexedAttachments
-    }
-    if (replyCtxSnapshot?.replyToTurnId) {
-      userMeta.replyToTurnId = replyCtxSnapshot.replyToTurnId
-      userMeta.replySnippet = replyCtxSnapshot.snippet
-    }
-    if (mentionsSnapshot.length > 0) {
-      userMeta.mentions = mentionsSnapshot.map((m) => ({
-        type: m.type,
-        id: m.id,
-        name: m.name,
-        ...(m.meta?.fileIds ? { fileIds: m.meta.fileIds as string[] } : {}),
-      }))
-    }
-    const userMetadata = Object.keys(userMeta).length > 0 ? userMeta : undefined
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userUIMessage: any = {
-      id: textTurnId,
-      role: 'user',
-      parts: partsForModel,
-      ...(userMetadata ? { metadata: userMetadata } : {}),
-    }
-    clearSubmittedComposer()
-
-    const multiText = textModelsForTurn.length > 1
-    const textSlotCount = Math.min(4, textModelsForTurn.length)
-    let msgCountBeforeSend = 0
-    let preparedFirstSendRuntime = false
-    let textHistoryBaseModelId: string | undefined
-
-    const prepareTextRuntime = (runtime: ConversationRuntime) => {
-      textHistoryBaseModelId = prepareAskModelThreadsForTextTurn(runtime, textModelsForTurn).historyBaseModelId
-      msgCountBeforeSend = runtime.askChats[0].messages.length
-      const ui = runtime.ui
-      runtime.ui = createConversationUiState({
-        ...ui,
-        exchangeModes: [...ui.exchangeModes, 'act'],
-        exchangeModels: [...ui.exchangeModels, [...textModelsForTurn]],
-        selectedTabPerExchange: [...ui.selectedTabPerExchange, 0],
-        exchangeGenTypes: [...ui.exchangeGenTypes, 'text'],
-        isFirstMessage: false,
-      })
-      for (let s = 0; s < textSlotCount; s++) {
-        runtime.askChats[s]!.messages = [
-          ...runtime.askChats[s]!.messages,
-          userUIMessage as UIMessage,
-        ]
-      }
-      if (!multiText) {
-        runtime.actChat.messages = [
-          ...runtime.actChat.messages,
-          userUIMessage as UIMessage,
-        ]
-      }
-    }
-
-    const existingChatId = temporaryChatSnapshot ? TEMPORARY_CHAT_ID : (activeChatIdRef.current ?? activeChatId)
-    pendingScrollTurnIdRef.current = textTurnId
-    pendingScrollChatIdRef.current = temporaryChatSnapshot ? null : existingChatId
-    let chatId = existingChatId
-    let targetRuntime: ConversationRuntime
-    if (temporaryChatSnapshot) {
-      targetRuntime = emptyRuntimeRef.current
-      prepareTextRuntime(targetRuntime)
-      targetRuntime.hydrated = true
-      applyUiStateToView(targetRuntime.ui)
-      setIsFirstMessage(false)
-      setRuntimeHydrationVersion((value) => value + 1)
-    } else if (!existingChatId) {
-      const previewRuntime = emptyRuntimeRef.current
-      resetRuntimeState(previewRuntime, {
-        selectedActModel: selectedActModelSnapshot,
-        selectedModels: textModelsForTurn,
-        askModelSelectionMode: textModelsForTurn.length > 1 ? 'multiple' : 'single',
-        activeChatTitle: activeChatTitleSnapshot ?? null,
-        isFirstMessage: false,
-      })
-      prepareTextRuntime(previewRuntime)
-      previewRuntime.hydrated = true
-      applyUiStateToView(previewRuntime.ui)
-      setIsFirstMessage(false)
-      setRuntimeHydrationVersion((value) => value + 1)
-
-      const conversationClientId = crypto.randomUUID()
-      pendingFirstSendRef.current = {
-        conversationClientId,
-        previewRuntime,
-        streamDone: false,
-        realChatId: null,
-        wasFirst,
-        renameSeed: text || indexedFileNames[0] || 'Documents',
-        activeChatTitleSnapshot,
-      }
-      chatId = PENDING_FIRST_CHAT_ID
-      targetRuntime = previewRuntime
-      preparedFirstSendRuntime = true
-
-      void createNewChat({
-        clientId: conversationClientId,
-        deferActivation: true,
-      }).catch(() => {
-        setComposerNotice('Could not create chat. Your reply may still stream.')
-        window.setTimeout(() => setComposerNotice(null), 4000)
-      })
-      markTtftClientMilestone('create_started', { conversationClientId })
-    } else {
-      targetRuntime = ensureConversationRuntime(existingChatId)
-    }
-    if (!chatId) return
-    if (!temporaryChatSnapshot && chatId !== PENDING_FIRST_CHAT_ID) {
-      markChatModified(chatId, activeChatTitleSnapshot)
-    }
-
-    if (
-      !temporaryChatSnapshot &&
-      chatId !== PENDING_FIRST_CHAT_ID &&
-      wasFirst &&
-      (text || indexedFileNames.length > 0)
-    ) {
-      startFirstMessageRename(chatId, text || indexedFileNames[0] || 'Documents')
-    }
-
-    if (!temporaryChatSnapshot && chatId !== PENDING_FIRST_CHAT_ID) {
-      activeChatIdRef.current = chatId
-    }
-
-    if (!temporaryChatSnapshot && !preparedFirstSendRuntime) {
-      textHistoryBaseModelId = prepareAskModelThreadsForTextTurn(targetRuntime, textModelsForTurn).historyBaseModelId
-      msgCountBeforeSend = targetRuntime.askChats[0].messages.length
-      updateRuntimeUiState(chatId, (prev) => ({
-        ...prev,
-        exchangeModes: [...prev.exchangeModes, 'act'],
-        exchangeModels: [...prev.exchangeModels, [...textModelsForTurn]],
-        selectedTabPerExchange: [...prev.selectedTabPerExchange, 0],
-        exchangeGenTypes: [...prev.exchangeGenTypes, 'text'],
-        isFirstMessage: false,
-      }))
-
-      for (let s = 0; s < textSlotCount; s++) {
-        targetRuntime.askChats[s]!.messages = [
-          ...targetRuntime.askChats[s]!.messages,
-          userUIMessage as UIMessage,
-        ]
-      }
-      if (!multiText) {
-        targetRuntime.actChat.messages = [
-          ...targetRuntime.actChat.messages,
-          userUIMessage as UIMessage,
-        ]
-      }
-    }
-
-    startSession(chatId, 'act', temporaryChatSnapshot ? 'Temporary chat' : activeChatTitleSnapshot ?? '', msgCountBeforeSend)
-
-    setIsFirstMessage(false)
-
-    const commonActBody = {
-      ...(temporaryChatSnapshot
-        ? { temporaryChat: true }
-        : chatId === PENDING_FIRST_CHAT_ID
-          ? {
-              conversationClientId: pendingFirstSendRef.current!.conversationClientId,
-              ...(embedProjectId ? { projectId: embedProjectId } : {}),
-              askModelIds: textModelsForTurn,
-            }
-          : { conversationId: chatId }),
-      turnId: textTurnId,
-      mode: requestMode,
-      automationMode: requestMode === 'automate',
-      ...(requestMode === 'automate' && automationIdParam ? { automationId: automationIdParam } : {}),
-      ...(indexedFileNames.length > 0
-        ? { indexedFileNames, indexedAttachments: indexedAttachments }
-        : {}),
-      ...(replyCtxSnapshot?.bodyForModel ? { replyContextForModel: replyCtxSnapshot.bodyForModel } : {}),
-      ...(userMeta.mentions && userMeta.mentions.length > 0 ? { mentions: userMeta.mentions } : {}),
-      ...(textHistoryBaseModelId ? { historyBaseModelId: textHistoryBaseModelId } : {}),
-      requestedToolIds: selectedToolIdsSnapshot,
-      memoryEnabled: memoryEnabledSnapshot,
-    }
-
-    const refreshAfterActTextTurn = async () => {
-      await loadSubscription()
-      if (requestMode === 'automate' && automationIdParam) {
-        await refreshSelectedAutomation({ showLoading: false })
-        window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
-      }
-    }
-
-    startActTextStream({
-      chatId,
-      targetRuntime,
-      textModelsForTurn,
-      textSlotCount,
-      selectedActModel: selectedActModelSnapshot,
-      turnId: textTurnId,
-      partsForModel,
-      userMetadata,
-      commonBody: commonActBody,
-      isChatActive: (id) => isStreamChatActive(id, temporaryChatSnapshot),
-      completeSession: completeSessionForStream,
-      loadChats: temporaryChatSnapshot ? (() => {}) : loadChats,
-      loadSubscription: refreshAfterActTextTurn,
-      onError: (error, fallbackMessage) => reportTextStreamError(setComposerNotice, error, fallbackMessage),
-      logPrefix: multiText ? 'Act multi' : 'Act',
-    })
-  }
+  const {
+    createNewChat,
+    handleSend,
+  } = useChatSendController({
+    activeChatId,
+    activeChatIdRef,
+    activeChatTitle,
+    applyUiStateToView,
+    askModelSelectionMode,
+    attachedImages,
+    authUser,
+    automationIdParam,
+    clearTransientComposerState,
+    completeSession,
+    effectiveGenType,
+    embedProjectId,
+    emptyRuntimeRef,
+    ensureConversationRuntime,
+    inputRef,
+    invalidateLoadChatRequest,
+    isActiveLoading,
+    isBudgetExhaustedPaid,
+    isFirstMessage,
+    isFreeTier,
+    isSendBlocked,
+    isTemporaryChat,
+    isTemporaryChatRef,
+    loadChats,
+    loadSubscription,
+    markChatModified,
+    memoryEnabled,
+    mentions,
+    mode,
+    pendingChatDocuments,
+    pendingScrollChatIdRef,
+    pendingScrollTurnIdRef,
+    persistActiveRuntimeUiState,
+    refreshSelectedAutomation,
+    replaceConversationRuntime,
+    replyContext,
+    requireAuth,
+    resetComposerToolIds,
+    selectedActModel,
+    selectedImageModels,
+    selectedModels,
+    selectedToolIds,
+    selectedVideoModels,
+    setActiveChatId,
+    setActiveViewer,
+    setAttachedImages,
+    setAttachmentError,
+    setChats,
+    setComposerNotice,
+    setGenerationChip,
+    setInput,
+    setInterruptedExchangeIdx,
+    setIsFirstMessage,
+    setIsOptimisticLoading,
+    setIsTemporaryChat,
+    setMentions,
+    setPendingChatDocuments,
+    setReplyContext,
+    setRuntimeHydrationVersion,
+    startFirstMessageRename,
+    startSession,
+    syncStandaloneChatUrl,
+    textareaRef,
+    updateRuntimeUiState,
+    userId,
+    videoSubMode,
+  })
 
   const focusComposer = useCallback(() => {
     window.setTimeout(() => {
@@ -2184,165 +1437,6 @@ export default function ChatExperience({
     return () => window.removeEventListener('keydown', onGlobalKeyDown, true)
   }, [setGenerationChip, setGenerationMode, setShowModelPicker])
 
-  async function stopActiveChat() {
-    if (!isActiveLoading) return
-    const userTurns = primaryMessages.filter((m) => m.role === 'user').length
-    const idx = userTurns > 0 ? userTurns - 1 : -1
-    const chatId = activeChatIdRef.current ?? activeChatId
-    const cloudflareStopTargets = new Map<string, { turnId: string; variantIndex: number }>()
-    const collectCloudflareStopTargets = (messages: UIMessage[]) => {
-      for (const message of messages) {
-        const m = message as unknown as {
-          role?: string
-          status?: string
-          turnId?: string
-          id?: string
-          variantIndex?: number
-        }
-        if (m.role === 'assistant' && m.status === 'generating' && m.turnId?.trim()) {
-          const variantIndex = m.variantIndex ?? 0
-          cloudflareStopTargets.set(`${m.turnId}:${variantIndex}`, {
-            turnId: m.turnId,
-            variantIndex,
-          })
-        }
-      }
-    }
-    collectCloudflareStopTargets(activeRuntime.actChat.messages as UIMessage[])
-    for (const chat of activeRuntime.askChats) {
-      collectCloudflareStopTargets(chat.messages as UIMessage[])
-    }
-    if (cloudflareStopTargets.size === 0) {
-      const lastUser = [...primaryMessages].reverse().find((message) => message.role === 'user') as
-        | (UIMessage & { id?: string })
-        | undefined
-      const turnId = lastUser?.id?.trim()
-      if (turnId) {
-        cloudflareStopTargets.set(`${turnId}:0`, { turnId, variantIndex: 0 })
-      }
-    }
-
-    // 1. Stop local streams immediately
-    activeAskChats.forEach((chat) => chat.stop())
-    activeRuntime.actChat.stop()
-
-    // 2. Tell the backend to finalize the generating message before we clear
-    //    local state, so patchFromServer doesn't race and restore the spinner.
-    if (chatId) {
-      if (chatStreamRelayApi && cloudflareStopTargets.size > 0) {
-        await Promise.allSettled([...cloudflareStopTargets.values()].map((target) =>
-          fetch(`${chatStreamRelayApi}/stop`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-              conversationId: chatId,
-              turnId: target.turnId,
-              variantIndex: target.variantIndex,
-              multiModelSlotIndex: target.variantIndex,
-            }),
-          }),
-        ))
-      }
-      try {
-        await Promise.race([
-          overlayAppClient.conversations.stopResponse({ conversationId: chatId }),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('timeout')), 5000),
-          ),
-        ])
-      } catch {
-        // Backend call failed or timed out — proceed with local cleanup anyway
-      }
-    }
-
-    // 3. Clear any stuck 'generating' status from local messages so
-    //    activePersistedGenerating drops immediately.
-    for (const chat of activeRuntime.askChats) {
-      let changed = false
-      for (const msg of chat.messages) {
-        const m = msg as unknown as { role?: string; status?: string }
-        if (m.role === 'assistant' && m.status === 'generating') {
-          m.status = 'completed'
-          changed = true
-        }
-      }
-      if (changed) chat.messages = [...chat.messages]
-    }
-    let actChanged = false
-    for (const msg of activeRuntime.actChat.messages) {
-      const m = msg as unknown as { role?: string; status?: string }
-      if (m.role === 'assistant' && m.status === 'generating') {
-        m.status = 'completed'
-        actChanged = true
-      }
-    }
-    if (actChanged) activeRuntime.actChat.messages = [...activeRuntime.actChat.messages]
-
-    // Sync useChat instances so the UI reflects the cleared state
-    chat0.setMessages([...activeRuntime.askChats[0].messages] as UIMessage[])
-    if (activeAskChats[1]) chat1.setMessages([...activeRuntime.askChats[1].messages] as UIMessage[])
-    if (activeAskChats[2]) chat2.setMessages([...activeRuntime.askChats[2].messages] as UIMessage[])
-    if (activeAskChats[3]) chat3.setMessages([...activeRuntime.askChats[3].messages] as UIMessage[])
-    actChat.setMessages([...activeRuntime.actChat.messages] as UIMessage[])
-
-    if (idx >= 0) setInterruptedExchangeIdx(idx)
-    forceLiveSyncRender((v) => v + 1)
-
-    // Nuclear option: if Chat.status itself is still stuck after 3s,
-    // delete and recreate the runtime with fresh Chat objects.
-    if (!chatId) return
-    setTimeout(() => {
-      const runtime = runtimesRef.current.get(chatId)
-      if (!runtime) return
-      const stillLoading =
-        runtime.askChats.some((c) => c.status === 'streaming' || c.status === 'submitted') ||
-        runtime.actChat.status === 'streaming' ||
-        runtime.actChat.status === 'submitted'
-      if (stillLoading) {
-        const uiSnapshot = { ...runtime.ui }
-        const oldAskMessages = runtime.askChats.map((c) => [...c.messages])
-        const oldActMessages = [...runtime.actChat.messages]
-        replaceConversationRuntime(chatId, uiSnapshot, oldAskMessages as UIMessage[][], oldActMessages as UIMessage[])
-        forceLiveSyncRender((v) => v + 1)
-      }
-    }, 400)
-  }
-
-  const stopActiveChatRef = useRef(stopActiveChat)
-  stopActiveChatRef.current = stopActiveChat
-
-  function handleContinue() {
-    setInput('continue')
-    void handleSend()
-  }
-
-  // Stale-chat client-side guard: if the backend says a message is still generating
-  // but no local HTTP stream has produced activity in >30s, force-stop the chat.
-  useEffect(() => {
-    if (!activeChatId) return
-    const id = setInterval(() => {
-      const runtime = runtimesRef.current.get(activeChatId)
-      if (!runtime) return
-      const hasLocalStream =
-        runtime.askChats.some((c) => c.status === 'streaming' || c.status === 'submitted') ||
-        runtime.actChat.status === 'streaming' ||
-        runtime.actChat.status === 'submitted'
-      if (hasLocalStream) {
-        lastStreamChunkAtRef.current = Date.now()
-        return
-      }
-      const hasPersistedGenerating = (liveMessages ?? []).some(
-        (message) => message.role === 'assistant' && message.status === 'generating',
-      )
-      if (!hasPersistedGenerating) return
-      if (Date.now() - lastStreamChunkAtRef.current > 30000) {
-        stopActiveChatRef.current()
-      }
-    }, 5000)
-    return () => clearInterval(id)
-  }, [activeChatId, liveMessages, runtimesRef])
-
   // ── derived values for header ─────────────────────────────────────────────
 
   const activeChat = chats.find((c) => c._id === activeChatId)
@@ -2370,6 +1464,33 @@ export default function ChatExperience({
     !isConversationBottomVisible
   const userTurnCount = primaryMessages.filter((m) => m.role === 'user').length
   const latestExchIdx = userTurnCount > 0 ? userTurnCount - 1 : -1
+  const getActiveRuntimeForStop = useCallback(() => activeRuntime, [activeRuntime])
+
+  const {
+    handleContinue,
+    stopActiveChat,
+  } = useChatStopController({
+    activeAskChats,
+    activeChatId,
+    activeChatIdRef,
+    actChat,
+    chat0,
+    chat1,
+    chat2,
+    chat3,
+    chatStreamRelayApi,
+    forceLiveSyncRender: onRuntimeMessagesChanged,
+    getActiveRuntime: getActiveRuntimeForStop,
+    isActiveLoading,
+    lastStreamChunkAtRef,
+    liveMessages,
+    onSend: handleSend,
+    primaryMessages,
+    replaceConversationRuntime,
+    runtimesRef,
+    setInput,
+    setInterruptedExchangeIdx,
+  })
 
   const handleSendRef = useRef(handleSend)
   handleSendRef.current = handleSend
@@ -2584,331 +1705,300 @@ export default function ChatExperience({
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
-    <>
-    <AppScreenShell
-      className="min-w-0 overflow-x-hidden"
-      contentClassName="flex min-h-0"
-      rightPanel={shellRightPanel}
-      rightPanelOpen={Boolean(shellRightPanel)}
-      rightPanelWidth={shellRightPanelWidth}
-      onRightPanelClose={shellRightPanelClose}
-    >
-      {/* Main area */}
-      <div
-        className={`relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden transition-opacity duration-200 ${
-          activeChatDeleting ? 'pointer-events-none opacity-0' : 'opacity-100'
-        }`}
-        onDragEnter={(e) => {
-          e.preventDefault()
-          dragCounterRef.current++
-          if (e.dataTransfer.types.includes('Files')) setIsDragging(true)
-        }}
-        onDragOver={(e) => e.preventDefault()}
-        onDragLeave={() => {
-          dragCounterRef.current--
-          if (dragCounterRef.current === 0) setIsDragging(false)
-        }}
-        onDrop={(e) => {
-          e.preventDefault()
-          dragCounterRef.current = 0
-          setIsDragging(false)
-          const all = Array.from(e.dataTransfer.files)
-          const images = all.filter((f) => f.type.startsWith('image/'))
-          if (images.length > 0) addImages(images)
-          const docExts =
-            /^(pdf|docx|txt|md|markdown|csv|json|html|htm|xml|log|ts|tsx|js|jsx|css|yaml|yml|toml|py|go|rs)$/i
-          const docs = all.filter((f) => {
-            const ext = f.name.split('.').pop() ?? ''
-            return (
-              docExts.test(ext) ||
-              f.type === 'application/pdf' ||
-              f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-              (f.type.startsWith('text/') && ext !== '')
-            )
-          })
-          if (docs.length > 0) docs.forEach((f) => queueDocumentUpload(f))
-        }}
-      >
-        {isDragging && (
-          <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-[color:color-mix(in_srgb,var(--background)_72%,transparent)] p-4 backdrop-blur-sm">
-            <div className="flex w-full max-w-sm flex-col items-center rounded-2xl border border-[var(--border)] bg-[color:color-mix(in_srgb,var(--surface-elevated)_92%,transparent)] px-6 py-5 text-center shadow-[0_18px_55px_rgba(0,0,0,0.14)] ring-1 ring-black/[0.03] dark:shadow-[0_18px_55px_rgba(0,0,0,0.36)] dark:ring-white/[0.04]">
-              <div className="mb-3 flex items-center gap-2">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--muted)]">
-                  <ImageIcon size={16} strokeWidth={1.75} />
-                </span>
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--muted)]">
-                  <FileText size={16} strokeWidth={1.75} />
-                </span>
-              </div>
-              <p className="text-sm font-medium text-[var(--foreground)]">Drop images or documents here</p>
-              <p className="mt-1 text-xs text-[var(--muted)]">JPEG, PNG, PDF, Word, and text files</p>
-            </div>
-          </div>
-        )}
-        <ChatExperienceHeader
-          hideHeader={hideHeader}
-          activeChatId={activeChatId}
-          editingChatId={editingChatId}
-          editingChatTitle={editingChatTitle}
-          onEditingChatTitleChange={setEditingChatTitle}
-          onCommitChatRename={commitChatRename}
-          onCancelChatRename={cancelChatRename}
-          headerTitleInputRef={headerTitleInputRef}
-          showAutomationHeaderControls={showAutomationHeaderControls}
-          titleLabel={headerTitleLabel}
-          onBeginHeaderChatRename={beginHeaderChatRename}
-          showRenameButton={Boolean(activeChatId && !selectedAutomation)}
-          projectName={projectName}
-          showAutomationChatTab={showAutomationChatTab}
-          appMode={mode}
-          isTemporaryChat={isTemporaryChat}
-          isActiveLoading={isActiveLoading}
-          onTemporaryChatToggle={handleTemporaryChatToggle}
-          onGenerationModeChange={handleModeChange}
-          generationMode={generationMode}
-          renderExportMenu={renderExportMenu}
-          {...headerModelProps}
-          automationHeaderModelId={automationHeaderModelId}
-          automationHeaderModels={automationHeaderModels}
-          onSaveAutomationHeaderModel={saveAutomationHeaderModel}
-          automationDetailTab={automationDetailTab}
-          onSelectAutomationDetailTab={selectAutomationDetailTab}
-        />
-
-
-        <AppScreenBody
-          padding="none"
-          maxWidth="none"
-          scroll="hidden"
-          className={`flex min-h-0 flex-1 flex-col transition-[background-color,background-image] duration-300 ${
-            isTemporaryChat ? 'temporary-chat-body-pattern' : ''
-          }`}
-        >
-        {hasAutomationContext && !selectedAutomationLoading && !selectedAutomation && !showAutomationChatTab && (
-          <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">
-            <p className="text-sm text-[var(--muted)]">Automation not found.</p>
-          </div>
-        )}
-
-        {!showAutomationChatTab && selectedAutomation && automationDetailTab === 'edit' && (
-          <AutomationEditorPanel
-            automation={selectedAutomation}
-            onSaved={setSelectedAutomation}
-            onTested={(conversationId) => {
-              const params = new URLSearchParams(searchParams?.toString() ?? '')
-              params.set('id', conversationId)
-              params.set('automationId', selectedAutomation._id)
-              params.delete('tab')
-              router.replace(`${pathname}?${params.toString()}`)
-            }}
-            isFreeTier={isFreeTier}
-          />
-        )}
-
-        {/* Messages — only after first exchange; existing chat loading reserves this area so the composer stays docked. */}
-        {showAutomationChatTab && (hasHistory || showChatLoadingState) && (
-          <ChatMessageList
-            messagesScrollRef={messagesScrollRef}
-            messagesEndRef={messagesEndRef}
-            floatingControl={showScrollToBottomControl ? (
-              <DelayedTooltip label="Jump to latest" side="top">
-                <button
-                  type="button"
-                  aria-label="Jump to latest message"
-                  onClick={() => scrollToConversationBottom('smooth')}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] shadow-sm transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                >
-                  <ChevronDown size={17} strokeWidth={1.9} />
-                </button>
-              </DelayedTooltip>
-            ) : null}
-            showLoadingState={showChatLoadingState}
-            reserveLatestExchangeStartSpace={reserveLatestExchangeStartSpace}
-            state={{
-              primaryMessages,
-              latestExchangeIndex: latestExchIdx,
-              generationResults,
-              exchangeGenTypes,
-              exchangeModels,
-              selectedImageModels,
-              selectedVideoModels,
-              selectedTabPerExchange,
-              selectedModels,
-              exchangeModes,
-            }}
-            runtime={{
-              actChat,
-              chatInstances,
-              isActiveLoading,
-              isOptimisticLoading,
-              interruptedExchangeIdx,
-              exitingTurnIds,
-              sourcesPanel,
-              getResponseForExchangeForModel,
-            }}
-            actions={{
-              onTabSelect: handleTabSelect,
-              onJumpToReply: jumpToReplyTarget,
-              onDeleteTurn: handleDeleteTurnById,
-              onReplyToMediaPrompt: beginReplyToMediaPrompt,
-              onReplyToAssistantText: beginReplyToAssistantText,
-              onBranch: handleBranchConversationAtTurn,
-              onOpenDraft: setDraftModalState,
-              onCreateAutomationDraft: handleCreateAutomationDraftViaChat,
-              onOpenSources: openSourcesPanel,
-              onRetry: handleRetryExchange,
-              onOpenFilePreview: openFilePreview,
-              onOpenAttachmentPreview: openAttachmentPreview,
-              onContinue: handleContinue,
-              onGeneratedUiChange: handleGeneratedUiChange,
-              generatedUiConnectorActions,
-            }}
-          />
-        )}
-        {showAutomationChatTab && (
-          <ChatComposer
-            mode={composerMode}
-            emptyState={{
-              showCenteredEmptyChat,
-              greetingLine,
-              belowEmptyComposer,
-            }}
-            attachments={{
-              attachedImages,
-              setAttachedImages,
-              pendingChatDocuments,
-              removePendingDocument,
-              attachmentError,
-              fileInputRef,
-              docInputRef,
-              onAddImages: addImages,
-              onAddDocumentsFromPicker: addDocumentsFromPicker,
-              onOpenAttachmentPreview: openAttachmentPreview,
-              onOpenFilePreview: openFilePreview,
-            }}
-            runtime={{
-              composerNotice,
-              billingPromptContent: budgetTopUpPrompt,
-              isSendBlocked,
-              isActiveLoading,
-              isTemporaryChat,
-              blockedComposerContent: isBudgetExhaustedPaid ? (
-                <TopUpPreferenceControl
-                  variant="app"
-                  title="No budget for paid models"
-                  description="You can keep chatting with free models now. Add budget to use paid models and gated tools like web search, browser sessions, sandboxes, image generation, and video generation."
-                  amountCents={topUpAmountDraftCents}
-                  minAmountCents={entitlements?.topUpMinAmountCents ?? 800}
-                  maxAmountCents={entitlements?.topUpMaxAmountCents ?? 20_000}
-                  stepAmountCents={entitlements?.topUpStepAmountCents ?? 100}
-                  onAmountChange={setTopUpAmountDraftCents}
-                  autoTopUpEnabled={autoTopUpEnabledDraft}
-                  onAutoTopUpEnabledChange={setAutoTopUpEnabledDraft}
-                  checkboxDescription="If enabled, the same amount will recharge automatically whenever your cumulative budget reaches zero."
-                  note={
-                    <>
-                      Your paid storage stays active. You can also manage budget from{' '}
-                      <Link href="/account" className="font-medium underline underline-offset-4">
-                        Account
-                      </Link>
-                      .
-                    </>
-                  }
-                  footer={
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => void handleStartTopUp()}
-                        disabled={billingActionLoading === 'checkout'}
-                        className="inline-flex items-center justify-center rounded-xl bg-[var(--foreground)] px-4 py-2 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-60"
-                      >
-                        {billingActionLoading === 'checkout'
-                          ? 'Opening checkout...'
-                          : `Add $${(topUpAmountDraftCents / 100).toFixed(0)} top-up`}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleSaveTopUpPreference()}
-                        disabled={billingActionLoading === 'save'}
-                        className="inline-flex items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition-opacity hover:opacity-90 disabled:opacity-60"
-                      >
-                        {billingActionLoading === 'save' ? 'Saving...' : 'Save top-up preference'}
-                      </button>
-                    </>
-                  }
-                />
-              ) : (
-                <div className="flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-xs text-[var(--muted)]">
-                  <ArrowUp size={13} className="shrink-0 text-amber-500" />
-                  This model requires a paid plan. Switch to Auto or upgrade.
-                </div>
-              ),
-            }}
-            inputState={{
-              replyContext,
-              setReplyContext,
-              textareaRef,
-              input,
-              inputRevision,
-              onInputChange: handleComposerInputChange,
-              onMentionsChange: handleMentionsChange,
-              onPaste: handlePaste,
-              hasComposerText,
-            }}
-            toolState={{
-              showAttachMenu,
-              setShowAttachMenu,
-              attachMenuRef,
-              selectedToolIds,
-              memoryEnabled,
-              capabilities,
-              onToggleTool: toggleComposerTool,
-              onToggleMemory: () => setMemoryEnabled((current) => !current),
-              onRemoveTool: removeComposerTool,
-            }}
-            modeState={{
-              onModeChange: handleModeChange,
-              generationChip,
-              setGenerationChip,
-              showModeMenu,
-              setShowModeMenu,
-              modeMenuRef,
-              onNavigateMode: (nextMode) => {
-                router.push(nextMode === 'chat' ? '/app/chat' : '/app/automations')
-                setShowModeMenu(false)
+    <ChatExperienceView
+      shell={{
+        rightPanel: shellRightPanel,
+        rightPanelOpen: Boolean(shellRightPanel),
+        rightPanelWidth: shellRightPanelWidth,
+        onRightPanelClose: shellRightPanelClose,
+      }}
+      main={{
+        activeChatDeleting,
+        isDragging,
+        dragHandlers: {
+          onDragEnter: (e) => {
+            e.preventDefault()
+            dragCounterRef.current++
+            if (e.dataTransfer.types.includes('Files')) setIsDragging(true)
+          },
+          onDragOver: (e) => e.preventDefault(),
+          onDragLeave: () => {
+            dragCounterRef.current--
+            if (dragCounterRef.current === 0) setIsDragging(false)
+          },
+          onDrop: (e) => {
+            e.preventDefault()
+            dragCounterRef.current = 0
+            setIsDragging(false)
+            const all = Array.from(e.dataTransfer.files)
+            const images = all.filter((f) => f.type.startsWith('image/'))
+            if (images.length > 0) addImages(images)
+            const docExts =
+              /^(pdf|docx|txt|md|markdown|csv|json|html|htm|xml|log|ts|tsx|js|jsx|css|yaml|yml|toml|py|go|rs)$/i
+            const docs = all.filter((f) => {
+              const ext = f.name.split('.').pop() ?? ''
+              return (
+                docExts.test(ext) ||
+                f.type === 'application/pdf' ||
+                f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                (f.type.startsWith('text/') && ext !== '')
+              )
+            })
+            if (docs.length > 0) docs.forEach((f) => queueDocumentUpload(f))
+          },
+        },
+      }}
+      headerProps={{
+        hideHeader,
+        activeChatId,
+        editingChatId,
+        editingChatTitle,
+        onEditingChatTitleChange: setEditingChatTitle,
+        onCommitChatRename: commitChatRename,
+        onCancelChatRename: cancelChatRename,
+        headerTitleInputRef,
+        showAutomationHeaderControls,
+        titleLabel: headerTitleLabel,
+        onBeginHeaderChatRename: beginHeaderChatRename,
+        showRenameButton: Boolean(activeChatId && !selectedAutomation),
+        projectName,
+        showAutomationChatTab,
+        appMode: mode,
+        isTemporaryChat,
+        isActiveLoading,
+        onTemporaryChatToggle: handleTemporaryChatToggle,
+        onGenerationModeChange: handleModeChange,
+        generationMode,
+        renderExportMenu,
+        ...headerModelProps,
+        automationHeaderModelId,
+        automationHeaderModels,
+        onSaveAutomationHeaderModel: saveAutomationHeaderModel,
+        automationDetailTab,
+        onSelectAutomationDetailTab: selectAutomationDetailTab,
+      }}
+      body={{
+        hasAutomationContext,
+        isTemporaryChat,
+        selectedAutomationLoading,
+        showAutomationChatTab,
+      }}
+      automationEditorProps={
+        !showAutomationChatTab && selectedAutomation && automationDetailTab === 'edit'
+          ? {
+              automation: selectedAutomation,
+              onSaved: setSelectedAutomation,
+              onTested: (conversationId) => {
+                const params = new URLSearchParams(searchParams?.toString() ?? '')
+                params.set('id', conversationId)
+                params.set('automationId', selectedAutomation._id)
+                params.delete('tab')
+                router.replace(`${pathname}?${params.toString()}`)
               },
-            }}
-            actions={{
-              onStop: stopActiveChat,
-              onSend: handleSend,
-              onEmptySuggestion: handleEmptySuggestion,
-              onAutomateSuggestion: handleAutomateSuggestion,
-            }}
-          />
-        )}
-        </AppScreenBody>
-
-        <DraftReviewModal
-          state={draftModalState}
-          saving={isDraftSaving}
-          onClose={() => {
-            if (!isDraftSaving) setDraftModalState(null)
-          }}
-          onSaveSkill={saveSkillDraft}
-          onSaveAutomation={handleCreateAutomationDraftViaChat}
-        />
-
-      </div>
-    </AppScreenShell>
-
-      <AttachmentPreviewDialog
-        open={Boolean(attachmentPreview && attachmentPreviewMode === 'dialog')}
-        preview={attachmentPreview}
-        onClose={closeAttachmentPreview}
-        onModeChange={setAttachmentPreviewMode}
-        renderViewer={renderAttachmentViewer}
-      />
-
-    </>
+              isFreeTier,
+            }
+          : null
+      }
+      messageListProps={
+        showAutomationChatTab && (hasHistory || showChatLoadingState)
+          ? {
+              messagesScrollRef,
+              messagesEndRef,
+              floatingControl: showScrollToBottomControl ? (
+                <DelayedTooltip label="Jump to latest" side="top">
+                  <button
+                    type="button"
+                    aria-label="Jump to latest message"
+                    onClick={() => scrollToConversationBottom('smooth')}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] shadow-sm transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  >
+                    <ChevronDown size={17} strokeWidth={1.9} />
+                  </button>
+                </DelayedTooltip>
+              ) : null,
+              showLoadingState: showChatLoadingState,
+              reserveLatestExchangeStartSpace,
+              state: {
+                primaryMessages,
+                latestExchangeIndex: latestExchIdx,
+                generationResults,
+                exchangeGenTypes,
+                exchangeModels,
+                selectedImageModels,
+                selectedVideoModels,
+                selectedTabPerExchange,
+                selectedModels,
+                exchangeModes,
+              },
+              runtime: {
+                actChat,
+                chatInstances,
+                isActiveLoading,
+                isOptimisticLoading,
+                interruptedExchangeIdx,
+                exitingTurnIds,
+                sourcesPanel,
+                getResponseForExchangeForModel,
+              },
+              actions: {
+                onTabSelect: handleTabSelect,
+                onJumpToReply: jumpToReplyTarget,
+                onDeleteTurn: handleDeleteTurnById,
+                onReplyToMediaPrompt: beginReplyToMediaPrompt,
+                onReplyToAssistantText: beginReplyToAssistantText,
+                onBranch: handleBranchConversationAtTurn,
+                onOpenDraft: setDraftModalState,
+                onCreateAutomationDraft: handleCreateAutomationDraftViaChat,
+                onOpenSources: openSourcesPanel,
+                onRetry: handleRetryExchange,
+                onOpenFilePreview: openFilePreview,
+                onOpenAttachmentPreview: openAttachmentPreview,
+                onContinue: handleContinue,
+                onGeneratedUiChange: handleGeneratedUiChange,
+                generatedUiConnectorActions,
+              },
+            }
+          : null
+      }
+      composerProps={
+        showAutomationChatTab
+          ? {
+              mode: composerMode,
+              emptyState: {
+                showCenteredEmptyChat,
+                greetingLine,
+                belowEmptyComposer,
+              },
+              attachments: {
+                attachedImages,
+                setAttachedImages,
+                pendingChatDocuments,
+                removePendingDocument,
+                attachmentError,
+                fileInputRef,
+                docInputRef,
+                onAddImages: addImages,
+                onAddDocumentsFromPicker: addDocumentsFromPicker,
+                onOpenAttachmentPreview: openAttachmentPreview,
+                onOpenFilePreview: openFilePreview,
+              },
+              runtime: {
+                composerNotice,
+                billingPromptContent: budgetTopUpPrompt,
+                isSendBlocked,
+                isActiveLoading,
+                isTemporaryChat,
+                blockedComposerContent: isBudgetExhaustedPaid ? (
+                  <TopUpPreferenceControl
+                    variant="app"
+                    title="No budget for paid models"
+                    description="You can keep chatting with free models now. Add budget to use paid models and gated tools like web search, browser sessions, sandboxes, image generation, and video generation."
+                    amountCents={topUpAmountDraftCents}
+                    minAmountCents={entitlements?.topUpMinAmountCents ?? 800}
+                    maxAmountCents={entitlements?.topUpMaxAmountCents ?? 20_000}
+                    stepAmountCents={entitlements?.topUpStepAmountCents ?? 100}
+                    onAmountChange={setTopUpAmountDraftCents}
+                    autoTopUpEnabled={autoTopUpEnabledDraft}
+                    onAutoTopUpEnabledChange={setAutoTopUpEnabledDraft}
+                    checkboxDescription="If enabled, the same amount will recharge automatically whenever your cumulative budget reaches zero."
+                    note={
+                      <>
+                        Your paid storage stays active. You can also manage budget from{' '}
+                        <Link href="/account" className="font-medium underline underline-offset-4">
+                          Account
+                        </Link>
+                        .
+                      </>
+                    }
+                    footer={
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void handleStartTopUp()}
+                          disabled={billingActionLoading === 'checkout'}
+                          className="inline-flex items-center justify-center rounded-xl bg-[var(--foreground)] px-4 py-2 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-60"
+                        >
+                          {billingActionLoading === 'checkout'
+                            ? 'Opening checkout...'
+                            : `Add $${(topUpAmountDraftCents / 100).toFixed(0)} top-up`}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveTopUpPreference()}
+                          disabled={billingActionLoading === 'save'}
+                          className="inline-flex items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition-opacity hover:opacity-90 disabled:opacity-60"
+                        >
+                          {billingActionLoading === 'save' ? 'Saving...' : 'Save top-up preference'}
+                        </button>
+                      </>
+                    }
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-xs text-[var(--muted)]">
+                    <ArrowUp size={13} className="shrink-0 text-amber-500" />
+                    This model requires a paid plan. Switch to Auto or upgrade.
+                  </div>
+                ),
+              },
+              inputState: {
+                replyContext,
+                setReplyContext,
+                textareaRef,
+                input,
+                inputRevision,
+                onInputChange: handleComposerInputChange,
+                onMentionsChange: handleMentionsChange,
+                onPaste: handlePaste,
+                hasComposerText,
+              },
+              toolState: {
+                showAttachMenu,
+                setShowAttachMenu,
+                attachMenuRef,
+                selectedToolIds,
+                memoryEnabled,
+                capabilities,
+                onToggleTool: toggleComposerTool,
+                onToggleMemory: () => setMemoryEnabled((current) => !current),
+                onRemoveTool: removeComposerTool,
+              },
+              modeState: {
+                onModeChange: handleModeChange,
+                generationChip,
+                setGenerationChip,
+                showModeMenu,
+                setShowModeMenu,
+                modeMenuRef,
+                onNavigateMode: (nextMode) => {
+                  router.push(nextMode === 'chat' ? '/app/chat' : '/app/automations')
+                  setShowModeMenu(false)
+                },
+              },
+              actions: {
+                onStop: stopActiveChat,
+                onSend: handleSend,
+                onEmptySuggestion: handleEmptySuggestion,
+                onAutomateSuggestion: handleAutomateSuggestion,
+              },
+            }
+          : null
+      }
+      draftReviewProps={{
+        state: draftModalState,
+        saving: isDraftSaving,
+        onClose: () => {
+          if (!isDraftSaving) setDraftModalState(null)
+        },
+        onSaveSkill: saveSkillDraft,
+        onSaveAutomation: handleCreateAutomationDraftViaChat,
+      }}
+      attachmentPreviewProps={{
+        open: Boolean(attachmentPreview && attachmentPreviewMode === 'dialog'),
+        preview: attachmentPreview,
+        onClose: closeAttachmentPreview,
+        onModeChange: setAttachmentPreviewMode,
+        renderViewer: renderAttachmentViewer,
+      }}
+    />
   )
 }
