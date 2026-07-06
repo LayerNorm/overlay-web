@@ -8,6 +8,20 @@ type EnvSource = Record<string, string | undefined>
 type OverlayRuntimeConfigLayer = Record<string, unknown>
 
 interface AuthEnvValues {
+  betterAuthBasePath?: string
+  betterAuthBaseUrl?: string
+  betterAuthDatabaseUrl?: string
+  betterAuthDefaultSsoDomain?: string
+  betterAuthDefaultSsoProviderId?: string
+  betterAuthJwksUrl?: string
+  betterAuthJwtAudience?: string
+  betterAuthJwtIssuer?: string
+  betterAuthOidcClientId?: string
+  betterAuthOidcClientSecret?: string
+  betterAuthOidcDiscoveryEndpoint?: string
+  betterAuthOidcIssuerUrl?: string
+  betterAuthSecret?: string
+  betterAuthTrustedOrigins?: string
   devWorkosApiKey?: string
   devWorkosClientId?: string
   oidcClientId?: string
@@ -69,6 +83,24 @@ function authConfigFromEnv(
     ? false
     : readBool(env, 'ALLOW_DEV_AUTH_FALLBACKS') ??
       (deploymentEnvironment === 'development' || deploymentEnvironment === 'test')
+  const betterAuth = compactObject({
+    baseUrl: values.betterAuthBaseUrl,
+    basePath: values.betterAuthBasePath,
+    secret: values.betterAuthSecret,
+    databaseUrl: values.betterAuthDatabaseUrl,
+    trustedOrigins: values.betterAuthTrustedOrigins
+      ? splitCsv(values.betterAuthTrustedOrigins)
+      : undefined,
+    defaultSsoProviderId: values.betterAuthDefaultSsoProviderId,
+    defaultSsoDomain: values.betterAuthDefaultSsoDomain,
+    oidcIssuerUrl: values.betterAuthOidcIssuerUrl,
+    oidcDiscoveryEndpoint: values.betterAuthOidcDiscoveryEndpoint,
+    oidcClientId: values.betterAuthOidcClientId,
+    oidcClientSecret: values.betterAuthOidcClientSecret,
+    jwtIssuer: values.betterAuthJwtIssuer,
+    jwtAudience: values.betterAuthJwtAudience,
+    jwksUrl: values.betterAuthJwksUrl,
+  })
 
   return {
     ...(provider ? { provider: provider as OverlayRuntimeConfigInput['auth']['provider'] } : {}),
@@ -86,6 +118,7 @@ function authConfigFromEnv(
       clientSecret: readEnv(env, 'OIDC_CLIENT_SECRET'),
       audience: readEnv(env, 'OIDC_AUDIENCE'),
     }),
+    ...(Object.keys(betterAuth).length > 0 ? { betterAuth } : {}),
   }
 }
 
@@ -310,12 +343,42 @@ function readAuthEnv(env: EnvSource): AuthEnvValues {
     devWorkosApiKey: readEnv(env, 'DEV_WORKOS_API_KEY'),
     oidcIssuerUrl: readEnv(env, 'OIDC_ISSUER_URL'),
     oidcClientId: readEnv(env, 'OIDC_CLIENT_ID'),
+    betterAuthBaseUrl: readEnv(env, 'BETTER_AUTH_URL') ?? readEnv(env, 'BETTER_AUTH_BASE_URL'),
+    betterAuthBasePath: readEnv(env, 'BETTER_AUTH_BASE_PATH'),
+    betterAuthSecret: readEnv(env, 'BETTER_AUTH_SECRET'),
+    betterAuthDatabaseUrl: readEnv(env, 'BETTER_AUTH_DATABASE_URL'),
+    betterAuthTrustedOrigins: readEnv(env, 'BETTER_AUTH_TRUSTED_ORIGINS'),
+    betterAuthDefaultSsoProviderId: readEnv(env, 'BETTER_AUTH_DEFAULT_SSO_PROVIDER_ID'),
+    betterAuthDefaultSsoDomain: readEnv(env, 'BETTER_AUTH_DEFAULT_SSO_DOMAIN'),
+    betterAuthOidcIssuerUrl: readEnv(env, 'BETTER_AUTH_OIDC_ISSUER_URL'),
+    betterAuthOidcDiscoveryEndpoint: readEnv(env, 'BETTER_AUTH_OIDC_DISCOVERY_ENDPOINT'),
+    betterAuthOidcClientId: readEnv(env, 'BETTER_AUTH_OIDC_CLIENT_ID'),
+    betterAuthOidcClientSecret: readEnv(env, 'BETTER_AUTH_OIDC_CLIENT_SECRET'),
+    betterAuthJwtIssuer: readEnv(env, 'BETTER_AUTH_JWT_ISSUER'),
+    betterAuthJwtAudience: readEnv(env, 'BETTER_AUTH_JWT_AUDIENCE'),
+    betterAuthJwksUrl: readEnv(env, 'BETTER_AUTH_JWKS_URL'),
   }
 }
 
 function inferAuthProvider(values: AuthEnvValues): string | undefined {
   if (values.workosClientId || values.workosApiKey || values.devWorkosClientId || values.devWorkosApiKey) {
     return 'workos'
+  }
+  if (
+    values.betterAuthBaseUrl ||
+    values.betterAuthSecret ||
+    values.betterAuthDatabaseUrl ||
+    values.betterAuthDefaultSsoProviderId ||
+    values.betterAuthDefaultSsoDomain ||
+    values.betterAuthOidcIssuerUrl ||
+    values.betterAuthOidcDiscoveryEndpoint ||
+    values.betterAuthOidcClientId ||
+    values.betterAuthOidcClientSecret ||
+    values.betterAuthJwtIssuer ||
+    values.betterAuthJwtAudience ||
+    values.betterAuthJwksUrl
+  ) {
+    return 'better-auth'
   }
   return values.oidcIssuerUrl || values.oidcClientId ? 'oidc' : undefined
 }
@@ -328,7 +391,19 @@ function hasAnyAuthConfig(values: AuthEnvValues, provider: string | undefined): 
       values.devWorkosClientId ||
       values.devWorkosApiKey ||
       values.oidcIssuerUrl ||
-      values.oidcClientId,
+      values.oidcClientId ||
+      values.betterAuthBaseUrl ||
+      values.betterAuthSecret ||
+      values.betterAuthDatabaseUrl ||
+      values.betterAuthDefaultSsoProviderId ||
+      values.betterAuthDefaultSsoDomain ||
+      values.betterAuthOidcIssuerUrl ||
+      values.betterAuthOidcDiscoveryEndpoint ||
+      values.betterAuthOidcClientId ||
+      values.betterAuthOidcClientSecret ||
+      values.betterAuthJwtIssuer ||
+      values.betterAuthJwtAudience ||
+      values.betterAuthJwksUrl,
   )
 }
 

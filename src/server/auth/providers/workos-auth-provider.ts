@@ -46,6 +46,12 @@ export class WorkOSAuthProvider implements AuthProvider {
     return session ? toProviderSession(session) : null
   }
 
+  async signOut(req: Request): Promise<void> {
+    void req
+    const { clearSession } = await import('@/server/auth/workos-auth')
+    await clearSession()
+  }
+
   async verifyAccessToken(token: string): Promise<TokenClaims | null> {
     const { getVerifiedAccessTokenClaims } = await import('../../../../convex/lib/auth')
     const claims = await getVerifiedAccessTokenClaims(token)

@@ -61,6 +61,7 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     allowDevFallbacks: false,
     workos: {},
     oidc: {},
+    betterAuth: {},
   },
   billing: {
     provider: 'stripe',

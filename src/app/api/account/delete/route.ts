@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
   )
 
   if (session?.user?.id === userId) {
-    await clearOverlaySession()
+    await clearOverlaySession(request)
   }
 
   return NextResponse.json({

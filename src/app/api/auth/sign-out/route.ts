@@ -2,9 +2,9 @@ import { logger } from '@/server/observability/logger'
 import { NextResponse } from 'next/server'
 import { clearOverlaySession } from '@/server/auth/session'
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
-    await clearOverlaySession()
+    await clearOverlaySession(request)
     return NextResponse.json({ success: true })
   } catch (error) {
     logger.error('[Auth] Sign-out error:', error)

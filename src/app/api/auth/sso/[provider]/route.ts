@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthorizationUrl, normalizeAuthRedirect, normalizeCodeChallenge } from '@/server/auth/actions'
+import { getAuthorizationRedirectResponse, normalizeAuthRedirect, normalizeCodeChallenge } from '@/server/auth/actions'
 import { requireOverlayCapability } from '@/server/capabilities'
 
 type SSOProvider = 'google' | 'apple' | 'microsoft'
@@ -51,7 +51,8 @@ export async function GET(
   try {
     logger.info('[Auth] SSO request:', { provider, redirectUri, forceSignIn, isDesktopAuth })
     
-    const authUrl = await getAuthorizationUrl(
+    const response = await getAuthorizationRedirectResponse(
+      request,
       providerMap[provider as SSOProvider],
       {
         redirectUri: normalizedRedirectUri ?? undefined,
@@ -61,7 +62,7 @@ export async function GET(
     )
 
     logger.info('[Auth] Generated auth URL, redirecting...')
-    return NextResponse.redirect(authUrl)
+    return response
   } catch (error) {
     logger.error('[Auth] SSO error details:', {
       error,

@@ -59,6 +59,7 @@ Provider-specific variables:
 | --- | --- | --- |
 | `WORKOS_CLIENT_ID`, `WORKOS_API_KEY` | `auth.provider="workos"` | Use production WorkOS values only with production app and Convex deployments. |
 | `DEV_WORKOS_CLIENT_ID`, `DEV_WORKOS_API_KEY` | Local or staging WorkOS fallback | Only use when `auth.allowDevFallbacks=true` in non-production. |
+| `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_DATABASE_URL`, `BETTER_AUTH_DEFAULT_SSO_*`, `BETTER_AUTH_OIDC_*`, `BETTER_AUTH_JWT_*`, `BETTER_AUTH_JWKS_URL` | `auth.provider="better-auth"` | Better Auth owns the web session in Overlay and issues short-lived JWTs for Convex verification through its JWKS endpoint. Keep this database auth-scoped; it does not replace Convex app data. |
 | `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_AUDIENCE` | `auth.provider="oidc"` | Verifies RS256 bearer/access tokens against OIDC discovery JWKS and maps standard profile claims. Use these variables for Keycloak-compatible realm issuers too. Browser sign-in/callback wiring is still deployment-specific. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | `billing.provider="stripe"` | Required only when billing is enabled. |
 | `DEV_STRIPE_SECRET_KEY`, `DEV_STRIPE_WEBHOOK_SECRET` | Staging Stripe | Preferred for non-production. |
@@ -163,6 +164,7 @@ Auth providers:
 | Provider | Config | Current status |
 | --- | --- | --- |
 | `workos` | `auth.workos` | Default SaaS path. Production-ready path for current hosted app. |
+| `better-auth` | `auth.betterAuth` | Better Auth web sessions plus SSO and JWKS-backed service JWTs for Convex. Requires an auth-scoped Postgres database and Better Auth migrations before production use. |
 | `oidc` | `auth.oidc` | Runtime-config OIDC bearer/access-token verification, including Keycloak-compatible realm issuers. Verify browser sign-in/callback wiring for your IdP before production. |
 | `none` | none | Local/on-prem no-op auth. Pair with `capabilities.sso=false`. |
 

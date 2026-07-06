@@ -6,7 +6,7 @@ import { SpeedInsights } from '@vercel/speed-insights/next'
 import { AuthProvider, type AuthUser } from '@/contexts/AuthContext'
 import ObservabilityClient from '@/components/providers/ObservabilityClient'
 import { AppSettingsProvider } from '@/components/providers/AppSettingsProvider'
-import { ConvexProviderWithWorkOS } from '@/components/providers/ConvexProviderWithWorkOS'
+import { ConvexAuthProvider } from '@/components/providers/ConvexAuthProvider'
 
 export function AppClientProviders({
   children,
@@ -18,14 +18,14 @@ export function AppClientProviders({
   return (
     <AuthProvider initialUser={initialUser}>
       <AppSettingsProvider>
-        <ConvexProviderWithWorkOS>
+        <ConvexAuthProvider>
           <Suspense fallback={null}>
             <ObservabilityClient />
           </Suspense>
           {children}
           <Analytics />
           <SpeedInsights />
-        </ConvexProviderWithWorkOS>
+        </ConvexAuthProvider>
       </AppSettingsProvider>
     </AuthProvider>
   )

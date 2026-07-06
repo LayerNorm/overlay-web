@@ -4,6 +4,7 @@ import overlayAppConfig from '@/overlay.config'
 import { NoOpLLMGateway, OpenAILLMGateway, OpenRouterGateway } from '@/server/ai/providers'
 import { ApiKeyService } from '@/server/auth/api-keys'
 import {
+  BetterAuthProvider,
   NoOpAuthProvider,
   OidcAuthProvider,
   WorkOSAuthProvider,
@@ -116,6 +117,8 @@ function createAuthProvider(config: OverlayRuntimeConfig | null): AuthProvider {
         ...config.auth.workos,
         allowDevFallbacks: config.auth.allowDevFallbacks,
       })
+    case 'better-auth':
+      return new BetterAuthProvider({ runtimeConfig: config })
     case 'oidc':
       return new OidcAuthProvider(config.auth.oidc)
     case 'none':
@@ -254,6 +257,10 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
   if (authProvider === 'oidc') {
     if (!config.auth.oidc.issuerUrl) issues.push('auth.oidc.issuerUrl is required when auth.provider is oidc')
     if (!config.auth.oidc.clientId) issues.push('auth.oidc.clientId is required when auth.provider is oidc')
+  }
+  if (authProvider === 'better-auth') {
+    if (!config.auth.betterAuth.secret) issues.push('auth.betterAuth.secret is required when auth.provider is better-auth')
+    if (!config.auth.betterAuth.databaseUrl) issues.push('auth.betterAuth.databaseUrl is required when auth.provider is better-auth')
   }
   if (capabilities.billing && config.billing.provider === 'stripe' && !config.billing.stripe.secretKey) {
     issues.push('billing.stripe.secretKey is required when billing.provider is stripe')

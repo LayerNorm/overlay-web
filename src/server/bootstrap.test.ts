@@ -8,7 +8,7 @@ import { GroqGateway } from '@overlay/llm-gateway/groq'
 import { createOverlayServerContext } from './bootstrap'
 import { OpenAILLMGateway, OpenRouterGateway } from './ai/providers'
 import { ApiKeyService } from './auth/api-keys'
-import { OidcAuthProvider, WorkOSAuthProvider } from './auth/providers'
+import { BetterAuthProvider, OidcAuthProvider, WorkOSAuthProvider } from './auth/providers'
 import { NoOpBillingProvider, StripeBillingProvider } from './billing/providers'
 import { OverlayConfigError } from './config'
 import { ConvexRateLimiter, InMemoryEventBus, InMemoryRateLimiter } from './shared/providers'
@@ -46,6 +46,38 @@ test('createOverlayServerContext returns enterprise adapters for OIDC, no billin
   assert.equal(context.objectStore instanceof S3CompatibleObjectStore, true)
   assert.equal(context.llmGateway instanceof OpenAILLMGateway, true)
   assert.equal(context.rateLimiter instanceof InMemoryRateLimiter, true)
+})
+
+test('createOverlayServerContext returns Better Auth adapter when selected', () => {
+  const base = fixture('saas-staging.json')
+  const runtimeConfig = parseOverlayRuntimeConfig({
+    ...base,
+    providers: {
+      ...base.providers,
+      auth: { provider: 'better-auth' },
+    },
+    auth: {
+      provider: 'better-auth',
+      allowDevFallbacks: false,
+      workos: {},
+      oidc: {},
+      betterAuth: {
+        baseUrl: 'https://staging.getoverlay.io',
+        secret: 'better_auth_secret',
+        databaseUrl: 'postgres://overlay_auth:secret@localhost:5432/overlay_auth',
+        defaultSsoProviderId: 'pilot-oidc',
+        defaultSsoDomain: 'example.com',
+        oidcIssuerUrl: 'https://idp.example.com',
+        oidcClientId: 'overlay-web',
+        oidcClientSecret: 'oidc_secret',
+        jwtAudience: 'https://staging.getoverlay.io',
+        jwksUrl: 'https://staging.getoverlay.io/api/better-auth/jwks',
+      },
+    },
+  })
+  const context = createOverlayServerContext({ appConfig: {}, runtimeConfig })
+
+  assert.equal(context.auth instanceof BetterAuthProvider, true)
 })
 
 test('createOverlayServerContext throws typed config error before constructing invalid provider config', () => {

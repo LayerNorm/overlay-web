@@ -1,7 +1,6 @@
 import 'server-only'
 
 import { unstable_noStore as noStore } from 'next/cache'
-import { clearSession } from '@/server/auth/workos-auth'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { Session } from '@overlay/app-core'
 import type { AuthSession } from '@/shared/auth/session-types'
@@ -49,6 +48,15 @@ export async function getOverlaySession(
   return session ? toAuthSession(session) : null
 }
 
-export async function clearOverlaySession(): Promise<void> {
+export async function clearOverlaySession(
+  request: Request = FALLBACK_SESSION_REQUEST,
+): Promise<void> {
+  const auth = getOverlayServerContext().auth
+  if (auth.signOut) {
+    await auth.signOut(request)
+    return
+  }
+
+  const { clearSession } = await import('@/server/auth/workos-auth')
   await clearSession()
 }

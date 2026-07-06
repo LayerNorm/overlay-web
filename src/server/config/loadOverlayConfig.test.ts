@@ -389,6 +389,43 @@ test('configOverridesFromEnv preserves auth provider selection shape', () => {
     },
     oidc: {},
   })
+
+  assert.deepEqual(configOverridesFromEnv({
+    AUTH_PROVIDER: 'better-auth',
+    BETTER_AUTH_URL: 'https://self-hosted.example.com',
+    BETTER_AUTH_BASE_PATH: '/api/better-auth',
+    BETTER_AUTH_SECRET: 'better_auth_secret',
+    BETTER_AUTH_DATABASE_URL: 'postgres://overlay_auth:secret@db.internal:5432/overlay_auth',
+    BETTER_AUTH_TRUSTED_ORIGINS: 'https://self-hosted.example.com,https://admin.example.com',
+    BETTER_AUTH_DEFAULT_SSO_PROVIDER_ID: 'pilot-oidc',
+    BETTER_AUTH_DEFAULT_SSO_DOMAIN: 'example.com',
+    BETTER_AUTH_OIDC_ISSUER_URL: 'https://idp.example.com',
+    BETTER_AUTH_OIDC_DISCOVERY_ENDPOINT: 'https://idp.example.com/.well-known/openid-configuration',
+    BETTER_AUTH_OIDC_CLIENT_ID: 'overlay-web',
+    BETTER_AUTH_OIDC_CLIENT_SECRET: 'oidc_secret',
+    BETTER_AUTH_JWT_AUDIENCE: 'https://self-hosted.example.com',
+    BETTER_AUTH_JWKS_URL: 'https://self-hosted.example.com/api/better-auth/jwks',
+  }).auth, {
+    provider: 'better-auth',
+    allowDevFallbacks: false,
+    workos: {},
+    oidc: {},
+    betterAuth: {
+      baseUrl: 'https://self-hosted.example.com',
+      basePath: '/api/better-auth',
+      secret: 'better_auth_secret',
+      databaseUrl: 'postgres://overlay_auth:secret@db.internal:5432/overlay_auth',
+      trustedOrigins: ['https://self-hosted.example.com', 'https://admin.example.com'],
+      defaultSsoProviderId: 'pilot-oidc',
+      defaultSsoDomain: 'example.com',
+      oidcIssuerUrl: 'https://idp.example.com',
+      oidcDiscoveryEndpoint: 'https://idp.example.com/.well-known/openid-configuration',
+      oidcClientId: 'overlay-web',
+      oidcClientSecret: 'oidc_secret',
+      jwtAudience: 'https://self-hosted.example.com',
+      jwksUrl: 'https://self-hosted.example.com/api/better-auth/jwks',
+    },
+  })
 })
 
 test('configOverridesFromEnv preserves deployment-specific billing and database env precedence', () => {

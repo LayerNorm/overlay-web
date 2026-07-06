@@ -76,7 +76,7 @@ import { createIdempotencyKey } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { useAuth } from '@/contexts/AuthContext'
-import { useConvexWorkOSToken } from '@/components/providers/ConvexProviderWithWorkOS'
+import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
 import { useGeneratedUiConnectorActions } from './chat/useGeneratedUiConnectorActions'
 import {
   CHAT_GEN_MODE_KEY,
@@ -166,7 +166,7 @@ export default function ChatExperience({
   const { capabilities } = useOverlayCapabilities()
   const billingEnabled = capabilities.billing
   const { user: authUser, isLoading: authLoading } = useAuth()
-  const convexAccessToken = useConvexWorkOSToken()
+  const convexAccessToken = useConvexAuthToken()
   const { startSession, completeSession, markRead, setActiveViewer, sessions } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
   const [isTemporaryChat, setIsTemporaryChat] = useState(false)

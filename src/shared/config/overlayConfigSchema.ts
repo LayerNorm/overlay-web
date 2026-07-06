@@ -9,7 +9,7 @@ export const OverlayDeploymentEnvironmentSchema = z.enum([
   'onprem',
 ])
 
-export const OverlayAuthProviderSchema = z.enum(['workos', 'oidc', 'none'])
+export const OverlayAuthProviderSchema = z.enum(['workos', 'better-auth', 'oidc', 'none'])
 export const OverlayBillingProviderSchema = z.enum(['stripe', 'none'])
 export const OverlayStorageProviderSchema = z.enum(['r2', 's3', 'none'])
 export const OverlayLlmGatewayProviderSchema = z.enum([
@@ -151,6 +151,24 @@ export const OverlayRuntimeConfigSchema = z
           clientId: OptionalStringSchema,
           clientSecret: OptionalStringSchema,
           audience: OptionalStringSchema,
+        })
+        .default({}),
+      betterAuth: z
+        .object({
+          baseUrl: OptionalUrlSchema,
+          basePath: OptionalStringSchema,
+          secret: OptionalStringSchema,
+          databaseUrl: OptionalStringSchema,
+          trustedOrigins: z.array(z.string().trim().url()).default([]),
+          defaultSsoProviderId: OptionalStringSchema,
+          defaultSsoDomain: OptionalStringSchema,
+          oidcIssuerUrl: OptionalUrlSchema,
+          oidcDiscoveryEndpoint: OptionalUrlSchema,
+          oidcClientId: OptionalStringSchema,
+          oidcClientSecret: OptionalStringSchema,
+          jwtIssuer: OptionalUrlSchema,
+          jwtAudience: OptionalStringSchema,
+          jwksUrl: OptionalUrlSchema,
         })
         .default({}),
     }),
@@ -496,6 +514,22 @@ export function redactOverlayRuntimeConfig(config: OverlayRuntimeConfig) {
         hasClientId: Boolean(config.auth.oidc.clientId),
         hasClientSecret: Boolean(config.auth.oidc.clientSecret),
         hasAudience: Boolean(config.auth.oidc.audience),
+      },
+      betterAuth: {
+        baseUrl: config.auth.betterAuth.baseUrl,
+        basePath: config.auth.betterAuth.basePath,
+        hasSecret: Boolean(config.auth.betterAuth.secret),
+        hasDatabaseUrl: Boolean(config.auth.betterAuth.databaseUrl),
+        trustedOrigins: [...config.auth.betterAuth.trustedOrigins],
+        hasDefaultSsoProviderId: Boolean(config.auth.betterAuth.defaultSsoProviderId),
+        hasDefaultSsoDomain: Boolean(config.auth.betterAuth.defaultSsoDomain),
+        oidcIssuerUrl: config.auth.betterAuth.oidcIssuerUrl,
+        oidcDiscoveryEndpoint: config.auth.betterAuth.oidcDiscoveryEndpoint,
+        hasOidcClientId: Boolean(config.auth.betterAuth.oidcClientId),
+        hasOidcClientSecret: Boolean(config.auth.betterAuth.oidcClientSecret),
+        jwtIssuer: config.auth.betterAuth.jwtIssuer,
+        hasJwtAudience: Boolean(config.auth.betterAuth.jwtAudience),
+        jwksUrl: config.auth.betterAuth.jwksUrl,
       },
     },
     billing: {
