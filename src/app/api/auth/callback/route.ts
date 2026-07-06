@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
 
     const inspectAccessToken = async (accessToken: string, userId: string) => {
       try {
-        return await serverConvex.query<Record<string, unknown>>('authDebug:inspectAccessToken', {
+        return await serverConvex.query<Record<string, unknown>>('auth/authDebug:inspectAccessToken', {
           serverSecret: getInternalApiSecret(),
           accessToken,
           userId,
