@@ -390,7 +390,7 @@ test('configOverridesFromEnv preserves auth provider selection shape', () => {
     oidc: {},
   })
 
-  assert.deepEqual(configOverridesFromEnv({
+  const betterAuthOverrides = configOverridesFromEnv({
     AUTH_PROVIDER: 'better-auth',
     BETTER_AUTH_URL: 'https://self-hosted.example.com',
     BETTER_AUTH_BASE_PATH: '/api/better-auth',
@@ -405,7 +405,8 @@ test('configOverridesFromEnv preserves auth provider selection shape', () => {
     BETTER_AUTH_OIDC_CLIENT_SECRET: 'oidc_secret',
     BETTER_AUTH_JWT_AUDIENCE: 'https://self-hosted.example.com',
     BETTER_AUTH_JWKS_URL: 'https://self-hosted.example.com/api/better-auth/jwks',
-  }).auth, {
+  })
+  assert.deepEqual(betterAuthOverrides.auth, {
     provider: 'better-auth',
     allowDevFallbacks: false,
     workos: {},
@@ -425,6 +426,9 @@ test('configOverridesFromEnv preserves auth provider selection shape', () => {
       jwtAudience: 'https://self-hosted.example.com',
       jwksUrl: 'https://self-hosted.example.com/api/better-auth/jwks',
     },
+  })
+  assert.deepEqual(betterAuthOverrides.providers, {
+    auth: { provider: 'better-auth' },
   })
 })
 

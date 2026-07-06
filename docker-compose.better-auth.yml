@@ -1,0 +1,22 @@
+services:
+  better-auth-postgres:
+    image: postgres:16-alpine
+    container_name: overlay-better-auth-postgres
+    environment:
+      POSTGRES_DB: ${BETTER_AUTH_POSTGRES_DB:-overlay_auth}
+      POSTGRES_USER: ${BETTER_AUTH_POSTGRES_USER:-overlay_auth}
+      POSTGRES_PASSWORD: ${BETTER_AUTH_POSTGRES_PASSWORD:-overlay_auth_dev_password}
+    ports:
+      - "${BETTER_AUTH_POSTGRES_PORT:-54329}:5432"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - overlay-better-auth-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  overlay-better-auth-postgres-data:

@@ -316,7 +316,7 @@ function complianceFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
 
 function providersFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
   const providers = compactObject({
-    auth: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_AUTH')),
+    auth: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_AUTH') ?? readEnv(env, 'AUTH_PROVIDER')),
     database: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_DATABASE')),
     objectStorage: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_OBJECT_STORAGE')),
     vectorSearch: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_VECTOR_SEARCH')),

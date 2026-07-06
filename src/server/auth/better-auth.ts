@@ -52,7 +52,14 @@ export function getBetterAuth(runtimeConfig?: OverlayRuntimeConfig): BetterAuthI
 }
 
 function createBetterAuthInstance(resolved: BetterAuthRuntimeConfig, database: Pool) {
-  return betterAuth({
+  return betterAuth(createBetterAuthOptions(resolved, database))
+}
+
+export function createBetterAuthOptions(
+  resolved: BetterAuthRuntimeConfig,
+  database: Pool,
+) {
+  return {
     baseURL: resolved.baseUrl,
     basePath: resolved.basePath,
     secret: resolved.secret,
@@ -96,7 +103,7 @@ function createBetterAuthInstance(resolved: BetterAuthRuntimeConfig, database: P
         enabled: true,
       },
     },
-  })
+  } satisfies Parameters<typeof betterAuth>[0]
 }
 
 export function resolveBetterAuthRuntimeConfig(
