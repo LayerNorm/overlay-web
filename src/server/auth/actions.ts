@@ -232,7 +232,7 @@ async function createBetterAuthSsoRedirectResponse(
   ))
 
   if (!response.ok) {
-    const text = await response.text().catch(() => '')
+    const text = await response.text().catch((_error) => '')
     throw new Error(text || `Better Auth SSO initiation failed with HTTP ${response.status}`)
   }
 

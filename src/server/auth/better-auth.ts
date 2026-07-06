@@ -41,7 +41,7 @@ export function getBetterAuth(runtimeConfig?: OverlayRuntimeConfig): BetterAuthI
     return betterAuthInstance
   }
 
-  betterAuthPool?.end().catch(() => undefined)
+  betterAuthPool?.end().catch((_error) => undefined)
   betterAuthPool = new Pool({
     connectionString: resolved.databaseUrl,
   })

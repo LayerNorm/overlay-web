@@ -163,6 +163,7 @@
     "framer-motion": "^12.26.2",
     "groq-sdk": "^1.1.1",
     "html2canvas": "^1.4.1",
+    "jose": "^6.2.3",
     "jspdf": "^4.2.1",
     "katex": "^0.16.38",
     "lowlight": "^3.3.0",
