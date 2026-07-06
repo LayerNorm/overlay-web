@@ -21,6 +21,19 @@ type RuntimeChatView = {
   stop: () => void
 }
 
+export function completeGeneratingAssistantMessages(messages: UIMessage[]) {
+  let changed = false
+  const nextMessages = messages.map((message) => {
+    const m = message as unknown as { role?: string; status?: string }
+    if (m.role === 'assistant' && m.status === 'generating') {
+      changed = true
+      return { ...message, status: 'completed' } as UIMessage
+    }
+    return message
+  })
+  return { changed, messages: changed ? nextMessages : messages }
+}
+
 export function useChatStopController({
   activeAskChats,
   activeChatId,
@@ -139,26 +152,13 @@ export function useChatStopController({
       }
     }
 
-    const completeGeneratingMessages = (messages: UIMessage[]) => {
-      let changed = false
-      const nextMessages = messages.map((message) => {
-        const m = message as unknown as { role?: string; status?: string }
-        if (m.role === 'assistant' && m.status === 'generating') {
-          changed = true
-          return { ...message, status: 'completed' } as UIMessage
-        }
-        return message
-      })
-      return { changed, messages: changed ? nextMessages : messages }
-    }
-
     for (const chat of runtime.askChats) {
-      const patch = completeGeneratingMessages(chat.messages as UIMessage[])
+      const patch = completeGeneratingAssistantMessages(chat.messages as UIMessage[])
       if (patch.changed) {
         chat.messages = patch.messages as never
       }
     }
-    const actPatch = completeGeneratingMessages(runtime.actChat.messages as UIMessage[])
+    const actPatch = completeGeneratingAssistantMessages(runtime.actChat.messages as UIMessage[])
     if (actPatch.changed) {
       runtime.actChat.messages = actPatch.messages as never
     }
