@@ -4,7 +4,6 @@ import overlayAppConfig from '@/overlay.config'
 import { NoOpLLMGateway, OpenAILLMGateway, OpenRouterGateway } from '@/server/ai/providers'
 import { ApiKeyService } from '@/server/auth/api-keys'
 import {
-  KeycloakAuthProvider,
   NoOpAuthProvider,
   OidcAuthProvider,
   WorkOSAuthProvider,
@@ -119,8 +118,6 @@ function createAuthProvider(config: OverlayRuntimeConfig | null): AuthProvider {
       })
     case 'oidc':
       return new OidcAuthProvider(config.auth.oidc)
-    case 'keycloak':
-      return new KeycloakAuthProvider(config.auth.keycloak)
     case 'none':
       return new NoOpAuthProvider()
   }
@@ -257,14 +254,6 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
   if (authProvider === 'oidc') {
     if (!config.auth.oidc.issuerUrl) issues.push('auth.oidc.issuerUrl is required when auth.provider is oidc')
     if (!config.auth.oidc.clientId) issues.push('auth.oidc.clientId is required when auth.provider is oidc')
-  }
-  if (authProvider === 'keycloak') {
-    if (!config.auth.keycloak.issuerUrl) {
-      issues.push('auth.keycloak.issuerUrl is required when auth.provider is keycloak')
-    }
-    if (!config.auth.keycloak.clientId) {
-      issues.push('auth.keycloak.clientId is required when auth.provider is keycloak')
-    }
   }
   if (capabilities.billing && config.billing.provider === 'stripe' && !config.billing.stripe.secretKey) {
     issues.push('billing.stripe.secretKey is required when billing.provider is stripe')

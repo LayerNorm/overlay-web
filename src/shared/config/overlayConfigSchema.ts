@@ -9,7 +9,7 @@ export const OverlayDeploymentEnvironmentSchema = z.enum([
   'onprem',
 ])
 
-export const OverlayAuthProviderSchema = z.enum(['workos', 'oidc', 'keycloak', 'none'])
+export const OverlayAuthProviderSchema = z.enum(['workos', 'oidc', 'none'])
 export const OverlayBillingProviderSchema = z.enum(['stripe', 'none'])
 export const OverlayStorageProviderSchema = z.enum(['r2', 's3', 'none'])
 export const OverlayLlmGatewayProviderSchema = z.enum([
@@ -151,14 +151,6 @@ export const OverlayRuntimeConfigSchema = z
           clientId: OptionalStringSchema,
           clientSecret: OptionalStringSchema,
           audience: OptionalStringSchema,
-        })
-        .default({}),
-      keycloak: z
-        .object({
-          issuerUrl: OptionalUrlSchema,
-          clientId: OptionalStringSchema,
-          clientSecret: OptionalStringSchema,
-          realm: OptionalStringSchema,
         })
         .default({}),
     }),
@@ -504,12 +496,6 @@ export function redactOverlayRuntimeConfig(config: OverlayRuntimeConfig) {
         hasClientId: Boolean(config.auth.oidc.clientId),
         hasClientSecret: Boolean(config.auth.oidc.clientSecret),
         hasAudience: Boolean(config.auth.oidc.audience),
-      },
-      keycloak: {
-        issuerUrl: config.auth.keycloak.issuerUrl,
-        hasClientId: Boolean(config.auth.keycloak.clientId),
-        hasClientSecret: Boolean(config.auth.keycloak.clientSecret),
-        realm: config.auth.keycloak.realm,
       },
     },
     billing: {

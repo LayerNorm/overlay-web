@@ -86,12 +86,6 @@ function authConfigFromEnv(
       clientSecret: readEnv(env, 'OIDC_CLIENT_SECRET'),
       audience: readEnv(env, 'OIDC_AUDIENCE'),
     }),
-    keycloak: compactObject({
-      issuerUrl: readEnv(env, 'KEYCLOAK_ISSUER_URL'),
-      clientId: readEnv(env, 'KEYCLOAK_CLIENT_ID'),
-      clientSecret: readEnv(env, 'KEYCLOAK_CLIENT_SECRET'),
-      realm: readEnv(env, 'KEYCLOAK_REALM'),
-    }),
   }
 }
 
@@ -308,16 +302,14 @@ function providersFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
 }
 
 function readAuthEnv(env: EnvSource): AuthEnvValues {
-  const oidcIssuerUrl = readEnv(env, 'OIDC_ISSUER_URL') ?? readEnv(env, 'KEYCLOAK_ISSUER_URL')
-  const oidcClientId = readEnv(env, 'OIDC_CLIENT_ID') ?? readEnv(env, 'KEYCLOAK_CLIENT_ID')
   return {
     provider: readEnv(env, 'AUTH_PROVIDER'),
     workosClientId: readEnv(env, 'WORKOS_CLIENT_ID'),
     workosApiKey: readEnv(env, 'WORKOS_API_KEY'),
     devWorkosClientId: readEnv(env, 'DEV_WORKOS_CLIENT_ID'),
     devWorkosApiKey: readEnv(env, 'DEV_WORKOS_API_KEY'),
-    oidcIssuerUrl,
-    oidcClientId,
+    oidcIssuerUrl: readEnv(env, 'OIDC_ISSUER_URL'),
+    oidcClientId: readEnv(env, 'OIDC_CLIENT_ID'),
   }
 }
 

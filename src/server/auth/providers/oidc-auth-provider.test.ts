@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { webcrypto } from 'node:crypto'
 import test, { type TestContext } from 'node:test'
-import { KeycloakAuthProvider } from './keycloak-auth-provider'
 import { OidcAuthProvider } from './oidc-auth-provider'
 
 const encoder = new TextEncoder()
@@ -86,7 +85,7 @@ test('OidcAuthProvider rejects validly signed tokens for the wrong audience', as
   assert.equal(await provider.verifyAccessToken(token), null)
 })
 
-test('KeycloakAuthProvider inherits OIDC token verification with client-id audience fallback', async (t) => {
+test('OidcAuthProvider verifies Keycloak-style realm issuer tokens with client-id audience fallback', async (t) => {
   ensureCrypto()
   const issuer = 'https://keycloak.enterprise.example.com/realms/overlay'
   const key = await createTestKey('keycloak-key-1')
@@ -100,10 +99,9 @@ test('KeycloakAuthProvider inherits OIDC token verification with client-id audie
     email: 'keycloak@example.com',
   })
 
-  const provider = new KeycloakAuthProvider({
+  const provider = new OidcAuthProvider({
     issuerUrl: issuer,
     clientId: 'overlay-web',
-    realm: 'overlay',
   })
 
   const claims = await provider.verifyAccessToken(token)

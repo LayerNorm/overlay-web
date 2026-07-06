@@ -18,14 +18,14 @@ npm run test:phase6-routes
 
 ## Required On-Prem Shape
 
-Use either OIDC or Keycloak-compatible auth, S3-compatible storage, and the OpenAI gateway for the current on-prem provider path:
+Use OIDC auth, S3-compatible storage, and the OpenAI gateway for the current on-prem provider path. For Keycloak-compatible deployments, use the realm issuer URL as `OIDC_ISSUER_URL`.
 
 ```bash
-AUTH_PROVIDER=keycloak
-KEYCLOAK_ISSUER_URL=https://idp.enterprise.example.com/realms/overlay
-KEYCLOAK_CLIENT_ID=overlay-web
-KEYCLOAK_CLIENT_SECRET=replace_with_keycloak_client_secret
-KEYCLOAK_REALM=overlay
+AUTH_PROVIDER=oidc
+OIDC_ISSUER_URL=https://idp.enterprise.example.com/realms/overlay
+OIDC_CLIENT_ID=overlay-web
+OIDC_CLIENT_SECRET=replace_with_oidc_client_secret
+OIDC_AUDIENCE=overlay-api
 
 STORAGE_PROVIDER=s3
 S3_BUCKET_NAME=overlay-enterprise
@@ -49,19 +49,9 @@ VECTOR_SEARCH_ENABLED=false
 AUTOMATIONS_ENABLED=false
 ```
 
-For generic OIDC, replace the Keycloak values with:
-
-```bash
-AUTH_PROVIDER=oidc
-OIDC_ISSUER_URL=https://idp.enterprise.example.com
-OIDC_CLIENT_ID=overlay-web
-OIDC_CLIENT_SECRET=replace_with_oidc_client_secret
-OIDC_AUDIENCE=overlay-api
-```
-
 The same shape is captured in [`config/onprem-s3-oidc-openai.example.json`](../config/onprem-s3-oidc-openai.example.json). Keep secrets in the runtime secret manager; use JSON config for non-secret provider shape.
 
-OIDC and Keycloak provider adapters verify RS256 bearer/access tokens using the issuer discovery document and JWKS endpoint. Browser sign-in and callback routing remain deployment-specific; verify that flow against the selected IdP before customer handoff.
+The OIDC provider adapter verifies RS256 bearer/access tokens using the issuer discovery document and JWKS endpoint. Browser sign-in and callback routing remain deployment-specific; verify that flow against the selected IdP before customer handoff.
 
 ## Disabled State Expectations
 
@@ -104,7 +94,7 @@ On-prem minimal:
 
 On-prem S3/OIDC/OpenAI:
 
-- Config view shows OIDC or Keycloak, S3-compatible storage, OpenAI gateway, and disabled billing in redacted form.
+- Config view shows OIDC, S3-compatible storage, OpenAI gateway, and disabled billing in redacted form.
 - No secrets, access keys, session secrets, API keys, webhook secrets, or internal service tokens appear in the browser.
 - Chat uses the configured OpenAI default model/allowlist.
 - File upload/content paths use the S3-compatible provider or show a clear disabled state if storage credentials are absent.

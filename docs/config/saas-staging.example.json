@@ -18,8 +18,7 @@
       "clientId": "workos_staging_client_id_placeholder",
       "apiKey": "workos_staging_api_key_placeholder"
     },
-    "oidc": {},
-    "keycloak": {}
+    "oidc": {}
   },
   "billing": {
     "provider": "stripe",

@@ -78,8 +78,7 @@
       "clientId": "overlay-web",
       "clientSecret": "oidc_client_secret_placeholder",
       "audience": "overlay-api"
-    },
-    "keycloak": {}
+    }
   },
   "billing": {
     "provider": "none",

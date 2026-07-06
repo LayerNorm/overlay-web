@@ -26,7 +26,6 @@ const baseDefaultConfig = {
       apiKey: 'workos_default_secret',
     },
     oidc: {},
-    keycloak: {},
   },
   billing: {
     provider: 'stripe',
@@ -361,10 +360,10 @@ test('configOverridesFromEnv rejects secret-looking NEXT_PUBLIC values during pa
 
 test('configOverridesFromEnv preserves auth provider selection shape', () => {
   assert.deepEqual(configOverridesFromEnv({
-    KEYCLOAK_ISSUER_URL: 'https://keycloak.example.com/realms/overlay',
-    KEYCLOAK_CLIENT_ID: 'overlay-web',
-    KEYCLOAK_CLIENT_SECRET: 'keycloak_secret',
-    KEYCLOAK_REALM: 'overlay',
+    OIDC_ISSUER_URL: 'https://keycloak.example.com/realms/overlay',
+    OIDC_CLIENT_ID: 'overlay-web',
+    OIDC_CLIENT_SECRET: 'oidc_secret',
+    OIDC_AUDIENCE: 'overlay-api',
   }).auth, {
     provider: 'oidc',
     allowDevFallbacks: false,
@@ -372,12 +371,8 @@ test('configOverridesFromEnv preserves auth provider selection shape', () => {
     oidc: {
       issuerUrl: 'https://keycloak.example.com/realms/overlay',
       clientId: 'overlay-web',
-    },
-    keycloak: {
-      issuerUrl: 'https://keycloak.example.com/realms/overlay',
-      clientId: 'overlay-web',
-      clientSecret: 'keycloak_secret',
-      realm: 'overlay',
+      clientSecret: 'oidc_secret',
+      audience: 'overlay-api',
     },
   })
 
@@ -393,7 +388,6 @@ test('configOverridesFromEnv preserves auth provider selection shape', () => {
       devApiKey: 'dev_secret',
     },
     oidc: {},
-    keycloak: {},
   })
 })
 

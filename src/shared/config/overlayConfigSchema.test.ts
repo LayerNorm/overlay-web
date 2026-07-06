@@ -24,7 +24,6 @@ const minimalSaasConfig = {
       apiKey: 'workos_staging_secret',
     },
     oidc: {},
-    keycloak: {},
   },
   billing: {
     provider: 'stripe',
@@ -274,7 +273,6 @@ test('OverlayRuntimeConfigSchema validates on-prem OIDC/S3/OpenAI config with bi
         clientSecret: 'oidc_secret',
         audience: 'overlay',
       },
-      keycloak: {},
     },
     billing: {
       provider: 'none',
