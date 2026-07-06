@@ -1,0 +1,18 @@
+title = "Overlay gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Documented S3 placeholder values used in public examples"
+regexes = [
+  '''replace_with_s3_secret(?:_key)?''',
+  '''s3_secret_key_placeholder''',
+  '''S3-compatible''',
+]
+
+[[allowlists]]
+description = "Sentry sanitizer tests intentionally contain fake secrets to verify redaction"
+paths = [
+  '''src/shared/security/sentry-sanitize\.test\.ts$''',
+]

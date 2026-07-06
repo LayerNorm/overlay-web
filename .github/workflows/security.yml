@@ -15,23 +15,35 @@ jobs:
   secret-scan:
     name: Secret Scan
     runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.30.1
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # actions/checkout v4
         with:
           fetch-depth: 0
 
+      - name: Install gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          base_url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          curl -fsSLO "${base_url}/${asset}"
+          curl -fsSLO "${base_url}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep "  ${asset}$" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum -c -
+          tar -xzf "${asset}" gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gitleaks detect --source . --no-git --redact --verbose
 
   public-env-guard:
     name: Guard Public Env Names
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # actions/checkout v4
 
       - name: Fail on public secret-like env vars
         shell: bash
@@ -70,11 +82,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # actions/checkout v4
 
       - name: Detect dependency graph availability
         id: dependency-graph
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # actions/github-script v7
         with:
           script: |
             const { owner, repo } = context.repo;
@@ -87,7 +99,7 @@ jobs:
 
       - name: Check dependency changes
         if: steps.dependency-graph.outputs.enabled == 'true'
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # actions/dependency-review-action v4
 
       - name: Skip dependency review when dependency graph is disabled
         if: steps.dependency-graph.outputs.enabled != 'true'
@@ -98,13 +110,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # actions/checkout v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # actions/setup-node v4
         with:
           node-version: 20
           cache: npm
+
+      - name: Pin npm
+        run: npm install -g npm@10.8.2
 
       - name: Ensure package lock exists
         run: test -f package-lock.json

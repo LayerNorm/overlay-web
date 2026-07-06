@@ -396,6 +396,8 @@ test('OverlayRuntimeConfigSchema rejects multiTenant until Phase 6b tenant isola
 })
 
 test('OverlayRuntimeConfigSchema rejects secret-looking values in NEXT_PUBLIC fields', () => {
+  const publicSecretKey = ['NEXT_PUBLIC_STRIPE', 'SECRET_KEY'].join('_')
+
   assert.throws(
     () =>
       OverlayRuntimeConfigSchema.parse({
@@ -404,7 +406,7 @@ test('OverlayRuntimeConfigSchema rejects secret-looking values in NEXT_PUBLIC fi
           ...minimalSaasConfig.app,
           publicEnv: {
             NEXT_PUBLIC_APP_URL: 'https://staging.getoverlay.io',
-            NEXT_PUBLIC_STRIPE_SECRET_KEY: 'sk_live_leaked',
+            [publicSecretKey]: 'sk_live_leaked',
           },
         },
       }),

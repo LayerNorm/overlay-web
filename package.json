@@ -206,6 +206,6 @@
   "overrides": {
     "follow-redirects": "1.16.0",
     "postcss": "8.5.12",
-    "protobufjs": "8.2.0"
+    "protobufjs": "8.6.6"
   }
 }

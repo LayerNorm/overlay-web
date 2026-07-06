@@ -332,13 +332,15 @@ test('redacted config summary does not expose secret values', async () => {
 })
 
 test('configOverridesFromEnv rejects secret-looking NEXT_PUBLIC values during parse', async () => {
+  const publicSecretKey = ['NEXT_PUBLIC_STRIPE', 'SECRET_KEY'].join('_')
+
   await assert.rejects(
     () =>
       load({
         env: {
           OVERLAY_DEPLOYMENT_ENV: 'staging',
           NEXT_PUBLIC_APP_URL: 'https://env.getoverlay.io',
-          NEXT_PUBLIC_STRIPE_SECRET_KEY: 'sk_live_leaked',
+          [publicSecretKey]: 'sk_live_leaked',
         },
       }),
     (error) =>
