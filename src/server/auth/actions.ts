@@ -219,6 +219,9 @@ async function createBetterAuthSsoRedirectResponse(
 
   const headers = new Headers()
   headers.set('content-type', 'application/json')
+  headers.set('origin', request.headers.get('origin') ?? new URL(betterAuthConfig.baseUrl).origin)
+  const referer = request.headers.get('referer')
+  if (referer) headers.set('referer', referer)
   const cookie = request.headers.get('cookie')
   if (cookie) headers.set('cookie', cookie)
 

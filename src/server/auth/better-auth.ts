@@ -64,7 +64,7 @@ export function createBetterAuthOptions(
     basePath: resolved.basePath,
     secret: resolved.secret,
     database,
-    trustedOrigins: [resolved.baseUrl, ...resolved.trustedOrigins],
+    trustedOrigins: buildTrustedOrigins(resolved),
     emailAndPassword: {
       enabled: false,
     },
@@ -166,6 +166,20 @@ function buildDefaultSsoProviders(config: BetterAuthRuntimeConfig) {
     providerId: config.defaultSsoProviderId,
     oidcConfig,
   }]
+}
+
+function buildTrustedOrigins(config: BetterAuthRuntimeConfig): string[] {
+  const origins = new Set([
+    config.baseUrl,
+    ...config.trustedOrigins,
+  ])
+  if (config.oidcIssuerUrl) {
+    origins.add(normalizeOrigin(config.oidcIssuerUrl))
+  }
+  if (config.oidcDiscoveryEndpoint) {
+    origins.add(normalizeOrigin(config.oidcDiscoveryEndpoint))
+  }
+  return [...origins]
 }
 
 function normalizeOrigin(value: string): string {
