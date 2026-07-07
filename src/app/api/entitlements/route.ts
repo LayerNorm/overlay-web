@@ -4,9 +4,9 @@ import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
 import { getOverlaySession } from '@/server/auth/session'
 import { billingCustomerService, billingErrorResponse } from '@/server/billing/http'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const session = await getOverlaySession()
+    const session = await getOverlaySession(request)
     logAuthDebug('/api/entitlements getSession result', summarizeSessionForLog(session))
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

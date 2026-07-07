@@ -5,9 +5,9 @@ import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { getOverlaySession } from '@/server/auth/session'
 import { getPostHogClient } from '@/server/observability/posthog-server'
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
-    const session = await getOverlaySession()
+    const session = await getOverlaySession(request)
     
     if (!session) {
       return NextResponse.json(

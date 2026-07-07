@@ -71,6 +71,7 @@ export function createBetterAuthOptions(
     plugins: [
       sso({
         providersLimit: 0,
+        trustEmailVerified: true,
         defaultSSO: buildDefaultSsoProviders(resolved),
       }),
       jwt({

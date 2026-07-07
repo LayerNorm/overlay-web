@@ -7,8 +7,7 @@ import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { ONBOARDING_SEEN_COOKIE } from '@/features/auth/lib/onboarding-cookie'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
-  void request
-  const session = await getOverlaySession()
+  const session = await getOverlaySession(request)
   const { auth } = context
   const userId = auth.userId
   const userEmail = session?.user?.id === userId ? session.user.email : undefined

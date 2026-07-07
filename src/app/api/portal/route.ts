@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     if (disabledCapabilityResponse) return disabledCapabilityResponse
 
     const body = await request.json().catch((_error) => ({}))
-    const authSession = await getOverlaySession()
+    const authSession = await getOverlaySession(request)
     const auth = await resolveAuthenticatedAppUser(request, body)
     const userId = auth?.userId
     if (!userId) {

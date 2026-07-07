@@ -8,6 +8,7 @@ import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/shared/chat/chat-suggestions-defaults'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { getOverlaySession } from '@/server/auth/session'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 
 function utcDateKey(): string {
   return new Date().toISOString().slice(0, 10)
@@ -151,18 +152,18 @@ function scheduleRefreshForNewDay(args: {
   })
 }
 
-export async function GET() {
+export async function GET(request: Request, context: AppApiRouteContext) {
   try {
-    const session = await getOverlaySession()
+    const session = await getOverlaySession(request)
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = session.user.id
+    const userId = context.auth.userId
 
     const serverSecret = getInternalApiSecret()
     const today = utcDateKey()
-    const firstName = session.user.firstName?.trim() ?? ''
+    const firstName = session.user.id === userId ? session.user.firstName?.trim() ?? '' : ''
 
     const cached = await convex.query<{ prompts: string[]; day: string } | null>('auth/users:getChatStartersByServer', {
       serverSecret,
@@ -179,7 +180,7 @@ export async function GET() {
       scheduleRefreshForNewDay({
         serverSecret,
         userId,
-        accessToken: session.accessToken,
+        accessToken: context.auth.accessToken || session.accessToken,
         firstName,
         today,
       })

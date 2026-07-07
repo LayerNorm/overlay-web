@@ -52,7 +52,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const { auth } = context
 
     const serverSecret = getInternalApiSecret()
-    const browserSession = await getOverlaySession()
+    const browserSession = await getOverlaySession(request)
 
     const [profile, entitlements, uiSettings, gatewayModels] = await Promise.all([
       auth.accessToken

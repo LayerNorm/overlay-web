@@ -69,7 +69,7 @@ async function waitForSandboxFile(
 }
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
-  const session = await getOverlaySession()
+  const session = await getOverlaySession(request)
 
   const parsedRequest = parseDaytonaRunRequest(await request.json())
   if (!parsedRequest.ok) {

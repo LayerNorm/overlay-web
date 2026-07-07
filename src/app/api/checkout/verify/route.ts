@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     const disabledCapabilityResponse = await requireOverlayCapability('billing')
     if (disabledCapabilityResponse) return disabledCapabilityResponse
 
-    const authSession = await getOverlaySession()
+    const authSession = await getOverlaySession(request)
 
     if (!authSession || !authSession.user) {
       return NextResponse.json(

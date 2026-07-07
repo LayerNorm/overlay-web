@@ -523,7 +523,7 @@ test('billing customer routes preserve unauthenticated/invalid body response sha
   assert.equal(portalResponse.status, 401)
   assert.deepEqual(await readJson(portalResponse), { error: 'Authentication required' })
 
-  const entitlementsResponse = await entitlements.GET()
+  const entitlementsResponse = await entitlements.GET(request('/api/entitlements', { method: 'GET' }))
   assert.equal(entitlementsResponse.status, 401)
   assert.deepEqual(await readJson(entitlementsResponse), { error: 'Unauthorized' })
 })
