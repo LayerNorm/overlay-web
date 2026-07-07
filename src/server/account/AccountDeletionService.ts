@@ -17,7 +17,7 @@ export type AccountDeletionResult = {
 export class AccountDeletionService {
   constructor(private readonly ctx: OverlayServerContext) {}
 
-  async deleteAccount(args: { userId: string }): Promise<AccountDeletionResult> {
+  async deleteAccount(args: { userId: string; request?: Request }): Promise<AccountDeletionResult> {
     const convexResult = await convex.mutation<AccountDeletionResult>(
       'auth/users:deleteUserAccountByServer',
       {
@@ -40,7 +40,7 @@ export class AccountDeletionService {
     }
 
     await this.deleteObjectsBestEffort(convexResult.r2Keys)
-    await this.ctx.auth.deleteUser?.(args.userId).catch((error) => {
+    await this.ctx.auth.deleteUser?.(args.userId, args.request).catch((error) => {
       logger.error(`[account/delete] Auth user deletion failed for ${args.userId}:`, error)
     })
 

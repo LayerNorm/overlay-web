@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { unstable_noStore as noStore } from 'next/cache'
+import { cookies, headers } from 'next/headers'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { Session } from '@overlay/app-core'
 import type { AuthSession } from '@/shared/auth/session-types'
@@ -37,26 +38,50 @@ function toAuthSession(session: Session): AuthSession | null {
 }
 
 export async function getOverlaySession(
-  request: Request = FALLBACK_SESSION_REQUEST,
+  request?: Request,
   options: { refresh?: boolean } = {},
 ): Promise<AuthSession | null> {
   noStore()
+  const sessionRequest = request ?? await requestFromCurrentHeaders()
   const auth = getOverlayServerContext().auth
   const session = options.refresh && auth.refreshSession
-    ? await auth.refreshSession(request)
-    : await auth.getSession(request)
+    ? await auth.refreshSession(sessionRequest)
+    : await auth.getSession(sessionRequest)
   return session ? toAuthSession(session) : null
 }
 
 export async function clearOverlaySession(
-  request: Request = FALLBACK_SESSION_REQUEST,
+  request?: Request,
 ): Promise<void> {
+  const sessionRequest = request ?? await requestFromCurrentHeaders()
   const auth = getOverlayServerContext().auth
   if (auth.signOut) {
-    await auth.signOut(request)
+    await auth.signOut(sessionRequest)
     return
   }
 
   const { clearSession } = await import('@/server/auth/workos-auth')
   await clearSession()
+}
+
+async function requestFromCurrentHeaders(): Promise<Request> {
+  try {
+    const headerList = await headers()
+    const currentHeaders = new Headers(headerList)
+    const currentCookies = await cookies()
+    const cookieHeader = currentCookies
+      .getAll()
+      .map((cookie) => `${cookie.name}=${cookie.value}`)
+      .join('; ')
+    if (cookieHeader) {
+      currentHeaders.set('cookie', cookieHeader)
+    }
+    const host = currentHeaders.get('x-forwarded-host') ?? currentHeaders.get('host') ?? 'overlay.local'
+    const proto = currentHeaders.get('x-forwarded-proto') ?? (host.includes('localhost') ? 'http' : 'https')
+    return new Request(`${proto}://${host}/session`, {
+      headers: currentHeaders,
+    })
+  } catch (_error) {
+    return FALLBACK_SESSION_REQUEST
+  }
 }

@@ -700,6 +700,7 @@ export default defineSchema({
     createdAt: v.number(),
   }).index('by_conversationId', ['conversationId'])
     .index('by_messageId', ['messageId'])
+    .index('by_userId', ['userId'])
     .index('by_createdAt', ['createdAt']),
 
   conversationContextSummaries: defineTable({
@@ -792,6 +793,7 @@ export default defineSchema({
     embedding: v.array(v.float64()),
   })
     .index('by_chunkId', ['chunkId'])
+    .index('by_userId', ['userId'])
     .vectorIndex('by_embedding', {
       vectorField: 'embedding',
       dimensions: 1536,

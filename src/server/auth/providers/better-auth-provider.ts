@@ -64,9 +64,18 @@ export class BetterAuthProvider implements AuthProvider {
     return claims ? toUserProfile(claims) : null
   }
 
-  async deleteUser(userId: string): Promise<void> {
-    void userId
-    throw new Error('BetterAuthProvider.deleteUser requires a current authenticated request; use the Better Auth delete-user endpoint.')
+  async deleteUser(userId: string, req?: Request): Promise<void> {
+    if (!req) {
+      throw new Error('BetterAuthProvider.deleteUser requires the current authenticated request.')
+    }
+    const session = await this.resolveSession(req)
+    if (!session || session.user.id !== userId) {
+      throw new Error('BetterAuthProvider.deleteUser requires a matching authenticated session.')
+    }
+    await getBetterAuth(this.config.runtimeConfig).api.deleteUser({
+      headers: req.headers,
+      body: {},
+    })
   }
 
   private async resolveSession(req: Request): Promise<Session | null> {

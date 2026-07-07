@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
   let result: Awaited<ReturnType<AccountDeletionService['deleteAccount']>>
   try {
-    result = await new AccountDeletionService(getOverlayServerContext()).deleteAccount({ userId })
+    result = await new AccountDeletionService(getOverlayServerContext()).deleteAccount({ userId, request })
   } catch (error) {
     logger.error('[account/delete] Account deletion failed:', error)
     return NextResponse.json(

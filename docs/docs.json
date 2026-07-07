@@ -41,7 +41,7 @@
       },
       {
         "group": "Deploy & Operate",
-        "pages": ["deploy-operate/self-hosting", "deploy-operate/enterprise-source-install", "deploy-operate/one-command-install", "deploy-operate/docs-hosting", "deploy-operate/release-gates", "deploy-operate/security", "deploy-operate/tenancy"]
+        "pages": ["deploy-operate/self-hosting", "deploy-operate/better-auth-onprem-runbook", "deploy-operate/enterprise-source-install", "deploy-operate/one-command-install", "deploy-operate/docs-hosting", "deploy-operate/release-gates", "deploy-operate/security", "deploy-operate/tenancy"]
       },
       {
         "group": "API Reference",

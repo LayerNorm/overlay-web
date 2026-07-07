@@ -259,11 +259,20 @@ async function verifyBetterAuthToken(
   if (!normalizeAudience(claims.aud).includes(audience)) return null
   if (header.alg !== 'RS256' || typeof header.kid !== 'string' || !header.kid.trim()) return null
 
-  let keys = await fetchJwksFromUrl(`better-auth:${jwksUrl}`, jwksUrl)
-  let jwk = keys.find((entry) => typeof entry.kid === 'string' && entry.kid === header.kid) ?? null
-  if (!jwk) {
-    keys = await fetchJwksFromUrl(`better-auth:${jwksUrl}`, jwksUrl, true)
+  let jwk: WorkOsJwk | null = null
+  try {
+    let keys = await fetchJwksFromUrl(`better-auth:${jwksUrl}`, jwksUrl)
     jwk = keys.find((entry) => typeof entry.kid === 'string' && entry.kid === header.kid) ?? null
+    if (!jwk) {
+      keys = await fetchJwksFromUrl(`better-auth:${jwksUrl}`, jwksUrl, true)
+      jwk = keys.find((entry) => typeof entry.kid === 'string' && entry.kid === header.kid) ?? null
+    }
+  } catch (error) {
+    logAuthDebug('Better Auth JWKS fetch failed', {
+      jwksUrl,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
   }
   if (!jwk) return null
 
