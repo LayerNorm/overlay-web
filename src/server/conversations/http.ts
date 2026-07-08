@@ -10,8 +10,12 @@ import { ActMessagePersistenceService } from './ActMessagePersistenceService'
 import { ActUsageBudgetService } from './ActUsageBudgetService'
 import type { ActConversationRepository } from './ActConversationRepository'
 
-const actConversationRepository = repositoryProxy<ActConversationRepository>(
+export const actConversationRepository = repositoryProxy<ActConversationRepository>(
   () => getOverlayServerContext().appData.repositories.conversations,
+)
+
+const actUsagePolicy = repositoryProxy(
+  () => getOverlayServerContext().chatUsagePolicy,
 )
 
 export const actContextService = new ActContextService({
@@ -20,6 +24,7 @@ export const actContextService = new ActContextService({
 
 export const actEntitlementService = new ActEntitlementService({
   repository: actConversationRepository,
+  usagePolicy: actUsagePolicy,
 })
 
 export const actGeneratingMessageService = new ActGeneratingMessageService({
@@ -32,6 +37,7 @@ export const actMessagePersistenceService = new ActMessagePersistenceService({
 })
 
 export const actUsageBudgetService = new ActUsageBudgetService({
+  policy: actUsagePolicy,
   repository: actConversationRepository,
 })
 

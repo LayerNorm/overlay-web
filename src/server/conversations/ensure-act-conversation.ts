@@ -1,6 +1,5 @@
 import 'server-only'
 
-import { convex } from '@/server/database/convex'
 import { canUsePaidBudgetFeatures } from '@/server/billing/billing-runtime'
 import {
   DEFAULT_MODEL_ID,
@@ -9,6 +8,7 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
 import type { Entitlements } from '@/shared/app/app-contracts'
+import type { ActConversationRepository } from './ActConversationRepository'
 import type { Id } from '../../../convex/_generated/dataModel'
 
 function clampFreeTierAskModels(modelIds: string[] | undefined): string[] {
@@ -30,7 +30,7 @@ function normalizePaidChatModels(modelIds: string[] | undefined, actModelId: str
 
 export async function ensureActConversationId(params: {
   userId: string
-  serverSecret: string
+  repository: Pick<ActConversationRepository, 'createConversation'>
   conversationClientId: string
   entitlements: Entitlements
   title?: string
@@ -51,9 +51,8 @@ export async function ensureActConversationId(params: {
     FREE_TIER_DEFAULT_MODEL_ID
   const paidModels = normalizePaidChatModels(params.askModelIds, params.actModelId)
 
-  const id = await convex.mutation<Id<'conversations'>>('chat/conversations:create', {
+  const id = await params.repository.createConversation({
     userId: params.userId,
-    serverSecret: params.serverSecret,
     clientId,
     title: params.title || 'New Chat',
     projectId: params.projectId ?? undefined,

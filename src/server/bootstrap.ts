@@ -22,6 +22,7 @@ import { R2ObjectStore } from '@/server/storage/providers/r2-object-store'
 import { S3CompatibleObjectStore } from '@/server/storage/providers/s3-compatible-object-store'
 import type { AppDataCapabilities } from '@/server/app-data/capabilities'
 import { createAppDataContext, type AppDataContext } from '@/server/app-data/repositories'
+import { createActUsagePolicy, type ActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import { UserService, type UserAuthProvider } from '@/server/users'
 import type { NoteRepository } from '@/server/notes'
 import type { OverlayRuntimeConfig } from '@/shared/config'
@@ -44,6 +45,7 @@ import { deriveOverlayCapabilities as resolveOverlayCapabilities } from '@overla
 export interface OverlayServerContext extends OverlayProviderContext {
   appData: AppDataContext
   appDataCapabilities: AppDataCapabilities
+  chatUsagePolicy: ActUsagePolicy
   noteRepository: NoteRepository
   apiKeyService: typeof ApiKeyService
   userService: UserService
@@ -71,6 +73,11 @@ export function createOverlayServerContext(
     assertSelectedProviderConfig(runtimeConfig)
   }
   const appData = createAppDataContext(runtimeConfig)
+  const chatUsagePolicy = createActUsagePolicy({
+    appDataProvider: appData.capabilities.provider,
+    repository: appData.repositories.conversations,
+    runtimeConfig,
+  })
   const userService = new UserService({
     authProvider: selectedAuthProviderForUserService(runtimeConfig),
     repository: appData.repositories.users,
@@ -86,6 +93,7 @@ export function createOverlayServerContext(
     eventBus: appConfig.eventBus ?? new InMemoryEventBus(),
     appData,
     appDataCapabilities: appData.capabilities,
+    chatUsagePolicy,
     noteRepository: appData.repositories.notes,
     apiKeyService: ApiKeyService,
     userService,

@@ -162,6 +162,14 @@ test('OverlayRuntimeConfigSchema validates v2 enterprise-private provider select
 test('OverlayRuntimeConfigSchema accepts configured Postgres database provider', () => {
   const parsed = OverlayRuntimeConfigSchema.parse({
     ...minimalSaasConfig,
+    billing: {
+      provider: 'none',
+      stripe: {},
+    },
+    capabilities: {
+      ...minimalSaasConfig.capabilities,
+      billing: false,
+    },
     database: {
       ...minimalSaasConfig.database,
       provider: 'postgres',
@@ -180,11 +188,40 @@ test('OverlayRuntimeConfigSchema accepts configured Postgres database provider',
   assert.equal(parsed.database.postgres.connectionString, 'postgres://overlay:secret@db.internal/overlay')
 })
 
+test('OverlayRuntimeConfigSchema rejects Postgres database provider with enabled billing', () => {
+  assert.throws(
+    () =>
+      OverlayRuntimeConfigSchema.parse({
+        ...minimalSaasConfig,
+        database: {
+          ...minimalSaasConfig.database,
+          provider: 'postgres',
+          postgres: {
+            connectionString: 'postgres://overlay:secret@db.internal/overlay',
+            sslMode: 'require',
+          },
+        },
+        providers: {
+          database: { provider: 'postgres' },
+        },
+      }),
+    /billing\.provider must be none when database\.provider is postgres/,
+  )
+})
+
 test('OverlayRuntimeConfigSchema rejects Postgres database provider without a connection string', () => {
   assert.throws(
     () =>
       OverlayRuntimeConfigSchema.parse({
         ...minimalSaasConfig,
+        billing: {
+          provider: 'none',
+          stripe: {},
+        },
+        capabilities: {
+          ...minimalSaasConfig.capabilities,
+          billing: false,
+        },
         database: {
           ...minimalSaasConfig.database,
           provider: 'postgres',

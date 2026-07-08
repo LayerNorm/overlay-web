@@ -2,7 +2,7 @@ export {
   applyAppDataCapabilitiesToOverlayCapabilities,
   CONVEX_APP_DATA_CAPABILITIES,
   deriveAppDataCapabilities,
-  POSTGRES_PHASE4_APP_DATA_CAPABILITIES,
+  POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
   selectedDatabaseProvider,
   type AppDataCapabilities,
   type AppDataProvider,

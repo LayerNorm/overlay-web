@@ -83,10 +83,18 @@ test('createOverlayServerContext returns Better Auth adapter when selected', () 
   assert.equal(context.auth instanceof BetterAuthProvider, true)
 })
 
-test('createOverlayServerContext returns Postgres app-data context with unsupported route capabilities', () => {
+test('createOverlayServerContext returns Postgres app-data context with chat route capabilities', () => {
   const base = fixture('saas-staging.json')
   const runtimeConfig = parseOverlayRuntimeConfig({
     ...base,
+    billing: {
+      provider: 'none',
+      stripe: {},
+    },
+    capabilities: {
+      ...base.capabilities,
+      billing: false,
+    },
     providers: {
       ...base.providers,
       database: { provider: 'postgres' },
@@ -104,7 +112,7 @@ test('createOverlayServerContext returns Postgres app-data context with unsuppor
 
   assert.equal(context.appDataCapabilities.provider, 'postgres')
   assert.equal(context.appDataCapabilities.supportsRealtime, false)
-  assert.equal(context.appDataCapabilities.supportsChatPersistence, false)
+  assert.equal(context.appDataCapabilities.supportsChatPersistence, true)
   assert.equal(context.userService instanceof UserService, true)
 })
 

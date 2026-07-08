@@ -1,7 +1,7 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   DEFAULT_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
@@ -9,27 +9,14 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
 import { canUsePaidBudgetFeatures } from '@/server/billing/billing-runtime'
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import {
   GENERATED_UI_DATA_TYPE,
   normalizeGeneratedUiData,
 } from '@overlay/chat-core/generated-ui'
+import type {
+  ConversationMessageRow,
+} from '@/server/conversations/ActConversationRepository'
 import type { Id } from '../../../../../convex/_generated/dataModel'
-
-type ConversationDoc = {
-  _id: string
-  userId: string
-  clientId?: string
-  title: string
-  lastModified: number
-  createdAt: number
-  updatedAt: number
-  deletedAt?: number
-  lastMode: 'ask' | 'act'
-  askModelIds: string[]
-  actModelId: string
-  projectId?: string
-}
 
 function clampFreeTierAskModels(modelIds: string[] | undefined): string[] {
   const requested =
@@ -67,7 +54,8 @@ function readPositiveIntParam(value: string | null, max: number): number | undef
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
-    const serverSecret = getInternalApiSecret()
+    const { appData } = getOverlayServerContext()
+    const repository = appData.repositories.conversations
 
     const { searchParams } = request.nextUrl
     const conversationId = searchParams.get('conversationId')
@@ -82,201 +70,81 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const compactToolPayloads = readBooleanParam(searchParams.get('compactToolPayloads')) === true
 
     if (conversationId && !includeMessages) {
-      const conv = await convex.query<ConversationDoc | null>('chat/conversations:get', {
+      const conv = await repository.getConversationById({
         conversationId: conversationId as Id<'conversations'>,
         userId: auth.userId,
-        serverSecret,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
       return NextResponse.json(conv)
     }
 
     if (conversationId && includeMessages) {
-      const conv = await convex.query<ConversationDoc | null>('chat/conversations:get', {
+      const conv = await repository.getConversationById({
         conversationId: conversationId as Id<'conversations'>,
         userId: auth.userId,
-        serverSecret,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-      type ConversationMessageRow = {
-        _id: string
-        turnId: string
-        role: 'user' | 'assistant'
-        mode: 'ask' | 'act'
-        content: string
-        contentType: 'text' | 'image' | 'video'
-        parts?: Array<
-          | { type: 'data'; id: string; dataType: 'overlay.generated_ui'; data: unknown; transient?: boolean }
-          | { type: string; text?: string; url?: string; mediaType?: string; fileName?: string; state?: string }
-          | {
-              type: 'tool-invocation'
-              toolInvocation: {
-                toolCallId?: string
-                toolName: string
-                state?: string
-                toolInput?: Record<string, unknown>
-                toolOutput?: unknown
-              }
-            }
-        >
-        modelId?: string
-        variantIndex?: number
-        createdAt: number
-        replyToTurnId?: string
-        replySnippet?: string
-        routedModelId?: string
-        status?: 'generating' | 'completed' | 'error'
-      }
       let messages: ConversationMessageRow[]
       if (messageLimit) {
         try {
-          messages = await convex.query<ConversationMessageRow[]>('chat/conversations:getRecentMessages', {
+          messages = await repository.getRecentMessages({
             conversationId: conversationId as Id<'conversations'>,
             userId: auth.userId,
-            serverSecret,
             limit: messageLimit,
             ...(Number.isFinite(beforeCreatedAt) ? { beforeCreatedAt } : {}),
             compactToolPayloads,
-          }) ?? []
+          })
         } catch (error) {
           logger.warn('[conversations GET] Falling back to full message load after recent load failed', {
             conversationId,
             error: error instanceof Error ? error.message : String(error),
           })
-          messages = await convex.query<ConversationMessageRow[]>('chat/conversations:getMessages', {
+          messages = await repository.getConversationMessages({
             conversationId: conversationId as Id<'conversations'>,
             userId: auth.userId,
-            serverSecret,
-          }) ?? []
+          })
         }
       } else {
-        messages = await convex.query<
-        Array<{
-          _id: string
-          turnId: string
-          role: 'user' | 'assistant'
-          mode: 'ask' | 'act'
-          content: string
-          contentType: 'text' | 'image' | 'video'
-          parts?: Array<
-            | { type: 'data'; id: string; dataType: 'overlay.generated_ui'; data: unknown; transient?: boolean }
-            | { type: string; text?: string; url?: string; mediaType?: string; fileName?: string; state?: string }
-            | {
-                type: 'tool-invocation'
-                toolInvocation: {
-                  toolCallId?: string
-                  toolName: string
-                  state?: string
-                  toolInput?: Record<string, unknown>
-                  toolOutput?: unknown
-                }
-              }
-          >
-          modelId?: string
-          variantIndex?: number
-          createdAt: number
-          replyToTurnId?: string
-          replySnippet?: string
-          routedModelId?: string
-          status?: 'generating' | 'completed' | 'error'
-        }>
-        >('chat/conversations:getMessages', {
+        messages = await repository.getConversationMessages({
           conversationId: conversationId as Id<'conversations'>,
           userId: auth.userId,
-          serverSecret,
-        }) ?? []
+        })
       }
 
-      const earliestCreatedAt = messages?.length
+      const earliestCreatedAt = messages.length
         ? Math.min(...messages.map((message) => message.createdAt))
         : undefined
 
       return NextResponse.json({
         ...(messageLimit ? {
           limit: messageLimit,
-          hasMore: (messages?.length ?? 0) >= messageLimit,
+          hasMore: messages.length >= messageLimit,
           earliestCreatedAt,
         } : {}),
-        messages: (messages || []).map((message) => ({
-          id: message._id,
-          turnId: message.turnId,
-          mode: message.mode,
-          contentType: message.contentType,
-          variantIndex: message.variantIndex,
-          createdAt: message.createdAt,
-          role: message.role,
-          parts: message.parts?.length
-            ? message.parts.map((part) => {
-                if (
-                  part.type === 'data' &&
-                  'dataType' in part &&
-                  part.dataType === GENERATED_UI_DATA_TYPE
-                ) {
-                  const normalized = normalizeGeneratedUiData((part as { data?: unknown }).data)
-                  if (normalized) {
-                    return {
-                      type: 'data' as const,
-                      id: (part as { id?: string }).id,
-                      dataType: GENERATED_UI_DATA_TYPE,
-                      data: normalized,
-                      ...((part as { transient?: boolean }).transient ? { transient: true } : {}),
-                    }
-                  }
-                }
-                if (part.type === 'tool-invocation' && 'toolInvocation' in part && part.toolInvocation) {
-                  return {
-                    type: 'tool-invocation' as const,
-                    toolInvocation: part.toolInvocation,
-                  }
-                }
-                const p = part as {
-                  type: string
-                  text?: string
-                  url?: string
-                  mediaType?: string
-                  fileName?: string
-                  state?: string
-                }
-                return {
-                  type: p.type,
-                  text: p.text,
-                  url: p.url,
-                  mediaType: p.mediaType,
-                  fileName: p.fileName,
-                  state: p.state,
-                }
-              })
-            : [{ type: 'text' as const, text: message.content }],
-          model: message.modelId,
-          ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId } : {}),
-          ...(message.replySnippet ? { replySnippet: message.replySnippet } : {}),
-          ...(message.routedModelId ? { routedModelId: message.routedModelId } : {}),
-          ...(message.status ? { status: message.status } : {}),
-        })),
+        messages: messages.map(serializeConversationMessage),
       })
     }
 
     if (projectId) {
-      const list = await convex.query<ConversationDoc[]>('chat/conversations:listByProject', {
+      const list = await repository.listConversationsByProject({
         projectId,
         userId: auth.userId,
-        serverSecret,
         ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
         ...(includeDeleted !== undefined ? { includeDeleted } : {}),
       })
-      return NextResponse.json(list || [])
+      return NextResponse.json(list)
     }
 
-    const list = await convex.query<ConversationDoc[]>('chat/conversations:list', {
+    const list = await repository.listConversations({
       userId: auth.userId,
-      serverSecret,
       ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
       ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })
 
-    return NextResponse.json(list || [])
-  } catch (_error) {
+    return NextResponse.json(list)
+  } catch (error) {
+    logger.error('[conversations GET]', error)
     return NextResponse.json({ error: 'Failed to fetch conversations' }, { status: 500 })
   }
 }
@@ -294,23 +162,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId?: string
     }
     const { auth } = context
-    const serverSecret = getInternalApiSecret()
-    const entitlements = await convex.query<{
-      tier: 'free' | 'pro' | 'max'
-      planKind?: 'free' | 'paid'
-      creditsUsed: number
-      creditsTotal: number
-      budgetUsedCents?: number
-      budgetTotalCents?: number
-      budgetRemainingCents?: number
-    } | null>(
-      'platform/usage:getEntitlementsByServer',
-      {
-        userId: auth.userId,
-        serverSecret,
-      },
-      { throwOnError: true },
-    )
+    const { appData, chatUsagePolicy } = getOverlayServerContext()
+    const repository = appData.repositories.conversations
+    const entitlements = await chatUsagePolicy.getEntitlements({ userId: auth.userId })
     const isFreeTier = !entitlements || !canUsePaidBudgetFeatures(entitlements)
     const freeAskModelIds = clampFreeTierAskModels(body.askModelIds)
     const freeActModelId =
@@ -318,9 +172,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       freeAskModelIds[0] ??
       FREE_TIER_DEFAULT_MODEL_ID
     const paidModels = normalizePaidChatModels(body.askModelIds, body.actModelId)
-    const id = await convex.mutation<Id<'conversations'>>('chat/conversations:create', {
+    const id = await repository.createConversation({
       userId: auth.userId,
-      serverSecret,
       clientId: body.clientId?.trim() || undefined,
       title: body.title || 'New Chat',
       projectId: body.projectId ?? undefined,
@@ -328,13 +181,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       actModelId: isFreeTier ? freeActModelId : paidModels.actModelId,
       lastMode: body.lastMode,
     })
-    const conversation = await convex.query<ConversationDoc | null>('chat/conversations:get', {
+    const conversation = await repository.getConversationById({
       conversationId: id,
       userId: auth.userId,
-      serverSecret,
     })
     return NextResponse.json({ id, conversation })
-  } catch (_error) {
+  } catch (error) {
+    logger.error('[conversations POST]', error)
     return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 })
   }
 }
@@ -352,7 +205,8 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       userId?: string
     }
     const { auth } = context
-    const serverSecret = getInternalApiSecret()
+    const { appData, chatUsagePolicy } = getOverlayServerContext()
+    const repository = appData.repositories.conversations
     if (!body.conversationId) {
       return NextResponse.json({ error: 'conversationId required' }, { status: 400 })
     }
@@ -360,19 +214,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     let askModelIds = body.askModelIds
     let actModelId = body.actModelId
     if (body.askModelIds !== undefined || body.actModelId !== undefined) {
-      const entitlements = await convex.query<{
-        tier: 'free' | 'pro' | 'max'
-        planKind?: 'free' | 'paid'
-        creditsUsed: number
-        creditsTotal: number
-        budgetUsedCents?: number
-        budgetTotalCents?: number
-        budgetRemainingCents?: number
-      } | null>(
-        'platform/usage:getEntitlementsByServer',
-        { userId: auth.userId, serverSecret },
-        { throwOnError: true },
-      )
+      const entitlements = await chatUsagePolicy.getEntitlements({ userId: auth.userId })
       const isFreeTier = !entitlements || !canUsePaidBudgetFeatures(entitlements)
       if (isFreeTier) {
         const freeAskModelIds = body.askModelIds !== undefined
@@ -389,20 +231,18 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       }
     }
 
-    await convex.mutation('chat/conversations:update', {
+    await repository.updateConversation({
       conversationId: body.conversationId as Id<'conversations'>,
       userId: auth.userId,
-      serverSecret,
       title: body.title,
       projectId: body.projectId,
       askModelIds,
       actModelId,
       lastMode: body.lastMode,
     })
-    const conversation = await convex.query<ConversationDoc | null>('chat/conversations:get', {
+    const conversation = await repository.getConversationById({
       conversationId: body.conversationId as Id<'conversations'>,
       userId: auth.userId,
-      serverSecret,
     })
     return NextResponse.json({ success: true, conversation })
   } catch (error) {
@@ -414,18 +254,71 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
 export async function DELETE(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
-    const serverSecret = getInternalApiSecret()
+    const { appData } = getOverlayServerContext()
+    const repository = appData.repositories.conversations
 
     const conversationId = request.nextUrl.searchParams.get('conversationId')
     if (!conversationId) return NextResponse.json({ error: 'conversationId required' }, { status: 400 })
 
-    await convex.mutation('chat/conversations:remove', {
+    await repository.deleteConversation({
       conversationId: conversationId as Id<'conversations'>,
       userId: auth.userId,
-      serverSecret,
     })
     return NextResponse.json({ success: true, conversationId, deletedAt: Date.now() })
-  } catch (_error) {
+  } catch (error) {
+    logger.error('[conversations DELETE]', error)
     return NextResponse.json({ error: 'Failed to delete conversation' }, { status: 500 })
+  }
+}
+
+function serializeConversationMessage(message: ConversationMessageRow) {
+  return {
+    id: message._id,
+    turnId: message.turnId,
+    mode: message.mode,
+    contentType: message.contentType,
+    variantIndex: message.variantIndex,
+    createdAt: message.createdAt,
+    role: message.role,
+    parts: message.parts?.length
+      ? message.parts.map(serializeConversationMessagePart)
+      : [{ type: 'text' as const, text: message.content }],
+    model: message.modelId,
+    ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId } : {}),
+    ...(message.replySnippet ? { replySnippet: message.replySnippet } : {}),
+    ...(message.routedModelId ? { routedModelId: message.routedModelId } : {}),
+    ...(message.status ? { status: message.status } : {}),
+  }
+}
+
+function serializeConversationMessagePart(part: Record<string, unknown>) {
+  if (
+    part.type === 'data' &&
+    part.dataType === GENERATED_UI_DATA_TYPE
+  ) {
+    const normalized = normalizeGeneratedUiData(part.data)
+    if (normalized) {
+      return {
+        type: 'data' as const,
+        id: typeof part.id === 'string' ? part.id : undefined,
+        dataType: GENERATED_UI_DATA_TYPE,
+        data: normalized,
+        ...(part.transient === true ? { transient: true } : {}),
+      }
+    }
+  }
+  if (part.type === 'tool-invocation' && part.toolInvocation) {
+    return {
+      type: 'tool-invocation' as const,
+      toolInvocation: part.toolInvocation,
+    }
+  }
+  return {
+    type: typeof part.type === 'string' ? part.type : 'text',
+    text: typeof part.text === 'string' ? part.text : undefined,
+    url: typeof part.url === 'string' ? part.url : undefined,
+    mediaType: typeof part.mediaType === 'string' ? part.mediaType : undefined,
+    fileName: typeof part.fileName === 'string' ? part.fileName : undefined,
+    state: typeof part.state === 'string' ? part.state : undefined,
   }
 }

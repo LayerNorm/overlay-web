@@ -47,11 +47,11 @@ export const CONVEX_APP_DATA_CAPABILITIES: AppDataCapabilities = {
   requiresConvexClient: true,
 }
 
-export const POSTGRES_PHASE4_APP_DATA_CAPABILITIES: AppDataCapabilities = {
+export const POSTGRES_PHASE5_APP_DATA_CAPABILITIES: AppDataCapabilities = {
   provider: 'postgres',
   supportsRealtime: false,
   supportsStreamResume: false,
-  supportsChatPersistence: false,
+  supportsChatPersistence: true,
   supportsFileMetadata: false,
   supportsFileUploads: false,
   supportsNotes: false,
@@ -73,7 +73,7 @@ export function deriveAppDataCapabilities(
 ): AppDataCapabilities {
   const provider = selectedDatabaseProvider(runtimeConfig)
   return provider === 'postgres'
-    ? POSTGRES_PHASE4_APP_DATA_CAPABILITIES
+    ? POSTGRES_PHASE5_APP_DATA_CAPABILITIES
     : CONVEX_APP_DATA_CAPABILITIES
 }
 

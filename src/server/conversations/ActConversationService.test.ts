@@ -7,6 +7,7 @@ import { ActConversationServiceError, ActEntitlementService } from './ActEntitle
 import { ActGeneratingMessageService } from './ActGeneratingMessageService'
 import { ActMessagePersistenceService, type ActAssistantFinishEvent } from './ActMessagePersistenceService'
 import { ActUsageBudgetService } from './ActUsageBudgetService'
+import { UnlimitedUsagePolicy } from './ActUsagePolicy'
 import type { Id } from '../../../convex/_generated/dataModel'
 
 const freeEntitlements = {
@@ -26,6 +27,14 @@ function unexpected(name: string): never {
 
 function repository(overrides: Partial<ActConversationRepository> = {}): ActConversationRepository {
   return {
+    createConversation: () => unexpected('createConversation'),
+    getConversationById: () => unexpected('getConversationById'),
+    listConversations: () => unexpected('listConversations'),
+    listConversationsByProject: () => unexpected('listConversationsByProject'),
+    getRecentMessages: () => unexpected('getRecentMessages'),
+    getConversationMessages: () => unexpected('getConversationMessages'),
+    updateConversation: () => unexpected('updateConversation'),
+    deleteConversation: () => unexpected('deleteConversation'),
     getEntitlements: () => unexpected('getEntitlements'),
     getAppSettings: () => unexpected('getAppSettings'),
     getMessages: () => unexpected('getMessages'),
@@ -220,4 +229,29 @@ test('act usage budget service skips reservations for unpaid/free-model attempts
   })
 
   assert.deepEqual(result, { ok: true, reservationId: null })
+})
+
+test('unlimited usage policy exposes explicit paid entitlements and no-op accounting', async () => {
+  const policy = new UnlimitedUsagePolicy()
+  const entitlements = await policy.getEntitlements({ userId: 'user_1' })
+
+  assert.equal(entitlements.planKind, 'paid')
+  assert.equal(entitlements.tier, 'max')
+  assert.equal((entitlements.budgetRemainingCents ?? 0) > 1_000_000_000, true)
+  assert.deepEqual(await policy.reserveForAttempt({
+    entitlements,
+    estimatedInputTokens: 1000,
+    maxOutputTokens: 1000,
+    modelId: 'claude-sonnet-4-6',
+    paid: true,
+    userId: 'user_1',
+  }), { ok: true, reservationId: null })
+  assert.deepEqual(await policy.recordFinishedUsage({
+    forceFreeTierLimits: false,
+    inputTokens: 12,
+    modelId: 'claude-sonnet-4-6',
+    outputTokens: 24,
+    reservationId: null,
+    userId: 'user_1',
+  }), { finalized: false, reservationId: null })
 })

@@ -1,13 +1,12 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
-import { buildDocumentContextBundle, type DocumentContextBundle } from '@/server/agent/document-context-builder'
+import type { DocumentContextBundle } from '@/server/agent/document-context-builder'
 import {
   compactMessagesForContext,
   contextSummaryScope,
 } from '@/server/chat/context-compaction'
-import { buildAutoRetrievalBundle } from '@/server/knowledge/ask-knowledge-context'
-import { resolveMentionsContext, type IncomingMention } from '@/server/knowledge/mention-resolver'
+import type { IncomingMention } from '@/server/knowledge/mention-resolver'
 import type { UIMessage } from '@/server/ai/sdk'
 import { listMemories } from '@/shared/app/app-store'
 import { mergeReplyContextIntoMessagesForModel } from '@/shared/chat/reply-context-for-model'
@@ -124,12 +123,14 @@ export class ActContextService {
     indexedAttachments: unknown
     indexedFileNames?: string[]
     latestUserText?: string
+    externalContextEnabled?: boolean
     memoryEnabled?: boolean
     mentions?: IncomingMention[]
     serverSecret: string
     userId: string
   }): Promise<ActTurnContext> {
     const memoryEnabled = args.memoryEnabled !== false
+    const externalContextEnabled = args.externalContextEnabled !== false
     const memoriesTask: Promise<ActMemoryRow[]> = memoryEnabled ? (async () => {
       try {
         const memories = await this.deps.repository.listMemories({ userId: args.userId })
@@ -166,11 +167,16 @@ export class ActContextService {
       conversationTask,
     ])
 
-    const mentionsContextTask = resolveMentionsContext(args.mentions, {
-      userId: args.userId,
-      serverSecret: args.serverSecret,
-      enabledSkills,
-    })
+    const mentionsContextTask = externalContextEnabled
+      ? (async () => {
+          const { resolveMentionsContext } = await import('@/server/knowledge/mention-resolver')
+          return await resolveMentionsContext(args.mentions, {
+            userId: args.userId,
+            serverSecret: args.serverSecret,
+            enabledSkills,
+          })
+        })()
+      : Promise.resolve('')
 
     const conversationProjectId = conv?.projectId
     const projectTask: Promise<string> = (async () => {
@@ -190,8 +196,10 @@ export class ActContextService {
       extension: string
       citations: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
     }> = (async () => {
+      if (!externalContextEnabled) return { extension: '', citations: {} }
       if (!args.accessToken) return { extension: '', citations: {} }
       try {
+        const { buildAutoRetrievalBundle } = await import('@/server/knowledge/ask-knowledge-context')
         const bundle = await buildAutoRetrievalBundle({
           userMessage: args.latestUserText ?? '',
           userId: args.userId,
@@ -211,13 +219,16 @@ export class ActContextService {
     })
 
     const docContextTask =
-      indexedAttachmentList.length > 0
-        ? buildDocumentContextBundle({
-            attachments: indexedAttachmentList,
-            userId: args.userId,
-            accessToken: args.accessToken,
-            userQuery: args.latestUserText ?? undefined,
-          })
+      externalContextEnabled && indexedAttachmentList.length > 0
+        ? (async () => {
+            const { buildDocumentContextBundle } = await import('@/server/agent/document-context-builder')
+            return await buildDocumentContextBundle({
+              attachments: indexedAttachmentList,
+              userId: args.userId,
+              accessToken: args.accessToken,
+              userQuery: args.latestUserText ?? undefined,
+            })
+          })()
         : Promise.resolve(emptyDocumentContextBundle)
 
     const [projectInstructions, autoRetrievalBundle, mentionsContext, docContextBundle] =

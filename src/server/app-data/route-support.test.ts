@@ -9,7 +9,7 @@ import {
   getAppDataRouteSupport,
 } from '@/server/app-data/route-support'
 import {
-  POSTGRES_PHASE4_APP_DATA_CAPABILITIES,
+  POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
 } from '@/server/app-data/capabilities'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -64,18 +64,28 @@ test('Postgres app-data route support classifies every /api/v1 route export', ()
   assert.deepEqual(missing, [])
 })
 
-test('Postgres app-data mode gates Convex-backed routes with structured 501 responses', async () => {
+test('Postgres app-data mode supports basic conversation routes as degraded', () => {
   const support = getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE4_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/conversations',
+  })
+  assert.equal(support.status, 'degraded')
+  assert.equal(support.feature, 'chat-persistence')
+})
+
+test('Postgres app-data mode gates Convex-backed chat subroutes with structured 501 responses', async () => {
+  const support = getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    method: 'GET',
+    pathname: '/api/v1/chat-suggestions',
   })
   assert.equal(support.status, 'unsupported')
 
   const response = appDataRouteUnsupportedResponse({
     databaseProvider: 'postgres',
     method: 'GET',
-    pathname: '/api/v1/conversations',
+    pathname: '/api/v1/chat-suggestions',
     support,
   })
   assert.equal(response.status, 501)
@@ -84,7 +94,7 @@ test('Postgres app-data mode gates Convex-backed routes with structured 501 resp
     code: 'app_data_route_not_supported',
     provider: 'postgres',
     method: 'GET',
-    route: '/api/v1/conversations',
+    route: '/api/v1/chat-suggestions',
     feature: 'chat-persistence',
     reason: 'This route is waiting for a Postgres repository implementation.',
   })
@@ -92,17 +102,17 @@ test('Postgres app-data mode gates Convex-backed routes with structured 501 resp
 
 test('Postgres app-data mode allows degraded bootstrap and external integration routes', () => {
   assert.equal(getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE4_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/bootstrap',
   }).status, 'degraded')
   assert.equal(getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE4_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/model-catalog',
   }).status, 'supported')
   assert.equal(getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE4_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
     method: 'POST',
     pathname: '/api/v1/integrations',
   }).status, 'supported')

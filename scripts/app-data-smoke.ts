@@ -1,9 +1,14 @@
-import { sql } from 'drizzle-orm'
+import { randomUUID } from 'node:crypto'
+import { eq, sql } from 'drizzle-orm'
 
 import {
   createOverlayPostgresDb,
   createOverlayPostgresPool,
 } from '../src/server/database/postgres/client'
+import { users } from '../src/server/database/postgres/schema'
+import { PostgresActConversationRepository } from '../src/server/conversations/PostgresActConversationRepository'
+import { UnlimitedUsagePolicy } from '../src/server/conversations/ActUsagePolicy'
+import { PostgresUserRepository } from '../src/server/users'
 
 const REQUIRED_TABLES = [
   'auth_identities',
@@ -60,12 +65,14 @@ async function main() {
     }
 
     const version = await db.execute(sql`SELECT current_database() AS database_name, version() AS postgres_version`)
+    const verticalSlice = await smokeChatVerticalSlice(db)
 
     console.log(JSON.stringify({
       ok: true,
       databaseName: version.rows[0]?.database_name,
       schemaKind,
       tableCount: tableNames.size,
+      verticalSlice,
     }, null, 2))
   } finally {
     await pool.end()
@@ -76,3 +83,86 @@ main().catch((error) => {
   console.error(error)
   process.exit(1)
 })
+
+async function smokeChatVerticalSlice(db: ReturnType<typeof createOverlayPostgresDb>) {
+  const userId = `smoke_user_${randomUUID()}`
+  const email = `${userId}@example.com`
+  const usersRepository = new PostgresUserRepository(db)
+  const conversationsRepository = new PostgresActConversationRepository(db)
+  const usagePolicy = new UnlimitedUsagePolicy()
+
+  try {
+    await usersRepository.upsertFromIdentity({
+      identity: {
+        provider: 'better-auth',
+        subject: userId,
+        email,
+      },
+      now: new Date(),
+      user: {
+        id: userId,
+        email,
+        firstName: 'Smoke',
+        lastName: 'User',
+        emailVerified: true,
+      },
+    })
+
+    const entitlements = await usagePolicy.getEntitlements({ userId })
+    if (entitlements.planKind !== 'paid') {
+      throw new Error('UnlimitedUsagePolicy did not return paid entitlements')
+    }
+
+    const conversationId = await conversationsRepository.createConversation({
+      userId,
+      title: 'Postgres smoke chat',
+      askModelIds: ['openrouter/free'],
+      actModelId: 'openrouter/free',
+      lastMode: 'act',
+      clientId: `smoke_${randomUUID()}`,
+    })
+    await conversationsRepository.addMessage({
+      conversationId,
+      userId,
+      turnId: 'turn_1',
+      role: 'user',
+      mode: 'act',
+      content: 'hello',
+      contentType: 'text',
+      parts: [{ type: 'text', text: 'hello' }],
+      modelId: 'openrouter/free',
+    })
+    const assistantMessageId = await conversationsRepository.startGeneratingMessage({
+      conversationId,
+      userId,
+      turnId: 'turn_1',
+      mode: 'act',
+      modelId: 'openrouter/free',
+    })
+    if (!assistantMessageId) {
+      throw new Error('Failed to create generating assistant message')
+    }
+    await conversationsRepository.finalizeGeneratingMessage({
+      messageId: assistantMessageId,
+      content: 'hello back',
+      parts: [{ type: 'text', text: 'hello back' }],
+      tokens: { input: 1, output: 2 },
+    })
+    const messages = await conversationsRepository.getConversationMessages({
+      conversationId,
+      userId,
+    })
+    if (messages.length !== 2 || messages[1]?.content !== 'hello back') {
+      throw new Error(`Unexpected Postgres chat messages after smoke write: ${messages.length}`)
+    }
+
+    return {
+      ok: true,
+      conversationId,
+      messageCount: messages.length,
+      usagePolicy: 'unlimited',
+    }
+  } finally {
+    await db.delete(users).where(eq(users.id, userId))
+  }
+}

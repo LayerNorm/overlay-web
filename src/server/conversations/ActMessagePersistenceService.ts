@@ -13,7 +13,6 @@ import {
   buildPersistedMessageContent,
   sanitizeMessagePartsForPersistence,
 } from '@/server/chat/chat-message-persistence'
-import { emitChatCompleted } from '@/server/shared/webhooks'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import type { UIMessage } from '@/server/ai/sdk'
 import type { ActConversationRepository } from './ActConversationRepository'
@@ -30,7 +29,11 @@ type ActMessagePersistenceEvents = {
 }
 
 const defaultEvents: ActMessagePersistenceEvents = {
-  completed: emitChatCompleted,
+  completed: (params) => {
+    void import('@/server/shared/webhooks')
+      .then(({ emitChatCompleted }) => emitChatCompleted(params))
+      .catch((error) => logger.warn('[conversations/act] Chat completed webhook emitter unavailable:', summarizeErrorForLog(error)))
+  },
 }
 
 export type ActLatestUserPersistence = {

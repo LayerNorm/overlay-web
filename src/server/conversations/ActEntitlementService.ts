@@ -11,6 +11,7 @@ import {
 } from '@/server/billing/billing-runtime'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
 import type { ActConversationRepository } from './ActConversationRepository'
+import type { ActUsagePolicy } from './ActUsagePolicy'
 
 export class ActConversationServiceError extends Error {
   constructor(
@@ -35,6 +36,7 @@ export type ActModelGateResult = {
 
 export class ActEntitlementService {
   constructor(private readonly deps: {
+    usagePolicy?: Pick<ActUsagePolicy, 'getEntitlements'>
     repository: ActConversationRepository
   }) {}
 
@@ -43,7 +45,7 @@ export class ActEntitlementService {
     userId: string
   }): Promise<ActModelGateResult> {
     const [entitlements, appSettings] = await Promise.all([
-      this.deps.repository.getEntitlements({ userId: args.userId }),
+      this.getEntitlements({ userId: args.userId }),
       this.deps.repository.getAppSettings({ userId: args.userId }),
     ])
 
@@ -98,7 +100,7 @@ export class ActEntitlementService {
       )
     }
 
-    const refreshedEntitlements = await this.deps.repository.getEntitlements({ userId: args.userId })
+    const refreshedEntitlements = await this.getEntitlements({ userId: args.userId })
 
     if (!refreshedEntitlements) {
       serviceError(
@@ -134,5 +136,11 @@ export class ActEntitlementService {
       paid,
       runtimeEntitlements,
     }
+  }
+
+  private async getEntitlements(args: {
+    userId: string
+  }): Promise<Entitlements | null> {
+    return await (this.deps.usagePolicy ?? this.deps.repository).getEntitlements(args)
   }
 }

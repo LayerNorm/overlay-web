@@ -288,6 +288,20 @@ export const OverlayRuntimeConfigSchema = z
         message: 'database.postgres.connectionString is required when database.provider is postgres',
       })
     }
+    if (selectedProviders.database === 'postgres' && config.billing.provider !== 'none') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['billing', 'provider'],
+        message: 'billing.provider must be none when database.provider is postgres until a Postgres usage backend is implemented',
+      })
+    }
+    if (selectedProviders.database === 'postgres' && effectiveCapabilities.billing) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['capabilities', 'billing'],
+        message: 'billing capability must be false when database.provider is postgres until a Postgres usage backend is implemented',
+      })
+    }
     addUnsupportedProviderIssue(ctx, ['providers', 'vectorSearch', 'provider'], selectedProviders.vectorSearch, {
       pgvector: 'pgvector is declared for enterprise config v2 but vector repository adapters are not implemented. Use vectorSearch.provider=convex or none.',
       pinecone: 'Pinecone is declared for enterprise config v2 but no Pinecone adapter exists yet. Use vectorSearch.provider=convex or none.',

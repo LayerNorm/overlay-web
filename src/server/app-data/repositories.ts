@@ -9,6 +9,7 @@ import type { AutomationRepository } from '@/server/automations/AutomationReposi
 import { ConvexBillingRepository } from '@/server/billing/ConvexBillingRepository'
 import type { BillingRepository } from '@/server/billing/BillingRepository'
 import { ConvexActConversationRepository } from '@/server/conversations/ConvexActConversationRepository'
+import { PostgresActConversationRepository } from '@/server/conversations/PostgresActConversationRepository'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
 import { ConvexFileRepository } from '@/server/files/ConvexFileRepository'
 import type { FileRepository } from '@/server/files/FileRepository'
@@ -50,7 +51,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       repositories: {
         automations: unsupportedRepository<AutomationRepository>('AutomationRepository'),
         billing: unsupportedRepository<BillingRepository>('BillingRepository'),
-        conversations: unsupportedRepository<ActConversationRepository>('ActConversationRepository'),
+        conversations: new PostgresActConversationRepository(db),
         files: unsupportedRepository<FileRepository>('FileRepository'),
         notes: unsupportedRepository<NoteRepository>('NoteRepository'),
         users: new PostgresUserRepository(db),

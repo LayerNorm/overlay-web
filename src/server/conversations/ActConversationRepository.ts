@@ -28,11 +28,44 @@ export type ActSkillRow = {
 }
 
 export type ActConversationRow = {
+  _id?: string
   projectId?: string
 }
 
 export type ActProjectRow = {
   instructions?: string
+}
+
+export type ConversationListRow = {
+  _id: string
+  userId: string
+  clientId?: string
+  title: string
+  lastModified: number
+  createdAt: number
+  updatedAt: number
+  deletedAt?: number
+  lastMode: 'ask' | 'act'
+  askModelIds: string[]
+  actModelId: string
+  projectId?: string
+}
+
+export type ConversationMessageRow = {
+  _id: string
+  turnId: string
+  role: 'user' | 'assistant'
+  mode: 'ask' | 'act'
+  content: string
+  contentType: 'text' | 'image' | 'video'
+  parts?: Array<Record<string, unknown>>
+  modelId?: string
+  variantIndex?: number
+  createdAt: number
+  replyToTurnId?: string
+  replySnippet?: string
+  routedModelId?: string
+  status?: 'generating' | 'completed' | 'error'
 }
 
 export type ActUsageEvent = {
@@ -46,6 +79,54 @@ export type ActUsageEvent = {
 }
 
 export interface ActConversationRepository {
+  createConversation(args: {
+    actModelId: string
+    askModelIds: string[]
+    clientId?: string
+    lastMode?: 'ask' | 'act'
+    projectId?: string
+    title: string
+    userId: string
+  }): Promise<Id<'conversations'>>
+  getConversationById(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+  }): Promise<ConversationListRow | null>
+  listConversations(args: {
+    includeDeleted?: boolean
+    updatedSince?: number
+    userId: string
+  }): Promise<ConversationListRow[]>
+  listConversationsByProject(args: {
+    includeDeleted?: boolean
+    projectId: string
+    updatedSince?: number
+    userId: string
+  }): Promise<ConversationListRow[]>
+  getRecentMessages(args: {
+    beforeCreatedAt?: number
+    compactToolPayloads?: boolean
+    conversationId: Id<'conversations'>
+    limit: number
+    userId: string
+  }): Promise<ConversationMessageRow[]>
+  getConversationMessages(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+  }): Promise<ConversationMessageRow[]>
+  updateConversation(args: {
+    actModelId?: string
+    askModelIds?: string[]
+    conversationId: Id<'conversations'>
+    lastMode?: 'ask' | 'act'
+    projectId?: string
+    title?: string
+    userId: string
+  }): Promise<void>
+  deleteConversation(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+  }): Promise<void>
   getEntitlements(args: {
     userId: string
   }): Promise<Entitlements | null>

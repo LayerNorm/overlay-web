@@ -19,8 +19,8 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { normalizeChatToolRequestIds } from '@/shared/chat/tool-requests'
 import { MAX_TOOL_STEPS_ACT } from '@/server/tools/tools/policy'
-import { fireAndForgetRecordToolInvocation } from '@/server/tools/tools/record-tool-invocation'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildSecondarySystemPromptExtension } from '@/server/agent/operator-system-prompt'
 import {
   summarizeErrorForLog,
@@ -37,6 +37,7 @@ import {
 import { ActConversationRequest } from '@/shared/schemas/chat'
 import {
   actContextService,
+  actConversationRepository,
   actConversationErrorResponse,
   actEntitlementService,
   actGeneratingMessageService,
@@ -143,13 +144,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'messages required' }, { status: 400 })
     }
     const uiMessages = messages as UIMessage[]
-    actWebhookSkip = automationExecution === true
+    const overlayContext = getOverlayServerContext()
+    const isPostgresAppData = overlayContext.appDataCapabilities.provider === 'postgres'
+    actWebhookSkip = automationExecution === true || isPostgresAppData
     const { auth } = context
 	    const userId = auth.userId
 	    currentUserId = userId
     const accessToken = auth.accessToken || undefined
 	    const streamPersistence = resolveActStreamPersistence({
-	      requestedMode: streamPersistenceMode,
+	      requestedMode: isPostgresAppData ? 'direct' : streamPersistenceMode,
 	    })
 	    const useCloudflareStreamMirror = streamPersistence.useCloudflareStreamMirror
 	    const resolvedStreamPersistenceMode = streamPersistence.mode
@@ -165,8 +168,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
     const effectiveModelId = resolveEffectiveActModelId(modelId)
     const serverSecret = getInternalApiSecret()
-    const requestedToolIds = normalizeChatToolRequestIds(rawRequestedToolIds)
-    const memoryEnabled = rawMemoryEnabled !== false
+    const requestedToolIds = isPostgresAppData
+      ? []
+      : normalizeChatToolRequestIds(rawRequestedToolIds)
+    const memoryEnabled = !isPostgresAppData && rawMemoryEnabled !== false
     const {
       appSettings,
       paid,
@@ -194,7 +199,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       const ensureStartedAt = _ttftDebug ? performance.now() : 0
       cid = await ensureActConversationId({
         userId,
-        serverSecret,
+        repository: actConversationRepository,
         conversationClientId: trimmedClientId,
         entitlements: runtimeEntitlements,
         projectId,
@@ -223,6 +228,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId,
       accessToken,
       serverSecret,
+      disabled: isPostgresAppData,
     })
 
     // P3.2 Wave 1: user-message save + context fetches stay parallel.
@@ -248,10 +254,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       mentions: rawMentions,
       serverSecret,
       userId,
+      externalContextEnabled: !isPostgresAppData,
     })
 
     const structuredMediaToolIntent = normalizeStructuredMediaToolIntent(mediaToolIntent)
     const mediaIntentTask: Promise<MediaToolIntent> = (() => {
+      if (isPostgresAppData) return Promise.resolve(null)
       if (isMultiModelFollowUpSlot || !paid) return Promise.resolve(null)
       if (structuredMediaToolIntent != null) return Promise.resolve(structuredMediaToolIntent)
       if (!mayNeedMediaGenerationTools(latestUserText)) return Promise.resolve(null)
@@ -346,6 +354,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	        serverSecret,
 	        turnId: tid,
 	        userId,
+	        disabled: isPostgresAppData,
 	      }),
 	    ])
     pendingGeneratingMessageId = generatingMessageId
@@ -460,18 +469,26 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             })
           }
         }
-        fireAndForgetRecordToolInvocation({
-          serverSecret,
-          userId,
-          toolName: toolCall.toolName,
-          mode: 'act',
-          modelId: attemptModelId,
-          conversationId: conversationId ?? undefined,
-          turnId: tid,
-          success,
-          durationMs,
-          error,
-        })
+        if (!isPostgresAppData) {
+          void import('@/server/tools/tools/record-tool-invocation')
+            .then(({ fireAndForgetRecordToolInvocation }) => {
+              fireAndForgetRecordToolInvocation({
+                serverSecret,
+                userId,
+                toolName: toolCall.toolName,
+                mode: 'act',
+                modelId: attemptModelId,
+                conversationId: conversationId ?? undefined,
+                turnId: tid,
+                success,
+                durationMs,
+                error,
+              })
+            })
+            .catch((importError) => {
+              logger.warn('[conversations/act] Tool invocation recorder unavailable:', summarizeErrorForLog(importError))
+            })
+        }
       },
       onFinish: async (event) => {
         const totalUsage = event.totalUsage

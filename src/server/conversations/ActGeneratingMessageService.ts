@@ -3,7 +3,6 @@ import 'server-only'
 import { logger } from '@/server/observability/logger'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
-import { emitChatFailed } from '@/server/shared/webhooks'
 import type { ActConversationRepository } from './ActConversationRepository'
 import type { Id } from '../../../convex/_generated/dataModel'
 
@@ -17,7 +16,11 @@ type ActGeneratingMessageEvents = {
 }
 
 const defaultEvents: ActGeneratingMessageEvents = {
-  failed: emitChatFailed,
+  failed: (params) => {
+    void import('@/server/shared/webhooks')
+      .then(({ emitChatFailed }) => emitChatFailed(params))
+      .catch((error) => logger.warn('[conversations/act] Chat failed webhook emitter unavailable:', summarizeErrorForLog(error)))
+  },
 }
 
 export class ActGeneratingMessageService {
