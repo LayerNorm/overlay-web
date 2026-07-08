@@ -18,6 +18,10 @@ export type ClientAppDataCapabilities = {
   supportsStreamResume: boolean
   supportsSettings: boolean
   supportsOnboarding: boolean
+  supportsBackgroundMaintenance: boolean
+  supportsManagedScheduler: boolean
+  supportsPersistentIdempotency: boolean
+  supportsServiceAuthReplayStore: boolean
   requiresConvexClient: boolean
 }
 
@@ -27,6 +31,10 @@ const DEFAULT_APP_DATA_CAPABILITIES: ClientAppDataCapabilities = {
   supportsStreamResume: true,
   supportsSettings: true,
   supportsOnboarding: true,
+  supportsBackgroundMaintenance: true,
+  supportsManagedScheduler: true,
+  supportsPersistentIdempotency: true,
+  supportsServiceAuthReplayStore: true,
   requiresConvexClient: true,
 }
 
@@ -57,6 +65,10 @@ function normalizeAppDataCapabilities(value: unknown): ClientAppDataCapabilities
     'supportsStreamResume',
     'supportsSettings',
     'supportsOnboarding',
+    'supportsBackgroundMaintenance',
+    'supportsManagedScheduler',
+    'supportsPersistentIdempotency',
+    'supportsServiceAuthReplayStore',
     'requiresConvexClient',
   ] as const) {
     if (candidate[key] !== undefined && typeof candidate[key] !== 'boolean') return null

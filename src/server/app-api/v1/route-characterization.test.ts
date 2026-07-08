@@ -43,6 +43,10 @@ const TEST_CONVEX_APP_DATA_CAPABILITIES: AppDataCapabilities = {
   supportsWebhooks: true,
   supportsApiKeys: true,
   supportsAccountDeletion: true,
+  supportsBackgroundMaintenance: true,
+  supportsManagedScheduler: true,
+  supportsPersistentIdempotency: true,
+  supportsServiceAuthReplayStore: true,
   requiresConvexClient: true,
 }
 

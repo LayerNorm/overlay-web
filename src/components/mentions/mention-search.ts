@@ -8,6 +8,7 @@ import { unwrapPaginatedData } from '@/shared/api/pagination'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
 interface CachedData {
+  automationsEnabled: boolean
   files: MentionItem[]
   connectors: MentionItem[]
   automations: MentionItem[]
@@ -15,6 +16,8 @@ interface CachedData {
   mcps: MentionItem[]
   chats: MentionItem[]
 }
+
+type MentionListKey = Exclude<keyof CachedData, 'automationsEnabled'>
 
 const CATEGORY_META: Array<{ type: MentionType; label: string; icon: string }> = [
   { type: 'file', label: 'Files', icon: 'FileText' },
@@ -27,20 +30,25 @@ const CATEGORY_META: Array<{ type: MentionType; label: string; icon: string }> =
 
 let cache: CachedData | null = null
 let inFlight: Promise<CachedData> | null = null
+let automationsCapability: Promise<boolean> | null = null
 
 export function invalidateMentionCache() {
   cache = null
+  automationsCapability = null
 }
 
 async function fetchAll(): Promise<CachedData> {
   if (cache) return cache
   if (inFlight) return inFlight
   inFlight = (async () => {
+    const automationsEnabled = await areAutomationsEnabled()
     const [filesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
       await Promise.allSettled([
         overlayAppClient.files.getResponse({ limit: 100, summary: true }).then((r) => (r.ok ? r.json() : [])),
         overlayAppClient.integrations.getResponse().then((r) => (r.ok ? r.json() : { items: [] })),
-        overlayAppClient.automations.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : [])),
+        automationsEnabled
+          ? overlayAppClient.automations.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : []))
+          : Promise.resolve([]),
         overlayAppClient.skills.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : [])),
         overlayAppClient.mcpServers.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : [])),
         overlayAppClient.conversations.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : [])),
@@ -68,7 +76,7 @@ async function fetchAll(): Promise<CachedData> {
         logoUrl: c.logoUrl,
       })
     )
-    const automations: MentionItem[] = (
+    const automations: MentionItem[] = automationsEnabled ? (
       automationsRes.status === 'fulfilled'
         ? unwrapPaginatedData<{ _id: string; name?: string; description?: string; deletedAt?: number }>(automationsRes.value)
         : []
@@ -80,7 +88,7 @@ async function fetchAll(): Promise<CachedData> {
         name: a.name || 'Untitled automation',
         description: a.description || '',
         icon: 'Zap',
-      }))
+      })) : []
     const skills: MentionItem[] = (
       skillsRes.status === 'fulfilled'
         ? unwrapPaginatedData<{ _id: string; name: string; description?: string; enabled?: boolean }>(skillsRes.value)
@@ -116,7 +124,7 @@ async function fetchAll(): Promise<CachedData> {
       icon: 'MessageSquare',
     }))
 
-    cache = { files, connectors, automations, skills, mcps, chats }
+    cache = { automationsEnabled, files, connectors, automations, skills, mcps, chats }
     return cache
   })()
   try {
@@ -124,6 +132,19 @@ async function fetchAll(): Promise<CachedData> {
   } finally {
     inFlight = null
   }
+}
+
+async function areAutomationsEnabled(): Promise<boolean> {
+  if (!automationsCapability) {
+    automationsCapability = fetch('/api/v1/capabilities', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return true
+        const payload = await response.json()
+        return payload?.capabilities?.automations !== false
+      })
+      .catch(() => true)
+  }
+  return automationsCapability
 }
 
 function scoreMatch(item: MentionItem, query: string): number {
@@ -140,7 +161,7 @@ export async function searchMentions(query: string): Promise<MentionCategory[]> 
   const data = await fetchAll()
   const q = query.trim().toLowerCase()
   return CATEGORY_META.map((cat) => {
-    const items = data[cat.type === 'connector' ? 'connectors' : (`${cat.type}s` as keyof CachedData)]
+    const items = data[mentionListKey(cat.type)]
     const filtered = q
       ? items
           .filter(
@@ -156,4 +177,8 @@ export async function searchMentions(query: string): Promise<MentionCategory[]> 
       items: filtered.slice(0, 10),
     }
   }).filter((cat) => cat.items.length > 0)
+}
+
+function mentionListKey(type: MentionType): MentionListKey {
+  return type === 'connector' ? 'connectors' : `${type}s` as MentionListKey
 }

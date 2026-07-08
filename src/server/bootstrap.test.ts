@@ -113,6 +113,10 @@ test('createOverlayServerContext returns Postgres app-data context with chat rou
   assert.equal(context.appDataCapabilities.provider, 'postgres')
   assert.equal(context.appDataCapabilities.supportsRealtime, false)
   assert.equal(context.appDataCapabilities.supportsChatPersistence, true)
+  assert.equal(context.appDataCapabilities.supportsBackgroundMaintenance, true)
+  assert.equal(context.appDataCapabilities.supportsManagedScheduler, false)
+  assert.equal(context.appDataCapabilities.supportsPersistentIdempotency, false)
+  assert.equal(context.appDataCapabilities.supportsServiceAuthReplayStore, false)
   assert.equal(context.userService instanceof UserService, true)
 })
 

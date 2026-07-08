@@ -191,6 +191,7 @@ export const conversations = pgTable('conversations', {
   uniqueIndex('conversations_user_id_client_id_idx').on(table.userId, table.clientId),
   index('conversations_user_id_last_modified_idx').on(table.userId, table.lastModified),
   index('conversations_user_id_updated_at_idx').on(table.userId, table.updatedAt),
+  index('conversations_deleted_at_created_at_idx').on(table.deletedAt, table.createdAt),
   index('conversations_project_id_idx').on(table.projectId),
   uniqueIndex('conversations_share_token_idx').on(table.shareToken),
 ])

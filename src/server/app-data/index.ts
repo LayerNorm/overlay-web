@@ -13,6 +13,10 @@ export {
   unsupportedRepository,
 } from './errors'
 export {
+  PostgresBackgroundMaintenanceService,
+  type PostgresBackgroundMaintenanceSummary,
+} from './PostgresBackgroundMaintenanceService'
+export {
   createAppDataContext,
   type AppDataContext,
   type AppDataRepositories,

@@ -145,7 +145,12 @@ export async function handleBffRoute(
     appDataCapabilities,
   } as AppApiRouteContext
 
-  const response = await handleIdempotentMutation(request, auth.userId, async () => service(request, serviceContext))
+  const response = await handleIdempotentMutation(
+    request,
+    auth.userId,
+    async () => service(request, serviceContext),
+    { appDataProvider: appDataCapabilities.provider },
+  )
   return standardizePaginatedListResponse(request, response)
 }
 

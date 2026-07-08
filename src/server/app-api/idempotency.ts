@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { logSecurityEvent } from '@/server/observability/security-events'
+import type { AppDataProvider } from '@/server/app-data/capabilities'
 import { isStreamIdempotencyMarker } from '@/shared/api/idempotency-markers'
 
 type CachedHeader = {
@@ -163,6 +164,9 @@ export async function handleIdempotentMutation(
   request: NextRequest,
   userId: string,
   run: () => Promise<Response>,
+  options: {
+    appDataProvider?: AppDataProvider
+  } = {},
 ): Promise<Response> {
   const method = request.method.toUpperCase()
   if (!MUTATION_METHODS.has(method)) return run()
@@ -173,6 +177,18 @@ export async function handleIdempotentMutation(
       return NextResponse.json({ error: 'Invalid Idempotency-Key header' }, { status: 400 })
     }
     return run()
+  }
+
+  if (options.appDataProvider === 'postgres') {
+    const response = await run()
+    const headers = new Headers(response.headers)
+    headers.set('Idempotency-Status', 'app-data-provider-bypass')
+    headers.set('Idempotency-Provider', 'postgres-unsupported')
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    })
   }
 
   const keyHash = keyHashFor({

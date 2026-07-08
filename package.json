@@ -25,6 +25,7 @@
     "app-db:logs": "docker compose --env-file .env.app-data.local -f docker-compose.app-data.yml logs -f app-data-postgres",
     "app-db:generate": "drizzle-kit generate --config=drizzle.app-data.config.ts",
     "app-db:migrate": "tsx --env-file=.env.app-data.local scripts/app-data-migrate.ts",
+    "app-db:maintenance": "NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.app-data.local scripts/app-data-maintenance.ts",
     "app-db:smoke": "NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.app-data.local scripts/app-data-smoke.ts",
     "app-db:account-delete-smoke": "NODE_OPTIONS=--conditions=react-server tsx scripts/app-data-account-delete-smoke.ts",
     "build": "next build",

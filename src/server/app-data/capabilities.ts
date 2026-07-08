@@ -23,6 +23,10 @@ export interface AppDataCapabilities {
   supportsWebhooks: boolean
   supportsApiKeys: boolean
   supportsAccountDeletion: boolean
+  supportsBackgroundMaintenance: boolean
+  supportsManagedScheduler: boolean
+  supportsPersistentIdempotency: boolean
+  supportsServiceAuthReplayStore: boolean
   requiresConvexClient: boolean
 }
 
@@ -44,6 +48,10 @@ export const CONVEX_APP_DATA_CAPABILITIES: AppDataCapabilities = {
   supportsWebhooks: true,
   supportsApiKeys: true,
   supportsAccountDeletion: true,
+  supportsBackgroundMaintenance: true,
+  supportsManagedScheduler: true,
+  supportsPersistentIdempotency: true,
+  supportsServiceAuthReplayStore: true,
   requiresConvexClient: true,
 }
 
@@ -65,6 +73,10 @@ export const POSTGRES_PHASE5_APP_DATA_CAPABILITIES: AppDataCapabilities = {
   supportsWebhooks: false,
   supportsApiKeys: false,
   supportsAccountDeletion: true,
+  supportsBackgroundMaintenance: true,
+  supportsManagedScheduler: false,
+  supportsPersistentIdempotency: false,
+  supportsServiceAuthReplayStore: false,
   requiresConvexClient: false,
 }
 

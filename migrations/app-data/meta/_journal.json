@@ -15,6 +15,13 @@
       "when": 1783526401000,
       "tag": "0001_perpetual_stranger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783569600000,
+      "tag": "0002_phase7_background_maintenance",
+      "breakpoints": true
     }
   ]
 }

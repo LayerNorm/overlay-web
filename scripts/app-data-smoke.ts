@@ -5,8 +5,15 @@ import {
   createOverlayPostgresDb,
   createOverlayPostgresPool,
 } from '../src/server/database/postgres/client'
-import { r2UploadIntents, users } from '../src/server/database/postgres/schema'
+import {
+  conversationMessageDeltas,
+  conversationMessages,
+  conversations,
+  r2UploadIntents,
+  users,
+} from '../src/server/database/postgres/schema'
 import { PostgresActConversationRepository } from '../src/server/conversations/PostgresActConversationRepository'
+import { PostgresBackgroundMaintenanceService } from '../src/server/app-data/PostgresBackgroundMaintenanceService'
 import { UnlimitedUsagePolicy } from '../src/server/conversations/ActUsagePolicy'
 import { FileService } from '../src/server/files/FileService'
 import { PostgresFileRepository } from '../src/server/files/PostgresFileRepository'
@@ -94,6 +101,7 @@ async function smokeChatVerticalSlice(db: ReturnType<typeof createOverlayPostgre
   const conversationsRepository = new PostgresActConversationRepository(db)
   const filesRepository = new PostgresFileRepository(db)
   const notesRepository = new PostgresNoteRepository(db)
+  const maintenanceService = new PostgresBackgroundMaintenanceService(db)
   const usagePolicy = new UnlimitedUsagePolicy()
   const deletedStorageKeys: string[] = []
   const filesService = new FileService({
@@ -330,6 +338,13 @@ async function smokeChatVerticalSlice(db: ReturnType<typeof createOverlayPostgre
       throw new Error('Postgres recursive folder delete did not surface R2 cleanup key')
     }
 
+    const maintenanceResult = await smokeBackgroundMaintenance({
+      conversationsRepository,
+      db,
+      maintenanceService,
+      userId,
+    })
+
     return {
       ok: true,
       conversationId,
@@ -338,9 +353,124 @@ async function smokeChatVerticalSlice(db: ReturnType<typeof createOverlayPostgre
       fileId,
       duplicateFileId,
       uploadedFileId,
+      maintenance: maintenanceResult,
       usagePolicy: 'unlimited',
     }
   } finally {
     await db.delete(users).where(eq(users.id, userId))
   }
+}
+
+async function smokeBackgroundMaintenance(args: {
+  conversationsRepository: PostgresActConversationRepository
+  db: ReturnType<typeof createOverlayPostgresDb>
+  maintenanceService: PostgresBackgroundMaintenanceService
+  userId: string
+}) {
+  const now = new Date()
+  const oldDate = new Date(now.getTime() - 15 * 60_000)
+  const conversationId = await args.conversationsRepository.createConversation({
+    userId: args.userId,
+    title: 'Postgres maintenance smoke',
+    askModelIds: ['openrouter/free'],
+    actModelId: 'openrouter/free',
+    lastMode: 'act',
+    clientId: `smoke_maintenance_${randomUUID()}`,
+  })
+  const staleMessageId = await args.conversationsRepository.startGeneratingMessage({
+    conversationId,
+    userId: args.userId,
+    turnId: 'maintenance_stale',
+    mode: 'act',
+    modelId: 'openrouter/free',
+  })
+  if (!staleMessageId) throw new Error('Failed to create stale generating message')
+  await args.conversationsRepository.appendGeneratingMessageDelta({
+    messageId: staleMessageId,
+    textDelta: 'partial',
+    newParts: [{ type: 'text', text: 'partial' }],
+  })
+  await args.db
+    .update(conversationMessages)
+    .set({ updatedAt: oldDate })
+    .where(eq(conversationMessages.id, staleMessageId))
+
+  const completedWithDeltaId = await args.conversationsRepository.startGeneratingMessage({
+    conversationId,
+    userId: args.userId,
+    turnId: 'maintenance_completed',
+    mode: 'act',
+    modelId: 'openrouter/free',
+  })
+  if (!completedWithDeltaId) throw new Error('Failed to create completed maintenance message')
+  await args.conversationsRepository.appendGeneratingMessageDelta({
+    messageId: completedWithDeltaId,
+    textDelta: 'done',
+    newParts: [{ type: 'text', text: 'done' }],
+  })
+  await args.conversationsRepository.finalizeGeneratingMessage({
+    messageId: completedWithDeltaId,
+    content: 'done',
+    parts: [{ type: 'text', text: 'done' }],
+    tokens: { input: 1, output: 1 },
+  })
+
+  const emptyConversationId = await args.conversationsRepository.createConversation({
+    userId: args.userId,
+    title: 'Postgres empty maintenance smoke',
+    askModelIds: ['openrouter/free'],
+    actModelId: 'openrouter/free',
+    lastMode: 'act',
+    clientId: `smoke_empty_${randomUUID()}`,
+  })
+  await args.db
+    .update(conversations)
+    .set({
+      createdAt: oldDate,
+      lastModified: oldDate,
+      updatedAt: oldDate,
+    })
+    .where(eq(conversations.id, emptyConversationId))
+
+  const summary = await args.maintenanceService.runAll({
+    emptyConversationCutoffMinutes: 5,
+    limit: 20,
+    now,
+    staleGeneratingCutoffMinutes: 5,
+  })
+  if (summary.staleGeneratingMessages.finalized < 1) {
+    throw new Error('Postgres background maintenance did not finalize stale generating messages')
+  }
+  if (summary.inactiveMessageDeltas.deleted < 1) {
+    throw new Error('Postgres background maintenance did not remove inactive message deltas')
+  }
+  if (summary.emptyConversations.deleted < 1) {
+    throw new Error('Postgres background maintenance did not remove empty conversations')
+  }
+
+  const [staleAfter] = await args.db
+    .select()
+    .from(conversationMessages)
+    .where(eq(conversationMessages.id, staleMessageId))
+    .limit(1)
+  if (staleAfter?.status !== 'error') {
+    throw new Error('Postgres stale generating message was not marked as error')
+  }
+  const remainingDeltas = await args.db
+    .select()
+    .from(conversationMessageDeltas)
+    .where(eq(conversationMessageDeltas.messageId, completedWithDeltaId))
+  if (remainingDeltas.length > 0) {
+    throw new Error('Postgres inactive message deltas were not deleted')
+  }
+  const [emptyAfter] = await args.db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.id, emptyConversationId))
+    .limit(1)
+  if (emptyAfter) {
+    throw new Error('Postgres empty conversation was not deleted')
+  }
+
+  return summary
 }
