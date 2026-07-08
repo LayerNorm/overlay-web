@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {

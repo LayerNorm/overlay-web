@@ -2,7 +2,10 @@
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { ConvexProvider } from 'convex/react'
-import { convexReactClient } from '@/components/providers/convex-react-client'
+import {
+  convexReactClient,
+  convexReactClientEnabled,
+} from '@/components/providers/convex-react-client'
 import { useAuth } from '@/contexts/AuthContext'
 
 type ConvexAuthContextValue = {
@@ -28,7 +31,7 @@ export function ConvexAuthProvider({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     let alive = true
-    if (isLoading || !userId) {
+    if (!convexReactClientEnabled || isLoading || !userId) {
       void Promise.resolve().then(() => {
         if (alive) setAccessToken(null)
       })
@@ -51,7 +54,7 @@ export function ConvexAuthProvider({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     convexReactClient.setAuth(async () => {
-      if (isLoading || !userId) return null
+      if (!convexReactClientEnabled || isLoading || !userId) return null
       return await fetchConvexToken()
     })
   }, [isLoading, userId])

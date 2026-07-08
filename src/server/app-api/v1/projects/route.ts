@@ -3,7 +3,7 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { handleRouteError } from '@/server/app-api/route-errors'
 import { readValidatedJson, readValidatedQuery } from '@/server/app-api/validated-input'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import {
   CreateProjectRequest,
   DeleteProjectRequest,

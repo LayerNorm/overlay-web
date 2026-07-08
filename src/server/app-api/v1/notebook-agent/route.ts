@@ -4,7 +4,7 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { ToolLoopAgent, stepCountIs, tool, type ToolSet } from '@/server/ai/sdk'
 import { z } from 'zod'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import {

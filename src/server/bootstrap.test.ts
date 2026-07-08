@@ -83,7 +83,7 @@ test('createOverlayServerContext returns Better Auth adapter when selected', () 
   assert.equal(context.auth instanceof BetterAuthProvider, true)
 })
 
-test('createOverlayServerContext rejects Postgres app-data provider until full route repositories exist', () => {
+test('createOverlayServerContext returns Postgres app-data context with unsupported route capabilities', () => {
   const base = fixture('saas-staging.json')
   const runtimeConfig = parseOverlayRuntimeConfig({
     ...base,
@@ -100,13 +100,12 @@ test('createOverlayServerContext rejects Postgres app-data provider until full r
       },
     },
   })
+  const context = createOverlayServerContext({ appConfig: {}, runtimeConfig })
 
-  assert.throws(
-    () => createOverlayServerContext({ appConfig: {}, runtimeConfig }),
-    (error) =>
-      error instanceof OverlayConfigError &&
-      error.issues.some((issue) => issue.includes('full app-data repository adapters are not implemented yet')),
-  )
+  assert.equal(context.appDataCapabilities.provider, 'postgres')
+  assert.equal(context.appDataCapabilities.supportsRealtime, false)
+  assert.equal(context.appDataCapabilities.supportsChatPersistence, false)
+  assert.equal(context.userService instanceof UserService, true)
 })
 
 test('createOverlayServerContext throws typed config error before constructing invalid provider config', () => {

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import Stripe from 'stripe'
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { stripe, getBaseUrl } from '@/server/billing/stripe'
 import {

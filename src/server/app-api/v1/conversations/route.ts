@@ -9,7 +9,7 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
 import { canUsePaidBudgetFeatures } from '@/server/billing/billing-runtime'
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import {
   GENERATED_UI_DATA_TYPE,
   normalizeGeneratedUiData,

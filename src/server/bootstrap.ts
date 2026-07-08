@@ -9,18 +9,21 @@ import {
   OidcAuthProvider,
   WorkOSAuthProvider,
 } from '@/server/auth/providers'
-import { NoOpBillingProvider, StripeBillingProvider } from '@/server/billing/providers'
+import { NoOpBillingProvider } from '@/server/billing/providers/noop-billing-provider'
+import { StripeBillingProvider } from '@/server/billing/providers/stripe-billing-provider'
 import { getOverlayRuntimeConfigSync, OverlayConfigError } from '@/server/config'
-import { ConvexNoteRepository, type NoteRepository } from '@/server/notes'
-import { ConvexRateLimiter, InMemoryEventBus, InMemoryRateLimiter } from '@/server/shared/providers'
-import {
-  ConvexVectorStore,
-  InMemoryVectorStore,
-  NoOpObjectStore,
-  R2ObjectStore,
-  S3CompatibleObjectStore,
-} from '@/server/storage/providers'
-import { createUserService, type UserService } from '@/server/users'
+import { ConvexRateLimiter } from '@/server/shared/providers/convex-rate-limiter'
+import { InMemoryEventBus } from '@/server/shared/providers/in-memory-event-bus'
+import { InMemoryRateLimiter } from '@/server/shared/providers/in-memory-rate-limiter'
+import { ConvexVectorStore } from '@/server/storage/providers/convex-vector-store'
+import { InMemoryVectorStore } from '@/server/storage/providers/in-memory-vector-store'
+import { NoOpObjectStore } from '@/server/storage/providers/noop-object-store'
+import { R2ObjectStore } from '@/server/storage/providers/r2-object-store'
+import { S3CompatibleObjectStore } from '@/server/storage/providers/s3-compatible-object-store'
+import type { AppDataCapabilities } from '@/server/app-data/capabilities'
+import { createAppDataContext, type AppDataContext } from '@/server/app-data/repositories'
+import { UserService, type UserAuthProvider } from '@/server/users'
+import type { NoteRepository } from '@/server/notes'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -39,6 +42,8 @@ import type {
 import { deriveOverlayCapabilities as resolveOverlayCapabilities } from '@overlay/app-core'
 
 export interface OverlayServerContext extends OverlayProviderContext {
+  appData: AppDataContext
+  appDataCapabilities: AppDataCapabilities
   noteRepository: NoteRepository
   apiKeyService: typeof ApiKeyService
   userService: UserService
@@ -65,7 +70,11 @@ export function createOverlayServerContext(
   if (runtimeConfig) {
     assertSelectedProviderConfig(runtimeConfig)
   }
-  const userService = createUserService(runtimeConfig)
+  const appData = createAppDataContext(runtimeConfig)
+  const userService = new UserService({
+    authProvider: selectedAuthProviderForUserService(runtimeConfig),
+    repository: appData.repositories.users,
+  })
 
   return {
     auth: appConfig.authProvider ?? createAuthProvider(runtimeConfig, userService),
@@ -75,7 +84,9 @@ export function createOverlayServerContext(
     llmGateway: appConfig.llmGateway ?? createLlmGateway(runtimeConfig),
     rateLimiter: appConfig.rateLimiter ?? createRateLimiter(runtimeConfig),
     eventBus: appConfig.eventBus ?? new InMemoryEventBus(),
-    noteRepository: new ConvexNoteRepository(),
+    appData,
+    appDataCapabilities: appData.capabilities,
+    noteRepository: appData.repositories.notes,
     apiKeyService: ApiKeyService,
     userService,
   }
@@ -131,6 +142,20 @@ function createAuthProvider(config: OverlayRuntimeConfig | null, userService: Us
   throw new OverlayConfigError('Overlay provider configuration is invalid', [
     `Unsupported auth provider: ${selectedProvider(config, 'auth', config.auth.provider)}`,
   ])
+}
+
+function selectedAuthProviderForUserService(config: OverlayRuntimeConfig | null): UserAuthProvider {
+  const provider = config
+    ? selectedProvider(config, 'auth', config.auth.provider)
+    : 'workos'
+  switch (provider) {
+    case 'workos':
+    case 'better-auth':
+    case 'oidc':
+    case 'none':
+      return provider
+  }
+  return 'none'
 }
 
 function createBillingProvider(config: OverlayRuntimeConfig | null): BillingProvider {
@@ -291,8 +316,6 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
   if (config.database.provider === 'postgres' || selectedProvider(config, 'database', config.database.provider) === 'postgres') {
     if (!config.database.postgres.connectionString) {
       issues.push('database.postgres.connectionString is required when database.provider is postgres')
-    } else {
-      issues.push('database.provider=postgres is configured, but full app-data repository adapters are not implemented yet. Keep database.provider=convex until the database provider phases wire route repositories.')
     }
   }
   if (vectorSearchProvider !== 'convex' && vectorSearchProvider !== 'none') {

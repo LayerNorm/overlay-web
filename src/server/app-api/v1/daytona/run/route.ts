@@ -2,7 +2,7 @@ import { logger } from '@/server/observability/logger'
 import type { Sandbox } from '@daytonaio/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import {
   downloadSandboxFile,
   ensureWorkspaceSandbox,

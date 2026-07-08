@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { hashTextContent } from '@/server/storage/text-content-hash'
 import type { NoteRecord, NoteRepository } from './NoteService'

@@ -2,11 +2,18 @@ import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { NoteService, NoteServiceError } from '@/server/notes'
+import { repositoryProxy } from '@/server/app-data/errors'
+import { NoteService, NoteServiceError, type NoteRepository } from '@/server/notes'
 import type { CreateNoteRequest, UpdateNoteRequest } from '@overlay/app-core'
 
-const ctx = getOverlayServerContext()
-const noteService = new NoteService(ctx)
+const noteService = new NoteService({
+  billing: {
+    getEntitlements: (userId) => getOverlayServerContext().billing.getEntitlements(userId),
+  },
+  noteRepository: repositoryProxy<NoteRepository>(
+    () => getOverlayServerContext().appData.repositories.notes,
+  ),
+})
 
 function readBooleanParam(value: string | null): boolean | undefined {
   if (value == null) return undefined

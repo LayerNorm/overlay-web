@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { Id } from '../../../convex/_generated/dataModel'
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { deleteObjects } from '@/server/storage/object-store'
 import { isOwnedFileR2Key } from '@/server/storage/storage-keys'
 

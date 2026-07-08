@@ -2,7 +2,7 @@ import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
 import {
   CreateWebhookSubscriptionRequest,

@@ -3,8 +3,9 @@ import test from 'node:test'
 import { NextRequest } from 'next/server'
 import { deriveOverlayCapabilities } from '@overlay/app-core'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import type { AppDataCapabilities } from '@/server/app-data/capabilities'
 import { automationService } from '@/server/automations/http'
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { fileService } from '@/server/files/http'
 
 const originalNextPhase = process.env.NEXT_PHASE
@@ -23,6 +24,27 @@ test.after(() => {
     process.env.INTERNAL_API_SECRET = originalInternalApiSecret
   }
 })
+
+const TEST_CONVEX_APP_DATA_CAPABILITIES: AppDataCapabilities = {
+  provider: 'convex',
+  supportsRealtime: true,
+  supportsStreamResume: true,
+  supportsChatPersistence: true,
+  supportsFileMetadata: true,
+  supportsFileUploads: true,
+  supportsNotes: true,
+  supportsProjects: true,
+  supportsSettings: true,
+  supportsOnboarding: true,
+  supportsUsageAccounting: true,
+  supportsBillingRecords: true,
+  supportsVectorSearch: true,
+  supportsAutomations: true,
+  supportsWebhooks: true,
+  supportsApiKeys: true,
+  supportsAccountDeletion: true,
+  requiresConvexClient: true,
+}
 
 function request(path: string, init: {
   body?: BodyInit | null
@@ -52,6 +74,7 @@ function context(): AppApiRouteContext {
     parsedFormData: null,
     parsedJson: {},
     parsedQuery: {},
+    appDataCapabilities: TEST_CONVEX_APP_DATA_CAPABILITIES,
   }
 }
 

@@ -5,7 +5,7 @@ import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { isKnownOutputType } from '@/shared/tools/output-types'
 import { deleteObject } from '@/server/storage/object-store'
 import { isOwnedOutputR2Key } from '@/server/storage/storage-keys'
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 
 type OutputFile = {
   _id: string

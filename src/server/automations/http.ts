@@ -1,11 +1,15 @@
 import 'server-only'
 
 import { NextResponse } from 'next/server'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import { repositoryProxy } from '@/server/app-data/errors'
 import { AutomationService, AutomationServiceError } from './AutomationService'
-import { ConvexAutomationRepository } from './ConvexAutomationRepository'
+import type { AutomationRepository } from './AutomationRepository'
 
 export const automationService = new AutomationService({
-  repository: new ConvexAutomationRepository(),
+  repository: repositoryProxy<AutomationRepository>(
+    () => getOverlayServerContext().appData.repositories.automations,
+  ),
 })
 
 export function automationErrorResponse(error: unknown, fallback: string) {

@@ -10,16 +10,25 @@ import {
   getOverlayRuntimeConfig,
   getRedactedOverlayRuntimeConfigSummary,
 } from '@/server/config'
+import {
+  applyAppDataCapabilitiesToOverlayCapabilities,
+  deriveAppDataCapabilities,
+} from '@/server/app-data/capabilities'
 import { isRuntimeConfigSummaryVisible } from '@/shared/config'
 
 export async function GET() {
   try {
     const runtimeConfig = await getOverlayRuntimeConfig()
-    const capabilities = deriveOverlayCapabilities(runtimeConfig)
+    const appDataCapabilities = deriveAppDataCapabilities(runtimeConfig)
+    const capabilities = applyAppDataCapabilitiesToOverlayCapabilities(
+      deriveOverlayCapabilities(runtimeConfig),
+      appDataCapabilities,
+    )
     const appShell = resolveOverlayAppShellConfig(overlayAppConfig, { capabilities })
 
     return NextResponse.json({
       capabilities,
+      appDataCapabilities,
       featureFlags: appShell.appFeatureFlags,
       navigation: appShell.navigation,
       settingsSections: appShell.settingsSections,

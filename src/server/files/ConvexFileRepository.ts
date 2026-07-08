@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { cleanupExpiredR2UploadIntents } from '@/server/storage/r2-upload-intents'
 import type {

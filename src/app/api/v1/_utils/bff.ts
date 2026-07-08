@@ -19,6 +19,11 @@ import {
 } from '@/server/capabilities'
 import { parseApiBoundaryInput } from '@/server/app-api/boundary'
 import { isOverlayConfigError } from '@/server/config'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import {
+  appDataRouteUnsupportedResponse,
+  getAppDataRouteSupport,
+} from '@/server/app-data/route-support'
 
 const API_KEY_CANDIDATE_RATE_LIMITS = [
   { bucket: 'api-key-auth:candidate:ip', limit: 60, windowMs: 60_000 },
@@ -50,6 +55,25 @@ export async function handleBffRoute(
     capabilities = await getOverlayCapabilities()
   } catch (error) {
     return runtimeConfigErrorResponse(error)
+  }
+  let appDataCapabilities
+  try {
+    appDataCapabilities = getOverlayServerContext().appDataCapabilities
+  } catch (error) {
+    return runtimeConfigErrorResponse(error)
+  }
+  const appDataRouteSupport = getAppDataRouteSupport({
+    appDataCapabilities,
+    method: request.method,
+    pathname: request.nextUrl.pathname,
+  })
+  if (appDataRouteSupport.status === 'unsupported') {
+    return appDataRouteUnsupportedResponse({
+      databaseProvider: appDataCapabilities.provider,
+      method: request.method,
+      pathname: request.nextUrl.pathname,
+      support: appDataRouteSupport,
+    })
   }
   const requiredCapability = getRequiredCapabilityForRoute(request.method, request.nextUrl.pathname)
   if (requiredCapability && !capabilities[requiredCapability]) {
@@ -118,6 +142,7 @@ export async function handleBffRoute(
     parsedJson: parsedInput.parsedJson,
     parsedFormData: parsedInput.parsedFormData,
     capabilities,
+    appDataCapabilities,
   } as AppApiRouteContext
 
   const response = await handleIdempotentMutation(request, auth.userId, async () => service(request, serviceContext))
