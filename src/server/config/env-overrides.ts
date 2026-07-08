@@ -224,12 +224,18 @@ function databaseConfigFromEnv(
   env: EnvSource,
   deploymentEnvironment?: OverlayDeploymentEnvironment,
 ): OverlayRuntimeConfigLayer | null {
+  const provider = readEnv(env, 'OVERLAY_PROVIDER_DATABASE')
   const convexUrl = deploymentEnvironment === 'development'
     ? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'NEXT_PUBLIC_CONVEX_URL')
     : readEnv(env, 'NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL')
+  const postgresConnectionString = readEnv(env, 'OVERLAY_DATABASE_URL')
+  const postgresSslMode = readEnv(env, 'OVERLAY_DATABASE_SSL_MODE')
 
   if (
+    !provider &&
     !convexUrl &&
+    !postgresConnectionString &&
+    !postgresSslMode &&
     !readEnv(env, 'CONVEX_DEPLOYMENT') &&
     !readEnv(env, 'INTERNAL_API_SECRET') &&
     !readEnv(env, 'INTERNAL_SERVICE_AUTH_SECRET') &&
@@ -238,13 +244,19 @@ function databaseConfigFromEnv(
     return null
   }
 
+  const postgres = compactObject({
+    connectionString: postgresConnectionString,
+    sslMode: postgresSslMode,
+  })
+
   return compactObject({
-    provider: 'convex',
+    provider: (provider ?? 'convex') as OverlayRuntimeConfigInput['database']['provider'] | undefined,
     convexUrl,
     deployment: readEnv(env, 'CONVEX_DEPLOYMENT'),
     internalApiSecret: readEnv(env, 'INTERNAL_API_SECRET'),
     internalServiceAuthSecret: readEnv(env, 'INTERNAL_SERVICE_AUTH_SECRET'),
     apiKeyHashSecret: readEnv(env, 'API_KEY_HASH_SECRET'),
+    postgres: Object.keys(postgres).length > 0 ? postgres : undefined,
   })
 }
 

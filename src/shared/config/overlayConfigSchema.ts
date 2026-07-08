@@ -281,9 +281,13 @@ export const OverlayRuntimeConfigSchema = z
       }
     }
 
-    addUnsupportedProviderIssue(ctx, ['database', 'provider'], selectedProviders.database, {
-      postgres: 'Postgres is declared for enterprise config v2 but repository adapters are not implemented. Use database.provider=convex until the database migration is planned.',
-    })
+    if (selectedProviders.database === 'postgres' && !config.database.postgres.connectionString) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['database', 'postgres', 'connectionString'],
+        message: 'database.postgres.connectionString is required when database.provider is postgres',
+      })
+    }
     addUnsupportedProviderIssue(ctx, ['providers', 'vectorSearch', 'provider'], selectedProviders.vectorSearch, {
       pgvector: 'pgvector is declared for enterprise config v2 but vector repository adapters are not implemented. Use vectorSearch.provider=convex or none.',
       pinecone: 'Pinecone is declared for enterprise config v2 but no Pinecone adapter exists yet. Use vectorSearch.provider=convex or none.',
@@ -375,7 +379,7 @@ export const OverlayRuntimeConfigSchema = z
       })
     }
 
-    if (usesProductionConvex(config.database) && usesDevWorkOsConfig(config.auth.workos)) {
+    if (selectedProviders.database === 'convex' && usesProductionConvex(config.database) && usesDevWorkOsConfig(config.auth.workos)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['auth', 'workos'],
@@ -423,11 +427,18 @@ export const OverlayRuntimeConfigSchema = z
           })
         }
       }
-      if (!config.database.convexUrl || !usesProductionConvex(config.database)) {
+      if (selectedProviders.database === 'convex' && (!config.database.convexUrl || !usesProductionConvex(config.database))) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['database', 'convexUrl'],
           message: 'Production requires the production Convex deployment URL',
+        })
+      }
+      if (selectedProviders.database === 'postgres' && !config.database.postgres.connectionString) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['database', 'postgres', 'connectionString'],
+          message: 'Production Postgres database provider requires database.postgres.connectionString',
         })
       }
       if (!config.database.internalApiSecret || !config.database.internalServiceAuthSecret) {

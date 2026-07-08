@@ -285,7 +285,11 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
     issues.push('llm.keySource=config is reserved until encrypted runtime config secrets are implemented')
   }
   if (config.database.provider === 'postgres' || selectedProvider(config, 'database', config.database.provider) === 'postgres') {
-    issues.push('database.provider=postgres is declared but not implemented. Use convex until repository adapters exist.')
+    if (!config.database.postgres.connectionString) {
+      issues.push('database.postgres.connectionString is required when database.provider is postgres')
+    } else {
+      issues.push('database.provider=postgres is configured, but app-data repository adapters are not implemented yet. Run Phase 2 before starting the web app with Postgres app data.')
+    }
   }
   if (vectorSearchProvider !== 'convex' && vectorSearchProvider !== 'none') {
     issues.push(`providers.vectorSearch.provider=${vectorSearchProvider} is declared but not implemented. Use convex or none.`)

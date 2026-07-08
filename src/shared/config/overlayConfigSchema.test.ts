@@ -159,7 +159,28 @@ test('OverlayRuntimeConfigSchema validates v2 enterprise-private provider select
   assert.equal(parsed.providers.objectStorage?.provider, 's3')
 })
 
-test('OverlayRuntimeConfigSchema rejects declared but unsupported providers', () => {
+test('OverlayRuntimeConfigSchema accepts configured Postgres database provider', () => {
+  const parsed = OverlayRuntimeConfigSchema.parse({
+    ...minimalSaasConfig,
+    database: {
+      ...minimalSaasConfig.database,
+      provider: 'postgres',
+      postgres: {
+        connectionString: 'postgres://overlay:secret@db.internal/overlay',
+        sslMode: 'require',
+      },
+    },
+    providers: {
+      database: { provider: 'postgres' },
+    },
+  })
+
+  assert.equal(parsed.database.provider, 'postgres')
+  assert.equal(parsed.providers.database?.provider, 'postgres')
+  assert.equal(parsed.database.postgres.connectionString, 'postgres://overlay:secret@db.internal/overlay')
+})
+
+test('OverlayRuntimeConfigSchema rejects Postgres database provider without a connection string', () => {
   assert.throws(
     () =>
       OverlayRuntimeConfigSchema.parse({
@@ -167,17 +188,16 @@ test('OverlayRuntimeConfigSchema rejects declared but unsupported providers', ()
         database: {
           ...minimalSaasConfig.database,
           provider: 'postgres',
-          postgres: {
-            connectionString: 'postgres://overlay:secret@db.internal/overlay',
-          },
         },
         providers: {
           database: { provider: 'postgres' },
         },
       }),
-    /Postgres is declared/,
+    /database\.postgres\.connectionString is required/,
   )
+})
 
+test('OverlayRuntimeConfigSchema rejects declared but unsupported providers', () => {
   assert.throws(
     () =>
       OverlayRuntimeConfigSchema.parse({

@@ -456,3 +456,36 @@ test('configOverridesFromEnv preserves deployment-specific billing and database 
     convexUrl: 'https://dev.convex.cloud',
   })
 })
+
+test('configOverridesFromEnv maps Postgres app-data database env separately from Better Auth', () => {
+  const config = configOverridesFromEnv({
+    OVERLAY_PROVIDER_DATABASE: 'postgres',
+    OVERLAY_DATABASE_URL: 'postgres://overlay_app:secret@db.internal:5432/overlay_app',
+    OVERLAY_DATABASE_SSL_MODE: 'verify-full',
+    AUTH_PROVIDER: 'better-auth',
+    BETTER_AUTH_DATABASE_URL: 'postgres://overlay_auth:secret@db.internal:5432/overlay_auth',
+    BETTER_AUTH_SECRET: 'better_auth_secret',
+  })
+
+  assert.deepEqual(config.providers, {
+    auth: { provider: 'better-auth' },
+    database: { provider: 'postgres' },
+  })
+  assert.deepEqual(config.database, {
+    provider: 'postgres',
+    postgres: {
+      connectionString: 'postgres://overlay_app:secret@db.internal:5432/overlay_app',
+      sslMode: 'verify-full',
+    },
+  })
+  assert.deepEqual(config.auth, {
+    provider: 'better-auth',
+    allowDevFallbacks: false,
+    workos: {},
+    oidc: {},
+    betterAuth: {
+      secret: 'better_auth_secret',
+      databaseUrl: 'postgres://overlay_auth:secret@db.internal:5432/overlay_auth',
+    },
+  })
+})

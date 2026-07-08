@@ -198,7 +198,7 @@ Enterprise provider matrix:
 | Purpose | Provider values | Data processed | Region/residency | Current support |
 | --- | --- | --- | --- | --- |
 | Auth | `workos`, `oidc`, `none` | Identity profile, session tokens, org/user metadata | Depends on IdP | Supported. OIDC verifies bearer/access tokens through discovery JWKS, including Keycloak-compatible realm issuers; browser login wiring is deployment-specific. |
-| Database | `convex`, `postgres` | App records, messages, files metadata, usage state | Convex deployment region today | `convex` supported. `postgres` is declared but rejected until repository adapters exist. |
+| Database | `convex`, `postgres` | App records, messages, files metadata, usage state | Convex deployment region today | `convex` supported. `postgres` config and migrations are available for setup; app-data repository adapters are still required before booting the web app in Postgres mode. |
 | Object storage | `r2`, `s3`, `none` | Uploaded files and generated artifacts | Bucket/provider region | Supported for Cloudflare R2 and S3-compatible enterprise object stores. |
 | Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | Database/vector provider region | `convex` and `none` supported. `pgvector` and `pinecone` are declared but rejected until adapters exist. |
 | Embeddings | `ai-gateway`, `openai`, `azure-openai`, `none` | Text chunks sent for embedding | Provider region/policy | `ai-gateway`, `openai`, and `none` declared for current wiring. `azure-openai` is rejected until an adapter exists. |
@@ -211,6 +211,28 @@ Enterprise provider matrix:
 | Error reporting | `sentry`, `none` | Error events and sanitized stack/request metadata | Sentry project region | Supported. Set error reporting feature/provider to `false`/`none` to avoid initialization and capture. |
 | Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | Secret manager region | `env` supported; WorkOS vault-backed provider keys exist for selected flows. AWS Secrets Manager and Vault are declared but rejected for runtime secret loading. |
 | Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | App/database region | `convex`, `memory`, and `none` supported. `redis` is declared but rejected until enterprise config wiring exists. |
+
+### Postgres app-data setup
+
+Postgres app-data support is split into phases. Phase 1 lets operators provision, validate, and migrate the database. Keep `database.provider=convex` for the running web app until Postgres repository adapters are implemented.
+
+For local setup:
+
+```bash
+cp .env.app-data.local.example .env.app-data.local
+npm run app-db:up
+npm run app-db:migrate
+npm run app-db:smoke
+```
+
+For cloud Postgres, set `OVERLAY_DATABASE_URL` and run:
+
+```bash
+OVERLAY_DATABASE_URL="postgres://..." npm run app-db:migrate
+OVERLAY_DATABASE_URL="postgres://..." npm run app-db:smoke
+```
+
+Do not reuse `BETTER_AUTH_DATABASE_URL` for app data. Better Auth and Overlay app records have separate schemas and migration lifecycles.
 
 Capabilities:
 

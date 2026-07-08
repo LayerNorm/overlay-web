@@ -41,6 +41,7 @@ yarn-error.log*
 !.env.example
 !.env.onprem.example
 !.env.enterprise.example
+!.env.app-data.local.example
 
 # vercel
 .vercel

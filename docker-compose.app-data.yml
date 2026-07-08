@@ -1,0 +1,22 @@
+services:
+  app-data-postgres:
+    image: postgres:16-alpine
+    container_name: overlay-app-data-postgres
+    environment:
+      POSTGRES_DB: ${OVERLAY_POSTGRES_DB:-overlay_app}
+      POSTGRES_USER: ${OVERLAY_POSTGRES_USER:-overlay_app}
+      POSTGRES_PASSWORD: ${OVERLAY_POSTGRES_PASSWORD:-overlay_app_dev_password}
+    ports:
+      - "${OVERLAY_POSTGRES_PORT:-54330}:5432"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - overlay-app-data-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  overlay-app-data-postgres-data:

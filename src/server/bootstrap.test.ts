@@ -80,6 +80,32 @@ test('createOverlayServerContext returns Better Auth adapter when selected', () 
   assert.equal(context.auth instanceof BetterAuthProvider, true)
 })
 
+test('createOverlayServerContext rejects Postgres app-data provider until repositories exist', () => {
+  const base = fixture('saas-staging.json')
+  const runtimeConfig = parseOverlayRuntimeConfig({
+    ...base,
+    providers: {
+      ...base.providers,
+      database: { provider: 'postgres' },
+    },
+    database: {
+      ...base.database,
+      provider: 'postgres',
+      postgres: {
+        connectionString: 'postgres://overlay_app:secret@localhost:54330/overlay_app',
+        sslMode: 'disable',
+      },
+    },
+  })
+
+  assert.throws(
+    () => createOverlayServerContext({ appConfig: {}, runtimeConfig }),
+    (error) =>
+      error instanceof OverlayConfigError &&
+      error.issues.some((issue) => issue.includes('app-data repository adapters are not implemented yet')),
+  )
+})
+
 test('createOverlayServerContext throws typed config error before constructing invalid provider config', () => {
   const invalid = JSON.parse(JSON.stringify(fixture('saas-staging.json'))) as Record<string, unknown>
   const storage = invalid.storage as { r2: Record<string, unknown> }

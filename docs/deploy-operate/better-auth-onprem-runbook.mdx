@@ -12,7 +12,7 @@ Use Better Auth when Overlay should own the web session in the customer deployme
 - An OIDC application in the customer's IdP, for example Auth0, Okta, Entra ID, Google Workspace, or Cognito.
 - Matching Convex environment variables for Better Auth JWT verification when Convex is enabled.
 
-Keep the Better Auth Postgres database auth-scoped. It stores Better Auth users, sessions, and linked SSO accounts; it does not replace Convex app data.
+Keep the Better Auth Postgres database auth-scoped. It stores Better Auth users, sessions, and linked SSO accounts; it does not replace Convex app data. If the deployment is preparing Postgres app-data support, use `OVERLAY_DATABASE_URL` for app records and `BETTER_AUTH_DATABASE_URL` only for Better Auth state.
 
 ## Environment
 
