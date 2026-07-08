@@ -13,6 +13,7 @@ import { NoOpBillingProvider, StripeBillingProvider } from './billing/providers'
 import { OverlayConfigError } from './config'
 import { ConvexRateLimiter, InMemoryEventBus, InMemoryRateLimiter } from './shared/providers'
 import { R2ObjectStore, S3CompatibleObjectStore } from './storage/providers'
+import { UserService } from './users'
 import { parseOverlayRuntimeConfig, type OverlayRuntimeConfig } from '../shared/config'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -35,6 +36,7 @@ test('createOverlayServerContext returns SaaS adapters for WorkOS, Stripe, R2, a
   assert.equal(context.rateLimiter instanceof ConvexRateLimiter, true)
   assert.equal(context.eventBus instanceof InMemoryEventBus, true)
   assert.equal(context.apiKeyService, ApiKeyService)
+  assert.equal(context.userService instanceof UserService, true)
 })
 
 test('createOverlayServerContext returns enterprise adapters for OIDC, no billing, S3, and OpenAI config', () => {
@@ -46,6 +48,7 @@ test('createOverlayServerContext returns enterprise adapters for OIDC, no billin
   assert.equal(context.objectStore instanceof S3CompatibleObjectStore, true)
   assert.equal(context.llmGateway instanceof OpenAILLMGateway, true)
   assert.equal(context.rateLimiter instanceof InMemoryRateLimiter, true)
+  assert.equal(context.userService instanceof UserService, true)
 })
 
 test('createOverlayServerContext returns Better Auth adapter when selected', () => {
@@ -80,7 +83,7 @@ test('createOverlayServerContext returns Better Auth adapter when selected', () 
   assert.equal(context.auth instanceof BetterAuthProvider, true)
 })
 
-test('createOverlayServerContext rejects Postgres app-data provider until repositories exist', () => {
+test('createOverlayServerContext rejects Postgres app-data provider until full route repositories exist', () => {
   const base = fixture('saas-staging.json')
   const runtimeConfig = parseOverlayRuntimeConfig({
     ...base,
@@ -102,7 +105,7 @@ test('createOverlayServerContext rejects Postgres app-data provider until reposi
     () => createOverlayServerContext({ appConfig: {}, runtimeConfig }),
     (error) =>
       error instanceof OverlayConfigError &&
-      error.issues.some((issue) => issue.includes('app-data repository adapters are not implemented yet')),
+      error.issues.some((issue) => issue.includes('full app-data repository adapters are not implemented yet')),
   )
 })
 

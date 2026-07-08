@@ -1,8 +1,7 @@
 import { logger } from '@/server/observability/logger'
 import { NextResponse } from 'next/server'
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { getOverlaySession } from '@/server/auth/session'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { getPostHogClient } from '@/server/observability/posthog-server'
 
 export async function POST(request: Request) {
@@ -16,14 +15,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const result = await convex.mutation<{ success: boolean; isNewUser: boolean }>('auth/users:syncUserProfileByServer', {
-      serverSecret: getInternalApiSecret(),
-      userId: session.user.id,
-      email: session.user.email,
-      firstName: session.user.firstName,
-      lastName: session.user.lastName,
-      profilePictureUrl: session.user.profilePictureUrl,
-    }, { throwOnError: true })
+    const result = await getOverlayServerContext().userService.upsertFromSession(session)
 
     if (!result) {
       return NextResponse.json(

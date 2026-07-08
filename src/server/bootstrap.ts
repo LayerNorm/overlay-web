@@ -20,6 +20,7 @@ import {
   R2ObjectStore,
   S3CompatibleObjectStore,
 } from '@/server/storage/providers'
+import { createUserService, type UserService } from '@/server/users'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -40,6 +41,7 @@ import { deriveOverlayCapabilities as resolveOverlayCapabilities } from '@overla
 export interface OverlayServerContext extends OverlayProviderContext {
   noteRepository: NoteRepository
   apiKeyService: typeof ApiKeyService
+  userService: UserService
 }
 
 export interface CreateOverlayServerContextOptions {
@@ -63,9 +65,10 @@ export function createOverlayServerContext(
   if (runtimeConfig) {
     assertSelectedProviderConfig(runtimeConfig)
   }
+  const userService = createUserService(runtimeConfig)
 
   return {
-    auth: appConfig.authProvider ?? createAuthProvider(runtimeConfig),
+    auth: appConfig.authProvider ?? createAuthProvider(runtimeConfig, userService),
     billing: appConfig.billingProvider ?? createBillingProvider(runtimeConfig),
     objectStore: appConfig.objectStore ?? createObjectStore(runtimeConfig),
     vectorStore: appConfig.vectorStore ?? createVectorStore(runtimeConfig),
@@ -74,6 +77,7 @@ export function createOverlayServerContext(
     eventBus: appConfig.eventBus ?? new InMemoryEventBus(),
     noteRepository: new ConvexNoteRepository(),
     apiKeyService: ApiKeyService,
+    userService,
   }
 }
 
@@ -108,7 +112,7 @@ function normalizeCreateContextInput(
   return { appConfig, runtimeConfig: getOverlayRuntimeConfigSync() }
 }
 
-function createAuthProvider(config: OverlayRuntimeConfig | null): AuthProvider {
+function createAuthProvider(config: OverlayRuntimeConfig | null, userService: UserService): AuthProvider {
   if (!config) return new WorkOSAuthProvider()
 
   switch (selectedProvider(config, 'auth', config.auth.provider)) {
@@ -118,7 +122,7 @@ function createAuthProvider(config: OverlayRuntimeConfig | null): AuthProvider {
         allowDevFallbacks: config.auth.allowDevFallbacks,
       })
     case 'better-auth':
-      return new BetterAuthProvider({ runtimeConfig: config })
+      return new BetterAuthProvider({ runtimeConfig: config, userService })
     case 'oidc':
       return new OidcAuthProvider(config.auth.oidc)
     case 'none':
@@ -288,7 +292,7 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
     if (!config.database.postgres.connectionString) {
       issues.push('database.postgres.connectionString is required when database.provider is postgres')
     } else {
-      issues.push('database.provider=postgres is configured, but app-data repository adapters are not implemented yet. Run Phase 2 before starting the web app with Postgres app data.')
+      issues.push('database.provider=postgres is configured, but full app-data repository adapters are not implemented yet. Keep database.provider=convex until the database provider phases wire route repositories.')
     }
   }
   if (vectorSearchProvider !== 'convex' && vectorSearchProvider !== 'none') {

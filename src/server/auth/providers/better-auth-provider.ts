@@ -7,13 +7,18 @@ import type {
   UserProfile,
 } from '@overlay/app-core'
 import { getBetterAuth, resolveBetterAuthRuntimeConfig } from '@/server/auth/better-auth'
+import { logger } from '@/server/observability/logger'
+import type { UserService } from '@/server/users'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 
 export interface BetterAuthProviderConfig {
   runtimeConfig?: OverlayRuntimeConfig
+  userService?: UserService
 }
 
 export class BetterAuthProvider implements AuthProvider {
+  private readonly userSyncTimestamps = new Map<string, number>()
+
   readonly providerConfigSummary: {
     provider: 'better-auth'
     baseUrl?: string
@@ -113,7 +118,7 @@ export class BetterAuthProvider implements AuthProvider {
     const claims = await this.verifyAccessToken(token)
     const expiresAt = typeof claims?.exp === 'number' ? claims.exp * 1000 : undefined
 
-    return {
+    const resolvedSession = {
       accessToken: token,
       expiresAt,
       user: {
@@ -124,6 +129,23 @@ export class BetterAuthProvider implements AuthProvider {
         profilePictureUrl: session.user.image ?? undefined,
         emailVerified: session.user.emailVerified,
       },
+    }
+    await this.syncUserFromSession(resolvedSession)
+    return resolvedSession
+  }
+
+  private async syncUserFromSession(session: Session): Promise<void> {
+    if (!this.config.userService) return
+    const syncKey = `better-auth:${session.user.id}`
+    const now = Date.now()
+    const lastSyncAt = this.userSyncTimestamps.get(syncKey) ?? 0
+    if (now - lastSyncAt < 60_000) return
+
+    try {
+      await this.config.userService.upsertFromSession(session)
+      this.userSyncTimestamps.set(syncKey, now)
+    } catch (error) {
+      logger.error('[Auth] Failed to sync Better Auth user profile:', error)
     }
   }
 }
