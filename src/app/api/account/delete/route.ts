@@ -47,12 +47,32 @@ export async function POST(request: NextRequest) {
     `[account/delete] Account purge complete for ${userId} (${userEmail}): ${result.deletedRowCount} rows`,
   )
 
+  let signOutResult: Response | Headers | void = undefined
   if (session?.user?.id === userId) {
-    await clearOverlaySession(request)
+    signOutResult = await clearOverlaySession(request)
   }
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     success: true,
     deletedRowCount: result.deletedRowCount,
   })
+  forwardSetCookieHeaders(signOutResult, response)
+  return response
+}
+
+function forwardSetCookieHeaders(
+  source: Response | Headers | void,
+  target: NextResponse,
+): void {
+  if (!source) return
+  const headers = source instanceof Response ? source.headers : source
+  const getSetCookie = (headers as Headers & { getSetCookie?: () => string[] }).getSetCookie
+  const cookieHeaders = typeof getSetCookie === 'function'
+    ? getSetCookie.call(headers)
+    : headers.get('set-cookie')
+      ? [headers.get('set-cookie') as string]
+      : []
+  for (const cookie of cookieHeaders) {
+    target.headers.append('set-cookie', cookie)
+  }
 }
