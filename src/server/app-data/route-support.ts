@@ -122,11 +122,19 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'notes',
   },
   {
-    id: 'files-and-outputs',
-    methods: '*',
-    prefixes: ['/api/v1/files', '/api/v1/outputs'],
-    status: 'unsupported',
+    id: 'files',
+    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+    prefixes: ['/api/v1/files'],
+    status: 'degraded',
     feature: 'file-metadata',
+    reason: 'Postgres mode supports file metadata, direct upload intents, exact text search, and sharing; vector indexing remains disabled.',
+  },
+  {
+    id: 'outputs',
+    methods: '*',
+    prefixes: ['/api/v1/outputs'],
+    status: 'unsupported',
+    feature: 'outputs',
   },
   {
     id: 'generation-usage-and-outputs',

@@ -15,6 +15,7 @@ import { PostgresActConversationRepository } from '@/server/conversations/Postgr
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
 import { ConvexFileRepository } from '@/server/files/ConvexFileRepository'
 import type { FileRepository } from '@/server/files/FileRepository'
+import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
 import { ConvexNoteRepository, PostgresNoteRepository, type NoteRepository } from '@/server/notes'
 import {
   PostgresOnboardingRepository,
@@ -66,7 +67,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         automations: unsupportedRepository<AutomationRepository>('AutomationRepository'),
         billing: unsupportedRepository<BillingRepository>('BillingRepository'),
         conversations: new PostgresActConversationRepository(db),
-        files: unsupportedRepository<FileRepository>('FileRepository'),
+        files: new PostgresFileRepository(db),
         notes: new PostgresNoteRepository(db),
         onboarding: new PostgresOnboardingRepository(db),
         settings: new PostgresAppSettingsRepository(db),

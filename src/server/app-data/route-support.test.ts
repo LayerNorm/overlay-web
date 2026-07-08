@@ -155,3 +155,23 @@ test('Postgres app-data mode supports notes routes', () => {
     }).status, 'supported')
   }
 })
+
+test('Postgres app-data mode supports file routes as degraded', () => {
+  for (const method of ['GET', 'POST', 'PATCH', 'DELETE']) {
+    assert.equal(getAppDataRouteSupport({
+      appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+      method,
+      pathname: '/api/v1/files',
+    }).status, 'degraded')
+  }
+  assert.equal(getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    method: 'POST',
+    pathname: '/api/v1/files/upload-url',
+  }).status, 'degraded')
+  assert.equal(getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    method: 'GET',
+    pathname: '/api/v1/outputs/some-output/content',
+  }).status, 'unsupported')
+})

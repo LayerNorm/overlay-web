@@ -5,9 +5,11 @@ import {
   createOverlayPostgresDb,
   createOverlayPostgresPool,
 } from '../src/server/database/postgres/client'
-import { users } from '../src/server/database/postgres/schema'
+import { r2UploadIntents, users } from '../src/server/database/postgres/schema'
 import { PostgresActConversationRepository } from '../src/server/conversations/PostgresActConversationRepository'
 import { UnlimitedUsagePolicy } from '../src/server/conversations/ActUsagePolicy'
+import { FileService } from '../src/server/files/FileService'
+import { PostgresFileRepository } from '../src/server/files/PostgresFileRepository'
 import { PostgresNoteRepository } from '../src/server/notes'
 import { PostgresUserRepository } from '../src/server/users'
 
@@ -90,8 +92,29 @@ async function smokeChatVerticalSlice(db: ReturnType<typeof createOverlayPostgre
   const email = `${userId}@example.com`
   const usersRepository = new PostgresUserRepository(db)
   const conversationsRepository = new PostgresActConversationRepository(db)
+  const filesRepository = new PostgresFileRepository(db)
   const notesRepository = new PostgresNoteRepository(db)
   const usagePolicy = new UnlimitedUsagePolicy()
+  const deletedStorageKeys: string[] = []
+  const filesService = new FileService({
+    repository: filesRepository,
+    storage: {
+      checkGlobalR2Budget: async () => {},
+      deleteObject: async (key) => {
+        deletedStorageKeys.push(key)
+      },
+      deleteObjects: async (keys) => {
+        deletedStorageKeys.push(...keys)
+      },
+      generatePresignedDownloadUrl: async (key) => `https://storage.example.test/${encodeURIComponent(key)}`,
+      generatePresignedUploadUrl: async (key) => `https://storage.example.test/upload/${encodeURIComponent(key)}`,
+      getMaxPresignedUploadBytes: () => 10_000_000,
+      getR2PresignTtlSeconds: () => 900,
+      headObject: async () => ({ sizeBytes: 12, contentType: 'text/plain' }),
+      keyForFile: (owner, id, name) => `users/${owner}/files/${id}/${encodeURIComponent(name)}`,
+      uploadBuffer: async () => {},
+    },
+  })
 
   try {
     await usersRepository.upsertFromIdentity({
@@ -190,11 +213,131 @@ async function smokeChatVerticalSlice(db: ReturnType<typeof createOverlayPostgre
       throw new Error('Failed to delete Postgres smoke note')
     }
 
+    const createdFile = await filesService.createFile({
+      userId,
+      body: {
+        name: 'smoke-file.txt',
+        type: 'file',
+        content: 'hello phase six files',
+      },
+    })
+    const fileId = String(createdFile.id)
+    const duplicateFile = await filesService.createFile({
+      userId,
+      body: {
+        name: 'smoke-file-copy.txt',
+        type: 'file',
+        content: 'hello phase six files',
+      },
+    })
+    const duplicateFileId = String(duplicateFile.id)
+    const duplicateBeforeDelete = await filesRepository.getFile({ fileId: duplicateFileId, userId })
+    if (duplicateBeforeDelete?.duplicateOfFileId !== fileId) {
+      throw new Error('Postgres file duplicate was not linked to canonical file')
+    }
+
+    await filesService.updateFile({
+      userId,
+      body: {
+        fileId,
+        name: 'renamed-smoke-file.txt',
+      },
+    })
+    const search = await filesService.searchText({
+      userId,
+      body: {
+        fileIds: [fileId],
+        query: 'phase six',
+      },
+    })
+    if (!search.matches.some((match) => match.fileId === fileId)) {
+      throw new Error('Postgres file text search did not return expected match')
+    }
+    const share = await filesService.setShare({
+      userId,
+      fileId,
+      visibility: 'public',
+      origin: 'https://overlay.example.test',
+    })
+    if (!share.token || !share.url?.includes('/share/f/')) {
+      throw new Error('Postgres file sharing did not return a public token')
+    }
+
+    await filesService.deleteFile({ userId, fileId })
+    const duplicateAfterDelete = await filesRepository.getFile({ fileId: duplicateFileId, userId })
+    if (!duplicateAfterDelete || duplicateAfterDelete.duplicateOfFileId) {
+      throw new Error('Postgres file duplicate was not promoted after canonical delete')
+    }
+
+    const folder = await filesService.createFile({
+      userId,
+      body: {
+        name: 'smoke-folder',
+        type: 'folder',
+        kind: 'folder',
+      },
+    })
+    const folderId = String(folder.id)
+    const r2Key = `users/${userId}/files/smoke-upload/upload.txt`
+    await filesRepository.createUploadIntent({
+      userId,
+      r2Key,
+      declaredSizeBytes: 20,
+      mimeType: 'text/plain',
+      expiresAt: Date.now() + 60_000,
+    })
+    const uploadIntent = await filesRepository.getUploadIntent({
+      userId,
+      r2Key,
+      now: Date.now(),
+    })
+    if (!uploadIntent) {
+      throw new Error('Postgres upload intent was not readable after create')
+    }
+    const uploadedFileId = await filesRepository.createFileWithStorage({
+      userId,
+      name: 'upload.txt',
+      parentId: folderId,
+      r2Key,
+      mimeType: 'text/plain',
+      sizeBytes: 12,
+    })
+    if (!uploadedFileId) {
+      throw new Error('Postgres storage-backed file was not created')
+    }
+    await filesRepository.finalizeUploadIntent({
+      userId,
+      r2Key,
+      actualSizeBytes: 12,
+      fileId: uploadedFileId,
+      now: Date.now(),
+    })
+    const [finalizedIntent] = await db
+      .select()
+      .from(r2UploadIntents)
+      .where(eq(r2UploadIntents.r2Key, r2Key))
+      .limit(1)
+    if (finalizedIntent?.status !== 'finalized' || finalizedIntent.fileId !== uploadedFileId) {
+      throw new Error('Postgres upload intent did not finalize against the file')
+    }
+
+    await filesService.deleteFile({ userId, fileId: folderId })
+    const uploadedAfterFolderDelete = await filesRepository.getFile({ fileId: uploadedFileId, userId })
+    if (uploadedAfterFolderDelete) {
+      throw new Error('Postgres recursive folder delete left child file visible')
+    }
+    if (!deletedStorageKeys.includes(r2Key)) {
+      throw new Error('Postgres recursive folder delete did not surface R2 cleanup key')
+    }
+
     return {
       ok: true,
       conversationId,
       messageCount: messages.length,
       noteId: createdNote.id,
+      fileId,
+      duplicateFileId,
+      uploadedFileId,
       usagePolicy: 'unlimited',
     }
   } finally {
