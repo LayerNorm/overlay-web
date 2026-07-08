@@ -26,6 +26,7 @@
     "app-db:generate": "drizzle-kit generate --config=drizzle.app-data.config.ts",
     "app-db:migrate": "tsx --env-file=.env.app-data.local scripts/app-data-migrate.ts",
     "app-db:smoke": "NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.app-data.local scripts/app-data-smoke.ts",
+    "app-db:account-delete-smoke": "NODE_OPTIONS=--conditions=react-server tsx scripts/app-data-account-delete-smoke.ts",
     "build": "next build",
     "analyze": "NEXT_DIST_DIR=.next-analyze ANALYZE=true SENTRY_AUTH_TOKEN= SENTRY_ORG= SENTRY_PROJECT= next build && node scripts/check-bundle-budgets.mjs --dist-dir=.next-analyze --require-analyzer",
     "check:bundle-budgets": "node scripts/check-bundle-budgets.mjs",

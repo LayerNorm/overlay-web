@@ -115,6 +115,13 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'onboarding',
   },
   {
+    id: 'notes',
+    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+    paths: ['/api/v1/notes'],
+    status: 'supported',
+    feature: 'notes',
+  },
+  {
     id: 'files-and-outputs',
     methods: '*',
     prefixes: ['/api/v1/files', '/api/v1/outputs'],
@@ -151,9 +158,9 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'integration-metadata',
   },
   {
-    id: 'notes-projects-settings-onboarding',
+    id: 'projects',
     methods: '*',
-    prefixes: ['/api/v1/notes', '/api/v1/projects'],
+    prefixes: ['/api/v1/projects'],
     status: 'unsupported',
     feature: 'app-data-records',
   },

@@ -54,7 +54,7 @@ export const POSTGRES_PHASE5_APP_DATA_CAPABILITIES: AppDataCapabilities = {
   supportsChatPersistence: true,
   supportsFileMetadata: false,
   supportsFileUploads: false,
-  supportsNotes: false,
+  supportsNotes: true,
   supportsProjects: false,
   supportsSettings: true,
   supportsOnboarding: true,
@@ -64,7 +64,7 @@ export const POSTGRES_PHASE5_APP_DATA_CAPABILITIES: AppDataCapabilities = {
   supportsAutomations: false,
   supportsWebhooks: false,
   supportsApiKeys: false,
-  supportsAccountDeletion: false,
+  supportsAccountDeletion: true,
   requiresConvexClient: false,
 }
 
@@ -87,7 +87,11 @@ export function applyAppDataCapabilitiesToOverlayCapabilities(
     apiKeys: capabilities.apiKeys && appData.supportsApiKeys,
     automations: capabilities.automations && appData.supportsAutomations,
     files: capabilities.files && appData.supportsFileMetadata,
-    knowledge: capabilities.knowledge && appData.supportsVectorSearch,
+    knowledge: capabilities.knowledge && (
+      appData.supportsFileMetadata ||
+      appData.supportsNotes ||
+      appData.supportsVectorSearch
+    ),
     memory: capabilities.memory && appData.supportsVectorSearch,
     vectorSearch: capabilities.vectorSearch && appData.supportsVectorSearch,
     webhooks: capabilities.webhooks && appData.supportsWebhooks,

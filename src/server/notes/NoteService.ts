@@ -14,10 +14,12 @@ import { BillingQuotaError, QuotaEnforcer } from '@overlay/billing'
 export interface NoteRecord {
   _id: string
   userId: string
+  clientId?: string
   name: string
   kind?: string
   content?: string
   textContent?: string
+  tags?: string[]
   projectId?: string
   createdAt: number
   updatedAt: number
@@ -42,6 +44,8 @@ export interface NoteRepository {
     title: string
     content: string
     projectId?: string
+    tags?: string[]
+    clientId?: string
   }): Promise<{ id: string; note: NoteRecord | null }>
   updateNote(args: {
     noteId: string
@@ -49,6 +53,7 @@ export interface NoteRepository {
     title?: string
     content?: string
     projectId?: string
+    tags?: string[]
   }): Promise<NoteRecord | null>
   deleteNote(args: {
     noteId: string
@@ -76,11 +81,12 @@ function noteRecordToDoc(note: NoteRecord): ServerNoteDoc {
     userId: note.userId,
     title: note.name || 'Untitled',
     content: note.textContent ?? note.content ?? '',
-    tags: [],
+    tags: note.tags ?? [],
     projectId: note.projectId,
     createdAt: note.createdAt,
     updatedAt: note.updatedAt,
     deletedAt: note.deletedAt,
+    clientId: note.clientId,
     legacyNoteId: note.legacyNoteId,
   }
 }
@@ -118,6 +124,8 @@ export class NoteService {
       title: normalizeNoteTitle(args.title),
       content,
       projectId: args.projectId,
+      tags: args.tags,
+      clientId: args.clientId,
     })
     return {
       id: result.id,
@@ -138,6 +146,7 @@ export class NoteService {
       title: args.title,
       content: args.content,
       projectId: args.projectId,
+      tags: args.tags,
     })
     if (!note) {
       throw new NoteServiceError('Not found', 404)

@@ -145,3 +145,13 @@ test('Postgres app-data mode supports settings and onboarding routes', () => {
     pathname: '/api/v1/onboarding/reset',
   }).status, 'supported')
 })
+
+test('Postgres app-data mode supports notes routes', () => {
+  for (const method of ['GET', 'POST', 'PATCH', 'DELETE']) {
+    assert.equal(getAppDataRouteSupport({
+      appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+      method,
+      pathname: '/api/v1/notes',
+    }).status, 'supported')
+  }
+})

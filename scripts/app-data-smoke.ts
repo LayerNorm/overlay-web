@@ -8,6 +8,7 @@ import {
 import { users } from '../src/server/database/postgres/schema'
 import { PostgresActConversationRepository } from '../src/server/conversations/PostgresActConversationRepository'
 import { UnlimitedUsagePolicy } from '../src/server/conversations/ActUsagePolicy'
+import { PostgresNoteRepository } from '../src/server/notes'
 import { PostgresUserRepository } from '../src/server/users'
 
 const REQUIRED_TABLES = [
@@ -89,6 +90,7 @@ async function smokeChatVerticalSlice(db: ReturnType<typeof createOverlayPostgre
   const email = `${userId}@example.com`
   const usersRepository = new PostgresUserRepository(db)
   const conversationsRepository = new PostgresActConversationRepository(db)
+  const notesRepository = new PostgresNoteRepository(db)
   const usagePolicy = new UnlimitedUsagePolicy()
 
   try {
@@ -156,10 +158,43 @@ async function smokeChatVerticalSlice(db: ReturnType<typeof createOverlayPostgre
       throw new Error(`Unexpected Postgres chat messages after smoke write: ${messages.length}`)
     }
 
+    const createdNote = await notesRepository.createNote({
+      userId,
+      title: 'Postgres smoke note',
+      content: '<p>hello note</p>',
+      tags: ['smoke'],
+      clientId: `smoke_note_${randomUUID()}`,
+    })
+    if (!createdNote.note || createdNote.note.name !== 'Postgres smoke note') {
+      throw new Error('Failed to create Postgres smoke note')
+    }
+    const updatedNote = await notesRepository.updateNote({
+      noteId: createdNote.id,
+      userId,
+      title: 'Updated Postgres smoke note',
+      content: '<p>updated note</p>',
+      tags: ['smoke', 'updated'],
+    })
+    if (!updatedNote || updatedNote.name !== 'Updated Postgres smoke note') {
+      throw new Error('Failed to update Postgres smoke note')
+    }
+    const listedNotes = await notesRepository.listNotes({ userId })
+    if (!listedNotes.some((note) => note._id === createdNote.id)) {
+      throw new Error('Postgres smoke note was not returned from listNotes')
+    }
+    const deletedNote = await notesRepository.deleteNote({
+      noteId: createdNote.id,
+      userId,
+    })
+    if (!deletedNote?.deletedAt) {
+      throw new Error('Failed to delete Postgres smoke note')
+    }
+
     return {
       ok: true,
       conversationId,
       messageCount: messages.length,
+      noteId: createdNote.id,
       usagePolicy: 'unlimited',
     }
   } finally {

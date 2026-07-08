@@ -4,6 +4,8 @@ import {
   createOverlayPostgresDb,
   createOverlayPostgresPool,
 } from '@/server/database/postgres/client'
+import type { AccountDataDeletionRepository } from '@/server/account/AccountDataDeletionRepository'
+import { PostgresAccountDataDeletionRepository } from '@/server/account/PostgresAccountDataDeletionRepository'
 import { ConvexAutomationRepository } from '@/server/automations/ConvexAutomationRepository'
 import type { AutomationRepository } from '@/server/automations/AutomationRepository'
 import { ConvexBillingRepository } from '@/server/billing/ConvexBillingRepository'
@@ -13,7 +15,7 @@ import { PostgresActConversationRepository } from '@/server/conversations/Postgr
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
 import { ConvexFileRepository } from '@/server/files/ConvexFileRepository'
 import type { FileRepository } from '@/server/files/FileRepository'
-import { ConvexNoteRepository, type NoteRepository } from '@/server/notes'
+import { ConvexNoteRepository, PostgresNoteRepository, type NoteRepository } from '@/server/notes'
 import {
   PostgresOnboardingRepository,
   type OnboardingRepository,
@@ -28,6 +30,7 @@ import { deriveAppDataCapabilities, type AppDataCapabilities } from './capabilit
 import { unsupportedRepository } from './errors'
 
 export interface AppDataRepositories {
+  accountDeletion: AccountDataDeletionRepository
   automations: AutomationRepository
   billing: BillingRepository
   conversations: ActConversationRepository
@@ -59,11 +62,12 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
     return {
       capabilities,
       repositories: {
+        accountDeletion: new PostgresAccountDataDeletionRepository(db),
         automations: unsupportedRepository<AutomationRepository>('AutomationRepository'),
         billing: unsupportedRepository<BillingRepository>('BillingRepository'),
         conversations: new PostgresActConversationRepository(db),
         files: unsupportedRepository<FileRepository>('FileRepository'),
-        notes: unsupportedRepository<NoteRepository>('NoteRepository'),
+        notes: new PostgresNoteRepository(db),
         onboarding: new PostgresOnboardingRepository(db),
         settings: new PostgresAppSettingsRepository(db),
         users: new PostgresUserRepository(db),
@@ -75,6 +79,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
   return {
     capabilities,
     repositories: {
+      accountDeletion: unsupportedRepository<AccountDataDeletionRepository>('AccountDataDeletionRepository'),
       automations: new ConvexAutomationRepository(),
       billing: new ConvexBillingRepository(),
       conversations: new ConvexActConversationRepository(),

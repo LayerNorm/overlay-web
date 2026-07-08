@@ -74,7 +74,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const result = await noteService.createNote({
       title: body.title,
       content: body.content,
+      tags: body.tags,
       projectId: body.projectId,
+      clientId: body.clientId,
       userId: auth.userId,
     })
     return NextResponse.json(result)
@@ -92,6 +94,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       noteId: body.noteId ?? '',
       title: body.title,
       content: body.content,
+      tags: body.tags,
       projectId: body.projectId,
       userId: auth.userId,
     })
