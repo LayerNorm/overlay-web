@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { NextResponse } from 'next/server'
 import { getOverlaySession } from '@/server/auth/session'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { ONBOARDING_SEEN_COOKIE } from '@/features/auth/lib/onboarding-cookie'
@@ -16,6 +17,15 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
   const cookieUid = cookieStore.get(ONBOARDING_SEEN_COOKIE)?.value
   if (cookieUid === userId) {
     return NextResponse.json({ hasSeenOnboarding: true })
+  }
+
+  if (context.appDataCapabilities.provider === 'postgres') {
+    const result = await getOverlayServerContext()
+      .appData
+      .repositories
+      .onboarding
+      .getStatus(userId)
+    return NextResponse.json(result)
   }
 
   const result = (await convex.query('auth/users:getOnboardingStatus', {

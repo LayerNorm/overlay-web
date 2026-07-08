@@ -117,3 +117,31 @@ test('Postgres app-data mode allows degraded bootstrap and external integration 
     pathname: '/api/v1/integrations',
   }).status, 'supported')
 })
+
+test('Postgres app-data mode supports settings and onboarding routes', () => {
+  assert.equal(getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    method: 'GET',
+    pathname: '/api/v1/settings',
+  }).status, 'supported')
+  assert.equal(getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    method: 'PATCH',
+    pathname: '/api/v1/settings',
+  }).status, 'supported')
+  assert.equal(getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    method: 'GET',
+    pathname: '/api/v1/onboarding/status',
+  }).status, 'supported')
+  assert.equal(getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    method: 'POST',
+    pathname: '/api/v1/onboarding/complete',
+  }).status, 'supported')
+  assert.equal(getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    method: 'POST',
+    pathname: '/api/v1/onboarding/reset',
+  }).status, 'supported')
+})

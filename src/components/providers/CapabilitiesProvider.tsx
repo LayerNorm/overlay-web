@@ -12,8 +12,27 @@ import {
   type CapabilityCheck,
 } from '@overlay/app-core'
 
+export type ClientAppDataCapabilities = {
+  provider: 'convex' | 'postgres'
+  supportsRealtime: boolean
+  supportsStreamResume: boolean
+  supportsSettings: boolean
+  supportsOnboarding: boolean
+  requiresConvexClient: boolean
+}
+
+const DEFAULT_APP_DATA_CAPABILITIES: ClientAppDataCapabilities = {
+  provider: 'convex',
+  supportsRealtime: true,
+  supportsStreamResume: true,
+  supportsSettings: true,
+  supportsOnboarding: true,
+  requiresConvexClient: true,
+}
+
 type CapabilitiesContextValue = {
   capabilities: CapabilityCheck
+  appDataCapabilities: ClientAppDataCapabilities
   isLoading: boolean
 }
 
@@ -29,20 +48,41 @@ function normalizeCapabilities(value: unknown): CapabilityCheck | null {
   return { ...DEFAULT_OVERLAY_CAPABILITIES, ...candidate }
 }
 
+function normalizeAppDataCapabilities(value: unknown): ClientAppDataCapabilities | null {
+  if (!value || typeof value !== 'object') return null
+  const candidate = value as Partial<ClientAppDataCapabilities>
+  if (candidate.provider !== 'convex' && candidate.provider !== 'postgres') return null
+  for (const key of [
+    'supportsRealtime',
+    'supportsStreamResume',
+    'supportsSettings',
+    'supportsOnboarding',
+    'requiresConvexClient',
+  ] as const) {
+    if (candidate[key] !== undefined && typeof candidate[key] !== 'boolean') return null
+  }
+  return { ...DEFAULT_APP_DATA_CAPABILITIES, ...candidate }
+}
+
 export function CapabilitiesProvider({
   children,
+  initialAppDataCapabilities,
   initialCapabilities,
 }: {
   children: React.ReactNode
+  initialAppDataCapabilities?: ClientAppDataCapabilities
   initialCapabilities?: CapabilityCheck
 }) {
   const [capabilities, setCapabilities] = useState<CapabilityCheck>(
     initialCapabilities ?? DEFAULT_OVERLAY_CAPABILITIES,
   )
-  const [isLoading, setIsLoading] = useState(!initialCapabilities)
+  const [appDataCapabilities, setAppDataCapabilities] = useState<ClientAppDataCapabilities>(
+    initialAppDataCapabilities ?? DEFAULT_APP_DATA_CAPABILITIES,
+  )
+  const [isLoading, setIsLoading] = useState(!initialCapabilities || !initialAppDataCapabilities)
 
   useEffect(() => {
-    if (initialCapabilities) return
+    if (initialCapabilities && initialAppDataCapabilities) return
     let active = true
     void fetch('/api/v1/capabilities', { cache: 'no-store' })
       .then(async (response) => {
@@ -52,6 +92,8 @@ export function CapabilitiesProvider({
       .then((payload) => {
         const next = normalizeCapabilities(payload?.capabilities)
         if (active && next) setCapabilities(next)
+        const nextAppData = normalizeAppDataCapabilities(payload?.appDataCapabilities)
+        if (active && nextAppData) setAppDataCapabilities(nextAppData)
       })
       .catch(() => {})
       .finally(() => {
@@ -61,11 +103,11 @@ export function CapabilitiesProvider({
     return () => {
       active = false
     }
-  }, [initialCapabilities])
+  }, [initialAppDataCapabilities, initialCapabilities])
 
   const value = useMemo(
-    () => ({ capabilities, isLoading }),
-    [capabilities, isLoading],
+    () => ({ appDataCapabilities, capabilities, isLoading }),
+    [appDataCapabilities, capabilities, isLoading],
   )
 
   return (
@@ -77,6 +119,7 @@ export function CapabilitiesProvider({
 
 export function useOverlayCapabilities(): CapabilitiesContextValue {
   return useContext(CapabilitiesContext) ?? {
+    appDataCapabilities: DEFAULT_APP_DATA_CAPABILITIES,
     capabilities: DEFAULT_OVERLAY_CAPABILITIES,
     isLoading: true,
   }

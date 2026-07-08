@@ -163,8 +163,12 @@ export default function ChatExperience({
     models: gatewayCatalogModels,
     isLoading: gatewayModelsLoading,
   } = useGatewayModelCatalog()
-  const { capabilities } = useOverlayCapabilities()
+  const { appDataCapabilities, capabilities } = useOverlayCapabilities()
   const billingEnabled = capabilities.billing
+  const convexLiveSyncEnabled =
+    appDataCapabilities.requiresConvexClient && appDataCapabilities.supportsRealtime
+  const titleGenerationEnabled = appDataCapabilities.provider !== 'postgres'
+  const generatedOutputsEnabled = appDataCapabilities.provider !== 'postgres'
   const { user: authUser, isLoading: authLoading } = useAuth()
   const convexAccessToken = useConvexAuthToken()
   const { startSession, completeSession, markRead, setActiveViewer, sessions } = useAsyncSessions()
@@ -612,6 +616,7 @@ export default function ChatExperience({
     chatStreamRelayApi,
     completeSession,
     convexAccessToken,
+    enableConvexLiveSync: convexLiveSyncEnabled,
     lastStreamChunkAtRef,
     loadChats,
     onRuntimeMessagesChanged,
@@ -670,6 +675,7 @@ export default function ChatExperience({
     pendingTitleRef,
     setActiveChatTitle,
     setChats,
+    titleGenerationEnabled,
     updateRuntimeUiState,
   })
 
@@ -805,6 +811,7 @@ export default function ChatExperience({
     emptyRuntimeRef,
     hasAutomationContext,
     isTemporaryChatRef,
+    loadGeneratedOutputs: generatedOutputsEnabled,
     markRead,
     pendingTitleRef,
     persistActiveRuntimeUiState,

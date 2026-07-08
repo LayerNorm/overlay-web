@@ -14,6 +14,14 @@ import type { ActConversationRepository } from '@/server/conversations/ActConver
 import { ConvexFileRepository } from '@/server/files/ConvexFileRepository'
 import type { FileRepository } from '@/server/files/FileRepository'
 import { ConvexNoteRepository, type NoteRepository } from '@/server/notes'
+import {
+  PostgresOnboardingRepository,
+  type OnboardingRepository,
+} from '@/server/onboarding'
+import {
+  PostgresAppSettingsRepository,
+  type AppSettingsRepository,
+} from '@/server/settings'
 import { ConvexUserRepository, PostgresUserRepository, type UserRepository } from '@/server/users'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { deriveAppDataCapabilities, type AppDataCapabilities } from './capabilities'
@@ -25,6 +33,8 @@ export interface AppDataRepositories {
   conversations: ActConversationRepository
   files: FileRepository
   notes: NoteRepository
+  onboarding: OnboardingRepository
+  settings: AppSettingsRepository
   users: UserRepository
   usage: Record<string, never>
 }
@@ -54,6 +64,8 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         conversations: new PostgresActConversationRepository(db),
         files: unsupportedRepository<FileRepository>('FileRepository'),
         notes: unsupportedRepository<NoteRepository>('NoteRepository'),
+        onboarding: new PostgresOnboardingRepository(db),
+        settings: new PostgresAppSettingsRepository(db),
         users: new PostgresUserRepository(db),
         usage: unsupportedRepository<Record<string, never>>('UsageRepository'),
       },
@@ -68,6 +80,8 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       conversations: new ConvexActConversationRepository(),
       files: new ConvexFileRepository(),
       notes: new ConvexNoteRepository(),
+      onboarding: unsupportedRepository<OnboardingRepository>('OnboardingRepository'),
+      settings: unsupportedRepository<AppSettingsRepository>('AppSettingsRepository'),
       users: new ConvexUserRepository(),
       usage: unsupportedRepository<Record<string, never>>('UsageRepository'),
     },

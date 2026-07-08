@@ -8,7 +8,7 @@ import { GuestGateProvider } from '@/components/providers/GuestGateProvider'
 import { OnboardingProvider } from '@/components/providers/OnboardingProvider'
 import { CapabilitiesProvider } from '@/components/providers/CapabilitiesProvider'
 import { AppClientProviders } from '@/components/providers/AppClientProviders'
-import { getOverlayCapabilitiesSync } from '@/server/capabilities'
+import { getAppDataCapabilitiesSync, getOverlayCapabilitiesSync } from '@/server/capabilities'
 import { AppConfigurationErrorState } from './_components/AppConfigurationErrorState'
 import { AppShellLoadingFallback, ChatRouteSkeleton } from './_components/AppRouteSkeletons'
 
@@ -19,9 +19,11 @@ function AppMainFallback() {
 async function AppLayoutContent({ children }: { children: React.ReactNode }) {
   let session: Awaited<ReturnType<typeof getOverlaySession>>
   let capabilities: ReturnType<typeof getOverlayCapabilitiesSync>
+  let appDataCapabilities: ReturnType<typeof getAppDataCapabilitiesSync>
   try {
     session = await getOverlaySession()
     capabilities = getOverlayCapabilitiesSync()
+    appDataCapabilities = getAppDataCapabilitiesSync()
   } catch (error) {
     return <AppConfigurationErrorState error={error} />
   }
@@ -34,8 +36,11 @@ async function AppLayoutContent({ children }: { children: React.ReactNode }) {
         <AsyncSessionsProvider>
           <NavigationProgressProvider>
             <NavigationProgressBar />
-            <BackgroundPollManager />
-            <CapabilitiesProvider initialCapabilities={capabilities}>
+            <CapabilitiesProvider
+              initialAppDataCapabilities={appDataCapabilities}
+              initialCapabilities={capabilities}
+            >
+              <BackgroundPollManager />
               <GuestGateProvider>
                 <OnboardingProvider>
                   <AppShellSidebar />

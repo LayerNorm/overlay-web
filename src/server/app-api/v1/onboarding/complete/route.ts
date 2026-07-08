@@ -2,6 +2,7 @@ import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlaySession } from '@/server/auth/session'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { ONBOARDING_SEEN_COOKIE } from '@/features/auth/lib/onboarding-cookie'
@@ -11,6 +12,23 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   const { auth } = context
   const userId = auth.userId
   const userEmail = session?.user?.id === userId ? session.user.email : undefined
+
+  if (context.appDataCapabilities.provider === 'postgres') {
+    const result = await getOverlayServerContext()
+      .appData
+      .repositories
+      .onboarding
+      .markComplete(userId)
+    const response = NextResponse.json(result)
+    response.cookies.set(ONBOARDING_SEEN_COOKIE, userId, {
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: 'lax',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+    })
+    return response
+  }
 
   // Persist to Convex when possible (cross-device, admin tools). If Convex is unavailable
   // or the deployment is behind, still set the cookie so the tour does not replay every load.

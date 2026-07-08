@@ -45,6 +45,7 @@ type UseLiveConversationSyncParams = {
   chatStreamRelayApi: string | null | undefined
   completeSession: (chatId: string, isActive: boolean) => void
   convexAccessToken: string | null | undefined
+  enableConvexLiveSync: boolean
   lastStreamChunkAtRef: MutableRefObject<number>
   loadChats: () => Promise<void>
   onRuntimeMessagesChanged: () => void
@@ -139,6 +140,7 @@ export function useLiveConversationSync({
   chatStreamRelayApi,
   completeSession,
   convexAccessToken,
+  enableConvexLiveSync,
   lastStreamChunkAtRef,
   loadChats,
   onRuntimeMessagesChanged,
@@ -156,7 +158,7 @@ export function useLiveConversationSync({
 
   const liveMessages = useQuery(
     api.chat.conversations.watchGeneratingMessages,
-    activeChatId && authUserId && convexAccessToken
+    enableConvexLiveSync && activeChatId && authUserId && convexAccessToken
       ? {
           conversationId: activeChatId as Id<'conversations'>,
           userId: authUserId,
@@ -166,7 +168,7 @@ export function useLiveConversationSync({
   ) as Array<LiveConversationMessage> | undefined
   const liveMessageDeltas = useQuery(
     api.chat.conversations.watchGeneratingMessageDeltas,
-    activeChatId && authUserId && convexAccessToken
+    enableConvexLiveSync && activeChatId && authUserId && convexAccessToken
       ? {
           conversationId: activeChatId as Id<'conversations'>,
           userId: authUserId,

@@ -15,6 +15,7 @@ import {
 import {
   applyAppDataCapabilitiesToOverlayCapabilities,
   deriveAppDataCapabilities,
+  type AppDataCapabilities,
 } from '@/server/app-data/capabilities'
 import {
   getCapabilityDisabledError,
@@ -34,6 +35,13 @@ export function getOverlayCapabilitiesSync(): CapabilityCheck {
   )
 }
 
+export function getAppDataCapabilitiesSync(): AppDataCapabilities {
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return deriveAppDataCapabilities(null)
+  }
+  return deriveAppDataCapabilities(getOverlayRuntimeConfigSync())
+}
+
 export async function getOverlayCapabilities(): Promise<CapabilityCheck> {
   if (process.env.NEXT_PHASE === 'phase-production-build') {
     return deriveOverlayCapabilities()
@@ -43,6 +51,13 @@ export async function getOverlayCapabilities(): Promise<CapabilityCheck> {
     deriveOverlayCapabilities(runtimeConfig),
     deriveAppDataCapabilities(runtimeConfig),
   )
+}
+
+export async function getAppDataCapabilities(): Promise<AppDataCapabilities> {
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return deriveAppDataCapabilities(null)
+  }
+  return deriveAppDataCapabilities(await getOverlayRuntimeConfig())
 }
 
 export function capabilityDisabledResponse(capability: OverlayCapability): NextResponse {

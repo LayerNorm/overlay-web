@@ -97,6 +97,24 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'chat-persistence',
   },
   {
+    id: 'settings',
+    methods: ['GET', 'PATCH'],
+    paths: ['/api/v1/settings'],
+    status: 'supported',
+    feature: 'settings',
+  },
+  {
+    id: 'onboarding',
+    methods: ['GET', 'POST'],
+    paths: [
+      '/api/v1/onboarding/status',
+      '/api/v1/onboarding/complete',
+      '/api/v1/onboarding/reset',
+    ],
+    status: 'supported',
+    feature: 'onboarding',
+  },
+  {
     id: 'files-and-outputs',
     methods: '*',
     prefixes: ['/api/v1/files', '/api/v1/outputs'],
@@ -135,7 +153,7 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
   {
     id: 'notes-projects-settings-onboarding',
     methods: '*',
-    prefixes: ['/api/v1/notes', '/api/v1/onboarding', '/api/v1/projects', '/api/v1/settings'],
+    prefixes: ['/api/v1/notes', '/api/v1/projects'],
     status: 'unsupported',
     feature: 'app-data-records',
   },

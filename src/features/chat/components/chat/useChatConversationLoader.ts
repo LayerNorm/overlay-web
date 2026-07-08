@@ -31,6 +31,7 @@ export interface UseChatConversationLoaderParams {
   emptyRuntimeRef: MutableRefObject<ConversationRuntime>
   hasAutomationContext: boolean
   isTemporaryChatRef: MutableRefObject<boolean>
+  loadGeneratedOutputs: boolean
   markRead: (chatId: string) => void
   pendingTitleRef: MutableRefObject<{ chatId: string; title: string } | null>
   persistActiveRuntimeUiState: () => void
@@ -68,6 +69,7 @@ export function useChatConversationLoader({
   emptyRuntimeRef,
   hasAutomationContext,
   isTemporaryChatRef,
+  loadGeneratedOutputs,
   markRead,
   pendingTitleRef,
   persistActiveRuntimeUiState,
@@ -131,7 +133,7 @@ export function useChatConversationLoader({
     runtime.hydrated = false
     try {
       const shouldLoadMeta = !existingChat?.title || !existingChat?.askModelIds?.length || !existingChat?.actModelId
-      const snapshot = await loadConversationSnapshot({ chatId, shouldLoadMeta })
+      const snapshot = await loadConversationSnapshot({ chatId, loadGeneratedOutputs, shouldLoadMeta })
       if (requestId !== loadChatRequestRef.current) return
       if (snapshot.status === 'missing') {
         removeCachedChat(chatId)
@@ -291,6 +293,7 @@ export function useChatConversationLoader({
     emptyRuntimeRef,
     hasAutomationContext,
     isTemporaryChatRef,
+    loadGeneratedOutputs,
     markRead,
     pendingTitleRef,
     persistActiveRuntimeUiState,
