@@ -1,15 +1,16 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthorizationRedirectResponse, normalizeAuthRedirect, normalizeCodeChallenge } from '@/server/auth/actions'
+import {
+  getAuthorizationRedirectResponse,
+  normalizeAuthRedirect,
+  normalizeCodeChallenge,
+  type PublicSsoProvider,
+} from '@/server/auth/actions'
 import { requireOverlayCapability } from '@/server/capabilities'
 
-type SSOProvider = 'google' | 'apple' | 'microsoft'
+type SSOProvider = PublicSsoProvider
 
-const providerMap: Record<SSOProvider, 'GoogleOAuth' | 'AppleOAuth' | 'MicrosoftOAuth'> = {
-  google: 'GoogleOAuth',
-  apple: 'AppleOAuth',
-  microsoft: 'MicrosoftOAuth',
-}
+const supportedProviders = new Set<SSOProvider>(['google', 'apple', 'microsoft', 'sso'])
 
 export async function GET(
   request: NextRequest,
@@ -28,9 +29,9 @@ export async function GET(
   // Also force sign-in when redirecting to desktop app (overlay:// protocol)
   const isDesktopAuth = redirectUri?.startsWith('overlay://')
 
-  if (!providerMap[provider as SSOProvider]) {
+  if (!supportedProviders.has(provider as SSOProvider)) {
     return NextResponse.json(
-      { error: 'Invalid provider. Use google, apple, or microsoft.' },
+      { error: 'Invalid provider. Use google, apple, microsoft, or sso.' },
       { status: 400 }
     )
   }
@@ -53,7 +54,7 @@ export async function GET(
     
     const response = await getAuthorizationRedirectResponse(
       request,
-      providerMap[provider as SSOProvider],
+      provider as SSOProvider,
       {
         redirectUri: normalizedRedirectUri ?? undefined,
         forceSignIn: forceSignIn || isDesktopAuth,

@@ -69,7 +69,7 @@ export default defineSchema({
     autoTopUpEnabled: v.optional(v.boolean()),
     autoTopUpAmountCents: v.optional(v.number()),
     offSessionConsentAt: v.optional(v.number()),
-    // User profile fields (synced from WorkOS)
+    // User profile fields synced from the selected auth provider.
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
     profilePictureUrl: v.optional(v.string()),

@@ -6,7 +6,7 @@ import type {
   TokenClaims,
   UserProfile,
 } from '@overlay/app-core'
-import { getBetterAuth } from '@/server/auth/better-auth'
+import { getBetterAuth, resolveBetterAuthRuntimeConfig } from '@/server/auth/better-auth'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 
 export interface BetterAuthProviderConfig {
@@ -47,10 +47,23 @@ export class BetterAuthProvider implements AuthProvider {
     return this.resolveSession(req)
   }
 
-  async signOut(req: Request): Promise<void> {
-    await getBetterAuth(this.config.runtimeConfig).api.signOut({
-      headers: req.headers,
-    })
+  async signOut(req: Request): Promise<Response> {
+    const config = resolveBetterAuthRuntimeConfig(this.config.runtimeConfig)
+    const headers = new Headers(req.headers)
+    headers.set('origin', headers.get('origin') ?? new URL(config.baseUrl).origin)
+
+    const response = await getBetterAuth(this.config.runtimeConfig).handler(new Request(
+      `${config.baseUrl}${config.basePath}/sign-out`,
+      {
+        method: 'POST',
+        headers,
+      },
+    ))
+    if (!response.ok) {
+      const text = await response.text().catch((_error) => '')
+      throw new Error(text || `Better Auth sign-out failed with HTTP ${response.status}`)
+    }
+    return response
   }
 
   async verifyAccessToken(token: string): Promise<TokenClaims | null> {
@@ -82,12 +95,19 @@ export class BetterAuthProvider implements AuthProvider {
     const auth = getBetterAuth(this.config.runtimeConfig)
     const session = await auth.api.getSession({
       headers: req.headers,
+    }).catch((error) => {
+      if (isBetterAuthUnauthorizedError(error)) return null
+      throw error
     })
     if (!session?.user?.id) return null
 
-    const { token } = await auth.api.getToken({
+    const tokenPayload = await auth.api.getToken({
       headers: req.headers,
+    }).catch((error) => {
+      if (isBetterAuthUnauthorizedError(error)) return null
+      throw error
     })
+    const token = tokenPayload?.token
     if (!token) return null
 
     const claims = await this.verifyAccessToken(token)
@@ -154,4 +174,10 @@ function firstNameFromBetterAuthUser(name: string | null | undefined): string | 
 function lastNameFromBetterAuthUser(name: string | null | undefined): string | undefined {
   const parts = name?.trim().split(/\s+/).filter(Boolean) ?? []
   return parts.length > 1 ? parts.slice(1).join(' ') : undefined
+}
+
+function isBetterAuthUnauthorizedError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  const candidate = error as { status?: unknown; statusCode?: unknown }
+  return candidate.status === 'UNAUTHORIZED' || candidate.statusCode === 401
 }

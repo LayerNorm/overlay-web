@@ -52,12 +52,11 @@ export async function getOverlaySession(
 
 export async function clearOverlaySession(
   request?: Request,
-): Promise<void> {
+): Promise<Response | Headers | void> {
   const sessionRequest = request ?? await requestFromCurrentHeaders()
   const auth = getOverlayServerContext().auth
   if (auth.signOut) {
-    await auth.signOut(sessionRequest)
-    return
+    return await auth.signOut(sessionRequest)
   }
 
   const { clearSession } = await import('@/server/auth/workos-auth')

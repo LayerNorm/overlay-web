@@ -25,7 +25,8 @@ const authenticatedAppUsers = new WeakMap<Request, AuthenticatedAppUser>()
 
 /**
  * Browser requests use the session cookie. Server-side tool calls (e.g. Agent)
- * send the same WorkOS access token + userId in the JSON body and/or Authorization header.
+ * send the same provider-issued access token + userId in the JSON body and/or
+ * Authorization header.
  */
 export async function resolveAuthenticatedAppUser(
   request: NextRequest,

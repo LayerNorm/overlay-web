@@ -70,9 +70,3 @@ export function ConvexAuthProvider({ children }: { children: React.ReactNode }) 
 export function useConvexAuthToken(): string | null {
   return useContext(ConvexAuthContext).accessToken
 }
-
-/** @deprecated Use `ConvexAuthProvider`. */
-export const ConvexProviderWithWorkOS = ConvexAuthProvider
-
-/** @deprecated Use `useConvexAuthToken`. */
-export const useConvexWorkOSToken = useConvexAuthToken

@@ -6,7 +6,7 @@ const JWKS_CACHE_TTL_MS = 2 * 60 * 1000
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
-type WorkOSAccessTokenClaims = {
+type JwtAccessTokenClaims = {
   iss: string
   sub: string
   aud?: string | string[]
@@ -23,10 +23,10 @@ type JwtHeader = {
 
 type CachedJwks = {
   expiresAt: number
-  keys: WorkOsJwk[]
+  keys: SigningJwk[]
 }
 
-type WorkOsJwk = JsonWebKey & {
+type SigningJwk = JsonWebKey & {
   kid?: string
   kty?: string
 }
@@ -156,7 +156,7 @@ function decodeBase64UrlJson<T>(value: string): T | null {
   }
 }
 
-async function fetchJwks(clientId: string, forceRefresh = false): Promise<WorkOsJwk[]> {
+async function fetchJwks(clientId: string, forceRefresh = false): Promise<SigningJwk[]> {
   const now = Date.now()
   const cached = jwksCache.get(clientId)
   if (!forceRefresh && cached && cached.expiresAt > now) {
@@ -174,7 +174,7 @@ async function fetchJwks(clientId: string, forceRefresh = false): Promise<WorkOs
     throw new Error(`Failed to fetch WorkOS JWKS: HTTP ${response.status}`)
   }
 
-  const json = await response.json() as { keys?: WorkOsJwk[] }
+  const json = await response.json() as { keys?: SigningJwk[] }
   const keys = Array.isArray(json.keys) ? json.keys : []
   jwksCache.set(clientId, {
     expiresAt: now + JWKS_CACHE_TTL_MS,
@@ -183,7 +183,7 @@ async function fetchJwks(clientId: string, forceRefresh = false): Promise<WorkOs
   return keys
 }
 
-async function fetchJwksFromUrl(cacheKey: string, url: string, forceRefresh = false): Promise<WorkOsJwk[]> {
+async function fetchJwksFromUrl(cacheKey: string, url: string, forceRefresh = false): Promise<SigningJwk[]> {
   const now = Date.now()
   const cached = jwksCache.get(cacheKey)
   if (!forceRefresh && cached && cached.expiresAt > now) {
@@ -195,7 +195,7 @@ async function fetchJwksFromUrl(cacheKey: string, url: string, forceRefresh = fa
     throw new Error(`Failed to fetch JWKS: HTTP ${response.status}`)
   }
 
-  const json = await response.json() as { keys?: WorkOsJwk[] }
+  const json = await response.json() as { keys?: SigningJwk[] }
   const keys = Array.isArray(json.keys) ? json.keys : []
   jwksCache.set(cacheKey, {
     expiresAt: now + JWKS_CACHE_TTL_MS,
@@ -204,7 +204,7 @@ async function fetchJwksFromUrl(cacheKey: string, url: string, forceRefresh = fa
   return keys
 }
 
-async function findJwk(clientId: string, kid: string): Promise<WorkOsJwk | null> {
+async function findJwk(clientId: string, kid: string): Promise<SigningJwk | null> {
   let keys = await fetchJwks(clientId)
   let jwk =
     keys.find((entry) => typeof entry.kid === 'string' && entry.kid === kid) ?? null
@@ -246,10 +246,10 @@ async function verifyTokenAgainstAnyConfiguredClientId(
 
 async function verifyBetterAuthToken(
   header: JwtHeader,
-  claims: WorkOSAccessTokenClaims,
+  claims: JwtAccessTokenClaims,
   signingInput: string,
   signatureSegment: string,
-): Promise<WorkOSAccessTokenClaims | null> {
+): Promise<JwtAccessTokenClaims | null> {
   const issuer = getConfiguredBetterAuthIssuer()
   const audience = getConfiguredBetterAuthAudience()
   const jwksUrl = getConfiguredBetterAuthJwksUrl()
@@ -259,7 +259,7 @@ async function verifyBetterAuthToken(
   if (!normalizeAudience(claims.aud).includes(audience)) return null
   if (header.alg !== 'RS256' || typeof header.kid !== 'string' || !header.kid.trim()) return null
 
-  let jwk: WorkOsJwk | null = null
+  let jwk: SigningJwk | null = null
   try {
     let keys = await fetchJwksFromUrl(`better-auth:${jwksUrl}`, jwksUrl)
     jwk = keys.find((entry) => typeof entry.kid === 'string' && entry.kid === header.kid) ?? null
@@ -283,7 +283,7 @@ async function verifyBetterAuthToken(
 async function verifyRs256Signature(
   signingInput: string,
   signatureSegment: string,
-  jwk: WorkOsJwk,
+  jwk: SigningJwk,
 ): Promise<boolean> {
   if (jwk.kty !== 'RSA') return false
   const key = await crypto.subtle.importKey(
@@ -307,7 +307,7 @@ async function verifyRs256Signature(
 
 export async function getVerifiedAccessTokenClaims(
   accessToken: string,
-): Promise<WorkOSAccessTokenClaims | null> {
+): Promise<JwtAccessTokenClaims | null> {
   if (!accessToken || typeof accessToken !== 'string') return null
 
   const trimmed = accessToken.trim()
@@ -316,7 +316,7 @@ export async function getVerifiedAccessTokenClaims(
 
   const [headerSegment, payloadSegment, signatureSegment] = parts
   const header = decodeBase64UrlJson<JwtHeader>(headerSegment)
-  const claims = decodeBase64UrlJson<WorkOSAccessTokenClaims>(payloadSegment)
+  const claims = decodeBase64UrlJson<JwtAccessTokenClaims>(payloadSegment)
   if (!header || !claims) return null
 
   if (header.alg !== 'RS256' || typeof header.kid !== 'string' || !header.kid.trim()) {
@@ -375,7 +375,7 @@ export async function debugAccessTokenVerification(
 
   const [headerSegment, payloadSegment, signatureSegment] = parts
   const header = decodeBase64UrlJson<JwtHeader>(headerSegment)
-  const claims = decodeBase64UrlJson<WorkOSAccessTokenClaims>(payloadSegment)
+  const claims = decodeBase64UrlJson<JwtAccessTokenClaims>(payloadSegment)
   if (!header || !claims) {
     return { ...diagnostics, verified: false, reason: 'invalid_json_segments' }
   }
@@ -501,7 +501,7 @@ export async function validateAccessToken(accessToken: string): Promise<boolean>
 export async function requireAccessToken(
   accessToken: string,
   userId?: string,
-): Promise<WorkOSAccessTokenClaims> {
+): Promise<JwtAccessTokenClaims> {
   const claims = await getVerifiedAccessTokenClaims(accessToken)
   if (!claims) {
     logAuthDebug('requireAccessToken rejected token', await debugAccessTokenVerification(accessToken, userId))

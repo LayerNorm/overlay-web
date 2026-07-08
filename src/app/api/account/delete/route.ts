@@ -11,8 +11,8 @@ import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
  * POST /api/account/delete
  *
  * Permanently deletes the authenticated user. The route is intentionally a thin
- * controller; provider-specific Convex/R2/Stripe/WorkOS work lives behind the
- * server context adapters and the account service.
+ * controller; provider-specific Convex/R2/Stripe/auth-provider work lives
+ * behind the server context adapters and the account service.
  */
 export async function POST(request: NextRequest) {
   const session = await getOverlaySession(request)
