@@ -169,6 +169,7 @@ test('OverlayRuntimeConfigSchema accepts configured Postgres database provider',
     capabilities: {
       ...minimalSaasConfig.capabilities,
       billing: false,
+      vectorSearch: false,
     },
     database: {
       ...minimalSaasConfig.database,
@@ -180,12 +181,104 @@ test('OverlayRuntimeConfigSchema accepts configured Postgres database provider',
     },
     providers: {
       database: { provider: 'postgres' },
+      vectorSearch: { provider: 'none' },
     },
   })
 
   assert.equal(parsed.database.provider, 'postgres')
   assert.equal(parsed.providers.database?.provider, 'postgres')
   assert.equal(parsed.database.postgres.connectionString, 'postgres://overlay:secret@db.internal/overlay')
+})
+
+test('OverlayRuntimeConfigSchema rejects Postgres database provider with enabled vector search', () => {
+  assert.throws(
+    () =>
+      OverlayRuntimeConfigSchema.parse({
+        ...minimalSaasConfig,
+        billing: {
+          provider: 'none',
+          stripe: {},
+        },
+        capabilities: {
+          ...minimalSaasConfig.capabilities,
+          billing: false,
+        },
+        database: {
+          ...minimalSaasConfig.database,
+          provider: 'postgres',
+          postgres: {
+            connectionString: 'postgres://overlay:secret@db.internal/overlay',
+            sslMode: 'require',
+          },
+        },
+        providers: {
+          database: { provider: 'postgres' },
+        },
+      }),
+    /vectorSearch capability must be false when database\.provider is postgres/,
+  )
+})
+
+test('OverlayRuntimeConfigSchema rejects Postgres database provider with Convex vector search', () => {
+  assert.throws(
+    () =>
+      OverlayRuntimeConfigSchema.parse({
+        ...minimalSaasConfig,
+        billing: {
+          provider: 'none',
+          stripe: {},
+        },
+        capabilities: {
+          ...minimalSaasConfig.capabilities,
+          billing: false,
+          vectorSearch: false,
+        },
+        database: {
+          ...minimalSaasConfig.database,
+          provider: 'postgres',
+          postgres: {
+            connectionString: 'postgres://overlay:secret@db.internal/overlay',
+            sslMode: 'require',
+          },
+        },
+        providers: {
+          database: { provider: 'postgres' },
+          vectorSearch: { provider: 'convex' },
+        },
+      }),
+    /providers\.vectorSearch\.provider must be none when database\.provider is postgres/,
+  )
+})
+
+test('OverlayRuntimeConfigSchema names pgvector as the future Postgres vector provider but rejects it today', () => {
+  assert.throws(
+    () =>
+      OverlayRuntimeConfigSchema.parse({
+        ...minimalSaasConfig,
+        billing: {
+          provider: 'none',
+          stripe: {},
+        },
+        capabilities: {
+          ...minimalSaasConfig.capabilities,
+          billing: false,
+          vectorSearch: false,
+        },
+        database: {
+          ...minimalSaasConfig.database,
+          provider: 'postgres',
+          postgres: {
+            connectionString: 'postgres://overlay:secret@db.internal/overlay',
+            sslMode: 'require',
+          },
+        },
+        providers: {
+          database: { provider: 'postgres' },
+          vectorSearch: { provider: 'pgvector' },
+        },
+      }),
+    /pgvector is the planned Postgres-native vector-search provider/,
+  )
 })
 
 test('OverlayRuntimeConfigSchema rejects Postgres database provider with enabled billing', () => {
@@ -221,6 +314,7 @@ test('OverlayRuntimeConfigSchema rejects Postgres database provider without a co
         capabilities: {
           ...minimalSaasConfig.capabilities,
           billing: false,
+          vectorSearch: false,
         },
         database: {
           ...minimalSaasConfig.database,
@@ -228,6 +322,7 @@ test('OverlayRuntimeConfigSchema rejects Postgres database provider without a co
         },
         providers: {
           database: { provider: 'postgres' },
+          vectorSearch: { provider: 'none' },
         },
       }),
     /database\.postgres\.connectionString is required/,

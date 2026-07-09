@@ -94,10 +94,12 @@ test('createOverlayServerContext returns Postgres app-data context with chat rou
     capabilities: {
       ...base.capabilities,
       billing: false,
+      vectorSearch: false,
     },
     providers: {
       ...base.providers,
       database: { provider: 'postgres' },
+      vectorSearch: { provider: 'none' },
     },
     database: {
       ...base.database,

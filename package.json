@@ -27,6 +27,7 @@
     "app-db:migrate": "tsx --env-file=.env.app-data.local scripts/app-data-migrate.ts",
     "app-db:maintenance": "NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.app-data.local scripts/app-data-maintenance.ts",
     "app-db:smoke": "NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.app-data.local scripts/app-data-smoke.ts",
+    "app-db:vector-readiness": "NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.app-data.local scripts/app-data-vector-readiness.ts",
     "app-db:account-delete-smoke": "NODE_OPTIONS=--conditions=react-server tsx scripts/app-data-account-delete-smoke.ts",
     "test:app-data-contracts:postgres": "npm run app-db:up && npm run app-db:migrate && NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.app-data.local --test src/server/app-data/contracts/postgres-contract.test.ts",
     "test:app-data-contracts:convex": "NODE_ENV=development APP_DATA_CONTRACT_CONVEX=1 NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.development.local --test src/server/app-data/contracts/convex-contract.test.ts",

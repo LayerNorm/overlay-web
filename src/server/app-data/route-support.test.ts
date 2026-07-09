@@ -10,7 +10,7 @@ import {
 } from '@/server/app-data/route-support'
 import {
   applyAppDataCapabilitiesToOverlayCapabilities,
-  POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+  POSTGRES_APP_DATA_V1_CAPABILITIES,
 } from '@/server/app-data/capabilities'
 import { DEFAULT_OVERLAY_CAPABILITIES, resolveOverlayAppShellConfig } from '@overlay/app-core'
 
@@ -69,7 +69,7 @@ test('Postgres app-data route support classifies every /api/v1 route export', ()
 test('Postgres app-data capabilities remove unsupported product surfaces from the app shell', () => {
   const capabilities = applyAppDataCapabilitiesToOverlayCapabilities(
     DEFAULT_OVERLAY_CAPABILITIES,
-    POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    POSTGRES_APP_DATA_V1_CAPABILITIES,
   )
   const shell = resolveOverlayAppShellConfig(undefined, { capabilities })
 
@@ -84,7 +84,7 @@ test('Postgres app-data capabilities remove unsupported product surfaces from th
 
 test('Postgres app-data mode supports basic conversation routes as degraded', () => {
   const support = getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/conversations',
   })
@@ -94,7 +94,7 @@ test('Postgres app-data mode supports basic conversation routes as degraded', ()
 
 test('Postgres app-data mode gates Convex-backed chat subroutes with structured 501 responses', async () => {
   const support = getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/chat-suggestions',
   })
@@ -120,17 +120,17 @@ test('Postgres app-data mode gates Convex-backed chat subroutes with structured 
 
 test('Postgres app-data mode allows degraded bootstrap and external integration routes', () => {
   assert.equal(getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/bootstrap',
   }).status, 'degraded')
   assert.equal(getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/model-catalog',
   }).status, 'supported')
   assert.equal(getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'POST',
     pathname: '/api/v1/integrations',
   }).status, 'supported')
@@ -138,27 +138,27 @@ test('Postgres app-data mode allows degraded bootstrap and external integration 
 
 test('Postgres app-data mode supports settings and onboarding routes', () => {
   assert.equal(getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/settings',
   }).status, 'supported')
   assert.equal(getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'PATCH',
     pathname: '/api/v1/settings',
   }).status, 'supported')
   assert.equal(getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/onboarding/status',
   }).status, 'supported')
   assert.equal(getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'POST',
     pathname: '/api/v1/onboarding/complete',
   }).status, 'supported')
   assert.equal(getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'POST',
     pathname: '/api/v1/onboarding/reset',
   }).status, 'supported')
@@ -167,7 +167,7 @@ test('Postgres app-data mode supports settings and onboarding routes', () => {
 test('Postgres app-data mode supports notes routes', () => {
   for (const method of ['GET', 'POST', 'PATCH', 'DELETE']) {
     assert.equal(getAppDataRouteSupport({
-      appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+      appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
       method,
       pathname: '/api/v1/notes',
     }).status, 'supported')
@@ -177,18 +177,18 @@ test('Postgres app-data mode supports notes routes', () => {
 test('Postgres app-data mode supports file routes as degraded', () => {
   for (const method of ['GET', 'POST', 'PATCH', 'DELETE']) {
     assert.equal(getAppDataRouteSupport({
-      appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+      appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
       method,
       pathname: '/api/v1/files',
     }).status, 'degraded')
   }
   assert.equal(getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'POST',
     pathname: '/api/v1/files/upload-url',
   }).status, 'degraded')
   assert.equal(getAppDataRouteSupport({
-    appDataCapabilities: POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/outputs/some-output/content',
   }).status, 'unsupported')

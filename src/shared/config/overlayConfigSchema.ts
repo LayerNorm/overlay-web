@@ -308,8 +308,22 @@ export const OverlayRuntimeConfigSchema = z
         message: 'billing capability must be false when database.provider is postgres until a Postgres usage backend is implemented',
       })
     }
+    if (selectedProviders.database === 'postgres' && effectiveCapabilities.vectorSearch) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['capabilities', 'vectorSearch'],
+        message: 'vectorSearch capability must be false when database.provider is postgres until a pgvector repository adapter is implemented',
+      })
+    }
+    if (selectedProviders.database === 'postgres' && selectedProviders.vectorSearch !== 'none') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['providers', 'vectorSearch', 'provider'],
+        message: 'providers.vectorSearch.provider must be none when database.provider is postgres in app-data v1. Postgres-native vector search is planned for pgvector after adapter work.',
+      })
+    }
     addUnsupportedProviderIssue(ctx, ['providers', 'vectorSearch', 'provider'], selectedProviders.vectorSearch, {
-      pgvector: 'pgvector is declared for enterprise config v2 but vector repository adapters are not implemented. Use vectorSearch.provider=convex or none.',
+      pgvector: 'pgvector is the planned Postgres-native vector-search provider, but vector repository adapters are not implemented. Use vectorSearch.provider=convex or none.',
       pinecone: 'Pinecone is declared for enterprise config v2 but no Pinecone adapter exists yet. Use vectorSearch.provider=convex or none.',
     })
     addUnsupportedProviderIssue(ctx, ['providers', 'embeddings', 'provider'], selectedProviders.embeddings, {
