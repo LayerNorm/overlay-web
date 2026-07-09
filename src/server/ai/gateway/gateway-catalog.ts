@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
+import { getOverlayRuntimeConfigSync } from '@/server/config/loadOverlayConfig'
 import { logger } from '@/server/observability/logger'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { GatewayCatalogModel } from '@/shared/ai/gateway/gateway-catalog'
@@ -23,6 +24,10 @@ type CatalogCache = {
 
 let cache: CatalogCache | null = null
 let inFlight: Promise<GatewayCatalogModel[]> | null = null
+
+function usesConvexCatalogPersistence(): boolean {
+  return getOverlayRuntimeConfigSync().database.provider === 'convex'
+}
 
 const GATEWAY_TO_APP_MODEL_ID: Record<string, string> = {
   'anthropic/claude-sonnet-4.6': 'claude-sonnet-4-6',
@@ -88,6 +93,7 @@ function parsePersistedSnapshot(snapshot: PersistedSnapshot | null): CatalogCach
 }
 
 async function readPersistedSnapshot(): Promise<CatalogCache | null> {
+  if (!usesConvexCatalogPersistence()) return null
   const snapshot = await convex.query<PersistedSnapshot | null>(
     'platform/gatewayCatalog:getByServer',
     { serverSecret: getInternalApiSecret() },
@@ -108,12 +114,14 @@ async function fetchAndPersistCatalog(): Promise<GatewayCatalogModel[]> {
   if (models.length === 0) throw new Error('AI Gateway catalog returned no usable models')
   registerGatewayCatalogModels(models)
   const fetchedAt = Date.now()
-  await convex.mutation('platform/gatewayCatalog:upsertByServer', {
-    serverSecret: getInternalApiSecret(),
-    source: CATALOG_URL,
-    modelsJson: JSON.stringify(values),
-    fetchedAt,
-  }, { throwOnError: true })
+  if (usesConvexCatalogPersistence()) {
+    await convex.mutation('platform/gatewayCatalog:upsertByServer', {
+      serverSecret: getInternalApiSecret(),
+      source: CATALOG_URL,
+      modelsJson: JSON.stringify(values),
+      fetchedAt,
+    }, { throwOnError: true })
+  }
   cache = { fetchedAt, models }
   return models
 }

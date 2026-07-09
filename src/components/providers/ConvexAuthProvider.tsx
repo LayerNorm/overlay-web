@@ -24,14 +24,21 @@ async function fetchConvexToken(): Promise<string | null> {
   return data.token?.trim() || null
 }
 
-export function ConvexAuthProvider({ children }: { children: React.ReactNode }) {
+export function ConvexAuthProvider({
+  children,
+  requiresConvexClient = convexReactClientEnabled,
+}: {
+  children: React.ReactNode
+  requiresConvexClient?: boolean
+}) {
   const { user, isLoading } = useAuth()
   const userId = user?.id ?? null
   const [accessToken, setAccessToken] = useState<string | null>(null)
+  const convexEnabled = requiresConvexClient && Boolean(convexReactClient)
 
   useEffect(() => {
     let alive = true
-    if (!convexReactClientEnabled || isLoading || !userId) {
+    if (!convexEnabled || isLoading || !userId) {
       void Promise.resolve().then(() => {
         if (alive) setAccessToken(null)
       })
@@ -50,24 +57,26 @@ export function ConvexAuthProvider({ children }: { children: React.ReactNode }) 
       alive = false
       window.clearInterval(interval)
     }
-  }, [isLoading, userId])
+  }, [convexEnabled, isLoading, userId])
 
   useEffect(() => {
+    if (!convexEnabled || !convexReactClient) return
     convexReactClient.setAuth(async () => {
-      if (!convexReactClientEnabled || isLoading || !userId) return null
+      if (!convexEnabled || isLoading || !userId) return null
       return await fetchConvexToken()
     })
-  }, [isLoading, userId])
+  }, [convexEnabled, isLoading, userId])
 
   const value = useMemo(() => ({ accessToken }), [accessToken])
-
-  return (
-    <ConvexProvider client={convexReactClient}>
-      <ConvexAuthContext.Provider value={value}>
-        {children}
-      </ConvexAuthContext.Provider>
-    </ConvexProvider>
+  const content = (
+    <ConvexAuthContext.Provider value={value}>
+      {children}
+    </ConvexAuthContext.Provider>
   )
+
+  if (!convexEnabled || !convexReactClient) return content
+
+  return <ConvexProvider client={convexReactClient}>{content}</ConvexProvider>
 }
 
 export function useConvexAuthToken(): string | null {

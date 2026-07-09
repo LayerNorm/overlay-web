@@ -11,14 +11,16 @@ import { ConvexAuthProvider } from '@/components/providers/ConvexAuthProvider'
 export function AppClientProviders({
   children,
   initialUser,
+  requiresConvexClient,
 }: {
   children: ReactNode
   initialUser: AuthUser | null
+  requiresConvexClient?: boolean
 }) {
   return (
     <AuthProvider initialUser={initialUser}>
       <AppSettingsProvider>
-        <ConvexAuthProvider>
+        <ConvexAuthProvider requiresConvexClient={requiresConvexClient}>
           <Suspense fallback={null}>
             <ObservabilityClient />
           </Suspense>

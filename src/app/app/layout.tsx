@@ -31,7 +31,10 @@ async function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const user = session?.user ?? null
 
   return (
-    <AppClientProviders initialUser={user}>
+    <AppClientProviders
+      initialUser={user}
+      requiresConvexClient={appDataCapabilities.requiresConvexClient}
+    >
       <div className="flex h-screen overflow-hidden bg-background text-foreground">
         <AsyncSessionsProvider>
           <NavigationProgressProvider>
