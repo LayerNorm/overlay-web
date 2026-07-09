@@ -166,6 +166,7 @@ export default function NotebookEditor({
   const pendingNoteIdRef = useRef<string | null>(null)
   const pendingTitleRef = useRef('')
   const pendingContentRef = useRef('')
+  const hydratingEditorRef = useRef(false)
   const flushSaveRef = useRef<() => Promise<void> | void>(() => {})
 
   useEffect(() => {
@@ -197,6 +198,8 @@ export default function NotebookEditor({
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
         codeBlock: false,
+        link: false,
+        underline: false,
       }),
       Placeholder.configure({
         placeholder: 'Start writing... (type / for commands)',
@@ -258,6 +261,8 @@ export default function NotebookEditor({
     },
     onUpdate: ({ editor: currentEditor }) => {
       migrateMathStrings(currentEditor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
+
+      if (hydratingEditorRef.current) return
 
       if (activeNoteRef.current) {
         isDirtyRef.current = true
@@ -661,13 +666,16 @@ export default function NotebookEditor({
 
   useEffect(() => {
     if (!editor) return
+    hydratingEditorRef.current = true
     if (!activeNote) {
       editor.commands.clearContent()
+      hydratingEditorRef.current = false
       return
     }
 
     editor.commands.setContent(normalizeNotebookContent(activeNote.content || ''))
     migrateMathStrings(editor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
+    hydratingEditorRef.current = false
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, activeNote?._id])
 
