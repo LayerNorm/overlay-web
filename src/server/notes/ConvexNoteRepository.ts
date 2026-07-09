@@ -25,11 +25,16 @@ export class ConvexNoteRepository implements NoteRepository {
     noteId: string
     userId: string
   }): Promise<NoteRecord | null> {
+    let directLookupRejected = false
     const direct = await this.getCanonicalFile({
       fileId: args.noteId,
       userId: args.userId,
-    }).catch((_error) => null)
+    }).catch((_error) => {
+      directLookupRejected = true
+      return null
+    })
     if (direct?.kind === 'note') return direct
+    if (!directLookupRejected) return null
 
     const migrated = await convex.query<NoteRecord | null>('files/files:getByLegacyNoteId', {
       noteId: args.noteId,

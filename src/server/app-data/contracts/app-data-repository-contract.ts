@@ -1,0 +1,394 @@
+import 'server-only'
+
+import assert from 'node:assert/strict'
+import type { TestContext } from 'node:test'
+import { randomUUID } from 'node:crypto'
+import type { AppSettings } from '@/shared/app/app-contracts'
+import { AccountDeletionService } from '@/server/account'
+import type { AccountDeletionResult } from '@/server/account/AccountDeletionService'
+import type { AccountDataDeletionRepository } from '@/server/account/AccountDataDeletionRepository'
+import type { AppDataProvider } from '@/server/app-data/capabilities'
+import type { OverlayServerContext } from '@/server/bootstrap'
+import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
+import type { ActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
+import type { FileRepository } from '@/server/files/FileRepository'
+import type { NoteRepository } from '@/server/notes'
+import { UserService, type UserAuthProvider } from '@/server/users'
+import type { UserRepository } from '@/server/users/types'
+import { hashTextContent } from '@/server/storage/text-content-hash'
+
+export interface AppDataRepositoryContractBackend {
+  accountDeletionRepository?: AccountDataDeletionRepository
+  authProvider: UserAuthProvider
+  conversations: ActConversationRepository
+  deleteAccount?: (userId: string) => Promise<AccountDeletionResult>
+  files: FileRepository
+  name: string
+  notes: NoteRepository
+  provider: AppDataProvider
+  usagePolicy: ActUsagePolicy
+  users: UserRepository
+}
+
+export async function runAppDataRepositoryContractSuite(
+  t: TestContext,
+  backend: AppDataRepositoryContractBackend,
+): Promise<void> {
+  const userId = `contract_user_${randomUUID()}`
+  const email = `${userId}@example.com`
+  const userService = new UserService({
+    authProvider: backend.authProvider,
+    repository: backend.users,
+  })
+  let accountDeleted = false
+
+  try {
+    await t.test(`${backend.name}: users upsert identity and initialize defaults`, async () => {
+      const first = await userService.upsertFromSession({
+        user: {
+          id: userId,
+          email: email.toUpperCase(),
+          firstName: 'Contract',
+          lastName: 'User',
+          emailVerified: true,
+        },
+      })
+      assert.equal(first.success, true)
+      assert.equal(first.userId, userId)
+
+      const second = await userService.upsertFromSession({
+        user: {
+          id: userId,
+          email,
+          firstName: 'Contract',
+          lastName: 'User',
+          emailVerified: true,
+        },
+      })
+      assert.equal(second.success, true)
+      assert.equal(second.userId, userId)
+      assert.equal(second.isNewUser, false)
+
+      const settings = await backend.conversations.getAppSettings({ userId })
+      assertDefaultSettings(settings)
+    })
+
+    await t.test(`${backend.name}: conversations, messages, and deltas preserve chat behavior`, async () => {
+      const clientId = `conversation_${randomUUID()}`
+      const conversationId = await backend.conversations.createConversation({
+        userId,
+        clientId,
+        title: 'Contract conversation',
+        askModelIds: ['openrouter/free'],
+        actModelId: 'openrouter/free',
+        lastMode: 'act',
+      })
+      const repeatedConversationId = await backend.conversations.createConversation({
+        userId,
+        clientId,
+        title: 'Contract conversation duplicate call',
+        askModelIds: ['openrouter/free'],
+        actModelId: 'openrouter/free',
+        lastMode: 'act',
+      })
+      assert.equal(repeatedConversationId, conversationId)
+
+      await backend.conversations.addMessage({
+        conversationId,
+        userId,
+        turnId: 'turn_1',
+        role: 'user',
+        mode: 'act',
+        content: 'hello contract',
+        contentType: 'text',
+        parts: [{ type: 'text', text: 'hello contract' }],
+        modelId: 'openrouter/free',
+        skipMemoryExtraction: true,
+      })
+
+      const assistantMessageId = await backend.conversations.startGeneratingMessage({
+        conversationId,
+        userId,
+        turnId: 'turn_1',
+        mode: 'act',
+        modelId: 'openrouter/free',
+      })
+      assert.ok(assistantMessageId)
+      await backend.conversations.appendGeneratingMessageDelta({
+        messageId: assistantMessageId,
+        textDelta: 'hello',
+        newParts: [{ type: 'text', text: 'hello' }],
+      })
+      await backend.conversations.finalizeGeneratingMessage({
+        messageId: assistantMessageId,
+        content: 'hello back',
+        parts: [{ type: 'text', text: 'hello back' }],
+        tokens: { input: 1, output: 2 },
+        routedModelId: 'openrouter/free',
+      })
+
+      const messages = await backend.conversations.getConversationMessages({
+        conversationId,
+        userId,
+      })
+      assert.equal(messages.length, 2)
+      assert.deepEqual(messages.map((message) => message.role), ['user', 'assistant'])
+      assert.equal(messages[0]?.content, 'hello contract')
+      assert.equal(messages[1]?.content, 'hello back')
+      assert.equal(messages[1]?.status, 'completed')
+
+      await backend.conversations.updateConversation({
+        conversationId,
+        userId,
+        title: 'Renamed contract conversation',
+        lastMode: 'ask',
+        askModelIds: ['openrouter/free'],
+      })
+      const updated = await backend.conversations.getConversationById({
+        conversationId,
+        userId,
+      })
+      assert.equal(updated?.title, 'Renamed contract conversation')
+      assert.equal(updated?.lastMode, 'ask')
+
+      await backend.conversations.upsertContextSummary({
+        conversationId,
+        userId,
+        scope: 'contract',
+        summary: 'contract summary',
+        summarizedThroughMessageId: assistantMessageId,
+        summarizedThroughCreatedAt: Date.now(),
+        sourceMessageCount: 2,
+        sourceEstimatedTokens: 5,
+        summaryEstimatedTokens: 2,
+        contextWindow: 8192,
+        targetModelId: 'openrouter/free',
+        summarizerModelId: 'openrouter/free',
+      })
+      const summary = await backend.conversations.getContextSummary({
+        conversationId,
+        userId,
+        scope: 'contract',
+      })
+      assert.equal(summary?.summary, 'contract summary')
+
+      await backend.conversations.deleteConversation({ conversationId, userId })
+      const active = await backend.conversations.listConversations({ userId })
+      assert.equal(active.some((conversation) => conversation._id === conversationId), false)
+      const withDeleted = await backend.conversations.listConversations({ userId, includeDeleted: true })
+      assert.equal(withDeleted.some((conversation) => conversation._id === conversationId), true)
+    })
+
+    await t.test(`${backend.name}: notes expose provider-neutral CRUD behavior`, async () => {
+      const created = await backend.notes.createNote({
+        userId,
+        title: 'Contract note',
+        content: '<p>note body</p>',
+        tags: ['contract'],
+        clientId: `note_${randomUUID()}`,
+      })
+      assert.ok(created.id)
+      assert.equal(created.note?.name, 'Contract note')
+      assert.equal(created.note?.textContent ?? created.note?.content, '<p>note body</p>')
+
+      const listed = await backend.notes.listNotes({ userId })
+      assert.equal(listed.some((note) => note._id === created.id), true)
+
+      const updated = await backend.notes.updateNote({
+        noteId: created.id,
+        userId,
+        title: 'Updated contract note',
+        content: '<p>updated note body</p>',
+        tags: ['contract', 'updated'],
+      })
+      assert.equal(updated?.name, 'Updated contract note')
+      assert.equal(updated?.textContent ?? updated?.content, '<p>updated note body</p>')
+
+      const deleted = await backend.notes.deleteNote({ noteId: created.id, userId })
+      assert.equal(deleted?.noteId, created.id)
+      const afterDelete = await backend.notes.getNote({ noteId: created.id, userId })
+      assert.equal(afterDelete, null)
+    })
+
+    await t.test(`${backend.name}: files preserve duplicate, subtree, upload intent, and share behavior`, async () => {
+      const duplicateContent = 'same contract file body'
+      const contentHash = hashTextContent(duplicateContent)
+      const canonicalId = await backend.files.createFile({
+        userId,
+        name: 'canonical.txt',
+        type: 'file',
+        kind: 'upload',
+        content: duplicateContent,
+        textContent: duplicateContent,
+        contentHash,
+      })
+      assert.ok(canonicalId)
+      const duplicateId = await backend.files.createFile({
+        userId,
+        name: 'duplicate.txt',
+        type: 'file',
+        kind: 'upload',
+        content: duplicateContent,
+        textContent: duplicateContent,
+        contentHash,
+      })
+      assert.ok(duplicateId)
+
+      const duplicate = await backend.files.getFile({ fileId: duplicateId, userId })
+      assert.equal(duplicate?.duplicateOfFileId, canonicalId)
+
+      const publicShare = await backend.files.setShare({
+        fileId: duplicateId,
+        userId,
+        visibility: 'public',
+      })
+      assert.equal(publicShare?.visibility, 'public')
+      assert.equal(typeof publicShare?.token, 'string')
+      const privateShare = await backend.files.setShare({
+        fileId: duplicateId,
+        userId,
+        visibility: 'private',
+      })
+      assert.deepEqual(privateShare, { visibility: 'private', token: null })
+
+      await backend.files.removeFile({ fileId: canonicalId, userId })
+      const promotedDuplicate = await backend.files.getFile({ fileId: duplicateId, userId })
+      assert.equal(promotedDuplicate?.duplicateOfFileId, undefined)
+
+      const folderId = await backend.files.createFile({
+        userId,
+        name: 'Contract folder',
+        type: 'folder',
+        kind: 'folder',
+      })
+      assert.ok(folderId)
+      const childR2Key = `users/${userId}/files/${randomUUID()}/child.txt`
+      const childId = await backend.files.createFileWithStorage({
+        userId,
+        name: 'child.txt',
+        parentId: folderId,
+        r2Key: childR2Key,
+        sizeBytes: 12,
+        mimeType: 'text/plain',
+      })
+      assert.ok(childId)
+      const subtreeKeys = await backend.files.getR2KeysForSubtree({ fileId: folderId, userId })
+      assert.equal(subtreeKeys.some((entry) => entry.fileId === childId && entry.r2Key === childR2Key), true)
+      await backend.files.removeFile({
+        fileId: folderId,
+        userId,
+        r2CleanupConfirmed: true,
+      })
+      assert.equal(await backend.files.getFile({ fileId: childId, userId }), null)
+
+      const intentR2Key = `users/${userId}/files/${randomUUID()}/upload.txt`
+      await backend.files.createUploadIntent({
+        userId,
+        r2Key: intentR2Key,
+        declaredSizeBytes: 32,
+        mimeType: 'text/plain',
+        expiresAt: Date.now() + 60_000,
+      })
+      const intent = await backend.files.getUploadIntent({
+        userId,
+        r2Key: intentR2Key,
+        now: Date.now(),
+      })
+      assert.equal(intent?.declaredSizeBytes, 32)
+      assert.equal(intent?.mimeType, 'text/plain')
+      assert.ok(intent?._id)
+      await backend.files.expireUploadIntent({
+        userId,
+        intentId: intent._id,
+        now: Date.now(),
+      })
+      assert.equal(await backend.files.getUploadIntent({
+        userId,
+        r2Key: intentR2Key,
+        now: Date.now(),
+      }), null)
+    })
+
+    await t.test(`${backend.name}: usage policy has explicit reservation/accounting behavior`, async () => {
+      const entitlements = await backend.usagePolicy.getEntitlements({ userId })
+      assert.ok(entitlements)
+      const reservation = await backend.usagePolicy.reserveForAttempt({
+        entitlements,
+        estimatedInputTokens: 100,
+        maxOutputTokens: 100,
+        modelId: 'openrouter/free',
+        paid: false,
+        userId,
+      })
+      assert.deepEqual(reservation, { ok: true, reservationId: null })
+      const finished = await backend.usagePolicy.recordFinishedUsage({
+        forceFreeTierLimits: false,
+        inputTokens: 0,
+        modelId: 'openrouter/free',
+        outputTokens: 0,
+        reservationId: null,
+        userId,
+      })
+      assert.deepEqual(finished, { finalized: false, reservationId: null })
+    })
+
+    await t.test(`${backend.name}: account deletion removes repository-owned data`, async () => {
+      const result = await deleteAccount(backend, userId)
+      accountDeleted = true
+      assert.equal(result.deletedRowCount > 0, true)
+
+      const conversations = await backend.conversations.listConversations({
+        userId,
+        includeDeleted: true,
+      })
+      assert.equal(conversations.length, 0)
+      assert.equal((await backend.notes.listNotes({ userId, includeDeleted: true })).length, 0)
+      assert.equal((await backend.files.listFiles({ userId, includeDeleted: true })).length, 0)
+
+      if (result.verification) {
+        assert.equal(result.verification.orphanedRowCount, 0)
+        assert.equal(result.verification.remainingRowsByTable.users, 0)
+      }
+    })
+  } finally {
+    if (!accountDeleted) {
+      await deleteAccount(backend, userId).catch((_error) => {})
+    }
+  }
+}
+
+async function deleteAccount(
+  backend: AppDataRepositoryContractBackend,
+  userId: string,
+): Promise<AccountDeletionResult> {
+  if (backend.deleteAccount) {
+    return await backend.deleteAccount(userId)
+  }
+  if (!backend.accountDeletionRepository) {
+    throw new Error(`${backend.name} did not provide an account deletion adapter`)
+  }
+  return await new AccountDeletionService({
+    appDataCapabilities: {
+      provider: backend.provider,
+    },
+    appData: {
+      repositories: {
+        accountDeletion: backend.accountDeletionRepository,
+      },
+    },
+    auth: {
+      deleteUser: async () => {},
+    },
+    objectStore: {
+      deleteObject: async () => {},
+    },
+  } as unknown as OverlayServerContext).deleteAccount({ userId })
+}
+
+function assertDefaultSettings(settings: AppSettings | null): void {
+  assert.ok(settings)
+  assert.equal(settings.theme, 'light')
+  assert.equal(settings.defaultChatMode, 'act')
+  assert.equal(settings.chatStreamingMode, 'token')
+  assert.equal(settings.sendWithEnter, true)
+}
