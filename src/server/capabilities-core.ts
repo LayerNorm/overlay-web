@@ -6,6 +6,9 @@ export const CAPABILITY_LABELS: Record<OverlayCapability, string> = {
   memory: 'Memory',
   knowledge: 'Knowledge',
   integrations: 'Integrations',
+  projects: 'Projects',
+  skills: 'Skills',
+  mcpServers: 'MCP servers',
   browserUse: 'Browser use',
   sandboxes: 'Sandboxes',
   webSearch: 'Web search',
@@ -48,12 +51,15 @@ export function getRequiredCapabilityForRoute(
   if (startsWithRoute(normalizedPath, '/api/v1/api-keys')) return 'apiKeys'
   if (startsWithRoute(normalizedPath, '/api/v1/automations')) return 'automations'
   if (startsWithRoute(normalizedPath, '/api/v1/integrations')) return 'integrations'
+  if (startsWithRoute(normalizedPath, '/api/v1/projects')) return 'projects'
+  if (startsWithRoute(normalizedPath, '/api/v1/skills')) return 'skills'
+  if (startsWithRoute(normalizedPath, '/api/v1/mcps')) return 'mcpServers'
   if (startsWithRoute(normalizedPath, '/api/v1/browser-task')) return 'browserUse'
   if (startsWithRoute(normalizedPath, '/api/v1/daytona/run')) return 'sandboxes'
   if (startsWithRoute(normalizedPath, '/api/v1/memory')) return 'memory'
   if (startsWithRoute(normalizedPath, '/api/v1/files')) return 'files'
+  if (normalizedPath === '/api/v1/knowledge/search') return 'vectorSearch'
   if (startsWithRoute(normalizedPath, '/api/v1/knowledge')) return 'knowledge'
-  if (normalizedPath === '/api/v1/knowledge/search') return 'knowledge'
 
   return null
 }

@@ -45,6 +45,7 @@ interface MentionPopupProps {
   onUploadFile: () => void
   onClose: () => void
   query: string
+  availableTypes?: readonly MentionType[]
   /** Active category filter. null = top-level category picker. */
   selectedCategory: MentionType | null
   onSelectedCategoryChange: (category: MentionType | null) => void
@@ -63,6 +64,7 @@ export function MentionPopup({
   onUploadFile,
   onClose,
   query,
+  availableTypes,
   selectedCategory,
   onSelectedCategoryChange,
 }: MentionPopupProps) {
@@ -72,40 +74,45 @@ export function MentionPopup({
 
   const rows: Row[] = useMemo(() => {
     const list: Row[] = []
+    const allowedTypes = new Set(availableTypes ?? CATEGORY_ORDER.map((cat) => cat.type))
+    const categoryOrder = CATEGORY_ORDER.filter((cat) => allowedTypes.has(cat.type))
 
     // Top-level with empty query: show category buttons only
     if (selectedCategory === null && query.trim() === '') {
-      for (const cat of CATEGORY_ORDER) {
+      for (const cat of categoryOrder) {
         list.push({ kind: 'category', type: cat.type, label: cat.label, icon: cat.icon })
       }
-      list.push({ kind: 'upload' })
+      if (allowedTypes.has('file')) list.push({ kind: 'upload' })
       return list
     }
 
     // Top-level with query: show all matching entities (no category headers)
     if (selectedCategory === null) {
       for (const cat of categories) {
+        if (!allowedTypes.has(cat.type)) continue
         for (const item of cat.items) {
           list.push({ kind: 'item', item, categoryType: cat.type })
         }
       }
       // Always allow upload even during search
-      list.push({ kind: 'upload' })
+      if (allowedTypes.has('file')) list.push({ kind: 'upload' })
       return list
     }
 
     // Category-specific view: only items of that category (filtered via query)
-    const cat = categories.find((c) => c.type === selectedCategory)
+    const cat = allowedTypes.has(selectedCategory)
+      ? categories.find((c) => c.type === selectedCategory)
+      : null
     if (cat) {
       for (const item of cat.items) {
         list.push({ kind: 'item', item, categoryType: cat.type })
       }
     }
-    if (selectedCategory === 'file') {
+    if (selectedCategory === 'file' && allowedTypes.has('file')) {
       list.push({ kind: 'upload' })
     }
     return list
-  }, [categories, query, selectedCategory])
+  }, [availableTypes, categories, query, selectedCategory])
 
   // Reset active row when query/category changes
   useEffect(() => {

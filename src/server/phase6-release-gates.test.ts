@@ -126,8 +126,8 @@ test('Phase 6.7 capability gate blocks disabled routes and preserves basic file 
     ['POST', '/api/v1/automations/run', 'automations'],
   ] as ReadonlyArray<readonly [method: string, pathname: string, capability: DisabledCapability]>
 
-  assert.equal(getRequiredCapabilityForRoute('GET', '/api/v1/files'), null)
-  assert.equal(getRequiredCapabilityForRoute('GET', '/api/v1/files/file_1/content'), null)
+  assert.equal(getRequiredCapabilityForRoute('GET', '/api/v1/files'), 'files')
+  assert.equal(getRequiredCapabilityForRoute('GET', '/api/v1/files/file_1/content'), 'files')
 
   for (const [method, pathname, capability] of routeExpectations) {
     assert.equal(getRequiredCapabilityForRoute(method, pathname), capability)

@@ -268,6 +268,9 @@ function capabilitiesFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
     webhooks: readBool(env, 'WEBHOOKS_ENABLED'),
     vectorSearch: readBool(env, 'VECTOR_SEARCH_ENABLED'),
     automations: readBool(env, 'AUTOMATIONS_ENABLED'),
+    projects: readBool(env, 'PROJECTS_ENABLED'),
+    skills: readBool(env, 'SKILLS_ENABLED'),
+    mcpServers: readBool(env, 'MCP_SERVERS_ENABLED'),
     multiTenant: readBool(env, 'MULTI_TENANT_ENABLED'),
   })
 }
@@ -280,6 +283,9 @@ function featuresFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
     knowledge: readFeatureBool(env, 'KNOWLEDGE'),
     automations: readFeatureBool(env, 'AUTOMATIONS') ?? readBool(env, 'AUTOMATIONS_ENABLED'),
     integrations: readFeatureBool(env, 'INTEGRATIONS'),
+    projects: readFeatureBool(env, 'PROJECTS') ?? readBool(env, 'PROJECTS_ENABLED'),
+    skills: readFeatureBool(env, 'SKILLS') ?? readBool(env, 'SKILLS_ENABLED'),
+    mcpServers: readFeatureBool(env, 'MCP_SERVERS') ?? readBool(env, 'MCP_SERVERS_ENABLED'),
     browserUse: readFeatureBool(env, 'BROWSER_USE'),
     sandboxes: readFeatureBool(env, 'SANDBOXES'),
     webSearch: readFeatureBool(env, 'WEB_SEARCH'),

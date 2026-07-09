@@ -9,8 +9,10 @@ import {
   getAppDataRouteSupport,
 } from '@/server/app-data/route-support'
 import {
+  applyAppDataCapabilitiesToOverlayCapabilities,
   POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
 } from '@/server/app-data/capabilities'
+import { DEFAULT_OVERLAY_CAPABILITIES, resolveOverlayAppShellConfig } from '@overlay/app-core'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '../../..')
@@ -62,6 +64,22 @@ test('Postgres app-data route support classifies every /api/v1 route export', ()
     .map(({ method, pathname, routeFile }) => `${method} ${pathname} (${path.relative(repoRoot, routeFile)})`)
 
   assert.deepEqual(missing, [])
+})
+
+test('Postgres app-data capabilities remove unsupported product surfaces from the app shell', () => {
+  const capabilities = applyAppDataCapabilitiesToOverlayCapabilities(
+    DEFAULT_OVERLAY_CAPABILITIES,
+    POSTGRES_PHASE5_APP_DATA_CAPABILITIES,
+  )
+  const shell = resolveOverlayAppShellConfig(undefined, { capabilities })
+
+  assert.equal(capabilities.projects, false)
+  assert.equal(capabilities.skills, false)
+  assert.equal(capabilities.mcpServers, false)
+  assert.equal(shell.appFeatureFlags.canUseProjects, false)
+  assert.equal(shell.navigation.some((item) => item.id === 'projects'), false)
+  assert.equal(shell.sidebarActions.some((item) => item.id === 'projects.create'), false)
+  assert.equal(shell.featureModules.some((item) => item.id === 'projects'), false)
 })
 
 test('Postgres app-data mode supports basic conversation routes as degraded', () => {

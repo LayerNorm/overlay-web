@@ -16,8 +16,22 @@ export type ClientAppDataCapabilities = {
   provider: 'convex' | 'postgres'
   supportsRealtime: boolean
   supportsStreamResume: boolean
+  supportsChatPersistence: boolean
+  supportsFileMetadata: boolean
+  supportsFileUploads: boolean
+  supportsNotes: boolean
+  supportsProjects: boolean
+  supportsSkills: boolean
+  supportsMcpServers: boolean
   supportsSettings: boolean
   supportsOnboarding: boolean
+  supportsUsageAccounting: boolean
+  supportsBillingRecords: boolean
+  supportsVectorSearch: boolean
+  supportsAutomations: boolean
+  supportsWebhooks: boolean
+  supportsApiKeys: boolean
+  supportsAccountDeletion: boolean
   supportsBackgroundMaintenance: boolean
   supportsManagedScheduler: boolean
   supportsPersistentIdempotency: boolean
@@ -29,8 +43,22 @@ const DEFAULT_APP_DATA_CAPABILITIES: ClientAppDataCapabilities = {
   provider: 'convex',
   supportsRealtime: true,
   supportsStreamResume: true,
+  supportsChatPersistence: true,
+  supportsFileMetadata: true,
+  supportsFileUploads: true,
+  supportsNotes: true,
+  supportsProjects: true,
+  supportsSkills: true,
+  supportsMcpServers: true,
   supportsSettings: true,
   supportsOnboarding: true,
+  supportsUsageAccounting: true,
+  supportsBillingRecords: true,
+  supportsVectorSearch: true,
+  supportsAutomations: true,
+  supportsWebhooks: true,
+  supportsApiKeys: true,
+  supportsAccountDeletion: true,
   supportsBackgroundMaintenance: true,
   supportsManagedScheduler: true,
   supportsPersistentIdempotency: true,
@@ -63,8 +91,22 @@ function normalizeAppDataCapabilities(value: unknown): ClientAppDataCapabilities
   for (const key of [
     'supportsRealtime',
     'supportsStreamResume',
+    'supportsChatPersistence',
+    'supportsFileMetadata',
+    'supportsFileUploads',
+    'supportsNotes',
+    'supportsProjects',
+    'supportsSkills',
+    'supportsMcpServers',
     'supportsSettings',
     'supportsOnboarding',
+    'supportsUsageAccounting',
+    'supportsBillingRecords',
+    'supportsVectorSearch',
+    'supportsAutomations',
+    'supportsWebhooks',
+    'supportsApiKeys',
+    'supportsAccountDeletion',
     'supportsBackgroundMaintenance',
     'supportsManagedScheduler',
     'supportsPersistentIdempotency',

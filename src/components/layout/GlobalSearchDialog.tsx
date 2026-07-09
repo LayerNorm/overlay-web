@@ -120,7 +120,8 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
 
     if (selectedCategory === null) {
       if (trimmed === '') {
-        for (const cat of CATEGORY_ORDER) {
+        const availableTypes = new Set(categories.map((cat) => cat.type))
+        for (const cat of CATEGORY_ORDER.filter((item) => availableTypes.has(item.type))) {
           list.push({ kind: 'category', type: cat.type, label: cat.label, icon: cat.icon })
         }
         return list

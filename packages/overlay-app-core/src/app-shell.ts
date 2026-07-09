@@ -51,6 +51,7 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
     id: 'projects',
     label: 'Projects',
     enabled: true,
+    requiredCapabilities: ['projects'],
   },
   {
     id: 'automations',
@@ -83,6 +84,7 @@ export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
     label: 'Projects',
     icon: 'folder-open',
     featureFlagId: 'projects',
+    requiredCapabilities: ['projects'],
   },
   {
     id: 'automations',
@@ -135,6 +137,7 @@ export const DEFAULT_OVERLAY_FEATURE_MODULES: readonly OverlayFeatureModule[] = 
     componentKey: 'overlay.modules.projects',
     packageName: '@overlay/modules-react',
     featureFlagId: 'projects',
+    requiredCapabilities: ['projects'],
     order: 30,
   },
   {
@@ -194,6 +197,7 @@ export const DEFAULT_OVERLAY_SIDEBAR_ACTIONS: readonly OverlaySidebarAction[] = 
     routePatterns: ['/app/projects'],
     requiresAuth: true,
     featureFlagId: 'projects',
+    requiredCapabilities: ['projects'],
     order: 30,
   },
   {

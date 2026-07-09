@@ -22,19 +22,24 @@ test('resolveOverlayAppShellConfig hides capability-gated registries', () => {
   const shell = resolveOverlayAppShellConfig(undefined, {
     capabilities: {
       automations: false,
+      projects: false,
       vectorSearch: false,
     },
   })
 
   assert.equal(shell.capabilities.automations, false)
+  assert.equal(shell.capabilities.projects, false)
   assert.equal(shell.navigation.some((item) => item.id === 'automations'), false)
+  assert.equal(shell.navigation.some((item) => item.id === 'projects'), false)
   assert.equal(shell.sidebarActions.some((item) => item.actionKey === 'automations.create'), false)
+  assert.equal(shell.sidebarActions.some((item) => item.actionKey === 'projects.create'), false)
   assert.equal(shell.tools.some((item) => item.id === 'automation-runner'), false)
   assert.equal(shell.tools.some((item) => item.id === 'knowledge-search'), false)
   assert.equal(shell.settingsSections.some((item) => item.id === 'memories'), false)
   assert.equal(shell.settingsPanels.some((item) => item.id === 'memories'), false)
   assert.equal(shell.navigation.some((item) => item.id === 'files'), true)
   assert.equal(shell.appFeatureFlags.canUseAutomations, false)
+  assert.equal(shell.appFeatureFlags.canUseProjects, false)
   assert.equal(shell.appFeatureFlags.canUseKnowledge, true)
 })
 

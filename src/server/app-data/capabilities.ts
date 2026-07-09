@@ -14,6 +14,8 @@ export interface AppDataCapabilities {
   supportsFileUploads: boolean
   supportsNotes: boolean
   supportsProjects: boolean
+  supportsSkills: boolean
+  supportsMcpServers: boolean
   supportsSettings: boolean
   supportsOnboarding: boolean
   supportsUsageAccounting: boolean
@@ -39,6 +41,8 @@ export const CONVEX_APP_DATA_CAPABILITIES: AppDataCapabilities = {
   supportsFileUploads: true,
   supportsNotes: true,
   supportsProjects: true,
+  supportsSkills: true,
+  supportsMcpServers: true,
   supportsSettings: true,
   supportsOnboarding: true,
   supportsUsageAccounting: true,
@@ -64,6 +68,8 @@ export const POSTGRES_PHASE5_APP_DATA_CAPABILITIES: AppDataCapabilities = {
   supportsFileUploads: true,
   supportsNotes: true,
   supportsProjects: false,
+  supportsSkills: false,
+  supportsMcpServers: false,
   supportsSettings: true,
   supportsOnboarding: true,
   supportsUsageAccounting: false,
@@ -105,6 +111,9 @@ export function applyAppDataCapabilitiesToOverlayCapabilities(
       appData.supportsVectorSearch
     ),
     memory: capabilities.memory && appData.supportsVectorSearch,
+    mcpServers: capabilities.mcpServers && appData.supportsMcpServers,
+    projects: capabilities.projects && appData.supportsProjects,
+    skills: capabilities.skills && appData.supportsSkills,
     vectorSearch: capabilities.vectorSearch && appData.supportsVectorSearch,
     webhooks: capabilities.webhooks && appData.supportsWebhooks,
   }

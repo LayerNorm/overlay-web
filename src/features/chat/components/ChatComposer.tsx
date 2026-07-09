@@ -185,7 +185,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
           onMentionsChange={props.onMentionsChange}
           onPaste={props.onPaste}
           onUploadFile={() => props.docInputRef.current?.click()}
-          placeholder={props.mode === 'automate' ? 'Describe an automation, use @ to reference files, skills, automations...' : 'Ask anything, use @ to reference files, skills, automations...'}
+          placeholder={composerPlaceholder(props)}
           className={undefined}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
@@ -222,6 +222,7 @@ type ComposerControlsProps = ComposerViewProps & {
 }
 
 function ComposerControls(props: ComposerControlsProps) {
+  const mentionTooltip = mentionReferenceLabel(props.capabilities)
   return (
     <div className={`mt-2 grid min-h-9 items-center gap-2 ${
       props.isTemporaryChat
@@ -229,7 +230,7 @@ function ComposerControls(props: ComposerControlsProps) {
         : 'grid-cols-[auto_auto_minmax(0,1fr)_auto_auto]'
     }`}>
       <AttachMenu {...props} />
-      <DelayedTooltip label="Reference files, skills, automations…" side="top">
+      <DelayedTooltip label={mentionTooltip} side="top">
         <button type="button" onClick={() => props.textareaRef.current?.openMentionPopup()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]" aria-label="Insert mention">
           <AtSign size={16} strokeWidth={1.75} />
         </button>
@@ -285,6 +286,25 @@ function ComposerControls(props: ComposerControlsProps) {
       )}
     </div>
   )
+}
+
+function mentionReferenceLabel(capabilities: ComposerViewProps['capabilities']): string {
+  const targets = [
+    capabilities.files ? 'files' : null,
+    capabilities.skills ? 'skills' : null,
+    capabilities.automations ? 'automations' : null,
+    capabilities.mcpServers ? 'MCP servers' : null,
+    capabilities.integrations ? 'connectors' : null,
+    capabilities.chat ? 'chats' : null,
+  ].filter(Boolean)
+  return `Reference ${targets.length > 0 ? targets.join(', ') : 'context'}`
+}
+
+function composerPlaceholder(props: ComposerViewProps): string {
+  if (props.mode === 'automate') {
+    return 'Describe an automation, use @ to reference available context...'
+  }
+  return `Ask anything, use @ to ${mentionReferenceLabel(props.capabilities).toLowerCase()}...`
 }
 
 function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HTMLInputElement | null> }) {

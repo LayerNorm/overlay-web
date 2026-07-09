@@ -71,6 +71,14 @@ export default function AppSidebar({
     () => resolveOverlayAppShellConfig(overlayAppConfig, { capabilities }),
     [capabilities],
   )
+  const availableToolsInlineItems = useMemo(
+    () => toolsInlineItems.filter((item) => {
+      if (item.id === 'skills') return capabilities.skills
+      if (item.id === 'mcps') return capabilities.mcpServers
+      return true
+    }),
+    [capabilities.mcpServers, capabilities.skills],
+  )
   const navItems = useMemo(
     () => appShell.navigation.map((item) => ({
       ...item,
@@ -505,7 +513,7 @@ export default function AppSidebar({
                 </button>
                 {!sidebarCollapsed && href === '/app/tools' && active ? (
                   <InlineNavChildren
-                    items={toolsInlineItems}
+                    items={availableToolsInlineItems}
                     activeId={toolsView}
                     onSelect={(next) => {
                       setMobileMenuOpen(false)
@@ -515,28 +523,36 @@ export default function AppSidebar({
                 ) : null}
                 {sidebarCollapsed && href === '/app/tools' && active ? (
                   <div className="mx-2 mt-1 flex flex-col overflow-hidden rounded-md border border-[var(--border)]">
-                    {([{ id: 'connectors', Icon: Plug, label: 'Connectors', locked: false }, { id: 'skills', Icon: Sparkles, label: 'Skills', locked: false }, { id: 'mcps', Icon: Server, label: 'MCPs', locked: false }, { id: 'apps', Icon: Package, label: 'Apps', locked: true }] as const).map((sub) => (
-                      <button
-                        key={sub.id}
-                        type="button"
-                        title={sub.locked ? `${sub.label} · Soon` : sub.label}
-                        aria-label={sub.label}
-                        disabled={sub.locked}
-                        onClick={() => {
-                          if (sub.locked) return
-                          router.push(`/app/tools?view=${sub.id}`)
-                        }}
-                        className={`flex h-8 items-center justify-center transition-colors ${
-                          sub.locked
-                            ? 'cursor-default text-[var(--muted-light)]'
-                            : toolsView === sub.id
-                              ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                              : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-                        }`}
-                      >
-                        <sub.Icon size={13} />
-                      </button>
-                    ))}
+                    {availableToolsInlineItems.map((item) => {
+                      const sub = {
+                        connectors: { id: 'connectors', Icon: Plug, label: 'Connectors', locked: false },
+                        skills: { id: 'skills', Icon: Sparkles, label: 'Skills', locked: false },
+                        mcps: { id: 'mcps', Icon: Server, label: 'MCPs', locked: false },
+                        apps: { id: 'apps', Icon: Package, label: 'Apps', locked: true },
+                      }[item.id]
+                      return sub ? (
+                        <button
+                          key={sub.id}
+                          type="button"
+                          title={sub.locked ? `${sub.label} · Soon` : sub.label}
+                          aria-label={sub.label}
+                          disabled={sub.locked}
+                          onClick={() => {
+                            if (sub.locked) return
+                            router.push(`/app/tools?view=${sub.id}`)
+                          }}
+                          className={`flex h-8 items-center justify-center transition-colors ${
+                            sub.locked
+                              ? 'cursor-default text-[var(--muted-light)]'
+                              : toolsView === sub.id
+                                ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                                : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                          }`}
+                        >
+                          <sub.Icon size={13} />
+                        </button>
+                      ) : null
+                    })}
                   </div>
                 ) : null}
               </div>
