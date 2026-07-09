@@ -605,6 +605,7 @@ export default function ChatExperience({
 
   const {
     activePersistedGenerating,
+    liveQueryBridge,
     liveMessages,
   } = useLiveConversationSync({
     activeChatId,
@@ -1712,7 +1713,9 @@ export default function ChatExperience({
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
-    <ChatExperienceView
+    <>
+      {liveQueryBridge}
+      <ChatExperienceView
       shell={{
         rightPanel: shellRightPanel,
         rightPanelOpen: Boolean(shellRightPanel),
@@ -2006,6 +2009,7 @@ export default function ChatExperience({
         onModeChange: setAttachmentPreviewMode,
         renderViewer: renderAttachmentViewer,
       }}
-    />
+      />
+    </>
   )
 }
