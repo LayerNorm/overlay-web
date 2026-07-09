@@ -18,6 +18,7 @@ import {
   filterMemoryRows,
   folderBreadcrumb as buildFolderBreadcrumb,
   knowledgePendingPreview,
+  noteDocToKnowledgeFile,
   opensInDocumentEditor,
   removeKnowledgeFileSubtrees,
   resolveKnowledgeLayout,
@@ -31,6 +32,7 @@ import {
   type KnowledgeOutputFilter as OutputFilter,
   type KnowledgeTab as Tab,
   type MemoryRow as MemoryListItem,
+  type NoteDoc,
 } from '@overlay/app-core'
 import {
   AddMemoryDialog,
@@ -346,7 +348,14 @@ export default function KnowledgeView({
 
   const loadFiles = useCallback(async () => {
     try {
-      setFiles(await overlayAppClient.files.get<FileNode[]>({ limit: 100 }))
+      const [fileRows, noteRows] = await Promise.all([
+        overlayAppClient.files.get<FileNode[]>({ limit: 100 }),
+        overlayAppClient.notes.get<NoteDoc[]>({ limit: 100 }),
+      ])
+      const files = Array.isArray(fileRows) ? fileRows : []
+      const notes = Array.isArray(noteRows) ? noteRows.map(noteDocToKnowledgeFile) : []
+      const fileIds = new Set(files.map((file) => file._id))
+      setFiles([...files, ...notes.filter((note) => !fileIds.has(note._id))])
     } catch { /* ignore */ } finally { setFilesLoading(false) }
   }, [])
 

@@ -15,11 +15,13 @@ import {
   projectNotesFromFiles,
   projectRouteViewForFile,
   renameProjectInList,
+  noteDocToKnowledgeFile,
   sortProjectsByName,
   type ProjectChatSummary,
   type ProjectFileSummary,
   type ProjectResourceItems,
   type ProjectSummary,
+  type NoteDoc,
 } from '@overlay/app-core'
 import { FilesInlineTree, ProjectsInlineTree } from '@overlay/modules-react/projects'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -50,7 +52,16 @@ export function FilesInlinePanel({
 
   const loadItems = useCallback(async () => {
     try {
-      setFiles(await overlayAppClient.files.get<ProjectFile[]>({ limit: 100, summary: true }))
+      const [fileRows, noteRows] = await Promise.all([
+        overlayAppClient.files.get<ProjectFile[]>({ limit: 100, summary: true }),
+        overlayAppClient.notes.get<NoteDoc[]>({ limit: 100 }),
+      ])
+      const files = arrayOrEmpty<ProjectFile>(fileRows)
+      const fileIds = new Set(files.map((file) => file._id))
+      const notes = arrayOrEmpty<NoteDoc>(noteRows)
+        .map(noteDocToKnowledgeFile)
+        .filter((note) => !fileIds.has(note._id))
+      setFiles([...files, ...notes])
     } catch {
       // ignore
     } finally {
