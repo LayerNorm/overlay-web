@@ -74,11 +74,14 @@ test('Postgres app-data capabilities remove unsupported product surfaces from th
   const shell = resolveOverlayAppShellConfig(undefined, { capabilities })
 
   assert.equal(capabilities.projects, false)
+  assert.equal(capabilities.integrations, false)
   assert.equal(capabilities.skills, false)
   assert.equal(capabilities.mcpServers, false)
   assert.equal(shell.appFeatureFlags.canUseProjects, false)
+  assert.equal(shell.navigation.some((item) => item.id === 'extensions'), false)
   assert.equal(shell.navigation.some((item) => item.id === 'projects'), false)
   assert.equal(shell.sidebarActions.some((item) => item.id === 'projects.create'), false)
+  assert.equal(shell.featureModules.some((item) => item.id === 'tools-extensions'), false)
   assert.equal(shell.featureModules.some((item) => item.id === 'projects'), false)
 })
 
@@ -118,7 +121,7 @@ test('Postgres app-data mode gates Convex-backed chat subroutes with structured 
   })
 })
 
-test('Postgres app-data mode allows degraded bootstrap and external integration routes', () => {
+test('Postgres app-data mode allows degraded bootstrap and gates external integration routes', () => {
   assert.equal(getAppDataRouteSupport({
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
@@ -133,7 +136,17 @@ test('Postgres app-data mode allows degraded bootstrap and external integration 
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'POST',
     pathname: '/api/v1/integrations',
-  }).status, 'supported')
+  }).status, 'unsupported')
+})
+
+test('Postgres app-data mode supports basic chat title generation as degraded', () => {
+  const support = getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
+    method: 'POST',
+    pathname: '/api/v1/generate-title',
+  })
+  assert.equal(support.status, 'degraded')
+  assert.equal(support.feature, 'chat-persistence')
 })
 
 test('Postgres app-data mode supports settings and onboarding routes', () => {

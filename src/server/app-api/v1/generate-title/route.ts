@@ -1,21 +1,13 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { generateObject } from '@/server/ai/sdk'
 import { z } from 'zod'
 import { sanitizeChatTitle } from '@/shared/chat/chat-title'
 import { getLanguageModel } from '@/server/ai/model-runtime'
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import type { Entitlements } from '@/shared/app/app-contracts'
-import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import {
-  billableBudgetCentsFromProviderUsd,
-  finalizeProviderBudgetReservation,
-  isPaidPlan,
-  markProviderBudgetReconcile,
-  releaseProviderBudgetReservation,
-  reserveProviderBudget,
+  canUsePaidBudgetFeatures,
 } from '@/server/billing/billing-runtime'
 
 const TITLE_MODEL = 'nvidia/nemotron-nano-9b-v2'
@@ -37,31 +29,24 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     const { auth } = context
 
-
-    const serverSecret = getInternalApiSecret()
-    const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
-      serverSecret,
-      userId: auth.userId,
-    })
-    if (!entitlements || !isPaidPlan(entitlements)) {
+    const { chatUsagePolicy } = getOverlayServerContext()
+    const entitlements = await chatUsagePolicy.getEntitlements({ userId: auth.userId })
+    if (!entitlements || !canUsePaidBudgetFeatures(entitlements)) {
       return NextResponse.json({ title: null })
     }
 
     const estimatedInputTokens = Math.ceil(Math.min(text.length, 1200) / 4) + 80
     const estimatedOutputTokens = 80
-    const estimatedCostUsd = await calculateLanguageModelTokenCostOrNull(TITLE_MODEL, estimatedInputTokens, 0, estimatedOutputTokens)
-    if (estimatedCostUsd === null) {
-      return NextResponse.json({ error: 'pricing_missing', message: 'Title generation model pricing is missing.' }, { status: 500 })
-    }
-    const reservation = await reserveProviderBudget({
-      userId: auth.userId,
+    const reservation = await chatUsagePolicy.reserveForAttempt({
       entitlements,
-      providerCostUsd: estimatedCostUsd,
-      kind: 'generation',
+      estimatedInputTokens,
+      maxOutputTokens: estimatedOutputTokens,
       modelId: TITLE_MODEL,
+      paid: true,
+      userId: auth.userId,
     })
     if (!reservation.ok) {
-      return NextResponse.json({ title: null })
+      return NextResponse.json(reservation.failure.payload, { status: reservation.failure.statusCode })
     }
 
     const model = await getLanguageModel(TITLE_MODEL, auth.accessToken)
@@ -77,9 +62,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         prompt: `Generate a concise title for a conversation that starts with this message:\n\n${text.slice(0, 1200)}`,
       })
     } catch (err) {
-      await releaseProviderBudgetReservation({
+      await chatUsagePolicy.releaseReservation({
         userId: auth.userId,
-        reservationId: reservation.reservationId,
+        reservationId: reservation.ok ? reservation.reservationId : null,
         reason: err instanceof Error ? err.message : 'title_generation_failed',
       }).catch((releaseError) => logger.error('[ChatTitle][server] Failed to release reservation', releaseError))
       throw err
@@ -89,7 +74,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const sanitizedTitle = sanitizeChatTitle(extracted, FALLBACK_TITLE)
     if (sanitizedTitle === FALLBACK_TITLE) {
       logger.warn('[ChatTitle][server] Gateway returned empty title', result.object)
-      await markProviderBudgetReconcile({
+      await chatUsagePolicy.markReservationForReconcile({
         userId: auth.userId,
         reservationId: reservation.reservationId,
         errorMessage: 'empty_title_after_provider_success',
@@ -100,37 +85,21 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const usage = (result as unknown as { usage?: { inputTokens?: number; outputTokens?: number } }).usage
     const inputTokens = usage?.inputTokens ?? estimatedInputTokens
     const outputTokens = usage?.outputTokens ?? estimatedOutputTokens
-    const actualCostUsd = await calculateLanguageModelTokenCostOrNull(TITLE_MODEL, inputTokens, 0, outputTokens)
-    if (actualCostUsd === null) {
-      await markProviderBudgetReconcile({
+    await chatUsagePolicy.recordFinishedUsage({
+      forceFreeTierLimits: false,
+      inputTokens,
+      modelId: TITLE_MODEL,
+      outputTokens,
+      reservationId: reservation.reservationId,
+      userId: auth.userId,
+    }).catch(async (err) => {
+      logger.error('[ChatTitle][server] Failed to record usage', err)
+      await chatUsagePolicy.markReservationForReconcile({
         userId: auth.userId,
         reservationId: reservation.reservationId,
-        errorMessage: `pricing_missing:${TITLE_MODEL}`,
+        errorMessage: err instanceof Error ? err.message : 'usage_record_failed',
       }).catch((_error) => undefined)
-    } else {
-      const costCents = billableBudgetCentsFromProviderUsd(actualCostUsd)
-      await finalizeProviderBudgetReservation({
-        userId: auth.userId,
-        reservationId: reservation.reservationId,
-        actualProviderCostUsd: actualCostUsd,
-        events: [{
-          type: 'generation',
-          modelId: TITLE_MODEL,
-          inputTokens,
-          outputTokens,
-          cachedTokens: 0,
-          cost: costCents,
-          timestamp: Date.now(),
-        }],
-      }).catch(async (err) => {
-        logger.error('[ChatTitle][server] Failed to finalize reservation', err)
-        await markProviderBudgetReconcile({
-          userId: auth.userId,
-          reservationId: reservation.reservationId,
-          errorMessage: err instanceof Error ? err.message : 'finalize_failed',
-        }).catch((_error) => undefined)
-      })
-    }
+    })
 
     return NextResponse.json({ title: sanitizedTitle })
   } catch (error) {

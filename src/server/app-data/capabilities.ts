@@ -14,6 +14,7 @@ export interface AppDataCapabilities {
   supportsFileUploads: boolean
   supportsNotes: boolean
   supportsProjects: boolean
+  supportsIntegrations: boolean
   supportsSkills: boolean
   supportsMcpServers: boolean
   supportsSettings: boolean
@@ -41,6 +42,7 @@ export const CONVEX_APP_DATA_CAPABILITIES: AppDataCapabilities = {
   supportsFileUploads: true,
   supportsNotes: true,
   supportsProjects: true,
+  supportsIntegrations: true,
   supportsSkills: true,
   supportsMcpServers: true,
   supportsSettings: true,
@@ -68,6 +70,7 @@ export const POSTGRES_APP_DATA_V1_CAPABILITIES: AppDataCapabilities = {
   supportsFileUploads: true,
   supportsNotes: true,
   supportsProjects: false,
+  supportsIntegrations: false,
   supportsSkills: false,
   supportsMcpServers: false,
   supportsSettings: true,
@@ -105,6 +108,7 @@ export function applyAppDataCapabilitiesToOverlayCapabilities(
     apiKeys: capabilities.apiKeys && appData.supportsApiKeys,
     automations: capabilities.automations && appData.supportsAutomations,
     files: capabilities.files && appData.supportsFileMetadata,
+    integrations: capabilities.integrations && appData.supportsIntegrations,
     knowledge: capabilities.knowledge && (
       appData.supportsFileMetadata ||
       appData.supportsNotes ||

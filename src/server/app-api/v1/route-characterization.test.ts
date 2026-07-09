@@ -34,6 +34,7 @@ const TEST_CONVEX_APP_DATA_CAPABILITIES: AppDataCapabilities = {
   supportsFileUploads: true,
   supportsNotes: true,
   supportsProjects: true,
+  supportsIntegrations: true,
   supportsSkills: true,
   supportsMcpServers: true,
   supportsSettings: true,

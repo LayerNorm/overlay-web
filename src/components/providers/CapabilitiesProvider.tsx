@@ -21,6 +21,7 @@ export type ClientAppDataCapabilities = {
   supportsFileUploads: boolean
   supportsNotes: boolean
   supportsProjects: boolean
+  supportsIntegrations: boolean
   supportsSkills: boolean
   supportsMcpServers: boolean
   supportsSettings: boolean
@@ -48,6 +49,7 @@ const DEFAULT_APP_DATA_CAPABILITIES: ClientAppDataCapabilities = {
   supportsFileUploads: true,
   supportsNotes: true,
   supportsProjects: true,
+  supportsIntegrations: true,
   supportsSkills: true,
   supportsMcpServers: true,
   supportsSettings: true,
@@ -96,6 +98,7 @@ function normalizeAppDataCapabilities(value: unknown): ClientAppDataCapabilities
     'supportsFileUploads',
     'supportsNotes',
     'supportsProjects',
+    'supportsIntegrations',
     'supportsSkills',
     'supportsMcpServers',
     'supportsSettings',

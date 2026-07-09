@@ -45,11 +45,11 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
   },
   {
     id: 'integrations',
-    methods: ['GET', 'POST'],
+    methods: '*',
     paths: ['/api/v1/integrations'],
-    status: 'supported',
+    status: 'unsupported',
     feature: 'integrations',
-    reason: 'Composio integration state is external to Overlay app-data.',
+    reason: 'Postgres pilot mode does not yet include connector account state or external integration execution.',
   },
   {
     id: 'auth-api-keys',
@@ -80,6 +80,14 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     status: 'degraded',
     feature: 'chat-send',
     reason: 'Postgres mode supports direct model chat without Convex memory, tools, webhooks, or stream resume.',
+  },
+  {
+    id: 'conversation-title-generation',
+    methods: ['POST'],
+    paths: ['/api/v1/generate-title'],
+    status: 'degraded',
+    feature: 'chat-persistence',
+    reason: 'Postgres mode supports basic title generation through the configured chat usage policy without Convex billing records.',
   },
   {
     id: 'convex-chat-features',
@@ -144,7 +152,6 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
       '/api/v1/daytona',
       '/api/v1/generate-image',
       '/api/v1/generate-tab-group-label',
-      '/api/v1/generate-title',
       '/api/v1/generate-video',
       '/api/v1/transcribe',
     ],

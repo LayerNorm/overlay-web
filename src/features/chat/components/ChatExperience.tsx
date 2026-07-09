@@ -167,7 +167,7 @@ export default function ChatExperience({
   const billingEnabled = capabilities.billing
   const convexLiveSyncEnabled =
     appDataCapabilities.requiresConvexClient && appDataCapabilities.supportsRealtime
-  const titleGenerationEnabled = appDataCapabilities.provider !== 'postgres'
+  const titleGenerationEnabled = appDataCapabilities.supportsChatPersistence
   const generatedOutputsEnabled = appDataCapabilities.provider !== 'postgres'
   const { user: authUser, isLoading: authLoading } = useAuth()
   const convexAccessToken = useConvexAuthToken()
