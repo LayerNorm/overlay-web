@@ -40,6 +40,7 @@ export function configOverridesFromEnv(env: EnvSource): OverlayRuntimeConfigLaye
   const storage = storageConfigFromEnv(env)
   const llm = llmConfigFromEnv(env)
   const database = databaseConfigFromEnv(env, deploymentEnvironment)
+  const rateLimit = rateLimitConfigFromEnv(env)
   const capabilities = capabilitiesFromEnv(env)
   const features = featuresFromEnv(env)
   const compliance = complianceFromEnv(env)
@@ -64,6 +65,7 @@ export function configOverridesFromEnv(env: EnvSource): OverlayRuntimeConfigLaye
   if (storage) config.storage = storage
   if (llm) config.llm = llm
   if (database) config.database = database
+  if (rateLimit) config.rateLimit = rateLimit
   if (Object.keys(capabilities).length > 0) config.capabilities = capabilities
   if (Object.keys(features).length > 0) config.features = features
   if (compliance) config.compliance = compliance
@@ -258,6 +260,17 @@ function databaseConfigFromEnv(
     apiKeyHashSecret: readEnv(env, 'API_KEY_HASH_SECRET'),
     postgres: Object.keys(postgres).length > 0 ? postgres : undefined,
   })
+}
+
+function rateLimitConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
+  const redis = compactObject({
+    url: readEnv(env, 'OVERLAY_REDIS_URL') ?? readEnv(env, 'REDIS_URL'),
+    restUrl: readEnv(env, 'UPSTASH_REDIS_REST_URL'),
+    restToken: readEnv(env, 'UPSTASH_REDIS_REST_TOKEN'),
+    keyPrefix: readEnv(env, 'OVERLAY_REDIS_KEY_PREFIX'),
+    failureMode: readEnv(env, 'OVERLAY_REDIS_FAILURE_MODE'),
+  })
+  return Object.keys(redis).length > 0 ? { redis } : null
 }
 
 function capabilitiesFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {

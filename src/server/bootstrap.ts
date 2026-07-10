@@ -15,6 +15,11 @@ import { getOverlayRuntimeConfigSync, OverlayConfigError } from '@/server/config
 import { ConvexRateLimiter } from '@/server/shared/providers/convex-rate-limiter'
 import { InMemoryEventBus } from '@/server/shared/providers/in-memory-event-bus'
 import { InMemoryRateLimiter } from '@/server/shared/providers/in-memory-rate-limiter'
+import {
+  RedisRateLimiter,
+  TcpRedisRateLimitStore,
+  UpstashRedisRateLimitStore,
+} from '@/server/shared/providers/redis-rate-limiter'
 import { ConvexVectorStore } from '@/server/storage/providers/convex-vector-store'
 import { InMemoryVectorStore } from '@/server/storage/providers/in-memory-vector-store'
 import { NoOpObjectStore } from '@/server/storage/providers/noop-object-store'
@@ -271,6 +276,29 @@ function createRateLimiter(config: OverlayRuntimeConfig | null): RateLimiter {
   if (provider === 'memory' || provider === 'none') {
     return new InMemoryRateLimiter()
   }
+  if (provider === 'redis') {
+    const redis = config?.rateLimit.redis
+    if (!redis) {
+      throw new OverlayConfigError('Overlay provider configuration is invalid', [
+        'rateLimit.redis configuration is required when rateLimit.provider is redis',
+      ])
+    }
+    const prefix = redis.keyPrefix ?? 'overlay:rate-limit:'
+    const store = redis.url
+      ? new TcpRedisRateLimitStore(redis.url, prefix)
+      : redis.restUrl && redis.restToken
+        ? new UpstashRedisRateLimitStore(redis.restUrl, redis.restToken, prefix)
+        : null
+    if (!store) {
+      throw new OverlayConfigError('Overlay provider configuration is invalid', [
+        'Redis rate limiting requires a TCP URL or REST URL/token pair',
+      ])
+    }
+    return new RedisRateLimiter({
+      failureMode: redis.failureMode,
+      store,
+    })
+  }
   return new ConvexRateLimiter()
 }
 
@@ -330,7 +358,10 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
     issues.push(`providers.vectorSearch.provider=${vectorSearchProvider} is declared but not implemented. Use convex or none.`)
   }
   if (rateLimitProvider === 'redis') {
-    issues.push('providers.rateLimit.provider=redis is declared but not wired. Use convex, memory, or none.')
+    const redis = config.rateLimit.redis
+    if (!redis.url && !(redis.restUrl && redis.restToken)) {
+      issues.push('rateLimit.redis requires a TCP URL or REST URL/token pair')
+    }
   }
 
   if (issues.length > 0) {

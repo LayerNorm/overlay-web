@@ -11,7 +11,12 @@ import { ApiKeyService } from './auth/api-keys'
 import { BetterAuthProvider, OidcAuthProvider, WorkOSAuthProvider } from './auth/providers'
 import { NoOpBillingProvider, StripeBillingProvider } from './billing/providers'
 import { OverlayConfigError } from './config'
-import { ConvexRateLimiter, InMemoryEventBus, InMemoryRateLimiter } from './shared/providers'
+import {
+  ConvexRateLimiter,
+  InMemoryEventBus,
+  InMemoryRateLimiter,
+  RedisRateLimiter,
+} from './shared/providers'
 import { R2ObjectStore, S3CompatibleObjectStore } from './storage/providers'
 import { UserService } from './users'
 import { parseOverlayRuntimeConfig, type OverlayRuntimeConfig } from '../shared/config'
@@ -83,6 +88,28 @@ test('createOverlayServerContext returns Better Auth adapter when selected', () 
   assert.equal(context.auth instanceof BetterAuthProvider, true)
 })
 
+test('createOverlayServerContext wires Redis rate limiting when selected', () => {
+  const base = fixture('onprem-s3-oidc-openai.json')
+  const runtimeConfig = parseOverlayRuntimeConfig({
+    ...base,
+    providers: {
+      ...base.providers,
+      rateLimit: { provider: 'redis' },
+    },
+    rateLimit: {
+      redis: {
+        url: 'redis://redis.internal:6379',
+        failureMode: 'deny',
+      },
+    },
+  })
+
+  assert.equal(
+    createOverlayServerContext({ appConfig: {}, runtimeConfig }).rateLimiter instanceof RedisRateLimiter,
+    true,
+  )
+})
+
 test('createOverlayServerContext returns Postgres app-data context with chat route capabilities', () => {
   const base = fixture('saas-staging.json')
   const runtimeConfig = parseOverlayRuntimeConfig({
@@ -119,9 +146,9 @@ test('createOverlayServerContext returns Postgres app-data context with chat rou
   assert.equal(context.appDataCapabilities.supportsSkills, false)
   assert.equal(context.appDataCapabilities.supportsMcpServers, false)
   assert.equal(context.appDataCapabilities.supportsBackgroundMaintenance, true)
-  assert.equal(context.appDataCapabilities.supportsManagedScheduler, false)
-  assert.equal(context.appDataCapabilities.supportsPersistentIdempotency, false)
-  assert.equal(context.appDataCapabilities.supportsServiceAuthReplayStore, false)
+  assert.equal(context.appDataCapabilities.supportsManagedScheduler, true)
+  assert.equal(context.appDataCapabilities.supportsPersistentIdempotency, true)
+  assert.equal(context.appDataCapabilities.supportsServiceAuthReplayStore, true)
   assert.equal(context.userService instanceof UserService, true)
 })
 

@@ -191,3 +191,48 @@ npm run report:on-prem-parity
 ```
 
 P0 does not claim full backend parity. It makes the remaining work measurable and prevents the application from acquiring new untracked Convex dependencies while that work proceeds.
+
+## P1 Production Runtime Foundations
+
+P1 replaces process-local or Convex-only coordination in the Postgres runtime with shared infrastructure:
+
+- API idempotency reservations and replay responses are stored in Postgres and are atomic across app instances.
+- Internal service-auth replay nonces are consumed once through the selected app-data repository.
+- Redis rate limits use an atomic increment/expiry operation. Production and on-prem Redis configurations fail closed when Redis is unavailable; memory fallback is development-only.
+- Durable jobs and outbox events use Postgres claims, leases, heartbeats, retries, and dead-letter states.
+- The Postgres scheduler uses row locks and deterministic dedupe keys so competing scheduler replicas enqueue one execution.
+- Model-catalog snapshots are persisted through the selected app-data repository and remain available after app restarts.
+- App-data migrations take a Postgres advisory lock and write explicit schema compatibility metadata. The Node runtime refuses to start against an incompatible schema.
+
+The generic durable runtime is intentionally separate from domain parity. P1 provides the execution substrate, but automations and webhook product behavior remain disabled until P6 adds their handlers, audit records, and shared behavioral tests.
+
+Run the P1 gate with Docker Postgres and Redis:
+
+```bash
+npm run check:p1
+npm run app-db:worker:smoke
+```
+
+For a deployed Postgres runtime, run migrations as a one-off release task, then run at least one long-lived worker/scheduler process:
+
+```bash
+npm run app-db:migrate
+npm run app-db:worker
+```
+
+The worker must not be embedded only in an autoscaled web process. Deploy it as a separately supervised ECS service, Kubernetes Deployment, systemd service, or equivalent. Multiple replicas are supported; leases and `SKIP LOCKED` claims prevent duplicate ownership.
+
+### P1 Exit Gate
+
+P1 is complete when:
+
+- Migration locking and schema compatibility tests pass against real Postgres.
+- Two repository instances prove atomic API idempotency and replay nonce consumption.
+- Two workers cannot claim the same job or outbox event.
+- Expired leases are recovered and exhausted work reaches dead-letter state.
+- Competing scheduler instances enqueue one job for each due schedule.
+- Redis counters are shared across limiter instances and production failure mode is fail-closed.
+- A persisted model-catalog snapshot survives repository replacement.
+- `npm run app-db:worker:smoke` completes a real durable health-check job.
+
+P1 does not claim chat realtime, project, vector, automation, webhook, integration, billing, or API-key parity. Those remain owned by P2-P8.

@@ -9,6 +9,7 @@ import type {
 } from './AccountDataDeletionRepository'
 
 const ZERO_COUNTS: AccountDataDeletionCounts = {
+  apiIdempotencyKeys: 0,
   authIdentities: 0,
   conversationContextSummaries: 0,
   conversationMessageDeltas: 0,
@@ -95,6 +96,7 @@ async function selectStorageIds(tx: Transaction, userId: string): Promise<string
 
 async function countUserRows(tx: Transaction, userId: string): Promise<AccountDataDeletionCounts> {
   const result = await tx.execute<{
+    api_idempotency_keys: number
     auth_identities: number
     conversation_context_summaries: number
     conversation_message_deltas: number
@@ -109,6 +111,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     users: number
   }>(sql`
     SELECT
+      (SELECT count(*)::int FROM api_idempotency_keys WHERE user_id = ${userId}) AS api_idempotency_keys,
       (SELECT count(*)::int FROM auth_identities WHERE user_id = ${userId}) AS auth_identities,
       (SELECT count(*)::int FROM conversation_context_summaries WHERE user_id = ${userId}) AS conversation_context_summaries,
       (SELECT count(*)::int FROM conversation_message_deltas WHERE user_id = ${userId}) AS conversation_message_deltas,
@@ -126,6 +129,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
   if (!row) return { ...ZERO_COUNTS }
 
   return {
+    apiIdempotencyKeys: Number(row.api_idempotency_keys ?? 0),
     authIdentities: Number(row.auth_identities ?? 0),
     conversationContextSummaries: Number(row.conversation_context_summaries ?? 0),
     conversationMessageDeltas: Number(row.conversation_message_deltas ?? 0),

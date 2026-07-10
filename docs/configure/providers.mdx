@@ -30,7 +30,7 @@ Use `none` plus the matching feature flag when a provider family must be disable
 | Analytics | `posthog`, `none` | Pageviews and product events | `posthog` and `none` are supported. Set feature and provider to disabled values to avoid SDK initialization. |
 | Error reporting | `sentry`, `none` | Error events and sanitized stack/request metadata | `sentry` and `none` are supported. Set feature and provider to disabled values to avoid initialization. |
 | Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | `env` is the general runtime path. `workos-vault` exists for selected provider-key flows. AWS Secrets Manager and Vault are declared but rejected for runtime secret loading. |
-| Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | `convex`, `memory`, and `none` are supported. `redis` is declared but rejected until enterprise config wiring exists. |
+| Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | All declared providers are supported. Multi-instance production/on-prem deployments should use Redis with fail-closed behavior; memory is development-only. |
 
 ## Disable External Processors
 

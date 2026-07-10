@@ -1,9 +1,7 @@
 import 'server-only'
 
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { getOverlayRuntimeConfigSync } from '@/server/config/loadOverlayConfig'
 import { logger } from '@/server/observability/logger'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import type { ModelCatalogRepository } from '@/server/ai/catalog'
 import type { GatewayCatalogModel } from '@/shared/ai/gateway/gateway-catalog'
 import { registerGatewayCatalogModels } from '@/shared/ai/gateway/model-data'
 
@@ -24,10 +22,6 @@ type CatalogCache = {
 
 let cache: CatalogCache | null = null
 let inFlight: Promise<GatewayCatalogModel[]> | null = null
-
-function usesConvexCatalogPersistence(): boolean {
-  return getOverlayRuntimeConfigSync().database.provider === 'convex'
-}
 
 const GATEWAY_TO_APP_MODEL_ID: Record<string, string> = {
   'anthropic/claude-sonnet-4.6': 'claude-sonnet-4-6',
@@ -93,12 +87,7 @@ function parsePersistedSnapshot(snapshot: PersistedSnapshot | null): CatalogCach
 }
 
 async function readPersistedSnapshot(): Promise<CatalogCache | null> {
-  if (!usesConvexCatalogPersistence()) return null
-  const snapshot = await convex.query<PersistedSnapshot | null>(
-    'platform/gatewayCatalog:getByServer',
-    { serverSecret: getInternalApiSecret() },
-    { background: true, suppressNetworkConsoleError: true },
-  )
+  const snapshot = await getModelCatalogRepository().then((repository) => repository.getLatest())
   return parsePersistedSnapshot(snapshot)
 }
 
@@ -114,14 +103,13 @@ async function fetchAndPersistCatalog(): Promise<GatewayCatalogModel[]> {
   if (models.length === 0) throw new Error('AI Gateway catalog returned no usable models')
   registerGatewayCatalogModels(models)
   const fetchedAt = Date.now()
-  if (usesConvexCatalogPersistence()) {
-    await convex.mutation('platform/gatewayCatalog:upsertByServer', {
-      serverSecret: getInternalApiSecret(),
+  await getModelCatalogRepository().then((repository) =>
+    repository.upsert({
       source: CATALOG_URL,
       modelsJson: JSON.stringify(values),
       fetchedAt,
-    }, { throwOnError: true })
-  }
+    }),
+  )
   cache = { fetchedAt, models }
   return models
 }
@@ -169,4 +157,9 @@ export async function getGatewayLanguageCatalog(force = false): Promise<GatewayC
 export async function getGatewayCatalogModel(modelId: string): Promise<GatewayCatalogModel | null> {
   const models = await getGatewayCatalog()
   return models.find((model) => model.id === modelId || model.gatewayId === modelId) ?? null
+}
+
+async function getModelCatalogRepository(): Promise<ModelCatalogRepository> {
+  const { getOverlayServerContext } = await import('@/server/bootstrap')
+  return getOverlayServerContext().appData.repositories.modelCatalog
 }

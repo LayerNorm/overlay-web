@@ -489,3 +489,23 @@ test('configOverridesFromEnv maps Postgres app-data database env separately from
     },
   })
 })
+
+test('configOverridesFromEnv maps Redis runtime coordination separately from database config', () => {
+  const config = configOverridesFromEnv({
+    OVERLAY_PROVIDER_RATE_LIMIT: 'redis',
+    OVERLAY_REDIS_URL: 'rediss://redis.internal:6379',
+    OVERLAY_REDIS_KEY_PREFIX: 'overlay:school:',
+    OVERLAY_REDIS_FAILURE_MODE: 'deny',
+  })
+
+  assert.deepEqual(config.providers, {
+    rateLimit: { provider: 'redis' },
+  })
+  assert.deepEqual(config.rateLimit, {
+    redis: {
+      url: 'rediss://redis.internal:6379',
+      keyPrefix: 'overlay:school:',
+      failureMode: 'deny',
+    },
+  })
+})

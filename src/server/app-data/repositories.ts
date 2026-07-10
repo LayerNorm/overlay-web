@@ -26,6 +26,27 @@ import {
   type AppSettingsRepository,
 } from '@/server/settings'
 import { ConvexUserRepository, PostgresUserRepository, type UserRepository } from '@/server/users'
+import {
+  ConvexIdempotencyRepository,
+  PostgresIdempotencyRepository,
+  type IdempotencyRepository,
+} from '@/server/idempotency'
+import {
+  ConvexServiceAuthReplayRepository,
+  PostgresServiceAuthReplayRepository,
+  type ServiceAuthReplayRepository,
+} from '@/server/auth/replay'
+import {
+  PostgresDurableJobRepository,
+  PostgresOutboxRepository,
+  type DurableJobRepository,
+  type OutboxRepository,
+} from '@/server/jobs'
+import {
+  ConvexModelCatalogRepository,
+  PostgresModelCatalogRepository,
+  type ModelCatalogRepository,
+} from '@/server/ai/catalog'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { deriveAppDataCapabilities, type AppDataCapabilities } from './capabilities'
 import { unsupportedRepository } from './errors'
@@ -35,10 +56,15 @@ export interface AppDataRepositories {
   automations: AutomationRepository
   billing: BillingRepository
   conversations: ActConversationRepository
+  durableJobs: DurableJobRepository
   files: FileRepository
+  idempotency: IdempotencyRepository
+  modelCatalog: ModelCatalogRepository
   notes: NoteRepository
   onboarding: OnboardingRepository
+  outbox: OutboxRepository
   settings: AppSettingsRepository
+  serviceAuthReplay: ServiceAuthReplayRepository
   users: UserRepository
   usage: Record<string, never>
 }
@@ -67,10 +93,15 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         automations: unsupportedRepository<AutomationRepository>('AutomationRepository'),
         billing: unsupportedRepository<BillingRepository>('BillingRepository'),
         conversations: new PostgresActConversationRepository(db),
+        durableJobs: new PostgresDurableJobRepository(db),
         files: new PostgresFileRepository(db),
+        idempotency: new PostgresIdempotencyRepository(db),
+        modelCatalog: new PostgresModelCatalogRepository(db),
         notes: new PostgresNoteRepository(db),
         onboarding: new PostgresOnboardingRepository(db),
+        outbox: new PostgresOutboxRepository(db),
         settings: new PostgresAppSettingsRepository(db),
+        serviceAuthReplay: new PostgresServiceAuthReplayRepository(db),
         users: new PostgresUserRepository(db),
         usage: unsupportedRepository<Record<string, never>>('UsageRepository'),
       },
@@ -84,10 +115,15 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       automations: new ConvexAutomationRepository(),
       billing: new ConvexBillingRepository(),
       conversations: new ConvexActConversationRepository(),
+      durableJobs: unsupportedRepository<DurableJobRepository>('DurableJobRepository'),
       files: new ConvexFileRepository(),
+      idempotency: new ConvexIdempotencyRepository(),
+      modelCatalog: new ConvexModelCatalogRepository(),
       notes: new ConvexNoteRepository(),
       onboarding: unsupportedRepository<OnboardingRepository>('OnboardingRepository'),
+      outbox: unsupportedRepository<OutboxRepository>('OutboxRepository'),
       settings: unsupportedRepository<AppSettingsRepository>('AppSettingsRepository'),
+      serviceAuthReplay: new ConvexServiceAuthReplayRepository(),
       users: new ConvexUserRepository(),
       usage: unsupportedRepository<Record<string, never>>('UsageRepository'),
     },

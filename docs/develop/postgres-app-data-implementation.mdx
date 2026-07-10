@@ -9,7 +9,7 @@ The short version:
 
 - Auth is now provider-agnostic at the app boundary. WorkOS and Better Auth both normalize into the Overlay session contract.
 - Auth storage and app-data storage are separate concerns. Better Auth uses its own Postgres database for auth/session state. Overlay app data uses either Convex or the new Postgres app-data provider.
-- Postgres app-data v1 is a pilot-ready backend for users, auth identities, chat persistence and send, settings, onboarding, notes, file metadata/upload intents, account deletion, background cleanup, and real backend contract tests.
+- Postgres app-data includes production runtime foundations for shared idempotency, replay protection, Redis rate limiting, durable jobs/outbox, scheduler ownership, schema compatibility, and persisted model catalog snapshots.
 - Postgres app-data v1 is not full Convex parity. Realtime subscriptions, stream resume, automations, webhooks, projects, API keys, billing records, memory extraction, and vector search are disabled or unsupported in Postgres mode.
 - Postgres vector search is not implemented yet. The intended future direction is `pgvector`, and deployments must verify their managed Postgres provider supports the `vector` extension before planning vector parity.
 
@@ -84,6 +84,7 @@ Use separate schemas/databases for these concerns. They have different ownership
 | Step 8 | `65edc65b8` | Added shared app-data contract tests for users, conversations/messages/deltas, notes/files, usage policy, and account deletion against Postgres and Convex backends. |
 | Step 9 | `3df3b97f1` | Documented and enforced the `pgvector` readiness boundary. Postgres app-data v1 does not imply vector parity. |
 | Step 9.1 | `bbc973a59` | Re-enabled Postgres chat title generation through the usage policy abstraction and disabled integrations/connectors in Postgres pilot mode. |
+| P1 runtime | Current branch | Added migration locking and compatibility checks, Postgres idempotency/replay stores, Redis rate limiting, durable jobs/outbox/scheduler, worker runtime, and Postgres model-catalog persistence. |
 
 ## Key Code Boundaries
 
@@ -126,6 +127,12 @@ Core tables:
 | `notes` | Notebook-style note records. |
 | `files` | File/folder/note/upload/output metadata. |
 | `r2_upload_intents` | Upload intent lifecycle and finalization tracking. |
+| `api_idempotency_keys` | Atomic request reservations and cached replay responses shared by all app instances. |
+| `service_auth_replay_nonces` | One-time internal service-auth nonces with expiry. |
+| `durable_jobs` | Leased background jobs, retries, results, and dead-letter state. |
+| `outbox_events` | Durable publish intents, leases, retries, and dead-letter state. |
+| `scheduled_tasks` | Scheduler ownership, cadence, and next-run state. |
+| `model_catalog_snapshots` | Restart-safe model-catalog snapshots and stale fallback. |
 
 Important deletion behavior:
 
@@ -147,6 +154,11 @@ Important deletion behavior:
 | `settings` | Unsupported repository | `PostgresAppSettingsRepository` |
 | `onboarding` | Unsupported repository | `PostgresOnboardingRepository` |
 | `accountDeletion` | Unsupported repository | `PostgresAccountDataDeletionRepository` |
+| `idempotency` | `ConvexIdempotencyRepository` | `PostgresIdempotencyRepository` |
+| `serviceAuthReplay` | `ConvexServiceAuthReplayRepository` | `PostgresServiceAuthReplayRepository` |
+| `modelCatalog` | `ConvexModelCatalogRepository` | `PostgresModelCatalogRepository` |
+| `durableJobs` | Unsupported repository | `PostgresDurableJobRepository` |
+| `outbox` | Unsupported repository | `PostgresOutboxRepository` |
 | `automations` | `ConvexAutomationRepository` | Unsupported repository |
 | `billing` | `ConvexBillingRepository` | Unsupported repository |
 | `usage` | Unsupported placeholder | Unsupported placeholder |
@@ -169,8 +181,9 @@ Supported or degraded:
 | Notes | Supported | Backed by `notes`. |
 | File metadata | Degraded | Metadata, upload intents, duplicate promotion, and recursive delete supported; vector indexing disabled. |
 | Account deletion | Supported | Deletes auth user/session and app-data rows. |
-| Background maintenance | Supported | Explicit script/cron command, not Convex scheduler. |
-| Model catalog | Supported | Does not require app-data persistence. |
+| Background maintenance | Supported | Durable Postgres scheduler/worker, with an explicit one-off maintenance command for operations. |
+| Runtime coordination | Supported | Postgres idempotency/replay/leases and shared Redis rate limiting. |
+| Model catalog | Supported | Persisted through the selected app-data repository for restart-safe fallback. |
 
 Unsupported or disabled:
 
@@ -301,7 +314,15 @@ This creates a throwaway user, creates app data, deletes the account, and assert
 
 ## Background Maintenance
 
-Convex scheduled functions are not available in Postgres mode. The implementation adds an explicit maintenance command:
+Convex scheduled functions are not available in Postgres mode. P1 provides a Postgres-backed scheduler and worker:
+
+```bash
+npm run app-db:worker
+```
+
+The default schedules enqueue app-data maintenance, coordination cleanup, and model-catalog refresh jobs. Multiple scheduler/worker replicas are supported through row locks, deterministic dedupe keys, and leased claims. Jobs renew their lease while handlers run, retry with backoff, and move to dead-letter state after their attempt budget is exhausted.
+
+The one-off maintenance command remains available for manual operations:
 
 ```bash
 npm run app-db:maintenance
@@ -313,10 +334,12 @@ Current maintenance tasks:
 - Clean up inactive or old message deltas.
 - Delete old empty conversations.
 
-Operator requirement:
+Operator requirements:
 
-- Run this command from the deployment scheduler, Kubernetes CronJob, system cron, Vercel Cron, or equivalent.
-- Do not assume Convex crons are running when `database.provider=postgres`.
+- Run `npm run app-db:worker` as a separately supervised long-lived process in production.
+- Run app-data migrations before starting a new web or worker release. Both runtimes reject incompatible schema versions.
+- Monitor queued/running/dead-letter jobs, expired lease recovery, Redis connectivity, and worker liveness.
+- Keep `npm run app-db:maintenance` as a manual recovery command; it is not the primary production scheduler after P1.
 
 Still disabled in Postgres pilot mode:
 
@@ -324,7 +347,8 @@ Still disabled in Postgres pilot mode:
 - Automation scheduler.
 - Memory extraction jobs.
 - Vector indexing jobs.
-- Persistent idempotency/nonce garbage collection, unless backed by a future Postgres implementation.
+
+The generic job/outbox substrate does not enable these product domains by itself. Their routes and UI remain capability-gated until their later parity phases add complete handlers and behavioral contracts.
 
 ## Vector Search Boundary
 
@@ -359,7 +383,7 @@ Create the local app-data env file:
 cp .env.app-data.local.example .env.app-data.local
 ```
 
-Start the app-data database:
+Start local Postgres and Redis:
 
 ```bash
 npm run app-db:up
@@ -390,7 +414,7 @@ Make sure `.env.better-auth.local` and `.env.app-data.local` do not point at the
 Local app-data Postgres container:
 
 ```bash
-docker exec -it overlay-app-data-postgres psql -U overlay_app -d overlay_app
+docker compose --env-file .env.app-data.local -f docker-compose.app-data.yml exec app-data-postgres psql -U overlay_app -d overlay_app
 ```
 
 Host `psql`, if installed:
@@ -428,6 +452,10 @@ Minimum Postgres app-data env:
 OVERLAY_PROVIDER_DATABASE=postgres
 OVERLAY_DATABASE_URL=postgres://...
 OVERLAY_DATABASE_SSL_MODE=require
+
+OVERLAY_PROVIDER_RATE_LIMIT=redis
+OVERLAY_REDIS_URL=rediss://redis.example.internal:6379
+OVERLAY_REDIS_FAILURE_MODE=deny
 
 BILLING_PROVIDER=none
 BILLING_ENABLED=false
@@ -470,10 +498,10 @@ Deployment order:
 3. Configure env vars.
 4. Register IdP callback URLs.
 5. Run Better Auth migrations.
-6. Run app-data migrations.
-7. Deploy the app.
-8. Smoke auth, session, chat send, chat title generation, settings, notes, files, account deletion, and sign out.
-9. Configure the background maintenance scheduler.
+6. Run app-data migrations as an exclusive release task.
+7. Deploy the web app and the separately supervised `npm run app-db:worker` service.
+8. Run `npm run app-db:worker:smoke` against the deployed database before promotion.
+9. Smoke auth, session, chat send, chat title generation, settings, notes, files, account deletion, and sign out.
 
 ## Testing
 
@@ -494,6 +522,8 @@ npm run app-db:migrate
 npm run app-db:smoke
 npm run app-db:account-delete-smoke
 npm run app-db:maintenance
+npm run app-db:worker:smoke
+npm run check:p1
 ```
 
 Contract tests:
@@ -570,7 +600,8 @@ Parity exists or is close enough for pilot:
 - Notes CRUD.
 - File metadata and upload intent lifecycle.
 - Account deletion cleanup.
-- Background maintenance command.
+- Shared idempotency, service-auth replay protection, Redis rate limits, durable jobs/outbox, scheduler ownership, and background maintenance.
+- Restart-safe model catalog persistence.
 - Real backend repository contract tests.
 
 Parity does not exist yet:
@@ -599,7 +630,7 @@ Recommended order:
 3. Decide whether projects are required for the pilot; if yes, implement ProjectService parity before enabling the sidebar item.
 4. Add a real Postgres usage repository before enabling Stripe/billing with Postgres app data.
 5. Design `pgvector` tables and indexing only after confirming provider support and retention requirements.
-6. Add Postgres-backed durable scheduler/work queue if automations, webhooks, or memory extraction become pilot requirements.
+6. Build automation, webhook, and memory handlers on the existing durable runtime when those product phases become pilot requirements.
 7. Add account export/delete compliance workflows after the deletion path stabilizes.
 
 ## Troubleshooting

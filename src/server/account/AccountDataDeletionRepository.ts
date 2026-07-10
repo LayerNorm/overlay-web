@@ -1,6 +1,7 @@
 import 'server-only'
 
 export interface AccountDataDeletionCounts {
+  apiIdempotencyKeys: number
   authIdentities: number
   conversationContextSummaries: number
   conversationMessageDeltas: number

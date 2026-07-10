@@ -86,6 +86,11 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
   database: {
     provider: 'convex',
   },
+  rateLimit: {
+    redis: {
+      failureMode: 'deny',
+    },
+  },
   capabilities: {
     billing: true,
     sso: true,

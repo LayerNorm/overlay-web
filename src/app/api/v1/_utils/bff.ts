@@ -57,8 +57,11 @@ export async function handleBffRoute(
     return runtimeConfigErrorResponse(error)
   }
   let appDataCapabilities
+  let idempotencyRepository
   try {
-    appDataCapabilities = getOverlayServerContext().appDataCapabilities
+    const serverContext = getOverlayServerContext()
+    appDataCapabilities = serverContext.appDataCapabilities
+    idempotencyRepository = serverContext.appData.repositories.idempotency
   } catch (error) {
     return runtimeConfigErrorResponse(error)
   }
@@ -149,7 +152,7 @@ export async function handleBffRoute(
     request,
     auth.userId,
     async () => service(request, serviceContext),
-    { appDataProvider: appDataCapabilities.provider },
+    { repository: idempotencyRepository },
   )
   return standardizePaginatedListResponse(request, response)
 }

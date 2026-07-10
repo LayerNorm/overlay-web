@@ -7,6 +7,13 @@ function errorReportingEnabled(): boolean {
 }
 
 export async function register() {
+  if (process.env.NEXT_RUNTIME === 'nodejs') {
+    const { assertConfiguredPostgresSchemaCompatible } = await import(
+      './server/database/postgres/schema-compatibility'
+    )
+    await assertConfiguredPostgresSchemaCompatible()
+  }
+
   if (!errorReportingEnabled()) return
 
   if (process.env.NEXT_RUNTIME === 'nodejs') {

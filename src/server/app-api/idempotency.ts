@@ -3,27 +3,13 @@ import 'server-only'
 import { createHash } from 'node:crypto'
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { logSecurityEvent } from '@/server/observability/security-events'
-import type { AppDataProvider } from '@/server/app-data/capabilities'
+import type {
+  CachedIdempotencyHeader,
+  IdempotencyRepository,
+  IdempotencyReservationResult,
+} from '@/server/idempotency'
 import { isStreamIdempotencyMarker } from '@/shared/api/idempotency-markers'
-
-type CachedHeader = {
-  name: string
-  value: string
-}
-
-type ReservationResult = {
-  status: 'reserved' | 'replay' | 'in_flight' | 'conflict'
-  responseStatus?: number
-  responseHeaders?: CachedHeader[]
-  responseBody?: string
-}
-
-type CompletionResult = {
-  completed: boolean
-}
 
 const MUTATION_METHODS = new Set(['POST', 'PATCH', 'DELETE'])
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000
@@ -69,7 +55,7 @@ async function requestHashFor(request: NextRequest): Promise<string> {
   return sha256(`${request.method.toUpperCase()}\n${request.nextUrl.pathname}\n${request.nextUrl.search}\n${bodyHash}`)
 }
 
-function cachedResponseToResponse(result: ReservationResult): Response {
+function cachedResponseToResponse(result: IdempotencyReservationResult): Response {
   const headers = new Headers()
   for (const header of result.responseHeaders ?? []) {
     if (header.name && header.value) headers.set(header.name, header.value)
@@ -84,7 +70,7 @@ function cachedResponseToResponse(result: ReservationResult): Response {
 
 async function cacheableResponsePayload(response: Response): Promise<{
   body: string
-  headers: CachedHeader[]
+  headers: CachedIdempotencyHeader[]
   status: number
 } | null> {
   const contentType = response.headers.get('content-type') ?? ''
@@ -94,7 +80,7 @@ async function cacheableResponsePayload(response: Response): Promise<{
   if (body == null) return null
   if (new TextEncoder().encode(body).byteLength > MAX_CACHED_RESPONSE_BYTES) return null
 
-  const headers: CachedHeader[] = []
+  const headers: CachedIdempotencyHeader[] = []
   response.headers.forEach((value, name) => {
     const lowerName = name.toLowerCase()
     if (HOP_BY_HOP_HEADERS.has(lowerName)) return
@@ -114,22 +100,11 @@ function isStreamIdempotencyPath(pathname: string): boolean {
 }
 
 async function completeStreamStartedReservation(
+  repository: IdempotencyRepository,
   keyHash: string,
   requestHash: string,
 ): Promise<void> {
-  await convex.mutation<CompletionResult>(
-    'platform/idempotency:completeStreamStartedByServer',
-    {
-      serverSecret: getInternalApiSecret(),
-      keyHash,
-      requestHash,
-    },
-    {
-      throwOnError: true,
-      timeoutMs: 10_000,
-      suppressNetworkConsoleError: true,
-    },
-  ).catch((error) => {
+  await repository.completeStreamStarted({ keyHash, requestHash }).catch((error) => {
     logSecurityEvent(
       'api_idempotency_stream_complete_failed',
       { reason: error instanceof Error ? error.message : String(error) },
@@ -138,20 +113,12 @@ async function completeStreamStartedReservation(
   })
 }
 
-async function discardReservation(keyHash: string, requestHash: string): Promise<void> {
-  await convex.mutation(
-    'platform/idempotency:discardByServer',
-    {
-      serverSecret: getInternalApiSecret(),
-      keyHash,
-      requestHash,
-    },
-    {
-      throwOnError: true,
-      timeoutMs: 10_000,
-      suppressNetworkConsoleError: true,
-    },
-  ).catch((error) => {
+async function discardReservation(
+  repository: IdempotencyRepository,
+  keyHash: string,
+  requestHash: string,
+): Promise<void> {
+  await repository.discard({ keyHash, requestHash }).catch((error) => {
     logSecurityEvent(
       'api_idempotency_discard_failed',
       { reason: error instanceof Error ? error.message : String(error) },
@@ -165,8 +132,8 @@ export async function handleIdempotentMutation(
   userId: string,
   run: () => Promise<Response>,
   options: {
-    appDataProvider?: AppDataProvider
-  } = {},
+    repository: IdempotencyRepository
+  },
 ): Promise<Response> {
   const method = request.method.toUpperCase()
   if (!MUTATION_METHODS.has(method)) return run()
@@ -179,18 +146,6 @@ export async function handleIdempotentMutation(
     return run()
   }
 
-  if (options.appDataProvider === 'postgres') {
-    const response = await run()
-    const headers = new Headers(response.headers)
-    headers.set('Idempotency-Status', 'app-data-provider-bypass')
-    headers.set('Idempotency-Provider', 'postgres-unsupported')
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-    })
-  }
-
   const keyHash = keyHashFor({
     key,
     method,
@@ -198,30 +153,22 @@ export async function handleIdempotentMutation(
     userId,
   })
   const requestHash = await requestHashFor(request)
-  const reservation = await convex.mutation<ReservationResult>(
-    'platform/idempotency:reserveByServer',
-    {
-      serverSecret: getInternalApiSecret(),
+  const reservation = await options.repository.reserve({
       userId,
       keyHash,
       requestHash,
       method,
       path: request.nextUrl.pathname,
       expiresAt: Date.now() + IDEMPOTENCY_TTL_MS,
-    },
-    {
-      throwOnError: true,
-      timeoutMs: 10_000,
-      suppressNetworkConsoleError: true,
-    },
-  )
-
-  if (!reservation) {
+  }).catch((error) => {
     logSecurityEvent(
       'api_idempotency_reserve_failed',
-      { reason: 'Convex idempotency reservation returned no result' },
+      { reason: error instanceof Error ? error.message : String(error) },
       'warning',
     )
+    return null
+  })
+  if (!reservation) {
     return NextResponse.json({ error: 'Idempotency reservation failed' }, { status: 503 })
   }
 
@@ -254,7 +201,7 @@ export async function handleIdempotentMutation(
   try {
     response = await run()
   } catch (error) {
-    await discardReservation(keyHash, requestHash)
+    await discardReservation(options.repository, keyHash, requestHash)
     throw error
   }
 
@@ -264,7 +211,7 @@ export async function handleIdempotentMutation(
       isStreamIdempotencyPath(request.nextUrl.pathname) &&
       response.ok
     ) {
-      await completeStreamStartedReservation(keyHash, requestHash)
+      await completeStreamStartedReservation(options.repository, keyHash, requestHash)
       const headers = new Headers(response.headers)
       headers.set('Idempotency-Status', 'stream-started')
       return new Response(response.body, {
@@ -273,26 +220,17 @@ export async function handleIdempotentMutation(
         headers,
       })
     }
-    await discardReservation(keyHash, requestHash)
+    await discardReservation(options.repository, keyHash, requestHash)
     return response
   }
 
-  const completion = await convex.mutation<CompletionResult>(
-    'platform/idempotency:completeByServer',
-    {
-      serverSecret: getInternalApiSecret(),
+  const completion = await options.repository.complete({
       keyHash,
       requestHash,
       responseStatus: payload.status,
       responseHeaders: payload.headers,
       responseBody: payload.body,
-    },
-    {
-      throwOnError: true,
-      timeoutMs: 10_000,
-      suppressNetworkConsoleError: true,
-    },
-  ).catch((error) => {
+  }).catch((error) => {
     logSecurityEvent(
       'api_idempotency_complete_failed',
       { reason: error instanceof Error ? error.message : String(error) },
@@ -300,7 +238,7 @@ export async function handleIdempotentMutation(
     )
     return null
   })
-  if (!completion?.completed) return response
+  if (!completion) return response
 
   const headers = new Headers(response.headers)
   headers.set('Idempotency-Status', 'stored')

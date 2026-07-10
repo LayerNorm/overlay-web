@@ -78,6 +78,25 @@ export const uploadIntentStatus = pgEnum('overlay_upload_intent_status', [
   'expired',
 ])
 
+export const idempotencyStatus = pgEnum('overlay_idempotency_status', [
+  'processing',
+  'completed',
+])
+
+export const durableJobStatus = pgEnum('overlay_durable_job_status', [
+  'queued',
+  'running',
+  'succeeded',
+  'dead_letter',
+])
+
+export const outboxEventStatus = pgEnum('overlay_outbox_event_status', [
+  'pending',
+  'publishing',
+  'published',
+  'dead_letter',
+])
+
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
   email: text('email').notNull(),
@@ -363,4 +382,111 @@ export const r2UploadIntents = pgTable('r2_upload_intents', {
   index('r2_upload_intents_r2_key_idx').on(table.r2Key),
   index('r2_upload_intents_user_id_status_expires_at_idx').on(table.userId, table.status, table.expiresAt),
   index('r2_upload_intents_file_id_idx').on(table.fileId),
+])
+
+export const apiIdempotencyKeys = pgTable('api_idempotency_keys', {
+  keyHash: text('key_hash').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  requestHash: text('request_hash').notNull(),
+  method: text('method').notNull(),
+  path: text('path').notNull(),
+  status: idempotencyStatus('status').notNull(),
+  responseStatus: integer('response_status'),
+  responseHeaders: jsonb('response_headers').$type<Array<{ name: string; value: string }>>(),
+  responseBody: text('response_body'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (table) => [
+  index('api_idempotency_keys_user_id_idx').on(table.userId),
+  index('api_idempotency_keys_expires_at_idx').on(table.expiresAt),
+  index('api_idempotency_keys_status_updated_at_idx').on(table.status, table.updatedAt),
+])
+
+export const serviceAuthReplayNonces = pgTable('service_auth_replay_nonces', {
+  jti: text('jti').primaryKey(),
+  subject: text('subject').notNull(),
+  method: text('method').notNull(),
+  path: text('path').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('service_auth_replay_nonces_expires_at_idx').on(table.expiresAt),
+  index('service_auth_replay_nonces_subject_consumed_at_idx').on(table.subject, table.consumedAt),
+])
+
+export const durableJobs = pgTable('durable_jobs', {
+  id: text('id').primaryKey(),
+  type: text('type').notNull(),
+  payload: jsonb('payload').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
+  status: durableJobStatus('status').default('queued').notNull(),
+  priority: integer('priority').default(0).notNull(),
+  attempts: integer('attempts').default(0).notNull(),
+  maxAttempts: integer('max_attempts').default(5).notNull(),
+  availableAt: timestamp('available_at', { withTimezone: true }).defaultNow().notNull(),
+  dedupeKey: text('dedupe_key'),
+  leaseOwner: text('lease_owner'),
+  leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+  lastError: text('last_error'),
+  result: jsonb('result').$type<unknown>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  deadLetteredAt: timestamp('dead_lettered_at', { withTimezone: true }),
+}, (table) => [
+  index('durable_jobs_claim_idx').on(table.status, table.availableAt, table.priority, table.createdAt),
+  index('durable_jobs_lease_idx').on(table.status, table.leaseExpiresAt),
+  index('durable_jobs_type_status_idx').on(table.type, table.status),
+  uniqueIndex('durable_jobs_dedupe_key_idx').on(table.dedupeKey),
+])
+
+export const outboxEvents = pgTable('outbox_events', {
+  id: text('id').primaryKey(),
+  topic: text('topic').notNull(),
+  payload: jsonb('payload').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
+  status: outboxEventStatus('status').default('pending').notNull(),
+  attempts: integer('attempts').default(0).notNull(),
+  maxAttempts: integer('max_attempts').default(10).notNull(),
+  availableAt: timestamp('available_at', { withTimezone: true }).defaultNow().notNull(),
+  dedupeKey: text('dedupe_key'),
+  leaseOwner: text('lease_owner'),
+  leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  deadLetteredAt: timestamp('dead_lettered_at', { withTimezone: true }),
+}, (table) => [
+  index('outbox_events_claim_idx').on(table.status, table.availableAt, table.createdAt),
+  index('outbox_events_lease_idx').on(table.status, table.leaseExpiresAt),
+  index('outbox_events_topic_status_idx').on(table.topic, table.status),
+  uniqueIndex('outbox_events_dedupe_key_idx').on(table.dedupeKey),
+])
+
+export const scheduledTasks = pgTable('scheduled_tasks', {
+  id: text('id').primaryKey(),
+  jobType: text('job_type').notNull(),
+  payload: jsonb('payload').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
+  intervalMs: integer('interval_ms').notNull(),
+  nextRunAt: timestamp('next_run_at', { withTimezone: true }).notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  lastEnqueuedAt: timestamp('last_enqueued_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('scheduled_tasks_due_idx').on(table.enabled, table.nextRunAt),
+  index('scheduled_tasks_job_type_idx').on(table.jobType),
+])
+
+export const modelCatalogSnapshots = pgTable('model_catalog_snapshots', {
+  source: text('source').primaryKey(),
+  modelsJson: jsonb('models_json').$type<unknown[]>().notNull(),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('model_catalog_snapshots_fetched_at_idx').on(table.fetchedAt),
 ])

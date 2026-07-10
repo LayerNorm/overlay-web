@@ -210,7 +210,7 @@ Enterprise provider matrix:
 | Analytics | `posthog`, `none` | Pageviews and product events | PostHog project region | Supported. Set analytics feature/provider to `false`/`none` to avoid SDK initialization and capture. |
 | Error reporting | `sentry`, `none` | Error events and sanitized stack/request metadata | Sentry project region | Supported. Set error reporting feature/provider to `false`/`none` to avoid initialization and capture. |
 | Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | Secret manager region | `env` supported; WorkOS vault-backed provider keys exist for selected flows. AWS Secrets Manager and Vault are declared but rejected for runtime secret loading. |
-| Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | App/database region | `convex`, `memory`, and `none` supported. `redis` is declared but rejected until enterprise config wiring exists. |
+| Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | App/database region | All declared providers are supported. Use Redis with fail-closed behavior for multi-instance production/on-prem deployments; memory is development-only. |
 
 ### Postgres app-data setup
 
@@ -231,7 +231,7 @@ cp .env.app-data.local.example .env.app-data.local
 npm run app-db:up
 npm run app-db:migrate
 npm run app-db:smoke
-npm run app-db:maintenance
+npm run app-db:worker:smoke
 ```
 
 For cloud Postgres, set `OVERLAY_DATABASE_URL` and run:
@@ -239,7 +239,7 @@ For cloud Postgres, set `OVERLAY_DATABASE_URL` and run:
 ```bash
 OVERLAY_DATABASE_URL="postgres://..." npm run app-db:migrate
 OVERLAY_DATABASE_URL="postgres://..." npm run app-db:smoke
-OVERLAY_DATABASE_URL="postgres://..." npm run app-db:maintenance
+OVERLAY_DATABASE_URL="postgres://..." npm run app-db:worker:smoke
 ```
 
 Do not reuse `BETTER_AUTH_DATABASE_URL` for app data. Better Auth and Overlay app records have separate schemas and migration lifecycles.
@@ -252,7 +252,7 @@ OVERLAY_DATABASE_URL="postgres://..." npm run app-db:vector-readiness
 
 This readiness command is read-only. It does not enable vector search, install extensions, create vector columns, or change the app-data schema.
 
-Postgres app-data does not use Convex crons. Schedule `npm run app-db:maintenance` from the deployment scheduler, Kubernetes CronJob, system cron, or equivalent. The command handles stale generating-message cleanup, inactive/old message delta cleanup, and old empty conversation cleanup. Webhook delivery retries, automation scheduling, memory extraction jobs, and vector indexing are capability-gated off in Postgres pilot v1.
+Postgres app-data does not use Convex crons. Run `npm run app-db:worker` as a separately supervised service. Its Postgres scheduler enqueues maintenance, coordination cleanup, and model-catalog refresh work; leased workers execute jobs with retry and dead-letter state. The standalone `npm run app-db:maintenance` command remains available for manual recovery. Webhook delivery, automation execution, memory extraction, and vector indexing remain capability-gated until their domain phases add complete handlers.
 
 The migration shape is:
 

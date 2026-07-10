@@ -47,6 +47,7 @@ export const OverlayAnalyticsProviderSchema = z.enum(['posthog', 'none'])
 export const OverlayErrorReportingProviderSchema = z.enum(['sentry', 'none'])
 export const OverlaySecretsProviderSchema = z.enum(['env', 'workos-vault', 'aws-secrets-manager', 'vault', 'none'])
 export const OverlayRateLimitProviderSchema = z.enum(['convex', 'redis', 'memory', 'none'])
+export const OverlayRateLimitFailureModeSchema = z.enum(['deny', 'memory'])
 
 const OverlayFeatureFlagsSchema = z
   .object({
@@ -234,6 +235,19 @@ export const OverlayRuntimeConfigSchema = z
         })
         .default({}),
     }),
+    rateLimit: z
+      .object({
+        redis: z
+          .object({
+            url: OptionalStringSchema,
+            restUrl: OptionalUrlSchema,
+            restToken: OptionalStringSchema,
+            keyPrefix: OptionalStringSchema,
+            failureMode: OverlayRateLimitFailureModeSchema.default('deny'),
+          })
+          .default({}),
+      })
+      .default({}),
     capabilities: z.object({
       billing: z.boolean().default(true),
       sso: z.boolean().default(true),
@@ -347,9 +361,35 @@ export const OverlayRuntimeConfigSchema = z
       'aws-secrets-manager': 'AWS Secrets Manager is declared but not implemented for runtime secret loading. Use secrets.provider=env or workos-vault.',
       vault: 'HashiCorp Vault is declared but not implemented for runtime secret loading. Use secrets.provider=env or workos-vault.',
     })
-    addUnsupportedProviderIssue(ctx, ['providers', 'rateLimit', 'provider'], selectedProviders.rateLimit, {
-      redis: 'Redis rate limiting is declared but not wired through enterprise config yet. Use rateLimit.provider=convex, memory, or none.',
-    })
+    if (selectedProviders.rateLimit === 'redis') {
+      const redis = config.rateLimit.redis
+      const hasTcp = Boolean(redis.url)
+      const hasRest = Boolean(redis.restUrl && redis.restToken)
+      if (!hasTcp && !hasRest) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rateLimit', 'redis'],
+          message: 'Redis rate limiting requires REDIS_URL/OVERLAY_REDIS_URL or both UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN',
+        })
+      }
+      if (Boolean(redis.restUrl) !== Boolean(redis.restToken)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rateLimit', 'redis'],
+          message: 'Redis REST rate limiting requires both restUrl and restToken',
+        })
+      }
+      if (
+        ['production', 'onprem'].includes(config.app.deploymentEnvironment) &&
+        redis.failureMode !== 'deny'
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rateLimit', 'redis', 'failureMode'],
+          message: 'Production and on-prem Redis rate limiting must use failureMode=deny',
+        })
+      }
+    }
 
     if (config.preset === 'dpdp-strict' && config.compliance.profile !== 'dpdp-strict') {
       ctx.addIssue({
@@ -626,6 +666,15 @@ export function redactOverlayRuntimeConfig(config: OverlayRuntimeConfig) {
       postgres: {
         hasConnectionString: Boolean(config.database.postgres.connectionString),
         sslMode: config.database.postgres.sslMode,
+      },
+    },
+    rateLimit: {
+      redis: {
+        hasUrl: Boolean(config.rateLimit.redis.url),
+        hasRestUrl: Boolean(config.rateLimit.redis.restUrl),
+        hasRestToken: Boolean(config.rateLimit.redis.restToken),
+        keyPrefix: config.rateLimit.redis.keyPrefix,
+        failureMode: config.rateLimit.redis.failureMode,
       },
     },
     tenancy: {

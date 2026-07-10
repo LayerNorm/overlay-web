@@ -83,9 +83,9 @@ export const POSTGRES_APP_DATA_V1_CAPABILITIES: AppDataCapabilities = {
   supportsApiKeys: false,
   supportsAccountDeletion: true,
   supportsBackgroundMaintenance: true,
-  supportsManagedScheduler: false,
-  supportsPersistentIdempotency: false,
-  supportsServiceAuthReplayStore: false,
+  supportsManagedScheduler: true,
+  supportsPersistentIdempotency: true,
+  supportsServiceAuthReplayStore: true,
   requiresConvexClient: false,
 }
 

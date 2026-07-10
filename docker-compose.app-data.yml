@@ -1,7 +1,6 @@
 services:
   app-data-postgres:
     image: postgres:16-alpine
-    container_name: overlay-app-data-postgres
     environment:
       POSTGRES_DB: ${OVERLAY_POSTGRES_DB:-overlay_app}
       POSTGRES_USER: ${OVERLAY_POSTGRES_USER:-overlay_app}
@@ -18,5 +17,19 @@ services:
     volumes:
       - overlay-app-data-postgres-data:/var/lib/postgresql/data
 
+  app-data-redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    ports:
+      - "${OVERLAY_REDIS_PORT:-56379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - overlay-app-data-redis-data:/data
+
 volumes:
   overlay-app-data-postgres-data:
+  overlay-app-data-redis-data:

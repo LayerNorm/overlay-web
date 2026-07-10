@@ -190,6 +190,45 @@ test('OverlayRuntimeConfigSchema accepts configured Postgres database provider',
   assert.equal(parsed.database.postgres.connectionString, 'postgres://overlay:secret@db.internal/overlay')
 })
 
+test('OverlayRuntimeConfigSchema accepts fail-closed Redis rate limiting for on-prem', () => {
+  const parsed = OverlayRuntimeConfigSchema.parse({
+    ...minimalSaasConfig,
+    app: {
+      ...minimalSaasConfig.app,
+      deploymentEnvironment: 'onprem',
+    },
+    providers: {
+      rateLimit: { provider: 'redis' },
+    },
+    rateLimit: {
+      redis: {
+        url: 'rediss://redis.internal:6379',
+        failureMode: 'deny',
+      },
+    },
+  })
+
+  assert.equal(parsed.providers.rateLimit?.provider, 'redis')
+  assert.equal(parsed.rateLimit.redis.failureMode, 'deny')
+})
+
+test('OverlayRuntimeConfigSchema rejects Redis without connectivity and fail-closed policy', () => {
+  assert.throws(
+    () => OverlayRuntimeConfigSchema.parse({
+      ...minimalSaasConfig,
+      app: {
+        ...minimalSaasConfig.app,
+        deploymentEnvironment: 'onprem',
+      },
+      providers: {
+        rateLimit: { provider: 'redis' },
+      },
+      rateLimit: { redis: { failureMode: 'memory' } },
+    }),
+    /Redis rate limiting requires[\s\S]*failureMode=deny/,
+  )
+})
+
 test('OverlayRuntimeConfigSchema rejects Postgres database provider with enabled vector search', () => {
   assert.throws(
     () =>
