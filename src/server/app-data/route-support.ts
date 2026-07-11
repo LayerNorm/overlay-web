@@ -182,7 +182,7 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'knowledge-memory-vector-search',
     methods: '*',
     prefixes: ['/api/v1/knowledge', '/api/v1/memory'],
-    status: 'unsupported',
+    status: 'supported',
     feature: 'vector-search',
   },
   {

@@ -1,34 +1,9 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { addMemory, listMemories, removeMemory } from '@/shared/app/app-store'
-import { memoriesToClientListRows, segmentMemoryForIngestion } from '@/shared/knowledge/memory-display-segments'
-import type { Id } from '../../../../../convex/_generated/dataModel'
-
-type MemoryDoc = {
-  _id: string
-  userId: string
-  clientId?: string
-  content: string
-  source: 'chat' | 'note' | 'manual'
-  type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
-  importance?: number
-  projectId?: string
-  conversationId?: string
-  noteId?: string
-  messageId?: string
-  turnId?: string
-  tags?: string[]
-  actor?: 'user' | 'agent'
-  createdAt: number
-  updatedAt: number
-  deletedAt?: number
-}
-
-const MAX_MEMORY_CONTENT_CHARS = 20_000
-const MAX_MEMORY_CHUNKS = 20
+import { getOverlayServerContext } from '@/server/bootstrap'
+import { MemoryServiceError, type MemoryActor, type MemorySource, type MemoryType } from '@/server/memory'
+import { memoriesToClientListRows } from '@/shared/knowledge/memory-display-segments'
 
 function readBooleanParam(value: string | null): boolean | undefined {
   if (value == null) return undefined
@@ -39,214 +14,106 @@ function readBooleanParam(value: string | null): boolean | undefined {
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const { auth } = context
-    const serverSecret = getInternalApiSecret()
+    const service = getOverlayServerContext().memoryService
     const memoryId = request.nextUrl.searchParams.get('memoryId')
     const raw = readBooleanParam(request.nextUrl.searchParams.get('raw')) === true
-    const updatedSinceParam = request.nextUrl.searchParams.get('updatedSince')
-    const updatedSince = updatedSinceParam ? Number(updatedSinceParam) : undefined
     const includeDeleted = readBooleanParam(request.nextUrl.searchParams.get('includeDeleted'))
-    const projectId = request.nextUrl.searchParams.get('projectId') ?? undefined
-    const conversationId = request.nextUrl.searchParams.get('conversationId') ?? undefined
-    const noteId = request.nextUrl.searchParams.get('noteId') ?? undefined
-
     if (memoryId) {
-      const memory = await convex.query<MemoryDoc[]>('knowledge/memories:list', {
-        userId: auth.userId,
-        serverSecret,
-        includeDeleted: true,
+      const memory = await service.get({
+        includeDeleted: raw,
+        memoryId,
+        userId: context.auth.userId,
       })
-      const match = (memory || []).find((item) => item._id === memoryId)
-      if (!match || (!raw && match.deletedAt)) {
-        return NextResponse.json({ error: 'Not found' }, { status: 404 })
-      }
-      return NextResponse.json(match)
+      if (!memory) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      return NextResponse.json(memory)
     }
 
-    const fromConvex = await convex.query<MemoryDoc[]>('knowledge/memories:list', {
-      userId: auth.userId,
-      serverSecret,
-      ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
-      ...(includeDeleted !== undefined ? { includeDeleted } : {}),
-      ...(projectId ? { projectId } : {}),
-      ...(conversationId ? { conversationId } : {}),
-      ...(noteId ? { noteId } : {}),
+    const updatedSinceValue = Number(request.nextUrl.searchParams.get('updatedSince'))
+    const rows = await service.list({
+      conversationId: request.nextUrl.searchParams.get('conversationId') ?? undefined,
+      includeDeleted,
+      noteId: request.nextUrl.searchParams.get('noteId') ?? undefined,
+      projectId: request.nextUrl.searchParams.get('projectId') ?? undefined,
+      updatedSince: Number.isFinite(updatedSinceValue) && updatedSinceValue > 0 ? updatedSinceValue : undefined,
+      userId: context.auth.userId,
     })
-    const fallback = listMemories(auth.userId).map((memory) => ({
-      _id: memory._id,
-      userId: auth.userId,
-      content: memory.content,
-      source: memory.source,
-      createdAt: memory.createdAt,
-      updatedAt: memory.createdAt,
-    }))
-    const rows = Array.isArray(fromConvex) ? fromConvex : fallback
     return NextResponse.json(raw ? rows : memoriesToClientListRows(rows))
   } catch (error) {
-    logger.error('[Memory API] GET error:', error)
-    return NextResponse.json({ error: 'Failed to fetch memories' }, { status: 500 })
+    return memoryErrorResponse('GET', error)
   }
+}
+
+type MemoryBody = {
+  actor?: MemoryActor
+  clientId?: string
+  content?: string
+  conversationId?: string
+  importance?: number
+  memoryId?: string
+  messageId?: string
+  noteId?: string
+  projectId?: string
+  source?: MemorySource | string
+  tags?: string[]
+  turnId?: string
+  type?: MemoryType
 }
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = (await request.json()) as {
-      content?: string
-      source?: string
-      clientId?: string
-      type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
-      importance?: number
-      projectId?: string
-      conversationId?: string
-      noteId?: string
-      messageId?: string
-      turnId?: string
-      tags?: string[]
-      actor?: 'user' | 'agent'
-      accessToken?: string
-      userId?: string
-    }
-
-    const { auth } = context
-    const serverSecret = getInternalApiSecret()
-
-    const trimmed = (body.content ?? '').trim()
-    if (!trimmed) return NextResponse.json({ error: 'content required' }, { status: 400 })
-    if (trimmed.length > MAX_MEMORY_CONTENT_CHARS) {
-      return NextResponse.json({ error: `content cannot exceed ${MAX_MEMORY_CONTENT_CHARS} characters` }, { status: 413 })
-    }
-
-    const raw = body.source ?? 'manual'
-    const source =
-      raw === 'chat' || raw === 'note' || raw === 'manual' ? raw : 'manual'
-
-    const chunks = segmentMemoryForIngestion(trimmed)
-    if (chunks.length > MAX_MEMORY_CHUNKS) {
-      return NextResponse.json({ error: `memory content produced too many chunks` }, { status: 413 })
-    }
-    const clientIdSingle = chunks.length === 1 ? body.clientId?.trim() || undefined : undefined
-
-    const ids: string[] = []
-    for (const chunk of chunks) {
-      const memoryId = await convex.mutation<string>('knowledge/memories:add', {
-        userId: auth.userId,
-        serverSecret,
-        clientId: clientIdSingle,
-        content: chunk,
-        source,
-        type: body.type,
-        importance: body.importance,
-        projectId: body.projectId ?? undefined,
-        conversationId: body.conversationId ?? undefined,
-        noteId: body.noteId ?? undefined,
-        messageId: body.messageId ?? undefined,
-        turnId: body.turnId ?? undefined,
-        tags: body.tags,
-        actor: body.actor,
-      })
-      const id = memoryId || addMemory(auth.userId, chunk, source)
-      ids.push(id)
-    }
-
-    const memory = await convex.query<MemoryDoc[]>('knowledge/memories:list', {
-      userId: auth.userId,
-      serverSecret,
-      includeDeleted: true,
+    const body = await request.json() as MemoryBody
+    const result = await getOverlayServerContext().memoryService.create({
+      ...body,
+      content: body.content ?? '',
+      userId: context.auth.userId,
     })
-    const firstId = ids[0]!
-    return NextResponse.json({
-      id: firstId,
-      ids,
-      count: ids.length,
-      memory: (memory || []).find((item) => item._id === firstId),
-    })
+    return NextResponse.json({ id: result.ids[0], ...result })
   } catch (error) {
-    logger.error('[Memory API] POST error:', error)
-    return NextResponse.json({ error: 'Failed to add memory' }, { status: 500 })
+    return memoryErrorResponse('POST', error)
   }
 }
 
 export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = (await request.json()) as {
-      memoryId?: string
-      content?: string
-      source?: 'chat' | 'note' | 'manual'
-      type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
-      importance?: number
-      projectId?: string
-      conversationId?: string
-      noteId?: string
-      messageId?: string
-      turnId?: string
-      tags?: string[]
-      actor?: 'user' | 'agent'
-      accessToken?: string
-      userId?: string
-    }
-
-    const { auth } = context
-    const serverSecret = getInternalApiSecret()
-
-    if (!body.memoryId?.trim() || body.content === undefined || body.content === '') {
-      return NextResponse.json({ error: 'memoryId and content required' }, { status: 400 })
-    }
-
-    await convex.mutation('knowledge/memories:update', {
-      userId: auth.userId,
-      serverSecret,
-      memoryId: body.memoryId.trim() as Id<'memories'>,
-      content: body.content,
-      source: body.source,
-      type: body.type,
-      importance: body.importance,
-      projectId: body.projectId,
-      conversationId: body.conversationId,
-      noteId: body.noteId,
-      messageId: body.messageId,
-      turnId: body.turnId,
-      tags: body.tags,
-      actor: body.actor,
+    const body = await request.json() as MemoryBody
+    if (!body.memoryId?.trim()) return NextResponse.json({ error: 'memoryId and content required' }, { status: 400 })
+    const memory = await getOverlayServerContext().memoryService.update({
+      ...body,
+      content: body.content ?? '',
+      memoryId: body.memoryId.trim(),
+      source: body.source as MemorySource | undefined,
+      userId: context.auth.userId,
     })
-    const memory = await convex.query<MemoryDoc[]>('knowledge/memories:list', {
-      userId: auth.userId,
-      serverSecret,
-      includeDeleted: true,
-    })
-    return NextResponse.json({
-      success: true,
-      memory: (memory || []).find((item) => item._id === body.memoryId?.trim()),
-    })
+    return NextResponse.json({ memory, success: true })
   } catch (error) {
-    logger.error('[Memory API] PATCH error:', error)
-    return NextResponse.json({ error: 'Failed to update memory' }, { status: 500 })
+    return memoryErrorResponse('PATCH', error)
   }
 }
 
 export async function DELETE(request: NextRequest, context: AppApiRouteContext) {
   try {
-    let body: { memoryId?: string; accessToken?: string; userId?: string } = {}
+    let body: MemoryBody = {}
     try {
-      body = (await request.json()) as typeof body
+      body = await request.json() as MemoryBody
     } catch (_error) {
-      // Browser sends query params only
+      // Browser sends query params only.
     }
-
-    const { auth } = context
-    const serverSecret = getInternalApiSecret()
-
-    const memoryId = body.memoryId ?? request.nextUrl.searchParams.get('memoryId')
+    const memoryId = body.memoryId ?? request.nextUrl.searchParams.get('memoryId') ?? undefined
     if (!memoryId) return NextResponse.json({ error: 'memoryId required' }, { status: 400 })
-
-    await convex.mutation('knowledge/memories:remove', {
-      memoryId: memoryId as Id<'memories'>,
-      userId: auth.userId,
-      serverSecret,
+    const result = await getOverlayServerContext().memoryService.remove({
+      memoryId,
+      userId: context.auth.userId,
     })
-    removeMemory(memoryId)
-    return NextResponse.json({ success: true, memoryId, deletedAt: Date.now() })
+    return NextResponse.json({ success: true, ...result })
   } catch (error) {
-    logger.error('[Memory API] DELETE error:', error)
-    return NextResponse.json({ error: 'Failed to delete memory' }, { status: 500 })
+    return memoryErrorResponse('DELETE', error)
   }
+}
+
+function memoryErrorResponse(method: string, error: unknown) {
+  logger.error(`[Memory API] ${method} error:`, error)
+  if (error instanceof MemoryServiceError) {
+    return NextResponse.json({ error: error.message }, { status: error.statusCode })
+  }
+  return NextResponse.json({ error: 'Memory operation failed' }, { status: 500 })
 }

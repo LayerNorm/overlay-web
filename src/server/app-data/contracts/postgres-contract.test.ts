@@ -3,7 +3,7 @@ import 'server-only'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { eq, sql } from 'drizzle-orm'
+import { eq, inArray, sql } from 'drizzle-orm'
 import {
   createOverlayPostgresDb,
   createOverlayPostgresPool,
@@ -23,9 +23,11 @@ import {
   knowledgeChunkEmbeddings,
   knowledgeChunks,
   memories,
+  projects,
   users,
 } from '@/server/database/postgres/schema'
 import { KNOWLEDGE_EMBEDDING_DIMENSIONS, type EmbeddingProvider } from '@/server/knowledge'
+import { PostgresKnowledgeSearchRepository } from '@/server/knowledge'
 import {
   enqueueStorageCleanupJobs,
   STORAGE_DELETE_OBJECTS_JOB,
@@ -131,6 +133,12 @@ test('Postgres app-data repository contracts', {
       const suffix = randomUUID()
       const userId = `contract_index_${suffix}`
       await db.insert(users).values({ id: userId, email: `${userId}@example.com` })
+      const projectId = `project_${suffix}`
+      const otherProjectId = `project_other_${suffix}`
+      await db.insert(projects).values([
+        { id: projectId, name: 'Target', userId },
+        { id: otherProjectId, name: 'Other', userId },
+      ])
       const repository = new PostgresMemoryRepository(db)
       const embeddings: EmbeddingProvider = {
         identity: {
@@ -152,6 +160,18 @@ test('Postgres app-data repository contracts', {
           source: 'manual',
           userId,
         })
+        const projectMemory = await repository.create({
+          content: 'Target project AWS knowledge for the scoped pilot.',
+          projectId,
+          source: 'manual',
+          userId,
+        })
+        const otherProjectMemory = await repository.create({
+          content: 'Other project AWS knowledge that must remain out of scope.',
+          projectId: otherProjectId,
+          source: 'manual',
+          userId,
+        })
         const runtime = createPostgresRuntime({
           db,
           embeddingProvider: embeddings,
@@ -159,18 +179,45 @@ test('Postgres app-data repository contracts', {
           workerId: `knowledge-worker-${suffix}`,
         })
         assert.equal(await runtime.worker.runOnce(), 'succeeded')
+        assert.equal(await runtime.worker.runOnce(), 'succeeded')
+        assert.equal(await runtime.worker.runOnce(), 'succeeded')
         const indexedChunks = await db.select().from(knowledgeChunks).where(eq(knowledgeChunks.sourceId, memory._id))
         assert.ok(indexedChunks.length >= 2)
         const vectorRows = await db.select().from(knowledgeChunkEmbeddings).where(eq(knowledgeChunkEmbeddings.userId, userId))
-        assert.equal(vectorRows.length, indexedChunks.length)
+        assert.ok(vectorRows.length >= indexedChunks.length)
         assert.equal(vectorRows[0]?.modelVersion, 'contract-v1')
         const [indexedMemory] = await db.select().from(memories).where(eq(memories.id, memory._id))
         assert.equal(indexedMemory?.indexStatus, 'indexed')
         assert.equal(indexedMemory?.embeddingModelVersion, 'contract-v1')
 
+        const search = await new PostgresKnowledgeSearchRepository({ db, embeddings }).hybridSearch({
+          projectId: undefined,
+          query: 'private AWS account',
+          userId,
+        })
+        assert.ok(search.chunks.some((chunk) => chunk.sourceId === memory._id))
+        assert.ok(search.chunks.every((chunk) => chunk.sourceKind === 'memory'))
+        const foreignSearch = await new PostgresKnowledgeSearchRepository({ db, embeddings }).hybridSearch({
+          query: 'private AWS account',
+          userId: `not_${userId}`,
+        })
+        assert.deepEqual(foreignSearch.chunks, [])
+        const scopedSearch = await new PostgresKnowledgeSearchRepository({ db, embeddings }).hybridSearch({
+          projectId,
+          query: 'AWS knowledge pilot',
+          userId,
+        })
+        assert.ok(scopedSearch.chunks.some((chunk) => chunk.sourceId === projectMemory._id))
+        assert.ok(scopedSearch.chunks.some((chunk) => chunk.sourceId === memory._id))
+        assert.equal(scopedSearch.chunks.some((chunk) => chunk.sourceId === otherProjectMemory._id), false)
+        assert.equal(scopedSearch.chunks[0]?.sourceId, projectMemory._id)
+
         await repository.remove({ memoryId: memory._id, userId })
         assert.equal((await db.select().from(knowledgeChunks).where(eq(knowledgeChunks.sourceId, memory._id))).length, 0)
-        assert.equal((await db.select().from(knowledgeChunkEmbeddings).where(eq(knowledgeChunkEmbeddings.userId, userId))).length, 0)
+        assert.equal((await db.select().from(knowledgeChunkEmbeddings).where(inArray(
+          knowledgeChunkEmbeddings.chunkId,
+          indexedChunks.map((chunk) => chunk.id),
+        ))).length, 0)
       } finally {
         await db.delete(users).where(eq(users.id, userId))
         await db.delete(durableJobs)
@@ -187,6 +234,7 @@ test('Postgres app-data repository contracts', {
       ),
       daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),
       files: new PostgresFileRepository(db),
+      memories: new PostgresMemoryRepository(db),
       notes: new PostgresNoteRepository(db),
       projects: new PostgresProjectRepository(db),
       usagePolicy: new UnlimitedUsagePolicy(),

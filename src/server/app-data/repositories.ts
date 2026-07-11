@@ -19,10 +19,10 @@ import type { FileRepository } from '@/server/files/FileRepository'
 import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
 import { ConvexNoteRepository, PostgresNoteRepository, type NoteRepository } from '@/server/notes'
 import {
-  ConvexMemoryRepository,
   PostgresMemoryRepository,
   type MemoryRepository,
 } from '@/server/memory'
+import { ConvexMemoryRepository } from '@/server/memory/ConvexMemoryRepository'
 import {
   PostgresOnboardingRepository,
   type OnboardingRepository,
@@ -86,6 +86,7 @@ export interface AppDataRepositories {
 
 export interface AppDataContext {
   capabilities: AppDataCapabilities
+  postgres?: { db: ReturnType<typeof createOverlayPostgresDb> }
   repositories: AppDataRepositories
 }
 
@@ -103,6 +104,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
     const db = createOverlayPostgresDb(pool)
     return {
       capabilities,
+      postgres: { db },
       repositories: {
         accountDeletion: new PostgresAccountDataDeletionRepository(db),
         automations: unsupportedRepository<AutomationRepository>('AutomationRepository'),

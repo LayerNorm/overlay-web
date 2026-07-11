@@ -35,6 +35,13 @@ import {
 import { UserService, type UserAuthProvider } from '@/server/users'
 import type { NoteRepository } from '@/server/notes'
 import { MemoryService } from '@/server/memory'
+import {
+  KnowledgeSearchService,
+  PostgresKnowledgeSearchRepository,
+  UnavailableKnowledgeSearchRepository,
+  createEmbeddingProvider,
+} from '@/server/knowledge'
+import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -58,6 +65,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   chatUsagePolicy: ActUsagePolicy
   generationUsagePolicy: GenerationUsagePolicy
   memoryService: MemoryService
+  knowledgeSearchService: KnowledgeSearchService
   noteRepository: NoteRepository
   apiKeyService: typeof ApiKeyService
   userService: UserService
@@ -101,6 +109,7 @@ export function createOverlayServerContext(
     repository: appData.repositories.users,
   })
   const memoryService = new MemoryService(appData.repositories.memories)
+  const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
 
   return {
     auth: appConfig.authProvider ?? createAuthProvider(runtimeConfig, userService),
@@ -115,10 +124,28 @@ export function createOverlayServerContext(
     chatUsagePolicy,
     generationUsagePolicy,
     memoryService,
+    knowledgeSearchService,
     noteRepository: appData.repositories.notes,
     apiKeyService: ApiKeyService,
     userService,
   }
+}
+
+function createKnowledgeSearchService(
+  appData: AppDataContext,
+  runtimeConfig: OverlayRuntimeConfig | null,
+): KnowledgeSearchService {
+  if (appData.capabilities.provider !== 'postgres') {
+    return new KnowledgeSearchService(new ConvexKnowledgeSearchRepository())
+  }
+  if (!runtimeConfig || !appData.capabilities.supportsVectorSearch) {
+    return new KnowledgeSearchService(new UnavailableKnowledgeSearchRepository())
+  }
+  if (!appData.postgres) throw new Error('Postgres knowledge search requires a database context')
+  return new KnowledgeSearchService(new PostgresKnowledgeSearchRepository({
+    db: appData.postgres.db,
+    embeddings: createEmbeddingProvider(runtimeConfig),
+  }))
 }
 
 let defaultServerContext: OverlayServerContext | null = null

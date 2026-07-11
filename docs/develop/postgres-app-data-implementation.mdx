@@ -10,8 +10,8 @@ The short version:
 - Auth is now provider-agnostic at the app boundary. WorkOS and Better Auth both normalize into the Overlay session contract.
 - Auth storage and app-data storage are separate concerns. Better Auth uses its own Postgres database for auth/session state. Overlay app data uses either Convex or the new Postgres app-data provider.
 - Postgres app-data includes production runtime foundations for shared idempotency, replay protection, Redis rate limiting, durable jobs/outbox, scheduler ownership, schema compatibility, and persisted model catalog snapshots.
-- Postgres app-data is not full Convex parity. Chat, projects, files, generated media, browser outputs, and Daytona artifacts are supported; automations, webhooks, API keys, billing records, integrations, memory extraction, and vector search remain disabled or unsupported.
-- Postgres vector search is not implemented yet. The intended future direction is `pgvector`, and deployments must verify their managed Postgres provider supports the `vector` extension before planning vector parity.
+- Postgres app-data is not full Convex parity. Chat, projects, files, generated media, browser outputs, Daytona artifacts, memories, and knowledge retrieval are supported; automations, webhooks, API keys, billing records, and integrations remain disabled or unsupported.
+- Postgres knowledge retrieval uses `pgvector` plus Postgres full-text search. Deployments must verify that their managed Postgres provider supports the `vector` extension and must run a separately supervised indexing worker.
 
 ## Design Goals
 
@@ -88,6 +88,9 @@ Use separate schemas/databases for these concerns. They have different ownership
 | P2 chat | Current branch | Added transactional conversation events, cursor-based browser synchronization, batched text-delta persistence, disconnect-safe background draining, stop/finalize race protection, repository-backed message/share/stream-auth routes, and provider-neutral public shares. |
 | P3a projects | Current branch | Added provider-neutral project CRUD, hierarchy locks and cycle checks, linked-resource authorization, recursive soft deletion, and Postgres project UI capability exposure. |
 | P3b files/storage | Current branch | Added atomic extracted-document writes, file hierarchy constraints, unique upload intents, durable S3 cleanup jobs, bulk duplicate reconciliation, and scheduled object reconciliation. |
+| P4a knowledge schema | Current branch | Added memories, knowledge chunks, versioned pgvector embeddings, ownership indexes, and account-deletion coverage. |
+| P4b indexing | Current branch | Added transactional reindex jobs, shared chunking, embedding adapters, retries, stale-write protection, and deletion cleanup. |
+| P4c retrieval | Current branch | Added user/project-scoped hybrid vector and lexical retrieval, RRF ranking, citations, and provider-neutral memory/search routes. |
 
 ## Key Code Boundaries
 
@@ -137,6 +140,9 @@ Core tables:
 | `outbox_events` | Durable publish intents, leases, retries, and dead-letter state. |
 | `scheduled_tasks` | Scheduler ownership, cadence, and next-run state. |
 | `model_catalog_snapshots` | Restart-safe model-catalog snapshots and stale fallback. |
+| `memories` | Durable user memories, source metadata, project scope, and indexing state. |
+| `knowledge_chunks` | Searchable file and memory chunks with source/project ownership. |
+| `knowledge_chunk_embeddings` | 1536-dimensional pgvector rows with provider/model/version metadata. |
 
 Important deletion behavior:
 
@@ -161,6 +167,7 @@ Important deletion behavior:
 | `idempotency` | `ConvexIdempotencyRepository` | `PostgresIdempotencyRepository` |
 | `serviceAuthReplay` | `ConvexServiceAuthReplayRepository` | `PostgresServiceAuthReplayRepository` |
 | `modelCatalog` | `ConvexModelCatalogRepository` | `PostgresModelCatalogRepository` |
+| `memories` | `ConvexMemoryRepository` | `PostgresMemoryRepository` |
 | `durableJobs` | Unsupported repository | `PostgresDurableJobRepository` |
 | `outbox` | Unsupported repository | `PostgresOutboxRepository` |
 | `automations` | `ConvexAutomationRepository` | Unsupported repository |
@@ -190,6 +197,7 @@ Supported or degraded:
 | Daytona workspace state | Supported | Sandbox/volume identity and metering checkpoints are stored in `daytona_workspaces`. |
 | Account deletion | Supported | Deletes auth user/session and app-data rows. |
 | Background maintenance | Supported | Durable Postgres scheduler/worker, with an explicit one-off maintenance command for operations. |
+| Memory and knowledge retrieval | Supported with `pgvector` | Durable indexing jobs, model-versioned embeddings, hybrid lexical/vector ranking, project scope, and citations. |
 | Runtime coordination | Supported | Postgres idempotency/replay/leases and shared Redis rate limiting. |
 | Model catalog | Supported | Persisted through the selected app-data repository for restart-safe fallback. |
 
@@ -204,8 +212,7 @@ Unsupported or disabled:
 | API keys | No Postgres API key repository yet. |
 | Billing records | Billing must be disabled with Postgres app-data v1. |
 | Usage accounting | Chat uses `UnlimitedUsagePolicy`; no persistent Postgres usage audit backend yet. |
-| Memory extraction | Background jobs and vector storage are not implemented. |
-| Vector search | Planned future `pgvector` direction, not available today. |
+| Automatic memory extraction | Explicit saved-memory CRUD and retrieval are supported; automatic model-driven extraction policy remains a separate product behavior. |
 
 ## Auth And Identity Sync
 

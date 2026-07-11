@@ -31,7 +31,7 @@ async function main() {
     const row = extension.rows[0]
     if (!row) {
       throw new Error(
-        'pgvector extension is not available in this Postgres deployment. Future Postgres-native vector search requires a provider that exposes the vector extension.',
+        'pgvector extension is not available in this Postgres deployment. Postgres-native knowledge search requires a provider that exposes the vector extension.',
       )
     }
 
@@ -44,7 +44,9 @@ async function main() {
       extensionInstalled: row.installed_version != null,
       defaultVersion: row.default_version,
       installedVersion: row.installed_version,
-      note: 'Readiness only. Overlay Postgres app-data v1 still requires vectorSearch=false and vectorSearch.provider=none.',
+      note: row.installed_version
+        ? 'pgvector is installed. Configure vectorSearch.provider=pgvector, select an embeddings provider, and run the worker.'
+        : 'pgvector is available but not installed. Run the app-data migration before enabling vector search.',
     }, null, 2))
   } finally {
     await pool.end()

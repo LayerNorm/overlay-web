@@ -18,6 +18,7 @@ import { UserService, type UserAuthProvider } from '@/server/users'
 import type { UserRepository } from '@/server/users/types'
 import type { DaytonaWorkspaceRepository } from '@/server/ai/sandbox/DaytonaWorkspaceRepository'
 import { hashTextContent } from '@/server/storage/text-content-hash'
+import type { MemoryRepository } from '@/server/memory'
 
 export interface AppDataRepositoryContractBackend {
   accountDeletionRepository?: AccountDataDeletionRepository
@@ -26,6 +27,7 @@ export interface AppDataRepositoryContractBackend {
   daytonaWorkspaces: DaytonaWorkspaceRepository
   deleteAccount?: (userId: string) => Promise<AccountDeletionResult>
   files: FileRepository
+  memories: MemoryRepository
   name: string
   notes: NoteRepository
   provider: AppDataProvider
@@ -742,6 +744,27 @@ export async function runAppDataRepositoryContractSuite(
       assert.deepEqual(finished, { finalized: false, reservationId: null })
     })
 
+    await t.test(`${backend.name}: memories preserve provider-neutral CRUD and user isolation`, async () => {
+      const created = await backend.memories.create({
+        clientId: `contract-memory-${randomUUID()}`,
+        content: 'The contract deployment keeps its knowledge private.',
+        source: 'manual',
+        tags: ['contract'],
+        userId,
+      })
+      assert.equal((await backend.memories.get({ memoryId: created._id, userId }))?.content, created.content)
+      assert.equal(await backend.memories.get({ memoryId: created._id, userId: foreignUserId }), null)
+      const updated = await backend.memories.update({
+        content: 'The contract deployment keeps its knowledge private and scoped.',
+        memoryId: created._id,
+        source: 'manual',
+        tags: ['contract', 'scope'],
+        userId,
+      })
+      assert.deepEqual(updated?.tags, ['contract', 'scope'])
+      assert.equal((await backend.memories.list({ userId })).length >= 1, true)
+    })
+
     await t.test(`${backend.name}: account deletion removes repository-owned data`, async () => {
       const result = await deleteAccount(backend, userId)
       accountDeleted = true
@@ -754,6 +777,7 @@ export async function runAppDataRepositoryContractSuite(
       assert.equal(conversations.length, 0)
       assert.equal((await backend.notes.listNotes({ userId, includeDeleted: true })).length, 0)
       assert.equal((await backend.files.listFiles({ userId, includeDeleted: true })).length, 0)
+      assert.equal((await backend.memories.list({ userId, includeDeleted: true })).length, 0)
 
       if (result.verification) {
         assert.equal(result.verification.orphanedRowCount, 0)

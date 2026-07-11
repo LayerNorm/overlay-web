@@ -118,7 +118,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
   {
     id: 'knowledge-memory',
     name: 'Knowledge, memory, and vector search',
-    targetPhase: 'P5',
+    targetPhase: 'P4',
     capabilities: [{ key: 'supportsVectorSearch', expectedAtParity: true }],
     routeRuleIds: ['knowledge-memory-vector-search', 'chat-knowledge-features'],
     exitGate: 'Upload, extract, embed, retrieve, cite, reindex, and delete pass shared pgvector and Convex characterization.',

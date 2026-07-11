@@ -1,10 +1,8 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import type { HybridSearchChunk } from '../../../convex/knowledge/knowledge'
 import type { AutoRetrievalBundle, SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
+import { getOverlayServerContext } from '@/server/bootstrap'
 
 /** Retrieval-only context for the model. Durable facts the user wants remembered are written via save_memory (Ask or Act), not here. */
 
@@ -28,10 +26,9 @@ export async function buildAutoRetrievalBundle(args: {
   }
 
   try {
-    const result = await convex.action<{ chunks: HybridSearchChunk[] } | null>('knowledge/knowledge:hybridSearch', {
+    const result = await getOverlayServerContext().knowledgeSearchService.hybridSearch({
       accessToken: args.accessToken,
       userId: args.userId,
-      serverSecret: getInternalApiSecret(),
       query: q.slice(0, MAX_QUERY_CHARS),
       projectId: args.projectId,
       ...(args.includeMemories === false ? { sourceKind: 'file' as const } : {}),
@@ -39,7 +36,7 @@ export async function buildAutoRetrievalBundle(args: {
       kVec: 40,
       kLex: 40,
     })
-    const chunks = result?.chunks ?? []
+    const chunks = result.chunks
     if (chunks.length === 0) {
       return { extension: '', citations: {} }
     }

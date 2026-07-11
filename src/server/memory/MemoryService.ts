@@ -80,10 +80,22 @@ export class MemoryService {
     type?: MemoryType
     userId: string
   }): Promise<MemoryRecord> {
+    const existing = await this.repository.get({ memoryId: args.memoryId, userId: args.userId })
+    if (!existing) throw new MemoryServiceError('Not found', 404)
     const memory = await this.repository.update({
-      ...args,
+      actor: args.actor ?? existing.actor,
       content: validateRouteContent(args.content),
-      source: args.source ?? 'manual',
+      conversationId: args.conversationId ?? existing.conversationId,
+      importance: args.importance ?? existing.importance,
+      memoryId: args.memoryId,
+      messageId: args.messageId ?? existing.messageId,
+      noteId: args.noteId ?? existing.noteId,
+      projectId: args.projectId ?? existing.projectId,
+      source: args.source ?? existing.source,
+      tags: args.tags ?? existing.tags,
+      turnId: args.turnId ?? existing.turnId,
+      type: args.type ?? existing.type,
+      userId: args.userId,
     })
     if (!memory) throw new MemoryServiceError('Not found', 404)
     return memory

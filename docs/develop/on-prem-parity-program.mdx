@@ -67,7 +67,7 @@ Shared multi-tenant Postgres hosting is not part of the parity program. Runtime 
 | P3a | Projects | Project hierarchy, CRUD, associations, authorization, and UI behavior match Convex. |
 | P3b | Files, notes, ingestion, and object storage | Metadata, binary lifecycle, atomic extraction, sharing, duplicate handling, durable cleanup, reconciliation, and DTOs match Convex. |
 | P3c | Outputs and generated media | Generated files, images, video, browser/sandbox artifacts, retries, and cleanup match Convex. |
-| P5 | Knowledge, memory, and vector search | Extraction, embeddings, `pgvector` retrieval, citations, reindex, retention, and deletion match Convex behavior. |
+| P4 | Knowledge, memory, and vector search | Extraction, embeddings, `pgvector` retrieval, citations, reindex, retention, and deletion match Convex behavior. |
 | P6 | Automations and webhooks | Durable scheduling, claims, retries, signed delivery, dead letters, and audit records work across worker replacement. |
 | P7 | Integrations, extensions, skills, and MCP | OAuth/credential lifecycle, connector state, proxy/tool execution, scoping, discovery, and audit behavior match Convex. |
 | P8 | Usage, billing, API keys, and enterprise controls | Usage reservations, budgets, Stripe replay safety, billing records, hashed keys, scopes, expiry, revocation, and audits match Convex. |
@@ -272,7 +272,7 @@ P2 makes persisted chat behavior independent of Convex:
 - Conversation share visibility, public-token reads, turn deletion, generated UI updates, and stream relay ownership checks all use the selected repository.
 - The optional chat-stream relay can still replay exact UI stream frames. Postgres recovery does not require that relay: without it, recovery resumes from the latest durable text/message snapshot.
 
-Knowledge suggestions, notebook-agent behavior, and extension planning are not P2 chat dependencies. They remain capability-gated and are owned by P5 and P7.
+Knowledge suggestions, notebook-agent behavior, and extension planning are not P2 chat dependencies. Core knowledge retrieval is owned by P4; notebook usage accounting and extension planning remain separately gated.
 
 Run the P2 gate with Docker Postgres:
 

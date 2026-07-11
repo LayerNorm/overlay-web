@@ -200,7 +200,7 @@ Enterprise provider matrix:
 | Auth | `workos`, `oidc`, `none` | Identity profile, session tokens, org/user metadata | Depends on IdP | Supported. OIDC verifies bearer/access tokens through discovery JWKS, including Keycloak-compatible realm issuers; browser login wiring is deployment-specific. |
 | Database | `convex`, `postgres` | App records, messages, files metadata, usage state | Convex deployment region today, or customer Postgres region in Postgres mode | `convex` supported. `postgres` supports the pilot app-data slice for auth-linked users, chat, settings/onboarding, notes, files metadata/upload intents, account deletion, and explicit maintenance jobs. Automations, webhooks, memory extraction, vector search, API keys, and projects remain disabled in Postgres mode. |
 | Object storage | `r2`, `s3`, `none` | Uploaded files and generated artifacts | Bucket/provider region | Supported for Cloudflare R2 and S3-compatible enterprise object stores. |
-| Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | Database/vector provider region | `convex` and `none` supported. `pgvector` is the planned Postgres-native direction, but no adapter exists yet. `pinecone` is declared but rejected until an adapter exists. |
+| Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | Database/vector provider region | `convex`, `pgvector`, and `none` are supported. `pgvector` requires Postgres, the `vector` extension, an embeddings provider, migrations, and the durable worker. `pinecone` is declared but rejected until an adapter exists. |
 | Embeddings | `ai-gateway`, `openai`, `azure-openai`, `none` | Text chunks sent for embedding | Provider region/policy | `ai-gateway`, `openai`, and `none` declared for current wiring. `azure-openai` is rejected until an adapter exists. |
 | Models | `openrouter`, `ai-gateway`, `openai`, `anthropic`, `groq`, `none` | User prompts, context, tool results | Model provider policy | Supported. Use `features.modelRouting=false` plus `providers.models.provider="none"` to disable. |
 | Integrations | `composio`, `mcp`, `none` | Connected-account metadata and tool inputs/outputs | Provider/account region | `composio` and `none` supported. `mcp` as a provider family is declared but rejected until bootstrap wiring exists. |
@@ -214,14 +214,16 @@ Enterprise provider matrix:
 
 ### Postgres app-data setup
 
-Postgres app-data support is split into phases. Operators can provision, validate, migrate, and smoke-test the app-data schema now. Run with `billing.provider="none"` and keep automations, webhooks, integrations, memory extraction, vector search, and API keys disabled until their parity phases land. Projects, files, generated media, browser outputs, and Daytona artifacts are supported.
+Postgres app-data support is split into phases. Operators can provision, validate, migrate, and smoke-test the app-data schema now. Run with `billing.provider="none"` and keep automations, webhooks, integrations, and API keys disabled until their parity phases land. Projects, files, generated media, browser outputs, Daytona artifacts, saved memories, and knowledge retrieval are supported.
 
-Postgres app-data v1 does not include vector parity. Future Postgres-native memory and knowledge search should use `pgvector`; do not keep Convex enabled in the browser as a hidden vector sidecar for Postgres mode. Until that adapter exists, set:
+Postgres-native memory and knowledge search uses `pgvector`; do not keep Convex enabled in the browser as a hidden vector sidecar. Confirm `vector` is available before migration, then set:
 
 ```env
-OVERLAY_PROVIDER_VECTOR_SEARCH=none
-VECTOR_SEARCH_ENABLED=false
-OVERLAY_FEATURE_VECTOR_SEARCH=false
+OVERLAY_PROVIDER_VECTOR_SEARCH=pgvector
+OVERLAY_PROVIDER_EMBEDDINGS=openai
+OVERLAY_EMBEDDING_MODEL_VERSION=text-embedding-3-small-v1
+VECTOR_SEARCH_ENABLED=true
+OVERLAY_FEATURE_VECTOR_SEARCH=true
 ```
 
 For local setup:

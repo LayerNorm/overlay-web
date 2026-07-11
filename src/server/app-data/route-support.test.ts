@@ -207,6 +207,21 @@ test('Postgres app-data mode supports notes routes', () => {
   }
 })
 
+test('Postgres app-data mode supports memory and knowledge routes', () => {
+  for (const method of ['GET', 'POST', 'PATCH', 'DELETE']) {
+    assert.equal(getAppDataRouteSupport({
+      appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
+      method,
+      pathname: '/api/v1/memory',
+    }).status, 'supported')
+  }
+  assert.equal(getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
+    method: 'POST',
+    pathname: '/api/v1/knowledge/search',
+  }).status, 'supported')
+})
+
 test('Postgres app-data mode supports complete file lifecycle routes', () => {
   for (const method of ['GET', 'POST', 'PATCH', 'DELETE']) {
     assert.equal(getAppDataRouteSupport({
