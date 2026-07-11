@@ -1,5 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool, type PoolConfig } from 'pg'
+import { logger } from '@/server/observability/logger'
 
 import * as schema from './schema'
 
@@ -21,7 +22,14 @@ export function createOverlayPostgresPool(options: CreateOverlayPostgresPoolOpti
       : { rejectUnauthorized: false }
   }
 
-  return new Pool(poolConfig)
+  const pool = new Pool(poolConfig)
+  pool.on('error', (error) => {
+    logger.error('[Postgres] Idle client error', {
+      code: typeof error === 'object' && error && 'code' in error ? error.code : undefined,
+      error,
+    })
+  })
+  return pool
 }
 
 export function createOverlayPostgresDb(pool: Pool) {

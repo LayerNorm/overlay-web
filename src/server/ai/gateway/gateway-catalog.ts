@@ -86,12 +86,16 @@ function parsePersistedSnapshot(snapshot: PersistedSnapshot | null): CatalogCach
   }
 }
 
-async function readPersistedSnapshot(): Promise<CatalogCache | null> {
-  const snapshot = await getModelCatalogRepository().then((repository) => repository.getLatest())
+async function readPersistedSnapshot(
+  repository?: ModelCatalogRepository,
+): Promise<CatalogCache | null> {
+  const snapshot = await (repository ?? await getModelCatalogRepository()).getLatest()
   return parsePersistedSnapshot(snapshot)
 }
 
-async function fetchAndPersistCatalog(): Promise<GatewayCatalogModel[]> {
+async function fetchAndPersistCatalog(
+  repository?: ModelCatalogRepository,
+): Promise<GatewayCatalogModel[]> {
   const response = await fetch(CATALOG_URL, {
     headers: { accept: 'application/json' },
     cache: 'no-store',
@@ -103,29 +107,30 @@ async function fetchAndPersistCatalog(): Promise<GatewayCatalogModel[]> {
   if (models.length === 0) throw new Error('AI Gateway catalog returned no usable models')
   registerGatewayCatalogModels(models)
   const fetchedAt = Date.now()
-  await getModelCatalogRepository().then((repository) =>
-    repository.upsert({
-      source: CATALOG_URL,
-      modelsJson: JSON.stringify(values),
-      fetchedAt,
-    }),
-  )
+  await (repository ?? await getModelCatalogRepository()).upsert({
+    source: CATALOG_URL,
+    modelsJson: JSON.stringify(values),
+    fetchedAt,
+  })
   cache = { fetchedAt, models }
   return models
 }
 
-async function loadCatalog(force: boolean): Promise<GatewayCatalogModel[]> {
+async function loadCatalog(
+  force: boolean,
+  repository?: ModelCatalogRepository,
+): Promise<GatewayCatalogModel[]> {
   const now = Date.now()
   if (!force && cache && now - cache.fetchedAt < CACHE_TTL_MS) return cache.models
 
-  const persisted = await readPersistedSnapshot()
+  const persisted = await readPersistedSnapshot(repository)
   if (!force && persisted && now - persisted.fetchedAt < CACHE_TTL_MS) {
     cache = persisted
     return persisted.models
   }
 
   try {
-    return await fetchAndPersistCatalog()
+    return await fetchAndPersistCatalog(repository)
   } catch (error) {
     const fallback = persisted ?? cache
     if (fallback) {
@@ -140,9 +145,12 @@ async function loadCatalog(force: boolean): Promise<GatewayCatalogModel[]> {
   }
 }
 
-export async function getGatewayCatalog(force = false): Promise<GatewayCatalogModel[]> {
+export async function getGatewayCatalog(
+  force = false,
+  repository?: ModelCatalogRepository,
+): Promise<GatewayCatalogModel[]> {
   if (!force && inFlight) return inFlight
-  inFlight = loadCatalog(force).finally(() => {
+  inFlight = loadCatalog(force, repository).finally(() => {
     inFlight = null
   })
   const models = await inFlight

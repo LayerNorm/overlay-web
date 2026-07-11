@@ -49,20 +49,34 @@ async function main(): Promise<void> {
 
     console.log(JSON.stringify({ leaseMs, mode, once, pollMs, schedulerPollMs, workerId }))
     let lastSchedulerTick = 0
+    let consecutiveFailures = 0
     do {
-      const now = Date.now()
-      if (mode !== 'worker' && now - lastSchedulerTick >= schedulerPollMs) {
-        const result = await runtime.scheduler.tick({ now })
-        if (result.enqueued > 0) console.log(JSON.stringify({ event: 'scheduler_tick', ...result }))
-        lastSchedulerTick = now
-      }
+      try {
+        const now = Date.now()
+        if (mode !== 'worker' && now - lastSchedulerTick >= schedulerPollMs) {
+          const result = await runtime.scheduler.tick({ now })
+          if (result.enqueued > 0) console.log(JSON.stringify({ event: 'scheduler_tick', ...result }))
+          lastSchedulerTick = now
+        }
 
-      let workerResult: string = 'idle'
-      if (mode !== 'scheduler') {
-        workerResult = await runtime.worker.runOnce(now)
-        if (workerResult !== 'idle') console.log(JSON.stringify({ event: 'job_result', result: workerResult }))
+        let workerResult: string = 'idle'
+        if (mode !== 'scheduler') {
+          workerResult = await runtime.worker.runOnce(now)
+          if (workerResult !== 'idle') console.log(JSON.stringify({ event: 'job_result', result: workerResult }))
+        }
+        consecutiveFailures = 0
+        if (!once && workerResult === 'idle') await sleep(pollMs)
+      } catch (error) {
+        if (once) throw error
+        consecutiveFailures += 1
+        console.error(JSON.stringify({
+          consecutiveFailures,
+          event: 'runtime_error',
+          message: errorMessage(error),
+          workerId,
+        }))
+        await sleep(retryDelayMs(consecutiveFailures, pollMs))
       }
-      if (!once && workerResult === 'idle') await sleep(pollMs)
     } while (!once && !shuttingDown)
   } finally {
     await pool.end()
@@ -87,4 +101,18 @@ function numberValue(
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof AggregateError) {
+    const messages = error.errors.map(errorMessage).filter(Boolean)
+    return messages.join('; ').slice(0, 2_000) || 'Multiple database operations failed'
+  }
+  if (error instanceof Error) return (error.message || error.name).slice(0, 2_000)
+  return String(error || 'Unknown runtime error').slice(0, 2_000)
+}
+
+function retryDelayMs(consecutiveFailures: number, pollMs: number): number {
+  const baseMs = Math.max(pollMs, 1_000)
+  return Math.min(30_000, baseMs * 2 ** Math.min(Math.max(consecutiveFailures - 1, 0), 5))
 }

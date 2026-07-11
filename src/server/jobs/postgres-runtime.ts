@@ -4,6 +4,7 @@ import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import { PostgresBackgroundMaintenanceService } from '@/server/app-data/PostgresBackgroundMaintenanceService'
 import { PostgresIdempotencyRepository } from '@/server/idempotency'
 import { PostgresServiceAuthReplayRepository } from '@/server/auth/replay'
+import { PostgresModelCatalogRepository } from '@/server/ai/catalog'
 import { getGatewayCatalog } from '@/server/ai/gateway/gateway-catalog'
 import { PostgresDurableJobRepository } from './PostgresDurableJobRepository'
 import { PostgresJobWorker } from './PostgresJobWorker'
@@ -18,6 +19,7 @@ export function createPostgresRuntime(args: {
   const idempotency = new PostgresIdempotencyRepository(args.db)
   const replay = new PostgresServiceAuthReplayRepository(args.db)
   const maintenance = new PostgresBackgroundMaintenanceService(args.db)
+  const modelCatalog = new PostgresModelCatalogRepository(args.db)
   const scheduler = new PostgresSchedulerService(args.db)
   const worker = new PostgresJobWorker({
     handlers: {
@@ -34,7 +36,7 @@ export function createPostgresRuntime(args: {
         return { expiredIdempotencyKeys, expiredReplayNonces }
       },
       'model-catalog.refresh': async () => ({
-        modelCount: (await getGatewayCatalog(true)).length,
+        modelCount: (await getGatewayCatalog(true, modelCatalog)).length,
       }),
     },
     leaseMs: args.leaseMs,
