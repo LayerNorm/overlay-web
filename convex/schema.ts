@@ -898,6 +898,22 @@ export default defineSchema({
     modelId: v.optional(v.string()),
     prompt: v.optional(v.string()),
     outputType: v.optional(v.string()),
+    outputSource: v.optional(v.union(
+      v.literal('image_generation'),
+      v.literal('video_generation'),
+      v.literal('browser'),
+      v.literal('sandbox'),
+    )),
+    outputStatus: v.optional(v.union(
+      v.literal('pending'),
+      v.literal('completed'),
+      v.literal('failed'),
+    )),
+    outputUrl: v.optional(v.string()),
+    outputMetadata: v.optional(v.any()),
+    outputErrorMessage: v.optional(v.string()),
+    outputCompletedAt: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
     legacyNoteId: v.optional(v.id('notes')),
     legacyOutputId: v.optional(v.id('outputs')),
     projectId: v.optional(v.string()),
@@ -914,6 +930,7 @@ export default defineSchema({
     .index('by_parentId', ['parentId'])
     .index('by_legacyNoteId', ['legacyNoteId'])
     .index('by_legacyOutputId', ['legacyOutputId'])
+    .index('by_outputExpiry', ['kind', 'outputStatus', 'expiresAt'])
     .index('by_shareToken', ['shareToken']),
 
   webhookSubscriptions: defineTable({

@@ -71,6 +71,9 @@ function createRepository(overrides: Partial<FileRepository> = {}): FileReposito
         content: 'alpha beta alpha',
       } satisfies FileRecord
     },
+    async getFileByLegacyOutputId() {
+      return null
+    },
     async listFiles() {
       return []
     },

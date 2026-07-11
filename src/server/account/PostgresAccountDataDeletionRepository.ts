@@ -21,6 +21,7 @@ const ZERO_COUNTS: AccountDataDeletionCounts = {
   conversationMessageDeltas: 0,
   conversationMessages: 0,
   conversations: 0,
+  daytonaWorkspaces: 0,
   files: 0,
   notes: 0,
   onboardingState: 0,
@@ -118,6 +119,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     conversation_message_deltas: number
     conversation_messages: number
     conversations: number
+    daytona_workspaces: number
     files: number
     notes: number
     onboarding_state: number
@@ -134,6 +136,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
       (SELECT count(*)::int FROM conversation_message_deltas WHERE user_id = ${userId}) AS conversation_message_deltas,
       (SELECT count(*)::int FROM conversation_messages WHERE user_id = ${userId}) AS conversation_messages,
       (SELECT count(*)::int FROM conversations WHERE user_id = ${userId}) AS conversations,
+      (SELECT count(*)::int FROM daytona_workspaces WHERE user_id = ${userId}) AS daytona_workspaces,
       (SELECT count(*)::int FROM files WHERE user_id = ${userId}) AS files,
       (SELECT count(*)::int FROM notes WHERE user_id = ${userId}) AS notes,
       (SELECT count(*)::int FROM onboarding_state WHERE user_id = ${userId}) AS onboarding_state,
@@ -153,6 +156,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     conversationMessageDeltas: Number(row.conversation_message_deltas ?? 0),
     conversationMessages: Number(row.conversation_messages ?? 0),
     conversations: Number(row.conversations ?? 0),
+    daytonaWorkspaces: Number(row.daytona_workspaces ?? 0),
     files: Number(row.files ?? 0),
     notes: Number(row.notes ?? 0),
     onboardingState: Number(row.onboarding_state ?? 0),

@@ -10,7 +10,7 @@ The short version:
 - Auth is now provider-agnostic at the app boundary. WorkOS and Better Auth both normalize into the Overlay session contract.
 - Auth storage and app-data storage are separate concerns. Better Auth uses its own Postgres database for auth/session state. Overlay app data uses either Convex or the new Postgres app-data provider.
 - Postgres app-data includes production runtime foundations for shared idempotency, replay protection, Redis rate limiting, durable jobs/outbox, scheduler ownership, schema compatibility, and persisted model catalog snapshots.
-- Postgres app-data is not full Convex parity. Chat realtime, durable text recovery, stop, sharing, and second-tab synchronization are supported; automations, webhooks, projects, API keys, billing records, memory extraction, and vector search remain disabled or unsupported.
+- Postgres app-data is not full Convex parity. Chat, projects, files, generated media, browser outputs, and Daytona artifacts are supported; automations, webhooks, API keys, billing records, integrations, memory extraction, and vector search remain disabled or unsupported.
 - Postgres vector search is not implemented yet. The intended future direction is `pgvector`, and deployments must verify their managed Postgres provider supports the `vector` extension before planning vector parity.
 
 ## Design Goals
@@ -186,6 +186,8 @@ Supported or degraded:
 | Notes | Supported | Backed by `notes`. |
 | Projects | Supported | Provider-neutral CRUD, nested hierarchy, ownership checks, and linked conversation/note/file filtering. |
 | File lifecycle | Supported | Metadata, private uploads/downloads, atomic extraction, upload intents, hierarchy, sharing, duplicate promotion, durable cleanup, and S3 reconciliation are supported. |
+| Generated outputs | Supported | Images, videos, browser text, and Daytona artifacts use canonical output files with lifecycle state, sharing, retention, and durable object cleanup. |
+| Daytona workspace state | Supported | Sandbox/volume identity and metering checkpoints are stored in `daytona_workspaces`. |
 | Account deletion | Supported | Deletes auth user/session and app-data rows. |
 | Background maintenance | Supported | Durable Postgres scheduler/worker, with an explicit one-off maintenance command for operations. |
 | Runtime coordination | Supported | Postgres idempotency/replay/leases and shared Redis rate limiting. |
@@ -204,7 +206,6 @@ Unsupported or disabled:
 | Usage accounting | Chat uses `UnlimitedUsagePolicy`; no persistent Postgres usage audit backend yet. |
 | Memory extraction | Background jobs and vector storage are not implemented. |
 | Vector search | Planned future `pgvector` direction, not available today. |
-| Generated outputs | Still Convex/storage-path dependent. |
 
 ## Auth And Identity Sync
 
@@ -306,7 +307,9 @@ Separate later-phase capabilities:
 
 - Vector indexing is disabled.
 - Knowledge chunks do not exist until the P5 pgvector implementation.
-- Generated outputs remain outside the current Postgres pilot surface.
+- Generated outputs share the canonical file lifecycle. Generated image/video
+  records, browser results, and Daytona artifacts are owner-scoped, shareable,
+  retained according to compliance config, and deleted through durable S3 jobs.
 
 The web service alone is insufficient for this lifecycle. Deploy
 `npm run app-db:worker` as a separately supervised process with the same
@@ -657,7 +660,6 @@ Parity does not exist yet:
 - API keys.
 - Memory extraction.
 - Vector search.
-- Generated outputs.
 - Full knowledge search.
 - Multi-tenant isolation.
 

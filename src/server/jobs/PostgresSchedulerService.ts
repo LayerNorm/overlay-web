@@ -29,6 +29,12 @@ export const POSTGRES_RUNTIME_SCHEDULES = [
     jobType: 'storage.reconcile',
     payload: {},
   },
+  {
+    id: 'output-retention',
+    intervalMs: 60 * 60_000,
+    jobType: 'outputs.purge-expired',
+    payload: {},
+  },
 ] as const
 
 type DueTask = {

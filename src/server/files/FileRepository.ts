@@ -58,6 +58,10 @@ export interface FileRepository {
     fileId: string
     userId: string
   }): Promise<FileRecord | null>
+  getFileByLegacyOutputId(args: {
+    outputId: string
+    userId: string
+  }): Promise<FileRecord | null>
   listFiles(args: Record<string, unknown> & { userId: string }): Promise<unknown[]>
   createFile(args: Record<string, unknown> & { userId: string }): Promise<string | null>
   createFileWithStorage(args: Record<string, unknown> & { userId: string }): Promise<string | null>

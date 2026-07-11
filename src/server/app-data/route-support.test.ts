@@ -224,5 +224,26 @@ test('Postgres app-data mode supports complete file lifecycle routes', () => {
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/outputs/some-output/content',
+  }).status, 'supported')
+})
+
+test('Postgres app-data mode supports generated media, browser, and sandbox outputs', () => {
+  for (const pathname of [
+    '/api/v1/outputs',
+    '/api/v1/generate-image',
+    '/api/v1/generate-video',
+    '/api/v1/browser-task',
+    '/api/v1/daytona/run',
+  ]) {
+    assert.equal(getAppDataRouteSupport({
+      appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
+      method: pathname === '/api/v1/outputs' ? 'GET' : 'POST',
+      pathname,
+    }).status, 'supported', pathname)
+  }
+  assert.equal(getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
+    method: 'POST',
+    pathname: '/api/v1/transcribe',
   }).status, 'unsupported')
 })

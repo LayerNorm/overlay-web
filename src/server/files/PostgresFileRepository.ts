@@ -29,6 +29,8 @@ type Transaction = Parameters<Parameters<OverlayPostgresDb['transaction']>[0]>[0
 type FileDb = OverlayPostgresDb | Transaction
 type FileKind = 'folder' | 'note' | 'upload' | 'output'
 type FileType = 'file' | 'folder'
+type OutputSource = 'image_generation' | 'video_generation' | 'browser' | 'sandbox'
+type OutputStatus = 'pending' | 'completed' | 'failed'
 
 const UPLOAD_INTENT_FINALIZE_GRACE_MS = 15 * 60_000
 const FILE_PREVIEW_CHARS = 1200
@@ -50,6 +52,22 @@ export class PostgresFileRepository implements FileRepository {
       .from(files)
       .where(and(
         eq(files.id, args.fileId),
+        eq(files.userId, args.userId),
+        isNull(files.deletedAt),
+      ))
+      .limit(1)
+    return row ? normalizeFile(row) : null
+  }
+
+  async getFileByLegacyOutputId(args: {
+    outputId: string
+    userId: string
+  }): Promise<FileRecord | null> {
+    const [row] = await this.db
+      .select()
+      .from(files)
+      .where(and(
+        eq(files.legacyOutputId, args.outputId),
         eq(files.userId, args.userId),
         isNull(files.deletedAt),
       ))
@@ -133,6 +151,13 @@ export class PostgresFileRepository implements FileRepository {
         modelId: stringValue(args.modelId),
         prompt: stringValue(args.prompt),
         outputType: stringValue(args.outputType),
+        outputSource: outputSourceValue(args.outputSource),
+        outputStatus: outputStatusValue(args.outputStatus),
+        outputUrl: stringValue(args.outputUrl),
+        outputMetadata: recordValue(args.outputMetadata),
+        outputErrorMessage: stringValue(args.outputErrorMessage),
+        outputCompletedAt: dateValue(args.outputCompletedAt),
+        expiresAt: dateValue(args.expiresAt),
         legacyOutputId: stringValue(args.legacyOutputId),
         projectId: stringValue(args.projectId),
         createdAt: now,
@@ -287,6 +312,18 @@ export class PostgresFileRepository implements FileRepository {
       }
       if (args.parentId !== undefined) patch.parentId = stringValue(args.parentId)
       if (args.projectId !== undefined) patch.projectId = stringValue(args.projectId)
+      if (args.r2Key !== undefined) patch.r2Key = stringValue(args.r2Key)
+      if (args.mimeType !== undefined) patch.mimeType = stringValue(args.mimeType)
+      if (args.sizeBytes !== undefined) patch.sizeBytes = positiveNumber(args.sizeBytes) ?? 0
+      if (args.modelId !== undefined) patch.modelId = stringValue(args.modelId)
+      if (args.outputType !== undefined) patch.outputType = stringValue(args.outputType)
+      if (args.outputSource !== undefined) patch.outputSource = outputSourceValue(args.outputSource)
+      if (args.outputStatus !== undefined) patch.outputStatus = outputStatusValue(args.outputStatus)
+      if (args.outputUrl !== undefined) patch.outputUrl = stringValue(args.outputUrl)
+      if (args.outputMetadata !== undefined) patch.outputMetadata = recordValue(args.outputMetadata)
+      if (args.outputErrorMessage !== undefined) patch.outputErrorMessage = stringValue(args.outputErrorMessage)
+      if (args.outputCompletedAt !== undefined) patch.outputCompletedAt = dateValue(args.outputCompletedAt)
+      if (args.expiresAt !== undefined) patch.expiresAt = dateValue(args.expiresAt)
 
       const nextText = args.textContent ?? args.content
       if (nextText !== undefined) {
@@ -812,6 +849,13 @@ function normalizeFile(row: FileRow): FileRecord {
     modelId: row.modelId ?? undefined,
     prompt: row.prompt ?? undefined,
     outputType: row.outputType ?? undefined,
+    outputSource: row.outputSource ?? undefined,
+    outputStatus: row.outputStatus ?? undefined,
+    outputUrl: row.outputUrl ?? undefined,
+    outputMetadata: row.outputMetadata ?? undefined,
+    outputErrorMessage: row.outputErrorMessage ?? undefined,
+    outputCompletedAt: row.outputCompletedAt?.getTime(),
+    expiresAt: row.expiresAt?.getTime(),
     legacyNoteId: row.legacyNoteId ?? undefined,
     legacyOutputId: row.legacyOutputId ?? undefined,
     projectId: row.projectId ?? undefined,
@@ -861,6 +905,13 @@ function fileRowFromRaw(row: Record<string, unknown>): FileRow & { depth: number
     modelId: nullableString(row.model_id),
     prompt: nullableString(row.prompt),
     outputType: nullableString(row.output_type),
+    outputSource: row.output_source as FileRow['outputSource'],
+    outputStatus: row.output_status as FileRow['outputStatus'],
+    outputUrl: nullableString(row.output_url),
+    outputMetadata: recordValue(row.output_metadata) ?? null,
+    outputErrorMessage: nullableString(row.output_error_message),
+    outputCompletedAt: dateFromRaw(row.output_completed_at),
+    expiresAt: dateFromRaw(row.expires_at),
     legacyNoteId: nullableString(row.legacy_note_id),
     legacyOutputId: nullableString(row.legacy_output_id),
     projectId: nullableString(row.project_id),
@@ -938,6 +989,27 @@ function requiredString(value: unknown, field: string): string {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function outputSourceValue(value: unknown): OutputSource | undefined {
+  return value === 'image_generation' ||
+    value === 'video_generation' ||
+    value === 'browser' ||
+    value === 'sandbox'
+    ? value
+    : undefined
+}
+
+function outputStatusValue(value: unknown): OutputStatus | undefined {
+  return value === 'pending' || value === 'completed' || value === 'failed'
+    ? value
+    : undefined
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
 }
 
 function nullableString(value: unknown): string | null {

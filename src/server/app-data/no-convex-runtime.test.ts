@@ -7,6 +7,8 @@ import { PostgresAccountDataDeletionRepository } from '@/server/account/Postgres
 import { NoOpBillingProvider } from '@/server/billing/providers'
 import { PostgresActConversationRepository } from '@/server/conversations/PostgresActConversationRepository'
 import { UnlimitedUsagePolicy } from '@/server/conversations/ActUsagePolicy'
+import { UnlimitedGenerationUsagePolicy } from '@/server/outputs/GenerationUsagePolicy'
+import { PostgresDaytonaWorkspaceRepository } from '@/server/ai/sandbox/PostgresDaytonaWorkspaceRepository'
 import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
 import { PostgresNoteRepository } from '@/server/notes'
 import { PostgresOnboardingRepository } from '@/server/onboarding'
@@ -102,12 +104,14 @@ test('Postgres server context boots and executes safe policies without Convex co
     assert.equal(context.appDataCapabilities.requiresConvexClient, false)
     assert.equal(context.billing instanceof NoOpBillingProvider, true)
     assert.equal(context.chatUsagePolicy instanceof UnlimitedUsagePolicy, true)
+    assert.equal(context.generationUsagePolicy instanceof UnlimitedGenerationUsagePolicy, true)
     assert.equal(context.rateLimiter instanceof InMemoryRateLimiter, true)
     assert.equal(context.vectorStore instanceof InMemoryVectorStore, true)
 
     const repositories = context.appData.repositories
     assert.equal(repositories.accountDeletion instanceof PostgresAccountDataDeletionRepository, true)
     assert.equal(repositories.conversations instanceof PostgresActConversationRepository, true)
+    assert.equal(repositories.daytonaWorkspaces instanceof PostgresDaytonaWorkspaceRepository, true)
     assert.equal(repositories.files instanceof PostgresFileRepository, true)
     assert.equal(repositories.notes instanceof PostgresNoteRepository, true)
     assert.equal(repositories.onboarding instanceof PostgresOnboardingRepository, true)

@@ -166,7 +166,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
       { key: 'supportsUsageAccounting', expectedAtParity: true },
       { key: 'supportsBillingRecords', expectedAtParity: true },
     ],
-    routeRuleIds: ['subscription-and-billing-records'],
+    routeRuleIds: ['subscription-and-billing-records', 'generation-usage-only'],
     exitGate: 'Usage, reservations, budgets, subscriptions, and Stripe replay protection pass shared tests.',
   },
   {

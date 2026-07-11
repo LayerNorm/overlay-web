@@ -74,6 +74,19 @@ export const fileIndexStatus = pgEnum('overlay_file_index_status', [
   'failed',
 ])
 
+export const outputStatus = pgEnum('overlay_output_status', [
+  'pending',
+  'completed',
+  'failed',
+])
+
+export const outputSource = pgEnum('overlay_output_source', [
+  'image_generation',
+  'video_generation',
+  'browser',
+  'sandbox',
+])
+
 export const uploadIntentStatus = pgEnum('overlay_upload_intent_status', [
   'pending',
   'finalized',
@@ -364,6 +377,13 @@ export const files = pgTable('files', {
   modelId: text('model_id'),
   prompt: text('prompt'),
   outputType: text('output_type'),
+  outputSource: outputSource('output_source'),
+  outputStatus: outputStatus('output_status'),
+  outputUrl: text('output_url'),
+  outputMetadata: jsonb('output_metadata').$type<Record<string, unknown>>(),
+  outputErrorMessage: text('output_error_message'),
+  outputCompletedAt: timestamp('output_completed_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
   legacyNoteId: text('legacy_note_id'),
   legacyOutputId: text('legacy_output_id'),
   projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
@@ -383,6 +403,7 @@ export const files = pgTable('files', {
   index('files_legacy_output_id_idx').on(table.legacyOutputId),
   index('files_conversation_id_idx').on(table.conversationId),
   index('files_r2_key_idx').on(table.r2Key),
+  index('files_output_expiry_idx').on(table.kind, table.outputStatus, table.expiresAt),
   uniqueIndex('files_share_token_idx').on(table.shareToken),
   check('files_parent_not_self_check', sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`),
   check('files_duplicate_not_self_check', sql`${table.duplicateOfFileId} IS NULL OR ${table.duplicateOfFileId} <> ${table.id}`),
@@ -407,6 +428,28 @@ export const r2UploadIntents = pgTable('r2_upload_intents', {
   uniqueIndex('r2_upload_intents_r2_key_idx').on(table.r2Key),
   index('r2_upload_intents_user_id_status_expires_at_idx').on(table.userId, table.status, table.expiresAt),
   index('r2_upload_intents_file_id_idx').on(table.fileId),
+])
+
+export const daytonaWorkspaces = pgTable('daytona_workspaces', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  sandboxId: text('sandbox_id').notNull(),
+  sandboxName: text('sandbox_name').notNull(),
+  volumeId: text('volume_id').notNull(),
+  volumeName: text('volume_name').notNull(),
+  tier: text('tier').notNull(),
+  state: text('state').notNull(),
+  resourceProfile: text('resource_profile').notNull(),
+  mountPath: text('mount_path').notNull(),
+  lastMeteredAt: timestamp('last_metered_at', { withTimezone: true }),
+  lastKnownStartedAt: timestamp('last_known_started_at', { withTimezone: true }),
+  lastKnownStoppedAt: timestamp('last_known_stopped_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('daytona_workspaces_sandbox_id_idx').on(table.sandboxId),
+  index('daytona_workspaces_state_updated_at_idx').on(table.state, table.updatedAt),
 ])
 
 export const apiIdempotencyKeys = pgTable('api_idempotency_keys', {

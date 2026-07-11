@@ -12,6 +12,7 @@ import { ConvexNoteRepository } from '@/server/notes'
 import { ConvexProjectRepository } from '@/server/projects/ConvexProjectRepository'
 import { ConvexUserRepository } from '@/server/users/ConvexUserRepository'
 import { runAppDataRepositoryContractSuite } from './app-data-repository-contract'
+import { ConvexDaytonaWorkspaceRepository } from '@/server/ai/sandbox/ConvexDaytonaWorkspaceRepository'
 
 const enabled = process.env.APP_DATA_CONTRACT_CONVEX === '1'
 const hasConvexUrl = Boolean(process.env.DEV_NEXT_PUBLIC_CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL)
@@ -29,6 +30,7 @@ test('real Convex app-data repository contracts', {
     provider: 'convex',
     authProvider: 'workos',
     conversations,
+    daytonaWorkspaces: new ConvexDaytonaWorkspaceRepository(),
     deleteAccount: deleteConvexAccount,
     files: new ConvexFileRepository(),
     notes: new ConvexNoteRepository(),

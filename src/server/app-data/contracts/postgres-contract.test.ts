@@ -24,6 +24,8 @@ import {
 } from '@/server/storage/PostgresStorageCleanupJobs'
 import { PostgresStorageReconciliationService } from '@/server/storage/PostgresStorageReconciliationService'
 import { createPostgresRuntime } from '@/server/jobs/postgres-runtime'
+import { PostgresDaytonaWorkspaceRepository } from '@/server/ai/sandbox/PostgresDaytonaWorkspaceRepository'
+import { PostgresOutputRetentionService } from '@/server/outputs/PostgresOutputRetentionService'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
 
@@ -81,11 +83,34 @@ test('Postgres app-data repository contracts', {
         db,
         notifier,
       ),
+      daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),
       files: new PostgresFileRepository(db),
       notes: new PostgresNoteRepository(db),
       projects: new PostgresProjectRepository(db),
       usagePolicy: new UnlimitedUsagePolicy(),
       users: new PostgresUserRepository(db),
+    })
+    await t.test('Postgres output retention soft-deletes metadata and queues object cleanup', async () => {
+      const userId = `retention_${randomUUID()}`
+      await db.insert(users).values({ id: userId, email: `${userId}@example.com` })
+      const repository = new PostgresFileRepository(db)
+      const outputId = await repository.createFile({
+        userId,
+        name: 'expired.png',
+        kind: 'output',
+        type: 'file',
+        r2Key: `users/${userId}/outputs/expired/expired.png`,
+        outputType: 'image',
+        outputSource: 'image_generation',
+        outputStatus: 'completed',
+        expiresAt: Date.now() - 1_000,
+      })
+      assert.ok(outputId)
+      const result = await new PostgresOutputRetentionService(db).purgeExpired()
+      assert.equal(result.deleted, 1)
+      assert.ok(result.cleanupJobs >= 1)
+      assert.equal(await repository.getFile({ fileId: outputId, userId }), null)
+      await db.delete(users).where(eq(users.id, userId))
     })
     await t.test('Postgres file and account lifecycle enqueue durable object cleanup', async () => {
       const queued = await db

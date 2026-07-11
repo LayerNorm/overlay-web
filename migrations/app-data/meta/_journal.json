@@ -50,6 +50,13 @@
       "when": 1783796402000,
       "tag": "0006_p3b_file_storage_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783796403000,
+      "tag": "0007_p3c_output_lifecycle",
+      "breakpoints": true
     }
   ]
 }

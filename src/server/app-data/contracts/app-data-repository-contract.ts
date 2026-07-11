@@ -16,12 +16,14 @@ import type { NoteRepository } from '@/server/notes'
 import type { ProjectRepository } from '@/server/projects'
 import { UserService, type UserAuthProvider } from '@/server/users'
 import type { UserRepository } from '@/server/users/types'
+import type { DaytonaWorkspaceRepository } from '@/server/ai/sandbox/DaytonaWorkspaceRepository'
 import { hashTextContent } from '@/server/storage/text-content-hash'
 
 export interface AppDataRepositoryContractBackend {
   accountDeletionRepository?: AccountDataDeletionRepository
   authProvider: UserAuthProvider
   conversations: ActConversationRepository
+  daytonaWorkspaces: DaytonaWorkspaceRepository
   deleteAccount?: (userId: string) => Promise<AccountDeletionResult>
   files: FileRepository
   name: string
@@ -651,6 +653,70 @@ export async function runAppDataRepositoryContractSuite(
         r2Key: intentR2Key,
         now: Date.now(),
       }), null)
+    })
+
+    await t.test(`${backend.name}: outputs preserve lifecycle, ownership, sharing, and deletion`, async () => {
+      const outputId = await backend.files.createFile({
+        userId,
+        name: 'generated.png',
+        type: 'file',
+        kind: 'output',
+        prompt: 'draw a contract test',
+        modelId: 'contract/image',
+        outputType: 'image',
+        outputSource: 'image_generation',
+        outputStatus: 'pending',
+        expiresAt: Date.now() + 60_000,
+      })
+      assert.ok(outputId)
+      const outputR2Key = `users/${userId}/outputs/${outputId}/generated.png`
+      await backend.files.updateFile({
+        fileId: outputId,
+        userId,
+        r2Key: outputR2Key,
+        mimeType: 'image/png',
+        sizeBytes: 64,
+        outputStatus: 'completed',
+        outputCompletedAt: Date.now(),
+        outputMetadata: { contract: true },
+      })
+      const output = await backend.files.getFile({ fileId: outputId, userId })
+      assert.equal(output?.kind, 'output')
+      assert.equal(output?.outputStatus, 'completed')
+      assert.equal(output?.outputSource, 'image_generation')
+      assert.equal(output?.r2Key, outputR2Key)
+      assert.deepEqual(output?.outputMetadata, { contract: true })
+      assert.equal(await backend.files.getFile({ fileId: outputId, userId: foreignUserId }), null)
+
+      const shared = await backend.files.setShare({
+        fileId: outputId,
+        userId,
+        visibility: 'public',
+      })
+      assert.equal(shared?.visibility, 'public')
+      assert.ok(shared?.token)
+      await backend.files.removeFile({ fileId: outputId, userId })
+      assert.equal(await backend.files.getFile({ fileId: outputId, userId }), null)
+    })
+
+    await t.test(`${backend.name}: Daytona workspace checkpoints are provider-neutral`, async () => {
+      const now = Date.now()
+      const workspace = await backend.daytonaWorkspaces.upsert({
+        userId,
+        sandboxId: `sandbox_${randomUUID()}`,
+        sandboxName: 'contract-sandbox',
+        volumeId: `volume_${randomUUID()}`,
+        volumeName: 'contract-volume',
+        tier: 'pro',
+        state: 'stopped',
+        resourceProfile: 'pro',
+        mountPath: '/home/daytona/workspace',
+        lastMeteredAt: now,
+      })
+      assert.equal(workspace.userId, userId)
+      assert.equal(workspace.state, 'stopped')
+      assert.equal((await backend.daytonaWorkspaces.getByUserId({ userId }))?.sandboxId, workspace.sandboxId)
+      assert.equal(await backend.daytonaWorkspaces.getByUserId({ userId: foreignUserId }), null)
     })
 
     await t.test(`${backend.name}: usage policy has explicit reservation/accounting behavior`, async () => {

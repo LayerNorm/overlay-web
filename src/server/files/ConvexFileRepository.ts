@@ -34,6 +34,16 @@ export class ConvexFileRepository implements FileRepository {
     })
   }
 
+  async getFileByLegacyOutputId(args: {
+    outputId: string
+    userId: string
+  }): Promise<FileRecord | null> {
+    return await convex.query<FileRecord | null>('files/files:getByLegacyOutputId', {
+      ...args,
+      serverSecret: this.serverSecret,
+    })
+  }
+
   async listFiles(args: Record<string, unknown> & { userId: string }): Promise<unknown[]> {
     return await convex.query<unknown[]>('files/files:list', {
       ...args,

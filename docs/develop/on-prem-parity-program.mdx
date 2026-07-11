@@ -370,3 +370,38 @@ P3b is complete when:
 
 P3b does not claim `pgvector`, memory/knowledge retrieval, generated outputs, or
 browser/sandbox artifact parity. Those remain P5 and P3c work.
+
+## P3c Generated Outputs
+
+P3c stores images, videos, browser results, and Daytona artifacts as canonical
+`files.kind="output"` records. The record carries lifecycle status, source,
+provider metadata, completion/error state, and an optional retention deadline.
+The same file service supplies owner checks, private content URLs, public share
+tokens, account cascade deletion, and object cleanup for both app-data providers.
+
+Postgres mode also persists Daytona sandbox and volume identity plus metering
+checkpoints in `daytona_workspaces`. `billing.provider="none"` selects the
+explicit unlimited generation policy: provider calls are allowed without a
+Convex budget reservation or a retail-pricing entry. Convex mode retains its
+existing billing-backed reservations and usage records.
+
+`compliance.retention.fileDays` controls generated image, video, and browser
+output retention. `compliance.retention.sandboxArtifactDays` controls Daytona
+artifact retention. The Postgres scheduler enqueues `outputs.purge-expired`;
+the worker soft-deletes expired metadata and durably deletes S3 objects.
+
+### P3c Exit Gate
+
+P3c is complete when:
+
+- `/api/v1/outputs`, image/video generation, browser tasks, and Daytona runs are
+  classified as supported in Postgres mode.
+- Shared Neon and Convex contracts pass output lifecycle, ownership, sharing,
+  deletion, and Daytona workspace checkpoint behavior.
+- Expired Postgres outputs queue durable object cleanup.
+- Better Auth + Postgres app data can generate and retrieve configured media
+  without Convex environment variables.
+- Schema version 7 is installed and `npm run app-db:worker` is supervised.
+
+Transcription and tab-group-label usage accounting remain P8 work. P3c does not
+claim billing-record parity, connector parity, or `pgvector` knowledge parity.

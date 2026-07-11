@@ -10,8 +10,10 @@ import {
   type Sandbox,
   type VolumeMount,
 } from '@daytonaio/sdk'
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import type {
+  DaytonaWorkspaceRecord,
+  DaytonaWorkspaceRepository,
+} from './DaytonaWorkspaceRepository'
 import {
   detectDaytonaResourceProfileId,
   getDaytonaResourceProfile,
@@ -39,24 +41,6 @@ export interface DaytonaPaths {
   stderrPath: string
 }
 
-export interface DaytonaWorkspaceRecord {
-  _id?: string
-  userId: string
-  sandboxId: string
-  sandboxName: string
-  volumeId: string
-  volumeName: string
-  tier: DaytonaWorkspaceTier
-  state: DaytonaWorkspaceState
-  resourceProfile: DaytonaWorkspaceTier
-  mountPath: string
-  lastMeteredAt?: number
-  lastKnownStartedAt?: number
-  lastKnownStoppedAt?: number
-  createdAt: number
-  updatedAt: number
-}
-
 export interface DaytonaVolumeRecord {
   id: string
   name: string
@@ -68,6 +52,7 @@ export interface EnsuredDaytonaWorkspace {
   sandbox: Sandbox
   volume: DaytonaVolumeRecord
   profile: DaytonaResourceProfile
+  repository: DaytonaWorkspaceRepository
 }
 
 let daytonaClient: Daytona | null = null
@@ -146,18 +131,14 @@ function canHotResizeUp(
   )
 }
 
-async function fetchWorkspaceByUserId(userId: string): Promise<DaytonaWorkspaceRecord | null> {
-  return await convex.query<DaytonaWorkspaceRecord | null>(
-    'ai/sandbox/daytona:getWorkspaceByUserId',
-    {
-      userId,
-      serverSecret: getInternalApiSecret(),
-    },
-    { throwOnError: true },
-  )
+async function fetchWorkspaceByUserId(
+  repository: DaytonaWorkspaceRepository,
+  userId: string,
+): Promise<DaytonaWorkspaceRecord | null> {
+  return await repository.getByUserId({ userId })
 }
 
-async function upsertWorkspaceRecord(input: {
+async function upsertWorkspaceRecord(repository: DaytonaWorkspaceRepository, input: {
   userId: string
   sandboxId: string
   sandboxName: string
@@ -171,20 +152,7 @@ async function upsertWorkspaceRecord(input: {
   lastKnownStartedAt?: number
   lastKnownStoppedAt?: number
 }): Promise<DaytonaWorkspaceRecord> {
-  const workspace = await convex.mutation<DaytonaWorkspaceRecord | null>(
-    'ai/sandbox/daytona:upsertWorkspace',
-    {
-      ...input,
-      serverSecret: getInternalApiSecret(),
-    },
-    { throwOnError: true },
-  )
-
-  if (!workspace) {
-    throw new Error('Failed to upsert Daytona workspace record.')
-  }
-
-  return workspace
+  return await repository.upsert(input)
 }
 
 function resolveActualResourceProfile(sandbox: Sandbox, fallback: DaytonaWorkspaceTier): DaytonaWorkspaceTier {
@@ -196,6 +164,7 @@ function resolveActualResourceProfile(sandbox: Sandbox, fallback: DaytonaWorkspa
 }
 
 async function syncWorkspaceRecordFromSandbox(params: {
+  repository: DaytonaWorkspaceRepository
   userId: string
   tier: DaytonaWorkspaceTier
   sandbox: Sandbox
@@ -210,7 +179,7 @@ async function syncWorkspaceRecordFromSandbox(params: {
 }): Promise<DaytonaWorkspaceRecord> {
   const state = params.overrides?.state ?? normalizeSandboxState(params.sandbox.state)
 
-  return await upsertWorkspaceRecord({
+  return await upsertWorkspaceRecord(params.repository, {
     userId: params.userId,
     sandboxId: params.sandbox.id,
     sandboxName: params.sandbox.name,
@@ -382,12 +351,13 @@ async function findExistingWorkspaceSandbox(userId: string): Promise<Sandbox | n
 }
 
 export async function ensureWorkspaceSandbox(params: {
+  repository: DaytonaWorkspaceRepository
   userId: string
   tier: DaytonaWorkspaceTier
 }): Promise<EnsuredDaytonaWorkspace> {
   const profile = getDaytonaResourceProfile(params.tier)
   const volume = await ensureVolume(params.userId)
-  const existingWorkspace = await fetchWorkspaceByUserId(params.userId)
+  const existingWorkspace = await fetchWorkspaceByUserId(params.repository, params.userId)
   let sandbox: Sandbox | null = null
 
   if (existingWorkspace?.sandboxId) {
@@ -442,6 +412,7 @@ export async function ensureWorkspaceSandbox(params: {
   })
 
   const workspace = await syncWorkspaceRecordFromSandbox({
+    repository: params.repository,
     userId: params.userId,
     tier: params.tier,
     sandbox,
@@ -454,6 +425,7 @@ export async function ensureWorkspaceSandbox(params: {
     sandbox,
     volume,
     profile: getDaytonaResourceProfile(actualProfileId),
+    repository: params.repository,
   }
 }
 
@@ -472,6 +444,7 @@ export async function startIfNeeded(input: EnsuredDaytonaWorkspace): Promise<Ens
   }
 
   const workspace = await syncWorkspaceRecordFromSandbox({
+    repository: input.repository,
     userId: input.workspace.userId,
     tier: input.workspace.tier,
     sandbox: input.sandbox,
@@ -500,6 +473,7 @@ export async function stopIfNeeded(input: EnsuredDaytonaWorkspace): Promise<Ensu
   }
 
   const workspace = await syncWorkspaceRecordFromSandbox({
+    repository: input.repository,
     userId: input.workspace.userId,
     tier: input.workspace.tier,
     sandbox: input.sandbox,
@@ -533,6 +507,7 @@ export async function archiveIfNeeded(input: EnsuredDaytonaWorkspace): Promise<E
   }
 
   const workspace = await syncWorkspaceRecordFromSandbox({
+    repository: current.repository,
     userId: current.workspace.userId,
     tier: current.workspace.tier,
     sandbox: current.sandbox,
@@ -553,6 +528,7 @@ export async function refreshWorkspaceActivity(input: EnsuredDaytonaWorkspace): 
 }
 
 export async function accrueWorkspaceSpend(params: {
+  repository: DaytonaWorkspaceRepository
   workspace: DaytonaWorkspaceRecord
   sandbox: Sandbox
   startedAt: number
@@ -563,10 +539,7 @@ export async function accrueWorkspaceSpend(params: {
   | { success: false; skipped: 'missing_workspace' | 'stale_meter_window' }
   | null
 > {
-  return await convex.mutation(
-    'ai/sandbox/daytona:accrueUsageByServer',
-    {
-      serverSecret: getInternalApiSecret(),
+  return await params.repository.accrueUsage({
       userId: params.workspace.userId,
       sandboxId: params.sandbox.id,
       tier: params.workspace.tier,
@@ -578,9 +551,7 @@ export async function accrueWorkspaceSpend(params: {
       diskGiB: params.sandbox.disk,
       expectedLastMeteredAt: params.workspace.lastMeteredAt,
       reason: params.reason,
-    },
-    { throwOnError: true },
-  )
+  })
 }
 
 export async function getSandboxPaths(sandbox: Sandbox): Promise<DaytonaPaths> {

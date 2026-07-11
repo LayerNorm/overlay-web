@@ -152,7 +152,7 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'outputs',
     methods: '*',
     prefixes: ['/api/v1/outputs'],
-    status: 'unsupported',
+    status: 'supported',
     feature: 'outputs',
   },
   {
@@ -162,12 +162,21 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
       '/api/v1/browser-task',
       '/api/v1/daytona',
       '/api/v1/generate-image',
-      '/api/v1/generate-tab-group-label',
       '/api/v1/generate-video',
+    ],
+    status: 'supported',
+    feature: 'generated-outputs',
+  },
+  {
+    id: 'generation-usage-only',
+    methods: '*',
+    prefixes: [
+      '/api/v1/generate-tab-group-label',
       '/api/v1/transcribe',
     ],
     status: 'unsupported',
     feature: 'usage-accounting',
+    reason: 'These generation routes still require the P8 usage accounting repository.',
   },
   {
     id: 'knowledge-memory-vector-search',

@@ -94,6 +94,13 @@ function normalizeFile(file: Doc<'files'>) {
     modelId: file.modelId,
     prompt: file.prompt,
     outputType: file.outputType,
+    outputSource: file.outputSource,
+    outputStatus: file.outputStatus,
+    outputUrl: file.outputUrl,
+    outputMetadata: file.outputMetadata,
+    outputErrorMessage: file.outputErrorMessage,
+    outputCompletedAt: file.outputCompletedAt,
+    expiresAt: file.expiresAt,
     legacyNoteId: file.legacyNoteId,
     legacyOutputId: file.legacyOutputId,
     projectId: file.projectId,
@@ -628,6 +635,22 @@ export const create = mutation({
     modelId: v.optional(v.string()),
     prompt: v.optional(v.string()),
     outputType: v.optional(v.string()),
+    outputSource: v.optional(v.union(
+      v.literal('image_generation'),
+      v.literal('video_generation'),
+      v.literal('browser'),
+      v.literal('sandbox'),
+    )),
+    outputStatus: v.optional(v.union(
+      v.literal('pending'),
+      v.literal('completed'),
+      v.literal('failed'),
+    )),
+    outputUrl: v.optional(v.string()),
+    outputMetadata: v.optional(v.any()),
+    outputErrorMessage: v.optional(v.string()),
+    outputCompletedAt: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
     legacyNoteId: v.optional(v.id('notes')),
     legacyOutputId: v.optional(v.id('outputs')),
     createdAt: v.optional(v.number()),
@@ -679,6 +702,13 @@ export const create = mutation({
       modelId: args.modelId,
       prompt: args.prompt,
       outputType: args.outputType,
+      outputSource: args.outputSource,
+      outputStatus: args.outputStatus,
+      outputUrl: args.outputUrl,
+      outputMetadata: args.outputMetadata,
+      outputErrorMessage: args.outputErrorMessage,
+      outputCompletedAt: args.outputCompletedAt,
+      expiresAt: args.expiresAt,
       legacyNoteId: args.legacyNoteId,
       legacyOutputId: args.legacyOutputId,
       projectId: args.projectId,
@@ -828,6 +858,27 @@ export const update = mutation({
       v.literal('failed'),
     )),
     indexError: v.optional(v.string()),
+    r2Key: v.optional(v.string()),
+    mimeType: v.optional(v.string()),
+    sizeBytes: v.optional(v.number()),
+    modelId: v.optional(v.string()),
+    outputType: v.optional(v.string()),
+    outputSource: v.optional(v.union(
+      v.literal('image_generation'),
+      v.literal('video_generation'),
+      v.literal('browser'),
+      v.literal('sandbox'),
+    )),
+    outputStatus: v.optional(v.union(
+      v.literal('pending'),
+      v.literal('completed'),
+      v.literal('failed'),
+    )),
+    outputUrl: v.optional(v.string()),
+    outputMetadata: v.optional(v.any()),
+    outputErrorMessage: v.optional(v.string()),
+    outputCompletedAt: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
   },
   handler: async (ctx, { userId, accessToken, serverSecret, fileId, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
@@ -858,10 +909,32 @@ export const update = mutation({
     if (updates.projectId !== undefined) patch.projectId = updates.projectId || undefined
     if (updates.indexStatus !== undefined) patch.indexStatus = updates.indexStatus
     if (updates.indexError !== undefined) patch.indexError = updates.indexError
+    if (updates.r2Key !== undefined) {
+      if (updates.r2Key && !isOwnedOutputR2Key(userId, updates.r2Key)) throw new Error('Invalid storage key')
+      patch.r2Key = updates.r2Key || undefined
+    }
+    if (updates.mimeType !== undefined) patch.mimeType = updates.mimeType
+    if (updates.sizeBytes !== undefined) patch.sizeBytes = updates.sizeBytes
+    if (updates.modelId !== undefined) patch.modelId = updates.modelId
+    if (updates.outputType !== undefined) patch.outputType = updates.outputType
+    if (updates.outputSource !== undefined) patch.outputSource = updates.outputSource
+    if (updates.outputStatus !== undefined) patch.outputStatus = updates.outputStatus
+    if (updates.outputUrl !== undefined) patch.outputUrl = updates.outputUrl
+    if (updates.outputMetadata !== undefined) patch.outputMetadata = updates.outputMetadata
+    if (updates.outputErrorMessage !== undefined) patch.outputErrorMessage = updates.outputErrorMessage
+    if (updates.outputCompletedAt !== undefined) patch.outputCompletedAt = updates.outputCompletedAt
+    if (updates.expiresAt !== undefined) patch.expiresAt = updates.expiresAt
 
     let shouldReindex = false
     let shouldPurge = false
     let storageDelta = 0
+    if (updates.sizeBytes !== undefined && nextText === undefined) {
+      const previousSizeBytes = existing.sizeBytes ?? 0
+      storageDelta = shouldCountStorage(kind, existing.type, updates.sizeBytes)
+        ? updates.sizeBytes - previousSizeBytes
+        : 0
+      if (storageDelta > 0) await ensureStorageAvailable(ctx as never, userId, storageDelta)
+    }
     if (nextText !== undefined) {
       const nextSizeBytes = utf8ByteLength(nextText)
       const previousSizeBytes = existing.sizeBytes ?? utf8ByteLength(existingText)

@@ -52,6 +52,9 @@ import {
   type ModelCatalogRepository,
 } from '@/server/ai/catalog'
 import type { OverlayRuntimeConfig } from '@/shared/config'
+import type { DaytonaWorkspaceRepository } from '@/server/ai/sandbox/DaytonaWorkspaceRepository'
+import { ConvexDaytonaWorkspaceRepository } from '@/server/ai/sandbox/ConvexDaytonaWorkspaceRepository'
+import { PostgresDaytonaWorkspaceRepository } from '@/server/ai/sandbox/PostgresDaytonaWorkspaceRepository'
 import { deriveAppDataCapabilities, type AppDataCapabilities } from './capabilities'
 import { unsupportedRepository } from './errors'
 
@@ -61,6 +64,7 @@ export interface AppDataRepositories {
   billing: BillingRepository
   conversations: ActConversationRepository
   durableJobs: DurableJobRepository
+  daytonaWorkspaces: DaytonaWorkspaceRepository
   files: FileRepository
   idempotency: IdempotencyRepository
   modelCatalog: ModelCatalogRepository
@@ -102,6 +106,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
           new PostgresConversationEventNotifier(pool),
         ),
         durableJobs: new PostgresDurableJobRepository(db),
+        daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),
         files: new PostgresFileRepository(db),
         idempotency: new PostgresIdempotencyRepository(db),
         modelCatalog: new PostgresModelCatalogRepository(db),
@@ -125,6 +130,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       billing: new ConvexBillingRepository(),
       conversations: new ConvexActConversationRepository(),
       durableJobs: unsupportedRepository<DurableJobRepository>('DurableJobRepository'),
+      daytonaWorkspaces: new ConvexDaytonaWorkspaceRepository(),
       files: new ConvexFileRepository(),
       idempotency: new ConvexIdempotencyRepository(),
       modelCatalog: new ConvexModelCatalogRepository(),

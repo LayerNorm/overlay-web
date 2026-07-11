@@ -8,6 +8,7 @@ export interface AccountDataDeletionCounts {
   conversationMessageDeltas: number
   conversationMessages: number
   conversations: number
+  daytonaWorkspaces: number
   files: number
   notes: number
   onboardingState: number

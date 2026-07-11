@@ -3,24 +3,19 @@ import { NextRequest } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { readValidatedJson } from '@/server/app-api/validated-input'
 import { experimental_generateVideo as generateVideo } from '@/server/ai/sdk'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import { outputService } from '@/server/outputs/http'
 import { getGatewayVideoModel } from '@/server/ai/model-runtime'
 import type { VideoSubMode } from '@/shared/ai/gateway/model-types'
 import { getVideoModelsBySubMode } from '@/shared/ai/gateway/model-data'
 import { calculateVideoModelCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import { uploadBuffer, keyForOutput, deleteObject } from '@/server/storage/object-store'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
-import type { Entitlements } from '@/shared/app/app-contracts'
 import { GenerateVideoRequest } from '@/shared/schemas/chat'
 import {
   billableBudgetCentsFromProviderUsd,
-  finalizeProviderBudgetReservation,
   getBudgetTotals,
   isPaidPlan,
-  markProviderBudgetReconcile,
-  releaseProviderBudgetReservation,
-  reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
 
 export const maxDuration = 300
@@ -47,7 +42,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     return new Response('Unsupported video model for this mode', { status: 400 })
   }
 
-  const serverSecret = getInternalApiSecret()
+  const { generationUsagePolicy } = getOverlayServerContext()
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -59,21 +54,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
       const markOutputFailed = async (errorMessage: string) => {
         if (!outputId) return
-        await convex.mutation(
-          'outputs/outputs:update',
-          {
+        await outputService.update({
             outputId,
             userId: auth.userId,
-            serverSecret,
             status: 'failed',
             errorMessage,
-          },
-          { throwOnError: true },
-        ).catch((_error) => undefined)
+        }).catch((_error) => undefined)
       }
       const releaseReservedBudget = async (reason?: string) => {
         if (!reservationId) return
-        await releaseProviderBudgetReservation({
+        await generationUsagePolicy.release({
           userId: auth.userId,
           reservationId,
           providerWorkStarted: providerSucceeded,
@@ -84,10 +74,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
       try {
         // ── Subscription enforcement ────────────────────────────────────────
-        const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
-          serverSecret,
-          userId: auth.userId,
-        })
+        const entitlements = await generationUsagePolicy.getEntitlements({ userId: auth.userId })
 
         if (!entitlements) {
           controller.enqueue(
@@ -146,9 +133,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           ] as const),
         )
         const priceByModelId = new Map(priceEntries)
-        const pricedPriorityList = priorityList.filter((candidateId) =>
-          priceByModelId.get(candidateId) !== null,
-        )
+        const pricedPriorityList = generationUsagePolicy.mode === 'unlimited'
+          ? priorityList
+          : priorityList.filter((candidateId) => priceByModelId.get(candidateId) !== null)
         if (pricedPriorityList.length === 0) {
           controller.enqueue(encode(sseChunk({ type: 'error', error: 'pricing_missing', message: 'No priced video models are available for this mode.' })))
           controller.close()
@@ -162,7 +149,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         const maxProviderCostUsd = Math.max(...pricedPriorityList.map((candidateId) =>
           priceByModelId.get(candidateId) ?? 0,
         ))
-        const reservation = await reserveProviderBudget({
+        const reservation = await generationUsagePolicy.reserve({
           userId: auth.userId,
           entitlements: currentEntitlements,
           providerCostUsd: maxProviderCostUsd,
@@ -182,11 +169,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         } else {
           // ── Create pending output record ────────────────────────────────────
           try {
-            outputId = await convex.mutation<string>(
-              'outputs/outputs:create',
-              {
+            outputId = await outputService.create({
                 userId: auth.userId,
-                serverSecret,
                 type: 'video',
                 source: 'video_generation',
                 status: 'pending',
@@ -196,9 +180,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
                 mimeType: 'video/mp4',
                 ...(conversationId ? { conversationId } : {}),
                 ...(turnId ? { turnId } : {}),
-              },
-              { throwOnError: true },
-            )
+            })
           } catch (err) {
             logger.error('[GenerateVideo] Failed to create output record:', err)
             await releaseReservedBudget(err instanceof Error ? err.message : 'output_create_failed')
@@ -333,19 +315,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
           // ── Update Convex record to completed ───────────────────────────────────────
           try {
-            await convex.mutation(
-              'outputs/outputs:update',
-              {
+            await outputService.update({
                 outputId: persistedOutputId!,
                 userId: auth.userId,
-                serverSecret,
                 status: 'completed',
                 modelId: usedModelId,
                 sizeBytes: videoBuffer.length,
                 ...(r2Key ? { r2Key } : {}),
-              },
-              { throwOnError: true },
-            )
+            })
           } catch (err) {
             logger.error('[GenerateVideo] Failed to update output:', err)
             if (uploadedR2Key) {
@@ -366,9 +343,11 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         }
 
         // ── Usage tracking ────────────────────────────────────────────────────────
-        const costDollars = priceByModelId.get(usedModelId) ?? null
+        const costDollars = generationUsagePolicy.mode === 'unlimited'
+          ? priceByModelId.get(usedModelId) ?? 0
+          : priceByModelId.get(usedModelId) ?? null
         if (costDollars == null) {
-          await markProviderBudgetReconcile({
+          await generationUsagePolicy.markForReconcile({
             userId: auth.userId,
             reservationId,
             errorMessage: `pricing_missing:${usedModelId}`,
@@ -379,7 +358,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         }
         const costCents = billableBudgetCentsFromProviderUsd(costDollars)
         try {
-          await finalizeProviderBudgetReservation({
+          await generationUsagePolicy.finalize({
             userId: auth.userId,
             reservationId,
             actualProviderCostUsd: costDollars,
@@ -396,7 +375,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           reservationId = null
         } catch (err) {
           logger.error('[GenerateVideo] Failed to finalize budget reservation:', err)
-          await markProviderBudgetReconcile({
+          await generationUsagePolicy.markForReconcile({
             userId: auth.userId,
             reservationId,
             errorMessage: err instanceof Error ? err.message : 'finalize_failed',

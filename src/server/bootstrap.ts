@@ -28,6 +28,10 @@ import { S3CompatibleObjectStore } from '@/server/storage/providers/s3-compatibl
 import type { AppDataCapabilities } from '@/server/app-data/capabilities'
 import { createAppDataContext, type AppDataContext } from '@/server/app-data/repositories'
 import { createActUsagePolicy, type ActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
+import {
+  createGenerationUsagePolicy,
+  type GenerationUsagePolicy,
+} from '@/server/outputs/GenerationUsagePolicy'
 import { UserService, type UserAuthProvider } from '@/server/users'
 import type { NoteRepository } from '@/server/notes'
 import type { OverlayRuntimeConfig } from '@/shared/config'
@@ -51,6 +55,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   appData: AppDataContext
   appDataCapabilities: AppDataCapabilities
   chatUsagePolicy: ActUsagePolicy
+  generationUsagePolicy: GenerationUsagePolicy
   noteRepository: NoteRepository
   apiKeyService: typeof ApiKeyService
   userService: UserService
@@ -83,6 +88,12 @@ export function createOverlayServerContext(
     repository: appData.repositories.conversations,
     runtimeConfig,
   })
+  const generationUsagePolicy = createGenerationUsagePolicy({
+    appDataProvider: appData.capabilities.provider,
+    repository: appData.repositories.conversations,
+    runtimeConfig,
+    unlimitedEntitlements: chatUsagePolicy,
+  })
   const userService = new UserService({
     authProvider: selectedAuthProviderForUserService(runtimeConfig),
     repository: appData.repositories.users,
@@ -99,6 +110,7 @@ export function createOverlayServerContext(
     appData,
     appDataCapabilities: appData.capabilities,
     chatUsagePolicy,
+    generationUsagePolicy,
     noteRepository: appData.repositories.notes,
     apiKeyService: ApiKeyService,
     userService,

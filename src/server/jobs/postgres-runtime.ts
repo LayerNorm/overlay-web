@@ -15,6 +15,7 @@ import {
   STORAGE_DELETE_OBJECTS_JOB,
 } from '@/server/storage/PostgresStorageCleanupJobs'
 import { PostgresStorageReconciliationService } from '@/server/storage/PostgresStorageReconciliationService'
+import { PostgresOutputRetentionService } from '@/server/outputs/PostgresOutputRetentionService'
 
 export function createPostgresRuntime(args: {
   db: OverlayPostgresDb
@@ -31,6 +32,7 @@ export function createPostgresRuntime(args: {
   const storageReconciliation = args.objectStore
     ? new PostgresStorageReconciliationService(args.db, args.objectStore)
     : null
+  const outputRetention = new PostgresOutputRetentionService(args.db)
   const worker = new PostgresJobWorker({
     handlers: {
       'runtime.healthcheck': async (job) => ({
@@ -48,6 +50,7 @@ export function createPostgresRuntime(args: {
       'model-catalog.refresh': async () => ({
         modelCount: (await getGatewayCatalog(true, modelCatalog)).length,
       }),
+      'outputs.purge-expired': async () => await outputRetention.purgeExpired(),
       ...(args.objectStore
         ? {
             [STORAGE_DELETE_OBJECTS_JOB]: createStorageDeleteJobHandler(args.objectStore),

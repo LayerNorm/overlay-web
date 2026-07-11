@@ -214,7 +214,7 @@ Enterprise provider matrix:
 
 ### Postgres app-data setup
 
-Postgres app-data support is split into phases. Operators can provision, validate, migrate, and smoke-test the pilot app-data schema now. For pilot v1, run with `billing.provider="none"` and keep automations, webhooks, memory extraction, vector search, API keys, and projects disabled.
+Postgres app-data support is split into phases. Operators can provision, validate, migrate, and smoke-test the app-data schema now. Run with `billing.provider="none"` and keep automations, webhooks, integrations, memory extraction, vector search, and API keys disabled until their parity phases land. Projects, files, generated media, browser outputs, and Daytona artifacts are supported.
 
 Postgres app-data v1 does not include vector parity. Future Postgres-native memory and knowledge search should use `pgvector`; do not keep Convex enabled in the browser as a hidden vector sidecar for Postgres mode. Until that adapter exists, set:
 
@@ -252,7 +252,7 @@ OVERLAY_DATABASE_URL="postgres://..." npm run app-db:vector-readiness
 
 This readiness command is read-only. It does not enable vector search, install extensions, create vector columns, or change the app-data schema.
 
-Postgres app-data does not use Convex crons. Run `npm run app-db:worker` as a separately supervised service. Its Postgres scheduler enqueues maintenance, coordination cleanup, and model-catalog refresh work; leased workers execute jobs with retry and dead-letter state. The standalone `npm run app-db:maintenance` command remains available for manual recovery. Webhook delivery, automation execution, memory extraction, and vector indexing remain capability-gated until their domain phases add complete handlers.
+Postgres app-data does not use Convex crons. Run `npm run app-db:worker` as a separately supervised service. Its Postgres scheduler enqueues maintenance, coordination cleanup, model-catalog refresh, S3 reconciliation, and output-retention work; leased workers execute jobs with retry and dead-letter state. The standalone `npm run app-db:maintenance` command remains available for manual recovery. `compliance.retention.fileDays` governs generated media/browser outputs and `compliance.retention.sandboxArtifactDays` governs Daytona artifacts. Webhook delivery, automation execution, memory extraction, and vector indexing remain capability-gated until their domain phases add complete handlers.
 
 Postgres chat realtime uses the `conversation_events` table and `/api/v1/conversations/events` long polling. Transactional `pg_notify` wakes one listener connection per web process; notifications are only an optimization because reconnects read from the durable cursor. It does not require sticky load-balancer sessions. Keep the worker running so expired event rows and message deltas are pruned. Each app tab holds at most one HTTP long-poll request, so account for concurrent tabs when setting ECS task count and reverse-proxy timeouts. The route waits up to 15 seconds; configure the ingress idle timeout above that value.
 
