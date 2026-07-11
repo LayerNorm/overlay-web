@@ -70,7 +70,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
       'conversations',
       'conversations-act',
       'conversation-title-generation',
-      'convex-chat-features',
+      'conversation-realtime-and-mutations',
     ],
     exitGate: 'All chat routes are supported and refresh, reconnect, second-tab, stop, share, and resume tests pass.',
   },
@@ -107,7 +107,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     name: 'Knowledge, memory, and vector search',
     targetPhase: 'P5',
     capabilities: [{ key: 'supportsVectorSearch', expectedAtParity: true }],
-    routeRuleIds: ['knowledge-memory-vector-search'],
+    routeRuleIds: ['knowledge-memory-vector-search', 'chat-knowledge-features'],
     exitGate: 'Upload, extract, embed, retrieve, cite, reindex, and delete pass shared pgvector and Convex characterization.',
   },
   {
@@ -115,7 +115,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     name: 'Integrations and extensions',
     targetPhase: 'P7',
     capabilities: [{ key: 'supportsIntegrations', expectedAtParity: true }],
-    routeRuleIds: ['integrations', 'extension-proxy'],
+    routeRuleIds: ['integrations', 'extension-proxy', 'chat-extension-plan'],
     exitGate: 'Connector state, OAuth lifecycle, proxy execution, scoping, and audits work without Convex.',
   },
   {

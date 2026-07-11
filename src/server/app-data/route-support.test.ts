@@ -85,14 +85,24 @@ test('Postgres app-data capabilities remove unsupported product surfaces from th
   assert.equal(shell.featureModules.some((item) => item.id === 'projects'), false)
 })
 
-test('Postgres app-data mode supports basic conversation routes as degraded', () => {
+test('Postgres app-data mode supports conversation persistence and realtime routes', () => {
   const support = getAppDataRouteSupport({
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/conversations',
   })
-  assert.equal(support.status, 'degraded')
+  assert.equal(support.status, 'supported')
   assert.equal(support.feature, 'chat-persistence')
+  assert.equal(getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
+    method: 'GET',
+    pathname: '/api/v1/conversations/events',
+  }).status, 'supported')
+  assert.equal(getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
+    method: 'POST',
+    pathname: '/api/v1/conversations/stop',
+  }).status, 'supported')
 })
 
 test('Postgres app-data mode gates Convex-backed chat subroutes with structured 501 responses', async () => {
@@ -116,7 +126,7 @@ test('Postgres app-data mode gates Convex-backed chat subroutes with structured 
     provider: 'postgres',
     method: 'GET',
     route: '/api/v1/chat-suggestions',
-    feature: 'chat-persistence',
+    feature: 'knowledge-memory',
     reason: 'This route is waiting for a Postgres repository implementation.',
   })
 })
@@ -139,13 +149,13 @@ test('Postgres app-data mode allows degraded bootstrap and gates external integr
   }).status, 'unsupported')
 })
 
-test('Postgres app-data mode supports basic chat title generation as degraded', () => {
+test('Postgres app-data mode supports chat title generation', () => {
   const support = getAppDataRouteSupport({
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'POST',
     pathname: '/api/v1/generate-title',
   })
-  assert.equal(support.status, 'degraded')
+  assert.equal(support.status, 'supported')
   assert.equal(support.feature, 'chat-persistence')
 })
 

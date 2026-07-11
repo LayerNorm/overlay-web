@@ -13,6 +13,7 @@ import {
   BootstrapQuery,
   ChatSuggestionQuery,
   ConversationListQuery,
+  ConversationEventsQuery,
   CreateAutomationRequest,
   CreateConversationRequest,
   CreateFileRequest,
@@ -111,6 +112,13 @@ export const webApiBoundaryDefinitions = [
     schema: { query: AutomationListQuery },
     summary: 'List automations',
     tag: 'Automations',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/conversations/events',
+    schema: { query: ConversationEventsQuery },
+    summary: 'Wait for durable conversation changes after a cursor',
+    tag: 'Conversations',
   },
   {
     method: 'POST',

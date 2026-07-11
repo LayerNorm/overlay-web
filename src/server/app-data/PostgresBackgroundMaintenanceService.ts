@@ -2,7 +2,9 @@ import 'server-only'
 
 import { and, asc, eq, inArray, lt, sql } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
+import { CONVERSATION_EVENT_NOTIFY_CHANNEL } from '@/server/conversations/PostgresConversationEventNotifier'
 import {
+  conversationEvents,
   conversationMessageDeltas,
   conversationMessages,
   conversations,
@@ -11,6 +13,7 @@ import {
 const DEFAULT_STALE_GENERATING_CUTOFF_MINUTES = 5
 const DEFAULT_DELTA_CUTOFF_MINUTES = 60
 const DEFAULT_EMPTY_CONVERSATION_CUTOFF_MINUTES = 60
+const DEFAULT_EVENT_CUTOFF_MINUTES = 24 * 60
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 1000
 const STALE_GENERATION_ERROR_TEXT = 'Generation was interrupted before the assistant finished responding.'
@@ -24,6 +27,9 @@ export interface PostgresBackgroundMaintenanceSummary {
     deleted: number
   }
   oldMessageDeltas: {
+    deleted: number
+  }
+  oldConversationEvents: {
     deleted: number
   }
   emptyConversations: {
@@ -53,6 +59,10 @@ export class PostgresBackgroundMaintenanceService {
       limit,
       now: options.now,
     })
+    const oldConversationEvents = await this.cleanupOldConversationEvents({
+      limit,
+      now: options.now,
+    })
     const emptyConversations = await this.cleanupEmptyConversations({
       cutoffMinutes: options.emptyConversationCutoffMinutes,
       limit,
@@ -63,6 +73,7 @@ export class PostgresBackgroundMaintenanceService {
       staleGeneratingMessages,
       inactiveMessageDeltas,
       oldMessageDeltas,
+      oldConversationEvents,
       emptyConversations,
     }
   }
@@ -140,6 +151,15 @@ export class PostgresBackgroundMaintenanceService {
             eq(conversations.id, updated.conversationId),
             eq(conversations.userId, updated.userId),
           ))
+        await tx.insert(conversationEvents).values({
+          userId: updated.userId,
+          conversationId: updated.conversationId,
+          type: 'message.failed',
+          messageId: message.id,
+          payload: { reason: 'stale-generation-cleanup' },
+          createdAt: now,
+        })
+        await tx.execute(sql`SELECT pg_notify(${CONVERSATION_EVENT_NOTIFY_CHANNEL}, ${updated.userId})`)
 
         return { finalized: true, deletedDeltas: deleted.length }
       })
@@ -197,6 +217,33 @@ export class PostgresBackgroundMaintenanceService {
         RETURNING d.id
       )
       SELECT id FROM deleted
+    `)
+    return { deleted: result.rows.length }
+  }
+
+  async cleanupOldConversationEvents(options: {
+    cutoffMinutes?: number
+    limit?: number
+    now?: Date
+  } = {}): Promise<{ deleted: number }> {
+    const now = options.now ?? new Date()
+    const cutoff = minutesAgo(now, options.cutoffMinutes ?? DEFAULT_EVENT_CUTOFF_MINUTES)
+    const limit = normalizeLimit(options.limit)
+    const result = await this.db.execute<{ sequence: number }>(sql`
+      WITH candidates AS (
+        SELECT sequence
+        FROM conversation_events
+        WHERE created_at < ${cutoff}
+        ORDER BY sequence ASC
+        LIMIT ${limit}
+      ),
+      deleted AS (
+        DELETE FROM conversation_events e
+        USING candidates
+        WHERE e.sequence = candidates.sequence
+        RETURNING e.sequence
+      )
+      SELECT sequence FROM deleted
     `)
     return { deleted: result.rows.length }
   }

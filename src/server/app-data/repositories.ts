@@ -12,6 +12,7 @@ import { ConvexBillingRepository } from '@/server/billing/ConvexBillingRepositor
 import type { BillingRepository } from '@/server/billing/BillingRepository'
 import { ConvexActConversationRepository } from '@/server/conversations/ConvexActConversationRepository'
 import { PostgresActConversationRepository } from '@/server/conversations/PostgresActConversationRepository'
+import { PostgresConversationEventNotifier } from '@/server/conversations/PostgresConversationEventNotifier'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
 import { ConvexFileRepository } from '@/server/files/ConvexFileRepository'
 import type { FileRepository } from '@/server/files/FileRepository'
@@ -92,7 +93,10 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         accountDeletion: new PostgresAccountDataDeletionRepository(db),
         automations: unsupportedRepository<AutomationRepository>('AutomationRepository'),
         billing: unsupportedRepository<BillingRepository>('BillingRepository'),
-        conversations: new PostgresActConversationRepository(db),
+        conversations: new PostgresActConversationRepository(
+          db,
+          new PostgresConversationEventNotifier(pool),
+        ),
         durableJobs: new PostgresDurableJobRepository(db),
         files: new PostgresFileRepository(db),
         idempotency: new PostgresIdempotencyRepository(db),

@@ -11,6 +11,10 @@ export const ConversationListQuery = PaginationQuery.extend({
   compactToolPayloads: BooleanQueryValue,
 })
 
+export const ConversationEventsQuery = z.object({
+  after: IntegerQueryValue,
+})
+
 export const CreateConversationRequest = z.object({
   ...AuthFields,
   title: z.string().min(1).max(200).optional(),
@@ -49,7 +53,10 @@ export const DeleteConversationMessageRequest = z.object({
 export const StopConversationRequest = z.object({
   ...AuthFields,
   conversationId: z.string().min(1),
-})
+  messageId: z.string().min(1).optional(),
+  partialContent: z.string().optional(),
+  partialParts: z.array(z.record(z.unknown())).optional(),
+}).passthrough()
 
 export const StreamAuthRequest = z.object({
   ...AuthFields,

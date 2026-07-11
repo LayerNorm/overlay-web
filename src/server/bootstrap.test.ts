@@ -140,7 +140,8 @@ test('createOverlayServerContext returns Postgres app-data context with chat rou
   const context = createOverlayServerContext({ appConfig: {}, runtimeConfig })
 
   assert.equal(context.appDataCapabilities.provider, 'postgres')
-  assert.equal(context.appDataCapabilities.supportsRealtime, false)
+  assert.equal(context.appDataCapabilities.supportsRealtime, true)
+  assert.equal(context.appDataCapabilities.supportsStreamResume, true)
   assert.equal(context.appDataCapabilities.supportsChatPersistence, true)
   assert.equal(context.appDataCapabilities.supportsProjects, false)
   assert.equal(context.appDataCapabilities.supportsSkills, false)

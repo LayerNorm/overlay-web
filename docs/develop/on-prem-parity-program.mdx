@@ -165,6 +165,17 @@ npm run test:app-data-contracts:postgres
 npm run test:app-data-contracts:convex
 ```
 
+Docker is only one way to provide the Postgres fixture. For a dedicated remote
+test database, create the gitignored `.env.on-prem-contract-tests.local` with
+`OVERLAY_DATABASE_URL` set to a direct, unpooled connection and run:
+
+```bash
+npm run test:app-data-contracts:postgres:remote
+```
+
+Use a database reserved for contracts. The P1 suite resets scheduler-owned
+tables and must never target staging or production app data.
+
 The same behavioral contract must run against both implementations. As each later phase adds a repository or service invariant, it must add that behavior to the shared suite rather than creating unrelated provider-only expectations.
 
 ## P0 Exit Gate
@@ -213,6 +224,16 @@ npm run check:p1
 npm run app-db:worker:smoke
 ```
 
+The Postgres portion can run without Docker against the dedicated remote test
+database:
+
+```bash
+npm run test:p1:unit
+npm run test:p1:postgres:remote
+```
+
+The real Redis integration still requires a disposable Redis endpoint.
+
 For a deployed Postgres runtime, run migrations as a one-off release task, then run at least one long-lived worker/scheduler process:
 
 ```bash
@@ -235,4 +256,44 @@ P1 is complete when:
 - A persisted model-catalog snapshot survives repository replacement.
 - `npm run app-db:worker:smoke` completes a real durable health-check job.
 
-P1 does not claim chat realtime, project, vector, automation, webhook, integration, billing, or API-key parity. Those remain owned by P2-P8.
+P1 does not claim project, vector, automation, webhook, integration, billing, or API-key parity. Those remain owned by P2-P8.
+
+## P2 Chat Realtime And Recovery
+
+P2 makes persisted chat behavior independent of Convex:
+
+- Conversation and message mutations use `ActConversationRepository` for both providers.
+- Postgres writes a per-user `conversation_events` record in the same transaction as each chat state change.
+- Browser tabs long-poll `/api/v1/conversations/events` with a durable sequence cursor. Transactional `pg_notify` wakes one shared listener per app process, while a reconnect resumes from the table after the last observed sequence instead of relying on notifications or process memory.
+- Text deltas are batched into Postgres while the model streams. The server keeps a background stream consumer alive after a browser disconnect, so the aggregate message can continue to advance.
+- Refresh and second-tab recovery reload the authoritative persisted message snapshot. Local active streams are not overwritten by their own event notifications.
+- Stop locks generating rows, persists the interruption sentinel, deletes obsolete deltas, and prevents a late model completion from overwriting the stopped result. Other tabs stop their local reader when they observe the event.
+- Conversation share visibility, public-token reads, turn deletion, generated UI updates, and stream relay ownership checks all use the selected repository.
+- The optional chat-stream relay can still replay exact UI stream frames. Postgres recovery does not require that relay: without it, recovery resumes from the latest durable text/message snapshot.
+
+Knowledge suggestions, notebook-agent behavior, and extension planning are not P2 chat dependencies. They remain capability-gated and are owned by P5 and P7.
+
+Run the P2 gate with Docker Postgres:
+
+```bash
+npm run check:p2
+```
+
+Or run the database-independent and real-Postgres portions without Docker:
+
+```bash
+npm run test:p2:unit
+npm run test:p2:postgres:remote
+npm run check:on-prem-parity
+```
+
+### P2 Exit Gate
+
+P2 is complete when:
+
+- Postgres capabilities report realtime, stream recovery, and chat persistence.
+- Every core conversation route is classified as supported.
+- Real Postgres contracts cover ordered event cursors, message deltas, stop/finalize races, sharing, turn deletion, and account cleanup.
+- Refresh during generation recovers the latest persisted text and eventually the final response.
+- A second tab receives list, title, message, stop, and completion changes without mounting Convex.
+- Public share links load through the selected app-data repository.

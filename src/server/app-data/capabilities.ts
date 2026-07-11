@@ -63,8 +63,8 @@ export const CONVEX_APP_DATA_CAPABILITIES: AppDataCapabilities = {
 
 export const POSTGRES_APP_DATA_V1_CAPABILITIES: AppDataCapabilities = {
   provider: 'postgres',
-  supportsRealtime: false,
-  supportsStreamResume: false,
+  supportsRealtime: true,
+  supportsStreamResume: true,
   supportsChatPersistence: true,
   supportsFileMetadata: true,
   supportsFileUploads: true,

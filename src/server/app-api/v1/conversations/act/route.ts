@@ -51,6 +51,7 @@ import {
   type MediaToolIntent,
 } from '@/server/tools/media-tool-intent'
 import { ensureActConversationId } from '@/server/conversations/ensure-act-conversation'
+import { createPersistedTextDeltaTransform } from '@/server/conversations/chat-stream-persistence'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import {
   MAX_ACT_MODEL_ATTEMPTS,
@@ -152,7 +153,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	    currentUserId = userId
     const accessToken = auth.accessToken || undefined
 	    const streamPersistence = resolveActStreamPersistence({
-	      requestedMode: isPostgresAppData ? 'direct' : streamPersistenceMode,
+	      requestedMode: streamPersistenceMode,
 	    })
 	    const useCloudflareStreamMirror = streamPersistence.useCloudflareStreamMirror
 	    const resolvedStreamPersistenceMode = streamPersistence.mode
@@ -430,6 +431,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       result = await agent.stream({
       messages: modelMessages,
       abortSignal: abortController.signal,
+      ...(generatingMessageId ? {
+        experimental_transform: createPersistedTextDeltaTransform({
+          appendTextDelta: async (textDelta) => {
+            return await actGeneratingMessageService.appendTextDelta({
+              messageId: generatingMessageId,
+              textDelta,
+            })
+          },
+        }),
+      } : {}),
       experimental_onToolCallStart: ({ toolCall }) => {
         if (!toolCall) return
         if (_ttftDebug && !_firstToolCallLogged) {
@@ -585,7 +596,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       responseHeaders.set('x-overlay-stream-persistence-mode', resolvedStreamPersistenceMode)
     }
     if (responseBody) {
-      if (resolvedStreamPersistenceMode !== 'direct') {
+      if (isPostgresAppData || resolvedStreamPersistenceMode !== 'direct') {
         const [clientBody, backgroundBody] = responseBody.tee()
         responseBody = clientBody
         after(async () => {

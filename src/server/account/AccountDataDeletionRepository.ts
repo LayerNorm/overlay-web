@@ -4,6 +4,7 @@ export interface AccountDataDeletionCounts {
   apiIdempotencyKeys: number
   authIdentities: number
   conversationContextSummaries: number
+  conversationEvents: number
   conversationMessageDeltas: number
   conversationMessages: number
   conversations: number

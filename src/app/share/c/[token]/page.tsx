@@ -1,41 +1,14 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { convex } from '@/server/database/convex'
 import { SharedChatView } from '@/features/share/components/SharedChatView'
+import { loadSharedConversation } from '@/server/conversations/load-shared-conversation'
+import type { SharedConversation } from '@/shared/chat/shared-conversation'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-type SharedMessagePart =
-  | { type: 'tool-invocation'; toolInvocation: { toolName: string; state?: string } }
-  | { type: 'data'; id: string; dataType: 'overlay.generated_ui'; data: unknown; transient?: boolean }
-  | { type: string; text?: string; url?: string; mediaType?: string; fileName?: string }
-
-export type SharedConversation = {
-  _id: string
-  title: string
-  createdAt: number
-  sharedAt: number
-  messages: Array<{
-    _id: string
-    role: 'user' | 'assistant'
-    mode: 'ask' | 'act'
-    content: string
-    contentType: 'text' | 'image' | 'video'
-    parts: SharedMessagePart[] | null
-    modelId: string | null
-    variantIndex: number
-    turnId: string
-    createdAt: number
-  }>
-}
-
 async function loadShared(token: string): Promise<SharedConversation | null> {
-  return await convex.query<SharedConversation | null>(
-    'chat/conversations:getPublicByToken',
-    { token },
-    { background: true },
-  )
+  return await loadSharedConversation(token)
 }
 
 function firstUserSnippet(conv: SharedConversation): string {

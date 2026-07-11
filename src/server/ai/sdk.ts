@@ -12,6 +12,8 @@ export {
 } from 'ai'
 
 export type {
+  StreamTextTransform,
+  TextStreamPart,
   ToolSet,
   UIMessage,
 } from 'ai'

@@ -33,6 +33,30 @@ export class ConversationsClient {
     return this.http.request(this.path(query), init)
   }
 
+  events<T = {
+    cursor: number
+    events: Array<{
+      sequence: number
+      conversationId: string
+      type: string
+      messageId?: string
+      payload?: Record<string, unknown>
+      createdAt: number
+    }>
+  }>(after?: number, init?: RequestInit) {
+    const path = this.http.appendQuery('/api/v1/conversations/events', (
+      after === undefined ? undefined : { after }
+    ))
+    return this.http.json<T>(path, init)
+  }
+
+  eventsResponse(after?: number, init?: RequestInit) {
+    const path = this.http.appendQuery('/api/v1/conversations/events', (
+      after === undefined ? undefined : { after }
+    ))
+    return this.http.request(path, init)
+  }
+
   create(body: CreateConversationRequest, init?: MutationRequestInit) {
     return this.http.json<CreateConversationResponse>(
       '/api/v1/conversations',

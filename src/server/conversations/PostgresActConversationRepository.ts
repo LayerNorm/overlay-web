@@ -1,11 +1,12 @@
 import 'server-only'
 
-import { randomUUID } from 'node:crypto'
-import { and, desc, eq, gte, isNull, lt, or } from 'drizzle-orm'
+import { randomBytes, randomUUID } from 'node:crypto'
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import { DEFAULT_APP_SETTINGS } from '@overlay/app-core'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
   conversationContextSummaries,
+  conversationEvents,
   conversationMessageDeltas,
   conversationMessages,
   conversations,
@@ -24,14 +25,23 @@ import type {
   ActSkillRow,
   ActUsageEvent,
   ConversationListRow,
+  ConversationEventRow,
   ConversationMessageRow,
+  SharedConversationRow,
 } from './ActConversationRepository'
+import {
+  CONVERSATION_EVENT_NOTIFY_CHANNEL,
+  type PostgresConversationEventNotifier,
+} from './PostgresConversationEventNotifier'
 
 type ConversationId = Id<'conversations'>
 type ConversationMessageId = Id<'conversationMessages'>
 
 export class PostgresActConversationRepository implements ActConversationRepository {
-  constructor(private readonly db: OverlayPostgresDb) {}
+  constructor(
+    private readonly db: OverlayPostgresDb,
+    private readonly eventNotifier?: PostgresConversationEventNotifier,
+  ) {}
 
   async createConversation(args: {
     actModelId: string
@@ -58,27 +68,38 @@ export class PostgresActConversationRepository implements ActConversationReposit
       updatedAt: now,
     }
 
-    const [row] = values.clientId
-      ? await this.db
-          .insert(conversations)
-          .values(values)
-          .onConflictDoUpdate({
-            target: [conversations.userId, conversations.clientId],
-            set: {
-              actModelId: values.actModelId,
-              askModelIds: values.askModelIds,
-              lastMode: values.lastMode,
-              lastModified: now,
-              projectId: values.projectId,
-              title: values.title,
-              updatedAt: now,
-            },
-          })
-          .returning({ id: conversations.id })
-      : await this.db
-          .insert(conversations)
-          .values(values)
-          .returning({ id: conversations.id })
+    const [row] = await this.db.transaction(async (tx) => {
+      const inserted = values.clientId
+        ? await tx
+            .insert(conversations)
+            .values(values)
+            .onConflictDoUpdate({
+              target: [conversations.userId, conversations.clientId],
+              set: {
+                actModelId: values.actModelId,
+                askModelIds: values.askModelIds,
+                lastMode: values.lastMode,
+                lastModified: now,
+                projectId: values.projectId,
+                title: values.title,
+                updatedAt: now,
+              },
+            })
+            .returning({ id: conversations.id })
+        : await tx
+            .insert(conversations)
+            .values(values)
+            .returning({ id: conversations.id })
+      const created = inserted[0]
+      if (created?.id) {
+        await emitConversationEvent(tx, {
+          conversationId: created.id,
+          type: 'conversation.created',
+          userId: args.userId,
+        })
+      }
+      return inserted
+    })
 
     if (!row?.id) throw new Error('Failed to create conversation')
     return row.id as ConversationId
@@ -187,21 +208,31 @@ export class PostgresActConversationRepository implements ActConversationReposit
     userId: string
   }): Promise<void> {
     const now = new Date()
-    await this.db
-      .update(conversations)
-      .set({
-        ...(args.actModelId !== undefined ? { actModelId: args.actModelId } : {}),
-        ...(args.askModelIds !== undefined ? { askModelIds: args.askModelIds } : {}),
-        ...(args.lastMode !== undefined ? { lastMode: args.lastMode } : {}),
-        ...(args.projectId !== undefined ? { projectId: normalizeOptional(args.projectId) } : {}),
-        ...(args.title !== undefined ? { title: args.title } : {}),
-        lastModified: now,
-        updatedAt: now,
-      })
-      .where(and(
-        eq(conversations.id, args.conversationId),
-        eq(conversations.userId, args.userId),
-      ))
+    await this.db.transaction(async (tx) => {
+      const updated = await tx
+        .update(conversations)
+        .set({
+          ...(args.actModelId !== undefined ? { actModelId: args.actModelId } : {}),
+          ...(args.askModelIds !== undefined ? { askModelIds: args.askModelIds } : {}),
+          ...(args.lastMode !== undefined ? { lastMode: args.lastMode } : {}),
+          ...(args.projectId !== undefined ? { projectId: normalizeOptional(args.projectId) } : {}),
+          ...(args.title !== undefined ? { title: args.title } : {}),
+          lastModified: now,
+          updatedAt: now,
+        })
+        .where(and(
+          eq(conversations.id, args.conversationId),
+          eq(conversations.userId, args.userId),
+        ))
+        .returning({ id: conversations.id })
+      if (updated.length > 0) {
+        await emitConversationEvent(tx, {
+          conversationId: args.conversationId,
+          type: 'conversation.updated',
+          userId: args.userId,
+        })
+      }
+    })
   }
 
   async deleteConversation(args: {
@@ -209,17 +240,27 @@ export class PostgresActConversationRepository implements ActConversationReposit
     userId: string
   }): Promise<void> {
     const now = new Date()
-    await this.db
-      .update(conversations)
-      .set({
-        deletedAt: now,
-        lastModified: now,
-        updatedAt: now,
-      })
-      .where(and(
-        eq(conversations.id, args.conversationId),
-        eq(conversations.userId, args.userId),
-      ))
+    await this.db.transaction(async (tx) => {
+      const updated = await tx
+        .update(conversations)
+        .set({
+          deletedAt: now,
+          lastModified: now,
+          updatedAt: now,
+        })
+        .where(and(
+          eq(conversations.id, args.conversationId),
+          eq(conversations.userId, args.userId),
+        ))
+        .returning({ id: conversations.id })
+      if (updated.length > 0) {
+        await emitConversationEvent(tx, {
+          conversationId: args.conversationId,
+          type: 'conversation.deleted',
+          userId: args.userId,
+        })
+      }
+    })
   }
 
   async getEntitlements(): Promise<Entitlements | null> {
@@ -286,11 +327,13 @@ export class PostgresActConversationRepository implements ActConversationReposit
   async addMessage(args: {
     conversationId: ConversationId
     content: string
-    contentType: 'text'
-    mode: 'act'
-    modelId: string
+    contentType: 'text' | 'image' | 'video'
+    mode: 'ask' | 'act'
+    modelId?: string
     parts?: Array<Record<string, unknown>>
     role: 'user' | 'assistant'
+    replySnippet?: string
+    replyToTurnId?: string
     routedModelId?: string
     skipMemoryExtraction?: boolean
     tokens?: { input: number; output: number }
@@ -313,6 +356,8 @@ export class PostgresActConversationRepository implements ActConversationReposit
         parts: args.parts,
         modelId: args.modelId,
         variantIndex: args.variantIndex,
+        replyToTurnId: args.replyToTurnId,
+        replySnippet: args.replySnippet,
         tokens: args.tokens,
         routedModelId: args.routedModelId,
         status: 'completed',
@@ -320,6 +365,12 @@ export class PostgresActConversationRepository implements ActConversationReposit
         updatedAt: now,
       })
       await touchConversation(tx, args.conversationId, args.userId, now, args.mode)
+      await emitConversationEvent(tx, {
+        conversationId: args.conversationId,
+        messageId: id,
+        type: 'message.created',
+        userId: args.userId,
+      })
     })
     return id
   }
@@ -462,6 +513,12 @@ export class PostgresActConversationRepository implements ActConversationReposit
         updatedAt: now,
       })
       await touchConversation(tx, args.conversationId, args.userId, now, args.mode)
+      await emitConversationEvent(tx, {
+        conversationId: args.conversationId,
+        messageId: id,
+        type: 'message.created',
+        userId: args.userId,
+      })
     })
     return id
   }
@@ -470,26 +527,29 @@ export class PostgresActConversationRepository implements ActConversationReposit
     messageId: ConversationMessageId
     newParts?: Array<Record<string, unknown>>
     textDelta?: string
-  }): Promise<void> {
-    const [row] = await this.db
-      .select({
-        content: conversationMessages.content,
-        conversationId: conversationMessages.conversationId,
-        parts: conversationMessages.parts,
-        userId: conversationMessages.userId,
-      })
-      .from(conversationMessages)
-      .where(eq(conversationMessages.id, args.messageId))
-      .limit(1)
-    if (!row) return
+  }): Promise<boolean> {
+    return await this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .select({
+          content: conversationMessages.content,
+          conversationId: conversationMessages.conversationId,
+          parts: conversationMessages.parts,
+          status: conversationMessages.status,
+          userId: conversationMessages.userId,
+        })
+        .from(conversationMessages)
+        .where(eq(conversationMessages.id, args.messageId))
+        .limit(1)
+        .for('update')
+      if (!row || row.status !== 'generating') return false
 
-    const now = new Date()
-    const nextParts = args.newParts?.length
-      ? [...((row.parts as Array<Record<string, unknown>> | null) ?? []), ...args.newParts]
-      : row.parts
-    await this.db.transaction(async (tx) => {
+      const now = new Date()
+      const nextParts = args.newParts?.length
+        ? [...((row.parts as Array<Record<string, unknown>> | null) ?? []), ...args.newParts]
+        : row.parts
+      const deltaId = messageDeltaId()
       await tx.insert(conversationMessageDeltas).values({
-        id: messageDeltaId(),
+        id: deltaId,
         conversationId: row.conversationId,
         messageId: args.messageId,
         userId: row.userId,
@@ -504,8 +564,19 @@ export class PostgresActConversationRepository implements ActConversationReposit
           parts: nextParts,
           updatedAt: now,
         })
-        .where(eq(conversationMessages.id, args.messageId))
+        .where(and(
+          eq(conversationMessages.id, args.messageId),
+          eq(conversationMessages.status, 'generating'),
+        ))
       await touchConversation(tx, row.conversationId as ConversationId, row.userId, now, 'act')
+      await emitConversationEvent(tx, {
+        conversationId: row.conversationId,
+        messageId: args.messageId,
+        payload: { deltaId },
+        type: 'message.delta',
+        userId: row.userId,
+      })
+      return true
     })
   }
 
@@ -517,25 +588,36 @@ export class PostgresActConversationRepository implements ActConversationReposit
     tokens: { input: number; output: number }
   }): Promise<void> {
     const now = new Date()
-    const [row] = await this.db
-      .update(conversationMessages)
-      .set({
-        content: args.content,
-        parts: args.parts,
-        routedModelId: args.routedModelId,
-        tokens: args.tokens,
-        status: 'completed',
-        updatedAt: now,
-      })
-      .where(eq(conversationMessages.id, args.messageId))
-      .returning({
-        conversationId: conversationMessages.conversationId,
-        mode: conversationMessages.mode,
-        userId: conversationMessages.userId,
-      })
-    if (row) {
-      await touchConversation(this.db, row.conversationId as ConversationId, row.userId, now, row.mode)
-    }
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(conversationMessages)
+        .set({
+          content: args.content,
+          parts: args.parts,
+          routedModelId: args.routedModelId,
+          tokens: args.tokens,
+          status: 'completed',
+          updatedAt: now,
+        })
+        .where(and(
+          eq(conversationMessages.id, args.messageId),
+          eq(conversationMessages.status, 'generating'),
+        ))
+        .returning({
+          conversationId: conversationMessages.conversationId,
+          mode: conversationMessages.mode,
+          userId: conversationMessages.userId,
+        })
+      if (row) {
+        await touchConversation(tx, row.conversationId as ConversationId, row.userId, now, row.mode)
+        await emitConversationEvent(tx, {
+          conversationId: row.conversationId,
+          messageId: args.messageId,
+          type: 'message.completed',
+          userId: row.userId,
+        })
+      }
+    })
   }
 
   async failGeneratingMessage(args: {
@@ -543,23 +625,307 @@ export class PostgresActConversationRepository implements ActConversationReposit
     messageId: ConversationMessageId
   }): Promise<void> {
     const now = new Date()
-    const [row] = await this.db
-      .update(conversationMessages)
-      .set({
-        content: args.errorText,
-        parts: [{ type: 'text', text: args.errorText }],
-        status: 'error',
-        updatedAt: now,
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(conversationMessages)
+        .set({
+          content: args.errorText,
+          parts: [{ type: 'text', text: args.errorText }],
+          status: 'error',
+          updatedAt: now,
+        })
+        .where(and(
+          eq(conversationMessages.id, args.messageId),
+          eq(conversationMessages.status, 'generating'),
+        ))
+        .returning({
+          conversationId: conversationMessages.conversationId,
+          mode: conversationMessages.mode,
+          userId: conversationMessages.userId,
+        })
+      if (row) {
+        await touchConversation(tx, row.conversationId as ConversationId, row.userId, now, row.mode)
+        await emitConversationEvent(tx, {
+          conversationId: row.conversationId,
+          messageId: args.messageId,
+          type: 'message.failed',
+          userId: row.userId,
+        })
+      }
+    })
+  }
+
+  async stopGeneratingMessages(args: {
+    conversationId: ConversationId
+    messageId?: ConversationMessageId
+    partialContent?: string
+    partialParts?: Array<Record<string, unknown>>
+    userId: string
+  }): Promise<{ stoppedCount: number }> {
+    return await this.db.transaction(async (tx) => {
+      const [conversation] = await tx
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(and(
+          eq(conversations.id, args.conversationId),
+          eq(conversations.userId, args.userId),
+          isNull(conversations.deletedAt),
+        ))
+        .limit(1)
+      if (!conversation) throw new Error('Unauthorized')
+
+      const rows = await tx
+        .select()
+        .from(conversationMessages)
+        .where(and(
+          eq(conversationMessages.conversationId, args.conversationId),
+          eq(conversationMessages.userId, args.userId),
+          eq(conversationMessages.status, 'generating'),
+          args.messageId ? eq(conversationMessages.id, args.messageId) : undefined,
+        ))
+        .for('update')
+      if (rows.length === 0) return { stoppedCount: 0 }
+
+      const now = new Date()
+      const sentinel = '\n\n[Interrupted by user. Continue?]'
+      for (const row of rows) {
+        const baseContent = args.partialContent ?? row.content
+        const content = `${baseContent.trimEnd()}${sentinel}`
+        const baseParts = args.partialParts?.length
+          ? args.partialParts
+          : (row.parts as Array<Record<string, unknown>> | null) ?? [{ type: 'text', text: baseContent }]
+        await tx
+          .update(conversationMessages)
+          .set({
+            content,
+            parts: [...baseParts, { type: 'text', text: sentinel }],
+            status: 'completed',
+            updatedAt: now,
+          })
+          .where(eq(conversationMessages.id, row.id))
+        await tx
+          .delete(conversationMessageDeltas)
+          .where(eq(conversationMessageDeltas.messageId, row.id))
+        await emitConversationEvent(tx, {
+          conversationId: args.conversationId,
+          messageId: row.id,
+          type: 'message.stopped',
+          userId: args.userId,
+        })
+      }
+      await touchConversation(tx, args.conversationId, args.userId, now, rows[0]?.mode ?? 'act')
+      return { stoppedCount: rows.length }
+    })
+  }
+
+  async deleteTurn(args: {
+    conversationId: ConversationId
+    turnId: string
+    userId: string
+  }): Promise<{ deletedMessages: number }> {
+    return await this.db.transaction(async (tx) => {
+      const [conversation] = await tx
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(and(
+          eq(conversations.id, args.conversationId),
+          eq(conversations.userId, args.userId),
+          isNull(conversations.deletedAt),
+        ))
+        .limit(1)
+      if (!conversation) throw new Error('Unauthorized')
+
+      const messages = await tx
+        .select({ id: conversationMessages.id })
+        .from(conversationMessages)
+        .where(and(
+          eq(conversationMessages.conversationId, args.conversationId),
+          eq(conversationMessages.userId, args.userId),
+          eq(conversationMessages.turnId, args.turnId),
+        ))
+      if (messages.length > 0) {
+        await tx
+          .delete(conversationMessages)
+          .where(inArray(conversationMessages.id, messages.map((message) => message.id)))
+      }
+      const now = new Date()
+      await touchConversation(tx, args.conversationId, args.userId, now, 'act')
+      await emitConversationEvent(tx, {
+        conversationId: args.conversationId,
+        payload: { deletedMessages: messages.length, turnId: args.turnId },
+        type: 'message.deleted',
+        userId: args.userId,
       })
-      .where(eq(conversationMessages.id, args.messageId))
-      .returning({
-        conversationId: conversationMessages.conversationId,
-        mode: conversationMessages.mode,
-        userId: conversationMessages.userId,
+      return { deletedMessages: messages.length }
+    })
+  }
+
+  async updateMessageUiPart(args: {
+    conversationId: ConversationId
+    messageId: ConversationMessageId
+    partId: string
+    data: Record<string, unknown>
+    userId: string
+  }): Promise<boolean> {
+    return await this.db.transaction(async (tx) => {
+      const [message] = await tx
+        .select({ parts: conversationMessages.parts })
+        .from(conversationMessages)
+        .where(and(
+          eq(conversationMessages.id, args.messageId),
+          eq(conversationMessages.conversationId, args.conversationId),
+          eq(conversationMessages.userId, args.userId),
+        ))
+        .limit(1)
+      if (!message) return false
+      let found = false
+      const parts = ((message.parts as Array<Record<string, unknown>> | null) ?? []).map((part) => {
+        if (part.id !== args.partId) return part
+        found = true
+        return { ...part, data: args.data }
       })
-    if (row) {
-      await touchConversation(this.db, row.conversationId as ConversationId, row.userId, now, row.mode)
+      if (!found) return false
+      const now = new Date()
+      await tx
+        .update(conversationMessages)
+        .set({ parts, updatedAt: now })
+        .where(eq(conversationMessages.id, args.messageId))
+      await touchConversation(tx, args.conversationId, args.userId, now, 'act')
+      await emitConversationEvent(tx, {
+        conversationId: args.conversationId,
+        messageId: args.messageId,
+        type: 'message.ui-updated',
+        userId: args.userId,
+      })
+      return true
+    })
+  }
+
+  async setShare(args: {
+    conversationId: ConversationId
+    userId: string
+    visibility: 'private' | 'public'
+  }): Promise<{ token: string | null; visibility: 'private' | 'public' } | null> {
+    return await this.db.transaction(async (tx) => {
+      const [conversation] = await tx
+        .select({ shareToken: conversations.shareToken })
+        .from(conversations)
+        .where(and(
+          eq(conversations.id, args.conversationId),
+          eq(conversations.userId, args.userId),
+          isNull(conversations.deletedAt),
+        ))
+        .limit(1)
+      if (!conversation) return null
+      const now = new Date()
+      const token = args.visibility === 'public'
+        ? conversation.shareToken ?? generateShareToken()
+        : generateShareToken()
+      await tx
+        .update(conversations)
+        .set({
+          shareToken: token,
+          shareVisibility: args.visibility,
+          ...(args.visibility === 'public' ? { sharedAt: now } : {}),
+          updatedAt: now,
+        })
+        .where(eq(conversations.id, args.conversationId))
+      await emitConversationEvent(tx, {
+        conversationId: args.conversationId,
+        payload: { visibility: args.visibility },
+        type: 'conversation.shared',
+        userId: args.userId,
+      })
+      return {
+        token: args.visibility === 'public' ? token : null,
+        visibility: args.visibility,
+      }
+    })
+  }
+
+  async getPublicConversationByToken(args: {
+    token: string
+  }): Promise<SharedConversationRow | null> {
+    const [conversation] = await this.db
+      .select()
+      .from(conversations)
+      .where(and(
+        eq(conversations.shareToken, args.token),
+        eq(conversations.shareVisibility, 'public'),
+        isNull(conversations.deletedAt),
+      ))
+      .limit(1)
+    if (!conversation) return null
+    const messages = await this.db
+      .select()
+      .from(conversationMessages)
+      .where(eq(conversationMessages.conversationId, conversation.id))
+      .orderBy(asc(conversationMessages.createdAt))
+    return {
+      _id: conversation.id,
+      title: conversation.title,
+      createdAt: toMillis(conversation.createdAt),
+      sharedAt: toMillis(conversation.sharedAt ?? conversation.updatedAt ?? conversation.createdAt),
+      messages: messages.map(mapConversationMessageRow),
     }
+  }
+
+  async getConversationEventCursor(args: { userId: string }): Promise<number> {
+    const [event] = await this.db
+      .select({ sequence: conversationEvents.sequence })
+      .from(conversationEvents)
+      .where(eq(conversationEvents.userId, args.userId))
+      .orderBy(desc(conversationEvents.sequence))
+      .limit(1)
+    return event?.sequence ?? 0
+  }
+
+  async listConversationEvents(args: {
+    afterSequence: number
+    limit: number
+    userId: string
+  }): Promise<ConversationEventRow[]> {
+    const rows = await this.db
+      .select()
+      .from(conversationEvents)
+      .where(and(
+        eq(conversationEvents.userId, args.userId),
+        gt(conversationEvents.sequence, args.afterSequence),
+      ))
+      .orderBy(asc(conversationEvents.sequence))
+      .limit(Math.max(1, Math.min(200, Math.floor(args.limit))))
+    return rows.map((row) => ({
+      sequence: row.sequence,
+      conversationId: row.conversationId,
+      type: row.type as ConversationEventRow['type'],
+      messageId: row.messageId ?? undefined,
+      payload: row.payload ?? undefined,
+      createdAt: toMillis(row.createdAt),
+    }))
+  }
+
+  async waitForConversationEvents(args: {
+    afterSequence: number
+    limit: number
+    signal?: AbortSignal
+    timeoutMs: number
+    userId: string
+  }): Promise<ConversationEventRow[]> {
+    let events = await this.listConversationEvents(args)
+    if (events.length > 0 || !this.eventNotifier) return events
+    const waiter = await this.eventNotifier.createWaiter({
+      signal: args.signal,
+      timeoutMs: args.timeoutMs,
+      userId: args.userId,
+    })
+    events = await this.listConversationEvents(args)
+    if (events.length > 0) {
+      waiter.cancel()
+      return events
+    }
+    await waiter.promise
+    events = await this.listConversationEvents(args)
+    return events
   }
 
   async recordUsageBatch(_args: {
@@ -602,6 +968,8 @@ function mapConversationRow(row: typeof conversations.$inferSelect): Conversatio
     askModelIds: row.askModelIds ?? [],
     actModelId: row.actModelId,
     projectId: row.projectId ?? undefined,
+    shareVisibility: row.shareVisibility ?? undefined,
+    shareToken: row.shareToken,
   }
 }
 
@@ -652,6 +1020,30 @@ function messageDeltaId(): string {
 
 function contextSummaryId(): string {
   return `ctx_${randomUUID()}`
+}
+
+function generateShareToken(): string {
+  return randomBytes(16).toString('base64url')
+}
+
+async function emitConversationEvent(
+  db: Pick<OverlayPostgresDb, 'execute' | 'insert'>,
+  event: {
+    conversationId: string
+    messageId?: string
+    payload?: Record<string, unknown>
+    type: ConversationEventRow['type']
+    userId: string
+  },
+): Promise<void> {
+  await db.insert(conversationEvents).values({
+    userId: event.userId,
+    conversationId: event.conversationId,
+    type: event.type,
+    messageId: event.messageId,
+    payload: event.payload,
+  })
+  await db.execute(sql`SELECT pg_notify(${CONVERSATION_EVENT_NOTIFY_CHANNEL}, ${event.userId})`)
 }
 
 async function touchConversation(

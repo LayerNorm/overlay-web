@@ -29,6 +29,13 @@
       "when": 1783713472840,
       "tag": "0003_p1_runtime_foundations",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783796400000,
+      "tag": "0004_p2_conversation_events",
+      "breakpoints": true
     }
   ]
 }

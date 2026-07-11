@@ -67,6 +67,19 @@ export class ActGeneratingMessageService {
     await this.deps.repository.finalizeGeneratingMessage(args)
   }
 
+  async appendTextDelta(args: {
+    messageId: Id<'conversationMessages'>
+    textDelta: string
+  }): Promise<boolean> {
+    if (!args.textDelta) return true
+    try {
+      return await this.deps.repository.appendGeneratingMessageDelta(args)
+    } catch (err) {
+      logger.warn('[conversations/act] Failed to persist generating message delta:', summarizeErrorForLog(err))
+      return true
+    }
+  }
+
   async fail(args: {
     conversationId?: Id<'conversations'>
     emitWebhook: boolean

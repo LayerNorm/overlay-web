@@ -74,6 +74,7 @@ export async function runAppDataRepositoryContractSuite(
     })
 
     await t.test(`${backend.name}: conversations, messages, and deltas preserve chat behavior`, async () => {
+      const eventCursor = await backend.conversations.getConversationEventCursor({ userId })
       const clientId = `conversation_${randomUUID()}`
       const conversationId = await backend.conversations.createConversation({
         userId,
@@ -136,6 +137,115 @@ export async function runAppDataRepositoryContractSuite(
       assert.equal(messages[0]?.content, 'hello contract')
       assert.equal(messages[1]?.content, 'hello back')
       assert.equal(messages[1]?.status, 'completed')
+
+      const publicShare = await backend.conversations.setShare({
+        conversationId,
+        userId,
+        visibility: 'public',
+      })
+      assert.equal(publicShare?.visibility, 'public')
+      assert.equal(typeof publicShare?.token, 'string')
+      const shared = await backend.conversations.getPublicConversationByToken({
+        token: publicShare!.token!,
+      })
+      assert.equal(shared?._id, conversationId)
+      assert.equal(shared?.messages.length, 2)
+      const privateShare = await backend.conversations.setShare({
+        conversationId,
+        userId,
+        visibility: 'private',
+      })
+      assert.deepEqual(privateShare, { visibility: 'private', token: null })
+      assert.equal(await backend.conversations.getPublicConversationByToken({
+        token: publicShare!.token!,
+      }), null)
+
+      const interruptedMessageId = await backend.conversations.startGeneratingMessage({
+        conversationId,
+        userId,
+        turnId: 'turn_interrupted',
+        mode: 'act',
+        modelId: 'openrouter/free',
+      })
+      assert.ok(interruptedMessageId)
+      await backend.conversations.appendGeneratingMessageDelta({
+        messageId: interruptedMessageId,
+        textDelta: 'partial response',
+      })
+      const stopped = await backend.conversations.stopGeneratingMessages({
+        conversationId,
+        messageId: interruptedMessageId,
+        userId,
+      })
+      assert.equal(stopped.stoppedCount, 1)
+      await backend.conversations.finalizeGeneratingMessage({
+        messageId: interruptedMessageId,
+        content: 'late completion must not overwrite stop',
+        parts: [{ type: 'text', text: 'late completion must not overwrite stop' }],
+        tokens: { input: 1, output: 1 },
+      })
+      const afterStop = await backend.conversations.getConversationMessages({
+        conversationId,
+        userId,
+      })
+      const interrupted = afterStop.find((message) => message._id === interruptedMessageId)
+      assert.equal(interrupted?.status, 'completed')
+      assert.match(interrupted?.content ?? '', /Interrupted by user/)
+
+      await backend.conversations.addMessage({
+        conversationId,
+        userId,
+        turnId: 'turn_delete',
+        role: 'user',
+        mode: 'act',
+        content: 'delete this turn',
+        contentType: 'text',
+        modelId: 'openrouter/free',
+      })
+      const deletedTurn = await backend.conversations.deleteTurn({
+        conversationId,
+        turnId: 'turn_delete',
+        userId,
+      })
+      assert.equal(deletedTurn.deletedMessages, 1)
+      assert.equal((await backend.conversations.getConversationMessages({
+        conversationId,
+        userId,
+      })).some((message) => message.turnId === 'turn_delete'), false)
+
+      if (backend.provider === 'postgres') {
+        const events = await backend.conversations.listConversationEvents({
+          afterSequence: eventCursor,
+          limit: 200,
+          userId,
+        })
+        assert.equal(events.length > 0, true)
+        assert.deepEqual(
+          events.map((event) => event.sequence),
+          [...events.map((event) => event.sequence)].sort((a, b) => a - b),
+        )
+        assert.equal(events.some((event) => event.type === 'message.delta'), true)
+        assert.equal(events.some((event) => event.type === 'message.stopped'), true)
+        assert.equal(events.some((event) => event.type === 'conversation.shared'), true)
+        assert.equal(events.some((event) => event.type === 'message.deleted'), true)
+
+        const liveCursor = await backend.conversations.getConversationEventCursor({ userId })
+        const waitingForEvents = backend.conversations.waitForConversationEvents({
+          afterSequence: liveCursor,
+          limit: 20,
+          timeoutMs: 2_000,
+          userId,
+        })
+        await backend.conversations.updateConversation({
+          conversationId,
+          userId,
+          title: 'Realtime contract update',
+        })
+        const notifiedEvents = await waitingForEvents
+        assert.equal(notifiedEvents.some((event) => (
+          event.conversationId === conversationId && event.type === 'conversation.updated'
+        )), true)
+      }
 
       await backend.conversations.updateConversation({
         conversationId,

@@ -49,6 +49,8 @@ export type ConversationListRow = {
   askModelIds: string[]
   actModelId: string
   projectId?: string
+  shareVisibility?: 'private' | 'public'
+  shareToken?: string | null
 }
 
 export type ConversationMessageRow = {
@@ -76,6 +78,36 @@ export type ActUsageEvent = {
   cachedTokens: number
   cost: number
   timestamp: number
+}
+
+export type ConversationEventType =
+  | 'conversation.created'
+  | 'conversation.updated'
+  | 'conversation.deleted'
+  | 'conversation.shared'
+  | 'message.created'
+  | 'message.delta'
+  | 'message.completed'
+  | 'message.failed'
+  | 'message.stopped'
+  | 'message.deleted'
+  | 'message.ui-updated'
+
+export type ConversationEventRow = {
+  sequence: number
+  conversationId: string
+  type: ConversationEventType
+  messageId?: string
+  payload?: Record<string, unknown>
+  createdAt: number
+}
+
+export type SharedConversationRow = {
+  _id: string
+  title: string
+  createdAt: number
+  sharedAt: number
+  messages: ConversationMessageRow[]
 }
 
 export interface ActConversationRepository {
@@ -140,11 +172,13 @@ export interface ActConversationRepository {
   addMessage(args: {
     conversationId: Id<'conversations'>
     content: string
-    contentType: 'text'
-    mode: 'act'
-    modelId: string
+    contentType: 'text' | 'image' | 'video'
+    mode: 'ask' | 'act'
+    modelId?: string
     parts?: Array<Record<string, unknown>>
     role: 'user' | 'assistant'
+    replySnippet?: string
+    replyToTurnId?: string
     routedModelId?: string
     skipMemoryExtraction?: boolean
     tokens?: { input: number; output: number }
@@ -197,7 +231,7 @@ export interface ActConversationRepository {
     messageId: Id<'conversationMessages'>
     newParts?: Array<Record<string, unknown>>
     textDelta?: string
-  }): Promise<void>
+  }): Promise<boolean>
   finalizeGeneratingMessage(args: {
     content: string
     messageId: Id<'conversationMessages'>
@@ -209,6 +243,48 @@ export interface ActConversationRepository {
     errorText: string
     messageId: Id<'conversationMessages'>
   }): Promise<void>
+  stopGeneratingMessages(args: {
+    conversationId: Id<'conversations'>
+    messageId?: Id<'conversationMessages'>
+    partialContent?: string
+    partialParts?: Array<Record<string, unknown>>
+    userId: string
+  }): Promise<{ stoppedCount: number }>
+  deleteTurn(args: {
+    conversationId: Id<'conversations'>
+    turnId: string
+    userId: string
+  }): Promise<{ deletedMessages: number }>
+  updateMessageUiPart(args: {
+    conversationId: Id<'conversations'>
+    messageId: Id<'conversationMessages'>
+    partId: string
+    data: Record<string, unknown>
+    userId: string
+  }): Promise<boolean>
+  setShare(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+    visibility: 'private' | 'public'
+  }): Promise<{ token: string | null; visibility: 'private' | 'public' } | null>
+  getPublicConversationByToken(args: {
+    token: string
+  }): Promise<SharedConversationRow | null>
+  getConversationEventCursor(args: {
+    userId: string
+  }): Promise<number>
+  listConversationEvents(args: {
+    afterSequence: number
+    limit: number
+    userId: string
+  }): Promise<ConversationEventRow[]>
+  waitForConversationEvents(args: {
+    afterSequence: number
+    limit: number
+    signal?: AbortSignal
+    timeoutMs: number
+    userId: string
+  }): Promise<ConversationEventRow[]>
   recordUsageBatch(args: {
     events: ActUsageEvent[]
     forceFreeTierLimits: boolean

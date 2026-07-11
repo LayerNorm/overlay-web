@@ -10,7 +10,7 @@ The short version:
 - Auth is now provider-agnostic at the app boundary. WorkOS and Better Auth both normalize into the Overlay session contract.
 - Auth storage and app-data storage are separate concerns. Better Auth uses its own Postgres database for auth/session state. Overlay app data uses either Convex or the new Postgres app-data provider.
 - Postgres app-data includes production runtime foundations for shared idempotency, replay protection, Redis rate limiting, durable jobs/outbox, scheduler ownership, schema compatibility, and persisted model catalog snapshots.
-- Postgres app-data v1 is not full Convex parity. Realtime subscriptions, stream resume, automations, webhooks, projects, API keys, billing records, memory extraction, and vector search are disabled or unsupported in Postgres mode.
+- Postgres app-data is not full Convex parity. Chat realtime, durable text recovery, stop, sharing, and second-tab synchronization are supported; automations, webhooks, projects, API keys, billing records, memory extraction, and vector search remain disabled or unsupported.
 - Postgres vector search is not implemented yet. The intended future direction is `pgvector`, and deployments must verify their managed Postgres provider supports the `vector` extension before planning vector parity.
 
 ## Design Goals
@@ -33,7 +33,7 @@ The implementation is built around these boundaries:
    In Postgres mode, browser code should not mount Convex subscriptions or rely on Convex client-side auth for supported surfaces.
 
 6. Tests should run against real backends where practical.
-   Shared app-data contract tests run against Docker Postgres and can run against a real/local Convex deployment.
+   Shared app-data contract tests run against either Docker Postgres or a dedicated remote Postgres database and can run against a real/local Convex deployment.
 
 ## Runtime Matrix
 
@@ -85,6 +85,7 @@ Use separate schemas/databases for these concerns. They have different ownership
 | Step 9 | `3df3b97f1` | Documented and enforced the `pgvector` readiness boundary. Postgres app-data v1 does not imply vector parity. |
 | Step 9.1 | `bbc973a59` | Re-enabled Postgres chat title generation through the usage policy abstraction and disabled integrations/connectors in Postgres pilot mode. |
 | P1 runtime | Current branch | Added migration locking and compatibility checks, Postgres idempotency/replay stores, Redis rate limiting, durable jobs/outbox/scheduler, worker runtime, and Postgres model-catalog persistence. |
+| P2 chat | Current branch | Added transactional conversation events, cursor-based browser synchronization, batched text-delta persistence, disconnect-safe background draining, stop/finalize race protection, repository-backed message/share/stream-auth routes, and provider-neutral public shares. |
 
 ## Key Code Boundaries
 
@@ -98,6 +99,7 @@ Use separate schemas/databases for these concerns. They have different ownership
 | App shell capability filtering | `packages/overlay-app-core/src/app-shell.ts`, `packages/overlay-app-core/src/capabilities.ts` |
 | User sync | `src/server/users/UserService.ts`, `src/server/users/ConvexUserRepository.ts`, `src/server/users/PostgresUserRepository.ts` |
 | Chat repositories | `src/server/conversations/ConvexActConversationRepository.ts`, `src/server/conversations/PostgresActConversationRepository.ts` |
+| Chat realtime and recovery | `src/server/conversations/chat-stream-persistence.ts`, `src/server/app-api/v1/conversations/events/route.ts`, `src/features/chat/components/chat/usePostgresConversationEvents.ts` |
 | Chat services and usage | `src/server/conversations/ActConversationService.ts`, `src/server/conversations/ActUsagePolicy.ts` |
 | Notes | `src/server/notes/NoteService.ts`, `src/server/notes/PostgresNoteRepository.ts` |
 | Files | `src/server/files/FileService.ts`, `src/server/files/PostgresFileRepository.ts` |
@@ -173,9 +175,10 @@ Supported or degraded:
 
 | Surface | Status in Postgres mode | Notes |
 | --- | --- | --- |
-| Chat list/read/create/update/delete | Degraded | No Convex realtime sync or stream resume. |
-| Chat send | Degraded | Direct model chat path with explicit usage policy; no memory/tools/webhooks. |
-| Chat title generation | Degraded | Uses configured `chatUsagePolicy`; works in billing-disabled Postgres pilot mode. |
+| Chat list/read/create/update/delete | Supported | Transactional event cursor synchronizes refreshes and multiple tabs without Convex. |
+| Chat send | Supported | Durable text streaming and explicit usage policy; memory/tools/webhooks remain separately gated. |
+| Chat stop/share/recovery | Supported | Stop is race-safe, public share reads are provider-neutral, and disconnect recovery uses persisted snapshots. |
+| Chat title generation | Supported | Uses configured `chatUsagePolicy`; works in billing-disabled Postgres pilot mode. |
 | Settings | Supported | Backed by `user_settings`. |
 | Onboarding | Supported | Backed by `onboarding_state`. |
 | Notes | Supported | Backed by `notes`. |
@@ -242,16 +245,23 @@ Postgres-supported chat operations:
 - Send a message through `/api/v1/conversations/act`.
 - Persist user and assistant messages.
 - Persist message deltas where needed.
+- Persist ordered conversation events in the same transaction as chat mutations.
+- Recover active text generations after refresh or network interruption.
+- Synchronize conversation changes across browser tabs without Convex.
+- Stop a generating response without allowing a late completion to overwrite it.
+- Publish and revoke read-only conversation share links.
 - Clean up stale generating messages.
 - Delete conversations.
 
 Important constraints:
 
 - `useLiveConversationSync` is guarded so Postgres mode does not mount Convex subscriptions.
-- Postgres mode relies on the active HTTP stream and local runtime state during a send.
-- `/api/v1/generate-title` is now allowed in Postgres mode as a degraded chat-persistence route.
+- `/api/v1/conversations/events` uses a durable sequence cursor and long polling. Transactional `pg_notify` wakes a shared listener without repeated idle queries; correctness still comes from the event table, not the notification.
+- The active HTTP stream remains the lowest-latency path. Text deltas are flushed to Postgres in bounded batches and the server drains the stream in the background if the browser disconnects.
+- A refresh or second tab reloads the aggregate persisted message. If the optional stream relay is configured, exact UI stream frames can also be replayed.
+- `/api/v1/generate-title` is allowed in Postgres mode as a supported chat-persistence route.
 - Chat title generation uses `chatUsagePolicy`, not direct Convex billing queries.
-- Memory, tools, webhooks, extension planning, and stream resume are disabled in Postgres mode.
+- Memory, tools, webhooks, and extension planning remain disabled in Postgres mode. Durable text stream recovery is supported; exact relay-frame replay is optional.
 
 Usage policy:
 
@@ -524,6 +534,7 @@ npm run app-db:account-delete-smoke
 npm run app-db:maintenance
 npm run app-db:worker:smoke
 npm run check:p1
+npm run check:p2
 ```
 
 Contract tests:
@@ -533,6 +544,19 @@ npm run test:app-data-contracts:postgres
 npm run test:app-data-contracts:convex
 npm run test:app-data-contracts
 ```
+
+Docker-free remote Postgres contracts use a gitignored
+`.env.on-prem-contract-tests.local` containing a direct `OVERLAY_DATABASE_URL`:
+
+```bash
+npm run app-db:contract:migrate
+npm run app-db:contract:smoke
+npm run test:p1:postgres:remote
+npm run test:p2:postgres:remote
+```
+
+Use an isolated contract database. Do not point these commands at staging or
+production data; P1 intentionally exercises and resets shared scheduler state.
 
 Route support and shell capability checks:
 
@@ -556,6 +580,10 @@ Manual browser QA for Postgres mode:
 - Chat send works.
 - Chat title changes from `New Chat` after first message.
 - Refresh keeps session and chat state.
+- Refresh during a response restores the latest durable text and then the final response.
+- A second tab sees conversation creation, title, text progress, completion, and stop changes.
+- Stop from either tab leaves the persisted interruption marker and cannot be overwritten by late completion.
+- Public share links load while public and return not-found after being made private.
 - Sidebar does not show disabled surfaces like Extensions, Projects, Automations, Skills, or MCPs in Postgres pilot mode.
 - Settings loads.
 - Notes list/create/update/delete works.
@@ -582,7 +610,8 @@ Expected tradeoffs:
 - Postgres mode requires operating migrations, connection pooling, backups, maintenance jobs, and future vector indexes.
 - Postgres serverless providers need careful connection pooling. Use pooled URLs where appropriate for request/response app traffic, and unpooled/admin URLs only for migrations if the provider recommends it.
 - The route support and capability checks are cheap boolean/classification checks. They should not materially affect app latency.
-- Removing Convex browser subscriptions in Postgres mode can reduce client-side network chatter, but it also removes realtime updates and stream resume until those are rebuilt on another backend.
+- Postgres browser synchronization uses one long-poll request per active app tab plus bounded snapshot reloads after events. This replaces Convex subscriptions with operator-owned database traffic; size the web tier and Postgres pool for expected concurrent tabs.
+- Text deltas are batched before persistence to avoid one transaction per token. The event log is pruned by background maintenance after its recovery window.
 
 ## Current Parity Status
 
@@ -595,6 +624,9 @@ Parity exists or is close enough for pilot:
 - Chat create/list/read/update/delete.
 - Chat send without memory/tools.
 - Basic title generation.
+- Realtime conversation event cursors and second-tab synchronization.
+- Durable text recovery after refresh/disconnect.
+- Stop/finalize race protection and provider-neutral public sharing.
 - Settings.
 - Onboarding.
 - Notes CRUD.
@@ -606,8 +638,6 @@ Parity exists or is close enough for pilot:
 
 Parity does not exist yet:
 
-- Realtime subscriptions.
-- Stream resume.
 - Projects UI and service parity.
 - Integrations/connectors.
 - Skills and MCP server management.

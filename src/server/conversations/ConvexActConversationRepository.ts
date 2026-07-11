@@ -6,12 +6,14 @@ import type {
   ActConversationRepository,
   ActConversationRow,
   ConversationListRow,
+  ConversationEventRow,
   ConversationMessageRow,
   ActMemoryRow,
   ActPersistedMessage,
   ActProjectRow,
   ActSkillRow,
   ActUsageEvent,
+  SharedConversationRow,
 } from './ActConversationRepository'
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
@@ -152,11 +154,13 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   async addMessage(args: {
     conversationId: Id<'conversations'>
     content: string
-    contentType: 'text'
-    mode: 'act'
-    modelId: string
+    contentType: 'text' | 'image' | 'video'
+    mode: 'ask' | 'act'
+    modelId?: string
     parts?: Array<Record<string, unknown>>
     role: 'user' | 'assistant'
+    replySnippet?: string
+    replyToTurnId?: string
     routedModelId?: string
     skipMemoryExtraction?: boolean
     tokens?: { input: number; output: number }
@@ -261,11 +265,12 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     messageId: Id<'conversationMessages'>
     newParts?: Array<Record<string, unknown>>
     textDelta?: string
-  }): Promise<void> {
+  }): Promise<boolean> {
     await convex.mutation('chat/conversations:appendGeneratingMessageDelta', {
       ...args,
       serverSecret: this.serverSecret,
     })
+    return true
   }
 
   async finalizeGeneratingMessage(args: {
@@ -289,6 +294,82 @@ export class ConvexActConversationRepository implements ActConversationRepositor
       ...args,
       serverSecret: this.serverSecret,
     })
+  }
+
+  async stopGeneratingMessages(args: {
+    conversationId: Id<'conversations'>
+    messageId?: Id<'conversationMessages'>
+    partialContent?: string
+    partialParts?: Array<Record<string, unknown>>
+    userId: string
+  }): Promise<{ stoppedCount: number }> {
+    return await convex.mutation<{ stoppedCount: number }>('chat/conversations:stopGeneratingMessage', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? { stoppedCount: 0 }
+  }
+
+  async deleteTurn(args: {
+    conversationId: Id<'conversations'>
+    turnId: string
+    userId: string
+  }): Promise<{ deletedMessages: number }> {
+    const result = await convex.mutation<{ deletedMessages: number }>('chat/conversations:deleteTurn', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    return { deletedMessages: result?.deletedMessages ?? 0 }
+  }
+
+  async updateMessageUiPart(args: {
+    conversationId: Id<'conversations'>
+    messageId: Id<'conversationMessages'>
+    partId: string
+    data: Record<string, unknown>
+    userId: string
+  }): Promise<boolean> {
+    await convex.mutation('chat/conversations:updateMessageUiPart', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    return true
+  }
+
+  async setShare(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+    visibility: 'private' | 'public'
+  }): Promise<{ token: string | null; visibility: 'private' | 'public' } | null> {
+    return await convex.mutation('chat/conversations:setShare', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
+  async getPublicConversationByToken(args: { token: string }): Promise<SharedConversationRow | null> {
+    return await convex.query<SharedConversationRow | null>('chat/conversations:getPublicByToken', args)
+  }
+
+  async getConversationEventCursor(_args: { userId: string }): Promise<number> {
+    return 0
+  }
+
+  async listConversationEvents(_args: {
+    afterSequence: number
+    limit: number
+    userId: string
+  }): Promise<ConversationEventRow[]> {
+    return []
+  }
+
+  async waitForConversationEvents(_args: {
+    afterSequence: number
+    limit: number
+    signal?: AbortSignal
+    timeoutMs: number
+    userId: string
+  }): Promise<ConversationEventRow[]> {
+    return []
   }
 
   async recordUsageBatch(args: {

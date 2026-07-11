@@ -268,6 +268,26 @@ export const conversationMessageDeltas = pgTable('conversation_message_deltas', 
   index('conversation_message_deltas_created_at_idx').on(table.createdAt),
 ])
 
+export const conversationEvents = pgTable('conversation_events', {
+  sequence: bigint('sequence', { mode: 'number' })
+    .primaryKey()
+    .generatedAlwaysAsIdentity(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  conversationId: text('conversation_id')
+    .notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(),
+  messageId: text('message_id'),
+  payload: jsonb('payload').$type<Record<string, unknown>>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('conversation_events_user_sequence_idx').on(table.userId, table.sequence),
+  index('conversation_events_conversation_sequence_idx').on(table.conversationId, table.sequence),
+  index('conversation_events_created_at_idx').on(table.createdAt),
+])
+
 export const conversationContextSummaries = pgTable('conversation_context_summaries', {
   id: text('id').primaryKey(),
   conversationId: text('conversation_id')
