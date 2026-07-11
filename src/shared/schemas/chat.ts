@@ -28,6 +28,7 @@ export const CreateConversationRequest = z.object({
 export const UpdateConversationRequest = CreateConversationRequest.partial().extend({
   ...AuthFields,
   conversationId: z.string().min(1),
+  projectId: z.string().nullable().optional(),
 })
 
 export const DeleteConversationRequest = z.object({

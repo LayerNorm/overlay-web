@@ -35,6 +35,7 @@ test('parity matrix records current capability gaps without treating Convex isol
 
   assert.equal(gaps.includes('runtime-isolation:requiresConvexClient'), false)
   assert.equal(gaps.includes('chat:supportsRealtime'), false)
+  assert.equal(gaps.includes('projects:supportsProjects'), false)
   assert.equal(gaps.includes('background-runtime:supportsPersistentIdempotency'), false)
 })
 

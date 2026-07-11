@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { randomBytes, randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, or } from 'drizzle-orm'
 import { DEFAULT_APP_SETTINGS } from '@overlay/app-core'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
@@ -15,6 +15,7 @@ import {
 } from '@/server/database/postgres/schema'
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
+import { assertActivePostgresProject } from '@/server/projects/PostgresProjectAccess'
 import type { Id } from '../../../convex/_generated/dataModel'
 import type {
   ActConversationRepository,
@@ -29,10 +30,8 @@ import type {
   ConversationMessageRow,
   SharedConversationRow,
 } from './ActConversationRepository'
-import {
-  CONVERSATION_EVENT_NOTIFY_CHANNEL,
-  type PostgresConversationEventNotifier,
-} from './PostgresConversationEventNotifier'
+import { emitPostgresConversationEvent as emitConversationEvent } from './PostgresConversationEvents'
+import type { PostgresConversationEventNotifier } from './PostgresConversationEventNotifier'
 
 type ConversationId = Id<'conversations'>
 type ConversationMessageId = Id<'conversationMessages'>
@@ -69,6 +68,10 @@ export class PostgresActConversationRepository implements ActConversationReposit
     }
 
     const [row] = await this.db.transaction(async (tx) => {
+      await assertActivePostgresProject(tx, {
+        projectId: values.projectId,
+        userId: args.userId,
+      })
       const inserted = values.clientId
         ? await tx
             .insert(conversations)
@@ -203,19 +206,25 @@ export class PostgresActConversationRepository implements ActConversationReposit
     askModelIds?: string[]
     conversationId: ConversationId
     lastMode?: 'ask' | 'act'
-    projectId?: string
+    projectId?: string | null
     title?: string
     userId: string
   }): Promise<void> {
     const now = new Date()
     await this.db.transaction(async (tx) => {
+      if (args.projectId !== undefined) {
+        await assertActivePostgresProject(tx, {
+          projectId: args.projectId,
+          userId: args.userId,
+        })
+      }
       const updated = await tx
         .update(conversations)
         .set({
           ...(args.actModelId !== undefined ? { actModelId: args.actModelId } : {}),
           ...(args.askModelIds !== undefined ? { askModelIds: args.askModelIds } : {}),
           ...(args.lastMode !== undefined ? { lastMode: args.lastMode } : {}),
-          ...(args.projectId !== undefined ? { projectId: normalizeOptional(args.projectId) } : {}),
+          ...(args.projectId !== undefined ? { projectId: normalizeNullable(args.projectId) } : {}),
           ...(args.title !== undefined ? { title: args.title } : {}),
           lastModified: now,
           updatedAt: now,
@@ -1002,6 +1011,10 @@ function normalizeOptional(value: string | undefined): string | undefined {
   return trimmed || undefined
 }
 
+function normalizeNullable(value: string | null): string | null {
+  return value?.trim() || null
+}
+
 function toMillis(value: Date): number {
   return value.getTime()
 }
@@ -1024,26 +1037,6 @@ function contextSummaryId(): string {
 
 function generateShareToken(): string {
   return randomBytes(16).toString('base64url')
-}
-
-async function emitConversationEvent(
-  db: Pick<OverlayPostgresDb, 'execute' | 'insert'>,
-  event: {
-    conversationId: string
-    messageId?: string
-    payload?: Record<string, unknown>
-    type: ConversationEventRow['type']
-    userId: string
-  },
-): Promise<void> {
-  await db.insert(conversationEvents).values({
-    userId: event.userId,
-    conversationId: event.conversationId,
-    type: event.type,
-    messageId: event.messageId,
-    payload: event.payload,
-  })
-  await db.execute(sql`SELECT pg_notify(${CONVERSATION_EVENT_NOTIFY_CHANNEL}, ${event.userId})`)
 }
 
 async function touchConversation(

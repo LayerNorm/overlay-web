@@ -1,6 +1,6 @@
 import { v } from 'convex/values'
-import { mutation, query } from '../_generated/server'
-import type { Id } from '../_generated/dataModel'
+import { mutation, query, type MutationCtx } from '../_generated/server'
+import type { Doc, Id } from '../_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 
 async function authorizeUserAccess(params: {
@@ -64,21 +64,30 @@ export const create = mutation({
   },
   handler: async (ctx, { userId, accessToken, serverSecret, clientId, name, instructions, parentId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
-    if (parentId) {
-      const parent = await ctx.db.get(parentId as Id<'projects'>)
-      if (!parent || parent.userId !== userId || parent.deletedAt) {
-        throw new Error('Invalid parent project')
-      }
-    }
     if (clientId?.trim()) {
       const existing = await ctx.db
         .query('projects')
         .withIndex('by_userId_clientId', (q) => q.eq('userId', userId).eq('clientId', clientId.trim()))
         .first()
       if (existing) {
+        if (existing.deletedAt) {
+          await validateParentChange(ctx, {
+            parentId,
+            projectId: existing._id,
+            userId,
+          })
+          await ctx.db.patch(existing._id, {
+            deletedAt: undefined,
+            instructions: instructions?.trim() || undefined,
+            name,
+            parentId,
+            updatedAt: Date.now(),
+          })
+        }
         return existing._id
       }
     }
+    await validateParentChange(ctx, { parentId, userId })
     const now = Date.now()
     return await ctx.db.insert('projects', {
       userId,
@@ -99,8 +108,8 @@ export const update = mutation({
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     name: v.optional(v.string()),
-    instructions: v.optional(v.string()),
-    parentId: v.optional(v.string()),
+    instructions: v.optional(v.union(v.string(), v.null())),
+    parentId: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, { projectId, userId, accessToken, serverSecret, name, instructions, parentId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
@@ -109,34 +118,17 @@ export const update = mutation({
       throw new Error('Unauthorized')
     }
     if (parentId !== undefined && parentId !== null) {
-      if (parentId === projectId) {
-        throw new Error('Project cannot be its own parent')
-      }
-      const parent = await ctx.db.get(parentId as Id<'projects'>)
-      if (!parent || parent.userId !== userId || parent.deletedAt) {
-        throw new Error('Unauthorized')
-      }
-      let cursor: string | undefined = parent.parentId
-      const seen = new Set<string>([projectId])
-      while (cursor) {
-        if (seen.has(cursor)) {
-          throw new Error('Project parent cycle detected')
-        }
-        seen.add(cursor)
-        const ancestor = await ctx.db.get(cursor as Id<'projects'>)
-        if (!ancestor || ancestor.userId !== userId || ancestor.deletedAt) break
-        cursor = ancestor.parentId
-      }
+      await validateParentChange(ctx, { parentId, projectId, userId })
     }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
     if (name !== undefined) patch.name = name
-    if (instructions !== undefined) patch.instructions = instructions.trim() || undefined
+    if (instructions !== undefined) patch.instructions = instructions?.trim() || undefined
     if (parentId !== undefined) patch.parentId = parentId || undefined
     await ctx.db.patch(projectId, patch)
   },
 })
 
-// Removes a single project and all its conversations/notes (no child-project cascade — handle that in the API layer).
+// Removes one project and its linked records. The repository layer handles descendant traversal.
 export const remove = mutation({
   args: { projectId: v.id('projects'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
   handler: async (ctx, { projectId, userId, accessToken, serverSecret }) => {
@@ -148,9 +140,10 @@ export const remove = mutation({
     const pid = projectId as string
     const now = Date.now()
 
-    const [conversations, notes] = await Promise.all([
+    const [conversations, notes, files] = await Promise.all([
       ctx.db.query('conversations').withIndex('by_projectId', (q) => q.eq('projectId', pid)).collect(),
       ctx.db.query('notes').withIndex('by_projectId', (q) => q.eq('projectId', pid)).collect(),
+      ctx.db.query('files').withIndex('by_projectId', (q) => q.eq('projectId', pid)).collect(),
     ])
 
     for (const conv of conversations) {
@@ -165,7 +158,44 @@ export const remove = mutation({
       if (note.userId !== userId) continue
       await ctx.db.patch(note._id, { deletedAt: now, updatedAt: now })
     }
+    for (const file of files) {
+      if (file.userId !== userId) continue
+      await ctx.db.patch(file._id, {
+        deletedAt: now,
+        indexStatus: 'skipped',
+        updatedAt: now,
+      })
+    }
 
     await ctx.db.patch(projectId, { deletedAt: now, updatedAt: now })
   },
 })
+
+async function validateParentChange(
+  ctx: MutationCtx,
+  args: {
+    parentId?: string
+    projectId?: Id<'projects'>
+    userId: string
+  },
+): Promise<void> {
+  if (!args.parentId) return
+  if (args.projectId && args.parentId === args.projectId) {
+    throw new Error('Project cannot be its own parent')
+  }
+  const parent = await ctx.db.get(args.parentId as Id<'projects'>)
+  if (!parent || parent.userId !== args.userId || parent.deletedAt) {
+    throw new Error('Invalid parent project')
+  }
+  const seen = new Set<string>(args.projectId ? [args.projectId] : [])
+  let cursor: string | undefined = parent._id
+  while (cursor) {
+    if (seen.has(cursor)) {
+      throw new Error('Project parent cycle detected')
+    }
+    seen.add(cursor)
+    const ancestor: Doc<'projects'> | null = await ctx.db.get(cursor as Id<'projects'>)
+    if (!ancestor || ancestor.userId !== args.userId || ancestor.deletedAt) break
+    cursor = ancestor.parentId
+  }
+}

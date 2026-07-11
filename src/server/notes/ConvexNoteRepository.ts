@@ -94,7 +94,7 @@ export class ConvexNoteRepository implements NoteRepository {
     userId: string
     title?: string
     content?: string
-    projectId?: string
+    projectId?: string | null
     tags?: string[]
   }): Promise<NoteRecord | null> {
     void args.tags

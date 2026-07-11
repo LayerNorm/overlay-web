@@ -66,23 +66,33 @@ test('Postgres app-data route support classifies every /api/v1 route export', ()
   assert.deepEqual(missing, [])
 })
 
-test('Postgres app-data capabilities remove unsupported product surfaces from the app shell', () => {
+test('Postgres app-data capabilities expose projects while removing unsupported product surfaces', () => {
   const capabilities = applyAppDataCapabilitiesToOverlayCapabilities(
     DEFAULT_OVERLAY_CAPABILITIES,
     POSTGRES_APP_DATA_V1_CAPABILITIES,
   )
   const shell = resolveOverlayAppShellConfig(undefined, { capabilities })
 
-  assert.equal(capabilities.projects, false)
+  assert.equal(capabilities.projects, true)
   assert.equal(capabilities.integrations, false)
   assert.equal(capabilities.skills, false)
   assert.equal(capabilities.mcpServers, false)
-  assert.equal(shell.appFeatureFlags.canUseProjects, false)
+  assert.equal(shell.appFeatureFlags.canUseProjects, true)
   assert.equal(shell.navigation.some((item) => item.id === 'extensions'), false)
-  assert.equal(shell.navigation.some((item) => item.id === 'projects'), false)
-  assert.equal(shell.sidebarActions.some((item) => item.id === 'projects.create'), false)
+  assert.equal(shell.navigation.some((item) => item.id === 'projects'), true)
+  assert.equal(shell.sidebarActions.some((item) => item.id === 'projects.create'), true)
   assert.equal(shell.featureModules.some((item) => item.id === 'tools-extensions'), false)
-  assert.equal(shell.featureModules.some((item) => item.id === 'projects'), false)
+  assert.equal(shell.featureModules.some((item) => item.id === 'projects'), true)
+})
+
+test('Postgres app-data mode supports project hierarchy routes', () => {
+  const support = getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
+    method: 'POST',
+    pathname: '/api/v1/projects',
+  })
+  assert.equal(support.status, 'supported')
+  assert.equal(support.feature, 'projects')
 })
 
 test('Postgres app-data mode supports conversation persistence and realtime routes', () => {

@@ -1334,7 +1334,8 @@
                     "maxLength": 200
                   },
                   "projectId": {
-                    "type": "string"
+                    "type": "string",
+                    "nullable": true
                   },
                   "askModelIds": {
                     "type": "array",

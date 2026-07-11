@@ -1,6 +1,8 @@
 import 'server-only'
 
+import assert from 'node:assert/strict'
 import test from 'node:test'
+import { sql } from 'drizzle-orm'
 import {
   createOverlayPostgresDb,
   createOverlayPostgresPool,
@@ -11,6 +13,7 @@ import { PostgresConversationEventNotifier } from '@/server/conversations/Postgr
 import { UnlimitedUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
 import { PostgresNoteRepository } from '@/server/notes'
+import { PostgresProjectRepository } from '@/server/projects/PostgresProjectRepository'
 import { PostgresUserRepository } from '@/server/users/PostgresUserRepository'
 import { runAppDataRepositoryContractSuite } from './app-data-repository-contract'
 
@@ -29,6 +32,20 @@ test('Postgres app-data repository contracts', {
   const notifier = new PostgresConversationEventNotifier(pool)
 
   try {
+    await t.test('Postgres project hierarchy constraints are installed', async () => {
+      const result = await db.execute(sql`
+        SELECT conname
+        FROM pg_constraint
+        WHERE conname IN (
+          'projects_parent_id_projects_id_fk',
+          'projects_parent_not_self_check'
+        )
+      `)
+      assert.deepEqual(
+        result.rows.map((row) => String(row.conname)).sort(),
+        ['projects_parent_id_projects_id_fk', 'projects_parent_not_self_check'],
+      )
+    })
     await runAppDataRepositoryContractSuite(t, {
       name: 'postgres',
       provider: 'postgres',
@@ -40,6 +57,7 @@ test('Postgres app-data repository contracts', {
       ),
       files: new PostgresFileRepository(db),
       notes: new PostgresNoteRepository(db),
+      projects: new PostgresProjectRepository(db),
       usagePolicy: new UnlimitedUsagePolicy(),
       users: new PostgresUserRepository(db),
     })

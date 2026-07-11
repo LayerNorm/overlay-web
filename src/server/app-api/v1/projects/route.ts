@@ -1,28 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { repositoryProxy } from '@/server/app-data/errors'
 import { handleRouteError } from '@/server/app-api/route-errors'
 import { readValidatedJson, readValidatedQuery } from '@/server/app-api/validated-input'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import {
+  ProjectService,
+  ProjectServiceError,
+  type ProjectRepository,
+} from '@/server/projects'
 import {
   CreateProjectRequest,
   DeleteProjectRequest,
   ProjectListQuery,
   UpdateProjectRequest,
 } from '@/shared/schemas/projects'
-import type { Id } from '../../../../../convex/_generated/dataModel'
-
-type ProjectDoc = {
-  _id: string
-  userId: string
-  clientId?: string
-  name: string
-  instructions?: string
-  parentId?: string | null
-  createdAt: number
-  updatedAt: number
-  deletedAt?: number
-}
+const projectService = new ProjectService(repositoryProxy<ProjectRepository>(
+  () => getOverlayServerContext().appData.repositories.projects,
+))
 
 function readBooleanParam(value: string | null): boolean | undefined {
   if (value == null) return undefined
@@ -37,14 +32,12 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     if (!queryResult.ok) return queryResult.response
     const query = queryResult.data
     const { auth } = context
-    const serverSecret = getInternalApiSecret()
     const projectId = query.projectId ?? null
 
     if (projectId) {
-      const project = await convex.query<ProjectDoc | null>('projects/projects:get', {
-        projectId: projectId as Id<'projects'>,
+      const project = await projectService.getProject({
+        projectId,
         userId: auth.userId,
-        serverSecret,
       })
       if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
       return NextResponse.json(project)
@@ -54,9 +47,8 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const updatedSince = updatedSinceParam ? Number(updatedSinceParam) : undefined
     const includeDeleted = readBooleanParam(query.includeDeleted ?? null)
 
-    const projects = await convex.query<ProjectDoc[]>('projects/projects:list', {
+    const projects = await projectService.listProjects({
       userId: auth.userId,
-      serverSecret,
       ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
       ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })
@@ -76,24 +68,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     if (!bodyResult.ok) return bodyResult.response
     const body = bodyResult.data
     const { auth } = context
-    const serverSecret = getInternalApiSecret()
     const { name, parentId, instructions, clientId } = body
-    if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
-    const id = await convex.mutation<Id<'projects'>>('projects/projects:create', {
+    const project = await projectService.createProject({
       userId: auth.userId,
-      serverSecret,
       clientId: clientId?.trim() || undefined,
       name,
       instructions: instructions?.trim() || undefined,
-      parentId: parentId ?? undefined,
+      parentId,
     })
-    const project = await convex.query<ProjectDoc | null>('projects/projects:get', {
-      projectId: id,
-      userId: auth.userId,
-      serverSecret,
-    })
-    return NextResponse.json({ id, project })
+    return NextResponse.json({ id: project._id, project })
   } catch (error) {
+    if (error instanceof ProjectServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode })
+    }
     return handleRouteError(error, {
       route: 'projects',
       operation: 'POST',
@@ -108,24 +95,20 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     if (!bodyResult.ok) return bodyResult.response
     const body = bodyResult.data
     const { auth } = context
-    const serverSecret = getInternalApiSecret()
     const { projectId, name, instructions, parentId } = body
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
-    await convex.mutation('projects/projects:update', {
-      projectId: projectId as Id<'projects'>,
+    const project = await projectService.updateProject({
+      projectId,
       userId: auth.userId,
-      serverSecret,
       name,
       instructions,
-      parentId: parentId ?? undefined,
-    })
-    const project = await convex.query<ProjectDoc | null>('projects/projects:get', {
-      projectId: projectId as Id<'projects'>,
-      userId: auth.userId,
-      serverSecret,
+      parentId,
     })
     return NextResponse.json({ success: true, project })
   } catch (error) {
+    if (error instanceof ProjectServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode })
+    }
     return handleRouteError(error, {
       route: 'projects',
       operation: 'PATCH',
@@ -140,49 +123,25 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     if (!queryResult.ok) return queryResult.response
     const query = queryResult.data
     const { auth } = context
-    const serverSecret = getInternalApiSecret()
     const projectId = query.projectId ?? null
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
-
-    // Cascade delete child projects first (Convex mutation handles each project's items)
-    const allProjects = await convex.query<Array<{ _id: string; parentId?: string; deletedAt?: number }>>('projects/projects:list', {
+    const result = await projectService.deleteProjectTree({
+      projectId,
       userId: auth.userId,
-      serverSecret,
-      includeDeleted: true,
     })
-    const toDelete = collectDescendants(allProjects || [], projectId)
-    // Delete leaves first (reverse order so children before parents)
-    for (const id of toDelete.reverse()) {
-      await convex.mutation('projects/projects:remove', {
-        projectId: id as Id<'projects'>,
-        userId: auth.userId,
-        serverSecret,
-      })
-    }
-    return NextResponse.json({ success: true, deletedIds: toDelete, deletedAt: Date.now() })
+    return NextResponse.json({
+      success: true,
+      deletedIds: result.deletedIds,
+      deletedAt: result.deletedAt,
+    })
   } catch (error) {
+    if (error instanceof ProjectServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode })
+    }
     return handleRouteError(error, {
       route: 'projects',
       operation: 'DELETE',
       clientMessage: 'Failed to delete project',
     })
   }
-}
-
-function collectDescendants(
-  projects: Array<{ _id: string; parentId?: string }>,
-  rootId: string,
-): string[] {
-  const result: string[] = [rootId]
-  const seen = new Set<string>(result)
-  for (let index = 0; index < result.length; index += 1) {
-    const current = result[index]!
-    const children = projects.filter((p) => p.parentId === current)
-    for (const child of children) {
-      if (seen.has(child._id)) continue
-      seen.add(child._id)
-      result.push(child._id)
-    }
-  }
-  return result
 }

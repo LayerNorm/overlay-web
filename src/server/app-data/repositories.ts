@@ -27,6 +27,9 @@ import {
   type AppSettingsRepository,
 } from '@/server/settings'
 import { ConvexUserRepository, PostgresUserRepository, type UserRepository } from '@/server/users'
+import { ConvexProjectRepository } from '@/server/projects/ConvexProjectRepository'
+import { PostgresProjectRepository } from '@/server/projects/PostgresProjectRepository'
+import type { ProjectRepository } from '@/server/projects/ProjectRepository'
 import {
   ConvexIdempotencyRepository,
   PostgresIdempotencyRepository,
@@ -64,6 +67,7 @@ export interface AppDataRepositories {
   notes: NoteRepository
   onboarding: OnboardingRepository
   outbox: OutboxRepository
+  projects: ProjectRepository
   settings: AppSettingsRepository
   serviceAuthReplay: ServiceAuthReplayRepository
   users: UserRepository
@@ -104,6 +108,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         notes: new PostgresNoteRepository(db),
         onboarding: new PostgresOnboardingRepository(db),
         outbox: new PostgresOutboxRepository(db),
+        projects: new PostgresProjectRepository(db),
         settings: new PostgresAppSettingsRepository(db),
         serviceAuthReplay: new PostgresServiceAuthReplayRepository(db),
         users: new PostgresUserRepository(db),
@@ -126,6 +131,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       notes: new ConvexNoteRepository(),
       onboarding: unsupportedRepository<OnboardingRepository>('OnboardingRepository'),
       outbox: unsupportedRepository<OutboxRepository>('OutboxRepository'),
+      projects: new ConvexProjectRepository(),
       settings: unsupportedRepository<AppSettingsRepository>('AppSettingsRepository'),
       serviceAuthReplay: new ConvexServiceAuthReplayRepository(),
       users: new ConvexUserRepository(),

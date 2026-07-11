@@ -197,7 +197,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const body = await request.json() as {
       conversationId?: string
       title?: string
-      projectId?: string
+      projectId?: string | null
       askModelIds?: string[]
       actModelId?: string
       lastMode?: 'ask' | 'act'

@@ -36,6 +36,13 @@
       "when": 1783796400000,
       "tag": "0004_p2_conversation_events",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783796401000,
+      "tag": "0005_p3a_project_hierarchy",
+      "breakpoints": true
     }
   ]
 }

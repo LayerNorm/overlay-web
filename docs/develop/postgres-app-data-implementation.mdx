@@ -86,6 +86,7 @@ Use separate schemas/databases for these concerns. They have different ownership
 | Step 9.1 | `bbc973a59` | Re-enabled Postgres chat title generation through the usage policy abstraction and disabled integrations/connectors in Postgres pilot mode. |
 | P1 runtime | Current branch | Added migration locking and compatibility checks, Postgres idempotency/replay stores, Redis rate limiting, durable jobs/outbox/scheduler, worker runtime, and Postgres model-catalog persistence. |
 | P2 chat | Current branch | Added transactional conversation events, cursor-based browser synchronization, batched text-delta persistence, disconnect-safe background draining, stop/finalize race protection, repository-backed message/share/stream-auth routes, and provider-neutral public shares. |
+| P3a projects | Current branch | Added provider-neutral project CRUD, hierarchy locks and cycle checks, linked-resource authorization, recursive soft deletion, and Postgres project UI capability exposure. |
 
 ## Key Code Boundaries
 
@@ -182,6 +183,7 @@ Supported or degraded:
 | Settings | Supported | Backed by `user_settings`. |
 | Onboarding | Supported | Backed by `onboarding_state`. |
 | Notes | Supported | Backed by `notes`. |
+| Projects | Supported | Provider-neutral CRUD, nested hierarchy, ownership checks, and linked conversation/note/file filtering. |
 | File metadata | Degraded | Metadata, upload intents, duplicate promotion, and recursive delete supported; vector indexing disabled. |
 | Account deletion | Supported | Deletes auth user/session and app-data rows. |
 | Background maintenance | Supported | Durable Postgres scheduler/worker, with an explicit one-off maintenance command for operations. |
@@ -194,7 +196,6 @@ Unsupported or disabled:
 | --- | --- |
 | Integrations/connectors | Connector account state and external integration execution are not Postgres pilot-ready. The sidebar hides Extensions in Postgres mode. |
 | Skills and MCP servers | Metadata/execution flows are still Convex/integration-backed. |
-| Projects | Schema exists, but app behavior and UI are disabled until service parity is complete. |
 | Automations | Scheduler/execution/retry model is Convex-backed. |
 | Webhooks | Delivery retries and durable state are not implemented for Postgres. |
 | API keys | No Postgres API key repository yet. |
@@ -584,7 +585,7 @@ Manual browser QA for Postgres mode:
 - A second tab sees conversation creation, title, text progress, completion, and stop changes.
 - Stop from either tab leaves the persisted interruption marker and cannot be overwritten by late completion.
 - Public share links load while public and return not-found after being made private.
-- Sidebar does not show disabled surfaces like Extensions, Projects, Automations, Skills, or MCPs in Postgres pilot mode.
+- Sidebar shows Projects but continues to hide disabled surfaces like Extensions, Automations, Skills, and MCPs in Postgres pilot mode.
 - Settings loads.
 - Notes list/create/update/delete works.
 - Files metadata/upload-intent smoke works if storage is configured.
@@ -630,6 +631,7 @@ Parity exists or is close enough for pilot:
 - Settings.
 - Onboarding.
 - Notes CRUD.
+- Project CRUD, nested hierarchy, resource association, and recursive soft deletion.
 - File metadata and upload intent lifecycle.
 - Account deletion cleanup.
 - Shared idempotency, service-auth replay protection, Redis rate limits, durable jobs/outbox, scheduler ownership, and background maintenance.
@@ -638,7 +640,6 @@ Parity exists or is close enough for pilot:
 
 Parity does not exist yet:
 
-- Projects UI and service parity.
 - Integrations/connectors.
 - Skills and MCP server management.
 - Automation scheduler and execution.

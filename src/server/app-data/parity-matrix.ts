@@ -1,7 +1,20 @@
 import type { AppDataCapabilities } from './capabilities'
 
 export type AppDataCapabilityKey = Exclude<keyof AppDataCapabilities, 'provider'>
-export type OnPremParityPhase = 'P0' | 'P1' | 'P2' | 'P3' | 'P4' | 'P5' | 'P6' | 'P7' | 'P8' | 'P9'
+export type OnPremParityPhase =
+  | 'P0'
+  | 'P1'
+  | 'P2'
+  | 'P3'
+  | 'P3a'
+  | 'P3b'
+  | 'P3c'
+  | 'P4'
+  | 'P5'
+  | 'P6'
+  | 'P7'
+  | 'P8'
+  | 'P9'
 
 export type OnPremParityCapabilityTarget = {
   key: AppDataCapabilityKey
@@ -89,7 +102,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
   {
     id: 'projects',
     name: 'Projects',
-    targetPhase: 'P3',
+    targetPhase: 'P3a',
     capabilities: [{ key: 'supportsProjects', expectedAtParity: true }],
     routeRuleIds: ['projects'],
     exitGate: 'Project CRUD, hierarchy, resource association, authorization, and UI pass shared tests.',

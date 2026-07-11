@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import { notes } from '@/server/database/postgres/schema'
+import { assertActivePostgresProject } from '@/server/projects/PostgresProjectAccess'
 import type { NoteRecord, NoteRepository } from './NoteService'
 
 export class PostgresNoteRepository implements NoteRepository {
@@ -52,31 +53,37 @@ export class PostgresNoteRepository implements NoteRepository {
   }): Promise<{ id: string; note: NoteRecord | null }> {
     const now = new Date()
     const id = `note_${randomUUID()}`
-    const [row] = await this.db
-      .insert(notes)
-      .values({
-        id,
-        userId: args.userId,
-        clientId: args.clientId,
-        title: args.title,
-        content: args.content,
-        tags: args.tags ?? [],
+    const [row] = await this.db.transaction(async (tx) => {
+      await assertActivePostgresProject(tx, {
         projectId: args.projectId,
-        createdAt: now,
-        updatedAt: now,
+        userId: args.userId,
       })
-      .onConflictDoUpdate({
-        target: [notes.userId, notes.clientId],
-        set: {
+      return await tx
+        .insert(notes)
+        .values({
+          id,
+          userId: args.userId,
+          clientId: args.clientId,
           title: args.title,
           content: args.content,
           tags: args.tags ?? [],
           projectId: args.projectId,
+          createdAt: now,
           updatedAt: now,
-          deletedAt: null,
-        },
-      })
-      .returning()
+        })
+        .onConflictDoUpdate({
+          target: [notes.userId, notes.clientId],
+          set: {
+            title: args.title,
+            content: args.content,
+            tags: args.tags ?? [],
+            projectId: args.projectId,
+            updatedAt: now,
+            deletedAt: null,
+          },
+        })
+        .returning()
+    })
 
     return {
       id: row?.id ?? id,
@@ -89,7 +96,7 @@ export class PostgresNoteRepository implements NoteRepository {
     userId: string
     title?: string
     content?: string
-    projectId?: string
+    projectId?: string | null
     tags?: string[]
   }): Promise<NoteRecord | null> {
     const set: Partial<typeof notes.$inferInsert> = {
@@ -100,15 +107,23 @@ export class PostgresNoteRepository implements NoteRepository {
     if (args.projectId !== undefined) set.projectId = args.projectId
     if (args.tags !== undefined) set.tags = args.tags
 
-    const [row] = await this.db
-      .update(notes)
-      .set(set)
-      .where(and(
-        eq(notes.id, args.noteId),
-        eq(notes.userId, args.userId),
-        isNull(notes.deletedAt),
-      ))
-      .returning()
+    const [row] = await this.db.transaction(async (tx) => {
+      if (args.projectId !== undefined) {
+        await assertActivePostgresProject(tx, {
+          projectId: args.projectId,
+          userId: args.userId,
+        })
+      }
+      return await tx
+        .update(notes)
+        .set(set)
+        .where(and(
+          eq(notes.id, args.noteId),
+          eq(notes.userId, args.userId),
+          isNull(notes.deletedAt),
+        ))
+        .returning()
+    })
     return row ? noteRowToRecord(row) : null
   }
 

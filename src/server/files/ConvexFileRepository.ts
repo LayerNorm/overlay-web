@@ -42,7 +42,7 @@ export class ConvexFileRepository implements FileRepository {
     return await convex.mutation<string | null>('files/files:create', {
       ...args,
       serverSecret: this.serverSecret,
-    })
+    }, { throwOnError: true })
   }
 
   async createFileWithStorage(args: Record<string, unknown> & { userId: string }): Promise<string | null> {
@@ -56,7 +56,7 @@ export class ConvexFileRepository implements FileRepository {
     await convex.mutation('files/files:update', {
       ...args,
       serverSecret: this.serverSecret,
-    })
+    }, { throwOnError: true })
   }
 
   async removeFile(args: {
@@ -67,7 +67,7 @@ export class ConvexFileRepository implements FileRepository {
     await convex.mutation('files/files:remove', {
       ...args,
       serverSecret: this.serverSecret,
-    })
+    }, { throwOnError: true })
   }
 
   async getUploadIntent(args: {

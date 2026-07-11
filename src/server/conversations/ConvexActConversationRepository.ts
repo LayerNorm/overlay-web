@@ -102,7 +102,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     askModelIds?: string[]
     conversationId: Id<'conversations'>
     lastMode?: 'ask' | 'act'
-    projectId?: string
+    projectId?: string | null
     title?: string
     userId: string
   }): Promise<void> {

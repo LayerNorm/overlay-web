@@ -188,8 +188,8 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'projects',
     methods: '*',
     prefixes: ['/api/v1/projects'],
-    status: 'unsupported',
-    feature: 'app-data-records',
+    status: 'supported',
+    feature: 'projects',
   },
   {
     id: 'subscription-and-billing-records',

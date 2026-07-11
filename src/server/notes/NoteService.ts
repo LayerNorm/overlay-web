@@ -52,7 +52,7 @@ export interface NoteRepository {
     userId: string
     title?: string
     content?: string
-    projectId?: string
+    projectId?: string | null
     tags?: string[]
   }): Promise<NoteRecord | null>
   deleteNote(args: {

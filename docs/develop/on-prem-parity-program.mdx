@@ -297,3 +297,34 @@ P2 is complete when:
 - Refresh during generation recovers the latest persisted text and eventually the final response.
 - A second tab receives list, title, message, stop, and completion changes without mounting Convex.
 - Public share links load through the selected app-data repository.
+
+## P3a Projects And Hierarchy
+
+P3a enables projects in Postgres mode without exposing storage-specific logic to
+the web route:
+
+- `ProjectService` and `ProjectRepository` own project CRUD for both Convex and Postgres.
+- Postgres hierarchy mutations take a per-user transaction advisory lock so concurrent parent changes cannot introduce cycles.
+- Parent projects must be active and owned by the same user. Cross-user project IDs are rejected for projects, conversations, notes, and files.
+- Project creation remains idempotent through `(user_id, client_id)`.
+- Clearing project instructions or a parent is explicit and provider-neutral.
+- Deleting a project recursively soft-deletes active descendants and linked conversations, notes, and file records.
+- Postgres project deletion writes conversation deletion events so other tabs observe the change through the P2 cursor.
+- Physical object deletion and duplicate-file reconciliation after bulk project deletion remain P3b storage lifecycle work.
+
+Run the Docker-free P3a gate against the dedicated contract database:
+
+```bash
+npm run check:p3a:remote
+```
+
+### P3a Exit Gate
+
+P3a is complete when:
+
+- Postgres capabilities expose Projects in navigation and route gates.
+- Project CRUD, idempotent creation, hierarchy updates, parent clearing, and cycle rejection pass shared tests.
+- Cross-user project reads and resource association fail without exposing another user's records.
+- Project-linked conversations, notes, and files list consistently for both providers.
+- Recursive project deletion removes descendants and soft-deletes linked records.
+- Account deletion leaves no project or linked-resource orphans.

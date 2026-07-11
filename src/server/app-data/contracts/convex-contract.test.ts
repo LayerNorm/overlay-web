@@ -9,6 +9,7 @@ import { ConvexActConversationRepository } from '@/server/conversations/ConvexAc
 import { BillingBackedActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import { ConvexFileRepository } from '@/server/files/ConvexFileRepository'
 import { ConvexNoteRepository } from '@/server/notes'
+import { ConvexProjectRepository } from '@/server/projects/ConvexProjectRepository'
 import { ConvexUserRepository } from '@/server/users/ConvexUserRepository'
 import { runAppDataRepositoryContractSuite } from './app-data-repository-contract'
 
@@ -31,6 +32,7 @@ test('real Convex app-data repository contracts', {
     deleteAccount: deleteConvexAccount,
     files: new ConvexFileRepository(),
     notes: new ConvexNoteRepository(),
+    projects: new ConvexProjectRepository(),
     usagePolicy: new BillingBackedActUsagePolicy({ repository: conversations }),
     users: new ConvexUserRepository(),
   })

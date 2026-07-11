@@ -69,7 +69,7 @@ export const POSTGRES_APP_DATA_V1_CAPABILITIES: AppDataCapabilities = {
   supportsFileMetadata: true,
   supportsFileUploads: true,
   supportsNotes: true,
-  supportsProjects: false,
+  supportsProjects: true,
   supportsIntegrations: false,
   supportsSkills: false,
   supportsMcpServers: false,
