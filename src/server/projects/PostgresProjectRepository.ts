@@ -6,11 +6,14 @@ import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
   conversations,
   files,
+  knowledgeChunks,
+  memories,
   notes,
   projects,
 } from '@/server/database/postgres/schema'
 import { emitPostgresConversationEvent } from '@/server/conversations/PostgresConversationEvents'
 import { enqueueStorageCleanupJobs } from '@/server/storage/PostgresStorageCleanupJobs'
+import { enqueueKnowledgeReindexJob } from '@/server/knowledge/PostgresKnowledgeIndexJobs'
 import type {
   DeleteProjectTreeResult,
   ProjectRecord,
@@ -211,6 +214,16 @@ export class PostgresProjectRepository implements ProjectRepository {
         ))
         .returning({ id: notes.id })
 
+      const deletedMemories = await tx
+        .update(memories)
+        .set({ deletedAt: now, indexStatus: 'skipped', updatedAt: now })
+        .where(and(
+          eq(memories.userId, args.userId),
+          inArray(memories.projectId, deletedIds),
+          isNull(memories.deletedAt),
+        ))
+        .returning({ id: memories.id })
+
       const projectFiles = await tx
         .select()
         .from(files)
@@ -237,6 +250,14 @@ export class PostgresProjectRepository implements ProjectRepository {
           .update(files)
           .set({ duplicateOfFileId: null, indexStatus: 'pending', updatedAt: now })
           .where(eq(files.id, promoted.id))
+        if (promoted.contentHash) {
+          await enqueueKnowledgeReindexJob(tx, {
+            contentHash: promoted.contentHash,
+            sourceId: promoted.id,
+            sourceKind: 'file',
+            userId: promoted.userId,
+          })
+        }
         await tx
           .update(files)
           .set({ duplicateOfFileId: promoted.id, updatedAt: now })
@@ -259,6 +280,17 @@ export class PostgresProjectRepository implements ProjectRepository {
         ))
         .returning({ id: files.id, r2Key: files.r2Key })
 
+      const deletedKnowledgeSourceIds = [
+        ...deletedFiles.map(({ id }) => id),
+        ...deletedMemories.map(({ id }) => id),
+      ]
+      if (deletedKnowledgeSourceIds.length > 0) {
+        await tx.delete(knowledgeChunks).where(and(
+          eq(knowledgeChunks.userId, args.userId),
+          inArray(knowledgeChunks.sourceId, deletedKnowledgeSourceIds),
+        ))
+      }
+
       await enqueueStorageCleanupJobs(tx, {
         dedupeKey: `project-delete:${args.projectId}`,
         keys: deletedFiles.flatMap((file) => file.r2Key ? [file.r2Key] : []),
@@ -280,6 +312,7 @@ export class PostgresProjectRepository implements ProjectRepository {
         deletedIds,
         deletedConversationIds: deletedConversations.map(({ id }) => id),
         deletedFileIds: deletedFiles.map(({ id }) => id),
+        deletedMemoryIds: deletedMemories.map(({ id }) => id),
         deletedNoteIds: deletedNotes.map(({ id }) => id),
       }
     })

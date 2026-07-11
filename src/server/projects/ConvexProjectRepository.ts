@@ -102,6 +102,7 @@ export class ConvexProjectRepository implements ProjectRepository {
       deletedIds,
       deletedConversationIds: [],
       deletedFileIds: [],
+      deletedMemoryIds: [],
       deletedNoteIds: [],
     }
   }

@@ -222,9 +222,27 @@ Postgres-native memory and knowledge search uses `pgvector`; do not keep Convex 
 OVERLAY_PROVIDER_VECTOR_SEARCH=pgvector
 OVERLAY_PROVIDER_EMBEDDINGS=openai
 OVERLAY_EMBEDDING_MODEL_VERSION=text-embedding-3-small-v1
+OVERLAY_MEMORY_EXTRACTION_MODEL_ID=gpt-4.1-mini
+OVERLAY_RETENTION_MEMORY_DAYS=365
 VECTOR_SEARCH_ENABLED=true
 OVERLAY_FEATURE_VECTOR_SEARCH=true
 ```
+
+Run the durable worker continuously. It executes memory extraction, indexing,
+failed-index recovery, retention, and embedding-model backfills:
+
+```bash
+npm run app-db:worker
+```
+
+When changing `OVERLAY_EMBEDDING_MODEL_VERSION`, deploy the new worker and run:
+
+```bash
+npm run app-db:knowledge-backfill -- --limit=2000
+```
+
+Repeat until `queued` is zero, then allow workers to drain the queue before
+retiring the old embedding model configuration.
 
 For local setup:
 

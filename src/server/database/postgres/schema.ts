@@ -99,6 +99,13 @@ export const knowledgeSourceKind = pgEnum('overlay_knowledge_source_kind', [
   'memory',
 ])
 
+export const memoryExtractionStatus = pgEnum('overlay_memory_extraction_status', [
+  'running',
+  'succeeded',
+  'failed',
+  'skipped',
+])
+
 export const outputStatus = pgEnum('overlay_output_status', [
   'pending',
   'completed',
@@ -462,6 +469,39 @@ export const knowledgeChunkEmbeddings = pgTable('knowledge_chunk_embeddings', {
     .using('hnsw', table.embedding.op('vector_cosine_ops')),
 ])
 
+export const memoryExtractionRuns = pgTable('memory_extraction_runs', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  conversationId: text('conversation_id')
+    .notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  messageId: text('message_id')
+    .notNull()
+    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
+  turnId: text('turn_id').notNull(),
+  status: memoryExtractionStatus('status').notNull(),
+  modelId: text('model_id'),
+  attempts: integer('attempts').default(1).notNull(),
+  extractedCount: integer('extracted_count').default(0).notNull(),
+  insertedCount: integer('inserted_count').default(0).notNull(),
+  duplicateCount: integer('duplicate_count').default(0).notNull(),
+  reason: text('reason'),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+}, (table) => [
+  uniqueIndex('memory_extraction_runs_user_conversation_turn_idx').on(
+    table.userId,
+    table.conversationId,
+    table.turnId,
+  ),
+  index('memory_extraction_runs_status_updated_idx').on(table.status, table.updatedAt),
+  index('memory_extraction_runs_user_created_idx').on(table.userId, table.createdAt),
+])
+
 export const files = pgTable('files', {
   id: text('id').primaryKey(),
   userId: text('user_id')
@@ -484,6 +524,7 @@ export const files = pgTable('files', {
   indexStatus: fileIndexStatus('index_status'),
   indexedAt: timestamp('indexed_at', { withTimezone: true }),
   indexError: text('index_error'),
+  embeddingModelVersion: text('embedding_model_version'),
   conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'set null' }),
   turnId: text('turn_id'),
   modelId: text('model_id'),

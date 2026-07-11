@@ -12,6 +12,7 @@ export interface AccountDataDeletionCounts {
   files: number
   knowledgeChunkEmbeddings: number
   knowledgeChunks: number
+  memoryExtractionRuns: number
   memories: number
   notes: number
   onboardingState: number

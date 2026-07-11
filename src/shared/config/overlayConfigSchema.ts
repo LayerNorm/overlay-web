@@ -91,6 +91,7 @@ const OverlayComplianceSchema = z
       .object({
         chatDays: z.number().int().positive().optional(),
         fileDays: z.number().int().positive().optional(),
+        memoryDays: z.number().int().positive().optional(),
         logsDays: z.number().int().positive().optional(),
         sandboxArtifactDays: z.number().int().positive().optional(),
         deletedUserPurgeDays: z.number().int().positive().optional(),

@@ -35,6 +35,12 @@ export const POSTGRES_RUNTIME_SCHEDULES = [
     jobType: 'outputs.purge-expired',
     payload: {},
   },
+  {
+    id: 'knowledge-maintenance',
+    intervalMs: 60 * 60_000,
+    jobType: 'knowledge.maintenance',
+    payload: {},
+  },
 ] as const
 
 type DueTask = {

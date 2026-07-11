@@ -26,6 +26,7 @@ export type DeleteProjectTreeResult = {
   deletedIds: string[]
   deletedConversationIds: string[]
   deletedFileIds: string[]
+  deletedMemoryIds: string[]
   deletedNoteIds: string[]
 }
 

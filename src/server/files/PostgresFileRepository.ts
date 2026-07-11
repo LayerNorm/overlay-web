@@ -951,6 +951,7 @@ function fileRowFromRaw(row: Record<string, unknown>): FileRow & { depth: number
     indexStatus: row.index_status as FileRow['indexStatus'],
     indexedAt: dateFromRaw(row.indexed_at),
     indexError: nullableString(row.index_error),
+    embeddingModelVersion: nullableString(row.embedding_model_version),
     conversationId: nullableString(row.conversation_id),
     turnId: nullableString(row.turn_id),
     modelId: nullableString(row.model_id),

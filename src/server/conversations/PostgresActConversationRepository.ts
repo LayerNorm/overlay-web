@@ -32,6 +32,7 @@ import type {
 } from './ActConversationRepository'
 import { emitPostgresConversationEvent as emitConversationEvent } from './PostgresConversationEvents'
 import type { PostgresConversationEventNotifier } from './PostgresConversationEventNotifier'
+import { enqueueMemoryExtractionJob } from '@/server/memory/PostgresMemoryExtractionJobs'
 
 type ConversationId = Id<'conversations'>
 type ConversationMessageId = Id<'conversationMessages'>
@@ -40,6 +41,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
   constructor(
     private readonly db: OverlayPostgresDb,
     private readonly eventNotifier?: PostgresConversationEventNotifier,
+    private readonly options: { memoryExtractionEnabled?: boolean } = {},
   ) {}
 
   async createConversation(args: {
@@ -380,6 +382,18 @@ export class PostgresActConversationRepository implements ActConversationReposit
         type: 'message.created',
         userId: args.userId,
       })
+      if (
+        args.role === 'user' &&
+        args.skipMemoryExtraction !== true &&
+        this.options.memoryExtractionEnabled !== false
+      ) {
+        await enqueueMemoryExtractionJob(tx, {
+          conversationId: args.conversationId,
+          messageId: id,
+          turnId: args.turnId,
+          userId: args.userId,
+        })
+      }
     })
     return id
   }

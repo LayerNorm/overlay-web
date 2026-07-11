@@ -7,6 +7,7 @@ export {
   type EmbeddingProvider,
 } from './EmbeddingProvider'
 export { KnowledgeIndexService } from './KnowledgeIndexService'
+export { PostgresKnowledgeMaintenanceService } from './PostgresKnowledgeMaintenanceService'
 export { KnowledgeSearchService, KnowledgeSearchServiceError } from './KnowledgeSearchService'
 export { PostgresKnowledgeSearchRepository } from './PostgresKnowledgeSearchRepository'
 export {

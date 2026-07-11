@@ -100,6 +100,7 @@ function repository(
       deletedIds: ['project_1'],
       deletedConversationIds: [],
       deletedFileIds: [],
+      deletedMemoryIds: [],
       deletedNoteIds: [],
     }),
     ...overrides,

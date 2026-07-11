@@ -130,6 +130,7 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     OVERLAY_ALLOWED_PROCESSORS: 'models:openai,objectStorage:s3',
     OVERLAY_ALLOWED_REGIONS: 'in,ap-south-1',
     OVERLAY_DATA_RESIDENCY_REQUIRED: '1',
+    OVERLAY_RETENTION_MEMORY_DAYS: '365',
     OVERLAY_FEATURE_BROWSER_USE: 'false',
     OVERLAY_FEATURE_SANDBOXES: 'false',
     OVERLAY_FEATURE_ANALYTICS: 'false',
@@ -166,6 +167,9 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     dataResidency: {
       required: true,
       allowedRegions: ['in', 'ap-south-1'],
+    },
+    retention: {
+      memoryDays: 365,
     },
   })
 })

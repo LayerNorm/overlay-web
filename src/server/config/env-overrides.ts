@@ -324,6 +324,7 @@ function complianceFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
   const retention = compactObject({
     chatDays: readNumber(env, 'OVERLAY_RETENTION_CHAT_DAYS'),
     fileDays: readNumber(env, 'OVERLAY_RETENTION_FILE_DAYS'),
+    memoryDays: readNumber(env, 'OVERLAY_RETENTION_MEMORY_DAYS'),
     logsDays: readNumber(env, 'OVERLAY_RETENTION_LOGS_DAYS'),
     sandboxArtifactDays: readNumber(env, 'OVERLAY_RETENTION_SANDBOX_ARTIFACT_DAYS'),
     deletedUserPurgeDays: readNumber(env, 'OVERLAY_RETENTION_DELETED_USER_PURGE_DAYS'),

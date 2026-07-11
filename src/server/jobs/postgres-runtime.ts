@@ -23,13 +23,25 @@ import {
   createEmbeddingProvider,
   type EmbeddingProvider,
 } from '@/server/knowledge'
+import { PostgresKnowledgeMaintenanceService } from '@/server/knowledge/PostgresKnowledgeMaintenanceService'
+import {
+  MEMORY_EXTRACT_TURN_JOB,
+  MemoryExtractionService,
+  PostgresMemoryExtractionRepository,
+  PostgresMemoryRepository,
+  createMemoryExtractionProvider,
+  type MemoryExtractionProvider,
+} from '@/server/memory'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
+import type { OverlayRuntimeConfig } from '@/shared/config'
 
 export function createPostgresRuntime(args: {
   db: OverlayPostgresDb
   leaseMs: number
   embeddingProvider?: EmbeddingProvider
+  memoryExtractionProvider?: MemoryExtractionProvider
   objectStore?: Pick<ObjectStore, 'deleteObject' | 'listObjects'>
+  runtimeConfig?: OverlayRuntimeConfig
   workerId: string
 }) {
   const jobs = new PostgresDurableJobRepository(args.db)
@@ -42,13 +54,24 @@ export function createPostgresRuntime(args: {
     ? new PostgresStorageReconciliationService(args.db, args.objectStore)
     : null
   const outputRetention = new PostgresOutputRetentionService(args.db)
+  const knowledgeMaintenance = new PostgresKnowledgeMaintenanceService(args.db)
+  const runtimeConfig = () => args.runtimeConfig ?? getOverlayRuntimeConfigSync()
   let knowledgeIndex: KnowledgeIndexService | null = null
   const getKnowledgeIndex = () => {
     knowledgeIndex ??= new KnowledgeIndexService({
-      embeddings: args.embeddingProvider ?? createEmbeddingProvider(getOverlayRuntimeConfigSync()),
+      embeddings: args.embeddingProvider ?? createEmbeddingProvider(runtimeConfig()),
       repository: new PostgresKnowledgeIndexRepository(args.db),
     })
     return knowledgeIndex
+  }
+  let memoryExtraction: MemoryExtractionService | null = null
+  const getMemoryExtraction = () => {
+    memoryExtraction ??= new MemoryExtractionService({
+      extractor: args.memoryExtractionProvider ?? createMemoryExtractionProvider(runtimeConfig()),
+      memories: new PostgresMemoryRepository(args.db),
+      runs: new PostgresMemoryExtractionRepository(args.db),
+    })
+    return memoryExtraction
   }
   const worker = new PostgresJobWorker({
     handlers: {
@@ -74,6 +97,20 @@ export function createPostgresRuntime(args: {
         sourceKind: sourceKindPayload(job.payload.sourceKind),
         userId: requiredStringPayload(job.payload.userId, 'userId'),
       }),
+      [MEMORY_EXTRACT_TURN_JOB]: async (job) => await getMemoryExtraction().extractTurn({
+        conversationId: requiredStringPayload(job.payload.conversationId, 'conversationId'),
+        messageId: requiredStringPayload(job.payload.messageId, 'messageId'),
+        turnId: requiredStringPayload(job.payload.turnId, 'turnId'),
+        userId: requiredStringPayload(job.payload.userId, 'userId'),
+      }),
+      'knowledge.maintenance': async () => {
+        const config = runtimeConfig()
+        const embeddings = args.embeddingProvider ?? createEmbeddingProvider(config)
+        return await knowledgeMaintenance.runAll({
+          memoryRetentionDays: config.compliance.retention.memoryDays,
+          modelVersion: embeddings.identity.modelVersion,
+        })
+      },
       ...(args.objectStore
         ? {
             [STORAGE_DELETE_OBJECTS_JOB]: createStorageDeleteJobHandler(args.objectStore),

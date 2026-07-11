@@ -64,6 +64,13 @@
       "when": 1783882800000,
       "tag": "0008_p4_pgvector_knowledge",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783969200000,
+      "tag": "0009_p4d_memory_extraction",
+      "breakpoints": true
     }
   ]
 }

@@ -25,6 +25,7 @@ const ZERO_COUNTS: AccountDataDeletionCounts = {
   files: 0,
   knowledgeChunkEmbeddings: 0,
   knowledgeChunks: 0,
+  memoryExtractionRuns: 0,
   memories: 0,
   notes: 0,
   onboardingState: 0,
@@ -126,6 +127,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     files: number
     knowledge_chunk_embeddings: number
     knowledge_chunks: number
+    memory_extraction_runs: number
     memories: number
     notes: number
     onboarding_state: number
@@ -146,6 +148,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
       (SELECT count(*)::int FROM files WHERE user_id = ${userId}) AS files,
       (SELECT count(*)::int FROM knowledge_chunk_embeddings WHERE user_id = ${userId}) AS knowledge_chunk_embeddings,
       (SELECT count(*)::int FROM knowledge_chunks WHERE user_id = ${userId}) AS knowledge_chunks,
+      (SELECT count(*)::int FROM memory_extraction_runs WHERE user_id = ${userId}) AS memory_extraction_runs,
       (SELECT count(*)::int FROM memories WHERE user_id = ${userId}) AS memories,
       (SELECT count(*)::int FROM notes WHERE user_id = ${userId}) AS notes,
       (SELECT count(*)::int FROM onboarding_state WHERE user_id = ${userId}) AS onboarding_state,
@@ -169,6 +172,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     files: Number(row.files ?? 0),
     knowledgeChunkEmbeddings: Number(row.knowledge_chunk_embeddings ?? 0),
     knowledgeChunks: Number(row.knowledge_chunks ?? 0),
+    memoryExtractionRuns: Number(row.memory_extraction_runs ?? 0),
     memories: Number(row.memories ?? 0),
     notes: Number(row.notes ?? 0),
     onboardingState: Number(row.onboarding_state ?? 0),

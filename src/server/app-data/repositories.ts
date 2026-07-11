@@ -112,6 +112,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         conversations: new PostgresActConversationRepository(
           db,
           new PostgresConversationEventNotifier(pool),
+          { memoryExtractionEnabled: capabilities.supportsVectorSearch && runtimeConfig.features.memory !== false },
         ),
         durableJobs: new PostgresDurableJobRepository(db),
         daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),

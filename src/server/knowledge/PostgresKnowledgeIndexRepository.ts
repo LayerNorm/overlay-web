@@ -174,6 +174,7 @@ type IndexDb = OverlayPostgresDb | Transaction
 async function markSource(db: IndexDb, source: KnowledgeIndexSource, patch: SourcePatch): Promise<void> {
   if (source.sourceKind === 'file') {
     await db.update(files).set({
+      embeddingModelVersion: patch.embeddingModelVersion,
       indexError: patch.indexError,
       indexedAt: patch.indexedAt,
       indexStatus: patch.indexStatus,
