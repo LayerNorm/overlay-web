@@ -23,6 +23,9 @@ const ZERO_COUNTS: AccountDataDeletionCounts = {
   conversations: 0,
   daytonaWorkspaces: 0,
   files: 0,
+  knowledgeChunkEmbeddings: 0,
+  knowledgeChunks: 0,
+  memories: 0,
   notes: 0,
   onboardingState: 0,
   projects: 0,
@@ -121,6 +124,9 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     conversations: number
     daytona_workspaces: number
     files: number
+    knowledge_chunk_embeddings: number
+    knowledge_chunks: number
+    memories: number
     notes: number
     onboarding_state: number
     projects: number
@@ -138,6 +144,9 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
       (SELECT count(*)::int FROM conversations WHERE user_id = ${userId}) AS conversations,
       (SELECT count(*)::int FROM daytona_workspaces WHERE user_id = ${userId}) AS daytona_workspaces,
       (SELECT count(*)::int FROM files WHERE user_id = ${userId}) AS files,
+      (SELECT count(*)::int FROM knowledge_chunk_embeddings WHERE user_id = ${userId}) AS knowledge_chunk_embeddings,
+      (SELECT count(*)::int FROM knowledge_chunks WHERE user_id = ${userId}) AS knowledge_chunks,
+      (SELECT count(*)::int FROM memories WHERE user_id = ${userId}) AS memories,
       (SELECT count(*)::int FROM notes WHERE user_id = ${userId}) AS notes,
       (SELECT count(*)::int FROM onboarding_state WHERE user_id = ${userId}) AS onboarding_state,
       (SELECT count(*)::int FROM projects WHERE user_id = ${userId}) AS projects,
@@ -158,6 +167,9 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     conversations: Number(row.conversations ?? 0),
     daytonaWorkspaces: Number(row.daytona_workspaces ?? 0),
     files: Number(row.files ?? 0),
+    knowledgeChunkEmbeddings: Number(row.knowledge_chunk_embeddings ?? 0),
+    knowledgeChunks: Number(row.knowledge_chunks ?? 0),
+    memories: Number(row.memories ?? 0),
     notes: Number(row.notes ?? 0),
     onboardingState: Number(row.onboarding_state ?? 0),
     projects: Number(row.projects ?? 0),

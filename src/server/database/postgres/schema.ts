@@ -13,6 +13,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  vector,
 } from 'drizzle-orm/pg-core'
 
 export const overlayAppDataMetadata = pgTable('overlay_app_data_metadata', {
@@ -72,6 +73,30 @@ export const fileIndexStatus = pgEnum('overlay_file_index_status', [
   'indexed',
   'skipped',
   'failed',
+])
+
+export const memorySource = pgEnum('overlay_memory_source', [
+  'chat',
+  'note',
+  'manual',
+])
+
+export const memoryType = pgEnum('overlay_memory_type', [
+  'preference',
+  'fact',
+  'project',
+  'decision',
+  'agent',
+])
+
+export const memoryActor = pgEnum('overlay_memory_actor', [
+  'user',
+  'agent',
+])
+
+export const knowledgeSourceKind = pgEnum('overlay_knowledge_source_kind', [
+  'file',
+  'memory',
 ])
 
 export const outputStatus = pgEnum('overlay_output_status', [
@@ -348,6 +373,93 @@ export const notes = pgTable('notes', {
   uniqueIndex('notes_user_id_client_id_idx').on(table.userId, table.clientId),
   index('notes_user_id_updated_at_idx').on(table.userId, table.updatedAt),
   index('notes_project_id_idx').on(table.projectId),
+])
+
+export const memories = pgTable('memories', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  clientId: text('client_id'),
+  content: text('content').notNull(),
+  contentHash: text('content_hash').notNull(),
+  source: memorySource('source').notNull(),
+  type: memoryType('type'),
+  importance: integer('importance'),
+  projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
+  conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'set null' }),
+  noteId: text('note_id').references(() => notes.id, { onDelete: 'set null' }),
+  messageId: text('message_id'),
+  turnId: text('turn_id'),
+  tags: jsonb('tags').$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+  actor: memoryActor('actor'),
+  indexStatus: fileIndexStatus('index_status').default('pending').notNull(),
+  indexedAt: timestamp('indexed_at', { withTimezone: true }),
+  indexError: text('index_error'),
+  embeddingModelVersion: text('embedding_model_version'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (table) => [
+  index('memories_user_id_updated_at_idx').on(table.userId, table.updatedAt),
+  uniqueIndex('memories_user_id_client_id_idx').on(table.userId, table.clientId),
+  uniqueIndex('memories_user_id_content_hash_active_idx')
+    .on(table.userId, table.contentHash)
+    .where(sql`${table.deletedAt} IS NULL`),
+  index('memories_project_id_idx').on(table.projectId),
+  index('memories_conversation_id_idx').on(table.conversationId),
+  index('memories_note_id_idx').on(table.noteId),
+  index('memories_index_status_idx').on(table.indexStatus, table.updatedAt),
+])
+
+export const knowledgeChunks = pgTable('knowledge_chunks', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
+  sourceKind: knowledgeSourceKind('source_kind').notNull(),
+  sourceId: text('source_id').notNull(),
+  chunkIndex: integer('chunk_index').notNull(),
+  startOffset: integer('start_offset').notNull(),
+  text: text('text').notNull(),
+  title: text('title'),
+  contentHash: text('content_hash').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('knowledge_chunks_source_chunk_idx').on(table.sourceKind, table.sourceId, table.chunkIndex),
+  index('knowledge_chunks_user_source_idx').on(table.userId, table.sourceKind),
+  index('knowledge_chunks_user_project_idx').on(table.userId, table.projectId),
+  index('knowledge_chunks_source_idx').on(table.sourceKind, table.sourceId),
+])
+
+export const knowledgeChunkEmbeddings = pgTable('knowledge_chunk_embeddings', {
+  chunkId: text('chunk_id')
+    .primaryKey()
+    .references(() => knowledgeChunks.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  sourceKind: knowledgeSourceKind('source_kind').notNull(),
+  embedding: vector('embedding', { dimensions: 1536 }).notNull(),
+  provider: text('provider').notNull(),
+  modelId: text('model_id').notNull(),
+  modelVersion: text('model_version').notNull(),
+  dimensions: integer('dimensions').notNull(),
+  contentHash: text('content_hash').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('knowledge_chunk_embeddings_user_model_idx').on(
+    table.userId,
+    table.provider,
+    table.modelId,
+    table.modelVersion,
+  ),
+  index('knowledge_chunk_embeddings_source_idx').on(table.sourceKind),
+  index('knowledge_chunk_embeddings_hnsw_idx')
+    .using('hnsw', table.embedding.op('vector_cosine_ops')),
 ])
 
 export const files = pgTable('files', {

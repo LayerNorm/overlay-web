@@ -34,6 +34,7 @@ import {
 } from '@/server/outputs/GenerationUsagePolicy'
 import { UserService, type UserAuthProvider } from '@/server/users'
 import type { NoteRepository } from '@/server/notes'
+import { MemoryService } from '@/server/memory'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -56,6 +57,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   appDataCapabilities: AppDataCapabilities
   chatUsagePolicy: ActUsagePolicy
   generationUsagePolicy: GenerationUsagePolicy
+  memoryService: MemoryService
   noteRepository: NoteRepository
   apiKeyService: typeof ApiKeyService
   userService: UserService
@@ -98,6 +100,7 @@ export function createOverlayServerContext(
     authProvider: selectedAuthProviderForUserService(runtimeConfig),
     repository: appData.repositories.users,
   })
+  const memoryService = new MemoryService(appData.repositories.memories)
 
   return {
     auth: appConfig.authProvider ?? createAuthProvider(runtimeConfig, userService),
@@ -111,6 +114,7 @@ export function createOverlayServerContext(
     appDataCapabilities: appData.capabilities,
     chatUsagePolicy,
     generationUsagePolicy,
+    memoryService,
     noteRepository: appData.repositories.notes,
     apiKeyService: ApiKeyService,
     userService,

@@ -254,7 +254,7 @@ test('OverlayRuntimeConfigSchema rejects Postgres database provider with enabled
           database: { provider: 'postgres' },
         },
       }),
-    /vectorSearch capability must be false when database\.provider is postgres/,
+    /Postgres vectorSearch requires providers\.vectorSearch\.provider=pgvector/,
   )
 })
 
@@ -285,14 +285,12 @@ test('OverlayRuntimeConfigSchema rejects Postgres database provider with Convex 
           vectorSearch: { provider: 'convex' },
         },
       }),
-    /providers\.vectorSearch\.provider must be none when database\.provider is postgres/,
+    /Postgres vector search supports pgvector or none/,
   )
 })
 
-test('OverlayRuntimeConfigSchema names pgvector as the future Postgres vector provider but rejects it today', () => {
-  assert.throws(
-    () =>
-      OverlayRuntimeConfigSchema.parse({
+test('OverlayRuntimeConfigSchema accepts pgvector with Postgres and an embeddings provider', () => {
+  const parsed = OverlayRuntimeConfigSchema.parse({
         ...minimalSaasConfig,
         billing: {
           provider: 'none',
@@ -301,7 +299,7 @@ test('OverlayRuntimeConfigSchema names pgvector as the future Postgres vector pr
         capabilities: {
           ...minimalSaasConfig.capabilities,
           billing: false,
-          vectorSearch: false,
+          vectorSearch: true,
         },
         database: {
           ...minimalSaasConfig.database,
@@ -314,10 +312,11 @@ test('OverlayRuntimeConfigSchema names pgvector as the future Postgres vector pr
         providers: {
           database: { provider: 'postgres' },
           vectorSearch: { provider: 'pgvector' },
+          embeddings: { provider: 'openai' },
         },
-      }),
-    /pgvector is the planned Postgres-native vector-search provider/,
-  )
+      })
+  assert.equal(parsed.providers.vectorSearch?.provider, 'pgvector')
+  assert.equal(parsed.providers.embeddings?.provider, 'openai')
 })
 
 test('OverlayRuntimeConfigSchema rejects Postgres database provider with enabled billing', () => {

@@ -57,6 +57,13 @@
       "when": 1783796403000,
       "tag": "0007_p3c_output_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783882800000,
+      "tag": "0008_p4_pgvector_knowledge",
+      "breakpoints": true
     }
   ]
 }

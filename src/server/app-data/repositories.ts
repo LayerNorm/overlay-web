@@ -19,6 +19,11 @@ import type { FileRepository } from '@/server/files/FileRepository'
 import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
 import { ConvexNoteRepository, PostgresNoteRepository, type NoteRepository } from '@/server/notes'
 import {
+  ConvexMemoryRepository,
+  PostgresMemoryRepository,
+  type MemoryRepository,
+} from '@/server/memory'
+import {
   PostgresOnboardingRepository,
   type OnboardingRepository,
 } from '@/server/onboarding'
@@ -68,6 +73,7 @@ export interface AppDataRepositories {
   files: FileRepository
   idempotency: IdempotencyRepository
   modelCatalog: ModelCatalogRepository
+  memories: MemoryRepository
   notes: NoteRepository
   onboarding: OnboardingRepository
   outbox: OutboxRepository
@@ -110,6 +116,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         files: new PostgresFileRepository(db),
         idempotency: new PostgresIdempotencyRepository(db),
         modelCatalog: new PostgresModelCatalogRepository(db),
+        memories: new PostgresMemoryRepository(db),
         notes: new PostgresNoteRepository(db),
         onboarding: new PostgresOnboardingRepository(db),
         outbox: new PostgresOutboxRepository(db),
@@ -134,6 +141,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       files: new ConvexFileRepository(),
       idempotency: new ConvexIdempotencyRepository(),
       modelCatalog: new ConvexModelCatalogRepository(),
+      memories: new ConvexMemoryRepository(),
       notes: new ConvexNoteRepository(),
       onboarding: unsupportedRepository<OnboardingRepository>('OnboardingRepository'),
       outbox: unsupportedRepository<OutboxRepository>('OutboxRepository'),

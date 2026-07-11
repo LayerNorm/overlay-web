@@ -10,6 +10,9 @@ export interface AccountDataDeletionCounts {
   conversations: number
   daytonaWorkspaces: number
   files: number
+  knowledgeChunkEmbeddings: number
+  knowledgeChunks: number
+  memories: number
   notes: number
   onboardingState: number
   projects: number

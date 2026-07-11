@@ -93,9 +93,13 @@ export function deriveAppDataCapabilities(
   runtimeConfig: OverlayRuntimeConfig | null,
 ): AppDataCapabilities {
   const provider = selectedDatabaseProvider(runtimeConfig)
-  return provider === 'postgres'
-    ? POSTGRES_APP_DATA_V1_CAPABILITIES
-    : CONVEX_APP_DATA_CAPABILITIES
+  if (provider !== 'postgres') return CONVEX_APP_DATA_CAPABILITIES
+  const vectorProvider = runtimeConfig?.providers.vectorSearch?.provider
+  return {
+    ...POSTGRES_APP_DATA_V1_CAPABILITIES,
+    supportsVectorSearch:
+      runtimeConfig?.capabilities.vectorSearch === true && vectorProvider === 'pgvector',
+  }
 }
 
 export function applyAppDataCapabilitiesToOverlayCapabilities(

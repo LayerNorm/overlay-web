@@ -26,6 +26,7 @@ import { PostgresStorageReconciliationService } from '@/server/storage/PostgresS
 import { createPostgresRuntime } from '@/server/jobs/postgres-runtime'
 import { PostgresDaytonaWorkspaceRepository } from '@/server/ai/sandbox/PostgresDaytonaWorkspaceRepository'
 import { PostgresOutputRetentionService } from '@/server/outputs/PostgresOutputRetentionService'
+import { PostgresMemoryRepository } from '@/server/memory'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
 
@@ -74,6 +75,49 @@ test('Postgres app-data repository contracts', {
       assert.match(index.rows[0]?.indexdef ?? '', /CREATE UNIQUE INDEX/i)
     })
     await db.delete(durableJobs)
+    await t.test('Postgres memories preserve CRUD, dedupe, scope, and deletion semantics', async () => {
+      const suffix = randomUUID()
+      const userId = `contract_memory_${suffix}`
+      const otherUserId = `contract_memory_other_${suffix}`
+      await db.insert(users).values([
+        { id: userId, email: `${userId}@example.com` },
+        { id: otherUserId, email: `${otherUserId}@example.com` },
+      ])
+      const repository = new PostgresMemoryRepository(db)
+      try {
+        const created = await repository.create({
+          clientId: `memory-client-${suffix}`,
+          content: 'The pilot uses a private AWS deployment.',
+          source: 'manual',
+          tags: ['pilot'],
+          userId,
+        })
+        const duplicate = await repository.create({
+          content: '  the PILOT uses a private AWS deployment.  ',
+          source: 'manual',
+          userId,
+        })
+        assert.equal(duplicate._id, created._id)
+        assert.equal((await repository.list({ userId })).length, 1)
+        assert.equal(await repository.get({ memoryId: created._id, userId: otherUserId }), null)
+
+        const updated = await repository.update({
+          content: 'The pilot uses private AWS infrastructure in ap-south-1.',
+          memoryId: created._id,
+          source: 'manual',
+          tags: ['pilot', 'aws'],
+          userId,
+        })
+        assert.deepEqual(updated?.tags, ['pilot', 'aws'])
+        const removed = await repository.remove({ memoryId: created._id, userId })
+        assert.equal(removed?.memoryId, created._id)
+        assert.equal(await repository.get({ memoryId: created._id, userId }), null)
+        assert.ok(await repository.get({ includeDeleted: true, memoryId: created._id, userId }))
+      } finally {
+        await db.delete(users).where(eq(users.id, userId))
+        await db.delete(users).where(eq(users.id, otherUserId))
+      }
+    })
     await runAppDataRepositoryContractSuite(t, {
       name: 'postgres',
       provider: 'postgres',
