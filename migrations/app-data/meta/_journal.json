@@ -43,6 +43,13 @@
       "when": 1783796401000,
       "tag": "0005_p3a_project_hierarchy",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783796402000,
+      "tag": "0006_p3b_file_storage_lifecycle",
+      "breakpoints": true
     }
   ]
 }

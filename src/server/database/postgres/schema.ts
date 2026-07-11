@@ -345,7 +345,7 @@ export const files = pgTable('files', {
   name: text('name').notNull(),
   type: fileType('type').notNull(),
   kind: fileKind('kind'),
-  parentId: text('parent_id'),
+  parentId: text('parent_id').references((): AnyPgColumn => files.id, { onDelete: 'set null' }),
   content: text('content'),
   textContent: text('text_content'),
   storageId: text('storage_id'),
@@ -354,7 +354,7 @@ export const files = pgTable('files', {
   extension: text('extension'),
   sizeBytes: bigint('size_bytes', { mode: 'number' }),
   contentHash: text('content_hash'),
-  duplicateOfFileId: text('duplicate_of_file_id'),
+  duplicateOfFileId: text('duplicate_of_file_id').references((): AnyPgColumn => files.id, { onDelete: 'set null' }),
   indexable: boolean('indexable'),
   indexStatus: fileIndexStatus('index_status'),
   indexedAt: timestamp('indexed_at', { withTimezone: true }),
@@ -384,6 +384,8 @@ export const files = pgTable('files', {
   index('files_conversation_id_idx').on(table.conversationId),
   index('files_r2_key_idx').on(table.r2Key),
   uniqueIndex('files_share_token_idx').on(table.shareToken),
+  check('files_parent_not_self_check', sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`),
+  check('files_duplicate_not_self_check', sql`${table.duplicateOfFileId} IS NULL OR ${table.duplicateOfFileId} <> ${table.id}`),
 ])
 
 export const r2UploadIntents = pgTable('r2_upload_intents', {
@@ -402,7 +404,7 @@ export const r2UploadIntents = pgTable('r2_upload_intents', {
   finalizedAt: timestamp('finalized_at', { withTimezone: true }),
   expiredAt: timestamp('expired_at', { withTimezone: true }),
 }, (table) => [
-  index('r2_upload_intents_r2_key_idx').on(table.r2Key),
+  uniqueIndex('r2_upload_intents_r2_key_idx').on(table.r2Key),
   index('r2_upload_intents_user_id_status_expires_at_idx').on(table.userId, table.status, table.expiresAt),
   index('r2_upload_intents_file_id_idx').on(table.fileId),
 ])

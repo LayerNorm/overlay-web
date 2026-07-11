@@ -90,14 +90,14 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
   {
     id: 'files-notes',
     name: 'Files and notes',
-    targetPhase: 'P4',
+    targetPhase: 'P3b',
     capabilities: [
       { key: 'supportsFileMetadata', expectedAtParity: true },
       { key: 'supportsFileUploads', expectedAtParity: true },
       { key: 'supportsNotes', expectedAtParity: true },
     ],
     routeRuleIds: ['notes', 'files'],
-    exitGate: 'File and note routes are fully supported, including ingestion, storage cleanup, sharing, and deletion.',
+    exitGate: 'File and note routes are fully supported, including atomic ingestion, durable object cleanup, reconciliation, sharing, and deletion.',
   },
   {
     id: 'projects',
@@ -110,7 +110,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
   {
     id: 'outputs-media',
     name: 'Generated outputs and media',
-    targetPhase: 'P4',
+    targetPhase: 'P3c',
     capabilities: [],
     routeRuleIds: ['outputs', 'generation-usage-and-outputs'],
     exitGate: 'Generated media and tool artifacts persist, authorize, retry, and clean up without Convex.',

@@ -6,6 +6,8 @@ import {
 } from '../src/server/database/postgres/client'
 import { assertAppDataSchemaCompatible } from '../src/server/database/postgres/schema-compatibility'
 import { createPostgresRuntime } from '../src/server/jobs/postgres-runtime'
+import { createObjectStoreForRuntime } from '../src/server/bootstrap'
+import { getOverlayRuntimeConfigSync } from '../src/server/config'
 
 void main()
 
@@ -29,7 +31,12 @@ async function main(): Promise<void> {
     sslMode: process.env.OVERLAY_DATABASE_SSL_MODE,
   })
   const db = createOverlayPostgresDb(pool)
-  const runtime = createPostgresRuntime({ db, leaseMs, workerId })
+  const runtime = createPostgresRuntime({
+    db,
+    leaseMs,
+    objectStore: lazyObjectStore(),
+    workerId,
+  })
   let shuttingDown = false
 
   process.once('SIGINT', () => { shuttingDown = true })
@@ -80,6 +87,18 @@ async function main(): Promise<void> {
     } while (!once && !shuttingDown)
   } finally {
     await pool.end()
+  }
+}
+
+function lazyObjectStore() {
+  let store: ReturnType<typeof createObjectStoreForRuntime> | null = null
+  const resolve = () => {
+    store ??= createObjectStoreForRuntime(getOverlayRuntimeConfigSync())
+    return store
+  }
+  return {
+    deleteObject: async (key: string) => await resolve().deleteObject(key),
+    listObjects: async (prefix: string) => await resolve().listObjects(prefix),
   }
 }
 

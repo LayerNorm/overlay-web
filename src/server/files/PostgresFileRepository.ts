@@ -12,8 +12,10 @@ import {
   isOwnedFileR2Key,
   isOwnedOutputR2Key,
 } from '@/server/storage/storage-keys'
+import { enqueueStorageCleanupJobs } from '@/server/storage/PostgresStorageCleanupJobs'
 import type {
   FileRecord,
+  ExtractedDocumentPart,
   FileRepository,
   FileShareResult,
   FileStorageEntitlements,
@@ -23,6 +25,8 @@ import type {
 } from './FileRepository'
 
 type FileRow = typeof files.$inferSelect
+type Transaction = Parameters<Parameters<OverlayPostgresDb['transaction']>[0]>[0]
+type FileDb = OverlayPostgresDb | Transaction
 type FileKind = 'folder' | 'note' | 'upload' | 'output'
 type FileType = 'file' | 'folder'
 
@@ -33,6 +37,8 @@ const UNLIMITED_STORAGE_BYTES = Number.MAX_SAFE_INTEGER
 const utf8Encoder = new TextEncoder()
 
 export class PostgresFileRepository implements FileRepository {
+  readonly storageCleanupMode = 'durable' as const
+
   constructor(private readonly db: OverlayPostgresDb) {}
 
   async getFile(args: {
@@ -78,199 +84,297 @@ export class PostgresFileRepository implements FileRepository {
   }
 
   async createFile(args: Record<string, unknown> & { userId: string }): Promise<string | null> {
-    await this.assertParentAndProject({
-      userId: args.userId,
-      parentId: stringValue(args.parentId),
-      projectId: stringValue(args.projectId),
-    })
+    return await this.db.transaction(async (tx) => {
+      await lockFileHierarchy(tx, args.userId)
+      await this.assertParentAndProject(tx, {
+        userId: args.userId,
+        parentId: stringValue(args.parentId),
+        projectId: stringValue(args.projectId),
+      })
 
-    const now = dateValue(args.createdAt) ?? new Date()
-    const updatedAt = dateValue(args.updatedAt) ?? now
-    const kind = resolveKind(args.kind, args.type)
-    const type: FileType = kind === 'folder' ? 'folder' : 'file'
-    const textContent = stringValue(args.textContent) ?? stringValue(args.content) ?? ''
-    const textBytes = type === 'file' ? utf8ByteLength(textContent) : 0
-    const explicitSize = positiveNumber(args.sizeBytesOverride) ?? positiveNumber(args.sizeBytes) ?? 0
-    const sizeBytes = type === 'file' ? Math.max(textBytes, explicitSize) : 0
-    const indexable = isTextIndexable(kind, textContent)
-    const contentHash = stringValue(args.contentHash)
-    const canonicalDuplicate = indexable && contentHash
-      ? await this.findCanonicalDuplicate({
-          userId: args.userId,
-          contentHash,
-        })
-      : null
+      const now = dateValue(args.createdAt) ?? new Date()
+      const updatedAt = dateValue(args.updatedAt) ?? now
+      const kind = resolveKind(args.kind, args.type)
+      const type: FileType = kind === 'folder' ? 'folder' : 'file'
+      const textContent = stringValue(args.textContent) ?? stringValue(args.content) ?? ''
+      const textBytes = type === 'file' ? utf8ByteLength(textContent) : 0
+      const explicitSize = positiveNumber(args.sizeBytesOverride) ?? positiveNumber(args.sizeBytes) ?? 0
+      const sizeBytes = type === 'file' ? Math.max(textBytes, explicitSize) : 0
+      const indexable = isTextIndexable(kind, textContent)
+      const contentHash = stringValue(args.contentHash)
+      const canonicalDuplicate = indexable && contentHash
+        ? await this.findCanonicalDuplicate(tx, {
+            userId: args.userId,
+            contentHash,
+          })
+        : null
 
-    const id = fileId()
-    await this.db.insert(files).values({
-      id,
-      userId: args.userId,
-      name: requiredString(args.name, 'name'),
-      type,
-      kind,
-      parentId: stringValue(args.parentId),
-      content: textContent,
-      textContent: stringValue(args.textContent),
-      storageId: stringValue(args.storageId),
-      r2Key: stringValue(args.r2Key),
-      mimeType: stringValue(args.mimeType),
-      extension: stringValue(args.extension) ?? extensionOf(requiredString(args.name, 'name')),
-      sizeBytes,
-      contentHash,
-      duplicateOfFileId: canonicalDuplicate?.id,
-      indexable,
-      indexStatus: indexable && !canonicalDuplicate ? 'pending' : 'skipped',
-      conversationId: stringValue(args.conversationId),
-      turnId: stringValue(args.turnId),
-      modelId: stringValue(args.modelId),
-      prompt: stringValue(args.prompt),
-      outputType: stringValue(args.outputType),
-      legacyOutputId: stringValue(args.legacyOutputId),
-      projectId: stringValue(args.projectId),
-      createdAt: now,
-      updatedAt,
+      const id = fileId()
+      await tx.insert(files).values({
+        id,
+        userId: args.userId,
+        name: requiredString(args.name, 'name'),
+        type,
+        kind,
+        parentId: stringValue(args.parentId),
+        content: textContent,
+        textContent: stringValue(args.textContent),
+        storageId: stringValue(args.storageId),
+        r2Key: stringValue(args.r2Key),
+        mimeType: stringValue(args.mimeType),
+        extension: stringValue(args.extension) ?? extensionOf(requiredString(args.name, 'name')),
+        sizeBytes,
+        contentHash,
+        duplicateOfFileId: canonicalDuplicate?.id,
+        indexable,
+        indexStatus: indexable && !canonicalDuplicate ? 'pending' : 'skipped',
+        conversationId: stringValue(args.conversationId),
+        turnId: stringValue(args.turnId),
+        modelId: stringValue(args.modelId),
+        prompt: stringValue(args.prompt),
+        outputType: stringValue(args.outputType),
+        legacyOutputId: stringValue(args.legacyOutputId),
+        projectId: stringValue(args.projectId),
+        createdAt: now,
+        updatedAt,
+      })
+      return id
     })
-    return id
   }
 
   async createFileWithStorage(args: Record<string, unknown> & { userId: string }): Promise<string | null> {
     const r2Key = requiredString(args.r2Key, 'r2Key')
     if (!isOwnedFileR2Key(args.userId, r2Key)) throw new Error('Invalid storage key')
-    await this.assertParentAndProject({
-      userId: args.userId,
-      parentId: stringValue(args.parentId),
-      projectId: stringValue(args.projectId),
-    })
+    return await this.db.transaction(async (tx) => {
+      await lockFileHierarchy(tx, args.userId)
+      await lockStorageQuota(tx, args.userId)
+      await this.assertParentAndProject(tx, {
+        userId: args.userId,
+        parentId: stringValue(args.parentId),
+        projectId: stringValue(args.projectId),
+      })
 
-    const now = new Date()
-    const id = fileId()
-    await this.db.insert(files).values({
-      id,
-      userId: args.userId,
-      name: requiredString(args.name, 'name'),
-      type: 'file',
-      kind: 'upload',
-      parentId: stringValue(args.parentId),
-      r2Key,
-      mimeType: stringValue(args.mimeType),
-      extension: stringValue(args.extension) ?? extensionOf(requiredString(args.name, 'name')),
-      sizeBytes: positiveNumber(args.sizeBytes) ?? 0,
-      indexable: false,
-      indexStatus: 'skipped',
-      projectId: stringValue(args.projectId),
-      createdAt: now,
-      updatedAt: now,
+      const actualSizeBytes = positiveNumber(args.sizeBytes) ?? 0
+      const intents = await tx.execute<{
+        declared_size_bytes: number
+        id: string
+      }>(sql`
+        SELECT id, declared_size_bytes
+        FROM r2_upload_intents
+        WHERE user_id = ${args.userId}
+          AND r2_key = ${r2Key}
+          AND status = 'pending'
+        FOR UPDATE
+      `)
+      const intent = intents.rows[0]
+      if (!intent) throw new Error('upload_intent_not_found')
+      if (actualSizeBytes > Number(intent.declared_size_bytes)) {
+        throw new Error('upload_size_exceeds_intent')
+      }
+
+      const now = new Date()
+      const id = fileId()
+      await tx.insert(files).values({
+        id,
+        userId: args.userId,
+        name: requiredString(args.name, 'name'),
+        type: 'file',
+        kind: 'upload',
+        parentId: stringValue(args.parentId),
+        r2Key,
+        mimeType: stringValue(args.mimeType),
+        extension: stringValue(args.extension) ?? extensionOf(requiredString(args.name, 'name')),
+        sizeBytes: actualSizeBytes,
+        indexable: false,
+        indexStatus: 'skipped',
+        projectId: stringValue(args.projectId),
+        createdAt: now,
+        updatedAt: now,
+      })
+      await tx
+        .update(r2UploadIntents)
+        .set({
+          actualSizeBytes,
+          fileId: id,
+          finalizedAt: now,
+          status: 'finalized',
+        })
+        .where(eq(r2UploadIntents.id, intent.id))
+      return id
     })
-    return id
+  }
+
+  async createExtractedDocument(args: {
+    mimeType: string
+    parentId?: string
+    parts: ExtractedDocumentPart[]
+    projectId?: string
+    r2Key: string
+    sourceSizeBytes: number
+    userId: string
+  }): Promise<string[]> {
+    if (!isOwnedFileR2Key(args.userId, args.r2Key)) throw new Error('Invalid storage key')
+    if (args.parts.length === 0) throw new Error('Extracted document requires at least one part')
+    return await this.db.transaction(async (tx) => {
+      await lockFileHierarchy(tx, args.userId)
+      await lockStorageQuota(tx, args.userId)
+      await this.assertParentAndProject(tx, args)
+      const now = new Date()
+      const ids: string[] = []
+      for (let index = 0; index < args.parts.length; index += 1) {
+        const part = args.parts[index]!
+        const canonicalDuplicate = await this.findCanonicalDuplicate(tx, {
+          contentHash: part.contentHash,
+          userId: args.userId,
+        })
+        const id = fileId()
+        await tx.insert(files).values({
+          id,
+          userId: args.userId,
+          name: part.name,
+          type: 'file',
+          kind: 'upload',
+          parentId: args.parentId,
+          content: part.content,
+          textContent: part.content,
+          r2Key: index === 0 ? args.r2Key : undefined,
+          mimeType: index === 0 ? args.mimeType : 'text/plain',
+          extension: extensionOf(part.name),
+          sizeBytes: index === 0
+            ? Math.max(utf8ByteLength(part.content), args.sourceSizeBytes)
+            : utf8ByteLength(part.content),
+          contentHash: part.contentHash,
+          duplicateOfFileId: canonicalDuplicate?.id,
+          indexable: true,
+          indexStatus: canonicalDuplicate ? 'skipped' : 'pending',
+          projectId: args.projectId,
+          createdAt: now,
+          updatedAt: now,
+        })
+        ids.push(id)
+      }
+      return ids
+    })
   }
 
   async updateFile(args: Record<string, unknown> & { fileId: string; userId: string }): Promise<void> {
-    const [existing] = await this.db
-      .select()
-      .from(files)
-      .where(and(
-        eq(files.id, args.fileId),
-        eq(files.userId, args.userId),
-        isNull(files.deletedAt),
-      ))
-      .limit(1)
-    if (!existing) throw new Error('Unauthorized')
+    await this.db.transaction(async (tx) => {
+      await lockFileHierarchy(tx, args.userId)
+      const [existing] = await tx
+        .select()
+        .from(files)
+        .where(and(
+          eq(files.id, args.fileId),
+          eq(files.userId, args.userId),
+          isNull(files.deletedAt),
+        ))
+        .limit(1)
+      if (!existing) throw new Error('Unauthorized')
 
-    await this.assertParentAndProject({
-      userId: args.userId,
-      parentId: args.parentId === null ? undefined : stringValue(args.parentId),
-      projectId: args.projectId === null ? undefined : stringValue(args.projectId),
-    })
+      await this.assertParentAndProject(tx, {
+        fileId: args.fileId,
+        userId: args.userId,
+        parentId: args.parentId === null ? undefined : stringValue(args.parentId),
+        projectId: args.projectId === null ? undefined : stringValue(args.projectId),
+      })
 
-    const patch: Partial<typeof files.$inferInsert> = {
-      updatedAt: new Date(),
-    }
-    if (args.name !== undefined) {
-      patch.name = requiredString(args.name, 'name')
-      patch.extension = extensionOf(patch.name)
-    }
-    if (args.parentId !== undefined) patch.parentId = stringValue(args.parentId)
-    if (args.projectId !== undefined) patch.projectId = stringValue(args.projectId)
-
-    const nextText = args.textContent ?? args.content
-    if (nextText !== undefined) {
-      if (typeof nextText !== 'string') throw new Error('content must be a string')
-      const kind = inferKind(existing)
-      const existingText = textOf(existing)
-      const blobOnly = Boolean(existing.storageId ?? existing.r2Key) && !existingText.trim()
-      if (blobOnly && kind !== 'output') {
-        throw new Error('Storage-backed files cannot be edited inline.')
+      const patch: Partial<typeof files.$inferInsert> = {
+        updatedAt: new Date(),
       }
-      const contentHash = stringValue(args.contentHash)
-      const indexable = isTextIndexable(kind, nextText)
-      const canonicalDuplicate = indexable && contentHash
-        ? await this.findCanonicalDuplicate({
+      if (args.name !== undefined) {
+        patch.name = requiredString(args.name, 'name')
+        patch.extension = extensionOf(patch.name)
+      }
+      if (args.parentId !== undefined) patch.parentId = stringValue(args.parentId)
+      if (args.projectId !== undefined) patch.projectId = stringValue(args.projectId)
+
+      const nextText = args.textContent ?? args.content
+      if (nextText !== undefined) {
+        if (typeof nextText !== 'string') throw new Error('content must be a string')
+        const kind = inferKind(existing)
+        const existingText = textOf(existing)
+        const blobOnly = Boolean(existing.storageId ?? existing.r2Key) && !existingText.trim()
+        if (blobOnly && kind !== 'output') {
+          throw new Error('Storage-backed files cannot be edited inline.')
+        }
+        const contentHash = stringValue(args.contentHash)
+        const indexable = isTextIndexable(kind, nextText)
+        const canonicalDuplicate = indexable && contentHash
+          ? await this.findCanonicalDuplicate(tx, {
+              userId: args.userId,
+              contentHash,
+              ignoreFileId: args.fileId,
+            })
+          : null
+
+        if (existing.type === 'file' && !existing.duplicateOfFileId && existing.contentHash !== contentHash) {
+          await this.promoteDuplicate(tx, {
             userId: args.userId,
-            contentHash,
-            ignoreFileId: args.fileId,
+            canonicalFileId: args.fileId,
           })
-        : null
+        }
 
-      if (existing.type === 'file' && !existing.duplicateOfFileId && existing.contentHash !== contentHash) {
-        await this.promoteDuplicate({
-          userId: args.userId,
-          canonicalFileId: args.fileId,
-        })
+        patch.content = nextText
+        patch.textContent = nextText
+        patch.sizeBytes = utf8ByteLength(nextText)
+        patch.contentHash = contentHash
+        patch.duplicateOfFileId = canonicalDuplicate?.id
+        patch.indexable = indexable
+        patch.indexStatus = indexable && !canonicalDuplicate ? 'pending' : 'skipped'
+        patch.indexError = null
       }
 
-      patch.content = nextText
-      patch.textContent = nextText
-      patch.sizeBytes = utf8ByteLength(nextText)
-      patch.contentHash = contentHash
-      patch.duplicateOfFileId = canonicalDuplicate?.id
-      patch.indexable = indexable
-      patch.indexStatus = indexable && !canonicalDuplicate ? 'pending' : 'skipped'
-      patch.indexError = null
-    }
-
-    await this.db
-      .update(files)
-      .set(patch)
-      .where(and(
-        eq(files.id, args.fileId),
-        eq(files.userId, args.userId),
-        isNull(files.deletedAt),
-      ))
+      await tx
+        .update(files)
+        .set(patch)
+        .where(and(
+          eq(files.id, args.fileId),
+          eq(files.userId, args.userId),
+          isNull(files.deletedAt),
+        ))
+    })
   }
 
   async removeFile(args: {
     fileId: string
     userId: string
   }): Promise<void> {
-    const subtree = await this.getSubtreeRows({
-      fileId: args.fileId,
-      userId: args.userId,
-    })
-    if (subtree.length === 0) throw new Error('Unauthorized')
-    const subtreeIds = new Set(subtree.map((row) => row.id))
-    const now = new Date()
+    await this.db.transaction(async (tx) => {
+      await lockFileHierarchy(tx, args.userId)
+      const subtree = await this.getSubtreeRows(tx, args)
+      if (subtree.length === 0) throw new Error('Unauthorized')
+      const subtreeIds = new Set(subtree.map((row) => row.id))
+      const now = new Date()
 
-    for (const row of subtree) {
-      if (row.type === 'file' && !row.duplicateOfFileId) {
-        await this.promoteDuplicate({
-          userId: args.userId,
-          canonicalFileId: row.id,
-          excludeFileIds: subtreeIds,
-        })
+      for (const row of subtree) {
+        if (row.type === 'file' && !row.duplicateOfFileId) {
+          await this.promoteDuplicate(tx, {
+            userId: args.userId,
+            canonicalFileId: row.id,
+            excludeFileIds: subtreeIds,
+          })
+        }
+        await tx
+          .update(files)
+          .set({
+            deletedAt: now,
+            updatedAt: now,
+            indexStatus: 'skipped',
+          })
+          .where(and(
+            eq(files.id, row.id),
+            eq(files.userId, args.userId),
+            isNull(files.deletedAt),
+          ))
       }
-      await this.db
-        .update(files)
-        .set({
-          deletedAt: now,
-          updatedAt: now,
-          indexStatus: 'skipped',
-        })
-        .where(and(
-          eq(files.id, row.id),
-          eq(files.userId, args.userId),
-          isNull(files.deletedAt),
-        ))
-    }
+
+      await enqueueStorageCleanupJobs(tx, {
+        dedupeKey: `file-delete:${args.fileId}`,
+        keys: subtree.flatMap((row) => row.r2Key ? [row.r2Key] : []),
+        reason: 'file-delete',
+        userId: args.userId,
+      })
+    })
   }
 
   async getUploadIntent(args: {
@@ -307,47 +411,54 @@ export class PostgresFileRepository implements FileRepository {
     if (!isOwnedFileR2Key(args.userId, args.r2Key)) throw new Error('Invalid storage key')
     const declaredSizeBytes = Math.max(0, Math.round(args.declaredSizeBytes))
     if (declaredSizeBytes <= 0) throw new Error('invalid_upload_intent_size')
-    const existing = await this.db
-      .select({ id: r2UploadIntents.id })
-      .from(r2UploadIntents)
-      .where(eq(r2UploadIntents.r2Key, args.r2Key))
-      .limit(1)
-    if (existing.length > 0) throw new Error('upload_intent_already_exists')
+    await this.db.transaction(async (tx) => {
+      await lockStorageQuota(tx, args.userId)
+      const storageBytesUsed = await this.getStorageBytesUsed(tx, args.userId)
+      const pendingBytes = await this.getPendingUploadIntentBytes(tx, args.userId)
+      if (storageBytesUsed + pendingBytes + declaredSizeBytes > UNLIMITED_STORAGE_BYTES) {
+        throw new Error(`storage_limit_exceeded:${storageBytesUsed + pendingBytes + declaredSizeBytes}:${UNLIMITED_STORAGE_BYTES}`)
+      }
 
-    const entitlements = await this.getStorageEntitlements({ userId: args.userId })
-    const pendingBytes = await this.getPendingUploadIntentBytes(args.userId)
-    if (entitlements && entitlements.overlayStorageBytesUsed + pendingBytes + declaredSizeBytes > entitlements.overlayStorageBytesLimit) {
-      throw new Error(`storage_limit_exceeded:${entitlements.overlayStorageBytesUsed + pendingBytes + declaredSizeBytes}:${entitlements.overlayStorageBytesLimit}`)
-    }
-
-    await this.db.insert(r2UploadIntents).values({
-      id: uploadIntentId(),
-      userId: args.userId,
-      r2Key: args.r2Key,
-      declaredSizeBytes,
-      mimeType: args.mimeType,
-      status: 'pending',
-      createdAt: new Date(),
-      expiresAt: new Date(args.expiresAt),
+      const inserted = await tx.insert(r2UploadIntents).values({
+        id: uploadIntentId(),
+        userId: args.userId,
+        r2Key: args.r2Key,
+        declaredSizeBytes,
+        mimeType: args.mimeType,
+        status: 'pending',
+        createdAt: new Date(),
+        expiresAt: new Date(args.expiresAt),
+      }).onConflictDoNothing().returning({ id: r2UploadIntents.id })
+      if (inserted.length === 0) throw new Error('upload_intent_already_exists')
     })
   }
 
   async cleanupExpiredUploadIntents(args: {
     userId: string
   }): Promise<number> {
-    const rows = await this.db
-      .update(r2UploadIntents)
-      .set({
-        status: 'expired',
-        expiredAt: new Date(),
-      })
-      .where(and(
-        eq(r2UploadIntents.userId, args.userId),
-        eq(r2UploadIntents.status, 'pending'),
-        sql`${r2UploadIntents.expiresAt} < ${new Date(Date.now() - UPLOAD_INTENT_FINALIZE_GRACE_MS)}`,
-      ))
-      .returning({ id: r2UploadIntents.id })
-    return rows.length
+    return await this.db.transaction(async (tx) => {
+      const rows = await tx
+        .update(r2UploadIntents)
+        .set({
+          status: 'expired',
+          expiredAt: new Date(),
+        })
+        .where(and(
+          eq(r2UploadIntents.userId, args.userId),
+          eq(r2UploadIntents.status, 'pending'),
+          sql`${r2UploadIntents.expiresAt} < ${new Date(Date.now() - UPLOAD_INTENT_FINALIZE_GRACE_MS)}`,
+        ))
+        .returning({ id: r2UploadIntents.id, r2Key: r2UploadIntents.r2Key })
+      for (const row of rows) {
+        await enqueueStorageCleanupJobs(tx, {
+          dedupeKey: `upload-intent-expired:${row.id}`,
+          keys: [row.r2Key],
+          reason: 'upload-intent-expired',
+          userId: args.userId,
+        })
+      }
+      return rows.length
+    })
   }
 
   async finalizeUploadIntent(args: {
@@ -363,11 +474,18 @@ export class PostgresFileRepository implements FileRepository {
       .where(and(
         eq(r2UploadIntents.userId, args.userId),
         eq(r2UploadIntents.r2Key, args.r2Key),
-        eq(r2UploadIntents.status, 'pending'),
       ))
       .limit(1)
     if (!intent) throw new Error('upload_intent_not_found')
     const actualSizeBytes = Math.max(0, Math.round(args.actualSizeBytes))
+    if (
+      intent.status === 'finalized' &&
+      intent.fileId === args.fileId &&
+      intent.actualSizeBytes === actualSizeBytes
+    ) {
+      return
+    }
+    if (intent.status !== 'pending') throw new Error('upload_intent_not_pending')
     if (actualSizeBytes > intent.declaredSizeBytes) {
       throw new Error('upload_size_exceeds_intent')
     }
@@ -404,7 +522,7 @@ export class PostgresFileRepository implements FileRepository {
     fileId: string
     userId: string
   }): Promise<FileSubtreeStorageEntry[]> {
-    const rows = await this.getSubtreeRows(args)
+    const rows = await this.getSubtreeRows(this.db, args)
     return rows.map((row) => ({
       fileId: row.id,
       r2Key: row.r2Key ?? undefined,
@@ -442,7 +560,7 @@ export class PostgresFileRepository implements FileRepository {
     userId: string
   }): Promise<FileStorageEntitlements | null> {
     return {
-      overlayStorageBytesUsed: await this.getStorageBytesUsed(args.userId),
+      overlayStorageBytesUsed: await this.getStorageBytesUsed(this.db, args.userId),
       overlayStorageBytesLimit: UNLIMITED_STORAGE_BYTES,
     }
   }
@@ -489,13 +607,14 @@ export class PostgresFileRepository implements FileRepository {
     return { token: null, visibility: 'private' }
   }
 
-  private async assertParentAndProject(args: {
+  private async assertParentAndProject(db: FileDb, args: {
+    fileId?: string
     userId: string
     parentId?: string
     projectId?: string
   }): Promise<void> {
     if (args.parentId) {
-      const [parent] = await this.db
+      const [parent] = await db
         .select({ id: files.id, kind: files.kind, type: files.type })
         .from(files)
         .where(and(
@@ -505,9 +624,31 @@ export class PostgresFileRepository implements FileRepository {
         ))
         .limit(1)
       if (!parent || inferKind(parent) !== 'folder') throw new Error('Unauthorized')
+      if (args.fileId) {
+        const cycle = await db.execute<{ id: string }>(sql`
+          WITH RECURSIVE ancestors AS (
+            SELECT id, parent_id
+            FROM files
+            WHERE id = ${args.parentId}
+              AND user_id = ${args.userId}
+              AND deleted_at IS NULL
+            UNION ALL
+            SELECT parent.id, parent.parent_id
+            FROM files parent
+            JOIN ancestors child ON child.parent_id = parent.id
+            WHERE parent.user_id = ${args.userId}
+              AND parent.deleted_at IS NULL
+          )
+          SELECT id
+          FROM ancestors
+          WHERE id = ${args.fileId}
+          LIMIT 1
+        `)
+        if (cycle.rows.length > 0) throw new Error('File parent cycle detected')
+      }
     }
     if (args.projectId) {
-      const [project] = await this.db
+      const [project] = await db
         .select({ id: projects.id })
         .from(projects)
         .where(and(
@@ -520,8 +661,8 @@ export class PostgresFileRepository implements FileRepository {
     }
   }
 
-  private async getPendingUploadIntentBytes(userId: string): Promise<number> {
-    const result = await this.db.execute(sql`
+  private async getPendingUploadIntentBytes(db: FileDb, userId: string): Promise<number> {
+    const result = await db.execute(sql`
       SELECT COALESCE(SUM(declared_size_bytes), 0) AS pending_bytes
       FROM r2_upload_intents
       WHERE user_id = ${userId}
@@ -531,8 +672,8 @@ export class PostgresFileRepository implements FileRepository {
     return Number(result.rows[0]?.pending_bytes ?? 0)
   }
 
-  private async getStorageBytesUsed(userId: string): Promise<number> {
-    const result = await this.db.execute(sql`
+  private async getStorageBytesUsed(db: FileDb, userId: string): Promise<number> {
+    const result = await db.execute(sql`
       SELECT COALESCE(SUM(size_bytes), 0) AS storage_bytes
       FROM files
       WHERE user_id = ${userId}
@@ -544,7 +685,7 @@ export class PostgresFileRepository implements FileRepository {
     return Number(result.rows[0]?.storage_bytes ?? 0)
   }
 
-  private async findCanonicalDuplicate(args: {
+  private async findCanonicalDuplicate(db: FileDb, args: {
     contentHash: string
     ignoreFileId?: string
     userId: string
@@ -556,7 +697,7 @@ export class PostgresFileRepository implements FileRepository {
       isNull(files.deletedAt),
       args.ignoreFileId ? ne(files.id, args.ignoreFileId) : undefined,
     ].filter(Boolean)
-    const [row] = await this.db
+    const [row] = await db
       .select()
       .from(files)
       .where(and(...filters))
@@ -565,12 +706,12 @@ export class PostgresFileRepository implements FileRepository {
     return row ?? null
   }
 
-  private async promoteDuplicate(args: {
+  private async promoteDuplicate(db: FileDb, args: {
     canonicalFileId: string
     excludeFileIds?: Set<string>
     userId: string
   }): Promise<string | null> {
-    const candidates = await this.db
+    const candidates = await db
       .select()
       .from(files)
       .where(and(
@@ -581,7 +722,7 @@ export class PostgresFileRepository implements FileRepository {
       .orderBy(files.createdAt)
     const promoted = candidates.find((candidate) => !args.excludeFileIds?.has(candidate.id))
     if (!promoted) return null
-    await this.db
+    await db
       .update(files)
       .set({
         duplicateOfFileId: null,
@@ -589,14 +730,26 @@ export class PostgresFileRepository implements FileRepository {
         updatedAt: new Date(),
       })
       .where(eq(files.id, promoted.id))
+    await db
+      .update(files)
+      .set({
+        duplicateOfFileId: promoted.id,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(files.userId, args.userId),
+        eq(files.duplicateOfFileId, args.canonicalFileId),
+        ne(files.id, promoted.id),
+        isNull(files.deletedAt),
+      ))
     return promoted.id
   }
 
-  private async getSubtreeRows(args: {
+  private async getSubtreeRows(db: FileDb, args: {
     fileId: string
     userId: string
   }): Promise<Array<FileRow & { depth: number }>> {
-    const result = await this.db.execute(sql`
+    const result = await db.execute(sql`
       WITH RECURSIVE subtree AS (
         SELECT *, 0 AS depth
         FROM files
@@ -616,6 +769,14 @@ export class PostgresFileRepository implements FileRepository {
     `)
     return result.rows.map((row) => fileRowFromRaw(row))
   }
+}
+
+async function lockFileHierarchy(db: Pick<OverlayPostgresDb, 'execute'>, userId: string): Promise<void> {
+  await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${'files:' + userId}, 0))`)
+}
+
+async function lockStorageQuota(db: Pick<OverlayPostgresDb, 'execute'>, userId: string): Promise<void> {
+  await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${'storage:' + userId}, 0))`)
 }
 
 function normalizeFile(row: FileRow): FileRecord {

@@ -87,6 +87,7 @@ Use separate schemas/databases for these concerns. They have different ownership
 | P1 runtime | Current branch | Added migration locking and compatibility checks, Postgres idempotency/replay stores, Redis rate limiting, durable jobs/outbox/scheduler, worker runtime, and Postgres model-catalog persistence. |
 | P2 chat | Current branch | Added transactional conversation events, cursor-based browser synchronization, batched text-delta persistence, disconnect-safe background draining, stop/finalize race protection, repository-backed message/share/stream-auth routes, and provider-neutral public shares. |
 | P3a projects | Current branch | Added provider-neutral project CRUD, hierarchy locks and cycle checks, linked-resource authorization, recursive soft deletion, and Postgres project UI capability exposure. |
+| P3b files/storage | Current branch | Added atomic extracted-document writes, file hierarchy constraints, unique upload intents, durable S3 cleanup jobs, bulk duplicate reconciliation, and scheduled object reconciliation. |
 
 ## Key Code Boundaries
 
@@ -184,7 +185,7 @@ Supported or degraded:
 | Onboarding | Supported | Backed by `onboarding_state`. |
 | Notes | Supported | Backed by `notes`. |
 | Projects | Supported | Provider-neutral CRUD, nested hierarchy, ownership checks, and linked conversation/note/file filtering. |
-| File metadata | Degraded | Metadata, upload intents, duplicate promotion, and recursive delete supported; vector indexing disabled. |
+| File lifecycle | Supported | Metadata, private uploads/downloads, atomic extraction, upload intents, hierarchy, sharing, duplicate promotion, durable cleanup, and S3 reconciliation are supported. |
 | Account deletion | Supported | Deletes auth user/session and app-data rows. |
 | Background maintenance | Supported | Durable Postgres scheduler/worker, with an explicit one-off maintenance command for operations. |
 | Runtime coordination | Supported | Postgres idempotency/replay/leases and shared Redis rate limiting. |
@@ -288,21 +289,29 @@ The route response shape is kept compatible with the existing Convex-backed fron
 
 Files are backed by `PostgresFileRepository` in Postgres mode.
 
-Supported or partially supported operations:
+Supported operations:
 
 - File/folder metadata CRUD.
 - Recursive subtree delete.
-- Duplicate detection and duplicate promotion.
-- Upload intent creation/finalization/expiration.
+- Duplicate detection, canonical promotion, and repointing of surviving duplicates.
+- Concurrency-safe upload intent creation/finalization/expiration.
+- Atomic PDF, DOCX, and text extraction writes.
 - Owner-scoped file listing.
 - Share metadata fields.
-- Quota accounting as an explicit no-op in billing-disabled Postgres pilot mode.
+- Derived storage usage plus serialized pending-upload reservation accounting in billing-disabled mode.
+- Durable physical-object cleanup for file, project, account, and expired-intent deletion.
+- Scheduled S3 orphan and missing-object reconciliation.
 
-Still not full parity:
+Separate later-phase capabilities:
 
 - Vector indexing is disabled.
-- Knowledge chunk purge is limited to metadata boundaries because Postgres vector chunks do not exist yet.
+- Knowledge chunks do not exist until the P5 pgvector implementation.
 - Generated outputs remain outside the current Postgres pilot surface.
+
+The web service alone is insufficient for this lifecycle. Deploy
+`npm run app-db:worker` as a separately supervised process with the same
+`OVERLAY_DATABASE_URL` and S3 configuration so cleanup and reconciliation jobs
+are retried and dead-lettered correctly.
 
 ## Account Deletion
 
@@ -632,7 +641,7 @@ Parity exists or is close enough for pilot:
 - Onboarding.
 - Notes CRUD.
 - Project CRUD, nested hierarchy, resource association, and recursive soft deletion.
-- File metadata and upload intent lifecycle.
+- Complete file metadata, upload, extraction, sharing, duplicate, cleanup, and reconciliation lifecycle.
 - Account deletion cleanup.
 - Shared idempotency, service-auth replay protection, Redis rate limits, durable jobs/outbox, scheduler ownership, and background maintenance.
 - Restart-safe model catalog persistence.

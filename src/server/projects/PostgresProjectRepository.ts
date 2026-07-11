@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
-import { and, asc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, inArray, isNull, ne, notInArray, sql } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
   conversations,
@@ -10,6 +10,7 @@ import {
   projects,
 } from '@/server/database/postgres/schema'
 import { emitPostgresConversationEvent } from '@/server/conversations/PostgresConversationEvents'
+import { enqueueStorageCleanupJobs } from '@/server/storage/PostgresStorageCleanupJobs'
 import type {
   DeleteProjectTreeResult,
   ProjectRecord,
@@ -210,6 +211,44 @@ export class PostgresProjectRepository implements ProjectRepository {
         ))
         .returning({ id: notes.id })
 
+      const projectFiles = await tx
+        .select()
+        .from(files)
+        .where(and(
+          eq(files.userId, args.userId),
+          inArray(files.projectId, deletedIds),
+          isNull(files.deletedAt),
+        ))
+      const projectFileIds = projectFiles.map((file) => file.id)
+      for (const canonical of projectFiles.filter((file) => file.type === 'file' && !file.duplicateOfFileId)) {
+        const [promoted] = await tx
+          .select()
+          .from(files)
+          .where(and(
+            eq(files.userId, args.userId),
+            eq(files.duplicateOfFileId, canonical.id),
+            projectFileIds.length > 0 ? notInArray(files.id, projectFileIds) : undefined,
+            isNull(files.deletedAt),
+          ))
+          .orderBy(asc(files.createdAt))
+          .limit(1)
+        if (!promoted) continue
+        await tx
+          .update(files)
+          .set({ duplicateOfFileId: null, indexStatus: 'pending', updatedAt: now })
+          .where(eq(files.id, promoted.id))
+        await tx
+          .update(files)
+          .set({ duplicateOfFileId: promoted.id, updatedAt: now })
+          .where(and(
+            eq(files.userId, args.userId),
+            eq(files.duplicateOfFileId, canonical.id),
+            ne(files.id, promoted.id),
+            projectFileIds.length > 0 ? notInArray(files.id, projectFileIds) : undefined,
+            isNull(files.deletedAt),
+          ))
+      }
+
       const deletedFiles = await tx
         .update(files)
         .set({ deletedAt: now, indexStatus: 'skipped', updatedAt: now })
@@ -218,7 +257,14 @@ export class PostgresProjectRepository implements ProjectRepository {
           inArray(files.projectId, deletedIds),
           isNull(files.deletedAt),
         ))
-        .returning({ id: files.id })
+        .returning({ id: files.id, r2Key: files.r2Key })
+
+      await enqueueStorageCleanupJobs(tx, {
+        dedupeKey: `project-delete:${args.projectId}`,
+        keys: deletedFiles.flatMap((file) => file.r2Key ? [file.r2Key] : []),
+        reason: 'project-delete',
+        userId: args.userId,
+      })
 
       await tx
         .update(projects)

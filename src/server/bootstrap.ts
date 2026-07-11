@@ -91,7 +91,7 @@ export function createOverlayServerContext(
   return {
     auth: appConfig.authProvider ?? createAuthProvider(runtimeConfig, userService),
     billing: appConfig.billingProvider ?? createBillingProvider(runtimeConfig),
-    objectStore: appConfig.objectStore ?? createObjectStore(runtimeConfig),
+    objectStore: appConfig.objectStore ?? createObjectStoreForRuntime(runtimeConfig),
     vectorStore: appConfig.vectorStore ?? createVectorStore(runtimeConfig),
     llmGateway: appConfig.llmGateway ?? createLlmGateway(runtimeConfig),
     rateLimiter: appConfig.rateLimiter ?? createRateLimiter(runtimeConfig),
@@ -189,7 +189,7 @@ function createBillingProvider(config: OverlayRuntimeConfig | null): BillingProv
   ])
 }
 
-function createObjectStore(config: OverlayRuntimeConfig | null): ObjectStore {
+export function createObjectStoreForRuntime(config: OverlayRuntimeConfig | null): ObjectStore {
   if (!config) return new R2ObjectStore()
 
   const storageProvider = selectedProvider(config, 'objectStorage', config.storage.provider)

@@ -222,13 +222,13 @@ export class FileService {
       userId: args.userId,
     })
     const r2Keys = ownedStorageKeysForSubtree(args.userId, r2Entries)
-    if (r2Keys.length > 0) {
+    if (this.deps.repository.storageCleanupMode === 'immediate' && r2Keys.length > 0) {
       await this.storage.deleteObjects(r2Keys)
     }
     await this.deps.repository.removeFile({
       fileId: args.fileId,
       userId: args.userId,
-      r2CleanupConfirmed: r2Keys.length > 0,
+      r2CleanupConfirmed: this.deps.repository.storageCleanupMode === 'immediate' && r2Keys.length > 0,
     })
     return { success: true }
   }
@@ -507,39 +507,26 @@ export class FileService {
       uploadedR2Key = r2Key
       await this.storage.uploadBuffer(r2Key, buf, mimeType)
 
-      const ids: string[] = []
       const partWrites = buildTextFilePartWrites(safeName, text)
       const total = partWrites.length
-      for (let p = 0; p < partWrites.length; p++) {
-        const part = partWrites[p]!
-        try {
-          const created = await this.deps.repository.createFile({
-            userId: args.userId,
-            name: part.name,
-            type: 'file',
-            content: part.content,
-            contentHash: part.contentHash,
-            projectId: sanitizeConvexIdParam(args.projectId),
-            parentId: sanitizeConvexIdParam(args.parentId),
-            ...(p === 0
-              ? {
-                  r2Key,
-                  sizeBytesOverride: Math.max(0, Math.round(buf.byteLength)),
-                }
-              : {}),
-          })
-          if (!created) {
-            await this.cleanupUploadedDocument(uploadedR2RetainedByFileRecord ? null : uploadedR2Key)
-            serviceError({ error: 'Could not save indexed document.' }, 500)
-          }
-          if (p === 0) {
-            uploadedR2RetainedByFileRecord = true
-          }
-          ids.push(created)
-        } catch (error) {
-          await this.cleanupUploadedDocument(uploadedR2RetainedByFileRecord ? null : uploadedR2Key)
-          this.throwIngestCreateError(error)
+      let ids: string[]
+      try {
+        ids = await this.deps.repository.createExtractedDocument({
+          mimeType,
+          parentId: sanitizeConvexIdParam(args.parentId),
+          parts: partWrites,
+          projectId: sanitizeConvexIdParam(args.projectId),
+          r2Key,
+          sourceSizeBytes: Math.max(0, Math.round(buf.byteLength)),
+          userId: args.userId,
+        })
+        uploadedR2RetainedByFileRecord = ids.length > 0
+        if (ids.length !== partWrites.length) {
+          serviceError({ error: 'Could not save indexed document.' }, 500)
         }
+      } catch (error) {
+        await this.cleanupUploadedDocument(uploadedR2RetainedByFileRecord ? null : uploadedR2Key)
+        this.throwIngestCreateError(error)
       }
 
       return { id: ids[0], ids, name: safeName, parts: total }

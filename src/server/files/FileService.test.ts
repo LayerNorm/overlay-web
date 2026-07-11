@@ -59,6 +59,7 @@ function createRepository(overrides: Partial<FileRepository> = {}): FileReposito
   const createdUploadIntents: Array<Record<string, unknown>> = []
   const removedFiles: Array<Record<string, unknown>> = []
   const repository = {
+    storageCleanupMode: 'immediate' as const,
     createdFiles,
     createdUploadIntents,
     removedFiles,
@@ -80,6 +81,10 @@ function createRepository(overrides: Partial<FileRepository> = {}): FileReposito
     async createFileWithStorage(args: Record<string, unknown> & { userId: string }) {
       createdFiles.push(args)
       return `file_${createdFiles.length}`
+    },
+    async createExtractedDocument(args) {
+      args.parts.forEach((part) => createdFiles.push({ ...part, userId: args.userId }))
+      return args.parts.map((_, index) => `file_${index + 1}`)
     },
     async updateFile() {},
     async removeFile(args: { fileId: string; r2CleanupConfirmed?: boolean; userId: string }) {
@@ -253,6 +258,39 @@ test('FileService.deleteFile deletes only owned R2 keys before removing row', as
     userId: 'user_1',
     r2CleanupConfirmed: true,
   })
+})
+
+test('FileService.deleteFile defers physical deletion for durable repositories', async () => {
+  const storage = createStorage()
+  const repository = createRepository({
+    storageCleanupMode: 'durable',
+    async getR2KeysForSubtree() {
+      return [{ fileId: 'file_1', r2Key: 'users/user_1/files/file_1/report.pdf' }]
+    },
+  })
+  await createService(repository, storage).deleteFile({ fileId: 'file_1', userId: 'user_1' })
+  assert.deepEqual(storage.deletedKeys, [])
+  assert.equal(repository.removedFiles[0]?.r2CleanupConfirmed, false)
+})
+
+test('FileService.ingestDocument persists extracted parts in one repository operation', async () => {
+  const storage = createStorage()
+  let extractedCalls = 0
+  const repository = createRepository({
+    async createExtractedDocument(args) {
+      extractedCalls += 1
+      assert.equal(args.parts.length, 1)
+      assert.equal(args.parts[0]?.content, 'document body')
+      return ['file_document']
+    },
+  })
+  const result = await createService(repository, storage).ingestDocument({
+    file: new File(['document body'], 'document.txt', { type: 'text/plain' }),
+    userId: 'user_1',
+  })
+  assert.equal(extractedCalls, 1)
+  assert.deepEqual(result.ids, ['file_document'])
+  assert.equal(storage.uploadedKeys.length, 1)
 })
 
 test('FileService.getContentProxy records bandwidth and returns redirect', async () => {

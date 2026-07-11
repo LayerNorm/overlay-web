@@ -518,6 +518,16 @@ export async function runAppDataRepositoryContractSuite(
         contentHash,
       })
       assert.ok(duplicateId)
+      const secondDuplicateId = await backend.files.createFile({
+        userId,
+        name: 'duplicate-2.txt',
+        type: 'file',
+        kind: 'upload',
+        content: duplicateContent,
+        textContent: duplicateContent,
+        contentHash,
+      })
+      assert.ok(secondDuplicateId)
 
       const duplicate = await backend.files.getFile({ fileId: duplicateId, userId })
       assert.equal(duplicate?.duplicateOfFileId, canonicalId)
@@ -537,8 +547,14 @@ export async function runAppDataRepositoryContractSuite(
       assert.deepEqual(privateShare, { visibility: 'private', token: null })
 
       await backend.files.removeFile({ fileId: canonicalId, userId })
-      const promotedDuplicate = await backend.files.getFile({ fileId: duplicateId, userId })
-      assert.equal(promotedDuplicate?.duplicateOfFileId, undefined)
+      const remainingDuplicates = await Promise.all([
+        backend.files.getFile({ fileId: duplicateId, userId }),
+        backend.files.getFile({ fileId: secondDuplicateId, userId }),
+      ])
+      const promotedDuplicate = remainingDuplicates.find((file) => !file?.duplicateOfFileId)
+      const linkedDuplicate = remainingDuplicates.find((file) => Boolean(file?.duplicateOfFileId))
+      assert.ok(promotedDuplicate)
+      assert.equal(linkedDuplicate?.duplicateOfFileId, promotedDuplicate._id)
 
       const folderId = await backend.files.createFile({
         userId,
@@ -547,7 +563,27 @@ export async function runAppDataRepositoryContractSuite(
         kind: 'folder',
       })
       assert.ok(folderId)
+      const nestedFolderId = await backend.files.createFile({
+        userId,
+        name: 'Nested folder',
+        type: 'folder',
+        kind: 'folder',
+        parentId: folderId,
+      })
+      assert.ok(nestedFolderId)
+      await assert.rejects(backend.files.updateFile({
+        fileId: folderId,
+        parentId: nestedFolderId,
+        userId,
+      }))
       const childR2Key = `users/${userId}/files/${randomUUID()}/child.txt`
+      await backend.files.createUploadIntent({
+        userId,
+        r2Key: childR2Key,
+        declaredSizeBytes: 12,
+        mimeType: 'text/plain',
+        expiresAt: Date.now() + 60_000,
+      })
       const childId = await backend.files.createFileWithStorage({
         userId,
         name: 'child.txt',
@@ -566,6 +602,22 @@ export async function runAppDataRepositoryContractSuite(
       })
       assert.equal(await backend.files.getFile({ fileId: childId, userId }), null)
 
+      const extractedR2Key = `users/${userId}/files/${randomUUID()}/document.pdf`
+      const extractedIds = await backend.files.createExtractedDocument({
+        mimeType: 'application/pdf',
+        parts: [
+          { name: 'document.pdf', content: 'first section', contentHash: hashTextContent('first section') },
+          { name: 'document.part-2.pdf', content: 'second section', contentHash: hashTextContent('second section') },
+        ],
+        r2Key: extractedR2Key,
+        sourceSizeBytes: 128,
+        userId,
+      })
+      assert.equal(extractedIds.length, 2)
+      const extractedFirst = await backend.files.getFile({ fileId: extractedIds[0]!, userId })
+      assert.equal(extractedFirst?.r2Key, extractedR2Key)
+      assert.equal(extractedFirst?.textContent ?? extractedFirst?.content, 'first section')
+
       const intentR2Key = `users/${userId}/files/${randomUUID()}/upload.txt`
       await backend.files.createUploadIntent({
         userId,
@@ -574,6 +626,13 @@ export async function runAppDataRepositoryContractSuite(
         mimeType: 'text/plain',
         expiresAt: Date.now() + 60_000,
       })
+      await assert.rejects(backend.files.createUploadIntent({
+        userId,
+        r2Key: intentR2Key,
+        declaredSizeBytes: 32,
+        mimeType: 'text/plain',
+        expiresAt: Date.now() + 60_000,
+      }))
       const intent = await backend.files.getUploadIntent({
         userId,
         r2Key: intentR2Key,

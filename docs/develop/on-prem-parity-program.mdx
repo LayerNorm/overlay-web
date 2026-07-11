@@ -64,8 +64,9 @@ Shared multi-tenant Postgres hosting is not part of the parity program. Runtime 
 | P0 | Measurement, route inventory, runtime isolation, identity, app shell | Every capability and route family has one owner and exit gate. Direct Convex touchpoints cannot drift unnoticed. Postgres server/browser smoke can prove no Convex runtime traffic. |
 | P1 | Production runtime foundations and model catalog | Shared idempotency, replay protection, distributed rate limits, leases, scheduler ownership, and restart-safe catalog behavior exist without Convex. |
 | P2 | Chat | Send/read/title/stop/share/resume/reconnect and second-tab behavior match Convex, including durable stream recovery. |
-| P3 | Projects | Project hierarchy, CRUD, associations, authorization, and UI behavior match Convex. |
-| P4 | Files, notes, outputs, and generated media | Metadata, binary lifecycle, ingestion, sharing, duplicate handling, cleanup, generated outputs, retries, and DTOs match Convex. |
+| P3a | Projects | Project hierarchy, CRUD, associations, authorization, and UI behavior match Convex. |
+| P3b | Files, notes, ingestion, and object storage | Metadata, binary lifecycle, atomic extraction, sharing, duplicate handling, durable cleanup, reconciliation, and DTOs match Convex. |
+| P3c | Outputs and generated media | Generated files, images, video, browser/sandbox artifacts, retries, and cleanup match Convex. |
 | P5 | Knowledge, memory, and vector search | Extraction, embeddings, `pgvector` retrieval, citations, reindex, retention, and deletion match Convex behavior. |
 | P6 | Automations and webhooks | Durable scheduling, claims, retries, signed delivery, dead letters, and audit records work across worker replacement. |
 | P7 | Integrations, extensions, skills, and MCP | OAuth/credential lifecycle, connector state, proxy/tool execution, scoping, discovery, and audit behavior match Convex. |
@@ -310,7 +311,7 @@ the web route:
 - Clearing project instructions or a parent is explicit and provider-neutral.
 - Deleting a project recursively soft-deletes active descendants and linked conversations, notes, and file records.
 - Postgres project deletion writes conversation deletion events so other tabs observe the change through the P2 cursor.
-- Physical object deletion and duplicate-file reconciliation after bulk project deletion remain P3b storage lifecycle work.
+- Physical object deletion and duplicate-file reconciliation after bulk project deletion are completed by P3b durable storage jobs.
 
 Run the Docker-free P3a gate against the dedicated contract database:
 
@@ -328,3 +329,44 @@ P3a is complete when:
 - Project-linked conversations, notes, and files list consistently for both providers.
 - Recursive project deletion removes descendants and soft-deletes linked records.
 - Account deletion leaves no project or linked-resource orphans.
+
+## P3b Files, Ingestion, And Object Storage
+
+P3b makes the complete file route family supported in Postgres mode while
+keeping vector search and generated outputs in their later phases:
+
+- File and folder parent relationships have database foreign keys, self-reference checks, per-user hierarchy locks, and cycle rejection.
+- Upload-intent keys are unique. Reservation, object-backed file creation, and intent finalization are concurrency-safe, with idempotent finalization.
+- PDF, DOCX, and text extraction still uses the product's existing synchronous request contract, but all extracted parts are now written atomically by one repository operation.
+- Canonical duplicate deletion promotes one surviving copy and repoints the remaining duplicate set to the promoted record.
+- File, project, expired-intent, and account deletion enqueue bounded `storage.delete-objects` jobs in the same Postgres transaction as metadata changes.
+- Cleanup jobs are leased, retried, heartbeat-aware, idempotent against S3, and dead-letter through the P1 worker runtime.
+- Daily `storage.reconcile` work expires abandoned intents, queues old unreferenced `users/*/files/*` objects, and marks active file metadata when its object is missing.
+- Exact text search, private content proxying, sharing, and owner/project checks remain provider-neutral.
+
+Run the Docker-free P3b gate against the dedicated contract database:
+
+```bash
+npm run check:p3b:remote
+```
+
+Production and AWS deployments must run the long-lived worker with the same
+Postgres and object-storage configuration as the web service:
+
+```bash
+npm run app-db:worker
+```
+
+### P3b Exit Gate
+
+P3b is complete when:
+
+- Every `/api/v1/files` operation is classified as supported in Postgres mode.
+- Shared Neon and Convex contracts pass hierarchy, duplicate, upload-intent, extraction, sharing, and deletion behavior.
+- File/project/account deletion commits metadata and durable cleanup work atomically.
+- A real Neon worker claim executes an object-deletion job.
+- Reconciliation detects both orphaned objects and missing referenced objects without deleting recent uploads.
+- Schema version 6 and its file/upload constraints are installed and compatibility-checked.
+
+P3b does not claim `pgvector`, memory/knowledge retrieval, generated outputs, or
+browser/sandbox artifact parity. Those remain P5 and P3c work.

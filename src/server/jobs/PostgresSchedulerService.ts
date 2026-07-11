@@ -23,6 +23,12 @@ export const POSTGRES_RUNTIME_SCHEDULES = [
     jobType: 'coordination.cleanup',
     payload: {},
   },
+  {
+    id: 'storage-reconciliation',
+    intervalMs: 24 * 60 * 60_000,
+    jobType: 'storage.reconcile',
+    payload: {},
+  },
 ] as const
 
 type DueTask = {

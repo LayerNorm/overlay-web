@@ -7,6 +7,11 @@ import type {
   AccountDataDeletionRepository,
   AccountDataDeletionResult,
 } from './AccountDataDeletionRepository'
+import { enqueueStorageCleanupJobs } from '@/server/storage/PostgresStorageCleanupJobs'
+import {
+  isOwnedFileR2Key,
+  isOwnedOutputR2Key,
+} from '@/server/storage/storage-keys'
 
 const ZERO_COUNTS: AccountDataDeletionCounts = {
   apiIdempotencyKeys: 0,
@@ -34,6 +39,13 @@ export class PostgresAccountDataDeletionRepository implements AccountDataDeletio
       const r2Keys = await selectR2Keys(tx, args.userId)
       const storageIds = await selectStorageIds(tx, args.userId)
       const beforeCounts = await countUserRows(tx, args.userId)
+
+      await enqueueStorageCleanupJobs(tx, {
+        dedupeKey: `account-delete:${args.userId}`,
+        keys: r2Keys,
+        reason: 'account-delete',
+        userId: args.userId,
+      })
 
       await tx.execute(sql`
         DELETE FROM users
@@ -82,7 +94,9 @@ async function selectR2Keys(tx: Transaction, userId: string): Promise<string[]> 
     WHERE user_id = ${userId}
       AND r2_key IS NOT NULL
   `)
-  return result.rows.map((row) => row.r2_key).filter(Boolean)
+  return result.rows
+    .map((row) => row.r2_key)
+    .filter((key) => isOwnedFileR2Key(userId, key) || isOwnedOutputR2Key(userId, key))
 }
 
 async function selectStorageIds(tx: Transaction, userId: string): Promise<string[]> {

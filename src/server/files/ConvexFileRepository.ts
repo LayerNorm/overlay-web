@@ -6,6 +6,7 @@ import { cleanupExpiredR2UploadIntents } from '@/server/storage/r2-upload-intent
 import type {
   FileRepository,
   FileRecord,
+  ExtractedDocumentPart,
   FileShareResult,
   FileStorageEntitlements,
   FileStorageProxyTarget,
@@ -14,6 +15,8 @@ import type {
 } from './FileRepository'
 
 export class ConvexFileRepository implements FileRepository {
+  readonly storageCleanupMode = 'immediate' as const
+
   private get serverSecret(): string {
     return getInternalApiSecret()
   }
@@ -50,6 +53,21 @@ export class ConvexFileRepository implements FileRepository {
       ...args,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
+  }
+
+  async createExtractedDocument(args: {
+    mimeType: string
+    parentId?: string
+    parts: ExtractedDocumentPart[]
+    projectId?: string
+    r2Key: string
+    sourceSizeBytes: number
+    userId: string
+  }): Promise<string[]> {
+    return await convex.mutation<string[]>('files/files:createExtractedDocument', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? []
   }
 
   async updateFile(args: Record<string, unknown> & { fileId: string; userId: string }): Promise<void> {
