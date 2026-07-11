@@ -16,10 +16,19 @@ import {
 } from '@/server/storage/PostgresStorageCleanupJobs'
 import { PostgresStorageReconciliationService } from '@/server/storage/PostgresStorageReconciliationService'
 import { PostgresOutputRetentionService } from '@/server/outputs/PostgresOutputRetentionService'
+import {
+  KNOWLEDGE_REINDEX_JOB,
+  KnowledgeIndexService,
+  PostgresKnowledgeIndexRepository,
+  createEmbeddingProvider,
+  type EmbeddingProvider,
+} from '@/server/knowledge'
+import { getOverlayRuntimeConfigSync } from '@/server/config'
 
 export function createPostgresRuntime(args: {
   db: OverlayPostgresDb
   leaseMs: number
+  embeddingProvider?: EmbeddingProvider
   objectStore?: Pick<ObjectStore, 'deleteObject' | 'listObjects'>
   workerId: string
 }) {
@@ -33,6 +42,14 @@ export function createPostgresRuntime(args: {
     ? new PostgresStorageReconciliationService(args.db, args.objectStore)
     : null
   const outputRetention = new PostgresOutputRetentionService(args.db)
+  let knowledgeIndex: KnowledgeIndexService | null = null
+  const getKnowledgeIndex = () => {
+    knowledgeIndex ??= new KnowledgeIndexService({
+      embeddings: args.embeddingProvider ?? createEmbeddingProvider(getOverlayRuntimeConfigSync()),
+      repository: new PostgresKnowledgeIndexRepository(args.db),
+    })
+    return knowledgeIndex
+  }
   const worker = new PostgresJobWorker({
     handlers: {
       'runtime.healthcheck': async (job) => ({
@@ -51,6 +68,12 @@ export function createPostgresRuntime(args: {
         modelCount: (await getGatewayCatalog(true, modelCatalog)).length,
       }),
       'outputs.purge-expired': async () => await outputRetention.purgeExpired(),
+      [KNOWLEDGE_REINDEX_JOB]: async (job) => await getKnowledgeIndex().reindex({
+        expectedContentHash: stringPayload(job.payload.contentHash),
+        sourceId: requiredStringPayload(job.payload.sourceId, 'sourceId'),
+        sourceKind: sourceKindPayload(job.payload.sourceKind),
+        userId: requiredStringPayload(job.payload.userId, 'userId'),
+      }),
       ...(args.objectStore
         ? {
             [STORAGE_DELETE_OBJECTS_JOB]: createStorageDeleteJobHandler(args.objectStore),
@@ -64,4 +87,19 @@ export function createPostgresRuntime(args: {
   })
 
   return { jobs, scheduler, worker }
+}
+
+function stringPayload(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function requiredStringPayload(value: unknown, name: string): string {
+  const result = stringPayload(value)
+  if (!result) throw new Error(`Knowledge reindex job requires ${name}`)
+  return result
+}
+
+function sourceKindPayload(value: unknown): 'file' | 'memory' {
+  if (value === 'file' || value === 'memory') return value
+  throw new Error('Knowledge reindex job requires sourceKind=file|memory')
 }

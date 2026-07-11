@@ -17,7 +17,15 @@ import { PostgresNoteRepository } from '@/server/notes'
 import { PostgresProjectRepository } from '@/server/projects/PostgresProjectRepository'
 import { PostgresUserRepository } from '@/server/users/PostgresUserRepository'
 import { runAppDataRepositoryContractSuite } from './app-data-repository-contract'
-import { durableJobs, files, users } from '@/server/database/postgres/schema'
+import {
+  durableJobs,
+  files,
+  knowledgeChunkEmbeddings,
+  knowledgeChunks,
+  memories,
+  users,
+} from '@/server/database/postgres/schema'
+import { KNOWLEDGE_EMBEDDING_DIMENSIONS, type EmbeddingProvider } from '@/server/knowledge'
 import {
   enqueueStorageCleanupJobs,
   STORAGE_DELETE_OBJECTS_JOB,
@@ -116,6 +124,56 @@ test('Postgres app-data repository contracts', {
       } finally {
         await db.delete(users).where(eq(users.id, userId))
         await db.delete(users).where(eq(users.id, otherUserId))
+      }
+    })
+    await t.test('Postgres worker indexes and replaces memory knowledge with versioned vectors', async () => {
+      await db.delete(durableJobs)
+      const suffix = randomUUID()
+      const userId = `contract_index_${suffix}`
+      await db.insert(users).values({ id: userId, email: `${userId}@example.com` })
+      const repository = new PostgresMemoryRepository(db)
+      const embeddings: EmbeddingProvider = {
+        identity: {
+          dimensions: KNOWLEDGE_EMBEDDING_DIMENSIONS,
+          modelId: 'contract-embedding',
+          modelVersion: 'contract-v1',
+          provider: 'openai',
+        },
+        embed: async (texts) => texts.map((text) => {
+          const vector = Array<number>(KNOWLEDGE_EMBEDDING_DIMENSIONS).fill(0)
+          vector[0] = Math.min(1, text.length / 10_000)
+          vector[1] = 1
+          return vector
+        }),
+      }
+      try {
+        const memory = await repository.create({
+          content: 'JPGS keeps pilot knowledge inside its private AWS account. '.repeat(50),
+          source: 'manual',
+          userId,
+        })
+        const runtime = createPostgresRuntime({
+          db,
+          embeddingProvider: embeddings,
+          leaseMs: 5_000,
+          workerId: `knowledge-worker-${suffix}`,
+        })
+        assert.equal(await runtime.worker.runOnce(), 'succeeded')
+        const indexedChunks = await db.select().from(knowledgeChunks).where(eq(knowledgeChunks.sourceId, memory._id))
+        assert.ok(indexedChunks.length >= 2)
+        const vectorRows = await db.select().from(knowledgeChunkEmbeddings).where(eq(knowledgeChunkEmbeddings.userId, userId))
+        assert.equal(vectorRows.length, indexedChunks.length)
+        assert.equal(vectorRows[0]?.modelVersion, 'contract-v1')
+        const [indexedMemory] = await db.select().from(memories).where(eq(memories.id, memory._id))
+        assert.equal(indexedMemory?.indexStatus, 'indexed')
+        assert.equal(indexedMemory?.embeddingModelVersion, 'contract-v1')
+
+        await repository.remove({ memoryId: memory._id, userId })
+        assert.equal((await db.select().from(knowledgeChunks).where(eq(knowledgeChunks.sourceId, memory._id))).length, 0)
+        assert.equal((await db.select().from(knowledgeChunkEmbeddings).where(eq(knowledgeChunkEmbeddings.userId, userId))).length, 0)
+      } finally {
+        await db.delete(users).where(eq(users.id, userId))
+        await db.delete(durableJobs)
       }
     })
     await runAppDataRepositoryContractSuite(t, {

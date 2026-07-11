@@ -5,6 +5,7 @@ import { and, desc, eq, gt, isNull } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import { knowledgeChunks, memories } from '@/server/database/postgres/schema'
 import { assertActivePostgresProject } from '@/server/projects/PostgresProjectAccess'
+import { enqueueKnowledgeReindexJob } from '@/server/knowledge/PostgresKnowledgeIndexJobs'
 import type { MemoryRecord, MemoryRepository, MemoryWrite } from './MemoryRepository'
 
 export class PostgresMemoryRepository implements MemoryRepository {
@@ -80,7 +81,15 @@ export class PostgresMemoryRepository implements MemoryRepository {
         })
         .onConflictDoNothing()
         .returning()
-      if (inserted[0]) return inserted[0]
+      if (inserted[0]) {
+        await enqueueKnowledgeReindexJob(tx, {
+          contentHash,
+          sourceId: inserted[0].id,
+          sourceKind: 'memory',
+          userId: args.userId,
+        })
+        return inserted[0]
+      }
 
       const [existing] = await tx
         .select()
@@ -118,7 +127,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
         eq(knowledgeChunks.sourceId, args.memoryId),
         eq(knowledgeChunks.userId, args.userId),
       ))
-      return await tx
+      const rows = await tx
         .update(memories)
         .set({
           actor: args.actor,
@@ -145,6 +154,15 @@ export class PostgresMemoryRepository implements MemoryRepository {
           isNull(memories.deletedAt),
         ))
         .returning()
+      if (rows[0]) {
+        await enqueueKnowledgeReindexJob(tx, {
+          contentHash: rows[0].contentHash,
+          sourceId: rows[0].id,
+          sourceKind: 'memory',
+          userId: rows[0].userId,
+        })
+      }
+      return rows
     })
     return row ? toMemoryRecord(row) : null
   }

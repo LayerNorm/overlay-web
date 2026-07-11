@@ -1,10 +1,11 @@
 import 'server-only'
 
-import { randomBytes, randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
   files,
+  knowledgeChunks,
   projects,
   r2UploadIntents,
 } from '@/server/database/postgres/schema'
@@ -13,6 +14,7 @@ import {
   isOwnedOutputR2Key,
 } from '@/server/storage/storage-keys'
 import { enqueueStorageCleanupJobs } from '@/server/storage/PostgresStorageCleanupJobs'
+import { enqueueKnowledgeReindexJob } from '@/server/knowledge/PostgresKnowledgeIndexJobs'
 import type {
   FileRecord,
   ExtractedDocumentPart,
@@ -163,6 +165,14 @@ export class PostgresFileRepository implements FileRepository {
         createdAt: now,
         updatedAt,
       })
+      if (indexable && !canonicalDuplicate) {
+        await enqueueKnowledgeReindexJob(tx, {
+          contentHash: contentHash ?? hashKnowledgeContent(textContent),
+          sourceId: id,
+          sourceKind: 'file',
+          userId: args.userId,
+        })
+      }
       return id
     })
   }
@@ -276,6 +286,14 @@ export class PostgresFileRepository implements FileRepository {
           createdAt: now,
           updatedAt: now,
         })
+        if (!canonicalDuplicate) {
+          await enqueueKnowledgeReindexJob(tx, {
+            contentHash: part.contentHash,
+            sourceId: id,
+            sourceKind: 'file',
+            userId: args.userId,
+          })
+        }
         ids.push(id)
       }
       return ids
@@ -361,7 +379,7 @@ export class PostgresFileRepository implements FileRepository {
         patch.indexError = null
       }
 
-      await tx
+      const [updated] = await tx
         .update(files)
         .set(patch)
         .where(and(
@@ -369,6 +387,22 @@ export class PostgresFileRepository implements FileRepository {
           eq(files.userId, args.userId),
           isNull(files.deletedAt),
         ))
+        .returning()
+      if (updated?.indexStatus === 'pending') {
+        const content = textOf(updated)
+        await enqueueKnowledgeReindexJob(tx, {
+          contentHash: updated.contentHash ?? hashKnowledgeContent(content),
+          sourceId: updated.id,
+          sourceKind: 'file',
+          userId: updated.userId,
+        })
+      } else if (nextText !== undefined) {
+        await tx.delete(knowledgeChunks).where(and(
+          eq(knowledgeChunks.sourceKind, 'file'),
+          eq(knowledgeChunks.sourceId, args.fileId),
+          eq(knowledgeChunks.userId, args.userId),
+        ))
+      }
     })
   }
 
@@ -403,6 +437,11 @@ export class PostgresFileRepository implements FileRepository {
             eq(files.userId, args.userId),
             isNull(files.deletedAt),
           ))
+        await tx.delete(knowledgeChunks).where(and(
+          eq(knowledgeChunks.sourceKind, 'file'),
+          eq(knowledgeChunks.sourceId, row.id),
+          eq(knowledgeChunks.userId, args.userId),
+        ))
       }
 
       await enqueueStorageCleanupJobs(tx, {
@@ -767,6 +806,14 @@ export class PostgresFileRepository implements FileRepository {
         updatedAt: new Date(),
       })
       .where(eq(files.id, promoted.id))
+    if (promoted.indexable) {
+      await enqueueKnowledgeReindexJob(db, {
+        contentHash: promoted.contentHash ?? hashKnowledgeContent(textOf(promoted)),
+        sourceId: promoted.id,
+        sourceKind: 'file',
+        userId: promoted.userId,
+      })
+    }
     await db
       .update(files)
       .set({
@@ -806,6 +853,10 @@ export class PostgresFileRepository implements FileRepository {
     `)
     return result.rows.map((row) => fileRowFromRaw(row))
   }
+}
+
+function hashKnowledgeContent(content: string): string {
+  return createHash('sha256').update(content).digest('hex')
 }
 
 async function lockFileHierarchy(db: Pick<OverlayPostgresDb, 'execute'>, userId: string): Promise<void> {
