@@ -15,13 +15,13 @@ Use `none` plus the matching feature flag when a provider family must be disable
 | Billing | `stripe`, `none` | `stripe` supports subscriptions, top-ups, portal sessions, and webhooks. Use `none` for private deployments. |
 | Object storage | `r2`, `s3`, `none` | `r2` is the hosted default. `s3` covers AWS S3 and compatible enterprise object stores. Keep compatible stores under `s3`; set `storage.s3.forcePathStyle=true` only when required. |
 | Models | `openrouter`, `ai-gateway`, `openai`, `anthropic`, `groq`, `none` | All listed model providers have active routing paths except `none`, which intentionally disables generation. |
-| Database | `convex`, `postgres` | `convex` is the hosted/default app-data provider. `postgres` supports the pilot app-data slice for auth-linked users, chat persistence, settings/onboarding, notes, files metadata/upload intents, account deletion, and explicit maintenance jobs. |
+| Database | `convex`, `postgres` | `convex` is the hosted/default app-data provider. `postgres` supports users, chat, projects, files, notes, generated outputs, memory, and knowledge retrieval; later parity phases still cover automations, integrations, and billing controls. |
 
 ## Enterprise Provider Families
 
 | Purpose | Values | Data processed | Current support |
 | --- | --- | --- | --- |
-| Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | `convex` and `none` are supported. `pgvector` is the planned Postgres-native direction, but no adapter exists yet. `pinecone` is declared but rejected until an adapter exists. |
+| Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | `convex`, `pgvector`, and `none` are supported. `pgvector` uses durable indexing, model-versioned embeddings, scoped hybrid retrieval, and cleanup in Postgres mode. `pinecone` is declared but rejected until an adapter exists. |
 | Embeddings | `ai-gateway`, `openai`, `azure-openai`, `none` | Text chunks sent for embedding | `ai-gateway`, `openai`, and `none` are current paths. `azure-openai` is declared but rejected until implemented. |
 | Integrations | `composio`, `mcp`, `none` | Connected-account metadata and tool inputs/outputs | `composio` and `none` are supported. `mcp` is declared but rejected as a provider family until bootstrap wiring exists. |
 | Browser use | `browser-use`, `self-hosted-playwright`, `none` | Browser tasks, page content, and entered credentials | `browser-use` and `none` are supported. `self-hosted-playwright` is declared but rejected until an adapter exists. |
@@ -61,7 +61,7 @@ For strict deployments, combine this with `compliance.allowExternalProcessors=fa
 
 ## Postgres And Vector Search
 
-Postgres app-data v1 does not imply vector-search parity. In Postgres mode, keep:
+Postgres vector search is opt-in. For deployments that do not need knowledge retrieval, keep:
 
 ```env
 OVERLAY_PROVIDER_VECTOR_SEARCH=none
@@ -69,7 +69,7 @@ VECTOR_SEARCH_ENABLED=false
 OVERLAY_FEATURE_VECTOR_SEARCH=false
 ```
 
-Future Postgres-native memory and knowledge search should use `pgvector`, not Convex as a hidden sidecar. That means the deployment's managed Postgres provider must expose the `vector` extension before the adapter can be enabled.
+To enable Postgres-native memory and knowledge search, use `pgvector`, not Convex as a hidden sidecar. The managed Postgres provider must expose the `vector` extension, the app-data migrations must be current, and a durable worker must remain running.
 
 Check provider readiness without mutating the database:
 

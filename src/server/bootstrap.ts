@@ -350,6 +350,7 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
   const capabilities = runtimeCapabilities(config)
   const authProvider = selectedProvider(config, 'auth', config.auth.provider)
   const storageProvider = selectedProvider(config, 'objectStorage', config.storage.provider)
+  const databaseProvider = selectedProvider(config, 'database', config.database.provider)
   const modelProvider = selectedProvider(config, 'models', config.llm.gatewayProvider)
   const vectorSearchProvider = selectedProvider(config, 'vectorSearch', capabilities.vectorSearch ? 'convex' : 'none')
   const rateLimitProvider = selectedProvider(config, 'rateLimit', config.app.deploymentEnvironment === 'onprem' ? 'memory' : 'convex')
@@ -392,13 +393,19 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
   if (capabilities.modelRouting && modelProvider !== 'none' && config.llm.keySource === 'config') {
     issues.push('llm.keySource=config is reserved until encrypted runtime config secrets are implemented')
   }
-  if (config.database.provider === 'postgres' || selectedProvider(config, 'database', config.database.provider) === 'postgres') {
+  if (databaseProvider === 'postgres') {
     if (!config.database.postgres.connectionString) {
       issues.push('database.postgres.connectionString is required when database.provider is postgres')
     }
   }
-  if (vectorSearchProvider !== 'convex' && vectorSearchProvider !== 'none') {
-    issues.push(`providers.vectorSearch.provider=${vectorSearchProvider} is declared but not implemented. Use convex or none.`)
+  if (vectorSearchProvider === 'pgvector' && databaseProvider !== 'postgres') {
+    issues.push('providers.vectorSearch.provider=pgvector requires database.provider=postgres')
+  } else if (
+    vectorSearchProvider !== 'convex' &&
+    vectorSearchProvider !== 'pgvector' &&
+    vectorSearchProvider !== 'none'
+  ) {
+    issues.push(`providers.vectorSearch.provider=${vectorSearchProvider} is declared but not implemented. Use convex, pgvector, or none.`)
   }
   if (rateLimitProvider === 'redis') {
     const redis = config.rateLimit.redis

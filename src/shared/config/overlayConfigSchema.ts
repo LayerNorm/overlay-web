@@ -345,6 +345,16 @@ export const OverlayRuntimeConfigSchema = z
         message: 'Postgres vector search supports pgvector or none',
       })
     }
+    if (
+      selectedProviders.vectorSearch === 'pgvector' &&
+      selectedProviders.database !== 'postgres'
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['providers', 'vectorSearch', 'provider'],
+        message: 'pgvector requires providers.database.provider=postgres',
+      })
+    }
     addUnsupportedProviderIssue(ctx, ['providers', 'vectorSearch', 'provider'], selectedProviders.vectorSearch, {
       pinecone: 'Pinecone is declared for enterprise config v2 but no Pinecone adapter exists yet. Use vectorSearch.provider=convex or none.',
     })

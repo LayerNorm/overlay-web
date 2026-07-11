@@ -131,6 +131,54 @@ test('Postgres P4d knowledge lifecycle', {
       }
     })
 
+    await t.test('memory update reindexes replacement content and delete purges it', async () => {
+      await db.delete(durableJobs)
+      const userId = `p4d_memory_lifecycle_${randomUUID()}`
+      await db.insert(users).values({ id: userId, email: `${userId}@example.com` })
+      try {
+        const repository = new PostgresMemoryRepository(db)
+        const memory = await repository.create({
+          content: 'Original memory marker before replacement.',
+          source: 'manual',
+          userId,
+        })
+        const runtime = createPostgresRuntime({
+          db,
+          embeddingProvider: embeddingsV1,
+          leaseMs: 5_000,
+          workerId: `memory-lifecycle-${randomUUID()}`,
+        })
+        assert.equal(await runtime.worker.runOnce(), 'succeeded')
+        assert.ok((await db.select().from(knowledgeChunks).where(eq(knowledgeChunks.sourceId, memory._id)))
+          .some((chunk) => chunk.text.includes('Original memory marker')))
+
+        await repository.update({
+          content: 'Replacement memory marker after durable reindex.',
+          memoryId: memory._id,
+          source: 'manual',
+          userId,
+        })
+        assert.equal(
+          (await db.select().from(knowledgeChunks).where(eq(knowledgeChunks.sourceId, memory._id))).length,
+          0,
+        )
+        assert.equal(await runtime.worker.runOnce(), 'succeeded')
+        const replacementChunks = await db.select().from(knowledgeChunks)
+          .where(eq(knowledgeChunks.sourceId, memory._id))
+        assert.ok(replacementChunks.some((chunk) => chunk.text.includes('Replacement memory marker')))
+        assert.equal(replacementChunks.some((chunk) => chunk.text.includes('Original memory marker')), false)
+
+        await repository.remove({ memoryId: memory._id, userId })
+        assert.equal(
+          (await db.select().from(knowledgeChunks).where(eq(knowledgeChunks.sourceId, memory._id))).length,
+          0,
+        )
+      } finally {
+        await db.delete(users).where(eq(users.id, userId))
+        await db.delete(durableJobs)
+      }
+    })
+
     await t.test('model backfill, failed recovery, and retention are operational', async () => {
       await db.delete(durableJobs)
       const userId = `p4d_maintenance_${randomUUID()}`

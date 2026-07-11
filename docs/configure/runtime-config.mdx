@@ -110,4 +110,4 @@ OVERLAY_CONFIG_FILE=overlay.config.json npm run check:config
 npm run docs:health
 ```
 
-The config parser rejects unsupported-but-declared providers with explicit boot errors. `postgres` app-data config is accepted when `OVERLAY_DATABASE_URL` is present, but Postgres app-data v1 only covers the pilot app-data slice. It still requires `billing.provider="none"`, `capabilities.billing=false`, `providers.vectorSearch.provider="none"`, and `capabilities.vectorSearch=false`. Future values such as `pgvector`, `e2b`, or `self-hosted-playwright` still fail during config validation instead of silently falling back.
+The config parser rejects unsupported-but-declared providers with explicit boot errors. `postgres` app-data config is accepted when `OVERLAY_DATABASE_URL` is present. Private deployments still require `billing.provider="none"` and `capabilities.billing=false` until the billing parity phase. `pgvector` is supported with Postgres plus an embeddings provider and durable worker; values such as `e2b` or `self-hosted-playwright` still fail during config validation instead of silently falling back.
