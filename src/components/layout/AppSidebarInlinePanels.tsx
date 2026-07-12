@@ -271,7 +271,7 @@ export function ProjectsInlinePanel({
     if (type === 'chat') {
       await overlayAppClient.conversations.deleteResponse({ conversationId: id })
     } else {
-      await overlayAppClient.files.deleteResponse({ fileId: id })
+      await overlayAppClient.notes.deleteResponse({ noteId: id })
     }
     setItemsByProject((prev) => {
       const next = { ...prev }

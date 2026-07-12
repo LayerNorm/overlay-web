@@ -80,9 +80,21 @@ export type ActTurnContext = {
   sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
 }
 
+type AutoRetrievalBuilder = (args: {
+  userMessage: string
+  userId: string
+  accessToken?: string
+  projectId?: string
+  includeMemories?: boolean
+}) => Promise<{
+  extension: string
+  citations: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
+}>
+
 export class ActContextService {
   constructor(private readonly deps: {
     repository: ActConversationRepository
+    buildAutoRetrievalBundle?: AutoRetrievalBuilder
   }) {}
 
   async buildMessagesForModel(params: {
@@ -196,14 +208,17 @@ export class ActContextService {
       extension: string
       citations: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
     }> = (async () => {
-      if (!externalContextEnabled) return { extension: '', citations: {} }
-      if (!args.accessToken) return { extension: '', citations: {} }
       try {
-        const { buildAutoRetrievalBundle } = await import('@/server/knowledge/ask-knowledge-context')
+        const buildAutoRetrievalBundle = this.deps.buildAutoRetrievalBundle ?? (async (
+          params: Parameters<AutoRetrievalBuilder>[0],
+        ) => {
+          const knowledge = await import('@/server/knowledge/ask-knowledge-context')
+          return await knowledge.buildAutoRetrievalBundle(params)
+        })
         const bundle = await buildAutoRetrievalBundle({
           userMessage: args.latestUserText ?? '',
           userId: args.userId,
-          accessToken: args.accessToken,
+          ...(args.accessToken ? { accessToken: args.accessToken } : {}),
           projectId: conversationProjectId,
           includeMemories: memoryEnabled,
         })

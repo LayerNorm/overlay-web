@@ -25,6 +25,7 @@ import {
   stripThinkingPlaceholderMarkdown,
 } from '@/shared/chat/agent-assistant-text'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
+import { linkifySourceCitationsMarkdown } from '@/shared/knowledge/source-citations'
 import { linkifyInlineWebCitations, webSourceDisplayKey, type WebSourceItem } from '@/shared/web/web-sources'
 import { safeHttpUrl } from '@/shared/security/safe-url'
 import { shimIncompleteMarkdown } from '@/shared/markdown/shim-incomplete-markdown'
@@ -114,28 +115,6 @@ function stripTrailingSourcesBlock(text: string): string {
   return kept.join('\n')
 }
 
-/** Turn `[n]` on **Sources:** lines into markdown links to Files or Memories. */
-function linkifySourceCitations(text: string, citations: SourceCitationMap): string {
-  if (!citations || Object.keys(citations).length === 0) return text
-  const lines = text.split('\n')
-  return lines
-    .map((line) => {
-      const trimmed = line.trimStart()
-      if (!/^(\*\*)?Sources:(\*\*)?/i.test(trimmed)) return line
-      return line.replace(/\[\s*(\d+)\s*\](?!\()/g, (_m, d) => {
-        const key = String(Number(d))
-        const src = citations[key]
-        if (!src) return `[${d}]`
-        const href =
-          src.kind === 'memory'
-            ? `/app/settings?section=memories&memory=${encodeURIComponent(src.sourceId)}`
-            : `/app/files?file=${encodeURIComponent(src.sourceId)}`
-        return `[${d}](${href})`
-      })
-    })
-    .join('\n')
-}
-
 function normalizePersistedWebCitationMarkdown(text: string, hasWebSources: boolean): string {
   const dashChars = '\\-\\u2010-\\u2015\\u2212'
   const overlayCitationLink = new RegExp(
@@ -181,7 +160,7 @@ function normalizeGeneratedMarkdown(
     })
   }
   if (options?.linkifyCitations && hasKnowledgeCitations) {
-    t = linkifySourceCitations(t, options.sourceCitations!)
+    t = linkifySourceCitationsMarkdown(t, options.sourceCitations!)
   }
   return t
 }

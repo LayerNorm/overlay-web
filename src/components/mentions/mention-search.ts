@@ -51,10 +51,13 @@ async function fetchAll(): Promise<CachedData> {
     const automationsEnabled = await areAutomationsEnabled()
     const capabilities = await getMentionCapabilities()
     const cacheKey = mentionCapabilityCacheKey(capabilities)
-    const [filesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
+    const [filesRes, notesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
       await Promise.allSettled([
         capabilities.files
           ? overlayAppClient.files.getResponse({ limit: 100, summary: true }).then((r) => (r.ok ? r.json() : []))
+          : Promise.resolve([]),
+        capabilities.files
+          ? overlayAppClient.notes.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : []))
           : Promise.resolve([]),
         capabilities.integrations
           ? overlayAppClient.integrations.getResponse().then((r) => (r.ok ? r.json() : { items: [] }))
@@ -73,7 +76,7 @@ async function fetchAll(): Promise<CachedData> {
           : Promise.resolve([]),
       ])
 
-    const files: MentionItem[] = (
+    const canonicalFiles: MentionItem[] = (
       filesRes.status === 'fulfilled'
         ? unwrapPaginatedData<{ _id: string; name?: string; kind?: string; mimeType?: string }>(filesRes.value)
         : []
@@ -84,6 +87,18 @@ async function fetchAll(): Promise<CachedData> {
       description: f.kind || f.mimeType || 'file',
       icon: 'FileText',
     }))
+    const notes: MentionItem[] = (
+      notesRes.status === 'fulfilled'
+        ? unwrapPaginatedData<{ _id: string; title?: string }>(notesRes.value)
+        : []
+    ).map((note: { _id: string; title?: string }) => ({
+      type: 'file' as const,
+      id: note._id,
+      name: note.title || 'Untitled',
+      description: 'note',
+      icon: 'FileText',
+    }))
+    const files = [...new Map([...canonicalFiles, ...notes].map((item) => [item.id, item])).values()]
     const connectorsRaw = connectorsRes.status === 'fulfilled' ? connectorsRes.value : { items: [] }
     const connectors: MentionItem[] = (connectorsRaw.items || []).map(
       (c: { slug: string; name: string; description?: string; logoUrl?: string }) => ({

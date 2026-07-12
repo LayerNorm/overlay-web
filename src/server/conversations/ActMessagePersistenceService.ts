@@ -14,6 +14,8 @@ import {
   sanitizeMessagePartsForPersistence,
 } from '@/server/chat/chat-message-persistence'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
+import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
+import { linkifySourceCitationsMarkdown } from '@/shared/knowledge/source-citations'
 import type { UIMessage } from '@/server/ai/sdk'
 import type { ActConversationRepository } from './ActConversationRepository'
 import type { ActGeneratingMessageService } from './ActGeneratingMessageService'
@@ -150,6 +152,7 @@ export class ActMessagePersistenceService {
     multiModelSlotIndex: number
     multiModelTotal: number
     routedModelId?: string
+    sourceCitations?: SourceCitationMap
     timedOut: boolean
     timeoutMs: number
     toolFailuresByCallId: Map<string, ActToolFailure>
@@ -179,6 +182,12 @@ export class ActMessagePersistenceService {
             repaired,
           )
         }
+      }
+      if (args.sourceCitations && Object.keys(args.sourceCitations).length > 0) {
+        assistantPersistence = replaceAssistantTextForPersistence(
+          assistantPersistence,
+          linkifySourceCitationsMarkdown(assistantPersistence.content, args.sourceCitations),
+        )
       }
       const { content: rawPersistContent, parts: persistParts } = assistantPersistence
       let persistContent = args.fallbackNotice

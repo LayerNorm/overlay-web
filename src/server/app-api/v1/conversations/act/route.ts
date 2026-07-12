@@ -172,7 +172,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const requestedToolIds = isPostgresAppData
       ? []
       : normalizeChatToolRequestIds(rawRequestedToolIds)
-    const memoryEnabled = !isPostgresAppData && rawMemoryEnabled !== false
+    const memoryEnabled = rawMemoryEnabled !== false
     const {
       appSettings,
       paid,
@@ -363,6 +363,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     logActTooling(actTooling)
     const tools = actTooling.tools
     const actInstructions = buildActAgentInstructions({
+      availableToolIds: Object.keys(tools),
       autoRetrieval,
       constants: {
         ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
@@ -542,6 +543,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           multiModelSlotIndex,
           multiModelTotal,
           routedModelId: streamedRoutedModelId,
+          sourceCitations: sourceCitationMap,
           timedOut: wasAbortedByTimeout,
           timeoutMs: actAbortTimeoutMsResolved,
           toolFailuresByCallId,

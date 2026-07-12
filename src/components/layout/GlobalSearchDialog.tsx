@@ -16,7 +16,7 @@ import {
   Sparkles,
   Zap,
 } from 'lucide-react'
-import { searchMentions } from '@/components/mentions/mention-search'
+import { invalidateMentionCache, searchMentions } from '@/components/mentions/mention-search'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
 const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; strokeWidth?: number }>> = {
@@ -83,6 +83,7 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
 
   useEffect(() => {
     if (!open) return
+    invalidateMentionCache()
     queueMicrotask(() => {
       setQuery('')
       setSelectedCategory(initialCategory)

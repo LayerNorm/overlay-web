@@ -287,7 +287,12 @@ export default function KnowledgeView({
     setBulkDeleting(true)
     try {
       const responses = await Promise.all(
-        ids.map((id) => overlayAppClient.files.deleteResponse({ fileId: id })),
+        ids.map((id) => {
+          const node = files.find((file) => file._id === id)
+          return node?.kind === 'note'
+            ? overlayAppClient.notes.deleteResponse({ noteId: id })
+            : overlayAppClient.files.deleteResponse({ fileId: id })
+        }),
       )
       const deletedRootIds = ids.filter((_, index) => responses[index]?.ok)
       if (deletedRootIds.length === 0) return
@@ -516,7 +521,9 @@ export default function KnowledgeView({
   async function handleDeleteNode(id: string, e: React.MouseEvent) {
     e.stopPropagation()
     const node = files.find((f) => f._id === id)
-    const res = await overlayAppClient.files.deleteResponse({ fileId: id })
+    const res = node?.kind === 'note'
+      ? await overlayAppClient.notes.deleteResponse({ noteId: id })
+      : await overlayAppClient.files.deleteResponse({ fileId: id })
     if (!res.ok) return
     const deletedIds = collectKnowledgeFileSubtreeIds(files, [id])
     setFiles((prev) => removeKnowledgeFileSubtrees(prev, [id]))
