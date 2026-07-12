@@ -93,6 +93,8 @@ Use separate schemas/databases for these concerns. They have different ownership
 | P4c retrieval | Current branch | Added user/project-scoped hybrid vector and lexical retrieval, RRF ranking, citations, and provider-neutral memory/search routes. |
 | P4d memory lifecycle | Current branch | Added durable turn extraction, extraction audit rows, worker crash recovery, failed-index revival, model-version backfill, retention, and project/account cleanup. |
 | P4e characterization | Current branch | Added one fixed corpus and query set for real Convex and pgvector runs, recall/source/citation metrics, adversarial project and user isolation, deletion checks, and an RDS/Aurora-only rehearsal gate. |
+| P5a closure | Current branch | Persisted chat suggestions behind provider-neutral repositories, made Postgres bootstrap read stored settings, split notebook usage dependencies into P8, and represented pgvector as runtime-configured capability. |
+| P5b resilience | Current branch | Added remote Postgres gates for pool replacement, app/worker/scheduler contention, dead letters, HNSW query plans and latency, and S3 reconciliation recovery. |
 
 ## Key Code Boundaries
 
@@ -315,8 +317,8 @@ Supported operations:
 
 Separate later-phase capabilities:
 
-- Vector indexing is disabled.
-- Knowledge chunks do not exist until the P5 pgvector implementation.
+- Vector indexing requires the P4 pgvector provider, migrations, embeddings configuration, and worker.
+- Knowledge chunks are available when that P4 runtime configuration is enabled.
 - Generated outputs share the canonical file lifecycle. Generated image/video
   records, browser results, and Daytona artifacts are owner-scoped, shareable,
   retained according to compliance config, and deleted through durable S3 jobs.

@@ -75,6 +75,8 @@
     "test:p4e:convex": "NODE_ENV=development KNOWLEDGE_CHARACTERIZATION_CONVEX=1 NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.development.local --test src/server/app-data/contracts/convex-knowledge-characterization.test.ts",
     "check:p4e:remote": "npm run test:p4d:postgres:remote && npm run test:p4e:postgres:remote && npm run test:p4e:convex && npm run check:on-prem-parity",
     "aws:rehearsal:4": "NODE_OPTIONS=--conditions=react-server tsx scripts/app-data-migrate.ts && NODE_OPTIONS=--conditions=react-server tsx --test src/server/app-data/contracts/postgres-knowledge-lifecycle.test.ts src/server/app-data/contracts/postgres-knowledge-characterization.test.ts && NODE_OPTIONS=--conditions=react-server tsx scripts/aws-rehearsal-4-readiness.ts",
+    "test:p5b:postgres:remote": "npm run app-db:contract:migrate && NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.on-prem-contract-tests.local --test src/server/app-data/contracts/postgres-resilience.test.ts",
+    "check:p5:remote": "npm run check:config && npm run test:p4:postgres:remote && npm run test:p4:convex && npm run test:p4d:postgres:remote && npm run test:p4e:postgres:remote && npm run test:p4e:convex && npm run test:p5b:postgres:remote && npm run check:on-prem-parity",
     "build": "next build",
     "analyze": "NEXT_DIST_DIR=.next-analyze ANALYZE=true SENTRY_AUTH_TOKEN= SENTRY_ORG= SENTRY_PROJECT= next build && node scripts/check-bundle-budgets.mjs --dist-dir=.next-analyze --require-analyzer",
     "check:bundle-budgets": "node scripts/check-bundle-budgets.mjs",

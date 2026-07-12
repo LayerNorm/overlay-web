@@ -31,6 +31,7 @@ export async function enqueueStorageCleanupJobs(
     const inserted = await db
       .insert(durableJobs)
       .values({
+        availableAt: new Date(),
         id: randomUUID(),
         type: STORAGE_DELETE_OBJECTS_JOB,
         payload: {
