@@ -70,6 +70,9 @@ class HttpEmbeddingProvider implements EmbeddingProvider {
       body: JSON.stringify({
         input: texts.length === 1 ? texts[0] : texts,
         model: this.identity.modelId,
+        ...(this.identity.provider === 'ai-gateway'
+          ? { providerOptions: { gateway: { zeroDataRetention: true } } }
+          : {}),
       }),
     })
     if (!response.ok) {
