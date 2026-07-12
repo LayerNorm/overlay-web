@@ -243,6 +243,13 @@ export interface ActConversationRepository {
     errorText: string
     messageId: Id<'conversationMessages'>
   }): Promise<void>
+  settleGeneratingMessagesForTurn(args: {
+    conversationId: Id<'conversations'>
+    fallbackText: string
+    status: 'completed' | 'error'
+    turnId: string
+    userId: string
+  }): Promise<void>
   stopGeneratingMessages(args: {
     conversationId: Id<'conversations'>
     messageId?: Id<'conversationMessages'>

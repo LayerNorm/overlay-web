@@ -77,7 +77,8 @@ type UpdateAutomationBody = {
   accessToken?: string
   userId?: string
   automationId?: string
-  action?: 'pause' | 'resume'
+  action?: 'cancel-run' | 'pause' | 'resume' | 'retry-run'
+  runId?: string
   name?: string
   description?: string
   instructions?: string
@@ -301,6 +302,24 @@ export class AutomationService {
     userId: string
   }): Promise<{ success: true }> {
     const { body } = args
+    if (body.action === 'cancel-run') {
+      if (!body.runId) serviceError({ error: 'runId required' }, 400)
+      const cancelled = await this.deps.repository.requestRunCancellation({
+        runId: body.runId,
+        userId: args.userId,
+      })
+      if (!cancelled) serviceError({ error: 'Run is not cancellable' }, 409)
+      return { success: true }
+    }
+    if (body.action === 'retry-run') {
+      if (!body.runId) serviceError({ error: 'runId required' }, 400)
+      const retryRunId = await this.deps.repository.retryRun({
+        runId: body.runId,
+        userId: args.userId,
+      })
+      if (!retryRunId) serviceError({ error: 'Run is not retryable' }, 409)
+      return { success: true }
+    }
     if (!body.automationId) {
       serviceError({ error: 'automationId required' }, 400)
     }

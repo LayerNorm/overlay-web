@@ -678,6 +678,44 @@ export class PostgresActConversationRepository implements ActConversationReposit
     })
   }
 
+  async settleGeneratingMessagesForTurn(args: {
+    conversationId: ConversationId
+    fallbackText: string
+    status: 'completed' | 'error'
+    turnId: string
+    userId: string
+  }): Promise<void> {
+    const now = new Date()
+    await this.db.transaction(async (tx) => {
+      const rows = await tx
+        .update(conversationMessages)
+        .set({
+          content: args.fallbackText,
+          parts: [{ type: 'text', text: args.fallbackText }],
+          status: args.status,
+          updatedAt: now,
+        })
+        .where(and(
+          eq(conversationMessages.conversationId, args.conversationId),
+          eq(conversationMessages.userId, args.userId),
+          eq(conversationMessages.turnId, args.turnId),
+          eq(conversationMessages.status, 'generating'),
+        ))
+        .returning({ id: conversationMessages.id })
+      for (const row of rows) {
+        await emitConversationEvent(tx, {
+          conversationId: args.conversationId,
+          messageId: row.id,
+          type: args.status === 'completed' ? 'message.completed' : 'message.failed',
+          userId: args.userId,
+        })
+      }
+      if (rows.length > 0) {
+        await touchConversation(tx, args.conversationId, args.userId, now, 'act')
+      }
+    })
+  }
+
   async stopGeneratingMessages(args: {
     conversationId: ConversationId
     messageId?: ConversationMessageId

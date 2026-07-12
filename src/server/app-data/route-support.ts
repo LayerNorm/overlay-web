@@ -61,7 +61,7 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'automations',
     methods: '*',
     prefixes: ['/api/v1/automations'],
-    status: 'unsupported',
+    status: 'supported',
     feature: 'automations',
   },
   {

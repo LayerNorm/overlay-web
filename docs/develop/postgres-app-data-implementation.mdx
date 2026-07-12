@@ -10,7 +10,7 @@ The short version:
 - Auth is now provider-agnostic at the app boundary. WorkOS and Better Auth both normalize into the Overlay session contract.
 - Auth storage and app-data storage are separate concerns. Better Auth uses its own Postgres database for auth/session state. Overlay app data uses either Convex or the new Postgres app-data provider.
 - Postgres app-data includes production runtime foundations for shared idempotency, replay protection, Redis rate limiting, durable jobs/outbox, scheduler ownership, schema compatibility, and persisted model catalog snapshots.
-- Postgres app-data is not full Convex parity. Chat, projects, files, generated media, browser outputs, Daytona artifacts, memories, and knowledge retrieval are supported; automations, webhooks, API keys, billing records, and integrations remain disabled or unsupported.
+- Postgres app-data is not full Convex parity. Chat, projects, files, generated media, browser outputs, Daytona artifacts, memories, knowledge retrieval, and durable scheduled automations are supported; webhooks, API keys, billing records, and integrations remain disabled or unsupported.
 - Postgres knowledge retrieval uses `pgvector` plus Postgres full-text search. Deployments must verify that their managed Postgres provider supports the `vector` extension and must run a separately supervised indexing worker.
 
 ## Design Goals
@@ -177,7 +177,7 @@ Important deletion behavior:
 | `memories` | `ConvexMemoryRepository` | `PostgresMemoryRepository` |
 | `durableJobs` | Unsupported repository | `PostgresDurableJobRepository` |
 | `outbox` | Unsupported repository | `PostgresOutboxRepository` |
-| `automations` | `ConvexAutomationRepository` | Unsupported repository |
+| `automations` | `ConvexAutomationRepository` | `PostgresAutomationRepository` plus durable run coordinator |
 | `billing` | `ConvexBillingRepository` | Unsupported repository |
 | `usage` | Unsupported placeholder | Unsupported placeholder |
 
@@ -215,7 +215,7 @@ Unsupported or disabled:
 | --- | --- |
 | Integrations/connectors | Connector account state and external integration execution are not Postgres pilot-ready. The sidebar hides Extensions in Postgres mode. |
 | Skills and MCP servers | Metadata/execution flows are still Convex/integration-backed. |
-| Automations | Scheduler/execution/retry model is Convex-backed. |
+| Automations | Postgres definitions, schedule triggers, idempotent runs, attempt audit, retries, cancellation, and dead-letter state use the standalone scheduler/worker runtime. |
 | Webhooks | Delivery retries and durable state are not implemented for Postgres. |
 | API keys | No Postgres API key repository yet. |
 | Billing records | Billing must be disabled with Postgres app-data v1. |

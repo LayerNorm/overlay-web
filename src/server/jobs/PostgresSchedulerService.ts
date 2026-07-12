@@ -41,6 +41,12 @@ export const POSTGRES_RUNTIME_SCHEDULES = [
     jobType: 'knowledge.maintenance',
     payload: {},
   },
+  {
+    id: 'automation-schedule-due',
+    intervalMs: 60_000,
+    jobType: 'automation.schedule-due',
+    payload: {},
+  },
 ] as const
 
 type DueTask = {

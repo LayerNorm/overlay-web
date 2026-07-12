@@ -75,6 +75,14 @@ export interface AutomationRepository {
     automationId: string
     userId: string
   }): Promise<void>
+  requestRunCancellation(args: {
+    runId: string
+    userId: string
+  }): Promise<boolean>
+  retryRun(args: {
+    runId: string
+    userId: string
+  }): Promise<string | null>
   removeConversation(args: {
     conversationId: string
     userId: string

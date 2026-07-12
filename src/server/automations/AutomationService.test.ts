@@ -49,6 +49,8 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
     async pauseAutomation() {},
     async resumeAutomation() {},
     async removeAutomation() {},
+    async requestRunCancellation() { return true },
+    async retryRun() { return 'run_retry_1' },
     async removeConversation() {},
     async appendAutomationUpdateNote(args) {
       updateNotes.push(args)
@@ -184,6 +186,32 @@ test('AutomationService.updateAutomation appends update note best effort', async
 
   assert.equal(repository.updateNotes.length, 1)
   assert.equal(repository.updateNotes[0]?.content, 'Automation updated: name changed to "New name".')
+})
+
+test('AutomationService exposes durable run cancellation and retry actions', async () => {
+  const cancelled: string[] = []
+  const retried: string[] = []
+  const repository = createRepository({
+    async requestRunCancellation(args) {
+      cancelled.push(args.runId)
+      return true
+    },
+    async retryRun(args) {
+      retried.push(args.runId)
+      return 'retry_run'
+    },
+  })
+  const { service } = createService(repository)
+  assert.deepEqual(await service.updateAutomation({
+    body: { action: 'cancel-run', runId: 'run_1' },
+    userId: 'user_1',
+  }), { success: true })
+  assert.deepEqual(await service.updateAutomation({
+    body: { action: 'retry-run', runId: 'run_2' },
+    userId: 'user_1',
+  }), { success: true })
+  assert.deepEqual(cancelled, ['run_1'])
+  assert.deepEqual(retried, ['run_2'])
 })
 
 test('AutomationService.testAutomation marks run failed and emits failure on executor error', async () => {

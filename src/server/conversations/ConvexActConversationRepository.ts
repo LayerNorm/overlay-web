@@ -296,6 +296,19 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     })
   }
 
+  async settleGeneratingMessagesForTurn(args: {
+    conversationId: Id<'conversations'>
+    fallbackText: string
+    status: 'completed' | 'error'
+    turnId: string
+    userId: string
+  }): Promise<void> {
+    await convex.mutation('chat/conversations:settleGeneratingMessagesForTurn', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
   async stopGeneratingMessages(args: {
     conversationId: Id<'conversations'>
     messageId?: Id<'conversationMessages'>

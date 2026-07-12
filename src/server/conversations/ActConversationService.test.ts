@@ -49,6 +49,7 @@ function repository(overrides: Partial<ActConversationRepository> = {}): ActConv
     appendGeneratingMessageDelta: () => unexpected('appendGeneratingMessageDelta'),
     finalizeGeneratingMessage: () => unexpected('finalizeGeneratingMessage'),
     failGeneratingMessage: () => unexpected('failGeneratingMessage'),
+    settleGeneratingMessagesForTurn: () => unexpected('settleGeneratingMessagesForTurn'),
     stopGeneratingMessages: () => unexpected('stopGeneratingMessages'),
     deleteTurn: () => unexpected('deleteTurn'),
     updateMessageUiPart: () => unexpected('updateMessageUiPart'),

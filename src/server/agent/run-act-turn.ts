@@ -1,8 +1,7 @@
 import 'server-only'
 
 import type { UIMessage } from 'ai'
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/server/auth/service-auth'
 import { getBaseUrl } from '@/server/web/app-url'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
@@ -33,18 +32,14 @@ async function settleScheduledAutomationTurn(params: {
   status: 'completed' | 'error'
   fallbackText: string
 }) {
-  await convex.mutation(
-    'chat/conversations:settleGeneratingMessagesForTurn',
-    {
+  await getOverlayServerContext().appData.repositories.conversations
+    .settleGeneratingMessagesForTurn({
       conversationId: params.conversationId as Id<'conversations'>,
       userId: params.userId,
       turnId: params.turnId,
       status: params.status,
       fallbackText: params.fallbackText,
-      serverSecret: getInternalApiSecret(),
-    },
-    { throwOnError: true },
-  )
+    })
 }
 
 async function drainResponseBody(response: Response): Promise<void> {
@@ -89,22 +84,16 @@ function buildAutomationSystemPrompt(input: ScheduledAutomationTurn): string {
 export async function runActTurnForScheduledAutomation(input: ScheduledAutomationTurn): Promise<{
   conversationId: string
 }> {
-  const serverSecret = getInternalApiSecret()
   const title = `Automation: ${input.name}`
-  const conversationId = input.conversationId ?? await convex.mutation<Id<'conversations'>>(
-    'chat/conversations:create',
-    {
+  const conversationId = input.conversationId ?? await getOverlayServerContext()
+    .appData.repositories.conversations.createConversation({
       userId: input.userId,
-      serverSecret,
       title,
       projectId: input.projectId,
       askModelIds: [input.modelId || DEFAULT_MODEL_ID],
       actModelId: input.modelId || DEFAULT_MODEL_ID,
       lastMode: 'act',
-      isAutomation: true,
-    },
-    { throwOnError: true },
-  )
+    })
 
   if (!conversationId) {
     throw new Error('Failed to create automation conversation')

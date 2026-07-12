@@ -151,7 +151,6 @@
     "src/features/chat/components/chat/useLiveConversationSync.ts",
     "src/server/account/AccountDeletionService.ts",
     "src/server/agent/document-context-builder.ts",
-    "src/server/agent/run-act-turn.ts",
     "src/server/ai/catalog/ConvexModelCatalogRepository.ts",
     "src/server/ai/catalog/index.ts",
     "src/server/ai/sandbox/ConvexDaytonaWorkspaceRepository.ts",

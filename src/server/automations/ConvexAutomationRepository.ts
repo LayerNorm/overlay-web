@@ -113,6 +113,14 @@ export class ConvexAutomationRepository implements AutomationRepository {
     }, { throwOnError: true })
   }
 
+  async requestRunCancellation(): Promise<boolean> {
+    throw new Error('Automation run cancellation is not supported by the Convex adapter')
+  }
+
+  async retryRun(): Promise<string | null> {
+    throw new Error('Automation run retry is not supported by the Convex adapter')
+  }
+
   async removeConversation(args: {
     conversationId: string
     userId: string

@@ -269,3 +269,17 @@ test('Postgres app-data mode supports generated media, browser, and sandbox outp
     pathname: '/api/v1/transcribe',
   }).status, 'unsupported')
 })
+
+test('Postgres app-data mode supports durable automation routes', () => {
+  for (const [method, pathname] of [
+    ['GET', '/api/v1/automations'],
+    ['POST', '/api/v1/automations/test'],
+    ['POST', '/api/v1/automations/run'],
+  ] as const) {
+    assert.equal(getAppDataRouteSupport({
+      appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
+      method,
+      pathname,
+    }).status, 'supported')
+  }
+})

@@ -34,10 +34,20 @@ import {
 } from '@/server/memory'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
 import type { OverlayRuntimeConfig } from '@/shared/config'
+import {
+  AUTOMATION_EXECUTE_JOB,
+  AUTOMATION_SCHEDULE_DUE_JOB,
+  PostgresAutomationRunCoordinator,
+} from '@/server/automations/PostgresAutomationRunCoordinator'
+import {
+  runActTurnForScheduledAutomation,
+  type ScheduledAutomationTurn,
+} from '@/server/agent/run-act-turn'
 
 export function createPostgresRuntime(args: {
   db: OverlayPostgresDb
   leaseMs: number
+  automationExecutor?: (input: ScheduledAutomationTurn) => Promise<{ conversationId: string }>
   embeddingProvider?: EmbeddingProvider
   memoryExtractionProvider?: MemoryExtractionProvider
   objectStore?: Pick<ObjectStore, 'deleteObject' | 'listObjects'>
@@ -50,6 +60,8 @@ export function createPostgresRuntime(args: {
   const maintenance = new PostgresBackgroundMaintenanceService(args.db)
   const modelCatalog = new PostgresModelCatalogRepository(args.db)
   const scheduler = new PostgresSchedulerService(args.db)
+  const automationRuns = new PostgresAutomationRunCoordinator(args.db)
+  const automationExecutor = args.automationExecutor ?? runActTurnForScheduledAutomation
   const storageReconciliation = args.objectStore
     ? new PostgresStorageReconciliationService(args.db, args.objectStore)
     : null
@@ -91,6 +103,37 @@ export function createPostgresRuntime(args: {
         modelCount: (await getGatewayCatalog(true, modelCatalog)).length,
       }),
       'outputs.purge-expired': async () => await outputRetention.purgeExpired(),
+      [AUTOMATION_SCHEDULE_DUE_JOB]: async () => await automationRuns.enqueueDueRuns(),
+      [AUTOMATION_EXECUTE_JOB]: async (job) => {
+        const runId = requiredStringPayload(job.payload.runId, 'runId')
+        const started = await automationRuns.startAttempt({
+          attemptNumber: job.attempts,
+          jobId: job.id,
+          runId,
+          workerId: args.workerId,
+        })
+        if (started !== 'started') return { runId, status: started }
+        try {
+          const input = await automationRuns.getExecutionInput(runId)
+          if (!input) throw new Error(`Automation run ${runId} is not executable`)
+          const result = await automationExecutor(input)
+          await automationRuns.completeAttempt({
+            attemptNumber: job.attempts,
+            conversationId: result.conversationId,
+            result,
+            runId,
+          })
+          return { ...result, runId, status: 'succeeded' }
+        } catch (error) {
+          await automationRuns.failAttempt({
+            attemptNumber: job.attempts,
+            error: error instanceof Error ? error.stack ?? error.message : String(error),
+            runId,
+            terminal: job.attempts >= job.maxAttempts,
+          })
+          throw error
+        }
+      },
       [KNOWLEDGE_REINDEX_JOB]: async (job) => await getKnowledgeIndex().reindex({
         expectedContentHash: stringPayload(job.payload.contentHash),
         sourceId: requiredStringPayload(job.payload.sourceId, 'sourceId'),
@@ -123,7 +166,7 @@ export function createPostgresRuntime(args: {
     workerId: args.workerId,
   })
 
-  return { jobs, scheduler, worker }
+  return { automationRuns, jobs, scheduler, worker }
 }
 
 function stringPayload(value: unknown): string | undefined {
@@ -132,7 +175,7 @@ function stringPayload(value: unknown): string | undefined {
 
 function requiredStringPayload(value: unknown, name: string): string {
   const result = stringPayload(value)
-  if (!result) throw new Error(`Knowledge reindex job requires ${name}`)
+  if (!result) throw new Error(`Durable job requires ${name}`)
   return result
 }
 

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import type { AutomationRunSummary } from '@overlay/app-core'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
@@ -9,6 +9,7 @@ import {
   automations,
   automationTriggers,
   conversations,
+  durableJobs,
 } from '@/server/database/postgres/schema'
 import { assertActivePostgresProject } from '@/server/projects/PostgresProjectAccess'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
@@ -26,6 +27,7 @@ import type {
   CreateAutomationInput,
   UpdateAutomationInput,
 } from './AutomationRepository'
+import { AUTOMATION_EXECUTE_JOB } from './PostgresAutomationRunCoordinator'
 
 type AutomationRow = typeof automations.$inferSelect
 type AutomationRunRow = typeof automationRuns.$inferSelect
@@ -225,6 +227,62 @@ export class PostgresAutomationRepository implements AutomationRepository {
         .update(automationTriggers)
         .set({ enabled: false, nextFireAt: null, updatedAt: now })
         .where(eq(automationTriggers.automationId, args.automationId))
+    })
+  }
+
+  async requestRunCancellation(args: { runId: string; userId: string }): Promise<boolean> {
+    const now = new Date()
+    const rows = await this.db
+      .update(automationRuns)
+      .set({ cancellationRequestedAt: now, status: 'cancel_requested', updatedAt: now })
+      .where(and(
+        eq(automationRuns.id, args.runId),
+        eq(automationRuns.userId, args.userId),
+        inArray(automationRuns.status, ['queued', 'running']),
+      ))
+      .returning({ id: automationRuns.id })
+    return rows.length > 0
+  }
+
+  async retryRun(args: { runId: string; userId: string }): Promise<string | null> {
+    return await this.db.transaction(async (tx) => {
+      const [previous] = await tx
+        .select({ automationId: automationRuns.automationId })
+        .from(automationRuns)
+        .innerJoin(automations, and(
+          eq(automations.id, automationRuns.automationId),
+          eq(automations.userId, args.userId),
+          isNull(automations.deletedAt),
+        ))
+        .where(and(
+          eq(automationRuns.id, args.runId),
+          eq(automationRuns.userId, args.userId),
+          inArray(automationRuns.status, ['failed', 'dead_letter', 'cancelled']),
+        ))
+        .limit(1)
+      if (!previous) return null
+      const runId = `automation_run_${randomUUID()}`
+      const jobId = randomUUID()
+      const now = new Date()
+      await tx.insert(automationRuns).values({
+        automationId: previous.automationId,
+        id: runId,
+        idempotencyKey: `retry:${args.runId}:${runId}`,
+        jobId,
+        scheduledFor: now,
+        status: 'queued',
+        triggerSource: 'manual',
+        userId: args.userId,
+      })
+      await tx.insert(durableJobs).values({
+        dedupeKey: `automation-run:${runId}`,
+        id: jobId,
+        maxAttempts: 5,
+        payload: { runId },
+        priority: 10,
+        type: AUTOMATION_EXECUTE_JOB,
+      })
+      return runId
     })
   }
 
