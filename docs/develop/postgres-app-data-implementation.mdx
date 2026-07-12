@@ -95,6 +95,8 @@ Use separate schemas/databases for these concerns. They have different ownership
 | P4e characterization | Current branch | Added one fixed corpus and query set for real Convex and pgvector runs, recall/source/citation metrics, adversarial project and user isolation, deletion checks, and an RDS/Aurora-only rehearsal gate. |
 | P5a closure | Current branch | Persisted chat suggestions behind provider-neutral repositories, made Postgres bootstrap read stored settings, split notebook usage dependencies into P8, and represented pgvector as runtime-configured capability. |
 | P5b resilience | Current branch | Added remote Postgres gates for pool replacement, app/worker/scheduler contention, dead letters, HNSW query plans and latency, and S3 reconciliation recovery. |
+| P5c security | Current branch | Added dual-read session key rotation, bounded S3 presigns, cross-owner object authorization tests, forensic deletion audits, TLS/secret readiness, and no-Convex release gates. |
+| P5d operations | Current branch | Added snapshot restore markers, migration/rollback compatibility checks, runtime queue-health metrics, CloudWatch infrastructure, capacity/cost evidence, and immutable-image rollback procedure. |
 
 ## Key Code Boundaries
 

@@ -6,6 +6,7 @@ import {
 } from '../src/server/database/postgres/client'
 import { assertAppDataSchemaCompatible } from '../src/server/database/postgres/schema-compatibility'
 import { createPostgresRuntime } from '../src/server/jobs/postgres-runtime'
+import { PostgresRuntimeHealthService } from '../src/server/jobs/PostgresRuntimeHealthService'
 import { createObjectStoreForRuntime } from '../src/server/bootstrap'
 import { getOverlayRuntimeConfigSync } from '../src/server/config'
 
@@ -24,6 +25,7 @@ async function main(): Promise<void> {
   const leaseMs = numberValue(process.env.OVERLAY_WORKER_LEASE_MS, 60_000, 5_000, 60 * 60_000)
   const pollMs = numberValue(process.env.OVERLAY_WORKER_POLL_MS, 1_000, 100, 60_000)
   const schedulerPollMs = numberValue(process.env.OVERLAY_SCHEDULER_POLL_MS, 5_000, 1_000, 60_000)
+  const healthLogMs = numberValue(process.env.OVERLAY_RUNTIME_HEALTH_LOG_MS, 60_000, 10_000, 15 * 60_000)
   const workerId = process.env.OVERLAY_WORKER_ID?.trim() || `${hostname()}:${process.pid}:${randomUUID()}`
   const pool = createOverlayPostgresPool({
     connectionString,
@@ -37,6 +39,7 @@ async function main(): Promise<void> {
     objectStore: lazyObjectStore(),
     workerId,
   })
+  const runtimeHealth = new PostgresRuntimeHealthService(db)
   let shuttingDown = false
 
   process.once('SIGINT', () => { shuttingDown = true })
@@ -56,6 +59,7 @@ async function main(): Promise<void> {
 
     console.log(JSON.stringify({ leaseMs, mode, once, pollMs, schedulerPollMs, workerId }))
     let lastSchedulerTick = 0
+    let lastHealthLog = 0
     let consecutiveFailures = 0
     do {
       try {
@@ -64,6 +68,15 @@ async function main(): Promise<void> {
           const result = await runtime.scheduler.tick({ now })
           if (result.enqueued > 0) console.log(JSON.stringify({ event: 'scheduler_tick', ...result }))
           lastSchedulerTick = now
+        }
+        if (mode !== 'worker' && now - lastHealthLog >= healthLogMs) {
+          console.log(JSON.stringify({
+            event: 'runtime_health',
+            mode,
+            workerId,
+            ...await runtimeHealth.read(now),
+          }))
+          lastHealthLog = now
         }
 
         let workerResult: string = 'idle'

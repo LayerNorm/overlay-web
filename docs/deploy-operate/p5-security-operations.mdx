@@ -1,0 +1,145 @@
+---
+title: "P5 Security And Release Operations"
+description: "Run authorization, deletion, key rotation, backup, migration, observability, capacity, and rollback rehearsals for Postgres deployments."
+---
+
+P5c and P5d are release gates for the completed P0-P5 data plane. They do not
+enable automations, integrations, billing, or API keys.
+
+## P5c Security And Compliance
+
+Run the application-owned security contracts against the dedicated remote test
+database:
+
+```bash
+npm run check:p5c:remote
+```
+
+This runs adversarial project/user retrieval, provider-neutral authorization
+contracts, short-lived S3 signing tests, deletion contracts and forensic orphan
+queries, the no-Convex server trap, and the route/capability inventory.
+
+For a deployed environment, capture authenticated Playwright state and prove
+the browser makes no Convex HTTP or WebSocket requests:
+
+```bash
+ON_PREM_SMOKE_URL=https://overlay.example.com \
+ON_PREM_SMOKE_STORAGE_STATE=.auth/on-prem.json \
+npm run test:on-prem:no-convex-browser
+```
+
+### TLS And Secret Readiness
+
+The readiness command requires verified Postgres TLS, independent 32-character
+or longer secrets, a presign lifetime no longer than 15 minutes, and no secret
+copied into a `NEXT_PUBLIC_` variable.
+
+```bash
+P5_REQUIRE_NO_CONVEX_ENV=true npm run p5:security:readiness -- --phase=steady
+```
+
+Use dual-read/current-write rotation for Overlay session secrets:
+
+1. Copy each old value to its `_PREVIOUS` variable.
+2. Put the newly generated value in the primary variable.
+3. Deploy app, worker, and scheduler together.
+4. Run readiness with `--phase=overlap`; verify old and new sessions.
+5. Wait the maximum WorkOS session-cookie lifetime of 30 days, or explicitly
+   require reauthentication sooner.
+6. Remove the `_PREVIOUS` variables, redeploy, and run `--phase=finalize`.
+
+The rotating pairs are:
+
+- `SESSION_SECRET` / `SESSION_SECRET_PREVIOUS`
+- `SESSION_COOKIE_ENCRYPTION_KEY` / `SESSION_COOKIE_ENCRYPTION_KEY_PREVIOUS`
+- `SESSION_TRANSFER_KEY` / `SESSION_TRANSFER_KEY_PREVIOUS`
+
+Better Auth's own `BETTER_AUTH_SECRET` must follow the Better Auth deployment's
+supported rotation procedure. Overlay's cookie key ring does not rotate Better
+Auth sessions.
+
+Set `S3_PRESIGN_TTL_SECONDS` between 1 and 900. File routes authorize ownership
+before generating a download URL, and the S3 adapter never signs a foreign
+user's key.
+
+## P5d Backup And Restore
+
+Prepare a marker in the disposable rehearsal database:
+
+```bash
+export P5_BACKUP_DRILL_ID="p5-$(date +%s)"
+npm run p5:backup:prepare
+```
+
+Create an RDS/Aurora snapshot, restore it to a new database instance or cluster,
+point `OVERLAY_DATABASE_URL` at the restored writer, and verify:
+
+```bash
+export P5_BACKUP_DRILL_ID="the-id-from-prepare"
+npm run p5:backup:verify
+```
+
+The verifier checks the marker, schema compatibility, database identity, size,
+and user count. Test S3 versioning/object recovery separately; an RDS snapshot
+does not contain file objects.
+
+## Migration And Rollback
+
+Run against the migrated rehearsal database:
+
+```bash
+npm run test:p5d:postgres:remote
+```
+
+The migration rehearsal proves the current runtime, declared previous runtime,
+and advisory migration lock are compatible. Override the previous range only
+when release metadata says otherwise:
+
+```bash
+P5_PREVIOUS_RUNTIME_MIN_SCHEMA=8 \
+P5_PREVIOUS_RUNTIME_MAX_SCHEMA=9 \
+npm run test:p5d:postgres:remote
+```
+
+Rollback procedure:
+
+1. Record the release image digest and pre-deploy RDS snapshot identifier.
+2. Run migrations once from a controlled task, never from every app task.
+3. Deploy app, worker, and scheduler from the same immutable image digest.
+4. If health gates fail and the migration rehearsal says the previous runtime
+   is compatible, redeploy all three roles at the previous digest.
+5. If it is incompatible, restore the pre-deploy snapshot to a new database and
+   repoint the previous release. Do not improvise a destructive down migration.
+6. Preserve the failed database and logs for investigation.
+
+## CloudWatch
+
+Deploy `infra/aws/p5-observability.yaml`. It creates running-task alarms for
+app, worker, and scheduler; RDS CPU and storage alarms; an ALB target 5xx alarm;
+log-derived durable-job dead-letter and queue-age metrics; and a dashboard for
+ECS, RDS, jobs, and load-balancer health.
+
+The scheduler emits a `runtime_health` JSON event every 60 seconds by default.
+Set `OVERLAY_RUNTIME_HEALTH_LOG_MS` between 10 seconds and 15 minutes.
+
+## Capacity And Cost Baseline
+
+The baseline command records database size, connections, largest tables, queue
+state, and operator-supplied monthly AWS costs:
+
+```bash
+P5_REQUIRE_COMPLETE_COST_BASELINE=true \
+P5_MONTHLY_COST_ECS_USD=... \
+P5_MONTHLY_COST_RDS_USD=... \
+P5_MONTHLY_COST_REDIS_USD=... \
+P5_MONTHLY_COST_ALB_USD=... \
+P5_MONTHLY_COST_NAT_USD=... \
+P5_MONTHLY_COST_S3_USD=... \
+P5_MONTHLY_COST_CLOUDWATCH_USD=... \
+P5_MONTHLY_COST_BACKUP_USD=... \
+P5_MONTHLY_COST_DATA_TRANSFER_USD=... \
+npm run p5:capacity:baseline
+```
+
+Use AWS Pricing Calculator or Cost Explorer for the inputs. The command does
+not embed prices because region, commitment, and AWS pricing change.

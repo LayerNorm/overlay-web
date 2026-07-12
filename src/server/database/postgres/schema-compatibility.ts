@@ -15,6 +15,20 @@ export type AppDataSchemaCompatibility = {
   runtimeMinimumSchemaVersion: number
 }
 
+export function evaluateAppDataSchemaCompatibility(args: {
+  databaseMinimumRuntimeVersion: number
+  databaseSchemaVersion: number
+  runtimeMaximumSchemaVersion: number
+  runtimeMinimumSchemaVersion: number
+}): AppDataSchemaCompatibility {
+  return {
+    ...args,
+    compatible:
+      args.databaseSchemaVersion >= args.runtimeMinimumSchemaVersion &&
+      args.databaseMinimumRuntimeVersion <= args.runtimeMaximumSchemaVersion,
+  }
+}
+
 export class AppDataSchemaCompatibilityError extends Error {
   constructor(
     message: string,
@@ -46,15 +60,12 @@ export async function readAppDataSchemaCompatibility(
     )
   }
 
-  const compatibility: AppDataSchemaCompatibility = {
-    compatible:
-      databaseSchemaVersion >= APP_DATA_MINIMUM_SCHEMA_VERSION &&
-      databaseMinimumRuntimeVersion <= APP_DATA_SCHEMA_VERSION,
+  const compatibility = evaluateAppDataSchemaCompatibility({
     databaseMinimumRuntimeVersion,
     databaseSchemaVersion,
     runtimeMaximumSchemaVersion: APP_DATA_SCHEMA_VERSION,
     runtimeMinimumSchemaVersion: APP_DATA_MINIMUM_SCHEMA_VERSION,
-  }
+  })
   return compatibility
 }
 

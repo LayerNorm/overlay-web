@@ -130,7 +130,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     targetPhase: 'P5',
     capabilities: [],
     routeRuleIds: ['chat-suggestions'],
-    exitGate: 'P0-P4 routes are honestly classified, helper state persists without Convex, and concurrency, recovery, vector, and storage fault gates pass.',
+    exitGate: 'P0-P4 routes are honestly classified; security, deletion, no-Convex, recovery, backup, migration, observability, capacity, and rollback gates are rehearsed.',
   },
   {
     id: 'integrations-extensions',
