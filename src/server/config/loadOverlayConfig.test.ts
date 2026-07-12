@@ -479,6 +479,7 @@ test('configOverridesFromEnv maps Postgres app-data database env separately from
     OVERLAY_PROVIDER_DATABASE: 'postgres',
     OVERLAY_DATABASE_URL: 'postgres://overlay_app:secret@db.internal:5432/overlay_app',
     OVERLAY_DATABASE_SSL_MODE: 'verify-full',
+    OVERLAY_BACKGROUND_RUNTIME_ENABLED: 'true',
     AUTH_PROVIDER: 'better-auth',
     BETTER_AUTH_DATABASE_URL: 'postgres://overlay_auth:secret@db.internal:5432/overlay_auth',
     BETTER_AUTH_SECRET: 'better_auth_secret',
@@ -493,6 +494,7 @@ test('configOverridesFromEnv maps Postgres app-data database env separately from
     postgres: {
       connectionString: 'postgres://overlay_app:secret@db.internal:5432/overlay_app',
       sslMode: 'verify-full',
+      backgroundRuntimeEnabled: true,
     },
   })
   assert.deepEqual(config.auth, {

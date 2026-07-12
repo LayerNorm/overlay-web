@@ -2,6 +2,7 @@ import { v } from 'convex/values'
 import { internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import type { Doc, Id } from '../_generated/dataModel'
+import { internal } from '../_generated/api'
 import { derivePlanKind } from '../../src/shared/billing/billing-pricing'
 
 const automationSchedule = v.object({
@@ -509,6 +510,58 @@ export const listRuns = query({
       .withIndex('by_automationId_createdAt', (q) => q.eq('automationId', args.automationId))
       .order('desc')
       .take(50)
+  },
+})
+
+export const requestRunCancellationByServer = mutation({
+  args: {
+    runId: v.id('automationRuns'),
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  returns: v.object({ cancelled: v.boolean() }),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const run = await ctx.db.get(args.runId)
+    if (!run || run.userId !== args.userId || !['queued', 'running'].includes(run.status)) {
+      return { cancelled: false }
+    }
+    const now = Date.now()
+    await ctx.db.patch(args.runId, {
+      completedAt: run.status === 'queued' ? now : undefined,
+      status: run.status === 'queued' ? 'cancelled' : 'cancel_requested',
+      updatedAt: now,
+    })
+    return { cancelled: true }
+  },
+})
+
+export const retryRunByServer = mutation({
+  args: {
+    runId: v.id('automationRuns'),
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  returns: v.object({ runId: v.union(v.id('automationRuns'), v.null()) }),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const source = await ctx.db.get(args.runId)
+    if (!source || source.userId !== args.userId || !['failed', 'cancelled'].includes(source.status)) {
+      return { runId: null }
+    }
+    const now = Date.now()
+    const runId = await ctx.db.insert('automationRuns', {
+      automationId: source.automationId,
+      createdAt: now,
+      retryOfRunId: source._id,
+      scheduledFor: now,
+      status: 'queued',
+      triggerSource: 'retry',
+      updatedAt: now,
+      userId: args.userId,
+    })
+    await ctx.scheduler.runAfter(0, internal.automations.automationRunner.runAutomation, { runId })
+    return { runId }
   },
 })
 

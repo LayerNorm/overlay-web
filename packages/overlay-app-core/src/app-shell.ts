@@ -219,7 +219,8 @@ export const DEFAULT_OVERLAY_SETTINGS_PANELS: readonly OverlaySettingsPanel[] = 
   { id: 'customization', sectionId: 'customization', label: 'Customization', componentKey: 'overlay.settings.customization', order: 30 },
   { id: 'memories', sectionId: 'memories', label: 'Memories', componentKey: 'overlay.settings.memories', featureFlagId: 'knowledge', requiredCapabilities: ['memory', 'vectorSearch'], order: 40 },
   { id: 'models', sectionId: 'models', label: 'Models', componentKey: 'overlay.settings.models', requiredCapabilities: ['modelRouting'], order: 50 },
-  { id: 'contact', sectionId: 'contact', label: 'Contact', componentKey: 'overlay.settings.contact', order: 60 },
+  { id: 'webhooks', sectionId: 'webhooks', label: 'Webhooks', componentKey: 'overlay.settings.webhooks', requiredCapabilities: ['webhooks'], order: 60 },
+  { id: 'contact', sectionId: 'contact', label: 'Contact', componentKey: 'overlay.settings.contact', order: 70 },
 ] as const
 
 export const DEFAULT_OVERLAY_TOOL_REGISTRY: readonly OverlayToolRegistration[] = [

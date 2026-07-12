@@ -12,6 +12,37 @@ export type WebhookSubscriptionRecord = {
   url: string
 }
 
+export type WebhookDeliveryStatus =
+  | 'pending'
+  | 'delivering'
+  | 'delivered'
+  | 'failed'
+  | 'dead_letter'
+
+export type WebhookDeliveryAttemptRecord = {
+  attemptNumber: number
+  completedAt?: number
+  error?: string
+  startedAt: number
+  status: string
+  statusCode?: number
+}
+
+export type WebhookDeliveryRecord = {
+  _id: string
+  attemptCount: number
+  attempts: WebhookDeliveryAttemptRecord[]
+  createdAt: number
+  deliveredAt?: number
+  eventId: string
+  eventType: string
+  lastError?: string
+  lastStatusCode?: number
+  status: WebhookDeliveryStatus
+  subscriptionId: string
+  updatedAt: number
+}
+
 export interface WebhookRepository {
   list(args: { userId: string }): Promise<WebhookSubscriptionRecord[]>
   create(args: {
@@ -29,6 +60,13 @@ export interface WebhookRepository {
     url?: string
     userId: string
   }): Promise<boolean>
+  rotateSecret(args: { subscriptionId: string; userId: string }): Promise<string | null>
   remove(args: { subscriptionId: string; userId: string }): Promise<boolean>
+  listDeliveries(args: {
+    limit?: number
+    subscriptionId?: string
+    userId: string
+  }): Promise<WebhookDeliveryRecord[]>
+  redriveDelivery(args: { deliveryId: string; userId: string }): Promise<string | null>
   dispatch(args: { event: WebhookEvent; userId: string }): Promise<{ enqueued: number }>
 }

@@ -250,6 +250,7 @@ function databaseConfigFromEnv(
   const postgres = compactObject({
     connectionString: postgresConnectionString,
     sslMode: postgresSslMode,
+    backgroundRuntimeEnabled: readBool(env, 'OVERLAY_BACKGROUND_RUNTIME_ENABLED'),
   })
 
   return compactObject({

@@ -234,6 +234,7 @@ export const OverlayRuntimeConfigSchema = z
         .object({
           connectionString: OptionalStringSchema,
           sslMode: OptionalStringSchema,
+          backgroundRuntimeEnabled: z.boolean().default(false),
         })
         .default({}),
     }),

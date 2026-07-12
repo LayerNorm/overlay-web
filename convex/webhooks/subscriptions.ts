@@ -158,6 +158,23 @@ export const update = mutation({
   },
 })
 
+export const rotateSecretByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    subscriptionId: v.id('webhookSubscriptions'),
+    userId: v.string(),
+  },
+  returns: v.object({ secret: v.union(v.string(), v.null()) }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const existing = await ctx.db.get(args.subscriptionId)
+    if (!existing || existing.userId !== args.userId) return { secret: null }
+    const secret = crypto.randomUUID()
+    await ctx.db.patch(args.subscriptionId, { secret, updatedAt: Date.now() })
+    return { secret }
+  },
+})
+
 export const remove = mutation({
   args: {
     userId: v.string(),

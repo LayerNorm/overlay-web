@@ -113,12 +113,30 @@ export class ConvexAutomationRepository implements AutomationRepository {
     }, { throwOnError: true })
   }
 
-  async requestRunCancellation(): Promise<boolean> {
-    throw new Error('Automation run cancellation is not supported by the Convex adapter')
+  async requestRunCancellation(args: { runId: string; userId: string }): Promise<boolean> {
+    const result = await convex.mutation<{ cancelled: boolean }>(
+      'automations/automations:requestRunCancellationByServer',
+      {
+        ...args,
+        runId: args.runId as Id<'automationRuns'>,
+        serverSecret: this.serverSecret,
+      },
+      { throwOnError: true },
+    )
+    return result?.cancelled ?? false
   }
 
-  async retryRun(): Promise<string | null> {
-    throw new Error('Automation run retry is not supported by the Convex adapter')
+  async retryRun(args: { runId: string; userId: string }): Promise<string | null> {
+    const result = await convex.mutation<{ runId: Id<'automationRuns'> | null }>(
+      'automations/automations:retryRunByServer',
+      {
+        ...args,
+        runId: args.runId as Id<'automationRuns'>,
+        serverSecret: this.serverSecret,
+      },
+      { throwOnError: true },
+    )
+    return result?.runId ?? null
   }
 
   async removeConversation(args: {

@@ -235,6 +235,19 @@ failed-index recovery, retention, and embedding-model backfills:
 npm run app-db:worker
 ```
 
+When Postgres app-data uses automations or outbound webhooks, declare the
+supervised runtime explicitly in the web, worker, and scheduler environments:
+
+```bash
+OVERLAY_BACKGROUND_RUNTIME_ENABLED=true
+INTERNAL_SERVICE_AUTH_SECRET="replace-with-a-strong-distinct-secret"
+```
+
+The Postgres capability response hides automations and webhooks until the
+background runtime is declared. Automations additionally require
+`INTERNAL_SERVICE_AUTH_SECRET`. Set the declaration only when at least one
+scheduler and one worker are continuously supervised.
+
 When changing `OVERLAY_EMBEDDING_MODEL_VERSION`, deploy the new worker and run:
 
 ```bash
@@ -272,7 +285,7 @@ OVERLAY_DATABASE_URL="postgres://..." npm run app-db:vector-readiness
 
 This readiness command is read-only. It does not enable vector search, install extensions, create vector columns, or change the app-data schema.
 
-Postgres app-data does not use Convex crons. Run `npm run app-db:worker` as a separately supervised service. Its Postgres scheduler enqueues maintenance, coordination cleanup, model-catalog refresh, S3 reconciliation, output retention, knowledge maintenance, due automation scans, and Daytona reconciliation. Leased workers execute jobs with retry, lease recovery, and dead-letter state. Automation occurrences are idempotent, each attempt is audited, overlapping runs obey the configured `skip` or `queue` policy, and cancellation is checked before execution. Outbound webhook events are deduplicated per subscription/event, signed over `timestamp.payload` with HMAC-SHA256, and retain delivery-attempt and dead-letter records. Daytona reconciliation adopts only correctly labeled workspaces, rejects unowned provider records, marks missing workspaces, and advances active metering windows idempotently. The standalone `npm run app-db:maintenance` command remains available for manual recovery. `compliance.retention.fileDays` governs generated media/browser outputs and `compliance.retention.sandboxArtifactDays` governs Daytona artifacts.
+Postgres app-data does not use Convex crons. Run `npm run app-db:worker` as a separately supervised service and set `OVERLAY_BACKGROUND_RUNTIME_ENABLED=true` on every release component. Its Postgres scheduler enqueues maintenance, coordination cleanup, model-catalog refresh, S3 reconciliation, output retention, knowledge maintenance, due automation scans, and Daytona reconciliation. Leased workers execute jobs with retry, lease recovery, and dead-letter state. Automation occurrences are idempotent, each attempt is audited, overlapping runs obey the configured `skip` or `queue` policy, and cancellation is checked before execution. Outbound webhook events are deduplicated per subscription/event, signed over `timestamp.payload` with HMAC-SHA256, and retain delivery-attempt and dead-letter records. Signing secrets are returned only when a subscription is created or rotated; dead-letter redrive creates a new immutable delivery record. Daytona reconciliation adopts only correctly labeled workspaces, rejects unowned provider records, marks missing workspaces, and advances active metering windows idempotently. The standalone `npm run app-db:maintenance` command remains available for manual recovery. `compliance.retention.fileDays` governs generated media/browser outputs and `compliance.retention.sandboxArtifactDays` governs Daytona artifacts.
 
 Postgres chat realtime uses the `conversation_events` table and `/api/v1/conversations/events` long polling. Transactional `pg_notify` wakes one listener connection per web process; notifications are only an optimization because reconnects read from the durable cursor. It does not require sticky load-balancer sessions. Keep the worker running so expired event rows and message deltas are pruned. Each app tab holds at most one HTTP long-poll request, so account for concurrent tabs when setting ECS task count and reverse-proxy timeouts. The route waits up to 15 seconds; configure the ingress idle timeout above that value.
 

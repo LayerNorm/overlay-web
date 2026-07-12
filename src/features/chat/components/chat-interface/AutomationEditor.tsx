@@ -1,6 +1,7 @@
 'use client'
 
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -10,6 +11,7 @@ import type {
   AutomationEditorDraft,
   AutomationSaveState,
   AutomationSchedule,
+  AutomationRunSummary,
   AutomationTestState,
 } from '@overlay/app-core'
 import {
@@ -55,11 +57,22 @@ export function AutomationEditorPanel({
   const [saveState, setSaveState] = useState<AutomationSaveState>('idle')
   const [testState, setTestState] = useState<AutomationTestState>('idle')
   const [testMessage, setTestMessage] = useState<string | null>(null)
+  const [runs, setRuns] = useState<AutomationRunSummary[]>([])
+  const [runsBusy, setRunsBusy] = useState(false)
   const timeZoneOptions = useMemo(() => supportedTimeZoneOptions(), [])
   const modelOptions = useMemo(
     () => getModelsByIntelligence(isFreeTier).filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2'),
     [isFreeTier],
   )
+
+  const loadRuns = useCallback(async () => {
+    const response = await overlayAppClient.automations.getResponse({
+      automationId: automation._id,
+      includeRuns: true,
+    }, { cache: 'no-store' })
+    if (!response.ok) throw new Error('Failed to load automation runs')
+    setRuns(await response.json() as AutomationRunSummary[])
+  }, [automation._id])
 
   useEffect(() => {
     setDraft(automationEditorDraftFromDetail(automation, DEFAULT_MODEL_ID))
@@ -67,6 +80,10 @@ export function AutomationEditorPanel({
     setTestState('idle')
     setTestMessage(null)
   }, [automation])
+
+  useEffect(() => {
+    void loadRuns().catch(() => setRuns([]))
+  }, [loadRuns])
 
   function updateDraft(patch: Partial<AutomationEditorDraft>) {
     setDraft((current) => ({ ...current, ...patch }))
@@ -120,8 +137,24 @@ export function AutomationEditorPanel({
     }
   }
 
+  async function updateRun(action: 'cancel-run' | 'retry-run', runId: string) {
+    setRunsBusy(true)
+    try {
+      const response = await overlayAppClient.automations.updateResponse({
+        action,
+        automationId: automation._id,
+        runId,
+      })
+      if (!response.ok) throw new Error('Run operation failed')
+      await loadRuns()
+    } finally {
+      setRunsBusy(false)
+    }
+  }
+
   return (
-    <AutomationEditorForm
+    <div className="space-y-8 pb-8">
+      <AutomationEditorForm
       name={draft.name}
       description={draft.description}
       instructions={draft.instructions}
@@ -167,6 +200,76 @@ export function AutomationEditorPanel({
           <AutomationInstructionsEditor value={value} onChange={onChange} />
         </Suspense>
       )}
-    />
+      />
+      <section className="mx-auto w-full max-w-3xl border-t border-[var(--border)] pt-6">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--foreground)]">Run history</h2>
+            <p className="mt-1 text-xs text-[var(--muted)]">Scheduled and manual execution records.</p>
+          </div>
+          <button
+            type="button"
+            aria-label="Refresh automation runs"
+            className="inline-flex size-8 items-center justify-center rounded-md border border-[var(--border)] disabled:opacity-50"
+            disabled={runsBusy}
+            onClick={() => void loadRuns()}
+          >
+            <RefreshCw size={14} />
+          </button>
+        </div>
+        <div className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
+          {runs.length === 0 ? (
+            <p className="py-5 text-sm text-[var(--muted)]">No runs yet.</p>
+          ) : runs.slice(0, 50).map((run) => (
+            <div key={run._id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium capitalize text-[var(--foreground)]">
+                  {run.status.replace('_', ' ')}
+                </p>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  {new Date(run.scheduledFor).toLocaleString()}
+                  {run.triggerSource ? ` · ${run.triggerSource}` : ''}
+                </p>
+                {run.error || run.errorMessage ? (
+                  <p className="mt-1 max-w-2xl truncate text-xs text-red-600 dark:text-red-400">
+                    {run.error || run.errorMessage}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-2">
+                {run.conversationId ? (
+                  <a
+                    className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs"
+                    href={`/app/automations?id=${encodeURIComponent(run.conversationId)}&automationId=${encodeURIComponent(automation._id)}`}
+                  >
+                    Open
+                  </a>
+                ) : null}
+                {run.status === 'queued' || run.status === 'running' ? (
+                  <button
+                    type="button"
+                    className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs"
+                    disabled={runsBusy}
+                    onClick={() => void updateRun('cancel-run', run._id)}
+                  >
+                    Cancel
+                  </button>
+                ) : null}
+                {run.status === 'failed' || run.status === 'dead_letter' || run.status === 'cancelled' ? (
+                  <button
+                    type="button"
+                    className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs"
+                    disabled={runsBusy}
+                    onClick={() => void updateRun('retry-run', run._id)}
+                  >
+                    Retry
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   )
 }

@@ -29,9 +29,16 @@ function parseEvents(value: unknown): WebhookEventType[] | null {
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
-    return NextResponse.json(await getOverlayServerContext().appData.repositories.webhooks.list({
-      userId: auth.userId,
-    }))
+    const repository = getOverlayServerContext().appData.repositories.webhooks
+    if (request.nextUrl.searchParams.get('view') === 'deliveries') {
+      const rawLimit = Number(request.nextUrl.searchParams.get('limit'))
+      return NextResponse.json(await repository.listDeliveries({
+        limit: Number.isFinite(rawLimit) ? rawLimit : undefined,
+        subscriptionId: request.nextUrl.searchParams.get('subscriptionId') || undefined,
+        userId: auth.userId,
+      }))
+    }
+    return NextResponse.json(await repository.list({ userId: auth.userId }))
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to fetch webhook subscriptions' }, { status: 500 })
   }
@@ -81,14 +88,38 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const { auth } = context
 
     const {
+      action,
+      deliveryId,
       subscriptionId,
       url,
       events,
       description,
       enabled,
     } = body as Record<string, unknown>
+    const repository = getOverlayServerContext().appData.repositories.webhooks
+    if (action === 'redrive') {
+      if (typeof deliveryId !== 'string' || !deliveryId) {
+        return NextResponse.json({ error: 'deliveryId required' }, { status: 400 })
+      }
+      const nextDeliveryId = await repository.redriveDelivery({
+        deliveryId,
+        userId: auth.userId,
+      })
+      if (!nextDeliveryId) {
+        return NextResponse.json({ error: 'Dead-letter delivery not found' }, { status: 404 })
+      }
+      return NextResponse.json({ deliveryId: nextDeliveryId, success: true })
+    }
     if (!subscriptionId || typeof subscriptionId !== 'string') {
       return NextResponse.json({ error: 'subscriptionId required' }, { status: 400 })
+    }
+
+    if (action === 'rotate-secret') {
+      const secret = await repository.rotateSecret({ subscriptionId, userId: auth.userId })
+      if (!secret) {
+        return NextResponse.json({ error: 'Webhook subscription not found' }, { status: 404 })
+      }
+      return NextResponse.json({ secret, success: true })
     }
 
     if (url !== undefined) {
@@ -103,7 +134,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'At least one supported webhook event is required' }, { status: 400 })
     }
 
-    const updated = await getOverlayServerContext().appData.repositories.webhooks.update({
+    const updated = await repository.update({
       userId: auth.userId,
       subscriptionId,
       url: typeof url === 'string' ? url : undefined,

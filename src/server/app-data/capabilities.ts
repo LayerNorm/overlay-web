@@ -95,8 +95,15 @@ export function deriveAppDataCapabilities(
   const provider = selectedDatabaseProvider(runtimeConfig)
   if (provider !== 'postgres') return CONVEX_APP_DATA_CAPABILITIES
   const vectorProvider = runtimeConfig?.providers.vectorSearch?.provider
+  const backgroundRuntimeEnabled =
+    runtimeConfig?.database.postgres.backgroundRuntimeEnabled === true
+  const serviceAuthConfigured = Boolean(
+    runtimeConfig?.database.internalServiceAuthSecret?.trim(),
+  )
   return {
     ...POSTGRES_APP_DATA_V1_CAPABILITIES,
+    supportsAutomations: backgroundRuntimeEnabled && serviceAuthConfigured,
+    supportsWebhooks: backgroundRuntimeEnabled,
     supportsVectorSearch:
       runtimeConfig?.capabilities.vectorSearch === true && vectorProvider === 'pgvector',
   }

@@ -31,6 +31,7 @@ import {
 import { getExtensionComponent } from '@/extensions/registry'
 import dynamic from 'next/dynamic'
 import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
+import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
 
 const MemoriesView = dynamic(
   () => import('@/features/knowledge/components/MemoriesView'),
@@ -48,6 +49,7 @@ const IMPLEMENTED_SECTION_IDS = new Set<string>([
   'customization',
   'memories',
   'models',
+  'webhooks',
   'contact',
 ])
 
@@ -326,6 +328,8 @@ export default function SettingsPage() {
               onChange={(enabledChatModelIds) => void updateSettings({ enabledChatModelIds })}
             />
           )}
+
+          {!isLoading && section === 'webhooks' && <WebhookSettings />}
 
           {!isLoading && section === 'contact' && (
             <SettingsCard title="Contact">

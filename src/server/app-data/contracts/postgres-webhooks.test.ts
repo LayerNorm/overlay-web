@@ -65,6 +65,11 @@ test(
           userId: foreignUserId,
         }), false)
         assert.equal(await repository.remove({ subscriptionId, userId: foreignUserId }), false)
+        assert.equal(await repository.rotateSecret({ subscriptionId, userId: foreignUserId }), null)
+        const rotated = await repository.rotateSecret({ subscriptionId, userId })
+        assert.ok(rotated)
+        assert.notEqual(rotated, subscriptionSecret)
+        subscriptionSecret = rotated
       })
 
       await t.test('event deduplication and HMAC headers survive worker execution', async () => {
@@ -142,6 +147,26 @@ test(
           .from(durableJobs)
           .where(eq(durableJobs.dedupeKey, `webhook-delivery:${row!.id}`))
         assert.equal(job?.status, 'dead_letter')
+
+        const listed = await repository.listDeliveries({ subscriptionId, userId })
+        const listedDeadLetter = listed.find((delivery) => delivery._id === row!.id)
+        assert.equal(listedDeadLetter?.status, 'dead_letter')
+        assert.equal(listedDeadLetter?.attempts.length, 5)
+        assert.equal(await repository.redriveDelivery({ deliveryId: row!.id, userId: foreignUserId }), null)
+
+        const redrivenId = await repository.redriveDelivery({ deliveryId: row!.id, userId })
+        assert.ok(redrivenId)
+        const recovery = new PostgresWebhookDeliveryService(db, {
+          fetch: async () => new Response(null, { status: 204 }),
+          validateUrl: async () => {},
+        })
+        assert.equal(
+          await workerFor(db, recovery, `p6-webhook-redrive-${randomUUID()}`).runOnce(Date.now() + 3 * 60 * 60_000),
+          'succeeded',
+        )
+        const redriven = (await repository.listDeliveries({ subscriptionId, userId }))
+          .find((delivery) => delivery._id === redrivenId)
+        assert.equal(redriven?.status, 'delivered')
       })
     } finally {
       await db.delete(users).where(eq(users.id, userId))

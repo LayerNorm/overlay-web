@@ -208,6 +208,8 @@ Supported or degraded:
 | Automatic memory extraction | Supported | Completed user turns enqueue durable extraction jobs. Accepted candidates create memories and transactionally enqueue indexing. |
 | Runtime coordination | Supported | Postgres idempotency/replay/leases and shared Redis rate limiting. |
 | Model catalog | Supported | Persisted through the selected app-data repository for restart-safe fallback. |
+| Automations | Supported with background runtime | Definitions, schedules, runs, attempts, cancellation, retries, and dead letters use the Postgres scheduler/worker. |
+| Webhooks | Supported with background runtime | Subscriptions, HMAC delivery, secret rotation, attempt history, dead letters, and redrive use the Postgres worker. |
 
 Unsupported or disabled:
 
@@ -215,8 +217,6 @@ Unsupported or disabled:
 | --- | --- |
 | Integrations/connectors | Connector account state and external integration execution are not Postgres pilot-ready. The sidebar hides Extensions in Postgres mode. |
 | Skills and MCP servers | Metadata/execution flows are still Convex/integration-backed. |
-| Automations | Postgres definitions, schedule triggers, idempotent runs, attempt audit, retries, cancellation, and dead-letter state use the standalone scheduler/worker runtime. |
-| Webhooks | Delivery retries and durable state are not implemented for Postgres. |
 | API keys | No Postgres API key repository yet. |
 | Billing records | Billing must be disabled with Postgres app-data v1. |
 | Usage accounting | Chat uses `UnlimitedUsagePolicy`; no persistent Postgres usage audit backend yet. |
@@ -329,6 +329,11 @@ The web service alone is insufficient for this lifecycle. Deploy
 `npm run app-db:worker` as a separately supervised process with the same
 `OVERLAY_DATABASE_URL` and S3 configuration so cleanup and reconciliation jobs
 are retried and dead-lettered correctly.
+
+Set `OVERLAY_BACKGROUND_RUNTIME_ENABLED=true` only after that supervised
+scheduler/worker topology exists. Postgres capability derivation otherwise
+hides automation and webhook routes and UI; automation enablement also requires
+`INTERNAL_SERVICE_AUTH_SECRET`.
 
 ## Account Deletion
 

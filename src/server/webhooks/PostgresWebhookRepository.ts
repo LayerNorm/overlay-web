@@ -1,16 +1,22 @@
 import 'server-only'
 
 import { randomBytes, randomUUID } from 'node:crypto'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
   durableJobs,
   webhookDeliveries,
+  webhookDeliveryAttempts,
   webhookSubscriptions,
 } from '@/server/database/postgres/schema'
 import type { WebhookEventType } from '@/shared/schemas/webhooks'
 import { WEBHOOK_DELIVERY_JOB } from './PostgresWebhookDeliveryService'
-import type { WebhookRepository, WebhookSubscriptionRecord } from './WebhookRepository'
+import type {
+  WebhookDeliveryRecord,
+  WebhookDeliveryStatus,
+  WebhookRepository,
+  WebhookSubscriptionRecord,
+} from './WebhookRepository'
 
 export class PostgresWebhookRepository implements WebhookRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
@@ -68,6 +74,19 @@ export class PostgresWebhookRepository implements WebhookRepository {
     return rows.length > 0
   }
 
+  async rotateSecret(args: Parameters<WebhookRepository['rotateSecret']>[0]): Promise<string | null> {
+    const secret = randomBytes(32).toString('hex')
+    const rows = await this.db
+      .update(webhookSubscriptions)
+      .set({ secret, updatedAt: new Date() })
+      .where(and(
+        eq(webhookSubscriptions.id, args.subscriptionId),
+        eq(webhookSubscriptions.userId, args.userId),
+      ))
+      .returning({ id: webhookSubscriptions.id })
+    return rows.length > 0 ? secret : null
+  }
+
   async remove(args: Parameters<WebhookRepository['remove']>[0]): Promise<boolean> {
     const rows = await this.db
       .delete(webhookSubscriptions)
@@ -77,6 +96,89 @@ export class PostgresWebhookRepository implements WebhookRepository {
       ))
       .returning({ id: webhookSubscriptions.id })
     return rows.length > 0
+  }
+
+  async listDeliveries(
+    args: Parameters<WebhookRepository['listDeliveries']>[0],
+  ): Promise<WebhookDeliveryRecord[]> {
+    const limit = Math.min(Math.max(args.limit ?? 100, 1), 250)
+    const conditions = [eq(webhookDeliveries.userId, args.userId)]
+    if (args.subscriptionId) {
+      conditions.push(eq(webhookDeliveries.subscriptionId, args.subscriptionId))
+    }
+    const deliveries = await this.db
+      .select()
+      .from(webhookDeliveries)
+      .where(and(...conditions))
+      .orderBy(desc(webhookDeliveries.createdAt))
+      .limit(limit)
+    const deliveryIds = deliveries.map((delivery) => delivery.id)
+    const attempts = deliveryIds.length > 0
+      ? await this.db
+          .select()
+          .from(webhookDeliveryAttempts)
+          .where(inArray(webhookDeliveryAttempts.deliveryId, deliveryIds))
+          .orderBy(asc(webhookDeliveryAttempts.attemptNumber))
+      : []
+    return deliveries.map((delivery) => ({
+      _id: delivery.id,
+      attemptCount: delivery.attemptCount,
+      attempts: attempts
+        .filter((attempt) => attempt.deliveryId === delivery.id)
+        .map((attempt) => ({
+          attemptNumber: attempt.attemptNumber,
+          ...(attempt.completedAt ? { completedAt: attempt.completedAt.getTime() } : {}),
+          ...(attempt.error ? { error: attempt.error } : {}),
+          startedAt: attempt.startedAt.getTime(),
+          status: attempt.status,
+          ...(attempt.statusCode !== null ? { statusCode: attempt.statusCode } : {}),
+        })),
+      createdAt: delivery.createdAt.getTime(),
+      ...(delivery.deliveredAt ? { deliveredAt: delivery.deliveredAt.getTime() } : {}),
+      eventId: delivery.eventId,
+      eventType: delivery.eventType,
+      ...(delivery.lastError ? { lastError: delivery.lastError } : {}),
+      ...(delivery.lastStatusCode !== null ? { lastStatusCode: delivery.lastStatusCode } : {}),
+      status: delivery.status as WebhookDeliveryStatus,
+      subscriptionId: delivery.subscriptionId,
+      updatedAt: delivery.updatedAt.getTime(),
+    }))
+  }
+
+  async redriveDelivery(
+    args: Parameters<WebhookRepository['redriveDelivery']>[0],
+  ): Promise<string | null> {
+    return await this.db.transaction(async (tx) => {
+      const [source] = await tx
+        .select()
+        .from(webhookDeliveries)
+        .where(and(
+          eq(webhookDeliveries.id, args.deliveryId),
+          eq(webhookDeliveries.userId, args.userId),
+          eq(webhookDeliveries.status, 'dead_letter'),
+        ))
+        .limit(1)
+      if (!source) return null
+      const deliveryId = `webhook_delivery_${randomUUID()}`
+      const jobId = randomUUID()
+      await tx.insert(webhookDeliveries).values({
+        eventId: `${source.eventId}:redrive:${randomUUID()}`,
+        eventType: source.eventType,
+        id: deliveryId,
+        payloadJson: source.payloadJson,
+        subscriptionId: source.subscriptionId,
+        userId: args.userId,
+      })
+      await tx.insert(durableJobs).values({
+        dedupeKey: `webhook-delivery:${deliveryId}`,
+        id: jobId,
+        maxAttempts: 5,
+        payload: { deliveryId },
+        priority: 10,
+        type: WEBHOOK_DELIVERY_JOB,
+      })
+      return deliveryId
+    })
   }
 
   async dispatch(args: Parameters<WebhookRepository['dispatch']>[0]): Promise<{ enqueued: number }> {
