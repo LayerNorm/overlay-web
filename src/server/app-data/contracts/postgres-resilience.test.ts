@@ -173,6 +173,7 @@ test('Postgres P5 scale and resilience gates', {
       }
       const planClient = await pool.connect()
       try {
+        await planClient.query('ANALYZE knowledge_chunk_embeddings')
         const index = await planClient.query<{ indexdef: string }>(
           `SELECT indexdef FROM pg_indexes
            WHERE schemaname = 'public' AND indexname = 'knowledge_chunk_embeddings_hnsw_idx'`,
