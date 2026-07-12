@@ -321,6 +321,35 @@ test('FileService.getContentProxy records bandwidth and returns redirect', async
   assert.deepEqual(bandwidth, { userId: 'user_1', bytes: 42 })
 })
 
+test('FileService.getContentProxy never signs a foreign user storage key', async () => {
+  let signed = false
+  const repository = createRepository({
+    async getStorageUrlForProxy() {
+      return {
+        name: 'foreign.txt',
+        r2Key: 'users/user_2/files/file_2/foreign.txt',
+        sizeBytes: 42,
+      } satisfies FileStorageProxyTarget
+    },
+  })
+  const storage = createStorage({
+    async generatePresignedDownloadUrl() {
+      signed = true
+      return 'https://download.test/should-not-exist'
+    },
+  })
+  const result = await createService(repository, storage).getContentProxy({
+    fileId: 'file_2',
+    userId: 'user_1',
+  })
+  assert.deepEqual(result, {
+    kind: 'json',
+    payload: { error: 'Not found' },
+    status: 404,
+  })
+  assert.equal(signed, false)
+})
+
 test('FileService.searchText preserves match response shape', async () => {
   const service = createService()
   const result = await service.searchText({

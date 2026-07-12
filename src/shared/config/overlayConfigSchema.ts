@@ -212,6 +212,7 @@ export const OverlayRuntimeConfigSchema = z
           accessKeyId: OptionalStringSchema,
           secretAccessKey: OptionalStringSchema,
           forcePathStyle: z.boolean().optional(),
+          presignTtlSeconds: z.number().int().positive().max(900).optional(),
         })
         .default({}),
     }),

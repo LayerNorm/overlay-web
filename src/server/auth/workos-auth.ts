@@ -95,8 +95,13 @@ export function getSessionSecret(): string {
   return secret
 }
 
-function signPayload(payload: string): string {
-  return createHmac('sha256', getSessionSecret()).update(payload).digest('hex')
+function signPayload(payload: string, secret = getSessionSecret()): string {
+  return createHmac('sha256', secret).update(payload).digest('hex')
+}
+
+function getSessionVerificationSecrets(): string[] {
+  const previous = process.env.SESSION_SECRET_PREVIOUS?.trim()
+  return previous && previous !== getSessionSecret() ? [getSessionSecret(), previous] : [getSessionSecret()]
 }
 
 function verifySignedCookie(cookieValue: string): string | null {
@@ -106,13 +111,13 @@ function verifySignedCookie(cookieValue: string): string | null {
   const payload = cookieValue.substring(0, separatorIndex)
   const signature = cookieValue.substring(separatorIndex + 1)
 
-  const expectedSignature = signPayload(payload)
-
   try {
     const sigBuf = Buffer.from(signature, 'hex')
-    const expectedBuf = Buffer.from(expectedSignature, 'hex')
-    if (sigBuf.length !== expectedBuf.length) return null
-    if (!timingSafeEqual(sigBuf, expectedBuf)) return null
+    const matches = getSessionVerificationSecrets().some((secret) => {
+      const expectedBuf = Buffer.from(signPayload(payload, secret), 'hex')
+      return sigBuf.length === expectedBuf.length && timingSafeEqual(sigBuf, expectedBuf)
+    })
+    if (!matches) return null
   } catch (_error) {
     return null
   }

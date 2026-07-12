@@ -174,6 +174,19 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
   })
 })
 
+test('configOverridesFromEnv maps bounded S3 presign lifetime', () => {
+  const overrides = configOverridesFromEnv({
+    STORAGE_PROVIDER: 's3',
+    S3_BUCKET_NAME: 'overlay-private',
+    S3_REGION: 'us-east-1',
+    S3_ACCESS_KEY_ID: 'access',
+    S3_SECRET_ACCESS_KEY: 'secret',
+    S3_PRESIGN_TTL_SECONDS: '300',
+  })
+  const storage = overrides.storage as { s3?: { presignTtlSeconds?: number } } | undefined
+  assert.equal(storage?.s3?.presignTtlSeconds, 300)
+})
+
 test('production env ignores dev WorkOS fallback variables', async () => {
   const config = await load({
     env: {

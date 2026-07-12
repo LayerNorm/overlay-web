@@ -36,7 +36,8 @@
       "endpointUrl": "https://s3.enterprise.example.com",
       "accessKeyId": "s3_access_key_id_placeholder",
       "secretAccessKey": "s3_secret_access_key_placeholder",
-      "forcePathStyle": true
+      "forcePathStyle": true,
+      "presignTtlSeconds": 300
     }
   },
   "llm": {

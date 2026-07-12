@@ -248,6 +248,7 @@ export function createObjectStoreForRuntime(config: OverlayRuntimeConfig | null)
         accessKeyId: config.storage.s3.accessKeyId ?? '',
         secretAccessKey: config.storage.s3.secretAccessKey ?? '',
         forcePathStyle: config.storage.s3.forcePathStyle,
+        presignTtlSeconds: config.storage.s3.presignTtlSeconds,
       })
     case 'none':
       return new NoOpObjectStore()

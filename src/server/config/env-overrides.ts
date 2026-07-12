@@ -195,6 +195,7 @@ function storageConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null 
       accessKeyId: readEnv(env, 'S3_ACCESS_KEY_ID'),
       secretAccessKey: readEnv(env, 'S3_SECRET_ACCESS_KEY'),
       forcePathStyle: readBool(env, 'S3_FORCE_PATH_STYLE'),
+      presignTtlSeconds: readNumber(env, 'S3_PRESIGN_TTL_SECONDS'),
     }),
   }
 }
