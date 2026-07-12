@@ -37,6 +37,7 @@ import { createPostgresRuntime } from '@/server/jobs/postgres-runtime'
 import { PostgresDaytonaWorkspaceRepository } from '@/server/ai/sandbox/PostgresDaytonaWorkspaceRepository'
 import { PostgresOutputRetentionService } from '@/server/outputs/PostgresOutputRetentionService'
 import { PostgresMemoryRepository } from '@/server/memory'
+import { PostgresChatSuggestionRepository } from '@/server/chat-suggestions/PostgresChatSuggestionRepository'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
 
@@ -227,6 +228,7 @@ test('Postgres app-data repository contracts', {
       name: 'postgres',
       provider: 'postgres',
       authProvider: 'better-auth',
+      chatSuggestions: new PostgresChatSuggestionRepository(db),
       accountDeletionRepository: new PostgresAccountDataDeletionRepository(db),
       conversations: new PostgresActConversationRepository(
         db,
@@ -274,12 +276,12 @@ test('Postgres app-data repository contracts', {
       const deleted: string[] = []
       const userId = `contract_worker_${randomUUID()}`
       const key = `users/${userId}/files/file_1/report.pdf`
-      await enqueueStorageCleanupJobs(db, {
+      assert.equal(await enqueueStorageCleanupJobs(db, {
         dedupeKey: `contract-worker:${randomUUID()}`,
         keys: [key],
         reason: 'contract-worker',
         userId,
-      })
+      }), 1)
       const runtime = createPostgresRuntime({
         db,
         leaseMs: 5_000,

@@ -29,7 +29,9 @@ test('parity matrix owns every Postgres route-support rule exactly once', () => 
 test('parity matrix records current capability gaps without treating Convex isolation as a gap', () => {
   const gaps = ON_PREM_PARITY_MATRIX.flatMap((domain) =>
     domain.capabilities
-      .filter(({ key, expectedAtParity }) => POSTGRES_APP_DATA_V1_CAPABILITIES[key] !== expectedAtParity)
+      .filter(({ key, expectedAtParity, runtimeConfigured }) => (
+        !runtimeConfigured && POSTGRES_APP_DATA_V1_CAPABILITIES[key] !== expectedAtParity
+      ))
       .map(({ key }) => `${domain.id}:${key}`),
   )
 
@@ -38,6 +40,7 @@ test('parity matrix records current capability gaps without treating Convex isol
   assert.equal(gaps.includes('projects:supportsProjects'), false)
   assert.equal(gaps.includes('files-notes:supportsFileUploads'), false)
   assert.equal(gaps.includes('background-runtime:supportsPersistentIdempotency'), false)
+  assert.equal(gaps.includes('knowledge-memory:supportsVectorSearch'), false)
 })
 
 test('parity matrix targets are valid boolean capability values', () => {
@@ -48,6 +51,9 @@ test('parity matrix targets are valid boolean capability values', () => {
         typeof POSTGRES_APP_DATA_V1_CAPABILITIES[capability.key as keyof AppDataCapabilities],
         'boolean',
       )
+      if (capability.runtimeConfigured) {
+        assert.equal(capability.expectedAtParity, true)
+      }
     }
   }
 })

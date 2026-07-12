@@ -33,6 +33,7 @@ import {
 import { isRuntimeConfigSummaryVisible } from '@/shared/config'
 import { getOverlayCapabilities } from '@/server/capabilities'
 import { deriveAppDataCapabilities, type AppDataCapabilities } from '@/server/app-data/capabilities'
+import { getOverlayServerContext } from '@/server/bootstrap'
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   let runtimeConfig
@@ -56,6 +57,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const browserSession = await getOverlaySession(request)
     const appDataCapabilities = deriveAppDataCapabilities(runtimeConfig)
     const isPostgresAppData = appDataCapabilities.provider === 'postgres'
+    const serverContext = getOverlayServerContext()
 
     const [profile, entitlements, uiSettings, gatewayModels] = await Promise.all([
       !isPostgresAppData && auth.accessToken
@@ -79,7 +81,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
           serverSecret,
         }),
       isPostgresAppData
-        ? Promise.resolve(DEFAULT_APP_SETTINGS)
+        ? serverContext.appData.repositories.settings.getByUserId(auth.userId)
         : convex.query<AppSettings>(
           'platform/uiSettings:getByServer',
           {

@@ -25,9 +25,8 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'bootstrap',
     methods: ['GET'],
     paths: ['/api/v1/bootstrap'],
-    status: 'degraded',
+    status: 'supported',
     feature: 'app-shell',
-    reason: 'Bootstrap falls back to session user, default settings, and null entitlements.',
   },
   {
     id: 'capabilities',
@@ -100,14 +99,19 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'chat-persistence',
   },
   {
-    id: 'chat-knowledge-features',
+    id: 'chat-suggestions',
     methods: '*',
-    prefixes: [
-      '/api/v1/chat-suggestions',
-      '/api/v1/notebook-agent',
-    ],
+    prefixes: ['/api/v1/chat-suggestions'],
+    status: 'supported',
+    feature: 'chat-suggestions',
+  },
+  {
+    id: 'notebook-agent',
+    methods: '*',
+    prefixes: ['/api/v1/notebook-agent'],
     status: 'unsupported',
-    feature: 'knowledge-memory',
+    feature: 'usage-accounting',
+    reason: 'Notebook generation still requires the P8 usage reservation and billing-record repository.',
   },
   {
     id: 'chat-extension-plan',

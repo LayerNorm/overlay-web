@@ -57,6 +57,9 @@ import {
   type ModelCatalogRepository,
 } from '@/server/ai/catalog'
 import type { OverlayRuntimeConfig } from '@/shared/config'
+import { ConvexChatSuggestionRepository } from '@/server/chat-suggestions/ConvexChatSuggestionRepository'
+import { PostgresChatSuggestionRepository } from '@/server/chat-suggestions/PostgresChatSuggestionRepository'
+import type { ChatSuggestionRepository } from '@/server/chat-suggestions/ChatSuggestionRepository'
 import type { DaytonaWorkspaceRepository } from '@/server/ai/sandbox/DaytonaWorkspaceRepository'
 import { ConvexDaytonaWorkspaceRepository } from '@/server/ai/sandbox/ConvexDaytonaWorkspaceRepository'
 import { PostgresDaytonaWorkspaceRepository } from '@/server/ai/sandbox/PostgresDaytonaWorkspaceRepository'
@@ -67,6 +70,7 @@ export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
   automations: AutomationRepository
   billing: BillingRepository
+  chatSuggestions: ChatSuggestionRepository
   conversations: ActConversationRepository
   durableJobs: DurableJobRepository
   daytonaWorkspaces: DaytonaWorkspaceRepository
@@ -109,6 +113,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         accountDeletion: new PostgresAccountDataDeletionRepository(db),
         automations: unsupportedRepository<AutomationRepository>('AutomationRepository'),
         billing: unsupportedRepository<BillingRepository>('BillingRepository'),
+        chatSuggestions: new PostgresChatSuggestionRepository(db),
         conversations: new PostgresActConversationRepository(
           db,
           new PostgresConversationEventNotifier(pool),
@@ -138,6 +143,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       accountDeletion: unsupportedRepository<AccountDataDeletionRepository>('AccountDataDeletionRepository'),
       automations: new ConvexAutomationRepository(),
       billing: new ConvexBillingRepository(),
+      chatSuggestions: new ConvexChatSuggestionRepository(),
       conversations: new ConvexActConversationRepository(),
       durableJobs: unsupportedRepository<DurableJobRepository>('DurableJobRepository'),
       daytonaWorkspaces: new ConvexDaytonaWorkspaceRepository(),

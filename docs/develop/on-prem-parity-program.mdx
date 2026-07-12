@@ -68,6 +68,7 @@ Shared multi-tenant Postgres hosting is not part of the parity program. Runtime 
 | P3b | Files, notes, ingestion, and object storage | Metadata, binary lifecycle, atomic extraction, sharing, duplicate handling, durable cleanup, reconciliation, and DTOs match Convex. |
 | P3c | Outputs and generated media | Generated files, images, video, browser/sandbox artifacts, retries, and cleanup match Convex. |
 | P4 | Knowledge, memory, and vector search | Extraction, embeddings, `pgvector` retrieval, citations, reindex, retention, and deletion match Convex behavior. |
+| P5 | Completed-phase stabilization and resilience | Bootstrap and helper state are provider-neutral; concurrency, pool replacement, worker/scheduler contention, pgvector performance, and storage recovery gates pass. |
 | P6 | Automations and webhooks | Durable scheduling, claims, retries, signed delivery, dead letters, and audit records work across worker replacement. |
 | P7 | Integrations, extensions, skills, and MCP | OAuth/credential lifecycle, connector state, proxy/tool execution, scoping, discovery, and audit behavior match Convex. |
 | P8 | Usage, billing, API keys, and enterprise controls | Usage reservations, budgets, Stripe replay safety, billing records, hashed keys, scopes, expiry, revocation, and audits match Convex. |
@@ -369,7 +370,7 @@ P3b is complete when:
 - Schema version 6 and its file/upload constraints are installed and compatibility-checked.
 
 P3b does not claim `pgvector`, memory/knowledge retrieval, generated outputs, or
-browser/sandbox artifact parity. Those remain P5 and P3c work.
+browser/sandbox artifact parity. Those are delivered by P4 and P3c.
 
 ## P3c Generated Outputs
 

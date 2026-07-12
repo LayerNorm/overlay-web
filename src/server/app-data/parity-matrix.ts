@@ -19,6 +19,7 @@ export type OnPremParityPhase =
 export type OnPremParityCapabilityTarget = {
   key: AppDataCapabilityKey
   expectedAtParity: boolean
+  runtimeConfigured?: boolean
 }
 
 export type OnPremParityDomain = {
@@ -119,9 +120,17 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     id: 'knowledge-memory',
     name: 'Knowledge, memory, and vector search',
     targetPhase: 'P4',
-    capabilities: [{ key: 'supportsVectorSearch', expectedAtParity: true }],
-    routeRuleIds: ['knowledge-memory-vector-search', 'chat-knowledge-features'],
+    capabilities: [{ key: 'supportsVectorSearch', expectedAtParity: true, runtimeConfigured: true }],
+    routeRuleIds: ['knowledge-memory-vector-search'],
     exitGate: 'Upload, extract, embed, retrieve, cite, reindex, and delete pass shared pgvector and Convex characterization.',
+  },
+  {
+    id: 'stabilization-resilience',
+    name: 'Completed-phase stabilization and resilience',
+    targetPhase: 'P5',
+    capabilities: [],
+    routeRuleIds: ['chat-suggestions'],
+    exitGate: 'P0-P4 routes are honestly classified, helper state persists without Convex, and concurrency, recovery, vector, and storage fault gates pass.',
   },
   {
     id: 'integrations-extensions',
@@ -166,7 +175,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
       { key: 'supportsUsageAccounting', expectedAtParity: true },
       { key: 'supportsBillingRecords', expectedAtParity: true },
     ],
-    routeRuleIds: ['subscription-and-billing-records', 'generation-usage-only'],
+    routeRuleIds: ['subscription-and-billing-records', 'generation-usage-only', 'notebook-agent'],
     exitGate: 'Usage, reservations, budgets, subscriptions, and Stripe replay protection pass shared tests.',
   },
   {

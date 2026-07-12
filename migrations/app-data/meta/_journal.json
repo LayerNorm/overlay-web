@@ -71,6 +71,13 @@
       "when": 1783969200000,
       "tag": "0009_p4d_memory_extraction",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784055600000,
+      "tag": "0010_p5_stabilization",
+      "breakpoints": true
     }
   ]
 }

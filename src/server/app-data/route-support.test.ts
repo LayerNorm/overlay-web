@@ -98,14 +98,14 @@ test('Postgres app-data mode supports project hierarchy routes', () => {
 test('Postgres app-data mode supports conversation persistence and realtime routes', () => {
   const support = getAppDataRouteSupport({
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
-    method: 'GET',
+    method: 'POST',
     pathname: '/api/v1/conversations',
   })
   assert.equal(support.status, 'supported')
   assert.equal(support.feature, 'chat-persistence')
   assert.equal(getAppDataRouteSupport({
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
-    method: 'GET',
+    method: 'POST',
     pathname: '/api/v1/conversations/events',
   }).status, 'supported')
   assert.equal(getAppDataRouteSupport({
@@ -115,38 +115,45 @@ test('Postgres app-data mode supports conversation persistence and realtime rout
   }).status, 'supported')
 })
 
-test('Postgres app-data mode gates Convex-backed chat subroutes with structured 501 responses', async () => {
+test('Postgres app-data mode supports persisted chat suggestions and gates notebook generation', async () => {
   const support = getAppDataRouteSupport({
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/chat-suggestions',
   })
-  assert.equal(support.status, 'unsupported')
+  assert.equal(support.status, 'supported')
+
+  const notebookSupport = getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
+    method: 'POST',
+    pathname: '/api/v1/notebook-agent',
+  })
+  assert.equal(notebookSupport.status, 'unsupported')
 
   const response = appDataRouteUnsupportedResponse({
     databaseProvider: 'postgres',
-    method: 'GET',
-    pathname: '/api/v1/chat-suggestions',
-    support,
+    method: 'POST',
+    pathname: '/api/v1/notebook-agent',
+    support: notebookSupport,
   })
   assert.equal(response.status, 501)
   assert.deepEqual(await response.json(), {
     error: 'Route is not available for the selected app-data provider',
     code: 'app_data_route_not_supported',
     provider: 'postgres',
-    method: 'GET',
-    route: '/api/v1/chat-suggestions',
-    feature: 'knowledge-memory',
-    reason: 'This route is waiting for a Postgres repository implementation.',
+    method: 'POST',
+    route: '/api/v1/notebook-agent',
+    feature: 'usage-accounting',
+    reason: 'Notebook generation still requires the P8 usage reservation and billing-record repository.',
   })
 })
 
-test('Postgres app-data mode allows degraded bootstrap and gates external integration routes', () => {
+test('Postgres app-data mode supports bootstrap and gates external integration routes', () => {
   assert.equal(getAppDataRouteSupport({
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/bootstrap',
-  }).status, 'degraded')
+  }).status, 'supported')
   assert.equal(getAppDataRouteSupport({
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',

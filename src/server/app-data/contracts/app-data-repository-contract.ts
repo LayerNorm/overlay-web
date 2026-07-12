@@ -19,10 +19,12 @@ import type { UserRepository } from '@/server/users/types'
 import type { DaytonaWorkspaceRepository } from '@/server/ai/sandbox/DaytonaWorkspaceRepository'
 import { hashTextContent } from '@/server/storage/text-content-hash'
 import type { MemoryRepository } from '@/server/memory'
+import type { ChatSuggestionRepository } from '@/server/chat-suggestions/ChatSuggestionRepository'
 
 export interface AppDataRepositoryContractBackend {
   accountDeletionRepository?: AccountDataDeletionRepository
   authProvider: UserAuthProvider
+  chatSuggestions: ChatSuggestionRepository
   conversations: ActConversationRepository
   daytonaWorkspaces: DaytonaWorkspaceRepository
   deleteAccount?: (userId: string) => Promise<AccountDeletionResult>
@@ -79,6 +81,19 @@ export async function runAppDataRepositoryContractSuite(
 
       const settings = await backend.conversations.getAppSettings({ userId })
       assertDefaultSettings(settings)
+    })
+
+    await t.test(`${backend.name}: daily chat suggestions persist by normalized user identity`, async () => {
+      assert.equal(await backend.chatSuggestions.getByUserId(userId), null)
+      assert.equal(await backend.chatSuggestions.setForUser({
+        day: '2026-07-11',
+        prompts: ['One', 'Two', 'Three', 'Four'],
+        userId,
+      }), true)
+      assert.deepEqual(await backend.chatSuggestions.getByUserId(userId), {
+        day: '2026-07-11',
+        prompts: ['One', 'Two', 'Three', 'Four'],
+      })
     })
 
     await t.test(`${backend.name}: project hierarchy and linked resources enforce ownership`, async () => {

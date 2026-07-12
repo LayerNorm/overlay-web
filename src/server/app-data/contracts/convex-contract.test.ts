@@ -12,6 +12,7 @@ import { ConvexNoteRepository } from '@/server/notes'
 import { ConvexProjectRepository } from '@/server/projects/ConvexProjectRepository'
 import { ConvexUserRepository } from '@/server/users/ConvexUserRepository'
 import { runAppDataRepositoryContractSuite } from './app-data-repository-contract'
+import { ConvexChatSuggestionRepository } from '@/server/chat-suggestions/ConvexChatSuggestionRepository'
 import { ConvexDaytonaWorkspaceRepository } from '@/server/ai/sandbox/ConvexDaytonaWorkspaceRepository'
 import { ConvexMemoryRepository } from '@/server/memory/ConvexMemoryRepository'
 
@@ -30,6 +31,7 @@ test('real Convex app-data repository contracts', {
     name: 'convex',
     provider: 'convex',
     authProvider: 'workos',
+    chatSuggestions: new ConvexChatSuggestionRepository(),
     conversations,
     daytonaWorkspaces: new ConvexDaytonaWorkspaceRepository(),
     deleteAccount: deleteConvexAccount,
