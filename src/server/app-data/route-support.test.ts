@@ -105,7 +105,7 @@ test('Postgres app-data mode supports conversation persistence and realtime rout
   assert.equal(support.feature, 'chat-persistence')
   assert.equal(getAppDataRouteSupport({
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
-    method: 'POST',
+    method: 'GET',
     pathname: '/api/v1/conversations/events',
   }).status, 'supported')
   assert.equal(getAppDataRouteSupport({
