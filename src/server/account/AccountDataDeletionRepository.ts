@@ -2,6 +2,10 @@ import 'server-only'
 
 export interface AccountDataDeletionCounts {
   apiIdempotencyKeys: number
+  automationRunAttempts: number
+  automationRuns: number
+  automationTriggers: number
+  automations: number
   authIdentities: number
   conversationContextSummaries: number
   conversationEvents: number
@@ -20,6 +24,9 @@ export interface AccountDataDeletionCounts {
   r2UploadIntents: number
   userSettings: number
   users: number
+  webhookDeliveries: number
+  webhookDeliveryAttempts: number
+  webhookSubscriptions: number
 }
 
 export interface AccountDataDeletionVerification {

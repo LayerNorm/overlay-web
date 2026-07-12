@@ -214,7 +214,7 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'webhooks',
     methods: '*',
     prefixes: ['/api/v1/webhooks'],
-    status: 'unsupported',
+    status: 'supported',
     feature: 'webhooks',
   },
   {

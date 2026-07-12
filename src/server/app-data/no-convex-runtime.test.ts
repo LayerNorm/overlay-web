@@ -16,6 +16,7 @@ import { InMemoryRateLimiter } from '@/server/shared/providers'
 import { InMemoryVectorStore } from '@/server/storage/providers/in-memory-vector-store'
 import { PostgresAppSettingsRepository } from '@/server/settings'
 import { PostgresUserRepository } from '@/server/users'
+import { PostgresWebhookRepository } from '@/server/webhooks'
 import { parseOverlayRuntimeConfig, type OverlayRuntimeConfig } from '@/shared/config'
 import { createOverlayServerContext } from '../bootstrap'
 
@@ -117,6 +118,7 @@ test('Postgres server context boots and executes safe policies without Convex co
     assert.equal(repositories.onboarding instanceof PostgresOnboardingRepository, true)
     assert.equal(repositories.settings instanceof PostgresAppSettingsRepository, true)
     assert.equal(repositories.users instanceof PostgresUserRepository, true)
+    assert.equal(repositories.webhooks instanceof PostgresWebhookRepository, true)
 
     const entitlements = await context.chatUsagePolicy.getEntitlements({ userId: 'p0-user' })
     assert.ok(entitlements)

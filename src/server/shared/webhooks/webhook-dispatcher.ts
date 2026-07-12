@@ -1,7 +1,6 @@
 import 'server-only'
 
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import type { WebhookEvent } from '@/shared/schemas/webhooks'
 import { WebhookEventSchema } from '@/shared/schemas/webhooks'
 
@@ -16,23 +15,10 @@ export class WebhookDispatcher {
       userId: event.userId || userId,
     })
 
-    const result = await convex.mutation<{ enqueued: number }>(
-      'webhooks/deliveries:enqueueByServer',
-      {
-        serverSecret: getInternalApiSecret(),
-        userId: parsed.userId,
-        eventId: parsed.id,
-        eventType: parsed.type,
-        payloadJson: JSON.stringify(parsed),
-      },
-      {
-        throwOnError: true,
-        timeoutMs: 10_000,
-        suppressNetworkConsoleError: true,
-      },
-    )
-
-    return { enqueued: result?.enqueued ?? 0 }
+    return await getOverlayServerContext().appData.repositories.webhooks.dispatch({
+      event: parsed,
+      userId: parsed.userId,
+    })
   }
 }
 

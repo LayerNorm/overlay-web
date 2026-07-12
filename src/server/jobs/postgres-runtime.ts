@@ -35,6 +35,10 @@ import {
 import { getOverlayRuntimeConfigSync } from '@/server/config'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import {
+  PostgresWebhookDeliveryService,
+  WEBHOOK_DELIVERY_JOB,
+} from '@/server/webhooks'
+import {
   AUTOMATION_EXECUTE_JOB,
   AUTOMATION_SCHEDULE_DUE_JOB,
   PostgresAutomationRunCoordinator,
@@ -62,6 +66,7 @@ export function createPostgresRuntime(args: {
   const scheduler = new PostgresSchedulerService(args.db)
   const automationRuns = new PostgresAutomationRunCoordinator(args.db)
   const automationExecutor = args.automationExecutor ?? runActTurnForScheduledAutomation
+  const webhookDeliveries = new PostgresWebhookDeliveryService(args.db)
   const storageReconciliation = args.objectStore
     ? new PostgresStorageReconciliationService(args.db, args.objectStore)
     : null
@@ -134,6 +139,7 @@ export function createPostgresRuntime(args: {
           throw error
         }
       },
+      [WEBHOOK_DELIVERY_JOB]: async (job) => await webhookDeliveries.deliver(job),
       [KNOWLEDGE_REINDEX_JOB]: async (job) => await getKnowledgeIndex().reindex({
         expectedContentHash: stringPayload(job.payload.contentHash),
         sourceId: requiredStringPayload(job.payload.sourceId, 'sourceId'),

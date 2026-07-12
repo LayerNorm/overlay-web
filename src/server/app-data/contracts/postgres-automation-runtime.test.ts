@@ -3,7 +3,7 @@ import 'server-only'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { asc, eq } from 'drizzle-orm'
+import { asc, eq, inArray } from 'drizzle-orm'
 import { createOverlayPostgresDb, createOverlayPostgresPool } from '@/server/database/postgres/client'
 import {
   automationRunAttempts,
@@ -16,7 +16,10 @@ import {
 } from '@/server/database/postgres/schema'
 import { PostgresActConversationRepository } from '@/server/conversations/PostgresActConversationRepository'
 import { PostgresAutomationRepository } from '@/server/automations/PostgresAutomationRepository'
-import { AUTOMATION_SCHEDULE_DUE_JOB } from '@/server/automations/PostgresAutomationRunCoordinator'
+import {
+  AUTOMATION_EXECUTE_JOB,
+  AUTOMATION_SCHEDULE_DUE_JOB,
+} from '@/server/automations/PostgresAutomationRunCoordinator'
 import { createPostgresRuntime } from '@/server/jobs/postgres-runtime'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
@@ -49,6 +52,10 @@ test(
     })
 
     try {
+      await db.delete(durableJobs).where(inArray(durableJobs.type, [
+        AUTOMATION_EXECUTE_JOB,
+        AUTOMATION_SCHEDULE_DUE_JOB,
+      ]))
       await db.insert(users).values({ email: `${userId}@example.test`, id: userId })
       await db.insert(conversations).values({
         actModelId: 'openai/gpt-4.1',
@@ -126,6 +133,10 @@ test(
       })
     } finally {
       await db.delete(users).where(eq(users.id, userId))
+      await db.delete(durableJobs).where(inArray(durableJobs.type, [
+        AUTOMATION_EXECUTE_JOB,
+        AUTOMATION_SCHEDULE_DUE_JOB,
+      ]))
       await pool.end()
     }
   },

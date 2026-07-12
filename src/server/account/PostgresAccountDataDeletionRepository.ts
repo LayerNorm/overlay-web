@@ -15,6 +15,10 @@ import {
 
 const ZERO_COUNTS: AccountDataDeletionCounts = {
   apiIdempotencyKeys: 0,
+  automationRunAttempts: 0,
+  automationRuns: 0,
+  automationTriggers: 0,
+  automations: 0,
   authIdentities: 0,
   conversationContextSummaries: 0,
   conversationEvents: 0,
@@ -33,6 +37,9 @@ const ZERO_COUNTS: AccountDataDeletionCounts = {
   r2UploadIntents: 0,
   userSettings: 0,
   users: 0,
+  webhookDeliveries: 0,
+  webhookDeliveryAttempts: 0,
+  webhookSubscriptions: 0,
 }
 
 export class PostgresAccountDataDeletionRepository implements AccountDataDeletionRepository {
@@ -117,6 +124,10 @@ async function selectStorageIds(tx: Transaction, userId: string): Promise<string
 async function countUserRows(tx: Transaction, userId: string): Promise<AccountDataDeletionCounts> {
   const result = await tx.execute<{
     api_idempotency_keys: number
+    automation_run_attempts: number
+    automation_runs: number
+    automation_triggers: number
+    automations: number
     auth_identities: number
     conversation_context_summaries: number
     conversation_events: number
@@ -135,9 +146,16 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     r2_upload_intents: number
     user_settings: number
     users: number
+    webhook_deliveries: number
+    webhook_delivery_attempts: number
+    webhook_subscriptions: number
   }>(sql`
     SELECT
       (SELECT count(*)::int FROM api_idempotency_keys WHERE user_id = ${userId}) AS api_idempotency_keys,
+      (SELECT count(*)::int FROM automations WHERE user_id = ${userId}) AS automations,
+      (SELECT count(*)::int FROM automation_runs WHERE user_id = ${userId}) AS automation_runs,
+      (SELECT count(*)::int FROM automation_triggers trigger JOIN automations automation ON automation.id = trigger.automation_id WHERE automation.user_id = ${userId}) AS automation_triggers,
+      (SELECT count(*)::int FROM automation_run_attempts attempt JOIN automation_runs run ON run.id = attempt.run_id WHERE run.user_id = ${userId}) AS automation_run_attempts,
       (SELECT count(*)::int FROM auth_identities WHERE user_id = ${userId}) AS auth_identities,
       (SELECT count(*)::int FROM conversation_context_summaries WHERE user_id = ${userId}) AS conversation_context_summaries,
       (SELECT count(*)::int FROM conversation_events WHERE user_id = ${userId}) AS conversation_events,
@@ -156,12 +174,19 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
       (SELECT count(*)::int FROM r2_upload_intents WHERE user_id = ${userId}) AS r2_upload_intents,
       (SELECT count(*)::int FROM user_settings WHERE user_id = ${userId}) AS user_settings,
       (SELECT count(*)::int FROM users WHERE id = ${userId}) AS users
+      ,(SELECT count(*)::int FROM webhook_subscriptions WHERE user_id = ${userId}) AS webhook_subscriptions
+      ,(SELECT count(*)::int FROM webhook_deliveries WHERE user_id = ${userId}) AS webhook_deliveries
+      ,(SELECT count(*)::int FROM webhook_delivery_attempts attempt JOIN webhook_deliveries delivery ON delivery.id = attempt.delivery_id WHERE delivery.user_id = ${userId}) AS webhook_delivery_attempts
   `)
   const row = result.rows[0]
   if (!row) return { ...ZERO_COUNTS }
 
   return {
     apiIdempotencyKeys: Number(row.api_idempotency_keys ?? 0),
+    automationRunAttempts: Number(row.automation_run_attempts ?? 0),
+    automationRuns: Number(row.automation_runs ?? 0),
+    automationTriggers: Number(row.automation_triggers ?? 0),
+    automations: Number(row.automations ?? 0),
     authIdentities: Number(row.auth_identities ?? 0),
     conversationContextSummaries: Number(row.conversation_context_summaries ?? 0),
     conversationEvents: Number(row.conversation_events ?? 0),
@@ -180,6 +205,9 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     r2UploadIntents: Number(row.r2_upload_intents ?? 0),
     userSettings: Number(row.user_settings ?? 0),
     users: Number(row.users ?? 0),
+    webhookDeliveries: Number(row.webhook_deliveries ?? 0),
+    webhookDeliveryAttempts: Number(row.webhook_delivery_attempts ?? 0),
+    webhookSubscriptions: Number(row.webhook_subscriptions ?? 0),
   }
 }
 

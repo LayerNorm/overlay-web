@@ -65,6 +65,11 @@ import type { DaytonaWorkspaceRepository } from '@/server/ai/sandbox/DaytonaWork
 import { ConvexDaytonaWorkspaceRepository } from '@/server/ai/sandbox/ConvexDaytonaWorkspaceRepository'
 import { PostgresDaytonaWorkspaceRepository } from '@/server/ai/sandbox/PostgresDaytonaWorkspaceRepository'
 import { deriveAppDataCapabilities, type AppDataCapabilities } from './capabilities'
+import {
+  ConvexWebhookRepository,
+  PostgresWebhookRepository,
+  type WebhookRepository,
+} from '@/server/webhooks'
 import { unsupportedRepository } from './errors'
 
 export interface AppDataRepositories {
@@ -86,6 +91,7 @@ export interface AppDataRepositories {
   settings: AppSettingsRepository
   serviceAuthReplay: ServiceAuthReplayRepository
   users: UserRepository
+  webhooks: WebhookRepository
   usage: Record<string, never>
 }
 
@@ -134,6 +140,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         settings: new PostgresAppSettingsRepository(db),
         serviceAuthReplay: new PostgresServiceAuthReplayRepository(db),
         users: new PostgresUserRepository(db),
+        webhooks: new PostgresWebhookRepository(db),
         usage: unsupportedRepository<Record<string, never>>('UsageRepository'),
       },
     }
@@ -160,6 +167,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       settings: unsupportedRepository<AppSettingsRepository>('AppSettingsRepository'),
       serviceAuthReplay: new ConvexServiceAuthReplayRepository(),
       users: new ConvexUserRepository(),
+      webhooks: new ConvexWebhookRepository(),
       usage: unsupportedRepository<Record<string, never>>('UsageRepository'),
     },
   }

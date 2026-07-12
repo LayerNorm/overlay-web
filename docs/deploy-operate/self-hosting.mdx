@@ -214,7 +214,7 @@ Enterprise provider matrix:
 
 ### Postgres app-data setup
 
-Postgres app-data support is split into phases. Operators can provision, validate, migrate, and smoke-test the app-data schema now. Run with `billing.provider="none"` and keep webhooks, integrations, and API keys disabled until their parity phases land. Projects, files, generated media, browser outputs, Daytona artifacts, saved memories, knowledge retrieval, and scheduled automations are supported.
+Postgres app-data support is split into phases. Operators can provision, validate, migrate, and smoke-test the app-data schema now. Run with `billing.provider="none"` and keep integrations and API keys disabled until their parity phases land. Projects, files, generated media, browser outputs, Daytona artifacts, saved memories, knowledge retrieval, scheduled automations, and signed outbound webhooks are supported.
 
 Postgres-native memory and knowledge search uses `pgvector`; do not keep Convex enabled in the browser as a hidden vector sidecar. Confirm `vector` is available before migration, then set:
 
@@ -272,7 +272,7 @@ OVERLAY_DATABASE_URL="postgres://..." npm run app-db:vector-readiness
 
 This readiness command is read-only. It does not enable vector search, install extensions, create vector columns, or change the app-data schema.
 
-Postgres app-data does not use Convex crons. Run `npm run app-db:worker` as a separately supervised service. Its Postgres scheduler enqueues maintenance, coordination cleanup, model-catalog refresh, S3 reconciliation, output retention, knowledge maintenance, and due automation scans. Leased workers execute jobs with retry and dead-letter state. Automation occurrences are idempotent, each attempt is audited, overlapping runs obey the configured `skip` or `queue` policy, and cancellation is checked before execution. The standalone `npm run app-db:maintenance` command remains available for manual recovery. `compliance.retention.fileDays` governs generated media/browser outputs and `compliance.retention.sandboxArtifactDays` governs Daytona artifacts. Webhook delivery remains capability-gated until its P6 handler lands.
+Postgres app-data does not use Convex crons. Run `npm run app-db:worker` as a separately supervised service. Its Postgres scheduler enqueues maintenance, coordination cleanup, model-catalog refresh, S3 reconciliation, output retention, knowledge maintenance, and due automation scans. Leased workers execute jobs with retry and dead-letter state. Automation occurrences are idempotent, each attempt is audited, overlapping runs obey the configured `skip` or `queue` policy, and cancellation is checked before execution. Outbound webhook events are deduplicated per subscription/event, signed over `timestamp.payload` with HMAC-SHA256, and retain delivery-attempt and dead-letter records. The standalone `npm run app-db:maintenance` command remains available for manual recovery. `compliance.retention.fileDays` governs generated media/browser outputs and `compliance.retention.sandboxArtifactDays` governs Daytona artifacts.
 
 Postgres chat realtime uses the `conversation_events` table and `/api/v1/conversations/events` long polling. Transactional `pg_notify` wakes one listener connection per web process; notifications are only an optimization because reconnects read from the durable cursor. It does not require sticky load-balancer sessions. Keep the worker running so expired event rows and message deltas are pruned. Each app tab holds at most one HTTP long-poll request, so account for concurrent tabs when setting ECS task count and reverse-proxy timeouts. The route waits up to 15 seconds; configure the ingress idle timeout above that value.
 
@@ -306,7 +306,7 @@ Capabilities:
 | `billing` | Checkout, portal, top-ups, billing account pages, quota purchase prompts. |
 | `sso` | OAuth/SSO buttons, enterprise auth callbacks, native auth flows. |
 | `apiKeys` | Future API key management routes and UI. |
-| `webhooks` | Future webhook subscription routes and UI. |
+| `webhooks` | Outbound webhook subscriptions, signed delivery, retry history, and dead letters. |
 | `vectorSearch` | Knowledge search and memory routes. Basic file listing is preserved. |
 | `automations` | Automation scheduling, automation navigation, runner callbacks. |
 | `multiTenant` | Reserved for future tenant isolation work. The schema rejects enabling it today. |

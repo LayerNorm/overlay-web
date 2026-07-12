@@ -165,7 +165,6 @@
     "src/server/app-api/v1/settings/route.ts",
     "src/server/app-api/v1/skills/route.ts",
     "src/server/app-api/v1/transcribe/route.ts",
-    "src/server/app-api/v1/webhooks/route.ts",
     "src/server/app-data/repositories.ts",
     "src/server/auth/api-keys/ApiKeyService.ts",
     "src/server/auth/providers/better-auth-provider.ts",
@@ -195,7 +194,6 @@
     "src/server/projects/ConvexProjectRepository.ts",
     "src/server/shared/providers/convex-rate-limiter.ts",
     "src/server/shared/providers/index.ts",
-    "src/server/shared/webhooks/webhook-dispatcher.ts",
     "src/server/storage/convex.ts",
     "src/server/storage/providers/convex-vector-store.ts",
     "src/server/storage/providers/index.ts",
@@ -205,7 +203,9 @@
     "src/server/tools/tools/record-tool-invocation.ts",
     "src/server/users/ConvexUserRepository.ts",
     "src/server/users/factory.ts",
-    "src/server/users/index.ts"
+    "src/server/users/index.ts",
+    "src/server/webhooks/ConvexWebhookRepository.ts",
+    "src/server/webhooks/index.ts"
   ],
   "convexScheduledCallFiles": [
     "convex/automations/automationRunner.ts",

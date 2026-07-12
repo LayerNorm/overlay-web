@@ -283,3 +283,13 @@ test('Postgres app-data mode supports durable automation routes', () => {
     }).status, 'supported')
   }
 })
+
+test('Postgres app-data mode supports webhook subscription and delivery routes', () => {
+  for (const method of ['GET', 'POST', 'PATCH', 'DELETE']) {
+    assert.equal(getAppDataRouteSupport({
+      appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
+      method,
+      pathname: '/api/v1/webhooks',
+    }).status, 'supported')
+  }
+})

@@ -85,6 +85,13 @@
       "when": 1784142000000,
       "tag": "0011_p6_automations",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784228400000,
+      "tag": "0012_p6d_webhooks",
+      "breakpoints": true
     }
   ]
 }

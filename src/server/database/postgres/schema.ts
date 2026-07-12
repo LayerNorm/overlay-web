@@ -168,6 +168,13 @@ export const automationRunStatus = pgEnum('overlay_automation_run_status', [
   'dead_letter',
 ])
 
+export const webhookDeliveryStatus = pgEnum('overlay_webhook_delivery_status', [
+  'pending',
+  'delivering',
+  'delivered',
+  'dead_letter',
+])
+
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
   email: text('email').notNull(),
@@ -732,6 +739,67 @@ export const automationRunAttempts = pgTable('automation_run_attempts', {
 }, (table) => [
   uniqueIndex('automation_run_attempts_run_id_attempt_idx').on(table.runId, table.attemptNumber),
   index('automation_run_attempts_job_id_idx').on(table.jobId),
+])
+
+export const webhookSubscriptions = pgTable('webhook_subscriptions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  url: text('url').notNull(),
+  secret: text('secret').notNull(),
+  events: jsonb('events').$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  description: text('description'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('webhook_subscriptions_user_id_updated_at_idx').on(table.userId, table.updatedAt),
+  index('webhook_subscriptions_user_id_enabled_idx').on(table.userId, table.enabled),
+])
+
+export const webhookDeliveries = pgTable('webhook_deliveries', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  subscriptionId: text('subscription_id')
+    .notNull()
+    .references(() => webhookSubscriptions.id, { onDelete: 'cascade' }),
+  eventId: text('event_id').notNull(),
+  eventType: text('event_type').notNull(),
+  payloadJson: text('payload_json').notNull(),
+  status: webhookDeliveryStatus('status').default('pending').notNull(),
+  attemptCount: integer('attempt_count').default(0).notNull(),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).defaultNow().notNull(),
+  lastStatusCode: integer('last_status_code'),
+  lastError: text('last_error'),
+  deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+  deadLetteredAt: timestamp('dead_lettered_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('webhook_deliveries_subscription_event_idx').on(table.subscriptionId, table.eventId),
+  index('webhook_deliveries_user_id_created_at_idx').on(table.userId, table.createdAt),
+  index('webhook_deliveries_status_next_attempt_idx').on(table.status, table.nextAttemptAt),
+])
+
+export const webhookDeliveryAttempts = pgTable('webhook_delivery_attempts', {
+  id: text('id').primaryKey(),
+  deliveryId: text('delivery_id')
+    .notNull()
+    .references(() => webhookDeliveries.id, { onDelete: 'cascade' }),
+  attemptNumber: integer('attempt_number').notNull(),
+  jobId: text('job_id'),
+  status: text('status').notNull(),
+  statusCode: integer('status_code'),
+  error: text('error'),
+  startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('webhook_delivery_attempts_delivery_attempt_idx').on(table.deliveryId, table.attemptNumber),
+  index('webhook_delivery_attempts_job_id_idx').on(table.jobId),
 ])
 
 export const apiIdempotencyKeys = pgTable('api_idempotency_keys', {
