@@ -47,6 +47,12 @@ export const POSTGRES_RUNTIME_SCHEDULES = [
     jobType: 'automation.schedule-due',
     payload: {},
   },
+  {
+    id: 'daytona-reconciliation',
+    intervalMs: 5 * 60_000,
+    jobType: 'daytona.reconcile',
+    payload: {},
+  },
 ] as const
 
 type DueTask = {

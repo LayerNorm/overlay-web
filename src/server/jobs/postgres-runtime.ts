@@ -35,6 +35,12 @@ import {
 import { getOverlayRuntimeConfigSync } from '@/server/config'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import {
+  DAYTONA_RECONCILE_JOB,
+  DaytonaSdkReconciliationControlPlane,
+  PostgresDaytonaReconciliationService,
+} from '@/server/ai/sandbox/PostgresDaytonaReconciliationService'
+import { PostgresDaytonaWorkspaceRepository } from '@/server/ai/sandbox/PostgresDaytonaWorkspaceRepository'
+import {
   PostgresWebhookDeliveryService,
   WEBHOOK_DELIVERY_JOB,
 } from '@/server/webhooks'
@@ -52,6 +58,7 @@ export function createPostgresRuntime(args: {
   db: OverlayPostgresDb
   leaseMs: number
   automationExecutor?: (input: ScheduledAutomationTurn) => Promise<{ conversationId: string }>
+  daytonaReconciler?: Pick<PostgresDaytonaReconciliationService, 'reconcile'>
   embeddingProvider?: EmbeddingProvider
   memoryExtractionProvider?: MemoryExtractionProvider
   objectStore?: Pick<ObjectStore, 'deleteObject' | 'listObjects'>
@@ -67,6 +74,14 @@ export function createPostgresRuntime(args: {
   const automationRuns = new PostgresAutomationRunCoordinator(args.db)
   const automationExecutor = args.automationExecutor ?? runActTurnForScheduledAutomation
   const webhookDeliveries = new PostgresWebhookDeliveryService(args.db)
+  let daytonaReconciler = args.daytonaReconciler
+  const getDaytonaReconciler = () => {
+    daytonaReconciler ??= new PostgresDaytonaReconciliationService({
+      controlPlane: new DaytonaSdkReconciliationControlPlane(),
+      repository: new PostgresDaytonaWorkspaceRepository(args.db),
+    })
+    return daytonaReconciler
+  }
   const storageReconciliation = args.objectStore
     ? new PostgresStorageReconciliationService(args.db, args.objectStore)
     : null
@@ -140,6 +155,13 @@ export function createPostgresRuntime(args: {
         }
       },
       [WEBHOOK_DELIVERY_JOB]: async (job) => await webhookDeliveries.deliver(job),
+      [DAYTONA_RECONCILE_JOB]: async () => {
+        const config = runtimeConfig()
+        if (!config.features.sandboxes || config.providers.sandbox?.provider !== 'daytona') {
+          return { skipped: 'daytona_disabled' }
+        }
+        return await getDaytonaReconciler().reconcile()
+      },
       [KNOWLEDGE_REINDEX_JOB]: async (job) => await getKnowledgeIndex().reindex({
         expectedContentHash: stringPayload(job.payload.contentHash),
         sourceId: requiredStringPayload(job.payload.sourceId, 'sourceId'),

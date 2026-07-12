@@ -42,7 +42,12 @@ export type DaytonaUsageAccrual = {
 
 export interface DaytonaWorkspaceRepository {
   getByUserId(args: { userId: string }): Promise<DaytonaWorkspaceRecord | null>
+  listAll(): Promise<DaytonaWorkspaceRecord[]>
   upsert(args: DaytonaWorkspaceUpsert): Promise<DaytonaWorkspaceRecord>
+  reconcile(args: DaytonaWorkspaceUpsert & { expectedUpdatedAt?: number }): Promise<
+    | { success: true; workspace: DaytonaWorkspaceRecord }
+    | { success: false; skipped: 'stale_workspace' }
+  >
   accrueUsage(args: DaytonaUsageAccrual): Promise<
     | { success: true; durationSeconds: number; costUsd: number; costCents: number }
     | { success: false; skipped: 'missing_workspace' | 'stale_meter_window' }

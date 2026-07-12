@@ -10,7 +10,7 @@ The short version:
 - Auth is now provider-agnostic at the app boundary. WorkOS and Better Auth both normalize into the Overlay session contract.
 - Auth storage and app-data storage are separate concerns. Better Auth uses its own Postgres database for auth/session state. Overlay app data uses either Convex or the new Postgres app-data provider.
 - Postgres app-data includes production runtime foundations for shared idempotency, replay protection, Redis rate limiting, durable jobs/outbox, scheduler ownership, schema compatibility, and persisted model catalog snapshots.
-- Postgres app-data is not full Convex parity. Chat, projects, files, generated media, browser outputs, Daytona artifacts, memories, knowledge retrieval, durable scheduled automations, and signed outbound webhooks are supported; API keys, billing records, and integrations remain disabled or unsupported.
+- Postgres app-data is not full Convex parity. Chat, projects, files, generated media, browser outputs, Daytona artifacts and reconciliation, memories, knowledge retrieval, durable scheduled automations, and signed outbound webhooks are supported; API keys, billing records, and integrations remain disabled or unsupported.
 - Postgres knowledge retrieval uses `pgvector` plus Postgres full-text search. Deployments must verify that their managed Postgres provider supports the `vector` extension and must run a separately supervised indexing worker.
 
 ## Design Goals

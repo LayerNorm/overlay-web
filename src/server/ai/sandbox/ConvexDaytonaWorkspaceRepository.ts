@@ -17,6 +17,10 @@ export class ConvexDaytonaWorkspaceRepository implements DaytonaWorkspaceReposit
     }, { throwOnError: true })
   }
 
+  async listAll(): Promise<DaytonaWorkspaceRecord[]> {
+    throw new Error('Workspace reconciliation is owned by the Convex scheduler')
+  }
+
   async upsert(args: DaytonaWorkspaceUpsert): Promise<DaytonaWorkspaceRecord> {
     const workspace = await convex.mutation<DaytonaWorkspaceRecord | null>('ai/sandbox/daytona:upsertWorkspace', {
       ...args,
@@ -24,6 +28,10 @@ export class ConvexDaytonaWorkspaceRepository implements DaytonaWorkspaceReposit
     }, { throwOnError: true })
     if (!workspace) throw new Error('Failed to upsert Daytona workspace record.')
     return workspace
+  }
+
+  async reconcile(): Promise<never> {
+    throw new Error('Workspace reconciliation is owned by the Convex scheduler')
   }
 
   async accrueUsage(args: DaytonaUsageAccrual) {

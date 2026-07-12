@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import { daytonaWorkspaces } from '@/server/database/postgres/schema'
 import { computeDaytonaRuntimeCost } from './daytona-pricing'
@@ -21,6 +21,10 @@ export class PostgresDaytonaWorkspaceRepository implements DaytonaWorkspaceRepos
       .where(eq(daytonaWorkspaces.userId, args.userId))
       .limit(1)
     return row ? normalize(row) : null
+  }
+
+  async listAll(): Promise<DaytonaWorkspaceRecord[]> {
+    return (await this.db.select().from(daytonaWorkspaces)).map(normalize)
   }
 
   async upsert(args: DaytonaWorkspaceUpsert): Promise<DaytonaWorkspaceRecord> {
@@ -55,6 +59,37 @@ export class PostgresDaytonaWorkspaceRepository implements DaytonaWorkspaceRepos
       .returning()
     if (!row) throw new Error('Failed to upsert Daytona workspace record.')
     return normalize(row)
+  }
+
+  async reconcile(args: DaytonaWorkspaceUpsert & { expectedUpdatedAt?: number }) {
+    if (args.expectedUpdatedAt === undefined) {
+      return { success: true as const, workspace: await this.upsert(args) }
+    }
+    const now = new Date()
+    const [row] = await this.db
+      .update(daytonaWorkspaces)
+      .set({
+        lastKnownStartedAt: date(args.lastKnownStartedAt),
+        lastKnownStoppedAt: date(args.lastKnownStoppedAt),
+        lastMeteredAt: date(args.lastMeteredAt),
+        mountPath: args.mountPath,
+        resourceProfile: args.resourceProfile,
+        sandboxId: args.sandboxId,
+        sandboxName: args.sandboxName,
+        state: args.state,
+        tier: args.tier,
+        updatedAt: now,
+        volumeId: args.volumeId,
+        volumeName: args.volumeName,
+      })
+      .where(and(
+        eq(daytonaWorkspaces.userId, args.userId),
+        eq(daytonaWorkspaces.updatedAt, new Date(args.expectedUpdatedAt)),
+      ))
+      .returning()
+    return row
+      ? { success: true as const, workspace: normalize(row) }
+      : { success: false as const, skipped: 'stale_workspace' as const }
   }
 
   async accrueUsage(args: DaytonaUsageAccrual) {
