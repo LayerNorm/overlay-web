@@ -33,6 +33,7 @@ import { PostgresStorageReconciliationService } from '@/server/storage/PostgresS
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
 const p95LimitMs = positiveNumber(process.env.OVERLAY_P5_VECTOR_P95_LIMIT_MS, 2_000)
 const requireHnswPlan = process.env.OVERLAY_P5_REQUIRE_HNSW_PLAN === 'true'
+const vectorCorpusSize = positiveInteger(process.env.OVERLAY_P5_VECTOR_CORPUS_SIZE, 2_000)
 
 test('Postgres P5 scale and resilience gates', {
   skip: connectionString ? false : 'OVERLAY_DATABASE_URL is required for P5 Postgres resilience contracts',
@@ -133,28 +134,43 @@ test('Postgres P5 scale and resilience gates', {
       const sourceId = `${scope}_source`
       const vector = Array<number>(KNOWLEDGE_EMBEDDING_DIMENSIONS).fill(0)
       vector[0] = 1
-      await db.insert(knowledgeChunks).values({
-        chunkIndex: 0,
-        contentHash: `${scope}_hash`,
-        id: chunkId,
-        sourceId,
-        sourceKind: 'memory',
-        startOffset: 0,
-        text: 'P5 resilience marker for pgvector latency and plan characterization.',
-        title: 'P5 resilience marker',
-        userId,
-      })
-      await db.insert(knowledgeChunkEmbeddings).values({
-        chunkId,
-        contentHash: `${scope}_hash`,
-        dimensions: KNOWLEDGE_EMBEDDING_DIMENSIONS,
-        embedding: vector,
-        modelId: 'p5-contract',
-        modelVersion: 'p5-v1',
-        provider: 'openai',
-        sourceKind: 'memory',
-        userId,
-      })
+      for (let offset = 0; offset < vectorCorpusSize; offset += 100) {
+        const indexes = Array.from(
+          { length: Math.min(100, vectorCorpusSize - offset) },
+          (_, index) => offset + index,
+        )
+        await db.insert(knowledgeChunks).values(indexes.map((index) => ({
+          chunkIndex: 0,
+          contentHash: `${scope}_hash_${index}`,
+          id: index === 0 ? chunkId : `${scope}_chunk_${index}`,
+          sourceId: index === 0 ? sourceId : `${scope}_source_${index}`,
+          sourceKind: 'memory' as const,
+          startOffset: 0,
+          text: index === 0
+            ? 'P5 resilience marker for pgvector latency and plan characterization.'
+            : `Representative pgvector corpus document ${index}.`,
+          title: index === 0 ? 'P5 resilience marker' : `Corpus document ${index}`,
+          userId,
+        })))
+        await db.insert(knowledgeChunkEmbeddings).values(indexes.map((index) => {
+          const embedding = [...vector]
+          if (index > 0) {
+            embedding[0] = 0
+            embedding[(index % 128) + 1] = 1
+          }
+          return {
+            chunkId: index === 0 ? chunkId : `${scope}_chunk_${index}`,
+            contentHash: `${scope}_hash_${index}`,
+            dimensions: KNOWLEDGE_EMBEDDING_DIMENSIONS,
+            embedding,
+            modelId: 'p5-contract',
+            modelVersion: 'p5-v1',
+            provider: 'openai',
+            sourceKind: 'memory' as const,
+            userId,
+          }
+        }))
+      }
       const planClient = await pool.connect()
       try {
         const index = await planClient.query<{ indexdef: string }>(
@@ -180,7 +196,12 @@ test('Postgres P5 scale and resilience gates', {
             `representative corpus did not select HNSW: ${planIndexes.join(', ')}`,
           )
         }
-        console.log(JSON.stringify({ event: 'p5_vector_plan', planIndexes, requireHnswPlan }))
+        console.log(JSON.stringify({
+          corpusSize: vectorCorpusSize,
+          event: 'p5_vector_plan',
+          planIndexes,
+          requireHnswPlan,
+        }))
       } finally {
         planClient.release()
       }
@@ -257,4 +278,8 @@ function percentile(values: readonly number[], quantile: number): number {
 function positiveNumber(raw: string | undefined, fallback: number): number {
   const parsed = Number(raw)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function positiveInteger(raw: string | undefined, fallback: number): number {
+  return Math.max(1, Math.floor(positiveNumber(raw, fallback)))
 }
