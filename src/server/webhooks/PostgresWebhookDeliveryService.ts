@@ -206,7 +206,10 @@ export function verifyWebhookSignature(args: {
 }
 
 async function validateDeliveryUrl(url: string): Promise<void> {
-  const result = await validatePublicNetworkUrl(url, { allowLocalDev: true, requireHttps: true })
+  const result = await validatePublicNetworkUrl(url, {
+    allowLocalDev: process.env.NODE_ENV !== 'production',
+    requireHttps: true,
+  })
   if (!result.ok) throw new Error(result.error)
 }
 

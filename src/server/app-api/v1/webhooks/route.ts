@@ -10,7 +10,10 @@ import {
 import type { WebhookEventType } from '@/shared/schemas/webhooks'
 
 async function validateWebhookUrl(url: unknown): Promise<string | null> {
-  const result = await validatePublicNetworkUrl(url, { allowLocalDev: true, requireHttps: true })
+  const result = await validatePublicNetworkUrl(url, {
+    allowLocalDev: process.env.NODE_ENV !== 'production',
+    requireHttps: true,
+  })
   return result.ok ? null : result.error
 }
 
