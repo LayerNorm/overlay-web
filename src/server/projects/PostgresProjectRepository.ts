@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto'
 import { and, asc, eq, gt, inArray, isNull, ne, notInArray, sql } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
+  automations,
+  automationTriggers,
   conversations,
   files,
   knowledgeChunks,
@@ -223,6 +225,25 @@ export class PostgresProjectRepository implements ProjectRepository {
           isNull(memories.deletedAt),
         ))
         .returning({ id: memories.id })
+
+      const deletedAutomations = await tx
+        .update(automations)
+        .set({ deletedAt: now, enabled: false, nextRunAt: null, updatedAt: now })
+        .where(and(
+          eq(automations.userId, args.userId),
+          inArray(automations.projectId, deletedIds),
+          isNull(automations.deletedAt),
+        ))
+        .returning({ id: automations.id })
+      if (deletedAutomations.length > 0) {
+        await tx
+          .update(automationTriggers)
+          .set({ enabled: false, nextFireAt: null, updatedAt: now })
+          .where(inArray(
+            automationTriggers.automationId,
+            deletedAutomations.map((automation) => automation.id),
+          ))
+      }
 
       const projectFiles = await tx
         .select()

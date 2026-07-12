@@ -7,6 +7,7 @@ import {
 import type { AccountDataDeletionRepository } from '@/server/account/AccountDataDeletionRepository'
 import { PostgresAccountDataDeletionRepository } from '@/server/account/PostgresAccountDataDeletionRepository'
 import { ConvexAutomationRepository } from '@/server/automations/ConvexAutomationRepository'
+import { PostgresAutomationRepository } from '@/server/automations/PostgresAutomationRepository'
 import type { AutomationRepository } from '@/server/automations/AutomationRepository'
 import { ConvexBillingRepository } from '@/server/billing/ConvexBillingRepository'
 import type { BillingRepository } from '@/server/billing/BillingRepository'
@@ -106,19 +107,20 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       sslMode: runtimeConfig.database.postgres.sslMode,
     })
     const db = createOverlayPostgresDb(pool)
+    const conversations = new PostgresActConversationRepository(
+      db,
+      new PostgresConversationEventNotifier(pool),
+      { memoryExtractionEnabled: capabilities.supportsVectorSearch && runtimeConfig.features.memory !== false },
+    )
     return {
       capabilities,
       postgres: { db },
       repositories: {
         accountDeletion: new PostgresAccountDataDeletionRepository(db),
-        automations: unsupportedRepository<AutomationRepository>('AutomationRepository'),
+        automations: new PostgresAutomationRepository(db, conversations),
         billing: unsupportedRepository<BillingRepository>('BillingRepository'),
         chatSuggestions: new PostgresChatSuggestionRepository(db),
-        conversations: new PostgresActConversationRepository(
-          db,
-          new PostgresConversationEventNotifier(pool),
-          { memoryExtractionEnabled: capabilities.supportsVectorSearch && runtimeConfig.features.memory !== false },
-        ),
+        conversations,
         durableJobs: new PostgresDurableJobRepository(db),
         daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),
         files: new PostgresFileRepository(db),
