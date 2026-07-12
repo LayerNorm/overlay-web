@@ -205,6 +205,27 @@ export function verifyWebhookSignature(args: {
   return timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(expected, 'hex'))
 }
 
+export async function verifyWebhookRequest(args: {
+  deliveryId: string
+  now?: number
+  payload: string
+  replayConsumer: (deliveryId: string, expiresAt: number) => Promise<boolean>
+  secret: string
+  signature: string
+  timestamp: number
+  toleranceMs?: number
+}): Promise<
+  | { ok: true }
+  | { ok: false; reason: 'expired' | 'invalid_signature' | 'replayed' }
+> {
+  const now = args.now ?? Date.now()
+  const toleranceMs = Math.min(Math.max(args.toleranceMs ?? 5 * 60_000, 1_000), 60 * 60_000)
+  if (Math.abs(now - args.timestamp) > toleranceMs) return { ok: false, reason: 'expired' }
+  if (!verifyWebhookSignature(args)) return { ok: false, reason: 'invalid_signature' }
+  const consumed = await args.replayConsumer(args.deliveryId, args.timestamp + toleranceMs)
+  return consumed ? { ok: true } : { ok: false, reason: 'replayed' }
+}
+
 async function validateDeliveryUrl(url: string): Promise<void> {
   const result = await validatePublicNetworkUrl(url, {
     allowLocalDev: process.env.NODE_ENV !== 'production',

@@ -131,6 +131,28 @@ test(
         assert.equal(cancelled?.status, 'cancelled')
         assert.equal(executions.length, executionCount)
       })
+
+      await t.test('skip concurrency policy records an overlapping occurrence without a second job', async () => {
+        const automationId = await createDueAutomation(repository, db, userId, 'Skip overlap', 'skip')
+        assert.deepEqual(await runtime.automationRuns.enqueueDueRuns(), { enqueued: 1, skipped: 0 })
+        const [active] = await db
+          .select()
+          .from(automationRuns)
+          .where(eq(automationRuns.automationId, automationId))
+        const dueAt = new Date(Date.now() - 1_000)
+        await db
+          .update(automationTriggers)
+          .set({ nextFireAt: dueAt })
+          .where(eq(automationTriggers.automationId, automationId))
+        assert.deepEqual(await runtime.automationRuns.enqueueDueRuns(), { enqueued: 0, skipped: 1 })
+        const runs = await db
+          .select()
+          .from(automationRuns)
+          .where(eq(automationRuns.automationId, automationId))
+        assert.deepEqual(runs.map((run) => run.status).sort(), ['queued', 'skipped'])
+        assert.equal(await repository.requestRunCancellation({ runId: active!.id, userId }), true)
+        assert.equal(await runtime.worker.runOnce(Date.now() + 60_000), 'succeeded')
+      })
     } finally {
       await db.delete(users).where(eq(users.id, userId))
       await db.delete(durableJobs).where(inArray(durableJobs.type, [
@@ -147,9 +169,10 @@ async function createDueAutomation(
   db: ReturnType<typeof createOverlayPostgresDb>,
   userId: string,
   name: string,
+  concurrencyPolicy: 'queue' | 'skip' = 'queue',
 ): Promise<string> {
   const automationId = await repository.createAutomation({
-    concurrencyPolicy: 'queue',
+    concurrencyPolicy,
     description: `${name} description`,
     instructions: `Execute ${name}`,
     name,

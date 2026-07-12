@@ -85,6 +85,7 @@ test(
         let delivered = false
         const delivery = new PostgresWebhookDeliveryService(db, {
           fetch: async (_url, init) => {
+            assert.equal(init?.redirect, 'error')
             const headers = new Headers(init?.headers)
             const timestamp = Number(headers.get('X-Overlay-Timestamp'))
             assert.equal(headers.get('X-Overlay-Event-Id'), event.id)

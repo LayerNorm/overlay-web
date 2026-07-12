@@ -209,6 +209,7 @@
   ],
   "convexScheduledCallFiles": [
     "convex/automations/automationRunner.ts",
+    "convex/automations/automations.ts",
     "convex/chat/conversations.ts",
     "convex/files/files.ts",
     "convex/knowledge/memories.ts",

@@ -59,6 +59,8 @@ export class PostgresAccountDataDeletionRepository implements AccountDataDeletio
         userId: args.userId,
       })
 
+      await deleteUserOwnedDurableJobs(tx, args.userId)
+
       await tx.execute(sql`
         DELETE FROM users
         WHERE id = ${args.userId}
@@ -80,6 +82,26 @@ export class PostgresAccountDataDeletionRepository implements AccountDataDeletio
       }
     })
   }
+}
+
+async function deleteUserOwnedDurableJobs(tx: Transaction, userId: string): Promise<void> {
+  await tx.execute(sql`
+    DELETE FROM durable_jobs
+    WHERE id IN (
+      SELECT run.job_id
+      FROM automation_runs run
+      WHERE run.user_id = ${userId}
+        AND run.job_id IS NOT NULL
+    )
+    OR (
+      type = 'webhook.deliver'
+      AND payload ->> 'deliveryId' IN (
+        SELECT delivery.id
+        FROM webhook_deliveries delivery
+        WHERE delivery.user_id = ${userId}
+      )
+    )
+  `)
 }
 
 type Transaction = Parameters<Parameters<OverlayPostgresDb['transaction']>[0]>[0]
