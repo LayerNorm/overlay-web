@@ -18,7 +18,7 @@ export type ScheduledAutomationTurn = {
   instructions: string
   projectId?: string
   modelId?: string
-  conversationId?: Id<'conversations'>
+  conversationId?: string
   turnId: string
   scheduledFor: number
   baseUrl?: string
@@ -27,7 +27,7 @@ export type ScheduledAutomationTurn = {
 const SCHEDULED_AUTOMATION_ACT_ABORT_TIMEOUT_MS = 720_000
 
 async function settleScheduledAutomationTurn(params: {
-  conversationId: Id<'conversations'>
+  conversationId: string
   userId: string
   turnId: string
   status: 'completed' | 'error'
@@ -36,7 +36,7 @@ async function settleScheduledAutomationTurn(params: {
   await convex.mutation(
     'chat/conversations:settleGeneratingMessagesForTurn',
     {
-      conversationId: params.conversationId,
+      conversationId: params.conversationId as Id<'conversations'>,
       userId: params.userId,
       turnId: params.turnId,
       status: params.status,
@@ -87,7 +87,7 @@ function buildAutomationSystemPrompt(input: ScheduledAutomationTurn): string {
 }
 
 export async function runActTurnForScheduledAutomation(input: ScheduledAutomationTurn): Promise<{
-  conversationId: Id<'conversations'>
+  conversationId: string
 }> {
   const serverSecret = getInternalApiSecret()
   const title = `Automation: ${input.name}`

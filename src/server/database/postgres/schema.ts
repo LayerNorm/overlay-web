@@ -15,6 +15,7 @@ import {
   uniqueIndex,
   vector,
 } from 'drizzle-orm/pg-core'
+import type { AutomationSchedule } from '@overlay/app-core'
 
 export const overlayAppDataMetadata = pgTable('overlay_app_data_metadata', {
   key: text('key').primaryKey(),
@@ -141,6 +142,29 @@ export const outboxEventStatus = pgEnum('overlay_outbox_event_status', [
   'pending',
   'publishing',
   'published',
+  'dead_letter',
+])
+
+export const automationConcurrencyPolicy = pgEnum('overlay_automation_concurrency_policy', [
+  'skip',
+  'queue',
+])
+
+export const automationTriggerKind = pgEnum('overlay_automation_trigger_kind', [
+  'manual',
+  'schedule',
+  'event',
+])
+
+export const automationRunStatus = pgEnum('overlay_automation_run_status', [
+  'queued',
+  'running',
+  'completed',
+  'succeeded',
+  'failed',
+  'cancel_requested',
+  'cancelled',
+  'skipped',
   'dead_letter',
 ])
 
@@ -605,6 +629,109 @@ export const daytonaWorkspaces = pgTable('daytona_workspaces', {
 }, (table) => [
   uniqueIndex('daytona_workspaces_sandbox_id_idx').on(table.sandboxId),
   index('daytona_workspaces_state_updated_at_idx').on(table.state, table.updatedAt),
+])
+
+export const automations = pgTable('automations', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
+  name: text('name').notNull(),
+  description: text('description').default('').notNull(),
+  instructions: text('instructions').notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  schedule: jsonb('schedule').$type<AutomationSchedule>().notNull(),
+  timezone: text('timezone').default('UTC').notNull(),
+  nextRunAt: timestamp('next_run_at', { withTimezone: true }),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  lastRunStatus: text('last_run_status'),
+  lastError: text('last_error'),
+  modelId: text('model_id'),
+  graphSource: text('graph_source'),
+  sourceConversationId: text('source_conversation_id')
+    .references(() => conversations.id, { onDelete: 'set null' }),
+  conversationId: text('conversation_id')
+    .references(() => conversations.id, { onDelete: 'set null' }),
+  concurrencyPolicy: automationConcurrencyPolicy('concurrency_policy').default('skip').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (table) => [
+  index('automations_user_id_updated_at_idx').on(table.userId, table.updatedAt),
+  index('automations_user_id_enabled_idx').on(table.userId, table.enabled),
+  index('automations_project_id_idx').on(table.projectId),
+  index('automations_due_idx').on(table.enabled, table.nextRunAt),
+])
+
+export const automationTriggers = pgTable('automation_triggers', {
+  id: text('id').primaryKey(),
+  automationId: text('automation_id')
+    .notNull()
+    .references(() => automations.id, { onDelete: 'cascade' }),
+  kind: automationTriggerKind('kind').notNull(),
+  config: jsonb('config').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  nextFireAt: timestamp('next_fire_at', { withTimezone: true }),
+  lastFiredAt: timestamp('last_fired_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('automation_triggers_automation_id_kind_idx').on(table.automationId, table.kind),
+  index('automation_triggers_due_idx').on(table.kind, table.enabled, table.nextFireAt),
+])
+
+export const automationRuns = pgTable('automation_runs', {
+  id: text('id').primaryKey(),
+  automationId: text('automation_id')
+    .notNull()
+    .references(() => automations.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  triggerId: text('trigger_id').references(() => automationTriggers.id, { onDelete: 'set null' }),
+  triggerSource: automationTriggerKind('trigger_source').notNull(),
+  status: automationRunStatus('status').default('queued').notNull(),
+  scheduledFor: timestamp('scheduled_for', { withTimezone: true }).notNull(),
+  idempotencyKey: text('idempotency_key').notNull(),
+  jobId: text('job_id'),
+  conversationId: text('conversation_id')
+    .references(() => conversations.id, { onDelete: 'set null' }),
+  turnId: text('turn_id'),
+  attemptCount: integer('attempt_count').default(0).notNull(),
+  maxAttempts: integer('max_attempts').default(5).notNull(),
+  cancellationRequestedAt: timestamp('cancellation_requested_at', { withTimezone: true }),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  error: text('error'),
+  result: jsonb('result').$type<Record<string, unknown>>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('automation_runs_idempotency_key_idx').on(table.idempotencyKey),
+  index('automation_runs_automation_id_created_at_idx').on(table.automationId, table.createdAt),
+  index('automation_runs_automation_id_status_idx').on(table.automationId, table.status),
+  index('automation_runs_user_id_created_at_idx').on(table.userId, table.createdAt),
+  index('automation_runs_status_scheduled_for_idx').on(table.status, table.scheduledFor),
+])
+
+export const automationRunAttempts = pgTable('automation_run_attempts', {
+  id: text('id').primaryKey(),
+  runId: text('run_id')
+    .notNull()
+    .references(() => automationRuns.id, { onDelete: 'cascade' }),
+  attemptNumber: integer('attempt_number').notNull(),
+  jobId: text('job_id'),
+  workerId: text('worker_id'),
+  status: text('status').notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  error: text('error'),
+  result: jsonb('result').$type<Record<string, unknown>>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('automation_run_attempts_run_id_attempt_idx').on(table.runId, table.attemptNumber),
+  index('automation_run_attempts_job_id_idx').on(table.jobId),
 ])
 
 export const apiIdempotencyKeys = pgTable('api_idempotency_keys', {

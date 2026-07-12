@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { AutomationService, AutomationServiceError, buildAutomationUpdateNote } from './AutomationService'
+import {
+  PaidPlanAutomationEntitlementPolicy,
+  type AutomationEntitlementPolicy,
+} from './AutomationEntitlementPolicy'
 import type { AutomationRepository } from './AutomationRepository'
 
 function createRepository(overrides: Partial<AutomationRepository> = {}): AutomationRepository & {
@@ -38,9 +42,6 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
         sourceConversationId: 'conversation_1',
       } as never
     },
-    async getEntitlements() {
-      return { planKind: 'paid' }
-    },
     async createAutomation() {
       return 'automation_1'
     },
@@ -76,13 +77,19 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
   }
 }
 
-function createService(repository = createRepository()) {
+function createService(
+  repository = createRepository(),
+  entitlementPolicy: AutomationEntitlementPolicy = new PaidPlanAutomationEntitlementPolicy(
+    async () => 'paid',
+  ),
+) {
   const finishedEvents: Array<Record<string, unknown>> = []
   const failedEvents: Array<Record<string, unknown>> = []
   return {
     finishedEvents,
     failedEvents,
     service: new AutomationService({
+      entitlementPolicy,
       repository,
       clock: { now: () => 1_700_000_000_000 },
       events: {
@@ -95,12 +102,11 @@ function createService(repository = createRepository()) {
 }
 
 test('AutomationService.createAutomation preserves paid-plan requirement', async () => {
-  const repository = createRepository({
-    async getEntitlements() {
-      return { planKind: 'free' }
-    },
-  })
-  const { service } = createService(repository)
+  const repository = createRepository()
+  const { service } = createService(
+    repository,
+    new PaidPlanAutomationEntitlementPolicy(async () => 'free'),
+  )
 
   await assert.rejects(
     () => service.createAutomation({
@@ -148,6 +154,8 @@ test('buildAutomationUpdateNote preserves update note wording', () => {
     instructions: 'Old instructions',
     enabled: true,
     modelId: 'old-model',
+    createdAt: 1,
+    updatedAt: 1,
   }, {
     name: 'New name',
     description: 'New description',
@@ -182,6 +190,7 @@ test('AutomationService.testAutomation marks run failed and emits failure on exe
   const repository = createRepository()
   const failedEvents: Array<Record<string, unknown>> = []
   const service = new AutomationService({
+    entitlementPolicy: new PaidPlanAutomationEntitlementPolicy(async () => 'paid'),
     repository,
     clock: { now: () => 1_700_000_000_000 },
     events: {
