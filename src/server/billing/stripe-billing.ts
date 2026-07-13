@@ -1,8 +1,7 @@
 import 'server-only'
 
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { stripe } from '@/server/billing/stripe'
+import type { BillingRepository } from '@/server/billing/BillingRepository'
 import {
   PAID_PLAN_UNIT_AMOUNT_CENTS,
   TOP_UP_MAX_AMOUNT_CENTS,
@@ -70,15 +69,11 @@ export function getPlanQuantityForCheckout(planAmountCents: number): number {
   return planAmountCentsToQuantity(planAmountCents)
 }
 
-async function getBillingState(userId: string): Promise<SubscriptionBillingState | null> {
-  return await convex.query<SubscriptionBillingState | null>(
-    'billing/subscriptions:getByUserIdByServer',
-    {
-      serverSecret: getInternalApiSecret(),
-      userId,
-    },
-    { throwOnError: true },
-  )
+async function getBillingState(
+  repository: BillingRepository,
+  userId: string,
+): Promise<SubscriptionBillingState | null> {
+  return await repository.getSubscriptionByUserIdByServer({ userId })
 }
 
 function normalizeStripePaymentMethodId(value: unknown): string | null {
@@ -106,8 +101,8 @@ async function resolveDefaultPaymentMethodId(state: SubscriptionBillingState): P
 export async function maybeAutoTopUpBudget(params: {
   userId: string
   minimumRequiredCents?: number
-}) {
-  const state = await getBillingState(params.userId)
+}, repository: BillingRepository) {
+  const state = await getBillingState(repository, params.userId)
   if (!state) return { applied: false as const, reason: 'missing_subscription' }
   if (!state.autoTopUpEnabled) return { applied: false as const, reason: 'disabled' }
   if (!state.offSessionConsentAt) return { applied: false as const, reason: 'missing_consent' }
@@ -126,27 +121,10 @@ export async function maybeAutoTopUpBudget(params: {
 
   const now = Date.now()
   const triggerWindowStart = now - AUTO_TOP_UP_IDEMPOTENCY_WINDOW_MS
-  const recentTopUps = await convex.query<
-    Array<{
-      amountCents: number
-      source: 'manual' | 'auto'
-      status: 'pending' | 'succeeded' | 'failed' | 'canceled'
-      billingPeriodStart: number
-      updatedAt: number
-      stripePaymentIntentId?: string
-    }>
-  >(
-    'billing/subscriptions:listBudgetTopUpsByServer',
-    {
-      serverSecret: getInternalApiSecret(),
-      userId: params.userId,
-    },
-    { throwOnError: true },
-  )
+  const recentTopUps = await repository.listBudgetTopUpsByServer({ userId: params.userId })
   const matchingRecentTopUp = (recentTopUps ?? []).find((topUp) =>
     topUp.source === 'auto' &&
     topUp.amountCents === amountCents &&
-    topUp.billingPeriodStart === state.currentPeriodStart &&
     (topUp.status === 'pending' || topUp.status === 'succeeded') &&
     topUp.updatedAt >= triggerWindowStart
   )
@@ -184,19 +162,14 @@ export async function maybeAutoTopUpBudget(params: {
       idempotencyKey,
     })
 
-    await convex.mutation(
-      'billing/subscriptions:recordBudgetTopUpByServer',
-      {
-        serverSecret: getInternalApiSecret(),
-        userId: params.userId,
-        amountCents,
-        source: 'auto',
-        stripeCustomerId: state.stripeCustomerId,
-        stripePaymentIntentId: paymentIntent.id,
-        status: paymentIntent.status === 'succeeded' ? 'succeeded' : 'pending',
-      },
-      { throwOnError: true },
-    )
+    await repository.recordBudgetTopUp({
+      userId: params.userId,
+      amountCents,
+      source: 'auto',
+      stripeCustomerId: state.stripeCustomerId,
+      stripePaymentIntentId: paymentIntent.id,
+      status: paymentIntent.status === 'succeeded' ? 'succeeded' : 'pending',
+    })
 
     return {
       applied: paymentIntent.status === 'succeeded',
@@ -205,23 +178,19 @@ export async function maybeAutoTopUpBudget(params: {
       reason: paymentIntent.status === 'succeeded' ? 'succeeded' : paymentIntent.status,
     } as const
   } catch (error) {
-    await convex.mutation(
-      'billing/subscriptions:recordBudgetTopUpByServer',
-      {
-        serverSecret: getInternalApiSecret(),
-        userId: params.userId,
-        amountCents,
-        source: 'auto',
-        stripeCustomerId: state.stripeCustomerId,
-        status: 'failed',
-        errorMessage: error instanceof Error ? error.message : String(error ?? 'Auto top-up failed'),
-      },
-      { throwOnError: true },
-    )
+    const errorMessage = error instanceof Error ? error.message : String(error ?? 'Auto top-up failed')
+    await repository.recordBudgetTopUp({
+      userId: params.userId,
+      amountCents,
+      source: 'auto',
+      stripeCustomerId: state.stripeCustomerId,
+      status: 'failed',
+      errorMessage,
+    })
     return {
       applied: false as const,
       reason: 'payment_failed',
-      errorMessage: error instanceof Error ? error.message : String(error ?? 'Auto top-up failed'),
+      errorMessage,
     }
   }
 }

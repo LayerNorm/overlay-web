@@ -6,58 +6,60 @@ import {
   isAdministrativeRole,
 } from '../src/server/admin'
 
-const connectionString = process.env.OVERLAY_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim()
-if (!connectionString) throw new Error('OVERLAY_DATABASE_URL or DATABASE_URL is required')
+async function main(): Promise<void> {
+  const connectionString = process.env.OVERLAY_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim()
+  if (!connectionString) throw new Error('OVERLAY_DATABASE_URL or DATABASE_URL is required')
 
-const [command, ...argv] = process.argv.slice(2)
-const values = parseArgs(argv)
-const pool = createOverlayPostgresPool({
-  connectionString,
-  max: 1,
-  sslMode: process.env.OVERLAY_DATABASE_SSL_MODE,
-})
-const db = createOverlayPostgresDb(pool)
-const repository = new PostgresAdministrativeRepository(db)
-const audit = new AuditService(new PostgresAuditRepository(db))
+  const [command, ...argv] = process.argv.slice(2)
+  const values = parseArgs(argv)
+  const pool = createOverlayPostgresPool({
+    connectionString,
+    max: 1,
+    sslMode: process.env.OVERLAY_DATABASE_SSL_MODE,
+  })
+  const db = createOverlayPostgresDb(pool)
+  const repository = new PostgresAdministrativeRepository(db)
+  const audit = new AuditService(new PostgresAuditRepository(db))
 
-try {
-  if (command === 'list') {
-    process.stdout.write(`${JSON.stringify(await repository.list(), null, 2)}\n`)
-  } else if (command === 'grant') {
-    const userId = required(values, 'user-id')
-    const role = required(values, 'role')
-    if (!isAdministrativeRole(role)) throw new Error(`Invalid role: ${role}`)
-    const principal = await repository.grant({
-      grantedBy: 'system:app-data-admin',
-      reason: values.reason,
-      role,
-      userId,
-    })
-    await audit.record({
-      action: 'administration.principal.bootstrap_grant',
-      actorType: 'system',
-      metadata: { reason: values.reason, role },
-      outcome: 'success',
-      resourceId: userId,
-      resourceType: 'administrative_principal',
-    })
-    process.stdout.write(`${JSON.stringify(principal, null, 2)}\n`)
-  } else if (command === 'revoke') {
-    const userId = required(values, 'user-id')
-    const revoked = await repository.revoke({ revokedBy: 'system:app-data-admin', userId })
-    await audit.record({
-      action: 'administration.principal.bootstrap_revoke',
-      actorType: 'system',
-      outcome: revoked ? 'success' : 'failure',
-      resourceId: userId,
-      resourceType: 'administrative_principal',
-    })
-    process.stdout.write(`${JSON.stringify({ revoked })}\n`)
-  } else {
-    throw new Error('Usage: app-data-admin <list|grant|revoke> [--user-id ID] [--role admin|auditor|billing_admin|support] [--reason TEXT]')
+  try {
+    if (command === 'list') {
+      process.stdout.write(`${JSON.stringify(await repository.list(), null, 2)}\n`)
+    } else if (command === 'grant') {
+      const userId = required(values, 'user-id')
+      const role = required(values, 'role')
+      if (!isAdministrativeRole(role)) throw new Error(`Invalid role: ${role}`)
+      const principal = await repository.grant({
+        grantedBy: 'system:app-data-admin',
+        reason: values.reason,
+        role,
+        userId,
+      })
+      await audit.record({
+        action: 'administration.principal.bootstrap_grant',
+        actorType: 'system',
+        metadata: { reason: values.reason, role },
+        outcome: 'success',
+        resourceId: userId,
+        resourceType: 'administrative_principal',
+      })
+      process.stdout.write(`${JSON.stringify(principal, null, 2)}\n`)
+    } else if (command === 'revoke') {
+      const userId = required(values, 'user-id')
+      const revoked = await repository.revoke({ revokedBy: 'system:app-data-admin', userId })
+      await audit.record({
+        action: 'administration.principal.bootstrap_revoke',
+        actorType: 'system',
+        outcome: revoked ? 'success' : 'failure',
+        resourceId: userId,
+        resourceType: 'administrative_principal',
+      })
+      process.stdout.write(`${JSON.stringify({ revoked })}\n`)
+    } else {
+      throw new Error('Usage: app-data-admin <list|grant|revoke> [--user-id ID] [--role admin|auditor|billing_admin|support] [--reason TEXT]')
+    }
+  } finally {
+    await pool.end()
   }
-} finally {
-  await pool.end()
 }
 
 function parseArgs(args: string[]): Record<string, string> {
@@ -76,3 +78,8 @@ function required(values: Record<string, string>, key: string): string {
   if (!value) throw new Error(`--${key} is required`)
   return value
 }
+
+main().catch((error) => {
+  console.error(error)
+  process.exit(1)
+})

@@ -22,6 +22,7 @@ type SubscriptionRow = {
   autoTopUpAmountCents: number
   autoTopUpEnabled: boolean
   currentPeriodEnd: Date | string | null
+  currentPeriodStart: Date | string | null
   email: string | null
   offSessionConsentAt: Date | string | null
   planAmountCents: number
@@ -249,9 +250,11 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       id: string
       source: 'manual' | 'auto'
       status: 'pending' | 'succeeded' | 'failed' | 'canceled'
+      stripePaymentIntentId: string | null
       updatedAt: Date | string
     }>(sql`
       SELECT id, amount_cents AS "amountCents", source, status,
+             provider_payment_intent_id AS "stripePaymentIntentId",
              created_at AS "createdAt", updated_at AS "updatedAt", error_message AS "errorMessage"
       FROM billing_top_ups
       WHERE user_id = ${args.userId}
@@ -263,6 +266,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       amountCents: Number(row.amountCents),
       source: row.source,
       status: row.status,
+      stripePaymentIntentId: row.stripePaymentIntentId ?? undefined,
       createdAt: millisValue(row.createdAt),
       updatedAt: millisValue(row.updatedAt),
       errorMessage: row.errorMessage ?? undefined,
@@ -276,6 +280,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     stripeCheckoutSessionId?: string
     stripeCustomerId?: string
     stripePaymentIntentId?: string
+    errorMessage?: string
     userId: string
   }): Promise<{ id: string; granted: boolean }> {
     return await this.db.transaction(async (tx) => {
@@ -293,18 +298,20 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       if (row) {
         await tx.execute(sql`
           UPDATE billing_top_ups
-          SET status = ${persistedStatus}, updated_at = now()
+          SET status = ${persistedStatus},
+              error_message = ${args.errorMessage ?? null},
+              updated_at = now()
           WHERE id = ${id} AND user_id = ${args.userId}
         `)
       } else {
         await tx.execute(sql`
           INSERT INTO billing_top_ups (
             id, user_id, amount_cents, source, status, provider_checkout_session_id,
-            provider_customer_id, provider_payment_intent_id
+            provider_customer_id, provider_payment_intent_id, error_message
           ) VALUES (
             ${id}, ${args.userId}, ${args.amountCents}, ${args.source}, ${args.status},
             ${args.stripeCheckoutSessionId ?? null}, ${args.stripeCustomerId ?? null},
-            ${args.stripePaymentIntentId ?? null}
+            ${args.stripePaymentIntentId ?? null}, ${args.errorMessage ?? null}
           )
         `)
       }
@@ -350,6 +357,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
              status, auto_top_up_enabled AS "autoTopUpEnabled",
              auto_top_up_amount_cents AS "autoTopUpAmountCents",
              off_session_consent_at AS "offSessionConsentAt",
+             current_period_start AS "currentPeriodStart",
              current_period_end AS "currentPeriodEnd"
       FROM billing_subscriptions WHERE user_id = ${userId} LIMIT 1
     `)
@@ -367,6 +375,8 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       autoTopUpEnabled: row.autoTopUpEnabled,
       autoTopUpAmountCents: Number(row.autoTopUpAmountCents),
       offSessionConsentAt: row.offSessionConsentAt ? millisValue(row.offSessionConsentAt) : undefined,
+      currentPeriodStart: row.currentPeriodStart ? millisValue(row.currentPeriodStart) : undefined,
+      currentPeriodEnd: row.currentPeriodEnd ? millisValue(row.currentPeriodEnd) : undefined,
     }
   }
 }

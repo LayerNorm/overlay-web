@@ -177,7 +177,6 @@
     "src/server/automations/ConvexAutomationRepository.ts",
     "src/server/billing/ConvexBillingProviderEventRepository.ts",
     "src/server/billing/ConvexBillingRepository.ts",
-    "src/server/billing/stripe-billing.ts",
     "src/server/bootstrap.ts",
     "src/server/chat-suggestions/ConvexChatSuggestionRepository.ts",
     "src/server/conversations/ConvexActConversationRepository.ts",

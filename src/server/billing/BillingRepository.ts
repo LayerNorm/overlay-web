@@ -37,6 +37,8 @@ export type BillingSubscriptionRecord = {
   autoTopUpEnabled?: boolean
   autoTopUpAmountCents?: number
   offSessionConsentAt?: number
+  currentPeriodStart?: number
+  currentPeriodEnd?: number
 }
 
 export type BudgetTopUpRecord = {
@@ -44,6 +46,7 @@ export type BudgetTopUpRecord = {
   amountCents: number
   source: 'manual' | 'auto'
   status: 'pending' | 'succeeded' | 'failed' | 'canceled'
+  stripePaymentIntentId?: string
   createdAt: number
   updatedAt: number
   errorMessage?: string
@@ -97,6 +100,7 @@ export interface BillingRepository {
     stripeCheckoutSessionId?: string
     stripeCustomerId?: string
     stripePaymentIntentId?: string
+    errorMessage?: string
     userId: string
   }): Promise<unknown>
 }

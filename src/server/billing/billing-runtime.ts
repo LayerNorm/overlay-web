@@ -201,6 +201,11 @@ async function usageRepository(): Promise<UsageRepository> {
   return getOverlayServerContext().appData.repositories.usage
 }
 
+async function billingRepository() {
+  const { getOverlayServerContext } = await import('@/server/bootstrap')
+  return getOverlayServerContext().appData.repositories.billing
+}
+
 function toUsageEvent(event: ProviderUsageEvent): UsageEvent {
   return {
     cachedTokens: event.cachedTokens,
@@ -233,7 +238,7 @@ export async function ensureBudgetAvailable(params: {
   const autoTopUp = await maybeAutoTopUpBudget({
     userId: params.userId,
     minimumRequiredCents,
-  })
+  }, await billingRepository())
 
   if (!autoTopUp.applied) {
     return {
