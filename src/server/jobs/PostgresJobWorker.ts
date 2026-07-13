@@ -18,6 +18,7 @@ export class PostgresJobWorker {
     const job = await this.options.repository.claim({
       leaseMs: this.options.leaseMs,
       now,
+      supportedTypes: Object.keys(this.options.handlers),
       workerId: this.options.workerId,
     })
     if (!job) return 'idle'
@@ -41,7 +42,7 @@ export class PostgresJobWorker {
     })
     try {
       heartbeatTimer = setInterval(() => {
-        void heartbeat()
+        void heartbeat().catch((_error) => false)
       }, Math.max(1_000, Math.floor(this.options.leaseMs / 3)))
       heartbeatTimer.unref?.()
       const result = await handler(job, { heartbeat })

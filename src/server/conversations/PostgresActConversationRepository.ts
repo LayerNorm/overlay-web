@@ -4,6 +4,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, or } from 'drizzle-orm'
 import { DEFAULT_APP_SETTINGS } from '@overlay/app-core'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
+import { withTransientPostgresReadRetry } from '@/server/database/postgres/transient-errors'
 import {
   conversationContextSummaries,
   conversationEvents,
@@ -932,13 +933,15 @@ export class PostgresActConversationRepository implements ActConversationReposit
   }
 
   async getConversationEventCursor(args: { userId: string }): Promise<number> {
-    const [event] = await this.db
-      .select({ sequence: conversationEvents.sequence })
-      .from(conversationEvents)
-      .where(eq(conversationEvents.userId, args.userId))
-      .orderBy(desc(conversationEvents.sequence))
-      .limit(1)
-    return event?.sequence ?? 0
+    return await withTransientPostgresReadRetry(async () => {
+      const [event] = await this.db
+        .select({ sequence: conversationEvents.sequence })
+        .from(conversationEvents)
+        .where(eq(conversationEvents.userId, args.userId))
+        .orderBy(desc(conversationEvents.sequence))
+        .limit(1)
+      return event?.sequence ?? 0
+    })
   }
 
   async listConversationEvents(args: {
@@ -946,23 +949,25 @@ export class PostgresActConversationRepository implements ActConversationReposit
     limit: number
     userId: string
   }): Promise<ConversationEventRow[]> {
-    const rows = await this.db
-      .select()
-      .from(conversationEvents)
-      .where(and(
-        eq(conversationEvents.userId, args.userId),
-        gt(conversationEvents.sequence, args.afterSequence),
-      ))
-      .orderBy(asc(conversationEvents.sequence))
-      .limit(Math.max(1, Math.min(200, Math.floor(args.limit))))
-    return rows.map((row) => ({
-      sequence: row.sequence,
-      conversationId: row.conversationId,
-      type: row.type as ConversationEventRow['type'],
-      messageId: row.messageId ?? undefined,
-      payload: row.payload ?? undefined,
-      createdAt: toMillis(row.createdAt),
-    }))
+    return await withTransientPostgresReadRetry(async () => {
+      const rows = await this.db
+        .select()
+        .from(conversationEvents)
+        .where(and(
+          eq(conversationEvents.userId, args.userId),
+          gt(conversationEvents.sequence, args.afterSequence),
+        ))
+        .orderBy(asc(conversationEvents.sequence))
+        .limit(Math.max(1, Math.min(200, Math.floor(args.limit))))
+      return rows.map((row) => ({
+        sequence: row.sequence,
+        conversationId: row.conversationId,
+        type: row.type as ConversationEventRow['type'],
+        messageId: row.messageId ?? undefined,
+        payload: row.payload ?? undefined,
+        createdAt: toMillis(row.createdAt),
+      }))
+    })
   }
 
   async waitForConversationEvents(args: {
@@ -972,21 +977,29 @@ export class PostgresActConversationRepository implements ActConversationReposit
     timeoutMs: number
     userId: string
   }): Promise<ConversationEventRow[]> {
-    let events = await this.listConversationEvents(args)
-    if (events.length > 0 || !this.eventNotifier) return events
-    const waiter = await this.eventNotifier.createWaiter({
-      signal: args.signal,
-      timeoutMs: args.timeoutMs,
-      userId: args.userId,
-    })
-    events = await this.listConversationEvents(args)
-    if (events.length > 0) {
-      waiter.cancel()
-      return events
+    const deadline = Date.now() + Math.max(1, args.timeoutMs)
+    while (!args.signal?.aborted) {
+      let events = await this.listConversationEvents(args)
+      if (events.length > 0 || !this.eventNotifier) return events
+
+      const remainingMs = deadline - Date.now()
+      if (remainingMs <= 0) return []
+      const listenerConnected = this.eventNotifier.getHealth().connected
+      const waiter = await this.eventNotifier.createWaiter({
+        signal: args.signal,
+        // LISTEN is only a wake-up optimization. While disconnected, check the
+        // durable cursor every second so recovery never depends on a process restart.
+        timeoutMs: Math.min(remainingMs, listenerConnected ? remainingMs : 1_000),
+        userId: args.userId,
+      })
+      events = await this.listConversationEvents(args)
+      if (events.length > 0) {
+        waiter.cancel()
+        return events
+      }
+      await waiter.promise
     }
-    await waiter.promise
-    events = await this.listConversationEvents(args)
-    return events
+    return []
   }
 
   async recordUsageBatch(_args: {

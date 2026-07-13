@@ -66,12 +66,11 @@ export function AutomationEditorPanel({
   )
 
   const loadRuns = useCallback(async () => {
-    const response = await overlayAppClient.automations.getResponse({
-      automationId: automation._id,
-      includeRuns: true,
-    }, { cache: 'no-store' })
-    if (!response.ok) throw new Error('Failed to load automation runs')
-    setRuns(await response.json() as AutomationRunSummary[])
+    const nextRuns = await overlayAppClient.automations.getRuns(
+      automation._id,
+      { cache: 'no-store' },
+    )
+    setRuns(Array.isArray(nextRuns) ? nextRuns : [])
   }, [automation._id])
 
   useEffect(() => {

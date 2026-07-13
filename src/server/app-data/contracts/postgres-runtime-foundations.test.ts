@@ -3,7 +3,7 @@ import 'server-only'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import {
   createOverlayPostgresDb,
   createOverlayPostgresPool,
@@ -14,7 +14,7 @@ import {
   assertAppDataSchemaCompatible,
   readAppDataSchemaCompatibility,
 } from '@/server/database/postgres/schema-compatibility'
-import { users } from '@/server/database/postgres/schema'
+import { durableJobs, users } from '@/server/database/postgres/schema'
 import { PostgresIdempotencyRepository } from '@/server/idempotency'
 import { PostgresServiceAuthReplayRepository } from '@/server/auth/replay'
 import {
@@ -73,6 +73,36 @@ test('Postgres P1 production runtime foundations', {
     await db.execute(sql`DELETE FROM durable_jobs`)
     await db.execute(sql`DELETE FROM outbox_events`)
     await db.execute(sql`DELETE FROM scheduled_tasks`)
+
+    await t.test('workers leave unsupported release jobs queued for a compatible image', async () => {
+      const repository = new PostgresDurableJobRepository(db)
+      const unsupportedId = await repository.enqueue({
+        dedupeKey: `${scope}:unsupported-release-job`,
+        priority: 100,
+        type: `${scope}.next-release`,
+      })
+      const supportedId = await repository.enqueue({
+        dedupeKey: `${scope}:supported-release-job`,
+        type: `${scope}.current-release`,
+      })
+
+      const claimed = await repository.claim({
+        leaseMs: 5_000,
+        supportedTypes: [`${scope}.current-release`],
+        workerId: `${scope}:current-worker`,
+      })
+      assert.equal(claimed?.id, supportedId)
+      assert.equal(await repository.complete({
+        jobId: supportedId,
+        workerId: `${scope}:current-worker`,
+      }), true)
+      const [unsupported] = await db
+        .select({ attempts: durableJobs.attempts, status: durableJobs.status })
+        .from(durableJobs)
+        .where(eq(durableJobs.id, unsupportedId))
+      assert.deepEqual(unsupported, { attempts: 0, status: 'queued' })
+      await db.delete(durableJobs)
+    })
 
     await t.test('idempotency reservation is atomic across repository instances', async () => {
       const first = new PostgresIdempotencyRepository(db)

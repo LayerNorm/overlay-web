@@ -25,7 +25,7 @@ export class PostgresOutboxWorker {
           eventId: event.id,
           leaseMs: this.options.leaseMs,
           workerId: this.options.workerId,
-        })
+        }).catch((_error) => false)
       }, Math.max(1_000, Math.floor(this.options.leaseMs / 3)))
       heartbeatTimer.unref?.()
       await this.options.publisher(event)

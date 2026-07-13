@@ -118,6 +118,7 @@ test('module feature methods use canonical app endpoints', async () => {
   await client.mcpServers.testResponse({ url: 'https://mcp.example.test', transport: 'streamable-http' })
   await client.automations.updateResponse({ automationId: 'auto_1', name: 'Renamed' })
   await client.automations.testResponse({ automationId: 'auto_1' })
+  await client.automations.getRuns('auto_1')
 
   assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/conversations/stream-auth')
   assert.equal(calls[0]!.init?.method, 'POST')
@@ -180,6 +181,26 @@ test('module feature methods use canonical app endpoints', async () => {
   assert.equal(String(calls[16]!.input), 'https://example.test/api/v1/automations/test')
   assert.equal(calls[16]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[16]!), { automationId: 'auto_1' })
+
+  assert.equal(
+    String(calls[17]!.input),
+    'https://example.test/api/v1/automations?automationId=auto_1&includeRuns=true',
+  )
+})
+
+test('automation run history unwraps the standardized paginated envelope', async () => {
+  const client = createOverlayAppClient({
+    baseUrl: 'https://example.test',
+    fetch: async () => Response.json({
+      data: [{ _id: 'run_1', status: 'completed', scheduledFor: 123 }],
+      hasMore: false,
+      total: 1,
+    }),
+  })
+
+  const runs = await client.automations.getRuns('auto_1')
+
+  assert.deepEqual(runs, [{ _id: 'run_1', status: 'completed', scheduledFor: 123 }])
 })
 
 test('list helpers unwrap paginated envelopes while getPage preserves metadata', async () => {

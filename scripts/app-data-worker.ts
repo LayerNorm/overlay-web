@@ -61,6 +61,7 @@ async function main(): Promise<void> {
     let lastSchedulerTick = 0
     let lastHealthLog = 0
     let consecutiveFailures = 0
+    let outageStartedAt: number | undefined
     do {
       try {
         const now = Date.now()
@@ -71,6 +72,7 @@ async function main(): Promise<void> {
         }
         if (mode !== 'worker' && now - lastHealthLog >= healthLogMs) {
           console.log(JSON.stringify({
+            databaseConnected: true,
             event: 'runtime_health',
             mode,
             workerId,
@@ -84,18 +86,34 @@ async function main(): Promise<void> {
           workerResult = await runtime.worker.runOnce(now)
           if (workerResult !== 'idle') console.log(JSON.stringify({ event: 'job_result', result: workerResult }))
         }
+        if (outageStartedAt !== undefined) {
+          console.log(JSON.stringify({
+            databaseConnected: true,
+            event: 'runtime_recovered',
+            mode,
+            recoveryMs: Date.now() - outageStartedAt,
+            workerId,
+          }))
+          outageStartedAt = undefined
+          lastHealthLog = 0
+        }
         consecutiveFailures = 0
         if (!once && workerResult === 'idle') await sleep(pollMs)
       } catch (error) {
         if (once) throw error
         consecutiveFailures += 1
+        outageStartedAt ??= Date.now()
+        const retryMs = retryDelayMs(consecutiveFailures, pollMs)
         console.error(JSON.stringify({
           consecutiveFailures,
+          databaseConnected: false,
           event: 'runtime_error',
           message: errorMessage(error),
+          mode,
+          retryMs,
           workerId,
         }))
-        await sleep(retryDelayMs(consecutiveFailures, pollMs))
+        await sleep(retryMs)
       }
     } while (!once && !shuttingDown)
   } finally {

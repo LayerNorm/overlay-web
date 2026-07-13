@@ -5,6 +5,7 @@ import { logger } from '@/server/observability/logger'
 import * as schema from './schema'
 
 export interface CreateOverlayPostgresPoolOptions {
+  connectionTimeoutMs?: number
   connectionString: string
   max?: number
   sslMode?: string
@@ -12,7 +13,10 @@ export interface CreateOverlayPostgresPoolOptions {
 
 export function createOverlayPostgresPool(options: CreateOverlayPostgresPoolOptions): Pool {
   const poolConfig: PoolConfig = {
+    connectionTimeoutMillis: options.connectionTimeoutMs ?? 10_000,
     connectionString: options.connectionString,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
     max: options.max ?? 10,
   }
 
@@ -23,6 +27,14 @@ export function createOverlayPostgresPool(options: CreateOverlayPostgresPoolOpti
   }
 
   const pool = new Pool(poolConfig)
+  pool.on('connect', (client) => {
+    client.on('error', (error) => {
+      logger.error('[Postgres] Client connection error', {
+        code: typeof error === 'object' && error && 'code' in error ? error.code : undefined,
+        error,
+      })
+    })
+  })
   pool.on('error', (error) => {
     logger.error('[Postgres] Idle client error', {
       code: typeof error === 'object' && error && 'code' in error ? error.code : undefined,

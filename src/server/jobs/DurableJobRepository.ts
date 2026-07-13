@@ -27,7 +27,12 @@ export interface DurableJobRepository {
     priority?: number
     type: string
   }): Promise<string>
-  claim(args: { leaseMs: number; now?: number; workerId: string }): Promise<DurableJob | null>
+  claim(args: {
+    leaseMs: number
+    now?: number
+    supportedTypes?: readonly string[]
+    workerId: string
+  }): Promise<DurableJob | null>
   complete(args: { jobId: string; result?: unknown; workerId: string }): Promise<boolean>
   fail(args: {
     error: string

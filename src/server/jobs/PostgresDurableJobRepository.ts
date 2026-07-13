@@ -46,16 +46,27 @@ export class PostgresDurableJobRepository implements DurableJobRepository {
     return existing.id
   }
 
-  async claim(args: { leaseMs: number; now?: number; workerId: string }): Promise<DurableJob | null> {
+  async claim(args: {
+    leaseMs: number
+    now?: number
+    supportedTypes?: readonly string[]
+    workerId: string
+  }): Promise<DurableJob | null> {
     const now = new Date(args.now ?? Date.now())
     const leaseExpiresAt = new Date(now.getTime() + normalizeLeaseMs(args.leaseMs))
     const workerId = requireValue(args.workerId, 'worker id')
+    const supportedTypes = args.supportedTypes?.map((type) => requireValue(type, 'supported job type'))
+    if (supportedTypes?.length === 0) return null
+    const supportedTypeFilter = supportedTypes
+      ? sql`AND type IN (${sql.join(supportedTypes.map((type) => sql`${type}`), sql`, `)})`
+      : sql``
     const result = await this.db.execute<DurableJobRow>(sql`
       WITH candidate AS (
         SELECT id
         FROM durable_jobs
         WHERE status = 'queued'
           AND available_at <= ${now}
+          ${supportedTypeFilter}
         ORDER BY priority DESC, available_at ASC, created_at ASC
         FOR UPDATE SKIP LOCKED
         LIMIT 1
