@@ -73,7 +73,8 @@ async function getBillingState(
   repository: BillingRepository,
   userId: string,
 ): Promise<SubscriptionBillingState | null> {
-  return await repository.getSubscriptionByUserIdByServer({ userId })
+  const state = await repository.getSubscriptionByUserIdByServer({ userId })
+  return state ? { ...state, userId } : null
 }
 
 function normalizeStripePaymentMethodId(value: unknown): string | null {
