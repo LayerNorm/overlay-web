@@ -1182,6 +1182,7 @@ export const billingSubscriptions = pgTable('billing_subscriptions', {
   offSessionConsentAt: timestamp('off_session_consent_at', { withTimezone: true }),
   currentPeriodStart: timestamp('current_period_start', { withTimezone: true }),
   currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
+  providerEventCreatedAt: timestamp('provider_event_created_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [

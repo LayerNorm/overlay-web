@@ -56,6 +56,7 @@ export class StripeWebhookService {
       return await this.applySubscription(
         event.data.object as Stripe.Subscription,
         event.type === 'customer.subscription.deleted',
+        event.created,
       )
     }
     return false
@@ -108,7 +109,11 @@ export class StripeWebhookService {
     return false
   }
 
-  private async applySubscription(subscription: Stripe.Subscription, deleted: boolean): Promise<boolean> {
+  private async applySubscription(
+    subscription: Stripe.Subscription,
+    deleted: boolean,
+    eventCreatedSeconds: number,
+  ): Promise<boolean> {
     const metadata = subscription.metadata ?? {}
     const customerId = idValue(subscription.customer)
     const userId = await this.resolveUserId({
@@ -138,6 +143,7 @@ export class StripeWebhookService {
       status: deleted ? 'canceled' : normalizeSubscriptionStatus(subscription.status),
       currentPeriodStart: periodStart,
       currentPeriodEnd: periodEnd,
+      providerEventCreatedAt: unixSecondsToMillis(eventCreatedSeconds),
     })
     return true
   }

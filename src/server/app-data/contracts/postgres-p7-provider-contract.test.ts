@@ -1,5 +1,6 @@
 import 'server-only'
 
+import assert from 'node:assert/strict'
 import test from 'node:test'
 import { eq } from 'drizzle-orm'
 import { PostgresAccountDataDeletionRepository } from '@/server/account/PostgresAccountDataDeletionRepository'
@@ -41,6 +42,36 @@ test('real Postgres P7 provider contract', {
       provider: 'postgres',
       usage: new PostgresUsageRepository(db),
     })
+
+    const orderingUserId = `p7_ordering_${Date.now()}`
+    await db.insert(users).values({ email: `${orderingUserId}@example.test`, id: orderingUserId })
+    try {
+      const subscription = {
+        planAmountCents: 2_000,
+        planKind: 'paid',
+        provider: 'stripe',
+        status: 'active',
+        stripeCustomerId: `cus_${orderingUserId}`,
+        stripeSubscriptionId: `sub_${orderingUserId}`,
+        tier: 'pro',
+        userId: orderingUserId,
+      } as const
+      await billing.upsertSubscription({ ...subscription, providerEventCreatedAt: 2_000 })
+      await billing.upsertSubscription({
+        ...subscription,
+        planKind: 'free',
+        providerEventCreatedAt: 4_000,
+        status: 'canceled',
+        tier: 'free',
+      })
+      await billing.upsertSubscription({ ...subscription, providerEventCreatedAt: 3_000 })
+      assert.equal((await billing.getSubscriptionByUserIdByServer({ userId: orderingUserId }))?.status, 'canceled')
+
+      await billing.upsertSubscription({ ...subscription, providerEventCreatedAt: 5_000 })
+      assert.equal((await billing.getSubscriptionByUserIdByServer({ userId: orderingUserId }))?.status, 'active')
+    } finally {
+      await db.delete(users).where(eq(users.id, orderingUserId))
+    }
   } finally {
     await pool.end()
   }

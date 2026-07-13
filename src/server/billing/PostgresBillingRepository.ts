@@ -200,7 +200,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
           provider_price_id, provider_quantity, tier, plan_kind, plan_version,
           plan_amount_cents, markup_basis_points, status, auto_top_up_enabled,
           auto_top_up_amount_cents, off_session_consent_at, current_period_start,
-          current_period_end, updated_at
+          current_period_end, provider_event_created_at, updated_at
         ) VALUES (
           ${args.userId}, ${textValue(args.email) ?? null}, ${textValue(args.name) ?? null},
           ${provider}, ${customerId ?? null}, ${subscriptionId ?? null},
@@ -210,7 +210,8 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
           ${numberValue(args.planAmountCents) ?? 0}, ${numberValue(args.markupBasisPoints) ?? null},
           ${statusValue(args.status)}, ${booleanValue(args.autoTopUpEnabled) ?? false},
           ${numberValue(args.autoTopUpAmountCents) ?? 0}, ${dateValue(args.offSessionConsentAt)},
-          ${dateValue(args.currentPeriodStart)}, ${dateValue(args.currentPeriodEnd)}, now()
+          ${dateValue(args.currentPeriodStart)}, ${dateValue(args.currentPeriodEnd)},
+          ${dateValue(args.providerEventCreatedAt)}, now()
         )
         ON CONFLICT (user_id) DO UPDATE SET
           email = COALESCE(EXCLUDED.email, billing_subscriptions.email),
@@ -231,7 +232,11 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
           off_session_consent_at = COALESCE(EXCLUDED.off_session_consent_at, billing_subscriptions.off_session_consent_at),
           current_period_start = COALESCE(EXCLUDED.current_period_start, billing_subscriptions.current_period_start),
           current_period_end = COALESCE(EXCLUDED.current_period_end, billing_subscriptions.current_period_end),
+          provider_event_created_at = COALESCE(EXCLUDED.provider_event_created_at, billing_subscriptions.provider_event_created_at),
           updated_at = now()
+        WHERE EXCLUDED.provider_event_created_at IS NULL
+           OR billing_subscriptions.provider_event_created_at IS NULL
+           OR EXCLUDED.provider_event_created_at >= billing_subscriptions.provider_event_created_at
       `)
       await tx.execute(sql`
         INSERT INTO usage_budget_accounts (user_id, mode)
