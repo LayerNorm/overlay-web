@@ -3,6 +3,7 @@ import 'server-only'
 export interface AccountDataDeletionCounts {
   apiIdempotencyKeys: number
   apiKeys: number
+  administrativePrincipals: number
   automationRunAttempts: number
   automationRuns: number
   automationTriggers: number

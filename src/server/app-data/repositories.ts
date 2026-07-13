@@ -80,10 +80,18 @@ import {
   PostgresApiKeyRepository,
   type ApiKeyRepository,
 } from '@/server/auth/api-keys'
+import {
+  PostgresAdministrativeRepository,
+  PostgresAuditRepository,
+  type AdministrativeRepository,
+  type AuditRepository,
+} from '@/server/admin'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
+  administration: AdministrativeRepository
   apiKeys: ApiKeyRepository
+  audit: AuditRepository
   automations: AutomationRepository
   billing: BillingRepository
   billingEvents: BillingProviderEventRepository
@@ -136,7 +144,9 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       postgres: { db },
       repositories: {
         accountDeletion: new PostgresAccountDataDeletionRepository(db),
+        administration: new PostgresAdministrativeRepository(db),
         apiKeys: new PostgresApiKeyRepository(db),
+        audit: new PostgresAuditRepository(db),
         automations: new PostgresAutomationRepository(db, conversations),
         billing,
         billingEvents: new PostgresBillingProviderEventRepository(db),
@@ -166,7 +176,9 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
     capabilities,
     repositories: {
       accountDeletion: unsupportedRepository<AccountDataDeletionRepository>('AccountDataDeletionRepository'),
+      administration: unsupportedRepository<AdministrativeRepository>('AdministrativeRepository'),
       apiKeys: new ConvexApiKeyRepository(),
+      audit: unsupportedRepository<AuditRepository>('AuditRepository'),
       automations: new ConvexAutomationRepository(),
       billing: new ConvexBillingRepository(),
       billingEvents: unsupportedRepository<BillingProviderEventRepository>('BillingProviderEventRepository'),

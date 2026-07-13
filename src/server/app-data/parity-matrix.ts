@@ -187,6 +187,14 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     exitGate: 'Hashed keys, scopes, expiry, revocation, and audit behavior match Convex mode.',
   },
   {
+    id: 'administration-audit',
+    name: 'Administration and audit',
+    targetPhase: 'P7',
+    capabilities: [],
+    routeRuleIds: ['administration'],
+    exitGate: 'Role grants, revocation, authorization denials, and redacted audit records pass Postgres contracts.',
+  },
+  {
     id: 'background-runtime',
     name: 'Background runtime and production safety',
     targetPhase: 'P1',

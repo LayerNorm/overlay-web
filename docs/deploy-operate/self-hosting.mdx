@@ -277,6 +277,38 @@ OVERLAY_DATABASE_URL="postgres://..." npm run app-db:worker:smoke
 
 Do not reuse `BETTER_AUTH_DATABASE_URL` for app data. Better Auth and Overlay app records have separate schemas and migration lifecycles.
 
+### Billing, API keys, and administrators
+
+Postgres app-data supports Stripe subscription records, exactly-once top-up grants,
+and durable Stripe event deduplication. Register the Postgres deployment webhook as:
+
+```text
+https://overlay.example.com/api/webhooks/stripe
+```
+
+Set `STRIPE_WEBHOOK_SECRET` to that endpoint's signing secret. Convex deployments
+continue to use the Convex Stripe webhook endpoint; do not register both endpoints
+for one deployment.
+
+API key values are returned only on create or rotation. The database stores an
+HMAC hash using `API_KEY_HASH_SECRET`, plus scopes, expiry, use metadata, and
+revocation state. Rotate the hash secret only through a planned key invalidation
+window because existing API keys cannot be re-hashed without their plaintext.
+
+Bootstrap the first administrator from a trusted maintenance shell after the user
+has signed in once and exists in the app-data `users` table:
+
+```bash
+OVERLAY_DATABASE_URL="postgres://..." npm run app-db:admin -- \
+  grant --user-id USER_ID --role admin --reason "initial operator"
+```
+
+Then use `/api/v1/admin/principals` for role grants/revocations and
+`/api/v1/admin/audit` for audit review. Available roles are `admin`, `auditor`,
+`billing_admin`, and `support`. Only `admin` can grant or revoke roles, auditors
+can read audit records, and an administrator cannot revoke their own active role.
+Audit metadata is size-bounded and secret-shaped keys are redacted before insert.
+
 For future vector-search planning, confirm that the managed Postgres provider exposes the `vector` extension:
 
 ```bash

@@ -39,5 +39,13 @@ export async function POST(request: Request) {
     events: context.appData.repositories.billingEvents,
   })
   const result = await service.handle({ event, rawBody })
+  await context.auditService.record({
+    action: 'billing.stripe.webhook',
+    actorType: 'system',
+    metadata: { duplicate: result.duplicate, eventType: event.type, handled: result.handled },
+    outcome: 'success',
+    resourceId: event.id,
+    resourceType: 'billing_provider_event',
+  })
   return NextResponse.json({ received: true, ...result })
 }

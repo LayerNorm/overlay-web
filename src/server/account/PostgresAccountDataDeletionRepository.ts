@@ -16,6 +16,7 @@ import {
 const ZERO_COUNTS: AccountDataDeletionCounts = {
   apiIdempotencyKeys: 0,
   apiKeys: 0,
+  administrativePrincipals: 0,
   automationRunAttempts: 0,
   automationRuns: 0,
   automationTriggers: 0,
@@ -154,6 +155,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
   const result = await tx.execute<{
     api_idempotency_keys: number
     api_keys: number
+    administrative_principals: number
     automation_run_attempts: number
     automation_runs: number
     automation_triggers: number
@@ -189,6 +191,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     SELECT
       (SELECT count(*)::int FROM api_idempotency_keys WHERE user_id = ${userId}) AS api_idempotency_keys,
       (SELECT count(*)::int FROM api_keys WHERE user_id = ${userId}) AS api_keys,
+      (SELECT count(*)::int FROM administrative_principals WHERE user_id = ${userId}) AS administrative_principals,
       (SELECT count(*)::int FROM automations WHERE user_id = ${userId}) AS automations,
       (SELECT count(*)::int FROM billing_subscriptions WHERE user_id = ${userId}) AS billing_subscriptions,
       (SELECT count(*)::int FROM billing_top_ups WHERE user_id = ${userId}) AS billing_top_ups,
@@ -227,6 +230,7 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
   return {
     apiIdempotencyKeys: Number(row.api_idempotency_keys ?? 0),
     apiKeys: Number(row.api_keys ?? 0),
+    administrativePrincipals: Number(row.administrative_principals ?? 0),
     automationRunAttempts: Number(row.automation_run_attempts ?? 0),
     automationRuns: Number(row.automation_runs ?? 0),
     automationTriggers: Number(row.automation_triggers ?? 0),

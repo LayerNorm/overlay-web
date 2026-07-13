@@ -668,6 +668,10 @@ Parity exists or is close enough for pilot:
 - Shared idempotency, service-auth replay protection, Redis rate limits, durable jobs/outbox, scheduler ownership, and background maintenance.
 - Restart-safe model catalog persistence.
 - Real backend repository contract tests.
+- Durable usage ledgers, reservations, budgets, and reconciliation.
+- Stripe billing records, top-ups, and provider-event deduplication.
+- Scoped API keys with expiry, rotation, revocation, and one-time secret display.
+- Administrative roles and redacted audit records.
 
 Parity does not exist yet:
 
@@ -675,8 +679,6 @@ Parity does not exist yet:
 - Skills and MCP server management.
 - Automation scheduler and execution.
 - Webhook delivery retries.
-- Billing records and usage audit storage.
-- API keys.
 - Memory extraction.
 - Vector search.
 - Full knowledge search.

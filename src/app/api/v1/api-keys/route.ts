@@ -12,13 +12,20 @@ const listKeys: BffDomainService = async (_request, context) => {
 
 const createKey: BffDomainService = async (request, context) => {
   try {
-    const key = await getOverlayServerContext().apiKeyService.create({
+    const server = getOverlayServerContext()
+    const allowAdminScope = await canCreateAdminKey(server, context)
+    const key = await server.apiKeyService.create({
+      allowAdminScope,
       createdBy: context.auth.userId,
       createdFromIp: getClientIp(request),
       name: optionalString(context.parsedJson.name),
       userId: context.auth.userId,
       scopes: arrayValue(context.parsedJson.scopes),
       expiresAt: optionalNumber(context.parsedJson.expiresAt),
+    })
+    await recordApiKeyAudit(server, request, context, 'api_key.create', key.id, {
+      scopes: key.scopes,
+      expiresAt: key.expiresAt,
     })
     return NextResponse.json({ key }, { status: 201 })
   } catch (error) {
@@ -28,7 +35,10 @@ const createKey: BffDomainService = async (request, context) => {
 
 const rotateKey: BffDomainService = async (request, context) => {
   try {
-    const key = await getOverlayServerContext().apiKeyService.rotateById({
+    const server = getOverlayServerContext()
+    const allowAdminScope = await canCreateAdminKey(server, context)
+    const key = await server.apiKeyService.rotateById({
+      allowAdminScope,
       createdBy: context.auth.userId,
       createdFromIp: getClientIp(request),
       expiresAt: optionalNumber(context.parsedJson.expiresAt),
@@ -39,6 +49,10 @@ const rotateKey: BffDomainService = async (request, context) => {
       userId: context.auth.userId,
     })
     if (!key) return NextResponse.json({ error: 'API key not found' }, { status: 404 })
+    await recordApiKeyAudit(server, request, context, 'api_key.rotate', key.id, {
+      scopes: key.scopes,
+      replacesId: requiredString(context, 'id'),
+    })
     return NextResponse.json({ key })
   } catch (error) {
     return invalidRequest(error)
@@ -47,11 +61,14 @@ const rotateKey: BffDomainService = async (request, context) => {
 
 const revokeKey: BffDomainService = async (_request, context) => {
   try {
-    const revoked = await getOverlayServerContext().apiKeyService.revokeById({
-      id: requiredString(context, 'id'),
+    const server = getOverlayServerContext()
+    const id = requiredString(context, 'id')
+    const revoked = await server.apiKeyService.revokeById({
+      id,
       revokedReason: optionalString(context.parsedJson.reason) ?? 'revoked_by_user',
       userId: context.auth.userId,
     })
+    if (revoked) await recordApiKeyAudit(server, _request, context, 'api_key.revoke', id)
     return revoked
       ? NextResponse.json({ success: true })
       : NextResponse.json({ error: 'API key not found' }, { status: 404 })
@@ -103,4 +120,36 @@ function invalidRequest(error: unknown): Response {
     { error: error instanceof Error ? error.message : 'Invalid API key request' },
     { status: 400 },
   )
+}
+
+async function canCreateAdminKey(
+  server: ReturnType<typeof getOverlayServerContext>,
+  context: AppApiRouteContext,
+): Promise<boolean> {
+  if (!arrayValue(context.parsedJson.scopes).includes('admin')) return false
+  if (server.appDataCapabilities.provider !== 'postgres') return false
+  return await server.administrativeService.canManageAdministrators(context.auth.userId)
+}
+
+async function recordApiKeyAudit(
+  server: ReturnType<typeof getOverlayServerContext>,
+  request: NextRequest,
+  context: AppApiRouteContext,
+  action: string,
+  resourceId: string,
+  metadata: Record<string, unknown> = {},
+): Promise<void> {
+  if (server.appDataCapabilities.provider !== 'postgres') return
+  await server.auditService.record({
+    action,
+    actorApiKeyId: context.auth.apiKeyId,
+    actorType: context.auth.authType === 'api-key' ? 'api_key' : 'user',
+    actorUserId: context.auth.userId,
+    ipAddress: getClientIp(request),
+    metadata,
+    outcome: 'success',
+    requestId: request.headers.get('x-request-id') ?? undefined,
+    resourceId,
+    resourceType: 'api_key',
+  })
 }

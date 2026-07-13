@@ -22,6 +22,13 @@ export interface AppDataRouteSupportRule {
 
 export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupportRule[] = [
   {
+    id: 'administration',
+    methods: '*',
+    prefixes: ['/api/v1/admin'],
+    status: 'supported',
+    feature: 'administration',
+  },
+  {
     id: 'bootstrap',
     methods: ['GET'],
     paths: ['/api/v1/bootstrap'],

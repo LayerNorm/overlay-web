@@ -220,6 +220,26 @@ export const billingProviderEventStatus = pgEnum('overlay_billing_provider_event
   'failed',
 ])
 
+export const administrativeRole = pgEnum('overlay_administrative_role', [
+  'admin',
+  'auditor',
+  'billing_admin',
+  'support',
+])
+
+export const auditActorType = pgEnum('overlay_audit_actor_type', [
+  'user',
+  'api_key',
+  'service',
+  'system',
+])
+
+export const auditOutcome = pgEnum('overlay_audit_outcome', [
+  'success',
+  'denied',
+  'failure',
+])
+
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
   email: text('email').notNull(),
@@ -1131,4 +1151,42 @@ export const apiKeys = pgTable('api_keys', {
   index('api_keys_user_created_idx').on(table.userId, table.createdAt),
   index('api_keys_expires_at_idx').on(table.expiresAt),
   index('api_keys_revoked_at_idx').on(table.revokedAt),
+])
+
+export const administrativePrincipals = pgTable('administrative_principals', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  role: administrativeRole('role').notNull(),
+  grantedBy: text('granted_by'),
+  reason: text('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  revokedBy: text('revoked_by'),
+}, (table) => [
+  index('administrative_principals_role_idx').on(table.role),
+  index('administrative_principals_active_idx').on(table.revokedAt),
+])
+
+export const auditEvents = pgTable('audit_events', {
+  id: text('id').primaryKey(),
+  actorType: auditActorType('actor_type').notNull(),
+  actorUserId: text('actor_user_id')
+    .references(() => users.id, { onDelete: 'set null' }),
+  actorApiKeyId: text('actor_api_key_id')
+    .references(() => apiKeys.id, { onDelete: 'set null' }),
+  action: text('action').notNull(),
+  resourceType: text('resource_type').notNull(),
+  resourceId: text('resource_id'),
+  outcome: auditOutcome('outcome').notNull(),
+  requestId: text('request_id'),
+  ipAddress: text('ip_address'),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('audit_events_created_idx').on(table.createdAt),
+  index('audit_events_actor_created_idx').on(table.actorUserId, table.createdAt),
+  index('audit_events_action_created_idx').on(table.action, table.createdAt),
+  index('audit_events_resource_idx').on(table.resourceType, table.resourceId, table.createdAt),
 ])

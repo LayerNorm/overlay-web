@@ -3,6 +3,7 @@ import 'server-only'
 import overlayAppConfig from '@/overlay.config'
 import { NoOpLLMGateway, OpenAILLMGateway, OpenRouterGateway } from '@/server/ai/providers'
 import { ApiKeyService } from '@/server/auth/api-keys'
+import { AdministrativeService, AuditService } from '@/server/admin'
 import {
   BetterAuthProvider,
   NoOpAuthProvider,
@@ -62,6 +63,8 @@ import { deriveOverlayCapabilities as resolveOverlayCapabilities } from '@overla
 export interface OverlayServerContext extends OverlayProviderContext {
   appData: AppDataContext
   appDataCapabilities: AppDataCapabilities
+  administrativeService: AdministrativeService
+  auditService: AuditService
   chatUsagePolicy: ActUsagePolicy
   generationUsagePolicy: GenerationUsagePolicy
   memoryService: MemoryService
@@ -111,6 +114,11 @@ export function createOverlayServerContext(
     repository: appData.repositories.users,
   })
   const memoryService = new MemoryService(appData.repositories.memories)
+  const auditService = new AuditService(appData.repositories.audit)
+  const administrativeService = new AdministrativeService({
+    audit: auditService,
+    repository: appData.repositories.administration,
+  })
   const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
 
   return {
@@ -127,6 +135,8 @@ export function createOverlayServerContext(
     eventBus: appConfig.eventBus ?? new InMemoryEventBus(),
     appData,
     appDataCapabilities: appData.capabilities,
+    administrativeService,
+    auditService,
     chatUsagePolicy,
     generationUsagePolicy,
     memoryService,
