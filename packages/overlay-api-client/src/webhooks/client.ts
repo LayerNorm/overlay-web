@@ -39,8 +39,20 @@ export type WebhookDelivery = {
 export class WebhooksClient {
   constructor(private readonly http: HttpContext) {}
 
+  list(init?: RequestInit) {
+    return this.http.jsonData<WebhookSubscription[]>('/api/v1/webhooks', init)
+  }
+
   listResponse(init?: RequestInit) {
     return this.http.request('/api/v1/webhooks', init)
+  }
+
+  listDeliveries(query: { subscriptionId?: string; limit?: number } = {}, init?: RequestInit) {
+    const path = this.http.appendQuery('/api/v1/webhooks', {
+      view: 'deliveries',
+      ...query,
+    })
+    return this.http.jsonData<WebhookDelivery[]>(path, init)
   }
 
   listDeliveriesResponse(query: { subscriptionId?: string; limit?: number } = {}, init?: RequestInit) {
@@ -56,6 +68,10 @@ export class WebhooksClient {
       '/api/v1/webhooks',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
+  }
+
+  parseCreateResponse(response: Response) {
+    return this.http.parseJsonData<{ id: string; secret: string }>(response)
   }
 
   updateResponse(body: {
@@ -76,6 +92,10 @@ export class WebhooksClient {
       '/api/v1/webhooks',
       this.http.jsonRequest({ action: 'rotate-secret', subscriptionId }, { ...init, method: 'PATCH' }),
     )
+  }
+
+  parseRotateSecretResponse(response: Response) {
+    return this.http.parseJsonData<{ secret: string }>(response)
   }
 
   redriveResponse(deliveryId: string, init?: RequestInit) {

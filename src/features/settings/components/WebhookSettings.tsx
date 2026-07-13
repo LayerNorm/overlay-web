@@ -32,15 +32,12 @@ export function WebhookSettings() {
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    const [subscriptionsResponse, deliveriesResponse] = await Promise.all([
-      overlayAppClient.webhooks.listResponse({ cache: 'no-store' }),
-      overlayAppClient.webhooks.listDeliveriesResponse({}, { cache: 'no-store' }),
+    const [loadedSubscriptions, loadedDeliveries] = await Promise.all([
+      overlayAppClient.webhooks.list({ cache: 'no-store' }),
+      overlayAppClient.webhooks.listDeliveries({}, { cache: 'no-store' }),
     ])
-    if (!subscriptionsResponse.ok || !deliveriesResponse.ok) {
-      throw new Error('Failed to load webhook configuration')
-    }
-    setSubscriptions(await subscriptionsResponse.json() as WebhookSubscription[])
-    setDeliveries(await deliveriesResponse.json() as WebhookDelivery[])
+    setSubscriptions(loadedSubscriptions)
+    setDeliveries(loadedDeliveries)
   }, [])
 
   useEffect(() => {
@@ -77,7 +74,7 @@ export function WebhookSettings() {
         url: url.trim(),
       }),
       async (response) => {
-        const payload = await response.json() as { id: string; secret: string }
+        const payload = await overlayAppClient.webhooks.parseCreateResponse(response)
         setSelectedId(payload.id)
         setSecret(payload.secret)
         setUrl('')
@@ -217,7 +214,9 @@ export function WebhookSettings() {
                     disabled={busy}
                     onClick={() => void mutate(
                       () => overlayAppClient.webhooks.rotateSecretResponse(subscription._id),
-                      async (response) => setSecret((await response.json() as { secret: string }).secret),
+                      async (response) => setSecret(
+                        (await overlayAppClient.webhooks.parseRotateSecretResponse(response)).secret,
+                      ),
                     )}
                   >
                     <RotateCw size={14} />

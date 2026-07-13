@@ -203,6 +203,42 @@ test('automation run history unwraps the standardized paginated envelope', async
   assert.deepEqual(runs, [{ _id: 'run_1', status: 'completed', scheduledFor: 123 }])
 })
 
+test('webhook helpers unwrap standardized lists and parse mutation payloads', async () => {
+  const client = createOverlayAppClient({
+    baseUrl: 'https://example.test',
+    fetch: async (input) => {
+      const url = String(input)
+      if (url.includes('view=deliveries')) {
+        return Response.json({
+          data: [{ _id: 'delivery_1', status: 'delivered' }],
+          hasMore: false,
+        })
+      }
+      return Response.json({
+        data: [{ _id: 'subscription_1', events: ['chat.completed'] }],
+        hasMore: false,
+      })
+    },
+  })
+
+  assert.deepEqual(await client.webhooks.list(), [
+    { _id: 'subscription_1', events: ['chat.completed'] },
+  ])
+  assert.deepEqual(await client.webhooks.listDeliveries(), [
+    { _id: 'delivery_1', status: 'delivered' },
+  ])
+  assert.deepEqual(
+    await client.webhooks.parseCreateResponse(Response.json({
+      id: 'subscription_1', secret: 'secret_1',
+    })),
+    { id: 'subscription_1', secret: 'secret_1' },
+  )
+  assert.deepEqual(
+    await client.webhooks.parseRotateSecretResponse(Response.json({ secret: 'secret_2' })),
+    { secret: 'secret_2' },
+  )
+})
+
 test('list helpers unwrap paginated envelopes while getPage preserves metadata', async () => {
   const calls: RecordedRequest[] = []
   const client = createOverlayAppClient({
