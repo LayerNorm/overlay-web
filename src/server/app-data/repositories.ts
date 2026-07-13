@@ -71,6 +71,7 @@ import {
   type WebhookRepository,
 } from '@/server/webhooks'
 import { unsupportedRepository } from './errors'
+import type { UsageRepository } from '@/server/usage'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -92,7 +93,7 @@ export interface AppDataRepositories {
   serviceAuthReplay: ServiceAuthReplayRepository
   users: UserRepository
   webhooks: WebhookRepository
-  usage: Record<string, never>
+  usage: UsageRepository
 }
 
 export interface AppDataContext {
@@ -141,7 +142,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         serviceAuthReplay: new PostgresServiceAuthReplayRepository(db),
         users: new PostgresUserRepository(db),
         webhooks: new PostgresWebhookRepository(db),
-        usage: unsupportedRepository<Record<string, never>>('UsageRepository'),
+        usage: unsupportedRepository<UsageRepository>('UsageRepository'),
       },
     }
   }
@@ -168,7 +169,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       serviceAuthReplay: new ConvexServiceAuthReplayRepository(),
       users: new ConvexUserRepository(),
       webhooks: new ConvexWebhookRepository(),
-      usage: unsupportedRepository<Record<string, never>>('UsageRepository'),
+      usage: unsupportedRepository<UsageRepository>('UsageRepository'),
     },
   }
 }

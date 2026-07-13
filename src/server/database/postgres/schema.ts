@@ -175,6 +175,26 @@ export const webhookDeliveryStatus = pgEnum('overlay_webhook_delivery_status', [
   'dead_letter',
 ])
 
+export const usageBudgetMode = pgEnum('overlay_usage_budget_mode', [
+  'unlimited',
+  'budgeted',
+])
+
+export const usageReservationStatus = pgEnum('overlay_usage_reservation_status', [
+  'reserved',
+  'finalized',
+  'released',
+  'reconcile_required',
+  'expired',
+])
+
+export const usageTransactionType = pgEnum('overlay_usage_transaction_type', [
+  'reserve',
+  'finalize',
+  'release',
+  'adjustment',
+])
+
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
   email: text('email').notNull(),
@@ -907,4 +927,92 @@ export const modelCatalogSnapshots = pgTable('model_catalog_snapshots', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('model_catalog_snapshots_fetched_at_idx').on(table.fetchedAt),
+])
+
+export const usageBudgetAccounts = pgTable('usage_budget_accounts', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  mode: usageBudgetMode('mode').default('unlimited').notNull(),
+  includedMicros: bigint('included_micros', { mode: 'number' }).default(0).notNull(),
+  grantedMicros: bigint('granted_micros', { mode: 'number' }).default(0).notNull(),
+  usedMicros: bigint('used_micros', { mode: 'number' }).default(0).notNull(),
+  reservedMicros: bigint('reserved_micros', { mode: 'number' }).default(0).notNull(),
+  version: integer('version').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  check('usage_budget_accounts_non_negative_check', sql`
+    ${table.includedMicros} >= 0 AND
+    ${table.grantedMicros} >= 0 AND
+    ${table.usedMicros} >= 0 AND
+    ${table.reservedMicros} >= 0
+  `),
+  index('usage_budget_accounts_mode_idx').on(table.mode),
+])
+
+export const usageReservations = pgTable('usage_reservations', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  kind: text('kind').notNull(),
+  modelId: text('model_id'),
+  reservedMicros: bigint('reserved_micros', { mode: 'number' }).notNull(),
+  actualMicros: bigint('actual_micros', { mode: 'number' }),
+  status: usageReservationStatus('status').default('reserved').notNull(),
+  providerWorkStarted: boolean('provider_work_started').default(false).notNull(),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
+  reason: text('reason'),
+  error: text('error'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  finalizedAt: timestamp('finalized_at', { withTimezone: true }),
+  releasedAt: timestamp('released_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('usage_reservations_user_created_idx').on(table.userId, table.createdAt),
+  index('usage_reservations_status_expires_idx').on(table.status, table.expiresAt),
+])
+
+export const usageEvents = pgTable('usage_events', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  reservationId: text('reservation_id')
+    .references(() => usageReservations.id, { onDelete: 'set null' }),
+  operationId: text('operation_id').notNull(),
+  kind: text('kind').notNull(),
+  modelId: text('model_id'),
+  inputTokens: integer('input_tokens'),
+  outputTokens: integer('output_tokens'),
+  cachedTokens: integer('cached_tokens'),
+  providerCostMicros: bigint('provider_cost_micros', { mode: 'number' }),
+  billableCostMicros: bigint('billable_cost_micros', { mode: 'number' }).notNull(),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('usage_events_user_occurred_idx').on(table.userId, table.occurredAt),
+  index('usage_events_operation_idx').on(table.operationId),
+  index('usage_events_reservation_idx').on(table.reservationId),
+])
+
+export const usageBudgetTransactions = pgTable('usage_budget_transactions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  reservationId: text('reservation_id')
+    .references(() => usageReservations.id, { onDelete: 'set null' }),
+  eventId: text('event_id')
+    .references(() => usageEvents.id, { onDelete: 'set null' }),
+  type: usageTransactionType('type').notNull(),
+  amountMicros: bigint('amount_micros', { mode: 'number' }).notNull(),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('usage_budget_transactions_user_created_idx').on(table.userId, table.createdAt),
+  index('usage_budget_transactions_reservation_idx').on(table.reservationId),
 ])

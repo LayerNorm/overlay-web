@@ -92,6 +92,13 @@
       "when": 1784228400000,
       "tag": "0012_p6d_webhooks",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784314800000,
+      "tag": "0013_p7_usage_accounting",
+      "breakpoints": true
     }
   ]
 }

@@ -24,6 +24,10 @@ export interface AccountDataDeletionCounts {
   r2UploadIntents: number
   userSettings: number
   users: number
+  usageBudgetAccounts: number
+  usageBudgetTransactions: number
+  usageEvents: number
+  usageReservations: number
   webhookDeliveries: number
   webhookDeliveryAttempts: number
   webhookSubscriptions: number

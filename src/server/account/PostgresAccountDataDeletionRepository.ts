@@ -37,6 +37,10 @@ const ZERO_COUNTS: AccountDataDeletionCounts = {
   r2UploadIntents: 0,
   userSettings: 0,
   users: 0,
+  usageBudgetAccounts: 0,
+  usageBudgetTransactions: 0,
+  usageEvents: 0,
+  usageReservations: 0,
   webhookDeliveries: 0,
   webhookDeliveryAttempts: 0,
   webhookSubscriptions: 0,
@@ -168,6 +172,10 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     r2_upload_intents: number
     user_settings: number
     users: number
+    usage_budget_accounts: number
+    usage_budget_transactions: number
+    usage_events: number
+    usage_reservations: number
     webhook_deliveries: number
     webhook_delivery_attempts: number
     webhook_subscriptions: number
@@ -196,6 +204,10 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
       (SELECT count(*)::int FROM r2_upload_intents WHERE user_id = ${userId}) AS r2_upload_intents,
       (SELECT count(*)::int FROM user_settings WHERE user_id = ${userId}) AS user_settings,
       (SELECT count(*)::int FROM users WHERE id = ${userId}) AS users
+      ,(SELECT count(*)::int FROM usage_budget_accounts WHERE user_id = ${userId}) AS usage_budget_accounts
+      ,(SELECT count(*)::int FROM usage_budget_transactions WHERE user_id = ${userId}) AS usage_budget_transactions
+      ,(SELECT count(*)::int FROM usage_events WHERE user_id = ${userId}) AS usage_events
+      ,(SELECT count(*)::int FROM usage_reservations WHERE user_id = ${userId}) AS usage_reservations
       ,(SELECT count(*)::int FROM webhook_subscriptions WHERE user_id = ${userId}) AS webhook_subscriptions
       ,(SELECT count(*)::int FROM webhook_deliveries WHERE user_id = ${userId}) AS webhook_deliveries
       ,(SELECT count(*)::int FROM webhook_delivery_attempts attempt JOIN webhook_deliveries delivery ON delivery.id = attempt.delivery_id WHERE delivery.user_id = ${userId}) AS webhook_delivery_attempts
@@ -227,6 +239,10 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     r2UploadIntents: Number(row.r2_upload_intents ?? 0),
     userSettings: Number(row.user_settings ?? 0),
     users: Number(row.users ?? 0),
+    usageBudgetAccounts: Number(row.usage_budget_accounts ?? 0),
+    usageBudgetTransactions: Number(row.usage_budget_transactions ?? 0),
+    usageEvents: Number(row.usage_events ?? 0),
+    usageReservations: Number(row.usage_reservations ?? 0),
     webhookDeliveries: Number(row.webhook_deliveries ?? 0),
     webhookDeliveryAttempts: Number(row.webhook_delivery_attempts ?? 0),
     webhookSubscriptions: Number(row.webhook_subscriptions ?? 0),
