@@ -37,10 +37,21 @@ test('resolveOverlayAppShellConfig hides capability-gated registries', () => {
   assert.equal(shell.tools.some((item) => item.id === 'knowledge-search'), false)
   assert.equal(shell.settingsSections.some((item) => item.id === 'memories'), false)
   assert.equal(shell.settingsPanels.some((item) => item.id === 'memories'), false)
+  assert.equal(shell.settingsSections.some((item) => item.id === 'webhooks'), false)
+  assert.equal(shell.settingsPanels.some((item) => item.id === 'webhooks'), false)
   assert.equal(shell.navigation.some((item) => item.id === 'files'), true)
   assert.equal(shell.appFeatureFlags.canUseAutomations, false)
   assert.equal(shell.appFeatureFlags.canUseProjects, false)
   assert.equal(shell.appFeatureFlags.canUseKnowledge, true)
+})
+
+test('resolveOverlayAppShellConfig exposes webhook settings when enabled', () => {
+  const shell = resolveOverlayAppShellConfig(undefined, {
+    capabilities: { webhooks: true },
+  })
+
+  assert.equal(shell.settingsSections.some((item) => item.id === 'webhooks'), true)
+  assert.equal(shell.settingsPanels.some((item) => item.id === 'webhooks'), true)
 })
 
 test('redacted capability bootstrap payload exposes capabilities without secrets', () => {
