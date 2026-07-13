@@ -53,6 +53,7 @@ import {
   runActTurnForScheduledAutomation,
   type ScheduledAutomationTurn,
 } from '@/server/agent/run-act-turn'
+import { PostgresUsageRepository } from '@/server/usage'
 
 export function createPostgresRuntime(args: {
   db: OverlayPostgresDb
@@ -74,6 +75,7 @@ export function createPostgresRuntime(args: {
   const automationRuns = new PostgresAutomationRunCoordinator(args.db)
   const automationExecutor = args.automationExecutor ?? runActTurnForScheduledAutomation
   const webhookDeliveries = new PostgresWebhookDeliveryService(args.db)
+  const usage = new PostgresUsageRepository(args.db)
   let daytonaReconciler = args.daytonaReconciler
   const getDaytonaReconciler = () => {
     daytonaReconciler ??= new PostgresDaytonaReconciliationService({
@@ -119,6 +121,7 @@ export function createPostgresRuntime(args: {
         ])
         return { expiredIdempotencyKeys, expiredReplayNonces }
       },
+      'usage.reconcile': async () => await usage.reconcileExpired(),
       'model-catalog.refresh': async () => ({
         modelCount: (await getGatewayCatalog(true, modelCatalog)).length,
       }),

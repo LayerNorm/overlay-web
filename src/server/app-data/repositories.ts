@@ -72,7 +72,7 @@ import {
 } from '@/server/webhooks'
 import { unsupportedRepository } from './errors'
 import type { UsageRepository } from '@/server/usage'
-import { PostgresUsageRepository } from '@/server/usage'
+import { ConvexUsageRepository, PostgresUsageRepository } from '@/server/usage'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -170,7 +170,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       serviceAuthReplay: new ConvexServiceAuthReplayRepository(),
       users: new ConvexUserRepository(),
       webhooks: new ConvexWebhookRepository(),
-      usage: unsupportedRepository<UsageRepository>('UsageRepository'),
+      usage: new ConvexUsageRepository(),
     },
   }
 }

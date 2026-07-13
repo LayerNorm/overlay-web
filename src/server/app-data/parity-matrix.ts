@@ -170,7 +170,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
   {
     id: 'usage-billing',
     name: 'Usage and billing records',
-    targetPhase: 'P8',
+    targetPhase: 'P7',
     capabilities: [
       { key: 'supportsUsageAccounting', expectedAtParity: true },
       { key: 'supportsBillingRecords', expectedAtParity: true },
@@ -181,7 +181,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
   {
     id: 'api-keys',
     name: 'API keys',
-    targetPhase: 'P8',
+    targetPhase: 'P7',
     capabilities: [{ key: 'supportsApiKeys', expectedAtParity: true }],
     routeRuleIds: ['auth-api-keys'],
     exitGate: 'Hashed keys, scopes, expiry, revocation, and audit behavior match Convex mode.',

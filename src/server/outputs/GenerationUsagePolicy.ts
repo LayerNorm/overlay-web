@@ -4,6 +4,7 @@ import type { Entitlements } from '@/shared/app/app-contracts'
 import type { AppDataProvider } from '@/server/app-data/capabilities'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
+import type { UsageRepository } from '@/server/usage'
 import {
   ensureBudgetAvailable,
   finalizeProviderBudgetReservation,
@@ -36,18 +37,18 @@ export interface GenerationUsagePolicy {
     events?: ProviderUsageEvent[]
     reservationId: string | null | undefined
     userId: string
-  }): Promise<unknown>
+  }): ReturnType<typeof finalizeProviderBudgetReservation>
   release(args: {
     providerWorkStarted?: boolean
     reason?: string
     reservationId: string | null | undefined
     userId: string
-  }): Promise<void>
+  }): ReturnType<typeof releaseProviderBudgetReservation>
   markForReconcile(args: {
     errorMessage?: string
     reservationId: string | null | undefined
     userId: string
-  }): Promise<void>
+  }): ReturnType<typeof markProviderBudgetReconcile>
 }
 
 export class UnlimitedGenerationUsagePolicy implements GenerationUsagePolicy {
@@ -88,14 +89,18 @@ export class UnlimitedGenerationUsagePolicy implements GenerationUsagePolicy {
     return { success: true, skipped: true }
   }
 
-  async release(): Promise<void> {}
-  async markForReconcile(): Promise<void> {}
+  async release(): ReturnType<typeof releaseProviderBudgetReservation> {
+    return { success: true, skipped: true }
+  }
+  async markForReconcile(): ReturnType<typeof markProviderBudgetReconcile> {
+    return { success: true, skipped: true }
+  }
 }
 
 export class BillingGenerationUsagePolicy implements GenerationUsagePolicy {
   readonly mode = 'billing' as const
 
-  constructor(private readonly repository: ActConversationRepository) {}
+  constructor(private readonly repository: UsageRepository) {}
 
   async getEntitlements(args: { userId: string }): Promise<Entitlements | null> {
     return await this.repository.getEntitlements(args)
@@ -124,7 +129,7 @@ export class BillingGenerationUsagePolicy implements GenerationUsagePolicy {
     events?: ProviderUsageEvent[]
     reservationId: string | null | undefined
     userId: string
-  }): Promise<unknown> {
+  }): ReturnType<typeof finalizeProviderBudgetReservation> {
     if (args.reservationId) return await finalizeProviderBudgetReservation(args)
     return { success: true, skipped: true }
   }
@@ -134,29 +139,27 @@ export class BillingGenerationUsagePolicy implements GenerationUsagePolicy {
     reason?: string
     reservationId: string | null | undefined
     userId: string
-  }): Promise<void> {
-    if (!args.reservationId) return
-    await releaseProviderBudgetReservation(args)
+  }): ReturnType<typeof releaseProviderBudgetReservation> {
+    if (!args.reservationId) return { success: true, skipped: true }
+    return await releaseProviderBudgetReservation(args)
   }
 
   async markForReconcile(args: {
     errorMessage?: string
     reservationId: string | null | undefined
     userId: string
-  }): Promise<void> {
-    if (!args.reservationId) return
-    await markProviderBudgetReconcile(args)
+  }): ReturnType<typeof markProviderBudgetReconcile> {
+    if (!args.reservationId) return { success: true, skipped: true }
+    return await markProviderBudgetReconcile(args)
   }
 }
 
 export function createGenerationUsagePolicy(args: {
   appDataProvider: AppDataProvider
   repository: ActConversationRepository
+  usageRepository: UsageRepository
   runtimeConfig: OverlayRuntimeConfig | null
   unlimitedEntitlements: { getEntitlements(args: { userId: string }): Promise<Entitlements | null> }
 }): GenerationUsagePolicy {
-  if (args.appDataProvider === 'postgres' && args.runtimeConfig?.billing.provider === 'none') {
-    return new UnlimitedGenerationUsagePolicy(args.unlimitedEntitlements)
-  }
-  return new BillingGenerationUsagePolicy(args.repository)
+  return new BillingGenerationUsagePolicy(args.usageRepository)
 }

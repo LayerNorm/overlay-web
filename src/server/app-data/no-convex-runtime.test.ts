@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url'
 import { PostgresAccountDataDeletionRepository } from '@/server/account/PostgresAccountDataDeletionRepository'
 import { NoOpBillingProvider } from '@/server/billing/providers'
 import { PostgresActConversationRepository } from '@/server/conversations/PostgresActConversationRepository'
-import { UnlimitedUsagePolicy } from '@/server/conversations/ActUsagePolicy'
-import { UnlimitedGenerationUsagePolicy } from '@/server/outputs/GenerationUsagePolicy'
+import { BillingBackedActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
+import { BillingGenerationUsagePolicy } from '@/server/outputs/GenerationUsagePolicy'
 import { PostgresDaytonaWorkspaceRepository } from '@/server/ai/sandbox/PostgresDaytonaWorkspaceRepository'
 import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
 import { PostgresNoteRepository } from '@/server/notes'
@@ -17,6 +17,7 @@ import { InMemoryVectorStore } from '@/server/storage/providers/in-memory-vector
 import { PostgresAppSettingsRepository } from '@/server/settings'
 import { PostgresUserRepository } from '@/server/users'
 import { PostgresWebhookRepository } from '@/server/webhooks'
+import { PostgresUsageRepository } from '@/server/usage'
 import { parseOverlayRuntimeConfig, type OverlayRuntimeConfig } from '@/shared/config'
 import { createOverlayServerContext } from '../bootstrap'
 
@@ -104,8 +105,8 @@ test('Postgres server context boots and executes safe policies without Convex co
     assert.equal(context.appDataCapabilities.provider, 'postgres')
     assert.equal(context.appDataCapabilities.requiresConvexClient, false)
     assert.equal(context.billing instanceof NoOpBillingProvider, true)
-    assert.equal(context.chatUsagePolicy instanceof UnlimitedUsagePolicy, true)
-    assert.equal(context.generationUsagePolicy instanceof UnlimitedGenerationUsagePolicy, true)
+    assert.equal(context.chatUsagePolicy instanceof BillingBackedActUsagePolicy, true)
+    assert.equal(context.generationUsagePolicy instanceof BillingGenerationUsagePolicy, true)
     assert.equal(context.rateLimiter instanceof InMemoryRateLimiter, true)
     assert.equal(context.vectorStore instanceof InMemoryVectorStore, true)
 
@@ -119,10 +120,7 @@ test('Postgres server context boots and executes safe policies without Convex co
     assert.equal(repositories.settings instanceof PostgresAppSettingsRepository, true)
     assert.equal(repositories.users instanceof PostgresUserRepository, true)
     assert.equal(repositories.webhooks instanceof PostgresWebhookRepository, true)
-
-    const entitlements = await context.chatUsagePolicy.getEntitlements({ userId: 'p0-user' })
-    assert.ok(entitlements)
-    assert.equal(entitlements.planKind, 'paid')
+    assert.equal(repositories.usage instanceof PostgresUsageRepository, true)
     const rateLimit = await context.rateLimiter.check('p0-user', [{
       bucket: 'p0-bootstrap',
       limit: 2,

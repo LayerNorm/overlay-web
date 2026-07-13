@@ -6,3 +6,4 @@ export type {
   UsageSpendKind,
 } from './UsageRepository'
 export { PostgresUsageRepository } from './PostgresUsageRepository'
+export { ConvexUsageRepository } from './ConvexUsageRepository'

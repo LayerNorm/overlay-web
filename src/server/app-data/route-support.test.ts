@@ -4,7 +4,6 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  appDataRouteUnsupportedResponse,
   findPostgresRouteRule,
   getAppDataRouteSupport,
 } from '@/server/app-data/route-support'
@@ -115,7 +114,7 @@ test('Postgres app-data mode supports conversation persistence and realtime rout
   }).status, 'supported')
 })
 
-test('Postgres app-data mode supports persisted chat suggestions and gates notebook generation', async () => {
+test('Postgres app-data mode supports persisted chat suggestions and metered notebook generation', () => {
   const support = getAppDataRouteSupport({
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
@@ -128,24 +127,7 @@ test('Postgres app-data mode supports persisted chat suggestions and gates noteb
     method: 'POST',
     pathname: '/api/v1/notebook-agent',
   })
-  assert.equal(notebookSupport.status, 'unsupported')
-
-  const response = appDataRouteUnsupportedResponse({
-    databaseProvider: 'postgres',
-    method: 'POST',
-    pathname: '/api/v1/notebook-agent',
-    support: notebookSupport,
-  })
-  assert.equal(response.status, 501)
-  assert.deepEqual(await response.json(), {
-    error: 'Route is not available for the selected app-data provider',
-    code: 'app_data_route_not_supported',
-    provider: 'postgres',
-    method: 'POST',
-    route: '/api/v1/notebook-agent',
-    feature: 'usage-accounting',
-    reason: 'Notebook generation still requires the P8 usage reservation and billing-record repository.',
-  })
+  assert.equal(notebookSupport.status, 'supported')
 })
 
 test('Postgres app-data mode supports bootstrap and gates external integration routes', () => {
@@ -267,7 +249,7 @@ test('Postgres app-data mode supports generated media, browser, and sandbox outp
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'POST',
     pathname: '/api/v1/transcribe',
-  }).status, 'unsupported')
+  }).status, 'supported')
 })
 
 test('Postgres app-data mode supports durable automation routes', () => {

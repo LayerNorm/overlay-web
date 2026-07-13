@@ -4,9 +4,7 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { generateObject } from '@/server/ai/sdk'
 import { z } from 'zod'
 import { getLanguageModel } from '@/server/ai/model-runtime'
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import type { Entitlements } from '@/shared/app/app-contracts'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import {
   billableBudgetCentsFromProviderUsd,
@@ -48,9 +46,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const fallback = fallbackLabel(text)
 
 
-    const serverSecret = getInternalApiSecret()
-    const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
-      serverSecret,
+    const entitlements = await getOverlayServerContext().generationUsagePolicy.getEntitlements({
       userId: auth.userId,
     })
     if (!entitlements || !isPaidPlan(entitlements)) {

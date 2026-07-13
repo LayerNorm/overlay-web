@@ -15,6 +15,7 @@ import type { Entitlements } from '@/shared/app/app-contracts'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import type { AppDataProvider } from '@/server/app-data/capabilities'
 import type { ActConversationRepository } from './ActConversationRepository'
+import type { UsageRepository } from '@/server/usage'
 
 export type ActBudgetFailure = {
   payload: Record<string, unknown>
@@ -121,7 +122,8 @@ export class UnlimitedUsagePolicy implements ActUsagePolicy {
 
 export class BillingBackedActUsagePolicy implements ActUsagePolicy {
   constructor(private readonly deps: {
-    repository: ActConversationRepository
+    repository: UsageRepository | Pick<ActConversationRepository, 'getEntitlements' | 'recordUsageBatch'>
+    accountAllUsage?: boolean
   }) {}
 
   async getEntitlements(args: {
@@ -138,7 +140,9 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
     paid: boolean
     userId: string
   }): Promise<ActBudgetReservationResult> {
-    if (!args.paid || !isPremiumModel(args.modelId)) return { ok: true, reservationId: null }
+    if (!this.deps.accountAllUsage && (!args.paid || !isPremiumModel(args.modelId))) {
+      return { ok: true, reservationId: null }
+    }
     const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
       args.modelId,
       args.estimatedInputTokens,
@@ -228,11 +232,28 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
         })
         return { finalized: true, reservationId: null }
       }
-      await this.deps.repository.recordUsageBatch({
-        userId: args.userId,
-        forceFreeTierLimits: args.forceFreeTierLimits,
-        events,
-      })
+      if ('recordBatch' in this.deps.repository) {
+        await this.deps.repository.recordBatch({
+          operationId: `act_${globalThis.crypto.randomUUID()}`,
+          userId: args.userId,
+          forceFreeTierLimits: args.forceFreeTierLimits,
+          events: events.map((event) => ({
+            cachedTokens: event.cachedTokens,
+            costCents: event.cost,
+            inputTokens: event.inputTokens,
+            kind: event.type,
+            modelId: event.modelId,
+            occurredAt: event.timestamp,
+            outputTokens: event.outputTokens,
+          })),
+        })
+      } else {
+        await this.deps.repository.recordUsageBatch({
+          events,
+          forceFreeTierLimits: args.forceFreeTierLimits,
+          userId: args.userId,
+        })
+      }
       return { finalized: false, reservationId: null }
     } catch (err) {
       logger.error('[conversations/act] Failed to record usage:', summarizeErrorForLog(err))
@@ -278,14 +299,11 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
 export function createActUsagePolicy(args: {
   appDataProvider: AppDataProvider
   repository: ActConversationRepository
+  usageRepository: UsageRepository
   runtimeConfig: OverlayRuntimeConfig | null
 }): ActUsagePolicy {
-  if (
-    args.appDataProvider === 'postgres' &&
-    args.runtimeConfig?.billing.provider === 'none'
-  ) {
-    return new UnlimitedUsagePolicy()
-  }
-
-  return new BillingBackedActUsagePolicy({ repository: args.repository })
+  return new BillingBackedActUsagePolicy({
+    accountAllUsage: args.appDataProvider === 'postgres',
+    repository: args.usageRepository,
+  })
 }

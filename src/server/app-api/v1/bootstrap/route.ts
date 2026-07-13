@@ -75,7 +75,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
           })
         : Promise.resolve(null),
       isPostgresAppData
-        ? Promise.resolve(null)
+        ? serverContext.appData.repositories.usage.getEntitlements({ userId: auth.userId })
         : convex.query<Entitlements | null>('platform/usage:getEntitlementsByServer', {
           userId: auth.userId,
           serverSecret,

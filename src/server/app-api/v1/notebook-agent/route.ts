@@ -3,10 +3,9 @@ import { NextRequest } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { ToolLoopAgent, stepCountIs, tool, type ToolSet } from '@/server/ai/sdk'
 import { z } from 'zod'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getLanguageModel } from '@/server/ai/model-runtime'
-import type { Entitlements } from '@/shared/app/app-contracts'
 import {
   billableBudgetCentsFromProviderUsd,
   buildInsufficientCreditsPayload,
@@ -194,12 +193,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   const { auth } = context
 
   const userId = auth.userId
+  const serverContext = getOverlayServerContext()
+  const generationUsagePolicy = serverContext.generationUsagePolicy
   const serverSecret = getInternalApiSecret()
-
-  const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
-    serverSecret,
-    userId,
-  })
+  const entitlements = await generationUsagePolicy.getEntitlements({ userId })
   if (!entitlements) {
     return new Response(
       JSON.stringify({
@@ -241,10 +238,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
   }
 
-  const refreshedEntitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
-    serverSecret,
-    userId,
-  })
+  const refreshedEntitlements = await generationUsagePolicy.getEntitlements({ userId })
   if (!refreshedEntitlements) {
     return new Response(
       JSON.stringify({ error: 'Unauthorized', message: 'Could not refresh subscription state.' }),
@@ -401,10 +395,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	              })
 	              budgetReservationId = null
 	            } else {
-	              await convex.mutation('platform/usage:recordBatch', {
-	                serverSecret,
+	              await serverContext.appData.repositories.usage.recordBatch({
+	                events: events.map((event) => ({
+	                  cachedTokens: event.cachedTokens,
+	                  costCents: event.cost,
+	                  inputTokens: event.inputTokens,
+	                  kind: event.type,
+	                  modelId: event.modelId,
+	                  occurredAt: event.timestamp,
+	                  outputTokens: event.outputTokens,
+	                  providerCostUsd,
+	                })),
+	                operationId: `notebook_${globalThis.crypto.randomUUID()}`,
 	                userId,
-	                events,
 	              })
 	            }
 	          } catch (err) {

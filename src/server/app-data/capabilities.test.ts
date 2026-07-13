@@ -38,4 +38,6 @@ test('Postgres operational capabilities require the declared background runtime'
   }))
   assert.equal(operational.supportsAutomations, true)
   assert.equal(operational.supportsWebhooks, true)
+  assert.equal(operational.supportsUsageAccounting, true)
+  assert.equal(operational.supportsBillingRecords, false)
 })

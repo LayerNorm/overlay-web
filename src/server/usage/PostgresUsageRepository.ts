@@ -220,6 +220,7 @@ export class PostgresUsageRepository implements UsageRepository {
 
   async recordBatch(args: {
     events: UsageEvent[]
+    forceFreeTierLimits?: boolean
     operationId: string
     userId: string
   }): Promise<{ recorded: number }> {
@@ -445,4 +446,3 @@ function dollarsToMicros(value: number): number {
 function microsToCents(value: number): number {
   return value / MICROS_PER_CENT
 }
-

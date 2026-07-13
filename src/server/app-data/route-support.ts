@@ -109,9 +109,8 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'notebook-agent',
     methods: '*',
     prefixes: ['/api/v1/notebook-agent'],
-    status: 'unsupported',
+    status: 'supported',
     feature: 'usage-accounting',
-    reason: 'Notebook generation still requires the P8 usage reservation and billing-record repository.',
   },
   {
     id: 'chat-extension-plan',
@@ -178,9 +177,8 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
       '/api/v1/generate-tab-group-label',
       '/api/v1/transcribe',
     ],
-    status: 'unsupported',
+    status: 'supported',
     feature: 'usage-accounting',
-    reason: 'These generation routes still require the P8 usage accounting repository.',
   },
   {
     id: 'knowledge-memory-vector-search',

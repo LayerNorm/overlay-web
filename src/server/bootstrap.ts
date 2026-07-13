@@ -96,11 +96,13 @@ export function createOverlayServerContext(
   const chatUsagePolicy = createActUsagePolicy({
     appDataProvider: appData.capabilities.provider,
     repository: appData.repositories.conversations,
+    usageRepository: appData.repositories.usage,
     runtimeConfig,
   })
   const generationUsagePolicy = createGenerationUsagePolicy({
     appDataProvider: appData.capabilities.provider,
     repository: appData.repositories.conversations,
+    usageRepository: appData.repositories.usage,
     runtimeConfig,
     unlimitedEntitlements: chatUsagePolicy,
   })

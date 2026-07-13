@@ -77,6 +77,7 @@ export interface UsageRepository {
   }): Promise<{ status: UsageReservationStatus }>
   recordBatch(args: {
     events: UsageEvent[]
+    forceFreeTierLimits?: boolean
     operationId: string
     userId: string
   }): Promise<{ recorded: number }>
@@ -85,4 +86,3 @@ export interface UsageRepository {
     now?: number
   }): Promise<{ reconcileRequired: number; released: number }>
 }
-
