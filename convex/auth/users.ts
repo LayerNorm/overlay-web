@@ -482,6 +482,31 @@ export const deleteUserAccountByServer = mutation({
     )
     await deleteIndexed(() =>
       ctx.db
+        .query('budgetReservations')
+        .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('usageOperations')
+        .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('administrativePrincipals')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    const actorAuditRows = await ctx.db
+      .query('auditEvents')
+      .withIndex('by_actorUserId_createdAt', (q) => q.eq('actorUserId', userId))
+      .collect()
+    for (const row of actorAuditRows) {
+      await ctx.db.patch(row._id, { actorUserId: undefined })
+    }
+    await deleteIndexed(() =>
+      ctx.db
         .query('projects')
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect(),

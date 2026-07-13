@@ -12,6 +12,12 @@ import type {
 
 function createRepository(overrides: Partial<BillingRepository> = {}): BillingRepository {
   return {
+    async listAdministrativeUsage() {
+      return []
+    },
+    async adjustAdministrativeBudget() {
+      throw new Error('not implemented in billing checkout fixture')
+    },
     async getEntitlementsByServer() {
       return {
         tier: 'pro',

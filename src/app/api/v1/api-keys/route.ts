@@ -127,7 +127,6 @@ async function canCreateAdminKey(
   context: AppApiRouteContext,
 ): Promise<boolean> {
   if (!arrayValue(context.parsedJson.scopes).includes('admin')) return false
-  if (server.appDataCapabilities.provider !== 'postgres') return false
   return await server.administrativeService.canManageAdministrators(context.auth.userId)
 }
 
@@ -139,7 +138,6 @@ async function recordApiKeyAudit(
   resourceId: string,
   metadata: Record<string, unknown> = {},
 ): Promise<void> {
-  if (server.appDataCapabilities.provider !== 'postgres') return
   await server.auditService.record({
     action,
     actorApiKeyId: context.auth.apiKeyId,

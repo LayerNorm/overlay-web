@@ -10,6 +10,7 @@ import { ConvexAutomationRepository } from '@/server/automations/ConvexAutomatio
 import { PostgresAutomationRepository } from '@/server/automations/PostgresAutomationRepository'
 import type { AutomationRepository } from '@/server/automations/AutomationRepository'
 import { ConvexBillingRepository } from '@/server/billing/ConvexBillingRepository'
+import { ConvexBillingProviderEventRepository } from '@/server/billing/ConvexBillingProviderEventRepository'
 import type { BillingRepository } from '@/server/billing/BillingRepository'
 import type { BillingProviderEventRepository, BillingWebhookRepository } from '@/server/billing/BillingProviderEventRepository'
 import { PostgresBillingProviderEventRepository, PostgresBillingRepository } from '@/server/billing/PostgresBillingRepository'
@@ -81,6 +82,8 @@ import {
   type ApiKeyRepository,
 } from '@/server/auth/api-keys'
 import {
+  ConvexAdministrativeRepository,
+  ConvexAuditRepository,
   PostgresAdministrativeRepository,
   PostgresAuditRepository,
   type AdministrativeRepository,
@@ -176,13 +179,13 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
     capabilities,
     repositories: {
       accountDeletion: unsupportedRepository<AccountDataDeletionRepository>('AccountDataDeletionRepository'),
-      administration: unsupportedRepository<AdministrativeRepository>('AdministrativeRepository'),
+      administration: new ConvexAdministrativeRepository(),
       apiKeys: new ConvexApiKeyRepository(),
-      audit: unsupportedRepository<AuditRepository>('AuditRepository'),
+      audit: new ConvexAuditRepository(),
       automations: new ConvexAutomationRepository(),
       billing: new ConvexBillingRepository(),
-      billingEvents: unsupportedRepository<BillingProviderEventRepository>('BillingProviderEventRepository'),
-      billingWebhooks: unsupportedRepository<BillingWebhookRepository>('BillingWebhookRepository'),
+      billingEvents: new ConvexBillingProviderEventRepository(),
+      billingWebhooks: new ConvexBillingRepository(),
       chatSuggestions: new ConvexChatSuggestionRepository(),
       conversations: new ConvexActConversationRepository(),
       durableJobs: unsupportedRepository<DurableJobRepository>('DurableJobRepository'),

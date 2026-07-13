@@ -53,6 +53,7 @@ export default defineSchema({
     planKind: v.optional(v.union(v.literal('free'), v.literal('paid'))),
     planVersion: v.optional(v.union(v.literal('fixed_v1'), v.literal('variable_v2'))),
     planAmountCents: v.optional(v.number()),
+    institutionalGrantCents: v.optional(v.number()),
     markupBasisPoints: v.optional(v.number()),
     status: v.union(
       v.literal('active'),
@@ -121,6 +122,15 @@ export default defineSchema({
     provider: v.string(),
     eventId: v.string(),
     eventType: v.optional(v.string()),
+    payloadHash: v.optional(v.string()),
+    status: v.optional(v.union(
+      v.literal('processing'),
+      v.literal('processed'),
+      v.literal('failed'),
+    )),
+    attempt: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    updatedAt: v.optional(v.number()),
     processedAt: v.number(),
   })
     .index('by_provider_eventId', ['provider', 'eventId'])
@@ -231,12 +241,63 @@ export default defineSchema({
     providerWorkStarted: v.optional(v.boolean()),
     providerWorkCompleted: v.optional(v.boolean()),
     errorMessage: v.optional(v.string()),
+    expiresAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index('by_reservationId', ['reservationId'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_status_createdAt', ['status', 'createdAt']),
+
+  usageOperations: defineTable({
+    userId: v.string(),
+    operationId: v.string(),
+    recorded: v.number(),
+    createdAt: v.number(),
+  })
+    .index('by_operationId', ['operationId'])
+    .index('by_userId_createdAt', ['userId', 'createdAt']),
+
+  administrativePrincipals: defineTable({
+    userId: v.string(),
+    role: v.union(
+      v.literal('admin'),
+      v.literal('auditor'),
+      v.literal('billing_admin'),
+      v.literal('support'),
+    ),
+    grantedBy: v.optional(v.string()),
+    reason: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    revokedAt: v.optional(v.number()),
+    revokedBy: v.optional(v.string()),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_createdAt', ['createdAt']),
+
+  auditEvents: defineTable({
+    eventId: v.string(),
+    actorType: v.union(
+      v.literal('user'),
+      v.literal('api_key'),
+      v.literal('service'),
+      v.literal('system'),
+    ),
+    actorUserId: v.optional(v.string()),
+    actorApiKeyId: v.optional(v.string()),
+    action: v.string(),
+    resourceType: v.string(),
+    resourceId: v.optional(v.string()),
+    outcome: v.union(v.literal('success'), v.literal('denied'), v.literal('failure')),
+    requestId: v.optional(v.string()),
+    ipAddress: v.optional(v.string()),
+    metadataJson: v.string(),
+    createdAt: v.number(),
+  })
+    .index('by_eventId', ['eventId'])
+    .index('by_actorUserId_createdAt', ['actorUserId', 'createdAt'])
+    .index('by_createdAt', ['createdAt']),
 
   daytonaWorkspaces: defineTable({
     userId: v.string(),

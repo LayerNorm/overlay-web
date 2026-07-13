@@ -192,7 +192,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     targetPhase: 'P7',
     capabilities: [],
     routeRuleIds: ['administration'],
-    exitGate: 'Role grants, revocation, authorization denials, and redacted audit records pass Postgres contracts.',
+    exitGate: 'Role grants, revocation, authorization denials, budget controls, and redacted audit records pass shared Convex/Postgres contracts and browser QA.',
   },
   {
     id: 'background-runtime',

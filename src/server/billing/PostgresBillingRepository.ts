@@ -8,6 +8,7 @@ import type {
   BillingRepository,
   BillingSubscriptionRecord,
   BudgetTopUpRecord,
+  AdministrativeUsageRecord,
 } from './BillingRepository'
 import type {
   BillingProviderEventRepository,
@@ -34,6 +35,61 @@ type SubscriptionRow = {
 
 export class PostgresBillingRepository implements BillingRepository, BillingWebhookRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
+
+  async listAdministrativeUsage(args: {
+    limit?: number
+    userId?: string
+  } = {}): Promise<AdministrativeUsageRecord[]> {
+    const limit = Math.min(Math.max(args.limit ?? 100, 1), 200)
+    const result = await this.db.execute<{
+      budgetRemainingCents: number | string
+      budgetTotalCents: number | string
+      budgetUsedCents: number | string
+      email: string | null
+      planKind: 'free' | 'paid'
+      status: 'active' | 'canceled' | 'past_due' | 'trialing'
+      userId: string
+    }>(sql`
+      SELECT subscription.user_id AS "userId", subscription.email,
+             subscription.plan_kind AS "planKind", subscription.status,
+             (COALESCE(budget.included_micros, 0) + COALESCE(budget.granted_micros, 0)) / ${MICROS_PER_CENT}::numeric AS "budgetTotalCents",
+             COALESCE(budget.used_micros, 0) / ${MICROS_PER_CENT}::numeric AS "budgetUsedCents",
+             GREATEST(0, COALESCE(budget.included_micros, 0) + COALESCE(budget.granted_micros, 0) - COALESCE(budget.used_micros, 0) - COALESCE(budget.reserved_micros, 0)) / ${MICROS_PER_CENT}::numeric AS "budgetRemainingCents"
+      FROM billing_subscriptions subscription
+      LEFT JOIN usage_budget_accounts budget ON budget.user_id = subscription.user_id
+      WHERE (${args.userId ?? null}::text IS NULL OR subscription.user_id = ${args.userId ?? null})
+      ORDER BY subscription.updated_at DESC
+      LIMIT ${limit}
+    `)
+    return result.rows.map((row) => ({
+      ...row,
+      email: row.email ?? undefined,
+      budgetRemainingCents: Number(row.budgetRemainingCents),
+      budgetTotalCents: Number(row.budgetTotalCents),
+      budgetUsedCents: Number(row.budgetUsedCents),
+    }))
+  }
+
+  async adjustAdministrativeBudget(args: {
+    amountCents: number
+    userId: string
+  }): Promise<AdministrativeUsageRecord> {
+    if (!Number.isFinite(args.amountCents) || args.amountCents === 0) {
+      throw new Error('amountCents must be a non-zero number')
+    }
+    await this.db.execute(sql`
+      INSERT INTO usage_budget_accounts (user_id, mode, granted_micros)
+      VALUES (${args.userId}, 'budgeted', ${Math.max(0, args.amountCents * MICROS_PER_CENT)})
+      ON CONFLICT (user_id) DO UPDATE SET
+        mode = 'budgeted',
+        granted_micros = GREATEST(0, usage_budget_accounts.granted_micros + ${args.amountCents * MICROS_PER_CENT}),
+        version = usage_budget_accounts.version + 1,
+        updated_at = now()
+    `)
+    const record = (await this.listAdministrativeUsage({ userId: args.userId, limit: 1 }))[0]
+    if (!record) throw new Error('Billing subscription not found')
+    return record
+  }
 
   async getEntitlementsByServer(args: { userId: string }): Promise<BillingEntitlementsRecord | null> {
     const result = await this.db.execute<SubscriptionRow & {
@@ -233,10 +289,11 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       const row = existing.rows[0]
       const id = row?.id ?? `billing_topup_${randomUUID()}`
       const grant = args.status === 'succeeded' && row?.status !== 'succeeded'
+      const persistedStatus = row?.status === 'succeeded' ? 'succeeded' : args.status
       if (row) {
         await tx.execute(sql`
           UPDATE billing_top_ups
-          SET status = ${args.status}, updated_at = now()
+          SET status = ${persistedStatus}, updated_at = now()
           WHERE id = ${id} AND user_id = ${args.userId}
         `)
       } else {

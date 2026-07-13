@@ -33,6 +33,12 @@ function createRepository(overrides: Partial<BillingRepository> = {}): BillingRe
   const updatedPreferences: Array<Record<string, unknown>> = []
   return {
     updatedPreferences,
+    async listAdministrativeUsage() {
+      return []
+    },
+    async adjustAdministrativeBudget() {
+      throw new Error('not implemented in billing customer fixture')
+    },
     async getEntitlementsByServer() {
       return paidEntitlements
     },

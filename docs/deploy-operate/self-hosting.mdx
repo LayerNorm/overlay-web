@@ -198,7 +198,7 @@ Enterprise provider matrix:
 | Purpose | Provider values | Data processed | Region/residency | Current support |
 | --- | --- | --- | --- | --- |
 | Auth | `workos`, `oidc`, `none` | Identity profile, session tokens, org/user metadata | Depends on IdP | Supported. OIDC verifies bearer/access tokens through discovery JWKS, including Keycloak-compatible realm issuers; browser login wiring is deployment-specific. |
-| Database | `convex`, `postgres` | App records, messages, files metadata, usage state | Convex deployment region today, or customer Postgres region in Postgres mode | `convex` supported. `postgres` supports auth-linked users, chat, projects, notes, files and outputs, account deletion, durable maintenance, memory extraction, pgvector retrieval, and durable scheduled automations. Webhooks, integrations, API keys, and billing records remain assigned to later parity phases. |
+| Database | `convex`, `postgres` | App records, messages, files metadata, usage state | Convex deployment region today, or customer Postgres region in Postgres mode | `convex` supported. `postgres` supports auth-linked users, chat, projects, notes, files and outputs, account deletion, durable maintenance, memory extraction, pgvector retrieval, scheduled automations, webhooks, usage/billing records, scoped API keys, and administrative audit. Integrations, skills, and MCP server persistence remain outside the Postgres parity boundary. |
 | Object storage | `r2`, `s3`, `none` | Uploaded files and generated artifacts | Bucket/provider region | Supported for Cloudflare R2 and S3-compatible enterprise object stores. |
 | Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | Database/vector provider region | `convex`, `pgvector`, and `none` are supported. `pgvector` requires Postgres, the `vector` extension, an embeddings provider, migrations, and the durable worker. `pinecone` is declared but rejected until an adapter exists. |
 | Embeddings | `ai-gateway`, `openai`, `azure-openai`, `none` | Text chunks sent for embedding | Provider region/policy | `ai-gateway`, `openai`, and `none` declared for current wiring. `azure-openai` is rejected until an adapter exists. |
@@ -304,10 +304,15 @@ OVERLAY_DATABASE_URL="postgres://..." npm run app-db:admin -- \
 ```
 
 Then use `/api/v1/admin/principals` for role grants/revocations and
-`/api/v1/admin/audit` for audit review. Available roles are `admin`, `auditor`,
+`/api/v1/admin/audit` for audit review. `/app/admin` exposes usage filters,
+institutional budget adjustment, and audit search; `/api/v1/admin/usage` is its
+provider-neutral API. Available roles are `admin`, `auditor`,
 `billing_admin`, and `support`. Only `admin` can grant or revoke roles, auditors
 can read audit records, and an administrator cannot revoke their own active role.
 Audit metadata is size-bounded and secret-shaped keys are redacted before insert.
+Users manage scoped credentials under Account settings. Run the provider-shared
+P7 contracts before releases and both Stripe and institution profiles from
+`deploy-operate/aws-rehearsal-7` before an AWS pilot.
 
 For future vector-search planning, confirm that the managed Postgres provider exposes the `vector` extension:
 

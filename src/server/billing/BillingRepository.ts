@@ -49,7 +49,25 @@ export type BudgetTopUpRecord = {
   errorMessage?: string
 }
 
+export type AdministrativeUsageRecord = {
+  userId: string
+  email?: string
+  planKind: 'free' | 'paid'
+  status?: 'active' | 'canceled' | 'past_due' | 'trialing'
+  budgetUsedCents: number
+  budgetTotalCents: number
+  budgetRemainingCents: number
+}
+
 export interface BillingRepository {
+  listAdministrativeUsage(args?: {
+    limit?: number
+    userId?: string
+  }): Promise<AdministrativeUsageRecord[]>
+  adjustAdministrativeBudget(args: {
+    amountCents: number
+    userId: string
+  }): Promise<AdministrativeUsageRecord>
   getEntitlementsByServer(args: {
     userId: string
   }): Promise<BillingEntitlementsRecord | null>

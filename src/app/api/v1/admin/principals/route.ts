@@ -12,7 +12,7 @@ import { handleBffRoute, type BffDomainService } from '../../_utils/bff'
 const listPrincipals: BffDomainService = async (request, context) => {
   try {
     return NextResponse.json({
-      principals: await postgresAdminService().list(context.auth.userId),
+      principals: await adminService().list(context.auth.userId),
     })
   } catch (error) {
     return await authorizationResponse(error, request, context, 'administration.principal.list')
@@ -25,7 +25,7 @@ const grantPrincipal: BffDomainService = async (request, context) => {
     return NextResponse.json({ error: 'Invalid administrative role' }, { status: 400 })
   }
   try {
-    const principal = await postgresAdminService().grant({
+    const principal = await adminService().grant({
       actorUserId: context.auth.userId,
       ipAddress: getClientIp(request),
       reason: optionalString(context.parsedJson.reason),
@@ -41,7 +41,7 @@ const grantPrincipal: BffDomainService = async (request, context) => {
 
 const revokePrincipal: BffDomainService = async (request, context) => {
   try {
-    const revoked = await postgresAdminService().revoke({
+    const revoked = await adminService().revoke({
       actorUserId: context.auth.userId,
       ipAddress: getClientIp(request),
       requestId: request.headers.get('x-request-id') ?? undefined,
@@ -67,12 +67,8 @@ export async function DELETE(request: NextRequest) {
   return handleBffRoute(request, {}, revokePrincipal)
 }
 
-function postgresAdminService() {
-  const server = getOverlayServerContext()
-  if (server.appDataCapabilities.provider !== 'postgres') {
-    throw new Error('Administrative controls require Postgres app-data')
-  }
-  return server.administrativeService
+function adminService() {
+  return getOverlayServerContext().administrativeService
 }
 
 function requiredString(context: AppApiRouteContext, field: string): string {
@@ -93,8 +89,7 @@ async function authorizationResponse(
 ): Promise<Response> {
   if (error instanceof AdministrativeAuthorizationError) {
     const server = getOverlayServerContext()
-    if (server.appDataCapabilities.provider === 'postgres') {
-      await server.auditService.record({
+    await server.auditService.record({
         action,
         actorApiKeyId: context.auth.apiKeyId,
         actorType: context.auth.authType === 'api-key' ? 'api_key' : 'user',
@@ -104,7 +99,6 @@ async function authorizationResponse(
         requestId: request.headers.get('x-request-id') ?? undefined,
         resourceType: 'administrative_principal',
       })
-    }
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   if (error instanceof Error && /required|cannot revoke/.test(error.message)) {

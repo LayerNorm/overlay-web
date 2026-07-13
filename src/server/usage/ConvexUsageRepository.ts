@@ -24,20 +24,44 @@ export class ConvexUsageRepository implements UsageRepository {
 
   async reserve(args: {
     entitlements: Entitlements
+    expiresAt?: number
     kind: UsageEvent['kind']
     modelId?: string
     reservationId: string
     reservedCents: number
     userId: string
   }): Promise<UsageReservationResult> {
-    await convex.mutation('platform/usage:reserveBudgetByServer', {
-      kind: args.kind,
-      modelId: args.modelId,
-      reservationId: args.reservationId,
-      reservedCents: args.reservedCents,
-      serverSecret: this.serverSecret,
-      userId: args.userId,
-    }, { throwOnError: true })
+    let result: {
+      reservationId: string
+      reservedCents: number
+      status: UsageReservationStatus
+    } | null
+    try {
+      result = await convex.mutation('platform/usage:reserveBudgetByServer', {
+        expiresAt: args.expiresAt,
+        kind: args.kind,
+        modelId: args.modelId,
+        reservationId: args.reservationId,
+        reservedCents: args.reservedCents,
+        serverSecret: this.serverSecret,
+        userId: args.userId,
+      }, { throwOnError: true })
+    } catch (error) {
+      if (error instanceof Error && /insufficient_budget|paid plan required/.test(error.message)) {
+        return {
+          ok: false,
+          code: 'insufficient_budget',
+          entitlements: args.entitlements,
+          remainingCents: Math.max(0, args.entitlements.budgetRemainingCents ?? 0),
+          requiredCents: args.reservedCents,
+        }
+      }
+      throw error
+    }
+    if (!result) throw new Error('Failed to reserve usage budget')
+    if (result.status !== 'reserved' && result.status !== 'finalized') {
+      throw new Error(`Reservation ${args.reservationId} is already ${result.status}`)
+    }
     return {
       ok: true,
       entitlements: args.entitlements,
@@ -52,14 +76,15 @@ export class ConvexUsageRepository implements UsageRepository {
     reservationId: string
     userId: string
   }): Promise<{ status: UsageReservationStatus }> {
-    await convex.mutation('platform/usage:finalizeBudgetReservationByServer', {
+    const result = await convex.mutation<{ status: UsageReservationStatus }>('platform/usage:finalizeBudgetReservationByServer', {
       actualCents: args.actualCostCents,
       events: args.events?.map(toConvexEvent),
       reservationId: args.reservationId,
       serverSecret: this.serverSecret,
       userId: args.userId,
     }, { throwOnError: true })
-    return { status: 'finalized' }
+    if (!result) throw new Error('Failed to finalize usage reservation')
+    return { status: result.status }
   }
 
   async release(args: {
@@ -68,14 +93,15 @@ export class ConvexUsageRepository implements UsageRepository {
     reservationId: string
     userId: string
   }): Promise<{ status: UsageReservationStatus }> {
-    await convex.mutation('platform/usage:releaseBudgetReservationByServer', {
+    const result = await convex.mutation<{ status: UsageReservationStatus | 'missing' }>('platform/usage:releaseBudgetReservationByServer', {
       providerWorkStarted: args.providerWorkStarted,
       reason: args.reason,
       reservationId: args.reservationId,
       serverSecret: this.serverSecret,
       userId: args.userId,
     }, { throwOnError: true })
-    return { status: args.providerWorkStarted ? 'reconcile_required' : 'released' }
+    if (!result) throw new Error('Failed to release usage reservation')
+    return { status: result.status === 'missing' ? 'released' : result.status }
   }
 
   async markForReconcile(args: {
@@ -83,13 +109,14 @@ export class ConvexUsageRepository implements UsageRepository {
     reservationId: string
     userId: string
   }): Promise<{ status: UsageReservationStatus }> {
-    await convex.mutation('platform/usage:markBudgetReservationReconcileByServer', {
+    const result = await convex.mutation<{ status: UsageReservationStatus | 'missing' }>('platform/usage:markBudgetReservationReconcileByServer', {
       errorMessage: args.errorMessage,
       reservationId: args.reservationId,
       serverSecret: this.serverSecret,
       userId: args.userId,
     }, { throwOnError: true })
-    return { status: 'reconcile_required' }
+    if (!result) throw new Error('Failed to mark usage reservation for reconciliation')
+    return { status: result.status === 'missing' ? 'reconcile_required' : result.status }
   }
 
   async recordBatch(args: {
@@ -98,17 +125,28 @@ export class ConvexUsageRepository implements UsageRepository {
     operationId: string
     userId: string
   }): Promise<{ recorded: number }> {
-    await convex.mutation('platform/usage:recordBatch', {
+    const result = await convex.mutation<{ recorded?: number }>('platform/usage:recordBatch', {
       events: args.events.map(toConvexEvent),
       forceFreeTierLimits: args.forceFreeTierLimits,
+      operationId: args.operationId,
       serverSecret: this.serverSecret,
       userId: args.userId,
     }, { throwOnError: true })
-    return { recorded: args.events.length }
+    if (!result) throw new Error('Failed to record usage batch')
+    return { recorded: result.recorded ?? args.events.length }
   }
 
-  async reconcileExpired(): Promise<{ reconcileRequired: number; released: number }> {
-    return { reconcileRequired: 0, released: 0 }
+  async reconcileExpired(args: {
+    limit?: number
+    now?: number
+  } = {}): Promise<{ reconcileRequired: number; released: number }> {
+    const result = await convex.mutation<{ reconcileRequired: number; released: number }>(
+      'platform/usage:reconcileExpiredBudgetReservationsByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+    if (!result) throw new Error('Failed to reconcile expired usage reservations')
+    return result
   }
 }
 

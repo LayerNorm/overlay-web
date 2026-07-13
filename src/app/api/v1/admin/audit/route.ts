@@ -6,9 +6,6 @@ import { handleBffRoute, type BffDomainService } from '../../_utils/bff'
 
 const listAudit: BffDomainService = async (_request, context) => {
   const server = getOverlayServerContext()
-  if (server.appDataCapabilities.provider !== 'postgres') {
-    return NextResponse.json({ error: 'Administrative audit API requires Postgres app-data' }, { status: 501 })
-  }
   try {
     await server.administrativeService.assertCanViewAudit(context.auth.userId)
     const events = await server.auditService.list({

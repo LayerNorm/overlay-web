@@ -97,6 +97,8 @@ Use separate schemas/databases for these concerns. They have different ownership
 | P5b resilience | Current branch | Added remote Postgres gates for pool replacement, app/worker/scheduler contention, dead letters, HNSW query plans and latency, and S3 reconciliation recovery. |
 | P5c security | Current branch | Added dual-read session key rotation, bounded S3 presigns, cross-owner object authorization tests, forensic deletion audits, TLS/secret readiness, and no-Convex release gates. |
 | P5d operations | Current branch | Added snapshot restore markers, migration/rollback compatibility checks, runtime queue-health metrics, CloudWatch infrastructure, capacity/cost evidence, and immutable-image rollback procedure. |
+| P6 automations/webhooks | Current branch | Added provider-shared automation contracts, durable scheduling/execution, signed webhook delivery, retry/dead-letter state, and Daytona reconciliation. |
+| P7 usage/administration | Current branch | Added durable usage reservations and ledgers, Stripe records and event deduplication, scoped API keys, administrative roles, redacted audit records, provider-shared contracts, Postgres fault tests, operator UI, and AWS Rehearsal 7. |
 
 ## Key Code Boundaries
 
@@ -178,8 +180,12 @@ Important deletion behavior:
 | `durableJobs` | Unsupported repository | `PostgresDurableJobRepository` |
 | `outbox` | Unsupported repository | `PostgresOutboxRepository` |
 | `automations` | `ConvexAutomationRepository` | `PostgresAutomationRepository` plus durable run coordinator |
-| `billing` | `ConvexBillingRepository` | Unsupported repository |
-| `usage` | Unsupported placeholder | Unsupported placeholder |
+| `billing` | `ConvexBillingRepository` | `PostgresBillingRepository` |
+| `billingEvents` | `ConvexBillingProviderEventRepository` | `PostgresBillingProviderEventRepository` |
+| `usage` | `ConvexUsageRepository` | `PostgresUsageRepository` |
+| `apiKeys` | `ConvexApiKeyRepository` | `PostgresApiKeyRepository` |
+| `administration` | `ConvexAdministrativeRepository` | `PostgresAdministrativeRepository` |
+| `audit` | `ConvexAuditRepository` | `PostgresAuditRepository` |
 
 Unsupported repositories are deliberate. They fail loudly if a route bypasses capability gating and tries to call a backend that does not exist for the selected provider.
 
@@ -210,6 +216,9 @@ Supported or degraded:
 | Model catalog | Supported | Persisted through the selected app-data repository for restart-safe fallback. |
 | Automations | Supported with background runtime | Definitions, schedules, runs, attempts, cancellation, retries, and dead letters use the Postgres scheduler/worker. |
 | Webhooks | Supported with background runtime | Subscriptions, HMAC delivery, secret rotation, attempt history, dead letters, and redrive use the Postgres worker. |
+| Usage and billing | Supported | Reservations, ledgers, managed budgets, subscription/top-up records, and Stripe event replay protection use provider-neutral services. `billing.provider=none` remains valid for institution-managed deployments. |
+| API keys | Supported | Hashed, scoped, expiring credentials support create, copy-once reveal, rotate, revoke, and replacement-task consistency. |
+| Administration and audit | Supported | Role authorization, budget controls, immutable audit search, ownership checks, and secret redaction are provider-neutral. |
 
 Unsupported or disabled:
 
@@ -217,9 +226,6 @@ Unsupported or disabled:
 | --- | --- |
 | Integrations/connectors | Connector account state and external integration execution are not Postgres pilot-ready. The sidebar hides Extensions in Postgres mode. |
 | Skills and MCP servers | Metadata/execution flows are still Convex/integration-backed. |
-| API keys | No Postgres API key repository yet. |
-| Billing records | Billing must be disabled with Postgres app-data v1. |
-| Usage accounting | Chat uses `UnlimitedUsagePolicy`; no persistent Postgres usage audit backend yet. |
 
 ## Auth And Identity Sync
 
