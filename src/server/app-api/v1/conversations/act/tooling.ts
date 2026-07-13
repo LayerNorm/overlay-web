@@ -134,7 +134,7 @@ export async function prepareActTooling(params: {
   )
 
   const mcpCatalogStartedAt = performance.now()
-  const mcpToolsTask = params.isMultiModelFollowUpSlot || !capabilities.integrations
+  const mcpToolsTask = params.isMultiModelFollowUpSlot || !capabilities.mcpServers
     ? Promise.resolve({} as ToolSet)
     : createMcpLazyMetaTools({
         userId: params.userId,
@@ -143,6 +143,7 @@ export async function prepareActTooling(params: {
         conversationId: params.conversationId,
         turnId: params.turnId,
         modelId: params.effectiveModelId,
+        projectId: params.conversationProjectId,
       })
   const [composioRaw, mcpToolsRaw, webToolSet, perplexityTool, parallelTool] = await Promise.all([
     capabilities.integrations ? params.preloadTasks.composioToolsTask : Promise.resolve({} as ToolSet),

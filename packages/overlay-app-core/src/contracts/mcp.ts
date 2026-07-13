@@ -8,12 +8,17 @@ export interface McpServerSummary {
   authType: 'none' | 'bearer' | 'header'
   hasAuth?: boolean
   timeoutMs?: number
+  projectId?: string
+  defaultToolPolicy?: McpToolPolicyMode
+  toolPolicies?: Record<string, McpToolPolicyMode>
+  toolCatalogCount?: number
   createdAt: number
   updatedAt: number
 }
 
 export type McpAuthType = 'none' | 'bearer' | 'header'
 export type McpTransport = 'sse' | 'streamable-http'
+export type McpToolPolicyMode = 'allow' | 'approval_required' | 'deny'
 
 export type McpAuthConfig =
   | { bearerToken: string }
@@ -29,6 +34,9 @@ export interface CreateMcpServerRequest {
   authType?: McpAuthType
   authConfig?: McpAuthConfig | null
   timeoutMs?: number
+  projectId?: string
+  defaultToolPolicy?: McpToolPolicyMode
+  toolPolicies?: Record<string, McpToolPolicyMode>
   accessToken?: string
   userId?: string
 }

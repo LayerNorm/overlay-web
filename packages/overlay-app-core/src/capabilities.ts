@@ -77,3 +77,11 @@ export function areOverlayCapabilitiesEnabled(
   if (!requiredCapabilities || requiredCapabilities.length === 0) return true
   return requiredCapabilities.every((capability) => capabilities[capability])
 }
+
+export function isAnyOverlayCapabilityEnabled(
+  capabilities: CapabilityCheck,
+  requiredAnyCapabilities: readonly OverlayCapability[] | undefined,
+): boolean {
+  if (!requiredAnyCapabilities || requiredAnyCapabilities.length === 0) return true
+  return requiredAnyCapabilities.some((capability) => capabilities[capability])
+}

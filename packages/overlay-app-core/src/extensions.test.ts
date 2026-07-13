@@ -104,6 +104,7 @@ test('mcp helpers preserve request bodies, filtering, test messages, and local s
     headerName: '',
     headerValue: '',
     timeoutMs: 12_000,
+    defaultToolPolicy: 'approval_required' as const,
   }
   assert.deepEqual(createMcpCreateRequest(values), {
     name: 'Docs',
@@ -112,6 +113,7 @@ test('mcp helpers preserve request bodies, filtering, test messages, and local s
     url: 'https://mcp.example.test',
     enabled: true,
     authType: 'bearer',
+    defaultToolPolicy: 'approval_required',
     authConfig: { bearerToken: 'token' },
     timeoutMs: 12_000,
   })

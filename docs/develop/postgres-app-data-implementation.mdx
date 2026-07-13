@@ -219,13 +219,14 @@ Supported or degraded:
 | Usage and billing | Supported | Reservations, ledgers, managed budgets, subscription/top-up records, and Stripe event replay protection use provider-neutral services. `billing.provider=none` remains valid for institution-managed deployments. |
 | API keys | Supported | Hashed, scoped, expiring credentials support create, copy-once reveal, rotate, revoke, and replacement-task consistency. |
 | Administration and audit | Supported | Role authorization, budget controls, immutable audit search, ownership checks, and secret redaction are provider-neutral. |
+| Skills | Supported | Global and project-scoped CRUD, enabled-state loading, instruction versioning, ownership, and deletion use the selected app-data provider. |
+| MCP servers | Supported | Global/project configuration, encrypted credentials, tool discovery, execution policy, and hashed execution audits use the selected app-data provider. |
 
 Unsupported or disabled:
 
 | Surface | Why |
 | --- | --- |
-| Integrations/connectors | Connector account state and external integration execution are not Postgres pilot-ready. The sidebar hides Extensions in Postgres mode. |
-| Skills and MCP servers | Metadata/execution flows are still Convex/integration-backed. |
+| Integrations/connectors | Connector account state and external integration execution are deferred. Skills and MCP remain available independently of connector providers. |
 
 ## Auth And Identity Sync
 
@@ -622,7 +623,7 @@ Manual browser QA for Postgres mode:
 - A second tab sees conversation creation, title, text progress, completion, and stop changes.
 - Stop from either tab leaves the persisted interruption marker and cannot be overwritten by late completion.
 - Public share links load while public and return not-found after being made private.
-- Sidebar shows Projects but continues to hide disabled surfaces like Extensions, Automations, Skills, and MCPs in Postgres pilot mode.
+- Sidebar exposes Skills and MCP servers when their capabilities are enabled, while deferred connector-provider surfaces remain hidden.
 - Settings loads.
 - Notes list/create/update/delete works.
 - Files metadata/upload-intent smoke works if storage is configured.
@@ -682,7 +683,7 @@ Parity exists or is close enough for pilot:
 Parity does not exist yet:
 
 - Integrations/connectors.
-- Skills and MCP server management.
+- Connector account state and hosted/self-hosted integration execution providers.
 - Automation scheduler and execution.
 - Webhook delivery retries.
 - Memory extraction.

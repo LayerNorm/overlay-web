@@ -5,6 +5,7 @@ import type {
   McpAuthConfig,
   McpAuthType,
   McpServerSummary,
+  McpToolPolicyMode,
   McpTransport,
   OverlayIntegrationRegistration,
   OverlayModelProviderRegistration,
@@ -53,6 +54,7 @@ export interface McpServerFormValues {
   headerName: string
   headerValue: string
   timeoutMs: number | ''
+  defaultToolPolicy: McpToolPolicyMode
 }
 
 export interface McpTestResultState {
@@ -345,6 +347,7 @@ export function mcpServerToFormValues(server?: McpServerSummary | null): McpServ
     headerName: '',
     headerValue: '',
     timeoutMs: server?.timeoutMs ?? '',
+    defaultToolPolicy: server?.defaultToolPolicy ?? 'allow',
   }
 }
 
@@ -365,6 +368,7 @@ export function createMcpCreateRequest(values: McpServerFormValues): CreateMcpSe
     url: values.url.trim(),
     enabled: values.enabled,
     authType: values.authType,
+    defaultToolPolicy: values.defaultToolPolicy,
     ...(authConfig ? { authConfig } : {}),
     ...(values.timeoutMs !== '' ? { timeoutMs: Number(values.timeoutMs) } : {}),
   }
@@ -380,6 +384,7 @@ export function createMcpUpdateRequest(mcpServerId: string, values: McpServerFor
     url: values.url.trim(),
     enabled: values.enabled,
     authType: values.authType,
+    defaultToolPolicy: values.defaultToolPolicy,
     ...(authConfig ? { authConfig } : { authConfig: null }),
     ...(values.timeoutMs !== '' ? { timeoutMs: Number(values.timeoutMs) } : {}),
   }
@@ -411,6 +416,7 @@ export function createMcpSummaryFromForm(id: string, values: McpServerFormValues
     authType: values.authType,
     hasAuth: Boolean(authConfig),
     timeoutMs: values.timeoutMs !== '' ? Number(values.timeoutMs) : undefined,
+    defaultToolPolicy: values.defaultToolPolicy,
     createdAt: now,
     updatedAt: now,
   }
@@ -426,8 +432,9 @@ export function updateMcpSummaryFromForm(server: McpServerSummary, values: McpSe
     url: values.url.trim(),
     enabled: values.enabled,
     authType: values.authType,
-    hasAuth: Boolean(authConfig),
+    hasAuth: values.authType === 'none' ? false : Boolean(authConfig) || server.hasAuth,
     timeoutMs: values.timeoutMs !== '' ? Number(values.timeoutMs) : undefined,
+    defaultToolPolicy: values.defaultToolPolicy,
     updatedAt: now,
   }
 }

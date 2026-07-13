@@ -89,6 +89,14 @@ import {
   type AdministrativeRepository,
   type AuditRepository,
 } from '@/server/admin'
+import {
+  ConvexMcpServerRepository,
+  ConvexSkillRepository,
+  PostgresMcpServerRepository,
+  PostgresSkillRepository,
+  type McpServerRepository,
+  type SkillRepository,
+} from '@/server/extensions'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -107,11 +115,13 @@ export interface AppDataRepositories {
   idempotency: IdempotencyRepository
   modelCatalog: ModelCatalogRepository
   memories: MemoryRepository
+  mcpServers: McpServerRepository
   notes: NoteRepository
   onboarding: OnboardingRepository
   outbox: OutboxRepository
   projects: ProjectRepository
   settings: AppSettingsRepository
+  skills: SkillRepository
   serviceAuthReplay: ServiceAuthReplayRepository
   users: UserRepository
   webhooks: WebhookRepository
@@ -162,11 +172,13 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         idempotency: new PostgresIdempotencyRepository(db),
         modelCatalog: new PostgresModelCatalogRepository(db),
         memories: new PostgresMemoryRepository(db),
+        mcpServers: new PostgresMcpServerRepository(db),
         notes: new PostgresNoteRepository(db),
         onboarding: new PostgresOnboardingRepository(db),
         outbox: new PostgresOutboxRepository(db),
         projects: new PostgresProjectRepository(db),
         settings: new PostgresAppSettingsRepository(db),
+        skills: new PostgresSkillRepository(db),
         serviceAuthReplay: new PostgresServiceAuthReplayRepository(db),
         users: new PostgresUserRepository(db),
         webhooks: new PostgresWebhookRepository(db),
@@ -194,11 +206,13 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       idempotency: new ConvexIdempotencyRepository(),
       modelCatalog: new ConvexModelCatalogRepository(),
       memories: new ConvexMemoryRepository(),
+      mcpServers: new ConvexMcpServerRepository(),
       notes: new ConvexNoteRepository(),
       onboarding: unsupportedRepository<OnboardingRepository>('OnboardingRepository'),
       outbox: unsupportedRepository<OutboxRepository>('OutboxRepository'),
       projects: new ConvexProjectRepository(),
       settings: unsupportedRepository<AppSettingsRepository>('AppSettingsRepository'),
+      skills: new ConvexSkillRepository(),
       serviceAuthReplay: new ConvexServiceAuthReplayRepository(),
       users: new ConvexUserRepository(),
       webhooks: new ConvexWebhookRepository(),

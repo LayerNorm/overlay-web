@@ -35,10 +35,13 @@ const ZERO_COUNTS: AccountDataDeletionCounts = {
   knowledgeChunks: 0,
   memoryExtractionRuns: 0,
   memories: 0,
+  mcpServers: 0,
+  mcpToolExecutions: 0,
   notes: 0,
   onboardingState: 0,
   projects: 0,
   r2UploadIntents: 0,
+  skills: 0,
   userSettings: 0,
   users: 0,
   usageBudgetAccounts: 0,
@@ -174,10 +177,13 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     knowledge_chunks: number
     memory_extraction_runs: number
     memories: number
+    mcp_servers: number
+    mcp_tool_executions: number
     notes: number
     onboarding_state: number
     projects: number
     r2_upload_intents: number
+    skills: number
     user_settings: number
     users: number
     usage_budget_accounts: number
@@ -210,10 +216,13 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
       (SELECT count(*)::int FROM knowledge_chunks WHERE user_id = ${userId}) AS knowledge_chunks,
       (SELECT count(*)::int FROM memory_extraction_runs WHERE user_id = ${userId}) AS memory_extraction_runs,
       (SELECT count(*)::int FROM memories WHERE user_id = ${userId}) AS memories,
+      (SELECT count(*)::int FROM mcp_servers WHERE user_id = ${userId}) AS mcp_servers,
+      (SELECT count(*)::int FROM mcp_tool_executions WHERE user_id = ${userId}) AS mcp_tool_executions,
       (SELECT count(*)::int FROM notes WHERE user_id = ${userId}) AS notes,
       (SELECT count(*)::int FROM onboarding_state WHERE user_id = ${userId}) AS onboarding_state,
       (SELECT count(*)::int FROM projects WHERE user_id = ${userId}) AS projects,
       (SELECT count(*)::int FROM r2_upload_intents WHERE user_id = ${userId}) AS r2_upload_intents,
+      (SELECT count(*)::int FROM skills WHERE user_id = ${userId}) AS skills,
       (SELECT count(*)::int FROM user_settings WHERE user_id = ${userId}) AS user_settings,
       (SELECT count(*)::int FROM users WHERE id = ${userId}) AS users
       ,(SELECT count(*)::int FROM usage_budget_accounts WHERE user_id = ${userId}) AS usage_budget_accounts
@@ -249,10 +258,13 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     knowledgeChunks: Number(row.knowledge_chunks ?? 0),
     memoryExtractionRuns: Number(row.memory_extraction_runs ?? 0),
     memories: Number(row.memories ?? 0),
+    mcpServers: Number(row.mcp_servers ?? 0),
+    mcpToolExecutions: Number(row.mcp_tool_executions ?? 0),
     notes: Number(row.notes ?? 0),
     onboardingState: Number(row.onboarding_state ?? 0),
     projects: Number(row.projects ?? 0),
     r2UploadIntents: Number(row.r2_upload_intents ?? 0),
+    skills: Number(row.skills ?? 0),
     userSettings: Number(row.user_settings ?? 0),
     users: Number(row.users ?? 0),
     usageBudgetAccounts: Number(row.usage_budget_accounts ?? 0),

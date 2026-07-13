@@ -240,6 +240,29 @@ export const auditOutcome = pgEnum('overlay_audit_outcome', [
   'failure',
 ])
 
+export const mcpTransport = pgEnum('overlay_mcp_transport', [
+  'sse',
+  'streamable-http',
+])
+
+export const mcpAuthType = pgEnum('overlay_mcp_auth_type', [
+  'none',
+  'bearer',
+  'header',
+])
+
+export const mcpToolPolicy = pgEnum('overlay_mcp_tool_policy', [
+  'allow',
+  'approval_required',
+  'deny',
+])
+
+export const mcpExecutionStatus = pgEnum('overlay_mcp_execution_status', [
+  'succeeded',
+  'failed',
+  'denied',
+])
+
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
   email: text('email').notNull(),
@@ -330,6 +353,81 @@ export const projects = pgTable('projects', {
   index('projects_user_id_updated_at_idx').on(table.userId, table.updatedAt),
   index('projects_parent_id_idx').on(table.parentId),
   check('projects_parent_not_self_check', sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`),
+])
+
+export const skills = pgTable('skills', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description').notNull(),
+  instructions: text('instructions').notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  version: integer('version').default(1).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('skills_user_updated_idx').on(table.userId, table.updatedAt),
+  index('skills_project_updated_idx').on(table.projectId, table.updatedAt),
+])
+
+export const mcpServers = pgTable('mcp_servers', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description'),
+  transport: mcpTransport('transport').notNull(),
+  url: text('url').notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  authType: mcpAuthType('auth_type').default('none').notNull(),
+  encryptedAuthConfig: text('encrypted_auth_config'),
+  timeoutMs: integer('timeout_ms'),
+  defaultToolPolicy: mcpToolPolicy('default_tool_policy').default('allow').notNull(),
+  toolPolicies: jsonb('tool_policies')
+    .$type<Record<string, 'allow' | 'approval_required' | 'deny'>>()
+    .default(sql`'{}'::jsonb`)
+    .notNull(),
+  toolCatalog: jsonb('tool_catalog')
+    .$type<Array<{ name: string; description?: string; inputSchema?: unknown }>>()
+    .default(sql`'[]'::jsonb`)
+    .notNull(),
+  toolCatalogUpdatedAt: timestamp('tool_catalog_updated_at', { withTimezone: true }),
+  toolCatalogError: text('tool_catalog_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('mcp_servers_user_updated_idx').on(table.userId, table.updatedAt),
+  index('mcp_servers_user_enabled_idx').on(table.userId, table.enabled),
+  index('mcp_servers_project_updated_idx').on(table.projectId, table.updatedAt),
+])
+
+export const mcpToolExecutions = pgTable('mcp_tool_executions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
+  mcpServerId: text('mcp_server_id')
+    .notNull()
+    .references(() => mcpServers.id, { onDelete: 'cascade' }),
+  toolName: text('tool_name').notNull(),
+  argumentsHash: text('arguments_hash').notNull(),
+  policyDecision: mcpToolPolicy('policy_decision').notNull(),
+  status: mcpExecutionStatus('status').notNull(),
+  conversationId: text('conversation_id'),
+  turnId: text('turn_id'),
+  modelId: text('model_id'),
+  durationMs: integer('duration_ms'),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('mcp_tool_executions_user_created_idx').on(table.userId, table.createdAt),
+  index('mcp_tool_executions_server_created_idx').on(table.mcpServerId, table.createdAt),
 ])
 
 export const conversations = pgTable('conversations', {

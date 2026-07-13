@@ -20,6 +20,8 @@ export default function ToolsView({ userId }: { userId: string }) {
   if (view === 'mcps' && capabilities.mcpServers) return <McpServersView userId={userId} />
   if (view === 'apps') return <AppsComingSoonView />
   if (view === 'all' && (capabilities.skills || capabilities.mcpServers)) return <AllExtensionsComingSoonView />
+  if (!capabilities.integrations && capabilities.skills) return <SkillsView userId={userId} />
+  if (!capabilities.integrations && capabilities.mcpServers) return <McpServersView userId={userId} />
 
   return <IntegrationsView userId={userId} />
 }

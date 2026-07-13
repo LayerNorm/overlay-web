@@ -20,6 +20,7 @@ import type {
 } from './contracts'
 import {
   areOverlayCapabilitiesEnabled,
+  isAnyOverlayCapabilityEnabled,
   deriveOverlayCapabilities,
   type CapabilityCheck,
   type OverlayCapability,
@@ -63,6 +64,7 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
     id: 'extensions',
     label: 'Extensions',
     enabled: true,
+    requiredAnyCapabilities: ['integrations', 'skills', 'mcpServers'],
   },
 ] as const
 
@@ -75,7 +77,7 @@ export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
     label: 'Extensions',
     icon: 'puzzle',
     featureFlagId: 'extensions',
-    requiredCapabilities: ['integrations'],
+    requiredAnyCapabilities: ['integrations', 'skills', 'mcpServers'],
     subviews: ['connectors', 'skills', 'mcps', 'apps', 'all'],
   },
   {
@@ -150,7 +152,7 @@ export const DEFAULT_OVERLAY_FEATURE_MODULES: readonly OverlayFeatureModule[] = 
     componentKey: 'overlay.modules.toolsExtensions',
     packageName: '@overlay/modules-react',
     featureFlagId: 'extensions',
-    requiredCapabilities: ['integrations'],
+    requiredAnyCapabilities: ['integrations', 'skills', 'mcpServers'],
     order: 40,
   },
   {
@@ -351,7 +353,9 @@ export function isOverlayFeatureEnabled(
   if (!featureFlagId) return true
   const flag = flags.find((item) => item.id === featureFlagId)
   if (!flag) return true
-  return flag.enabled && areOverlayCapabilitiesEnabled(capabilities, flag.requiredCapabilities)
+  return flag.enabled &&
+    areOverlayCapabilitiesEnabled(capabilities, flag.requiredCapabilities) &&
+    isAnyOverlayCapabilityEnabled(capabilities, flag.requiredAnyCapabilities)
 }
 
 function mergeRegistryById<T extends { id: string }>(
@@ -375,6 +379,7 @@ function mergeRegistryById<T extends { id: string }>(
 function filterFeatureRegistry<T extends {
   featureFlagId?: OverlayFeatureFlagId
   requiredCapabilities?: readonly OverlayCapability[]
+  requiredAnyCapabilities?: readonly OverlayCapability[]
 }>(
   registry: readonly T[],
   featureFlags: readonly OverlayFeatureFlag[],
@@ -382,7 +387,8 @@ function filterFeatureRegistry<T extends {
 ): readonly T[] {
   return registry.filter((item) =>
     isOverlayFeatureEnabled(item.featureFlagId, featureFlags, capabilities) &&
-    areOverlayCapabilitiesEnabled(capabilities, item.requiredCapabilities),
+    areOverlayCapabilitiesEnabled(capabilities, item.requiredCapabilities) &&
+    isAnyOverlayCapabilityEnabled(capabilities, item.requiredAnyCapabilities),
   )
 }
 

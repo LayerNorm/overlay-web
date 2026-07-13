@@ -12,6 +12,7 @@ import {
   conversationMessages,
   conversations,
   projects,
+  skills,
   userSettings,
 } from '@/server/database/postgres/schema'
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
@@ -403,8 +404,17 @@ export class PostgresActConversationRepository implements ActConversationReposit
     return []
   }
 
-  async listSkills(): Promise<ActSkillRow[]> {
-    return []
+  async listSkills(args: { userId: string }): Promise<ActSkillRow[]> {
+    return await this.db
+      .select({
+        enabled: skills.enabled,
+        instructions: skills.instructions,
+        name: skills.name,
+      })
+      .from(skills)
+      .where(and(eq(skills.userId, args.userId), isNull(skills.projectId)))
+      .orderBy(desc(skills.updatedAt))
+      .limit(200)
   }
 
   async getConversation(args: {

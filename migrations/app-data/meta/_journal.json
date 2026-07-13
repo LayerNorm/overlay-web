@@ -120,6 +120,13 @@
       "when": 1784574000000,
       "tag": "0016_p7f_administration_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784660400000,
+      "tag": "0017_p7i_skills_mcp",
+      "breakpoints": true
     }
   ]
 }

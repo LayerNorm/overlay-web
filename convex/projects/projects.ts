@@ -140,10 +140,12 @@ export const remove = mutation({
     const pid = projectId as string
     const now = Date.now()
 
-    const [conversations, notes, files] = await Promise.all([
+    const [conversations, notes, files, skills, mcpServers] = await Promise.all([
       ctx.db.query('conversations').withIndex('by_projectId', (q) => q.eq('projectId', pid)).collect(),
       ctx.db.query('notes').withIndex('by_projectId', (q) => q.eq('projectId', pid)).collect(),
       ctx.db.query('files').withIndex('by_projectId', (q) => q.eq('projectId', pid)).collect(),
+      ctx.db.query('skills').withIndex('by_projectId', (q) => q.eq('projectId', pid)).collect(),
+      ctx.db.query('mcpServers').withIndex('by_projectId', (q) => q.eq('projectId', pid)).collect(),
     ])
 
     for (const conv of conversations) {
@@ -165,6 +167,18 @@ export const remove = mutation({
         indexStatus: 'skipped',
         updatedAt: now,
       })
+    }
+    for (const skill of skills) {
+      if (skill.userId === userId) await ctx.db.delete(skill._id)
+    }
+    for (const server of mcpServers) {
+      if (server.userId !== userId) continue
+      const executions = await ctx.db
+        .query('mcpToolExecutions')
+        .withIndex('by_mcpServerId_createdAt', (q) => q.eq('mcpServerId', server._id))
+        .collect()
+      for (const execution of executions) await ctx.db.delete(execution._id)
+      await ctx.db.delete(server._id)
     }
 
     await ctx.db.patch(projectId, { deletedAt: now, updatedAt: now })

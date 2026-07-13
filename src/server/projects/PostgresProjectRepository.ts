@@ -10,8 +10,10 @@ import {
   files,
   knowledgeChunks,
   memories,
+  mcpServers,
   notes,
   projects,
+  skills,
 } from '@/server/database/postgres/schema'
 import { emitPostgresConversationEvent } from '@/server/conversations/PostgresConversationEvents'
 import { enqueueStorageCleanupJobs } from '@/server/storage/PostgresStorageCleanupJobs'
@@ -188,6 +190,15 @@ export class PostgresProjectRepository implements ProjectRepository {
       if (!root) return null
       const deletedIds = collectDescendants(allProjects, args.projectId)
       const now = new Date()
+
+      await tx.delete(skills).where(and(
+        eq(skills.userId, args.userId),
+        inArray(skills.projectId, deletedIds),
+      ))
+      await tx.delete(mcpServers).where(and(
+        eq(mcpServers.userId, args.userId),
+        inArray(mcpServers.projectId, deletedIds),
+      ))
 
       const deletedConversations = await tx
         .update(conversations)

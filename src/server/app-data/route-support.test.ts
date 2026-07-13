@@ -65,7 +65,7 @@ test('Postgres app-data route support classifies every /api/v1 route export', ()
   assert.deepEqual(missing, [])
 })
 
-test('Postgres app-data capabilities expose projects while removing unsupported product surfaces', () => {
+test('Postgres app-data capabilities expose projects, skills, and MCP while hiding connectors', () => {
   const capabilities = applyAppDataCapabilitiesToOverlayCapabilities(
     DEFAULT_OVERLAY_CAPABILITIES,
     POSTGRES_APP_DATA_V1_CAPABILITIES,
@@ -74,13 +74,13 @@ test('Postgres app-data capabilities expose projects while removing unsupported 
 
   assert.equal(capabilities.projects, true)
   assert.equal(capabilities.integrations, false)
-  assert.equal(capabilities.skills, false)
-  assert.equal(capabilities.mcpServers, false)
+  assert.equal(capabilities.skills, true)
+  assert.equal(capabilities.mcpServers, true)
   assert.equal(shell.appFeatureFlags.canUseProjects, true)
-  assert.equal(shell.navigation.some((item) => item.id === 'extensions'), false)
+  assert.equal(shell.navigation.some((item) => item.id === 'extensions'), true)
   assert.equal(shell.navigation.some((item) => item.id === 'projects'), true)
   assert.equal(shell.sidebarActions.some((item) => item.id === 'projects.create'), true)
-  assert.equal(shell.featureModules.some((item) => item.id === 'tools-extensions'), false)
+  assert.equal(shell.featureModules.some((item) => item.id === 'tools-extensions'), true)
   assert.equal(shell.featureModules.some((item) => item.id === 'projects'), true)
 })
 
@@ -274,4 +274,19 @@ test('Postgres app-data mode supports webhook subscription and delivery routes',
       pathname: '/api/v1/webhooks',
     }).status, 'supported')
   }
+})
+
+test('Postgres app-data mode supports skills and MCP routes independently of connectors', () => {
+  for (const pathname of ['/api/v1/skills', '/api/v1/mcps', '/api/v1/mcps/test']) {
+    assert.equal(getAppDataRouteSupport({
+      appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
+      method: 'POST',
+      pathname,
+    }).status, 'supported')
+  }
+  assert.equal(getAppDataRouteSupport({
+    appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
+    method: 'GET',
+    pathname: '/api/v1/integrations',
+  }).status, 'unsupported')
 })

@@ -428,6 +428,7 @@ export default defineSchema({
     instructions: v.string(),
     enabled: v.optional(v.boolean()),
     projectId: v.optional(v.string()),
+    version: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_userId', ['userId']).index('by_projectId', ['projectId']),
@@ -545,6 +546,7 @@ export default defineSchema({
 
   mcpServers: defineTable({
     userId: v.string(),
+    projectId: v.optional(v.string()),
     name: v.string(),
     description: v.optional(v.string()),
     transport: v.union(v.literal('sse'), v.literal('streamable-http')),
@@ -558,7 +560,17 @@ export default defineSchema({
         headerValue: v.optional(v.string()),
       })
     ),
+    encryptedAuthConfig: v.optional(v.string()),
     timeoutMs: v.optional(v.number()),
+    defaultToolPolicy: v.optional(v.union(
+      v.literal('allow'),
+      v.literal('approval_required'),
+      v.literal('deny'),
+    )),
+    toolPolicies: v.optional(v.record(
+      v.string(),
+      v.union(v.literal('allow'), v.literal('approval_required'), v.literal('deny')),
+    )),
     toolCatalog: v.optional(
       v.array(
         v.object({
@@ -574,7 +586,31 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_userId_enabled', ['userId', 'enabled']),
+    .index('by_userId_enabled', ['userId', 'enabled'])
+    .index('by_projectId', ['projectId']),
+
+  mcpToolExecutions: defineTable({
+    userId: v.string(),
+    projectId: v.optional(v.string()),
+    mcpServerId: v.id('mcpServers'),
+    toolName: v.string(),
+    argumentsHash: v.string(),
+    policyDecision: v.union(
+      v.literal('allow'),
+      v.literal('approval_required'),
+      v.literal('deny'),
+    ),
+    status: v.union(v.literal('succeeded'), v.literal('failed'), v.literal('denied')),
+    conversationId: v.optional(v.string()),
+    turnId: v.optional(v.string()),
+    modelId: v.optional(v.string()),
+    durationMs: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_mcpServerId_createdAt', ['mcpServerId', 'createdAt'])
+    .index('by_projectId', ['projectId']),
 
   conversations: defineTable({
     userId: v.string(),

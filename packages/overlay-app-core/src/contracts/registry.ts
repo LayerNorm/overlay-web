@@ -43,6 +43,7 @@ export interface OverlayFeatureFlag {
   enabled: boolean
   description?: string
   requiredCapabilities?: readonly OverlayCapability[]
+  requiredAnyCapabilities?: readonly OverlayCapability[]
 }
 
 export interface OverlayBrandConfig {
@@ -64,6 +65,7 @@ export interface OverlayNavigationItem {
   disabled?: boolean
   featureFlagId?: OverlayFeatureFlagId
   requiredCapabilities?: readonly OverlayCapability[]
+  requiredAnyCapabilities?: readonly OverlayCapability[]
   subviews?: readonly string[]
 }
 
@@ -96,6 +98,7 @@ export interface OverlayFeatureModule {
   packageName?: string
   featureFlagId?: OverlayFeatureFlagId
   requiredCapabilities?: readonly OverlayCapability[]
+  requiredAnyCapabilities?: readonly OverlayCapability[]
   order?: number
 }
 

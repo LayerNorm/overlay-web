@@ -5,6 +5,7 @@ McpAuthType,
 McpServerFormValues,
 McpServerSummary,
 McpTestResultState,
+McpToolPolicyMode,
 McpTransport
 } from '@overlay/app-core'
 import { mcpServerToFormValues } from '@overlay/app-core/extensions'
@@ -116,6 +117,13 @@ export function McpServerDialog({ state, onClose, onSave, onDelete, onTest }: Mc
           </Field>
           <Field label="Authentication">
             <select value={values.authType} onChange={(event) => update('authType', event.target.value as McpAuthType)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]"><option value="none">None</option><option value="bearer">Bearer Token</option><option value="header">Custom Header</option></select>
+          </Field>
+          <Field label="Tool execution policy">
+            <select value={values.defaultToolPolicy} onChange={(event) => update('defaultToolPolicy', event.target.value as McpToolPolicyMode)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]">
+              <option value="allow">Allow tools</option>
+              <option value="approval_required">Require approval</option>
+              <option value="deny">Deny tools</option>
+            </select>
           </Field>
           {values.authType === 'bearer' ? (
             <Field label="Bearer Token">

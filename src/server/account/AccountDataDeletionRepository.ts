@@ -22,10 +22,13 @@ export interface AccountDataDeletionCounts {
   knowledgeChunks: number
   memoryExtractionRuns: number
   memories: number
+  mcpServers: number
+  mcpToolExecutions: number
   notes: number
   onboardingState: number
   projects: number
   r2UploadIntents: number
+  skills: number
   userSettings: number
   users: number
   usageBudgetAccounts: number

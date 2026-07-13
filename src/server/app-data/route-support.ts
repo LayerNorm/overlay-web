@@ -198,7 +198,7 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'mcp-and-skills',
     methods: '*',
     prefixes: ['/api/v1/mcps', '/api/v1/skills'],
-    status: 'unsupported',
+    status: 'supported',
     feature: 'integration-metadata',
   },
   {

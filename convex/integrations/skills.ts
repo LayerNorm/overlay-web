@@ -75,6 +75,7 @@ export const create = mutation({
       instructions: args.instructions,
       ...(args.enabled !== undefined ? { enabled: args.enabled } : {}),
       projectId: args.projectId,
+      version: 1,
       createdAt: now,
       updatedAt: now,
     })
@@ -103,6 +104,13 @@ export const update = mutation({
     if (updates.description !== undefined) patch.description = updates.description
     if (updates.instructions !== undefined) patch.instructions = updates.instructions
     if (updates.enabled !== undefined) patch.enabled = updates.enabled
+    if (
+      updates.name !== undefined ||
+      updates.description !== undefined ||
+      updates.instructions !== undefined
+    ) {
+      patch.version = (skill.version ?? 1) + 1
+    }
     await ctx.db.patch(skillId, patch)
   },
 })
