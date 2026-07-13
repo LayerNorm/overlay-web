@@ -72,6 +72,7 @@ import {
 } from '@/server/webhooks'
 import { unsupportedRepository } from './errors'
 import type { UsageRepository } from '@/server/usage'
+import { PostgresUsageRepository } from '@/server/usage'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -142,7 +143,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         serviceAuthReplay: new PostgresServiceAuthReplayRepository(db),
         users: new PostgresUserRepository(db),
         webhooks: new PostgresWebhookRepository(db),
-        usage: unsupportedRepository<UsageRepository>('UsageRepository'),
+        usage: new PostgresUsageRepository(db),
       },
     }
   }
