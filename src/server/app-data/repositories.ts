@@ -11,6 +11,8 @@ import { PostgresAutomationRepository } from '@/server/automations/PostgresAutom
 import type { AutomationRepository } from '@/server/automations/AutomationRepository'
 import { ConvexBillingRepository } from '@/server/billing/ConvexBillingRepository'
 import type { BillingRepository } from '@/server/billing/BillingRepository'
+import type { BillingProviderEventRepository, BillingWebhookRepository } from '@/server/billing/BillingProviderEventRepository'
+import { PostgresBillingProviderEventRepository, PostgresBillingRepository } from '@/server/billing/PostgresBillingRepository'
 import { ConvexActConversationRepository } from '@/server/conversations/ConvexActConversationRepository'
 import { PostgresActConversationRepository } from '@/server/conversations/PostgresActConversationRepository'
 import { PostgresConversationEventNotifier } from '@/server/conversations/PostgresConversationEventNotifier'
@@ -78,6 +80,8 @@ export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
   automations: AutomationRepository
   billing: BillingRepository
+  billingEvents: BillingProviderEventRepository
+  billingWebhooks: BillingWebhookRepository
   chatSuggestions: ChatSuggestionRepository
   conversations: ActConversationRepository
   durableJobs: DurableJobRepository
@@ -120,13 +124,16 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       new PostgresConversationEventNotifier(pool),
       { memoryExtractionEnabled: capabilities.supportsVectorSearch && runtimeConfig.features.memory !== false },
     )
+    const billing = new PostgresBillingRepository(db)
     return {
       capabilities,
       postgres: { db },
       repositories: {
         accountDeletion: new PostgresAccountDataDeletionRepository(db),
         automations: new PostgresAutomationRepository(db, conversations),
-        billing: unsupportedRepository<BillingRepository>('BillingRepository'),
+        billing,
+        billingEvents: new PostgresBillingProviderEventRepository(db),
+        billingWebhooks: billing,
         chatSuggestions: new PostgresChatSuggestionRepository(db),
         conversations,
         durableJobs: new PostgresDurableJobRepository(db),
@@ -154,6 +161,8 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       accountDeletion: unsupportedRepository<AccountDataDeletionRepository>('AccountDataDeletionRepository'),
       automations: new ConvexAutomationRepository(),
       billing: new ConvexBillingRepository(),
+      billingEvents: unsupportedRepository<BillingProviderEventRepository>('BillingProviderEventRepository'),
+      billingWebhooks: unsupportedRepository<BillingWebhookRepository>('BillingWebhookRepository'),
       chatSuggestions: new ConvexChatSuggestionRepository(),
       conversations: new ConvexActConversationRepository(),
       durableJobs: unsupportedRepository<DurableJobRepository>('DurableJobRepository'),

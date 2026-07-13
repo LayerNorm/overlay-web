@@ -19,6 +19,8 @@ const ZERO_COUNTS: AccountDataDeletionCounts = {
   automationRuns: 0,
   automationTriggers: 0,
   automations: 0,
+  billingSubscriptions: 0,
+  billingTopUps: 0,
   authIdentities: 0,
   conversationContextSummaries: 0,
   conversationEvents: 0,
@@ -154,6 +156,8 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     automation_runs: number
     automation_triggers: number
     automations: number
+    billing_subscriptions: number
+    billing_top_ups: number
     auth_identities: number
     conversation_context_summaries: number
     conversation_events: number
@@ -183,6 +187,8 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     SELECT
       (SELECT count(*)::int FROM api_idempotency_keys WHERE user_id = ${userId}) AS api_idempotency_keys,
       (SELECT count(*)::int FROM automations WHERE user_id = ${userId}) AS automations,
+      (SELECT count(*)::int FROM billing_subscriptions WHERE user_id = ${userId}) AS billing_subscriptions,
+      (SELECT count(*)::int FROM billing_top_ups WHERE user_id = ${userId}) AS billing_top_ups,
       (SELECT count(*)::int FROM automation_runs WHERE user_id = ${userId}) AS automation_runs,
       (SELECT count(*)::int FROM automation_triggers trigger JOIN automations automation ON automation.id = trigger.automation_id WHERE automation.user_id = ${userId}) AS automation_triggers,
       (SELECT count(*)::int FROM automation_run_attempts attempt JOIN automation_runs run ON run.id = attempt.run_id WHERE run.user_id = ${userId}) AS automation_run_attempts,
@@ -221,6 +227,8 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     automationRuns: Number(row.automation_runs ?? 0),
     automationTriggers: Number(row.automation_triggers ?? 0),
     automations: Number(row.automations ?? 0),
+    billingSubscriptions: Number(row.billing_subscriptions ?? 0),
+    billingTopUps: Number(row.billing_top_ups ?? 0),
     authIdentities: Number(row.auth_identities ?? 0),
     conversationContextSummaries: Number(row.conversation_context_summaries ?? 0),
     conversationEvents: Number(row.conversation_events ?? 0),

@@ -115,7 +115,11 @@ export function createOverlayServerContext(
 
   return {
     auth: appConfig.authProvider ?? createAuthProvider(runtimeConfig, userService),
-    billing: appConfig.billingProvider ?? createBillingProvider(runtimeConfig),
+    billing: appConfig.billingProvider ?? createBillingProvider(
+      runtimeConfig,
+      appData.repositories.billing,
+      appData.repositories.usage,
+    ),
     objectStore: appConfig.objectStore ?? createObjectStoreForRuntime(runtimeConfig),
     vectorStore: appConfig.vectorStore ?? createVectorStore(runtimeConfig),
     llmGateway: appConfig.llmGateway ?? createLlmGateway(runtimeConfig),
@@ -216,7 +220,11 @@ function selectedAuthProviderForUserService(config: OverlayRuntimeConfig | null)
   return 'none'
 }
 
-function createBillingProvider(config: OverlayRuntimeConfig | null): BillingProvider {
+function createBillingProvider(
+  config: OverlayRuntimeConfig | null,
+  repository: AppDataContext['repositories']['billing'],
+  usageRepository: AppDataContext['repositories']['usage'],
+): BillingProvider {
   if (!config) return new StripeBillingProvider()
   if (!runtimeCapabilities(config).billing) return new NoOpBillingProvider()
 
@@ -225,6 +233,8 @@ function createBillingProvider(config: OverlayRuntimeConfig | null): BillingProv
       return new StripeBillingProvider({
         ...config.billing.stripe,
         baseUrl: config.app.baseUrl,
+        repository,
+        usageRepository,
       })
     case 'none':
       return new NoOpBillingProvider()

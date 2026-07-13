@@ -205,7 +205,7 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'subscription-and-billing-records',
     methods: '*',
     prefixes: ['/api/v1/subscription'],
-    status: 'unsupported',
+    status: 'supported',
     feature: 'billing-records',
   },
   {

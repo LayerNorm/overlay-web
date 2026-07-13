@@ -195,6 +195,31 @@ export const usageTransactionType = pgEnum('overlay_usage_transaction_type', [
   'adjustment',
 ])
 
+export const billingSubscriptionStatus = pgEnum('overlay_billing_subscription_status', [
+  'active',
+  'canceled',
+  'past_due',
+  'trialing',
+])
+
+export const billingTopUpSource = pgEnum('overlay_billing_top_up_source', [
+  'manual',
+  'auto',
+])
+
+export const billingTopUpStatus = pgEnum('overlay_billing_top_up_status', [
+  'pending',
+  'succeeded',
+  'failed',
+  'canceled',
+])
+
+export const billingProviderEventStatus = pgEnum('overlay_billing_provider_event_status', [
+  'processing',
+  'processed',
+  'failed',
+])
+
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
   email: text('email').notNull(),
@@ -1015,4 +1040,72 @@ export const usageBudgetTransactions = pgTable('usage_budget_transactions', {
 }, (table) => [
   index('usage_budget_transactions_user_created_idx').on(table.userId, table.createdAt),
   index('usage_budget_transactions_reservation_idx').on(table.reservationId),
+])
+
+export const billingSubscriptions = pgTable('billing_subscriptions', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  email: text('email'),
+  name: text('name'),
+  provider: text('provider').default('stripe').notNull(),
+  providerCustomerId: text('provider_customer_id'),
+  providerSubscriptionId: text('provider_subscription_id'),
+  providerPriceId: text('provider_price_id'),
+  providerQuantity: integer('provider_quantity'),
+  tier: text('tier').default('free').notNull(),
+  planKind: text('plan_kind').default('free').notNull(),
+  planVersion: text('plan_version'),
+  planAmountCents: integer('plan_amount_cents').default(0).notNull(),
+  markupBasisPoints: integer('markup_basis_points'),
+  status: billingSubscriptionStatus('status').default('active').notNull(),
+  autoTopUpEnabled: boolean('auto_top_up_enabled').default(false).notNull(),
+  autoTopUpAmountCents: integer('auto_top_up_amount_cents').default(0).notNull(),
+  offSessionConsentAt: timestamp('off_session_consent_at', { withTimezone: true }),
+  currentPeriodStart: timestamp('current_period_start', { withTimezone: true }),
+  currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('billing_subscriptions_provider_customer_idx').on(table.provider, table.providerCustomerId),
+  uniqueIndex('billing_subscriptions_provider_subscription_idx').on(table.provider, table.providerSubscriptionId),
+  index('billing_subscriptions_status_idx').on(table.status),
+])
+
+export const billingTopUps = pgTable('billing_top_ups', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  amountCents: integer('amount_cents').notNull(),
+  source: billingTopUpSource('source').notNull(),
+  status: billingTopUpStatus('status').notNull(),
+  provider: text('provider').default('stripe').notNull(),
+  providerCheckoutSessionId: text('provider_checkout_session_id'),
+  providerCustomerId: text('provider_customer_id'),
+  providerPaymentIntentId: text('provider_payment_intent_id'),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  check('billing_top_ups_positive_amount_check', sql`${table.amountCents} > 0`),
+  index('billing_top_ups_user_created_idx').on(table.userId, table.createdAt),
+  uniqueIndex('billing_top_ups_checkout_session_idx').on(table.provider, table.providerCheckoutSessionId),
+  uniqueIndex('billing_top_ups_payment_intent_idx').on(table.provider, table.providerPaymentIntentId),
+])
+
+export const billingProviderEvents = pgTable('billing_provider_events', {
+  provider: text('provider').notNull(),
+  eventId: text('event_id').notNull(),
+  eventType: text('event_type').notNull(),
+  payloadHash: text('payload_hash').notNull(),
+  status: billingProviderEventStatus('status').default('processing').notNull(),
+  attempts: integer('attempts').default(1).notNull(),
+  lastError: text('last_error'),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.provider, table.eventId] }),
+  index('billing_provider_events_status_updated_idx').on(table.status, table.updatedAt),
 ])

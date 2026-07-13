@@ -319,25 +319,27 @@ test('OverlayRuntimeConfigSchema accepts pgvector with Postgres and an embedding
   assert.equal(parsed.providers.embeddings?.provider, 'openai')
 })
 
-test('OverlayRuntimeConfigSchema rejects Postgres database provider with enabled billing', () => {
-  assert.throws(
-    () =>
-      OverlayRuntimeConfigSchema.parse({
-        ...minimalSaasConfig,
-        database: {
-          ...minimalSaasConfig.database,
-          provider: 'postgres',
-          postgres: {
-            connectionString: 'postgres://overlay:secret@db.internal/overlay',
-            sslMode: 'require',
-          },
-        },
-        providers: {
-          database: { provider: 'postgres' },
-        },
-      }),
-    /billing\.provider must be none when database\.provider is postgres/,
-  )
+test('OverlayRuntimeConfigSchema accepts Postgres with Stripe billing records', () => {
+  const parsed = OverlayRuntimeConfigSchema.parse({
+    ...minimalSaasConfig,
+    capabilities: {
+      ...minimalSaasConfig.capabilities,
+      vectorSearch: false,
+    },
+    database: {
+      ...minimalSaasConfig.database,
+      provider: 'postgres',
+      postgres: {
+        connectionString: 'postgres://overlay:secret@db.internal/overlay',
+        sslMode: 'require',
+      },
+    },
+    providers: {
+      database: { provider: 'postgres' },
+      vectorSearch: { provider: 'none' },
+    },
+  })
+  assert.equal(parsed.billing.provider, 'stripe')
 })
 
 test('OverlayRuntimeConfigSchema rejects Postgres database provider without a connection string', () => {

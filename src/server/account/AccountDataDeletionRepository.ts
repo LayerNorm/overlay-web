@@ -6,6 +6,8 @@ export interface AccountDataDeletionCounts {
   automationRuns: number
   automationTriggers: number
   automations: number
+  billingSubscriptions: number
+  billingTopUps: number
   authIdentities: number
   conversationContextSummaries: number
   conversationEvents: number

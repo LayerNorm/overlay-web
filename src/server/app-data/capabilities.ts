@@ -76,7 +76,7 @@ export const POSTGRES_APP_DATA_V1_CAPABILITIES: AppDataCapabilities = {
   supportsSettings: true,
   supportsOnboarding: true,
   supportsUsageAccounting: true,
-  supportsBillingRecords: false,
+  supportsBillingRecords: true,
   supportsVectorSearch: false,
   supportsAutomations: true,
   supportsWebhooks: true,
