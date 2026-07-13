@@ -80,7 +80,7 @@ export const POSTGRES_APP_DATA_V1_CAPABILITIES: AppDataCapabilities = {
   supportsVectorSearch: false,
   supportsAutomations: true,
   supportsWebhooks: true,
-  supportsApiKeys: false,
+  supportsApiKeys: true,
   supportsAccountDeletion: true,
   supportsBackgroundMaintenance: true,
   supportsManagedScheduler: true,

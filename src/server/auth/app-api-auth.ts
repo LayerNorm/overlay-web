@@ -5,7 +5,7 @@ import type { NextRequest } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
 import { consumeServiceAuthReplayNonce } from '@/server/auth/service-auth-replay'
-import { ApiKeyService, isApiKeyCandidate } from '@/server/auth/api-keys'
+import { isApiKeyCandidate } from '@/server/auth/api-keys'
 import { hasRequiredApiKeyScopes, type ApiKeyScope } from '@/shared/auth/api-key-scopes'
 
 export type AuthenticatedAppUser = {
@@ -50,7 +50,7 @@ export async function resolveAuthenticatedAppUser(
   const bearer =
     authHeader?.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : undefined
   if (shouldAttemptApiKeyAuth(bearer, options)) {
-    const apiKeyAuth = await ApiKeyService.validate({
+    const apiKeyAuth = await ctx.apiKeyService.validate({
       apiKey: bearer,
       clientIp: options.clientIp,
       requiredScopes: options.requiredApiKeyScopes,

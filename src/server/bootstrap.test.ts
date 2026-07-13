@@ -40,7 +40,7 @@ test('createOverlayServerContext returns SaaS adapters for WorkOS, Stripe, R2, a
   assert.equal(context.llmGateway instanceof OpenRouterGateway, true)
   assert.equal(context.rateLimiter instanceof ConvexRateLimiter, true)
   assert.equal(context.eventBus instanceof InMemoryEventBus, true)
-  assert.equal(context.apiKeyService, ApiKeyService)
+  assert.equal(context.apiKeyService instanceof ApiKeyService, true)
   assert.equal(context.userService instanceof UserService, true)
 })
 

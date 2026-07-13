@@ -54,7 +54,7 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'auth-api-keys',
     methods: '*',
     prefixes: ['/api/v1/api-keys'],
-    status: 'unsupported',
+    status: 'supported',
     feature: 'api-keys',
   },
   {

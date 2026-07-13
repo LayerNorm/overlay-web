@@ -1109,3 +1109,26 @@ export const billingProviderEvents = pgTable('billing_provider_events', {
   primaryKey({ columns: [table.provider, table.eventId] }),
   index('billing_provider_events_status_updated_idx').on(table.status, table.updatedAt),
 ])
+
+export const apiKeys = pgTable('api_keys', {
+  id: text('id').primaryKey(),
+  keyHash: text('key_hash').notNull(),
+  name: text('name'),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  scopes: text('scopes').array().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  createdBy: text('created_by'),
+  createdFromIp: text('created_from_ip'),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  lastUsedIp: text('last_used_ip'),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  revokedReason: text('revoked_reason'),
+}, (table) => [
+  uniqueIndex('api_keys_key_hash_idx').on(table.keyHash),
+  index('api_keys_user_created_idx').on(table.userId, table.createdAt),
+  index('api_keys_expires_at_idx').on(table.expiresAt),
+  index('api_keys_revoked_at_idx').on(table.revokedAt),
+])

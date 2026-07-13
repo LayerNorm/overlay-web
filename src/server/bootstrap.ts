@@ -67,7 +67,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   memoryService: MemoryService
   knowledgeSearchService: KnowledgeSearchService
   noteRepository: NoteRepository
-  apiKeyService: typeof ApiKeyService
+  apiKeyService: ApiKeyService
   userService: UserService
 }
 
@@ -132,7 +132,7 @@ export function createOverlayServerContext(
     memoryService,
     knowledgeSearchService,
     noteRepository: appData.repositories.notes,
-    apiKeyService: ApiKeyService,
+    apiKeyService: new ApiKeyService(appData.repositories.apiKeys),
     userService,
   }
 }

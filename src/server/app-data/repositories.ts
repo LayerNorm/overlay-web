@@ -75,9 +75,15 @@ import {
 import { unsupportedRepository } from './errors'
 import type { UsageRepository } from '@/server/usage'
 import { ConvexUsageRepository, PostgresUsageRepository } from '@/server/usage'
+import {
+  ConvexApiKeyRepository,
+  PostgresApiKeyRepository,
+  type ApiKeyRepository,
+} from '@/server/auth/api-keys'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
+  apiKeys: ApiKeyRepository
   automations: AutomationRepository
   billing: BillingRepository
   billingEvents: BillingProviderEventRepository
@@ -130,6 +136,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       postgres: { db },
       repositories: {
         accountDeletion: new PostgresAccountDataDeletionRepository(db),
+        apiKeys: new PostgresApiKeyRepository(db),
         automations: new PostgresAutomationRepository(db, conversations),
         billing,
         billingEvents: new PostgresBillingProviderEventRepository(db),
@@ -159,6 +166,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
     capabilities,
     repositories: {
       accountDeletion: unsupportedRepository<AccountDataDeletionRepository>('AccountDataDeletionRepository'),
+      apiKeys: new ConvexApiKeyRepository(),
       automations: new ConvexAutomationRepository(),
       billing: new ConvexBillingRepository(),
       billingEvents: unsupportedRepository<BillingProviderEventRepository>('BillingProviderEventRepository'),

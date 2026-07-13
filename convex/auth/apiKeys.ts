@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { mutation } from '../_generated/server'
+import { mutation, query } from '../_generated/server'
 import type { MutationCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 
@@ -86,6 +86,36 @@ export const createByServer = mutation({
   },
 })
 
+export const listByUserByServer = query({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  returns: v.array(apiKeyRecord),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db
+      .query('apiKeys')
+      .withIndex('by_userId_createdAt', (q) => q.eq('userId', args.userId))
+      .order('desc')
+      .collect()
+    return rows.map((row) => ({
+      id: row._id,
+      name: row.name,
+      userId: row.userId,
+      scopes: row.scopes,
+      expiresAt: row.expiresAt,
+      createdAt: row.createdAt,
+      createdBy: row.createdBy,
+      createdFromIp: row.createdFromIp,
+      lastUsedAt: row.lastUsedAt,
+      lastUsedIp: row.lastUsedIp,
+      revokedAt: row.revokedAt,
+      revokedReason: row.revokedReason,
+    }))
+  },
+})
+
 export const validateByServer = mutation({
   args: {
     serverSecret: v.string(),
@@ -157,6 +187,79 @@ export const revokeByServer = mutation({
       revokedReason: args.revokedReason,
     })
     return { revoked: true }
+  },
+})
+
+export const revokeByIdByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    id: v.id('apiKeys'),
+    userId: v.string(),
+    revokedAt: v.number(),
+    revokedReason: v.optional(v.string()),
+  },
+  returns: v.object({ revoked: v.boolean() }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const row = await ctx.db.get(args.id)
+    if (!row || row.userId !== args.userId) return { revoked: false }
+    if (!row.revokedAt) {
+      await ctx.db.patch(row._id, {
+        revokedAt: args.revokedAt,
+        revokedReason: args.revokedReason,
+      })
+    }
+    return { revoked: true }
+  },
+})
+
+export const rotateByIdByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    id: v.id('apiKeys'),
+    keyHash: v.string(),
+    name: v.optional(v.string()),
+    userId: v.string(),
+    scopes: v.array(apiKeyScope),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    createdBy: v.optional(v.string()),
+    createdFromIp: v.optional(v.string()),
+    revokedReason: v.string(),
+  },
+  returns: v.union(apiKeyRecord, v.null()),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const existing = await ctx.db.get(args.id)
+    if (!existing || existing.userId !== args.userId || existing.revokedAt || isExpired(existing.expiresAt, args.createdAt)) {
+      return null
+    }
+    if (isExpired(args.expiresAt, args.createdAt)) throw new Error('API key expiresAt must be in the future')
+    await assertHashIsUnused(ctx, args.keyHash)
+    await ctx.db.patch(existing._id, {
+      revokedAt: args.createdAt,
+      revokedReason: args.revokedReason,
+    })
+    const id = await ctx.db.insert('apiKeys', {
+      keyHash: args.keyHash,
+      name: args.name,
+      userId: args.userId,
+      scopes: args.scopes,
+      expiresAt: args.expiresAt,
+      createdAt: args.createdAt,
+      createdBy: args.createdBy,
+      createdFromIp: args.createdFromIp,
+    })
+    return {
+      id,
+      name: args.name,
+      userId: args.userId,
+      scopes: args.scopes,
+      expiresAt: args.expiresAt,
+      createdAt: args.createdAt,
+      createdBy: args.createdBy,
+      createdFromIp: args.createdFromIp,
+    }
   },
 })
 
