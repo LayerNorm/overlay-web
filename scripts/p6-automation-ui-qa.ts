@@ -42,25 +42,27 @@ try {
   assert.ok(automationId, 'Creating an automation draft did not produce an automationId')
 
   await expectEditor(page)
-  await page.getByLabel('Name').fill(automationName)
-  await page.getByLabel('Description').fill('Created by the P6 automation browser gate')
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill(automationName)
+  await page
+    .getByRole('textbox', { name: 'Description', exact: true })
+    .fill('Created by the P6 automation browser gate')
   const instructions = page.locator('.ProseMirror').first()
   await instructions.waitFor()
   await instructions.fill('Summarize the latest project activity and record the result.')
 
   await persistSchedule(page, 'interval', async () => {
-    await page.getByLabel('Every N minutes').fill('30')
+    await page.getByLabel('Every N minutes', { exact: true }).fill('30')
   })
   await persistSchedule(page, 'daily', async () => {
-    await page.getByLabel('Time').fill('09:15')
+    await page.getByLabel('Time', { exact: true }).fill('09:15')
   })
   await persistSchedule(page, 'weekly', async () => {
-    await page.getByLabel('Time').fill('10:30')
-    await page.getByLabel('Day of week').selectOption('2')
+    await page.getByLabel('Time', { exact: true }).fill('10:30')
+    await page.getByLabel('Day of week', { exact: true }).selectOption('2')
   })
   await persistSchedule(page, 'monthly', async () => {
-    await page.getByLabel('Time').fill('11:45')
-    await page.getByLabel('Day of month').fill('12')
+    await page.getByLabel('Time', { exact: true }).fill('11:45')
+    await page.getByLabel('Day of month', { exact: true }).fill('12')
   })
 
   const enabledSwitch = page.getByRole('switch').first()
@@ -132,10 +134,10 @@ async function persistSchedule(
   kind: 'daily' | 'interval' | 'monthly' | 'weekly',
   configure: () => Promise<void>,
 ): Promise<void> {
-  await page.getByLabel('Frequency').selectOption(kind)
+  await page.getByLabel('Frequency', { exact: true }).selectOption(kind)
   await configure()
   await saveAndReload(page)
-  assert.equal(await page.getByLabel('Frequency').inputValue(), kind)
+  assert.equal(await page.getByLabel('Frequency', { exact: true }).inputValue(), kind)
 }
 
 async function saveAndReload(page: Page): Promise<void> {
