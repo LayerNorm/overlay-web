@@ -9,9 +9,17 @@ An AI workspace that thinks, remembers, creates, and acts — all in one place. 
 <div align="center">
 
 </div>
- 
 
 🔗 **[Try Overlay](https://getoverlay.io)**
+
+## Documentation
+
+- [Developer & self-hosting docs](docs/introduction.mdx) — local setup, runtime config, deployment, API reference.
+- [Quickstart](docs/start/quickstart.mdx) — get the web app running locally.
+- [API Reference](docs/api-reference/overview.mdx) — generated from `src/shared/schemas/api-boundary.ts`.
+- [Security policy](SECURITY.md) — reporting, launch controls, and secret handling.
+
+Run `npm run docs:check` before publishing docs changes.
 
 ## Powered By
 

@@ -37,6 +37,16 @@ The app now loads configuration from three layers, highest precedence first:
 
 Use the examples in [Deployment Profiles](#deployment-profiles) as starting points. They are validated by `npm run docs:health`.
 
+## Deployment Models
+
+| Model | Operator | Tenant boundary | Best for |
+| --- | --- | --- | --- |
+| **Hosted SaaS** | LayerNorm | LayerNorm's shared SaaS environment | Teams that want zero infrastructure work. |
+| **Managed Cloud Enterprise** | LayerNorm | One dedicated deployment per customer | Enterprises that need isolation without self-hosting. |
+| **Self-Hosted / On-Prem** | Customer | One deployment per customer | Organizations that need full source control and in-house operations. |
+
+See [Managed Cloud Enterprise](./cloud-managed) for the managed-cloud option and [Tenancy And Role Model](./tenancy) for the tenant boundary.
+
 ## Required Environment Variables
 
 Minimum app runtime variables:

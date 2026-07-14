@@ -45,3 +45,7 @@ Routes may include additional fields.
 `/api/v1/api-keys` exists in the route tree but currently returns `501` because API key management is not exposed yet.
 
 `/api/v1/extensions/[extensionId]/[...path]` is an extension proxy route and is intentionally excluded from the stable public API reference.
+
+## Administration
+
+The `/api/v1/admin/*` routes are role-protected endpoints for audit, principal management, and usage/budget control. See the [Admin workflow](./workflows/admin) for request shapes and role requirements.

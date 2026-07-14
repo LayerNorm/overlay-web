@@ -1,0 +1,65 @@
+---
+title: "Compliance"
+description: "Data residency, DPDP, retention, and licensing obligations for enterprise and managed-cloud Overlay deployments."
+---
+
+Overlay supports compliance through configuration rather than code changes. The `compliance` section in the runtime config controls profile, data residency, retention, and allowed processors.
+
+## Compliance profile
+
+The `compliance.profile` field selects a preset:
+
+- `saas-default` — Hosted Overlay configuration.
+- `onprem-minimal` — Minimal on-prem with auth and billing disabled.
+- `enterprise-private` — Private enterprise deployment with OIDC, S3, and OpenAI gateway.
+- `dpdp-strict` — DPDP-strict with limited features, OIDC, S3, and disabled billing/automations/vector search.
+
+See the example configs in `docs/config/` for each profile.
+
+## Data residency
+
+Set `compliance.dataResidency.required=true` and list allowed regions in `compliance.dataResidency.allowedRegions`. The app will reject operations that would route data outside those regions.
+
+Data residency applies to:
+
+- Convex deployment region.
+- Postgres app-data hosting region.
+- Object storage bucket region.
+- Vector search and embeddings provider region.
+- LLM gateway routing when region-aware providers are configured.
+
+## Retention
+
+`compliance.retention` configures per-category retention periods. Empty values mean no automatic deletion. Retention applies to audit events, conversation history, generated outputs, and file uploads.
+
+## DPDP
+
+The `dpdp-strict` preset demonstrates a DPDP-compliant configuration:
+
+- `capabilities.billing=false` and `billing.provider=none`.
+- `capabilities.webhooks=false`.
+- `capabilities.vectorSearch=false`.
+- `capabilities.automations=false`.
+- `capabilities.apiKeys=false`.
+- `auth.provider=oidc` with a customer-controlled IdP.
+- `storage.provider=s3` with customer-owned storage.
+
+Use this profile as the starting point for strict data-protection deployments.
+
+## Processor and external services
+
+`compliance.allowExternalProcessors=false` disables third-party processors that are not in `compliance.allowedProcessorIds`. This is useful for deployments that must not use certain SaaS integrations.
+
+## Self-hosting obligations
+
+Self-hosted and managed-cloud customers must follow the same source and branding rules:
+
+- Core code is `AGPL-3.0-or-later`.
+- SDKs and contracts are `Apache-2.0`.
+- Modified public-facing distributions require their own branding unless LayerNorm gives written permission.
+
+See [Licensing](../legal/licensing) and [Self-Hosting Obligations](../legal/self-hosting-obligations) for details.
+
+## Commercial license
+
+For a commercial license, dedicated support, or a managed-cloud SLA, contact `divyansh@layernorm.co`.

@@ -41,7 +41,7 @@
       },
       {
         "group": "Deploy & Operate",
-        "pages": ["deploy-operate/self-hosting", "deploy-operate/better-auth-onprem-runbook", "deploy-operate/executor-integrations", "deploy-operate/aws-rehearsal-4", "deploy-operate/aws-rehearsal-6", "deploy-operate/aws-rehearsal-7", "deploy-operate/aws-rehearsal-9", "deploy-operate/p5-stabilization", "deploy-operate/p5-security-operations", "deploy-operate/enterprise-source-install", "deploy-operate/one-command-install", "deploy-operate/docs-hosting", "deploy-operate/release-gates", "deploy-operate/security", "deploy-operate/tenancy"]
+        "pages": ["deploy-operate/self-hosting", "deploy-operate/docker-ec2", "deploy-operate/aws", "deploy-operate/better-auth-onprem-runbook", "deploy-operate/executor-integrations", "deploy-operate/aws-rehearsal-4", "deploy-operate/aws-rehearsal-6", "deploy-operate/aws-rehearsal-7", "deploy-operate/aws-rehearsal-9", "deploy-operate/p5-stabilization", "deploy-operate/p5-security-operations", "deploy-operate/enterprise-security-launch-checklist", "deploy-operate/cloud-managed", "deploy-operate/enterprise-admin-onboarding", "deploy-operate/compliance", "deploy-operate/enterprise-source-install", "deploy-operate/one-command-install", "deploy-operate/docs-hosting", "deploy-operate/release-gates", "deploy-operate/security", "deploy-operate/tenancy"]
       },
       {
         "group": "API Reference",
@@ -62,7 +62,8 @@
               "api-reference/workflows/files",
               "api-reference/workflows/memory-knowledge",
               "api-reference/workflows/automations",
-              "api-reference/workflows/billing"
+              "api-reference/workflows/billing",
+              "api-reference/workflows/admin"
             ]
           }
         ]
@@ -70,6 +71,14 @@
       {
         "group": "Legal",
         "pages": ["legal/licensing", "legal/self-hosting-obligations", "legal/security-reporting"]
+      },
+      {
+        "group": "Changelog",
+        "pages": ["changelog"]
+      },
+      {
+        "group": "Help",
+        "pages": ["help/index", "help/chat", "help/memory", "help/files", "help/projects", "help/automations", "help/settings", "help/faq"]
       }
     ]
   }
