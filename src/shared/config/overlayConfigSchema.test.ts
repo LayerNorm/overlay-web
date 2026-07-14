@@ -85,6 +85,34 @@ test('OverlayRuntimeConfigSchema validates minimal SaaS config', () => {
   assert.equal(parsed.capabilities.apiKeys, true)
 })
 
+test('OverlayRuntimeConfigSchema validates Executor integration provider configuration', () => {
+  const parsed = OverlayRuntimeConfigSchema.parse({
+    ...minimalSaasConfig,
+    features: { integrations: true },
+    providers: { integrations: { provider: 'executor' } },
+    integrations: {
+      executor: {
+        apiBaseUrl: 'https://executor.internal.example.com/api',
+        webBaseUrl: 'https://executor.example.com',
+        mcpUrl: 'https://executor.internal.example.com/mcp',
+        apiKey: 'executor-test-key',
+        connectionOwner: 'org',
+      },
+    },
+  } satisfies OverlayRuntimeConfigInput)
+  assert.equal(parsed.providers.integrations?.provider, 'executor')
+  assert.equal(parsed.integrations.executor.connectionOwner, 'org')
+})
+
+test('OverlayRuntimeConfigSchema rejects incomplete Executor integration configuration', () => {
+  assert.throws(() => OverlayRuntimeConfigSchema.parse({
+    ...minimalSaasConfig,
+    features: { integrations: true },
+    providers: { integrations: { provider: 'executor' } },
+    integrations: { executor: { webBaseUrl: 'https://executor.example.com' } },
+  }), /integrations\.executor\.apiBaseUrl is required/)
+})
+
 test('OverlayRuntimeConfigSchema validates v2 enterprise-private provider selections', () => {
   const parsed = OverlayRuntimeConfigSchema.parse({
     ...minimalSaasConfig,

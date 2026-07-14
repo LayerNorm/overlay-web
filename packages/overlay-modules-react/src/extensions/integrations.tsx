@@ -156,11 +156,11 @@ export function IntegrationsPanel({
               <div className="space-y-1">
                 {connectedShown.map((integration) => (
                   <IntegrationRow
-                    key={integration.composioId}
+                    key={integration.providerKey}
                     integration={integration}
-                    logoUrl={logoUrls?.[integration.composioId] ?? integration.logoUrl}
+                    logoUrl={logoUrls?.[integration.providerKey] ?? integration.logoUrl}
                     isConnected
-                    isConnecting={connectingSlug === integration.composioId}
+                    isConnecting={connectingSlug === integration.providerKey}
                     onAction={onConnectToggle}
                   />
                 ))}
@@ -187,11 +187,11 @@ export function IntegrationsPanel({
             <div className="space-y-1">
               {availableShown.map((integration) => (
                 <IntegrationRow
-                  key={integration.composioId}
+                  key={integration.providerKey}
                   integration={integration}
-                  logoUrl={logoUrls?.[integration.composioId] ?? integration.logoUrl}
+                  logoUrl={logoUrls?.[integration.providerKey] ?? integration.logoUrl}
                   isConnected={false}
-                  isConnecting={connectingSlug === integration.composioId}
+                  isConnecting={connectingSlug === integration.providerKey}
                   onAction={onConnectToggle}
                 />
               ))}
@@ -231,6 +231,10 @@ function IntegrationRow({
   isConnecting: boolean
   onAction: (integration: ConnectorCatalogItem) => void
 }) {
+  const actionUnavailable = isConnected && integration.capabilities?.supportsDisconnect === false
+  const actionLabel = isConnected
+    ? actionUnavailable ? 'Managed externally' : 'Disconnect'
+    : integration.capabilities?.connectionSetup === 'provider-console' ? 'Configure' : 'Connect'
   return (
     <div className="flex items-center justify-between rounded-lg px-3 py-3 transition-colors hover:bg-[var(--surface-muted)]">
       <div className="flex min-w-0 items-center gap-3">
@@ -244,16 +248,12 @@ function IntegrationRow({
       </div>
       <button
         onClick={() => onAction(integration)}
-        disabled={isConnecting}
+        disabled={isConnecting || actionUnavailable}
         className="ml-4 flex-shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
       >
         {isConnecting ? (
           <Loader2 size={11} className="animate-spin" />
-        ) : isConnected ? (
-          'Disconnect'
-        ) : (
-          'Connect'
-        )}
+        ) : actionLabel}
       </button>
     </div>
   )

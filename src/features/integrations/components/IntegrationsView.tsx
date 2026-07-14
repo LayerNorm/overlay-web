@@ -58,7 +58,7 @@ function buildInitialIntegrationState(initialData?: IntegrationsInitialData) {
   const logos: Record<string, string | null> = {}
   for (const item of catalogItems) {
     logos[item.slug] = item.logoUrl ?? null
-    logos[item.composioId] = item.logoUrl ?? null
+    logos[item.providerKey] = item.logoUrl ?? null
   }
 
   return { connected, catalogItems, logos }
@@ -91,9 +91,9 @@ export default function IntegrationsView({
       const next = { ...prev }
       for (const item of items) {
         next[item.slug] = item.logoUrl ?? null
-        next[item.composioId] = item.logoUrl ?? null
+        next[item.providerKey] = item.logoUrl ?? null
         setIntegrationLogoUrl(item.slug, item.logoUrl ?? null)
-        setIntegrationLogoUrl(item.composioId, item.logoUrl ?? null)
+        setIntegrationLogoUrl(item.providerKey, item.logoUrl ?? null)
       }
       return next
     })
@@ -102,7 +102,7 @@ export default function IntegrationsView({
   useEffect(() => {
     for (const item of initialState.catalogItems) {
       setIntegrationLogoUrl(item.slug, item.logoUrl ?? null)
-      setIntegrationLogoUrl(item.composioId, item.logoUrl ?? null)
+      setIntegrationLogoUrl(item.providerKey, item.logoUrl ?? null)
     }
   }, [initialState.catalogItems])
 
@@ -184,31 +184,32 @@ export default function IntegrationsView({
 
   async function handleConnect(integration: ConnectorCatalogItem) {
     if (connecting) return
+    if (connected.has(integration.providerKey) && integration.capabilities?.supportsDisconnect === false) return
     setConnectError(null)
-    setConnecting(integration.composioId)
+    setConnecting(integration.providerKey)
 
     let oauthTab: Window | null = null
-    if (!connected.has(integration.composioId)) {
+    if (!connected.has(integration.providerKey)) {
       oauthTab = window.open('about:blank', '_blank')
     }
 
     try {
-      if (connected.has(integration.composioId)) {
-        const res = await overlayAppClient.integrations.disconnectResponse(integration.composioId)
+      if (connected.has(integration.providerKey)) {
+        const res = await overlayAppClient.integrations.disconnectResponse(integration.providerKey)
         if (res.ok) {
           setConnected((prev) => {
             const next = new Set(prev)
-            next.delete(integration.composioId)
+            next.delete(integration.providerKey)
             return next
           })
           notifyIntegrationsChanged()
-          posthog.capture('integration_disconnected', { integration: integration.composioId, integration_name: integration.name })
+          posthog.capture('integration_disconnected', { integration: integration.providerKey, integration_name: integration.name })
         } else {
           const data = await res.json().catch(() => ({}))
           setConnectError(data.error || 'Failed to disconnect')
         }
       } else {
-        const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', toolkit: integration.composioId })
+        const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: integration.providerKey })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) {
           oauthTab?.close()
@@ -216,10 +217,10 @@ export default function IntegrationsView({
         } else if (data.redirectUrl) {
           if (oauthTab) oauthTab.location.href = data.redirectUrl
           else window.open(data.redirectUrl, '_blank')
-          posthog.capture('integration_connect_initiated', { integration: integration.composioId, integration_name: integration.name })
+          posthog.capture('integration_connect_initiated', { integration: integration.providerKey, integration_name: integration.name })
         } else {
           oauthTab?.close()
-          setConnectError('No OAuth URL returned — this integration may require manual setup')
+          setConnectError('No connection setup URL was returned')
         }
       }
     } catch {
@@ -233,7 +234,7 @@ export default function IntegrationsView({
   const dialogConnect = useCallback(async (slug: string) => {
     const oauthTab = window.open('about:blank', '_blank')
     try {
-      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', toolkit: slug })
+      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: slug })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         oauthTab?.close()
@@ -242,8 +243,6 @@ export default function IntegrationsView({
       if (data.redirectUrl) {
         if (oauthTab) oauthTab.location.href = data.redirectUrl
         else window.open(data.redirectUrl, '_blank')
-        setConnected((prev) => new Set([...prev, slug]))
-        notifyIntegrationsChanged()
         posthog.capture('integration_connect_initiated', { integration: slug })
       } else if (data.connectionId) {
         oauthTab?.close()
@@ -252,7 +251,7 @@ export default function IntegrationsView({
         posthog.capture('integration_connect_initiated', { integration: slug })
       } else {
         oauthTab?.close()
-        throw new Error('No OAuth URL returned')
+        throw new Error('No connection setup URL returned')
       }
     } catch (err) {
       oauthTab?.close()

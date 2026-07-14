@@ -198,12 +198,12 @@ Enterprise provider matrix:
 | Purpose | Provider values | Data processed | Region/residency | Current support |
 | --- | --- | --- | --- | --- |
 | Auth | `workos`, `oidc`, `none` | Identity profile, session tokens, org/user metadata | Depends on IdP | Supported. OIDC verifies bearer/access tokens through discovery JWKS, including Keycloak-compatible realm issuers; browser login wiring is deployment-specific. |
-| Database | `convex`, `postgres` | App records, messages, files metadata, usage state | Convex deployment region today, or customer Postgres region in Postgres mode | `convex` supported. `postgres` supports auth-linked users, chat, projects, notes, files and outputs, account deletion, durable maintenance, memory extraction, pgvector retrieval, scheduled automations, webhooks, usage/billing records, scoped API keys, administrative audit, skills, and MCP server persistence/execution audits. Connector account state remains outside the Postgres parity boundary. |
+| Database | `convex`, `postgres` | App records, messages, files metadata, usage state | Convex deployment region today, or customer Postgres region in Postgres mode | `convex` supported. `postgres` supports auth-linked users, chat, projects, notes, files and outputs, account deletion, durable maintenance, memory extraction, pgvector retrieval, scheduled automations, webhooks, usage/billing records, scoped API keys, administrative audit, skills, and MCP server persistence/execution audits. Integration connection state remains in the selected integration provider rather than the app-data database. |
 | Object storage | `r2`, `s3`, `none` | Uploaded files and generated artifacts | Bucket/provider region | Supported for Cloudflare R2 and S3-compatible enterprise object stores. |
 | Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | Database/vector provider region | `convex`, `pgvector`, and `none` are supported. `pgvector` requires Postgres, the `vector` extension, an embeddings provider, migrations, and the durable worker. `pinecone` is declared but rejected until an adapter exists. |
 | Embeddings | `ai-gateway`, `openai`, `azure-openai`, `none` | Text chunks sent for embedding | Provider region/policy | `ai-gateway`, `openai`, and `none` declared for current wiring. `azure-openai` is rejected until an adapter exists. |
 | Models | `openrouter`, `ai-gateway`, `openai`, `anthropic`, `groq`, `none` | User prompts, context, tool results | Model provider policy | Supported. Use `features.modelRouting=false` plus `providers.models.provider="none"` to disable. |
-| Integrations | `composio`, `mcp`, `none` | Connected-account metadata and tool inputs/outputs | Provider/account region | `composio` and `none` supported. `mcp` as a provider family is declared but rejected until bootstrap wiring exists. |
+| Integrations | `composio`, `executor`, `mcp`, `none` | Connected-account metadata and tool inputs/outputs | Provider/account region | `composio`, `executor`, and `none` supported. `executor` uses a separate customer-hosted service and provider-managed connections. `mcp` as a provider family is declared but rejected until bootstrap wiring exists. |
 | Browser use | `browser-use`, `self-hosted-playwright`, `none` | Browser tasks, page content, credentials entered during tasks | Browser provider region | `browser-use` and `none` supported. `self-hosted-playwright` is declared but rejected until an adapter exists. |
 | Sandboxes | `daytona`, `e2b`, `local-firecracker`, `none` | Commands, staged files, generated artifacts | Sandbox provider region | `daytona` and `none` supported. `e2b` and `local-firecracker` are declared but rejected until adapters exist. |
 | Web search | `ai-gateway`, `perplexity`, `tavily`, `none` | Search queries and result snippets | Search/model provider policy | `ai-gateway` and `none` supported. Direct `perplexity` and `tavily` are declared but rejected until adapters exist. |
@@ -365,7 +365,7 @@ Capabilities:
 | `files` | File upload, file navigation, and file picker affordances. |
 | `memory` | Memory write/read tools and memory settings. |
 | `knowledge` | Knowledge surfaces and knowledge search affordances. |
-| `integrations` | Composio/MCP-style account linking and external integration tools. |
+| `integrations` | Provider-neutral Composio or Executor account linking, catalogs, and external tools. Direct MCP servers remain under `mcpServers`. |
 | `browserUse` | Browser Use routes, browser task UI, and browser-session tool exposure. |
 | `sandboxes` | Daytona sandbox routes and sandbox tool exposure. |
 | `webSearch` | Gateway search tool exposure. |

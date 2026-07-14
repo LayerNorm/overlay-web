@@ -174,6 +174,29 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
   })
 })
 
+test('configOverridesFromEnv maps Executor integration service settings', () => {
+  const overrides = configOverridesFromEnv({
+    OVERLAY_PROVIDER_INTEGRATIONS: 'executor',
+    EXECUTOR_API_BASE_URL: 'https://executor.internal.example.com/api',
+    EXECUTOR_WEB_BASE_URL: 'https://executor.example.com',
+    EXECUTOR_MCP_URL: 'https://executor.internal.example.com/mcp',
+    EXECUTOR_API_KEY: 'executor-key',
+    EXECUTOR_CONNECTION_OWNER: 'org',
+    EXECUTOR_REQUEST_TIMEOUT_MS: '45000',
+  })
+  assert.deepEqual(overrides.providers, { integrations: { provider: 'executor' } })
+  assert.deepEqual(overrides.integrations, {
+    executor: {
+      apiBaseUrl: 'https://executor.internal.example.com/api',
+      webBaseUrl: 'https://executor.example.com',
+      mcpUrl: 'https://executor.internal.example.com/mcp',
+      apiKey: 'executor-key',
+      connectionOwner: 'org',
+      requestTimeoutMs: 45000,
+    },
+  })
+})
+
 test('configOverridesFromEnv maps bounded S3 presign lifetime', () => {
   const overrides = configOverridesFromEnv({
     STORAGE_PROVIDER: 's3',

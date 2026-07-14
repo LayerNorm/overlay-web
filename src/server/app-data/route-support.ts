@@ -53,9 +53,8 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'integrations',
     methods: '*',
     paths: ['/api/v1/integrations'],
-    status: 'unsupported',
+    status: 'supported',
     feature: 'integrations',
-    reason: 'Postgres pilot mode does not yet include connector account state or external integration execution.',
   },
   {
     id: 'auth-api-keys',
@@ -123,7 +122,7 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'chat-extension-plan',
     methods: '*',
     prefixes: ['/api/v1/conversations/act/extension-plan'],
-    status: 'unsupported',
+    status: 'supported',
     feature: 'integrations',
   },
   {

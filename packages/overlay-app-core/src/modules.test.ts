@@ -47,7 +47,27 @@ test('project helpers collect descendants', () => {
 
 test('extension catalog filter handles kind and query', () => {
   const items = [
-    { kind: 'integration' as const, slug: 'gmail', name: 'Gmail', description: 'Mail', logoUrl: null, isConnected: true },
+    {
+      kind: 'integration' as const,
+      slug: 'gmail',
+      providerKey: 'gmail',
+      provider: 'composio' as const,
+      capabilities: {
+        provider: 'composio' as const,
+        hosted: true,
+        selfHosted: false,
+        oauthOwnership: 'provider-managed' as const,
+        connectionSetup: 'in-app-oauth' as const,
+        connectionLifecycle: 'overlay-managed' as const,
+        supportsApprovals: false,
+        supportsDisconnect: true,
+        supportedSchemas: ['native' as const],
+      },
+      name: 'Gmail',
+      description: 'Mail',
+      logoUrl: null,
+      isConnected: true,
+    },
     { kind: 'skill' as const, _id: 's1', name: 'Reporter', description: 'Daily reports', instructions: '', enabled: true },
   ]
   assert.deepEqual(filterExtensionCatalog(items, { query: 'report' }).map((item) => item.kind), ['skill'])

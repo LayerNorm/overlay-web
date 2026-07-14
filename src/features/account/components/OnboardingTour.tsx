@@ -19,7 +19,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 export const ONBOARDING_IMPORT_MEMORY_PROMPT =
   'Tell me everything you know about me, list every memory you have.'
 
-/** Popular connectors shown as cards on the post-tour “Connect your tools” step (Composio slugs). */
+/** Popular connector keys shown as cards on the post-tour “Connect your tools” step. */
 const ONBOARDING_CONNECTOR_CARDS: ReadonlyArray<{
   slug: string
   name: string
@@ -69,7 +69,7 @@ const DIALOG_SECONDARY_CLASS =
 const DIALOG_PRIMARY_CLASS =
   'rounded-lg bg-[var(--foreground)] px-4 py-1.5 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-40'
 
-/** Logos from GET /api/v1/integrations?action=search (Composio catalog), with emoji fallback. */
+/** Logos from the configured integration provider catalog, with emoji fallback. */
 function OnboardingConnectorCardLogo({
   name,
   fallbackEmoji,
@@ -347,7 +347,7 @@ export function OnboardingTour({
     }
   }, [currentStep, isClosing, measure, steps])
 
-  // Same catalog fetch as Extensions → loadCatalog (Composio logos per toolkit slug).
+  // Same provider-neutral catalog fetch as Extensions → loadCatalog.
   useEffect(() => {
     if (postTourPhase !== 'connectors') return
     let cancelled = false
@@ -372,7 +372,7 @@ export function OnboardingTour({
   }, [postTourPhase])
 
   // Track connected toolkits so cards reflect connections in real time after the
-  // OAuth popup completes (signaled via overlay:integrations-changed / BroadcastChannel).
+  // Provider setup completes in another tab and signals via focus/event refresh.
   useEffect(() => {
     if (postTourPhase !== 'connectors') return
 
@@ -422,7 +422,7 @@ export function OnboardingTour({
   const dialogConnect = useCallback(async (slug: string) => {
     const oauthTab = window.open('about:blank', '_blank')
     try {
-      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', toolkit: slug })
+      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: slug })
       const data = (await res.json().catch(() => ({}))) as { redirectUrl?: string; connectionId?: string; error?: string }
       if (!res.ok) {
         oauthTab?.close()
@@ -437,7 +437,7 @@ export function OnboardingTour({
         notifyIntegrationsChanged()
       } else {
         oauthTab?.close()
-        throw new Error('No OAuth URL returned')
+        throw new Error('No connection setup URL returned')
       }
     } catch (err) {
       oauthTab?.close()

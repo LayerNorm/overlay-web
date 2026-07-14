@@ -39,7 +39,7 @@ export const OverlayComplianceProfileSchema = z.enum([
 export const OverlayDatabaseProviderSchema = z.enum(['convex', 'postgres'])
 export const OverlayVectorSearchProviderSchema = z.enum(['convex', 'pgvector', 'pinecone', 'none'])
 export const OverlayEmbeddingsProviderSchema = z.enum(['ai-gateway', 'openai', 'azure-openai', 'none'])
-export const OverlayIntegrationsProviderSchema = z.enum(['composio', 'mcp', 'none'])
+export const OverlayIntegrationsProviderSchema = z.enum(['composio', 'executor', 'mcp', 'none'])
 export const OverlayBrowserProviderSchema = z.enum(['browser-use', 'self-hosted-playwright', 'none'])
 export const OverlaySandboxProviderSchema = z.enum(['daytona', 'e2b', 'local-firecracker', 'none'])
 export const OverlayWebSearchProviderSchema = z.enum(['ai-gateway', 'perplexity', 'tavily', 'none'])
@@ -223,6 +223,20 @@ export const OverlayRuntimeConfigSchema = z
       modelAllowlist: z.array(z.string().trim().min(1)).default([]),
       apiKeyEnvVar: OptionalStringSchema,
     }),
+    integrations: z
+      .object({
+        executor: z
+          .object({
+            apiBaseUrl: OptionalUrlSchema,
+            webBaseUrl: OptionalUrlSchema,
+            mcpUrl: OptionalUrlSchema,
+            apiKey: OptionalStringSchema,
+            connectionOwner: z.enum(['org', 'user']).default('org'),
+            requestTimeoutMs: z.number().int().positive().max(120_000).default(30_000),
+          })
+          .default({}),
+      })
+      .default({}),
     database: z.object({
       provider: OverlayDatabaseProviderSchema.default('convex'),
       convexUrl: OptionalUrlSchema,
@@ -359,6 +373,22 @@ export const OverlayRuntimeConfigSchema = z
     addUnsupportedProviderIssue(ctx, ['providers', 'integrations', 'provider'], selectedProviders.integrations, {
       mcp: 'MCP integration-provider bootstrap is declared but not implemented. Use integrations.provider=composio or none.',
     })
+    if (selectedProviders.integrations === 'executor') {
+      const executor = config.integrations.executor
+      for (const [key, value] of [
+        ['apiBaseUrl', executor.apiBaseUrl],
+        ['webBaseUrl', executor.webBaseUrl],
+        ['apiKey', executor.apiKey],
+      ] as const) {
+        if (!value) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['integrations', 'executor', key],
+            message: `integrations.executor.${key} is required when integrations.provider is executor`,
+          })
+        }
+      }
+    }
     addUnsupportedProviderIssue(ctx, ['providers', 'browser', 'provider'], selectedProviders.browser, {
       'self-hosted-playwright': 'Self-hosted Playwright is declared for enterprise config v2 but the browser adapter is not implemented. Use browser.provider=browser-use or none.',
     })
@@ -668,6 +698,16 @@ export function redactOverlayRuntimeConfig(config: OverlayRuntimeConfig) {
       defaultChatModelId: config.llm.defaultChatModelId,
       modelAllowlist: [...config.llm.modelAllowlist],
       apiKeyEnvVar: config.llm.apiKeyEnvVar,
+    },
+    integrations: {
+      executor: {
+        apiBaseUrl: config.integrations.executor.apiBaseUrl,
+        webBaseUrl: config.integrations.executor.webBaseUrl,
+        mcpUrl: config.integrations.executor.mcpUrl,
+        hasApiKey: Boolean(config.integrations.executor.apiKey),
+        connectionOwner: config.integrations.executor.connectionOwner,
+        requestTimeoutMs: config.integrations.executor.requestTimeoutMs,
+      },
     },
     database: {
       provider: config.database.provider,

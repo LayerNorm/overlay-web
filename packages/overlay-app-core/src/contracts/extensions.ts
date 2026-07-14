@@ -1,8 +1,38 @@
+export type IntegrationProviderId = 'composio' | 'executor'
+export type IntegrationOAuthOwnership = 'provider-managed' | 'customer-managed' | 'mixed'
+export type IntegrationConnectionSetup = 'in-app-oauth' | 'provider-console' | 'manual-credential'
+export type IntegrationConnectionLifecycle = 'overlay-managed' | 'provider-managed'
+export type IntegrationSchemaKind = 'native' | 'mcp' | 'openapi' | 'graphql'
+
+export interface IntegrationProviderCapabilities {
+  provider: IntegrationProviderId
+  hosted: boolean
+  selfHosted: boolean
+  oauthOwnership: IntegrationOAuthOwnership
+  connectionSetup: IntegrationConnectionSetup
+  connectionLifecycle: IntegrationConnectionLifecycle
+  supportsApprovals: boolean
+  supportsDisconnect: boolean
+  supportedSchemas: IntegrationSchemaKind[]
+}
+
+export type IntegrationAuthenticationState =
+  | 'not-connected'
+  | 'connected'
+  | 'expired'
+  | 'degraded'
+  | 'unknown'
+
 export interface IntegrationSummary {
   slug: string
   name: string
   description: string
   logoUrl: string | null
+  provider: IntegrationProviderId
+  providerKey: string
+  capabilities: IntegrationProviderCapabilities
+  authenticationState?: IntegrationAuthenticationState
+  connectionSetupUrl?: string | null
   isConnected?: boolean
   connectedAccountId?: string | null
 }
@@ -16,6 +46,8 @@ export interface IntegrationSearchResponse {
 }
 
 export interface ConnectedIntegrationsResponse {
+  provider?: IntegrationProviderId
+  providerCapabilities?: IntegrationProviderCapabilities
   connected: string[]
   data?: IntegrationSummary[]
   items?: IntegrationSummary[]
@@ -25,7 +57,9 @@ export interface ConnectedIntegrationsResponse {
 
 export interface IntegrationConnectionRequest {
   action?: 'connect' | 'disconnect'
-  toolkit: string
+  providerKey?: string
+  /** Backward-compatible alias for older desktop clients. */
+  toolkit?: string
   accessToken?: string
   userId?: string
 }
@@ -35,6 +69,8 @@ export interface IntegrationConnectionResponse {
   redirectUrl?: string | null
   connectionId?: string | null
   status?: string | null
+  provider?: IntegrationProviderId
+  providerCapabilities?: IntegrationProviderCapabilities
   error?: string
 }
 

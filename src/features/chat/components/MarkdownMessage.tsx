@@ -208,7 +208,7 @@ function CodeBlock({ language, children }: { language: string; children: string 
   )
 }
 
-// ── Integration logo chip (lazy-fetches Composio logos via shared cache) ──────
+// ── Integration logo chip (lazy-fetches provider catalog logos via shared cache) ──────
 
 function IntegrationLogoChip({ serviceName }: { serviceName: string }) {
   const [failed, setFailed] = useState(false)

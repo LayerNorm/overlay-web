@@ -39,6 +39,7 @@ export function configOverridesFromEnv(env: EnvSource): OverlayRuntimeConfigLaye
   const billing = billingConfigFromEnv(env, deploymentEnvironment)
   const storage = storageConfigFromEnv(env)
   const llm = llmConfigFromEnv(env)
+  const integrations = integrationsConfigFromEnv(env)
   const database = databaseConfigFromEnv(env, deploymentEnvironment)
   const rateLimit = rateLimitConfigFromEnv(env)
   const capabilities = capabilitiesFromEnv(env)
@@ -64,6 +65,7 @@ export function configOverridesFromEnv(env: EnvSource): OverlayRuntimeConfigLaye
   if (billing) config.billing = billing
   if (storage) config.storage = storage
   if (llm) config.llm = llm
+  if (integrations) config.integrations = integrations
   if (database) config.database = database
   if (rateLimit) config.rateLimit = rateLimit
   if (Object.keys(capabilities).length > 0) config.capabilities = capabilities
@@ -221,6 +223,18 @@ function llmConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
     modelAllowlist: readEnv(env, 'LLM_MODEL_ALLOWLIST') ? splitCsv(readEnv(env, 'LLM_MODEL_ALLOWLIST')) : undefined,
     apiKeyEnvVar: readEnv(env, 'LLM_API_KEY_ENV_VAR'),
   })
+}
+
+function integrationsConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
+  const executor = compactObject({
+    apiBaseUrl: readEnv(env, 'EXECUTOR_API_BASE_URL'),
+    webBaseUrl: readEnv(env, 'EXECUTOR_WEB_BASE_URL'),
+    mcpUrl: readEnv(env, 'EXECUTOR_MCP_URL'),
+    apiKey: readEnv(env, 'EXECUTOR_API_KEY'),
+    connectionOwner: readEnv(env, 'EXECUTOR_CONNECTION_OWNER'),
+    requestTimeoutMs: readNumber(env, 'EXECUTOR_REQUEST_TIMEOUT_MS'),
+  })
+  return Object.keys(executor).length > 0 ? { executor } : null
 }
 
 function databaseConfigFromEnv(

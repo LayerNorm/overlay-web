@@ -65,7 +65,7 @@ test('Postgres app-data route support classifies every /api/v1 route export', ()
   assert.deepEqual(missing, [])
 })
 
-test('Postgres app-data capabilities expose projects, skills, and MCP while hiding connectors', () => {
+test('Postgres app-data capabilities expose provider-neutral integrations, projects, skills, and MCP', () => {
   const capabilities = applyAppDataCapabilitiesToOverlayCapabilities(
     DEFAULT_OVERLAY_CAPABILITIES,
     POSTGRES_APP_DATA_V1_CAPABILITIES,
@@ -73,7 +73,7 @@ test('Postgres app-data capabilities expose projects, skills, and MCP while hidi
   const shell = resolveOverlayAppShellConfig(undefined, { capabilities })
 
   assert.equal(capabilities.projects, true)
-  assert.equal(capabilities.integrations, false)
+  assert.equal(capabilities.integrations, true)
   assert.equal(capabilities.skills, true)
   assert.equal(capabilities.mcpServers, true)
   assert.equal(shell.appFeatureFlags.canUseProjects, true)
@@ -130,7 +130,7 @@ test('Postgres app-data mode supports persisted chat suggestions and metered not
   assert.equal(notebookSupport.status, 'supported')
 })
 
-test('Postgres app-data mode supports bootstrap and gates external integration routes', () => {
+test('Postgres app-data mode supports bootstrap and external integration routes', () => {
   assert.equal(getAppDataRouteSupport({
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
@@ -145,7 +145,7 @@ test('Postgres app-data mode supports bootstrap and gates external integration r
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'POST',
     pathname: '/api/v1/integrations',
-  }).status, 'unsupported')
+  }).status, 'supported')
 })
 
 test('Postgres app-data mode supports chat title generation', () => {
@@ -276,7 +276,7 @@ test('Postgres app-data mode supports webhook subscription and delivery routes',
   }
 })
 
-test('Postgres app-data mode supports skills and MCP routes independently of connectors', () => {
+test('Postgres app-data mode supports skills, MCP, and provider-neutral connectors', () => {
   for (const pathname of ['/api/v1/skills', '/api/v1/mcps', '/api/v1/mcps/test']) {
     assert.equal(getAppDataRouteSupport({
       appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
@@ -288,5 +288,5 @@ test('Postgres app-data mode supports skills and MCP routes independently of con
     appDataCapabilities: POSTGRES_APP_DATA_V1_CAPABILITIES,
     method: 'GET',
     pathname: '/api/v1/integrations',
-  }).status, 'unsupported')
+  }).status, 'supported')
 })

@@ -7,6 +7,11 @@ import type {
   AccountDataDeletionResult,
   AccountDataDeletionVerification,
 } from './AccountDataDeletionRepository'
+import {
+  getIntegrationProvider,
+  getSelectedIntegrationProviderId,
+  IntegrationService,
+} from '@/server/integrations'
 
 export type AccountDeletionResult = {
   deletedRowCount: number
@@ -22,6 +27,7 @@ export class AccountDeletionService {
   constructor(private readonly ctx: OverlayServerContext) {}
 
   async deleteAccount(args: { userId: string; request?: Request }): Promise<AccountDeletionResult> {
+    await this.deleteIntegrationConnectionsBestEffort(args.userId)
     if (this.ctx.appDataCapabilities.provider === 'postgres') {
       return await this.deletePostgresAccount(args)
     }
@@ -54,6 +60,16 @@ export class AccountDeletionService {
     })
 
     return convexResult
+  }
+
+  private async deleteIntegrationConnectionsBestEffort(userId: string): Promise<void> {
+    try {
+      if (getSelectedIntegrationProviderId() === 'none') return
+      await new IntegrationService(getIntegrationProvider(), this.ctx.auditService)
+        .deleteConnectionsForUser({ userId })
+    } catch (error) {
+      logger.error(`[account/delete] Integration connection cleanup failed for ${userId}:`, error)
+    }
   }
 
   private async deletePostgresAccount(args: {

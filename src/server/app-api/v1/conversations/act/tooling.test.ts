@@ -8,7 +8,7 @@ const toolSet = (tools: Record<string, object>): ToolSet => tools as unknown as 
 test('buildActTooling preserves paid primary tool composition', () => {
   const tooling = buildActTooling({
     allowedOverlayToolIds: ['generate_image'],
-    composioRaw: toolSet({ GMAIL_SEND_EMAIL: {}, BROWSER_NAVIGATE: {} }),
+    integrationRaw: toolSet({ GMAIL_SEND_EMAIL: {}, BROWSER_NAVIGATE: {} }),
     isMultiModelFollowUpSlot: false,
     mcpToolsRaw: toolSet({ search_mcp_tools: {}, call_mcp_tool: {} }),
     paid: true,
@@ -36,7 +36,7 @@ test('buildActTooling preserves paid primary tool composition', () => {
 test('buildActTooling preserves free-tier and compare-slot stripping behavior', () => {
   const freePrimary = buildActTooling({
     allowedOverlayToolIds: [],
-    composioRaw: toolSet({ GMAIL_SEND_EMAIL: {}, BROWSER_NAVIGATE: {} }),
+    integrationRaw: toolSet({ GMAIL_SEND_EMAIL: {}, BROWSER_NAVIGATE: {} }),
     isMultiModelFollowUpSlot: false,
     mcpToolsRaw: toolSet({ search_mcp_tools: {}, call_mcp_tool: {} }),
     paid: false,
@@ -54,7 +54,7 @@ test('buildActTooling preserves free-tier and compare-slot stripping behavior', 
 
   const compareSlot = buildActTooling({
     allowedOverlayToolIds: [],
-    composioRaw: toolSet({ GMAIL_SEND_EMAIL: {} }),
+    integrationRaw: toolSet({ GMAIL_SEND_EMAIL: {} }),
     isMultiModelFollowUpSlot: true,
     mcpToolsRaw: toolSet({ search_mcp_tools: {}, call_mcp_tool: {} }),
     paid: true,

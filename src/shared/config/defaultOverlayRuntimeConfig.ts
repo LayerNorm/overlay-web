@@ -83,6 +83,9 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     keySource: 'env',
     modelAllowlist: [],
   },
+  integrations: {
+    executor: {},
+  },
   database: {
     provider: 'convex',
   },
