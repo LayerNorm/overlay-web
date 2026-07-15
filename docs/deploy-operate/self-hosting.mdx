@@ -339,9 +339,11 @@ provider-neutral API. Available roles are `admin`, `auditor`,
 `billing_admin`, and `support`. Only `admin` can grant or revoke roles, auditors
 can read audit records, and an administrator cannot revoke their own active role.
 Audit metadata is size-bounded and secret-shaped keys are redacted before insert.
-Users manage scoped credentials under Account settings. Run the provider-shared
-P7 contracts before releases and both Stripe and institution profiles from
-`deploy-operate/aws-rehearsal-7` before an AWS pilot.
+Users manage scoped credentials under Account settings. Before an AWS pilot,
+complete the [AWS deployment](/deploy-operate/aws),
+[security](/deploy-operate/security), and
+[release gate](/deploy-operate/release-gates) procedures for each enabled
+billing profile.
 
 For future vector-search planning, confirm that the managed Postgres provider exposes the `vector` extension:
 

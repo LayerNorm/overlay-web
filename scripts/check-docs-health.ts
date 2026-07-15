@@ -62,6 +62,11 @@ const stalePublicPatterns = [
   { label: 'removed design.md link', pattern: /docs\/design\.md|\.\/design\.md/i },
   { label: 'removed docs sync workflow', pattern: /docs:sync|sync-docs-to-site/i },
   { label: 'stale public Phase 6 framing', pattern: /\bPhase 6\b/ },
+  {
+    label: 'private numbered AWS rehearsal reference',
+    pattern: /aws-rehearsal-\d|^title:\s*["']?AWS Rehearsal\s+\d/im,
+  },
+  { label: 'internal phase-titled page', pattern: /^title:\s*["']?P\d/im },
 ] as const
 
 type DocsJsonNavigation = {

@@ -37,11 +37,11 @@
       },
       {
         "group": "Develop",
-        "pages": ["develop/architecture", "develop/on-prem-parity-program", "develop/postgres-app-data-implementation", "develop/convex-workflow", "develop/local-integrations", "develop/customization", "develop/feature-modules", "develop/api-source-of-truth"]
+        "pages": ["develop/architecture", "develop/convex-workflow", "develop/local-integrations", "develop/customization", "develop/feature-modules", "develop/api-source-of-truth"]
       },
       {
         "group": "Deploy & Operate",
-        "pages": ["deploy-operate/self-hosting", "deploy-operate/docker-ec2", "deploy-operate/aws", "deploy-operate/better-auth-onprem-runbook", "deploy-operate/executor-integrations", "deploy-operate/aws-rehearsal-4", "deploy-operate/aws-rehearsal-6", "deploy-operate/aws-rehearsal-7", "deploy-operate/aws-rehearsal-9", "deploy-operate/p5-stabilization", "deploy-operate/p5-security-operations", "deploy-operate/enterprise-security-launch-checklist", "deploy-operate/cloud-managed", "deploy-operate/enterprise-admin-onboarding", "deploy-operate/compliance", "deploy-operate/enterprise-source-install", "deploy-operate/one-command-install", "deploy-operate/docs-hosting", "deploy-operate/release-gates", "deploy-operate/security", "deploy-operate/tenancy"]
+        "pages": ["deploy-operate/self-hosting", "deploy-operate/docker-ec2", "deploy-operate/aws", "deploy-operate/cloud-managed", "deploy-operate/enterprise-source-install", "deploy-operate/one-command-install", "deploy-operate/better-auth-onprem-runbook", "deploy-operate/executor-integrations", "deploy-operate/enterprise-admin-onboarding", "deploy-operate/compliance", "deploy-operate/security", "deploy-operate/enterprise-security-launch-checklist", "deploy-operate/release-gates", "deploy-operate/tenancy", "deploy-operate/docs-hosting"]
       },
       {
         "group": "API Reference",
