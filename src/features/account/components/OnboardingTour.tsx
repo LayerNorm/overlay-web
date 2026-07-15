@@ -725,6 +725,7 @@ export function OnboardingTour({
           </div>
         </div>
         <IntegrationsDialog
+          connectedSlugs={connectedSlugs}
           isOpen={integrationsPickerOpen}
           onClose={() => setIntegrationsPickerOpen(false)}
           onConnect={dialogConnect}

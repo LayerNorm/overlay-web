@@ -1,7 +1,10 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
-import type { DocumentContextBundle } from '@/server/agent/document-context-builder'
+import type {
+  DocumentContextBundle,
+  DocumentContextFileLoader,
+} from '@/server/agent/document-context-builder'
 import {
   compactMessagesForContext,
   contextSummaryScope,
@@ -95,6 +98,7 @@ export class ActContextService {
   constructor(private readonly deps: {
     repository: ActConversationRepository
     buildAutoRetrievalBundle?: AutoRetrievalBuilder
+    loadDocumentFile?: DocumentContextFileLoader
   }) {}
 
   async buildMessagesForModel(params: {
@@ -234,13 +238,14 @@ export class ActContextService {
     })
 
     const docContextTask =
-      externalContextEnabled && indexedAttachmentList.length > 0
+      this.deps.loadDocumentFile && indexedAttachmentList.length > 0
         ? (async () => {
             const { buildDocumentContextBundle } = await import('@/server/agent/document-context-builder')
             return await buildDocumentContextBundle({
               attachments: indexedAttachmentList,
               userId: args.userId,
               accessToken: args.accessToken,
+              loadFile: this.deps.loadDocumentFile!,
               userQuery: args.latestUserText ?? undefined,
             })
           })()

@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, useTransition } from
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import posthog from 'posthog-js'
 import { getFileType, isEditableType } from '@/shared/files/file-viewer-types'
+import { shouldIngestDocument } from '@/shared/files/file-ingestion'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   FILES_CHANGED_EVENT,
@@ -578,6 +579,16 @@ export default function KnowledgeView({
 
   async function uploadSingleFile(file: File, parentId: string | null): Promise<{ ok: boolean; error?: string }> {
     try {
+      if (shouldIngestDocument(file.name)) {
+        const form = new FormData()
+        form.append('file', file)
+        if (parentId) form.append('parentId', parentId)
+        const ingestRes = await overlayAppClient.files.ingestDocumentResponse(form)
+        if (!ingestRes.ok) {
+          return { ok: false, error: await readUploadError(ingestRes, 'Failed to index document') }
+        }
+        return { ok: true }
+      }
       const fileType = getFileType(file.name)
       const isText = fileType === 'text' || fileType === 'markdown' || fileType === 'csv'
       if (isText) {

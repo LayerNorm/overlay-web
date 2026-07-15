@@ -20,6 +20,9 @@ const actUsagePolicy = repositoryProxy(
 
 export const actContextService = new ActContextService({
   repository: actConversationRepository,
+  loadDocumentFile: async (args) => (
+    await getOverlayServerContext().appData.repositories.files.getFile(args)
+  ),
 })
 
 export const actEntitlementService = new ActEntitlementService({

@@ -323,6 +323,7 @@ export default function IntegrationsView({
       />
 
       <IntegrationsDialog
+        connectedSlugs={connected}
         isOpen={isDialogOpen}
         onClose={() => setIsDialogOpen(false)}
         onConnect={dialogConnect}

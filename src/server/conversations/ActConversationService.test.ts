@@ -188,6 +188,39 @@ test('act context service keeps auto retrieval enabled when external provider co
   assert.equal(context.mentionsContext, '')
 })
 
+test('act context service preloads attached documents through the active file repository', async () => {
+  const loadedFileIds: string[] = []
+  const service = new ActContextService({
+    repository: repository({
+      getConversation: async () => null,
+      listMemories: async () => [],
+      listSkills: async () => [],
+    }),
+    buildAutoRetrievalBundle: async () => ({ extension: '', citations: {} }),
+    loadDocumentFile: async ({ fileId, userId }) => {
+      loadedFileIds.push(fileId)
+      return {
+        _id: fileId,
+        name: 'runbook.pdf',
+        textContent: 'The deployment checkpoint is green.',
+        userId,
+      }
+    },
+  })
+
+  const context = await service.loadTurnContext({
+    externalContextEnabled: false,
+    indexedAttachments: [{ name: 'runbook.pdf', fileIds: ['file_1'] }],
+    latestUserText: 'What is the deployment checkpoint?',
+    serverSecret: 'server-secret',
+    userId: 'user_1',
+  })
+
+  assert.deepEqual(loadedFileIds, ['file_1'])
+  assert.equal(context.hasPreloadedDocContext, true)
+  assert.match(context.docContextBundle.contextText, /deployment checkpoint is green/)
+})
+
 test('act message persistence swallows user-message persistence failures', async () => {
   let addMessageCalls = 0
   const generatingMessages = new ActGeneratingMessageService({

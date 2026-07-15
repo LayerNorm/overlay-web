@@ -27,12 +27,14 @@ const DEFAULT_OVERLAY_CLASS =
   'fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-5'
 
 export function IntegrationsDialog({
+  connectedSlugs,
   isOpen,
   onClose,
   onConnect,
   onDisconnect,
   overlayClassName = DEFAULT_OVERLAY_CLASS,
 }: {
+  connectedSlugs: ReadonlySet<string>
   isOpen: boolean
   onClose: () => void
   onConnect: (slug: string) => Promise<void>
@@ -82,7 +84,10 @@ export function IntegrationsDialog({
       const pageItems = Array.isArray(data?.items) ? data.items as PickerItem[] : []
 
       const resolve = (row: PickerItem[]) =>
-        row.map((item) => ({ ...item, name: resolveIntegrationName(item.slug, item.name) }))
+        row.map((item) => ({
+          ...item,
+          name: resolveIntegrationName(item.slug, item.name),
+        }))
 
       setItems((prev) => {
         const merged = append ? [...prev, ...resolve(pageItems)] : resolve(pageItems)
@@ -158,7 +163,6 @@ export function IntegrationsDialog({
     setError(null)
     try {
       await onDisconnect(slug)
-      setItems((prev) => prev.map((item) => item.slug === slug ? { ...item, isConnected: false } : item))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to disconnect')
     } finally {
@@ -170,7 +174,9 @@ export function IntegrationsDialog({
   if (!mounted) return null
 
   const isSearching = queryInput.trim() !== query || loadingInitial
-  const visibleItems = isSearching ? [] : items
+  const visibleItems = isSearching
+    ? []
+    : items.map((item) => ({ ...item, isConnected: connectedSlugs.has(item.slug) }))
 
   return (
     <div

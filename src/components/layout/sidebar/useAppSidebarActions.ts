@@ -6,7 +6,7 @@ import type { OverlaySidebarAction, OverlaySidebarActionKey } from '@overlay/app
 import { resolveNewChatModelFields } from '@/shared/chat/chat-model-prefs'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { dispatchChatCreated } from '@/shared/chat/chat-title'
-import { upsertCachedChat } from '@/shared/chat/chat-list-cache'
+import { markNewEmptyChat, upsertCachedChat } from '@/shared/chat/chat-list-cache'
 import { createIdempotencyKey, toRequestInit } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { GateReason } from '@/components/providers/GuestGateProvider'
@@ -76,16 +76,31 @@ export function useAppSidebarActions({
       conversation?: { _id: string; title: string; lastModified: number }
     }
     if (!data.id) return false
-    const chat = data.conversation ?? { _id: data.id, title: 'New Chat', lastModified: 0 }
+    const chat = {
+      ...(data.conversation ?? { _id: data.id, title: 'New Chat', lastModified: 0 }),
+      askModelIds: models.askModelIds,
+      actModelId: models.actModelId,
+      lastMode: models.lastMode,
+    }
     upsertCachedChat(chat)
+    markNewEmptyChat(chat)
     dispatchChatCreated({ chat })
     onChatCreated()
     onCloseMobileMenu()
-    router.push(`/app/chat?id=${encodeURIComponent(data.id)}`)
+    const href = `/app/chat?id=${encodeURIComponent(data.id)}`
+    if (pathname === '/app/chat') {
+      window.history.pushState(null, '', href)
+      window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
+        detail: { chatId: data.id },
+      }))
+    } else {
+      router.push(href)
+    }
     return true
   }, [
     onChatCreated,
     onCloseMobileMenu,
+    pathname,
     requireAuth,
     router,
     isFreeTier,

@@ -5,7 +5,7 @@ import type { MutableRefObject } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
-import { removeCachedChat } from '@/shared/chat/chat-list-cache'
+import { consumeNewEmptyChat, removeCachedChat } from '@/shared/chat/chat-list-cache'
 import {
   buildRestoredMessageExchanges,
   cloneUiMessageThread,
@@ -115,8 +115,28 @@ export function useChatConversationLoader({
     syncStandaloneChatUrl(chatId, options)
     const runtime = ensureConversationRuntime(chatId)
     const existingChat = chats.find((chat) => chat._id === chatId)
-    setActiveChatTitle(existingChat?.title ?? runtime.ui.activeChatTitle ?? null)
+    const newEmptyChat = consumeNewEmptyChat(chatId)
+    const chatMeta = existingChat ?? newEmptyChat
+    setActiveChatTitle(chatMeta?.title ?? runtime.ui.activeChatTitle ?? null)
     pendingTitleRef.current = null
+
+    if (newEmptyChat) {
+      const selection = normalizeChatModelSelection({
+        askModelIds: newEmptyChat.askModelIds?.slice(0, 4) ?? selectedModels,
+        actModelId: newEmptyChat.actModelId ?? selectedActModel,
+      })
+      runtime.ui = createConversationUiState({
+        activeChatTitle: newEmptyChat.title,
+        askModelSelectionMode: selection.askModelIds.length > 1 ? 'multiple' : 'single',
+        isFirstMessage: true,
+        selectedActModel: selection.actModelId,
+        selectedModels: selection.askModelIds,
+      })
+      runtime.hydrated = true
+      applyUiStateToView(runtime.ui)
+      setRuntimeHydrationVersion((value) => value + 1)
+      return
+    }
 
     const runtimeHasLoadedHistory =
       runtime.actChat.messages.some((message) => message.role === 'user') ||
@@ -132,7 +152,7 @@ export function useChatConversationLoader({
     setIsSwitchingChat(true)
     runtime.hydrated = false
     try {
-      const shouldLoadMeta = !existingChat?.title || !existingChat?.askModelIds?.length || !existingChat?.actModelId
+      const shouldLoadMeta = !chatMeta?.title || !chatMeta?.askModelIds?.length || !chatMeta?.actModelId
       const snapshot = await loadConversationSnapshot({ chatId, loadGeneratedOutputs, shouldLoadMeta })
       if (requestId !== loadChatRequestRef.current) return
       if (snapshot.status === 'missing') {
@@ -167,10 +187,10 @@ export function useChatConversationLoader({
       }
 
       const hasUserMessages = rawMessages.some((msg) => msg.role === 'user')
-      let resolvedTitle = existingChat?.title ?? null
+      let resolvedTitle = chatMeta?.title ?? null
       let restoredTextSelection = normalizeChatModelSelection({
-        askModelIds: existingChat?.askModelIds?.slice(0, 4) ?? selectedModels,
-        actModelId: existingChat?.actModelId ?? selectedActModel,
+        askModelIds: chatMeta?.askModelIds?.slice(0, 4) ?? selectedModels,
+        actModelId: chatMeta?.actModelId ?? selectedActModel,
       })
       if (snapshot.meta) {
         const meta = snapshot.meta

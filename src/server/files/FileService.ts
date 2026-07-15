@@ -88,7 +88,7 @@ export type SearchTextMatchRow = {
 export type ContentProxyResult =
   | { kind: 'json'; payload: Record<string, unknown>; status: number }
   | { kind: 'redirect'; url: string }
-  | { kind: 'upstream'; url: string }
+  | { kind: 'upstream'; name: string; url: string }
 
 const defaultStorage: FileServiceStorage = {
   checkGlobalR2Budget,
@@ -336,11 +336,11 @@ export class FileService {
         bytes: proxyTarget.sizeBytes ?? 0,
       }).catch((error) => logger.warn('[files/content] bandwidth accounting failed', error))
       const url = await this.storage.generatePresignedDownloadUrl(proxyTarget.r2Key)
-      return { kind: 'redirect', url }
+      return { kind: 'upstream', name: proxyTarget.name, url }
     }
 
     if (proxyTarget.url) {
-      return { kind: 'upstream', url: proxyTarget.url }
+      return { kind: 'upstream', name: proxyTarget.name, url: proxyTarget.url }
     }
 
     return { kind: 'json', payload: { error: 'Not found' }, status: 404 }

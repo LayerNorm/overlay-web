@@ -296,7 +296,7 @@ test('FileService.ingestDocument persists extracted parts in one repository oper
   assert.equal(storage.uploadedKeys.length, 1)
 })
 
-test('FileService.getContentProxy records bandwidth and returns redirect', async () => {
+test('FileService.getContentProxy records bandwidth and keeps storage previews same-origin', async () => {
   let bandwidth: Record<string, unknown> | undefined
   const repository = createRepository({
     async getStorageUrlForProxy() {
@@ -315,7 +315,8 @@ test('FileService.getContentProxy records bandwidth and returns redirect', async
   const result = await service.getContentProxy({ userId: 'user_1', fileId: 'file_1' })
 
   assert.deepEqual(result, {
-    kind: 'redirect',
+    kind: 'upstream',
+    name: 'a.txt',
     url: 'https://download.test/users%2Fuser_1%2Ffiles%2Ffile_1%2Fa.txt',
   })
   assert.deepEqual(bandwidth, { userId: 'user_1', bytes: 42 })

@@ -2,6 +2,10 @@
 
 import { useEffect, useRef } from 'react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import {
+  LOCAL_STREAM_RECONCILIATION_GRACE_MS,
+  shouldReloadActiveConversation,
+} from '@/shared/chat/postgres-conversation-event-policy'
 
 type ConversationEvent = {
   sequence: number
@@ -41,6 +45,8 @@ export function usePostgresConversationEvents({
     let listReloadTimer: ReturnType<typeof setTimeout> | undefined
     let activeReloadInFlight = false
     let activeReloadQueued = false
+    let activeReloadQueuedEventTypes: string[] = []
+    let localStreamGraceUntil = 0
 
     const scheduleListReload = () => {
       if (listReloadTimer) return
@@ -50,22 +56,42 @@ export function usePostgresConversationEvents({
       }, 300)
     }
 
-    const scheduleActiveReload = (chatId: string) => {
-      if (callbacksRef.current.hasActiveLocalStream()) return
+    const scheduleActiveReload = (chatId: string, eventTypes: string[]) => {
+      if (callbacksRef.current.hasActiveLocalStream()) {
+        localStreamGraceUntil = Date.now() + LOCAL_STREAM_RECONCILIATION_GRACE_MS
+        return
+      }
+      if (!shouldReloadActiveConversation({
+        eventTypes,
+        localStreamGraceUntil,
+        now: Date.now(),
+      })) return
       if (activeReloadInFlight) {
         activeReloadQueued = true
+        activeReloadQueuedEventTypes.push(...eventTypes)
         return
       }
       if (activeReloadTimer) clearTimeout(activeReloadTimer)
       activeReloadTimer = setTimeout(() => {
         activeReloadTimer = undefined
-        if (activeChatIdRef.current !== chatId || callbacksRef.current.hasActiveLocalStream()) return
+        if (activeChatIdRef.current !== chatId) return
+        if (callbacksRef.current.hasActiveLocalStream()) {
+          localStreamGraceUntil = Date.now() + LOCAL_STREAM_RECONCILIATION_GRACE_MS
+          return
+        }
+        if (!shouldReloadActiveConversation({
+          eventTypes,
+          localStreamGraceUntil,
+          now: Date.now(),
+        })) return
         activeReloadInFlight = true
         void callbacksRef.current.reloadActiveConversation(chatId).finally(() => {
           activeReloadInFlight = false
           if (!activeReloadQueued) return
           activeReloadQueued = false
-          scheduleActiveReload(chatId)
+          const queuedEventTypes = activeReloadQueuedEventTypes
+          activeReloadQueuedEventTypes = []
+          scheduleActiveReload(chatId, queuedEventTypes)
         })
       }, 200)
     }
@@ -97,7 +123,7 @@ export function usePostgresConversationEvents({
             callbacksRef.current.onRemoteStop()
           }
           if (activeChatId && activeEvents.length > 0) {
-            scheduleActiveReload(activeChatId)
+            scheduleActiveReload(activeChatId, activeEvents.map((event) => event.type))
           }
         } catch (error) {
           if (stopped || controller.signal.aborted) return

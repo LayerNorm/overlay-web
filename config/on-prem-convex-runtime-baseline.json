@@ -156,7 +156,6 @@
     "src/server/admin/ConvexAdministrativeRepository.ts",
     "src/server/admin/ConvexAuditRepository.ts",
     "src/server/admin/index.ts",
-    "src/server/agent/document-context-builder.ts",
     "src/server/ai/catalog/ConvexModelCatalogRepository.ts",
     "src/server/ai/catalog/index.ts",
     "src/server/ai/sandbox/ConvexDaytonaWorkspaceRepository.ts",
