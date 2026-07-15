@@ -1,4 +1,3 @@
-import Stripe from 'stripe'
 import { NextResponse } from 'next/server'
 import { requireOverlayCapability } from '@/server/capabilities'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -6,6 +5,10 @@ import { getOverlayRuntimeConfigSync } from '@/server/config'
 import { StripeWebhookService } from '@/server/billing/StripeWebhookService'
 import type { BillingRepository } from '@/server/billing/BillingRepository'
 import type { BillingWebhookRepository } from '@/server/billing/BillingProviderEventRepository'
+import {
+  constructStripeWebhookEvent,
+  type StripeWebhookEvent,
+} from '@/server/billing/stripe-webhook-verifier'
 
 export async function POST(request: Request) {
   const disabledCapabilityResponse = await requireOverlayCapability('billing')
@@ -27,9 +30,9 @@ export async function POST(request: Request) {
   }
 
   const rawBody = await request.text()
-  let event: Stripe.Event
+  let event: StripeWebhookEvent
   try {
-    event = new Stripe(secretKey).webhooks.constructEvent(rawBody, signature, webhookSecret)
+    event = constructStripeWebhookEvent({ rawBody, secretKey, signature, webhookSecret })
   } catch (_error) {
     return NextResponse.json({ error: 'Invalid Stripe signature' }, { status: 400 })
   }
