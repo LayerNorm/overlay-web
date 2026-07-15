@@ -57,13 +57,9 @@ export interface ActTooling {
 
 export function preloadActExternalToolTasks(params: {
   accessToken?: string
-  disabled?: boolean
   serverSecret: string
   userId: string
 }): ActToolPreloadTasks {
-  if (params.disabled) {
-    return { integrationToolsTask: Promise.resolve({} as ToolSet) }
-  }
   try {
     if (!getActCapabilitiesSync().integrations) {
       return { integrationToolsTask: Promise.resolve({} as ToolSet) }
@@ -91,7 +87,6 @@ export async function prepareActTooling(params: {
   baseUrl: string
   conversationId?: string
   conversationProjectId?: string
-  disabled?: boolean
   effectiveModelId: string
   forwardCookie?: string | null
   isMultiModelFollowUpSlot: boolean
@@ -106,17 +101,6 @@ export async function prepareActTooling(params: {
   turnId: string
   userId: string
 }): Promise<ActTooling> {
-  if (params.disabled) {
-    return {
-      allowedOverlayToolIds: [],
-      composioStrippedForCompareSlot: false,
-      exposedMediaTools: [],
-      gatewaySearchLog: 'disabled',
-      missingGatewaySearchTools: false,
-      tools: {},
-      ttft: { mcpCatalogMs: 0 },
-    }
-  }
   const capabilities = await getActCapabilities()
   const memoryEnabled = params.memoryEnabled !== false && capabilities.memory && capabilities.vectorSearch
   const allowedOverlayToolIds = applyRuntimeToolGates(

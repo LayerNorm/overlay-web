@@ -169,9 +169,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
     const effectiveModelId = resolveEffectiveActModelId(modelId)
     const serverSecret = getInternalApiSecret()
-    const requestedToolIds = isPostgresAppData
-      ? []
-      : normalizeChatToolRequestIds(rawRequestedToolIds)
+    const requestedToolIds = normalizeChatToolRequestIds(rawRequestedToolIds)
     const memoryEnabled = rawMemoryEnabled !== false
     const {
       appSettings,
@@ -229,7 +227,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId,
       accessToken,
       serverSecret,
-      disabled: isPostgresAppData,
     })
 
     // P3.2 Wave 1: user-message save + context fetches stay parallel.
@@ -355,7 +352,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	        serverSecret,
 	        turnId: tid,
 	        userId,
-	        disabled: isPostgresAppData,
 	      }),
 	    ])
     pendingGeneratingMessageId = generatingMessageId
