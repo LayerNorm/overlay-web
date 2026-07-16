@@ -2,6 +2,9 @@ export {
   resolveBetterAuthConnection,
   resolveBetterAuthConnectionSet,
 } from './preset-registry'
+export {
+  evaluateBetterAuthAccessPolicy,
+} from './access-policy'
 export type {
   BetterAuthConfig,
   BetterAuthConnectionIcon,
@@ -9,3 +12,8 @@ export type {
   ResolvedBetterAuthConnectionSet,
   ResolvedBetterAuthOidcConnection,
 } from './types'
+export type {
+  BetterAuthAccessPolicyDecision,
+  BetterAuthAccessPolicyDenial,
+  BetterAuthIdentity,
+} from './access-policy'

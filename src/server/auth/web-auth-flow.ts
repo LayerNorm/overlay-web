@@ -1,27 +1,17 @@
 import 'server-only'
 
 import { NextResponse } from 'next/server'
+import { getAuthUiOptionsForConfig } from '@/server/auth/auth-ui-options'
 import { getBetterAuth, resolveBetterAuthRuntimeConfig } from '@/server/auth/better-auth'
 import * as workosAuth from '@/server/auth/workos-auth'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
+import type { AuthUiOptions } from '@/shared/auth/auth-ui-options'
 import type { AuthSession, AuthUser } from '@/shared/auth/session-types'
 
 type WorkOsSsoProvider = 'GoogleOAuth' | 'AppleOAuth' | 'MicrosoftOAuth'
-export type PublicSsoProvider = 'google' | 'apple' | 'microsoft' | 'sso'
+export type PublicSsoProvider = string
 export type NativeAuthProvider = WorkOsSsoProvider | 'authkit'
-
-export type AuthUiOptions = {
-  provider: string
-  supportsSso: boolean
-  supportsPasswordSignIn: boolean
-  supportsPasswordSignUp: boolean
-  supportsPasswordReset: boolean
-  supportsEmailVerification: boolean
-  ssoProviders: Array<{
-    id: PublicSsoProvider
-    label: string
-  }>
-}
+export type { AuthUiOptions }
 
 type StartSsoOptions = {
   provider: PublicSsoProvider
@@ -66,23 +56,20 @@ interface WebAuthFlowProvider {
   refreshSessionFromRefreshToken(refreshToken: string, expectedUserId?: string): Promise<AuthSession | null>
 }
 
-const WORKOS_SSO_PROVIDERS: Array<{ id: Exclude<PublicSsoProvider, 'sso'>; label: string; workosProvider: WorkOsSsoProvider }> = [
-  { id: 'google', label: 'Continue with Google', workosProvider: 'GoogleOAuth' },
-  { id: 'apple', label: 'Continue with Apple', workosProvider: 'AppleOAuth' },
-  { id: 'microsoft', label: 'Continue with Microsoft', workosProvider: 'MicrosoftOAuth' },
+const WORKOS_SSO_PROVIDERS: Array<{
+  id: string
+  label: string
+  icon: 'google' | 'apple' | 'microsoft'
+  workosProvider: WorkOsSsoProvider
+}> = [
+  { id: 'google', label: 'Continue with Google', icon: 'google', workosProvider: 'GoogleOAuth' },
+  { id: 'apple', label: 'Continue with Apple', icon: 'apple', workosProvider: 'AppleOAuth' },
+  { id: 'microsoft', label: 'Continue with Microsoft', icon: 'microsoft', workosProvider: 'MicrosoftOAuth' },
 ]
 
 class WorkOsWebAuthFlowProvider implements WebAuthFlowProvider {
   getOptions(): AuthUiOptions {
-    return {
-      provider: 'workos',
-      supportsSso: true,
-      supportsPasswordSignIn: true,
-      supportsPasswordSignUp: true,
-      supportsPasswordReset: true,
-      supportsEmailVerification: true,
-      ssoProviders: WORKOS_SSO_PROVIDERS.map(({ id, label }) => ({ id, label })),
-    }
+    return getAuthUiOptionsForConfig(getOverlayRuntimeConfigSync())
   }
 
   async startSso(
@@ -143,25 +130,22 @@ class WorkOsWebAuthFlowProvider implements WebAuthFlowProvider {
 
 class BetterAuthWebAuthFlowProvider implements WebAuthFlowProvider {
   getOptions(): AuthUiOptions {
-    return {
-      provider: 'better-auth',
-      supportsSso: true,
-      supportsPasswordSignIn: false,
-      supportsPasswordSignUp: false,
-      supportsPasswordReset: false,
-      supportsEmailVerification: false,
-      ssoProviders: [{ id: 'sso', label: 'Continue with SSO' }],
-    }
+    return getAuthUiOptionsForConfig(getOverlayRuntimeConfigSync())
   }
 
   async startSso(
     request: Request,
     options: StartSsoOptions,
   ): Promise<Response> {
-    void options.provider
     void options.forceSignIn
     const config = getOverlayRuntimeConfigSync()
     const betterAuthConfig = resolveBetterAuthRuntimeConfig(config)
+    const connection = betterAuthConfig.connections.find(
+      (candidate) => candidate.id === options.provider,
+    )
+    if (!connection) {
+      throw new Error('Unsupported SSO provider for Better Auth.')
+    }
     const normalizedRedirectUri = workosAuth.normalizeAuthRedirect(options.redirectUri)
     if (options.redirectUri && normalizedRedirectUri === null) {
       throw new Error('Invalid redirect URI')
@@ -175,12 +159,7 @@ class BetterAuthWebAuthFlowProvider implements WebAuthFlowProvider {
     const body: Record<string, unknown> = {
       callbackURL,
       errorCallbackURL,
-    }
-    if (betterAuthConfig.defaultSsoProviderId) {
-      body.providerId = betterAuthConfig.defaultSsoProviderId
-    }
-    if (betterAuthConfig.defaultSsoDomain) {
-      body.domain = betterAuthConfig.defaultSsoDomain
+      providerId: connection.id,
     }
 
     const headers = new Headers()

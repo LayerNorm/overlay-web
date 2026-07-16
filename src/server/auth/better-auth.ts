@@ -5,8 +5,16 @@ import { nextCookies } from 'better-auth/next-js'
 import { jwt } from 'better-auth/plugins'
 import { sso, type OIDCConfig } from '@better-auth/sso'
 import { Pool } from 'pg'
+import {
+  evaluateBetterAuthAccessPolicy,
+  resolveBetterAuthConnectionSet,
+  type ResolvedBetterAuthOidcConnection,
+} from '@/server/auth/connections'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
-import type { OverlayRuntimeConfig } from '@/shared/config'
+import type {
+  OverlayBetterAuthAccessPolicy,
+  OverlayRuntimeConfig,
+} from '@/shared/config'
 
 export const BETTER_AUTH_BASE_PATH = '/api/better-auth'
 export const BETTER_AUTH_JWKS_PATH = '/jwks'
@@ -17,12 +25,8 @@ export interface BetterAuthRuntimeConfig {
   secret: string
   databaseUrl: string
   trustedOrigins: string[]
-  defaultSsoProviderId?: string
-  defaultSsoDomain?: string
-  oidcIssuerUrl?: string
-  oidcDiscoveryEndpoint?: string
-  oidcClientId?: string
-  oidcClientSecret?: string
+  connections: ResolvedBetterAuthOidcConnection[]
+  accessPolicy: OverlayBetterAuthAccessPolicy
   jwtIssuer: string
   jwtAudience: string
   jwksUrl: string
@@ -64,7 +68,7 @@ export function createBetterAuthOptions(
     basePath: resolved.basePath,
     secret: resolved.secret,
     database,
-    trustedOrigins: buildTrustedOrigins(resolved),
+    trustedOrigins: buildBetterAuthTrustedOrigins(resolved),
     emailAndPassword: {
       enabled: false,
     },
@@ -72,7 +76,7 @@ export function createBetterAuthOptions(
       sso({
         providersLimit: 0,
         trustEmailVerified: true,
-        defaultSSO: buildDefaultSsoProviders(resolved),
+        defaultSSO: buildBetterAuthDefaultSsoProviders(resolved),
       }),
       jwt({
         jwks: {
@@ -104,6 +108,22 @@ export function createBetterAuthOptions(
         enabled: true,
       },
     },
+    account: {
+      accountLinking: {
+        enabled: true,
+        disableImplicitLinking: true,
+      },
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (user) => evaluateBetterAuthAccessPolicy({
+            email: user.email,
+            emailVerified: user.emailVerified,
+          }, resolved.accessPolicy).allowed,
+        },
+      },
+    },
   } satisfies Parameters<typeof betterAuth>[0]
 }
 
@@ -115,12 +135,19 @@ export function resolveBetterAuthRuntimeConfig(
   const basePath = normalizeBasePath(auth.basePath ?? BETTER_AUTH_BASE_PATH)
   const jwtIssuer = normalizeOrigin(auth.jwtIssuer ?? baseUrl)
   const jwtAudience = auth.jwtAudience?.trim() || baseUrl
+  const connectionSet = resolveBetterAuthConnectionSet(auth)
 
   if (!auth.secret) {
     throw new Error('BETTER_AUTH_SECRET is required when auth.provider is better-auth')
   }
   if (!auth.databaseUrl) {
     throw new Error('BETTER_AUTH_DATABASE_URL is required when auth.provider is better-auth')
+  }
+  if (connectionSet.connections.length === 0) {
+    throw new Error('At least one Better Auth SSO connection is required')
+  }
+  if (connectionSet.accessPolicy.allowedEmailDomains.length === 0) {
+    throw new Error('Better Auth requires at least one allowed email domain')
   }
 
   return {
@@ -129,56 +156,41 @@ export function resolveBetterAuthRuntimeConfig(
     secret: auth.secret,
     databaseUrl: auth.databaseUrl,
     trustedOrigins: auth.trustedOrigins.map(normalizeOrigin),
-    defaultSsoProviderId: auth.defaultSsoProviderId,
-    defaultSsoDomain: auth.defaultSsoDomain,
-    oidcIssuerUrl: auth.oidcIssuerUrl,
-    oidcDiscoveryEndpoint: auth.oidcDiscoveryEndpoint,
-    oidcClientId: auth.oidcClientId,
-    oidcClientSecret: auth.oidcClientSecret,
+    connections: connectionSet.connections,
+    accessPolicy: connectionSet.accessPolicy,
     jwtIssuer,
     jwtAudience,
     jwksUrl: auth.jwksUrl ?? `${baseUrl}${basePath}${BETTER_AUTH_JWKS_PATH}`,
   }
 }
 
-function buildDefaultSsoProviders(config: BetterAuthRuntimeConfig) {
-  if (
-    !config.defaultSsoProviderId ||
-    !config.defaultSsoDomain ||
-    !config.oidcIssuerUrl ||
-    !config.oidcClientId ||
-    !config.oidcClientSecret
-  ) {
-    return []
-  }
+export function buildBetterAuthDefaultSsoProviders(config: BetterAuthRuntimeConfig) {
+  return config.connections.flatMap((connection) => {
+    const oidcConfig: OIDCConfig = {
+      issuer: connection.issuerUrl,
+      clientId: connection.clientId,
+      clientSecret: connection.clientSecret,
+      discoveryEndpoint: connection.discoveryEndpoint,
+      scopes: [...connection.scopes],
+      pkce: true,
+    }
 
-  const oidcConfig: OIDCConfig = {
-    issuer: config.oidcIssuerUrl,
-    clientId: config.oidcClientId,
-    clientSecret: config.oidcClientSecret,
-    discoveryEndpoint:
-      config.oidcDiscoveryEndpoint ??
-      `${config.oidcIssuerUrl.replace(/\/+$/, '')}/.well-known/openid-configuration`,
-    pkce: true,
-  }
-
-  return [{
-    domain: config.defaultSsoDomain,
-    providerId: config.defaultSsoProviderId,
-    oidcConfig,
-  }]
+    return connection.domains.map((domain) => ({
+      domain,
+      providerId: connection.id,
+      oidcConfig,
+    }))
+  })
 }
 
-function buildTrustedOrigins(config: BetterAuthRuntimeConfig): string[] {
+export function buildBetterAuthTrustedOrigins(config: BetterAuthRuntimeConfig): string[] {
   const origins = new Set([
     config.baseUrl,
     ...config.trustedOrigins,
   ])
-  if (config.oidcIssuerUrl) {
-    origins.add(normalizeOrigin(config.oidcIssuerUrl))
-  }
-  if (config.oidcDiscoveryEndpoint) {
-    origins.add(normalizeOrigin(config.oidcDiscoveryEndpoint))
+  for (const connection of config.connections) {
+    origins.add(normalizeOrigin(connection.issuerUrl))
+    origins.add(normalizeOrigin(connection.discoveryEndpoint))
   }
   return [...origins]
 }

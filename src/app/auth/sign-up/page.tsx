@@ -341,7 +341,7 @@ function SignUpContent() {
                   disabled={ssoLoading !== null}
                   className={sso}
                 >
-                  <SsoProviderIcon provider={provider.id} />
+                  <SsoProviderIcon icon={provider.icon} />
                   {ssoLoading === provider.id ? 'Redirecting...' : provider.label}
                 </button>
               ))}

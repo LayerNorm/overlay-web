@@ -50,7 +50,7 @@ export function SignInForm({ redirectTo, onClose, ssoEnabled = true }: SignInFor
               disabled={ssoLoading !== null}
               className={ssoBtn}
             >
-              <SsoProviderIcon provider={provider.id} />
+              <SsoProviderIcon icon={provider.icon} />
               {ssoLoading === provider.id ? 'Redirecting…' : provider.label}
             </button>
           ))}

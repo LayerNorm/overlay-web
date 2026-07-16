@@ -7,6 +7,7 @@ import type {
   UserProfile,
 } from '@overlay/app-core'
 import { getBetterAuth, resolveBetterAuthRuntimeConfig } from '@/server/auth/better-auth'
+import { evaluateBetterAuthAccessPolicy } from '@/server/auth/connections'
 import { logger } from '@/server/observability/logger'
 import type { UserService } from '@/server/users'
 import type { OverlayRuntimeConfig } from '@/shared/config'
@@ -105,6 +106,19 @@ export class BetterAuthProvider implements AuthProvider {
       throw error
     })
     if (!session?.user?.id) return null
+
+    const runtimeConfig = resolveBetterAuthRuntimeConfig(this.config.runtimeConfig)
+    const policyDecision = evaluateBetterAuthAccessPolicy({
+      email: session.user.email,
+      emailVerified: session.user.emailVerified,
+    }, runtimeConfig.accessPolicy)
+    if (!policyDecision.allowed) {
+      logger.warn('[Auth] Better Auth session denied by access policy', {
+        userId: session.user.id,
+        reason: policyDecision.reason,
+      })
+      return null
+    }
 
     const tokenPayload = await auth.api.getToken({
       headers: req.headers,

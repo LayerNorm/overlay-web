@@ -88,6 +88,71 @@ test('createOverlayServerContext returns Better Auth adapter when selected', () 
   assert.equal(context.auth instanceof BetterAuthProvider, true)
 })
 
+test('createOverlayServerContext rejects Better Auth without a configured SSO connection', () => {
+  const base = fixture('saas-staging.json')
+  const runtimeConfig = parseOverlayRuntimeConfig({
+    ...base,
+    providers: {
+      ...base.providers,
+      auth: { provider: 'better-auth' },
+    },
+    auth: {
+      provider: 'better-auth',
+      allowDevFallbacks: false,
+      workos: {},
+      oidc: {},
+      betterAuth: {
+        baseUrl: 'https://staging.getoverlay.io',
+        secret: 'better_auth_secret',
+        databaseUrl: 'postgres://overlay_auth:secret@localhost:5432/overlay_auth',
+      },
+    },
+  })
+
+  assert.throws(
+    () => createOverlayServerContext({ appConfig: {}, runtimeConfig }),
+    (error) =>
+      error instanceof OverlayConfigError &&
+      error.issues.includes('At least one Better Auth SSO connection is required'),
+  )
+})
+
+test('createOverlayServerContext rejects unresolved Better Auth credential references', () => {
+  const base = fixture('saas-staging.json')
+  const runtimeConfig = parseOverlayRuntimeConfig({
+    ...base,
+    providers: {
+      ...base.providers,
+      auth: { provider: 'better-auth' },
+    },
+    auth: {
+      provider: 'better-auth',
+      allowDevFallbacks: false,
+      workos: {},
+      oidc: {},
+      betterAuth: {
+        baseUrl: 'https://staging.getoverlay.io',
+        secret: 'better_auth_secret',
+        databaseUrl: 'postgres://overlay_auth:secret@localhost:5432/overlay_auth',
+        connections: [{
+          id: 'workspace',
+          preset: 'google-workspace',
+          domains: ['school.edu'],
+          clientIdEnv: 'MISSING_GOOGLE_CLIENT_ID',
+          clientSecretEnv: 'MISSING_GOOGLE_CLIENT_SECRET',
+        }],
+      },
+    },
+  })
+
+  assert.throws(
+    () => createOverlayServerContext({ appConfig: {}, runtimeConfig }),
+    (error) =>
+      error instanceof OverlayConfigError &&
+      error.issues.some((issue) => issue.includes('MISSING_GOOGLE_CLIENT_ID')),
+  )
+})
+
 test('createOverlayServerContext wires Redis rate limiting when selected', () => {
   const base = fixture('onprem-s3-oidc-openai.json')
   const runtimeConfig = parseOverlayRuntimeConfig({

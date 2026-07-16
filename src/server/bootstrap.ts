@@ -3,6 +3,7 @@ import 'server-only'
 import overlayAppConfig from '@/overlay.config'
 import { NoOpLLMGateway, OpenAILLMGateway, OpenRouterGateway } from '@/server/ai/providers'
 import { ApiKeyService } from '@/server/auth/api-keys'
+import { resolveBetterAuthConnectionSet } from '@/server/auth/connections'
 import { AdministrativeService, AuditService } from '@/server/admin'
 import {
   BetterAuthProvider,
@@ -393,6 +394,17 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
   if (authProvider === 'better-auth') {
     if (!config.auth.betterAuth.secret) issues.push('auth.betterAuth.secret is required when auth.provider is better-auth')
     if (!config.auth.betterAuth.databaseUrl) issues.push('auth.betterAuth.databaseUrl is required when auth.provider is better-auth')
+    try {
+      const connectionSet = resolveBetterAuthConnectionSet(config.auth.betterAuth)
+      if (connectionSet.connections.length === 0) {
+        issues.push('At least one Better Auth SSO connection is required')
+      }
+      if (connectionSet.accessPolicy.allowedEmailDomains.length === 0) {
+        issues.push('Better Auth requires at least one allowed email domain')
+      }
+    } catch (error) {
+      issues.push(error instanceof Error ? error.message : 'Better Auth connection configuration is invalid')
+    }
   }
   if (capabilities.billing && config.billing.provider === 'stripe' && !config.billing.stripe.secretKey) {
     issues.push('billing.stripe.secretKey is required when billing.provider is stripe')

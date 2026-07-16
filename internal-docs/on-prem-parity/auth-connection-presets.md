@@ -88,7 +88,7 @@ Acceptance:
 - No customer name or customer domain exists in a shipped preset.
 - Cognito, Okta, and Keycloak can be expressed through `generic-oidc` fixtures.
 
-### Phase 3: Better Auth runtime wiring
+### Phase 3: Better Auth runtime wiring (implemented)
 
 Replace the single `buildDefaultSsoProviders` path with a resolver that supplies
 all configured static connections to Better Auth's SSO plugin.
@@ -111,7 +111,7 @@ Acceptance:
 - Unverified or disallowed-domain users cannot access Overlay.
 - JWT, session refresh, sign-out, and account deletion retain current behavior.
 
-### Phase 4: Provider-driven web UI
+### Phase 4: Provider-driven web UI (implemented)
 
 Make `/api/auth/options` return connection-derived sign-in options:
 
