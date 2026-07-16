@@ -56,229 +56,229 @@ Use security-group references, not public database endpoints:
 ## Install
 
 <Steps>
-  <Step title="Connect to the EC2 instance">
-    Connect through Session Manager when available. Otherwise use the temporary,
-    IP-restricted SSH rule:
+<Step title="Connect to the EC2 instance">
+Connect through Session Manager when available. Otherwise use the temporary,
+IP-restricted SSH rule:
 
-    ```bash
-    ssh ubuntu@<EC2_PUBLIC_DNS>
-    ```
-  </Step>
+```bash
+ssh ubuntu@<EC2_PUBLIC_DNS>
+```
+</Step>
 
-  <Step title="Install Docker, Git, and PostgreSQL tools">
-    Review the Docker installation script before running it if customer policy
-    requires source inspection.
+<Step title="Install Docker, Git, and PostgreSQL tools">
+Review the Docker installation script before running it if customer policy
+requires source inspection.
 
-    ```bash
-    sudo apt-get update
-    sudo apt-get install -y ca-certificates curl git jq postgresql-client
-    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-    less /tmp/get-docker.sh
-    sudo sh /tmp/get-docker.sh
-    sudo usermod -aG docker "$USER"
-    newgrp docker
-    docker version
-    docker compose version
-    ```
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl git jq postgresql-client
+curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+less /tmp/get-docker.sh
+sudo sh /tmp/get-docker.sh
+sudo usermod -aG docker "$USER"
+newgrp docker
+docker version
+docker compose version
+```
 
-    Install the AWS RDS CA bundle for administrative `psql` commands:
+Install the AWS RDS CA bundle for administrative `psql` commands:
 
-    ```bash
-    mkdir -p "$HOME/.postgresql"
-    curl -fsSL \
-      https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
-      -o "$HOME/.postgresql/root.crt"
-    chmod 600 "$HOME/.postgresql/root.crt"
-    ```
-  </Step>
+```bash
+mkdir -p "$HOME/.postgresql"
+curl -fsSL \
+  https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+  -o "$HOME/.postgresql/root.crt"
+chmod 600 "$HOME/.postgresql/root.crt"
+```
+</Step>
 
-  <Step title="Create the two databases with the RDS administrator">
-    Run this once with a temporary administrative connection. The application
-    and Better Auth roles must be separate and must not retain administrative
-    membership. Replace all angle-bracket values before running it.
+<Step title="Create the two databases with the RDS administrator">
+Run this once with a temporary administrative connection. The application
+and Better Auth roles must be separate and must not retain administrative
+membership. Replace all angle-bracket values before running it.
 
-    ```bash
-    export PGHOST='<writer>.rds.amazonaws.com'
-    export PGPORT=5432
-    export PGUSER='<rds-admin-role>'
-    export PGSSLMODE=verify-full
-    export PGSSLROOTCERT="$HOME/.postgresql/root.crt"
-    read -rsp 'RDS admin password: ' PGPASSWORD; echo; export PGPASSWORD
-    read -rsp 'Overlay app password: ' OVERLAY_APP_DB_PASSWORD; echo
-    read -rsp 'Better Auth password: ' OVERLAY_AUTH_DB_PASSWORD; echo
+```bash
+export PGHOST='<writer>.rds.amazonaws.com'
+export PGPORT=5432
+export PGUSER='<rds-admin-role>'
+export PGSSLMODE=verify-full
+export PGSSLROOTCERT="$HOME/.postgresql/root.crt"
+read -rsp 'RDS admin password: ' PGPASSWORD; echo; export PGPASSWORD
+read -rsp 'Overlay app password: ' OVERLAY_APP_DB_PASSWORD; echo
+read -rsp 'Better Auth password: ' OVERLAY_AUTH_DB_PASSWORD; echo
 
-    psql --dbname=postgres -v ON_ERROR_STOP=1 \
-      -v admin_role="$PGUSER" \
-      -v app_password="$OVERLAY_APP_DB_PASSWORD" \
-      -v auth_password="$OVERLAY_AUTH_DB_PASSWORD" <<'SQL'
-    CREATE ROLE overlay_app LOGIN PASSWORD :'app_password';
-    CREATE ROLE overlay_auth LOGIN PASSWORD :'auth_password';
-    GRANT overlay_app TO :"admin_role";
-    GRANT overlay_auth TO :"admin_role";
-    SQL
+psql --dbname=postgres -v ON_ERROR_STOP=1 \
+  -v admin_role="$PGUSER" \
+  -v app_password="$OVERLAY_APP_DB_PASSWORD" \
+  -v auth_password="$OVERLAY_AUTH_DB_PASSWORD" <<'SQL'
+CREATE ROLE overlay_app LOGIN PASSWORD :'app_password';
+CREATE ROLE overlay_auth LOGIN PASSWORD :'auth_password';
+GRANT overlay_app TO :"admin_role";
+GRANT overlay_auth TO :"admin_role";
+SQL
 
-    psql --dbname=postgres -v ON_ERROR_STOP=1 \
-      -c 'CREATE DATABASE overlay_app OWNER overlay_app;'
-    psql --dbname=postgres -v ON_ERROR_STOP=1 \
-      -c 'CREATE DATABASE overlay_auth OWNER overlay_auth;'
+psql --dbname=postgres -v ON_ERROR_STOP=1 \
+  -c 'CREATE DATABASE overlay_app OWNER overlay_app;'
+psql --dbname=postgres -v ON_ERROR_STOP=1 \
+  -c 'CREATE DATABASE overlay_auth OWNER overlay_auth;'
 
-    psql --dbname=overlay_app -v ON_ERROR_STOP=1 \
-      -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+psql --dbname=overlay_app -v ON_ERROR_STOP=1 \
+  -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 
-    psql --dbname=postgres -v ON_ERROR_STOP=1 -v admin_role="$PGUSER" <<'SQL'
-    REVOKE overlay_app FROM :"admin_role";
-    REVOKE overlay_auth FROM :"admin_role";
-    SQL
-    unset PGPASSWORD OVERLAY_APP_DB_PASSWORD OVERLAY_AUTH_DB_PASSWORD
-    ```
+psql --dbname=postgres -v ON_ERROR_STOP=1 -v admin_role="$PGUSER" <<'SQL'
+REVOKE overlay_app FROM :"admin_role";
+REVOKE overlay_auth FROM :"admin_role";
+SQL
+unset PGPASSWORD OVERLAY_APP_DB_PASSWORD OVERLAY_AUTH_DB_PASSWORD
+```
 
-    RDS requires its administrative role to install `pgvector`, even when the
-    narrow sanity profile keeps vector search disabled. The normal migration
-    and runtime commands must use the restricted `overlay_app` role afterward.
-    If roles or databases already exist, inspect them instead of blindly
-    rerunning the creation statements.
-  </Step>
+RDS requires its administrative role to install `pgvector`, even when the
+narrow sanity profile keeps vector search disabled. The normal migration
+and runtime commands must use the restricted `overlay_app` role afterward.
+If roles or databases already exist, inspect them instead of blindly
+rerunning the creation statements.
+</Step>
 
-  <Step title="Clone the approved release">
-    Use the customer-controlled repository when one exists.
+<Step title="Clone the approved release">
+Use the customer-controlled repository when one exists.
 
-    ```bash
-    git clone <CUSTOMER_REPOSITORY_URL> overlay-web
-    cd overlay-web
-    git fetch --tags
-    git checkout --detach <APPROVED_RELEASE_TAG_OR_SHA>
-    git status --short --branch
-    ```
+```bash
+git clone <CUSTOMER_REPOSITORY_URL> overlay-web
+cd overlay-web
+git fetch --tags
+git checkout --detach <APPROVED_RELEASE_TAG_OR_SHA>
+git status --short --branch
+```
 
-    Record the exact commit:
+Record the exact commit:
 
-    ```bash
-    git rev-parse HEAD
-    ```
-  </Step>
+```bash
+git rev-parse HEAD
+```
+</Step>
 
-  <Step title="Create the runtime files">
-    The real environment file is ignored by Git.
+<Step title="Create the runtime files">
+The real environment file is ignored by Git.
 
-    ```bash
-    cp deploy/ec2/.env.example deploy/ec2/.env
-    cp docs/config/ec2-sanity.example.json deploy/ec2/overlay.config.json
-    chmod 600 deploy/ec2/.env
-    ```
+```bash
+cp deploy/ec2/.env.example deploy/ec2/.env
+cp docs/config/ec2-sanity.example.json deploy/ec2/overlay.config.json
+chmod 600 deploy/ec2/.env
+```
 
-    Edit `deploy/ec2/.env` and replace every `replace_me` or `replace-me`
-    value. Generate every Overlay-owned secret independently:
+Edit `deploy/ec2/.env` and replace every `replace_me` or `replace-me`
+value. Generate every Overlay-owned secret independently:
 
-    ```bash
-    openssl rand -hex 32
-    ```
+```bash
+openssl rand -hex 32
+```
 
-    Do not reuse a generated value. Do not paste secret values into chat,
-    tickets, logs, screenshots, Git, or the coding agent's final report.
+Do not reuse a generated value. Do not paste secret values into chat,
+tickets, logs, screenshots, Git, or the coding agent's final report.
 
-    Database passwords containing reserved URL characters must be URL-encoded
-    in `OVERLAY_DATABASE_URL` and `BETTER_AUTH_DATABASE_URL`.
-  </Step>
+Database passwords containing reserved URL characters must be URL-encoded
+in `OVERLAY_DATABASE_URL` and `BETTER_AUTH_DATABASE_URL`.
+</Step>
 
-  <Step title="Configure Google Workspace login">
-    In a customer-controlled Google Cloud project, configure Google Auth Platform
-    with an **Internal** audience and create a **Web application** OAuth client.
-    Register these exact values:
+<Step title="Configure Google Workspace login">
+In a customer-controlled Google Cloud project, configure Google Auth Platform
+with an **Internal** audience and create a **Web application** OAuth client.
+Register these exact values:
 
-    ```text
-    Callback URL:
-    http://localhost:3000/api/better-auth/sso/callback/workspace
+```text
+Callback URL:
+http://localhost:3000/api/better-auth/sso/callback/workspace
 
-    Web origin:
-    http://localhost:3000
-    ```
+Web origin:
+http://localhost:3000
+```
 
-    In `deploy/ec2/.env`, replace `example.edu` with the Workspace domain and
-    set `BETTER_AUTH_CONNECTION_CLIENT_ID` and
-    `BETTER_AUTH_CONNECTION_CLIENT_SECRET`. Keep the connection ID as
-    `workspace` so it matches the callback path.
+In `deploy/ec2/.env`, replace `example.edu` with the Workspace domain and
+set `BETTER_AUTH_CONNECTION_CLIENT_ID` and
+`BETTER_AUTH_CONNECTION_CLIENT_SECRET`. Keep the connection ID as
+`workspace` so it matches the callback path.
 
-    Follow [Google Workspace](/configure/authentication/recipes/google-workspace)
-    for the complete console flow. If Auth0 is the approved broker instead,
-    follow [Auth0](/configure/authentication/recipes/auth0) and use connection ID
-    `auth0`. Cognito, Okta, and Keycloak use [Generic OIDC](/configure/authentication/recipes/generic-oidc).
-  </Step>
+Follow [Google Workspace](/configure/authentication/recipes/google-workspace)
+for the complete console flow. If Auth0 is the approved broker instead,
+follow [Auth0](/configure/authentication/recipes/auth0) and use connection ID
+`auth0`. Cognito, Okta, and Keycloak use [Generic OIDC](/configure/authentication/recipes/generic-oidc).
+</Step>
 
-  <Step title="Validate and pull the release image">
-    Define a short helper for the remaining commands:
+<Step title="Validate and pull the release image">
+Define a short helper for the remaining commands:
 
-    ```bash
-    compose() {
-      docker compose \
-        --env-file deploy/ec2/.env \
-        -f deploy/ec2/docker-compose.yml \
-        "$@"
-    }
+```bash
+compose() {
+  docker compose \
+    --env-file deploy/ec2/.env \
+    -f deploy/ec2/docker-compose.yml \
+    "$@"
+}
 
-    OVERLAY_ENV_FILE=.env \
-    OVERLAY_CONFIG_PATH=./overlay.config.json \
-    compose config --quiet
-    compose pull web worker scheduler migrate
-    ```
+OVERLAY_ENV_FILE=.env \
+OVERLAY_CONFIG_PATH=./overlay.config.json \
+compose config --quiet
+compose pull web worker scheduler migrate
+```
 
-    `OVERLAY_WEB_IMAGE` must name the approved versioned release, such as
-    `ghcr.io/layernorm/overlay-web:0.1.0-rc.1`. Do not use `latest` for a
-    customer qualification run. The web, worker, scheduler, and migration roles
-    all use the same immutable image.
+`OVERLAY_WEB_IMAGE` must name the approved versioned release, such as
+`ghcr.io/layernorm/overlay-web:0.1.0-rc.1`. Do not use `latest` for a
+customer qualification run. The web, worker, scheduler, and migration roles
+all use the same immutable image.
 
-    To build inspected or customized source instead, use the build override:
+To build inspected or customized source instead, use the build override:
 
-    ```bash
-    compose_source() {
-      docker compose \
-        --env-file deploy/ec2/.env \
-        -f deploy/ec2/docker-compose.yml \
-        -f deploy/ec2/docker-compose.build.yml \
-        "$@"
-    }
+```bash
+compose_source() {
+  docker compose \
+    --env-file deploy/ec2/.env \
+    -f deploy/ec2/docker-compose.yml \
+    -f deploy/ec2/docker-compose.build.yml \
+    "$@"
+}
 
-    compose_source build web
-    ```
+compose_source build web
+```
 
-    Continue with `compose_source` instead of `compose` for the remaining steps
-    when using a source build. The override builds the tested enterprise runtime,
-    including the web server, worker, scheduler, and migration tooling.
-  </Step>
+Continue with `compose_source` instead of `compose` for the remaining steps
+when using a source build. The override builds the tested enterprise runtime,
+including the web server, worker, scheduler, and migration tooling.
+</Step>
 
-  <Step title="Run migrations once">
-    Migrations must complete before any long-running service starts:
+<Step title="Run migrations once">
+Migrations must complete before any long-running service starts:
 
-    ```bash
-    compose --profile tools run --rm migrate
-    ```
+```bash
+compose --profile tools run --rm migrate
+```
 
-    The command must exit with status `0` and report that both app-data and
-    Better Auth migrations are current. Do not run migrations from every web,
-    worker, or scheduler container.
-  </Step>
+The command must exit with status `0` and report that both app-data and
+Better Auth migrations are current. Do not run migrations from every web,
+worker, or scheduler container.
+</Step>
 
-  <Step title="Start web, worker, and scheduler">
-    ```bash
-    compose up -d web worker scheduler
-    compose ps
-    compose logs --tail=100 web worker scheduler
-    ```
+<Step title="Start web, worker, and scheduler">
+```bash
+compose up -d web worker scheduler
+compose ps
+compose logs --tail=100 web worker scheduler
+```
 
-    Wait for `web` to become healthy. Worker and scheduler logs should show a
-    successful schema check and regular runtime activity without restart loops.
-  </Step>
+Wait for `web` to become healthy. Worker and scheduler logs should show a
+successful schema check and regular runtime activity without restart loops.
+</Step>
 
-  <Step title="Open the SSH tunnel">
-    From the operator's computer, open a second terminal:
+<Step title="Open the SSH tunnel">
+From the operator's computer, open a second terminal:
 
-    ```bash
-    ssh -N -L 3000:127.0.0.1:3000 ubuntu@<EC2_PUBLIC_DNS>
-    ```
+```bash
+ssh -N -L 3000:127.0.0.1:3000 ubuntu@<EC2_PUBLIC_DNS>
+```
 
-    Keep that terminal open and visit
-    [http://localhost:3000](http://localhost:3000). The browser and IdP see a
-    localhost origin while the application runs inside the customer VPC.
-  </Step>
+Keep that terminal open and visit
+[http://localhost:3000](http://localhost:3000). The browser and IdP see a
+localhost origin while the application runs inside the customer VPC.
+</Step>
 </Steps>
 
 ## Verify the sanity check
