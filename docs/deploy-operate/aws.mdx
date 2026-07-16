@@ -111,160 +111,160 @@ value, build log, document, ticket, email, or chat.
 ## Deployment procedure
 
 <Steps>
-  <Step title="Prepare the customer repository">
-    Create a customer-controlled private repository. Import the approved Overlay
-    release and retain `layernorm/overlay-web` as the upstream remote.
+<Step title="Prepare the customer repository">
+Create a customer-controlled private repository. Import the approved Overlay
+release and retain `layernorm/overlay-web` as the upstream remote.
 
-    ```bash
-    git remote add upstream https://github.com/layernorm/overlay-web.git
-    git fetch upstream --tags
-    git checkout -b release/overlay-<VERSION>-customer.1 <APPROVED_TAG>
-    git push -u origin release/overlay-<VERSION>-customer.1
-    ```
+```bash
+git remote add upstream https://github.com/layernorm/overlay-web.git
+git fetch upstream --tags
+git checkout -b release/overlay-<VERSION>-customer.1 <APPROVED_TAG>
+git push -u origin release/overlay-<VERSION>-customer.1
+```
 
-    Merge only through a reviewed pull request with required checks.
-  </Step>
+Merge only through a reviewed pull request with required checks.
+</Step>
 
-  <Step title="Establish customer-controlled CI access">
-    Configure GitHub Actions OIDC or CodeBuild. Restrict the deployment role to
-    the exact repository, branch/environment, ECR repository, ECS services,
-    task roles, log groups, and approved infrastructure stacks. Restrict
-    `iam:PassRole` to the named ECS execution and task roles.
-  </Step>
+<Step title="Establish customer-controlled CI access">
+Configure GitHub Actions OIDC or CodeBuild. Restrict the deployment role to
+the exact repository, branch/environment, ECR repository, ECS services,
+task roles, log groups, and approved infrastructure stacks. Restrict
+`iam:PassRole` to the named ECS execution and task roles.
+</Step>
 
-  <Step title="Provision infrastructure as code">
-    Use the customer's approved Terraform, CloudFormation, CDK, or platform
-    catalog. Keep environment values outside application source. Review the
-    generated plan or change set before applying it.
+<Step title="Provision infrastructure as code">
+Use the customer's approved Terraform, CloudFormation, CDK, or platform
+catalog. Keep environment values outside application source. Review the
+generated plan or change set before applying it.
 
-    Required network flows are:
+Required network flows are:
 
-    ```text
-    Internet/edge -> ALB: HTTPS only
-    ALB -> web tasks: application port only
-    app/worker/scheduler/migration -> RDS: 5432 by security-group reference
-    app/worker/scheduler -> Redis: TLS port by security-group reference
-    runtime -> S3/Secrets/ECR/CloudWatch: VPC endpoints or approved egress
-    runtime -> OIDC/model/customer APIs: explicit approved HTTPS destinations
-    ```
-  </Step>
+```text
+Internet/edge -> ALB: HTTPS only
+ALB -> web tasks: application port only
+app/worker/scheduler/migration -> RDS: 5432 by security-group reference
+app/worker/scheduler -> Redis: TLS port by security-group reference
+runtime -> S3/Secrets/ECR/CloudWatch: VPC endpoints or approved egress
+runtime -> OIDC/model/customer APIs: explicit approved HTTPS destinations
+```
+</Step>
 
-  <Step title="Build and push one immutable image">
-    Build from the reviewed commit in CI, not on a production host:
+<Step title="Build and push one immutable image">
+Build from the reviewed commit in CI, not on a production host:
 
-    ```bash
-    export AWS_REGION=<REGION>
-    export AWS_ACCOUNT_ID=<ACCOUNT_ID>
-    export ECR_REPOSITORY=overlay-web
-    export GIT_SHA="$(git rev-parse HEAD)"
-    export IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$GIT_SHA"
+```bash
+export AWS_REGION=<REGION>
+export AWS_ACCOUNT_ID=<ACCOUNT_ID>
+export ECR_REPOSITORY=overlay-web
+export GIT_SHA="$(git rev-parse HEAD)"
+export IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$GIT_SHA"
 
-    aws ecr get-login-password --region "$AWS_REGION" | \
-      docker login --username AWS --password-stdin \
-      "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+aws ecr get-login-password --region "$AWS_REGION" | \
+  docker login --username AWS --password-stdin \
+  "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
 
-    docker buildx build \
-      --platform linux/amd64 \
-      --file Dockerfile.enterprise-runtime \
-      --tag "$IMAGE" \
-      --push .
+docker buildx build \
+  --platform linux/amd64 \
+  --file Dockerfile.enterprise-runtime \
+  --tag "$IMAGE" \
+  --push .
 
-    export IMAGE_DIGEST="$(aws ecr describe-images \
-      --repository-name "$ECR_REPOSITORY" \
-      --image-ids imageTag="$GIT_SHA" \
-      --query 'imageDetails[0].imageDigest' \
-      --output text)"
+export IMAGE_DIGEST="$(aws ecr describe-images \
+  --repository-name "$ECR_REPOSITORY" \
+  --image-ids imageTag="$GIT_SHA" \
+  --query 'imageDetails[0].imageDigest' \
+  --output text)"
 
-    test -n "$IMAGE_DIGEST" && test "$IMAGE_DIGEST" != None
-    printf 'Release %s -> %s@%s\n' "$GIT_SHA" "$ECR_REPOSITORY" "$IMAGE_DIGEST"
-    ```
+test -n "$IMAGE_DIGEST" && test "$IMAGE_DIGEST" != None
+printf 'Release %s -> %s@%s\n' "$GIT_SHA" "$ECR_REPOSITORY" "$IMAGE_DIGEST"
+```
 
-    Record the digest and use `repository@sha256:...` in every task definition.
-    Do not rebuild the image between staging and production.
-  </Step>
+Record the digest and use `repository@sha256:...` in every task definition.
+Do not rebuild the image between staging and production.
+</Step>
 
-  <Step title="Define the four ECS roles">
-    All task definitions use the same image digest and configuration family:
+<Step title="Define the four ECS roles">
+All task definitions use the same image digest and configuration family:
 
-    | Role | Command | Scaling |
-    | --- | --- | --- |
-    | Web | `node server.js` | At least two tasks behind the ALB. |
-    | Worker | `node dist/app-data-worker.cjs --mode=worker` | At least two tasks. |
-    | Scheduler | `node dist/app-data-worker.cjs --mode=scheduler` | One task initially. Test two before pilot qualification. |
-    | Migration | See the command below | One-off task only; never an ECS service. |
+| Role | Command | Scaling |
+| --- | --- | --- |
+| Web | `node server.js` | At least two tasks behind the ALB. |
+| Worker | `node dist/app-data-worker.cjs --mode=worker` | At least two tasks. |
+| Scheduler | `node dist/app-data-worker.cjs --mode=scheduler` | One task initially. Test two before pilot qualification. |
+| Migration | See the command below | One-off task only; never an ECS service. |
 
-    Migration command:
+Migration command:
 
-    ```bash
-    NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/app-data-migrate.ts && \
-    NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/better-auth-migrate.ts
-    ```
+```bash
+NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/app-data-migrate.ts && \
+NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/better-auth-migrate.ts
+```
 
-    Configure health checks, log groups, CPU/memory, graceful stop time, read-only
-    filesystem exceptions, database pool budgets, and secret ARN references per role.
-  </Step>
+Configure health checks, log groups, CPU/memory, graceful stop time, read-only
+filesystem exceptions, database pool budgets, and secret ARN references per role.
+</Step>
 
-  <Step title="Snapshot and run migrations once">
-    Record the current image digest, task-definition revisions, schema version,
-    and a pre-deploy RDS snapshot. Quiesce background services when the release
-    notes require it.
+<Step title="Snapshot and run migrations once">
+Record the current image digest, task-definition revisions, schema version,
+and a pre-deploy RDS snapshot. Quiesce background services when the release
+notes require it.
 
-    Run the migration task in the private ECS subnets with the direct RDS writer
-    endpoint and `OVERLAY_DATABASE_SSL_MODE=verify-full`. Wait for the task to
-    stop, inspect its exit code, and retain its redacted logs. Do not deploy the
-    services when the migration exit code is nonzero or schema compatibility fails.
-  </Step>
+Run the migration task in the private ECS subnets with the direct RDS writer
+endpoint and `OVERLAY_DATABASE_SSL_MODE=verify-full`. Wait for the task to
+stop, inspect its exit code, and retain its redacted logs. Do not deploy the
+services when the migration exit code is nonzero or schema compatibility fails.
+</Step>
 
-  <Step title="Deploy the same digest to every service">
-    Register new task-definition revisions containing the recorded digest, then
-    update scheduler, worker, and web services. For web rolling deployments use:
+<Step title="Deploy the same digest to every service">
+Register new task-definition revisions containing the recorded digest, then
+update scheduler, worker, and web services. For web rolling deployments use:
 
-    ```text
-    desiredCount: 2 or more
-    minimumHealthyPercent: 100
-    maximumPercent: 200
-    ALB stickiness: disabled
-    ALB idle timeout: at least 60 seconds
-    ```
+```text
+desiredCount: 2 or more
+minimumHealthyPercent: 100
+maximumPercent: 200
+ALB stickiness: disabled
+ALB idle timeout: at least 60 seconds
+```
 
-    Wait for every ECS service to become stable and every ALB target to become
-    healthy. A service must not silently fall back to Convex when a Postgres
-    dependency is unavailable.
-  </Step>
+Wait for every ECS service to become stable and every ALB target to become
+healthy. A service must not silently fall back to Convex when a Postgres
+dependency is unavailable.
+</Step>
 
-  <Step title="Configure DNS, TLS, and OIDC">
-    Point the approved hostname to the ALB or approved edge. Register the exact
-    production values with the OIDC owner:
+<Step title="Configure DNS, TLS, and OIDC">
+Point the approved hostname to the ALB or approved edge. Register the exact
+production values with the OIDC owner:
 
-    ```text
-    Callback: https://<OVERLAY_HOST>/api/better-auth/sso/callback/<PROVIDER_ID>
-    Logout:   https://<OVERLAY_HOST>
-    Origin:   https://<OVERLAY_HOST>
-    ```
+```text
+Callback: https://<OVERLAY_HOST>/api/better-auth/sso/callback/<PROVIDER_ID>
+Logout:   https://<OVERLAY_HOST>
+Origin:   https://<OVERLAY_HOST>
+```
 
-    Set `BETTER_AUTH_URL`, trusted origins, JWT issuer/audience, and JWKS URL to
-    that same HTTPS origin. Store only the public client ID in plaintext config;
-    the client secret remains in Secrets Manager.
-  </Step>
+Set `BETTER_AUTH_URL`, trusted origins, JWT issuer/audience, and JWKS URL to
+that same HTTPS origin. Store only the public client ID in plaintext config;
+the client secret remains in Secrets Manager.
+</Step>
 
-  <Step title="Qualify staging">
-    At minimum verify:
+<Step title="Qualify staging">
+At minimum verify:
 
-    1. `/api/v1/capabilities`, `/api/auth/session`, and the ALB health path.
-    2. OIDC sign-in, refresh, new tab, sign-out, and account deletion.
-    3. Chat create, stream, stop, refresh recovery, rename, and delete across two web tasks.
-    4. Files, notes, projects, memory, knowledge, and citations when enabled.
-    5. Worker lease recovery and scheduler deduplication after task replacement.
-    6. Redis fail-closed behavior and recovery.
-    7. RDS failover and automatic web/worker/scheduler recovery.
-    8. S3 signed URL expiry, ownership checks, deletion, and reconciliation.
-    9. Backup restore to a new database and application connection to the restore.
-    10. CloudWatch alarms and delivery to the named operator.
-    11. No Convex environment variables, browser traffic, server calls, or DNS traffic.
+1. `/api/v1/capabilities`, `/api/auth/session`, and the ALB health path.
+2. OIDC sign-in, refresh, new tab, sign-out, and account deletion.
+3. Chat create, stream, stop, refresh recovery, rename, and delete across two web tasks.
+4. Files, notes, projects, memory, knowledge, and citations when enabled.
+5. Worker lease recovery and scheduler deduplication after task replacement.
+6. Redis fail-closed behavior and recovery.
+7. RDS failover and automatic web/worker/scheduler recovery.
+8. S3 signed URL expiry, ownership checks, deletion, and reconciliation.
+9. Backup restore to a new database and application connection to the restore.
+10. CloudWatch alarms and delivery to the named operator.
+11. No Convex environment variables, browser traffic, server calls, or DNS traffic.
 
-    Keep the test accounts and data disposable. Run destructive contracts only
-    against a separate contract-test database.
-  </Step>
+Keep the test accounts and data disposable. Run destructive contracts only
+against a separate contract-test database.
+</Step>
 </Steps>
 
 ## Rollback
