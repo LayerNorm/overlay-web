@@ -10,26 +10,20 @@ Overlay docs are authored in `docs/` and hosted by Mintlify. The production web 
 `next.config.ts` reads this build-time environment variable:
 
 ```bash
-MINTLIFY_DOCS_URL=https://your-subdomain.mintlify.site
+MINTLIFY_DOCS_URL=https://your-subdomain.mintlify.dev
 ```
 
-Do not include a trailing slash. If the value ends in `/docs`, the app normalizes it to the origin.
+Do not include a trailing slash or `/docs`; the app adds the required `/docs`
+upstream path.
 
 When `MINTLIFY_DOCS_URL` is set, the app adds these routes:
 
 | Public URL | Upstream |
 | --- | --- |
-| `https://getoverlay.io/docs` | `${MINTLIFY_DOCS_URL}` |
-| `https://getoverlay.io/docs/*` | `${MINTLIFY_DOCS_URL}/*` |
-| `https://getoverlay.io/_mintlify/*` | `${MINTLIFY_DOCS_URL}/_mintlify/*` |
-| `https://getoverlay.io/api/request` | `${MINTLIFY_DOCS_URL}/_mintlify/api/request` |
-| `https://getoverlay.io/docs/llms.txt` | `${MINTLIFY_DOCS_URL}/llms.txt` |
-| `https://getoverlay.io/docs/llms-full.txt` | `${MINTLIFY_DOCS_URL}/llms-full.txt` |
-| `https://getoverlay.io/docs/sitemap.xml` | `${MINTLIFY_DOCS_URL}/sitemap.xml` |
-| `https://getoverlay.io/docs/robots.txt` | `${MINTLIFY_DOCS_URL}/robots.txt` |
-| `https://getoverlay.io/docs/mcp` | `${MINTLIFY_DOCS_URL}/mcp` |
-| `https://getoverlay.io/mintlify-assets/*` | `${MINTLIFY_DOCS_URL}/mintlify-assets/*` |
-| `https://docs.getoverlay.io/*` | `${MINTLIFY_DOCS_URL}/*` |
+| `https://getoverlay.io/docs` | `${MINTLIFY_DOCS_URL}/docs` |
+| `https://getoverlay.io/docs/*` | `${MINTLIFY_DOCS_URL}/docs/*` |
+| `https://getoverlay.io/.well-known/vercel/*` | `${MINTLIFY_DOCS_URL}/.well-known/vercel/*` |
+| `https://docs.getoverlay.io/*` | Redirect to `https://www.getoverlay.io/docs/*` |
 
 ## Mintlify Setup
 
@@ -37,8 +31,11 @@ In Mintlify:
 
 1. Connect the Git repository.
 2. Set the docs content directory to `docs/`.
-3. Configure the docs project for `/docs` subpath hosting on `getoverlay.io`.
-4. Keep the public docs source in `docs/`; internal reports and design assets stay in `internal-docs/`.
+3. Enable **Host at `/docs`** in Mintlify for `getoverlay.io`.
+4. Use the project's `*.mintlify.dev` URL for `MINTLIFY_DOCS_URL`. The
+   `*.mintlify.app` URL is for root/custom-subpath proxies and will generate
+   incorrect root-relative navigation links in this setup.
+5. Keep the public docs source in `docs/`; internal reports and design assets stay in `internal-docs/`.
 
 ## Vercel Setup
 
