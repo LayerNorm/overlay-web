@@ -472,6 +472,45 @@ test('configOverridesFromEnv preserves auth provider selection shape', () => {
   })
 })
 
+test('configOverridesFromEnv maps a canonical Better Auth connection and access policy', () => {
+  const overrides = configOverridesFromEnv({
+    AUTH_PROVIDER: 'better-auth',
+    BETTER_AUTH_CONNECTION_ID: 'primary-sso',
+    BETTER_AUTH_CONNECTION_PRESET: 'google-workspace',
+    BETTER_AUTH_CONNECTION_LABEL: 'Continue with School Google',
+    BETTER_AUTH_CONNECTION_DOMAINS: 'School.EDU,students.school.edu',
+    BETTER_AUTH_CONNECTION_CLIENT_ID_ENV: 'GOOGLE_WORKSPACE_CLIENT_ID',
+    BETTER_AUTH_CONNECTION_CLIENT_SECRET_ENV: 'GOOGLE_WORKSPACE_CLIENT_SECRET',
+    BETTER_AUTH_REQUIRE_VERIFIED_EMAIL: 'true',
+    BETTER_AUTH_ALLOWED_EMAIL_DOMAINS: 'school.edu,students.school.edu',
+  })
+
+  assert.deepEqual(overrides.auth, {
+    provider: 'better-auth',
+    allowDevFallbacks: false,
+    workos: {},
+    oidc: {},
+    betterAuth: {
+      connections: [{
+        id: 'primary-sso',
+        protocol: 'oidc',
+        preset: 'google-workspace',
+        label: 'Continue with School Google',
+        domains: ['School.EDU', 'students.school.edu'],
+        clientIdEnv: 'GOOGLE_WORKSPACE_CLIENT_ID',
+        clientSecretEnv: 'GOOGLE_WORKSPACE_CLIENT_SECRET',
+      }],
+      accessPolicy: {
+        requireVerifiedEmail: true,
+        allowedEmailDomains: ['school.edu', 'students.school.edu'],
+      },
+    },
+  })
+  assert.deepEqual(overrides.providers, {
+    auth: { provider: 'better-auth' },
+  })
+})
+
 test('configOverridesFromEnv preserves deployment-specific billing and database env precedence', () => {
   const config = configOverridesFromEnv({
     OVERLAY_DEPLOYMENT_ENV: 'development',

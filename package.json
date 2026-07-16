@@ -141,7 +141,7 @@
     "check:providers": "NEXT_PUBLIC_CONVEX_URL=https://fixture.convex.cloud NODE_OPTIONS=--conditions=react-server tsx --test src/server/bootstrap.test.ts src/server/auth/providers/oidc-auth-provider.test.ts && npm run check:vendor-boundaries",
     "test:phase6-routes": "NEXT_PUBLIC_CONVEX_URL=https://fixture.convex.cloud NODE_OPTIONS=--conditions=react-server tsx --test src/server/phase6-release-gates.test.ts",
     "check:phase6": "tsx scripts/check-phase6-release-gates.ts",
-    "check:config": "NODE_OPTIONS=--conditions=react-server tsx --test src/shared/config/overlayConfigSchema.test.ts src/server/config/loadOverlayConfig.test.ts && NODE_OPTIONS=--conditions=react-server tsx scripts/check-overlay-config.ts",
+    "check:config": "NODE_OPTIONS=--conditions=react-server tsx --test src/shared/config/overlayConfigSchema.test.ts src/server/config/loadOverlayConfig.test.ts src/server/auth/connections/preset-registry.test.ts && NODE_OPTIONS=--conditions=react-server tsx scripts/check-overlay-config.ts",
     "docs:dev": "npm run docs:generate:api && cd docs && node ../scripts/run-mint.mjs dev --no-open",
     "docs:generate:api": "tsx scripts/generate-web-api-openapi.ts",
     "docs:health": "NODE_OPTIONS=--conditions=react-server tsx scripts/check-docs-health.ts",

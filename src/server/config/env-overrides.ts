@@ -8,8 +8,20 @@ type EnvSource = Record<string, string | undefined>
 type OverlayRuntimeConfigLayer = Record<string, unknown>
 
 interface AuthEnvValues {
+  betterAuthAllowedEmailDomains?: string
   betterAuthBasePath?: string
   betterAuthBaseUrl?: string
+  betterAuthConnectionClientId?: string
+  betterAuthConnectionClientIdEnv?: string
+  betterAuthConnectionClientSecret?: string
+  betterAuthConnectionClientSecretEnv?: string
+  betterAuthConnectionDiscoveryEndpoint?: string
+  betterAuthConnectionDomains?: string
+  betterAuthConnectionId?: string
+  betterAuthConnectionIssuerUrl?: string
+  betterAuthConnectionLabel?: string
+  betterAuthConnectionPreset?: string
+  betterAuthConnectionTenantId?: string
   betterAuthDatabaseUrl?: string
   betterAuthDefaultSsoDomain?: string
   betterAuthDefaultSsoProviderId?: string
@@ -20,6 +32,7 @@ interface AuthEnvValues {
   betterAuthOidcClientSecret?: string
   betterAuthOidcDiscoveryEndpoint?: string
   betterAuthOidcIssuerUrl?: string
+  betterAuthRequireVerifiedEmail?: boolean
   betterAuthSecret?: string
   betterAuthTrustedOrigins?: string
   devWorkosApiKey?: string
@@ -104,6 +117,34 @@ function authConfigFromEnv(
     jwtIssuer: values.betterAuthJwtIssuer,
     jwtAudience: values.betterAuthJwtAudience,
     jwksUrl: values.betterAuthJwksUrl,
+    connections: hasBetterAuthConnectionConfig(values)
+      ? [compactObject({
+          id: values.betterAuthConnectionId,
+          protocol: 'oidc',
+          preset: values.betterAuthConnectionPreset,
+          label: values.betterAuthConnectionLabel,
+          domains: values.betterAuthConnectionDomains
+            ? splitCsv(values.betterAuthConnectionDomains)
+            : undefined,
+          issuerUrl: values.betterAuthConnectionIssuerUrl,
+          discoveryEndpoint: values.betterAuthConnectionDiscoveryEndpoint,
+          tenantId: values.betterAuthConnectionTenantId,
+          clientId: values.betterAuthConnectionClientId,
+          clientIdEnv: values.betterAuthConnectionClientIdEnv,
+          clientSecret: values.betterAuthConnectionClientSecret,
+          clientSecretEnv: values.betterAuthConnectionClientSecretEnv,
+        })]
+      : undefined,
+    accessPolicy:
+      values.betterAuthRequireVerifiedEmail !== undefined ||
+      values.betterAuthAllowedEmailDomains
+        ? compactObject({
+            requireVerifiedEmail: values.betterAuthRequireVerifiedEmail,
+            allowedEmailDomains: values.betterAuthAllowedEmailDomains
+              ? splitCsv(values.betterAuthAllowedEmailDomains)
+              : undefined,
+          })
+        : undefined,
   })
 
   return {
@@ -396,6 +437,28 @@ function readAuthEnv(env: EnvSource): AuthEnvValues {
     betterAuthSecret: readEnv(env, 'BETTER_AUTH_SECRET'),
     betterAuthDatabaseUrl: readEnv(env, 'BETTER_AUTH_DATABASE_URL'),
     betterAuthTrustedOrigins: readEnv(env, 'BETTER_AUTH_TRUSTED_ORIGINS'),
+    betterAuthConnectionId: readEnv(env, 'BETTER_AUTH_CONNECTION_ID'),
+    betterAuthConnectionPreset: readEnv(env, 'BETTER_AUTH_CONNECTION_PRESET'),
+    betterAuthConnectionLabel: readEnv(env, 'BETTER_AUTH_CONNECTION_LABEL'),
+    betterAuthConnectionDomains: readEnv(env, 'BETTER_AUTH_CONNECTION_DOMAINS'),
+    betterAuthConnectionIssuerUrl: readEnv(env, 'BETTER_AUTH_CONNECTION_ISSUER_URL'),
+    betterAuthConnectionDiscoveryEndpoint: readEnv(
+      env,
+      'BETTER_AUTH_CONNECTION_DISCOVERY_ENDPOINT',
+    ),
+    betterAuthConnectionTenantId: readEnv(env, 'BETTER_AUTH_CONNECTION_TENANT_ID'),
+    betterAuthConnectionClientId: readEnv(env, 'BETTER_AUTH_CONNECTION_CLIENT_ID'),
+    betterAuthConnectionClientIdEnv: readEnv(env, 'BETTER_AUTH_CONNECTION_CLIENT_ID_ENV'),
+    betterAuthConnectionClientSecret: readEnv(
+      env,
+      'BETTER_AUTH_CONNECTION_CLIENT_SECRET',
+    ),
+    betterAuthConnectionClientSecretEnv: readEnv(
+      env,
+      'BETTER_AUTH_CONNECTION_CLIENT_SECRET_ENV',
+    ),
+    betterAuthRequireVerifiedEmail: readBool(env, 'BETTER_AUTH_REQUIRE_VERIFIED_EMAIL'),
+    betterAuthAllowedEmailDomains: readEnv(env, 'BETTER_AUTH_ALLOWED_EMAIL_DOMAINS'),
     betterAuthDefaultSsoProviderId: readEnv(env, 'BETTER_AUTH_DEFAULT_SSO_PROVIDER_ID'),
     betterAuthDefaultSsoDomain: readEnv(env, 'BETTER_AUTH_DEFAULT_SSO_DOMAIN'),
     betterAuthOidcIssuerUrl: readEnv(env, 'BETTER_AUTH_OIDC_ISSUER_URL'),
@@ -416,6 +479,9 @@ function inferAuthProvider(values: AuthEnvValues): string | undefined {
     values.betterAuthBaseUrl ||
     values.betterAuthSecret ||
     values.betterAuthDatabaseUrl ||
+    hasBetterAuthConnectionConfig(values) ||
+    values.betterAuthRequireVerifiedEmail !== undefined ||
+    values.betterAuthAllowedEmailDomains ||
     values.betterAuthDefaultSsoProviderId ||
     values.betterAuthDefaultSsoDomain ||
     values.betterAuthOidcIssuerUrl ||
@@ -443,6 +509,9 @@ function hasAnyAuthConfig(values: AuthEnvValues, provider: string | undefined): 
       values.betterAuthBaseUrl ||
       values.betterAuthSecret ||
       values.betterAuthDatabaseUrl ||
+      hasBetterAuthConnectionConfig(values) ||
+      values.betterAuthRequireVerifiedEmail !== undefined ||
+      values.betterAuthAllowedEmailDomains ||
       values.betterAuthDefaultSsoProviderId ||
       values.betterAuthDefaultSsoDomain ||
       values.betterAuthOidcIssuerUrl ||
@@ -452,6 +521,22 @@ function hasAnyAuthConfig(values: AuthEnvValues, provider: string | undefined): 
       values.betterAuthJwtIssuer ||
       values.betterAuthJwtAudience ||
       values.betterAuthJwksUrl,
+  )
+}
+
+function hasBetterAuthConnectionConfig(values: AuthEnvValues): boolean {
+  return Boolean(
+    values.betterAuthConnectionId ||
+      values.betterAuthConnectionPreset ||
+      values.betterAuthConnectionLabel ||
+      values.betterAuthConnectionDomains ||
+      values.betterAuthConnectionIssuerUrl ||
+      values.betterAuthConnectionDiscoveryEndpoint ||
+      values.betterAuthConnectionTenantId ||
+      values.betterAuthConnectionClientId ||
+      values.betterAuthConnectionClientIdEnv ||
+      values.betterAuthConnectionClientSecret ||
+      values.betterAuthConnectionClientSecretEnv,
   )
 }
 

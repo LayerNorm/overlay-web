@@ -10,6 +10,12 @@ export const OverlayDeploymentEnvironmentSchema = z.enum([
 ])
 
 export const OverlayAuthProviderSchema = z.enum(['workos', 'better-auth', 'oidc', 'none'])
+export const OverlayBetterAuthConnectionPresetSchema = z.enum([
+  'google-workspace',
+  'auth0',
+  'entra-id',
+  'generic-oidc',
+])
 export const OverlayBillingProviderSchema = z.enum(['stripe', 'none'])
 export const OverlayStorageProviderSchema = z.enum(['r2', 's3', 'none'])
 export const OverlayLlmGatewayProviderSchema = z.enum([
@@ -124,6 +130,126 @@ const SecretLikePublicValuePattern =
 
 const OptionalStringSchema = z.string().trim().min(1).optional()
 const OptionalUrlSchema = z.string().trim().url().optional()
+const EnvironmentVariableNameSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Z_][A-Z0-9_]*$/, 'Must be a valid environment variable name')
+const BetterAuthConnectionIdSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/,
+    'Connection id must be a lowercase, URL-safe slug of at most 63 characters',
+  )
+const EmailDomainSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(
+    /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/,
+    'Must be a bare email domain such as example.com',
+  )
+
+export const OverlayBetterAuthConnectionSchema = z
+  .object({
+    id: BetterAuthConnectionIdSchema,
+    protocol: z.literal('oidc').default('oidc'),
+    preset: OverlayBetterAuthConnectionPresetSchema,
+    label: OptionalStringSchema,
+    domains: z.array(EmailDomainSchema).min(1),
+    issuerUrl: OptionalUrlSchema,
+    discoveryEndpoint: OptionalUrlSchema,
+    tenantId: OptionalStringSchema,
+    clientId: OptionalStringSchema,
+    clientSecret: OptionalStringSchema,
+    clientIdEnv: EnvironmentVariableNameSchema.optional(),
+    clientSecretEnv: EnvironmentVariableNameSchema.optional(),
+  })
+  .strict()
+  .superRefine((connection, ctx) => {
+    validateCredentialSource(ctx, connection, 'clientId', 'clientIdEnv')
+    validateCredentialSource(ctx, connection, 'clientSecret', 'clientSecretEnv')
+
+    if (connection.preset === 'google-workspace') {
+      if (connection.issuerUrl && connection.issuerUrl !== 'https://accounts.google.com') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['issuerUrl'],
+          message: 'google-workspace uses the fixed issuer https://accounts.google.com',
+        })
+      }
+      if (connection.tenantId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['tenantId'],
+          message: 'tenantId is only supported by the entra-id preset',
+        })
+      }
+    }
+
+    if (connection.preset === 'auth0' || connection.preset === 'generic-oidc') {
+      if (!connection.issuerUrl) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['issuerUrl'],
+          message: `${connection.preset} requires issuerUrl`,
+        })
+      }
+      if (connection.tenantId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['tenantId'],
+          message: 'tenantId is only supported by the entra-id preset',
+        })
+      }
+    }
+
+    if (connection.preset === 'entra-id') {
+      if (!connection.tenantId && !connection.issuerUrl) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['tenantId'],
+          message: 'entra-id requires tenantId or a tenant-specific issuerUrl',
+        })
+      }
+      const tenant = connection.tenantId?.toLowerCase()
+      if (connection.tenantId && !/^[a-z0-9.-]+$/i.test(connection.tenantId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['tenantId'],
+          message: 'entra-id tenantId must be a tenant GUID or verified tenant domain',
+        })
+      }
+      if (tenant && ['common', 'consumers', 'organizations'].includes(tenant)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['tenantId'],
+          message: 'entra-id requires a tenant-specific identifier for enterprise access',
+        })
+      }
+      if (connection.issuerUrl && isSharedMicrosoftIssuer(connection.issuerUrl)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['issuerUrl'],
+          message: 'entra-id requires a tenant-specific issuer for enterprise access',
+        })
+      }
+      if (connection.issuerUrl && !isMicrosoftEntraIssuer(connection.issuerUrl)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['issuerUrl'],
+          message: 'entra-id issuerUrl must use a tenant-specific login.microsoftonline.com issuer',
+        })
+      }
+    }
+  })
+
+export const OverlayBetterAuthAccessPolicySchema = z
+  .object({
+    requireVerifiedEmail: z.boolean().default(true),
+    allowedEmailDomains: z.array(EmailDomainSchema).default([]),
+  })
+  .strict()
 
 export const OverlayRuntimeConfigSchema = z
   .object({
@@ -174,6 +300,8 @@ export const OverlayRuntimeConfigSchema = z
           jwtIssuer: OptionalUrlSchema,
           jwtAudience: OptionalStringSchema,
           jwksUrl: OptionalUrlSchema,
+          connections: z.array(OverlayBetterAuthConnectionSchema).default([]),
+          accessPolicy: OverlayBetterAuthAccessPolicySchema.default({}),
         })
         .default({}),
     }),
@@ -504,6 +632,29 @@ export const OverlayRuntimeConfigSchema = z
       })
     }
 
+    const betterAuthConnectionIds = new Set<string>()
+    config.auth.betterAuth.connections.forEach((connection, index) => {
+      if (betterAuthConnectionIds.has(connection.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['auth', 'betterAuth', 'connections', index, 'id'],
+          message: `Duplicate Better Auth connection id: ${connection.id}`,
+        })
+      }
+      betterAuthConnectionIds.add(connection.id)
+    })
+    if (
+      config.auth.betterAuth.connections.length > 0 &&
+      hasLegacyBetterAuthConnection(config.auth.betterAuth)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['auth', 'betterAuth', 'connections'],
+        message:
+          'Configure auth.betterAuth.connections or legacy BETTER_AUTH_DEFAULT_SSO_*/BETTER_AUTH_OIDC_* fields, not both',
+      })
+    }
+
     if (config.app.deploymentEnvironment === 'production') {
       if (!isHttpsUrl(config.app.baseUrl) || isLocalUrl(config.app.baseUrl) || stagingLikeAppUrl) {
         ctx.addIssue({
@@ -582,6 +733,15 @@ export const OverlayRuntimeConfigSchema = z
 export type OverlayRuntimeConfig = z.infer<typeof OverlayRuntimeConfigSchema>
 export type OverlayRuntimeConfigInput = z.input<typeof OverlayRuntimeConfigSchema>
 export type OverlayDeploymentEnvironment = z.infer<typeof OverlayDeploymentEnvironmentSchema>
+export type OverlayBetterAuthConnectionPreset = z.infer<
+  typeof OverlayBetterAuthConnectionPresetSchema
+>
+export type OverlayBetterAuthConnection = z.infer<
+  typeof OverlayBetterAuthConnectionSchema
+>
+export type OverlayBetterAuthAccessPolicy = z.infer<
+  typeof OverlayBetterAuthAccessPolicySchema
+>
 
 export type OverlayRuntimeConfigPublicSummary = ReturnType<typeof redactOverlayRuntimeConfig>
 
@@ -658,6 +818,26 @@ export function redactOverlayRuntimeConfig(config: OverlayRuntimeConfig) {
         jwtIssuer: config.auth.betterAuth.jwtIssuer,
         hasJwtAudience: Boolean(config.auth.betterAuth.jwtAudience),
         jwksUrl: config.auth.betterAuth.jwksUrl,
+        connections: config.auth.betterAuth.connections.map((connection) => ({
+          id: connection.id,
+          protocol: connection.protocol,
+          preset: connection.preset,
+          label: connection.label,
+          domains: [...connection.domains],
+          issuerUrl: connection.issuerUrl,
+          discoveryEndpoint: connection.discoveryEndpoint,
+          tenantId: connection.tenantId,
+          hasClientId: Boolean(connection.clientId),
+          hasClientSecret: Boolean(connection.clientSecret),
+          clientIdEnv: connection.clientIdEnv,
+          clientSecretEnv: connection.clientSecretEnv,
+        })),
+        accessPolicy: {
+          requireVerifiedEmail: config.auth.betterAuth.accessPolicy.requireVerifiedEmail,
+          allowedEmailDomains: [
+            ...config.auth.betterAuth.accessPolicy.allowedEmailDomains,
+          ],
+        },
       },
     },
     billing: {
@@ -795,6 +975,61 @@ function usesProductionConvex(database: OverlayRuntimeConfig['database']): boole
 
 function usesDevWorkOsConfig(workos: OverlayRuntimeConfig['auth']['workos']): boolean {
   return Boolean(workos.devClientId || workos.devApiKey)
+}
+
+function hasLegacyBetterAuthConnection(
+  config: OverlayRuntimeConfig['auth']['betterAuth'],
+): boolean {
+  return Boolean(
+    config.defaultSsoProviderId ||
+      config.defaultSsoDomain ||
+      config.oidcIssuerUrl ||
+      config.oidcDiscoveryEndpoint ||
+      config.oidcClientId ||
+      config.oidcClientSecret,
+  )
+}
+
+function validateCredentialSource(
+  ctx: z.RefinementCtx,
+  connection: {
+    clientId?: string
+    clientSecret?: string
+    clientIdEnv?: string
+    clientSecretEnv?: string
+  },
+  valueKey: 'clientId' | 'clientSecret',
+  envKey: 'clientIdEnv' | 'clientSecretEnv',
+): void {
+  const hasValue = Boolean(connection[valueKey])
+  const hasEnvReference = Boolean(connection[envKey])
+  if (!hasValue && !hasEnvReference) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [valueKey],
+      message: `${valueKey} or ${envKey} is required`,
+    })
+  }
+  if (hasValue && hasEnvReference) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [envKey],
+      message: `Configure only one of ${valueKey} or ${envKey}`,
+    })
+  }
+}
+
+function isSharedMicrosoftIssuer(issuerUrl: string): boolean {
+  const pathname = new URL(issuerUrl).pathname.toLowerCase().replace(/\/+$/, '')
+  return ['/common/v2.0', '/consumers/v2.0', '/organizations/v2.0'].some(
+    (suffix) => pathname.endsWith(suffix),
+  )
+}
+
+function isMicrosoftEntraIssuer(issuerUrl: string): boolean {
+  const issuer = new URL(issuerUrl)
+  return issuer.hostname === 'login.microsoftonline.com' &&
+    /^\/[a-z0-9.-]+\/v2\.0\/?$/i.test(issuer.pathname)
 }
 
 function addUnsupportedProviderIssue(
