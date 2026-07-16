@@ -39,7 +39,7 @@ You need:
 | Input | Requirement |
 | --- | --- |
 | AWS | A disposable nonproduction account or VPC, an approved Region, and permission to use EC2, RDS, and ElastiCache. |
-| EC2 | Ubuntu 24.04, `t3.large` or larger for the source build, and at least 40 GB of encrypted gp3 storage. |
+| EC2 | Ubuntu 24.04, at least 40 GB of encrypted gp3 storage, and `t3.xlarge` or another 4-vCPU instance for a reasonably fast source build. A `t3.large` works but can take about 17 minutes to build. |
 | PostgreSQL | One private RDS PostgreSQL instance with separate `overlay_app` and `overlay_auth` databases and separate login roles. |
 | Redis | A TLS ElastiCache endpoint reachable from the EC2 security group. |
 | Identity | A Google Workspace organization and Google Cloud OAuth web client that permits the localhost callback shown below. |
@@ -65,13 +65,13 @@ Use security-group references, not public database endpoints:
     ```
   </Step>
 
-  <Step title="Install Docker and Git">
+  <Step title="Install Docker, Git, and PostgreSQL tools">
     Review the Docker installation script before running it if customer policy
     requires source inspection.
 
     ```bash
     sudo apt-get update
-    sudo apt-get install -y ca-certificates curl git jq
+    sudo apt-get install -y ca-certificates curl git jq postgresql-client
     curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
     less /tmp/get-docker.sh
     sudo sh /tmp/get-docker.sh
@@ -80,6 +80,63 @@ Use security-group references, not public database endpoints:
     docker version
     docker compose version
     ```
+
+    Install the AWS RDS CA bundle for administrative `psql` commands:
+
+    ```bash
+    mkdir -p "$HOME/.postgresql"
+    curl -fsSL \
+      https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+      -o "$HOME/.postgresql/root.crt"
+    chmod 600 "$HOME/.postgresql/root.crt"
+    ```
+  </Step>
+
+  <Step title="Create the two databases with the RDS administrator">
+    Run this once with a temporary administrative connection. The application
+    and Better Auth roles must be separate and must not retain administrative
+    membership. Replace all angle-bracket values before running it.
+
+    ```bash
+    export PGHOST='<writer>.rds.amazonaws.com'
+    export PGPORT=5432
+    export PGUSER='<rds-admin-role>'
+    export PGSSLMODE=verify-full
+    export PGSSLROOTCERT="$HOME/.postgresql/root.crt"
+    read -rsp 'RDS admin password: ' PGPASSWORD; echo; export PGPASSWORD
+    read -rsp 'Overlay app password: ' OVERLAY_APP_DB_PASSWORD; echo
+    read -rsp 'Better Auth password: ' OVERLAY_AUTH_DB_PASSWORD; echo
+
+    psql --dbname=postgres -v ON_ERROR_STOP=1 \
+      -v admin_role="$PGUSER" \
+      -v app_password="$OVERLAY_APP_DB_PASSWORD" \
+      -v auth_password="$OVERLAY_AUTH_DB_PASSWORD" <<'SQL'
+    CREATE ROLE overlay_app LOGIN PASSWORD :'app_password';
+    CREATE ROLE overlay_auth LOGIN PASSWORD :'auth_password';
+    GRANT overlay_app TO :"admin_role";
+    GRANT overlay_auth TO :"admin_role";
+    SQL
+
+    psql --dbname=postgres -v ON_ERROR_STOP=1 \
+      -c 'CREATE DATABASE overlay_app OWNER overlay_app;'
+    psql --dbname=postgres -v ON_ERROR_STOP=1 \
+      -c 'CREATE DATABASE overlay_auth OWNER overlay_auth;'
+
+    psql --dbname=overlay_app -v ON_ERROR_STOP=1 \
+      -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+
+    psql --dbname=postgres -v ON_ERROR_STOP=1 -v admin_role="$PGUSER" <<'SQL'
+    REVOKE overlay_app FROM :"admin_role";
+    REVOKE overlay_auth FROM :"admin_role";
+    SQL
+    unset PGPASSWORD OVERLAY_APP_DB_PASSWORD OVERLAY_AUTH_DB_PASSWORD
+    ```
+
+    RDS requires its administrative role to install `pgvector`, even when the
+    narrow sanity profile keeps vector search disabled. The normal migration
+    and runtime commands must use the restricted `overlay_app` role afterward.
+    If roles or databases already exist, inspect them instead of blindly
+    rerunning the creation statements.
   </Step>
 
   <Step title="Clone the approved release">
@@ -161,11 +218,12 @@ Use security-group references, not public database endpoints:
     OVERLAY_ENV_FILE=.env \
     OVERLAY_CONFIG_PATH=./overlay.config.json \
     compose config --quiet
-    compose build
+    compose build web
     ```
 
     The build creates one image. The web, worker, scheduler, and migration roles
-    all use that same image.
+    all use that same image. Building the `web` target avoids asking Compose to
+    render the same shared image three times.
   </Step>
 
   <Step title="Run migrations once">
@@ -235,6 +293,8 @@ not appear as usable navigation or routes.
 | --- | --- |
 | Web container is unhealthy | `compose logs web`; validate every placeholder in `.env`; confirm the config file is mounted. |
 | Migration cannot connect | RDS security group, database hostname, URL-encoded password, CA hostname verification, and database ownership. |
+| Migration cannot create `vector` | Install `pgvector` once in `overlay_app` with the RDS administrator, then rerun migrations as `overlay_app`. |
+| Better Auth reports canonical and legacy connections together | Use `BETTER_AUTH_CONNECTION_*` for the connection registry and remove legacy `BETTER_AUTH_DEFAULT_SSO_*` and `BETTER_AUTH_OIDC_*` values from both the environment and JSON config. |
 | Redis requests fail closed | ElastiCache endpoint, TLS URL beginning with `rediss://`, security groups, and authentication token. |
 | OIDC returns a callback error | Exact callback, provider ID, issuer, client ID/secret, trusted origin, and SSH tunnel. |
 | Chat has no available model | `AI_GATEWAY_API_KEY`, approved model ID, outbound HTTPS, and model-provider configuration. |

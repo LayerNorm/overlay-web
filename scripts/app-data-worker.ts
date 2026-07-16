@@ -33,10 +33,12 @@ async function main(): Promise<void> {
     sslMode: process.env.OVERLAY_DATABASE_SSL_MODE,
   })
   const db = createOverlayPostgresDb(pool)
+  const runtimeConfig = getOverlayRuntimeConfigSync()
   const runtime = createPostgresRuntime({
     db,
     leaseMs,
     objectStore: lazyObjectStore(),
+    runtimeConfig,
     workerId,
   })
   const runtimeHealth = new PostgresRuntimeHealthService(db)

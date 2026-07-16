@@ -9,7 +9,11 @@ import { PostgresModelCatalogRepository } from '@/server/ai/catalog'
 import { getGatewayCatalog } from '@/server/ai/gateway/gateway-catalog'
 import { PostgresDurableJobRepository } from './PostgresDurableJobRepository'
 import { PostgresJobWorker } from './PostgresJobWorker'
-import { PostgresSchedulerService } from './PostgresSchedulerService'
+import {
+  isPostgresKnowledgeRuntimeEnabled,
+  postgresRuntimeSchedulesForConfig,
+  PostgresSchedulerService,
+} from './PostgresSchedulerService'
 import {
   createStorageDeleteJobHandler,
   STORAGE_DELETE_OBJECTS_JOB,
@@ -71,7 +75,10 @@ export function createPostgresRuntime(args: {
   const replay = new PostgresServiceAuthReplayRepository(args.db)
   const maintenance = new PostgresBackgroundMaintenanceService(args.db)
   const modelCatalog = new PostgresModelCatalogRepository(args.db)
-  const scheduler = new PostgresSchedulerService(args.db)
+  const scheduler = new PostgresSchedulerService(
+    args.db,
+    args.runtimeConfig ? postgresRuntimeSchedulesForConfig(args.runtimeConfig) : undefined,
+  )
   const automationRuns = new PostgresAutomationRunCoordinator(args.db)
   const automationExecutor = args.automationExecutor ?? runActTurnForScheduledAutomation
   const webhookDeliveries = new PostgresWebhookDeliveryService(args.db)
@@ -179,6 +186,9 @@ export function createPostgresRuntime(args: {
       }),
       'knowledge.maintenance': async () => {
         const config = runtimeConfig()
+        if (!isPostgresKnowledgeRuntimeEnabled(config)) {
+          return { skipped: 'knowledge_disabled' }
+        }
         const embeddings = args.embeddingProvider ?? createEmbeddingProvider(config)
         return await knowledgeMaintenance.runAll({
           memoryRetentionDays: config.compliance.retention.memoryDays,

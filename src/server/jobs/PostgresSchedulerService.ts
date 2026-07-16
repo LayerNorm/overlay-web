@@ -3,6 +3,7 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
+import type { OverlayRuntimeConfig } from '@/shared/config'
 
 export const POSTGRES_RUNTIME_SCHEDULES = [
   {
@@ -61,6 +62,38 @@ export const POSTGRES_RUNTIME_SCHEDULES = [
   },
 ] as const
 
+type RuntimeSchedule = (typeof POSTGRES_RUNTIME_SCHEDULES)[number]
+
+export function postgresRuntimeSchedulesForConfig(
+  config: OverlayRuntimeConfig,
+): readonly RuntimeSchedule[] {
+  return POSTGRES_RUNTIME_SCHEDULES.filter((schedule) => {
+    switch (schedule.id) {
+      case 'storage-reconciliation':
+        return config.features.files === true &&
+          config.providers.objectStorage?.provider !== 'none' &&
+          config.providers.objectStorage?.provider !== undefined
+      case 'knowledge-maintenance':
+        return isPostgresKnowledgeRuntimeEnabled(config)
+      case 'automation-schedule-due':
+        return config.features.automations === true
+      case 'daytona-reconciliation':
+        return config.features.sandboxes === true && config.providers.sandbox?.provider === 'daytona'
+      default:
+        return true
+    }
+  })
+}
+
+export function isPostgresKnowledgeRuntimeEnabled(config: OverlayRuntimeConfig): boolean {
+  const embeddingsProvider = config.providers.embeddings?.provider
+  return config.features.knowledge === true &&
+    config.features.vectorSearch === true &&
+    config.providers.vectorSearch?.provider === 'pgvector' &&
+    embeddingsProvider !== 'none' &&
+    embeddingsProvider !== undefined
+}
+
 type DueTask = {
   id: string
   intervalMs: number
@@ -70,10 +103,22 @@ type DueTask = {
 }
 
 export class PostgresSchedulerService {
-  constructor(private readonly db: OverlayPostgresDb) {}
+  constructor(
+    private readonly db: OverlayPostgresDb,
+    private readonly schedules: readonly RuntimeSchedule[] = POSTGRES_RUNTIME_SCHEDULES,
+  ) {}
 
   async registerDefaults(now = Date.now()): Promise<void> {
+    const enabledIds = new Set(this.schedules.map((schedule) => schedule.id))
     for (const schedule of POSTGRES_RUNTIME_SCHEDULES) {
+      if (!enabledIds.has(schedule.id)) {
+        await this.db.execute(sql`
+          UPDATE scheduled_tasks
+          SET enabled = false, updated_at = ${new Date(now)}
+          WHERE id = ${schedule.id}
+        `)
+        continue
+      }
       await this.db.execute(sql`
         INSERT INTO scheduled_tasks (
           id, job_type, payload, interval_ms, next_run_at, enabled, created_at, updated_at

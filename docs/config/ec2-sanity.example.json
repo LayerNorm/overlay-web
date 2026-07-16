@@ -70,11 +70,6 @@
       "secret": "replace_with_better_auth_secret",
       "databaseUrl": "postgresql://overlay_auth:replace_with_password@db.example.com:5432/overlay_auth",
       "trustedOrigins": ["http://localhost:3000"],
-      "defaultSsoProviderId": "overlay-sanity",
-      "defaultSsoDomain": "example.edu",
-      "oidcIssuerUrl": "https://idp.example.com",
-      "oidcClientId": "overlay-web",
-      "oidcClientSecret": "replace_with_oidc_client_secret",
       "jwtIssuer": "http://localhost:3000",
       "jwtAudience": "http://localhost:3000",
       "jwksUrl": "http://localhost:3000/api/better-auth/jwks"
