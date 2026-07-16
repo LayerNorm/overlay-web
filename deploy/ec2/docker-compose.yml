@@ -1,10 +1,7 @@
 name: overlay-ec2-sanity
 
 x-overlay-runtime: &overlay-runtime
-  image: ${OVERLAY_WEB_IMAGE:-overlay-web:ec2-sanity}
-  build:
-    context: ../..
-    dockerfile: Dockerfile.enterprise-runtime
+  image: ${OVERLAY_WEB_IMAGE:-ghcr.io/layernorm/overlay-web:0.1.0-rc.1}
   env_file:
     - ${OVERLAY_ENV_FILE:-.env}
   environment:

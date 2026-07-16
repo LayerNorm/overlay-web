@@ -26,7 +26,7 @@ jobs:
         include:
           - image: overlay-web
             context: .
-            dockerfile: Dockerfile
+            dockerfile: Dockerfile.enterprise-runtime
           - image: overlay-installer
             context: installer
             dockerfile: installer/Dockerfile

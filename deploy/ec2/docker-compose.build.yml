@@ -1,0 +1,18 @@
+services:
+  web:
+    build: &overlay-build
+      context: ../..
+      dockerfile: Dockerfile.enterprise-runtime
+    image: ${OVERLAY_WEB_BUILD_IMAGE:-overlay-web:ec2-sanity}
+
+  worker:
+    build: *overlay-build
+    image: ${OVERLAY_WEB_BUILD_IMAGE:-overlay-web:ec2-sanity}
+
+  scheduler:
+    build: *overlay-build
+    image: ${OVERLAY_WEB_BUILD_IMAGE:-overlay-web:ec2-sanity}
+
+  migrate:
+    build: *overlay-build
+    image: ${OVERLAY_WEB_BUILD_IMAGE:-overlay-web:ec2-sanity}

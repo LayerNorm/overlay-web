@@ -39,7 +39,7 @@ You need:
 | Input | Requirement |
 | --- | --- |
 | AWS | A disposable nonproduction account or VPC, an approved Region, and permission to use EC2, RDS, and ElastiCache. |
-| EC2 | Ubuntu 24.04, at least 40 GB of encrypted gp3 storage, and `t3.xlarge` or another 4-vCPU instance for a reasonably fast source build. A `t3.large` works but can take about 17 minutes to build. |
+| EC2 | Ubuntu 24.04, at least 20 GB of encrypted gp3 storage, and `t3.large` or another 2-vCPU instance when pulling the release image. Use at least 40 GB and 4 vCPU only for an optional source build. |
 | PostgreSQL | One private RDS PostgreSQL instance with separate `overlay_app` and `overlay_auth` databases and separate login roles. |
 | Redis | A TLS ElastiCache endpoint reachable from the EC2 security group. |
 | Identity | A Google Workspace organization and Google Cloud OAuth web client that permits the localhost callback shown below. |
@@ -204,7 +204,7 @@ Use security-group references, not public database endpoints:
     `auth0`. Cognito, Okta, and Keycloak use [Generic OIDC](/configure/authentication/recipes/generic-oidc).
   </Step>
 
-  <Step title="Validate and build the release image">
+  <Step title="Validate and pull the release image">
     Define a short helper for the remaining commands:
 
     ```bash
@@ -218,12 +218,31 @@ Use security-group references, not public database endpoints:
     OVERLAY_ENV_FILE=.env \
     OVERLAY_CONFIG_PATH=./overlay.config.json \
     compose config --quiet
-    compose build web
+    compose pull web worker scheduler migrate
     ```
 
-    The build creates one image. The web, worker, scheduler, and migration roles
-    all use that same image. Building the `web` target avoids asking Compose to
-    render the same shared image three times.
+    `OVERLAY_WEB_IMAGE` must name the approved versioned release, such as
+    `ghcr.io/layernorm/overlay-web:0.1.0-rc.1`. Do not use `latest` for a
+    customer qualification run. The web, worker, scheduler, and migration roles
+    all use the same immutable image.
+
+    To build inspected or customized source instead, use the build override:
+
+    ```bash
+    compose_source() {
+      docker compose \
+        --env-file deploy/ec2/.env \
+        -f deploy/ec2/docker-compose.yml \
+        -f deploy/ec2/docker-compose.build.yml \
+        "$@"
+    }
+
+    compose_source build web
+    ```
+
+    Continue with `compose_source` instead of `compose` for the remaining steps
+    when using a source build. The override builds the tested enterprise runtime,
+    including the web server, worker, scheduler, and migration tooling.
   </Step>
 
   <Step title="Run migrations once">
