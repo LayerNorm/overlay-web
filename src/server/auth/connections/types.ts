@@ -18,6 +18,7 @@ export interface ResolvedBetterAuthOidcConnection {
   domains: string[]
   issuerUrl: string
   discoveryEndpoint: string
+  trustedOrigins: string[]
   clientId: string
   clientSecret: string
   scopes: string[]

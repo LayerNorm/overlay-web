@@ -154,8 +154,11 @@ class BetterAuthWebAuthFlowProvider implements WebAuthFlowProvider {
       throw new Error('Native Better Auth session transfer is not supported in this auth provider version.')
     }
 
-    const callbackURL = new URL(normalizedRedirectUri ?? '/', workosAuth.getBaseUrl()).toString()
-    const errorCallbackURL = new URL('/auth/sign-in?error=Authentication%20failed', workosAuth.getBaseUrl()).toString()
+    const callbackURL = new URL(normalizedRedirectUri ?? '/', betterAuthConfig.baseUrl).toString()
+    const errorCallbackURL = new URL(
+      '/auth/sign-in?error=Authentication%20failed',
+      betterAuthConfig.baseUrl,
+    ).toString()
     const body: Record<string, unknown> = {
       callbackURL,
       errorCallbackURL,

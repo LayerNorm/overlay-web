@@ -109,6 +109,9 @@ test('Better Auth trusts configured app and OIDC discovery origins', () => {
     'https://staging.getoverlay.io',
     'https://admin.getoverlay.io',
     'https://accounts.google.com',
+    'https://oauth2.googleapis.com',
+    'https://openidconnect.googleapis.com',
+    'https://www.googleapis.com',
     'https://login.microsoftonline.com',
   ])
 })

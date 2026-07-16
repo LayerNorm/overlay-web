@@ -11,6 +11,7 @@ export function resolvedOidcConnection(
   defaults: {
     issuerUrl: string
     discoveryEndpoint?: string
+    trustedOrigins?: string[]
     label: string
     icon: BetterAuthConnectionIcon
   },
@@ -30,6 +31,7 @@ export function resolvedOidcConnection(
       connection.discoveryEndpoint ??
       defaults.discoveryEndpoint ??
       `${issuerWithoutTrailingSlash}/.well-known/openid-configuration`,
+    trustedOrigins: [...(defaults.trustedOrigins ?? [])],
     clientId,
     clientSecret,
     scopes: [...DEFAULT_OIDC_SCOPES],

@@ -32,8 +32,13 @@ test('preset registry resolves the four initial OIDC presets', () => {
     google.discoveryEndpoint,
     'https://accounts.google.com/.well-known/openid-configuration',
   )
-  assert.equal(google.label, 'Continue with Google Workspace')
+  assert.equal(google.label, 'Continue with Google')
   assert.equal(google.icon, 'google')
+  assert.deepEqual(google.trustedOrigins, [
+    'https://oauth2.googleapis.com',
+    'https://openidconnect.googleapis.com',
+    'https://www.googleapis.com',
+  ])
 
   const auth0 = resolveBetterAuthConnection(OverlayBetterAuthConnectionSchema.parse({
     id: 'auth0',
@@ -49,6 +54,7 @@ test('preset registry resolves the four initial OIDC presets', () => {
     'https://tenant.us.auth0.com/.well-known/openid-configuration',
   )
   assert.equal(auth0.label, 'Continue with Auth0')
+  assert.deepEqual(auth0.trustedOrigins, [])
 
   const entra = resolveBetterAuthConnection(OverlayBetterAuthConnectionSchema.parse({
     id: 'microsoft',

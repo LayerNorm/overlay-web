@@ -191,6 +191,9 @@ export function buildBetterAuthTrustedOrigins(config: BetterAuthRuntimeConfig): 
   for (const connection of config.connections) {
     origins.add(normalizeOrigin(connection.issuerUrl))
     origins.add(normalizeOrigin(connection.discoveryEndpoint))
+    for (const origin of connection.trustedOrigins) {
+      origins.add(normalizeOrigin(origin))
+    }
   }
   return [...origins]
 }
