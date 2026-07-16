@@ -84,11 +84,11 @@ const nextConfig: NextConfig = {
         },
         {
           source: "/docs",
-          destination: `${mintlifyDocsOrigin}/docs`,
+          destination: mintlifyDocsOrigin,
         },
         {
           source: "/docs/:match*",
-          destination: `${mintlifyDocsOrigin}/docs/:match*`,
+          destination: `${mintlifyDocsOrigin}/:match*`,
         },
         {
           source: "/mintlify-assets/:path*",
