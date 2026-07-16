@@ -13,6 +13,11 @@ import {
   getOverlayRuntimeConfigSync,
 } from '@/server/config'
 import {
+  applyAppDataCapabilitiesToOverlayCapabilities,
+  deriveAppDataCapabilities,
+  type AppDataCapabilities,
+} from '@/server/app-data/capabilities'
+import {
   getCapabilityDisabledError,
   getRequiredCapabilityForRoute,
 } from './capabilities-core'
@@ -23,14 +28,36 @@ export function getOverlayCapabilitiesSync(): CapabilityCheck {
   if (process.env.NEXT_PHASE === 'phase-production-build') {
     return deriveOverlayCapabilities()
   }
-  return deriveOverlayCapabilities(getOverlayRuntimeConfigSync())
+  const runtimeConfig = getOverlayRuntimeConfigSync()
+  return applyAppDataCapabilitiesToOverlayCapabilities(
+    deriveOverlayCapabilities(runtimeConfig),
+    deriveAppDataCapabilities(runtimeConfig),
+  )
+}
+
+export function getAppDataCapabilitiesSync(): AppDataCapabilities {
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return deriveAppDataCapabilities(null)
+  }
+  return deriveAppDataCapabilities(getOverlayRuntimeConfigSync())
 }
 
 export async function getOverlayCapabilities(): Promise<CapabilityCheck> {
   if (process.env.NEXT_PHASE === 'phase-production-build') {
     return deriveOverlayCapabilities()
   }
-  return deriveOverlayCapabilities(await getOverlayRuntimeConfig())
+  const runtimeConfig = await getOverlayRuntimeConfig()
+  return applyAppDataCapabilitiesToOverlayCapabilities(
+    deriveOverlayCapabilities(runtimeConfig),
+    deriveAppDataCapabilities(runtimeConfig),
+  )
+}
+
+export async function getAppDataCapabilities(): Promise<AppDataCapabilities> {
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return deriveAppDataCapabilities(null)
+  }
+  return deriveAppDataCapabilities(await getOverlayRuntimeConfig())
 }
 
 export function capabilityDisabledResponse(capability: OverlayCapability): NextResponse {

@@ -12,6 +12,7 @@ import {
   notebookAgentEventToUiItem,
   normalizeNotebookContent,
   normalizeNotebookTitle,
+  noteDocToKnowledgeFile,
   parseNotebookAgentStreamLine,
   removeNotebookNote,
   upsertNotebookNote,
@@ -52,6 +53,31 @@ test('notebook note list helpers upsert, remove, and normalize titles', () => {
   assert.deepEqual(removeNotebookNote([first, second], 'a').map((note) => note._id), ['b'])
   assert.equal(normalizeNotebookTitle('  '), 'Untitled')
   assert.equal(normalizeNotebookTitle('  Roadmap  '), 'Roadmap')
+})
+
+test('dedicated note records map into the file-list contract', () => {
+  assert.deepEqual(noteDocToKnowledgeFile({
+    _id: 'note_1',
+    title: 'Architecture notes',
+    content: '<p>Postgres</p>',
+    tags: [],
+    projectId: 'project_1',
+    createdAt: 10,
+    updatedAt: 20,
+  }), {
+    _id: 'note_1',
+    name: 'Architecture notes',
+    type: 'file',
+    kind: 'note',
+    parentId: null,
+    content: '<p>Postgres</p>',
+    textContent: '<p>Postgres</p>',
+    previewText: '<p>Postgres</p>',
+    sizeBytes: 15,
+    createdAt: 10,
+    updatedAt: 20,
+    projectId: 'project_1',
+  })
 })
 
 test('notebook request helpers preserve API body shapes', () => {

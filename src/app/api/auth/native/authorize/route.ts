@@ -86,11 +86,16 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ authorizationUrl }, { headers: NO_STORE_HEADERS })
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const isUnsupportedBetterAuthNative = message.startsWith('Native Better Auth')
     logSecurityEvent('native_authorize_error', {
-      reason: error instanceof Error ? error.message : String(error),
+      reason: message,
       path: request.nextUrl.pathname,
       ip: getClientIp(request),
-    }, 'error')
+    }, isUnsupportedBetterAuthNative ? 'warning' : 'error')
+    if (isUnsupportedBetterAuthNative) {
+      return NextResponse.json({ error: message }, { status: 400, headers: NO_STORE_HEADERS })
+    }
     return NextResponse.json({ error: 'Failed to create authorization URL' }, { status: 500, headers: NO_STORE_HEADERS })
   }
 }

@@ -26,7 +26,6 @@ const baseDefaultConfig = {
       apiKey: 'workos_default_secret',
     },
     oidc: {},
-    keycloak: {},
   },
   billing: {
     provider: 'stripe',
@@ -131,6 +130,7 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     OVERLAY_ALLOWED_PROCESSORS: 'models:openai,objectStorage:s3',
     OVERLAY_ALLOWED_REGIONS: 'in,ap-south-1',
     OVERLAY_DATA_RESIDENCY_REQUIRED: '1',
+    OVERLAY_RETENTION_MEMORY_DAYS: '365',
     OVERLAY_FEATURE_BROWSER_USE: 'false',
     OVERLAY_FEATURE_SANDBOXES: 'false',
     OVERLAY_FEATURE_ANALYTICS: 'false',
@@ -168,7 +168,46 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
       required: true,
       allowedRegions: ['in', 'ap-south-1'],
     },
+    retention: {
+      memoryDays: 365,
+    },
   })
+})
+
+test('configOverridesFromEnv maps Executor integration service settings', () => {
+  const overrides = configOverridesFromEnv({
+    OVERLAY_PROVIDER_INTEGRATIONS: 'executor',
+    EXECUTOR_API_BASE_URL: 'https://executor.internal.example.com/api',
+    EXECUTOR_WEB_BASE_URL: 'https://executor.example.com',
+    EXECUTOR_MCP_URL: 'https://executor.internal.example.com/mcp',
+    EXECUTOR_API_KEY: 'executor-key',
+    EXECUTOR_CONNECTION_OWNER: 'org',
+    EXECUTOR_REQUEST_TIMEOUT_MS: '45000',
+  })
+  assert.deepEqual(overrides.providers, { integrations: { provider: 'executor' } })
+  assert.deepEqual(overrides.integrations, {
+    executor: {
+      apiBaseUrl: 'https://executor.internal.example.com/api',
+      webBaseUrl: 'https://executor.example.com',
+      mcpUrl: 'https://executor.internal.example.com/mcp',
+      apiKey: 'executor-key',
+      connectionOwner: 'org',
+      requestTimeoutMs: 45000,
+    },
+  })
+})
+
+test('configOverridesFromEnv maps bounded S3 presign lifetime', () => {
+  const overrides = configOverridesFromEnv({
+    STORAGE_PROVIDER: 's3',
+    S3_BUCKET_NAME: 'overlay-private',
+    S3_REGION: 'us-east-1',
+    S3_ACCESS_KEY_ID: 'access',
+    S3_SECRET_ACCESS_KEY: 'secret',
+    S3_PRESIGN_TTL_SECONDS: '300',
+  })
+  const storage = overrides.storage as { s3?: { presignTtlSeconds?: number } } | undefined
+  assert.equal(storage?.s3?.presignTtlSeconds, 300)
 })
 
 test('production env ignores dev WorkOS fallback variables', async () => {
@@ -361,10 +400,10 @@ test('configOverridesFromEnv rejects secret-looking NEXT_PUBLIC values during pa
 
 test('configOverridesFromEnv preserves auth provider selection shape', () => {
   assert.deepEqual(configOverridesFromEnv({
-    KEYCLOAK_ISSUER_URL: 'https://keycloak.example.com/realms/overlay',
-    KEYCLOAK_CLIENT_ID: 'overlay-web',
-    KEYCLOAK_CLIENT_SECRET: 'keycloak_secret',
-    KEYCLOAK_REALM: 'overlay',
+    OIDC_ISSUER_URL: 'https://keycloak.example.com/realms/overlay',
+    OIDC_CLIENT_ID: 'overlay-web',
+    OIDC_CLIENT_SECRET: 'oidc_secret',
+    OIDC_AUDIENCE: 'overlay-api',
   }).auth, {
     provider: 'oidc',
     allowDevFallbacks: false,
@@ -372,12 +411,8 @@ test('configOverridesFromEnv preserves auth provider selection shape', () => {
     oidc: {
       issuerUrl: 'https://keycloak.example.com/realms/overlay',
       clientId: 'overlay-web',
-    },
-    keycloak: {
-      issuerUrl: 'https://keycloak.example.com/realms/overlay',
-      clientId: 'overlay-web',
-      clientSecret: 'keycloak_secret',
-      realm: 'overlay',
+      clientSecret: 'oidc_secret',
+      audience: 'overlay-api',
     },
   })
 
@@ -393,7 +428,86 @@ test('configOverridesFromEnv preserves auth provider selection shape', () => {
       devApiKey: 'dev_secret',
     },
     oidc: {},
-    keycloak: {},
+  })
+
+  const betterAuthOverrides = configOverridesFromEnv({
+    AUTH_PROVIDER: 'better-auth',
+    BETTER_AUTH_URL: 'https://self-hosted.example.com',
+    BETTER_AUTH_BASE_PATH: '/api/better-auth',
+    BETTER_AUTH_SECRET: 'better_auth_secret',
+    BETTER_AUTH_DATABASE_URL: 'postgres://overlay_auth:secret@db.internal:5432/overlay_auth',
+    BETTER_AUTH_TRUSTED_ORIGINS: 'https://self-hosted.example.com,https://admin.example.com',
+    BETTER_AUTH_DEFAULT_SSO_PROVIDER_ID: 'pilot-oidc',
+    BETTER_AUTH_DEFAULT_SSO_DOMAIN: 'example.com',
+    BETTER_AUTH_OIDC_ISSUER_URL: 'https://idp.example.com',
+    BETTER_AUTH_OIDC_DISCOVERY_ENDPOINT: 'https://idp.example.com/.well-known/openid-configuration',
+    BETTER_AUTH_OIDC_CLIENT_ID: 'overlay-web',
+    BETTER_AUTH_OIDC_CLIENT_SECRET: 'oidc_secret',
+    BETTER_AUTH_JWT_AUDIENCE: 'https://self-hosted.example.com',
+    BETTER_AUTH_JWKS_URL: 'https://self-hosted.example.com/api/better-auth/jwks',
+  })
+  assert.deepEqual(betterAuthOverrides.auth, {
+    provider: 'better-auth',
+    allowDevFallbacks: false,
+    workos: {},
+    oidc: {},
+    betterAuth: {
+      baseUrl: 'https://self-hosted.example.com',
+      basePath: '/api/better-auth',
+      secret: 'better_auth_secret',
+      databaseUrl: 'postgres://overlay_auth:secret@db.internal:5432/overlay_auth',
+      trustedOrigins: ['https://self-hosted.example.com', 'https://admin.example.com'],
+      defaultSsoProviderId: 'pilot-oidc',
+      defaultSsoDomain: 'example.com',
+      oidcIssuerUrl: 'https://idp.example.com',
+      oidcDiscoveryEndpoint: 'https://idp.example.com/.well-known/openid-configuration',
+      oidcClientId: 'overlay-web',
+      oidcClientSecret: 'oidc_secret',
+      jwtAudience: 'https://self-hosted.example.com',
+      jwksUrl: 'https://self-hosted.example.com/api/better-auth/jwks',
+    },
+  })
+  assert.deepEqual(betterAuthOverrides.providers, {
+    auth: { provider: 'better-auth' },
+  })
+})
+
+test('configOverridesFromEnv maps a canonical Better Auth connection and access policy', () => {
+  const overrides = configOverridesFromEnv({
+    AUTH_PROVIDER: 'better-auth',
+    BETTER_AUTH_CONNECTION_ID: 'primary-sso',
+    BETTER_AUTH_CONNECTION_PRESET: 'google-workspace',
+    BETTER_AUTH_CONNECTION_LABEL: 'Continue with School Google',
+    BETTER_AUTH_CONNECTION_DOMAINS: 'School.EDU,students.school.edu',
+    BETTER_AUTH_CONNECTION_CLIENT_ID_ENV: 'GOOGLE_WORKSPACE_CLIENT_ID',
+    BETTER_AUTH_CONNECTION_CLIENT_SECRET_ENV: 'GOOGLE_WORKSPACE_CLIENT_SECRET',
+    BETTER_AUTH_REQUIRE_VERIFIED_EMAIL: 'true',
+    BETTER_AUTH_ALLOWED_EMAIL_DOMAINS: 'school.edu,students.school.edu',
+  })
+
+  assert.deepEqual(overrides.auth, {
+    provider: 'better-auth',
+    allowDevFallbacks: false,
+    workos: {},
+    oidc: {},
+    betterAuth: {
+      connections: [{
+        id: 'primary-sso',
+        protocol: 'oidc',
+        preset: 'google-workspace',
+        label: 'Continue with School Google',
+        domains: ['School.EDU', 'students.school.edu'],
+        clientIdEnv: 'GOOGLE_WORKSPACE_CLIENT_ID',
+        clientSecretEnv: 'GOOGLE_WORKSPACE_CLIENT_SECRET',
+      }],
+      accessPolicy: {
+        requireVerifiedEmail: true,
+        allowedEmailDomains: ['school.edu', 'students.school.edu'],
+      },
+    },
+  })
+  assert.deepEqual(overrides.providers, {
+    auth: { provider: 'better-auth' },
   })
 })
 
@@ -419,5 +533,60 @@ test('configOverridesFromEnv preserves deployment-specific billing and database 
   assert.deepEqual(config.database, {
     provider: 'convex',
     convexUrl: 'https://dev.convex.cloud',
+  })
+})
+
+test('configOverridesFromEnv maps Postgres app-data database env separately from Better Auth', () => {
+  const config = configOverridesFromEnv({
+    OVERLAY_PROVIDER_DATABASE: 'postgres',
+    OVERLAY_DATABASE_URL: 'postgres://overlay_app:secret@db.internal:5432/overlay_app',
+    OVERLAY_DATABASE_SSL_MODE: 'verify-full',
+    OVERLAY_BACKGROUND_RUNTIME_ENABLED: 'true',
+    AUTH_PROVIDER: 'better-auth',
+    BETTER_AUTH_DATABASE_URL: 'postgres://overlay_auth:secret@db.internal:5432/overlay_auth',
+    BETTER_AUTH_SECRET: 'better_auth_secret',
+  })
+
+  assert.deepEqual(config.providers, {
+    auth: { provider: 'better-auth' },
+    database: { provider: 'postgres' },
+  })
+  assert.deepEqual(config.database, {
+    provider: 'postgres',
+    postgres: {
+      connectionString: 'postgres://overlay_app:secret@db.internal:5432/overlay_app',
+      sslMode: 'verify-full',
+      backgroundRuntimeEnabled: true,
+    },
+  })
+  assert.deepEqual(config.auth, {
+    provider: 'better-auth',
+    allowDevFallbacks: false,
+    workos: {},
+    oidc: {},
+    betterAuth: {
+      secret: 'better_auth_secret',
+      databaseUrl: 'postgres://overlay_auth:secret@db.internal:5432/overlay_auth',
+    },
+  })
+})
+
+test('configOverridesFromEnv maps Redis runtime coordination separately from database config', () => {
+  const config = configOverridesFromEnv({
+    OVERLAY_PROVIDER_RATE_LIMIT: 'redis',
+    OVERLAY_REDIS_URL: 'rediss://redis.internal:6379',
+    OVERLAY_REDIS_KEY_PREFIX: 'overlay:school:',
+    OVERLAY_REDIS_FAILURE_MODE: 'deny',
+  })
+
+  assert.deepEqual(config.providers, {
+    rateLimit: { provider: 'redis' },
+  })
+  assert.deepEqual(config.rateLimit, {
+    redis: {
+      url: 'rediss://redis.internal:6379',
+      keyPrefix: 'overlay:school:',
+      failureMode: 'deny',
+    },
   })
 })

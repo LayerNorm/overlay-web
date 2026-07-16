@@ -35,7 +35,10 @@ export type AutomationRunStatus =
   | 'completed'
   | 'succeeded'
   | 'failed'
+  | 'cancel_requested'
+  | 'cancelled'
   | 'skipped'
+  | 'dead_letter'
 
 export interface AutomationRunSummary {
   _id: string

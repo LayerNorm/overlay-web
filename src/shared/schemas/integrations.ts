@@ -8,6 +8,7 @@ export const IntegrationListQuery = PaginationQuery.extend({
 
 export const IntegrationConnectRequest = z.object({
   ...AuthFields,
+  providerKey: z.string().optional(),
   toolkit: z.string().optional(),
   slug: z.string().optional(),
   redirectUrl: z.string().url().optional(),

@@ -1,4 +1,5 @@
 import type {
+  AutomationRunSummary,
   AutomationRunRequest,
   AutomationRunResponse,
   AutomationSummary,
@@ -31,6 +32,10 @@ export class AutomationsClient {
 
   getResponse(query?: AutomationQuery, init?: RequestInit) {
     return this.http.request(this.path(query), init)
+  }
+
+  getRuns(automationId: string, init?: RequestInit) {
+    return this.get<AutomationRunSummary[]>({ automationId, includeRuns: true }, init)
   }
 
   create(body: CreateAutomationRequest, init?: MutationRequestInit) {

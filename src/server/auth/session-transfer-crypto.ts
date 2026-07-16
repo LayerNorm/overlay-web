@@ -66,24 +66,50 @@ function getRequiredEncryptionSecret(params: {
   throw new Error(`${params.primaryEnvVar} is not configured for ${params.purpose}${fallbackMessage}`)
 }
 
+function getEncryptionKeyRing(params: {
+  primaryEnvVar: string
+  previousEnvVar: string
+  legacyEnvVar?: string
+  purpose: string
+}): Buffer[] {
+  const current = getRequiredEncryptionSecret(params)
+  const previous = process.env[params.previousEnvVar]?.trim()
+  if (!previous) return [deriveAesKey(current)]
+  if (previous.length < MIN_KEY_LENGTH) {
+    throw new Error(
+      `${params.previousEnvVar} is too short for ${params.purpose} (got ${previous.length} chars, need >= ${MIN_KEY_LENGTH})`,
+    )
+  }
+  if (previous === current) {
+    throw new Error(`${params.previousEnvVar} must differ from ${params.primaryEnvVar}`)
+  }
+  return [deriveAesKey(current), deriveAesKey(previous)]
+}
+
 function getSessionTransferKey(): Buffer {
-  return deriveAesKey(
-    getRequiredEncryptionSecret({
-      primaryEnvVar: 'SESSION_TRANSFER_KEY',
-      legacyEnvVar: 'INTERNAL_API_SECRET',
-      purpose: 'session transfer encryption',
-    })
-  )
+  return getSessionTransferKeys()[0]!
+}
+
+function getSessionTransferKeys(): Buffer[] {
+  return getEncryptionKeyRing({
+    primaryEnvVar: 'SESSION_TRANSFER_KEY',
+    previousEnvVar: 'SESSION_TRANSFER_KEY_PREVIOUS',
+    legacyEnvVar: 'INTERNAL_API_SECRET',
+    purpose: 'session transfer encryption',
+  })
 }
 
 function getSessionCookieEncryptionKey(): Buffer {
-  return deriveAesKey(
-    getRequiredEncryptionSecret({
-      primaryEnvVar: 'SESSION_COOKIE_ENCRYPTION_KEY',
-      legacyEnvVar: 'SESSION_SECRET',
-      purpose: 'session cookie encryption',
-    })
-  )
+  return getSessionCookieEncryptionKeys()[0]!
+}
+
+function getSessionCookieEncryptionKeys(): Buffer[] {
+  return getEncryptionKeyRing({
+    primaryEnvVar: 'SESSION_COOKIE_ENCRYPTION_KEY',
+    previousEnvVar: 'SESSION_COOKIE_ENCRYPTION_KEY_PREVIOUS',
+    legacyEnvVar: 'SESSION_SECRET',
+    purpose: 'session cookie encryption',
+  })
 }
 
 function encryptPayload(payload: string, key: Buffer): string {
@@ -123,12 +149,23 @@ function decryptPayload(payload: string, key: Buffer): string {
   ]).toString('utf8')
 }
 
+function decryptPayloadWithKeyRing(payload: string, keys: readonly Buffer[]): string {
+  for (const key of keys) {
+    try {
+      return decryptPayload(payload, key)
+    } catch (_error) {
+      // Continue through the bounded key ring during a rotation overlap.
+    }
+  }
+  throw new Error('Encrypted session payload could not be authenticated')
+}
+
 export function encryptSessionTransferPayload(payload: string): string {
   return encryptPayload(payload, getSessionTransferKey())
 }
 
 export function decryptSessionTransferPayload(payload: string): string {
-  return decryptPayload(payload, getSessionTransferKey())
+  return decryptPayloadWithKeyRing(payload, getSessionTransferKeys())
 }
 
 export function encryptSessionCookiePayload(payload: string): string {
@@ -136,5 +173,5 @@ export function encryptSessionCookiePayload(payload: string): string {
 }
 
 export function decryptSessionCookiePayload(payload: string): string {
-  return decryptPayload(payload, getSessionCookieEncryptionKey())
+  return decryptPayloadWithKeyRing(payload, getSessionCookieEncryptionKeys())
 }

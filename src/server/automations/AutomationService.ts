@@ -8,10 +8,12 @@ import type {
   AutomationRepository,
   AutomationSchedule,
 } from './AutomationRepository'
-import type { Id } from '../../../convex/_generated/dataModel'
+import {
+  AutomationEntitlementError,
+  type AutomationEntitlementPolicy,
+} from './AutomationEntitlementPolicy'
 
 const MIN_INTERVAL_MINUTES = 15
-const MAX_ENABLED_AUTOMATIONS = 25
 
 export class AutomationServiceError extends Error {
   constructor(
@@ -44,12 +46,13 @@ type AutomationServiceEvents = {
 }
 
 export type AutomationExecutor = (input: ScheduledAutomationTurn) => Promise<{
-  conversationId: Id<'conversations'>
+  conversationId: string
 }>
 
 export type AutomationServiceDeps = {
   clock?: AutomationServiceClock
   events?: AutomationServiceEvents
+  entitlementPolicy: AutomationEntitlementPolicy
   executor?: AutomationExecutor
   repository: AutomationRepository
 }
@@ -74,7 +77,8 @@ type UpdateAutomationBody = {
   accessToken?: string
   userId?: string
   automationId?: string
-  action?: 'pause' | 'resume'
+  action?: 'cancel-run' | 'pause' | 'resume' | 'retry-run'
+  runId?: string
   name?: string
   description?: string
   instructions?: string
@@ -243,13 +247,13 @@ export class AutomationService {
   }): Promise<unknown> {
     if (args.automationId && args.includeRuns) {
       return await this.deps.repository.listRuns({
-        automationId: args.automationId as Id<'automations'>,
+        automationId: args.automationId,
         userId: args.userId,
       })
     }
     if (args.automationId) {
       const automation = await this.deps.repository.getAutomation({
-        automationId: args.automationId as Id<'automations'>,
+        automationId: args.automationId,
         userId: args.userId,
       })
       if (!automation) serviceError({ error: 'Not found' }, 404)
@@ -272,8 +276,7 @@ export class AutomationService {
     }
     this.assertScheduleAllowed(body.schedule)
     if (body.enabled !== false) {
-      await this.assertPaidPlan(args.userId)
-      await this.assertEnabledAutomationCap(args.userId)
+      await this.assertCanEnable(args.userId)
     }
 
     const id = await this.deps.repository.createAutomation({
@@ -287,7 +290,7 @@ export class AutomationService {
       projectId: body.projectId,
       modelId: body.modelId,
       graphSource: body.graphSource,
-      sourceConversationId: body.sourceConversationId as Id<'conversations'> | undefined,
+      sourceConversationId: body.sourceConversationId,
       concurrencyPolicy: body.concurrencyPolicy,
     })
     if (!id) throw new Error('Automation create returned no id')
@@ -299,15 +302,33 @@ export class AutomationService {
     userId: string
   }): Promise<{ success: true }> {
     const { body } = args
+    if (body.action === 'cancel-run') {
+      if (!body.runId) serviceError({ error: 'runId required' }, 400)
+      const cancelled = await this.deps.repository.requestRunCancellation({
+        runId: body.runId,
+        userId: args.userId,
+      })
+      if (!cancelled) serviceError({ error: 'Run is not cancellable' }, 409)
+      return { success: true }
+    }
+    if (body.action === 'retry-run') {
+      if (!body.runId) serviceError({ error: 'runId required' }, 400)
+      const retryRunId = await this.deps.repository.retryRun({
+        runId: body.runId,
+        userId: args.userId,
+      })
+      if (!retryRunId) serviceError({ error: 'Run is not retryable' }, 409)
+      return { success: true }
+    }
     if (!body.automationId) {
       serviceError({ error: 'automationId required' }, 400)
     }
     this.assertScheduleAllowed(body.schedule)
     if (body.action === 'resume' || body.enabled === true) {
-      await this.assertPaidPlan(args.userId)
+      await this.assertCanEnable(args.userId)
     }
 
-    const automationId = body.automationId as Id<'automations'>
+    const automationId = body.automationId
     const idArgs = { automationId, userId: args.userId }
     if (body.action === 'pause') {
       await this.deps.repository.pauseAutomation(idArgs)
@@ -326,7 +347,7 @@ export class AutomationService {
         projectId: body.projectId,
         modelId: body.modelId,
         graphSource: body.graphSource,
-        sourceConversationId: body.sourceConversationId as Id<'conversations'> | undefined,
+        sourceConversationId: body.sourceConversationId,
         concurrencyPolicy: body.concurrencyPolicy,
       })
       if (before) {
@@ -347,11 +368,11 @@ export class AutomationService {
   async deleteAutomation(args: {
     automationId?: string | null
     userId: string
-  }): Promise<{ success: true; linkedConversationIds: Id<'conversations'>[] }> {
+  }): Promise<{ success: true; linkedConversationIds: string[] }> {
     if (!args.automationId) {
       serviceError({ error: 'automationId required' }, 400)
     }
-    const automationId = args.automationId as Id<'automations'>
+    const automationId = args.automationId
     const automation = await this.deps.repository.getAutomation({
       automationId,
       userId: args.userId,
@@ -364,7 +385,7 @@ export class AutomationService {
     const linkedConversationIds = [
       automation?.conversationId,
       isDraftPlaceholder ? automation?.sourceConversationId : undefined,
-    ].filter((id, index, ids): id is Id<'conversations'> => Boolean(id && ids.indexOf(id) === index))
+    ].filter((id, index, ids): id is string => Boolean(id && ids.indexOf(id) === index))
 
     await this.deps.repository.removeAutomation({
       automationId,
@@ -387,14 +408,14 @@ export class AutomationService {
     automationId?: string
     userId: string
     baseUrl?: string
-  }): Promise<{ success: true; runId: Id<'automationRuns'>; conversationId: Id<'conversations'> }> {
-    let runId: Id<'automationRuns'> | null = null
-    let automationId: Id<'automations'> | null = null
+  }): Promise<{ success: true; runId: string; conversationId: string }> {
+    let runId: string | null = null
+    let automationId: string | null = null
     try {
       if (!args.automationId) {
         serviceError({ error: 'automationId required' }, 400)
       }
-      automationId = args.automationId as Id<'automations'>
+      automationId = args.automationId
       const automation = await this.deps.repository.getAutomationRunTarget({
         automationId,
         userId: args.userId,
@@ -473,14 +494,12 @@ export class AutomationService {
     runId?: string
     serviceUserId: string
     baseUrl?: string
-  }): Promise<{ success: true; conversationId: Id<'conversations'> }> {
+  }): Promise<{ success: true; conversationId: string }> {
     let automationId: string | undefined
     let userId: string | undefined
     try {
       if (!args.runId) serviceError({ error: 'runId required' }, 400)
-      const payload = await this.deps.repository.getRunForExecution({
-        runId: args.runId as Id<'automationRuns'>,
-      })
+      const payload = await this.deps.repository.getRunForExecution({ runId: args.runId })
       if (!payload || payload.run.status !== 'running') {
         serviceError({ error: 'Automation run is not executable' }, 409)
       }
@@ -535,17 +554,16 @@ export class AutomationService {
     }
   }
 
-  private async assertPaidPlan(userId: string): Promise<void> {
-    const entitlements = await this.deps.repository.getEntitlements({ userId })
-    if (entitlements?.planKind !== 'paid') {
-      serviceError({ error: 'Enabled automations require a paid plan.' }, 403)
-    }
-  }
-
-  private async assertEnabledAutomationCap(userId: string): Promise<void> {
+  private async assertCanEnable(userId: string): Promise<void> {
     const existing = await this.deps.repository.listAutomations({ userId })
-    if ((existing as Array<{ enabled?: boolean }>).filter((item) => item.enabled !== false).length >= MAX_ENABLED_AUTOMATIONS) {
-      serviceError({ error: `You can enable up to ${MAX_ENABLED_AUTOMATIONS} automations.` }, 403)
+    const enabledCount = existing.filter((item) => item.enabled !== false).length
+    try {
+      await this.deps.entitlementPolicy.assertCanEnable({ enabledCount, userId })
+    } catch (error) {
+      if (error instanceof AutomationEntitlementError) {
+        serviceError({ error: error.publicMessage }, 403)
+      }
+      throw error
     }
   }
 
@@ -568,9 +586,9 @@ export class AutomationService {
   }
 
   private async failManualRunBestEffort(args: {
-    automationId: Id<'automations'> | null
+    automationId: string | null
     error: unknown
-    runId: Id<'automationRuns'> | null
+    runId: string | null
     userId: string
   }): Promise<void> {
     const message = summarizeError(args.error).slice(0, 1000)

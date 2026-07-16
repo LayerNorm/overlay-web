@@ -17,7 +17,7 @@ export function marketingAuthMuted(): string {
 
 export function marketingSsoButton(): string {
   return [
-    "w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 border",
+    "w-full flex items-center justify-center gap-3 whitespace-nowrap px-4 py-3 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 border",
     "bg-[var(--button-secondary-bg)] border-[var(--button-secondary-border)] text-[var(--button-secondary-text)] hover:bg-[var(--surface-muted)]",
   ].join(" ");
 }

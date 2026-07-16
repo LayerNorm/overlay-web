@@ -24,7 +24,6 @@ const minimalSaasConfig = {
       apiKey: 'workos_staging_secret',
     },
     oidc: {},
-    keycloak: {},
   },
   billing: {
     provider: 'stripe',
@@ -77,6 +76,24 @@ const minimalSaasConfig = {
   },
 } satisfies OverlayRuntimeConfigInput
 
+function betterAuthConfig(connections: unknown[], betterAuthOverrides = {}) {
+  return {
+    ...minimalSaasConfig,
+    auth: {
+      provider: 'better-auth',
+      allowDevFallbacks: false,
+      workos: {},
+      oidc: {},
+      betterAuth: {
+        secret: 'better_auth_session_secret',
+        databaseUrl: 'postgresql://overlay_auth:secret@db.internal/overlay_auth',
+        connections,
+        ...betterAuthOverrides,
+      },
+    },
+  }
+}
+
 test('OverlayRuntimeConfigSchema validates minimal SaaS config', () => {
   const parsed = OverlayRuntimeConfigSchema.parse(minimalSaasConfig)
   assert.equal(parsed.configVersion, 2)
@@ -84,6 +101,175 @@ test('OverlayRuntimeConfigSchema validates minimal SaaS config', () => {
   assert.equal(parsed.billing.provider, 'stripe')
   assert.equal(parsed.storage.provider, 'r2')
   assert.equal(parsed.capabilities.apiKeys, true)
+})
+
+test('OverlayRuntimeConfigSchema validates the initial Better Auth connection presets', () => {
+  const parsed = OverlayRuntimeConfigSchema.parse(betterAuthConfig([
+    {
+      id: 'workspace',
+      preset: 'google-workspace',
+      domains: ['School.EDU'],
+      clientIdEnv: 'GOOGLE_WORKSPACE_CLIENT_ID',
+      clientSecretEnv: 'GOOGLE_WORKSPACE_CLIENT_SECRET',
+    },
+    {
+      id: 'auth0',
+      preset: 'auth0',
+      domains: ['partners.example.com'],
+      issuerUrl: 'https://tenant.us.auth0.com',
+      clientId: 'auth0-client',
+      clientSecret: 'auth0-secret',
+    },
+    {
+      id: 'microsoft',
+      preset: 'entra-id',
+      domains: ['corp.example.com'],
+      tenantId: '4d38d1b7-5f35-4fd9-a522-8c85ec9ecb43',
+      clientId: 'entra-client',
+      clientSecret: 'entra-secret',
+    },
+    {
+      id: 'custom',
+      preset: 'generic-oidc',
+      label: 'Continue with Enterprise SSO',
+      domains: ['identity.example.org'],
+      issuerUrl: 'https://idp.example.org',
+      clientId: 'custom-client',
+      clientSecret: 'custom-secret',
+    },
+  ], {
+    accessPolicy: {
+      requireVerifiedEmail: true,
+      allowedEmailDomains: ['School.EDU', 'corp.example.com'],
+    },
+  }))
+
+  assert.deepEqual(
+    parsed.auth.betterAuth.connections.map((connection) => connection.preset),
+    ['google-workspace', 'auth0', 'entra-id', 'generic-oidc'],
+  )
+  assert.deepEqual(parsed.auth.betterAuth.connections[0]?.domains, ['school.edu'])
+  assert.deepEqual(parsed.auth.betterAuth.accessPolicy.allowedEmailDomains, [
+    'school.edu',
+    'corp.example.com',
+  ])
+})
+
+test('OverlayRuntimeConfigSchema rejects unsafe Better Auth connection configuration', () => {
+  assert.throws(
+    () => OverlayRuntimeConfigSchema.parse(betterAuthConfig([
+      {
+        id: 'duplicate',
+        preset: 'google-workspace',
+        domains: ['example.com'],
+        clientId: 'client-one',
+        clientSecret: 'secret-one',
+      },
+      {
+        id: 'duplicate',
+        preset: 'generic-oidc',
+        domains: ['example.org'],
+        issuerUrl: 'https://idp.example.org',
+        clientId: 'client-two',
+        clientSecret: 'secret-two',
+      },
+    ])),
+    /Duplicate Better Auth connection id/,
+  )
+
+  assert.throws(
+    () => OverlayRuntimeConfigSchema.parse(betterAuthConfig([{
+      id: 'microsoft',
+      preset: 'entra-id',
+      domains: ['example.com'],
+      issuerUrl: 'https://login.microsoftonline.com/common/v2.0/',
+      clientId: 'client',
+      clientSecret: 'secret',
+    }])),
+    /tenant-specific issuer/,
+  )
+
+  assert.throws(
+    () => OverlayRuntimeConfigSchema.parse(betterAuthConfig([{
+      id: 'microsoft',
+      preset: 'entra-id',
+      domains: ['example.com'],
+      issuerUrl: 'https://idp.example.com/customer/v2.0',
+      clientId: 'client',
+      clientSecret: 'secret',
+    }])),
+    /login\.microsoftonline\.com/,
+  )
+
+  assert.throws(
+    () => OverlayRuntimeConfigSchema.parse(betterAuthConfig([{
+      id: 'workspace',
+      preset: 'google-workspace',
+      domains: ['https://example.com'],
+      clientId: 'client',
+      clientSecret: 'secret',
+    }])),
+    /bare email domain/,
+  )
+
+  assert.throws(
+    () => OverlayRuntimeConfigSchema.parse(betterAuthConfig([{
+      id: 'workspace',
+      preset: 'google-workspace',
+      domains: ['example.com'],
+      clientId: 'client',
+      clientIdEnv: 'GOOGLE_CLIENT_ID',
+      clientSecret: 'secret',
+    }])),
+    /Configure only one of clientId or clientIdEnv/,
+  )
+})
+
+test('OverlayRuntimeConfigSchema rejects canonical and legacy Better Auth connections together', () => {
+  assert.throws(
+    () => OverlayRuntimeConfigSchema.parse(betterAuthConfig([{
+      id: 'workspace',
+      preset: 'google-workspace',
+      domains: ['example.com'],
+      clientId: 'client',
+      clientSecret: 'secret',
+    }], {
+      defaultSsoProviderId: 'legacy',
+      defaultSsoDomain: 'example.com',
+      oidcIssuerUrl: 'https://legacy.example.com',
+      oidcClientId: 'legacy-client',
+      oidcClientSecret: 'legacy-secret',
+    })),
+    /Configure auth\.betterAuth\.connections or legacy/,
+  )
+})
+
+test('OverlayRuntimeConfigSchema validates Executor integration provider configuration', () => {
+  const parsed = OverlayRuntimeConfigSchema.parse({
+    ...minimalSaasConfig,
+    features: { integrations: true },
+    providers: { integrations: { provider: 'executor' } },
+    integrations: {
+      executor: {
+        apiBaseUrl: 'https://executor.internal.example.com/api',
+        webBaseUrl: 'https://executor.example.com',
+        mcpUrl: 'https://executor.internal.example.com/mcp',
+        apiKey: 'executor-test-key',
+        connectionOwner: 'org',
+      },
+    },
+  } satisfies OverlayRuntimeConfigInput)
+  assert.equal(parsed.providers.integrations?.provider, 'executor')
+  assert.equal(parsed.integrations.executor.connectionOwner, 'org')
+})
+
+test('OverlayRuntimeConfigSchema rejects incomplete Executor integration configuration', () => {
+  assert.throws(() => OverlayRuntimeConfigSchema.parse({
+    ...minimalSaasConfig,
+    features: { integrations: true },
+    providers: { integrations: { provider: 'executor' } },
+    integrations: { executor: { webBaseUrl: 'https://executor.example.com' } },
+  }), /integrations\.executor\.apiBaseUrl is required/)
 })
 
 test('OverlayRuntimeConfigSchema validates v2 enterprise-private provider selections', () => {
@@ -160,25 +346,217 @@ test('OverlayRuntimeConfigSchema validates v2 enterprise-private provider select
   assert.equal(parsed.providers.objectStorage?.provider, 's3')
 })
 
-test('OverlayRuntimeConfigSchema rejects declared but unsupported providers', () => {
+test('OverlayRuntimeConfigSchema accepts configured Postgres database provider', () => {
+  const parsed = OverlayRuntimeConfigSchema.parse({
+    ...minimalSaasConfig,
+    billing: {
+      provider: 'none',
+      stripe: {},
+    },
+    capabilities: {
+      ...minimalSaasConfig.capabilities,
+      billing: false,
+      vectorSearch: false,
+    },
+    database: {
+      ...minimalSaasConfig.database,
+      provider: 'postgres',
+      postgres: {
+        connectionString: 'postgres://overlay:secret@db.internal/overlay',
+        sslMode: 'require',
+      },
+    },
+    providers: {
+      database: { provider: 'postgres' },
+      vectorSearch: { provider: 'none' },
+    },
+  })
+
+  assert.equal(parsed.database.provider, 'postgres')
+  assert.equal(parsed.providers.database?.provider, 'postgres')
+  assert.equal(parsed.database.postgres.connectionString, 'postgres://overlay:secret@db.internal/overlay')
+})
+
+test('OverlayRuntimeConfigSchema accepts fail-closed Redis rate limiting for on-prem', () => {
+  const parsed = OverlayRuntimeConfigSchema.parse({
+    ...minimalSaasConfig,
+    app: {
+      ...minimalSaasConfig.app,
+      deploymentEnvironment: 'onprem',
+    },
+    providers: {
+      rateLimit: { provider: 'redis' },
+    },
+    rateLimit: {
+      redis: {
+        url: 'rediss://redis.internal:6379',
+        failureMode: 'deny',
+      },
+    },
+  })
+
+  assert.equal(parsed.providers.rateLimit?.provider, 'redis')
+  assert.equal(parsed.rateLimit.redis.failureMode, 'deny')
+})
+
+test('OverlayRuntimeConfigSchema rejects Redis without connectivity and fail-closed policy', () => {
+  assert.throws(
+    () => OverlayRuntimeConfigSchema.parse({
+      ...minimalSaasConfig,
+      app: {
+        ...minimalSaasConfig.app,
+        deploymentEnvironment: 'onprem',
+      },
+      providers: {
+        rateLimit: { provider: 'redis' },
+      },
+      rateLimit: { redis: { failureMode: 'memory' } },
+    }),
+    /Redis rate limiting requires[\s\S]*failureMode=deny/,
+  )
+})
+
+test('OverlayRuntimeConfigSchema rejects Postgres database provider with enabled vector search', () => {
   assert.throws(
     () =>
       OverlayRuntimeConfigSchema.parse({
         ...minimalSaasConfig,
+        billing: {
+          provider: 'none',
+          stripe: {},
+        },
+        capabilities: {
+          ...minimalSaasConfig.capabilities,
+          billing: false,
+        },
         database: {
           ...minimalSaasConfig.database,
           provider: 'postgres',
           postgres: {
             connectionString: 'postgres://overlay:secret@db.internal/overlay',
+            sslMode: 'require',
           },
         },
         providers: {
           database: { provider: 'postgres' },
         },
       }),
-    /Postgres is declared/,
+    /Postgres vectorSearch requires providers\.vectorSearch\.provider=pgvector/,
   )
+})
 
+test('OverlayRuntimeConfigSchema rejects Postgres database provider with Convex vector search', () => {
+  assert.throws(
+    () =>
+      OverlayRuntimeConfigSchema.parse({
+        ...minimalSaasConfig,
+        billing: {
+          provider: 'none',
+          stripe: {},
+        },
+        capabilities: {
+          ...minimalSaasConfig.capabilities,
+          billing: false,
+          vectorSearch: false,
+        },
+        database: {
+          ...minimalSaasConfig.database,
+          provider: 'postgres',
+          postgres: {
+            connectionString: 'postgres://overlay:secret@db.internal/overlay',
+            sslMode: 'require',
+          },
+        },
+        providers: {
+          database: { provider: 'postgres' },
+          vectorSearch: { provider: 'convex' },
+        },
+      }),
+    /Postgres vector search supports pgvector or none/,
+  )
+})
+
+test('OverlayRuntimeConfigSchema accepts pgvector with Postgres and an embeddings provider', () => {
+  const parsed = OverlayRuntimeConfigSchema.parse({
+        ...minimalSaasConfig,
+        billing: {
+          provider: 'none',
+          stripe: {},
+        },
+        capabilities: {
+          ...minimalSaasConfig.capabilities,
+          billing: false,
+          vectorSearch: true,
+        },
+        database: {
+          ...minimalSaasConfig.database,
+          provider: 'postgres',
+          postgres: {
+            connectionString: 'postgres://overlay:secret@db.internal/overlay',
+            sslMode: 'require',
+          },
+        },
+        providers: {
+          database: { provider: 'postgres' },
+          vectorSearch: { provider: 'pgvector' },
+          embeddings: { provider: 'openai' },
+        },
+      })
+  assert.equal(parsed.providers.vectorSearch?.provider, 'pgvector')
+  assert.equal(parsed.providers.embeddings?.provider, 'openai')
+})
+
+test('OverlayRuntimeConfigSchema accepts Postgres with Stripe billing records', () => {
+  const parsed = OverlayRuntimeConfigSchema.parse({
+    ...minimalSaasConfig,
+    capabilities: {
+      ...minimalSaasConfig.capabilities,
+      vectorSearch: false,
+    },
+    database: {
+      ...minimalSaasConfig.database,
+      provider: 'postgres',
+      postgres: {
+        connectionString: 'postgres://overlay:secret@db.internal/overlay',
+        sslMode: 'require',
+      },
+    },
+    providers: {
+      database: { provider: 'postgres' },
+      vectorSearch: { provider: 'none' },
+    },
+  })
+  assert.equal(parsed.billing.provider, 'stripe')
+})
+
+test('OverlayRuntimeConfigSchema rejects Postgres database provider without a connection string', () => {
+  assert.throws(
+    () =>
+      OverlayRuntimeConfigSchema.parse({
+        ...minimalSaasConfig,
+        billing: {
+          provider: 'none',
+          stripe: {},
+        },
+        capabilities: {
+          ...minimalSaasConfig.capabilities,
+          billing: false,
+          vectorSearch: false,
+        },
+        database: {
+          ...minimalSaasConfig.database,
+          provider: 'postgres',
+        },
+        providers: {
+          database: { provider: 'postgres' },
+          vectorSearch: { provider: 'none' },
+        },
+      }),
+    /database\.postgres\.connectionString is required/,
+  )
+})
+
+test('OverlayRuntimeConfigSchema rejects declared but unsupported providers', () => {
   assert.throws(
     () =>
       OverlayRuntimeConfigSchema.parse({
@@ -274,7 +652,6 @@ test('OverlayRuntimeConfigSchema validates on-prem OIDC/S3/OpenAI config with bi
         clientSecret: 'oidc_secret',
         audience: 'overlay',
       },
-      keycloak: {},
     },
     billing: {
       provider: 'none',
@@ -431,4 +808,34 @@ test('redactOverlayRuntimeConfig never returns secret values', () => {
     tenantSwitcherAvailable: false,
     phase6bRequiredForSharedDeployments: true,
   })
+})
+
+test('redactOverlayRuntimeConfig exposes connection metadata without credentials', () => {
+  const parsed = OverlayRuntimeConfigSchema.parse(betterAuthConfig([{
+    id: 'workspace',
+    preset: 'google-workspace',
+    label: 'Continue with School Google',
+    domains: ['school.edu'],
+    clientId: 'private-google-client-id',
+    clientSecret: 'private-google-client-secret',
+  }]))
+  const summary = redactOverlayRuntimeConfig(parsed)
+  const redacted = JSON.stringify(summary)
+
+  assert.equal(redacted.includes('private-google-client-id'), false)
+  assert.equal(redacted.includes('private-google-client-secret'), false)
+  assert.deepEqual(summary.auth.betterAuth.connections, [{
+    id: 'workspace',
+    protocol: 'oidc',
+    preset: 'google-workspace',
+    label: 'Continue with School Google',
+    domains: ['school.edu'],
+    issuerUrl: undefined,
+    discoveryEndpoint: undefined,
+    tenantId: undefined,
+    hasClientId: true,
+    hasClientSecret: true,
+    clientIdEnv: undefined,
+    clientSecretEnv: undefined,
+  }])
 })

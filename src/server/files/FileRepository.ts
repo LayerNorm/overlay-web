@@ -45,15 +45,35 @@ export type FileShareResult = {
   visibility: 'private' | 'public'
 }
 
+export type ExtractedDocumentPart = {
+  content: string
+  contentHash: string
+  name: string
+}
+
 export interface FileRepository {
+  readonly storageCleanupMode: 'immediate' | 'durable'
   getFile(args: {
     accessToken?: string
     fileId: string
     userId: string
   }): Promise<FileRecord | null>
+  getFileByLegacyOutputId(args: {
+    outputId: string
+    userId: string
+  }): Promise<FileRecord | null>
   listFiles(args: Record<string, unknown> & { userId: string }): Promise<unknown[]>
   createFile(args: Record<string, unknown> & { userId: string }): Promise<string | null>
   createFileWithStorage(args: Record<string, unknown> & { userId: string }): Promise<string | null>
+  createExtractedDocument(args: {
+    mimeType: string
+    parentId?: string
+    parts: ExtractedDocumentPart[]
+    projectId?: string
+    r2Key: string
+    sourceSizeBytes: number
+    userId: string
+  }): Promise<string[]>
   updateFile(args: Record<string, unknown> & { fileId: string; userId: string }): Promise<void>
   removeFile(args: {
     fileId: string

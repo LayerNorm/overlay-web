@@ -1,0 +1,58 @@
+---
+title: "P5 Stabilization And Resilience"
+description: "Close completed Postgres parity contracts and exercise production failure behavior before enabling later product domains."
+---
+
+P5 is a stabilization gate between the core data plane in P0-P4 and the later
+automation, integration, and billing phases. It does not enable those later
+capabilities.
+
+Use [P5 Security And Release Operations](./p5-security-operations)
+for the P5c/P5d gates and AWS artifacts.
+
+## P5a Completed-Phase Closure
+
+- Postgres bootstrap reads persisted user settings instead of returning static defaults.
+- Daily chat suggestions use a provider-neutral repository and survive process restarts.
+- `chat-suggestions` is supported in Postgres mode.
+- `notebook-agent` remains assigned to P8 because it reserves and records billable usage.
+- `supportsVectorSearch` is reported as runtime-configured: it is supported only when
+  Postgres, `pgvector`, embeddings, and the vector capability are all enabled.
+
+The P5 migration adds daily chat-suggestion state to `user_settings`. Run the
+normal app-data migration before deploying the P5 web runtime.
+
+## P5b Remote Resilience Gate
+
+Use a disposable, dedicated Postgres database. The suite resets scheduler and
+durable-job tables and must never target staging or production application data.
+
+```bash
+npm run test:p5b:postgres:remote
+```
+
+The gate proves:
+
+- a discarded database connection is replaced without restarting the process;
+- concurrent app instances produce one idempotency owner;
+- competing workers claim and complete each job once;
+- terminal failures enter dead-letter state;
+- competing schedulers enqueue each due schedule once;
+- the pgvector query uses the HNSW index and meets the configured p95 budget;
+- a transient S3 listing failure causes no partial reconciliation mutation and retry succeeds.
+
+Set `OVERLAY_P5_VECTOR_P95_LIMIT_MS` to the rehearsal-specific p95 limit. The
+default is 2000 ms so internet latency to a remote contract database does not
+pretend to be an application SLO. Set `OVERLAY_P5_REQUIRE_HNSW_PLAN=true` only
+for an AWS run loaded with a representative corpus. PostgreSQL can correctly
+prefer the selective user/model B-tree index for tiny fixtures. Establish the
+production SLO and require HNSW from the in-region representative-corpus run.
+
+```bash
+npm run check:p5:remote
+```
+
+This command also reruns P4 lifecycle and characterization plus the parity
+inventory. Actual RDS/Aurora failover, backup restore, ECS task replacement,
+and CloudWatch alarm delivery remain deployment-rehearsal responsibilities;
+they cannot be truthfully simulated by a repository unit test.

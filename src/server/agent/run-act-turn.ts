@@ -1,8 +1,7 @@
 import 'server-only'
 
 import type { UIMessage } from 'ai'
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/server/auth/service-auth'
 import { getBaseUrl } from '@/server/web/app-url'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
@@ -18,7 +17,7 @@ export type ScheduledAutomationTurn = {
   instructions: string
   projectId?: string
   modelId?: string
-  conversationId?: Id<'conversations'>
+  conversationId?: string
   turnId: string
   scheduledFor: number
   baseUrl?: string
@@ -27,24 +26,20 @@ export type ScheduledAutomationTurn = {
 const SCHEDULED_AUTOMATION_ACT_ABORT_TIMEOUT_MS = 720_000
 
 async function settleScheduledAutomationTurn(params: {
-  conversationId: Id<'conversations'>
+  conversationId: string
   userId: string
   turnId: string
   status: 'completed' | 'error'
   fallbackText: string
 }) {
-  await convex.mutation(
-    'chat/conversations:settleGeneratingMessagesForTurn',
-    {
-      conversationId: params.conversationId,
+  await getOverlayServerContext().appData.repositories.conversations
+    .settleGeneratingMessagesForTurn({
+      conversationId: params.conversationId as Id<'conversations'>,
       userId: params.userId,
       turnId: params.turnId,
       status: params.status,
       fallbackText: params.fallbackText,
-      serverSecret: getInternalApiSecret(),
-    },
-    { throwOnError: true },
-  )
+    })
 }
 
 async function drainResponseBody(response: Response): Promise<void> {
@@ -87,24 +82,18 @@ function buildAutomationSystemPrompt(input: ScheduledAutomationTurn): string {
 }
 
 export async function runActTurnForScheduledAutomation(input: ScheduledAutomationTurn): Promise<{
-  conversationId: Id<'conversations'>
+  conversationId: string
 }> {
-  const serverSecret = getInternalApiSecret()
   const title = `Automation: ${input.name}`
-  const conversationId = input.conversationId ?? await convex.mutation<Id<'conversations'>>(
-    'chat/conversations:create',
-    {
+  const conversationId = input.conversationId ?? await getOverlayServerContext()
+    .appData.repositories.conversations.createConversation({
       userId: input.userId,
-      serverSecret,
       title,
       projectId: input.projectId,
       askModelIds: [input.modelId || DEFAULT_MODEL_ID],
       actModelId: input.modelId || DEFAULT_MODEL_ID,
       lastMode: 'act',
-      isAutomation: true,
-    },
-    { throwOnError: true },
-  )
+    })
 
   if (!conversationId) {
     throw new Error('Failed to create automation conversation')

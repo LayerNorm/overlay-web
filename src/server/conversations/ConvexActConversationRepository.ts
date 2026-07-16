@@ -1,15 +1,19 @@
 import 'server-only'
 
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type {
   ActConversationRepository,
   ActConversationRow,
+  ConversationListRow,
+  ConversationEventRow,
+  ConversationMessageRow,
   ActMemoryRow,
   ActPersistedMessage,
   ActProjectRow,
   ActSkillRow,
   ActUsageEvent,
+  SharedConversationRow,
 } from './ActConversationRepository'
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
@@ -18,6 +22,104 @@ import type { Id } from '../../../convex/_generated/dataModel'
 export class ConvexActConversationRepository implements ActConversationRepository {
   private get serverSecret(): string {
     return getInternalApiSecret()
+  }
+
+  async createConversation(args: {
+    actModelId: string
+    askModelIds: string[]
+    clientId?: string
+    lastMode?: 'ask' | 'act'
+    projectId?: string
+    title: string
+    userId: string
+  }): Promise<Id<'conversations'>> {
+    const id = await convex.mutation<Id<'conversations'>>('chat/conversations:create', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!id) throw new Error('Failed to create conversation')
+    return id
+  }
+
+  async getConversationById(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+  }): Promise<ConversationListRow | null> {
+    return await convex.query<ConversationListRow | null>('chat/conversations:get', {
+      ...args,
+      serverSecret: this.serverSecret,
+    })
+  }
+
+  async listConversations(args: {
+    includeDeleted?: boolean
+    updatedSince?: number
+    userId: string
+  }): Promise<ConversationListRow[]> {
+    return await convex.query<ConversationListRow[]>('chat/conversations:list', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }) ?? []
+  }
+
+  async listConversationsByProject(args: {
+    includeDeleted?: boolean
+    projectId: string
+    updatedSince?: number
+    userId: string
+  }): Promise<ConversationListRow[]> {
+    return await convex.query<ConversationListRow[]>('chat/conversations:listByProject', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }) ?? []
+  }
+
+  async getRecentMessages(args: {
+    beforeCreatedAt?: number
+    compactToolPayloads?: boolean
+    conversationId: Id<'conversations'>
+    limit: number
+    userId: string
+  }): Promise<ConversationMessageRow[]> {
+    return await convex.query<ConversationMessageRow[]>('chat/conversations:getRecentMessages', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }) ?? []
+  }
+
+  async getConversationMessages(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+  }): Promise<ConversationMessageRow[]> {
+    return await convex.query<ConversationMessageRow[]>('chat/conversations:getMessages', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? []
+  }
+
+  async updateConversation(args: {
+    actModelId?: string
+    askModelIds?: string[]
+    conversationId: Id<'conversations'>
+    lastMode?: 'ask' | 'act'
+    projectId?: string | null
+    title?: string
+    userId: string
+  }): Promise<void> {
+    await convex.mutation('chat/conversations:update', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
+  async deleteConversation(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+  }): Promise<void> {
+    await convex.mutation('chat/conversations:remove', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
   }
 
   async getEntitlements(args: {
@@ -52,11 +154,13 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   async addMessage(args: {
     conversationId: Id<'conversations'>
     content: string
-    contentType: 'text'
-    mode: 'act'
-    modelId: string
+    contentType: 'text' | 'image' | 'video'
+    mode: 'ask' | 'act'
+    modelId?: string
     parts?: Array<Record<string, unknown>>
     role: 'user' | 'assistant'
+    replySnippet?: string
+    replyToTurnId?: string
     routedModelId?: string
     skipMemoryExtraction?: boolean
     tokens?: { input: number; output: number }
@@ -161,11 +265,12 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     messageId: Id<'conversationMessages'>
     newParts?: Array<Record<string, unknown>>
     textDelta?: string
-  }): Promise<void> {
+  }): Promise<boolean> {
     await convex.mutation('chat/conversations:appendGeneratingMessageDelta', {
       ...args,
       serverSecret: this.serverSecret,
     })
+    return true
   }
 
   async finalizeGeneratingMessage(args: {
@@ -189,6 +294,95 @@ export class ConvexActConversationRepository implements ActConversationRepositor
       ...args,
       serverSecret: this.serverSecret,
     })
+  }
+
+  async settleGeneratingMessagesForTurn(args: {
+    conversationId: Id<'conversations'>
+    fallbackText: string
+    status: 'completed' | 'error'
+    turnId: string
+    userId: string
+  }): Promise<void> {
+    await convex.mutation('chat/conversations:settleGeneratingMessagesForTurn', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
+  async stopGeneratingMessages(args: {
+    conversationId: Id<'conversations'>
+    messageId?: Id<'conversationMessages'>
+    partialContent?: string
+    partialParts?: Array<Record<string, unknown>>
+    userId: string
+  }): Promise<{ stoppedCount: number }> {
+    return await convex.mutation<{ stoppedCount: number }>('chat/conversations:stopGeneratingMessage', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? { stoppedCount: 0 }
+  }
+
+  async deleteTurn(args: {
+    conversationId: Id<'conversations'>
+    turnId: string
+    userId: string
+  }): Promise<{ deletedMessages: number }> {
+    const result = await convex.mutation<{ deletedMessages: number }>('chat/conversations:deleteTurn', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    return { deletedMessages: result?.deletedMessages ?? 0 }
+  }
+
+  async updateMessageUiPart(args: {
+    conversationId: Id<'conversations'>
+    messageId: Id<'conversationMessages'>
+    partId: string
+    data: Record<string, unknown>
+    userId: string
+  }): Promise<boolean> {
+    await convex.mutation('chat/conversations:updateMessageUiPart', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    return true
+  }
+
+  async setShare(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+    visibility: 'private' | 'public'
+  }): Promise<{ token: string | null; visibility: 'private' | 'public' } | null> {
+    return await convex.mutation('chat/conversations:setShare', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
+  async getPublicConversationByToken(args: { token: string }): Promise<SharedConversationRow | null> {
+    return await convex.query<SharedConversationRow | null>('chat/conversations:getPublicByToken', args)
+  }
+
+  async getConversationEventCursor(_args: { userId: string }): Promise<number> {
+    return 0
+  }
+
+  async listConversationEvents(_args: {
+    afterSequence: number
+    limit: number
+    userId: string
+  }): Promise<ConversationEventRow[]> {
+    return []
+  }
+
+  async waitForConversationEvents(_args: {
+    afterSequence: number
+    limit: number
+    signal?: AbortSignal
+    timeoutMs: number
+    userId: string
+  }): Promise<ConversationEventRow[]> {
+    return []
   }
 
   async recordUsageBatch(args: {

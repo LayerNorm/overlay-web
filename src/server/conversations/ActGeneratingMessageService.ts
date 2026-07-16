@@ -3,7 +3,6 @@ import 'server-only'
 import { logger } from '@/server/observability/logger'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
-import { emitChatFailed } from '@/server/shared/webhooks'
 import type { ActConversationRepository } from './ActConversationRepository'
 import type { Id } from '../../../convex/_generated/dataModel'
 
@@ -17,7 +16,11 @@ type ActGeneratingMessageEvents = {
 }
 
 const defaultEvents: ActGeneratingMessageEvents = {
-  failed: emitChatFailed,
+  failed: (params) => {
+    void import('@/server/shared/webhooks')
+      .then(({ emitChatFailed }) => emitChatFailed(params))
+      .catch((error) => logger.warn('[conversations/act] Chat failed webhook emitter unavailable:', summarizeErrorForLog(error)))
+  },
 }
 
 export class ActGeneratingMessageService {
@@ -62,6 +65,19 @@ export class ActGeneratingMessageService {
     tokens: { input: number; output: number }
   }): Promise<void> {
     await this.deps.repository.finalizeGeneratingMessage(args)
+  }
+
+  async appendTextDelta(args: {
+    messageId: Id<'conversationMessages'>
+    textDelta: string
+  }): Promise<boolean> {
+    if (!args.textDelta) return true
+    try {
+      return await this.deps.repository.appendGeneratingMessageDelta(args)
+    } catch (err) {
+      logger.warn('[conversations/act] Failed to persist generating message delta:', summarizeErrorForLog(err))
+      return true
+    }
   }
 
   async fail(args: {

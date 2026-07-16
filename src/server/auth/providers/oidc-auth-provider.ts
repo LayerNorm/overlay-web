@@ -51,7 +51,7 @@ const jwksCache = new Map<string, CachedJwks>()
 
 export class OidcAuthProvider implements AuthProvider {
   readonly providerConfigSummary: {
-    provider: 'oidc' | 'keycloak'
+    provider: 'oidc'
     issuerUrl?: string
     clientId?: string
     hasClientSecret: boolean

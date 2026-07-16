@@ -23,6 +23,7 @@ export function useChatTitleController({
   pendingTitleRef,
   setActiveChatTitle,
   setChats,
+  titleGenerationEnabled,
   updateRuntimeUiState,
 }: {
   activeChatId: string | null
@@ -33,6 +34,7 @@ export function useChatTitleController({
   pendingTitleRef: MutableRefObject<{ chatId: string; title: string } | null>
   setActiveChatTitle: Dispatch<SetStateAction<string | null>>
   setChats: Dispatch<SetStateAction<Conversation[]>>
+  titleGenerationEnabled: boolean
   updateRuntimeUiState: (
     chatId: string,
     updater: (prev: ConversationUiState) => ConversationUiState,
@@ -137,6 +139,7 @@ export function useChatTitleController({
   ])
 
   const startFirstMessageRename = useCallback((chatId: string, text: string) => {
+    if (!titleGenerationEnabled) return
     void generateTitle(text).then(async (aiTitle) => {
       if (!aiTitle) return
       const finalTitle = applyChatTitleUpdate(chatId, aiTitle)
@@ -147,7 +150,7 @@ export function useChatTitleController({
         // Keep the local optimistic title.
       }
     })
-  }, [applyChatTitleUpdate, loadChats])
+  }, [applyChatTitleUpdate, loadChats, titleGenerationEnabled])
 
   return {
     applyChatTitleUpdate,

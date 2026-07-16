@@ -630,6 +630,7 @@ export const recordBudgetTopUpByServer = mutation({
       : null
     const existing = existingByPaymentIntent ?? existingByCheckoutSession
     const now = Date.now()
+    const status = existing?.status === 'succeeded' ? 'succeeded' as const : args.status
     const payload = {
       userId: args.userId,
       stripeCustomerId: args.stripeCustomerId,
@@ -640,7 +641,7 @@ export const recordBudgetTopUpByServer = mutation({
       billingPeriodEnd: subscription.currentPeriodEnd,
       amountCents: Math.max(0, Math.round(args.amountCents)),
       source: args.source,
-      status: args.status,
+      status,
       createdAt: now,
       updatedAt: now,
       errorMessage: args.errorMessage,
@@ -692,6 +693,7 @@ export const recordBudgetTopUpInternal = internalMutation({
       : null
     const existing = existingByPaymentIntent ?? existingByCheckoutSession
     const now = Date.now()
+    const status = existing?.status === 'succeeded' ? 'succeeded' as const : args.status
     const payload = {
       userId: args.userId,
       stripeCustomerId: args.stripeCustomerId,
@@ -702,7 +704,7 @@ export const recordBudgetTopUpInternal = internalMutation({
       billingPeriodEnd: subscription.currentPeriodEnd,
       amountCents: Math.max(0, Math.round(args.amountCents)),
       source: args.source,
-      status: args.status,
+      status,
       createdAt: now,
       updatedAt: now,
       errorMessage: args.errorMessage,
@@ -770,9 +772,124 @@ export const recordWebhookEventIfNew = internalMutation({
       provider: args.provider,
       eventId: args.eventId,
       eventType: args.eventType,
+      status: 'processed',
+      attempt: 1,
+      updatedAt: Date.now(),
       processedAt: Date.now(),
     })
     return { accepted: true as const }
+  },
+})
+
+export const reserveProviderEventByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    eventId: v.string(),
+    eventType: v.string(),
+    payloadHash: v.string(),
+    provider: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const existing = await ctx.db
+      .query('processedWebhookEvents')
+      .withIndex('by_provider_eventId', (q) =>
+        q.eq('provider', args.provider).eq('eventId', args.eventId))
+      .unique()
+    if (existing) {
+      if (existing.payloadHash && existing.payloadHash !== args.payloadHash) {
+        throw new Error('billing event payload hash mismatch')
+      }
+      const processed = existing.status === 'processed' || !existing.status
+      if (processed || existing.status === 'processing') {
+        return { status: 'duplicate' as const, processed }
+      }
+      const attempt = (existing.attempt ?? 1) + 1
+      await ctx.db.patch(existing._id, {
+        attempt,
+        errorMessage: undefined,
+        eventType: args.eventType,
+        payloadHash: args.payloadHash,
+        status: 'processing',
+        updatedAt: Date.now(),
+      })
+      return { status: 'acquired' as const, attempt }
+    }
+    const now = Date.now()
+    await ctx.db.insert('processedWebhookEvents', {
+      provider: args.provider,
+      eventId: args.eventId,
+      eventType: args.eventType,
+      payloadHash: args.payloadHash,
+      status: 'processing',
+      attempt: 1,
+      processedAt: now,
+      updatedAt: now,
+    })
+    return { status: 'acquired' as const, attempt: 1 }
+  },
+})
+
+export const markProviderEventProcessedByServer = mutation({
+  args: { serverSecret: v.string(), eventId: v.string(), provider: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const existing = await ctx.db
+      .query('processedWebhookEvents')
+      .withIndex('by_provider_eventId', (q) =>
+        q.eq('provider', args.provider).eq('eventId', args.eventId))
+      .unique()
+    if (!existing) throw new Error('billing provider event not found')
+    const now = Date.now()
+    await ctx.db.patch(existing._id, {
+      errorMessage: undefined,
+      status: 'processed',
+      processedAt: now,
+      updatedAt: now,
+    })
+  },
+})
+
+export const markProviderEventFailedByServer = mutation({
+  args: { serverSecret: v.string(), error: v.string(), eventId: v.string(), provider: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const existing = await ctx.db
+      .query('processedWebhookEvents')
+      .withIndex('by_provider_eventId', (q) =>
+        q.eq('provider', args.provider).eq('eventId', args.eventId))
+      .unique()
+    if (!existing) throw new Error('billing provider event not found')
+    await ctx.db.patch(existing._id, {
+      errorMessage: args.error.slice(0, 2000),
+      status: 'failed',
+      updatedAt: Date.now(),
+    })
+  },
+})
+
+export const resolveUserIdByProviderReferenceByServer = query({
+  args: {
+    serverSecret: v.string(),
+    provider: v.string(),
+    providerCustomerId: v.optional(v.string()),
+    providerSubscriptionId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    if (args.provider !== 'stripe') return null
+    if (args.providerCustomerId) {
+      const row = await ctx.db
+        .query('subscriptions')
+        .withIndex('by_stripeCustomerId', (q) => q.eq('stripeCustomerId', args.providerCustomerId))
+        .unique()
+      if (row) return row.userId
+    }
+    if (args.providerSubscriptionId) {
+      const rows = await ctx.db.query('subscriptions').collect()
+      return rows.find((row) => row.stripeSubscriptionId === args.providerSubscriptionId)?.userId ?? null
+    }
+    return null
   },
 })
 

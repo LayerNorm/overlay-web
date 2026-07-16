@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   discoverToolsCatalogForServer,
   persistMcpServerToolCatalog,
@@ -31,6 +31,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       ? record.mcpServerId
       : undefined
 
+    const saved = mcpServerId
+      ? await getOverlayServerContext().appData.repositories.mcpServers.get({
+          mcpServerId,
+          userId: context.auth.userId,
+        })
+      : null
+    if (mcpServerId && !saved) {
+      return NextResponse.json({ error: 'MCP server not found' }, { status: 404 })
+    }
     const authConfig = record.authConfig as McpServerConfig['authConfig'] | undefined
     const config: McpServerConfig = {
       _id: mcpServerId ?? 'test',
@@ -39,9 +48,11 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       transport: parseTransport(record.transport),
       url,
       enabled: true,
-      authType: parseAuthType(record.authType),
-      authConfig,
+      authType: record.authType === undefined && saved ? saved.authType : parseAuthType(record.authType),
+      authConfig: authConfig ?? saved?.authConfig,
       timeoutMs: typeof record.timeoutMs === 'number' ? record.timeoutMs : undefined,
+      defaultToolPolicy: saved?.defaultToolPolicy ?? 'allow',
+      toolPolicies: saved?.toolPolicies ?? {},
     }
 
     const tools = await discoverToolsCatalogForServer(config)
@@ -50,7 +61,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       await persistMcpServerToolCatalog({
         mcpServerId,
         userId: context.auth.userId,
-        serverSecret: getInternalApiSecret(),
         tools,
       })
     }
@@ -62,7 +72,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       await persistMcpServerToolCatalog({
         mcpServerId,
         userId: context.auth.userId,
-        serverSecret: getInternalApiSecret(),
         tools: [],
         catalogError: message,
       }).catch((_error) => undefined)

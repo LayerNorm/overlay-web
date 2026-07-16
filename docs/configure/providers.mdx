@@ -11,26 +11,26 @@ Use `none` plus the matching feature flag when a provider family must be disable
 
 | Purpose | Values | Current support |
 | --- | --- | --- |
-| Auth | `workos`, `oidc`, `keycloak`, `none` | `workos` is the hosted default. `oidc` and `keycloak` verify bearer/access tokens through discovery JWKS; browser callback wiring is deployment-specific. |
+| Auth | `workos`, `better-auth`, `oidc`, `none` | `workos` is the hosted default. `better-auth` owns the web session, supports SSO through Better Auth, and issues JWKS-verifiable service JWTs for Convex. `oidc` remains a low-level bearer/access-token verifier for deployment-specific browser wiring. |
 | Billing | `stripe`, `none` | `stripe` supports subscriptions, top-ups, portal sessions, and webhooks. Use `none` for private deployments. |
 | Object storage | `r2`, `s3`, `none` | `r2` is the hosted default. `s3` covers AWS S3 and compatible enterprise object stores. Keep compatible stores under `s3`; set `storage.s3.forcePathStyle=true` only when required. |
 | Models | `openrouter`, `ai-gateway`, `openai`, `anthropic`, `groq`, `none` | All listed model providers have active routing paths except `none`, which intentionally disables generation. |
-| Database | `convex`, `postgres` | `convex` is supported. `postgres` is declared for future adapter work and rejected at boot today. |
+| Database | `convex`, `postgres` | `convex` is the hosted/default app-data provider. `postgres` supports users, chat, projects, files, notes, generated outputs, memory, knowledge retrieval, durable scheduled automations, billing controls, skills, MCP servers, and integration execution audits. Provider-owned connector credentials remain in Composio or Executor. |
 
 ## Enterprise Provider Families
 
 | Purpose | Values | Data processed | Current support |
 | --- | --- | --- | --- |
-| Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | `convex` and `none` are supported. `pgvector` and `pinecone` are declared but rejected until adapters exist. |
+| Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | `convex`, `pgvector`, and `none` are supported. `pgvector` uses durable indexing, model-versioned embeddings, scoped hybrid retrieval, and cleanup in Postgres mode. `pinecone` is declared but rejected until an adapter exists. |
 | Embeddings | `ai-gateway`, `openai`, `azure-openai`, `none` | Text chunks sent for embedding | `ai-gateway`, `openai`, and `none` are current paths. `azure-openai` is declared but rejected until implemented. |
-| Integrations | `composio`, `mcp`, `none` | Connected-account metadata and tool inputs/outputs | `composio` and `none` are supported. `mcp` is declared but rejected as a provider family until bootstrap wiring exists. |
+| Integrations | `composio`, `executor`, `mcp`, `none` | Connected-account metadata and tool inputs/outputs | `composio`, `executor`, and `none` are supported. `executor` delegates OAuth and shared connection lifecycle to a customer-hosted Executor service. `mcp` is declared but rejected as a provider family until bootstrap wiring exists. |
 | Browser use | `browser-use`, `self-hosted-playwright`, `none` | Browser tasks, page content, and entered credentials | `browser-use` and `none` are supported. `self-hosted-playwright` is declared but rejected until an adapter exists. |
 | Sandboxes | `daytona`, `e2b`, `local-firecracker`, `none` | Commands, staged files, and generated artifacts | `daytona` and `none` are supported. `e2b` and `local-firecracker` are declared but rejected until adapters exist. |
 | Web search | `ai-gateway`, `perplexity`, `tavily`, `none` | Search queries and result snippets | `ai-gateway` and `none` are supported. Direct `perplexity` and `tavily` are declared but rejected until adapters exist. |
 | Analytics | `posthog`, `none` | Pageviews and product events | `posthog` and `none` are supported. Set feature and provider to disabled values to avoid SDK initialization. |
 | Error reporting | `sentry`, `none` | Error events and sanitized stack/request metadata | `sentry` and `none` are supported. Set feature and provider to disabled values to avoid initialization. |
 | Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | `env` is the general runtime path. `workos-vault` exists for selected provider-key flows. AWS Secrets Manager and Vault are declared but rejected for runtime secret loading. |
-| Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | `convex`, `memory`, and `none` are supported. `redis` is declared but rejected until enterprise config wiring exists. |
+| Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | All declared providers are supported. Multi-instance production/on-prem deployments should use Redis with fail-closed behavior; memory is development-only. |
 
 ## Disable External Processors
 
@@ -58,3 +58,21 @@ For a private deployment, disable high-risk external processors explicitly:
 ```
 
 For strict deployments, combine this with `compliance.allowExternalProcessors=false` and allowlist only approved processors such as `models:openai` or `objectStorage:s3`.
+
+## Postgres And Vector Search
+
+Postgres vector search is opt-in. For deployments that do not need knowledge retrieval, keep:
+
+```env
+OVERLAY_PROVIDER_VECTOR_SEARCH=none
+VECTOR_SEARCH_ENABLED=false
+OVERLAY_FEATURE_VECTOR_SEARCH=false
+```
+
+To enable Postgres-native memory and knowledge search, use `pgvector`, not Convex as a hidden sidecar. The managed Postgres provider must expose the `vector` extension, the app-data migrations must be current, and a durable worker must remain running.
+
+Check provider readiness without mutating the database:
+
+```bash
+OVERLAY_DATABASE_URL="postgres://..." npm run app-db:vector-readiness
+```

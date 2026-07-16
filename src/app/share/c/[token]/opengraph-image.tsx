@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og'
-import { convex } from '@/server/database/convex'
+import { loadSharedConversation } from '@/server/conversations/load-shared-conversation'
 
 export const runtime = 'nodejs'
 export const alt = 'Shared chat — Overlay'
@@ -30,11 +30,7 @@ export default async function OpengraphImage(
   { params }: { params: Promise<{ token: string }> },
 ) {
   const { token } = await params
-  const conv = await convex.query<SharedConversation | null>(
-    'chat/conversations:getPublicByToken',
-    { token },
-    { background: true },
-  )
+  const conv = await loadSharedConversation(token) as SharedConversation | null
   const title = conv?.title || 'Shared chat'
   const snippet = conv ? firstUserSnippet(conv).slice(0, 220) : ''
 

@@ -61,7 +61,8 @@ export interface UpdateAutomationRequest {
   accessToken?: string
   userId?: string
   automationId: string
-  action?: 'pause' | 'resume'
+  action?: 'cancel-run' | 'pause' | 'resume' | 'retry-run'
+  runId?: string
   name?: string
   description?: string
   instructions?: string

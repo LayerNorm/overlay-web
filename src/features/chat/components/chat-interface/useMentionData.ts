@@ -1,9 +1,11 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
 interface CachedData {
+  cacheKey: string
   files: MentionItem[]
   connectors: MentionItem[]
   automations: MentionItem[]
@@ -11,6 +13,8 @@ interface CachedData {
   mcps: MentionItem[]
   chats: MentionItem[]
 }
+
+type MentionListKey = Exclude<keyof CachedData, 'cacheKey'>
 
 const CATEGORY_META: Array<{ type: MentionType; label: string; icon: string }> = [
   { type: 'file', label: 'Files', icon: 'FileText' },
@@ -20,6 +24,31 @@ const CATEGORY_META: Array<{ type: MentionType; label: string; icon: string }> =
   { type: 'mcp', label: 'MCP Servers', icon: 'Server' },
   { type: 'chat', label: 'Chats', icon: 'MessageSquare' },
 ]
+
+function supportedMentionTypes(capabilities: ReturnType<typeof useOverlayCapabilities>['capabilities']): MentionType[] {
+  return CATEGORY_META
+    .filter((cat) => {
+      switch (cat.type) {
+        case 'file':
+          return capabilities.files
+        case 'connector':
+          return capabilities.integrations
+        case 'automation':
+          return capabilities.automations
+        case 'skill':
+          return capabilities.skills
+        case 'mcp':
+          return capabilities.mcpServers
+        case 'chat':
+          return capabilities.chat
+      }
+    })
+    .map((cat) => cat.type)
+}
+
+function mentionCapabilityCacheKey(capabilities: ReturnType<typeof useOverlayCapabilities>['capabilities']): string {
+  return supportedMentionTypes(capabilities).join('|')
+}
 
 function fuzzyMatch(text: string, query: string): boolean {
   const lower = text.toLowerCase()
@@ -38,12 +67,15 @@ function scoreMatch(item: MentionItem, query: string): number {
 }
 
 export function useMentionData() {
+  const { capabilities } = useOverlayCapabilities()
+  const availableTypes = useMemo(() => supportedMentionTypes(capabilities), [capabilities])
+  const cacheKey = useMemo(() => mentionCapabilityCacheKey(capabilities), [capabilities])
   const [loading, setLoading] = useState(false)
   const cacheRef = useRef<CachedData | null>(null)
   const fetchingRef = useRef(false)
 
   const fetchAllData = useCallback(async (): Promise<CachedData> => {
-    if (cacheRef.current) return cacheRef.current
+    if (cacheRef.current?.cacheKey === cacheKey) return cacheRef.current
 
     if (fetchingRef.current) {
       // Wait for in-flight fetch
@@ -63,12 +95,24 @@ export function useMentionData() {
     try {
       const [filesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
         await Promise.allSettled([
-          overlayAppClient.files.getResponse({ limit: 100, summary: true }).then((r) => r.ok ? r.json() : []),
-          overlayAppClient.integrations.getResponse().then((r) => r.ok ? r.json() : { items: [] }),
-          overlayAppClient.automations.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : []),
-          overlayAppClient.skills.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : []),
-          overlayAppClient.mcpServers.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : []),
-          overlayAppClient.conversations.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : []),
+          capabilities.files
+            ? overlayAppClient.files.getResponse({ limit: 100, summary: true }).then((r) => r.ok ? r.json() : [])
+            : Promise.resolve([]),
+          capabilities.integrations
+            ? overlayAppClient.integrations.getResponse().then((r) => r.ok ? r.json() : { items: [] })
+            : Promise.resolve({ items: [] }),
+          capabilities.automations
+            ? overlayAppClient.automations.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : [])
+            : Promise.resolve([]),
+          capabilities.skills
+            ? overlayAppClient.skills.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : [])
+            : Promise.resolve([]),
+          capabilities.mcpServers
+            ? overlayAppClient.mcpServers.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : [])
+            : Promise.resolve([]),
+          capabilities.chat
+            ? overlayAppClient.conversations.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : [])
+            : Promise.resolve([]),
         ])
 
       const files: MentionItem[] = (
@@ -95,7 +139,7 @@ export function useMentionData() {
         })
       )
 
-      const automations: MentionItem[] = (
+      const automations: MentionItem[] = capabilities.automations ? (
         automationsRes.status === 'fulfilled'
           ? unwrapPaginatedData<{ _id: string; name?: string; description?: string; deletedAt?: number }>(automationsRes.value)
           : []
@@ -107,7 +151,7 @@ export function useMentionData() {
           name: a.name || 'Untitled automation',
           description: a.description || '',
           icon: 'Zap',
-        }))
+        })) : []
 
       const skills: MentionItem[] = (
         skillsRes.status === 'fulfilled'
@@ -146,22 +190,30 @@ export function useMentionData() {
         icon: 'MessageSquare',
       }))
 
-      const data: CachedData = { files, connectors, automations, skills, mcps, chats }
+      const data: CachedData = { cacheKey, files, connectors, automations, skills, mcps, chats }
       cacheRef.current = data
       return data
     } finally {
       setLoading(false)
       fetchingRef.current = false
     }
-  }, [])
+  }, [
+    cacheKey,
+    capabilities.automations,
+    capabilities.chat,
+    capabilities.files,
+    capabilities.integrations,
+    capabilities.mcpServers,
+    capabilities.skills,
+  ])
 
   const search = useCallback(
     async (query: string): Promise<MentionCategory[]> => {
       const data = await fetchAllData()
       const q = query.trim()
 
-      return CATEGORY_META.map((cat) => {
-        const items = data[cat.type === 'connector' ? 'connectors' : `${cat.type}s` as keyof CachedData]
+      return CATEGORY_META.filter((cat) => availableTypes.includes(cat.type)).map((cat) => {
+        const items = data[mentionListKey(cat.type)]
         const filtered = q
           ? items
               .filter((item) => fuzzyMatch(item.name, q) || fuzzyMatch(item.description || '', q))
@@ -175,12 +227,16 @@ export function useMentionData() {
         }
       }).filter((cat) => cat.items.length > 0)
     },
-    [fetchAllData]
+    [availableTypes, fetchAllData]
   )
 
   const invalidateCache = useCallback(() => {
     cacheRef.current = null
   }, [])
 
-  return { search, loading, invalidateCache, fetchAllData }
+  return { availableTypes, search, loading, invalidateCache, fetchAllData }
+}
+
+function mentionListKey(type: MentionType): MentionListKey {
+  return type === 'connector' ? 'connectors' : `${type}s` as MentionListKey
 }

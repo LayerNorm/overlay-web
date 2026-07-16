@@ -28,11 +28,46 @@ export type ActSkillRow = {
 }
 
 export type ActConversationRow = {
+  _id?: string
   projectId?: string
 }
 
 export type ActProjectRow = {
   instructions?: string
+}
+
+export type ConversationListRow = {
+  _id: string
+  userId: string
+  clientId?: string
+  title: string
+  lastModified: number
+  createdAt: number
+  updatedAt: number
+  deletedAt?: number
+  lastMode: 'ask' | 'act'
+  askModelIds: string[]
+  actModelId: string
+  projectId?: string
+  shareVisibility?: 'private' | 'public'
+  shareToken?: string | null
+}
+
+export type ConversationMessageRow = {
+  _id: string
+  turnId: string
+  role: 'user' | 'assistant'
+  mode: 'ask' | 'act'
+  content: string
+  contentType: 'text' | 'image' | 'video'
+  parts?: Array<Record<string, unknown>>
+  modelId?: string
+  variantIndex?: number
+  createdAt: number
+  replyToTurnId?: string
+  replySnippet?: string
+  routedModelId?: string
+  status?: 'generating' | 'completed' | 'error'
 }
 
 export type ActUsageEvent = {
@@ -45,7 +80,85 @@ export type ActUsageEvent = {
   timestamp: number
 }
 
+export type ConversationEventType =
+  | 'conversation.created'
+  | 'conversation.updated'
+  | 'conversation.deleted'
+  | 'conversation.shared'
+  | 'message.created'
+  | 'message.delta'
+  | 'message.completed'
+  | 'message.failed'
+  | 'message.stopped'
+  | 'message.deleted'
+  | 'message.ui-updated'
+
+export type ConversationEventRow = {
+  sequence: number
+  conversationId: string
+  type: ConversationEventType
+  messageId?: string
+  payload?: Record<string, unknown>
+  createdAt: number
+}
+
+export type SharedConversationRow = {
+  _id: string
+  title: string
+  createdAt: number
+  sharedAt: number
+  messages: ConversationMessageRow[]
+}
+
 export interface ActConversationRepository {
+  createConversation(args: {
+    actModelId: string
+    askModelIds: string[]
+    clientId?: string
+    lastMode?: 'ask' | 'act'
+    projectId?: string
+    title: string
+    userId: string
+  }): Promise<Id<'conversations'>>
+  getConversationById(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+  }): Promise<ConversationListRow | null>
+  listConversations(args: {
+    includeDeleted?: boolean
+    updatedSince?: number
+    userId: string
+  }): Promise<ConversationListRow[]>
+  listConversationsByProject(args: {
+    includeDeleted?: boolean
+    projectId: string
+    updatedSince?: number
+    userId: string
+  }): Promise<ConversationListRow[]>
+  getRecentMessages(args: {
+    beforeCreatedAt?: number
+    compactToolPayloads?: boolean
+    conversationId: Id<'conversations'>
+    limit: number
+    userId: string
+  }): Promise<ConversationMessageRow[]>
+  getConversationMessages(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+  }): Promise<ConversationMessageRow[]>
+  updateConversation(args: {
+    actModelId?: string
+    askModelIds?: string[]
+    conversationId: Id<'conversations'>
+    lastMode?: 'ask' | 'act'
+    projectId?: string | null
+    title?: string
+    userId: string
+  }): Promise<void>
+  deleteConversation(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+  }): Promise<void>
   getEntitlements(args: {
     userId: string
   }): Promise<Entitlements | null>
@@ -59,11 +172,13 @@ export interface ActConversationRepository {
   addMessage(args: {
     conversationId: Id<'conversations'>
     content: string
-    contentType: 'text'
-    mode: 'act'
-    modelId: string
+    contentType: 'text' | 'image' | 'video'
+    mode: 'ask' | 'act'
+    modelId?: string
     parts?: Array<Record<string, unknown>>
     role: 'user' | 'assistant'
+    replySnippet?: string
+    replyToTurnId?: string
     routedModelId?: string
     skipMemoryExtraction?: boolean
     tokens?: { input: number; output: number }
@@ -116,7 +231,7 @@ export interface ActConversationRepository {
     messageId: Id<'conversationMessages'>
     newParts?: Array<Record<string, unknown>>
     textDelta?: string
-  }): Promise<void>
+  }): Promise<boolean>
   finalizeGeneratingMessage(args: {
     content: string
     messageId: Id<'conversationMessages'>
@@ -128,6 +243,55 @@ export interface ActConversationRepository {
     errorText: string
     messageId: Id<'conversationMessages'>
   }): Promise<void>
+  settleGeneratingMessagesForTurn(args: {
+    conversationId: Id<'conversations'>
+    fallbackText: string
+    status: 'completed' | 'error'
+    turnId: string
+    userId: string
+  }): Promise<void>
+  stopGeneratingMessages(args: {
+    conversationId: Id<'conversations'>
+    messageId?: Id<'conversationMessages'>
+    partialContent?: string
+    partialParts?: Array<Record<string, unknown>>
+    userId: string
+  }): Promise<{ stoppedCount: number }>
+  deleteTurn(args: {
+    conversationId: Id<'conversations'>
+    turnId: string
+    userId: string
+  }): Promise<{ deletedMessages: number }>
+  updateMessageUiPart(args: {
+    conversationId: Id<'conversations'>
+    messageId: Id<'conversationMessages'>
+    partId: string
+    data: Record<string, unknown>
+    userId: string
+  }): Promise<boolean>
+  setShare(args: {
+    conversationId: Id<'conversations'>
+    userId: string
+    visibility: 'private' | 'public'
+  }): Promise<{ token: string | null; visibility: 'private' | 'public' } | null>
+  getPublicConversationByToken(args: {
+    token: string
+  }): Promise<SharedConversationRow | null>
+  getConversationEventCursor(args: {
+    userId: string
+  }): Promise<number>
+  listConversationEvents(args: {
+    afterSequence: number
+    limit: number
+    userId: string
+  }): Promise<ConversationEventRow[]>
+  waitForConversationEvents(args: {
+    afterSequence: number
+    limit: number
+    signal?: AbortSignal
+    timeoutMs: number
+    userId: string
+  }): Promise<ConversationEventRow[]>
   recordUsageBatch(args: {
     events: ActUsageEvent[]
     forceFreeTierLimits: boolean

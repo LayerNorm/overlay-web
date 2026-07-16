@@ -234,7 +234,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     const buttonInsertedAtRef = useRef(false)
     const [isEditorEmpty, setIsEditorEmpty] = useState(() => isComposerTextEmpty(value))
 
-    const { search, loading } = useMentionData()
+    const { availableTypes, search, loading } = useMentionData()
 
     // Sync explicit external value commands into the editor (clear on send,
     // populate restored draft after hydration). Normal typing stays local to
@@ -568,6 +568,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
             }}
             onClose={closePopup}
             query={mentionQuery}
+            availableTypes={availableTypes}
             selectedCategory={selectedCategory}
             onSelectedCategoryChange={setSelectedCategory}
           />

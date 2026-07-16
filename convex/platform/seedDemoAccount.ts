@@ -6,7 +6,7 @@ import { mutation } from "../_generated/server";
  * Run via Convex dashboard or CLI after creating a real user account.
  *
  * Usage:
- *   npx convex run seedDemoAccount '{"userId": "workos_user_xxx"}'
+ *   npx convex run seedDemoAccount '{"userId": "auth_user_xxx"}'
  */
 export default mutation({
   args: {

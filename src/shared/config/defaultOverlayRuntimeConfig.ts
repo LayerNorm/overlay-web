@@ -21,6 +21,9 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     knowledge: true,
     automations: true,
     integrations: true,
+    projects: true,
+    skills: true,
+    mcpServers: true,
     browserUse: true,
     sandboxes: true,
     webSearch: true,
@@ -61,7 +64,7 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     allowDevFallbacks: false,
     workos: {},
     oidc: {},
-    keycloak: {},
+    betterAuth: {},
   },
   billing: {
     provider: 'stripe',
@@ -80,8 +83,16 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     keySource: 'env',
     modelAllowlist: [],
   },
+  integrations: {
+    executor: {},
+  },
   database: {
     provider: 'convex',
+  },
+  rateLimit: {
+    redis: {
+      failureMode: 'deny',
+    },
   },
   capabilities: {
     billing: true,
@@ -90,6 +101,9 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     webhooks: false,
     vectorSearch: true,
     automations: true,
+    projects: true,
+    skills: true,
+    mcpServers: true,
     multiTenant: false,
   },
 } satisfies OverlayRuntimeConfigInput

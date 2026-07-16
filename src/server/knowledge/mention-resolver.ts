@@ -10,6 +10,7 @@ import 'server-only'
  */
 
 import { convex } from '@/server/database/convex'
+import { getOverlayServerContext } from '@/server/bootstrap'
 
 export interface IncomingMention {
   type: string
@@ -40,13 +41,6 @@ interface AutomationDoc {
   description?: string
   enabled?: boolean
   schedule?: { kind?: string }
-}
-
-interface McpDoc {
-  _id: string
-  name?: string
-  url?: string
-  toolNames?: string[]
 }
 
 interface ConversationDoc {
@@ -120,16 +114,16 @@ async function resolveOne(
         return `- skill id=${m.id} name="${safeName}"`
       }
       case 'mcp': {
-        const mcp = await convex
-          .query<McpDoc | null>('integrations/mcpServers:get', {
+        const mcp = await getOverlayServerContext().appData.repositories.mcpServers
+          .get({
             mcpServerId: m.id,
             userId,
-            serverSecret,
           })
           .catch((_error) => null)
         if (!mcp) return `- mcp id=${m.id} name="${safeName}" — (not found)`
-        const tools = mcp.toolNames?.length
-          ? `tools=[${mcp.toolNames.slice(0, 8).join(',')}${mcp.toolNames.length > 8 ? '…' : ''}]`
+        const toolNames = mcp.toolCatalog.map((tool) => tool.name)
+        const tools = toolNames.length
+          ? `tools=[${toolNames.slice(0, 8).join(',')}${toolNames.length > 8 ? '…' : ''}]`
           : ''
         const url = mcp.url ? `url=${mcp.url}` : ''
         return `- mcp id=${mcp._id} name="${mcp.name || safeName}" — ${[url, tools]

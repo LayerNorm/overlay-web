@@ -11,8 +11,8 @@ import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
  * POST /api/account/delete
  *
  * Permanently deletes the authenticated user. The route is intentionally a thin
- * controller; provider-specific Convex/R2/Stripe/WorkOS work lives behind the
- * server context adapters and the account service.
+ * controller; provider-specific Convex/R2/Stripe/auth-provider work lives
+ * behind the server context adapters and the account service.
  */
 export async function POST(request: NextRequest) {
   const session = await getOverlaySession(request)
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
   let result: Awaited<ReturnType<AccountDeletionService['deleteAccount']>>
   try {
-    result = await new AccountDeletionService(getOverlayServerContext()).deleteAccount({ userId })
+    result = await new AccountDeletionService(getOverlayServerContext()).deleteAccount({ userId, request })
   } catch (error) {
     logger.error('[account/delete] Account deletion failed:', error)
     return NextResponse.json(
@@ -47,12 +47,32 @@ export async function POST(request: NextRequest) {
     `[account/delete] Account purge complete for ${userId} (${userEmail}): ${result.deletedRowCount} rows`,
   )
 
+  let signOutResult: Response | Headers | void = undefined
   if (session?.user?.id === userId) {
-    await clearOverlaySession()
+    signOutResult = await clearOverlaySession(request)
   }
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     success: true,
     deletedRowCount: result.deletedRowCount,
   })
+  forwardSetCookieHeaders(signOutResult, response)
+  return response
+}
+
+function forwardSetCookieHeaders(
+  source: Response | Headers | void,
+  target: NextResponse,
+): void {
+  if (!source) return
+  const headers = source instanceof Response ? source.headers : source
+  const getSetCookie = (headers as Headers & { getSetCookie?: () => string[] }).getSetCookie
+  const cookieHeaders = typeof getSetCookie === 'function'
+    ? getSetCookie.call(headers)
+    : headers.get('set-cookie')
+      ? [headers.get('set-cookie') as string]
+      : []
+  for (const cookie of cookieHeaders) {
+    target.headers.append('set-cookie', cookie)
+  }
 }

@@ -56,7 +56,9 @@ async function getSubscriptionBudgetState(ctx: MutationCtx, userId: string) {
   const planKind = derivePlanKind(subscription ?? {})
   const planAmountCents = derivePlanAmountCents(subscription ?? {})
   const topUpTotalCents = await getSucceededTopUpTotalCents(ctx, userId, subscription.currentPeriodStart)
-  const budgetTotalCents = planKind === 'free' ? 0 : planAmountCents + topUpTotalCents
+  const budgetTotalCents = planKind === 'free'
+    ? 0
+    : planAmountCents + topUpTotalCents + (subscription?.institutionalGrantCents ?? 0)
   const budgetUsedCents = subscription.creditsUsed ?? 0
   return {
     subscription,
@@ -115,7 +117,9 @@ async function buildEntitlements(ctx: EntitlementCtx, userId: string) {
   const tier = planKind === 'free' ? 'free' : ((subscription?.tier === 'max' ? 'max' : 'pro') as 'free' | 'pro' | 'max')
   const planAmountCents = derivePlanAmountCents(subscription ?? {})
   const topUpTotalCents = await getSucceededTopUpTotalCents(ctx, userId, subscription?.currentPeriodStart)
-  const budgetTotalCents = planKind === 'free' ? 0 : planAmountCents + topUpTotalCents
+  const budgetTotalCents = planKind === 'free'
+    ? 0
+    : planAmountCents + topUpTotalCents + (subscription?.institutionalGrantCents ?? 0)
 
   const tierDefaults = {
     free: {
@@ -352,7 +356,9 @@ export const getEntitlementsInternal = internalQuery({
     const tier = planKind === 'free' ? 'free' : ((subscription?.tier === 'max' ? 'max' : 'pro') as 'free' | 'pro' | 'max')
     const planAmountCents = derivePlanAmountCents(subscription ?? {})
     const topUpTotalCents = await getSucceededTopUpTotalCents(ctx, userId, subscription?.currentPeriodStart)
-    const budgetTotalCents = planKind === 'free' ? 0 : planAmountCents + topUpTotalCents
+    const budgetTotalCents = planKind === 'free'
+      ? 0
+      : planAmountCents + topUpTotalCents + (subscription?.institutionalGrantCents ?? 0)
     return {
       tier,
       planKind,
@@ -456,6 +462,7 @@ export const recordBatch = mutation({
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     userId: v.string(),
+    operationId: v.optional(v.string()),
     forceFreeTierLimits: v.optional(v.boolean()),
     events: v.array(
       v.object({
@@ -477,10 +484,30 @@ export const recordBatch = mutation({
       })
     )
   },
-  handler: async (ctx, { accessToken, serverSecret, userId, forceFreeTierLimits, events }) => {
+  handler: async (ctx, { accessToken, serverSecret, userId, operationId: rawOperationId, forceFreeTierLimits, events }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
+    const operationId = rawOperationId?.trim()
+    if (operationId) {
+      const existing = await ctx.db
+        .query('usageOperations')
+        .withIndex('by_operationId', (q) => q.eq('operationId', operationId))
+        .first()
+      if (existing) {
+        if (existing.userId !== userId) throw new Error('usage_operation_user_mismatch')
+        return { success: true, recorded: 0, idempotent: true }
+      }
+    }
     await enforceFreeTierUsageLimits(ctx, userId, events, forceFreeTierLimits === true)
-    return await applyUsageEvents(ctx, userId, events)
+    const result = await applyUsageEvents(ctx, userId, events)
+    if (operationId) {
+      await ctx.db.insert('usageOperations', {
+        userId,
+        operationId,
+        recorded: events.length,
+        createdAt: Date.now(),
+      })
+    }
+    return { ...result, recorded: events.length, idempotent: false }
   }
 })
 
@@ -500,6 +527,72 @@ export const adjustBudgetByServer = mutation({
     const nextCreditsUsed = Math.max(0, roundCreditAmount((subscription.creditsUsed ?? 0) + amountCents))
     await ctx.db.patch(subscription._id, { creditsUsed: nextCreditsUsed })
     return { success: true, creditsUsed: nextCreditsUsed }
+  },
+})
+
+export const listAdministrativeUsageByServer = query({
+  args: {
+    serverSecret: v.string(),
+    limit: v.optional(v.number()),
+    userId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const limit = Math.min(Math.max(args.limit ?? 100, 1), 200)
+    const rows = args.userId
+      ? (await ctx.db.query('subscriptions').withIndex('by_userId', (q) => q.eq('userId', args.userId!)).collect())
+      : await ctx.db.query('subscriptions').take(limit)
+    return await Promise.all(rows.slice(0, limit).map(async (subscription) => {
+      const planKind = derivePlanKind(subscription)
+      const planAmountCents = derivePlanAmountCents(subscription)
+      const topUpTotalCents = await getSucceededTopUpTotalCents(ctx, subscription.userId, subscription.currentPeriodStart)
+      const budgetTotalCents = planKind === 'free'
+        ? 0
+        : planAmountCents + topUpTotalCents + (subscription.institutionalGrantCents ?? 0)
+      const budgetUsedCents = subscription.creditsUsed ?? 0
+      return {
+        userId: subscription.userId,
+        email: subscription.email,
+        planKind,
+        status: subscription.status,
+        budgetUsedCents,
+        budgetTotalCents,
+        budgetRemainingCents: Math.max(0, budgetTotalCents - budgetUsedCents),
+      }
+    }))
+  },
+})
+
+export const adjustAdministrativeBudgetByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    amountCents: v.number(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const subscription = await getOrCreateSubscription(ctx, args.userId)
+    const institutionalGrantCents = Math.max(
+      0,
+      roundCreditAmount((subscription.institutionalGrantCents ?? 0) + args.amountCents),
+    )
+    await ctx.db.patch(subscription._id, { institutionalGrantCents })
+    const planKind = derivePlanKind(subscription)
+    const planAmountCents = derivePlanAmountCents(subscription)
+    const topUpTotalCents = await getSucceededTopUpTotalCents(ctx, args.userId, subscription.currentPeriodStart)
+    const budgetTotalCents = planKind === 'free'
+      ? 0
+      : planAmountCents + topUpTotalCents + institutionalGrantCents
+    const budgetUsedCents = subscription.creditsUsed ?? 0
+    return {
+      userId: args.userId,
+      email: subscription.email,
+      planKind,
+      status: subscription.status,
+      budgetUsedCents,
+      budgetTotalCents,
+      budgetRemainingCents: Math.max(0, budgetTotalCents - budgetUsedCents),
+    }
   },
 })
 
@@ -542,8 +635,9 @@ export const reserveBudgetByServer = mutation({
     ),
     modelId: v.optional(v.string()),
     reservedCents: v.number(),
+    expiresAt: v.optional(v.number()),
   },
-  handler: async (ctx, { serverSecret, userId, reservationId, kind, modelId, reservedCents }) => {
+  handler: async (ctx, { serverSecret, userId, reservationId, kind, modelId, reservedCents, expiresAt }) => {
     requireServerSecret(serverSecret)
     const normalizedReservationId = reservationId.trim()
     if (!normalizedReservationId) throw new Error('invalid_reservation_id')
@@ -554,6 +648,9 @@ export const reserveBudgetByServer = mutation({
       .first()
     if (existing) {
       if (existing.userId !== userId) throw new Error('reservation_user_mismatch')
+      if (existing.reservedCents !== roundCreditAmount(Math.max(0, reservedCents))) {
+        throw new Error('reservation_parameter_mismatch')
+      }
       return {
         success: true,
         reservationId: existing.reservationId,
@@ -585,6 +682,7 @@ export const reserveBudgetByServer = mutation({
       reservedCents: safeReservedCents,
       providerWorkStarted: false,
       providerWorkCompleted: false,
+      expiresAt: expiresAt ?? now + 30 * 60_000,
       createdAt: now,
       updatedAt: now,
     })
@@ -596,6 +694,53 @@ export const reserveBudgetByServer = mutation({
       status: 'reserved',
       idempotent: false,
     }
+  },
+})
+
+export const reconcileExpiredBudgetReservationsByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    limit: v.optional(v.number()),
+    now: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const now = args.now ?? Date.now()
+    const limit = Math.min(Math.max(args.limit ?? 100, 1), 1000)
+    const rows = await ctx.db
+      .query('budgetReservations')
+      .withIndex('by_status_createdAt', (q) => q.eq('status', 'reserved'))
+      .take(limit)
+    let reconcileRequired = 0
+    let released = 0
+    for (const reservation of rows) {
+      if ((reservation.expiresAt ?? reservation.createdAt + 30 * 60_000) > now) continue
+      if (reservation.providerWorkStarted) {
+        await ctx.db.patch(reservation._id, {
+          status: 'reconcile_required',
+          errorMessage: 'reservation_expired_after_provider_work',
+          updatedAt: now,
+        })
+        reconcileRequired += 1
+        continue
+      }
+      const subscription = await ctx.db
+        .query('subscriptions')
+        .withIndex('by_userId', (q) => q.eq('userId', reservation.userId))
+        .first()
+      if (subscription && reservation.reservedCents > 0) {
+        await ctx.db.patch(subscription._id, {
+          creditsUsed: Math.max(0, roundCreditAmount((subscription.creditsUsed ?? 0) - reservation.reservedCents)),
+        })
+      }
+      await ctx.db.patch(reservation._id, {
+        status: 'released',
+        errorMessage: 'reservation_expired_before_provider_work',
+        updatedAt: now,
+      })
+      released += 1
+    }
+    return { reconcileRequired, released }
   },
 })
 

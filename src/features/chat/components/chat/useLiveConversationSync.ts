@@ -1,6 +1,14 @@
 'use client'
 
-import { useEffect, useRef, type MutableRefObject } from 'react'
+import {
+  createElement,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type ReactNode,
+} from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { useQuery } from '@/components/providers/convex-hooks'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -45,12 +53,52 @@ type UseLiveConversationSyncParams = {
   chatStreamRelayApi: string | null | undefined
   completeSession: (chatId: string, isActive: boolean) => void
   convexAccessToken: string | null | undefined
+  enableConvexLiveSync: boolean
   lastStreamChunkAtRef: MutableRefObject<number>
   loadChats: () => Promise<void>
   onRuntimeMessagesChanged: () => void
   runtimeHydrationVersion: number
   runtimesRef: MutableRefObject<Map<string, ConversationRuntime>>
   sessions: Record<string, AsyncSession | undefined>
+}
+
+type ConvexLiveQueryState = {
+  liveMessageDeltas: Array<LiveMessageDelta> | undefined
+  liveMessages: Array<LiveConversationMessage> | undefined
+}
+
+function ConvexLiveQueryBridge({
+  activeChatId,
+  authUserId,
+  convexAccessToken,
+  onUpdate,
+}: {
+  activeChatId: string | null
+  authUserId: string | null | undefined
+  convexAccessToken: string | null | undefined
+  onUpdate: (state: ConvexLiveQueryState) => void
+}) {
+  const queryArgs = activeChatId && authUserId && convexAccessToken
+    ? {
+        conversationId: activeChatId as Id<'conversations'>,
+        userId: authUserId,
+        accessToken: convexAccessToken,
+      }
+    : 'skip'
+  const liveMessages = useQuery(
+    api.chat.conversations.watchGeneratingMessages,
+    queryArgs,
+  ) as Array<LiveConversationMessage> | undefined
+  const liveMessageDeltas = useQuery(
+    api.chat.conversations.watchGeneratingMessageDeltas,
+    queryArgs,
+  ) as Array<LiveMessageDelta> | undefined
+
+  useEffect(() => {
+    onUpdate({ liveMessages, liveMessageDeltas })
+  }, [liveMessageDeltas, liveMessages, onUpdate])
+
+  return null
 }
 
 function hasStreamingChat(chat: ChatView) {
@@ -139,6 +187,7 @@ export function useLiveConversationSync({
   chatStreamRelayApi,
   completeSession,
   convexAccessToken,
+  enableConvexLiveSync,
   lastStreamChunkAtRef,
   loadChats,
   onRuntimeMessagesChanged,
@@ -149,31 +198,33 @@ export function useLiveConversationSync({
   const liveGeneratingByChatRef = useRef(new Map<string, boolean>())
   const appliedLiveDeltaIdsRef = useRef(new Set<string>())
   const resumedCloudflareStreamsRef = useRef(new Set<string>())
+  const [liveQueryState, setLiveQueryState] = useState<ConvexLiveQueryState>({
+    liveMessages: undefined,
+    liveMessageDeltas: undefined,
+  })
+  const onLiveQueryUpdate = useCallback((next: ConvexLiveQueryState) => {
+    setLiveQueryState((current) => (
+      current.liveMessages === next.liveMessages &&
+      current.liveMessageDeltas === next.liveMessageDeltas
+        ? current
+        : next
+    ))
+  }, [])
 
   useEffect(() => {
     appliedLiveDeltaIdsRef.current.clear()
   }, [activeChatId])
 
-  const liveMessages = useQuery(
-    api.chat.conversations.watchGeneratingMessages,
-    activeChatId && authUserId && convexAccessToken
-      ? {
-          conversationId: activeChatId as Id<'conversations'>,
-          userId: authUserId,
-          accessToken: convexAccessToken,
-        }
-      : 'skip',
-  ) as Array<LiveConversationMessage> | undefined
-  const liveMessageDeltas = useQuery(
-    api.chat.conversations.watchGeneratingMessageDeltas,
-    activeChatId && authUserId && convexAccessToken
-      ? {
-          conversationId: activeChatId as Id<'conversations'>,
-          userId: authUserId,
-          accessToken: convexAccessToken,
-        }
-      : 'skip',
-  ) as Array<LiveMessageDelta> | undefined
+  const liveMessages = liveQueryState.liveMessages
+  const liveMessageDeltas = liveQueryState.liveMessageDeltas
+  const liveQueryBridge: ReactNode = enableConvexLiveSync
+    ? createElement(ConvexLiveQueryBridge, {
+        activeChatId,
+        authUserId,
+        convexAccessToken,
+        onUpdate: onLiveQueryUpdate,
+      })
+    : null
 
   const activePersistedGenerating =
     liveMessagesHaveGeneratingAssistant(liveMessages) ||
@@ -395,6 +446,7 @@ export function useLiveConversationSync({
 
   return {
     activePersistedGenerating,
+    liveQueryBridge,
     liveMessages,
   }
 }

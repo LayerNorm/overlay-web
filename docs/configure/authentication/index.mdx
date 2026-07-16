@@ -1,0 +1,50 @@
+---
+title: "Authentication"
+description: "Choose an Overlay session backend, identity protocol, and provider recipe."
+---
+
+Overlay authentication has three independent layers:
+
+1. **Session backend** — WorkOS or Better Auth owns the browser session.
+2. **Identity protocol** — the private deployment currently uses OpenID Connect (OIDC).
+3. **Provider recipe** — Google Workspace, Auth0, Entra ID, or a generic OIDC provider supplies identities.
+
+Keeping these layers separate prevents provider-specific assumptions from leaking into the application. Overlay consumes one normalized session and user contract after login.
+
+## Supported combinations
+
+| Session backend | Protocol/provider | Intended deployment | Status |
+| --- | --- | --- | --- |
+| WorkOS | WorkOS AuthKit connections | Hosted Overlay | Supported and retained |
+| Better Auth | Google Workspace OIDC | Customer-controlled web deployment | Supported; primary EC2 flow |
+| Better Auth | Auth0 OIDC | Customer-controlled or managed IdP | Supported alternative |
+| Better Auth | Entra ID OIDC | Microsoft enterprise tenant | Supported preset |
+| Better Auth | Generic OIDC | Cognito, Okta, Keycloak, or another standards-compliant IdP | Supported with provider-specific issuer configuration |
+| OIDC bearer verifier | Generic OIDC access token | API/service-client verification | Supported, but it is not a browser login/session backend |
+
+<Warning>
+  Better Auth and WorkOS identities are intentionally separate. Matching email
+  addresses do not merge accounts, chats, settings, or billing data.
+</Warning>
+
+## Recommended private deployment
+
+Use **Better Auth + OIDC + Google Workspace** when the customer already manages staff accounts in Google Workspace. Overlay stores its own sessions in Postgres while Google remains the identity authority.
+
+```text
+Browser
+  -> Overlay /api/auth/sso/workspace
+  -> Better Auth
+  -> Google Workspace OIDC
+  -> Overlay Better Auth callback
+  -> Overlay session
+  -> normalized user/session contract
+```
+
+Start with:
+
+- [Authentication Backends](/configure/authentication/backends)
+- [OIDC Protocol](/configure/authentication/oidc)
+- [Google Workspace](/configure/authentication/recipes/google-workspace)
+
+Use [Auth0](/configure/authentication/recipes/auth0) only when Auth0 is the approved identity broker. Use [Generic OIDC](/configure/authentication/recipes/generic-oidc) for Cognito, Okta, and Keycloak.

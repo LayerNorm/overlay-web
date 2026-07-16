@@ -39,7 +39,7 @@ export interface UpdateNoteRequest {
   title?: string
   content?: string
   tags?: string[]
-  projectId?: string
+  projectId?: string | null
   accessToken?: string
   userId?: string
 }

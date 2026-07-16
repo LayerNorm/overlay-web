@@ -31,6 +31,7 @@ import {
 } from '@/shared/chat/tool-requests'
 import { ChatExperienceView } from './ChatExperienceView'
 import { useChatListEventSync } from './chat/useChatListEventSync'
+import { usePostgresConversationEvents } from './chat/usePostgresConversationEvents'
 import { useChatAttachments } from './useChatAttachments'
 import { useChatBillingControls } from './chat/useChatBillingControls'
 import { useDraftReviewActions } from './chat/useDraftReviewActions'
@@ -76,7 +77,7 @@ import { createIdempotencyKey } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { useAuth } from '@/contexts/AuthContext'
-import { useConvexWorkOSToken } from '@/components/providers/ConvexProviderWithWorkOS'
+import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
 import { useGeneratedUiConnectorActions } from './chat/useGeneratedUiConnectorActions'
 import {
   CHAT_GEN_MODE_KEY,
@@ -163,10 +164,16 @@ export default function ChatExperience({
     models: gatewayCatalogModels,
     isLoading: gatewayModelsLoading,
   } = useGatewayModelCatalog()
-  const { capabilities } = useOverlayCapabilities()
+  const { appDataCapabilities, capabilities } = useOverlayCapabilities()
   const billingEnabled = capabilities.billing
+  const convexLiveSyncEnabled =
+    appDataCapabilities.requiresConvexClient && appDataCapabilities.supportsRealtime
+  const postgresLiveSyncEnabled =
+    appDataCapabilities.provider === 'postgres' && appDataCapabilities.supportsRealtime
+  const titleGenerationEnabled = appDataCapabilities.supportsChatPersistence
+  const generatedOutputsEnabled = appDataCapabilities.provider !== 'postgres'
   const { user: authUser, isLoading: authLoading } = useAuth()
-  const convexAccessToken = useConvexWorkOSToken()
+  const convexAccessToken = useConvexAuthToken()
   const { startSession, completeSession, markRead, setActiveViewer, sessions } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
   const [isTemporaryChat, setIsTemporaryChat] = useState(false)
@@ -601,6 +608,7 @@ export default function ChatExperience({
 
   const {
     activePersistedGenerating,
+    liveQueryBridge,
     liveMessages,
   } = useLiveConversationSync({
     activeChatId,
@@ -612,6 +620,7 @@ export default function ChatExperience({
     chatStreamRelayApi,
     completeSession,
     convexAccessToken,
+    enableConvexLiveSync: convexLiveSyncEnabled,
     lastStreamChunkAtRef,
     loadChats,
     onRuntimeMessagesChanged,
@@ -670,6 +679,7 @@ export default function ChatExperience({
     pendingTitleRef,
     setActiveChatTitle,
     setChats,
+    titleGenerationEnabled,
     updateRuntimeUiState,
   })
 
@@ -805,6 +815,7 @@ export default function ChatExperience({
     emptyRuntimeRef,
     hasAutomationContext,
     isTemporaryChatRef,
+    loadGeneratedOutputs: generatedOutputsEnabled,
     markRead,
     pendingTitleRef,
     persistActiveRuntimeUiState,
@@ -828,6 +839,31 @@ export default function ChatExperience({
   })
 
   loadChatRef.current = loadChat
+
+  const reloadActivePostgresConversation = useCallback(async (chatId: string) => {
+    if (activeChatIdRef.current !== chatId) return
+    await loadChatRef.current?.(chatId, { replaceUrl: false })
+  }, [activeChatIdRef, loadChatRef])
+
+  const hasActiveLocalStream = useCallback(() => (
+    actChat.status === 'streaming' ||
+    actChat.status === 'submitted' ||
+    chatInstances.some((chat) => chat.status === 'streaming' || chat.status === 'submitted')
+  ), [actChat.status, chatInstances])
+
+  const stopRemotePostgresStream = useCallback(() => {
+    actChat.stop()
+    for (const chat of chatInstances) chat.stop()
+  }, [actChat, chatInstances])
+
+  usePostgresConversationEvents({
+    activeChatIdRef,
+    enabled: postgresLiveSyncEnabled,
+    hasActiveLocalStream,
+    loadChats,
+    onRemoteStop: stopRemotePostgresStream,
+    reloadActiveConversation: reloadActivePostgresConversation,
+  })
   invalidateLoadChatRequestRef.current = invalidateLoadChatRequest
 
   const refreshSelectedAutomation = useCallback(async (options?: { showLoading?: boolean }) => {
@@ -1705,7 +1741,9 @@ export default function ChatExperience({
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
-    <ChatExperienceView
+    <>
+      {liveQueryBridge}
+      <ChatExperienceView
       shell={{
         rightPanel: shellRightPanel,
         rightPanelOpen: Boolean(shellRightPanel),
@@ -1999,6 +2037,7 @@ export default function ChatExperience({
         onModeChange: setAttachmentPreviewMode,
         renderViewer: renderAttachmentViewer,
       }}
-    />
+      />
+    </>
   )
 }

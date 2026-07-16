@@ -1,8 +1,7 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { convex } from '@/server/database/convex'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   buildPersistedMessageContent,
   sanitizeMessagePartsForPersistence,
@@ -50,28 +49,21 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const mode = body.mode ?? 'act'
     const contentType = body.contentType ?? 'text'
     const modelId = body.modelId ?? body.model
-    const serverSecret = getInternalApiSecret()
-
-    await convex.mutation(
-      'chat/conversations:addMessage',
-      {
-        conversationId: body.conversationId as Id<'conversations'>,
-        userId: auth.userId,
-        serverSecret,
-        turnId,
-        role: body.role,
-        mode,
-        content: normalizedContent,
-        contentType,
-        parts: normalizedParts,
-        modelId,
-        variantIndex: body.variantIndex,
-        ...(body.replyToTurnId?.trim()
-          ? { replyToTurnId: body.replyToTurnId.trim(), replySnippet: body.replySnippet?.trim() }
-          : {}),
-      },
-      { throwOnError: true },
-    )
+    await getOverlayServerContext().appData.repositories.conversations.addMessage({
+      conversationId: body.conversationId as Id<'conversations'>,
+      userId: auth.userId,
+      turnId,
+      role: body.role,
+      mode,
+      content: normalizedContent,
+      contentType,
+      parts: normalizedParts,
+      modelId,
+      variantIndex: body.variantIndex,
+      ...(body.replyToTurnId?.trim()
+        ? { replyToTurnId: body.replyToTurnId.trim(), replySnippet: body.replySnippet?.trim() }
+        : {}),
+    })
 
     return NextResponse.json({ success: true, conversationId: body.conversationId, turnId })
   } catch (e) {
@@ -97,30 +89,15 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     }
 
     try {
-      const serverSecret = getInternalApiSecret()
-      await convex.mutation(
-        'chat/conversations:deleteTurn',
-        {
-          conversationId: conversationId as Id<'conversations'>,
-          userId: auth.userId,
-          serverSecret,
-          turnId,
-        },
-        { throwOnError: true },
-      )
+      await getOverlayServerContext().appData.repositories.conversations.deleteTurn({
+        conversationId: conversationId as Id<'conversations'>,
+        userId: auth.userId,
+        turnId,
+      })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg === 'Unauthorized' || msg.includes('Unauthorized')) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-      }
-      if (msg.includes('Could not find public function')) {
-        return NextResponse.json(
-          {
-            error:
-              'Delete is unavailable until Convex is deployed with deleteTurn. Run `npx convex deploy` (or `npx convex dev`) for this project.',
-          },
-          { status: 503 },
-        )
       }
       logger.error('[conversations/message DELETE]', err)
       return NextResponse.json({ error: msg || 'Failed to delete turn' }, { status: 500 })
@@ -156,19 +133,16 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     }
 
     try {
-      const serverSecret = getInternalApiSecret()
-      await convex.mutation(
-        'chat/conversations:updateMessageUiPart',
-        {
-          conversationId: conversationId as Id<'conversations'>,
-          messageId: messageId as Id<'conversationMessages'>,
-          userId: auth.userId,
-          serverSecret,
-          partId,
-          data,
-        },
-        { throwOnError: true },
-      )
+      const updated = await getOverlayServerContext().appData.repositories.conversations.updateMessageUiPart({
+        conversationId: conversationId as Id<'conversations'>,
+        messageId: messageId as Id<'conversationMessages'>,
+        userId: auth.userId,
+        partId,
+        data: data as unknown as Record<string, unknown>,
+      })
+      if (!updated) {
+        return NextResponse.json({ error: 'Generated UI part not found' }, { status: 404 })
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg === 'Unauthorized' || msg.includes('Unauthorized')) {

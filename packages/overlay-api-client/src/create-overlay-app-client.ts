@@ -17,6 +17,7 @@ import { OutputsClient } from './outputs/client'
 import { ProjectsClient } from './projects/client'
 import { SettingsClient } from './settings/client'
 import { SkillsClient } from './skills/client'
+import { WebhooksClient } from './webhooks/client'
 import { createHttpContext } from './shared/http'
 import type { CreateOverlayAppClientOptions } from './shared/types'
 
@@ -45,6 +46,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     onboarding: new OnboardingClient(http),
     chat: new ChatAuxClient(http),
     automationRuns: new AutomationRunsClient(http),
+    webhooks: new WebhooksClient(http),
   }
 }
 

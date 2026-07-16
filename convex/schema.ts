@@ -53,6 +53,7 @@ export default defineSchema({
     planKind: v.optional(v.union(v.literal('free'), v.literal('paid'))),
     planVersion: v.optional(v.union(v.literal('fixed_v1'), v.literal('variable_v2'))),
     planAmountCents: v.optional(v.number()),
+    institutionalGrantCents: v.optional(v.number()),
     markupBasisPoints: v.optional(v.number()),
     status: v.union(
       v.literal('active'),
@@ -69,7 +70,7 @@ export default defineSchema({
     autoTopUpEnabled: v.optional(v.boolean()),
     autoTopUpAmountCents: v.optional(v.number()),
     offSessionConsentAt: v.optional(v.number()),
-    // User profile fields (synced from WorkOS)
+    // User profile fields synced from the selected auth provider.
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
     profilePictureUrl: v.optional(v.string()),
@@ -121,6 +122,15 @@ export default defineSchema({
     provider: v.string(),
     eventId: v.string(),
     eventType: v.optional(v.string()),
+    payloadHash: v.optional(v.string()),
+    status: v.optional(v.union(
+      v.literal('processing'),
+      v.literal('processed'),
+      v.literal('failed'),
+    )),
+    attempt: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    updatedAt: v.optional(v.number()),
     processedAt: v.number(),
   })
     .index('by_provider_eventId', ['provider', 'eventId'])
@@ -231,12 +241,63 @@ export default defineSchema({
     providerWorkStarted: v.optional(v.boolean()),
     providerWorkCompleted: v.optional(v.boolean()),
     errorMessage: v.optional(v.string()),
+    expiresAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index('by_reservationId', ['reservationId'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_status_createdAt', ['status', 'createdAt']),
+
+  usageOperations: defineTable({
+    userId: v.string(),
+    operationId: v.string(),
+    recorded: v.number(),
+    createdAt: v.number(),
+  })
+    .index('by_operationId', ['operationId'])
+    .index('by_userId_createdAt', ['userId', 'createdAt']),
+
+  administrativePrincipals: defineTable({
+    userId: v.string(),
+    role: v.union(
+      v.literal('admin'),
+      v.literal('auditor'),
+      v.literal('billing_admin'),
+      v.literal('support'),
+    ),
+    grantedBy: v.optional(v.string()),
+    reason: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    revokedAt: v.optional(v.number()),
+    revokedBy: v.optional(v.string()),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_createdAt', ['createdAt']),
+
+  auditEvents: defineTable({
+    eventId: v.string(),
+    actorType: v.union(
+      v.literal('user'),
+      v.literal('api_key'),
+      v.literal('service'),
+      v.literal('system'),
+    ),
+    actorUserId: v.optional(v.string()),
+    actorApiKeyId: v.optional(v.string()),
+    action: v.string(),
+    resourceType: v.string(),
+    resourceId: v.optional(v.string()),
+    outcome: v.union(v.literal('success'), v.literal('denied'), v.literal('failure')),
+    requestId: v.optional(v.string()),
+    ipAddress: v.optional(v.string()),
+    metadataJson: v.string(),
+    createdAt: v.number(),
+  })
+    .index('by_eventId', ['eventId'])
+    .index('by_actorUserId_createdAt', ['actorUserId', 'createdAt'])
+    .index('by_createdAt', ['createdAt']),
 
   daytonaWorkspaces: defineTable({
     userId: v.string(),
@@ -367,6 +428,7 @@ export default defineSchema({
     instructions: v.string(),
     enabled: v.optional(v.boolean()),
     projectId: v.optional(v.string()),
+    version: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_userId', ['userId']).index('by_projectId', ['projectId']),
@@ -443,7 +505,10 @@ export default defineSchema({
       v.literal('completed'),
       v.literal('succeeded'),
       v.literal('failed'),
+      v.literal('cancel_requested'),
+      v.literal('cancelled'),
       v.literal('skipped'),
+      v.literal('dead_letter'),
     ),
     scheduledFor: v.number(),
     startedAt: v.optional(v.number()),
@@ -481,6 +546,7 @@ export default defineSchema({
 
   mcpServers: defineTable({
     userId: v.string(),
+    projectId: v.optional(v.string()),
     name: v.string(),
     description: v.optional(v.string()),
     transport: v.union(v.literal('sse'), v.literal('streamable-http')),
@@ -494,7 +560,17 @@ export default defineSchema({
         headerValue: v.optional(v.string()),
       })
     ),
+    encryptedAuthConfig: v.optional(v.string()),
     timeoutMs: v.optional(v.number()),
+    defaultToolPolicy: v.optional(v.union(
+      v.literal('allow'),
+      v.literal('approval_required'),
+      v.literal('deny'),
+    )),
+    toolPolicies: v.optional(v.record(
+      v.string(),
+      v.union(v.literal('allow'), v.literal('approval_required'), v.literal('deny')),
+    )),
     toolCatalog: v.optional(
       v.array(
         v.object({
@@ -510,7 +586,31 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_userId_enabled', ['userId', 'enabled']),
+    .index('by_userId_enabled', ['userId', 'enabled'])
+    .index('by_projectId', ['projectId']),
+
+  mcpToolExecutions: defineTable({
+    userId: v.string(),
+    projectId: v.optional(v.string()),
+    mcpServerId: v.id('mcpServers'),
+    toolName: v.string(),
+    argumentsHash: v.string(),
+    policyDecision: v.union(
+      v.literal('allow'),
+      v.literal('approval_required'),
+      v.literal('deny'),
+    ),
+    status: v.union(v.literal('succeeded'), v.literal('failed'), v.literal('denied')),
+    conversationId: v.optional(v.string()),
+    turnId: v.optional(v.string()),
+    modelId: v.optional(v.string()),
+    durationMs: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_mcpServerId_createdAt', ['mcpServerId', 'createdAt'])
+    .index('by_projectId', ['projectId']),
 
   conversations: defineTable({
     userId: v.string(),
@@ -700,6 +800,7 @@ export default defineSchema({
     createdAt: v.number(),
   }).index('by_conversationId', ['conversationId'])
     .index('by_messageId', ['messageId'])
+    .index('by_userId', ['userId'])
     .index('by_createdAt', ['createdAt']),
 
   conversationContextSummaries: defineTable({
@@ -792,6 +893,7 @@ export default defineSchema({
     embedding: v.array(v.float64()),
   })
     .index('by_chunkId', ['chunkId'])
+    .index('by_userId', ['userId'])
     .vectorIndex('by_embedding', {
       vectorField: 'embedding',
       dimensions: 1536,
@@ -896,6 +998,22 @@ export default defineSchema({
     modelId: v.optional(v.string()),
     prompt: v.optional(v.string()),
     outputType: v.optional(v.string()),
+    outputSource: v.optional(v.union(
+      v.literal('image_generation'),
+      v.literal('video_generation'),
+      v.literal('browser'),
+      v.literal('sandbox'),
+    )),
+    outputStatus: v.optional(v.union(
+      v.literal('pending'),
+      v.literal('completed'),
+      v.literal('failed'),
+    )),
+    outputUrl: v.optional(v.string()),
+    outputMetadata: v.optional(v.any()),
+    outputErrorMessage: v.optional(v.string()),
+    outputCompletedAt: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
     legacyNoteId: v.optional(v.id('notes')),
     legacyOutputId: v.optional(v.id('outputs')),
     projectId: v.optional(v.string()),
@@ -912,6 +1030,7 @@ export default defineSchema({
     .index('by_parentId', ['parentId'])
     .index('by_legacyNoteId', ['legacyNoteId'])
     .index('by_legacyOutputId', ['legacyOutputId'])
+    .index('by_outputExpiry', ['kind', 'outputStatus', 'expiresAt'])
     .index('by_shareToken', ['shareToken']),
 
   webhookSubscriptions: defineTable({

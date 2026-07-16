@@ -1,10 +1,12 @@
 import type {
   CreateMcpServerRequest,
   CreateSkillRequest,
+  IntegrationProviderCapabilities,
   IntegrationSummary,
   McpAuthConfig,
   McpAuthType,
   McpServerSummary,
+  McpToolPolicyMode,
   McpTransport,
   OverlayIntegrationRegistration,
   OverlayModelProviderRegistration,
@@ -23,7 +25,7 @@ export const EXTENSIONS_CHANGED_EVENT = 'overlay:extensions-changed'
 
 export interface ConnectorCatalogItem {
   id: string
-  composioId: string
+  providerKey: string
   slug: string
   name: string
   description: string
@@ -31,6 +33,10 @@ export interface ConnectorCatalogItem {
   logoUrl?: string | null
   isConnected?: boolean
   connectedAccountId?: string | null
+  provider?: IntegrationSummary['provider']
+  capabilities?: IntegrationSummary['capabilities']
+  authenticationState?: IntegrationSummary['authenticationState']
+  connectionSetupUrl?: string | null
   componentKey?: string
   policyGateId?: string
 }
@@ -53,6 +59,7 @@ export interface McpServerFormValues {
   headerName: string
   headerValue: string
   timeoutMs: number | ''
+  defaultToolPolicy: McpToolPolicyMode
 }
 
 export interface McpTestResultState {
@@ -68,15 +75,15 @@ export type ExtensionCatalogItem =
   | ({ kind: 'modelProvider' } & OverlayModelProviderRegistration)
 
 export const DEFAULT_CONNECTOR_CATALOG: readonly ConnectorCatalogItem[] = [
-  { id: 'gmail', composioId: 'gmail', slug: 'gmail', name: 'Gmail', description: 'Compose, send, and search emails', icon: '📧' },
-  { id: 'google-calendar', composioId: 'googlecalendar', slug: 'googlecalendar', name: 'Google Calendar', description: 'Read and create calendar events', icon: '📅' },
-  { id: 'google-sheets', composioId: 'googlesheets', slug: 'googlesheets', name: 'Google Sheets', description: 'Read, update, and create spreadsheets', icon: '📊' },
-  { id: 'google-drive', composioId: 'googledrive', slug: 'googledrive', name: 'Google Drive', description: 'Search and manage Drive files', icon: '📁' },
-  { id: 'notion', composioId: 'notion', slug: 'notion', name: 'Notion', description: 'Create pages and manage workspace', icon: '📝' },
-  { id: 'outlook', composioId: 'outlook', slug: 'outlook', name: 'Outlook', description: 'Send emails and manage calendar', icon: '📨' },
-  { id: 'x-twitter', composioId: 'twitter', slug: 'twitter', name: 'X (Twitter)', description: 'Post tweets and manage your account', icon: '🐦' },
-  { id: 'asana', composioId: 'asana', slug: 'asana', name: 'Asana', description: 'Create tasks and manage projects', icon: '✅' },
-  { id: 'linkedin', composioId: 'linkedin', slug: 'linkedin', name: 'LinkedIn', description: 'Manage posts and profile actions', icon: '💼' },
+  { id: 'gmail', providerKey: 'gmail', slug: 'gmail', name: 'Gmail', description: 'Compose, send, and search emails', icon: '📧' },
+  { id: 'google-calendar', providerKey: 'googlecalendar', slug: 'googlecalendar', name: 'Google Calendar', description: 'Read and create calendar events', icon: '📅' },
+  { id: 'google-sheets', providerKey: 'googlesheets', slug: 'googlesheets', name: 'Google Sheets', description: 'Read, update, and create spreadsheets', icon: '📊' },
+  { id: 'google-drive', providerKey: 'googledrive', slug: 'googledrive', name: 'Google Drive', description: 'Search and manage Drive files', icon: '📁' },
+  { id: 'notion', providerKey: 'notion', slug: 'notion', name: 'Notion', description: 'Create pages and manage workspace', icon: '📝' },
+  { id: 'outlook', providerKey: 'outlook', slug: 'outlook', name: 'Outlook', description: 'Send emails and manage calendar', icon: '📨' },
+  { id: 'x-twitter', providerKey: 'twitter', slug: 'twitter', name: 'X (Twitter)', description: 'Post tweets and manage your account', icon: '🐦' },
+  { id: 'asana', providerKey: 'asana', slug: 'asana', name: 'Asana', description: 'Create tasks and manage projects', icon: '✅' },
+  { id: 'linkedin', providerKey: 'linkedin', slug: 'linkedin', name: 'LinkedIn', description: 'Manage posts and profile actions', icon: '💼' },
 ] as const
 
 const KNOWN_INTEGRATION_NAMES: Record<string, string> = {
@@ -127,7 +134,7 @@ export function integrationRegistryToConnectorCatalog(
     const slug = normalizeIntegrationProviderKey(item.providerKey || item.id)
     return {
       id: item.id,
-      composioId: slug,
+      providerKey: slug,
       slug,
       name: item.label,
       description: item.description ?? '',
@@ -165,7 +172,7 @@ export function connectorFromIntegrationSummary(
 ): ConnectorCatalogItem {
   return {
     id: fallback?.id ?? item.slug,
-    composioId: item.slug,
+    providerKey: item.providerKey,
     slug: item.slug,
     name: resolveIntegrationName(item.slug, item.name || fallback?.name || ''),
     description: item.description?.trim() || fallback?.description || '',
@@ -173,6 +180,10 @@ export function connectorFromIntegrationSummary(
     logoUrl: item.logoUrl ?? fallback?.logoUrl ?? null,
     isConnected: item.isConnected,
     connectedAccountId: item.connectedAccountId,
+    provider: item.provider,
+    capabilities: item.capabilities,
+    authenticationState: item.authenticationState,
+    connectionSetupUrl: item.connectionSetupUrl,
     componentKey: fallback?.componentKey,
     policyGateId: fallback?.policyGateId,
   }
@@ -183,13 +194,13 @@ export function resolveConnectorForSlug(
   catalogItems: readonly ConnectorCatalogItem[],
   presets: readonly ConnectorCatalogItem[] = DEFAULT_CONNECTOR_CATALOG,
 ): ConnectorCatalogItem {
-  const catalog = catalogItems.find((item) => item.slug === slug || item.composioId === slug)
-  const preset = presets.find((item) => item.slug === slug || item.composioId === slug)
+  const catalog = catalogItems.find((item) => item.slug === slug || item.providerKey === slug)
+  const preset = presets.find((item) => item.slug === slug || item.providerKey === slug)
   if (catalog) {
     return {
       ...catalog,
       id: catalog.id || slug,
-      composioId: catalog.composioId || slug,
+      providerKey: catalog.providerKey || slug,
       slug,
       name: resolveIntegrationName(slug, catalog.name),
       description: catalog.description?.trim() || preset?.description || 'Connected integration',
@@ -200,7 +211,7 @@ export function resolveConnectorForSlug(
   if (preset) return preset
   return {
     id: slug,
-    composioId: slug,
+    providerKey: slug,
     slug,
     name: resolveIntegrationName(slug, slug),
     description: 'Connected integration',
@@ -224,14 +235,14 @@ export function getAvailableConnectorRows(
 ): ConnectorCatalogItem[] {
   const bySlug = new Map<string, ConnectorCatalogItem>()
   for (const item of presets) {
-    if (!connected.has(item.composioId)) bySlug.set(item.composioId, item)
+    if (!connected.has(item.providerKey)) bySlug.set(item.providerKey, item)
   }
   for (const item of catalogItems) {
     if (connected.has(item.slug)) continue
     const existing = bySlug.get(item.slug)
     bySlug.set(item.slug, {
       id: item.id,
-      composioId: item.composioId || item.slug,
+      providerKey: item.providerKey || item.slug,
       slug: item.slug,
       name: resolveIntegrationName(item.slug, item.name || existing?.name || ''),
       description: item.description?.trim() || existing?.description || '',
@@ -251,7 +262,7 @@ export function filterConnectorCatalog(
   const q = query.trim().toLowerCase()
   if (!q) return [...items]
   return items.filter((item) =>
-    [item.name, item.description, item.slug, item.composioId]
+    [item.name, item.description, item.slug, item.providerKey]
       .filter(Boolean)
       .join(' ')
       .toLowerCase()
@@ -345,6 +356,7 @@ export function mcpServerToFormValues(server?: McpServerSummary | null): McpServ
     headerName: '',
     headerValue: '',
     timeoutMs: server?.timeoutMs ?? '',
+    defaultToolPolicy: server?.defaultToolPolicy ?? 'allow',
   }
 }
 
@@ -365,6 +377,7 @@ export function createMcpCreateRequest(values: McpServerFormValues): CreateMcpSe
     url: values.url.trim(),
     enabled: values.enabled,
     authType: values.authType,
+    defaultToolPolicy: values.defaultToolPolicy,
     ...(authConfig ? { authConfig } : {}),
     ...(values.timeoutMs !== '' ? { timeoutMs: Number(values.timeoutMs) } : {}),
   }
@@ -380,6 +393,7 @@ export function createMcpUpdateRequest(mcpServerId: string, values: McpServerFor
     url: values.url.trim(),
     enabled: values.enabled,
     authType: values.authType,
+    defaultToolPolicy: values.defaultToolPolicy,
     ...(authConfig ? { authConfig } : { authConfig: null }),
     ...(values.timeoutMs !== '' ? { timeoutMs: Number(values.timeoutMs) } : {}),
   }
@@ -411,6 +425,7 @@ export function createMcpSummaryFromForm(id: string, values: McpServerFormValues
     authType: values.authType,
     hasAuth: Boolean(authConfig),
     timeoutMs: values.timeoutMs !== '' ? Number(values.timeoutMs) : undefined,
+    defaultToolPolicy: values.defaultToolPolicy,
     createdAt: now,
     updatedAt: now,
   }
@@ -426,8 +441,9 @@ export function updateMcpSummaryFromForm(server: McpServerSummary, values: McpSe
     url: values.url.trim(),
     enabled: values.enabled,
     authType: values.authType,
-    hasAuth: Boolean(authConfig),
+    hasAuth: values.authType === 'none' ? false : Boolean(authConfig) || server.hasAuth,
     timeoutMs: values.timeoutMs !== '' ? Number(values.timeoutMs) : undefined,
+    defaultToolPolicy: values.defaultToolPolicy,
     updatedAt: now,
   }
 }
@@ -480,9 +496,22 @@ export function buildExtensionRegistryCatalog(input: {
     ...(input.integrations ?? []).map((item) => ({
       kind: 'integration' as const,
       slug: normalizeIntegrationProviderKey(item.providerKey || item.id),
+      providerKey: normalizeIntegrationProviderKey(item.providerKey || item.id),
       name: item.label,
       description: item.description ?? '',
       logoUrl: item.logoSrc ?? null,
+      provider: 'composio' as const,
+      capabilities: {
+        provider: 'composio' as const,
+        hosted: true,
+        selfHosted: false,
+        oauthOwnership: 'provider-managed' as const,
+        connectionSetup: 'in-app-oauth' as const,
+        connectionLifecycle: 'overlay-managed' as const,
+        supportsApprovals: false,
+        supportsDisconnect: true,
+        supportedSchemas: ['native'],
+      } satisfies IntegrationProviderCapabilities,
       isConnected: false,
     })),
     ...(input.tools ?? []).map((item) => ({ ...item, kind: 'tool' as const })),

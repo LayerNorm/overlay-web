@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { AutomationService, AutomationServiceError, buildAutomationUpdateNote } from './AutomationService'
+import {
+  PaidPlanAutomationEntitlementPolicy,
+  type AutomationEntitlementPolicy,
+} from './AutomationEntitlementPolicy'
 import type { AutomationRepository } from './AutomationRepository'
 
 function createRepository(overrides: Partial<AutomationRepository> = {}): AutomationRepository & {
@@ -38,9 +42,6 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
         sourceConversationId: 'conversation_1',
       } as never
     },
-    async getEntitlements() {
-      return { planKind: 'paid' }
-    },
     async createAutomation() {
       return 'automation_1'
     },
@@ -48,6 +49,8 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
     async pauseAutomation() {},
     async resumeAutomation() {},
     async removeAutomation() {},
+    async requestRunCancellation() { return true },
+    async retryRun() { return 'run_retry_1' },
     async removeConversation() {},
     async appendAutomationUpdateNote(args) {
       updateNotes.push(args)
@@ -76,13 +79,19 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
   }
 }
 
-function createService(repository = createRepository()) {
+function createService(
+  repository = createRepository(),
+  entitlementPolicy: AutomationEntitlementPolicy = new PaidPlanAutomationEntitlementPolicy(
+    async () => 'paid',
+  ),
+) {
   const finishedEvents: Array<Record<string, unknown>> = []
   const failedEvents: Array<Record<string, unknown>> = []
   return {
     finishedEvents,
     failedEvents,
     service: new AutomationService({
+      entitlementPolicy,
       repository,
       clock: { now: () => 1_700_000_000_000 },
       events: {
@@ -95,12 +104,11 @@ function createService(repository = createRepository()) {
 }
 
 test('AutomationService.createAutomation preserves paid-plan requirement', async () => {
-  const repository = createRepository({
-    async getEntitlements() {
-      return { planKind: 'free' }
-    },
-  })
-  const { service } = createService(repository)
+  const repository = createRepository()
+  const { service } = createService(
+    repository,
+    new PaidPlanAutomationEntitlementPolicy(async () => 'free'),
+  )
 
   await assert.rejects(
     () => service.createAutomation({
@@ -148,6 +156,8 @@ test('buildAutomationUpdateNote preserves update note wording', () => {
     instructions: 'Old instructions',
     enabled: true,
     modelId: 'old-model',
+    createdAt: 1,
+    updatedAt: 1,
   }, {
     name: 'New name',
     description: 'New description',
@@ -178,10 +188,37 @@ test('AutomationService.updateAutomation appends update note best effort', async
   assert.equal(repository.updateNotes[0]?.content, 'Automation updated: name changed to "New name".')
 })
 
+test('AutomationService exposes durable run cancellation and retry actions', async () => {
+  const cancelled: string[] = []
+  const retried: string[] = []
+  const repository = createRepository({
+    async requestRunCancellation(args) {
+      cancelled.push(args.runId)
+      return true
+    },
+    async retryRun(args) {
+      retried.push(args.runId)
+      return 'retry_run'
+    },
+  })
+  const { service } = createService(repository)
+  assert.deepEqual(await service.updateAutomation({
+    body: { action: 'cancel-run', runId: 'run_1' },
+    userId: 'user_1',
+  }), { success: true })
+  assert.deepEqual(await service.updateAutomation({
+    body: { action: 'retry-run', runId: 'run_2' },
+    userId: 'user_1',
+  }), { success: true })
+  assert.deepEqual(cancelled, ['run_1'])
+  assert.deepEqual(retried, ['run_2'])
+})
+
 test('AutomationService.testAutomation marks run failed and emits failure on executor error', async () => {
   const repository = createRepository()
   const failedEvents: Array<Record<string, unknown>> = []
   const service = new AutomationService({
+    entitlementPolicy: new PaidPlanAutomationEntitlementPolicy(async () => 'paid'),
     repository,
     clock: { now: () => 1_700_000_000_000 },
     events: {

@@ -1,0 +1,62 @@
+---
+title: "Enterprise Security Launch Checklist"
+description: "Cloud-side controls required before launching Overlay for an enterprise deployment or managed-cloud tenant."
+---
+
+This checklist covers the required cloud-side controls for an enterprise or managed-cloud Overlay launch. It is a companion to the [Security Model](./security) and [Release Gates](./release-gates) pages.
+
+## Identity and session
+
+- [ ] WorkOS connection is configured and `NEXT_PUBLIC_WORKOS_CLIENT_ID` and `WORKOS_API_KEY` are production values.
+- [ ] WorkOS callback and logout URLs match the approved production origins.
+- [ ] OIDC issuer discovery, JWKS endpoint, and `OIDC_AUDIENCE` are reachable and verified.
+- [ ] Better Auth `BETTER_AUTH_SECRET` is at least 32 bytes and stored as a secret.
+- [ ] Session, cookie encryption, and transfer key pairs are distinct and have `_PREVIOUS` rotation values documented.
+- [ ] Session secret rotation procedure is rehearsed before launch.
+
+## Infrastructure
+
+- [ ] Vercel preview deployments cannot access production secrets or production data.
+- [ ] Convex production deployment is targeted by `convex:push:prod` without passing `.env.local`.
+- [ ] Convex auth, authorization, billing, usage, and storage functions are pushed and smoke-tested.
+- [ ] Postgres application data is configured with TLS, `OVERLAY_DATABASE_URL` is a secret, and the app-data migration is current.
+- [ ] Redis rate-limit endpoint is reachable and partitioned by IP, user, and API key.
+- [ ] Daytona sandbox API credentials are scoped to the deployment and cannot inherit provider keys or cloud admin credentials.
+
+## Storage
+
+- [ ] Cloudflare R2 buckets are private and object access is owner-scoped.
+- [ ] S3-compatible presigned URLs use `S3_PRESIGN_TTL_SECONDS` between 1 and 900 seconds.
+- [ ] R2 object keys are validated against the authenticated owner before any presign operation.
+- [ ] Upload and download URLs are short-lived and not logged in plain text.
+
+## Billing
+
+- [ ] Stripe production account is connected and `STRIPE_WEBHOOK_SECRET` is current.
+- [ ] Stripe webhook signing is active and the portal is bound to the authenticated customer.
+- [ ] Billing portal, checkout, and top-up flows do not expose provider keys or other customer data.
+- [ ] Usage and budget adjustment audit events are recorded for every admin change.
+
+## Security posture
+
+- [ ] Rate limits protect auth, billing, AI, browser, sandbox, and webhook endpoints.
+- [ ] CSP, `connect-src`, and report-uri are configured and CSP violation reports are reviewed.
+- [ ] Logs and alerts cover auth failures, billing anomalies, rate-limit spikes, and abnormal sandbox usage.
+- [ ] Sentry or equivalent error reporting is configured without exposing secrets.
+- [ ] PostHog or equivalent analytics is configured and does not capture PII.
+- [ ] Internal API calls use short-lived service auth rather than a static root secret over the wire.
+- [ ] Audit logging is enabled for `/api/v1/admin/*` operations.
+
+## Validation
+
+Run these commands before signing off on an enterprise launch:
+
+```bash
+npm run check:phase6
+npm run check:p5c:remote
+npm run p5:security:readiness -- --phase=steady
+npm run docs:check
+```
+
+See the [release gates](./release-gates), [security guide](./security), and
+[AWS deployment guide](./aws) for the required verification steps.

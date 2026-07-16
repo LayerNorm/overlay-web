@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/.playwright-cli/
+/.auth/
 
 # next.js
 /.next/
@@ -41,6 +43,8 @@ yarn-error.log*
 !.env.example
 !.env.onprem.example
 !.env.enterprise.example
+!.env.app-data.local.example
+!deploy/ec2/.env.example
 
 # vercel
 .vercel

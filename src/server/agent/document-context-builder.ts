@@ -2,22 +2,33 @@ import 'server-only'
 
 /**
  * Server-side document content pre-fetching for attached files.
- * Fetches file parts from Convex and builds a context string to inject
+ * Fetches file parts from the active app-data repository and builds a context string to inject
  * directly into the system prompt, eliminating redundant tool-loop searches
  * for questions about just-uploaded documents.
  */
 
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { IndexedAttachmentRef } from '@/shared/knowledge/knowledge-agent-types'
 import { findSubstringMatchesInText } from '@/shared/storage/file-text-search'
-import type { Id } from '../../../convex/_generated/dataModel'
 
 export type DocumentContextBundle = {
   contextText: string
   hasContent: boolean
   totalChars: number
 }
+
+export type DocumentContextFile = {
+  _id: string
+  content?: string
+  name: string
+  textContent?: string
+  userId: string
+}
+
+export type DocumentContextFileLoader = (args: {
+  accessToken?: string
+  fileId: string
+  userId: string
+}) => Promise<DocumentContextFile | null>
 
 /** Character budget for injected document text (not tokens — chars are easier to budget without a tokenizer). */
 const DOCUMENT_CONTEXT_BUDGET_CHARS = 16_000
@@ -37,24 +48,17 @@ async function fetchFileParts(args: {
   fileIds: string[]
   userId: string
   accessToken?: string
+  loadFile: DocumentContextFileLoader
 }): Promise<{ name: string; fullText: string } | null> {
-  const { fileIds, userId, accessToken } = args
-  const serverSecret = getInternalApiSecret()
+  const { fileIds, userId, accessToken, loadFile } = args
   const parts: string[] = []
   let fileName = ''
 
   for (const fileId of fileIds) {
     try {
-      const row = await convex.query<{
-        _id: string
-        name: string
-        content: string
-        textContent?: string
-        userId: string
-      }>('files/files:get', {
-        fileId: fileId as unknown as Id<'files'>,
+      const row = await loadFile({
+        fileId,
         userId,
-        serverSecret,
         accessToken,
       })
 
@@ -94,9 +98,10 @@ export async function buildDocumentContextBundle(args: {
   attachments: IndexedAttachmentRef[]
   userId: string
   accessToken?: string
+  loadFile: DocumentContextFileLoader
   userQuery?: string
 }): Promise<DocumentContextBundle> {
-  const { attachments, userId, accessToken, userQuery } = args
+  const { attachments, userId, accessToken, loadFile, userQuery } = args
 
   if (attachments.length === 0) {
     return { contextText: '', hasContent: false, totalChars: 0 }
@@ -106,7 +111,7 @@ export async function buildDocumentContextBundle(args: {
   const fetchTasks = attachments
     .filter((a) => a.fileIds.length > 0)
     .map(async (a) => {
-      const result = await fetchFileParts({ fileIds: a.fileIds, userId, accessToken })
+      const result = await fetchFileParts({ fileIds: a.fileIds, userId, accessToken, loadFile })
       return { name: a.name, fileIds: a.fileIds, result }
     })
 

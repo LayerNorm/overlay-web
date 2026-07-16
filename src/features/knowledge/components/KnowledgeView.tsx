@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, useTransition } from
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import posthog from 'posthog-js'
 import { getFileType, isEditableType } from '@/shared/files/file-viewer-types'
+import { shouldIngestDocument } from '@/shared/files/file-ingestion'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   FILES_CHANGED_EVENT,
@@ -18,6 +19,7 @@ import {
   filterMemoryRows,
   folderBreadcrumb as buildFolderBreadcrumb,
   knowledgePendingPreview,
+  noteDocToKnowledgeFile,
   opensInDocumentEditor,
   removeKnowledgeFileSubtrees,
   resolveKnowledgeLayout,
@@ -31,6 +33,7 @@ import {
   type KnowledgeOutputFilter as OutputFilter,
   type KnowledgeTab as Tab,
   type MemoryRow as MemoryListItem,
+  type NoteDoc,
 } from '@overlay/app-core'
 import {
   AddMemoryDialog,
@@ -285,7 +288,12 @@ export default function KnowledgeView({
     setBulkDeleting(true)
     try {
       const responses = await Promise.all(
-        ids.map((id) => overlayAppClient.files.deleteResponse({ fileId: id })),
+        ids.map((id) => {
+          const node = files.find((file) => file._id === id)
+          return node?.kind === 'note'
+            ? overlayAppClient.notes.deleteResponse({ noteId: id })
+            : overlayAppClient.files.deleteResponse({ fileId: id })
+        }),
       )
       const deletedRootIds = ids.filter((_, index) => responses[index]?.ok)
       if (deletedRootIds.length === 0) return
@@ -346,7 +354,14 @@ export default function KnowledgeView({
 
   const loadFiles = useCallback(async () => {
     try {
-      setFiles(await overlayAppClient.files.get<FileNode[]>({ limit: 100 }))
+      const [fileRows, noteRows] = await Promise.all([
+        overlayAppClient.files.get<FileNode[]>({ limit: 100 }),
+        overlayAppClient.notes.get<NoteDoc[]>({ limit: 100 }),
+      ])
+      const files = Array.isArray(fileRows) ? fileRows : []
+      const notes = Array.isArray(noteRows) ? noteRows.map(noteDocToKnowledgeFile) : []
+      const fileIds = new Set(files.map((file) => file._id))
+      setFiles([...files, ...notes.filter((note) => !fileIds.has(note._id))])
     } catch { /* ignore */ } finally { setFilesLoading(false) }
   }, [])
 
@@ -507,7 +522,9 @@ export default function KnowledgeView({
   async function handleDeleteNode(id: string, e: React.MouseEvent) {
     e.stopPropagation()
     const node = files.find((f) => f._id === id)
-    const res = await overlayAppClient.files.deleteResponse({ fileId: id })
+    const res = node?.kind === 'note'
+      ? await overlayAppClient.notes.deleteResponse({ noteId: id })
+      : await overlayAppClient.files.deleteResponse({ fileId: id })
     if (!res.ok) return
     const deletedIds = collectKnowledgeFileSubtreeIds(files, [id])
     setFiles((prev) => removeKnowledgeFileSubtrees(prev, [id]))
@@ -562,6 +579,16 @@ export default function KnowledgeView({
 
   async function uploadSingleFile(file: File, parentId: string | null): Promise<{ ok: boolean; error?: string }> {
     try {
+      if (shouldIngestDocument(file.name)) {
+        const form = new FormData()
+        form.append('file', file)
+        if (parentId) form.append('parentId', parentId)
+        const ingestRes = await overlayAppClient.files.ingestDocumentResponse(form)
+        if (!ingestRes.ok) {
+          return { ok: false, error: await readUploadError(ingestRes, 'Failed to index document') }
+        }
+        return { ok: true }
+      }
       const fileType = getFileType(file.name)
       const isText = fileType === 'text' || fileType === 'markdown' || fileType === 'csv'
       if (isText) {

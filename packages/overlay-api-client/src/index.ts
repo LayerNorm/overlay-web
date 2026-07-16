@@ -49,6 +49,11 @@ export { McpServersClient } from './mcp-servers/client'
 export { SettingsClient } from './settings/client'
 export { OnboardingClient } from './onboarding/client'
 export { AutomationRunsClient } from './automation-runs/client'
+export {
+  WebhooksClient,
+  type WebhookDelivery,
+  type WebhookSubscription,
+} from './webhooks/client'
 export { createHttpContext, type HttpContext } from './shared/http'
 export { createIdempotencyKey, toRequestInit, type MutationRequestInit } from './shared/mutation'
 export * from '../../../src/shared/schemas'

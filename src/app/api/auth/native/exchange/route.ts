@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateNativeWithCode } from '@/server/auth/actions'
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import {
@@ -44,22 +43,19 @@ export async function POST(request: NextRequest) {
 
     const session = await authenticateNativeWithCode(code, codeVerifier)
 
-    await convex.mutation('auth/users:syncUserProfileByServer', {
-      serverSecret: getInternalApiSecret(),
-      userId: session.user.id,
-      email: session.user.email,
-      firstName: session.user.firstName,
-      lastName: session.user.lastName,
-      profilePictureUrl: session.user.profilePictureUrl,
-    }, { throwOnError: true })
+    await getOverlayServerContext().userService.upsertFromSession(session)
 
     return NextResponse.json({ success: true, session }, { headers: NO_STORE_HEADERS })
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
     logSecurityEvent('native_exchange_error', {
-      reason: error instanceof Error ? error.message : String(error),
+      reason: message,
       path: request.nextUrl.pathname,
       ip: getClientIp(request),
     }, 'warning')
+    if (message.startsWith('Native Better Auth')) {
+      return NextResponse.json({ error: message }, { status: 400, headers: NO_STORE_HEADERS })
+    }
     return NextResponse.json({ error: 'Failed to complete native sign-in' }, { status: 500, headers: NO_STORE_HEADERS })
   }
 }

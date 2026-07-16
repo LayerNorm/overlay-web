@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { internalMutation, internalQuery, mutation } from '../_generated/server'
+import { internalMutation, internalQuery, mutation, query } from '../_generated/server'
 import type { MutationCtx } from '../_generated/server'
 import type { Id } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
@@ -69,6 +69,94 @@ export const enqueueByServer = mutation({
     }
 
     return { enqueued }
+  },
+})
+
+export const listByServer = query({
+  args: {
+    limit: v.optional(v.number()),
+    serverSecret: v.string(),
+    subscriptionId: v.optional(v.id('webhookSubscriptions')),
+    userId: v.string(),
+  },
+  returns: v.array(v.object({
+    _id: v.id('webhookDeliveries'),
+    attemptCount: v.number(),
+    attempts: v.array(v.object({
+      attemptNumber: v.number(),
+      startedAt: v.number(),
+      status: v.string(),
+    })),
+    createdAt: v.number(),
+    deliveredAt: v.optional(v.number()),
+    eventId: v.string(),
+    eventType: v.string(),
+    lastError: v.optional(v.string()),
+    lastStatusCode: v.optional(v.number()),
+    status: v.union(
+      v.literal('pending'),
+      v.literal('delivering'),
+      v.literal('delivered'),
+      v.literal('failed'),
+      v.literal('dead_letter'),
+    ),
+    subscriptionId: v.id('webhookSubscriptions'),
+    updatedAt: v.number(),
+  })),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const limit = Math.min(Math.max(args.limit ?? 100, 1), 250)
+    const rows = await ctx.db
+      .query('webhookDeliveries')
+      .withIndex('by_userId_createdAt', (q) => q.eq('userId', args.userId))
+      .order('desc')
+      .take(limit)
+    return rows
+      .filter((row) => !args.subscriptionId || row.subscriptionId === args.subscriptionId)
+      .map((row) => ({
+        _id: row._id,
+        attemptCount: row.attemptCount,
+        attempts: [],
+        createdAt: row.createdAt,
+        deliveredAt: row.deliveredAt,
+        eventId: row.eventId,
+        eventType: row.eventType,
+        lastError: row.lastError,
+        lastStatusCode: row.lastStatusCode,
+        status: row.status === 'dead' ? 'dead_letter' as const : row.status,
+        subscriptionId: row.subscriptionId,
+        updatedAt: row.updatedAt,
+      }))
+  },
+})
+
+export const redriveByServer = mutation({
+  args: {
+    deliveryId: v.id('webhookDeliveries'),
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  returns: v.object({ deliveryId: v.union(v.id('webhookDeliveries'), v.null()) }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const source = await ctx.db.get(args.deliveryId)
+    if (!source || source.userId !== args.userId || source.status !== 'dead') {
+      return { deliveryId: null }
+    }
+    const now = Date.now()
+    const deliveryId = await ctx.db.insert('webhookDeliveries', {
+      attemptCount: 0,
+      createdAt: now,
+      eventId: `${source.eventId}:redrive:${crypto.randomUUID()}`,
+      eventType: source.eventType,
+      nextAttemptAt: now,
+      payloadJson: source.payloadJson,
+      status: 'pending',
+      subscriptionId: source.subscriptionId,
+      updatedAt: now,
+      userId: args.userId,
+    })
+    return { deliveryId }
   },
 })
 

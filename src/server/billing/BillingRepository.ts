@@ -37,6 +37,8 @@ export type BillingSubscriptionRecord = {
   autoTopUpEnabled?: boolean
   autoTopUpAmountCents?: number
   offSessionConsentAt?: number
+  currentPeriodStart?: number
+  currentPeriodEnd?: number
 }
 
 export type BudgetTopUpRecord = {
@@ -44,12 +46,31 @@ export type BudgetTopUpRecord = {
   amountCents: number
   source: 'manual' | 'auto'
   status: 'pending' | 'succeeded' | 'failed' | 'canceled'
+  stripePaymentIntentId?: string
   createdAt: number
   updatedAt: number
   errorMessage?: string
 }
 
+export type AdministrativeUsageRecord = {
+  userId: string
+  email?: string
+  planKind: 'free' | 'paid'
+  status?: 'active' | 'canceled' | 'past_due' | 'trialing'
+  budgetUsedCents: number
+  budgetTotalCents: number
+  budgetRemainingCents: number
+}
+
 export interface BillingRepository {
+  listAdministrativeUsage(args?: {
+    limit?: number
+    userId?: string
+  }): Promise<AdministrativeUsageRecord[]>
+  adjustAdministrativeBudget(args: {
+    amountCents: number
+    userId: string
+  }): Promise<AdministrativeUsageRecord>
   getEntitlementsByServer(args: {
     userId: string
   }): Promise<BillingEntitlementsRecord | null>
@@ -79,6 +100,7 @@ export interface BillingRepository {
     stripeCheckoutSessionId?: string
     stripeCustomerId?: string
     stripePaymentIntentId?: string
+    errorMessage?: string
     userId: string
   }): Promise<unknown>
 }

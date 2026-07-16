@@ -1,5 +1,6 @@
 import type {
   KnowledgeFile,
+  NoteDoc,
   NotebookAgentMention,
   NotebookAgentStreamEvent,
   UpdateFileRequest,
@@ -71,6 +72,27 @@ export function canonicalFileToNotebookNote(file: CanonicalNoteFile, now = Date.
     updatedAt: file.updatedAt ?? now,
     shareVisibility: file.shareVisibility,
     shareToken: file.shareToken,
+  }
+}
+
+/**
+ * Notes are rendered alongside files in the app shell. Postgres stores them in
+ * a dedicated notes table, while Convex historically exposes them as files.
+ */
+export function noteDocToKnowledgeFile(note: NoteDoc): KnowledgeFile & { type: 'file' } {
+  return {
+    _id: note._id,
+    name: note.title || 'Untitled',
+    type: 'file',
+    kind: 'note',
+    parentId: null,
+    content: note.content,
+    textContent: note.content,
+    previewText: note.content,
+    sizeBytes: note.content.length,
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt,
+    projectId: note.projectId,
   }
 }
 

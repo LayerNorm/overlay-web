@@ -94,6 +94,13 @@ function normalizeFile(file: Doc<'files'>) {
     modelId: file.modelId,
     prompt: file.prompt,
     outputType: file.outputType,
+    outputSource: file.outputSource,
+    outputStatus: file.outputStatus,
+    outputUrl: file.outputUrl,
+    outputMetadata: file.outputMetadata,
+    outputErrorMessage: file.outputErrorMessage,
+    outputCompletedAt: file.outputCompletedAt,
+    expiresAt: file.expiresAt,
     legacyNoteId: file.legacyNoteId,
     legacyOutputId: file.legacyOutputId,
     projectId: file.projectId,
@@ -182,6 +189,10 @@ async function maybePromoteDuplicate(
   const promoted = duplicates.find((candidate) => candidate.userId === userId && !candidate.deletedAt)
   if (!promoted) return null
   await ctx.db.patch(promoted._id, { duplicateOfFileId: undefined, indexStatus: 'pending' })
+  for (const duplicate of duplicates) {
+    if (duplicate._id === promoted._id || duplicate.userId !== userId || duplicate.deletedAt) continue
+    await ctx.db.patch(duplicate._id, { duplicateOfFileId: promoted._id, updatedAt: Date.now() })
+  }
   return promoted._id
 }
 
@@ -194,6 +205,7 @@ function validStorageKeyForKind(userId: string, kind: FileKind, r2Key: string): 
 }
 
 async function assertParentAndProject(ctx: { db: { get: (id: Id<'files'> | Id<'projects'>) => Promise<unknown> } }, args: {
+  fileId?: Id<'files'>
   userId: string
   parentId?: string
   projectId?: string
@@ -202,6 +214,18 @@ async function assertParentAndProject(ctx: { db: { get: (id: Id<'files'> | Id<'p
     const parent = await ctx.db.get(args.parentId as Id<'files'>) as Doc<'files'> | null
     if (!parent || parent.userId !== args.userId || parent.deletedAt || inferKind(parent) !== 'folder') {
       throw new Error('Unauthorized')
+    }
+    const seen = new Set<string>(args.fileId ? [args.fileId] : [])
+    let cursor: Doc<'files'> | null = parent
+    while (cursor) {
+      if (seen.has(cursor._id)) throw new Error('File parent cycle detected')
+      seen.add(cursor._id)
+      cursor = cursor.parentId
+        ? await ctx.db.get(cursor.parentId as Id<'files'>) as Doc<'files'> | null
+        : null
+      if (cursor && (cursor.userId !== args.userId || cursor.deletedAt)) {
+        throw new Error('Unauthorized')
+      }
     }
   }
   if (args.projectId) {
@@ -611,6 +635,22 @@ export const create = mutation({
     modelId: v.optional(v.string()),
     prompt: v.optional(v.string()),
     outputType: v.optional(v.string()),
+    outputSource: v.optional(v.union(
+      v.literal('image_generation'),
+      v.literal('video_generation'),
+      v.literal('browser'),
+      v.literal('sandbox'),
+    )),
+    outputStatus: v.optional(v.union(
+      v.literal('pending'),
+      v.literal('completed'),
+      v.literal('failed'),
+    )),
+    outputUrl: v.optional(v.string()),
+    outputMetadata: v.optional(v.any()),
+    outputErrorMessage: v.optional(v.string()),
+    outputCompletedAt: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
     legacyNoteId: v.optional(v.id('notes')),
     legacyOutputId: v.optional(v.id('outputs')),
     createdAt: v.optional(v.number()),
@@ -662,6 +702,13 @@ export const create = mutation({
       modelId: args.modelId,
       prompt: args.prompt,
       outputType: args.outputType,
+      outputSource: args.outputSource,
+      outputStatus: args.outputStatus,
+      outputUrl: args.outputUrl,
+      outputMetadata: args.outputMetadata,
+      outputErrorMessage: args.outputErrorMessage,
+      outputCompletedAt: args.outputCompletedAt,
+      expiresAt: args.expiresAt,
       legacyNoteId: args.legacyNoteId,
       legacyOutputId: args.legacyOutputId,
       projectId: args.projectId,
@@ -723,6 +770,75 @@ export const createWithStorage = mutation({
   },
 })
 
+export const createExtractedDocument = mutation({
+  args: {
+    userId: v.string(),
+    serverSecret: v.optional(v.string()),
+    accessToken: v.optional(v.string()),
+    r2Key: v.string(),
+    mimeType: v.string(),
+    sourceSizeBytes: v.number(),
+    parentId: v.optional(v.string()),
+    projectId: v.optional(v.string()),
+    parts: v.array(v.object({
+      name: v.string(),
+      content: v.string(),
+      contentHash: v.string(),
+    })),
+  },
+  handler: async (ctx, args) => {
+    await authorizeUserAccess(args)
+    assertOwnedFileR2Key(args.userId, args.r2Key)
+    await assertParentAndProject(ctx, args)
+    if (args.parts.length === 0) throw new Error('Extracted document requires at least one part')
+
+    const totalBytes = args.parts.reduce((total, part, index) => (
+      total + (index === 0
+        ? Math.max(utf8ByteLength(part.content), args.sourceSizeBytes)
+        : utf8ByteLength(part.content))
+    ), 0)
+    await ensureStorageAvailable(ctx as never, args.userId, totalBytes)
+
+    const ids: Id<'files'>[] = []
+    const now = Date.now()
+    for (let index = 0; index < args.parts.length; index += 1) {
+      const part = args.parts[index]!
+      const canonicalDuplicate = await findCanonicalDuplicate(
+        ctx as never,
+        args.userId,
+        part.contentHash,
+      )
+      const id = await ctx.db.insert('files', {
+        userId: args.userId,
+        name: part.name,
+        type: 'file',
+        kind: 'upload',
+        parentId: args.parentId,
+        content: part.content,
+        r2Key: index === 0 ? args.r2Key : undefined,
+        mimeType: index === 0 ? args.mimeType : 'text/plain',
+        extension: extensionOf(part.name),
+        sizeBytes: index === 0
+          ? Math.max(utf8ByteLength(part.content), args.sourceSizeBytes)
+          : utf8ByteLength(part.content),
+        contentHash: part.contentHash,
+        duplicateOfFileId: canonicalDuplicate?._id,
+        indexable: true,
+        indexStatus: canonicalDuplicate ? 'skipped' : 'pending',
+        projectId: args.projectId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      ids.push(id)
+      if (!canonicalDuplicate) {
+        await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId: id })
+      }
+    }
+    await applyStorageUsageDelta(ctx as never, args.userId, totalBytes)
+    return ids
+  },
+})
+
 export const update = mutation({
   args: {
     userId: v.string(),
@@ -742,6 +858,27 @@ export const update = mutation({
       v.literal('failed'),
     )),
     indexError: v.optional(v.string()),
+    r2Key: v.optional(v.string()),
+    mimeType: v.optional(v.string()),
+    sizeBytes: v.optional(v.number()),
+    modelId: v.optional(v.string()),
+    outputType: v.optional(v.string()),
+    outputSource: v.optional(v.union(
+      v.literal('image_generation'),
+      v.literal('video_generation'),
+      v.literal('browser'),
+      v.literal('sandbox'),
+    )),
+    outputStatus: v.optional(v.union(
+      v.literal('pending'),
+      v.literal('completed'),
+      v.literal('failed'),
+    )),
+    outputUrl: v.optional(v.string()),
+    outputMetadata: v.optional(v.any()),
+    outputErrorMessage: v.optional(v.string()),
+    outputCompletedAt: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
   },
   handler: async (ctx, { userId, accessToken, serverSecret, fileId, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
@@ -749,6 +886,7 @@ export const update = mutation({
     if (!existing || existing.userId !== userId || existing.deletedAt) throw new Error('Unauthorized')
     if (updates.parentId !== undefined || updates.projectId !== undefined) {
       await assertParentAndProject(ctx, {
+        fileId,
         userId,
         parentId: updates.parentId === null ? undefined : updates.parentId,
         projectId: updates.projectId === null ? undefined : updates.projectId,
@@ -771,10 +909,32 @@ export const update = mutation({
     if (updates.projectId !== undefined) patch.projectId = updates.projectId || undefined
     if (updates.indexStatus !== undefined) patch.indexStatus = updates.indexStatus
     if (updates.indexError !== undefined) patch.indexError = updates.indexError
+    if (updates.r2Key !== undefined) {
+      if (updates.r2Key && !isOwnedOutputR2Key(userId, updates.r2Key)) throw new Error('Invalid storage key')
+      patch.r2Key = updates.r2Key || undefined
+    }
+    if (updates.mimeType !== undefined) patch.mimeType = updates.mimeType
+    if (updates.sizeBytes !== undefined) patch.sizeBytes = updates.sizeBytes
+    if (updates.modelId !== undefined) patch.modelId = updates.modelId
+    if (updates.outputType !== undefined) patch.outputType = updates.outputType
+    if (updates.outputSource !== undefined) patch.outputSource = updates.outputSource
+    if (updates.outputStatus !== undefined) patch.outputStatus = updates.outputStatus
+    if (updates.outputUrl !== undefined) patch.outputUrl = updates.outputUrl
+    if (updates.outputMetadata !== undefined) patch.outputMetadata = updates.outputMetadata
+    if (updates.outputErrorMessage !== undefined) patch.outputErrorMessage = updates.outputErrorMessage
+    if (updates.outputCompletedAt !== undefined) patch.outputCompletedAt = updates.outputCompletedAt
+    if (updates.expiresAt !== undefined) patch.expiresAt = updates.expiresAt
 
     let shouldReindex = false
     let shouldPurge = false
     let storageDelta = 0
+    if (updates.sizeBytes !== undefined && nextText === undefined) {
+      const previousSizeBytes = existing.sizeBytes ?? 0
+      storageDelta = shouldCountStorage(kind, existing.type, updates.sizeBytes)
+        ? updates.sizeBytes - previousSizeBytes
+        : 0
+      if (storageDelta > 0) await ensureStorageAvailable(ctx as never, userId, storageDelta)
+    }
     if (nextText !== undefined) {
       const nextSizeBytes = utf8ByteLength(nextText)
       const previousSizeBytes = existing.sizeBytes ?? utf8ByteLength(existingText)

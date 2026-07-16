@@ -1,0 +1,262 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Overlay P5 CloudWatch dashboard, runtime metric filters, and pilot alarms.
+
+Parameters:
+  AlarmTopicArn:
+    Type: String
+  ClusterName:
+    Type: String
+  AppServiceName:
+    Type: String
+  WorkerServiceName:
+    Type: String
+  SchedulerServiceName:
+    Type: String
+  DatabaseIdentifier:
+    Type: String
+  LoadBalancerDimension:
+    Type: String
+    Description: FullName dimension of the application load balancer.
+  WorkerLogGroupName:
+    Type: String
+  MinimumFreeStorageBytes:
+    Type: Number
+    Default: 10737418240
+  MaximumQueueAgeSeconds:
+    Type: Number
+    Default: 300
+
+Resources:
+  RuntimeHealthDeadLetterMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref WorkerLogGroupName
+      FilterPattern: '{ $.event = "runtime_health" }'
+      MetricTransformations:
+        - MetricNamespace: Overlay/Pilot
+          MetricName: DurableJobsDeadLetterCount
+          MetricValue: '$.deadLetterCount'
+          DefaultValue: 0
+
+  RuntimeHealthQueueAgeMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref WorkerLogGroupName
+      FilterPattern: '{ $.event = "runtime_health" }'
+      MetricTransformations:
+        - MetricNamespace: Overlay/Pilot
+          MetricName: OldestQueuedJobAgeSeconds
+          MetricValue: '$.oldestQueuedJobAgeSeconds'
+          DefaultValue: 0
+
+  AppTaskCountLow:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Overlay app ECS service has no running task.
+      Namespace: ECS/ContainerInsights
+      MetricName: RunningTaskCount
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ClusterName
+        - Name: ServiceName
+          Value: !Ref AppServiceName
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopicArn]
+
+  WorkerTaskCountLow:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Overlay durable worker ECS service has no running task.
+      Namespace: ECS/ContainerInsights
+      MetricName: RunningTaskCount
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ClusterName
+        - Name: ServiceName
+          Value: !Ref WorkerServiceName
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopicArn]
+
+  SchedulerTaskCountLow:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Overlay scheduler ECS service has no running task.
+      Namespace: ECS/ContainerInsights
+      MetricName: RunningTaskCount
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ClusterName
+        - Name: ServiceName
+          Value: !Ref SchedulerServiceName
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopicArn]
+
+  DatabaseCpuHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Overlay RDS CPU has remained above 80 percent.
+      Namespace: AWS/RDS
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref DatabaseIdentifier
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 3
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopicArn]
+
+  DatabaseStorageLow:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Overlay RDS free storage is below the pilot floor.
+      Namespace: AWS/RDS
+      MetricName: FreeStorageSpace
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref DatabaseIdentifier
+      Statistic: Minimum
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: !Ref MinimumFreeStorageBytes
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopicArn]
+
+  LoadBalancerTargetErrors:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Overlay load balancer observed repeated target 5xx responses.
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !Ref LoadBalancerDimension
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 5
+      DatapointsToAlarm: 3
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopicArn]
+
+  DurableJobsDeadLettered:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Overlay has one or more dead-lettered durable jobs.
+      Namespace: Overlay/Pilot
+      MetricName: DurableJobsDeadLetterCount
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopicArn]
+
+  DurableJobQueueOld:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Overlay oldest queued durable job exceeds the pilot threshold.
+      Namespace: Overlay/Pilot
+      MetricName: OldestQueuedJobAgeSeconds
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 3
+      Threshold: !Ref MaximumQueueAgeSeconds
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopicArn]
+
+  PilotDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub 'overlay-${ClusterName}-pilot'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0, "y": 0, "width": 12, "height": 6,
+              "properties": {
+                "title": "ECS running tasks",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  ["ECS/ContainerInsights", "RunningTaskCount", "ClusterName", "${ClusterName}", "ServiceName", "${AppServiceName}"],
+                  ["...", "${WorkerServiceName}"],
+                  ["...", "${SchedulerServiceName}"]
+                ],
+                "stat": "Minimum", "period": 60
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 0, "width": 12, "height": 6,
+              "properties": {
+                "title": "RDS capacity",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", "${DatabaseIdentifier}"],
+                  [".", "DatabaseConnections", ".", "."],
+                  [".", "FreeStorageSpace", ".", "."]
+                ],
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 6, "width": 12, "height": 6,
+              "properties": {
+                "title": "Durable jobs",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  ["Overlay/Pilot", "DurableJobsDeadLetterCount"],
+                  [".", "OldestQueuedJobAgeSeconds"]
+                ],
+                "period": 60
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 6, "width": 12, "height": 6,
+              "properties": {
+                "title": "Load balancer target health",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", "${LoadBalancerDimension}"],
+                  [".", "TargetResponseTime", ".", ".", {"stat": "p95"}]
+                ],
+                "period": 60
+              }
+            }
+          ]
+        }
+
+Outputs:
+  DashboardName:
+    Value: !Ref PilotDashboard

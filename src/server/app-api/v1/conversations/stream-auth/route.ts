@@ -1,9 +1,8 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { isVerifiedChatStreamRelayRequest } from '@/server/chat/chat-stream-relay-auth'
-import { convex } from '@/server/database/convex'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
@@ -31,11 +30,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     const { auth } = context
 
-    const serverSecret = getInternalApiSecret()
-    const conversation = await convex.query<{ _id: string } | null>('chat/conversations:get', {
+    const conversation = await getOverlayServerContext().appData.repositories.conversations.getConversationById({
       conversationId: conversationId as Id<'conversations'>,
       userId: auth.userId,
-      serverSecret,
     })
     if (!conversation) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })

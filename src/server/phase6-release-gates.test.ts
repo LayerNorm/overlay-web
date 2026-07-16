@@ -8,7 +8,7 @@ import { createOverlayServerContext } from './bootstrap'
 import { OpenAILLMGateway, OpenRouterGateway } from './ai/providers'
 import { API_KEY_LENGTH, API_KEY_PREFIX, generateApiKey, isApiKeyCandidate } from './auth/api-keys/crypto'
 import { getRequiredApiKeyScopesForRoute } from './auth/api-keys/route-scopes'
-import { KeycloakAuthProvider, OidcAuthProvider, WorkOSAuthProvider } from './auth/providers'
+import { OidcAuthProvider, WorkOSAuthProvider } from './auth/providers'
 import { NoOpBillingProvider, StripeBillingProvider } from './billing/providers'
 import { getCapabilityDisabledError, getRequiredCapabilityForRoute } from './capabilities-core'
 import { R2ObjectStore, S3CompatibleObjectStore } from './storage/providers'
@@ -47,15 +47,13 @@ test('Phase 6.7 provider gate covers SaaS WorkOS/Stripe/R2/OpenRouter and on-pre
   assert.equal(onprem.llmGateway instanceof OpenAILLMGateway, true)
 })
 
-test('Phase 6.7 provider gate covers Keycloak-compatible on-prem auth selection', () => {
+test('Phase 6.7 provider gate covers Keycloak-compatible issuer through OIDC selection', () => {
   const input = JSON.parse(JSON.stringify(fixture('onprem-s3-oidc-openai.json'))) as OverlayRuntimeConfigInput
-  input.auth.provider = 'keycloak'
-  input.auth.oidc = {}
-  input.auth.keycloak = {
+  input.auth.provider = 'oidc'
+  input.auth.oidc = {
     issuerUrl: 'https://keycloak.enterprise.example.com/realms/overlay',
     clientId: 'overlay-web',
     clientSecret: 'keycloak_fixture_secret',
-    realm: 'overlay',
   }
 
   const context = createOverlayServerContext({
@@ -63,7 +61,7 @@ test('Phase 6.7 provider gate covers Keycloak-compatible on-prem auth selection'
     runtimeConfig: parseOverlayRuntimeConfig(input),
   })
 
-  assert.equal(context.auth instanceof KeycloakAuthProvider, true)
+  assert.equal(context.auth instanceof OidcAuthProvider, true)
 })
 
 test('Phase 6.7 API key gate covers format, scopes, and management route capability gating', () => {
@@ -128,8 +126,8 @@ test('Phase 6.7 capability gate blocks disabled routes and preserves basic file 
     ['POST', '/api/v1/automations/run', 'automations'],
   ] as ReadonlyArray<readonly [method: string, pathname: string, capability: DisabledCapability]>
 
-  assert.equal(getRequiredCapabilityForRoute('GET', '/api/v1/files'), null)
-  assert.equal(getRequiredCapabilityForRoute('GET', '/api/v1/files/file_1/content'), null)
+  assert.equal(getRequiredCapabilityForRoute('GET', '/api/v1/files'), 'files')
+  assert.equal(getRequiredCapabilityForRoute('GET', '/api/v1/files/file_1/content'), 'files')
 
   for (const [method, pathname, capability] of routeExpectations) {
     assert.equal(getRequiredCapabilityForRoute(method, pathname), capability)

@@ -2,7 +2,6 @@ import { logger } from '@/server/observability/logger'
 import type { Sandbox } from '@daytonaio/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { convex } from '@/server/database/convex'
 import {
   downloadSandboxFile,
   ensureWorkspaceSandbox,
@@ -13,9 +12,9 @@ import {
   startIfNeeded,
   uploadSandboxBuffer,
 } from '@/server/ai/sandbox/daytona'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import { outputService } from '@/server/outputs/http'
 import { getOverlaySession } from '@/server/auth/session'
-import type { Entitlements } from '@/shared/app/app-contracts'
 import { deleteObject, generatePresignedDownloadUrl, uploadBuffer as uploadBufferToR2 } from '@/server/storage/object-store'
 import { checkGlobalR2Budget } from '@/server/storage/r2-budget'
 import { finalizeDaytonaRunMetering, reserveDaytonaRunBudget } from './lifecycle'
@@ -69,7 +68,7 @@ async function waitForSandboxFile(
 }
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
-  const session = await getOverlaySession()
+  const session = await getOverlaySession(request)
 
   const parsedRequest = parseDaytonaRunRequest(await request.json())
   if (!parsedRequest.ok) {
@@ -98,7 +97,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const serverSecret = getInternalApiSecret()
+  const { appData, generationUsagePolicy } = getOverlayServerContext()
   let workspaceRun:
     | Awaited<ReturnType<typeof ensureWorkspaceSandbox>>
     | null = null
@@ -106,10 +105,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let meteringEndedAt: number | null = null
   const budgetReservation = await reserveDaytonaRunBudget({
     userId,
-    serverSecret,
     maxDurationSeconds: maxDuration,
     deps: {
-      getEntitlementsByServer: (args) => convex.query<Entitlements | null>('platform/usage:getEntitlementsByServer', args),
+      getEntitlementsByServer: (args) => generationUsagePolicy.getEntitlements(args),
+      ensureBudgetAvailable: (args) => generationUsagePolicy.ensureBudgetAvailable({
+        ...args,
+        minimumRequiredCents: args.minimumRequiredCents ?? 1,
+      }),
+      reserveProviderBudget: (args) => generationUsagePolicy.reserve(args),
     },
   })
   if (!budgetReservation.ok) {
@@ -119,6 +122,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
   try {
     workspaceRun = await ensureWorkspaceSandbox({
+      repository: appData.repositories.daytonaWorkspaces,
       userId,
       tier: 'pro',
     })
@@ -132,11 +136,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     const uploadedFiles = await stageDaytonaInputFiles({
       fileIds: inputFileIds,
-      findFile: (fileId) => convex.query<OverlayFileRecord | null>('files/files:get', {
+      findFile: (fileId) => appData.repositories.files.getFile({
         fileId,
         userId,
-        serverSecret,
-      }),
+      }) as Promise<OverlayFileRecord | null>,
       paths,
       readFileBuffer: readOverlayFileBuffer,
       sandbox,
@@ -178,7 +181,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       checkGlobalBudget: checkGlobalR2Budget,
       command: normalizedCommand,
       conversationId,
-      createOutput: (args) => convex.mutation<string | null>('outputs/outputs:create', args),
+      createOutput: (args) => outputService.create(args as Parameters<typeof outputService.create>[0]),
       deleteObject,
       downloadFile: downloadSandboxFile,
       expectedOutputs,
@@ -186,7 +189,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       paths,
       runtime,
       sandbox,
-      serverSecret,
+      serverSecret: '',
       task: normalizedTask,
       turnId,
       uploadObject: uploadBufferToR2,
@@ -217,6 +220,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       meteringEndedAt,
       reservationId: sandboxBudgetReservationId,
       userId,
+      deps: {
+        releaseProviderBudgetReservation: (args) => generationUsagePolicy.release(args),
+        markProviderBudgetReconcile: (args) => generationUsagePolicy.markForReconcile(args),
+      },
     })
   }
 }

@@ -1,61 +1,39 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import type { HybridSearchChunk } from '../../../../../../convex/knowledge/knowledge'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import { KnowledgeSearchServiceError } from '@/server/knowledge'
 
 export const maxDuration = 60
-const MAX_QUERY_CHARS = 500
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = (await request.json()) as {
-      query?: string
-      projectId?: string
-      sourceKind?: 'file' | 'memory'
-      kVec?: number
+    const body = await request.json() as {
       kLex?: number
+      kVec?: number
       m?: number
-      accessToken?: string
-      userId?: string
+      minVecScore?: number
+      projectId?: string
+      query?: string
+      sourceKind?: 'file' | 'memory'
     }
-
-    const { auth } = context
-    const userId = auth?.userId ?? null
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-
-    const query = body.query?.trim()
-    if (!query) {
-      return NextResponse.json({ error: 'query is required' }, { status: 400 })
-    }
-    if (query.length > MAX_QUERY_CHARS) {
-      return NextResponse.json({ error: `query cannot exceed ${MAX_QUERY_CHARS} characters` }, { status: 400 })
-    }
-
-    const serverSecret = getInternalApiSecret()
-    const result = await convex.action<{ chunks: HybridSearchChunk[] }>('knowledge/knowledge:hybridSearch', {
-      accessToken: auth?.accessToken,
-      userId,
-      serverSecret,
-      query,
-      projectId: body.projectId,
-      sourceKind: body.sourceKind,
-      kVec: body.kVec,
+    const result = await getOverlayServerContext().knowledgeSearchService.hybridSearch({
+      accessToken: context.auth.accessToken,
       kLex: body.kLex,
+      kVec: body.kVec,
       m: body.m,
+      minVecScore: body.minVecScore,
+      projectId: body.projectId,
+      query: body.query ?? '',
+      sourceKind: body.sourceKind,
+      userId: context.auth.userId,
     })
-
-    if (!result) {
-      return NextResponse.json({ error: 'Search failed' }, { status: 502 })
-    }
-
     return NextResponse.json(result)
-  } catch (e) {
-    logger.error('[knowledge/search]', e)
+  } catch (error) {
+    logger.error('[knowledge/search]', error)
+    if (error instanceof KnowledgeSearchServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode })
+    }
     return NextResponse.json({ error: 'Search failed' }, { status: 500 })
   }
 }

@@ -7,6 +7,7 @@ import { ActConversationServiceError, ActEntitlementService } from './ActEntitle
 import { ActGeneratingMessageService } from './ActGeneratingMessageService'
 import { ActMessagePersistenceService, type ActAssistantFinishEvent } from './ActMessagePersistenceService'
 import { ActUsageBudgetService } from './ActUsageBudgetService'
+import { UnlimitedUsagePolicy } from './ActUsagePolicy'
 import type { Id } from '../../../convex/_generated/dataModel'
 
 const freeEntitlements = {
@@ -26,6 +27,14 @@ function unexpected(name: string): never {
 
 function repository(overrides: Partial<ActConversationRepository> = {}): ActConversationRepository {
   return {
+    createConversation: () => unexpected('createConversation'),
+    getConversationById: () => unexpected('getConversationById'),
+    listConversations: () => unexpected('listConversations'),
+    listConversationsByProject: () => unexpected('listConversationsByProject'),
+    getRecentMessages: () => unexpected('getRecentMessages'),
+    getConversationMessages: () => unexpected('getConversationMessages'),
+    updateConversation: () => unexpected('updateConversation'),
+    deleteConversation: () => unexpected('deleteConversation'),
     getEntitlements: () => unexpected('getEntitlements'),
     getAppSettings: () => unexpected('getAppSettings'),
     getMessages: () => unexpected('getMessages'),
@@ -40,6 +49,15 @@ function repository(overrides: Partial<ActConversationRepository> = {}): ActConv
     appendGeneratingMessageDelta: () => unexpected('appendGeneratingMessageDelta'),
     finalizeGeneratingMessage: () => unexpected('finalizeGeneratingMessage'),
     failGeneratingMessage: () => unexpected('failGeneratingMessage'),
+    settleGeneratingMessagesForTurn: () => unexpected('settleGeneratingMessagesForTurn'),
+    stopGeneratingMessages: () => unexpected('stopGeneratingMessages'),
+    deleteTurn: () => unexpected('deleteTurn'),
+    updateMessageUiPart: () => unexpected('updateMessageUiPart'),
+    setShare: () => unexpected('setShare'),
+    getPublicConversationByToken: () => unexpected('getPublicConversationByToken'),
+    getConversationEventCursor: () => unexpected('getConversationEventCursor'),
+    listConversationEvents: () => unexpected('listConversationEvents'),
+    waitForConversationEvents: () => unexpected('waitForConversationEvents'),
     recordUsageBatch: () => unexpected('recordUsageBatch'),
     ...overrides,
   }
@@ -128,6 +146,81 @@ test('act context service builds model history without current turn or other ass
   ])
 })
 
+test('act context service keeps auto retrieval enabled when external provider context is disabled', async () => {
+  let retrievalArgs: Record<string, unknown> | undefined
+  const service = new ActContextService({
+    repository: repository({
+      getConversation: async () => ({ projectId: 'project_1' }),
+      getProject: async () => ({ instructions: 'Project rules' }),
+      listMemories: async () => [],
+      listSkills: async () => [],
+    }),
+    buildAutoRetrievalBundle: async (args) => {
+      retrievalArgs = args
+      return {
+        extension: '\nAUTO_RETRIEVED_KNOWLEDGE',
+        citations: { '1': { kind: 'memory', sourceId: 'memory_1' } },
+      }
+    },
+  })
+
+  const context = await service.loadTurnContext({
+    conversationId: 'conversation_1' as Id<'conversations'>,
+    externalContextEnabled: false,
+    indexedAttachments: [],
+    latestUserText: 'What is the deployment checkpoint?',
+    memoryEnabled: true,
+    mentions: [{ type: 'file', id: 'file_1', name: 'Runbook' }],
+    serverSecret: 'server-secret',
+    userId: 'user_1',
+  })
+
+  assert.deepEqual(retrievalArgs, {
+    includeMemories: true,
+    projectId: 'project_1',
+    userId: 'user_1',
+    userMessage: 'What is the deployment checkpoint?',
+  })
+  assert.equal(context.autoRetrieval, '\nAUTO_RETRIEVED_KNOWLEDGE')
+  assert.deepEqual(context.sourceCitationMap, {
+    '1': { kind: 'memory', sourceId: 'memory_1' },
+  })
+  assert.equal(context.mentionsContext, '')
+})
+
+test('act context service preloads attached documents through the active file repository', async () => {
+  const loadedFileIds: string[] = []
+  const service = new ActContextService({
+    repository: repository({
+      getConversation: async () => null,
+      listMemories: async () => [],
+      listSkills: async () => [],
+    }),
+    buildAutoRetrievalBundle: async () => ({ extension: '', citations: {} }),
+    loadDocumentFile: async ({ fileId, userId }) => {
+      loadedFileIds.push(fileId)
+      return {
+        _id: fileId,
+        name: 'runbook.pdf',
+        textContent: 'The deployment checkpoint is green.',
+        userId,
+      }
+    },
+  })
+
+  const context = await service.loadTurnContext({
+    externalContextEnabled: false,
+    indexedAttachments: [{ name: 'runbook.pdf', fileIds: ['file_1'] }],
+    latestUserText: 'What is the deployment checkpoint?',
+    serverSecret: 'server-secret',
+    userId: 'user_1',
+  })
+
+  assert.deepEqual(loadedFileIds, ['file_1'])
+  assert.equal(context.hasPreloadedDocContext, true)
+  assert.match(context.docContextBundle.contextText, /deployment checkpoint is green/)
+})
+
 test('act message persistence swallows user-message persistence failures', async () => {
   let addMessageCalls = 0
   const generatingMessages = new ActGeneratingMessageService({
@@ -181,13 +274,16 @@ test('act assistant persistence finalizes generating messages and emits completi
     emitWebhook: true,
     event: {
       steps: [],
-      text: 'done',
+      text: 'done\n\n**Sources:** [1]',
       totalUsage: { inputTokens: 3, outputTokens: 4 },
     } as ActAssistantFinishEvent,
     finishedToolCallIds: new Set(),
     generatingMessageId: 'message_1' as Id<'conversationMessages'>,
     multiModelSlotIndex: 0,
     multiModelTotal: 1,
+    sourceCitations: {
+      '1': { kind: 'memory', sourceId: 'memory_1' },
+    },
     timedOut: false,
     timeoutMs: 30_000,
     toolFailuresByCallId: new Map(),
@@ -195,8 +291,9 @@ test('act assistant persistence finalizes generating messages and emits completi
     userId: 'user_1',
   })
 
-  assert.equal(finalized?.content, 'done')
-  assert.deepEqual(finalized?.parts, [{ type: 'text', text: 'done' }])
+  const persistedText = 'done\n\n**Sources:** [1](/app/settings?section=memories&memory=memory_1)'
+  assert.equal(finalized?.content, persistedText)
+  assert.deepEqual(finalized?.parts, [{ type: 'text', text: persistedText }])
   assert.deepEqual(completions, [{
     conversationId: 'conversation_1',
     modelId: 'claude-sonnet-4-6',
@@ -220,4 +317,29 @@ test('act usage budget service skips reservations for unpaid/free-model attempts
   })
 
   assert.deepEqual(result, { ok: true, reservationId: null })
+})
+
+test('unlimited usage policy exposes explicit paid entitlements and no-op accounting', async () => {
+  const policy = new UnlimitedUsagePolicy()
+  const entitlements = await policy.getEntitlements({ userId: 'user_1' })
+
+  assert.equal(entitlements.planKind, 'paid')
+  assert.equal(entitlements.tier, 'max')
+  assert.equal((entitlements.budgetRemainingCents ?? 0) > 1_000_000_000, true)
+  assert.deepEqual(await policy.reserveForAttempt({
+    entitlements,
+    estimatedInputTokens: 1000,
+    maxOutputTokens: 1000,
+    modelId: 'claude-sonnet-4-6',
+    paid: true,
+    userId: 'user_1',
+  }), { ok: true, reservationId: null })
+  assert.deepEqual(await policy.recordFinishedUsage({
+    forceFreeTierLimits: false,
+    inputTokens: 12,
+    modelId: 'claude-sonnet-4-6',
+    outputTokens: 24,
+    reservationId: null,
+    userId: 'user_1',
+  }), { finalized: false, reservationId: null })
 })

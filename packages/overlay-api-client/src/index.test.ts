@@ -118,6 +118,7 @@ test('module feature methods use canonical app endpoints', async () => {
   await client.mcpServers.testResponse({ url: 'https://mcp.example.test', transport: 'streamable-http' })
   await client.automations.updateResponse({ automationId: 'auto_1', name: 'Renamed' })
   await client.automations.testResponse({ automationId: 'auto_1' })
+  await client.automations.getRuns('auto_1')
 
   assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/conversations/stream-auth')
   assert.equal(calls[0]!.init?.method, 'POST')
@@ -180,6 +181,62 @@ test('module feature methods use canonical app endpoints', async () => {
   assert.equal(String(calls[16]!.input), 'https://example.test/api/v1/automations/test')
   assert.equal(calls[16]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[16]!), { automationId: 'auto_1' })
+
+  assert.equal(
+    String(calls[17]!.input),
+    'https://example.test/api/v1/automations?automationId=auto_1&includeRuns=true',
+  )
+})
+
+test('automation run history unwraps the standardized paginated envelope', async () => {
+  const client = createOverlayAppClient({
+    baseUrl: 'https://example.test',
+    fetch: async () => Response.json({
+      data: [{ _id: 'run_1', status: 'completed', scheduledFor: 123 }],
+      hasMore: false,
+      total: 1,
+    }),
+  })
+
+  const runs = await client.automations.getRuns('auto_1')
+
+  assert.deepEqual(runs, [{ _id: 'run_1', status: 'completed', scheduledFor: 123 }])
+})
+
+test('webhook helpers unwrap standardized lists and parse mutation payloads', async () => {
+  const client = createOverlayAppClient({
+    baseUrl: 'https://example.test',
+    fetch: async (input) => {
+      const url = String(input)
+      if (url.includes('view=deliveries')) {
+        return Response.json({
+          data: [{ _id: 'delivery_1', status: 'delivered' }],
+          hasMore: false,
+        })
+      }
+      return Response.json({
+        data: [{ _id: 'subscription_1', events: ['chat.completed'] }],
+        hasMore: false,
+      })
+    },
+  })
+
+  assert.deepEqual(await client.webhooks.list(), [
+    { _id: 'subscription_1', events: ['chat.completed'] },
+  ])
+  assert.deepEqual(await client.webhooks.listDeliveries(), [
+    { _id: 'delivery_1', status: 'delivered' },
+  ])
+  assert.deepEqual(
+    await client.webhooks.parseCreateResponse(Response.json({
+      id: 'subscription_1', secret: 'secret_1',
+    })),
+    { id: 'subscription_1', secret: 'secret_1' },
+  )
+  assert.deepEqual(
+    await client.webhooks.parseRotateSecretResponse(Response.json({ secret: 'secret_2' })),
+    { secret: 'secret_2' },
+  )
 })
 
 test('list helpers unwrap paginated envelopes while getPage preserves metadata', async () => {

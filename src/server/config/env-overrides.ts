@@ -8,6 +8,33 @@ type EnvSource = Record<string, string | undefined>
 type OverlayRuntimeConfigLayer = Record<string, unknown>
 
 interface AuthEnvValues {
+  betterAuthAllowedEmailDomains?: string
+  betterAuthBasePath?: string
+  betterAuthBaseUrl?: string
+  betterAuthConnectionClientId?: string
+  betterAuthConnectionClientIdEnv?: string
+  betterAuthConnectionClientSecret?: string
+  betterAuthConnectionClientSecretEnv?: string
+  betterAuthConnectionDiscoveryEndpoint?: string
+  betterAuthConnectionDomains?: string
+  betterAuthConnectionId?: string
+  betterAuthConnectionIssuerUrl?: string
+  betterAuthConnectionLabel?: string
+  betterAuthConnectionPreset?: string
+  betterAuthConnectionTenantId?: string
+  betterAuthDatabaseUrl?: string
+  betterAuthDefaultSsoDomain?: string
+  betterAuthDefaultSsoProviderId?: string
+  betterAuthJwksUrl?: string
+  betterAuthJwtAudience?: string
+  betterAuthJwtIssuer?: string
+  betterAuthOidcClientId?: string
+  betterAuthOidcClientSecret?: string
+  betterAuthOidcDiscoveryEndpoint?: string
+  betterAuthOidcIssuerUrl?: string
+  betterAuthRequireVerifiedEmail?: boolean
+  betterAuthSecret?: string
+  betterAuthTrustedOrigins?: string
   devWorkosApiKey?: string
   devWorkosClientId?: string
   oidcClientId?: string
@@ -25,7 +52,9 @@ export function configOverridesFromEnv(env: EnvSource): OverlayRuntimeConfigLaye
   const billing = billingConfigFromEnv(env, deploymentEnvironment)
   const storage = storageConfigFromEnv(env)
   const llm = llmConfigFromEnv(env)
+  const integrations = integrationsConfigFromEnv(env)
   const database = databaseConfigFromEnv(env, deploymentEnvironment)
+  const rateLimit = rateLimitConfigFromEnv(env)
   const capabilities = capabilitiesFromEnv(env)
   const features = featuresFromEnv(env)
   const compliance = complianceFromEnv(env)
@@ -49,7 +78,9 @@ export function configOverridesFromEnv(env: EnvSource): OverlayRuntimeConfigLaye
   if (billing) config.billing = billing
   if (storage) config.storage = storage
   if (llm) config.llm = llm
+  if (integrations) config.integrations = integrations
   if (database) config.database = database
+  if (rateLimit) config.rateLimit = rateLimit
   if (Object.keys(capabilities).length > 0) config.capabilities = capabilities
   if (Object.keys(features).length > 0) config.features = features
   if (compliance) config.compliance = compliance
@@ -69,6 +100,52 @@ function authConfigFromEnv(
     ? false
     : readBool(env, 'ALLOW_DEV_AUTH_FALLBACKS') ??
       (deploymentEnvironment === 'development' || deploymentEnvironment === 'test')
+  const betterAuth = compactObject({
+    baseUrl: values.betterAuthBaseUrl,
+    basePath: values.betterAuthBasePath,
+    secret: values.betterAuthSecret,
+    databaseUrl: values.betterAuthDatabaseUrl,
+    trustedOrigins: values.betterAuthTrustedOrigins
+      ? splitCsv(values.betterAuthTrustedOrigins)
+      : undefined,
+    defaultSsoProviderId: values.betterAuthDefaultSsoProviderId,
+    defaultSsoDomain: values.betterAuthDefaultSsoDomain,
+    oidcIssuerUrl: values.betterAuthOidcIssuerUrl,
+    oidcDiscoveryEndpoint: values.betterAuthOidcDiscoveryEndpoint,
+    oidcClientId: values.betterAuthOidcClientId,
+    oidcClientSecret: values.betterAuthOidcClientSecret,
+    jwtIssuer: values.betterAuthJwtIssuer,
+    jwtAudience: values.betterAuthJwtAudience,
+    jwksUrl: values.betterAuthJwksUrl,
+    connections: hasBetterAuthConnectionConfig(values)
+      ? [compactObject({
+          id: values.betterAuthConnectionId,
+          protocol: 'oidc',
+          preset: values.betterAuthConnectionPreset,
+          label: values.betterAuthConnectionLabel,
+          domains: values.betterAuthConnectionDomains
+            ? splitCsv(values.betterAuthConnectionDomains)
+            : undefined,
+          issuerUrl: values.betterAuthConnectionIssuerUrl,
+          discoveryEndpoint: values.betterAuthConnectionDiscoveryEndpoint,
+          tenantId: values.betterAuthConnectionTenantId,
+          clientId: values.betterAuthConnectionClientId,
+          clientIdEnv: values.betterAuthConnectionClientIdEnv,
+          clientSecret: values.betterAuthConnectionClientSecret,
+          clientSecretEnv: values.betterAuthConnectionClientSecretEnv,
+        })]
+      : undefined,
+    accessPolicy:
+      values.betterAuthRequireVerifiedEmail !== undefined ||
+      values.betterAuthAllowedEmailDomains
+        ? compactObject({
+            requireVerifiedEmail: values.betterAuthRequireVerifiedEmail,
+            allowedEmailDomains: values.betterAuthAllowedEmailDomains
+              ? splitCsv(values.betterAuthAllowedEmailDomains)
+              : undefined,
+          })
+        : undefined,
+  })
 
   return {
     ...(provider ? { provider: provider as OverlayRuntimeConfigInput['auth']['provider'] } : {}),
@@ -86,12 +163,7 @@ function authConfigFromEnv(
       clientSecret: readEnv(env, 'OIDC_CLIENT_SECRET'),
       audience: readEnv(env, 'OIDC_AUDIENCE'),
     }),
-    keycloak: compactObject({
-      issuerUrl: readEnv(env, 'KEYCLOAK_ISSUER_URL'),
-      clientId: readEnv(env, 'KEYCLOAK_CLIENT_ID'),
-      clientSecret: readEnv(env, 'KEYCLOAK_CLIENT_SECRET'),
-      realm: readEnv(env, 'KEYCLOAK_REALM'),
-    }),
+    ...(Object.keys(betterAuth).length > 0 ? { betterAuth } : {}),
   }
 }
 
@@ -166,6 +238,7 @@ function storageConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null 
       accessKeyId: readEnv(env, 'S3_ACCESS_KEY_ID'),
       secretAccessKey: readEnv(env, 'S3_SECRET_ACCESS_KEY'),
       forcePathStyle: readBool(env, 'S3_FORCE_PATH_STYLE'),
+      presignTtlSeconds: readNumber(env, 'S3_PRESIGN_TTL_SECONDS'),
     }),
   }
 }
@@ -193,16 +266,34 @@ function llmConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
   })
 }
 
+function integrationsConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
+  const executor = compactObject({
+    apiBaseUrl: readEnv(env, 'EXECUTOR_API_BASE_URL'),
+    webBaseUrl: readEnv(env, 'EXECUTOR_WEB_BASE_URL'),
+    mcpUrl: readEnv(env, 'EXECUTOR_MCP_URL'),
+    apiKey: readEnv(env, 'EXECUTOR_API_KEY'),
+    connectionOwner: readEnv(env, 'EXECUTOR_CONNECTION_OWNER'),
+    requestTimeoutMs: readNumber(env, 'EXECUTOR_REQUEST_TIMEOUT_MS'),
+  })
+  return Object.keys(executor).length > 0 ? { executor } : null
+}
+
 function databaseConfigFromEnv(
   env: EnvSource,
   deploymentEnvironment?: OverlayDeploymentEnvironment,
 ): OverlayRuntimeConfigLayer | null {
+  const provider = readEnv(env, 'OVERLAY_PROVIDER_DATABASE')
   const convexUrl = deploymentEnvironment === 'development'
     ? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'NEXT_PUBLIC_CONVEX_URL')
     : readEnv(env, 'NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL')
+  const postgresConnectionString = readEnv(env, 'OVERLAY_DATABASE_URL')
+  const postgresSslMode = readEnv(env, 'OVERLAY_DATABASE_SSL_MODE')
 
   if (
+    !provider &&
     !convexUrl &&
+    !postgresConnectionString &&
+    !postgresSslMode &&
     !readEnv(env, 'CONVEX_DEPLOYMENT') &&
     !readEnv(env, 'INTERNAL_API_SECRET') &&
     !readEnv(env, 'INTERNAL_SERVICE_AUTH_SECRET') &&
@@ -211,14 +302,32 @@ function databaseConfigFromEnv(
     return null
   }
 
+  const postgres = compactObject({
+    connectionString: postgresConnectionString,
+    sslMode: postgresSslMode,
+    backgroundRuntimeEnabled: readBool(env, 'OVERLAY_BACKGROUND_RUNTIME_ENABLED'),
+  })
+
   return compactObject({
-    provider: 'convex',
+    provider: (provider ?? 'convex') as OverlayRuntimeConfigInput['database']['provider'] | undefined,
     convexUrl,
     deployment: readEnv(env, 'CONVEX_DEPLOYMENT'),
     internalApiSecret: readEnv(env, 'INTERNAL_API_SECRET'),
     internalServiceAuthSecret: readEnv(env, 'INTERNAL_SERVICE_AUTH_SECRET'),
     apiKeyHashSecret: readEnv(env, 'API_KEY_HASH_SECRET'),
+    postgres: Object.keys(postgres).length > 0 ? postgres : undefined,
   })
+}
+
+function rateLimitConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
+  const redis = compactObject({
+    url: readEnv(env, 'OVERLAY_REDIS_URL') ?? readEnv(env, 'REDIS_URL'),
+    restUrl: readEnv(env, 'UPSTASH_REDIS_REST_URL'),
+    restToken: readEnv(env, 'UPSTASH_REDIS_REST_TOKEN'),
+    keyPrefix: readEnv(env, 'OVERLAY_REDIS_KEY_PREFIX'),
+    failureMode: readEnv(env, 'OVERLAY_REDIS_FAILURE_MODE'),
+  })
+  return Object.keys(redis).length > 0 ? { redis } : null
 }
 
 function capabilitiesFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
@@ -229,6 +338,9 @@ function capabilitiesFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
     webhooks: readBool(env, 'WEBHOOKS_ENABLED'),
     vectorSearch: readBool(env, 'VECTOR_SEARCH_ENABLED'),
     automations: readBool(env, 'AUTOMATIONS_ENABLED'),
+    projects: readBool(env, 'PROJECTS_ENABLED'),
+    skills: readBool(env, 'SKILLS_ENABLED'),
+    mcpServers: readBool(env, 'MCP_SERVERS_ENABLED'),
     multiTenant: readBool(env, 'MULTI_TENANT_ENABLED'),
   })
 }
@@ -241,6 +353,9 @@ function featuresFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
     knowledge: readFeatureBool(env, 'KNOWLEDGE'),
     automations: readFeatureBool(env, 'AUTOMATIONS') ?? readBool(env, 'AUTOMATIONS_ENABLED'),
     integrations: readFeatureBool(env, 'INTEGRATIONS'),
+    projects: readFeatureBool(env, 'PROJECTS') ?? readBool(env, 'PROJECTS_ENABLED'),
+    skills: readFeatureBool(env, 'SKILLS') ?? readBool(env, 'SKILLS_ENABLED'),
+    mcpServers: readFeatureBool(env, 'MCP_SERVERS') ?? readBool(env, 'MCP_SERVERS_ENABLED'),
     browserUse: readFeatureBool(env, 'BROWSER_USE'),
     sandboxes: readFeatureBool(env, 'SANDBOXES'),
     webSearch: readFeatureBool(env, 'WEB_SEARCH'),
@@ -266,6 +381,7 @@ function complianceFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
   const retention = compactObject({
     chatDays: readNumber(env, 'OVERLAY_RETENTION_CHAT_DAYS'),
     fileDays: readNumber(env, 'OVERLAY_RETENTION_FILE_DAYS'),
+    memoryDays: readNumber(env, 'OVERLAY_RETENTION_MEMORY_DAYS'),
     logsDays: readNumber(env, 'OVERLAY_RETENTION_LOGS_DAYS'),
     sandboxArtifactDays: readNumber(env, 'OVERLAY_RETENTION_SANDBOX_ARTIFACT_DAYS'),
     deletedUserPurgeDays: readNumber(env, 'OVERLAY_RETENTION_DELETED_USER_PURGE_DAYS'),
@@ -289,7 +405,7 @@ function complianceFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
 
 function providersFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
   const providers = compactObject({
-    auth: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_AUTH')),
+    auth: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_AUTH') ?? readEnv(env, 'AUTH_PROVIDER')),
     database: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_DATABASE')),
     objectStorage: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_OBJECT_STORAGE')),
     vectorSearch: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_VECTOR_SEARCH')),
@@ -308,22 +424,75 @@ function providersFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
 }
 
 function readAuthEnv(env: EnvSource): AuthEnvValues {
-  const oidcIssuerUrl = readEnv(env, 'OIDC_ISSUER_URL') ?? readEnv(env, 'KEYCLOAK_ISSUER_URL')
-  const oidcClientId = readEnv(env, 'OIDC_CLIENT_ID') ?? readEnv(env, 'KEYCLOAK_CLIENT_ID')
   return {
     provider: readEnv(env, 'AUTH_PROVIDER'),
     workosClientId: readEnv(env, 'WORKOS_CLIENT_ID'),
     workosApiKey: readEnv(env, 'WORKOS_API_KEY'),
     devWorkosClientId: readEnv(env, 'DEV_WORKOS_CLIENT_ID'),
     devWorkosApiKey: readEnv(env, 'DEV_WORKOS_API_KEY'),
-    oidcIssuerUrl,
-    oidcClientId,
+    oidcIssuerUrl: readEnv(env, 'OIDC_ISSUER_URL'),
+    oidcClientId: readEnv(env, 'OIDC_CLIENT_ID'),
+    betterAuthBaseUrl: readEnv(env, 'BETTER_AUTH_URL') ?? readEnv(env, 'BETTER_AUTH_BASE_URL'),
+    betterAuthBasePath: readEnv(env, 'BETTER_AUTH_BASE_PATH'),
+    betterAuthSecret: readEnv(env, 'BETTER_AUTH_SECRET'),
+    betterAuthDatabaseUrl: readEnv(env, 'BETTER_AUTH_DATABASE_URL'),
+    betterAuthTrustedOrigins: readEnv(env, 'BETTER_AUTH_TRUSTED_ORIGINS'),
+    betterAuthConnectionId: readEnv(env, 'BETTER_AUTH_CONNECTION_ID'),
+    betterAuthConnectionPreset: readEnv(env, 'BETTER_AUTH_CONNECTION_PRESET'),
+    betterAuthConnectionLabel: readEnv(env, 'BETTER_AUTH_CONNECTION_LABEL'),
+    betterAuthConnectionDomains: readEnv(env, 'BETTER_AUTH_CONNECTION_DOMAINS'),
+    betterAuthConnectionIssuerUrl: readEnv(env, 'BETTER_AUTH_CONNECTION_ISSUER_URL'),
+    betterAuthConnectionDiscoveryEndpoint: readEnv(
+      env,
+      'BETTER_AUTH_CONNECTION_DISCOVERY_ENDPOINT',
+    ),
+    betterAuthConnectionTenantId: readEnv(env, 'BETTER_AUTH_CONNECTION_TENANT_ID'),
+    betterAuthConnectionClientId: readEnv(env, 'BETTER_AUTH_CONNECTION_CLIENT_ID'),
+    betterAuthConnectionClientIdEnv: readEnv(env, 'BETTER_AUTH_CONNECTION_CLIENT_ID_ENV'),
+    betterAuthConnectionClientSecret: readEnv(
+      env,
+      'BETTER_AUTH_CONNECTION_CLIENT_SECRET',
+    ),
+    betterAuthConnectionClientSecretEnv: readEnv(
+      env,
+      'BETTER_AUTH_CONNECTION_CLIENT_SECRET_ENV',
+    ),
+    betterAuthRequireVerifiedEmail: readBool(env, 'BETTER_AUTH_REQUIRE_VERIFIED_EMAIL'),
+    betterAuthAllowedEmailDomains: readEnv(env, 'BETTER_AUTH_ALLOWED_EMAIL_DOMAINS'),
+    betterAuthDefaultSsoProviderId: readEnv(env, 'BETTER_AUTH_DEFAULT_SSO_PROVIDER_ID'),
+    betterAuthDefaultSsoDomain: readEnv(env, 'BETTER_AUTH_DEFAULT_SSO_DOMAIN'),
+    betterAuthOidcIssuerUrl: readEnv(env, 'BETTER_AUTH_OIDC_ISSUER_URL'),
+    betterAuthOidcDiscoveryEndpoint: readEnv(env, 'BETTER_AUTH_OIDC_DISCOVERY_ENDPOINT'),
+    betterAuthOidcClientId: readEnv(env, 'BETTER_AUTH_OIDC_CLIENT_ID'),
+    betterAuthOidcClientSecret: readEnv(env, 'BETTER_AUTH_OIDC_CLIENT_SECRET'),
+    betterAuthJwtIssuer: readEnv(env, 'BETTER_AUTH_JWT_ISSUER'),
+    betterAuthJwtAudience: readEnv(env, 'BETTER_AUTH_JWT_AUDIENCE'),
+    betterAuthJwksUrl: readEnv(env, 'BETTER_AUTH_JWKS_URL'),
   }
 }
 
 function inferAuthProvider(values: AuthEnvValues): string | undefined {
   if (values.workosClientId || values.workosApiKey || values.devWorkosClientId || values.devWorkosApiKey) {
     return 'workos'
+  }
+  if (
+    values.betterAuthBaseUrl ||
+    values.betterAuthSecret ||
+    values.betterAuthDatabaseUrl ||
+    hasBetterAuthConnectionConfig(values) ||
+    values.betterAuthRequireVerifiedEmail !== undefined ||
+    values.betterAuthAllowedEmailDomains ||
+    values.betterAuthDefaultSsoProviderId ||
+    values.betterAuthDefaultSsoDomain ||
+    values.betterAuthOidcIssuerUrl ||
+    values.betterAuthOidcDiscoveryEndpoint ||
+    values.betterAuthOidcClientId ||
+    values.betterAuthOidcClientSecret ||
+    values.betterAuthJwtIssuer ||
+    values.betterAuthJwtAudience ||
+    values.betterAuthJwksUrl
+  ) {
+    return 'better-auth'
   }
   return values.oidcIssuerUrl || values.oidcClientId ? 'oidc' : undefined
 }
@@ -336,7 +505,38 @@ function hasAnyAuthConfig(values: AuthEnvValues, provider: string | undefined): 
       values.devWorkosClientId ||
       values.devWorkosApiKey ||
       values.oidcIssuerUrl ||
-      values.oidcClientId,
+      values.oidcClientId ||
+      values.betterAuthBaseUrl ||
+      values.betterAuthSecret ||
+      values.betterAuthDatabaseUrl ||
+      hasBetterAuthConnectionConfig(values) ||
+      values.betterAuthRequireVerifiedEmail !== undefined ||
+      values.betterAuthAllowedEmailDomains ||
+      values.betterAuthDefaultSsoProviderId ||
+      values.betterAuthDefaultSsoDomain ||
+      values.betterAuthOidcIssuerUrl ||
+      values.betterAuthOidcDiscoveryEndpoint ||
+      values.betterAuthOidcClientId ||
+      values.betterAuthOidcClientSecret ||
+      values.betterAuthJwtIssuer ||
+      values.betterAuthJwtAudience ||
+      values.betterAuthJwksUrl,
+  )
+}
+
+function hasBetterAuthConnectionConfig(values: AuthEnvValues): boolean {
+  return Boolean(
+    values.betterAuthConnectionId ||
+      values.betterAuthConnectionPreset ||
+      values.betterAuthConnectionLabel ||
+      values.betterAuthConnectionDomains ||
+      values.betterAuthConnectionIssuerUrl ||
+      values.betterAuthConnectionDiscoveryEndpoint ||
+      values.betterAuthConnectionTenantId ||
+      values.betterAuthConnectionClientId ||
+      values.betterAuthConnectionClientIdEnv ||
+      values.betterAuthConnectionClientSecret ||
+      values.betterAuthConnectionClientSecretEnv,
   )
 }
 

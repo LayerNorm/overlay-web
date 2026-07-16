@@ -21,8 +21,9 @@ function resolveConvexUrl(): { url: string | undefined; source: string } {
 
 const { url: CONVEX_URL, source: CONVEX_URL_SOURCE } = resolveConvexUrl()
 const IS_BROWSER = typeof window !== 'undefined'
+const POSTGRES_APP_DATA = process.env.OVERLAY_PROVIDER_DATABASE === 'postgres'
 
-if (!CONVEX_URL && !IS_BROWSER) {
+if (!CONVEX_URL && !IS_BROWSER && !POSTGRES_APP_DATA) {
   logger.warn('CONVEX_URL is not set')
 } else if (CONVEX_URL) {
   logger.info(
@@ -81,7 +82,7 @@ async function callConvex<T>(
   options: CallConvexOptions = {}
 ): Promise<T | null> {
   if (!IS_BROWSER && !CONVEX_URL) {
-    logger.error('CONVEX_URL not configured')
+    if (!POSTGRES_APP_DATA) logger.error('CONVEX_URL not configured')
     return null
   }
 

@@ -136,9 +136,21 @@ const projects: ProjectSummary[] = [
   { _id: 'project-2', name: 'Security', parentId: 'project-1', createdAt: now, updatedAt: now },
 ]
 
+const composioCapabilities = {
+  provider: 'composio' as const,
+  hosted: true,
+  selfHosted: false,
+  oauthOwnership: 'provider-managed' as const,
+  connectionSetup: 'in-app-oauth' as const,
+  connectionLifecycle: 'overlay-managed' as const,
+  supportsApprovals: false,
+  supportsDisconnect: true,
+  supportedSchemas: ['native'] as const,
+}
+
 const integrations: Array<{ kind: 'integration' } & IntegrationSummary> = [
-  { kind: 'integration', slug: 'github', name: 'GitHub', description: 'Repository and pull request workflows', logoUrl: null, isConnected: true },
-  { kind: 'integration', slug: 'slack', name: 'Slack', description: 'Workspace messaging', logoUrl: null, isConnected: false },
+  { kind: 'integration', slug: 'github', providerKey: 'github', provider: 'composio', capabilities: { ...composioCapabilities, supportedSchemas: ['native'] }, name: 'GitHub', description: 'Repository and pull request workflows', logoUrl: null, isConnected: true },
+  { kind: 'integration', slug: 'slack', providerKey: 'slack', provider: 'composio', capabilities: { ...composioCapabilities, supportedSchemas: ['native'] }, name: 'Slack', description: 'Workspace messaging', logoUrl: null, isConnected: false },
 ]
 
 const skills: Array<{ kind: 'skill' } & SkillSummary> = [

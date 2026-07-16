@@ -1,0 +1,352 @@
+---
+title: "Deploy On AWS"
+description: "Build and operate Overlay on ECS with RDS PostgreSQL, ElastiCache Redis, S3, and customer-controlled CI/CD."
+---
+
+This guide describes the customer-controlled AWS deployment used for an Overlay
+pilot. Complete [Docker On EC2](/deploy-operate/docker-ec2) first when the goal
+is a quick connectivity and product sanity check.
+
+<Warning>
+  Do not turn the EC2 sanity host or the disposable AWS rehearsal stack into
+  production by changing its name. Production infrastructure must follow the
+  customer's networking, security, backup, observability, and change-control
+  standards.
+</Warning>
+
+## Reference architecture
+
+```text
+Users
+  -> customer DNS and HTTPS
+  -> WAF or approved edge
+  -> Application Load Balancer
+  -> ECS Fargate web service (2+ tasks)
+       -> RDS/Aurora PostgreSQL: Overlay app data
+       -> RDS/Aurora PostgreSQL: Better Auth data
+       -> ElastiCache Redis over TLS
+       -> private encrypted S3 bucket
+       -> approved OIDC provider and model gateway
+
+ECS worker service (2+ tasks)
+  -> durable jobs, extraction, cleanup, retries, and lease recovery
+
+ECS scheduler service (1 task; 2 during duplicate-scheduler qualification)
+  -> deterministic due-job discovery and enqueueing
+
+Customer CI -> ECR immutable digest -> one-off migration -> all ECS roles
+Secrets Manager -> ECS task secret references
+CloudWatch, Container Insights, and SNS -> logs, metrics, alarms, and operators
+```
+
+Postgres mode does not require a Convex client or server connection. No Convex
+environment variable, HTTP request, WebSocket, or server call should exist in
+the deployed profile.
+
+## Required ownership
+
+Before provisioning, name the owners for:
+
+- AWS account, Region, VPC, quotas, tags, and budget.
+- Source repository, protected branches, CI/CD, and release approval.
+- DNS, ACM certificates, ingress, WAF, and outbound egress.
+- RDS, Redis, S3, KMS, backups, restore tests, and retention.
+- Google Workspace or other OIDC application and pilot users.
+- Secrets Manager values and rotation.
+- CloudWatch alarms and the incident notification destination.
+- Model gateway and every optional external processor.
+- Pilot acceptance, rollback, and go-live.
+
+Use a dedicated nonproduction account when possible. Human access should be
+federated, named, MFA-protected, time-limited, least-privilege, and audited by
+CloudTrail. CI should use GitHub Actions OIDC or CodeBuild roles, not static AWS
+access keys.
+
+## AWS resources
+
+| Layer | Minimum pilot requirement |
+| --- | --- |
+| Network | At least two Availability Zones; public ALB subnets; private ECS subnets; isolated RDS/Redis subnets; approved NAT, proxy, or VPC endpoints. |
+| Compute | ECS cluster; web service with at least two tasks; worker service with at least two tasks; scheduler service; one-off migration task. |
+| Database | Encrypted Multi-AZ RDS PostgreSQL or Aurora PostgreSQL writer; separate app/auth databases and roles; `pgvector` when knowledge is enabled; automated backups and restore test. |
+| Redis | TLS ElastiCache with fail-closed application behavior; Multi-AZ automatic failover for the target pilot. |
+| Objects | Private encrypted, versioned S3 bucket; block public access; lifecycle, logging, backup/recovery, and deletion policy. |
+| Ingress | HTTPS ALB listener, healthy target group, customer DNS, ACM certificate, and WAF/edge controls required by policy. |
+| Delivery | Customer repository; CI OIDC or CodeBuild; immutable ECR tags; image scanning; protected staging and production environments. |
+| Operations | CloudWatch log groups, Container Insights, dashboard, alarms, SNS destination, RDS metrics, ALB access logs, and defined retention. |
+
+## Secrets Manager
+
+Create separate paths for staging and production. ECS injects secret values as
+environment variables; the application does not fetch Secrets Manager values
+directly. Keep non-secret selectors and hostnames in task-definition
+environment variables.
+
+At minimum, create entries for:
+
+```text
+SESSION_SECRET
+SESSION_TRANSFER_KEY
+SESSION_COOKIE_ENCRYPTION_KEY
+INTERNAL_API_SECRET
+INTERNAL_SERVICE_AUTH_SECRET
+MCP_CREDENTIAL_ENCRYPTION_KEY
+API_KEY_HASH_SECRET
+PROVIDER_KEYS_SECRET
+HOOKS_TOKEN_SALT
+BETTER_AUTH_SECRET
+BETTER_AUTH_OIDC_CLIENT_SECRET
+OVERLAY_DATABASE_URL
+BETTER_AUTH_DATABASE_URL
+OVERLAY_REDIS_URL
+AI_GATEWAY_API_KEY
+```
+
+Add provider credentials only for approved, enabled features. The current S3
+adapter requires bucket-scoped `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`;
+store them in Secrets Manager and rotate them. Do not place any secret in a
+`NEXT_PUBLIC_*` variable, source file, task-definition plaintext environment
+value, build log, document, ticket, email, or chat.
+
+## Deployment procedure
+
+<Steps>
+  <Step title="Prepare the customer repository">
+    Create a customer-controlled private repository. Import the approved Overlay
+    release and retain `layernorm/overlay-web` as the upstream remote.
+
+    ```bash
+    git remote add upstream https://github.com/layernorm/overlay-web.git
+    git fetch upstream --tags
+    git checkout -b release/overlay-<VERSION>-customer.1 <APPROVED_TAG>
+    git push -u origin release/overlay-<VERSION>-customer.1
+    ```
+
+    Merge only through a reviewed pull request with required checks.
+  </Step>
+
+  <Step title="Establish customer-controlled CI access">
+    Configure GitHub Actions OIDC or CodeBuild. Restrict the deployment role to
+    the exact repository, branch/environment, ECR repository, ECS services,
+    task roles, log groups, and approved infrastructure stacks. Restrict
+    `iam:PassRole` to the named ECS execution and task roles.
+  </Step>
+
+  <Step title="Provision infrastructure as code">
+    Use the customer's approved Terraform, CloudFormation, CDK, or platform
+    catalog. Keep environment values outside application source. Review the
+    generated plan or change set before applying it.
+
+    Required network flows are:
+
+    ```text
+    Internet/edge -> ALB: HTTPS only
+    ALB -> web tasks: application port only
+    app/worker/scheduler/migration -> RDS: 5432 by security-group reference
+    app/worker/scheduler -> Redis: TLS port by security-group reference
+    runtime -> S3/Secrets/ECR/CloudWatch: VPC endpoints or approved egress
+    runtime -> OIDC/model/customer APIs: explicit approved HTTPS destinations
+    ```
+  </Step>
+
+  <Step title="Build and push one immutable image">
+    Build from the reviewed commit in CI, not on a production host:
+
+    ```bash
+    export AWS_REGION=<REGION>
+    export AWS_ACCOUNT_ID=<ACCOUNT_ID>
+    export ECR_REPOSITORY=overlay-web
+    export GIT_SHA="$(git rev-parse HEAD)"
+    export IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$GIT_SHA"
+
+    aws ecr get-login-password --region "$AWS_REGION" | \
+      docker login --username AWS --password-stdin \
+      "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+
+    docker buildx build \
+      --platform linux/amd64 \
+      --file Dockerfile.enterprise-runtime \
+      --tag "$IMAGE" \
+      --push .
+
+    export IMAGE_DIGEST="$(aws ecr describe-images \
+      --repository-name "$ECR_REPOSITORY" \
+      --image-ids imageTag="$GIT_SHA" \
+      --query 'imageDetails[0].imageDigest' \
+      --output text)"
+
+    test -n "$IMAGE_DIGEST" && test "$IMAGE_DIGEST" != None
+    printf 'Release %s -> %s@%s\n' "$GIT_SHA" "$ECR_REPOSITORY" "$IMAGE_DIGEST"
+    ```
+
+    Record the digest and use `repository@sha256:...` in every task definition.
+    Do not rebuild the image between staging and production.
+  </Step>
+
+  <Step title="Define the four ECS roles">
+    All task definitions use the same image digest and configuration family:
+
+    | Role | Command | Scaling |
+    | --- | --- | --- |
+    | Web | `node server.js` | At least two tasks behind the ALB. |
+    | Worker | `node dist/app-data-worker.cjs --mode=worker` | At least two tasks. |
+    | Scheduler | `node dist/app-data-worker.cjs --mode=scheduler` | One task initially. Test two before pilot qualification. |
+    | Migration | See the command below | One-off task only; never an ECS service. |
+
+    Migration command:
+
+    ```bash
+    NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/app-data-migrate.ts && \
+    NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/better-auth-migrate.ts
+    ```
+
+    Configure health checks, log groups, CPU/memory, graceful stop time, read-only
+    filesystem exceptions, database pool budgets, and secret ARN references per role.
+  </Step>
+
+  <Step title="Snapshot and run migrations once">
+    Record the current image digest, task-definition revisions, schema version,
+    and a pre-deploy RDS snapshot. Quiesce background services when the release
+    notes require it.
+
+    Run the migration task in the private ECS subnets with the direct RDS writer
+    endpoint and `OVERLAY_DATABASE_SSL_MODE=verify-full`. Wait for the task to
+    stop, inspect its exit code, and retain its redacted logs. Do not deploy the
+    services when the migration exit code is nonzero or schema compatibility fails.
+  </Step>
+
+  <Step title="Deploy the same digest to every service">
+    Register new task-definition revisions containing the recorded digest, then
+    update scheduler, worker, and web services. For web rolling deployments use:
+
+    ```text
+    desiredCount: 2 or more
+    minimumHealthyPercent: 100
+    maximumPercent: 200
+    ALB stickiness: disabled
+    ALB idle timeout: at least 60 seconds
+    ```
+
+    Wait for every ECS service to become stable and every ALB target to become
+    healthy. A service must not silently fall back to Convex when a Postgres
+    dependency is unavailable.
+  </Step>
+
+  <Step title="Configure DNS, TLS, and OIDC">
+    Point the approved hostname to the ALB or approved edge. Register the exact
+    production values with the OIDC owner:
+
+    ```text
+    Callback: https://<OVERLAY_HOST>/api/better-auth/sso/callback/<PROVIDER_ID>
+    Logout:   https://<OVERLAY_HOST>
+    Origin:   https://<OVERLAY_HOST>
+    ```
+
+    Set `BETTER_AUTH_URL`, trusted origins, JWT issuer/audience, and JWKS URL to
+    that same HTTPS origin. Store only the public client ID in plaintext config;
+    the client secret remains in Secrets Manager.
+  </Step>
+
+  <Step title="Qualify staging">
+    At minimum verify:
+
+    1. `/api/v1/capabilities`, `/api/auth/session`, and the ALB health path.
+    2. OIDC sign-in, refresh, new tab, sign-out, and account deletion.
+    3. Chat create, stream, stop, refresh recovery, rename, and delete across two web tasks.
+    4. Files, notes, projects, memory, knowledge, and citations when enabled.
+    5. Worker lease recovery and scheduler deduplication after task replacement.
+    6. Redis fail-closed behavior and recovery.
+    7. RDS failover and automatic web/worker/scheduler recovery.
+    8. S3 signed URL expiry, ownership checks, deletion, and reconciliation.
+    9. Backup restore to a new database and application connection to the restore.
+    10. CloudWatch alarms and delivery to the named operator.
+    11. No Convex environment variables, browser traffic, server calls, or DNS traffic.
+
+    Keep the test accounts and data disposable. Run destructive contracts only
+    against a separate contract-test database.
+  </Step>
+</Steps>
+
+## Rollback
+
+Before every release, record the previous image digest and task definitions.
+When the new schema remains backward-compatible, roll all services back to the
+previous digest and verify auth, chat, files, and queue state.
+
+If the previous runtime is not schema-compatible, do not improvise a down
+migration. Restore the pre-deploy snapshot into a new database, point the
+previous release at the restored writer, and preserve the failed database and
+logs for investigation.
+
+## Product updates and customer customizations
+
+Overlay updates never deploy automatically into the customer account:
+
+```bash
+git fetch upstream --tags
+git checkout -b upgrade/overlay-vX.Y.Z main
+git merge --no-ff <APPROVED_UPSTREAM_TAG>
+# Resolve conflicts, update customer extensions, and run all gates.
+git push -u origin upgrade/overlay-vX.Y.Z
+```
+
+Reusable fixes should go upstream. Customer policy, consent, curriculum, and
+proprietary data-lake logic should remain behind provider interfaces, service
+contracts, APIs, MCP servers, or extension modules where practical. Every
+customer customization needs tests, an owner, a data-flow description, an
+upgrade note, and rollback behavior.
+
+## Paste into a coding agent
+
+Use this prompt only after the agent is authenticated through the customer's
+approved AWS and source-control mechanisms:
+
+```text
+Deploy Overlay to the customer-controlled AWS staging environment by following
+docs/deploy-operate/aws.mdx.
+
+Operating constraints:
+- Work only in the approved account, Region, repository, and staging environment.
+- Start by reporting `aws sts get-caller-identity`, Git remote URLs, branch, and SHA.
+- Use existing customer IaC and security standards. Do not create a parallel VPC
+  or bypass approval because it is faster.
+- Use federated access and CI OIDC/CodeBuild roles. Never create static AWS keys.
+- Never print, echo, retrieve into logs, commit, or return secret values.
+- Reference Secrets Manager ARNs from ECS. Return only names and ARNs.
+- Keep RDS, Redis, and ECS private. Expose only the approved HTTPS ingress.
+- Build one immutable image and use its exact digest for migration, web, worker,
+  and scheduler. Run migrations once before service rollout.
+- Postgres mode must contain no Convex environment variables or traffic.
+- Stop and request approval before applying IaC, running migrations, changing
+  DNS/OIDC, triggering failover, deleting data, or promoting to production.
+
+Execution checkpoints:
+1. Inventory customer inputs, existing infrastructure, quotas, and missing owners.
+2. Produce an architecture delta and IaC plan/change set; wait for approval.
+3. Validate config and tests, build the reviewed commit in CI, push to ECR, scan,
+   and record the immutable digest.
+4. Record backup and rollback state; run the one-off migration and verify exit code.
+5. Deploy the digest to app, worker, and scheduler; wait for stable services.
+6. Pause for interactive OIDC setup/login where required.
+7. Execute staging product, isolation, recovery, backup, alarm, deletion, and
+   zero-Convex QA from the guide.
+8. Return a redacted deployment report: account/Region, resource IDs, Git SHA,
+   image digest, task revisions, schema version, QA results, alarm/restore proof,
+   costs, known issues, rollback instructions, and PASS/FAIL. Never return secrets.
+```
+
+## Handover gate
+
+The deployment is not handed over until the customer PoC can:
+
+1. Identify the deployed Git SHA, image digest, schema version, and task revisions.
+2. Redeploy the current digest through CI without changing source.
+3. Find web, worker, scheduler, migration, RDS, Redis, ALB, and S3 telemetry.
+4. Trigger and receive a test alarm.
+5. Roll back to the previous digest and roll forward again.
+6. Locate backups, restore instructions, secret rotation ownership, and incident contacts.
+7. Revoke or reduce the temporary Overlay operator role while CI continues to work.
+
+For configuration details and provider matrices, continue with
+[Self-Hosting](/deploy-operate/self-hosting) and
+[Security](/deploy-operate/security).

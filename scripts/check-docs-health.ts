@@ -24,6 +24,7 @@ import {
   OverlayWebSearchProviderSchema,
 } from '../src/shared/config/overlayConfigSchema.ts'
 import { webApiBoundaryDefinitions } from '../src/shared/schemas/api-boundary.ts'
+import type { OverlayRuntimeConfigInput } from '../src/shared/config/overlayConfigSchema.ts'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const docsDir = path.join(root, 'docs')
@@ -33,11 +34,13 @@ const openApiFile = path.join(docsDir, 'openapi/overlay-web.openapi.json')
 const allowedDocsEntries = new Set([
   'README.md',
   'api-reference',
+  'changelog.mdx',
   'config',
   'configure',
   'deploy-operate',
   'develop',
   'docs.json',
+  'help',
   'introduction.mdx',
   'legal',
   'openapi',
@@ -59,6 +62,11 @@ const stalePublicPatterns = [
   { label: 'removed design.md link', pattern: /docs\/design\.md|\.\/design\.md/i },
   { label: 'removed docs sync workflow', pattern: /docs:sync|sync-docs-to-site/i },
   { label: 'stale public Phase 6 framing', pattern: /\bPhase 6\b/ },
+  {
+    label: 'private numbered AWS rehearsal reference',
+    pattern: /aws-rehearsal-\d|^title:\s*["']?AWS Rehearsal\s+\d/im,
+  },
+  { label: 'internal phase-titled page', pattern: /^title:\s*["']?P\d/im },
 ] as const
 
 type DocsJsonNavigation = {
@@ -253,7 +261,7 @@ async function checkConfigExamples(failures: string[]) {
     try {
       const config = await loadOverlayConfig({
         configFilePath: file,
-        defaultConfig: {},
+        defaultConfig: {} as OverlayRuntimeConfigInput,
         env: {},
       })
       const summary = getRedactedOverlayRuntimeConfigSummary(config)

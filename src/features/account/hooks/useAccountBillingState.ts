@@ -212,7 +212,7 @@ export function useAccountBillingState({
           setEntitlementsError(
             errBody.error ||
               (entitlementsResponse.status === 401
-                ? 'We could not verify your session with the server. Sign out and sign in again, and ensure Convex has the same WorkOS client IDs as this app.'
+                ? 'We could not verify your session with the server. Sign out and sign in again, and ensure Convex has the matching auth token verification settings for this app.'
                 : 'Could not load your plan. Try again in a moment.'),
           )
         }

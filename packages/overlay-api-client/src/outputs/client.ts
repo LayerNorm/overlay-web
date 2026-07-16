@@ -1,4 +1,9 @@
-import type { DeleteOutputResponse, OutputSummary } from '@overlay/app-core'
+import type {
+  DeleteOutputResponse,
+  OutputShareRequest,
+  OutputShareResponse,
+  OutputSummary,
+} from '@overlay/app-core'
 import type { HttpContext } from '../shared/http'
 import type { PaginatedEnvelope, QueryParams } from '../shared/types'
 import type { OutputQuery } from './types'
@@ -24,6 +29,20 @@ export class OutputsClient {
 
   contentResponse(outputId: string, init?: RequestInit) {
     return this.http.request(`/api/v1/outputs/${encodeURIComponent(outputId)}/content`, init)
+  }
+
+  share(body: OutputShareRequest, init?: RequestInit) {
+    return this.http.json<OutputShareResponse>(
+      '/api/v1/outputs',
+      this.http.jsonRequest(body, { ...init, method: 'PATCH' }),
+    )
+  }
+
+  shareResponse(body: OutputShareRequest, init?: RequestInit) {
+    return this.http.request(
+      '/api/v1/outputs',
+      this.http.jsonRequest(body, { ...init, method: 'PATCH' }),
+    )
   }
 
   deleteResponse(query: { outputId: string }, init?: RequestInit) {

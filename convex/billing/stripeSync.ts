@@ -93,7 +93,7 @@ export const syncPaidSubscriptionsFromStripe = internalAction({
             subscriptionId,
             customerId,
             outcome: 'skipped',
-            reason: 'missing metadata.userId (WorkOS user id from checkout)',
+            reason: 'missing metadata.userId (auth provider user id from checkout)',
           })
           continue
         }

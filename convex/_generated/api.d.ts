@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as admin_administration from "../admin/administration.js";
 import type * as ai_sandbox_daytona from "../ai/sandbox/daytona.js";
 import type * as ai_sandbox_daytonaReconcile from "../ai/sandbox/daytonaReconcile.js";
 import type * as auth_apiKeys from "../auth/apiKeys.js";
@@ -58,6 +59,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "admin/administration": typeof admin_administration;
   "ai/sandbox/daytona": typeof ai_sandbox_daytona;
   "ai/sandbox/daytonaReconcile": typeof ai_sandbox_daytonaReconcile;
   "auth/apiKeys": typeof auth_apiKeys;

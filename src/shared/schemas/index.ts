@@ -1,3 +1,4 @@
+export * from './admin'
 export * from './automations'
 export * from './chat'
 export * from './common'

@@ -3,9 +3,15 @@ import test from 'node:test'
 import { NextRequest } from 'next/server'
 import { deriveOverlayCapabilities } from '@overlay/app-core'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import type { AppDataCapabilities } from '@/server/app-data/capabilities'
 import { automationService } from '@/server/automations/http'
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { fileService } from '@/server/files/http'
+import {
+  COMPOSIO_INTEGRATION_CAPABILITIES,
+  ComposioIntegrationProvider,
+  IntegrationService,
+} from '@/server/integrations'
 
 const originalNextPhase = process.env.NEXT_PHASE
 const originalInternalApiSecret = process.env.INTERNAL_API_SECRET
@@ -23,6 +29,34 @@ test.after(() => {
     process.env.INTERNAL_API_SECRET = originalInternalApiSecret
   }
 })
+
+const TEST_CONVEX_APP_DATA_CAPABILITIES: AppDataCapabilities = {
+  provider: 'convex',
+  supportsRealtime: true,
+  supportsStreamResume: true,
+  supportsChatPersistence: true,
+  supportsFileMetadata: true,
+  supportsFileUploads: true,
+  supportsNotes: true,
+  supportsProjects: true,
+  supportsIntegrations: true,
+  supportsSkills: true,
+  supportsMcpServers: true,
+  supportsSettings: true,
+  supportsOnboarding: true,
+  supportsUsageAccounting: true,
+  supportsBillingRecords: true,
+  supportsVectorSearch: true,
+  supportsAutomations: true,
+  supportsWebhooks: true,
+  supportsApiKeys: true,
+  supportsAccountDeletion: true,
+  supportsBackgroundMaintenance: true,
+  supportsManagedScheduler: true,
+  supportsPersistentIdempotency: true,
+  supportsServiceAuthReplayStore: true,
+  requiresConvexClient: true,
+}
 
 function request(path: string, init: {
   body?: BodyInit | null
@@ -52,7 +86,14 @@ function context(): AppApiRouteContext {
     parsedFormData: null,
     parsedJson: {},
     parsedQuery: {},
+    appDataCapabilities: TEST_CONVEX_APP_DATA_CAPABILITIES,
   }
+}
+
+function composioIntegrationService() {
+  return new IntegrationService(new ComposioIntegrationProvider({
+    apiKeyResolver: async () => 'test-composio-key',
+  }))
 }
 
 async function readJson(response: Response): Promise<unknown> {
@@ -274,24 +315,36 @@ test('integrations search reads Composio v3 toolkits and annotates connected sta
   const route = await import('./integrations/route')
   const testContext = context()
   testContext.auth.accessToken = ''
-  const response = await route.GET(request('/api/v1/integrations?action=search&q=g&limit=25'), testContext)
+  const response = await route.GET(
+    request('/api/v1/integrations?action=search&q=g&limit=25'),
+    testContext,
+    { service: composioIntegrationService() },
+  )
 
   assert.equal(response.status, 200)
   assert.deepEqual(await readJson(response), {
     data: [
       {
         slug: 'gmail',
+        providerKey: 'gmail',
+        provider: 'composio',
         name: 'Gmail',
         description: 'Email',
         logoUrl: 'https://logos.composio.dev/api/gmail',
+        capabilities: COMPOSIO_INTEGRATION_CAPABILITIES,
+        authenticationState: 'connected',
         isConnected: true,
         connectedAccountId: 'ca_gmail',
       },
       {
         slug: 'github',
+        providerKey: 'github',
+        provider: 'composio',
         name: 'GitHub',
         description: 'Code hosting',
         logoUrl: 'https://logos.composio.dev/api/github',
+        capabilities: COMPOSIO_INTEGRATION_CAPABILITIES,
+        authenticationState: 'not-connected',
         isConnected: false,
         connectedAccountId: null,
       },
@@ -299,23 +352,34 @@ test('integrations search reads Composio v3 toolkits and annotates connected sta
     items: [
       {
         slug: 'gmail',
+        providerKey: 'gmail',
+        provider: 'composio',
         name: 'Gmail',
         description: 'Email',
         logoUrl: 'https://logos.composio.dev/api/gmail',
+        capabilities: COMPOSIO_INTEGRATION_CAPABILITIES,
+        authenticationState: 'connected',
         isConnected: true,
         connectedAccountId: 'ca_gmail',
       },
       {
         slug: 'github',
+        providerKey: 'github',
+        provider: 'composio',
         name: 'GitHub',
         description: 'Code hosting',
         logoUrl: 'https://logos.composio.dev/api/github',
+        capabilities: COMPOSIO_INTEGRATION_CAPABILITIES,
+        authenticationState: 'not-connected',
         isConnected: false,
         connectedAccountId: null,
       },
     ],
+    provider: 'composio',
+    providerCapabilities: COMPOSIO_INTEGRATION_CAPABILITIES,
     nextCursor: 'next-page',
     hasMore: true,
+    syncCursor: 'next-page',
   })
   assert.ok(seenUrls.every((url) => url.startsWith('https://backend.composio.dev/api/v3/')))
 })
@@ -366,7 +430,11 @@ test('integrations default list reads Composio v3 connected accounts by user id'
   const route = await import('./integrations/route')
   const testContext = context()
   testContext.auth.accessToken = ''
-  const response = await route.GET(request('/api/v1/integrations'), testContext)
+  const response = await route.GET(
+    request('/api/v1/integrations'),
+    testContext,
+    { service: composioIntegrationService() },
+  )
 
   assert.equal(response.status, 200)
   assert.deepEqual(await readJson(response), {
@@ -374,19 +442,33 @@ test('integrations default list reads Composio v3 connected accounts by user id'
     data: [
       {
         slug: 'gmail',
+        providerKey: 'gmail',
+        provider: 'composio',
         name: 'Gmail',
         description: 'Email',
         logoUrl: 'https://logos.composio.dev/api/gmail',
+        capabilities: COMPOSIO_INTEGRATION_CAPABILITIES,
+        authenticationState: 'connected',
+        isConnected: true,
+        connectedAccountId: 'ca_gmail',
       },
     ],
     items: [
       {
         slug: 'gmail',
+        providerKey: 'gmail',
+        provider: 'composio',
         name: 'Gmail',
         description: 'Email',
         logoUrl: 'https://logos.composio.dev/api/gmail',
+        capabilities: COMPOSIO_INTEGRATION_CAPABILITIES,
+        authenticationState: 'connected',
+        isConnected: true,
+        connectedAccountId: 'ca_gmail',
       },
     ],
+    provider: 'composio',
+    providerCapabilities: COMPOSIO_INTEGRATION_CAPABILITIES,
     hasMore: false,
   })
 })
@@ -523,7 +605,7 @@ test('billing customer routes preserve unauthenticated/invalid body response sha
   assert.equal(portalResponse.status, 401)
   assert.deepEqual(await readJson(portalResponse), { error: 'Authentication required' })
 
-  const entitlementsResponse = await entitlements.GET()
+  const entitlementsResponse = await entitlements.GET(request('/api/entitlements', { method: 'GET' }))
   assert.equal(entitlementsResponse.status, 401)
   assert.deepEqual(await readJson(entitlementsResponse), { error: 'Unauthorized' })
 })

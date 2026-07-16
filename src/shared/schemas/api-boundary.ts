@@ -8,11 +8,18 @@ import {
 import {
   ActConversationRequest,
   AddConversationMessageRequest,
+  AdminAuditListQuery,
+  AdminPrincipalDeleteRequest,
+  AdminPrincipalListQuery,
+  AdminPrincipalRequest,
+  AdminUsageAdjustRequest,
+  AdminUsageListQuery,
   AutomationListQuery,
   BrowserTaskRequest,
   BootstrapQuery,
   ChatSuggestionQuery,
   ConversationListQuery,
+  ConversationEventsQuery,
   CreateAutomationRequest,
   CreateConversationRequest,
   CreateFileRequest,
@@ -111,6 +118,13 @@ export const webApiBoundaryDefinitions = [
     schema: { query: AutomationListQuery },
     summary: 'List automations',
     tag: 'Automations',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/conversations/events',
+    schema: { query: ConversationEventsQuery },
+    summary: 'Wait for durable conversation changes after a cursor',
+    tag: 'Conversations',
   },
   {
     method: 'POST',
@@ -548,7 +562,49 @@ export const webApiBoundaryDefinitions = [
     description: 'Pass refresh=1 to force a gateway catalog refresh.',
     tag: 'Models',
   },
-] as const satisfies readonly WebApiBoundaryDefinition[]
+  {
+    method: 'GET',
+    path: '/api/v1/admin/audit',
+    schema: { query: AdminAuditListQuery },
+    summary: 'List audit events',
+    tag: 'Administration',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/admin/principals',
+    schema: { query: AdminPrincipalListQuery },
+    summary: 'List administrative principals',
+    tag: 'Administration',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/admin/principals',
+    schema: { json: AdminPrincipalRequest },
+    summary: 'Grant an administrative principal',
+    tag: 'Administration',
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/admin/principals',
+    schema: { json: AdminPrincipalDeleteRequest },
+    summary: 'Revoke an administrative principal',
+    tag: 'Administration',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/admin/usage',
+    schema: { query: AdminUsageListQuery },
+    summary: 'List administrative usage',
+    tag: 'Administration',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/admin/usage',
+    schema: { json: AdminUsageAdjustRequest },
+    summary: 'Adjust an administrative budget',
+    tag: 'Administration',
+  },
+] satisfies readonly WebApiBoundaryDefinition[]
 
 export const webApiExcludedRouteDefinitions = [
   {

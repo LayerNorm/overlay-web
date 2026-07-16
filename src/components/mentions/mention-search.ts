@@ -8,6 +8,7 @@ import { unwrapPaginatedData } from '@/shared/api/pagination'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
 interface CachedData {
+  cacheKey: string
   files: MentionItem[]
   connectors: MentionItem[]
   automations: MentionItem[]
@@ -15,6 +16,8 @@ interface CachedData {
   mcps: MentionItem[]
   chats: MentionItem[]
 }
+
+type MentionListKey = Exclude<keyof CachedData, 'cacheKey'>
 
 const CATEGORY_META: Array<{ type: MentionType; label: string; icon: string }> = [
   { type: 'file', label: 'Files', icon: 'FileText' },
@@ -27,26 +30,53 @@ const CATEGORY_META: Array<{ type: MentionType; label: string; icon: string }> =
 
 let cache: CachedData | null = null
 let inFlight: Promise<CachedData> | null = null
+let capabilityState: Promise<{
+  chat: boolean
+  files: boolean
+  integrations: boolean
+  automations: boolean
+  skills: boolean
+  mcpServers: boolean
+}> | null = null
 
 export function invalidateMentionCache() {
   cache = null
+  capabilityState = null
 }
 
 async function fetchAll(): Promise<CachedData> {
   if (cache) return cache
   if (inFlight) return inFlight
   inFlight = (async () => {
-    const [filesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
+    const automationsEnabled = await areAutomationsEnabled()
+    const capabilities = await getMentionCapabilities()
+    const cacheKey = mentionCapabilityCacheKey(capabilities)
+    const [filesRes, notesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
       await Promise.allSettled([
-        overlayAppClient.files.getResponse({ limit: 100, summary: true }).then((r) => (r.ok ? r.json() : [])),
-        overlayAppClient.integrations.getResponse().then((r) => (r.ok ? r.json() : { items: [] })),
-        overlayAppClient.automations.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : [])),
-        overlayAppClient.skills.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : [])),
-        overlayAppClient.mcpServers.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : [])),
-        overlayAppClient.conversations.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : [])),
+        capabilities.files
+          ? overlayAppClient.files.getResponse({ limit: 100, summary: true }).then((r) => (r.ok ? r.json() : []))
+          : Promise.resolve([]),
+        capabilities.files
+          ? overlayAppClient.notes.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : []))
+          : Promise.resolve([]),
+        capabilities.integrations
+          ? overlayAppClient.integrations.getResponse().then((r) => (r.ok ? r.json() : { items: [] }))
+          : Promise.resolve({ items: [] }),
+        capabilities.automations && automationsEnabled
+          ? overlayAppClient.automations.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : []))
+          : Promise.resolve([]),
+        capabilities.skills
+          ? overlayAppClient.skills.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : []))
+          : Promise.resolve([]),
+        capabilities.mcpServers
+          ? overlayAppClient.mcpServers.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : []))
+          : Promise.resolve([]),
+        capabilities.chat
+          ? overlayAppClient.conversations.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : []))
+          : Promise.resolve([]),
       ])
 
-    const files: MentionItem[] = (
+    const canonicalFiles: MentionItem[] = (
       filesRes.status === 'fulfilled'
         ? unwrapPaginatedData<{ _id: string; name?: string; kind?: string; mimeType?: string }>(filesRes.value)
         : []
@@ -57,6 +87,18 @@ async function fetchAll(): Promise<CachedData> {
       description: f.kind || f.mimeType || 'file',
       icon: 'FileText',
     }))
+    const notes: MentionItem[] = (
+      notesRes.status === 'fulfilled'
+        ? unwrapPaginatedData<{ _id: string; title?: string }>(notesRes.value)
+        : []
+    ).map((note: { _id: string; title?: string }) => ({
+      type: 'file' as const,
+      id: note._id,
+      name: note.title || 'Untitled',
+      description: 'note',
+      icon: 'FileText',
+    }))
+    const files = [...new Map([...canonicalFiles, ...notes].map((item) => [item.id, item])).values()]
     const connectorsRaw = connectorsRes.status === 'fulfilled' ? connectorsRes.value : { items: [] }
     const connectors: MentionItem[] = (connectorsRaw.items || []).map(
       (c: { slug: string; name: string; description?: string; logoUrl?: string }) => ({
@@ -68,7 +110,7 @@ async function fetchAll(): Promise<CachedData> {
         logoUrl: c.logoUrl,
       })
     )
-    const automations: MentionItem[] = (
+    const automations: MentionItem[] = capabilities.automations && automationsEnabled ? (
       automationsRes.status === 'fulfilled'
         ? unwrapPaginatedData<{ _id: string; name?: string; description?: string; deletedAt?: number }>(automationsRes.value)
         : []
@@ -80,7 +122,7 @@ async function fetchAll(): Promise<CachedData> {
         name: a.name || 'Untitled automation',
         description: a.description || '',
         icon: 'Zap',
-      }))
+      })) : []
     const skills: MentionItem[] = (
       skillsRes.status === 'fulfilled'
         ? unwrapPaginatedData<{ _id: string; name: string; description?: string; enabled?: boolean }>(skillsRes.value)
@@ -116,7 +158,7 @@ async function fetchAll(): Promise<CachedData> {
       icon: 'MessageSquare',
     }))
 
-    cache = { files, connectors, automations, skills, mcps, chats }
+    cache = { cacheKey, files, connectors, automations, skills, mcps, chats }
     return cache
   })()
   try {
@@ -124,6 +166,71 @@ async function fetchAll(): Promise<CachedData> {
   } finally {
     inFlight = null
   }
+}
+
+async function areAutomationsEnabled(): Promise<boolean> {
+  return (await getMentionCapabilities()).automations
+}
+
+async function getMentionCapabilities(): Promise<{
+  chat: boolean
+  files: boolean
+  integrations: boolean
+  automations: boolean
+  skills: boolean
+  mcpServers: boolean
+}> {
+  if (!capabilityState) {
+    capabilityState = fetch('/api/v1/capabilities', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return defaultMentionCapabilities()
+        const payload = await response.json()
+        const capabilities = payload?.capabilities ?? {}
+        return {
+          chat: capabilities.chat !== false,
+          files: capabilities.files !== false,
+          integrations: capabilities.integrations !== false,
+          automations: capabilities.automations !== false,
+          skills: capabilities.skills !== false,
+          mcpServers: capabilities.mcpServers !== false,
+        }
+      })
+      .catch(defaultMentionCapabilities)
+  }
+  return capabilityState
+}
+
+function defaultMentionCapabilities() {
+  return {
+    chat: true,
+    files: true,
+    integrations: true,
+    automations: true,
+    skills: true,
+    mcpServers: true,
+  }
+}
+
+function mentionCapabilityCacheKey(capabilities: Awaited<ReturnType<typeof getMentionCapabilities>>): string {
+  return CATEGORY_META
+    .filter((cat) => {
+      switch (cat.type) {
+        case 'file':
+          return capabilities.files
+        case 'connector':
+          return capabilities.integrations
+        case 'automation':
+          return capabilities.automations
+        case 'skill':
+          return capabilities.skills
+        case 'mcp':
+          return capabilities.mcpServers
+        case 'chat':
+          return capabilities.chat
+      }
+    })
+    .map((cat) => cat.type)
+    .join('|')
 }
 
 function scoreMatch(item: MentionItem, query: string): number {
@@ -138,9 +245,25 @@ function scoreMatch(item: MentionItem, query: string): number {
 
 export async function searchMentions(query: string): Promise<MentionCategory[]> {
   const data = await fetchAll()
+  const capabilities = await getMentionCapabilities()
   const q = query.trim().toLowerCase()
-  return CATEGORY_META.map((cat) => {
-    const items = data[cat.type === 'connector' ? 'connectors' : (`${cat.type}s` as keyof CachedData)]
+  return CATEGORY_META.filter((cat) => {
+    switch (cat.type) {
+      case 'file':
+        return capabilities.files
+      case 'connector':
+        return capabilities.integrations
+      case 'automation':
+        return capabilities.automations
+      case 'skill':
+        return capabilities.skills
+      case 'mcp':
+        return capabilities.mcpServers
+      case 'chat':
+        return capabilities.chat
+    }
+  }).map((cat) => {
+    const items = data[mentionListKey(cat.type)]
     const filtered = q
       ? items
           .filter(
@@ -156,4 +279,8 @@ export async function searchMentions(query: string): Promise<MentionCategory[]> 
       items: filtered.slice(0, 10),
     }
   }).filter((cat) => cat.items.length > 0)
+}
+
+function mentionListKey(type: MentionType): MentionListKey {
+  return type === 'connector' ? 'connectors' : `${type}s` as MentionListKey
 }

@@ -6,10 +6,11 @@ import type { OverlaySidebarAction, OverlaySidebarActionKey } from '@overlay/app
 import { resolveNewChatModelFields } from '@/shared/chat/chat-model-prefs'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { dispatchChatCreated } from '@/shared/chat/chat-title'
-import { upsertCachedChat } from '@/shared/chat/chat-list-cache'
-import { createIdempotencyKey } from '@overlay/api-client'
+import { markNewEmptyChat, upsertCachedChat } from '@/shared/chat/chat-list-cache'
+import { createIdempotencyKey, toRequestInit } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { GateReason } from '@/components/providers/GuestGateProvider'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 
 export interface UseAppSidebarActionsOptions {
   user: object | null
@@ -47,6 +48,7 @@ export function useAppSidebarActions({
 }: UseAppSidebarActionsOptions) {
   const router = useRouter()
   const { settings } = useAppSettings()
+  const { appDataCapabilities } = useOverlayCapabilities()
 
   const createChat = useCallback(async () => {
     if (!user) {
@@ -74,16 +76,31 @@ export function useAppSidebarActions({
       conversation?: { _id: string; title: string; lastModified: number }
     }
     if (!data.id) return false
-    const chat = data.conversation ?? { _id: data.id, title: 'New Chat', lastModified: 0 }
+    const chat = {
+      ...(data.conversation ?? { _id: data.id, title: 'New Chat', lastModified: 0 }),
+      askModelIds: models.askModelIds,
+      actModelId: models.actModelId,
+      lastMode: models.lastMode,
+    }
     upsertCachedChat(chat)
+    markNewEmptyChat(chat)
     dispatchChatCreated({ chat })
     onChatCreated()
     onCloseMobileMenu()
-    router.push(`/app/chat?id=${encodeURIComponent(data.id)}`)
+    const href = `/app/chat?id=${encodeURIComponent(data.id)}`
+    if (pathname === '/app/chat') {
+      window.history.pushState(null, '', href)
+      window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
+        detail: { chatId: data.id },
+      }))
+    } else {
+      router.push(href)
+    }
     return true
   }, [
     onChatCreated,
     onCloseMobileMenu,
+    pathname,
     requireAuth,
     router,
     isFreeTier,
@@ -108,6 +125,49 @@ export function useAppSidebarActions({
       requireAuth('nav')
       return false
     }
+    const idempotencyKey = createIdempotencyKey()
+    if (appDataCapabilities.provider === 'postgres') {
+      const res = await overlayAppClient.notes.createResponse(
+        {
+          title: 'Untitled',
+          content: '',
+        },
+        toRequestInit({ idempotencyKey }),
+      )
+      if (!res.ok) return false
+      const data = await res.json() as {
+        id?: string
+        note?: {
+          _id: string
+          title?: string
+          content?: string
+          tags?: string[]
+          createdAt?: number
+          updatedAt?: number
+          projectId?: string
+        }
+      }
+      if (!data.id) return false
+      const note = data.note
+      const updatedAt = note?.updatedAt ?? note?.createdAt ?? Number.MAX_SAFE_INTEGER
+      window.dispatchEvent(new CustomEvent('overlay:notes-changed', {
+        detail: {
+          note: {
+            _id: data.id,
+            title: note?.title || 'Untitled',
+            content: note?.content ?? '',
+            tags: note?.tags ?? [],
+            projectId: note?.projectId,
+            createdAt: note?.createdAt ?? updatedAt,
+            updatedAt,
+          },
+        },
+      }))
+      onCloseMobileMenu()
+      router.push(`/app/notes?id=${encodeURIComponent(data.id)}`)
+      return true
+    }
+
     const parentId = pathname.startsWith('/app/files') ? searchParams.get('folder') : null
     const res = await overlayAppClient.files.createResponse(
       {
@@ -116,7 +176,7 @@ export function useAppSidebarActions({
         textContent: '',
         parentId,
       },
-      { idempotencyKey: createIdempotencyKey() },
+      { idempotencyKey },
     )
     if (!res.ok) return false
     const data = await res.json() as {
@@ -149,7 +209,7 @@ export function useAppSidebarActions({
     onCloseMobileMenu()
     router.push(`/app/notes?id=${encodeURIComponent(data.id)}`)
     return true
-  }, [onCloseMobileMenu, pathname, requireAuth, router, searchParams, user])
+  }, [appDataCapabilities.provider, onCloseMobileMenu, pathname, requireAuth, router, searchParams, user])
 
   const createProject = useCallback(async () => {
     if (!user) {

@@ -15,6 +15,13 @@ const constants: ActInstructionConstants = {
 
 function buildInstructions(overrides: Partial<Parameters<typeof buildActAgentInstructions>[0]> = {}) {
   return buildActAgentInstructions({
+    availableToolIds: [
+      'interactive_browser_session',
+      'parallel_search',
+      'perplexity_search',
+      'run_daytona_sandbox',
+      'save_memory',
+    ],
     autoRetrieval: '\nAUTO_RETRIEVAL',
     constants,
     docContextText: 'DOC_CONTEXT',
@@ -66,6 +73,7 @@ test('buildActAgentInstructions preserves execution, compare-slot, and free-tier
   assert.match(compareSlot, /Composio and other third-party account action tools are not in your tool set/)
 
   const freeWithDocContext = buildInstructions({
+    availableToolIds: ['save_memory', 'search_knowledge'],
     effectiveModelId: FREE_TIER_DEFAULT_MODEL_ID,
     hasPreloadedDocContext: true,
     paid: false,
@@ -75,4 +83,18 @@ test('buildActAgentInstructions preserves execution, compare-slot, and free-tier
   assert.match(freeWithDocContext, /attached documents whose full content is provided above/)
   assert.match(freeWithDocContext, /inside ` thinking\.\.\.` tags/)
   assert.match(freeWithDocContext, /close with ` ` BEFORE/)
+})
+
+test('buildActAgentInstructions does not advertise tools when none are registered', () => {
+  const instructions = buildInstructions({
+    availableToolIds: [],
+    requestedToolIds: ['memory'],
+  })
+
+  assert.match(instructions, /^You are Overlay’s assistant\./)
+  assert.match(instructions, /No callable tools are registered for this turn/)
+  assert.match(instructions, /No knowledge or memory tools are callable in this turn/)
+  assert.doesNotMatch(instructions, /You also have an interactive_browser_session tool/)
+  assert.doesNotMatch(instructions, /You also have a run_daytona_sandbox tool/)
+  assert.doesNotMatch(instructions, /PAID_REALITY/)
 })

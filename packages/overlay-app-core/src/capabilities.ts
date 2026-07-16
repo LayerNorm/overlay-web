@@ -4,6 +4,9 @@ export interface CapabilityCheck {
   memory: boolean
   knowledge: boolean
   integrations: boolean
+  projects: boolean
+  skills: boolean
+  mcpServers: boolean
   browserUse: boolean
   sandboxes: boolean
   webSearch: boolean
@@ -27,6 +30,9 @@ export const DEFAULT_OVERLAY_CAPABILITIES: CapabilityCheck = {
   memory: true,
   knowledge: true,
   integrations: true,
+  projects: true,
+  skills: true,
+  mcpServers: true,
   browserUse: true,
   sandboxes: true,
   webSearch: true,
@@ -70,4 +76,12 @@ export function areOverlayCapabilitiesEnabled(
 ): boolean {
   if (!requiredCapabilities || requiredCapabilities.length === 0) return true
   return requiredCapabilities.every((capability) => capabilities[capability])
+}
+
+export function isAnyOverlayCapabilityEnabled(
+  capabilities: CapabilityCheck,
+  requiredAnyCapabilities: readonly OverlayCapability[] | undefined,
+): boolean {
+  if (!requiredAnyCapabilities || requiredAnyCapabilities.length === 0) return true
+  return requiredAnyCapabilities.some((capability) => capabilities[capability])
 }

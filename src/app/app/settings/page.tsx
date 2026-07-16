@@ -31,6 +31,8 @@ import {
 import { getExtensionComponent } from '@/extensions/registry'
 import dynamic from 'next/dynamic'
 import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
+import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
+import { ApiKeySettings } from '@/features/settings/components/ApiKeySettings'
 
 const MemoriesView = dynamic(
   () => import('@/features/knowledge/components/MemoriesView'),
@@ -48,13 +50,14 @@ const IMPLEMENTED_SECTION_IDS = new Set<string>([
   'customization',
   'memories',
   'models',
+  'webhooks',
   'contact',
 ])
 
 export default function SettingsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { capabilities } = useOverlayCapabilities()
+  const { capabilities, appDataCapabilities } = useOverlayCapabilities()
   const appShell = useMemo(
     () => resolveOverlayAppShellConfig(overlayAppConfig, { capabilities }),
     [capabilities],
@@ -276,6 +279,7 @@ export default function SettingsPage() {
                   />
                 </SettingsTopUpCard>
               ) : null}
+              {appDataCapabilities.supportsApiKeys ? <ApiKeySettings /> : null}
             </>
           )}
 
@@ -326,6 +330,8 @@ export default function SettingsPage() {
               onChange={(enabledChatModelIds) => void updateSettings({ enabledChatModelIds })}
             />
           )}
+
+          {!isLoading && section === 'webhooks' && <WebhookSettings />}
 
           {!isLoading && section === 'contact' && (
             <SettingsCard title="Contact">

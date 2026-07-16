@@ -249,3 +249,10 @@ export interface OutputQueryContract extends PaginationQueryContract {
 }
 
 export type DeleteOutputResponse = MutationSuccessResponse
+
+export interface OutputShareRequest {
+  outputId: string
+  visibility: 'private' | 'public'
+}
+
+export type OutputShareResponse = FileShareResponse

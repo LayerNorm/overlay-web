@@ -3,23 +3,47 @@ import 'server-only'
 import overlayAppConfig from '@/overlay.config'
 import { NoOpLLMGateway, OpenAILLMGateway, OpenRouterGateway } from '@/server/ai/providers'
 import { ApiKeyService } from '@/server/auth/api-keys'
+import { resolveBetterAuthConnectionSet } from '@/server/auth/connections'
+import { AdministrativeService, AuditService } from '@/server/admin'
 import {
-  KeycloakAuthProvider,
+  BetterAuthProvider,
   NoOpAuthProvider,
   OidcAuthProvider,
   WorkOSAuthProvider,
 } from '@/server/auth/providers'
-import { NoOpBillingProvider, StripeBillingProvider } from '@/server/billing/providers'
+import { NoOpBillingProvider } from '@/server/billing/providers/noop-billing-provider'
+import { StripeBillingProvider } from '@/server/billing/providers/stripe-billing-provider'
 import { getOverlayRuntimeConfigSync, OverlayConfigError } from '@/server/config'
-import { ConvexNoteRepository, type NoteRepository } from '@/server/notes'
-import { ConvexRateLimiter, InMemoryEventBus, InMemoryRateLimiter } from '@/server/shared/providers'
+import { ConvexRateLimiter } from '@/server/shared/providers/convex-rate-limiter'
+import { InMemoryEventBus } from '@/server/shared/providers/in-memory-event-bus'
+import { InMemoryRateLimiter } from '@/server/shared/providers/in-memory-rate-limiter'
 import {
-  ConvexVectorStore,
-  InMemoryVectorStore,
-  NoOpObjectStore,
-  R2ObjectStore,
-  S3CompatibleObjectStore,
-} from '@/server/storage/providers'
+  RedisRateLimiter,
+  TcpRedisRateLimitStore,
+  UpstashRedisRateLimitStore,
+} from '@/server/shared/providers/redis-rate-limiter'
+import { ConvexVectorStore } from '@/server/storage/providers/convex-vector-store'
+import { InMemoryVectorStore } from '@/server/storage/providers/in-memory-vector-store'
+import { NoOpObjectStore } from '@/server/storage/providers/noop-object-store'
+import { R2ObjectStore } from '@/server/storage/providers/r2-object-store'
+import { S3CompatibleObjectStore } from '@/server/storage/providers/s3-compatible-object-store'
+import type { AppDataCapabilities } from '@/server/app-data/capabilities'
+import { createAppDataContext, type AppDataContext } from '@/server/app-data/repositories'
+import { createActUsagePolicy, type ActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
+import {
+  createGenerationUsagePolicy,
+  type GenerationUsagePolicy,
+} from '@/server/outputs/GenerationUsagePolicy'
+import { UserService, type UserAuthProvider } from '@/server/users'
+import type { NoteRepository } from '@/server/notes'
+import { MemoryService } from '@/server/memory'
+import {
+  KnowledgeSearchService,
+  PostgresKnowledgeSearchRepository,
+  UnavailableKnowledgeSearchRepository,
+  createEmbeddingProvider,
+} from '@/server/knowledge'
+import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -38,8 +62,17 @@ import type {
 import { deriveOverlayCapabilities as resolveOverlayCapabilities } from '@overlay/app-core'
 
 export interface OverlayServerContext extends OverlayProviderContext {
+  appData: AppDataContext
+  appDataCapabilities: AppDataCapabilities
+  administrativeService: AdministrativeService
+  auditService: AuditService
+  chatUsagePolicy: ActUsagePolicy
+  generationUsagePolicy: GenerationUsagePolicy
+  memoryService: MemoryService
+  knowledgeSearchService: KnowledgeSearchService
   noteRepository: NoteRepository
-  apiKeyService: typeof ApiKeyService
+  apiKeyService: ApiKeyService
+  userService: UserService
 }
 
 export interface CreateOverlayServerContextOptions {
@@ -63,18 +96,73 @@ export function createOverlayServerContext(
   if (runtimeConfig) {
     assertSelectedProviderConfig(runtimeConfig)
   }
+  const appData = createAppDataContext(runtimeConfig)
+  const chatUsagePolicy = createActUsagePolicy({
+    appDataProvider: appData.capabilities.provider,
+    repository: appData.repositories.conversations,
+    usageRepository: appData.repositories.usage,
+    runtimeConfig,
+  })
+  const generationUsagePolicy = createGenerationUsagePolicy({
+    appDataProvider: appData.capabilities.provider,
+    repository: appData.repositories.conversations,
+    usageRepository: appData.repositories.usage,
+    runtimeConfig,
+    unlimitedEntitlements: chatUsagePolicy,
+  })
+  const userService = new UserService({
+    authProvider: selectedAuthProviderForUserService(runtimeConfig),
+    repository: appData.repositories.users,
+  })
+  const memoryService = new MemoryService(appData.repositories.memories)
+  const auditService = new AuditService(appData.repositories.audit)
+  const administrativeService = new AdministrativeService({
+    audit: auditService,
+    repository: appData.repositories.administration,
+  })
+  const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
 
   return {
-    auth: appConfig.authProvider ?? createAuthProvider(runtimeConfig),
-    billing: appConfig.billingProvider ?? createBillingProvider(runtimeConfig),
-    objectStore: appConfig.objectStore ?? createObjectStore(runtimeConfig),
+    auth: appConfig.authProvider ?? createAuthProvider(runtimeConfig, userService),
+    billing: appConfig.billingProvider ?? createBillingProvider(
+      runtimeConfig,
+      appData.repositories.billing,
+      appData.repositories.usage,
+    ),
+    objectStore: appConfig.objectStore ?? createObjectStoreForRuntime(runtimeConfig),
     vectorStore: appConfig.vectorStore ?? createVectorStore(runtimeConfig),
     llmGateway: appConfig.llmGateway ?? createLlmGateway(runtimeConfig),
     rateLimiter: appConfig.rateLimiter ?? createRateLimiter(runtimeConfig),
     eventBus: appConfig.eventBus ?? new InMemoryEventBus(),
-    noteRepository: new ConvexNoteRepository(),
-    apiKeyService: ApiKeyService,
+    appData,
+    appDataCapabilities: appData.capabilities,
+    administrativeService,
+    auditService,
+    chatUsagePolicy,
+    generationUsagePolicy,
+    memoryService,
+    knowledgeSearchService,
+    noteRepository: appData.repositories.notes,
+    apiKeyService: new ApiKeyService(appData.repositories.apiKeys),
+    userService,
   }
+}
+
+function createKnowledgeSearchService(
+  appData: AppDataContext,
+  runtimeConfig: OverlayRuntimeConfig | null,
+): KnowledgeSearchService {
+  if (appData.capabilities.provider !== 'postgres') {
+    return new KnowledgeSearchService(new ConvexKnowledgeSearchRepository())
+  }
+  if (!runtimeConfig || !appData.capabilities.supportsVectorSearch) {
+    return new KnowledgeSearchService(new UnavailableKnowledgeSearchRepository())
+  }
+  if (!appData.postgres) throw new Error('Postgres knowledge search requires a database context')
+  return new KnowledgeSearchService(new PostgresKnowledgeSearchRepository({
+    db: appData.postgres.db,
+    embeddings: createEmbeddingProvider(runtimeConfig),
+  }))
 }
 
 let defaultServerContext: OverlayServerContext | null = null
@@ -108,7 +196,7 @@ function normalizeCreateContextInput(
   return { appConfig, runtimeConfig: getOverlayRuntimeConfigSync() }
 }
 
-function createAuthProvider(config: OverlayRuntimeConfig | null): AuthProvider {
+function createAuthProvider(config: OverlayRuntimeConfig | null, userService: UserService): AuthProvider {
   if (!config) return new WorkOSAuthProvider()
 
   switch (selectedProvider(config, 'auth', config.auth.provider)) {
@@ -117,10 +205,10 @@ function createAuthProvider(config: OverlayRuntimeConfig | null): AuthProvider {
         ...config.auth.workos,
         allowDevFallbacks: config.auth.allowDevFallbacks,
       })
+    case 'better-auth':
+      return new BetterAuthProvider({ runtimeConfig: config, userService })
     case 'oidc':
       return new OidcAuthProvider(config.auth.oidc)
-    case 'keycloak':
-      return new KeycloakAuthProvider(config.auth.keycloak)
     case 'none':
       return new NoOpAuthProvider()
   }
@@ -129,7 +217,25 @@ function createAuthProvider(config: OverlayRuntimeConfig | null): AuthProvider {
   ])
 }
 
-function createBillingProvider(config: OverlayRuntimeConfig | null): BillingProvider {
+function selectedAuthProviderForUserService(config: OverlayRuntimeConfig | null): UserAuthProvider {
+  const provider = config
+    ? selectedProvider(config, 'auth', config.auth.provider)
+    : 'workos'
+  switch (provider) {
+    case 'workos':
+    case 'better-auth':
+    case 'oidc':
+    case 'none':
+      return provider
+  }
+  return 'none'
+}
+
+function createBillingProvider(
+  config: OverlayRuntimeConfig | null,
+  repository: AppDataContext['repositories']['billing'],
+  usageRepository: AppDataContext['repositories']['usage'],
+): BillingProvider {
   if (!config) return new StripeBillingProvider()
   if (!runtimeCapabilities(config).billing) return new NoOpBillingProvider()
 
@@ -138,6 +244,8 @@ function createBillingProvider(config: OverlayRuntimeConfig | null): BillingProv
       return new StripeBillingProvider({
         ...config.billing.stripe,
         baseUrl: config.app.baseUrl,
+        repository,
+        usageRepository,
       })
     case 'none':
       return new NoOpBillingProvider()
@@ -147,7 +255,7 @@ function createBillingProvider(config: OverlayRuntimeConfig | null): BillingProv
   ])
 }
 
-function createObjectStore(config: OverlayRuntimeConfig | null): ObjectStore {
+export function createObjectStoreForRuntime(config: OverlayRuntimeConfig | null): ObjectStore {
   if (!config) return new R2ObjectStore()
 
   const storageProvider = selectedProvider(config, 'objectStorage', config.storage.provider)
@@ -163,6 +271,7 @@ function createObjectStore(config: OverlayRuntimeConfig | null): ObjectStore {
         accessKeyId: config.storage.s3.accessKeyId ?? '',
         secretAccessKey: config.storage.s3.secretAccessKey ?? '',
         forcePathStyle: config.storage.s3.forcePathStyle,
+        presignTtlSeconds: config.storage.s3.presignTtlSeconds,
       })
     case 'none':
       return new NoOpObjectStore()
@@ -234,6 +343,29 @@ function createRateLimiter(config: OverlayRuntimeConfig | null): RateLimiter {
   if (provider === 'memory' || provider === 'none') {
     return new InMemoryRateLimiter()
   }
+  if (provider === 'redis') {
+    const redis = config?.rateLimit.redis
+    if (!redis) {
+      throw new OverlayConfigError('Overlay provider configuration is invalid', [
+        'rateLimit.redis configuration is required when rateLimit.provider is redis',
+      ])
+    }
+    const prefix = redis.keyPrefix ?? 'overlay:rate-limit:'
+    const store = redis.url
+      ? new TcpRedisRateLimitStore(redis.url, prefix)
+      : redis.restUrl && redis.restToken
+        ? new UpstashRedisRateLimitStore(redis.restUrl, redis.restToken, prefix)
+        : null
+    if (!store) {
+      throw new OverlayConfigError('Overlay provider configuration is invalid', [
+        'Redis rate limiting requires a TCP URL or REST URL/token pair',
+      ])
+    }
+    return new RedisRateLimiter({
+      failureMode: redis.failureMode,
+      store,
+    })
+  }
   return new ConvexRateLimiter()
 }
 
@@ -242,6 +374,7 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
   const capabilities = runtimeCapabilities(config)
   const authProvider = selectedProvider(config, 'auth', config.auth.provider)
   const storageProvider = selectedProvider(config, 'objectStorage', config.storage.provider)
+  const databaseProvider = selectedProvider(config, 'database', config.database.provider)
   const modelProvider = selectedProvider(config, 'models', config.llm.gatewayProvider)
   const vectorSearchProvider = selectedProvider(config, 'vectorSearch', capabilities.vectorSearch ? 'convex' : 'none')
   const rateLimitProvider = selectedProvider(config, 'rateLimit', config.app.deploymentEnvironment === 'onprem' ? 'memory' : 'convex')
@@ -258,12 +391,19 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
     if (!config.auth.oidc.issuerUrl) issues.push('auth.oidc.issuerUrl is required when auth.provider is oidc')
     if (!config.auth.oidc.clientId) issues.push('auth.oidc.clientId is required when auth.provider is oidc')
   }
-  if (authProvider === 'keycloak') {
-    if (!config.auth.keycloak.issuerUrl) {
-      issues.push('auth.keycloak.issuerUrl is required when auth.provider is keycloak')
-    }
-    if (!config.auth.keycloak.clientId) {
-      issues.push('auth.keycloak.clientId is required when auth.provider is keycloak')
+  if (authProvider === 'better-auth') {
+    if (!config.auth.betterAuth.secret) issues.push('auth.betterAuth.secret is required when auth.provider is better-auth')
+    if (!config.auth.betterAuth.databaseUrl) issues.push('auth.betterAuth.databaseUrl is required when auth.provider is better-auth')
+    try {
+      const connectionSet = resolveBetterAuthConnectionSet(config.auth.betterAuth)
+      if (connectionSet.connections.length === 0) {
+        issues.push('At least one Better Auth SSO connection is required')
+      }
+      if (connectionSet.accessPolicy.allowedEmailDomains.length === 0) {
+        issues.push('Better Auth requires at least one allowed email domain')
+      }
+    } catch (error) {
+      issues.push(error instanceof Error ? error.message : 'Better Auth connection configuration is invalid')
     }
   }
   if (capabilities.billing && config.billing.provider === 'stripe' && !config.billing.stripe.secretKey) {
@@ -288,14 +428,25 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
   if (capabilities.modelRouting && modelProvider !== 'none' && config.llm.keySource === 'config') {
     issues.push('llm.keySource=config is reserved until encrypted runtime config secrets are implemented')
   }
-  if (config.database.provider === 'postgres' || selectedProvider(config, 'database', config.database.provider) === 'postgres') {
-    issues.push('database.provider=postgres is declared but not implemented. Use convex until repository adapters exist.')
+  if (databaseProvider === 'postgres') {
+    if (!config.database.postgres.connectionString) {
+      issues.push('database.postgres.connectionString is required when database.provider is postgres')
+    }
   }
-  if (vectorSearchProvider !== 'convex' && vectorSearchProvider !== 'none') {
-    issues.push(`providers.vectorSearch.provider=${vectorSearchProvider} is declared but not implemented. Use convex or none.`)
+  if (vectorSearchProvider === 'pgvector' && databaseProvider !== 'postgres') {
+    issues.push('providers.vectorSearch.provider=pgvector requires database.provider=postgres')
+  } else if (
+    vectorSearchProvider !== 'convex' &&
+    vectorSearchProvider !== 'pgvector' &&
+    vectorSearchProvider !== 'none'
+  ) {
+    issues.push(`providers.vectorSearch.provider=${vectorSearchProvider} is declared but not implemented. Use convex, pgvector, or none.`)
   }
   if (rateLimitProvider === 'redis') {
-    issues.push('providers.rateLimit.provider=redis is declared but not wired. Use convex, memory, or none.')
+    const redis = config.rateLimit.redis
+    if (!redis.url && !(redis.restUrl && redis.restToken)) {
+      issues.push('rateLimit.redis requires a TCP URL or REST URL/token pair')
+    }
   }
 
   if (issues.length > 0) {

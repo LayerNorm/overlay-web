@@ -9,7 +9,13 @@ export const OverlayDeploymentEnvironmentSchema = z.enum([
   'onprem',
 ])
 
-export const OverlayAuthProviderSchema = z.enum(['workos', 'oidc', 'keycloak', 'none'])
+export const OverlayAuthProviderSchema = z.enum(['workos', 'better-auth', 'oidc', 'none'])
+export const OverlayBetterAuthConnectionPresetSchema = z.enum([
+  'google-workspace',
+  'auth0',
+  'entra-id',
+  'generic-oidc',
+])
 export const OverlayBillingProviderSchema = z.enum(['stripe', 'none'])
 export const OverlayStorageProviderSchema = z.enum(['r2', 's3', 'none'])
 export const OverlayLlmGatewayProviderSchema = z.enum([
@@ -39,7 +45,7 @@ export const OverlayComplianceProfileSchema = z.enum([
 export const OverlayDatabaseProviderSchema = z.enum(['convex', 'postgres'])
 export const OverlayVectorSearchProviderSchema = z.enum(['convex', 'pgvector', 'pinecone', 'none'])
 export const OverlayEmbeddingsProviderSchema = z.enum(['ai-gateway', 'openai', 'azure-openai', 'none'])
-export const OverlayIntegrationsProviderSchema = z.enum(['composio', 'mcp', 'none'])
+export const OverlayIntegrationsProviderSchema = z.enum(['composio', 'executor', 'mcp', 'none'])
 export const OverlayBrowserProviderSchema = z.enum(['browser-use', 'self-hosted-playwright', 'none'])
 export const OverlaySandboxProviderSchema = z.enum(['daytona', 'e2b', 'local-firecracker', 'none'])
 export const OverlayWebSearchProviderSchema = z.enum(['ai-gateway', 'perplexity', 'tavily', 'none'])
@@ -47,6 +53,7 @@ export const OverlayAnalyticsProviderSchema = z.enum(['posthog', 'none'])
 export const OverlayErrorReportingProviderSchema = z.enum(['sentry', 'none'])
 export const OverlaySecretsProviderSchema = z.enum(['env', 'workos-vault', 'aws-secrets-manager', 'vault', 'none'])
 export const OverlayRateLimitProviderSchema = z.enum(['convex', 'redis', 'memory', 'none'])
+export const OverlayRateLimitFailureModeSchema = z.enum(['deny', 'memory'])
 
 const OverlayFeatureFlagsSchema = z
   .object({
@@ -56,6 +63,9 @@ const OverlayFeatureFlagsSchema = z
     knowledge: z.boolean().optional(),
     automations: z.boolean().optional(),
     integrations: z.boolean().optional(),
+    projects: z.boolean().optional(),
+    skills: z.boolean().optional(),
+    mcpServers: z.boolean().optional(),
     browserUse: z.boolean().optional(),
     sandboxes: z.boolean().optional(),
     webSearch: z.boolean().optional(),
@@ -87,6 +97,7 @@ const OverlayComplianceSchema = z
       .object({
         chatDays: z.number().int().positive().optional(),
         fileDays: z.number().int().positive().optional(),
+        memoryDays: z.number().int().positive().optional(),
         logsDays: z.number().int().positive().optional(),
         sandboxArtifactDays: z.number().int().positive().optional(),
         deletedUserPurgeDays: z.number().int().positive().optional(),
@@ -119,6 +130,126 @@ const SecretLikePublicValuePattern =
 
 const OptionalStringSchema = z.string().trim().min(1).optional()
 const OptionalUrlSchema = z.string().trim().url().optional()
+const EnvironmentVariableNameSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Z_][A-Z0-9_]*$/, 'Must be a valid environment variable name')
+const BetterAuthConnectionIdSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/,
+    'Connection id must be a lowercase, URL-safe slug of at most 63 characters',
+  )
+const EmailDomainSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(
+    /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/,
+    'Must be a bare email domain such as example.com',
+  )
+
+export const OverlayBetterAuthConnectionSchema = z
+  .object({
+    id: BetterAuthConnectionIdSchema,
+    protocol: z.literal('oidc').default('oidc'),
+    preset: OverlayBetterAuthConnectionPresetSchema,
+    label: OptionalStringSchema,
+    domains: z.array(EmailDomainSchema).min(1),
+    issuerUrl: OptionalUrlSchema,
+    discoveryEndpoint: OptionalUrlSchema,
+    tenantId: OptionalStringSchema,
+    clientId: OptionalStringSchema,
+    clientSecret: OptionalStringSchema,
+    clientIdEnv: EnvironmentVariableNameSchema.optional(),
+    clientSecretEnv: EnvironmentVariableNameSchema.optional(),
+  })
+  .strict()
+  .superRefine((connection, ctx) => {
+    validateCredentialSource(ctx, connection, 'clientId', 'clientIdEnv')
+    validateCredentialSource(ctx, connection, 'clientSecret', 'clientSecretEnv')
+
+    if (connection.preset === 'google-workspace') {
+      if (connection.issuerUrl && connection.issuerUrl !== 'https://accounts.google.com') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['issuerUrl'],
+          message: 'google-workspace uses the fixed issuer https://accounts.google.com',
+        })
+      }
+      if (connection.tenantId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['tenantId'],
+          message: 'tenantId is only supported by the entra-id preset',
+        })
+      }
+    }
+
+    if (connection.preset === 'auth0' || connection.preset === 'generic-oidc') {
+      if (!connection.issuerUrl) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['issuerUrl'],
+          message: `${connection.preset} requires issuerUrl`,
+        })
+      }
+      if (connection.tenantId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['tenantId'],
+          message: 'tenantId is only supported by the entra-id preset',
+        })
+      }
+    }
+
+    if (connection.preset === 'entra-id') {
+      if (!connection.tenantId && !connection.issuerUrl) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['tenantId'],
+          message: 'entra-id requires tenantId or a tenant-specific issuerUrl',
+        })
+      }
+      const tenant = connection.tenantId?.toLowerCase()
+      if (connection.tenantId && !/^[a-z0-9.-]+$/i.test(connection.tenantId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['tenantId'],
+          message: 'entra-id tenantId must be a tenant GUID or verified tenant domain',
+        })
+      }
+      if (tenant && ['common', 'consumers', 'organizations'].includes(tenant)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['tenantId'],
+          message: 'entra-id requires a tenant-specific identifier for enterprise access',
+        })
+      }
+      if (connection.issuerUrl && isSharedMicrosoftIssuer(connection.issuerUrl)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['issuerUrl'],
+          message: 'entra-id requires a tenant-specific issuer for enterprise access',
+        })
+      }
+      if (connection.issuerUrl && !isMicrosoftEntraIssuer(connection.issuerUrl)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['issuerUrl'],
+          message: 'entra-id issuerUrl must use a tenant-specific login.microsoftonline.com issuer',
+        })
+      }
+    }
+  })
+
+export const OverlayBetterAuthAccessPolicySchema = z
+  .object({
+    requireVerifiedEmail: z.boolean().default(true),
+    allowedEmailDomains: z.array(EmailDomainSchema).default([]),
+  })
+  .strict()
 
 export const OverlayRuntimeConfigSchema = z
   .object({
@@ -153,12 +284,24 @@ export const OverlayRuntimeConfigSchema = z
           audience: OptionalStringSchema,
         })
         .default({}),
-      keycloak: z
+      betterAuth: z
         .object({
-          issuerUrl: OptionalUrlSchema,
-          clientId: OptionalStringSchema,
-          clientSecret: OptionalStringSchema,
-          realm: OptionalStringSchema,
+          baseUrl: OptionalUrlSchema,
+          basePath: OptionalStringSchema,
+          secret: OptionalStringSchema,
+          databaseUrl: OptionalStringSchema,
+          trustedOrigins: z.array(z.string().trim().url()).default([]),
+          defaultSsoProviderId: OptionalStringSchema,
+          defaultSsoDomain: OptionalStringSchema,
+          oidcIssuerUrl: OptionalUrlSchema,
+          oidcDiscoveryEndpoint: OptionalUrlSchema,
+          oidcClientId: OptionalStringSchema,
+          oidcClientSecret: OptionalStringSchema,
+          jwtIssuer: OptionalUrlSchema,
+          jwtAudience: OptionalStringSchema,
+          jwksUrl: OptionalUrlSchema,
+          connections: z.array(OverlayBetterAuthConnectionSchema).default([]),
+          accessPolicy: OverlayBetterAuthAccessPolicySchema.default({}),
         })
         .default({}),
     }),
@@ -197,6 +340,7 @@ export const OverlayRuntimeConfigSchema = z
           accessKeyId: OptionalStringSchema,
           secretAccessKey: OptionalStringSchema,
           forcePathStyle: z.boolean().optional(),
+          presignTtlSeconds: z.number().int().positive().max(900).optional(),
         })
         .default({}),
     }),
@@ -207,6 +351,20 @@ export const OverlayRuntimeConfigSchema = z
       modelAllowlist: z.array(z.string().trim().min(1)).default([]),
       apiKeyEnvVar: OptionalStringSchema,
     }),
+    integrations: z
+      .object({
+        executor: z
+          .object({
+            apiBaseUrl: OptionalUrlSchema,
+            webBaseUrl: OptionalUrlSchema,
+            mcpUrl: OptionalUrlSchema,
+            apiKey: OptionalStringSchema,
+            connectionOwner: z.enum(['org', 'user']).default('org'),
+            requestTimeoutMs: z.number().int().positive().max(120_000).default(30_000),
+          })
+          .default({}),
+      })
+      .default({}),
     database: z.object({
       provider: OverlayDatabaseProviderSchema.default('convex'),
       convexUrl: OptionalUrlSchema,
@@ -218,9 +376,23 @@ export const OverlayRuntimeConfigSchema = z
         .object({
           connectionString: OptionalStringSchema,
           sslMode: OptionalStringSchema,
+          backgroundRuntimeEnabled: z.boolean().default(false),
         })
         .default({}),
     }),
+    rateLimit: z
+      .object({
+        redis: z
+          .object({
+            url: OptionalStringSchema,
+            restUrl: OptionalUrlSchema,
+            restToken: OptionalStringSchema,
+            keyPrefix: OptionalStringSchema,
+            failureMode: OverlayRateLimitFailureModeSchema.default('deny'),
+          })
+          .default({}),
+      })
+      .default({}),
     capabilities: z.object({
       billing: z.boolean().default(true),
       sso: z.boolean().default(true),
@@ -228,6 +400,9 @@ export const OverlayRuntimeConfigSchema = z
       webhooks: z.boolean().default(false),
       vectorSearch: z.boolean().default(true),
       automations: z.boolean().default(true),
+      projects: z.boolean().default(true),
+      skills: z.boolean().default(true),
+      mcpServers: z.boolean().default(true),
       multiTenant: z.boolean().default(false),
     }),
   })
@@ -271,19 +446,77 @@ export const OverlayRuntimeConfigSchema = z
       }
     }
 
-    addUnsupportedProviderIssue(ctx, ['database', 'provider'], selectedProviders.database, {
-      postgres: 'Postgres is declared for enterprise config v2 but repository adapters are not implemented. Use database.provider=convex until the database migration is planned.',
-    })
+    if (selectedProviders.database === 'postgres' && !config.database.postgres.connectionString) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['database', 'postgres', 'connectionString'],
+        message: 'database.postgres.connectionString is required when database.provider is postgres',
+      })
+    }
+    if (
+      selectedProviders.database === 'postgres' &&
+      effectiveCapabilities.vectorSearch &&
+      selectedProviders.vectorSearch !== 'pgvector'
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['capabilities', 'vectorSearch'],
+        message: 'Postgres vectorSearch requires providers.vectorSearch.provider=pgvector',
+      })
+    }
+    if (
+      selectedProviders.database === 'postgres' &&
+      selectedProviders.vectorSearch !== 'none' &&
+      selectedProviders.vectorSearch !== 'pgvector'
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['providers', 'vectorSearch', 'provider'],
+        message: 'Postgres vector search supports pgvector or none',
+      })
+    }
+    if (
+      selectedProviders.vectorSearch === 'pgvector' &&
+      selectedProviders.database !== 'postgres'
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['providers', 'vectorSearch', 'provider'],
+        message: 'pgvector requires providers.database.provider=postgres',
+      })
+    }
     addUnsupportedProviderIssue(ctx, ['providers', 'vectorSearch', 'provider'], selectedProviders.vectorSearch, {
-      pgvector: 'pgvector is declared for enterprise config v2 but vector repository adapters are not implemented. Use vectorSearch.provider=convex or none.',
       pinecone: 'Pinecone is declared for enterprise config v2 but no Pinecone adapter exists yet. Use vectorSearch.provider=convex or none.',
     })
     addUnsupportedProviderIssue(ctx, ['providers', 'embeddings', 'provider'], selectedProviders.embeddings, {
       'azure-openai': 'Azure OpenAI embeddings are declared for enterprise config v2 but no embeddings adapter exists yet. Use embeddings.provider=ai-gateway, openai, or none.',
     })
+    if (effectiveCapabilities.vectorSearch && selectedProviders.embeddings === 'none') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['providers', 'embeddings', 'provider'],
+        message: 'An embeddings provider is required when vectorSearch capability is enabled',
+      })
+    }
     addUnsupportedProviderIssue(ctx, ['providers', 'integrations', 'provider'], selectedProviders.integrations, {
       mcp: 'MCP integration-provider bootstrap is declared but not implemented. Use integrations.provider=composio or none.',
     })
+    if (selectedProviders.integrations === 'executor') {
+      const executor = config.integrations.executor
+      for (const [key, value] of [
+        ['apiBaseUrl', executor.apiBaseUrl],
+        ['webBaseUrl', executor.webBaseUrl],
+        ['apiKey', executor.apiKey],
+      ] as const) {
+        if (!value) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['integrations', 'executor', key],
+            message: `integrations.executor.${key} is required when integrations.provider is executor`,
+          })
+        }
+      }
+    }
     addUnsupportedProviderIssue(ctx, ['providers', 'browser', 'provider'], selectedProviders.browser, {
       'self-hosted-playwright': 'Self-hosted Playwright is declared for enterprise config v2 but the browser adapter is not implemented. Use browser.provider=browser-use or none.',
     })
@@ -299,9 +532,35 @@ export const OverlayRuntimeConfigSchema = z
       'aws-secrets-manager': 'AWS Secrets Manager is declared but not implemented for runtime secret loading. Use secrets.provider=env or workos-vault.',
       vault: 'HashiCorp Vault is declared but not implemented for runtime secret loading. Use secrets.provider=env or workos-vault.',
     })
-    addUnsupportedProviderIssue(ctx, ['providers', 'rateLimit', 'provider'], selectedProviders.rateLimit, {
-      redis: 'Redis rate limiting is declared but not wired through enterprise config yet. Use rateLimit.provider=convex, memory, or none.',
-    })
+    if (selectedProviders.rateLimit === 'redis') {
+      const redis = config.rateLimit.redis
+      const hasTcp = Boolean(redis.url)
+      const hasRest = Boolean(redis.restUrl && redis.restToken)
+      if (!hasTcp && !hasRest) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rateLimit', 'redis'],
+          message: 'Redis rate limiting requires REDIS_URL/OVERLAY_REDIS_URL or both UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN',
+        })
+      }
+      if (Boolean(redis.restUrl) !== Boolean(redis.restToken)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rateLimit', 'redis'],
+          message: 'Redis REST rate limiting requires both restUrl and restToken',
+        })
+      }
+      if (
+        ['production', 'onprem'].includes(config.app.deploymentEnvironment) &&
+        redis.failureMode !== 'deny'
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rateLimit', 'redis', 'failureMode'],
+          message: 'Production and on-prem Redis rate limiting must use failureMode=deny',
+        })
+      }
+    }
 
     if (config.preset === 'dpdp-strict' && config.compliance.profile !== 'dpdp-strict') {
       ctx.addIssue({
@@ -365,11 +624,34 @@ export const OverlayRuntimeConfigSchema = z
       })
     }
 
-    if (usesProductionConvex(config.database) && usesDevWorkOsConfig(config.auth.workos)) {
+    if (selectedProviders.database === 'convex' && usesProductionConvex(config.database) && usesDevWorkOsConfig(config.auth.workos)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['auth', 'workos'],
         message: 'Production Convex must not be paired with DEV_WORKOS_* credentials',
+      })
+    }
+
+    const betterAuthConnectionIds = new Set<string>()
+    config.auth.betterAuth.connections.forEach((connection, index) => {
+      if (betterAuthConnectionIds.has(connection.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['auth', 'betterAuth', 'connections', index, 'id'],
+          message: `Duplicate Better Auth connection id: ${connection.id}`,
+        })
+      }
+      betterAuthConnectionIds.add(connection.id)
+    })
+    if (
+      config.auth.betterAuth.connections.length > 0 &&
+      hasLegacyBetterAuthConnection(config.auth.betterAuth)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['auth', 'betterAuth', 'connections'],
+        message:
+          'Configure auth.betterAuth.connections or legacy BETTER_AUTH_DEFAULT_SSO_*/BETTER_AUTH_OIDC_* fields, not both',
       })
     }
 
@@ -413,11 +695,18 @@ export const OverlayRuntimeConfigSchema = z
           })
         }
       }
-      if (!config.database.convexUrl || !usesProductionConvex(config.database)) {
+      if (selectedProviders.database === 'convex' && (!config.database.convexUrl || !usesProductionConvex(config.database))) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['database', 'convexUrl'],
           message: 'Production requires the production Convex deployment URL',
+        })
+      }
+      if (selectedProviders.database === 'postgres' && !config.database.postgres.connectionString) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['database', 'postgres', 'connectionString'],
+          message: 'Production Postgres database provider requires database.postgres.connectionString',
         })
       }
       if (!config.database.internalApiSecret || !config.database.internalServiceAuthSecret) {
@@ -444,6 +733,15 @@ export const OverlayRuntimeConfigSchema = z
 export type OverlayRuntimeConfig = z.infer<typeof OverlayRuntimeConfigSchema>
 export type OverlayRuntimeConfigInput = z.input<typeof OverlayRuntimeConfigSchema>
 export type OverlayDeploymentEnvironment = z.infer<typeof OverlayDeploymentEnvironmentSchema>
+export type OverlayBetterAuthConnectionPreset = z.infer<
+  typeof OverlayBetterAuthConnectionPresetSchema
+>
+export type OverlayBetterAuthConnection = z.infer<
+  typeof OverlayBetterAuthConnectionSchema
+>
+export type OverlayBetterAuthAccessPolicy = z.infer<
+  typeof OverlayBetterAuthAccessPolicySchema
+>
 
 export type OverlayRuntimeConfigPublicSummary = ReturnType<typeof redactOverlayRuntimeConfig>
 
@@ -505,11 +803,41 @@ export function redactOverlayRuntimeConfig(config: OverlayRuntimeConfig) {
         hasClientSecret: Boolean(config.auth.oidc.clientSecret),
         hasAudience: Boolean(config.auth.oidc.audience),
       },
-      keycloak: {
-        issuerUrl: config.auth.keycloak.issuerUrl,
-        hasClientId: Boolean(config.auth.keycloak.clientId),
-        hasClientSecret: Boolean(config.auth.keycloak.clientSecret),
-        realm: config.auth.keycloak.realm,
+      betterAuth: {
+        baseUrl: config.auth.betterAuth.baseUrl,
+        basePath: config.auth.betterAuth.basePath,
+        hasSecret: Boolean(config.auth.betterAuth.secret),
+        hasDatabaseUrl: Boolean(config.auth.betterAuth.databaseUrl),
+        trustedOrigins: [...config.auth.betterAuth.trustedOrigins],
+        hasDefaultSsoProviderId: Boolean(config.auth.betterAuth.defaultSsoProviderId),
+        hasDefaultSsoDomain: Boolean(config.auth.betterAuth.defaultSsoDomain),
+        oidcIssuerUrl: config.auth.betterAuth.oidcIssuerUrl,
+        oidcDiscoveryEndpoint: config.auth.betterAuth.oidcDiscoveryEndpoint,
+        hasOidcClientId: Boolean(config.auth.betterAuth.oidcClientId),
+        hasOidcClientSecret: Boolean(config.auth.betterAuth.oidcClientSecret),
+        jwtIssuer: config.auth.betterAuth.jwtIssuer,
+        hasJwtAudience: Boolean(config.auth.betterAuth.jwtAudience),
+        jwksUrl: config.auth.betterAuth.jwksUrl,
+        connections: config.auth.betterAuth.connections.map((connection) => ({
+          id: connection.id,
+          protocol: connection.protocol,
+          preset: connection.preset,
+          label: connection.label,
+          domains: [...connection.domains],
+          issuerUrl: connection.issuerUrl,
+          discoveryEndpoint: connection.discoveryEndpoint,
+          tenantId: connection.tenantId,
+          hasClientId: Boolean(connection.clientId),
+          hasClientSecret: Boolean(connection.clientSecret),
+          clientIdEnv: connection.clientIdEnv,
+          clientSecretEnv: connection.clientSecretEnv,
+        })),
+        accessPolicy: {
+          requireVerifiedEmail: config.auth.betterAuth.accessPolicy.requireVerifiedEmail,
+          allowedEmailDomains: [
+            ...config.auth.betterAuth.accessPolicy.allowedEmailDomains,
+          ],
+        },
       },
     },
     billing: {
@@ -551,6 +879,16 @@ export function redactOverlayRuntimeConfig(config: OverlayRuntimeConfig) {
       modelAllowlist: [...config.llm.modelAllowlist],
       apiKeyEnvVar: config.llm.apiKeyEnvVar,
     },
+    integrations: {
+      executor: {
+        apiBaseUrl: config.integrations.executor.apiBaseUrl,
+        webBaseUrl: config.integrations.executor.webBaseUrl,
+        mcpUrl: config.integrations.executor.mcpUrl,
+        hasApiKey: Boolean(config.integrations.executor.apiKey),
+        connectionOwner: config.integrations.executor.connectionOwner,
+        requestTimeoutMs: config.integrations.executor.requestTimeoutMs,
+      },
+    },
     database: {
       provider: config.database.provider,
       convexUrl: config.database.convexUrl,
@@ -561,6 +899,15 @@ export function redactOverlayRuntimeConfig(config: OverlayRuntimeConfig) {
       postgres: {
         hasConnectionString: Boolean(config.database.postgres.connectionString),
         sslMode: config.database.postgres.sslMode,
+      },
+    },
+    rateLimit: {
+      redis: {
+        hasUrl: Boolean(config.rateLimit.redis.url),
+        hasRestUrl: Boolean(config.rateLimit.redis.restUrl),
+        hasRestToken: Boolean(config.rateLimit.redis.restToken),
+        keyPrefix: config.rateLimit.redis.keyPrefix,
+        failureMode: config.rateLimit.redis.failureMode,
       },
     },
     tenancy: {
@@ -628,6 +975,61 @@ function usesProductionConvex(database: OverlayRuntimeConfig['database']): boole
 
 function usesDevWorkOsConfig(workos: OverlayRuntimeConfig['auth']['workos']): boolean {
   return Boolean(workos.devClientId || workos.devApiKey)
+}
+
+function hasLegacyBetterAuthConnection(
+  config: OverlayRuntimeConfig['auth']['betterAuth'],
+): boolean {
+  return Boolean(
+    config.defaultSsoProviderId ||
+      config.defaultSsoDomain ||
+      config.oidcIssuerUrl ||
+      config.oidcDiscoveryEndpoint ||
+      config.oidcClientId ||
+      config.oidcClientSecret,
+  )
+}
+
+function validateCredentialSource(
+  ctx: z.RefinementCtx,
+  connection: {
+    clientId?: string
+    clientSecret?: string
+    clientIdEnv?: string
+    clientSecretEnv?: string
+  },
+  valueKey: 'clientId' | 'clientSecret',
+  envKey: 'clientIdEnv' | 'clientSecretEnv',
+): void {
+  const hasValue = Boolean(connection[valueKey])
+  const hasEnvReference = Boolean(connection[envKey])
+  if (!hasValue && !hasEnvReference) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [valueKey],
+      message: `${valueKey} or ${envKey} is required`,
+    })
+  }
+  if (hasValue && hasEnvReference) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [envKey],
+      message: `Configure only one of ${valueKey} or ${envKey}`,
+    })
+  }
+}
+
+function isSharedMicrosoftIssuer(issuerUrl: string): boolean {
+  const pathname = new URL(issuerUrl).pathname.toLowerCase().replace(/\/+$/, '')
+  return ['/common/v2.0', '/consumers/v2.0', '/organizations/v2.0'].some(
+    (suffix) => pathname.endsWith(suffix),
+  )
+}
+
+function isMicrosoftEntraIssuer(issuerUrl: string): boolean {
+  const issuer = new URL(issuerUrl)
+  return issuer.hostname === 'login.microsoftonline.com' &&
+    /^\/[a-z0-9.-]+\/v2\.0\/?$/i.test(issuer.pathname)
 }
 
 function addUnsupportedProviderIssue(

@@ -1,20 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { convex } from '@/server/database/convex'
+import { getOverlayServerContext } from '@/server/bootstrap'
+
+function repository() {
+  return getOverlayServerContext().appData.repositories.skills
+}
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const { auth } = context
-    const serverSecret = getInternalApiSecret()
-
-    const projectId = request.nextUrl.searchParams.get('projectId')
-    const skills = await convex.query('integrations/skills:list', {
-      userId: auth.userId,
-      serverSecret,
-      projectId: projectId ?? undefined,
-    })
-    return NextResponse.json(skills || [])
+    const projectId = request.nextUrl.searchParams.get('projectId') || undefined
+    return NextResponse.json(await repository().list({ userId: context.auth.userId, projectId }))
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to fetch skills' }, { status: 500 })
   }
@@ -22,27 +17,25 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = await request.json()
-    const { auth } = context
-    const serverSecret = getInternalApiSecret()
-
-    const { name, description, instructions, projectId } = body as Record<string, unknown>
-    const nameText = typeof name === 'string' ? name.trim() : ''
-    const descriptionText = typeof description === 'string' ? description.trim() : ''
-    const instructionsText = typeof instructions === 'string' ? instructions.trim() : ''
-    if (!nameText || !descriptionText || !instructionsText) {
-      return NextResponse.json({ error: 'name, description, and instructions are required' }, { status: 400 })
+    const body = Object.keys(context.parsedJson).length > 0 ? context.parsedJson : await request.json()
+    const name = stringValue(body.name)
+    const description = stringValue(body.description)
+    const instructions = stringValue(body.instructions)
+    const projectId = optionalString(body.projectId)
+    if (!name || !description || !instructions) {
+      return NextResponse.json(
+        { error: 'name, description, and instructions are required' },
+        { status: 400 },
+      )
     }
-
-    const skillId = await convex.mutation<string>('integrations/skills:create', {
-      userId: auth.userId,
-      serverSecret,
-      name: nameText,
-      description: descriptionText,
-      instructions: instructionsText,
-      projectId: projectId ?? undefined,
+    const id = await repository().create({
+      userId: context.auth.userId,
+      name,
+      description,
+      instructions,
+      projectId,
     })
-    return NextResponse.json({ id: skillId })
+    return NextResponse.json({ id })
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to create skill' }, { status: 500 })
   }
@@ -50,21 +43,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
 export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = await request.json()
-    const { auth } = context
-    const serverSecret = getInternalApiSecret()
-
-    const { skillId, name, description, instructions, enabled } = body as Record<string, unknown>
+    const body = Object.keys(context.parsedJson).length > 0 ? context.parsedJson : await request.json()
+    const skillId = stringValue(body.skillId)
     if (!skillId) return NextResponse.json({ error: 'skillId required' }, { status: 400 })
-
-    await convex.mutation('integrations/skills:update', {
+    await repository().update({
       skillId,
-      userId: auth.userId,
-      serverSecret,
-      name,
-      description,
-      instructions,
-      enabled,
+      userId: context.auth.userId,
+      ...(body.name !== undefined ? { name: stringValue(body.name) } : {}),
+      ...(body.description !== undefined ? { description: stringValue(body.description) } : {}),
+      ...(body.instructions !== undefined ? { instructions: stringValue(body.instructions) } : {}),
+      ...(typeof body.enabled === 'boolean' ? { enabled: body.enabled } : {}),
     })
     return NextResponse.json({ success: true })
   } catch (_error) {
@@ -74,19 +62,20 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
 
 export async function DELETE(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const { auth } = context
-    const serverSecret = getInternalApiSecret()
-
     const skillId = request.nextUrl.searchParams.get('skillId')
     if (!skillId) return NextResponse.json({ error: 'skillId required' }, { status: 400 })
-
-    await convex.mutation('integrations/skills:remove', {
-      skillId,
-      userId: auth.userId,
-      serverSecret,
-    })
+    await repository().remove({ skillId, userId: context.auth.userId })
     return NextResponse.json({ success: true })
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to delete skill' }, { status: 500 })
   }
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function optionalString(value: unknown): string | undefined {
+  const normalized = stringValue(value)
+  return normalized || undefined
 }

@@ -1,5 +1,6 @@
 import type { CapabilityCheck } from '@overlay/app-core'
 import type { AuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import type { AppDataCapabilities } from '@/server/app-data/capabilities'
 
 export type AppApiRouteContext = {
   params: Promise<Record<string, string | string[]>>
@@ -8,4 +9,5 @@ export type AppApiRouteContext = {
   parsedJson: Record<string, unknown>
   parsedFormData: FormData | null
   capabilities: CapabilityCheck
+  appDataCapabilities: AppDataCapabilities
 }

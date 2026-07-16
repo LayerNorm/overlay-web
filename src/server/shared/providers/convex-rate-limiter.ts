@@ -5,7 +5,7 @@ import type {
   RateLimitResult,
   RateLimitSpec,
 } from '@overlay/app-core'
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { InMemoryRateLimiter } from './in-memory-rate-limiter'

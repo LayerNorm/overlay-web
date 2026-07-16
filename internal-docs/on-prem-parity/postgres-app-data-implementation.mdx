@@ -1,0 +1,744 @@
+---
+title: "Postgres App-Data Implementation"
+description: "Architecture, runtime boundaries, parity status, and testing for the Postgres app-data provider."
+---
+
+This document describes the Postgres app-data implementation added for enterprise and on-prem pilot readiness. It explains what was built, how it fits with Better Auth and WorkOS, which app surfaces are supported, which surfaces are intentionally gated, and how to test and inspect the system end to end.
+
+The short version:
+
+- Auth is now provider-agnostic at the app boundary. WorkOS and Better Auth both normalize into the Overlay session contract.
+- Auth storage and app-data storage are separate concerns. Better Auth uses its own Postgres database for auth/session state. Overlay app data uses either Convex or the new Postgres app-data provider.
+- Postgres app-data includes production runtime foundations for shared idempotency, replay protection, Redis rate limiting, durable jobs/outbox, scheduler ownership, schema compatibility, and persisted model catalog snapshots.
+- Postgres app-data is not full Convex parity. Chat, projects, files, generated media, browser outputs, Daytona artifacts and reconciliation, memories, knowledge retrieval, durable scheduled automations, and signed outbound webhooks are supported; API keys, billing records, and integrations remain disabled or unsupported.
+- Postgres knowledge retrieval uses `pgvector` plus Postgres full-text search. Deployments must verify that their managed Postgres provider supports the `vector` extension and must run a separately supervised indexing worker.
+
+## Design Goals
+
+The implementation is built around these boundaries:
+
+1. Auth providers should be swappable.
+   WorkOS, Better Auth, and OIDC-style bearer verification should feed the same app session shape. The rest of the app should not hard-code provider-specific identity assumptions.
+
+2. App-data providers should be swappable.
+   Convex remains the hosted SaaS backend. Postgres is an enterprise/on-prem app-data backend for private deployments. Server routes depend on repository/service interfaces rather than directly calling Convex where Postgres parity exists.
+
+3. Capabilities must be explicit.
+   Unsupported Postgres surfaces should be hidden from the UI and rejected by route gates. The app should not look clickable and then fail after navigation.
+
+4. Billing and usage policy must be explicit.
+   Postgres pilot mode runs with `billing.provider=none` and uses `UnlimitedUsagePolicy`. Billing enabled with Postgres app data is rejected until a real Postgres usage and billing repository exists.
+
+5. Convex must be optional in the browser.
+   In Postgres mode, browser code should not mount Convex subscriptions or rely on Convex client-side auth for supported surfaces.
+
+6. Tests should run against real backends where practical.
+   Shared app-data contract tests run against either Docker Postgres or a dedicated remote Postgres database and can run against a real/local Convex deployment.
+
+## Runtime Matrix
+
+There are two independent axes:
+
+| Axis | Current providers | Purpose |
+| --- | --- | --- |
+| Auth provider | `workos`, `better-auth`, `oidc`, `none` | Creates/verifies the current user session. |
+| App-data provider | `convex`, `postgres` | Stores users, conversations, messages, settings, notes, files, and other durable app records. |
+
+Valid combinations are intentionally broader than the hosted SaaS path:
+
+| Combination | Intended use | Status |
+| --- | --- | --- |
+| WorkOS + Convex | Hosted Overlay SaaS | Existing production path. |
+| Better Auth + Convex | Private auth with hosted/dev Convex app data | Supported for auth smoke and transition testing. |
+| Better Auth + Postgres | On-prem/private pilot | Main target of this implementation. |
+| WorkOS + Postgres | Possible managed-private deployment | Repository boundaries support this direction, but WorkOS-hosted account continuity is intentionally not automatic. |
+| OIDC + Postgres | Future enterprise bearer/native-heavy path | Runtime verification exists; browser login/callback wiring is deployment-specific. |
+
+Better Auth accounts and WorkOS accounts are separate unless a future explicit account-linking flow is added. The app-data identity key includes provider identity, so signing in with the same email through Better Auth does not automatically merge with the hosted WorkOS/Convex account.
+
+## Data Plane Separation
+
+Do not confuse the Better Auth database with the Overlay app-data database.
+
+| Database | Env var | Stores | Migration command |
+| --- | --- | --- | --- |
+| Better Auth database | `BETTER_AUTH_DATABASE_URL` | Better Auth users, sessions, SSO accounts, auth plugin tables | `npm run better-auth:migrate` |
+| Overlay app-data database | `OVERLAY_DATABASE_URL` | Overlay users, identities, conversations, messages, settings, onboarding, notes, files, upload intents | `npm run app-db:migrate` |
+
+Use separate schemas/databases for these concerns. They have different ownership, migration lifecycles, and data retention semantics.
+
+## Implementation History
+
+| Step | Commit | What changed |
+| --- | --- | --- |
+| Step 1 | `b0d60e350` | Added local Postgres app-data setup, Docker Compose service, Drizzle config, initial metadata migration, app-data env examples, and smoke/migration scripts. |
+| Step 2 | `688437af1` | Added the core Postgres app-data schema for users, identities, settings, onboarding, projects, conversations, messages, deltas, summaries, notes, files, and upload intents. |
+| Step 3 | `9eded0272` | Added provider-agnostic `UserService`, Convex and Postgres user repositories, and shared auth callback/profile sync behavior. |
+| Step 4 | `a3ae225b1` | Added app-data capabilities, `/api/v1/capabilities`, route support classification, route unsupported responses, and initial capability gating. |
+| Step 5 | `86ed6263b` | Added the Postgres chat vertical slice, `ActConversationRepository`, `PostgresActConversationRepository`, explicit usage policy abstraction, and `UnlimitedUsagePolicy` for billing-disabled Postgres mode. |
+| Step 5.5 | `48e6820c7` | Finished chat parity basics by disabling Convex live sync in Postgres mode, adding Postgres settings/onboarding routes, and suppressing Convex-only client behavior. |
+| Step 6 | `5beb4985d` | Added account deletion flow and Postgres notes parity, including a throwaway account deletion smoke script. |
+| Step 6C | `8994e1947` | Added Postgres file repository support for file metadata, upload intents, duplicate handling, recursive deletes, and route support classification. |
+| Step 7 | `e97d9fc12` | Added Postgres background maintenance service, scheduler guidance, stale generating-message cleanup, message delta cleanup, old empty conversation cleanup, and idempotency gating. |
+| Step 7 gating | `26541ba48` | Hardened unsupported Postgres capability gates across app shell, sidebar, mentions, tools UI, projects page, global search, and route classification. |
+| Step 8 | `65edc65b8` | Added shared app-data contract tests for users, conversations/messages/deltas, notes/files, usage policy, and account deletion against Postgres and Convex backends. |
+| Step 9 | `3df3b97f1` | Documented and enforced the `pgvector` readiness boundary. Postgres app-data v1 does not imply vector parity. |
+| Step 9.1 | `bbc973a59` | Re-enabled Postgres chat title generation through the usage policy abstraction and disabled integrations/connectors in Postgres pilot mode. |
+| P1 runtime | Current branch | Added migration locking and compatibility checks, Postgres idempotency/replay stores, Redis rate limiting, durable jobs/outbox/scheduler, worker runtime, and Postgres model-catalog persistence. |
+| P2 chat | Current branch | Added transactional conversation events, cursor-based browser synchronization, batched text-delta persistence, disconnect-safe background draining, stop/finalize race protection, repository-backed message/share/stream-auth routes, and provider-neutral public shares. |
+| P3a projects | Current branch | Added provider-neutral project CRUD, hierarchy locks and cycle checks, linked-resource authorization, recursive soft deletion, and Postgres project UI capability exposure. |
+| P3b files/storage | Current branch | Added atomic extracted-document writes, file hierarchy constraints, unique upload intents, durable S3 cleanup jobs, bulk duplicate reconciliation, and scheduled object reconciliation. |
+| P4a knowledge schema | Current branch | Added memories, knowledge chunks, versioned pgvector embeddings, ownership indexes, and account-deletion coverage. |
+| P4b indexing | Current branch | Added transactional reindex jobs, shared chunking, embedding adapters, retries, stale-write protection, and deletion cleanup. |
+| P4c retrieval | Current branch | Added user/project-scoped hybrid vector and lexical retrieval, RRF ranking, citations, and provider-neutral memory/search routes. |
+| P4d memory lifecycle | Current branch | Added durable turn extraction, extraction audit rows, worker crash recovery, failed-index revival, model-version backfill, retention, and project/account cleanup. |
+| P4e characterization | Current branch | Added one fixed corpus and query set for real Convex and pgvector runs, recall/source/citation metrics, adversarial project and user isolation, deletion checks, and an RDS/Aurora-only rehearsal gate. |
+| P5a closure | Current branch | Persisted chat suggestions behind provider-neutral repositories, made Postgres bootstrap read stored settings, split notebook usage dependencies into P8, and represented pgvector as runtime-configured capability. |
+| P5b resilience | Current branch | Added remote Postgres gates for pool replacement, app/worker/scheduler contention, dead letters, HNSW query plans and latency, and S3 reconciliation recovery. |
+| P5c security | Current branch | Added dual-read session key rotation, bounded S3 presigns, cross-owner object authorization tests, forensic deletion audits, TLS/secret readiness, and no-Convex release gates. |
+| P5d operations | Current branch | Added snapshot restore markers, migration/rollback compatibility checks, runtime queue-health metrics, CloudWatch infrastructure, capacity/cost evidence, and immutable-image rollback procedure. |
+| P6 automations/webhooks | Current branch | Added provider-shared automation contracts, durable scheduling/execution, signed webhook delivery, retry/dead-letter state, and Daytona reconciliation. |
+| P7 usage/administration | Current branch | Added durable usage reservations and ledgers, Stripe records and event deduplication, scoped API keys, administrative roles, redacted audit records, provider-shared contracts, Postgres fault tests, operator UI, and AWS Rehearsal 7. |
+
+## Key Code Boundaries
+
+| Area | Files |
+| --- | --- |
+| Runtime config schema and env overrides | `src/shared/config/overlayConfigSchema.ts`, `src/server/config/env-overrides.ts` |
+| App-data provider selection | `src/server/app-data/capabilities.ts`, `src/server/app-data/repositories.ts` |
+| Route support classification | `src/server/app-data/route-support.ts` |
+| Route gate integration | `src/app/api/v1/_utils/bff.ts` |
+| Browser capability provider | `src/components/providers/CapabilitiesProvider.tsx` |
+| App shell capability filtering | `packages/overlay-app-core/src/app-shell.ts`, `packages/overlay-app-core/src/capabilities.ts` |
+| User sync | `src/server/users/UserService.ts`, `src/server/users/ConvexUserRepository.ts`, `src/server/users/PostgresUserRepository.ts` |
+| Chat repositories | `src/server/conversations/ConvexActConversationRepository.ts`, `src/server/conversations/PostgresActConversationRepository.ts` |
+| Chat realtime and recovery | `src/server/conversations/chat-stream-persistence.ts`, `src/server/app-api/v1/conversations/events/route.ts`, `src/features/chat/components/chat/usePostgresConversationEvents.ts` |
+| Chat services and usage | `src/server/conversations/ActConversationService.ts`, `src/server/conversations/ActUsagePolicy.ts` |
+| Notes | `src/server/notes/NoteService.ts`, `src/server/notes/PostgresNoteRepository.ts` |
+| Files | `src/server/files/FileService.ts`, `src/server/files/PostgresFileRepository.ts` |
+| Account deletion | `src/server/account/AccountDeletionService.ts`, `src/server/account/PostgresAccountDataDeletionRepository.ts` |
+| Background maintenance | `src/server/app-data/PostgresBackgroundMaintenanceService.ts`, `scripts/app-data-maintenance.ts` |
+| Vector readiness | `scripts/app-data-vector-readiness.ts` |
+| Backend contracts | `src/server/app-data/contracts/app-data-repository-contract.ts` |
+
+## Postgres Schema
+
+The app-data schema is defined in `src/server/database/postgres/schema.ts` and migrated under `migrations/app-data`.
+
+Core tables:
+
+| Table | Purpose |
+| --- | --- |
+| `overlay_app_data_metadata` | Migration/setup metadata. |
+| `users` | Overlay app user records. |
+| `auth_identities` | Provider identity to Overlay user mapping. Primary key is `(provider, subject)`. |
+| `user_settings` | Persisted app settings and model preferences. |
+| `onboarding_state` | Onboarding completion/reset state. |
+| `projects` | Schema exists, but projects are disabled in Postgres pilot mode. |
+| `conversations` | Conversation rows, title, model prefs, share fields, delete markers. |
+| `conversation_messages` | User and assistant messages. |
+| `conversation_message_deltas` | Stream deltas used for cleanup and future resumability boundaries. |
+| `conversation_context_summaries` | Summaries for context management. |
+| `notes` | Notebook-style note records. |
+| `files` | File/folder/note/upload/output metadata. |
+| `r2_upload_intents` | Upload intent lifecycle and finalization tracking. |
+| `api_idempotency_keys` | Atomic request reservations and cached replay responses shared by all app instances. |
+| `service_auth_replay_nonces` | One-time internal service-auth nonces with expiry. |
+| `durable_jobs` | Leased background jobs, retries, results, and dead-letter state. |
+| `outbox_events` | Durable publish intents, leases, retries, and dead-letter state. |
+| `scheduled_tasks` | Scheduler ownership, cadence, and next-run state. |
+| `model_catalog_snapshots` | Restart-safe model-catalog snapshots and stale fallback. |
+| `memories` | Durable user memories, source metadata, project scope, and indexing state. |
+| `knowledge_chunks` | Searchable file and memory chunks with source/project ownership. |
+| `knowledge_chunk_embeddings` | 1536-dimensional pgvector rows with provider/model/version metadata. |
+| `memory_extraction_runs` | Idempotent extraction audit state, attempts, outcomes, and failure reasons for completed user turns. |
+
+Important deletion behavior:
+
+- Rows that belong to `users` generally use `ON DELETE CASCADE`.
+- Conversation messages and deltas cascade through their parent conversation/user.
+- File and note user ownership cascades from the user.
+- Account deletion relies on these FK relationships plus explicit auth-provider cleanup.
+
+## App-Data Context
+
+`createAppDataContext(runtimeConfig)` selects the repository set:
+
+| Repository | Convex mode | Postgres mode |
+| --- | --- | --- |
+| `users` | `ConvexUserRepository` | `PostgresUserRepository` |
+| `conversations` | `ConvexActConversationRepository` | `PostgresActConversationRepository` |
+| `files` | `ConvexFileRepository` | `PostgresFileRepository` |
+| `notes` | `ConvexNoteRepository` | `PostgresNoteRepository` |
+| `settings` | Unsupported repository | `PostgresAppSettingsRepository` |
+| `onboarding` | Unsupported repository | `PostgresOnboardingRepository` |
+| `accountDeletion` | Unsupported repository | `PostgresAccountDataDeletionRepository` |
+| `idempotency` | `ConvexIdempotencyRepository` | `PostgresIdempotencyRepository` |
+| `serviceAuthReplay` | `ConvexServiceAuthReplayRepository` | `PostgresServiceAuthReplayRepository` |
+| `modelCatalog` | `ConvexModelCatalogRepository` | `PostgresModelCatalogRepository` |
+| `memories` | `ConvexMemoryRepository` | `PostgresMemoryRepository` |
+| `durableJobs` | Unsupported repository | `PostgresDurableJobRepository` |
+| `outbox` | Unsupported repository | `PostgresOutboxRepository` |
+| `automations` | `ConvexAutomationRepository` | `PostgresAutomationRepository` plus durable run coordinator |
+| `billing` | `ConvexBillingRepository` | `PostgresBillingRepository` |
+| `billingEvents` | `ConvexBillingProviderEventRepository` | `PostgresBillingProviderEventRepository` |
+| `usage` | `ConvexUsageRepository` | `PostgresUsageRepository` |
+| `apiKeys` | `ConvexApiKeyRepository` | `PostgresApiKeyRepository` |
+| `administration` | `ConvexAdministrativeRepository` | `PostgresAdministrativeRepository` |
+| `audit` | `ConvexAuditRepository` | `PostgresAuditRepository` |
+
+Unsupported repositories are deliberate. They fail loudly if a route bypasses capability gating and tries to call a backend that does not exist for the selected provider.
+
+## Capabilities And Route Gates
+
+Postgres app-data v1 capabilities are defined in `POSTGRES_APP_DATA_V1_CAPABILITIES`.
+
+Supported or degraded:
+
+| Surface | Status in Postgres mode | Notes |
+| --- | --- | --- |
+| Chat list/read/create/update/delete | Supported | Transactional event cursor synchronizes refreshes and multiple tabs without Convex. |
+| Chat send | Supported | Durable text streaming and explicit usage policy; memory/tools/webhooks remain separately gated. |
+| Chat stop/share/recovery | Supported | Stop is race-safe, public share reads are provider-neutral, and disconnect recovery uses persisted snapshots. |
+| Chat title generation | Supported | Uses configured `chatUsagePolicy`; works in billing-disabled Postgres pilot mode. |
+| Settings | Supported | Backed by `user_settings`. |
+| Onboarding | Supported | Backed by `onboarding_state`. |
+| Notes | Supported | Backed by `notes`. |
+| Projects | Supported | Provider-neutral CRUD, nested hierarchy, ownership checks, and linked conversation/note/file filtering. |
+| File lifecycle | Supported | Metadata, private uploads/downloads, atomic extraction, upload intents, hierarchy, sharing, duplicate promotion, durable cleanup, and S3 reconciliation are supported. |
+| Generated outputs | Supported | Images, videos, browser text, and Daytona artifacts use canonical output files with lifecycle state, sharing, retention, and durable object cleanup. |
+| Daytona workspace state | Supported | Sandbox/volume identity and metering checkpoints are stored in `daytona_workspaces`. |
+| Account deletion | Supported | Deletes auth user/session and app-data rows. |
+| Background maintenance | Supported | Durable Postgres scheduler/worker, with an explicit one-off maintenance command for operations. |
+| Memory and knowledge retrieval | Supported with `pgvector` | Durable indexing jobs, model-versioned embeddings, hybrid lexical/vector ranking, project scope, and citations. |
+| Automatic memory extraction | Supported | Completed user turns enqueue durable extraction jobs. Accepted candidates create memories and transactionally enqueue indexing. |
+| Runtime coordination | Supported | Postgres idempotency/replay/leases and shared Redis rate limiting. |
+| Model catalog | Supported | Persisted through the selected app-data repository for restart-safe fallback. |
+| Automations | Supported with background runtime | Definitions, schedules, runs, attempts, cancellation, retries, and dead letters use the Postgres scheduler/worker. |
+| Webhooks | Supported with background runtime | Subscriptions, HMAC delivery, secret rotation, attempt history, dead letters, and redrive use the Postgres worker. |
+| Usage and billing | Supported | Reservations, ledgers, managed budgets, subscription/top-up records, and Stripe event replay protection use provider-neutral services. `billing.provider=none` remains valid for institution-managed deployments. |
+| API keys | Supported | Hashed, scoped, expiring credentials support create, copy-once reveal, rotate, revoke, and replacement-task consistency. |
+| Administration and audit | Supported | Role authorization, budget controls, immutable audit search, ownership checks, and secret redaction are provider-neutral. |
+| Skills | Supported | Global and project-scoped CRUD, enabled-state loading, instruction versioning, ownership, and deletion use the selected app-data provider. |
+| MCP servers | Supported | Global/project configuration, encrypted credentials, tool discovery, execution policy, and hashed execution audits use the selected app-data provider. |
+
+Unsupported or disabled:
+
+| Surface | Why |
+| --- | --- |
+| Integrations/connectors | Connector account state and external integration execution are deferred. Skills and MCP remain available independently of connector providers. |
+
+## Auth And Identity Sync
+
+The auth callbacks and session paths call the shared user sync layer rather than directly syncing only to Convex.
+
+Flow:
+
+```mermaid
+flowchart LR
+  A["WorkOS, Better Auth, or OIDC"] --> B["Overlay normalized session"]
+  B --> C["UserService.upsertFromSession"]
+  C --> D["UserRepository"]
+  D --> E["Convex users or Postgres users"]
+  D --> F["auth_identities in Postgres mode"]
+```
+
+`UserService.upsertFromSession(session)` is responsible for:
+
+- Upserting the app user.
+- Upserting provider identity rows.
+- Updating `last_login_at`.
+- Initializing settings and onboarding defaults through the selected repository layer where supported.
+
+Identity separation:
+
+- Better Auth users are separate from WorkOS users.
+- The same email does not imply the same app-data user.
+- Account linking is intentionally left for a future explicit flow.
+
+## Chat Implementation
+
+The chat vertical slice is the primary Postgres app-data pilot path.
+
+Postgres-supported chat operations:
+
+- Create conversation.
+- List conversations.
+- Load conversation messages.
+- Update title/model preferences.
+- Send a message through `/api/v1/conversations/act`.
+- Persist user and assistant messages.
+- Persist message deltas where needed.
+- Persist ordered conversation events in the same transaction as chat mutations.
+- Recover active text generations after refresh or network interruption.
+- Synchronize conversation changes across browser tabs without Convex.
+- Stop a generating response without allowing a late completion to overwrite it.
+- Publish and revoke read-only conversation share links.
+- Clean up stale generating messages.
+- Delete conversations.
+
+Important constraints:
+
+- `useLiveConversationSync` is guarded so Postgres mode does not mount Convex subscriptions.
+- `/api/v1/conversations/events` uses a durable sequence cursor and long polling. Transactional `pg_notify` wakes a shared listener without repeated idle queries; correctness still comes from the event table, not the notification.
+- The active HTTP stream remains the lowest-latency path. Text deltas are flushed to Postgres in bounded batches and the server drains the stream in the background if the browser disconnects.
+- A refresh or second tab reloads the aggregate persisted message. If the optional stream relay is configured, exact UI stream frames can also be replayed.
+- `/api/v1/generate-title` is allowed in Postgres mode as a supported chat-persistence route.
+- Chat title generation uses `chatUsagePolicy`, not direct Convex billing queries.
+- Memory, tools, webhooks, and extension planning remain disabled in Postgres mode. Durable text stream recovery is supported; exact relay-frame replay is optional.
+
+Usage policy:
+
+| Billing config | Postgres behavior |
+| --- | --- |
+| `billing.provider=none` | Uses `UnlimitedUsagePolicy`; chat can send without Stripe/Convex usage records. |
+| `billing.provider=stripe` | Config validation rejects Postgres app-data mode until a Postgres usage/billing backend exists. |
+
+## Notes Implementation
+
+Notes are backed by `PostgresNoteRepository` in Postgres mode.
+
+Supported operations:
+
+- List notes.
+- Create note.
+- Update note.
+- Delete note.
+
+The route response shape is kept compatible with the existing Convex-backed frontend expectations so the notebook UI does not need provider-specific branches.
+
+## Files Implementation
+
+Files are backed by `PostgresFileRepository` in Postgres mode.
+
+Supported operations:
+
+- File/folder metadata CRUD.
+- Recursive subtree delete.
+- Duplicate detection, canonical promotion, and repointing of surviving duplicates.
+- Concurrency-safe upload intent creation/finalization/expiration.
+- Atomic PDF, DOCX, and text extraction writes.
+- Owner-scoped file listing.
+- Share metadata fields.
+- Derived storage usage plus serialized pending-upload reservation accounting in billing-disabled mode.
+- Durable physical-object cleanup for file, project, account, and expired-intent deletion.
+- Scheduled S3 orphan and missing-object reconciliation.
+
+Separate later-phase capabilities:
+
+- Vector indexing requires the P4 pgvector provider, migrations, embeddings configuration, and worker.
+- Knowledge chunks are available when that P4 runtime configuration is enabled.
+- Generated outputs share the canonical file lifecycle. Generated image/video
+  records, browser results, and Daytona artifacts are owner-scoped, shareable,
+  retained according to compliance config, and deleted through durable S3 jobs.
+
+The web service alone is insufficient for this lifecycle. Deploy
+`npm run app-db:worker` as a separately supervised process with the same
+`OVERLAY_DATABASE_URL` and S3 configuration so cleanup and reconciliation jobs
+are retried and dead-lettered correctly.
+
+Set `OVERLAY_BACKGROUND_RUNTIME_ENABLED=true` only after that supervised
+scheduler/worker topology exists. Postgres capability derivation otherwise
+hides automation and webhook routes and UI; automation enablement also requires
+`INTERNAL_SERVICE_AUTH_SECRET`.
+
+## Account Deletion
+
+Account deletion is compliance-critical and is implemented explicitly.
+
+Expected behavior:
+
+1. Delete or invalidate the auth-provider user/session where supported.
+2. Delete the app-data user.
+3. Rely on FK cascade for owned app-data rows.
+4. Verify no orphaned app-data remains for conversations, messages, settings, identities, notes, files, and upload intents.
+
+Smoke script:
+
+```bash
+npm run app-db:account-delete-smoke
+```
+
+This creates a throwaway user, creates app data, deletes the account, and asserts cleanup.
+
+## Background Maintenance
+
+Convex scheduled functions are not available in Postgres mode. P1 provides a Postgres-backed scheduler and worker:
+
+```bash
+npm run app-db:worker
+```
+
+The default schedules enqueue app-data maintenance, coordination cleanup, and model-catalog refresh jobs. Multiple scheduler/worker replicas are supported through row locks, deterministic dedupe keys, and leased claims. Jobs renew their lease while handlers run, retry with backoff, and move to dead-letter state after their attempt budget is exhausted.
+
+The one-off maintenance command remains available for manual operations:
+
+```bash
+npm run app-db:maintenance
+```
+
+Current maintenance tasks:
+
+- Mark stale generating messages as error.
+- Clean up inactive or old message deltas.
+- Delete old empty conversations.
+
+Operator requirements:
+
+- Run `npm run app-db:worker` as a separately supervised long-lived process in production.
+- Run app-data migrations before starting a new web or worker release. Both runtimes reject incompatible schema versions.
+- Monitor queued/running/dead-letter jobs, expired lease recovery, Redis connectivity, and worker liveness.
+- Keep `npm run app-db:maintenance` as a manual recovery command; it is not the primary production scheduler after P1.
+
+Still disabled in Postgres pilot mode:
+
+- Webhook retry scheduler.
+- Automation scheduler.
+- Memory extraction jobs.
+- Vector indexing jobs.
+
+The generic job/outbox substrate does not enable these product domains by itself. Their routes and UI remain capability-gated until their later parity phases add complete handlers and behavioral contracts.
+
+## Vector Search Boundary
+
+Postgres app-data v1 does not include vector search parity.
+
+The planned direction is `pgvector`:
+
+- Postgres-native memory/search likely means adding vector columns/tables and indexes using the `vector` extension.
+- Managed Postgres providers must support the `vector` extension before they can host that future path.
+- The current app rejects Postgres database mode when vector search is enabled.
+- The current readiness script is read-only and only checks whether a provider could support future work.
+
+Readiness check:
+
+```bash
+npm run app-db:vector-readiness
+```
+
+Required config today:
+
+```env
+OVERLAY_PROVIDER_VECTOR_SEARCH=none
+VECTOR_SEARCH_ENABLED=false
+OVERLAY_FEATURE_VECTOR_SEARCH=false
+```
+
+## Local Setup
+
+Create the local app-data env file:
+
+```bash
+cp .env.app-data.local.example .env.app-data.local
+```
+
+Start local Postgres and Redis:
+
+```bash
+npm run app-db:up
+```
+
+Run migrations:
+
+```bash
+npm run app-db:migrate
+```
+
+Run app-data smoke:
+
+```bash
+npm run app-db:smoke
+```
+
+Run the app with Better Auth and Postgres app data by setting both auth and app-data env values. The local repo uses:
+
+```bash
+npm run dev:better-auth
+```
+
+Make sure `.env.better-auth.local` and `.env.app-data.local` do not point at the same database unless you intentionally created separate schemas and know which migrations run against each schema.
+
+## Inspect The Database
+
+Local app-data Postgres container:
+
+```bash
+docker compose --env-file .env.app-data.local -f docker-compose.app-data.yml exec app-data-postgres psql -U overlay_app -d overlay_app
+```
+
+Host `psql`, if installed:
+
+```bash
+psql "postgres://overlay_app:overlay_app_dev_password@localhost:54330/overlay_app"
+```
+
+Useful inspection commands:
+
+```sql
+\dt
+select id, email, created_at, last_login_at from users order by created_at desc limit 10;
+select provider, subject, user_id, email from auth_identities order by created_at desc limit 20;
+select id, title, created_at, updated_at from conversations order by updated_at desc limit 20;
+select conversation_id, role, left(content, 120), status, created_at from conversation_messages order by created_at desc limit 20;
+select id, title, updated_at from notes order by updated_at desc limit 20;
+select id, name, type, kind, parent_id, deleted_at from files order by updated_at desc limit 20;
+select id, r2_key, status, file_id, expires_at from r2_upload_intents order by created_at desc limit 20;
+```
+
+Better Auth database inspection is separate:
+
+```bash
+docker exec -it overlay-better-auth-postgres psql -U overlay_auth -d overlay_auth
+```
+
+For Neon, RDS, Supabase, or other managed Postgres, use the provider console query editor or connect with the `OVERLAY_DATABASE_URL` value. Do not run Better Auth migrations against the app-data database.
+
+## Deployment Configuration
+
+Minimum Postgres app-data env:
+
+```env
+OVERLAY_PROVIDER_DATABASE=postgres
+OVERLAY_DATABASE_URL=postgres://...
+OVERLAY_DATABASE_SSL_MODE=require
+
+OVERLAY_PROVIDER_RATE_LIMIT=redis
+OVERLAY_REDIS_URL=rediss://redis.example.internal:6379
+OVERLAY_REDIS_FAILURE_MODE=deny
+
+BILLING_PROVIDER=none
+BILLING_ENABLED=false
+OVERLAY_CAPABILITY_BILLING=false
+OVERLAY_FEATURE_BILLING=false
+
+OVERLAY_PROVIDER_VECTOR_SEARCH=none
+VECTOR_SEARCH_ENABLED=false
+OVERLAY_FEATURE_VECTOR_SEARCH=false
+
+OVERLAY_FEATURE_AUTOMATIONS=false
+OVERLAY_FEATURE_WEBHOOKS=false
+OVERLAY_FEATURE_API_KEYS=false
+OVERLAY_FEATURE_INTEGRATIONS=false
+```
+
+Better Auth env, if using Better Auth:
+
+```env
+AUTH_PROVIDER=better-auth
+BETTER_AUTH_URL=https://overlay.example.com
+BETTER_AUTH_BASE_PATH=/api/better-auth
+BETTER_AUTH_SECRET=<secret>
+BETTER_AUTH_DATABASE_URL=postgres://...
+BETTER_AUTH_DEFAULT_SSO_PROVIDER_ID=<provider-id>
+BETTER_AUTH_DEFAULT_SSO_DOMAIN=<domain>
+BETTER_AUTH_OIDC_ISSUER_URL=https://idp.example.com
+BETTER_AUTH_OIDC_CLIENT_ID=<client-id>
+BETTER_AUTH_OIDC_CLIENT_SECRET=<client-secret>
+BETTER_AUTH_JWT_ISSUER=https://overlay.example.com
+BETTER_AUTH_JWT_AUDIENCE=https://overlay.example.com
+BETTER_AUTH_JWKS_URL=https://overlay.example.com/api/better-auth/jwks
+BETTER_AUTH_TRUSTED_ORIGINS=https://overlay.example.com
+```
+
+Deployment order:
+
+1. Create the Better Auth database.
+2. Create the Overlay app-data database.
+3. Configure env vars.
+4. Register IdP callback URLs.
+5. Run Better Auth migrations.
+6. Run app-data migrations as an exclusive release task.
+7. Deploy the web app and the separately supervised `npm run app-db:worker` service.
+8. Run `npm run app-db:worker:smoke` against the deployed database before promotion.
+9. Smoke auth, session, chat send, chat title generation, settings, notes, files, account deletion, and sign out.
+
+## Testing
+
+Core static checks:
+
+```bash
+npm run check:config
+npm run check:providers
+npm run docs:health
+npx tsc --noEmit --pretty false --incremental false
+```
+
+Postgres app-data smoke:
+
+```bash
+npm run app-db:up
+npm run app-db:migrate
+npm run app-db:smoke
+npm run app-db:account-delete-smoke
+npm run app-db:maintenance
+npm run app-db:worker:smoke
+npm run check:p1
+npm run check:p2
+```
+
+Contract tests:
+
+```bash
+npm run test:app-data-contracts:postgres
+npm run test:app-data-contracts:convex
+npm run test:app-data-contracts
+```
+
+Docker-free remote Postgres contracts use a gitignored
+`.env.on-prem-contract-tests.local` containing a direct `OVERLAY_DATABASE_URL`:
+
+```bash
+npm run app-db:contract:migrate
+npm run app-db:contract:smoke
+npm run test:p1:postgres:remote
+npm run test:p2:postgres:remote
+```
+
+Use an isolated contract database. Do not point these commands at staging or
+production data; P1 intentionally exercises and resets shared scheduler state.
+
+Route support and shell capability checks:
+
+```bash
+NODE_OPTIONS=--conditions=react-server node --import tsx --test src/server/app-data/route-support.test.ts
+node --import tsx --test packages/overlay-app-core/src/capabilities.test.ts packages/overlay-app-core/src/app-shell.test.ts
+```
+
+Better Auth negative tests:
+
+```bash
+npm run test:auth:better-auth-negative
+```
+
+Manual browser QA for Postgres mode:
+
+- Signed-out user sees the sign-in UI.
+- SSO redirects to the configured IdP.
+- Callback lands on `/app/chat`.
+- `/api/auth/session` is authenticated.
+- Chat send works.
+- Chat title changes from `New Chat` after first message.
+- Refresh keeps session and chat state.
+- Refresh during a response restores the latest durable text and then the final response.
+- A second tab sees conversation creation, title, text progress, completion, and stop changes.
+- Stop from either tab leaves the persisted interruption marker and cannot be overwritten by late completion.
+- Public share links load while public and return not-found after being made private.
+- Sidebar exposes Skills and MCP servers when their capabilities are enabled, while deferred connector-provider surfaces remain hidden.
+- Settings loads.
+- Notes list/create/update/delete works.
+- Files metadata/upload-intent smoke works if storage is configured.
+- Account deletion signs out and removes app-data rows.
+
+Manual WorkOS regression QA:
+
+- WorkOS sign-in still shows expected provider options.
+- WorkOS callback still creates the existing session.
+- `/api/auth/session` and `/api/auth/convex-token` work.
+- Hosted Convex-backed chat still loads existing conversations.
+- Sign out clears session.
+- Account deletion behavior remains unchanged for hosted mode.
+
+## Performance And Cost
+
+The adapter/repository layer adds a small amount of server-side indirection. It should not be a meaningful performance cost compared with network calls to the database, model providers, object storage, or IdP.
+
+Expected tradeoffs:
+
+- Convex mode keeps managed realtime, scheduled jobs, and hosted app-data ergonomics.
+- Postgres mode can reduce data-plane dependency on Convex and align with enterprise-owned databases.
+- Postgres mode requires operating migrations, connection pooling, backups, maintenance jobs, and future vector indexes.
+- Postgres serverless providers need careful connection pooling. Use pooled URLs where appropriate for request/response app traffic, and unpooled/admin URLs only for migrations if the provider recommends it.
+- The route support and capability checks are cheap boolean/classification checks. They should not materially affect app latency.
+- Postgres browser synchronization uses one long-poll request per active app tab plus bounded snapshot reloads after events. This replaces Convex subscriptions with operator-owned database traffic; size the web tier and Postgres pool for expected concurrent tabs.
+- Text deltas are batched before persistence to avoid one transaction per token. The event log is pruned by background maintenance after its recovery window.
+
+## Current Parity Status
+
+Postgres and Convex do not have full parity yet.
+
+Parity exists or is close enough for pilot:
+
+- Auth-linked users.
+- Separate provider identities.
+- Chat create/list/read/update/delete.
+- Chat send without memory/tools.
+- Basic title generation.
+- Realtime conversation event cursors and second-tab synchronization.
+- Durable text recovery after refresh/disconnect.
+- Stop/finalize race protection and provider-neutral public sharing.
+- Settings.
+- Onboarding.
+- Notes CRUD.
+- Project CRUD, nested hierarchy, resource association, and recursive soft deletion.
+- Complete file metadata, upload, extraction, sharing, duplicate, cleanup, and reconciliation lifecycle.
+- Account deletion cleanup.
+- Shared idempotency, service-auth replay protection, Redis rate limits, durable jobs/outbox, scheduler ownership, and background maintenance.
+- Restart-safe model catalog persistence.
+- Real backend repository contract tests.
+- Durable usage ledgers, reservations, budgets, and reconciliation.
+- Stripe billing records, top-ups, and provider-event deduplication.
+- Scoped API keys with expiry, rotation, revocation, and one-time secret display.
+- Administrative roles and redacted audit records.
+
+Parity does not exist yet:
+
+- Integrations/connectors.
+- Connector account state and hosted/self-hosted integration execution providers.
+- Automation scheduler and execution.
+- Webhook delivery retries.
+- Memory extraction.
+- Vector search.
+- Full knowledge search.
+- Multi-tenant isolation.
+
+## Next Engineering Work
+
+Recommended order:
+
+1. Keep running focused QA after each Postgres pilot slice.
+2. Expand contract tests where UI surfaces still rely on behavior not covered by repository contracts.
+3. Decide whether projects are required for the pilot; if yes, implement ProjectService parity before enabling the sidebar item.
+4. Add a real Postgres usage repository before enabling Stripe/billing with Postgres app data.
+5. Design `pgvector` tables and indexing only after confirming provider support and retention requirements.
+6. Build automation, webhook, and memory handlers on the existing durable runtime when those product phases become pilot requirements.
+7. Add account export/delete compliance workflows after the deletion path stabilizes.
+
+## Troubleshooting
+
+### Chat stays `New Chat`
+
+Check:
+
+- `/api/v1/generate-title` is not being route-gated.
+- `appDataCapabilities.supportsChatPersistence` is true.
+- The selected model gateway can serve `nvidia/nemotron-nano-9b-v2`.
+- `billing.provider=none` is active for Postgres mode or a future usage backend is configured.
+
+### Extensions is visible in Postgres mode
+
+Check:
+
+- `/api/v1/capabilities` returns `capabilities.integrations=false`.
+- `appDataCapabilities.supportsIntegrations=false`.
+- The browser has refreshed after deploy.
+- No explicit runtime config override re-enabled `OVERLAY_FEATURE_INTEGRATIONS`.
+
+### Route returns 501
+
+That is usually intentional in Postgres mode. Check `src/server/app-data/route-support.ts` to confirm whether the route is classified as unsupported, degraded, or supported.
+
+### Postgres migrations run against the wrong DB
+
+Check which env var the command uses:
+
+- `npm run better-auth:migrate` uses `BETTER_AUTH_DATABASE_URL`.
+- `npm run app-db:migrate` uses `OVERLAY_DATABASE_URL`.
+
+### Convex calls appear in browser logs during Postgres mode
+
+Check:
+
+- `appDataCapabilities.requiresConvexClient=false`.
+- `useLiveConversationSync` is not mounted.
+- The route being loaded is classified as supported or degraded for Postgres.
+- The UI surface is not one of the intentionally disabled Convex-backed surfaces.

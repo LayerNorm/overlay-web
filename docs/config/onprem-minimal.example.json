@@ -13,8 +13,7 @@
     "provider": "none",
     "allowDevFallbacks": false,
     "workos": {},
-    "oidc": {},
-    "keycloak": {}
+    "oidc": {}
   },
   "billing": {
     "provider": "none",

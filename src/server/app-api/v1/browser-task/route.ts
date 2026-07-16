@@ -3,20 +3,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { BrowserUse } from 'browser-use-sdk/v3'
 import type { ProxyCountryCode } from 'browser-use-sdk/v3'
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import { outputService } from '@/server/outputs/http'
 import { BROWSER_USE_TASK_INIT_USD, calculateBrowserUseV3TokenCost } from '@/server/ai/pricing'
-import type { Entitlements } from '@/shared/app/app-contracts'
 import {
   buildInsufficientCreditsPayload,
   billableBudgetCentsFromProviderUsd,
-  ensureBudgetAvailable,
-  finalizeProviderBudgetReservation,
   getBudgetTotals,
   isPaidPlan,
-  markProviderBudgetReconcile,
-  releaseProviderBudgetReservation,
-  reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
 
 export const maxDuration = 300
@@ -34,12 +28,14 @@ function parseUsd(value: string | number | null | undefined): number {
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const { task, sessionId, keepAlive, model, proxyCountryCode }: {
+    const { task, sessionId, keepAlive, model, proxyCountryCode, conversationId, turnId }: {
       task?: string
       sessionId?: string
       keepAlive?: boolean
       model?: 'bu-mini' | 'bu-max'
       proxyCountryCode?: string
+      conversationId?: string
+      turnId?: string
     } = await request.json()
 
     const { auth } = context
@@ -68,11 +64,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
 
-    const serverSecret = getInternalApiSecret()
-    const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
-      serverSecret,
-      userId: auth.userId,
-    })
+    const { generationUsagePolicy } = getOverlayServerContext()
+    const entitlements = await generationUsagePolicy.getEntitlements({ userId: auth.userId })
 
     if (!entitlements) {
       return NextResponse.json(
@@ -92,7 +85,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
     if (budget.remainingCents <= taskInitCents) {
-      const autoTopUp = await ensureBudgetAvailable({
+      const autoTopUp = await generationUsagePolicy.ensureBudgetAvailable({
         userId: auth.userId,
         entitlements: currentEntitlements,
         minimumRequiredCents: taskInitCents + 1,
@@ -108,7 +101,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
 
-    const reservation = await reserveProviderBudget({
+    const reservation = await generationUsagePolicy.reserve({
       userId: auth.userId,
       entitlements: currentEntitlements,
       providerCostUsd: BROWSER_USE_TASK_INIT_USD + remainingVariableBudgetUsd,
@@ -133,7 +126,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         maxCostUsd: remainingVariableBudgetUsd,
       })
     } catch (err) {
-      await releaseProviderBudgetReservation({
+      await generationUsagePolicy.release({
         userId: auth.userId,
         reservationId: reservation.reservationId,
         reason: err instanceof Error ? err.message : 'browser_task_failed',
@@ -156,7 +149,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const totalChargeUsd = BROWSER_USE_TASK_INIT_USD + estimatedVariableCostUsd
     const costCents = billableBudgetCentsFromProviderUsd(totalChargeUsd)
 
-    await finalizeProviderBudgetReservation({
+    await generationUsagePolicy.finalize({
       userId: auth.userId,
       reservationId: reservation.reservationId,
       actualProviderCostUsd: totalChargeUsd,
@@ -170,20 +163,40 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         timestamp: Date.now(),
       }],
     }).catch(async (err) => {
-      await markProviderBudgetReconcile({
+      await generationUsagePolicy.markForReconcile({
         userId: auth.userId,
         reservationId: reservation.reservationId,
         errorMessage: err instanceof Error ? err.message : 'finalize_failed',
       }).catch((_error) => undefined)
     })
 
-    const updated = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
-      serverSecret,
+    const updated = await generationUsagePolicy.getEntitlements({ userId: auth.userId })
+
+    const outputText = typeof result.output === 'string'
+      ? result.output
+      : JSON.stringify(result.output ?? '')
+    const outputId = await outputService.create({
       userId: auth.userId,
+      type: 'text',
+      source: 'browser',
+      status: 'completed',
+      prompt: sanitizedTask,
+      modelId: `browser-use/${result.model}`,
+      content: outputText,
+      fileName: `browser-task-${Date.now()}.txt`,
+      mimeType: 'text/plain',
+      metadata: {
+        browserSessionId: result.id,
+        liveUrl: result.liveUrl ?? null,
+        status: result.status,
+      },
+      ...(conversationId ? { conversationId } : {}),
+      ...(turnId ? { turnId } : {}),
     })
 
     return NextResponse.json({
       output: result.output,
+      outputId,
       sessionId: result.id,
       liveUrl: result.liveUrl ?? null,
       status: result.status,

@@ -2,13 +2,16 @@ import 'server-only'
 
 import { NextResponse } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { repositoryProxy } from '@/server/app-data/errors'
 import { publicEnv } from '@/shared/env/public-env'
 import { DEFAULT_APP_URL, normalizeAppBaseUrl } from '@/shared/web/normalize-app-url'
 import { BillingCheckoutService } from './BillingCheckoutService'
 import { BillingCustomerService, BillingServiceError } from './BillingCustomerService'
-import { ConvexBillingRepository } from './ConvexBillingRepository'
+import type { BillingRepository } from './BillingRepository'
 
-const billingRepository = new ConvexBillingRepository()
+const billingRepository = repositoryProxy<BillingRepository>(
+  () => getOverlayServerContext().appData.repositories.billing,
+)
 
 export const billingCustomerService = new BillingCustomerService({
   repository: billingRepository,

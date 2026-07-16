@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { hashTextContent } from '@/server/storage/text-content-hash'
 import type { NoteRecord, NoteRepository } from './NoteService'
@@ -25,11 +25,16 @@ export class ConvexNoteRepository implements NoteRepository {
     noteId: string
     userId: string
   }): Promise<NoteRecord | null> {
+    let directLookupRejected = false
     const direct = await this.getCanonicalFile({
       fileId: args.noteId,
       userId: args.userId,
-    }).catch((_error) => null)
+    }).catch((_error) => {
+      directLookupRejected = true
+      return null
+    })
     if (direct?.kind === 'note') return direct
+    if (!directLookupRejected) return null
 
     const migrated = await convex.query<NoteRecord | null>('files/files:getByLegacyNoteId', {
       noteId: args.noteId,
@@ -58,7 +63,11 @@ export class ConvexNoteRepository implements NoteRepository {
     title: string
     content: string
     projectId?: string
+    tags?: string[]
+    clientId?: string
   }): Promise<{ id: string; note: NoteRecord | null }> {
+    void args.tags
+    void args.clientId
     const fileId = await convex.mutation<string>('files/files:create', {
       userId: args.userId,
       serverSecret: this.serverSecret,
@@ -85,8 +94,10 @@ export class ConvexNoteRepository implements NoteRepository {
     userId: string
     title?: string
     content?: string
-    projectId?: string
+    projectId?: string | null
+    tags?: string[]
   }): Promise<NoteRecord | null> {
+    void args.tags
     const existing = await this.getNote({
       noteId: args.noteId,
       userId: args.userId,

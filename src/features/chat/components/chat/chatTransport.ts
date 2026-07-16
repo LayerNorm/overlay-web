@@ -42,9 +42,11 @@ export type ConversationLoadSnapshot =
 
 export async function loadConversationSnapshot({
   chatId,
+  loadGeneratedOutputs,
   shouldLoadMeta,
 }: {
   chatId: string
+  loadGeneratedOutputs: boolean
   shouldLoadMeta: boolean
 }): Promise<ConversationLoadSnapshot> {
   const [messagesRes, outputsRes, metaRes] = await Promise.all([
@@ -52,7 +54,9 @@ export async function loadConversationSnapshot({
       conversationId: chatId,
       messages: true,
     }),
-    overlayAppClient.files.getResponse({ kind: 'output', conversationId: chatId, limit: 100, summary: true }),
+    loadGeneratedOutputs
+      ? overlayAppClient.files.getResponse({ kind: 'output', conversationId: chatId, limit: 100, summary: true })
+      : Promise.resolve(null),
     shouldLoadMeta
       ? overlayAppClient.conversations.getResponse({ conversationId: chatId })
       : Promise.resolve(null),
@@ -70,7 +74,7 @@ export async function loadConversationSnapshot({
     ? data.messages as RawConversationMessage[]
     : []
 
-  const outputRows = outputsRes.ok
+  const outputRows = outputsRes?.ok
     ? unwrapPaginatedData<{
         _id: string
         outputType?: string

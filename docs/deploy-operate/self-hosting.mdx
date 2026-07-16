@@ -37,6 +37,16 @@ The app now loads configuration from three layers, highest precedence first:
 
 Use the examples in [Deployment Profiles](#deployment-profiles) as starting points. They are validated by `npm run docs:health`.
 
+## Deployment Models
+
+| Model | Operator | Tenant boundary | Best for |
+| --- | --- | --- | --- |
+| **Hosted SaaS** | LayerNorm | LayerNorm's shared SaaS environment | Teams that want zero infrastructure work. |
+| **Managed Cloud Enterprise** | LayerNorm | One dedicated deployment per customer | Enterprises that need isolation without self-hosting. |
+| **Self-Hosted / On-Prem** | Customer | One deployment per customer | Organizations that need full source control and in-house operations. |
+
+See [Managed Cloud Enterprise](./cloud-managed) for the managed-cloud option and [Tenancy And Role Model](./tenancy) for the tenant boundary.
+
 ## Required Environment Variables
 
 Minimum app runtime variables:
@@ -59,8 +69,8 @@ Provider-specific variables:
 | --- | --- | --- |
 | `WORKOS_CLIENT_ID`, `WORKOS_API_KEY` | `auth.provider="workos"` | Use production WorkOS values only with production app and Convex deployments. |
 | `DEV_WORKOS_CLIENT_ID`, `DEV_WORKOS_API_KEY` | Local or staging WorkOS fallback | Only use when `auth.allowDevFallbacks=true` in non-production. |
-| `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_AUDIENCE` | `auth.provider="oidc"` | Verifies RS256 bearer/access tokens against OIDC discovery JWKS and maps standard profile claims. Browser sign-in/callback wiring is still deployment-specific. |
-| `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`, `KEYCLOAK_REALM` | `auth.provider="keycloak"` | Keycloak uses the same OIDC token verification path. Browser sign-in/callback wiring is still deployment-specific. |
+| `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_DATABASE_URL`, `BETTER_AUTH_DEFAULT_SSO_*`, `BETTER_AUTH_OIDC_*`, `BETTER_AUTH_JWT_*`, `BETTER_AUTH_JWKS_URL` | `auth.provider="better-auth"` | Better Auth owns the web session in Overlay and issues short-lived JWTs for Convex verification through its JWKS endpoint. Keep this database auth-scoped; it does not replace Convex app data. |
+| `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_AUDIENCE` | `auth.provider="oidc"` | Verifies RS256 bearer/access tokens against OIDC discovery JWKS and maps standard profile claims. Use these variables for Keycloak-compatible realm issuers too. Browser sign-in/callback wiring is still deployment-specific. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | `billing.provider="stripe"` | Required only when billing is enabled. |
 | `DEV_STRIPE_SECRET_KEY`, `DEV_STRIPE_WEBHOOK_SECRET` | Staging Stripe | Preferred for non-production. |
 | `STRIPE_PAID_UNIT_PRICE_ID`, `STRIPE_TOPUP_UNIT_PRICE_ID`, `STRIPE_PORTAL_CONFIGURATION_ID` | Stripe billing UI | Use matching test or live mode IDs for the selected environment. |
@@ -109,7 +119,7 @@ The normalized shape is:
 | Section | Purpose |
 | --- | --- |
 | `app` | Base URL, deployment environment, CSP connect-src additions, and public env keys. |
-| `auth` | WorkOS, OIDC, Keycloak, or no-op auth selection. |
+| `auth` | WorkOS, OIDC, or no-op auth selection. |
 | `billing` | Stripe or disabled billing. |
 | `storage` | R2, S3-compatible storage, or no-op object store. |
 | `llm` | Gateway provider, provider key source, default model, and allowlist. |
@@ -164,8 +174,8 @@ Auth providers:
 | Provider | Config | Current status |
 | --- | --- | --- |
 | `workos` | `auth.workos` | Default SaaS path. Production-ready path for current hosted app. |
-| `oidc` | `auth.oidc` | Runtime-config OIDC bearer/access-token verification. Verify browser sign-in/callback wiring for your IdP before production. |
-| `keycloak` | `auth.keycloak` | Keycloak-shaped OIDC bearer/access-token verification. Verify browser sign-in/callback wiring for your realm before production. |
+| `better-auth` | `auth.betterAuth` | Better Auth web sessions plus SSO and JWKS-backed service JWTs for Convex. Requires an auth-scoped Postgres database and Better Auth migrations before production use. |
+| `oidc` | `auth.oidc` | Runtime-config OIDC bearer/access-token verification, including Keycloak-compatible realm issuers. Verify browser sign-in/callback wiring for your IdP before production. |
 | `none` | none | Local/on-prem no-op auth. Pair with `capabilities.sso=false`. |
 
 Billing providers:
@@ -197,20 +207,167 @@ Enterprise provider matrix:
 
 | Purpose | Provider values | Data processed | Region/residency | Current support |
 | --- | --- | --- | --- | --- |
-| Auth | `workos`, `oidc`, `keycloak`, `none` | Identity profile, session tokens, org/user metadata | Depends on IdP | Supported. OIDC/Keycloak verify bearer/access tokens through discovery JWKS; browser login wiring is deployment-specific. |
-| Database | `convex`, `postgres` | App records, messages, files metadata, usage state | Convex deployment region today | `convex` supported. `postgres` is declared but rejected until repository adapters exist. |
+| Auth | `workos`, `oidc`, `none` | Identity profile, session tokens, org/user metadata | Depends on IdP | Supported. OIDC verifies bearer/access tokens through discovery JWKS, including Keycloak-compatible realm issuers; browser login wiring is deployment-specific. |
+| Database | `convex`, `postgres` | App records, messages, files metadata, usage state | Convex deployment region today, or customer Postgres region in Postgres mode | `convex` supported. `postgres` supports auth-linked users, chat, projects, notes, files and outputs, account deletion, durable maintenance, memory extraction, pgvector retrieval, scheduled automations, webhooks, usage/billing records, scoped API keys, administrative audit, skills, and MCP server persistence/execution audits. Integration connection state remains in the selected integration provider rather than the app-data database. |
 | Object storage | `r2`, `s3`, `none` | Uploaded files and generated artifacts | Bucket/provider region | Supported for Cloudflare R2 and S3-compatible enterprise object stores. |
-| Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | Database/vector provider region | `convex` and `none` supported. `pgvector` and `pinecone` are declared but rejected until adapters exist. |
+| Vector search | `convex`, `pgvector`, `pinecone`, `none` | Embeddings and searchable text chunks | Database/vector provider region | `convex`, `pgvector`, and `none` are supported. `pgvector` requires Postgres, the `vector` extension, an embeddings provider, migrations, and the durable worker. `pinecone` is declared but rejected until an adapter exists. |
 | Embeddings | `ai-gateway`, `openai`, `azure-openai`, `none` | Text chunks sent for embedding | Provider region/policy | `ai-gateway`, `openai`, and `none` declared for current wiring. `azure-openai` is rejected until an adapter exists. |
 | Models | `openrouter`, `ai-gateway`, `openai`, `anthropic`, `groq`, `none` | User prompts, context, tool results | Model provider policy | Supported. Use `features.modelRouting=false` plus `providers.models.provider="none"` to disable. |
-| Integrations | `composio`, `mcp`, `none` | Connected-account metadata and tool inputs/outputs | Provider/account region | `composio` and `none` supported. `mcp` as a provider family is declared but rejected until bootstrap wiring exists. |
+| Integrations | `composio`, `executor`, `mcp`, `none` | Connected-account metadata and tool inputs/outputs | Provider/account region | `composio`, `executor`, and `none` supported. `executor` uses a separate customer-hosted service and provider-managed connections. `mcp` as a provider family is declared but rejected until bootstrap wiring exists. |
 | Browser use | `browser-use`, `self-hosted-playwright`, `none` | Browser tasks, page content, credentials entered during tasks | Browser provider region | `browser-use` and `none` supported. `self-hosted-playwright` is declared but rejected until an adapter exists. |
 | Sandboxes | `daytona`, `e2b`, `local-firecracker`, `none` | Commands, staged files, generated artifacts | Sandbox provider region | `daytona` and `none` supported. `e2b` and `local-firecracker` are declared but rejected until adapters exist. |
 | Web search | `ai-gateway`, `perplexity`, `tavily`, `none` | Search queries and result snippets | Search/model provider policy | `ai-gateway` and `none` supported. Direct `perplexity` and `tavily` are declared but rejected until adapters exist. |
 | Analytics | `posthog`, `none` | Pageviews and product events | PostHog project region | Supported. Set analytics feature/provider to `false`/`none` to avoid SDK initialization and capture. |
 | Error reporting | `sentry`, `none` | Error events and sanitized stack/request metadata | Sentry project region | Supported. Set error reporting feature/provider to `false`/`none` to avoid initialization and capture. |
 | Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | Secret manager region | `env` supported; WorkOS vault-backed provider keys exist for selected flows. AWS Secrets Manager and Vault are declared but rejected for runtime secret loading. |
-| Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | App/database region | `convex`, `memory`, and `none` supported. `redis` is declared but rejected until enterprise config wiring exists. |
+| Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | App/database region | All declared providers are supported. Use Redis with fail-closed behavior for multi-instance production/on-prem deployments; memory is development-only. |
+
+### Postgres app-data setup
+
+For MCP servers, generate a separate credential-encryption key:
+
+```bash
+openssl rand -hex 32
+```
+
+Store it as `MCP_CREDENTIAL_ENCRYPTION_KEY` on the web and worker runtimes. During
+rotation, place the old value in `MCP_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS`, deploy
+the new primary key, rewrite saved credentials through the management API, then
+remove the previous key. MCP responses expose only `hasAuth`; bearer tokens and
+custom header values are AES-256-GCM encrypted at rest and are never returned by
+list APIs. Production MCP URLs must use HTTPS and pass Overlay's SSRF validation.
+
+Each server has a default execution policy of `allow`, `approval_required`, or
+`deny`, plus optional per-tool overrides. Use `approval_required` as the enterprise
+default when a server contains write-capable tools. Tool name, argument hash,
+policy decision, result status, duration, and request context are persisted for
+audit without storing raw tool arguments.
+
+Postgres app-data support is split into phases. Operators can provision, validate, migrate, and smoke-test the app-data schema now. Run with `billing.provider="none"` and keep integrations and API keys disabled until their parity phases land. Projects, files, generated media, browser outputs, Daytona artifacts, saved memories, knowledge retrieval, scheduled automations, and signed outbound webhooks are supported.
+
+Postgres-native memory and knowledge search uses `pgvector`; do not keep Convex enabled in the browser as a hidden vector sidecar. Confirm `vector` is available before migration, then set:
+
+```env
+OVERLAY_PROVIDER_VECTOR_SEARCH=pgvector
+OVERLAY_PROVIDER_EMBEDDINGS=openai
+OVERLAY_EMBEDDING_MODEL_VERSION=text-embedding-3-small-v1
+OVERLAY_MEMORY_EXTRACTION_MODEL_ID=gpt-4.1-mini
+OVERLAY_RETENTION_MEMORY_DAYS=365
+VECTOR_SEARCH_ENABLED=true
+OVERLAY_FEATURE_VECTOR_SEARCH=true
+```
+
+Run the durable worker continuously. It executes memory extraction, indexing,
+failed-index recovery, retention, and embedding-model backfills:
+
+```bash
+npm run app-db:worker
+```
+
+When Postgres app-data uses automations or outbound webhooks, declare the
+supervised runtime explicitly in the web, worker, and scheduler environments:
+
+```bash
+OVERLAY_BACKGROUND_RUNTIME_ENABLED=true
+INTERNAL_SERVICE_AUTH_SECRET="replace-with-a-strong-distinct-secret"
+```
+
+The Postgres capability response hides automations and webhooks until the
+background runtime is declared. Automations additionally require
+`INTERNAL_SERVICE_AUTH_SECRET`. Set the declaration only when at least one
+scheduler and one worker are continuously supervised.
+
+When changing `OVERLAY_EMBEDDING_MODEL_VERSION`, deploy the new worker and run:
+
+```bash
+npm run app-db:knowledge-backfill -- --limit=2000
+```
+
+Repeat until `queued` is zero, then allow workers to drain the queue before
+retiring the old embedding model configuration.
+
+For local setup:
+
+```bash
+cp .env.app-data.local.example .env.app-data.local
+npm run app-db:up
+npm run app-db:migrate
+npm run app-db:smoke
+npm run app-db:worker:smoke
+```
+
+For cloud Postgres, set `OVERLAY_DATABASE_URL` and run:
+
+```bash
+OVERLAY_DATABASE_URL="postgres://..." npm run app-db:migrate
+OVERLAY_DATABASE_URL="postgres://..." npm run app-db:smoke
+OVERLAY_DATABASE_URL="postgres://..." npm run app-db:worker:smoke
+```
+
+Do not reuse `BETTER_AUTH_DATABASE_URL` for app data. Better Auth and Overlay app records have separate schemas and migration lifecycles.
+
+### Billing, API keys, and administrators
+
+Postgres app-data supports Stripe subscription records, exactly-once top-up grants,
+and durable Stripe event deduplication. Register the Postgres deployment webhook as:
+
+```text
+https://overlay.example.com/api/webhooks/stripe
+```
+
+Set `STRIPE_WEBHOOK_SECRET` to that endpoint's signing secret. Convex deployments
+continue to use the Convex Stripe webhook endpoint; do not register both endpoints
+for one deployment.
+
+API key values are returned only on create or rotation. The database stores an
+HMAC hash using `API_KEY_HASH_SECRET`, plus scopes, expiry, use metadata, and
+revocation state. Rotate the hash secret only through a planned key invalidation
+window because existing API keys cannot be re-hashed without their plaintext.
+
+Bootstrap the first administrator from a trusted maintenance shell after the user
+has signed in once and exists in the app-data `users` table:
+
+```bash
+OVERLAY_DATABASE_URL="postgres://..." npm run app-db:admin -- \
+  grant --user-id USER_ID --role admin --reason "initial operator"
+```
+
+Then use `/api/v1/admin/principals` for role grants/revocations and
+`/api/v1/admin/audit` for audit review. `/app/admin` exposes usage filters,
+institutional budget adjustment, and audit search; `/api/v1/admin/usage` is its
+provider-neutral API. Available roles are `admin`, `auditor`,
+`billing_admin`, and `support`. Only `admin` can grant or revoke roles, auditors
+can read audit records, and an administrator cannot revoke their own active role.
+Audit metadata is size-bounded and secret-shaped keys are redacted before insert.
+Users manage scoped credentials under Account settings. Before an AWS pilot,
+complete the [AWS deployment](/deploy-operate/aws),
+[security](/deploy-operate/security), and
+[release gate](/deploy-operate/release-gates) procedures for each enabled
+billing profile.
+
+For future vector-search planning, confirm that the managed Postgres provider exposes the `vector` extension:
+
+```bash
+OVERLAY_DATABASE_URL="postgres://..." npm run app-db:vector-readiness
+```
+
+This readiness command is read-only. It does not enable vector search, install extensions, create vector columns, or change the app-data schema.
+
+Postgres app-data does not use Convex crons. Run `npm run app-db:worker` as a separately supervised service and set `OVERLAY_BACKGROUND_RUNTIME_ENABLED=true` on every release component. Its Postgres scheduler enqueues maintenance, coordination cleanup, model-catalog refresh, S3 reconciliation, output retention, knowledge maintenance, due automation scans, and Daytona reconciliation. Leased workers execute jobs with retry, lease recovery, and dead-letter state. Automation occurrences are idempotent, each attempt is audited, overlapping runs obey the configured `skip` or `queue` policy, and cancellation is checked before execution. Outbound webhook events are deduplicated per subscription/event, signed over `timestamp.payload` with HMAC-SHA256, and retain delivery-attempt and dead-letter records. Signing secrets are returned only when a subscription is created or rotated; dead-letter redrive creates a new immutable delivery record. Daytona reconciliation adopts only correctly labeled workspaces, rejects unowned provider records, marks missing workspaces, and advances active metering windows idempotently. The standalone `npm run app-db:maintenance` command remains available for manual recovery. `compliance.retention.fileDays` governs generated media/browser outputs and `compliance.retention.sandboxArtifactDays` governs Daytona artifacts.
+
+Postgres chat realtime uses the `conversation_events` table and `/api/v1/conversations/events` long polling. Transactional `pg_notify` wakes one listener connection per web process; notifications are only an optimization because reconnects read from the durable cursor. It does not require sticky load-balancer sessions. Keep the worker running so expired event rows and message deltas are pruned. Each app tab holds at most one HTTP long-poll request, so account for concurrent tabs when setting ECS task count and reverse-proxy timeouts. The route waits up to 15 seconds; configure the ingress idle timeout above that value.
+
+The optional chat-stream relay provides exact SSE frame replay. It is not required for Postgres text durability: the web runtime continues consuming the model stream after a browser disconnect, persists batched text deltas, and reconnecting clients reload the authoritative message snapshot.
+
+The migration shape is:
+
+1. Consolidate repository/context boundaries before adding new persistence.
+2. Make Convex optional in the browser for Postgres mode.
+3. Add capability gates and route classification for every app surface.
+4. Implement chat with an explicit usage policy.
+5. Move business invariants into domain services.
+6. Add real backend contract tests for Convex and Postgres.
+7. Add Postgres-native vector search later through `pgvector`, after provider readiness and adapter work.
 
 Capabilities:
 
@@ -220,7 +377,7 @@ Capabilities:
 | `files` | File upload, file navigation, and file picker affordances. |
 | `memory` | Memory write/read tools and memory settings. |
 | `knowledge` | Knowledge surfaces and knowledge search affordances. |
-| `integrations` | Composio/MCP-style account linking and external integration tools. |
+| `integrations` | Provider-neutral Composio or Executor account linking, catalogs, and external tools. Direct MCP servers remain under `mcpServers`. |
 | `browserUse` | Browser Use routes, browser task UI, and browser-session tool exposure. |
 | `sandboxes` | Daytona sandbox routes and sandbox tool exposure. |
 | `webSearch` | Gateway search tool exposure. |
@@ -230,7 +387,7 @@ Capabilities:
 | `billing` | Checkout, portal, top-ups, billing account pages, quota purchase prompts. |
 | `sso` | OAuth/SSO buttons, enterprise auth callbacks, native auth flows. |
 | `apiKeys` | Future API key management routes and UI. |
-| `webhooks` | Future webhook subscription routes and UI. |
+| `webhooks` | Outbound webhook subscriptions, signed delivery, retry history, and dead letters. |
 | `vectorSearch` | Knowledge search and memory routes. Basic file listing is preserved. |
 | `automations` | Automation scheduling, automation navigation, runner callbacks. |
 | `multiTenant` | Reserved for future tenant isolation work. The schema rejects enabling it today. |
@@ -264,7 +421,7 @@ Without WorkOS:
 
 ```json
 {
-  "auth": { "provider": "none", "allowDevFallbacks": false, "workos": {}, "oidc": {}, "keycloak": {} },
+  "auth": { "provider": "none", "allowDevFallbacks": false, "workos": {}, "oidc": {} },
   "capabilities": { "sso": false }
 }
 ```
@@ -282,8 +439,7 @@ With OIDC instead of WorkOS:
       "clientId": "overlay-web",
       "clientSecret": "oidc_client_secret_placeholder",
       "audience": "overlay-api"
-    },
-    "keycloak": {}
+    }
   },
   "capabilities": { "sso": true }
 }
@@ -342,7 +498,7 @@ App runtime only:
 - `API_KEY_HASH_SECRET`
 - `PROVIDER_KEYS_SECRET`
 - `HOOKS_TOKEN_SALT`
-- WorkOS API key, OIDC client secret, Keycloak client secret
+- WorkOS API key and OIDC client secret
 - Stripe secret key, Stripe webhook secret
 - R2/S3 access key secrets
 - LLM provider API keys

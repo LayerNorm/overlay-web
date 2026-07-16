@@ -8,11 +8,17 @@ import { GroqGateway } from '@overlay/llm-gateway/groq'
 import { createOverlayServerContext } from './bootstrap'
 import { OpenAILLMGateway, OpenRouterGateway } from './ai/providers'
 import { ApiKeyService } from './auth/api-keys'
-import { OidcAuthProvider, WorkOSAuthProvider } from './auth/providers'
+import { BetterAuthProvider, OidcAuthProvider, WorkOSAuthProvider } from './auth/providers'
 import { NoOpBillingProvider, StripeBillingProvider } from './billing/providers'
 import { OverlayConfigError } from './config'
-import { ConvexRateLimiter, InMemoryEventBus, InMemoryRateLimiter } from './shared/providers'
+import {
+  ConvexRateLimiter,
+  InMemoryEventBus,
+  InMemoryRateLimiter,
+  RedisRateLimiter,
+} from './shared/providers'
 import { R2ObjectStore, S3CompatibleObjectStore } from './storage/providers'
+import { UserService } from './users'
 import { parseOverlayRuntimeConfig, type OverlayRuntimeConfig } from '../shared/config'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -34,7 +40,8 @@ test('createOverlayServerContext returns SaaS adapters for WorkOS, Stripe, R2, a
   assert.equal(context.llmGateway instanceof OpenRouterGateway, true)
   assert.equal(context.rateLimiter instanceof ConvexRateLimiter, true)
   assert.equal(context.eventBus instanceof InMemoryEventBus, true)
-  assert.equal(context.apiKeyService, ApiKeyService)
+  assert.equal(context.apiKeyService instanceof ApiKeyService, true)
+  assert.equal(context.userService instanceof UserService, true)
 })
 
 test('createOverlayServerContext returns enterprise adapters for OIDC, no billing, S3, and OpenAI config', () => {
@@ -46,6 +53,196 @@ test('createOverlayServerContext returns enterprise adapters for OIDC, no billin
   assert.equal(context.objectStore instanceof S3CompatibleObjectStore, true)
   assert.equal(context.llmGateway instanceof OpenAILLMGateway, true)
   assert.equal(context.rateLimiter instanceof InMemoryRateLimiter, true)
+  assert.equal(context.userService instanceof UserService, true)
+})
+
+test('createOverlayServerContext returns Better Auth adapter when selected', () => {
+  const base = fixture('saas-staging.json')
+  const runtimeConfig = parseOverlayRuntimeConfig({
+    ...base,
+    providers: {
+      ...base.providers,
+      auth: { provider: 'better-auth' },
+    },
+    auth: {
+      provider: 'better-auth',
+      allowDevFallbacks: false,
+      workos: {},
+      oidc: {},
+      betterAuth: {
+        baseUrl: 'https://staging.getoverlay.io',
+        secret: 'better_auth_secret',
+        databaseUrl: 'postgres://overlay_auth:secret@localhost:5432/overlay_auth',
+        defaultSsoProviderId: 'pilot-oidc',
+        defaultSsoDomain: 'example.com',
+        oidcIssuerUrl: 'https://idp.example.com',
+        oidcClientId: 'overlay-web',
+        oidcClientSecret: 'oidc_secret',
+        jwtAudience: 'https://staging.getoverlay.io',
+        jwksUrl: 'https://staging.getoverlay.io/api/better-auth/jwks',
+      },
+    },
+  })
+  const context = createOverlayServerContext({ appConfig: {}, runtimeConfig })
+
+  assert.equal(context.auth instanceof BetterAuthProvider, true)
+})
+
+test('createOverlayServerContext rejects Better Auth without a configured SSO connection', () => {
+  const base = fixture('saas-staging.json')
+  const runtimeConfig = parseOverlayRuntimeConfig({
+    ...base,
+    providers: {
+      ...base.providers,
+      auth: { provider: 'better-auth' },
+    },
+    auth: {
+      provider: 'better-auth',
+      allowDevFallbacks: false,
+      workos: {},
+      oidc: {},
+      betterAuth: {
+        baseUrl: 'https://staging.getoverlay.io',
+        secret: 'better_auth_secret',
+        databaseUrl: 'postgres://overlay_auth:secret@localhost:5432/overlay_auth',
+      },
+    },
+  })
+
+  assert.throws(
+    () => createOverlayServerContext({ appConfig: {}, runtimeConfig }),
+    (error) =>
+      error instanceof OverlayConfigError &&
+      error.issues.includes('At least one Better Auth SSO connection is required'),
+  )
+})
+
+test('createOverlayServerContext rejects unresolved Better Auth credential references', () => {
+  const base = fixture('saas-staging.json')
+  const runtimeConfig = parseOverlayRuntimeConfig({
+    ...base,
+    providers: {
+      ...base.providers,
+      auth: { provider: 'better-auth' },
+    },
+    auth: {
+      provider: 'better-auth',
+      allowDevFallbacks: false,
+      workos: {},
+      oidc: {},
+      betterAuth: {
+        baseUrl: 'https://staging.getoverlay.io',
+        secret: 'better_auth_secret',
+        databaseUrl: 'postgres://overlay_auth:secret@localhost:5432/overlay_auth',
+        connections: [{
+          id: 'workspace',
+          preset: 'google-workspace',
+          domains: ['school.edu'],
+          clientIdEnv: 'MISSING_GOOGLE_CLIENT_ID',
+          clientSecretEnv: 'MISSING_GOOGLE_CLIENT_SECRET',
+        }],
+      },
+    },
+  })
+
+  assert.throws(
+    () => createOverlayServerContext({ appConfig: {}, runtimeConfig }),
+    (error) =>
+      error instanceof OverlayConfigError &&
+      error.issues.some((issue) => issue.includes('MISSING_GOOGLE_CLIENT_ID')),
+  )
+})
+
+test('createOverlayServerContext wires Redis rate limiting when selected', () => {
+  const base = fixture('onprem-s3-oidc-openai.json')
+  const runtimeConfig = parseOverlayRuntimeConfig({
+    ...base,
+    providers: {
+      ...base.providers,
+      rateLimit: { provider: 'redis' },
+    },
+    rateLimit: {
+      redis: {
+        url: 'redis://redis.internal:6379',
+        failureMode: 'deny',
+      },
+    },
+  })
+
+  assert.equal(
+    createOverlayServerContext({ appConfig: {}, runtimeConfig }).rateLimiter instanceof RedisRateLimiter,
+    true,
+  )
+})
+
+test('createOverlayServerContext returns Postgres app-data context with chat route capabilities', () => {
+  const base = fixture('saas-staging.json')
+  const runtimeConfig = parseOverlayRuntimeConfig({
+    ...base,
+    billing: {
+      provider: 'none',
+      stripe: {},
+    },
+    capabilities: {
+      ...base.capabilities,
+      billing: false,
+      vectorSearch: false,
+    },
+    providers: {
+      ...base.providers,
+      database: { provider: 'postgres' },
+      vectorSearch: { provider: 'none' },
+    },
+    database: {
+      ...base.database,
+      provider: 'postgres',
+      postgres: {
+        connectionString: 'postgres://overlay_app:secret@localhost:54330/overlay_app',
+        sslMode: 'disable',
+      },
+    },
+  })
+  const context = createOverlayServerContext({ appConfig: {}, runtimeConfig })
+
+  assert.equal(context.appDataCapabilities.provider, 'postgres')
+  assert.equal(context.appDataCapabilities.supportsRealtime, true)
+  assert.equal(context.appDataCapabilities.supportsStreamResume, true)
+  assert.equal(context.appDataCapabilities.supportsChatPersistence, true)
+  assert.equal(context.appDataCapabilities.supportsProjects, true)
+  assert.equal(context.appDataCapabilities.supportsSkills, true)
+  assert.equal(context.appDataCapabilities.supportsMcpServers, true)
+  assert.equal(context.appDataCapabilities.supportsBackgroundMaintenance, true)
+  assert.equal(context.appDataCapabilities.supportsManagedScheduler, true)
+  assert.equal(context.appDataCapabilities.supportsPersistentIdempotency, true)
+  assert.equal(context.appDataCapabilities.supportsServiceAuthReplayStore, true)
+  assert.equal(context.userService instanceof UserService, true)
+})
+
+test('createOverlayServerContext accepts pgvector for Postgres app-data', () => {
+  const base = fixture('saas-staging.json')
+  const runtimeConfig = parseOverlayRuntimeConfig({
+    ...base,
+    billing: { provider: 'none', stripe: {} },
+    capabilities: { ...base.capabilities, billing: false, vectorSearch: true },
+    providers: {
+      ...base.providers,
+      database: { provider: 'postgres' },
+      embeddings: { provider: 'openai' },
+      vectorSearch: { provider: 'pgvector' },
+    },
+    database: {
+      ...base.database,
+      provider: 'postgres',
+      postgres: {
+        connectionString: 'postgres://overlay_app:secret@localhost:54330/overlay_app',
+        sslMode: 'disable',
+      },
+    },
+  })
+  const context = createOverlayServerContext({ appConfig: {}, runtimeConfig })
+
+  assert.equal(context.appDataCapabilities.provider, 'postgres')
+  assert.equal(context.appDataCapabilities.supportsVectorSearch, true)
 })
 
 test('createOverlayServerContext throws typed config error before constructing invalid provider config', () => {

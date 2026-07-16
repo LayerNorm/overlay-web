@@ -1,0 +1,53 @@
+---
+title: "Generic OIDC"
+description: "Configure Cognito, Okta, Keycloak, and other standards-compliant OIDC providers."
+---
+
+Use `generic-oidc` when the provider has a deployment-specific issuer and no dedicated Overlay preset.
+
+## Shared environment
+
+```bash
+BETTER_AUTH_CONNECTION_ID=enterprise-sso
+BETTER_AUTH_CONNECTION_PRESET=generic-oidc
+BETTER_AUTH_CONNECTION_LABEL=Continue with Enterprise SSO
+BETTER_AUTH_CONNECTION_DOMAINS=example.com
+BETTER_AUTH_CONNECTION_ISSUER_URL=https://issuer.example.com
+BETTER_AUTH_CONNECTION_CLIENT_ID=<client-id>
+BETTER_AUTH_CONNECTION_CLIENT_SECRET=<client-secret>
+BETTER_AUTH_REQUIRE_VERIFIED_EMAIL=true
+BETTER_AUTH_ALLOWED_EMAIL_DOMAINS=example.com
+```
+
+The callback is:
+
+```text
+https://overlay.example.com/api/better-auth/sso/callback/enterprise-sso
+```
+
+## Provider values
+
+| Provider | Issuer pattern | Important setup |
+| --- | --- | --- |
+| AWS Cognito | `https://cognito-idp.<region>.amazonaws.com/<user-pool-id>` | Create an app client with a secret, enable authorization code grant and `openid email profile`, and configure the Overlay callback in the managed login domain. |
+| Okta | `https://<org>.okta.com/oauth2/<authorization-server-id>` | Create a Web OIDC app, use authorization code + PKCE, assign the permitted groups/users, and use the authorization server issuer. |
+| Keycloak | `https://<host>/realms/<realm>` | Create a confidential client, enable standard flow, set the exact redirect URI, and ensure TLS/hostname metadata is externally resolvable. |
+
+If the provider uses a nonstandard discovery location:
+
+```bash
+BETTER_AUTH_CONNECTION_DISCOVERY_ENDPOINT=https://issuer.example.com/custom/openid-configuration
+```
+
+## Validation
+
+Before enabling users:
+
+1. Fetch the discovery document from the Overlay runtime network.
+2. Confirm `issuer` exactly matches the configured issuer.
+3. Confirm authorization, token, userinfo, and JWKS endpoints are HTTPS and approved.
+4. Confirm the returned identity includes verified email.
+5. Test a permitted user and a denied domain.
+6. Test invalid state, invalid callback, unknown connection ID, and cross-origin redirect rejection.
+
+Do not add wildcard trusted origins to bypass discovery validation. Add a dedicated preset when a provider legitimately publishes endpoints on stable additional origins.

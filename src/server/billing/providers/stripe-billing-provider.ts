@@ -1,8 +1,7 @@
 import 'server-only'
 
+import { randomUUID } from 'node:crypto'
 import Stripe from 'stripe'
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { stripe, getBaseUrl } from '@/server/billing/stripe'
 import {
   getPlanQuantityForCheckout,
@@ -12,7 +11,8 @@ import {
   resolvePaidUnitPriceId,
   resolvePortalConfigurationId,
 } from '@/server/billing/stripe-billing'
-import { refreshEntitlementsForUser } from '@/server/billing/billing-runtime'
+import type { BillingRepository } from '@/server/billing/BillingRepository'
+import type { UsageRepository } from '@/server/usage'
 import {
   clampPaidPlanAmountCents,
   clampTopUpAmountCents,
@@ -21,6 +21,7 @@ import {
 import {
   createFreeEntitlements,
   StripeBillingProvider as CoreStripeBillingProvider,
+  type Entitlements,
   type StripeBillingClient,
   type UsageArgs,
 } from '@overlay/billing'
@@ -32,6 +33,8 @@ export interface StripeBillingProviderConfig {
   topupUnitPriceId?: string
   portalConfigurationId?: string
   baseUrl?: string
+  repository?: BillingRepository
+  usageRepository?: UsageRepository
 }
 
 type SubscriptionBillingState = {
@@ -42,55 +45,6 @@ type SubscriptionBillingState = {
   stripeCustomerId?: string
   stripeSubscriptionId?: string
   tier?: 'free' | 'pro' | 'max'
-}
-
-async function getSubscriptionState(userId: string): Promise<SubscriptionBillingState | null> {
-  return await convex.query<SubscriptionBillingState | null>(
-    'billing/subscriptions:getByUserIdByServer',
-    {
-      serverSecret: getInternalApiSecret(),
-      userId,
-    },
-    { throwOnError: true },
-  )
-}
-
-async function recordUsage(args: UsageArgs): Promise<void> {
-  if (!args.accessToken) {
-    throw new Error('StripeBillingProvider.recordUsage requires an access token')
-  }
-
-  await convex.mutation(
-    'platform/usage:recordUsage',
-    {
-      accessToken: args.accessToken,
-      userId: args.userId,
-      type: args.type,
-      modelId: args.modelId,
-      inputTokens: args.inputTokens,
-      outputTokens: args.outputTokens,
-      cachedTokens: args.cachedTokens,
-      cost: args.cost,
-    },
-    { throwOnError: true },
-  )
-}
-
-async function syncSubscriptionCustomer(args: SubscriptionBillingState & {
-  userId: string
-  stripeCustomerId: string
-}): Promise<void> {
-  await convex.mutation('billing/subscriptions:upsertSubscription', {
-    serverSecret: getInternalApiSecret(),
-    userId: args.userId,
-    email: args.email,
-    stripeCustomerId: args.stripeCustomerId,
-    stripeSubscriptionId: args.stripeSubscriptionId,
-    tier: args.tier,
-    planKind: args.planKind,
-    planAmountCents: args.planAmountCents,
-    status: args.status,
-  })
 }
 
 export class StripeBillingProvider extends CoreStripeBillingProvider {
@@ -108,15 +62,38 @@ export class StripeBillingProvider extends CoreStripeBillingProvider {
       ? new Stripe(config.secretKey)
       : stripe
 
+    const repository = config.repository
+    const usageRepository = config.usageRepository
     super({
       stripe: configuredStripe as unknown as StripeBillingClient,
       baseUrl: () => config.baseUrl ?? getBaseUrl(),
       paidPlanPriceId: () => config.paidUnitPriceId ?? resolvePaidUnitPriceId(),
       topUpPriceId: () => config.topupUnitPriceId ?? getTopUpPriceId(),
       portalConfigurationId: () => config.portalConfigurationId ?? resolvePortalConfigurationId(),
-      getEntitlements: refreshEntitlementsForUser,
-      getSubscriptionState,
-      recordUsage,
+      getEntitlements: repository
+        ? async (userId) => {
+            const entitlements = await repository.getEntitlementsByServer({ userId })
+            return entitlements ? toCoreEntitlements(entitlements) : null
+          }
+        : undefined,
+      getSubscriptionState: repository
+        ? (userId) => repository.getSubscriptionByUserIdByServer({ userId }) as Promise<SubscriptionBillingState | null>
+        : undefined,
+      recordUsage: usageRepository
+        ? (args: UsageArgs) => usageRepository.recordBatch({
+            events: [{
+              cachedTokens: args.cachedTokens,
+              costCents: Math.max(0, args.cost),
+              inputTokens: args.inputTokens,
+              kind: args.type,
+              modelId: args.modelId,
+              occurredAt: args.timestamp ?? Date.now(),
+              outputTokens: args.outputTokens,
+            }],
+            operationId: `billing_provider_${randomUUID()}`,
+            userId: args.userId,
+          }).then(() => undefined)
+        : undefined,
       createFreeEntitlements,
       normalizePlanAmountCents: clampPaidPlanAmountCents,
       normalizeTopUpAmountCents: clampTopUpAmountCents,
@@ -124,7 +101,9 @@ export class StripeBillingProvider extends CoreStripeBillingProvider {
       planQuantityForAmountCents: getPlanQuantityForCheckout,
       planAmountCentsForQuantity: quantityToPlanAmountCents,
       topUpQuantityForAmountCents: getTopUpQuantityForCheckout,
-      syncSubscriptionCustomer,
+      syncSubscriptionCustomer: repository
+        ? (args) => repository.upsertSubscription({ ...args }).then(() => undefined)
+        : undefined,
     })
 
     this.providerConfigSummary = {
@@ -136,4 +115,43 @@ export class StripeBillingProvider extends CoreStripeBillingProvider {
       hasPortalConfigurationId: Boolean(config.portalConfigurationId),
     }
   }
+}
+
+function toCoreEntitlements(
+  value: Awaited<ReturnType<BillingRepository['getEntitlementsByServer']>> & {},
+): Entitlements {
+  const dailyLimits = value.dailyLimits
+  return {
+    tier: value.tier,
+    planKind: value.planKind,
+    planAmountCents: value.planAmountCents,
+    creditsUsed: value.creditsUsed,
+    creditsTotal: value.creditsTotal,
+    budgetUsedCents: value.budgetUsedCents,
+    budgetTotalCents: value.budgetTotalCents,
+    budgetRemainingCents: value.budgetRemainingCents,
+    autoTopUpEnabled: value.autoTopUpEnabled,
+    autoTopUpAmountCents: value.autoTopUpAmountCents,
+    autoTopUpConsentGranted: value.autoTopUpConsentGranted,
+    dailyUsage: value.dailyUsage ?? { ask: 0, write: 0, agent: 0 },
+    dailyLimits: dailyLimits ? {
+      ask: finiteLimit(dailyLimits.ask),
+      write: finiteLimit(dailyLimits.write),
+      agent: finiteLimit(dailyLimits.agent),
+    } : undefined,
+    overlayStorageBytesUsed: value.overlayStorageBytesUsed,
+    overlayStorageBytesLimit: value.overlayStorageBytesLimit,
+    transcriptionSecondsUsed: value.transcriptionSecondsUsed,
+    transcriptionSecondsLimit: value.transcriptionSecondsLimit,
+    localTranscriptionEnabled: value.localTranscriptionEnabled,
+    resetAt: value.resetAt ? new Date(value.resetAt).toISOString() : undefined,
+    billingPeriodEnd: value.billingPeriodEnd,
+    lastSyncedAt: value.lastSyncedAt,
+  }
+}
+
+function finiteLimit(value: number | string): number {
+  if (value === 'Infinity' || value === Infinity) return Number.MAX_SAFE_INTEGER
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
 }

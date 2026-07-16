@@ -10,6 +10,11 @@ import type { Doc, Id } from '../_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { calculateGatewayEmbeddingModelCostOrNull } from '../lib/gatewayCatalogPricing'
 import { applyMarkupToDollars } from '../../src/shared/billing/billing-pricing'
+import {
+  KNOWLEDGE_CHUNK_CHARS,
+  KNOWLEDGE_CHUNK_OVERLAP,
+  chunkKnowledgeText,
+} from '../../src/shared/knowledge/chunking'
 
 export type HybridSearchChunk = {
   text: string
@@ -21,8 +26,8 @@ export type HybridSearchChunk = {
 }
 
 /** Larger chunks reduce embedding/storage row counts while preserving retrieval context. */
-export const CHUNK_CHARS = 1800
-export const CHUNK_OVERLAP = 80
+export const CHUNK_CHARS = KNOWLEDGE_CHUNK_CHARS
+export const CHUNK_OVERLAP = KNOWLEDGE_CHUNK_OVERLAP
 const RRF_K = 60
 const EMBEDDING_MODEL = 'openai/text-embedding-3-small'
 const EMBEDDING_DIM = 1536
@@ -39,22 +44,7 @@ function getServerSecretForBackground(): string | null {
 }
 
 export function chunkText(full: string): Array<{ text: string; chunkIndex: number; startOffset: number }> {
-  const trimmed = full.trim()
-  if (!trimmed) return []
-  const chunks: Array<{ text: string; chunkIndex: number; startOffset: number }> = []
-  let start = 0
-  let idx = 0
-  while (start < trimmed.length) {
-    const end = Math.min(start + CHUNK_CHARS, trimmed.length)
-    chunks.push({
-      text: trimmed.slice(start, end),
-      chunkIndex: idx++,
-      startOffset: start,
-    })
-    if (end === trimmed.length) break
-    start = Math.max(0, end - CHUNK_OVERLAP)
-  }
-  return chunks
+  return chunkKnowledgeText(full)
 }
 
 function truncateSearchQuery(q: string, maxTerms = 16): string {

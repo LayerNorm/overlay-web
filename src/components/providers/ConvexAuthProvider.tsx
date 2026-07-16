@@ -2,14 +2,17 @@
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { ConvexProvider } from 'convex/react'
-import { convexReactClient } from '@/components/providers/convex-react-client'
+import {
+  convexReactClient,
+  convexReactClientEnabled,
+} from '@/components/providers/convex-react-client'
 import { useAuth } from '@/contexts/AuthContext'
 
-type ConvexWorkOSContextValue = {
+type ConvexAuthContextValue = {
   accessToken: string | null
 }
 
-const ConvexWorkOSContext = createContext<ConvexWorkOSContextValue>({ accessToken: null })
+const ConvexAuthContext = createContext<ConvexAuthContextValue>({ accessToken: null })
 
 async function fetchConvexToken(): Promise<string | null> {
   const response = await fetch('/api/auth/convex-token', {
@@ -21,14 +24,21 @@ async function fetchConvexToken(): Promise<string | null> {
   return data.token?.trim() || null
 }
 
-export function ConvexProviderWithWorkOS({ children }: { children: React.ReactNode }) {
+export function ConvexAuthProvider({
+  children,
+  requiresConvexClient = convexReactClientEnabled,
+}: {
+  children: React.ReactNode
+  requiresConvexClient?: boolean
+}) {
   const { user, isLoading } = useAuth()
   const userId = user?.id ?? null
   const [accessToken, setAccessToken] = useState<string | null>(null)
+  const convexEnabled = requiresConvexClient && Boolean(convexReactClient)
 
   useEffect(() => {
     let alive = true
-    if (isLoading || !userId) {
+    if (!convexEnabled || isLoading || !userId) {
       void Promise.resolve().then(() => {
         if (alive) setAccessToken(null)
       })
@@ -47,26 +57,28 @@ export function ConvexProviderWithWorkOS({ children }: { children: React.ReactNo
       alive = false
       window.clearInterval(interval)
     }
-  }, [isLoading, userId])
+  }, [convexEnabled, isLoading, userId])
 
   useEffect(() => {
+    if (!convexEnabled || !convexReactClient) return
     convexReactClient.setAuth(async () => {
-      if (isLoading || !userId) return null
+      if (!convexEnabled || isLoading || !userId) return null
       return await fetchConvexToken()
     })
-  }, [isLoading, userId])
+  }, [convexEnabled, isLoading, userId])
 
   const value = useMemo(() => ({ accessToken }), [accessToken])
-
-  return (
-    <ConvexProvider client={convexReactClient}>
-      <ConvexWorkOSContext.Provider value={value}>
-        {children}
-      </ConvexWorkOSContext.Provider>
-    </ConvexProvider>
+  const content = (
+    <ConvexAuthContext.Provider value={value}>
+      {children}
+    </ConvexAuthContext.Provider>
   )
+
+  if (!convexEnabled || !convexReactClient) return content
+
+  return <ConvexProvider client={convexReactClient}>{content}</ConvexProvider>
 }
 
-export function useConvexWorkOSToken(): string | null {
-  return useContext(ConvexWorkOSContext).accessToken
+export function useConvexAuthToken(): string | null {
+  return useContext(ConvexAuthContext).accessToken
 }

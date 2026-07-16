@@ -1,0 +1,140 @@
+---
+title: "Better Auth On-Prem Runbook"
+description: "Operational checklist for running Overlay with Better Auth SSO in private deployments."
+---
+
+Use Better Auth when Overlay should own the web session in the customer deployment while delegating login to an enterprise OIDC identity provider. Better Auth accounts are separate from hosted WorkOS accounts; do not expect hosted Overlay chats, billing, or preferences to carry over.
+
+## Requirements
+
+- A Postgres database dedicated to Better Auth session/account data.
+- A deployed Overlay web origin, for example `https://overlay.example.com`.
+- An OIDC application in the customer's IdP. Direct Google Workspace is the recommended first private-deployment flow.
+- Matching Convex environment variables for Better Auth JWT verification only when Convex is enabled. Postgres-only deployments do not need a Convex client or Convex credentials.
+
+Keep the Better Auth Postgres database auth-scoped. It stores Better Auth users, sessions, and linked SSO accounts; it does not replace Convex app data. If the deployment is preparing Postgres app-data support, use `OVERLAY_DATABASE_URL` for app records and `BETTER_AUTH_DATABASE_URL` only for Better Auth state.
+
+## Environment
+
+Set these on the Next.js/Overlay web runtime:
+
+```bash
+AUTH_PROVIDER=better-auth
+BETTER_AUTH_URL=https://overlay.example.com
+BETTER_AUTH_BASE_PATH=/api/better-auth
+BETTER_AUTH_SECRET=<openssl rand -base64 32>
+BETTER_AUTH_DATABASE_URL=postgres://overlay_auth:<password>@postgres.internal:5432/overlay_auth
+
+BETTER_AUTH_CONNECTION_ID=workspace
+BETTER_AUTH_CONNECTION_PRESET=google-workspace
+BETTER_AUTH_CONNECTION_LABEL=Continue with Google
+BETTER_AUTH_CONNECTION_DOMAINS=example.com
+BETTER_AUTH_CONNECTION_CLIENT_ID=<oidc-client-id>
+BETTER_AUTH_CONNECTION_CLIENT_SECRET=<oidc-client-secret>
+BETTER_AUTH_REQUIRE_VERIFIED_EMAIL=true
+BETTER_AUTH_ALLOWED_EMAIL_DOMAINS=example.com
+
+BETTER_AUTH_JWT_ISSUER=https://overlay.example.com
+BETTER_AUTH_JWT_AUDIENCE=https://overlay.example.com
+BETTER_AUTH_JWKS_URL=https://overlay.example.com/api/better-auth/jwks
+BETTER_AUTH_TRUSTED_ORIGINS=https://overlay.example.com
+```
+
+Generate the Better Auth secret with:
+
+```bash
+openssl rand -base64 32
+```
+
+For local smoke tests, use `http://localhost:3000` consistently for `BETTER_AUTH_URL`, `BETTER_AUTH_JWT_ISSUER`, `BETTER_AUTH_JWT_AUDIENCE`, `BETTER_AUTH_JWKS_URL`, and trusted origins.
+
+## IdP Callback URLs
+
+Register these URLs in the OIDC app:
+
+```text
+https://overlay.example.com/api/better-auth/sso/callback/workspace
+http://localhost:3000/api/better-auth/sso/callback/workspace
+```
+
+The final path segment must match `BETTER_AUTH_CONNECTION_ID`.
+
+Also register the app origin as an allowed web origin:
+
+```text
+https://overlay.example.com
+http://localhost:3000
+```
+
+Follow the provider recipe instead of manually guessing issuer metadata:
+
+- [Google Workspace](/configure/authentication/recipes/google-workspace)
+- [Auth0](/configure/authentication/recipes/auth0)
+- [Generic OIDC](/configure/authentication/recipes/generic-oidc) for Cognito, Okta, and Keycloak
+
+## Migrations
+
+Run migrations before starting production traffic:
+
+```bash
+npm run better-auth:migrate
+```
+
+For local Docker Postgres:
+
+```bash
+npm run better-auth:db:up
+npm run better-auth:migrate
+npm run dev:better-auth
+```
+
+Re-run the migration command whenever Better Auth plugins or schema-affecting options change.
+
+## Convex Verification
+
+Convex verifies the short-lived Better Auth JWTs using the JWKS URL:
+
+```text
+https://overlay.example.com/api/better-auth/jwks
+```
+
+Set the same Better Auth JWT values in the Convex deployment environment:
+
+```bash
+BETTER_AUTH_URL=https://overlay.example.com
+BETTER_AUTH_BASE_PATH=/api/better-auth
+BETTER_AUTH_JWT_ISSUER=https://overlay.example.com
+BETTER_AUTH_JWT_AUDIENCE=https://overlay.example.com
+BETTER_AUTH_JWKS_URL=https://overlay.example.com/api/better-auth/jwks
+```
+
+If the audience or JWKS URL is wrong, authenticated Convex-backed API calls should fail closed instead of accepting the token.
+
+## Smoke Checklist
+
+After configuration:
+
+```bash
+npm run check:config
+npm run check:providers
+npm run docs:health
+npx tsc --noEmit --pretty false --incremental false
+```
+
+Then run the Better Auth flow:
+
+- `/api/better-auth/jwks` returns JWKS.
+- `/api/auth/options` exposes only the configured connection IDs and labels.
+- `/api/auth/sso/workspace?redirect=%2Fapp%2Fchat` redirects into the configured Better Auth SSO provider.
+- The SSO callback creates a Better Auth session cookie.
+- `/api/auth/session` returns `authenticated: true`.
+- `/api/auth/convex-token` returns a JWT.
+- Convex-backed app APIs accept the JWT.
+- Sign out clears the Better Auth session.
+- Account deletion removes Better Auth rows and does not merge with hosted WorkOS accounts.
+
+Run the negative smoke with the Better Auth dev server running:
+
+```bash
+npm run test:auth:better-auth-negative
+```

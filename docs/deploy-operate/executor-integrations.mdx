@@ -1,0 +1,81 @@
+---
+title: Self-hosted Executor integrations
+description: Run Executor beside Overlay as a private integration catalog, credential broker, policy engine, and tool executor.
+---
+
+# Self-hosted Executor integrations
+
+Overlay selects one integration provider per deployment. `composio` is the hosted default; `executor` is the private, self-hostable option. Both providers implement the same Overlay catalog, connection, policy, health, and execution contracts. App routes and chat response DTOs do not change when the provider changes.
+
+Executor is not embedded in the Next.js process. Run it as a separate service. Overlay calls Executor's authenticated `/api` surface for catalogs, connection metadata, health, and execution. Executor also exposes `/mcp`; that endpoint is useful for external MCP clients, but Overlay does not require administrators to duplicate Executor as a user-created MCP server.
+
+## Capability differences
+
+| Concern | Composio | Executor self-hosted |
+| --- | --- | --- |
+| Hosting | Hosted | Customer hosted |
+| OAuth ownership | Provider managed | Customer managed |
+| Connection setup | Overlay opens the provider OAuth URL | Overlay opens the Executor console |
+| Connection lifecycle | Overlay can delete user-owned connections | Executor owns tenant connection lifecycle |
+| Schemas | Native Composio toolkits | MCP, OpenAPI, and GraphQL |
+| Tool approvals | Not exposed through Overlay's Composio adapter | Executor can pause approval-gated executions |
+| Credentials | Stored by Composio | Encrypted and stored by Executor |
+
+Executor's current direct OAuth `start` and `complete` SDK endpoints are marked incomplete upstream. Overlay therefore opens the exact `EXECUTOR_WEB_BASE_URL` integration page for connection setup. The UI labels this action **Configure**, refreshes on focus, and does not claim a connection exists before Executor reports it.
+
+## Overlay configuration
+
+```dotenv
+OVERLAY_FEATURE_INTEGRATIONS=true
+OVERLAY_PROVIDER_INTEGRATIONS=executor
+EXECUTOR_API_BASE_URL=https://executor.internal.example.com/api
+EXECUTOR_WEB_BASE_URL=https://executor.example.com
+EXECUTOR_MCP_URL=https://executor.internal.example.com/mcp
+EXECUTOR_API_KEY=replace_with_executor_service_api_key
+EXECUTOR_CONNECTION_OWNER=org
+EXECUTOR_REQUEST_TIMEOUT_MS=30000
+```
+
+`EXECUTOR_API_BASE_URL` must include `/api`. `EXECUTOR_WEB_BASE_URL` must be the browser-reachable origin exactly as Executor sees it; OAuth callbacks and console links depend on it. `EXECUTOR_CONNECTION_OWNER=org` is recommended for institution-managed connectors. Do not use one shared service API key to represent unrelated personal user credentials.
+
+The Executor service has its own secrets:
+
+```dotenv
+BETTER_AUTH_SECRET=replace_with_executor_auth_secret
+EXECUTOR_SECRET_KEY=replace_with_executor_data_encryption_key
+EXECUTOR_WEB_BASE_URL=https://executor.example.com
+```
+
+Store these values and `EXECUTOR_API_KEY` in AWS Secrets Manager. Do not copy Executor's encryption key into Overlay configuration.
+
+## AWS topology
+
+Run Executor in its own ECS service behind internal TLS. Only its browser console needs a user-reachable ingress. Restrict `/api` and `/mcp` to Overlay tasks and approved operators with security groups and service authentication.
+
+Executor's self-hosted distribution stores its SQLite database and encryption material under `/data`. Mount durable EFS storage at `/data`. SQLite on EFS is acceptable for a single active Executor task during a pilot, but it is not a multi-writer high-availability design. Keep desired count at one unless Executor publishes a database/storage mode that supports coordinated replicas. Back up `/data`, test restore, and treat `EXECUTOR_SECRET_KEY` loss as credential loss.
+
+Keep private-network access disabled by default. If a JPIS/JPGS integration must call a private data lake, enable only the required network path, destination allowlist, and security-group egress. Record the data classification, scopes, retention, and audit expectation before enabling it.
+
+## Runtime behavior
+
+Chat receives provider-neutral integration tools. Composio retains its generated toolkit behavior. Executor exposes two stable tools:
+
+- `EXECUTOR_SEARCH_TOOLS` searches Executor's authenticated catalog.
+- `EXECUTOR_EXECUTE_TOOL` executes an exact returned tool address.
+
+Overlay sends code to Executor with `autoApprove=false`; policies are not bypassed. Connection begin/delete and tool execution produce Overlay audit events without recording credentials or arguments.
+
+Account deletion removes Overlay-owned Composio user connections. Executor tenant connections remain provider-managed because deleting one Overlay account must not delete a school's shared Gmail, Slack, Notion, or data-lake credential. Personal Executor identity deletion must be handled through Executor's account lifecycle and documented tenant identity mapping.
+
+## Certification
+
+Run:
+
+```bash
+npm run test:p7j:contracts
+npm run check:config
+npm run check:providers
+npx tsc --noEmit --pretty false --incremental false
+```
+
+The contract suite runs the same catalog, connection, setup, deletion, health, and tool exposure assertions against both adapters, then verifies Executor's execution request and provider policy behavior. A live deployment still requires the AWS rehearsal because mocked contracts cannot prove TLS, EFS durability, security groups, callback origins, or real provider credentials.

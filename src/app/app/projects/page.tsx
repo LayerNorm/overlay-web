@@ -1,8 +1,9 @@
 import { Suspense } from 'react'
 import { getOverlaySession } from '@/server/auth/session'
 import dynamic from 'next/dynamic'
-import { redirect } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { getInitialProjectList } from '@/server/app/route-data'
+import { getOverlayCapabilities } from '@/server/capabilities'
 import { ProjectsRouteSkeleton } from '../_components/AppRouteSkeletons'
 
 const ProjectsView = dynamic(() => import('@/features/projects/components/ProjectsView'), {
@@ -21,6 +22,11 @@ async function ProjectsRouteContent({
 }
 
 export default async function ProjectsPage() {
+  const capabilities = await getOverlayCapabilities()
+  if (!capabilities.projects) {
+    notFound()
+  }
+
   const session = await getOverlaySession()
 
   if (!session) {

@@ -3,7 +3,11 @@
 import { useState, useEffect, useCallback, useRef, type UIEvent } from 'react'
 import Image from 'next/image'
 import { Loader2, X, Search } from 'lucide-react'
-import { resolveIntegrationName, truncateIntegrationDescription } from '@overlay/app-core'
+import {
+  resolveIntegrationName,
+  truncateIntegrationDescription,
+  type IntegrationProviderCapabilities,
+} from '@overlay/app-core'
 import { usePresence } from '@overlay/ui'
 import { IntegrationDialogRowSkeleton } from '@overlay/ui/feedback'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -14,6 +18,7 @@ interface PickerItem {
   description: string
   logoUrl: string | null
   isConnected: boolean
+  capabilities: IntegrationProviderCapabilities
 }
 
 const SEARCH_DEBOUNCE_MS = 300
@@ -22,12 +27,14 @@ const DEFAULT_OVERLAY_CLASS =
   'fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-5'
 
 export function IntegrationsDialog({
+  connectedSlugs,
   isOpen,
   onClose,
   onConnect,
   onDisconnect,
   overlayClassName = DEFAULT_OVERLAY_CLASS,
 }: {
+  connectedSlugs: ReadonlySet<string>
   isOpen: boolean
   onClose: () => void
   onConnect: (slug: string) => Promise<void>
@@ -77,7 +84,10 @@ export function IntegrationsDialog({
       const pageItems = Array.isArray(data?.items) ? data.items as PickerItem[] : []
 
       const resolve = (row: PickerItem[]) =>
-        row.map((item) => ({ ...item, name: resolveIntegrationName(item.slug, item.name) }))
+        row.map((item) => ({
+          ...item,
+          name: resolveIntegrationName(item.slug, item.name),
+        }))
 
       setItems((prev) => {
         const merged = append ? [...prev, ...resolve(pageItems)] : resolve(pageItems)
@@ -140,7 +150,6 @@ export function IntegrationsDialog({
     setError(null)
     try {
       await onConnect(slug)
-      setItems((prev) => prev.map((item) => item.slug === slug ? { ...item, isConnected: true } : item))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect')
     } finally {
@@ -154,7 +163,6 @@ export function IntegrationsDialog({
     setError(null)
     try {
       await onDisconnect(slug)
-      setItems((prev) => prev.map((item) => item.slug === slug ? { ...item, isConnected: false } : item))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to disconnect')
     } finally {
@@ -166,7 +174,9 @@ export function IntegrationsDialog({
   if (!mounted) return null
 
   const isSearching = queryInput.trim() !== query || loadingInitial
-  const visibleItems = isSearching ? [] : items
+  const visibleItems = isSearching
+    ? []
+    : items.map((item) => ({ ...item, isConnected: connectedSlugs.has(item.slug) }))
 
   return (
     <div
@@ -183,7 +193,7 @@ export function IntegrationsDialog({
         <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-[var(--foreground)]">Add Integration</p>
-            <p className="mt-0.5 text-xs text-[var(--muted)]">Search and connect any Composio integration</p>
+            <p className="mt-0.5 text-xs text-[var(--muted)]">Search integrations available from the configured provider</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
             <X size={16} />
@@ -214,6 +224,10 @@ export function IntegrationsDialog({
           )}
           {visibleItems.map((item) => {
             const isActing = actingSlug === item.slug
+            const disconnectUnavailable = item.isConnected && item.capabilities.supportsDisconnect === false
+            const actionLabel = item.isConnected
+              ? disconnectUnavailable ? 'Managed externally' : 'Disconnect'
+              : item.capabilities.connectionSetup === 'provider-console' ? 'Configure' : 'Connect'
             return (
               <div key={item.slug} className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-3 last:border-0">
                 <span
@@ -241,10 +255,10 @@ export function IntegrationsDialog({
                   <button
                     type="button"
                     onClick={() => void handleDisconnect(item.slug)}
-                    disabled={isActing}
+                    disabled={isActing || disconnectUnavailable}
                     className="flex-shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
                   >
-                    {isActing ? <Loader2 size={11} className="animate-spin" /> : 'Disconnect'}
+                    {isActing ? <Loader2 size={11} className="animate-spin" /> : actionLabel}
                   </button>
                 ) : (
                   <button
@@ -253,7 +267,7 @@ export function IntegrationsDialog({
                     disabled={isActing}
                     className="flex-shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
                   >
-                    {isActing ? <Loader2 size={11} className="animate-spin" /> : 'Connect'}
+                    {isActing ? <Loader2 size={11} className="animate-spin" /> : actionLabel}
                   </button>
                 )}
               </div>

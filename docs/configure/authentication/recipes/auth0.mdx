@@ -1,0 +1,57 @@
+---
+title: "Auth0"
+description: "Use Auth0 as an alternative OIDC identity provider for Better Auth."
+---
+
+Use Auth0 when it is already approved as the enterprise identity broker or when a deployment needs Auth0-managed upstream connections. Direct Google Workspace is simpler when Google is the customer's system of record.
+
+## Auth0 application
+
+Create a **Regular Web Application**. Configure:
+
+```text
+Allowed Callback URL:
+https://overlay.example.com/api/better-auth/sso/callback/auth0
+
+Allowed Logout URL:
+https://overlay.example.com
+
+Allowed Web Origin:
+https://overlay.example.com
+```
+
+For localhost, add the same values with `http://localhost:3000`.
+
+Do not use Auth0 development keys in production. Use a tenant/application owned by the deploying organization and store the client secret in its secret manager.
+
+## Overlay environment
+
+```bash
+AUTH_PROVIDER=better-auth
+BETTER_AUTH_URL=https://overlay.example.com
+BETTER_AUTH_BASE_PATH=/api/better-auth
+BETTER_AUTH_SECRET=<independent-random-secret>
+BETTER_AUTH_DATABASE_URL=postgresql://overlay_auth:.../overlay_auth
+BETTER_AUTH_TRUSTED_ORIGINS=https://overlay.example.com
+
+BETTER_AUTH_CONNECTION_ID=auth0
+BETTER_AUTH_CONNECTION_PRESET=auth0
+BETTER_AUTH_CONNECTION_LABEL=Continue with Auth0
+BETTER_AUTH_CONNECTION_DOMAINS=example.com
+BETTER_AUTH_CONNECTION_ISSUER_URL=https://tenant.us.auth0.com
+BETTER_AUTH_CONNECTION_CLIENT_ID=<auth0-client-id>
+BETTER_AUTH_CONNECTION_CLIENT_SECRET=<auth0-client-secret>
+
+BETTER_AUTH_REQUIRE_VERIFIED_EMAIL=true
+BETTER_AUTH_ALLOWED_EMAIL_DOMAINS=example.com
+```
+
+The issuer must be the Auth0 tenant issuer, not the Overlay origin. Keep local, staging, and production applications and secrets separate.
+
+## Regression smoke
+
+- `/api/auth/options` exposes only the Auth0 connection.
+- The SSO route redirects to the configured Auth0 tenant.
+- Auth0 returns to the exact `auth0` callback path.
+- The resulting Overlay session has a verified, allowed-domain email.
+- Refresh, sign-out, and account deletion operate through Better Auth.

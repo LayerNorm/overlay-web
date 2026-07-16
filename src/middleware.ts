@@ -4,6 +4,7 @@ import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/
 import { hasValidSessionCookieSignature } from '@/server/auth/session-cookie-signature'
 
 const SESSION_COOKIE_NAME = 'overlay_session'
+const BETTER_AUTH_SESSION_COOKIE_NAME = 'better-auth.session_token'
 const CSP_REPORT_PATH = '/api/security/csp-report'
 const IS_DEVELOPMENT = process.env.NODE_ENV !== 'production'
 
@@ -41,6 +42,19 @@ function isProtectedRoute(pathname: string): boolean {
   return PROTECTED_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(route + '/')
   )
+}
+
+function isBetterAuthSelected(): boolean {
+  return process.env.AUTH_PROVIDER?.trim() === 'better-auth'
+}
+
+function hasBetterAuthSessionCookie(request: NextRequest): boolean {
+  return request.cookies
+    .getAll()
+    .some((cookie) => (
+      cookie.name === BETTER_AUTH_SESSION_COOKIE_NAME ||
+      cookie.name.endsWith(`.${BETTER_AUTH_SESSION_COOKIE_NAME}`)
+    ) && Boolean(cookie.value))
 }
 
 function parseOrigin(value: string | undefined): string | null {
@@ -214,6 +228,30 @@ export async function middleware(request: NextRequest) {
       if (serviceAuth) {
         return nextResponse()
       }
+    }
+
+    if (isBetterAuthSelected()) {
+      if (hasBetterAuthSessionCookie(request)) {
+        return nextResponse()
+      }
+
+      if (pathname.startsWith('/api/')) {
+        return applyBrowserSecurityHeaders(
+          NextResponse.json(
+            { error: 'Authentication required' },
+            { status: 401 }
+          ),
+          cspHeaderName,
+          cspPolicy,
+        )
+      }
+      const signInUrl = new URL('/auth/sign-in', request.url)
+      signInUrl.searchParams.set('redirect', pathname)
+      return applyBrowserSecurityHeaders(
+        NextResponse.redirect(signInUrl),
+        cspHeaderName,
+        cspPolicy,
+      )
     }
 
     const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)

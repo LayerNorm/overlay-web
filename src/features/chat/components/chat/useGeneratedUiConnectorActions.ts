@@ -78,7 +78,7 @@ export function useGeneratedUiConnectorActions(): GeneratedUiConnectorActions {
     if (!resolved) return
     const oauthTab = window.open('about:blank', '_blank')
     try {
-      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', toolkit: resolved })
+      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: resolved })
       const data = (await res.json().catch(() => ({}))) as {
         redirectUrl?: string | null
         connectionId?: string | null

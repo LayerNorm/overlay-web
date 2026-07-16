@@ -1,8 +1,7 @@
 import 'server-only'
 
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { Entitlements } from '@/shared/app/app-contracts'
+import type { UsageEvent, UsageRepository } from '@/server/usage'
 import {
   applyMarkupToCents,
   applyMarkupToDollars,
@@ -121,18 +120,25 @@ export async function reserveProviderBudget(params: {
   }
 
   const reservationId = params.reservationId ?? createBudgetReservationId(params.kind)
-  await convex.mutation(
-    'platform/usage:reserveBudgetByServer',
-    {
-      serverSecret: getInternalApiSecret(),
-      userId: params.userId,
-      reservationId,
-      kind: params.kind,
-      modelId: params.modelId,
-      reservedCents,
-    },
-    { throwOnError: true },
-  )
+  const result = await (await usageRepository()).reserve({
+    entitlements: budget.entitlements,
+    kind: params.kind,
+    modelId: params.modelId,
+    reservationId,
+    reservedCents,
+    userId: params.userId,
+  })
+  if (!result.ok) {
+    return {
+      ok: false,
+      status: 402,
+      code: 'insufficient_budget',
+      payload: buildInsufficientCreditsPayload(
+        result.entitlements,
+        'Your Overlay budget is exhausted. Add budget or enable auto top-up before running this request.',
+      ),
+    } as const
+  }
 
   return {
     ok: true,
@@ -150,17 +156,12 @@ export async function finalizeProviderBudgetReservation(params: {
 }) {
   if (!params.reservationId) return { success: true, skipped: true } as const
   const actualCents = billableBudgetCentsFromProviderUsd(params.actualProviderCostUsd)
-  return await convex.mutation(
-    'platform/usage:finalizeBudgetReservationByServer',
-    {
-      serverSecret: getInternalApiSecret(),
-      userId: params.userId,
-      reservationId: params.reservationId,
-      actualCents,
-      events: params.events,
-    },
-    { throwOnError: true },
-  )
+  return await (await usageRepository()).finalize({
+    actualCostCents: actualCents,
+    events: params.events?.map(toUsageEvent),
+    reservationId: params.reservationId,
+    userId: params.userId,
+  })
 }
 
 export async function releaseProviderBudgetReservation(params: {
@@ -170,17 +171,12 @@ export async function releaseProviderBudgetReservation(params: {
   reason?: string
 }) {
   if (!params.reservationId) return { success: true, skipped: true } as const
-  return await convex.mutation(
-    'platform/usage:releaseBudgetReservationByServer',
-    {
-      serverSecret: getInternalApiSecret(),
-      userId: params.userId,
-      reservationId: params.reservationId,
-      providerWorkStarted: params.providerWorkStarted,
-      reason: params.reason,
-    },
-    { throwOnError: true },
-  )
+  return await (await usageRepository()).release({
+    providerWorkStarted: params.providerWorkStarted,
+    reason: params.reason,
+    reservationId: params.reservationId,
+    userId: params.userId,
+  })
 }
 
 export async function markProviderBudgetReconcile(params: {
@@ -189,27 +185,37 @@ export async function markProviderBudgetReconcile(params: {
   errorMessage?: string
 }) {
   if (!params.reservationId) return { success: true, skipped: true } as const
-  return await convex.mutation(
-    'platform/usage:markBudgetReservationReconcileByServer',
-    {
-      serverSecret: getInternalApiSecret(),
-      userId: params.userId,
-      reservationId: params.reservationId,
-      errorMessage: params.errorMessage,
-    },
-    { throwOnError: true },
-  )
+  return await (await usageRepository()).markForReconcile({
+    errorMessage: params.errorMessage,
+    reservationId: params.reservationId,
+    userId: params.userId,
+  })
 }
 
 export async function refreshEntitlementsForUser(userId: string): Promise<Entitlements | null> {
-  return await convex.query<Entitlements | null>(
-    'platform/usage:getEntitlementsByServer',
-    {
-      serverSecret: getInternalApiSecret(),
-      userId,
-    },
-    { throwOnError: true },
-  )
+  return await (await usageRepository()).getEntitlements({ userId })
+}
+
+async function usageRepository(): Promise<UsageRepository> {
+  const { getOverlayServerContext } = await import('@/server/bootstrap')
+  return getOverlayServerContext().appData.repositories.usage
+}
+
+async function billingRepository() {
+  const { getOverlayServerContext } = await import('@/server/bootstrap')
+  return getOverlayServerContext().appData.repositories.billing
+}
+
+function toUsageEvent(event: ProviderUsageEvent): UsageEvent {
+  return {
+    cachedTokens: event.cachedTokens,
+    costCents: event.cost,
+    inputTokens: event.inputTokens,
+    kind: event.type,
+    modelId: event.modelId,
+    occurredAt: event.timestamp,
+    outputTokens: event.outputTokens,
+  }
 }
 
 export async function ensureBudgetAvailable(params: {
@@ -232,7 +238,7 @@ export async function ensureBudgetAvailable(params: {
   const autoTopUp = await maybeAutoTopUpBudget({
     userId: params.userId,
     minimumRequiredCents,
-  })
+  }, await billingRepository())
 
   if (!autoTopUp.applied) {
     return {

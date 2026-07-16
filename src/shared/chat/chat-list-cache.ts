@@ -14,6 +14,7 @@ export type CachedConversation = {
 }
 
 const CACHE_TTL_MS = 15_000
+const NEW_EMPTY_CHAT_TTL_MS = 30_000
 export const INITIAL_CHAT_LIST_LIMIT = 24
 
 export type ChatListPageInfo = {
@@ -38,6 +39,7 @@ let cachedAt = 0
 let inFlight: Promise<ChatListFetchOutcome> | null = null
 let nextPageInFlight: Promise<CachedConversation[]> | null = null
 let cachedPageInfo: ChatListPageInfo = { hasMore: false }
+const pendingEmptyChats = new Map<string, { chat: CachedConversation; expiresAt: number }>()
 
 function sortByLastModified(chats: CachedConversation[]): CachedConversation[] {
   return [...chats].sort((a, b) => {
@@ -72,6 +74,20 @@ export function upsertCachedChat(chat: CachedConversation) {
   cachedAt = Date.now()
 }
 
+export function markNewEmptyChat(chat: CachedConversation) {
+  pendingEmptyChats.set(chat._id, {
+    chat,
+    expiresAt: Date.now() + NEW_EMPTY_CHAT_TTL_MS,
+  })
+}
+
+export function consumeNewEmptyChat(chatId: string): CachedConversation | null {
+  const entry = pendingEmptyChats.get(chatId)
+  pendingEmptyChats.delete(chatId)
+  if (!entry || entry.expiresAt < Date.now()) return null
+  return entry.chat
+}
+
 export function removeCachedChat(chatId: string) {
   if (!cachedChats) return
   cachedChats = cachedChats.filter((chat) => chat._id !== chatId)
@@ -82,6 +98,7 @@ export function clearChatListCache() {
   cachedChats = null
   cachedAt = 0
   cachedPageInfo = { hasMore: false }
+  pendingEmptyChats.clear()
 }
 
 export async function fetchChatListResult(options: { force?: boolean } = {}): Promise<ChatListFetchOutcome> {

@@ -44,7 +44,7 @@ export class IntegrationsClient {
   disconnectResponse(toolkit: string, init?: RequestInit) {
     return this.http.request(
       '/api/v1/integrations',
-      this.http.jsonRequest({ action: 'disconnect', toolkit }, { ...init, method: 'POST' }),
+      this.http.jsonRequest({ action: 'disconnect', providerKey: toolkit }, { ...init, method: 'POST' }),
     )
   }
 

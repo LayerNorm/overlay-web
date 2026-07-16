@@ -11,7 +11,7 @@ import {
 } from '@overlay/app-core'
 import overlayAppConfig from '@/overlay.config'
 import { getOverlaySession } from '@/server/auth/session'
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import {
   DEFAULT_MODEL_ID,
@@ -32,6 +32,8 @@ import {
 } from '@/server/config'
 import { isRuntimeConfigSummaryVisible } from '@/shared/config'
 import { getOverlayCapabilities } from '@/server/capabilities'
+import { deriveAppDataCapabilities, type AppDataCapabilities } from '@/server/app-data/capabilities'
+import { getOverlayServerContext } from '@/server/bootstrap'
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   let runtimeConfig
@@ -52,10 +54,13 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const { auth } = context
 
     const serverSecret = getInternalApiSecret()
-    const browserSession = await getOverlaySession()
+    const browserSession = await getOverlaySession(request)
+    const appDataCapabilities = deriveAppDataCapabilities(runtimeConfig)
+    const isPostgresAppData = appDataCapabilities.provider === 'postgres'
+    const serverContext = getOverlayServerContext()
 
     const [profile, entitlements, uiSettings, gatewayModels] = await Promise.all([
-      auth.accessToken
+      !isPostgresAppData && auth.accessToken
         ? convex.query<{
             profile?: {
               userId: string
@@ -69,18 +74,22 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
             userId: auth.userId,
           })
         : Promise.resolve(null),
-      convex.query<Entitlements | null>('platform/usage:getEntitlementsByServer', {
-        userId: auth.userId,
-        serverSecret,
-      }),
-      convex.query<AppSettings>(
-        'platform/uiSettings:getByServer',
-        {
+      isPostgresAppData
+        ? serverContext.appData.repositories.usage.getEntitlements({ userId: auth.userId })
+        : convex.query<Entitlements | null>('platform/usage:getEntitlementsByServer', {
           userId: auth.userId,
           serverSecret,
-        },
-        { throwOnError: true },
-      ).catch((_error) => DEFAULT_APP_SETTINGS),
+        }),
+      isPostgresAppData
+        ? serverContext.appData.repositories.settings.getByUserId(auth.userId)
+        : convex.query<AppSettings>(
+          'platform/uiSettings:getByServer',
+          {
+            userId: auth.userId,
+            serverSecret,
+          },
+          { throwOnError: true },
+        ).catch((_error) => DEFAULT_APP_SETTINGS),
       getGatewayLanguageCatalog().catch((_error) => []),
     ])
     registerGatewayCatalogModels(gatewayModels)
@@ -114,6 +123,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const appShell = resolveOverlayAppShellConfig(overlayAppConfig, { capabilities })
 
     const response: AppBootstrapResponse & {
+      appDataCapabilities: AppDataCapabilities
       system?: ReturnType<typeof getRedactedOverlayRuntimeConfigSummary>
     } = {
       user,
@@ -136,6 +146,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       theme: appShell.theme,
       featureFlags: appShell.appFeatureFlags,
       capabilities,
+      appDataCapabilities,
       destinations: overlayNavigationToDestinations(appShell.navigation, appShell.settingsSections),
       defaults: {
         chatModelId:

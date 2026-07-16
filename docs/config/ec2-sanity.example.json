@@ -1,0 +1,125 @@
+{
+  "configVersion": 2,
+  "preset": "onprem-minimal",
+  "compliance": {
+    "profile": "onprem-minimal",
+    "minorMode": false,
+    "allowExternalProcessors": true,
+    "allowedProcessorIds": [],
+    "dataResidency": {
+      "required": false,
+      "allowedRegions": []
+    },
+    "retention": {}
+  },
+  "features": {
+    "chat": true,
+    "files": false,
+    "memory": false,
+    "knowledge": false,
+    "automations": false,
+    "integrations": false,
+    "projects": true,
+    "skills": false,
+    "mcpServers": false,
+    "browserUse": false,
+    "sandboxes": false,
+    "webSearch": false,
+    "analytics": false,
+    "errorReporting": false,
+    "billing": false,
+    "webhooks": false,
+    "apiKeys": false,
+    "vectorSearch": false,
+    "modelRouting": true,
+    "sso": true,
+    "multiTenant": false
+  },
+  "providers": {
+    "auth": { "provider": "better-auth" },
+    "database": { "provider": "postgres" },
+    "objectStorage": { "provider": "none" },
+    "vectorSearch": { "provider": "none" },
+    "embeddings": { "provider": "none" },
+    "models": { "provider": "ai-gateway" },
+    "integrations": { "provider": "none" },
+    "browser": { "provider": "none" },
+    "sandbox": { "provider": "none" },
+    "webSearch": { "provider": "none" },
+    "analytics": { "provider": "none" },
+    "errorReporting": { "provider": "none" },
+    "secrets": { "provider": "env" },
+    "rateLimit": { "provider": "redis" }
+  },
+  "app": {
+    "baseUrl": "http://localhost:3000",
+    "deploymentEnvironment": "onprem",
+    "cspConnectSrc": [],
+    "publicEnv": {
+      "NEXT_PUBLIC_APP_URL": "http://localhost:3000"
+    }
+  },
+  "auth": {
+    "provider": "better-auth",
+    "allowDevFallbacks": false,
+    "workos": {},
+    "oidc": {},
+    "betterAuth": {
+      "baseUrl": "http://localhost:3000",
+      "basePath": "/api/better-auth",
+      "secret": "replace_with_better_auth_secret",
+      "databaseUrl": "postgresql://overlay_auth:replace_with_password@db.example.com:5432/overlay_auth",
+      "trustedOrigins": ["http://localhost:3000"],
+      "jwtIssuer": "http://localhost:3000",
+      "jwtAudience": "http://localhost:3000",
+      "jwksUrl": "http://localhost:3000/api/better-auth/jwks"
+    }
+  },
+  "billing": {
+    "provider": "none",
+    "stripe": {}
+  },
+  "storage": {
+    "provider": "none",
+    "publicUrlPolicy": "presigned",
+    "r2": {},
+    "s3": {}
+  },
+  "llm": {
+    "gatewayProvider": "ai-gateway",
+    "keySource": "env",
+    "defaultChatModelId": "openai/gpt-4.1-mini",
+    "modelAllowlist": ["openai/gpt-4.1-mini"],
+    "apiKeyEnvVar": "AI_GATEWAY_API_KEY"
+  },
+  "database": {
+    "provider": "postgres",
+    "internalApiSecret": "replace_with_internal_api_secret",
+    "internalServiceAuthSecret": "replace_with_internal_service_auth_secret",
+    "apiKeyHashSecret": "replace_with_api_key_hash_secret",
+    "postgres": {
+      "connectionString": "postgresql://overlay_app:replace_with_password@db.example.com:5432/overlay_app",
+      "sslMode": "verify-full",
+      "backgroundRuntimeEnabled": true
+    }
+  },
+  "rateLimit": {
+    "redis": {
+      "url": "rediss://redis.example.com:6379",
+      "keyPrefix": "overlay:sanity:",
+      "failureMode": "deny"
+    }
+  },
+  "capabilities": {
+    "billing": false,
+    "sso": true,
+    "apiKeys": false,
+    "webhooks": false,
+    "vectorSearch": false,
+    "automations": false,
+    "projects": true,
+    "skills": false,
+    "mcpServers": false,
+    "multiTenant": false
+  }
+}

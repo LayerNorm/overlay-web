@@ -64,26 +64,22 @@ import SlashMenu, { type SlashMenuItem } from './SlashMenu'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { unwrapPaginatedData } from '@/shared/api/pagination'
 import {
   FILES_CHANGED_EVENT,
   NOTEBOOK_INLINE_MATH_MIGRATION_REGEX,
   NOTES_CHANGED_EVENT,
-  canonicalFileToNotebookNote,
   createLocalNotebookNote,
   createNotebookAgentMentions,
   createNotebookDraftState,
-  createNotebookFileUpdateRequest,
-  createNotebookPersistedNote,
   createRenamedNotebookNote,
   notebookAgentEventToUiItem,
   normalizeNotebookContent,
   normalizeNotebookTitle,
   parseNotebookAgentStreamLine,
   upsertNotebookNote,
-  type CanonicalNoteFile,
   type NotebookAgentUiItem,
   type NotebookNote,
+  type NoteDoc,
 } from '@overlay/app-core'
 import {
   NotebookAgentComposer,
@@ -113,6 +109,18 @@ import type { MentionItem } from '@/shared/knowledge/mention-types'
 
 const lowlight = createLowlight(common)
 const NOTEBOOK_INLINE_DIFF_STYLE_ID = 'notebook-inline-diff-styles'
+
+function noteDocToNotebookNote(note: NoteDoc, now = Date.now()): NotebookNote {
+  return {
+    _id: note._id,
+    title: note.title || 'Untitled',
+    content: note.content ?? '',
+    tags: note.tags ?? [],
+    projectId: note.projectId,
+    createdAt: note.createdAt ?? now,
+    updatedAt: note.updatedAt ?? now,
+  }
+}
 
 function promptForValue(message: string, defaultValue = ''): string | null {
   if (typeof window === 'undefined') return null
@@ -158,6 +166,7 @@ export default function NotebookEditor({
   const pendingNoteIdRef = useRef<string | null>(null)
   const pendingTitleRef = useRef('')
   const pendingContentRef = useRef('')
+  const hydratingEditorRef = useRef(false)
   const flushSaveRef = useRef<() => Promise<void> | void>(() => {})
 
   useEffect(() => {
@@ -189,6 +198,8 @@ export default function NotebookEditor({
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
         codeBlock: false,
+        link: false,
+        underline: false,
       }),
       Placeholder.configure({
         placeholder: 'Start writing... (type / for commands)',
@@ -250,6 +261,8 @@ export default function NotebookEditor({
     },
     onUpdate: ({ editor: currentEditor }) => {
       migrateMathStrings(currentEditor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
+
+      if (hydratingEditorRef.current) return
 
       if (activeNoteRef.current) {
         isDirtyRef.current = true
@@ -551,10 +564,10 @@ export default function NotebookEditor({
   const loadNotes = useCallback(async () => {
     if (hideSidebar) return
     try {
-      const res = await overlayAppClient.files.getResponse({ kind: 'note', limit: 100 })
+      const res = await overlayAppClient.notes.getResponse({ limit: 100 })
       if (res.ok) {
-        const data = unwrapPaginatedData<CanonicalNoteFile>(await res.json())
-        setNotes(data.map(canonicalFileToNotebookNote))
+        const data = (await res.json()) as NoteDoc[]
+        setNotes(Array.isArray(data) ? data.map(noteDocToNotebookNote) : [])
       }
     } catch {
       // ignore
@@ -633,9 +646,9 @@ export default function NotebookEditor({
     let cancelled = false
     async function loadNoteById() {
       try {
-        const res = await overlayAppClient.files.getResponse({ fileId: noteId })
+        const res = await overlayAppClient.notes.getResponse({ noteId })
         if (!res.ok) return
-        const note = canonicalFileToNotebookNote((await res.json()) as CanonicalNoteFile)
+        const note = noteDocToNotebookNote((await res.json()) as NoteDoc)
         if (!cancelled) {
           if (hideSidebar) setNotes([note])
           openNote(note)
@@ -653,13 +666,16 @@ export default function NotebookEditor({
 
   useEffect(() => {
     if (!editor) return
+    hydratingEditorRef.current = true
     if (!activeNote) {
       editor.commands.clearContent()
+      hydratingEditorRef.current = false
       return
     }
 
     editor.commands.setContent(normalizeNotebookContent(activeNote.content || ''))
     migrateMathStrings(editor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
+    hydratingEditorRef.current = false
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, activeNote?._id])
 
@@ -730,24 +746,25 @@ export default function NotebookEditor({
     const noteTitle = pendingTitleRef.current
     const content = pendingContentRef.current
     try {
-      const res = await overlayAppClient.files.updateResponse(createNotebookFileUpdateRequest({
+      const res = await overlayAppClient.notes.updateResponse({
         noteId,
         title: noteTitle,
         content,
-      }))
+      })
       if (!res.ok) {
         isDirtyRef.current = true
         setIsDirty(true)
         return
       }
-      const data = (await res.json()) as { file?: CanonicalNoteFile }
-      const note = createNotebookPersistedNote({
-        noteId,
-        title: noteTitle,
-        content,
-        file: data.file,
-        fallbackNote: activeNoteRef.current,
-      })
+      const data = (await res.json()) as { note?: NoteDoc | null }
+      const note = data.note
+        ? noteDocToNotebookNote(data.note)
+        : {
+            ...(activeNoteRef.current ?? createLocalNotebookNote(noteId)),
+            title: normalizeNotebookTitle(noteTitle),
+            content,
+            updatedAt: Date.now(),
+          }
       setNotes((prev) => upsertNotebookNote(prev, note))
       window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
       window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
@@ -860,11 +877,11 @@ export default function NotebookEditor({
   }, [activeNote, agentInput, agentMentions, agentRunning, editor, selectedModelId, title])
 
   async function createNote() {
-    const res = await overlayAppClient.files.createResponse({ kind: 'note', name: 'Untitled', textContent: '' })
+    const res = await overlayAppClient.notes.createResponse({ title: 'Untitled', content: '' })
     if (res.ok) {
-      const data = (await res.json()) as { id: string; file?: CanonicalNoteFile }
-      if (data.file) {
-        const note = canonicalFileToNotebookNote(data.file)
+      const data = (await res.json()) as { id: string; note?: NoteDoc | null }
+      if (data.note) {
+        const note = noteDocToNotebookNote(data.note)
         setNotes((prev) => upsertNotebookNote(prev, note))
         window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
         window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))

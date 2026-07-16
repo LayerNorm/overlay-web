@@ -9,6 +9,7 @@ import {
 import { getOverlaySession } from '@/server/auth/session'
 import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
 import { convex as serverConvex } from '@/server/database/convex'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { createHash, randomBytes } from 'crypto'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { encryptSessionTransferPayload } from '@/server/auth/session-transfer-crypto'
@@ -52,13 +53,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${getBaseUrl()}/auth/sign-in?error=${errorMsg}`)
     }
 
-    // Sync user profile to Convex (creates subscription record if it doesn't exist)
+    // Sync user profile to the selected app-data backend.
     const session = await getOverlaySession(request)
     logAuthDebug('/api/auth/callback post-handleCallback session', summarizeSessionForLog(session))
 
     const inspectAccessToken = async (accessToken: string, userId: string) => {
       try {
-        return await serverConvex.query<Record<string, unknown>>('authDebug:inspectAccessToken', {
+        return await serverConvex.query<Record<string, unknown>>('auth/authDebug:inspectAccessToken', {
           serverSecret: getInternalApiSecret(),
           accessToken,
           userId,
@@ -74,28 +75,21 @@ export async function GET(request: NextRequest) {
     let isNewUser = false
     try {
       if (session?.accessToken) {
-        logAuthDebug('/api/auth/callback syncUserProfile start', {
+        logAuthDebug('/api/auth/callback userService.upsertFromSession start', {
           callbackUserId: result.user.id,
           session: summarizeSessionForLog(session),
           convexInspection: await inspectAccessToken(session.accessToken, result.user.id),
         })
-        const syncResult = await serverConvex.mutation<{ success: boolean; isNewUser: boolean }>('auth/users:syncUserProfileByServer', {
-          serverSecret: getInternalApiSecret(),
-          userId: result.user.id,
-          email: result.user.email,
-          firstName: result.user.firstName,
-          lastName: result.user.lastName,
-          profilePictureUrl: result.user.profilePictureUrl,
-        }, { throwOnError: true })
+        const syncResult = await getOverlayServerContext().userService.upsertFromSession(session)
         isNewUser = syncResult?.isNewUser ?? false
-        logAuthDebug('/api/auth/callback syncUserProfile success', {
+        logAuthDebug('/api/auth/callback userService.upsertFromSession success', {
           callbackUserId: result.user.id,
           isNewUser,
         })
-        logger.info('[Auth] User profile synced to Convex:', result.user.id, { isNewUser })
+        logger.info('[Auth] User profile synced:', result.user.id, { isNewUser })
       }
     } catch (syncError) {
-      logAuthDebug('/api/auth/callback syncUserProfile error', {
+      logAuthDebug('/api/auth/callback userService.upsertFromSession error', {
         callbackUserId: result.user.id,
         error: syncError instanceof Error ? syncError.message : String(syncError),
         session: summarizeSessionForLog(session),

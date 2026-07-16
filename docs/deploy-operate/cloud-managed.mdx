@@ -1,0 +1,52 @@
+---
+title: "Managed Cloud Enterprise"
+description: "LayerNorm-managed single-tenant deployments for enterprise customers."
+---
+
+A managed-cloud enterprise deployment is a single-tenant Overlay environment operated by LayerNorm. The customer gets the same isolation as a self-hosted deployment without running the infrastructure themselves.
+
+## What LayerNorm manages
+
+- Vercel-hosted web runtime and DNS.
+- Convex deployment and Postgres app-data when configured.
+- Object storage namespace and credentials.
+- Monitoring, backups, and routine updates.
+- Provider contract negotiation and support escalation.
+
+## What the customer provides
+
+- Identity provider (WorkOS, OIDC, or Better Auth-compatible IdP).
+- DNS name and TLS certificate (or a delegated subdomain).
+- Optional object-store bucket and credentials if data residency requires it.
+- Optional LLM provider keys if the customer wants a private model contract.
+- Named admin contacts for principal grants and audit.
+
+## Tenant boundary
+
+A managed-cloud enterprise deployment is the tenant boundary. The same single-customer rules apply as [self-hosted and on-prem deployments](./tenancy):
+
+- One deployment per enterprise customer.
+- Users, departments, classes, and schools are roles or groups inside the deployment, not tenants.
+- `capabilities.multiTenant` remains `false`.
+
+## Data residency and compliance
+
+Managed-cloud deployments can enforce data residency through the `compliance.dataResidency` setting. Vector search, object storage, and LLM gateway routing can be pinned to allowed regions. See [Compliance](./compliance) for the DPDP-strict profile and retention controls.
+
+## SLA and support
+
+- **SLA**: Contact `divyansh@layernorm.co` for a managed-cloud SLA and pricing.
+- **Support**: Managed-cloud customers receive priority support and a dedicated escalation channel.
+- **Updates**: LayerNorm coordinates maintenance windows and communicates breaking changes at least 14 days in advance.
+
+## Compared to self-hosted
+
+| Concern | Managed Cloud | Self-Hosted |
+| --- | --- | --- |
+| Operator | LayerNorm | Customer |
+| Tenant isolation | One deployment per customer | One deployment per customer |
+| Customization | Configuration and feature flags | Full source access and build customization |
+| Compliance | Data residency, DPDP, SOC 2 roadmap | Customer-configured controls |
+| Licensing | AGPL-3.0-or-later core, Apache-2.0 SDKs | Same; modified distributions require separate branding |
+
+To start a managed-cloud evaluation, email `divyansh@layernorm.co`.

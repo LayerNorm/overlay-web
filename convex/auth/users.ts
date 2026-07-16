@@ -482,6 +482,31 @@ export const deleteUserAccountByServer = mutation({
     )
     await deleteIndexed(() =>
       ctx.db
+        .query('budgetReservations')
+        .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('usageOperations')
+        .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('administrativePrincipals')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    const actorAuditRows = await ctx.db
+      .query('auditEvents')
+      .withIndex('by_actorUserId_createdAt', (q) => q.eq('actorUserId', userId))
+      .collect()
+    for (const row of actorAuditRows) {
+      await ctx.db.patch(row._id, { actorUserId: undefined })
+    }
+    await deleteIndexed(() =>
+      ctx.db
         .query('projects')
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect(),
@@ -501,6 +526,12 @@ export const deleteUserAccountByServer = mutation({
     await deleteIndexed(() =>
       ctx.db
         .query('automationRuns')
+        .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('mcpToolExecutions')
         .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
         .collect(),
     )
@@ -560,26 +591,20 @@ export const deleteUserAccountByServer = mutation({
       deletedRowCount += 1
     }
 
-    // 3. Tables that store userId but lack a by_userId index — full table scan
-    //    is the only correct option. Acceptable here because account deletion
-    //    is rare and off the hot path.
-    const embeddingRows = await ctx.db
-      .query('knowledgeChunkEmbeddings')
-      .filter((q) => q.eq(q.field('userId'), userId))
-      .collect()
-    for (const row of embeddingRows) {
-      await ctx.db.delete(row._id)
-      deletedRowCount += 1
-    }
-
-    const deltaRows = await ctx.db
-      .query('conversationMessageDeltas')
-      .filter((q) => q.eq(q.field('userId'), userId))
-      .collect()
-    for (const row of deltaRows) {
-      await ctx.db.delete(row._id)
-      deletedRowCount += 1
-    }
+    // 3. Large user-scoped tables. These must use indexes; full scans can exceed
+    //    Convex's per-function read limit on production-sized deployments.
+    await deleteIndexed(() =>
+      ctx.db
+        .query('knowledgeChunkEmbeddings')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('conversationMessageDeltas')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
 
     // 4. Subscription row last so Stripe linkage stays available above. After
     //    this, the user has no rows left in Convex.

@@ -1,0 +1,87 @@
+---
+title: "Admin"
+description: "Administration workflow endpoints for audit, principals, and usage."
+---
+
+Admin endpoints are protected by role checks. The authenticated user must hold an active `admin`, `auditor`, or `billing_admin` role. Unauthorized calls are recorded as audit events.
+
+## Audit
+
+List audit events with optional filters. `auditor` and `admin` can view audit events.
+
+```bash
+GET /api/v1/admin/audit?action=...&actorUserId=...&before=...&limit=20&resourceType=...
+```
+
+Response:
+
+```json
+{
+  "events": [
+    {
+      "action": "administration.principal.grant",
+      "actorUserId": "user_123",
+      "resourceType": "administrative_principal",
+      "outcome": "success",
+      "createdAt": 1699999999999
+    }
+  ]
+}
+```
+
+## Principals
+
+List, grant, and revoke administrative principals. Only `admin` can manage principals.
+
+```bash
+GET /api/v1/admin/principals
+```
+
+Grant a principal:
+
+```bash
+POST /api/v1/admin/principals
+{
+  "userId": "user_123",
+  "role": "admin",
+  "reason": "Initial admin setup"
+}
+```
+
+Revoke a principal:
+
+```bash
+DELETE /api/v1/admin/principals
+{
+  "userId": "user_123"
+}
+```
+
+Valid roles are `admin`, `auditor`, `billing_admin`, and `support`.
+
+## Usage
+
+List and adjust administrative usage and budgets. Only `admin` and `billing_admin` can manage usage.
+
+```bash
+GET /api/v1/admin/usage?userId=...&limit=20
+```
+
+Adjust a user's budget:
+
+```bash
+POST /api/v1/admin/usage
+{
+  "userId": "user_123",
+  "amountCents": 5000
+}
+```
+
+Budget adjustments create `administration.budget.adjust` audit events.
+
+## Errors
+
+- `401` — Missing or invalid authentication.
+- `403` — The caller does not have the required administrative role.
+- `400` — Missing required fields or invalid role.
+- `404` — Principal not found when revoking.

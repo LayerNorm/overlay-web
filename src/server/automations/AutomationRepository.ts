@@ -1,50 +1,46 @@
 import 'server-only'
 
-import type { Id } from '../../../convex/_generated/dataModel'
+import type {
+  AutomationRunSummary,
+  AutomationSchedule,
+  AutomationSummary,
+} from '@overlay/app-core'
 
-export type AutomationSchedule =
-  | { kind: 'interval'; intervalMinutes?: number }
-  | { kind: 'daily'; hourUTC?: number; minuteUTC?: number }
-  | { kind: 'weekly'; dayOfWeekUTC?: number; hourUTC?: number; minuteUTC?: number }
-  | { kind: 'monthly'; dayOfMonthUTC?: number; hourUTC?: number; minuteUTC?: number }
+export type { AutomationSchedule } from '@overlay/app-core'
 
-export type AutomationForUpdateNote = {
-  _id: Id<'automations'>
+export type AutomationRecord = AutomationSummary & {
   userId: string
-  name?: string
-  title?: string
-  description?: string
-  instructions?: string
-  enabled?: boolean
-  schedule?: AutomationSchedule
-  timezone?: string
-  modelId?: string
-  sourceConversationId?: Id<'conversations'>
-  conversationId?: Id<'conversations'>
 }
 
-export type AutomationRunTarget = {
-  _id: Id<'automations'>
-  userId: string
-  name?: string
-  title?: string
-  description?: string
-  instructions?: string
-  instructionsMarkdown?: string
-  projectId?: string
-  modelId?: string
-  sourceConversationId?: Id<'conversations'>
-  conversationId?: Id<'conversations'>
-}
+export type AutomationForUpdateNote = AutomationRecord
+
+export type AutomationRunTarget = AutomationRecord
 
 export type AutomationExecutionPayload = {
-  run: {
-    status: string
-    scheduledFor: number
-    turnId?: string
-    conversationId?: Id<'conversations'>
+  run: AutomationRunSummary & {
+    userId: string
   }
   automation: AutomationRunTarget
+}
+
+export type CreateAutomationInput = {
+  userId: string
+  name: string
+  description?: string
+  instructions: string
+  enabled?: boolean
+  schedule: AutomationSchedule
+  timezone?: string
+  projectId?: string
+  modelId?: string
+  graphSource?: string
+  sourceConversationId?: string
+  concurrencyPolicy?: 'skip' | 'queue'
+}
+
+export type UpdateAutomationInput = Partial<Omit<CreateAutomationInput, 'userId'>> & {
+  automationId: string
+  userId: string
 }
 
 export interface AutomationRepository {
@@ -52,76 +48,76 @@ export interface AutomationRepository {
     includeDeleted?: boolean
     projectId?: string
     userId: string
-  }): Promise<unknown[]>
+  }): Promise<AutomationRecord[]>
   listRuns(args: {
-    automationId: Id<'automations'>
+    automationId: string
     userId: string
-  }): Promise<unknown[]>
+  }): Promise<AutomationRunSummary[]>
   getAutomation(args: {
-    automationId: Id<'automations'>
+    automationId: string
     userId: string
   }): Promise<AutomationForUpdateNote | null>
   getAutomationRunTarget(args: {
-    automationId: Id<'automations'>
+    automationId: string
     userId: string
   }): Promise<AutomationRunTarget | null>
-  getEntitlements(args: {
-    userId: string
-  }): Promise<{ planKind?: 'free' | 'paid' } | null>
-  createAutomation(args: Record<string, unknown> & {
-    userId: string
-  }): Promise<unknown>
-  updateAutomation(args: Record<string, unknown> & {
-    automationId: Id<'automations'>
-    userId: string
-  }): Promise<void>
+  createAutomation(args: CreateAutomationInput): Promise<string>
+  updateAutomation(args: UpdateAutomationInput): Promise<void>
   pauseAutomation(args: {
-    automationId: Id<'automations'>
+    automationId: string
     userId: string
   }): Promise<void>
   resumeAutomation(args: {
-    automationId: Id<'automations'>
+    automationId: string
     userId: string
   }): Promise<void>
   removeAutomation(args: {
-    automationId: Id<'automations'>
+    automationId: string
     userId: string
   }): Promise<void>
+  requestRunCancellation(args: {
+    runId: string
+    userId: string
+  }): Promise<boolean>
+  retryRun(args: {
+    runId: string
+    userId: string
+  }): Promise<string | null>
   removeConversation(args: {
-    conversationId: Id<'conversations'>
+    conversationId: string
     userId: string
   }): Promise<void>
   appendAutomationUpdateNote(args: {
-    automationId: Id<'automations'>
+    automationId: string
     content: string
-    conversationId: Id<'conversations'>
+    conversationId: string
     userId: string
   }): Promise<void>
   createManualRun(args: {
-    automationId: Id<'automations'>
+    automationId: string
     scheduledFor: number
     userId: string
-  }): Promise<Id<'automationRuns'> | null>
+  }): Promise<string | null>
   markManualRunStarted(args: {
-    conversationId?: Id<'conversations'>
+    conversationId?: string
     now: number
-    runId: Id<'automationRuns'>
+    runId: string
     turnId: string
     userId: string
   }): Promise<void>
   markManualRunCompleted(args: {
-    conversationId: Id<'conversations'>
+    conversationId: string
     now: number
-    runId: Id<'automationRuns'>
+    runId: string
     userId: string
   }): Promise<void>
   markManualRunFailed(args: {
     error: string
     now: number
-    runId: Id<'automationRuns'>
+    runId: string
     userId: string
   }): Promise<void>
   getRunForExecution(args: {
-    runId: Id<'automationRuns'>
+    runId: string
   }): Promise<AutomationExecutionPayload | null>
 }

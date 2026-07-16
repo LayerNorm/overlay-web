@@ -2,9 +2,11 @@ import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import type { AppSettings, ChatModePreference, ThemePresetId } from '@overlay/app-core'
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { isThemePresetId } from '@/shared/app/themes'
+import type { AppSettingsPatch } from '@/server/settings'
 
 const MAX_MODEL_ID_LENGTH = 160
 const MAX_ASK_MODEL_IDS = 4
@@ -38,6 +40,14 @@ function publicSettingsPayload(settings: AppSettings & { useSecondarySidebar?: b
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
+    if (context.appDataCapabilities.provider === 'postgres') {
+      const settings = await getOverlayServerContext()
+        .appData
+        .repositories
+        .settings
+        .getByUserId(auth.userId)
+      return NextResponse.json(publicSettingsPayload(settings))
+    }
 
     const settings = await convex.query<AppSettings>(
       'platform/uiSettings:getByServer',
@@ -178,6 +188,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
 
     const { auth } = context
 
+    const settingsPatch: AppSettingsPatch = {}
     const mutationArgs: {
       userId: string
       serverSecret: string
@@ -206,57 +217,87 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
 
     if (body.theme !== undefined) {
       mutationArgs.theme = body.theme
+      settingsPatch.theme = body.theme
     }
     if (body.lightThemePreset !== undefined) {
       mutationArgs.lightThemePreset = body.lightThemePreset
+      settingsPatch.lightThemePreset = body.lightThemePreset
     }
     if (body.darkThemePreset !== undefined) {
       mutationArgs.darkThemePreset = body.darkThemePreset
+      settingsPatch.darkThemePreset = body.darkThemePreset
     }
     if (body.autoContinue !== undefined) {
       mutationArgs.autoContinue = body.autoContinue
+      settingsPatch.autoContinue = body.autoContinue
     }
     if (body.defaultChatMode !== undefined) {
       mutationArgs.defaultChatMode = body.defaultChatMode
+      settingsPatch.defaultChatMode = body.defaultChatMode
     }
     if (body.modelPreference !== undefined) {
       mutationArgs.modelPreference = body.modelPreference
+      settingsPatch.modelPreference = body.modelPreference
     }
     if (body.defaultAskModelIds !== undefined) {
       mutationArgs.defaultAskModelIds = body.defaultAskModelIds.map((id) => id.trim())
+      settingsPatch.defaultAskModelIds = mutationArgs.defaultAskModelIds
     }
     if (body.defaultActModelId !== undefined) {
       mutationArgs.defaultActModelId = body.defaultActModelId.trim()
+      settingsPatch.defaultActModelId = mutationArgs.defaultActModelId
     }
     if (body.defaultImageModelId !== undefined) {
       mutationArgs.defaultImageModelId = body.defaultImageModelId.trim()
+      settingsPatch.defaultImageModelId = mutationArgs.defaultImageModelId
     }
     if (body.defaultVideoModelId !== undefined) {
       mutationArgs.defaultVideoModelId = body.defaultVideoModelId.trim()
+      settingsPatch.defaultVideoModelId = mutationArgs.defaultVideoModelId
     }
     if (body.defaultImageAspectRatio !== undefined) {
       mutationArgs.defaultImageAspectRatio = body.defaultImageAspectRatio.trim()
+      settingsPatch.defaultImageAspectRatio = mutationArgs.defaultImageAspectRatio
     }
     if (body.defaultVideoAspectRatio !== undefined) {
       mutationArgs.defaultVideoAspectRatio = body.defaultVideoAspectRatio.trim()
+      settingsPatch.defaultVideoAspectRatio = mutationArgs.defaultVideoAspectRatio
     }
     if (body.sendWithEnter !== undefined) {
       mutationArgs.sendWithEnter = body.sendWithEnter
+      settingsPatch.sendWithEnter = body.sendWithEnter
     }
     if (body.attachFilesToKnowledgeByDefault !== undefined) {
       mutationArgs.attachFilesToKnowledgeByDefault = body.attachFilesToKnowledgeByDefault
+      settingsPatch.attachFilesToKnowledgeByDefault = body.attachFilesToKnowledgeByDefault
     }
     if (body.onlyAllowZdrModels !== undefined) {
       mutationArgs.onlyAllowZdrModels = body.onlyAllowZdrModels
+      settingsPatch.onlyAllowZdrModels = body.onlyAllowZdrModels
     }
     if (body.dismissedZdrWarningGlobally !== undefined) {
       mutationArgs.dismissedZdrWarningGlobally = body.dismissedZdrWarningGlobally
+      settingsPatch.dismissedZdrWarningGlobally = body.dismissedZdrWarningGlobally
     }
     if (body.dismissedZdrWarningModelIds !== undefined) {
       mutationArgs.dismissedZdrWarningModelIds = Array.from(new Set(body.dismissedZdrWarningModelIds.map((id) => id.trim()))).slice(0, 100)
+      settingsPatch.dismissedZdrWarningModelIds = mutationArgs.dismissedZdrWarningModelIds
     }
     if (body.enabledChatModelIds !== undefined) {
       mutationArgs.enabledChatModelIds = Array.from(new Set(body.enabledChatModelIds.map((id) => id.trim()))).slice(0, MAX_ENABLED_MODEL_IDS)
+      settingsPatch.enabledChatModelIds = mutationArgs.enabledChatModelIds
+    }
+    if (body.chatStreamingMode !== undefined) {
+      settingsPatch.chatStreamingMode = 'token'
+    }
+
+    if (context.appDataCapabilities.provider === 'postgres') {
+      const settings = await getOverlayServerContext()
+        .appData
+        .repositories
+        .settings
+        .updateForUserId(auth.userId, settingsPatch)
+      return NextResponse.json(publicSettingsPayload(settings))
     }
 
     const settings = await convex.mutation<AppSettings>(

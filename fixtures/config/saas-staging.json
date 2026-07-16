@@ -17,8 +17,7 @@
       "clientId": "client_staging_fixture",
       "apiKey": "workos_staging_fixture_secret"
     },
-    "oidc": {},
-    "keycloak": {}
+    "oidc": {}
   },
   "billing": {
     "provider": "stripe",

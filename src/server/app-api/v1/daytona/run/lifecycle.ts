@@ -16,9 +16,13 @@ import type { Entitlements } from '@/shared/app/app-contracts'
 type DaytonaWorkspaceRun = Awaited<ReturnType<typeof ensureWorkspaceSandbox>>
 
 type DaytonaBudgetDeps = {
-  ensureBudgetAvailable: typeof ensureBudgetAvailable
+  ensureBudgetAvailable(params: {
+    userId: string
+    entitlements: Entitlements
+    minimumRequiredCents?: number
+  }): Promise<{ entitlements: Entitlements; remainingCents: number }>
   getBudgetTotals: typeof getBudgetTotals
-  getEntitlementsByServer(params: { userId: string; serverSecret: string }): Promise<Entitlements | null>
+  getEntitlementsByServer(params: { userId: string }): Promise<Entitlements | null>
   isPaidPlan: typeof isPaidPlan
   reserveProviderBudget: typeof reserveProviderBudget
 }
@@ -57,13 +61,11 @@ export type DaytonaBudgetReservationResult =
 export async function reserveDaytonaRunBudget(params: {
   deps?: Partial<DaytonaBudgetDeps>
   maxDurationSeconds: number
-  serverSecret: string
   userId: string
 }): Promise<DaytonaBudgetReservationResult> {
   const deps = { ...defaultBudgetDeps, ...params.deps }
   let currentEntitlements = await deps.getEntitlementsByServer({
     userId: params.userId,
-    serverSecret: params.serverSecret,
   })
 
   if (!currentEntitlements) {
@@ -135,6 +137,7 @@ export async function finalizeDaytonaRunMetering(params: {
   ) {
     try {
       const meteringResult = await deps.accrueWorkspaceSpend({
+        repository: params.workspaceRun.repository,
         workspace: params.workspaceRun.workspace,
         sandbox: params.workspaceRun.sandbox,
         startedAt: params.meteringStartedAt,

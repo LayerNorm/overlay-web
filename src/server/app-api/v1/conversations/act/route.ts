@@ -19,8 +19,8 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { normalizeChatToolRequestIds } from '@/shared/chat/tool-requests'
 import { MAX_TOOL_STEPS_ACT } from '@/server/tools/tools/policy'
-import { fireAndForgetRecordToolInvocation } from '@/server/tools/tools/record-tool-invocation'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildSecondarySystemPromptExtension } from '@/server/agent/operator-system-prompt'
 import {
   summarizeErrorForLog,
@@ -37,6 +37,7 @@ import {
 import { ActConversationRequest } from '@/shared/schemas/chat'
 import {
   actContextService,
+  actConversationRepository,
   actConversationErrorResponse,
   actEntitlementService,
   actGeneratingMessageService,
@@ -50,6 +51,7 @@ import {
   type MediaToolIntent,
 } from '@/server/tools/media-tool-intent'
 import { ensureActConversationId } from '@/server/conversations/ensure-act-conversation'
+import { createPersistedTextDeltaTransform } from '@/server/conversations/chat-stream-persistence'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import {
   MAX_ACT_MODEL_ATTEMPTS,
@@ -143,7 +145,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'messages required' }, { status: 400 })
     }
     const uiMessages = messages as UIMessage[]
-    actWebhookSkip = automationExecution === true
+    const overlayContext = getOverlayServerContext()
+    const isPostgresAppData = overlayContext.appDataCapabilities.provider === 'postgres'
+    actWebhookSkip = automationExecution === true || isPostgresAppData
     const { auth } = context
 	    const userId = auth.userId
 	    currentUserId = userId
@@ -194,7 +198,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       const ensureStartedAt = _ttftDebug ? performance.now() : 0
       cid = await ensureActConversationId({
         userId,
-        serverSecret,
+        repository: actConversationRepository,
         conversationClientId: trimmedClientId,
         entitlements: runtimeEntitlements,
         projectId,
@@ -248,10 +252,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       mentions: rawMentions,
       serverSecret,
       userId,
+      externalContextEnabled: !isPostgresAppData,
     })
 
     const structuredMediaToolIntent = normalizeStructuredMediaToolIntent(mediaToolIntent)
     const mediaIntentTask: Promise<MediaToolIntent> = (() => {
+      if (isPostgresAppData) return Promise.resolve(null)
       if (isMultiModelFollowUpSlot || !paid) return Promise.resolve(null)
       if (structuredMediaToolIntent != null) return Promise.resolve(structuredMediaToolIntent)
       if (!mayNeedMediaGenerationTools(latestUserText)) return Promise.resolve(null)
@@ -353,6 +359,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     logActTooling(actTooling)
     const tools = actTooling.tools
     const actInstructions = buildActAgentInstructions({
+      availableToolIds: Object.keys(tools),
       autoRetrieval,
       constants: {
         ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
@@ -421,6 +428,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       result = await agent.stream({
       messages: modelMessages,
       abortSignal: abortController.signal,
+      ...(generatingMessageId ? {
+        experimental_transform: createPersistedTextDeltaTransform({
+          appendTextDelta: async (textDelta) => {
+            return await actGeneratingMessageService.appendTextDelta({
+              messageId: generatingMessageId,
+              textDelta,
+            })
+          },
+        }),
+      } : {}),
       experimental_onToolCallStart: ({ toolCall }) => {
         if (!toolCall) return
         if (_ttftDebug && !_firstToolCallLogged) {
@@ -460,18 +477,26 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             })
           }
         }
-        fireAndForgetRecordToolInvocation({
-          serverSecret,
-          userId,
-          toolName: toolCall.toolName,
-          mode: 'act',
-          modelId: attemptModelId,
-          conversationId: conversationId ?? undefined,
-          turnId: tid,
-          success,
-          durationMs,
-          error,
-        })
+        if (!isPostgresAppData) {
+          void import('@/server/tools/tools/record-tool-invocation')
+            .then(({ fireAndForgetRecordToolInvocation }) => {
+              fireAndForgetRecordToolInvocation({
+                serverSecret,
+                userId,
+                toolName: toolCall.toolName,
+                mode: 'act',
+                modelId: attemptModelId,
+                conversationId: conversationId ?? undefined,
+                turnId: tid,
+                success,
+                durationMs,
+                error,
+              })
+            })
+            .catch((importError) => {
+              logger.warn('[conversations/act] Tool invocation recorder unavailable:', summarizeErrorForLog(importError))
+            })
+        }
       },
       onFinish: async (event) => {
         const totalUsage = event.totalUsage
@@ -514,6 +539,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           multiModelSlotIndex,
           multiModelTotal,
           routedModelId: streamedRoutedModelId,
+          sourceCitations: sourceCitationMap,
           timedOut: wasAbortedByTimeout,
           timeoutMs: actAbortTimeoutMsResolved,
           toolFailuresByCallId,
@@ -568,7 +594,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       responseHeaders.set('x-overlay-stream-persistence-mode', resolvedStreamPersistenceMode)
     }
     if (responseBody) {
-      if (resolvedStreamPersistenceMode !== 'direct') {
+      if (isPostgresAppData || resolvedStreamPersistenceMode !== 'direct') {
         const [clientBody, backgroundBody] = responseBody.tee()
         responseBody = clientBody
         after(async () => {

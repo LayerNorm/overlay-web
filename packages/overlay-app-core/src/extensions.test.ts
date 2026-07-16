@@ -34,7 +34,7 @@ test('integration catalog helpers merge defaults, api rows, and registries', () 
   ])
   assert.deepEqual(registry[0], {
     id: 'custom-crm',
-    composioId: 'custom_crm',
+    providerKey: 'custom_crm',
     slug: 'custom_crm',
     name: 'Custom CRM',
     description: 'CRM records',
@@ -46,7 +46,7 @@ test('integration catalog helpers merge defaults, api rows, and registries', () 
 
   const merged = mergeConnectorCatalogEntries(registry, [{
     id: 'custom_crm',
-    composioId: 'custom_crm',
+    providerKey: 'custom_crm',
     slug: 'custom_crm',
     name: 'Custom_crm',
     description: '',
@@ -60,8 +60,8 @@ test('integration catalog helpers merge defaults, api rows, and registries', () 
 
 test('integration rows split connected and available lists without changing search semantics', () => {
   const catalog = [
-    { id: 'gmail', composioId: 'gmail', slug: 'gmail', name: 'Gmail', description: 'Mail', icon: '📧' },
-    { id: 'github', composioId: 'github', slug: 'github', name: 'GitHub', description: 'Repos', icon: '🔌' },
+    { id: 'gmail', providerKey: 'gmail', slug: 'gmail', name: 'Gmail', description: 'Mail', icon: '📧' },
+    { id: 'github', providerKey: 'github', slug: 'github', name: 'GitHub', description: 'Repos', icon: '🔌' },
   ]
   const connected = new Set(['gmail'])
   assert.deepEqual(getConnectedConnectorRows(connected, catalog).map((item) => item.name), ['Gmail'])
@@ -104,6 +104,7 @@ test('mcp helpers preserve request bodies, filtering, test messages, and local s
     headerName: '',
     headerValue: '',
     timeoutMs: 12_000,
+    defaultToolPolicy: 'approval_required' as const,
   }
   assert.deepEqual(createMcpCreateRequest(values), {
     name: 'Docs',
@@ -112,6 +113,7 @@ test('mcp helpers preserve request bodies, filtering, test messages, and local s
     url: 'https://mcp.example.test',
     enabled: true,
     authType: 'bearer',
+    defaultToolPolicy: 'approval_required',
     authConfig: { bearerToken: 'token' },
     timeoutMs: 12_000,
   })

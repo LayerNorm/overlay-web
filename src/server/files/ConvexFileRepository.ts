@@ -1,11 +1,12 @@
 import 'server-only'
 
-import { convex } from '@/server/database/convex'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { cleanupExpiredR2UploadIntents } from '@/server/storage/r2-upload-intents'
 import type {
   FileRepository,
   FileRecord,
+  ExtractedDocumentPart,
   FileShareResult,
   FileStorageEntitlements,
   FileStorageProxyTarget,
@@ -14,6 +15,8 @@ import type {
 } from './FileRepository'
 
 export class ConvexFileRepository implements FileRepository {
+  readonly storageCleanupMode = 'immediate' as const
+
   private get serverSecret(): string {
     return getInternalApiSecret()
   }
@@ -31,6 +34,16 @@ export class ConvexFileRepository implements FileRepository {
     })
   }
 
+  async getFileByLegacyOutputId(args: {
+    outputId: string
+    userId: string
+  }): Promise<FileRecord | null> {
+    return await convex.query<FileRecord | null>('files/files:getByLegacyOutputId', {
+      ...args,
+      serverSecret: this.serverSecret,
+    })
+  }
+
   async listFiles(args: Record<string, unknown> & { userId: string }): Promise<unknown[]> {
     return await convex.query<unknown[]>('files/files:list', {
       ...args,
@@ -42,7 +55,7 @@ export class ConvexFileRepository implements FileRepository {
     return await convex.mutation<string | null>('files/files:create', {
       ...args,
       serverSecret: this.serverSecret,
-    })
+    }, { throwOnError: true })
   }
 
   async createFileWithStorage(args: Record<string, unknown> & { userId: string }): Promise<string | null> {
@@ -52,11 +65,26 @@ export class ConvexFileRepository implements FileRepository {
     }, { throwOnError: true })
   }
 
+  async createExtractedDocument(args: {
+    mimeType: string
+    parentId?: string
+    parts: ExtractedDocumentPart[]
+    projectId?: string
+    r2Key: string
+    sourceSizeBytes: number
+    userId: string
+  }): Promise<string[]> {
+    return await convex.mutation<string[]>('files/files:createExtractedDocument', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? []
+  }
+
   async updateFile(args: Record<string, unknown> & { fileId: string; userId: string }): Promise<void> {
     await convex.mutation('files/files:update', {
       ...args,
       serverSecret: this.serverSecret,
-    })
+    }, { throwOnError: true })
   }
 
   async removeFile(args: {
@@ -67,7 +95,7 @@ export class ConvexFileRepository implements FileRepository {
     await convex.mutation('files/files:remove', {
       ...args,
       serverSecret: this.serverSecret,
-    })
+    }, { throwOnError: true })
   }
 
   async getUploadIntent(args: {

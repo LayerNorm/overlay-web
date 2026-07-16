@@ -9,8 +9,10 @@ import type {
   IntegrationSearchResponse,
   KnowledgeFileNode,
   MemoryRow,
+  NoteDoc,
   ProjectSummary,
 } from '@overlay/app-core'
+import { noteDocToKnowledgeFile } from '@overlay/app-core'
 import type { CachedConversation } from '@/shared/chat/chat-list-cache'
 import type { PaginatedEnvelope } from '@/shared/api/pagination'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
@@ -19,6 +21,7 @@ import { handleBffRoute, type BffDomainService } from '@/app/api/v1/_utils/bff'
 import * as conversationsService from '@/server/app-api/v1/conversations/route'
 import * as projectsService from '@/server/app-api/v1/projects/route'
 import * as filesService from '@/server/app-api/v1/files/route'
+import * as notesService from '@/server/app-api/v1/notes/route'
 import * as memoryService from '@/server/app-api/v1/memory/route'
 import * as bootstrapService from '@/server/app-api/v1/bootstrap/route'
 import * as integrationsService from '@/server/app-api/v1/integrations/route'
@@ -85,12 +88,21 @@ export function getInitialProjectList(): Promise<ProjectSummary[]> {
   )
 }
 
-export function getInitialKnowledgeFiles(): Promise<KnowledgeFileNode[]> {
-  return callAppApi<KnowledgeFileNode[]>(
-    '/api/v1/files?limit=100&summary=true',
-    filesService.GET as BffDomainService,
-    [],
-  )
+export async function getInitialKnowledgeFiles(): Promise<KnowledgeFileNode[]> {
+  const [files, notes] = await Promise.all([
+    callAppApi<KnowledgeFileNode[]>(
+      '/api/v1/files?limit=100&summary=true',
+      filesService.GET as BffDomainService,
+      [],
+    ),
+    callAppApi<NoteDoc[]>(
+      '/api/v1/notes?limit=100',
+      notesService.GET as BffDomainService,
+      [],
+    ),
+  ])
+  const fileIds = new Set(files.map((file) => file._id))
+  return [...files, ...notes.map(noteDocToKnowledgeFile).filter((note) => !fileIds.has(note._id))]
 }
 
 export function getInitialKnowledgeMemories(): Promise<MemoryRow[]> {

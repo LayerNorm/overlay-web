@@ -1,10 +1,8 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
-import type { Entitlements } from '@/shared/app/app-contracts'
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024
 const ESTIMATED_TRANSCRIPTION_SECONDS = 60
@@ -14,11 +12,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const { auth } = context
 
 
-    const serverSecret = getInternalApiSecret()
-    const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
-      serverSecret,
-      userId: auth.userId,
-    })
+    const serverContext = getOverlayServerContext()
+    const entitlements = await serverContext.generationUsagePolicy.getEntitlements({ userId: auth.userId })
     if (!entitlements) return NextResponse.json({ error: 'Could not verify subscription.' }, { status: 401 })
     const remainingSeconds =
       (entitlements.transcriptionSecondsLimit ?? 0) - (entitlements.transcriptionSecondsUsed ?? 0)
@@ -67,14 +62,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       }
 
       const data = await groqResponse.json()
-      await convex.mutation('platform/usage:recordBatch', {
-        serverSecret,
+      await serverContext.appData.repositories.usage.recordBatch({
+        operationId: `transcription_${globalThis.crypto.randomUUID()}`,
         userId: auth.userId,
         events: [{
-          type: 'transcription',
+          kind: 'transcription',
           modelId: 'groq/whisper-large-v3-turbo',
-          cost: ESTIMATED_TRANSCRIPTION_SECONDS,
-          timestamp: Date.now(),
+          costCents: 0,
+          occurredAt: Date.now(),
+          metadata: { estimatedDurationSeconds: ESTIMATED_TRANSCRIPTION_SECONDS },
         }],
       })
       return NextResponse.json({ text: data.text })

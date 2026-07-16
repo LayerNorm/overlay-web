@@ -6,7 +6,7 @@ const JWKS_CACHE_TTL_MS = 2 * 60 * 1000
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
-type WorkOSAccessTokenClaims = {
+type JwtAccessTokenClaims = {
   iss: string
   sub: string
   aud?: string | string[]
@@ -23,15 +23,41 @@ type JwtHeader = {
 
 type CachedJwks = {
   expiresAt: number
-  keys: WorkOsJwk[]
+  keys: SigningJwk[]
 }
 
-type WorkOsJwk = JsonWebKey & {
+type SigningJwk = JsonWebKey & {
   kid?: string
   kty?: string
 }
 
 const jwksCache = new Map<string, CachedJwks>()
+
+function getConfiguredBetterAuthIssuer(): string | null {
+  const issuer = process.env.BETTER_AUTH_JWT_ISSUER?.trim()
+  if (issuer) return normalizeJwtIssuer(issuer)
+
+  const baseUrl = process.env.BETTER_AUTH_URL?.trim() || process.env.NEXT_PUBLIC_APP_URL?.trim()
+  return baseUrl ? normalizeJwtIssuer(new URL(baseUrl).origin) : null
+}
+
+function getConfiguredBetterAuthAudience(): string | null {
+  const audience = process.env.BETTER_AUTH_JWT_AUDIENCE?.trim()
+  if (audience) return audience
+
+  const baseUrl = process.env.BETTER_AUTH_URL?.trim() || process.env.NEXT_PUBLIC_APP_URL?.trim()
+  return baseUrl ? new URL(baseUrl).origin : null
+}
+
+function getConfiguredBetterAuthJwksUrl(): string | null {
+  const jwksUrl = process.env.BETTER_AUTH_JWKS_URL?.trim()
+  if (jwksUrl) return jwksUrl
+
+  const baseUrl = process.env.BETTER_AUTH_URL?.trim() || process.env.NEXT_PUBLIC_APP_URL?.trim()
+  if (!baseUrl) return null
+  const basePath = process.env.BETTER_AUTH_BASE_PATH?.trim() || '/api/better-auth'
+  return `${new URL(baseUrl).origin}${basePath.replace(/\/+$/, '')}/jwks`
+}
 
 function getConfiguredWorkOsClientIds(): string[] {
   return [...new Set(
@@ -130,7 +156,7 @@ function decodeBase64UrlJson<T>(value: string): T | null {
   }
 }
 
-async function fetchJwks(clientId: string, forceRefresh = false): Promise<WorkOsJwk[]> {
+async function fetchJwks(clientId: string, forceRefresh = false): Promise<SigningJwk[]> {
   const now = Date.now()
   const cached = jwksCache.get(clientId)
   if (!forceRefresh && cached && cached.expiresAt > now) {
@@ -148,7 +174,7 @@ async function fetchJwks(clientId: string, forceRefresh = false): Promise<WorkOs
     throw new Error(`Failed to fetch WorkOS JWKS: HTTP ${response.status}`)
   }
 
-  const json = await response.json() as { keys?: WorkOsJwk[] }
+  const json = await response.json() as { keys?: SigningJwk[] }
   const keys = Array.isArray(json.keys) ? json.keys : []
   jwksCache.set(clientId, {
     expiresAt: now + JWKS_CACHE_TTL_MS,
@@ -157,7 +183,28 @@ async function fetchJwks(clientId: string, forceRefresh = false): Promise<WorkOs
   return keys
 }
 
-async function findJwk(clientId: string, kid: string): Promise<WorkOsJwk | null> {
+async function fetchJwksFromUrl(cacheKey: string, url: string, forceRefresh = false): Promise<SigningJwk[]> {
+  const now = Date.now()
+  const cached = jwksCache.get(cacheKey)
+  if (!forceRefresh && cached && cached.expiresAt > now) {
+    return cached.keys
+  }
+
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Failed to fetch JWKS: HTTP ${response.status}`)
+  }
+
+  const json = await response.json() as { keys?: SigningJwk[] }
+  const keys = Array.isArray(json.keys) ? json.keys : []
+  jwksCache.set(cacheKey, {
+    expiresAt: now + JWKS_CACHE_TTL_MS,
+    keys,
+  })
+  return keys
+}
+
+async function findJwk(clientId: string, kid: string): Promise<SigningJwk | null> {
   let keys = await fetchJwks(clientId)
   let jwk =
     keys.find((entry) => typeof entry.kid === 'string' && entry.kid === kid) ?? null
@@ -197,10 +244,46 @@ async function verifyTokenAgainstAnyConfiguredClientId(
   return false
 }
 
+async function verifyBetterAuthToken(
+  header: JwtHeader,
+  claims: JwtAccessTokenClaims,
+  signingInput: string,
+  signatureSegment: string,
+): Promise<JwtAccessTokenClaims | null> {
+  const issuer = getConfiguredBetterAuthIssuer()
+  const audience = getConfiguredBetterAuthAudience()
+  const jwksUrl = getConfiguredBetterAuthJwksUrl()
+
+  if (!issuer || !audience || !jwksUrl) return null
+  if (normalizeJwtIssuer(claims.iss) !== issuer) return null
+  if (!normalizeAudience(claims.aud).includes(audience)) return null
+  if (header.alg !== 'RS256' || typeof header.kid !== 'string' || !header.kid.trim()) return null
+
+  let jwk: SigningJwk | null = null
+  try {
+    let keys = await fetchJwksFromUrl(`better-auth:${jwksUrl}`, jwksUrl)
+    jwk = keys.find((entry) => typeof entry.kid === 'string' && entry.kid === header.kid) ?? null
+    if (!jwk) {
+      keys = await fetchJwksFromUrl(`better-auth:${jwksUrl}`, jwksUrl, true)
+      jwk = keys.find((entry) => typeof entry.kid === 'string' && entry.kid === header.kid) ?? null
+    }
+  } catch (error) {
+    logAuthDebug('Better Auth JWKS fetch failed', {
+      jwksUrl,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
+  if (!jwk) return null
+
+  const verified = await verifyRs256Signature(signingInput, signatureSegment, jwk)
+  return verified ? claims : null
+}
+
 async function verifyRs256Signature(
   signingInput: string,
   signatureSegment: string,
-  jwk: WorkOsJwk,
+  jwk: SigningJwk,
 ): Promise<boolean> {
   if (jwk.kty !== 'RSA') return false
   const key = await crypto.subtle.importKey(
@@ -224,7 +307,7 @@ async function verifyRs256Signature(
 
 export async function getVerifiedAccessTokenClaims(
   accessToken: string,
-): Promise<WorkOSAccessTokenClaims | null> {
+): Promise<JwtAccessTokenClaims | null> {
   if (!accessToken || typeof accessToken !== 'string') return null
 
   const trimmed = accessToken.trim()
@@ -233,17 +316,21 @@ export async function getVerifiedAccessTokenClaims(
 
   const [headerSegment, payloadSegment, signatureSegment] = parts
   const header = decodeBase64UrlJson<JwtHeader>(headerSegment)
-  const claims = decodeBase64UrlJson<WorkOSAccessTokenClaims>(payloadSegment)
+  const claims = decodeBase64UrlJson<JwtAccessTokenClaims>(payloadSegment)
   if (!header || !claims) return null
 
   if (header.alg !== 'RS256' || typeof header.kid !== 'string' || !header.kid.trim()) {
     return null
   }
-  if (!isTrustedWorkOsIssuer(claims.iss)) return null
   if (typeof claims.sub !== 'string' || !claims.sub.trim()) return null
   if (typeof claims.exp !== 'number' || claims.exp * 1000 <= Date.now()) return null
 
   const signingInput = `${headerSegment}.${payloadSegment}`
+
+  if (!isTrustedWorkOsIssuer(claims.iss)) {
+    return verifyBetterAuthToken(header, claims, signingInput, signatureSegment)
+  }
+
   const audiences = normalizeAudience(claims.aud)
 
   let verified = false
@@ -288,7 +375,7 @@ export async function debugAccessTokenVerification(
 
   const [headerSegment, payloadSegment, signatureSegment] = parts
   const header = decodeBase64UrlJson<JwtHeader>(headerSegment)
-  const claims = decodeBase64UrlJson<WorkOSAccessTokenClaims>(payloadSegment)
+  const claims = decodeBase64UrlJson<JwtAccessTokenClaims>(payloadSegment)
   if (!header || !claims) {
     return { ...diagnostics, verified: false, reason: 'invalid_json_segments' }
   }
@@ -414,7 +501,7 @@ export async function validateAccessToken(accessToken: string): Promise<boolean>
 export async function requireAccessToken(
   accessToken: string,
   userId?: string,
-): Promise<WorkOSAccessTokenClaims> {
+): Promise<JwtAccessTokenClaims> {
   const claims = await getVerifiedAccessTokenClaims(accessToken)
   if (!claims) {
     logAuthDebug('requireAccessToken rejected token', await debugAccessTokenVerification(accessToken, userId))

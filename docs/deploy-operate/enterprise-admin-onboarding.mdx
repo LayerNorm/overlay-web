@@ -1,0 +1,80 @@
+---
+title: "Enterprise Admin Onboarding"
+description: "Bootstrapping the first admin and managing principals in an enterprise Overlay deployment."
+---
+
+This guide is for the first administrator of an enterprise or managed-cloud Overlay deployment.
+
+## First admin
+
+The first admin is normally granted by the deployment operator or by the [One-Command Install](./one-command-install) bootstrap script. If you need to grant it manually, use the admin helper:
+
+```bash
+npx tsx scripts/app-db-admin.ts grant --userId=user_123 --role=admin --reason="Initial enterprise admin"
+```
+
+This creates an `administrative_principal` record and records the grant in the audit log.
+
+## Grant and revoke principals
+
+Admins can list, grant, and revoke administrative principals through the admin API.
+
+```bash
+GET /api/v1/admin/principals
+POST /api/v1/admin/principals
+DELETE /api/v1/admin/principals
+```
+
+Request bodies:
+
+```json
+// Grant
+{
+  "userId": "user_123",
+  "role": "admin",
+  "reason": "IT administrator"
+}
+
+// Revoke
+{
+  "userId": "user_123"
+}
+```
+
+Valid roles are `admin`, `auditor`, `billing_admin`, and `support`.
+
+## Read audit events
+
+Auditors and admins can list audit events:
+
+```bash
+GET /api/v1/admin/audit?limit=20
+```
+
+Use `action`, `actorUserId`, `resourceType`, and `before` filters to narrow results.
+
+## Manage budgets
+
+Admins and `billing_admin` can read usage and adjust budgets:
+
+```bash
+GET /api/v1/admin/usage?userId=user_123
+
+POST /api/v1/admin/usage
+{
+  "userId": "user_123",
+  "amountCents": 5000
+}
+```
+
+Budget adjustments create `administration.budget.adjust` audit events.
+
+## Checklist
+
+Before handing the deployment to end users:
+
+- [ ] The first admin is granted and has signed in.
+- [ ] Additional admin roles are granted and documented.
+- [ ] Audit logging is enabled and reachable.
+- [ ] Usage and budget controls are understood by the finance/IT contact.
+- [ ] The [Enterprise Security Launch Checklist](./enterprise-security-launch-checklist) is complete.

@@ -2,12 +2,13 @@ import { logger } from '@/server/observability/logger'
 import { NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { generateText } from '@/server/ai/sdk'
-import { convex } from '@/server/database/convex'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/shared/chat/chat-suggestions-defaults'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { getOverlaySession } from '@/server/auth/session'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import type { ChatSuggestionRepository } from '@/server/chat-suggestions/ChatSuggestionRepository'
 
 function utcDateKey(): string {
   return new Date().toISOString().slice(0, 10)
@@ -96,21 +97,15 @@ Reply with ONLY valid JSON (no markdown fences) in this exact shape:
 }
 
 type PersistArgs = {
-  serverSecret: string
+  repository: ChatSuggestionRepository
   userId: string
   prompts: string[]
   day: string
 }
 
-async function persistStarters({ serverSecret, userId, prompts, day }: PersistArgs): Promise<boolean> {
+async function persistStarters({ repository, userId, prompts, day }: PersistArgs): Promise<boolean> {
   try {
-    const result = (await convex.mutation('auth/users:setChatStartersByServer', {
-      serverSecret,
-      userId,
-      prompts,
-      day,
-    })) as { ok?: boolean }
-    return result.ok === true
+    return await repository.setForUser({ day, prompts, userId })
   } catch (err) {
     logger.error('[chat-suggestions] failed to persist starters', err)
     return false
@@ -122,19 +117,19 @@ async function persistStarters({ serverSecret, userId, prompts, day }: PersistAr
  * Runs after the response is sent (stale-while-revalidate).
  */
 function scheduleRefreshForNewDay(args: {
-  serverSecret: string
+  repository: ChatSuggestionRepository
   userId: string
   accessToken: string
   firstName: string
   today: string
 }) {
-  const { serverSecret, userId, accessToken, firstName, today } = args
+  const { repository, userId, accessToken, firstName, today } = args
   after(async () => {
     try {
       const trimmed = firstName.trim()
       if (!trimmed) {
         await persistStarters({
-          serverSecret,
+          repository,
           userId,
           prompts: DEFAULT_PROMPTS_NORMALIZED,
           day: today,
@@ -143,7 +138,7 @@ function scheduleRefreshForNewDay(args: {
       }
       const generated = await generateStartersWithLLM(accessToken, trimmed)
       if (generated && generated.length === 4) {
-        await persistStarters({ serverSecret, userId, prompts: generated, day: today })
+        await persistStarters({ repository, userId, prompts: generated, day: today })
       }
     } catch (err) {
       logger.warn('[chat-suggestions] background refresh failed', err)
@@ -151,23 +146,20 @@ function scheduleRefreshForNewDay(args: {
   })
 }
 
-export async function GET() {
+export async function GET(request: Request, context: AppApiRouteContext) {
   try {
-    const session = await getOverlaySession()
+    const session = await getOverlaySession(request)
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = session.user.id
+    const userId = context.auth.userId
 
-    const serverSecret = getInternalApiSecret()
+    const repository = getOverlayServerContext().appData.repositories.chatSuggestions
     const today = utcDateKey()
-    const firstName = session.user.firstName?.trim() ?? ''
+    const firstName = session.user.id === userId ? session.user.firstName?.trim() ?? '' : ''
 
-    const cached = await convex.query<{ prompts: string[]; day: string } | null>('auth/users:getChatStartersByServer', {
-      serverSecret,
-      userId,
-    })
+    const cached = await repository.getByUserId(userId)
 
     if (cached && cached.day === today && cached.prompts.length === 4) {
       return NextResponse.json({ prompts: normalizeFourPrompts(cached.prompts, firstName), stale: false })
@@ -177,9 +169,9 @@ export async function GET() {
     if (cached && cached.prompts.length === 4 && cached.day !== today) {
       const prompts = normalizeFourPrompts(cached.prompts, firstName)
       scheduleRefreshForNewDay({
-        serverSecret,
+        repository,
         userId,
-        accessToken: session.accessToken,
+        accessToken: context.auth.accessToken || session.accessToken,
         firstName,
         today,
       })
@@ -189,7 +181,7 @@ export async function GET() {
     // No personalization signal: skip LLM, persist defaults for today so loads stay cheap
     if (!firstName) {
       const prompts = DEFAULT_PROMPTS_NORMALIZED
-      await persistStarters({ serverSecret, userId, prompts, day: today })
+      await persistStarters({ repository, userId, prompts, day: today })
       return NextResponse.json({ prompts, stale: false })
     }
 
@@ -201,7 +193,7 @@ export async function GET() {
     }
 
     if (generated && generated.length === 4) {
-      await persistStarters({ serverSecret, userId, prompts: generated, day: today })
+      await persistStarters({ repository, userId, prompts: generated, day: today })
       return NextResponse.json({ prompts: generated, stale: false })
     }
 

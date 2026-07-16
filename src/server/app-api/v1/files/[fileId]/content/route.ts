@@ -8,7 +8,6 @@ export async function GET(
   request: NextRequest,
   context: AppApiRouteContext,
 ) {
-  void request
   const { auth } = context
   const { fileId } = await context.params as { fileId: string }
   const result = await fileService.getContentProxy({
@@ -23,14 +22,30 @@ export async function GET(
     return Response.redirect(result.url, 302)
   }
 
-  const upstream = await fetch(result.url)
+  const upstreamHeaders = new Headers()
+  const range = request.headers.get('range')
+  if (range) upstreamHeaders.set('range', range)
+  const upstream = await fetch(result.url, { headers: upstreamHeaders })
   if (!upstream.ok || !upstream.body) {
     return Response.json({ error: 'Failed to load stored asset.' }, { status: 502 })
   }
   const headers = new Headers()
-  const ct = upstream.headers.get('content-type')
-  if (ct) headers.set('content-type', ct)
-  const cd = upstream.headers.get('content-disposition')
-  if (cd) headers.set('content-disposition', cd)
-  return new Response(upstream.body, { status: 200, headers })
+  for (const header of [
+    'accept-ranges',
+    'content-length',
+    'content-range',
+    'content-type',
+    'etag',
+    'last-modified',
+  ]) {
+    const value = upstream.headers.get(header)
+    if (value) headers.set(header, value)
+  }
+  const upstreamDisposition = upstream.headers.get('content-disposition')
+  headers.set(
+    'content-disposition',
+    upstreamDisposition || `inline; filename*=UTF-8''${encodeURIComponent(result.name)}`,
+  )
+  headers.set('cache-control', 'private, no-store')
+  return new Response(upstream.body, { status: upstream.status, headers })
 }

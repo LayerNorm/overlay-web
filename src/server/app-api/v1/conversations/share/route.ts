@@ -1,8 +1,7 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { convex } from '@/server/database/convex'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 function buildShareUrl(request: NextRequest, token: string): string {
@@ -27,16 +26,11 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     if (body.visibility !== 'private' && body.visibility !== 'public') {
       return NextResponse.json({ error: 'visibility must be "private" or "public"' }, { status: 400 })
     }
-    const serverSecret = getInternalApiSecret()
-    const result = await convex.mutation<{ token: string | null; visibility: 'private' | 'public' }>(
-      'chat/conversations:setShare',
-      {
-        conversationId: body.conversationId as Id<'conversations'>,
-        userId: auth.userId,
-        serverSecret,
-        visibility: body.visibility,
-      },
-    )
+    const result = await getOverlayServerContext().appData.repositories.conversations.setShare({
+      conversationId: body.conversationId as Id<'conversations'>,
+      userId: auth.userId,
+      visibility: body.visibility,
+    })
     if (!result) {
       return NextResponse.json({ error: 'Failed to update share visibility' }, { status: 500 })
     }

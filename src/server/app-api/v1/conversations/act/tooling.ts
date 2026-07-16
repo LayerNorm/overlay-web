@@ -16,15 +16,15 @@ import {
   filterGatewayCompatibleToolSet,
   summarizeGatewayToolSchemaViolations,
 } from '@/server/ai/gateway/tool-schema-compat'
-import { createBrowserUnifiedTools } from '@/server/tools/composio-tools'
+import {
+  createIntegrationToolSet,
+  filterIntegrationToolSet,
+  getSelectedIntegrationProviderId,
+} from '@/server/integrations'
 import { createMcpLazyMetaTools } from '@/server/tools/mcp-tools'
 import {
   allowedOverlayToolIdsForTurn,
 } from '@/server/tools/tools/exposure-policy'
-import {
-  filterComposioToolSet,
-  filterComposioToolSetForPaidOnlyFeatures,
-} from '@/server/tools/tools/composio-filter'
 import { createFreeTierGatedStubTools } from '@/server/tools/tools/free-tier-gated-stub-tools'
 import { createWebTools } from '@/server/web/web-tools'
 import {
@@ -39,7 +39,7 @@ type MediaToolIntent = 'image' | 'video' | null
 type ToolDefinition = ToolSet[string]
 
 export interface ActToolPreloadTasks {
-  composioToolsTask: Promise<ToolSet>
+  integrationToolsTask: Promise<ToolSet>
 }
 
 export interface ActTooling {
@@ -62,21 +62,21 @@ export function preloadActExternalToolTasks(params: {
 }): ActToolPreloadTasks {
   try {
     if (!getActCapabilitiesSync().integrations) {
-      return { composioToolsTask: Promise.resolve({} as ToolSet) }
+      return { integrationToolsTask: Promise.resolve({} as ToolSet) }
     }
   } catch (_error) {
-    return { composioToolsTask: Promise.resolve({} as ToolSet) }
+    return { integrationToolsTask: Promise.resolve({} as ToolSet) }
   }
 
-  const composioToolsTask = createBrowserUnifiedTools({
+  const integrationToolsTask = createIntegrationToolSet({
     userId: params.userId,
     accessToken: params.accessToken,
   })
-  void composioToolsTask.catch((error) => {
-    logger.warn('[conversations/act] Composio tool preload failed:', summarizeErrorForLog(error))
+  void integrationToolsTask.catch((error) => {
+    logger.warn('[conversations/act] integration tool preload failed:', summarizeErrorForLog(error))
   })
 
-  return { composioToolsTask }
+  return { integrationToolsTask }
 }
 
 export async function prepareActTooling(params: {
@@ -118,7 +118,7 @@ export async function prepareActTooling(params: {
   )
 
   const mcpCatalogStartedAt = performance.now()
-  const mcpToolsTask = params.isMultiModelFollowUpSlot || !capabilities.integrations
+  const mcpToolsTask = params.isMultiModelFollowUpSlot || !capabilities.mcpServers
     ? Promise.resolve({} as ToolSet)
     : createMcpLazyMetaTools({
         userId: params.userId,
@@ -127,9 +127,10 @@ export async function prepareActTooling(params: {
         conversationId: params.conversationId,
         turnId: params.turnId,
         modelId: params.effectiveModelId,
+        projectId: params.conversationProjectId,
       })
-  const [composioRaw, mcpToolsRaw, webToolSet, perplexityTool, parallelTool] = await Promise.all([
-    capabilities.integrations ? params.preloadTasks.composioToolsTask : Promise.resolve({} as ToolSet),
+  const [integrationRaw, mcpToolsRaw, webToolSet, perplexityTool, parallelTool] = await Promise.all([
+    capabilities.integrations ? params.preloadTasks.integrationToolsTask : Promise.resolve({} as ToolSet),
     mcpToolsTask,
     Promise.resolve(
       createWebTools({
@@ -161,7 +162,8 @@ export async function prepareActTooling(params: {
 
   const tooling = buildActTooling({
     allowedOverlayToolIds,
-    composioRaw,
+    integrationProvider: getSelectedIntegrationProviderId(),
+    integrationRaw,
     isMultiModelFollowUpSlot: params.isMultiModelFollowUpSlot,
     mcpToolsRaw,
     paid: params.paid,
@@ -193,7 +195,8 @@ export async function prepareActTooling(params: {
 
 export function buildActTooling(params: {
   allowedOverlayToolIds: string[]
-  composioRaw: ToolSet
+  integrationProvider?: 'composio' | 'executor' | 'none'
+  integrationRaw: ToolSet
   isMultiModelFollowUpSlot: boolean
   mcpToolsRaw: ToolSet
   paid: boolean
@@ -201,16 +204,17 @@ export function buildActTooling(params: {
   perplexityTool: ToolDefinition | null
   webToolSet: ToolSet
 }): ActTooling {
-  const composioTools = filterComposioToolSetForPaidOnlyFeatures(
-    filterComposioToolSet(params.composioRaw),
+  const integrationTools = filterIntegrationToolSet(
+    params.integrationRaw,
     params.paid,
+    params.integrationProvider,
   )
-  const composioForAgent: ToolSet = params.isMultiModelFollowUpSlot ? {} : composioTools
+  const integrationsForAgent: ToolSet = params.isMultiModelFollowUpSlot ? {} : integrationTools
   const freeTierStubsActive = !params.paid && !params.isMultiModelFollowUpSlot
   const freeTierGatedStubs: ToolSet = createFreeTierGatedStubTools(freeTierStubsActive)
   const mcpTools: ToolSet = params.isMultiModelFollowUpSlot ? {} : params.mcpToolsRaw
   const tools: ToolSet = {
-    ...composioForAgent,
+    ...integrationsForAgent,
     ...mcpTools,
     ...params.webToolSet,
     ...freeTierGatedStubs,

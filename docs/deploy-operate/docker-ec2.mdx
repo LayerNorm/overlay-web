@@ -1,0 +1,374 @@
+---
+title: "Docker On EC2"
+description: "Run a narrow Overlay sanity check on one EC2 instance with external PostgreSQL and Redis."
+---
+
+Use this guide for the first customer-controlled deployment. It proves that the
+release can start in the customer's VPC, reach PostgreSQL and Redis, complete
+OIDC sign-in, persist a conversation, and recover after a container restart.
+
+<Warning>
+  This is a disposable sanity check, not the pilot production architecture. It
+  runs one web container, one worker, and one scheduler on one EC2 host. Move to
+  [Deploy On AWS](/deploy-operate/aws) after this check passes.
+</Warning>
+
+## What this runs
+
+```text
+Operator browser
+  -> SSH tunnel to localhost:3000
+  -> EC2 Docker host
+       -> Overlay web
+       -> Overlay worker
+       -> Overlay scheduler
+       -> RDS PostgreSQL: overlay_app and overlay_auth
+       -> ElastiCache Redis over TLS
+       -> Google Workspace OIDC
+       -> approved AI Gateway model
+```
+
+The sanity profile deliberately disables files, memory, knowledge, vector
+search, automations, webhooks, integrations, browser use, sandboxes, analytics,
+error reporting, and billing. Enable those only in the qualified AWS deployment.
+
+## Before you start
+
+You need:
+
+| Input | Requirement |
+| --- | --- |
+| AWS | A disposable nonproduction account or VPC, an approved Region, and permission to use EC2, RDS, and ElastiCache. |
+| EC2 | Ubuntu 24.04, at least 20 GB of encrypted gp3 storage, and `t3.large` or another 2-vCPU instance when pulling the release image. Use at least 40 GB and 4 vCPU only for an optional source build. |
+| PostgreSQL | One private RDS PostgreSQL instance with separate `overlay_app` and `overlay_auth` databases and separate login roles. |
+| Redis | A TLS ElastiCache endpoint reachable from the EC2 security group. |
+| Identity | A Google Workspace organization and Google Cloud OAuth web client that permits the localhost callback shown below. |
+| Models | An approved `AI_GATEWAY_API_KEY` and model ID. |
+| Source | The customer repository URL and an approved Overlay release tag or commit. |
+
+Use security-group references, not public database endpoints:
+
+- EC2 inbound: SSH only from the operator's current IP. Do not expose port 3000.
+- RDS inbound: PostgreSQL `5432` only from the EC2 security group.
+- Redis inbound: TLS Redis `6379` only from the EC2 security group.
+- EC2 outbound: HTTPS plus the approved RDS and Redis destinations.
+
+## Install
+
+<Steps>
+  <Step title="Connect to the EC2 instance">
+    Connect through Session Manager when available. Otherwise use the temporary,
+    IP-restricted SSH rule:
+
+    ```bash
+    ssh ubuntu@<EC2_PUBLIC_DNS>
+    ```
+  </Step>
+
+  <Step title="Install Docker, Git, and PostgreSQL tools">
+    Review the Docker installation script before running it if customer policy
+    requires source inspection.
+
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y ca-certificates curl git jq postgresql-client
+    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+    less /tmp/get-docker.sh
+    sudo sh /tmp/get-docker.sh
+    sudo usermod -aG docker "$USER"
+    newgrp docker
+    docker version
+    docker compose version
+    ```
+
+    Install the AWS RDS CA bundle for administrative `psql` commands:
+
+    ```bash
+    mkdir -p "$HOME/.postgresql"
+    curl -fsSL \
+      https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+      -o "$HOME/.postgresql/root.crt"
+    chmod 600 "$HOME/.postgresql/root.crt"
+    ```
+  </Step>
+
+  <Step title="Create the two databases with the RDS administrator">
+    Run this once with a temporary administrative connection. The application
+    and Better Auth roles must be separate and must not retain administrative
+    membership. Replace all angle-bracket values before running it.
+
+    ```bash
+    export PGHOST='<writer>.rds.amazonaws.com'
+    export PGPORT=5432
+    export PGUSER='<rds-admin-role>'
+    export PGSSLMODE=verify-full
+    export PGSSLROOTCERT="$HOME/.postgresql/root.crt"
+    read -rsp 'RDS admin password: ' PGPASSWORD; echo; export PGPASSWORD
+    read -rsp 'Overlay app password: ' OVERLAY_APP_DB_PASSWORD; echo
+    read -rsp 'Better Auth password: ' OVERLAY_AUTH_DB_PASSWORD; echo
+
+    psql --dbname=postgres -v ON_ERROR_STOP=1 \
+      -v admin_role="$PGUSER" \
+      -v app_password="$OVERLAY_APP_DB_PASSWORD" \
+      -v auth_password="$OVERLAY_AUTH_DB_PASSWORD" <<'SQL'
+    CREATE ROLE overlay_app LOGIN PASSWORD :'app_password';
+    CREATE ROLE overlay_auth LOGIN PASSWORD :'auth_password';
+    GRANT overlay_app TO :"admin_role";
+    GRANT overlay_auth TO :"admin_role";
+    SQL
+
+    psql --dbname=postgres -v ON_ERROR_STOP=1 \
+      -c 'CREATE DATABASE overlay_app OWNER overlay_app;'
+    psql --dbname=postgres -v ON_ERROR_STOP=1 \
+      -c 'CREATE DATABASE overlay_auth OWNER overlay_auth;'
+
+    psql --dbname=overlay_app -v ON_ERROR_STOP=1 \
+      -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+
+    psql --dbname=postgres -v ON_ERROR_STOP=1 -v admin_role="$PGUSER" <<'SQL'
+    REVOKE overlay_app FROM :"admin_role";
+    REVOKE overlay_auth FROM :"admin_role";
+    SQL
+    unset PGPASSWORD OVERLAY_APP_DB_PASSWORD OVERLAY_AUTH_DB_PASSWORD
+    ```
+
+    RDS requires its administrative role to install `pgvector`, even when the
+    narrow sanity profile keeps vector search disabled. The normal migration
+    and runtime commands must use the restricted `overlay_app` role afterward.
+    If roles or databases already exist, inspect them instead of blindly
+    rerunning the creation statements.
+  </Step>
+
+  <Step title="Clone the approved release">
+    Use the customer-controlled repository when one exists.
+
+    ```bash
+    git clone <CUSTOMER_REPOSITORY_URL> overlay-web
+    cd overlay-web
+    git fetch --tags
+    git checkout --detach <APPROVED_RELEASE_TAG_OR_SHA>
+    git status --short --branch
+    ```
+
+    Record the exact commit:
+
+    ```bash
+    git rev-parse HEAD
+    ```
+  </Step>
+
+  <Step title="Create the runtime files">
+    The real environment file is ignored by Git.
+
+    ```bash
+    cp deploy/ec2/.env.example deploy/ec2/.env
+    cp docs/config/ec2-sanity.example.json deploy/ec2/overlay.config.json
+    chmod 600 deploy/ec2/.env
+    ```
+
+    Edit `deploy/ec2/.env` and replace every `replace_me` or `replace-me`
+    value. Generate every Overlay-owned secret independently:
+
+    ```bash
+    openssl rand -hex 32
+    ```
+
+    Do not reuse a generated value. Do not paste secret values into chat,
+    tickets, logs, screenshots, Git, or the coding agent's final report.
+
+    Database passwords containing reserved URL characters must be URL-encoded
+    in `OVERLAY_DATABASE_URL` and `BETTER_AUTH_DATABASE_URL`.
+  </Step>
+
+  <Step title="Configure Google Workspace login">
+    In a customer-controlled Google Cloud project, configure Google Auth Platform
+    with an **Internal** audience and create a **Web application** OAuth client.
+    Register these exact values:
+
+    ```text
+    Callback URL:
+    http://localhost:3000/api/better-auth/sso/callback/workspace
+
+    Web origin:
+    http://localhost:3000
+    ```
+
+    In `deploy/ec2/.env`, replace `example.edu` with the Workspace domain and
+    set `BETTER_AUTH_CONNECTION_CLIENT_ID` and
+    `BETTER_AUTH_CONNECTION_CLIENT_SECRET`. Keep the connection ID as
+    `workspace` so it matches the callback path.
+
+    Follow [Google Workspace](/configure/authentication/recipes/google-workspace)
+    for the complete console flow. If Auth0 is the approved broker instead,
+    follow [Auth0](/configure/authentication/recipes/auth0) and use connection ID
+    `auth0`. Cognito, Okta, and Keycloak use [Generic OIDC](/configure/authentication/recipes/generic-oidc).
+  </Step>
+
+  <Step title="Validate and pull the release image">
+    Define a short helper for the remaining commands:
+
+    ```bash
+    compose() {
+      docker compose \
+        --env-file deploy/ec2/.env \
+        -f deploy/ec2/docker-compose.yml \
+        "$@"
+    }
+
+    OVERLAY_ENV_FILE=.env \
+    OVERLAY_CONFIG_PATH=./overlay.config.json \
+    compose config --quiet
+    compose pull web worker scheduler migrate
+    ```
+
+    `OVERLAY_WEB_IMAGE` must name the approved versioned release, such as
+    `ghcr.io/layernorm/overlay-web:0.1.0-rc.1`. Do not use `latest` for a
+    customer qualification run. The web, worker, scheduler, and migration roles
+    all use the same immutable image.
+
+    To build inspected or customized source instead, use the build override:
+
+    ```bash
+    compose_source() {
+      docker compose \
+        --env-file deploy/ec2/.env \
+        -f deploy/ec2/docker-compose.yml \
+        -f deploy/ec2/docker-compose.build.yml \
+        "$@"
+    }
+
+    compose_source build web
+    ```
+
+    Continue with `compose_source` instead of `compose` for the remaining steps
+    when using a source build. The override builds the tested enterprise runtime,
+    including the web server, worker, scheduler, and migration tooling.
+  </Step>
+
+  <Step title="Run migrations once">
+    Migrations must complete before any long-running service starts:
+
+    ```bash
+    compose --profile tools run --rm migrate
+    ```
+
+    The command must exit with status `0` and report that both app-data and
+    Better Auth migrations are current. Do not run migrations from every web,
+    worker, or scheduler container.
+  </Step>
+
+  <Step title="Start web, worker, and scheduler">
+    ```bash
+    compose up -d web worker scheduler
+    compose ps
+    compose logs --tail=100 web worker scheduler
+    ```
+
+    Wait for `web` to become healthy. Worker and scheduler logs should show a
+    successful schema check and regular runtime activity without restart loops.
+  </Step>
+
+  <Step title="Open the SSH tunnel">
+    From the operator's computer, open a second terminal:
+
+    ```bash
+    ssh -N -L 3000:127.0.0.1:3000 ubuntu@<EC2_PUBLIC_DNS>
+    ```
+
+    Keep that terminal open and visit
+    [http://localhost:3000](http://localhost:3000). The browser and IdP see a
+    localhost origin while the application runs inside the customer VPC.
+  </Step>
+</Steps>
+
+## Verify the sanity check
+
+Run these commands on EC2:
+
+```bash
+curl -fsS http://127.0.0.1:3000/api/v1/capabilities | jq
+curl -fsS http://127.0.0.1:3000/api/auth/session | jq
+```
+
+Then verify in the browser:
+
+1. A signed-out user sees one `Continue with Google` option on a single line.
+2. Sign-in returns to `/app/chat`.
+3. `/api/auth/session` reports `authenticated: true` and `emailVerified: true`.
+4. Create a conversation and send one model request.
+5. Rename the conversation and refresh the page.
+6. Restart only the web container with `compose restart web`.
+7. Refresh again and confirm the conversation and title persist.
+8. Sign out and confirm the session is cleared.
+9. Confirm the browser network and container logs contain no Convex URL.
+
+Expected capability signals include `provider: "postgres"` and
+`requiresConvexClient: false`. Features disabled by the sanity profile should
+not appear as usable navigation or routes.
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| Web container is unhealthy | `compose logs web`; validate every placeholder in `.env`; confirm the config file is mounted. |
+| Migration cannot connect | RDS security group, database hostname, URL-encoded password, CA hostname verification, and database ownership. |
+| Migration cannot create `vector` | Install `pgvector` once in `overlay_app` with the RDS administrator, then rerun migrations as `overlay_app`. |
+| Better Auth reports canonical and legacy connections together | Use `BETTER_AUTH_CONNECTION_*` for the connection registry and remove legacy `BETTER_AUTH_DEFAULT_SSO_*` and `BETTER_AUTH_OIDC_*` values from both the environment and JSON config. |
+| Redis requests fail closed | ElastiCache endpoint, TLS URL beginning with `rediss://`, security groups, and authentication token. |
+| OIDC returns a callback error | Exact callback, provider ID, issuer, client ID/secret, trusted origin, and SSH tunnel. |
+| Chat has no available model | `AI_GATEWAY_API_KEY`, approved model ID, outbound HTTPS, and model-provider configuration. |
+| A container restarts repeatedly | `compose ps`, `compose logs --tail=200 <service>`, and available disk/memory. |
+
+## Stop and remove the sanity host
+
+```bash
+compose down
+docker image rm overlay-web:ec2-sanity
+shred -u deploy/ec2/.env 2>/dev/null || rm -f deploy/ec2/.env
+```
+
+Delete the disposable EC2 instance, databases, Redis deployment, security-group
+rules, snapshots, and OIDC callback when they are no longer needed. Retain only
+the redacted result, release commit, and approved evidence.
+
+## Paste into a coding agent
+
+Paste the following only after authenticating the agent through the customer's
+approved AWS mechanism:
+
+```text
+Deploy the approved Overlay release by following docs/deploy-operate/docker-ec2.mdx.
+
+Objective:
+- Complete a disposable EC2 sanity check using external RDS PostgreSQL and
+  ElastiCache Redis.
+- Prove OIDC sign-in, Postgres persistence, one chat response, container restart
+  recovery, and zero Convex traffic.
+
+Hard rules:
+- Work only in the approved nonproduction AWS account and Region.
+- Begin with `aws sts get-caller-identity` and report the account and role.
+- Do not use root, create long-lived AWS keys, expose port 3000 publicly, or make
+  RDS/Redis public.
+- Do not print, echo, commit, upload, or include secret values in your report.
+- Ask me to populate missing provider credentials in deploy/ec2/.env; set mode 0600.
+- Use two separate databases and the exact approved source commit.
+- Stop before any destructive action or when an architecture input is ambiguous.
+
+Execution:
+1. Inspect the guide and repository artifacts before changing AWS.
+2. Inventory existing VPC, subnet, security-group, RDS, Redis, OIDC, and source inputs.
+3. Present the minimal proposed changes and wait for approval.
+4. Provision or reuse only approved disposable resources.
+5. Clone the approved release, configure the ignored files, validate Compose,
+   build one image, run migrations once, and start web/worker/scheduler.
+6. Run all command-line checks in the guide. Pause for my interactive OIDC login.
+7. Complete persistence and restart QA, inspect logs, and prove no Convex traffic.
+8. Return a redacted report with resource IDs, Git SHA, image ID, test results,
+   failures, cleanup steps, and a PASS or FAIL decision. Never return secrets.
+```
+
+<Card title="Next: Deploy On AWS" icon="cloud" href="/deploy-operate/aws">
+  Replace the single EC2 host with the qualified ECS, RDS, Redis, S3, Secrets
+  Manager, and CloudWatch architecture.
+</Card>

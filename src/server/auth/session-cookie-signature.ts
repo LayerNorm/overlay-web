@@ -2,7 +2,8 @@ import 'server-only'
 
 const textEncoder = new TextEncoder()
 
-let signingKeyPromise: Promise<CryptoKey | null> | null = null
+let signingKeysPromise: Promise<CryptoKey[]> | null = null
+let signingKeysCacheKey = ''
 
 function hexToBytes(value: string): Uint8Array | null {
   if (!/^[a-f0-9]+$/i.test(value) || value.length % 2 !== 0) {
@@ -16,20 +17,24 @@ function hexToBytes(value: string): Uint8Array | null {
   return bytes
 }
 
-async function getSigningKey(): Promise<CryptoKey | null> {
-  if (!signingKeyPromise) {
-    const secret = process.env.SESSION_SECRET?.trim()
-    signingKeyPromise = secret
-      ? crypto.subtle.importKey(
-          'raw',
-          textEncoder.encode(secret),
-          { name: 'HMAC', hash: 'SHA-256' },
-          false,
-          ['sign'],
-        )
-      : Promise.resolve(null)
+async function getSigningKeys(): Promise<CryptoKey[]> {
+  const current = process.env.SESSION_SECRET?.trim()
+  const previous = process.env.SESSION_SECRET_PREVIOUS?.trim()
+  const secrets = [...new Set([current, previous].filter((secret): secret is string => Boolean(secret)))]
+  const cacheKey = secrets.join('\0')
+  if (!signingKeysPromise || signingKeysCacheKey !== cacheKey) {
+    signingKeysCacheKey = cacheKey
+    signingKeysPromise = Promise.all(
+      secrets.map((secret) => crypto.subtle.importKey(
+        'raw',
+        textEncoder.encode(secret),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign'],
+      )),
+    )
   }
-  return signingKeyPromise
+  return signingKeysPromise
 }
 
 export async function hasValidSessionCookieSignature(cookieValue: string | null | undefined): Promise<boolean> {
@@ -46,22 +51,16 @@ export async function hasValidSessionCookieSignature(cookieValue: string | null 
   const signatureBytes = hexToBytes(providedSignature)
   if (!signatureBytes) return false
 
-  const key = await getSigningKey()
-  if (!key) return false
-
-  const expectedSignature = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    textEncoder.encode(payload),
-  )
-
-  const expectedBytes = new Uint8Array(expectedSignature)
-  if (expectedBytes.length !== signatureBytes.length) return false
-
-  let diff = 0
-  for (let index = 0; index < expectedBytes.length; index += 1) {
-    diff |= expectedBytes[index]! ^ signatureBytes[index]!
+  const keys = await getSigningKeys()
+  for (const key of keys) {
+    const expectedSignature = await crypto.subtle.sign('HMAC', key, textEncoder.encode(payload))
+    const expectedBytes = new Uint8Array(expectedSignature)
+    if (expectedBytes.length !== signatureBytes.length) continue
+    let diff = 0
+    for (let index = 0; index < expectedBytes.length; index += 1) {
+      diff |= expectedBytes[index]! ^ signatureBytes[index]!
+    }
+    if (diff === 0) return true
   }
-
-  return diff === 0
+  return false
 }

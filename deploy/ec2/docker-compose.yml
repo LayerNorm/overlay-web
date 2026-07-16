@@ -1,0 +1,54 @@
+name: overlay-ec2-sanity
+
+x-overlay-runtime: &overlay-runtime
+  image: ${OVERLAY_WEB_IMAGE:-ghcr.io/layernorm/overlay-web:0.1.0-rc.1}
+  env_file:
+    - ${OVERLAY_ENV_FILE:-.env}
+  environment:
+    HOSTNAME: 0.0.0.0
+    NODE_ENV: production
+    OVERLAY_CONFIG_FILE: /app/overlay.config.json
+    PORT: 3000
+  volumes:
+    - ${OVERLAY_CONFIG_PATH:-./overlay.config.json}:/app/overlay.config.json:ro
+  init: true
+  stop_grace_period: 30s
+
+services:
+  web:
+    <<: *overlay-runtime
+    command: ["node", "server.js"]
+    ports:
+      - "127.0.0.1:${OVERLAY_HTTP_PORT:-3000}:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/v1/capabilities').then((response) => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+    restart: unless-stopped
+
+  worker:
+    <<: *overlay-runtime
+    command: ["node", "dist/app-data-worker.cjs", "--mode=worker"]
+    restart: unless-stopped
+
+  scheduler:
+    <<: *overlay-runtime
+    command: ["node", "dist/app-data-worker.cjs", "--mode=scheduler"]
+    restart: unless-stopped
+
+  migrate:
+    <<: *overlay-runtime
+    command:
+      - sh
+      - -lc
+      - >-
+        NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/app-data-migrate.ts &&
+        NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/better-auth-migrate.ts
+    profiles: ["tools"]
+    restart: "no"
