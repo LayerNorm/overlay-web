@@ -9,8 +9,8 @@ Use Better Auth when Overlay should own the web session in the customer deployme
 
 - A Postgres database dedicated to Better Auth session/account data.
 - A deployed Overlay web origin, for example `https://overlay.example.com`.
-- An OIDC application in the customer's IdP, for example Auth0, Okta, Entra ID, Google Workspace, or Cognito.
-- Matching Convex environment variables for Better Auth JWT verification when Convex is enabled.
+- An OIDC application in the customer's IdP. Direct Google Workspace is the recommended first private-deployment flow.
+- Matching Convex environment variables for Better Auth JWT verification only when Convex is enabled. Postgres-only deployments do not need a Convex client or Convex credentials.
 
 Keep the Better Auth Postgres database auth-scoped. It stores Better Auth users, sessions, and linked SSO accounts; it does not replace Convex app data. If the deployment is preparing Postgres app-data support, use `OVERLAY_DATABASE_URL` for app records and `BETTER_AUTH_DATABASE_URL` only for Better Auth state.
 
@@ -25,11 +25,14 @@ BETTER_AUTH_BASE_PATH=/api/better-auth
 BETTER_AUTH_SECRET=<openssl rand -base64 32>
 BETTER_AUTH_DATABASE_URL=postgres://overlay_auth:<password>@postgres.internal:5432/overlay_auth
 
-BETTER_AUTH_DEFAULT_SSO_PROVIDER_ID=customer-oidc
-BETTER_AUTH_DEFAULT_SSO_DOMAIN=example.com
-BETTER_AUTH_OIDC_ISSUER_URL=https://idp.example.com
-BETTER_AUTH_OIDC_CLIENT_ID=<oidc-client-id>
-BETTER_AUTH_OIDC_CLIENT_SECRET=<oidc-client-secret>
+BETTER_AUTH_CONNECTION_ID=workspace
+BETTER_AUTH_CONNECTION_PRESET=google-workspace
+BETTER_AUTH_CONNECTION_LABEL=Continue with Google
+BETTER_AUTH_CONNECTION_DOMAINS=example.com
+BETTER_AUTH_CONNECTION_CLIENT_ID=<oidc-client-id>
+BETTER_AUTH_CONNECTION_CLIENT_SECRET=<oidc-client-secret>
+BETTER_AUTH_REQUIRE_VERIFIED_EMAIL=true
+BETTER_AUTH_ALLOWED_EMAIL_DOMAINS=example.com
 
 BETTER_AUTH_JWT_ISSUER=https://overlay.example.com
 BETTER_AUTH_JWT_AUDIENCE=https://overlay.example.com
@@ -50,11 +53,11 @@ For local smoke tests, use `http://localhost:3000` consistently for `BETTER_AUTH
 Register these URLs in the OIDC app:
 
 ```text
-https://overlay.example.com/api/better-auth/sso/callback/customer-oidc
-http://localhost:3000/api/better-auth/sso/callback/customer-oidc
+https://overlay.example.com/api/better-auth/sso/callback/workspace
+http://localhost:3000/api/better-auth/sso/callback/workspace
 ```
 
-The final path segment must match `BETTER_AUTH_DEFAULT_SSO_PROVIDER_ID`.
+The final path segment must match `BETTER_AUTH_CONNECTION_ID`.
 
 Also register the app origin as an allowed web origin:
 
@@ -63,7 +66,11 @@ https://overlay.example.com
 http://localhost:3000
 ```
 
-For Auth0 specifically, do not use Auth0 development keys in production. Create a production application, configure the production callback URL, and use production client credentials from that application.
+Follow the provider recipe instead of manually guessing issuer metadata:
+
+- [Google Workspace](/configure/authentication/recipes/google-workspace)
+- [Auth0](/configure/authentication/recipes/auth0)
+- [Generic OIDC](/configure/authentication/recipes/generic-oidc) for Cognito, Okta, and Keycloak
 
 ## Migrations
 
@@ -117,7 +124,8 @@ npx tsc --noEmit --pretty false --incremental false
 Then run the Better Auth flow:
 
 - `/api/better-auth/jwks` returns JWKS.
-- `/api/auth/sso/google?redirect=%2Fapp%2Fchat` redirects into the configured Better Auth SSO provider.
+- `/api/auth/options` exposes only the configured connection IDs and labels.
+- `/api/auth/sso/workspace?redirect=%2Fapp%2Fchat` redirects into the configured Better Auth SSO provider.
 - The SSO callback creates a Better Auth session cookie.
 - `/api/auth/session` returns `authenticated: true`.
 - `/api/auth/convex-token` returns a JWT.

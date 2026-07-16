@@ -184,7 +184,9 @@
     "billing:audit:stripe": "node --experimental-strip-types scripts/stripe-dynamic-pricing-audit.ts",
     "test:auth:native-validation": "NODE_OPTIONS=--conditions=react-server node --test --experimental-strip-types src/server/auth/native-auth-validation.test.ts src/server/auth/native-refresh-rate-limit.test.ts",
     "test:auth:native-smoke": "node --env-file=.env.local --experimental-strip-types scripts/native-auth-security-smoke.ts",
-    "test:auth:better-auth-negative": "NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.better-auth.local scripts/better-auth-negative-security-smoke.ts"
+    "test:auth:better-auth-negative": "NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.better-auth.local scripts/better-auth-negative-security-smoke.ts",
+    "test:auth:routes": "tsx scripts/auth-route-smoke.ts",
+    "test:auth:ui": "tsx scripts/auth-ui-smoke.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",

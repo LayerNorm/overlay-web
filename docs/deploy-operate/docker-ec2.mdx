@@ -24,7 +24,7 @@ Operator browser
        -> Overlay scheduler
        -> RDS PostgreSQL: overlay_app and overlay_auth
        -> ElastiCache Redis over TLS
-       -> approved OIDC provider
+       -> Google Workspace OIDC
        -> approved AI Gateway model
 ```
 
@@ -42,7 +42,7 @@ You need:
 | EC2 | Ubuntu 24.04, `t3.large` or larger for the source build, and at least 40 GB of encrypted gp3 storage. |
 | PostgreSQL | One private RDS PostgreSQL instance with separate `overlay_app` and `overlay_auth` databases and separate login roles. |
 | Redis | A TLS ElastiCache endpoint reachable from the EC2 security group. |
-| Identity | An OIDC application that permits the localhost callback shown below. |
+| Identity | A Google Workspace organization and Google Cloud OAuth web client that permits the localhost callback shown below. |
 | Models | An approved `AI_GATEWAY_API_KEY` and model ID. |
 | Source | The customer repository URL and an approved Overlay release tag or commit. |
 
@@ -123,22 +123,28 @@ Use security-group references, not public database endpoints:
     in `OVERLAY_DATABASE_URL` and `BETTER_AUTH_DATABASE_URL`.
   </Step>
 
-  <Step title="Register the OIDC callback">
-    Configure the development OIDC application with these exact values:
+  <Step title="Configure Google Workspace login">
+    In a customer-controlled Google Cloud project, configure Google Auth Platform
+    with an **Internal** audience and create a **Web application** OAuth client.
+    Register these exact values:
 
     ```text
     Callback URL:
-    http://localhost:3000/api/better-auth/sso/callback/overlay-sanity
-
-    Logout URL:
-    http://localhost:3000
+    http://localhost:3000/api/better-auth/sso/callback/workspace
 
     Web origin:
     http://localhost:3000
     ```
 
-    Set the provider ID, domain, issuer, client ID, and client secret in
-    `deploy/ec2/.env`. The issuer is the IdP issuer, not the Overlay URL.
+    In `deploy/ec2/.env`, replace `example.edu` with the Workspace domain and
+    set `BETTER_AUTH_CONNECTION_CLIENT_ID` and
+    `BETTER_AUTH_CONNECTION_CLIENT_SECRET`. Keep the connection ID as
+    `workspace` so it matches the callback path.
+
+    Follow [Google Workspace](/configure/authentication/recipes/google-workspace)
+    for the complete console flow. If Auth0 is the approved broker instead,
+    follow [Auth0](/configure/authentication/recipes/auth0) and use connection ID
+    `auth0`. Cognito, Okta, and Keycloak use [Generic OIDC](/configure/authentication/recipes/generic-oidc).
   </Step>
 
   <Step title="Validate and build the release image">
@@ -209,7 +215,7 @@ curl -fsS http://127.0.0.1:3000/api/auth/session | jq
 
 Then verify in the browser:
 
-1. A signed-out user sees the expected OIDC sign-in option.
+1. A signed-out user sees one `Continue with Google` option on a single line.
 2. Sign-in returns to `/app/chat`.
 3. `/api/auth/session` reports `authenticated: true` and `emailVerified: true`.
 4. Create a conversation and send one model request.

@@ -1,0 +1,69 @@
+---
+title: "Authentication Backends"
+description: "Understand the WorkOS, Better Auth, and bearer-token boundaries."
+---
+
+## WorkOS
+
+WorkOS remains the hosted Overlay authentication backend. It owns hosted browser login, session refresh, and AuthKit connections.
+
+```bash
+AUTH_PROVIDER=workos
+WORKOS_CLIENT_ID=client_...
+WORKOS_API_KEY=sk_...
+```
+
+Use WorkOS for the hosted SaaS profile. Do not put WorkOS credentials in a Better Auth private deployment unless a separately enabled feature explicitly requires them.
+
+## Better Auth
+
+Better Auth is the recommended private web-session backend. It runs inside the Overlay Next.js application and stores auth-scoped users, accounts, sessions, verification records, SSO provider metadata, and signing keys in Postgres.
+
+```bash
+AUTH_PROVIDER=better-auth
+BETTER_AUTH_URL=https://overlay.example.com
+BETTER_AUTH_BASE_PATH=/api/better-auth
+BETTER_AUTH_SECRET=<independent-random-secret>
+BETTER_AUTH_DATABASE_URL=postgresql://overlay_auth:.../overlay_auth
+```
+
+`BETTER_AUTH_DATABASE_URL` is auth state. `OVERLAY_DATABASE_URL` is application data. They may use separate databases on one PostgreSQL cluster, but they must remain separately named and independently migratable.
+
+Better Auth delegates login to one or more configured OIDC connections. A canonical connection has a stable internal ID, preset, permitted domains, and credentials:
+
+```bash
+BETTER_AUTH_CONNECTION_ID=workspace
+BETTER_AUTH_CONNECTION_PRESET=google-workspace
+BETTER_AUTH_CONNECTION_DOMAINS=example.edu
+BETTER_AUTH_CONNECTION_CLIENT_ID=<client-id>
+BETTER_AUTH_CONNECTION_CLIENT_SECRET=<client-secret>
+BETTER_AUTH_REQUIRE_VERIFIED_EMAIL=true
+BETTER_AUTH_ALLOWED_EMAIL_DOMAINS=example.edu
+```
+
+The connection ID is deployment-defined. It appears only in Overlay callback routing; do not encode a customer name in a reusable default.
+
+## OIDC bearer verifier
+
+`AUTH_PROVIDER=oidc` verifies an existing bearer/access token using issuer discovery and JWKS. It is useful for service clients and deployments where another component already owns the browser session.
+
+It does **not** provide Overlay's browser sign-in, callback, session-cookie, or account-management flow. Use Better Auth when Overlay must own those flows.
+
+## Session contract
+
+All supported browser backends map to the same Overlay user/session shape:
+
+```json
+{
+  "authenticated": true,
+  "user": {
+    "id": "provider-scoped-id",
+    "email": "person@example.edu",
+    "firstName": "Person",
+    "lastName": "Example",
+    "emailVerified": true
+  }
+}
+```
+
+Application services must consume this normalized contract instead of importing WorkOS, Better Auth, or provider SDKs directly.

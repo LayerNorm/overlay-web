@@ -33,7 +33,7 @@ export function SignInForm({ redirectTo, onClose, ssoEnabled = true }: SignInFor
   }
 
   const ssoBtn =
-    'w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 border bg-[var(--surface-elevated)] border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--surface-subtle)]'
+    'w-full flex items-center justify-center gap-3 whitespace-nowrap px-4 py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 border bg-[var(--surface-elevated)] border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--surface-subtle)]'
   const ssoProviders = authUiOptions?.ssoProviders ?? []
   const showSso = Boolean(ssoEnabled && authUiOptions?.supportsSso && ssoProviders.length > 0)
   const showEmail = Boolean(authUiOptions?.supportsPasswordSignIn || authUiOptions?.supportsPasswordSignUp)

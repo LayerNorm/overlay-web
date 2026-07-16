@@ -7,6 +7,9 @@ import { OverlayConfigError } from '../src/server/config'
 import { getVerifiedAccessTokenClaims } from '../convex/lib/auth'
 
 const baseUrl = (process.env.BETTER_AUTH_NEGATIVE_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '')
+const ssoProviderId = process.env.BETTER_AUTH_CONNECTION_ID
+  || process.env.BETTER_AUTH_DEFAULT_SSO_PROVIDER_ID
+  || 'google'
 const textEncoder = new TextEncoder()
 
 async function requestJson(path: string, init: RequestInit = {}) {
@@ -82,12 +85,12 @@ async function runHttpFailureChecks() {
   }, 'native authorization should be rejected clearly in Better Auth mode')
   assert.match(bodyError(nativeAuthorize), /Native Better Auth code exchange is not supported/i)
 
-  const externalRedirect = await expectStatus(`/api/auth/sso/google?redirect=${encodeURIComponent('https://evil.example/callback')}`, 400, {
+  const externalRedirect = await expectStatus(`/api/auth/sso/${ssoProviderId}?redirect=${encodeURIComponent('https://evil.example/callback')}`, 400, {
     method: 'GET',
   }, 'external SSO redirect should be rejected')
   assert.match(bodyError(externalRedirect), /Invalid redirect URI/i)
 
-  const protocolRelativeRedirect = await expectStatus(`/api/auth/sso/google?redirect=${encodeURIComponent('//evil.example/callback')}`, 400, {
+  const protocolRelativeRedirect = await expectStatus(`/api/auth/sso/${ssoProviderId}?redirect=${encodeURIComponent('//evil.example/callback')}`, 400, {
     method: 'GET',
   }, 'protocol-relative SSO redirect should be rejected')
   assert.match(bodyError(protocolRelativeRedirect), /Invalid redirect URI/i)

@@ -1,0 +1,61 @@
+---
+title: "OIDC Protocol"
+description: "Configure the shared OpenID Connect contract used by private Overlay deployments."
+---
+
+Overlay's initial private identity presets use OpenID Connect authorization code flow with PKCE. The provider must expose a valid discovery document and issue standard identity claims.
+
+## Required provider behavior
+
+- Authorization code flow is enabled.
+- PKCE with `S256` is accepted.
+- Scopes `openid email profile` are allowed.
+- The ID token or userinfo response contains `sub`, `email`, and `email_verified`.
+- Issuer and discovery metadata use HTTPS outside localhost.
+- Client secrets are stored only in the server runtime or its secret manager.
+
+## Callback formula
+
+For a connection ID named `workspace`:
+
+```text
+https://overlay.example.com/api/better-auth/sso/callback/workspace
+```
+
+The final path segment must exactly match `BETTER_AUTH_CONNECTION_ID`. Register the exact scheme, host, port, path, and casing with the IdP.
+
+## Access policy
+
+Provider login success is not enough. Overlay separately enforces verified email and allowed domains:
+
+```bash
+BETTER_AUTH_REQUIRE_VERIFIED_EMAIL=true
+BETTER_AUTH_ALLOWED_EMAIL_DOMAINS=example.edu,subsidiary.example.edu
+```
+
+This policy is server-side. UI labels and an IdP's hosted-domain hint are not authorization controls.
+
+## Presets versus generic OIDC
+
+Presets provide known issuer/discovery defaults, icons, labels, and required trusted endpoint origins. Use a preset when available:
+
+- `google-workspace`
+- `auth0`
+- `entra-id`
+- `generic-oidc`
+
+Use `generic-oidc` when the issuer is deployment-specific. Configure the issuer explicitly and override discovery only when the provider does not use the standard `/.well-known/openid-configuration` location.
+
+## Runtime endpoints
+
+After configuration:
+
+| Endpoint | Expected result |
+| --- | --- |
+| `/api/auth/options` | Only configured provider options are exposed |
+| `/api/auth/sso/<connection-id>` | Redirects to the configured IdP |
+| `/api/auth/session` | Returns normalized signed-in or signed-out state |
+| `/api/better-auth/jwks` | Publishes Overlay's JWT verification keys |
+| `/api/auth/convex-token` | Returns an Overlay JWT only when the deployment uses the Convex bridge |
+
+Unknown connection IDs and cross-origin post-login redirects must fail closed.

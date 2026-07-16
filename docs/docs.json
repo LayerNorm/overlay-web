@@ -33,7 +33,33 @@
       },
       {
         "group": "Configure",
-        "pages": ["configure/environment", "configure/runtime-config", "configure/providers"]
+        "pages": [
+          "configure/environment",
+          "configure/runtime-config",
+          "configure/providers",
+          {
+            "group": "Authentication",
+            "pages": [
+              "configure/authentication/index",
+              {
+                "group": "Backends",
+                "pages": ["configure/authentication/backends"]
+              },
+              {
+                "group": "Protocol",
+                "pages": ["configure/authentication/oidc"]
+              },
+              {
+                "group": "Provider recipes",
+                "pages": [
+                  "configure/authentication/recipes/google-workspace",
+                  "configure/authentication/recipes/auth0",
+                  "configure/authentication/recipes/generic-oidc"
+                ]
+              }
+            ]
+          }
+        ]
       },
       {
         "group": "Develop",

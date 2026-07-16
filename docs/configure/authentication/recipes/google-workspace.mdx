@@ -1,0 +1,95 @@
+---
+title: "Google Workspace"
+description: "Connect Overlay directly to a customer Google Workspace through OIDC."
+---
+
+Google Workspace is the primary identity flow for the disposable EC2 sanity check. Overlay connects directly to Google; Auth0 is not required.
+
+## 1. Create or select a Google Cloud project
+
+Use a customer-controlled Google Cloud project associated with the Workspace organization. For a rehearsal, create a disposable project and label it as nonproduction.
+
+The operator needs permission to configure Google Auth Platform and OAuth clients. Do not weaken the organization's allowed-domain policy to add a personal Gmail account.
+
+## 2. Configure Google Auth Platform
+
+In **Google Auth Platform → Branding**:
+
+- Set an application name, such as `Overlay`.
+- Select a Workspace support email.
+- Add an operator-owned developer contact email.
+- Accept the Google API Services User Data Policy.
+
+In **Audience**, select **Internal** when only members of the Workspace organization should sign in. Internal apps do not admit personal Gmail accounts.
+
+## 3. Create the web OAuth client
+
+Create an OAuth client with application type **Web application**.
+
+For local or SSH-tunnel EC2 testing:
+
+```text
+Authorized JavaScript origin:
+http://localhost:3000
+
+Authorized redirect URI:
+http://localhost:3000/api/better-auth/sso/callback/workspace
+```
+
+For the final hostname:
+
+```text
+Authorized JavaScript origin:
+https://overlay.example.edu
+
+Authorized redirect URI:
+https://overlay.example.edu/api/better-auth/sso/callback/workspace
+```
+
+Save the client ID and client secret in the approved secret manager. Do not commit the downloaded credential JSON.
+
+## 4. Configure Overlay
+
+```bash
+AUTH_PROVIDER=better-auth
+BETTER_AUTH_URL=https://overlay.example.edu
+BETTER_AUTH_BASE_PATH=/api/better-auth
+BETTER_AUTH_SECRET=<openssl-rand-hex-32>
+BETTER_AUTH_DATABASE_URL=postgresql://overlay_auth:.../overlay_auth
+BETTER_AUTH_TRUSTED_ORIGINS=https://overlay.example.edu
+
+BETTER_AUTH_CONNECTION_ID=workspace
+BETTER_AUTH_CONNECTION_PRESET=google-workspace
+BETTER_AUTH_CONNECTION_LABEL=Continue with Google
+BETTER_AUTH_CONNECTION_DOMAINS=example.edu
+BETTER_AUTH_CONNECTION_CLIENT_ID=<google-client-id>
+BETTER_AUTH_CONNECTION_CLIENT_SECRET=<google-client-secret>
+
+BETTER_AUTH_REQUIRE_VERIFIED_EMAIL=true
+BETTER_AUTH_ALLOWED_EMAIL_DOMAINS=example.edu
+BETTER_AUTH_JWT_ISSUER=https://overlay.example.edu
+BETTER_AUTH_JWT_AUDIENCE=https://overlay.example.edu
+BETTER_AUTH_JWKS_URL=https://overlay.example.edu/api/better-auth/jwks
+```
+
+The `google-workspace` preset includes Google's separate trusted token, userinfo, and JWKS endpoint origins. Do not replace it with an issuer-only generic preset unless you also validate all discovery endpoints.
+
+## 5. Migrate and verify
+
+```bash
+npm run better-auth:migrate
+npm run check:config
+npm run check:providers
+```
+
+Verify:
+
+1. `/api/auth/options` exposes `Continue with Google` and no unsupported providers.
+2. Sign-in uses an account in the permitted Workspace domain.
+3. Google returns to `/api/better-auth/sso/callback/workspace`.
+4. The browser lands in `/app/chat`.
+5. `/api/auth/session` reports the expected email and `emailVerified: true`.
+6. Refresh and a second tab retain the session.
+7. Sign-out clears the session.
+
+If Google reports `redirect_uri_mismatch`, compare the complete callback URI character for character. If Overlay rejects discovery metadata, use the `google-workspace` preset and run the current release rather than adding broad wildcard trusted origins.
