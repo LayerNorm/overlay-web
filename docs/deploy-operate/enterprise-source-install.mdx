@@ -12,7 +12,9 @@ For the fastest pilot path without source checkout, use [One-Command Install](/d
 - Git.
 - Docker with the Compose v2 plugin.
 - Access to the Overlay source repository or customer fork.
-- A Convex deployment URL and matching `INTERNAL_API_SECRET` for the selected environment.
+- A supported app-data backend: Postgres for self-hosted deployments, or Convex
+  only when it is explicitly selected.
+- A separate Postgres database for Better Auth when Better Auth is selected.
 - Enterprise provider credentials for the providers you enable, such as OIDC, S3-compatible storage, and a model provider.
 
 ## Install From Source
@@ -33,7 +35,16 @@ docker compose ps
 docker compose logs -f overlay-web
 ```
 
-By default, `docker compose up -d` pulls `ghcr.io/layernorm/overlay-web:latest`. This keeps first boot fast and avoids compiling the app on the customer's server.
+By default, `docker compose up -d` pulls `ghcr.io/layernorm/overlay-web:latest`.
+Use that moving tag only for exploration. For qualification or production, set
+an immutable release in `.env`, for example:
+
+```bash
+OVERLAY_WEB_IMAGE=ghcr.io/layernorm/overlay-web:0.1.0-rc.1
+```
+
+For the current end-to-end Postgres and Better Auth procedure, use
+[Docker on EC2](/deploy-operate/docker-ec2).
 
 ## What The Repo Provides
 
@@ -127,4 +138,4 @@ docker compose up -d
 | Port `3000` is already in use | Change `OVERLAY_HTTP_PORT` in `.env`, then run `docker compose up -d`. |
 | Config edits do not appear | Confirm `overlay.config.json` exists at the repo root and restart with `docker compose up -d`. |
 | Source build fills disk | Run the default image path unless code was edited; source builds create dependency, Next.js, and Docker cache layers. |
-| App starts but cannot load data | Check `NEXT_PUBLIC_CONVEX_URL` and ensure the same `INTERNAL_API_SECRET` is configured in the app env and Convex deployment. |
+| App starts but cannot load data | Check `/api/v1/capabilities`, then verify the selected database provider and its credentials. In Postgres mode, check `OVERLAY_DATABASE_URL`, schema migrations, TLS, and database reachability. In Convex mode, check `NEXT_PUBLIC_CONVEX_URL` and the matching `INTERNAL_API_SECRET`. |

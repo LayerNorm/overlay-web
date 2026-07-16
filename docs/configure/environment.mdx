@@ -13,7 +13,7 @@ Environment variables override `overlay.config.json`. Put secrets in the runtime
 | `NEXT_PUBLIC_CONVEX_URL` | App talks to Convex | Public Convex deployment URL for the selected environment. |
 | `DEV_NEXT_PUBLIC_CONVEX_URL` | Local dev with separate dev backend | Preferred for local work against the development Convex deployment. |
 | `OVERLAY_CONFIG_FILE` | JSON runtime config | Absolute or repo-relative path, usually `overlay.config.json`; Docker mounts it at `/app/overlay.config.json`. |
-| `INTERNAL_API_SECRET` | Always | Shared app-to-Convex secret. The matching Convex deployment must have the same value. |
+| `INTERNAL_API_SECRET` | Convex app-data provider | Shared app-to-Convex secret. It is not required by a Postgres-only deployment. |
 | `INTERNAL_SERVICE_AUTH_SECRET` | App runtime only | Internal service auth secret. Do not put this in Convex. |
 | `SESSION_SECRET` | Cookie sessions | Long, random, environment-specific app secret. |
 | `SESSION_TRANSFER_KEY` | Native/session transfer flows | App runtime only. |
@@ -25,7 +25,7 @@ Environment variables override `overlay.config.json`. Put secrets in the runtime
 | Provider family | Variables |
 | --- | --- |
 | WorkOS auth | `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`; dev fallback uses `DEV_WORKOS_CLIENT_ID`, `DEV_WORKOS_API_KEY`. |
-| Better Auth | `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_DATABASE_URL`, optional `BETTER_AUTH_DEFAULT_SSO_*`, `BETTER_AUTH_OIDC_*`, `BETTER_AUTH_JWT_*`, and `BETTER_AUTH_JWKS_URL`. |
+| Better Auth | `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_DATABASE_URL`, `BETTER_AUTH_JWT_ISSUER`, `BETTER_AUTH_JWT_AUDIENCE`, `BETTER_AUTH_JWKS_URL`, and one connection registry using `BETTER_AUTH_CONNECTION_ID`, `BETTER_AUTH_CONNECTION_PRESET`, `BETTER_AUTH_CONNECTION_LABEL`, `BETTER_AUTH_CONNECTION_DOMAINS`, and the applicable connection client/issuer variables. See [Authentication](/configure/authentication/index). Legacy `BETTER_AUTH_DEFAULT_SSO_*` and `BETTER_AUTH_OIDC_*` variables exist for migration compatibility but must not be mixed with the connection registry. |
 | OIDC auth | `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_AUDIENCE`. Use these variables for Keycloak-compatible realm issuers too. |
 | Stripe billing | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PAID_UNIT_PRICE_ID`, `STRIPE_TOPUP_UNIT_PRICE_ID`, `STRIPE_PORTAL_CONFIGURATION_ID`; dev fallback uses `DEV_STRIPE_SECRET_KEY`, `DEV_STRIPE_WEBHOOK_SECRET`. |
 | R2 storage | `R2_ACCOUNT_ID`, `R2_BUCKET_NAME`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `S3_API`. |
@@ -57,9 +57,10 @@ OVERLAY_PROVIDER_ANALYTICS=none
 OVERLAY_PROVIDER_ERROR_REPORTING=none
 ```
 
-## Convex Placement
+## Backend-specific placement
 
-Convex needs only the secrets used by Convex functions. For the normal web path, configure:
+When the app-data provider is Convex, Convex needs only the secrets used by
+Convex functions. Configure:
 
 - `INTERNAL_API_SECRET`, matching the app runtime.
 
@@ -77,3 +78,9 @@ npm run convex:push:all
 ```
 
 Do not pass `.env.local` to production Convex deploy commands; use the package scripts so production and development deployments receive the right environment.
+
+When the app-data provider is Postgres, omit `NEXT_PUBLIC_CONVEX_URL`,
+`DEV_NEXT_PUBLIC_CONVEX_URL`, `CONVEX_DEPLOYMENT`, and `INTERNAL_API_SECRET`.
+Use `OVERLAY_DATABASE_URL` for application data and
+`BETTER_AUTH_DATABASE_URL` for Better Auth. They must use separate databases,
+roles, and migration lifecycles.

@@ -56,7 +56,7 @@ Minimum app runtime variables:
 | `OVERLAY_CONFIG_FILE` | Using a JSON runtime config | Absolute or repo-relative path, for example `overlay.config.json`. |
 | `NEXT_PUBLIC_APP_URL` | Always in deployed environments | Public browser URL for the web app. |
 | `NEXT_PUBLIC_CONVEX_URL` | Browser or server talks to Convex | Public Convex deployment URL for the selected environment. Use `DEV_NEXT_PUBLIC_CONVEX_URL` for local dev against a separate dev deployment. |
-| `INTERNAL_API_SECRET` | Always | Shared server-to-Convex secret. The same value must be configured in the matching Convex deployment. |
+| `INTERNAL_API_SECRET` | `database.provider="convex"` | Shared server-to-Convex secret. It is not required by a Postgres-only deployment. |
 | `INTERNAL_SERVICE_AUTH_SECRET` | App runtime only | Used for internal app service auth. Do not put this in Convex. |
 | `SESSION_SECRET` | Cookie sessions | App runtime only. Must be long, random, and environment-specific. |
 | `SESSION_TRANSFER_KEY` | Native/session transfer flows | App runtime only. |
@@ -67,9 +67,9 @@ Provider-specific variables:
 
 | Variable | Provider | Notes |
 | --- | --- | --- |
-| `WORKOS_CLIENT_ID`, `WORKOS_API_KEY` | `auth.provider="workos"` | Use production WorkOS values only with production app and Convex deployments. |
+| `WORKOS_CLIENT_ID`, `WORKOS_API_KEY` | `auth.provider="workos"` | Use production WorkOS values only with the production app-data deployment. |
 | `DEV_WORKOS_CLIENT_ID`, `DEV_WORKOS_API_KEY` | Local or staging WorkOS fallback | Only use when `auth.allowDevFallbacks=true` in non-production. |
-| `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_DATABASE_URL`, `BETTER_AUTH_DEFAULT_SSO_*`, `BETTER_AUTH_OIDC_*`, `BETTER_AUTH_JWT_*`, `BETTER_AUTH_JWKS_URL` | `auth.provider="better-auth"` | Better Auth owns the web session in Overlay and issues short-lived JWTs for Convex verification through its JWKS endpoint. Keep this database auth-scoped; it does not replace Convex app data. |
+| `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_DATABASE_URL`, `BETTER_AUTH_CONNECTION_*`, `BETTER_AUTH_JWT_*`, `BETTER_AUTH_JWKS_URL` | `auth.provider="better-auth"` | Better Auth owns the web session and provider-driven SSO. Keep its database auth-scoped and separate from the selected app-data backend. See [Authentication](/configure/authentication/index). |
 | `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_AUDIENCE` | `auth.provider="oidc"` | Verifies RS256 bearer/access tokens against OIDC discovery JWKS and maps standard profile claims. Use these variables for Keycloak-compatible realm issuers too. Browser sign-in/callback wiring is still deployment-specific. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | `billing.provider="stripe"` | Required only when billing is enabled. |
 | `DEV_STRIPE_SECRET_KEY`, `DEV_STRIPE_WEBHOOK_SECRET` | Staging Stripe | Preferred for non-production. |
@@ -123,7 +123,7 @@ The normalized shape is:
 | `billing` | Stripe or disabled billing. |
 | `storage` | R2, S3-compatible storage, or no-op object store. |
 | `llm` | Gateway provider, provider key source, default model, and allowlist. |
-| `database` | Convex URL/deployment and internal server secrets. |
+| `database` | Convex or Postgres app-data selection and backend-specific connection settings. |
 | `capabilities` | Feature booleans consumed by browser UI and server route guards. |
 
 Enterprise config v2 adds these top-level sections while keeping all keys above backward compatible:
@@ -174,7 +174,7 @@ Auth providers:
 | Provider | Config | Current status |
 | --- | --- | --- |
 | `workos` | `auth.workos` | Default SaaS path. Production-ready path for current hosted app. |
-| `better-auth` | `auth.betterAuth` | Better Auth web sessions plus SSO and JWKS-backed service JWTs for Convex. Requires an auth-scoped Postgres database and Better Auth migrations before production use. |
+| `better-auth` | `auth.betterAuth` | Better Auth web sessions plus provider-driven SSO and JWKS-backed service JWTs. Requires a separate auth-scoped Postgres database and Better Auth migrations before production use. |
 | `oidc` | `auth.oidc` | Runtime-config OIDC bearer/access-token verification, including Keycloak-compatible realm issuers. Verify browser sign-in/callback wiring for your IdP before production. |
 | `none` | none | Local/on-prem no-op auth. Pair with `capabilities.sso=false`. |
 
@@ -396,7 +396,9 @@ UI hiding is not an authorization boundary. Server routes also check capabilitie
 
 ## Build and Deploy Without Vercel
 
-Overlay is a Next.js app plus Convex. You can run the web process anywhere that can run Node and reach your Convex and object storage endpoints.
+Overlay is a Next.js application with selectable app-data, auth, storage, and
+model providers. You can run the web process anywhere that can run Node.js 22
+and reach the providers selected in `overlay.config.json`.
 
 Basic Node deployment:
 
@@ -406,7 +408,11 @@ npm run build
 OVERLAY_CONFIG_FILE=overlay.config.json npm run start
 ```
 
-Set `NEXT_PUBLIC_APP_URL` and `NEXT_PUBLIC_CONVEX_URL` in the app runtime. If your host injects env vars at runtime, prefer env vars for secrets and keep non-secret provider shape in `overlay.config.json`.
+Set `NEXT_PUBLIC_APP_URL` in the app runtime. Set `NEXT_PUBLIC_CONVEX_URL` only
+when Convex is the selected app-data provider; Postgres mode instead requires
+`OVERLAY_DATABASE_URL`. If your host injects environment variables at runtime,
+use them for secrets and keep non-secret provider shape in
+`overlay.config.json`.
 
 Without Stripe:
 
@@ -449,7 +455,9 @@ With OIDC instead of WorkOS:
 
 Use this path when an enterprise operator wants a source checkout with a plain Compose install. The default Compose file pulls a prebuilt `ghcr.io/layernorm/overlay-web` image; local source builds are opt-in through `docker-compose.build.yml`.
 
-This is a minimal on-prem shape for the app container. It assumes the customer already has S3-compatible object storage and does not include Convex because Convex remains a hosted deployment in the current architecture.
+This is a minimal on-prem shape for the app container. It assumes the customer
+already operates the selected database, auth database, object storage, Redis,
+and other enabled providers. Postgres mode does not include or contact Convex.
 
 Quick start:
 
@@ -503,7 +511,7 @@ App runtime only:
 - R2/S3 access key secrets
 - LLM provider API keys
 
-Convex:
+Convex deployments only:
 
 - `INTERNAL_API_SECRET` must be set in Convex and must match the app runtime value for that deployment.
 - If you intentionally run direct Convex auth/debug paths or Convex Stripe sync actions, also configure the corresponding WorkOS or Stripe variables in that Convex deployment. The BFF-first web path should not require session cookie secrets in Convex.
@@ -511,8 +519,7 @@ Convex:
 Public and safe to expose:
 
 - `NEXT_PUBLIC_APP_URL`
-- `NEXT_PUBLIC_CONVEX_URL`
-- `DEV_NEXT_PUBLIC_CONVEX_URL`
+- `NEXT_PUBLIC_CONVEX_URL` and `DEV_NEXT_PUBLIC_CONVEX_URL` only when Convex is selected
 - `NEXT_PUBLIC_POSTHOG_TOKEN`
 - `NEXT_PUBLIC_POSTHOG_HOST`
 - Public CSP origins in `app.cspConnectSrc`
@@ -535,7 +542,10 @@ Values that must differ between staging and production:
 
 Do not copy production secrets into staging to "make it work". The config schema rejects several mixed staging/production combinations, but secret separation is still an operator responsibility.
 
-## Convex Notes
+## Convex notes
+
+This section applies only when `database.provider="convex"`. Skip it for a
+Postgres-only deployment.
 
 Push Convex schema/function changes to the matching deployment:
 

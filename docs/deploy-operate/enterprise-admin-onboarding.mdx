@@ -10,10 +10,17 @@ This guide is for the first administrator of an enterprise or managed-cloud Over
 The first admin is normally granted by the deployment operator or by the [One-Command Install](./one-command-install) bootstrap script. If you need to grant it manually, use the admin helper:
 
 ```bash
-npx tsx scripts/app-db-admin.ts grant --userId=user_123 --role=admin --reason="Initial enterprise admin"
+OVERLAY_DATABASE_URL='postgresql://overlay_app:password@database.example.com:5432/overlay_app' \
+OVERLAY_DATABASE_SSL_MODE=verify-full \
+npm run app-db:admin -- grant \
+  --user-id user_123 \
+  --role admin \
+  --reason "Initial enterprise admin"
 ```
 
 This creates an `administrative_principal` record and records the grant in the audit log.
+Run the command from the checked-out release with the application database
+role. Do not use the Better Auth database URL or an RDS administrator role.
 
 ## Grant and revoke principals
 
