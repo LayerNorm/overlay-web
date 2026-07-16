@@ -21,9 +21,7 @@ export function createOverlayPostgresPool(options: CreateOverlayPostgresPoolOpti
   }
 
   if (options.sslMode && options.sslMode !== 'disable') {
-    poolConfig.ssl = options.sslMode === 'verify-full'
-      ? true
-      : { rejectUnauthorized: false }
+    poolConfig.ssl = true
   }
 
   const pool = new Pool(poolConfig)

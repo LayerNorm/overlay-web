@@ -115,11 +115,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # actions/setup-node v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Pin npm
-        run: npm install -g npm@10.8.2
+        run: npm install -g npm@11.11.0
 
       - name: Ensure package lock exists
         run: test -f package-lock.json

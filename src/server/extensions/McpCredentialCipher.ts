@@ -5,6 +5,7 @@ import type { McpAuthConfig } from './McpServerRepository'
 
 const PREFIX = 'mcpv1'
 const MIN_SECRET_LENGTH = 32
+const GCM_AUTH_TAG_LENGTH_BYTES = 16
 
 export class McpCredentialCipher {
   private readonly keys: Buffer[]
@@ -41,7 +42,9 @@ export class McpCredentialCipher {
       )
     }
     const iv = randomBytes(12)
-    const cipher = createCipheriv('aes-256-gcm', key, iv)
+    const cipher = createCipheriv('aes-256-gcm', key, iv, {
+      authTagLength: GCM_AUTH_TAG_LENGTH_BYTES,
+    })
     cipher.setAAD(Buffer.from(PREFIX))
     const encrypted = Buffer.concat([
       cipher.update(JSON.stringify(value), 'utf8'),
@@ -56,11 +59,17 @@ export class McpCredentialCipher {
     if (prefix !== PREFIX || !iv || !encrypted || !authTag) {
       throw new Error('Invalid encrypted MCP credential payload')
     }
+    const decodedAuthTag = Buffer.from(authTag, 'base64url')
+    if (decodedAuthTag.length !== GCM_AUTH_TAG_LENGTH_BYTES) {
+      throw new Error('Invalid encrypted MCP credential authentication tag')
+    }
     for (const key of this.keys) {
       try {
-        const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64url'))
+        const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64url'), {
+          authTagLength: GCM_AUTH_TAG_LENGTH_BYTES,
+        })
         decipher.setAAD(Buffer.from(PREFIX))
-        decipher.setAuthTag(Buffer.from(authTag, 'base64url'))
+        decipher.setAuthTag(decodedAuthTag)
         const cleartext = Buffer.concat([
           decipher.update(Buffer.from(encrypted, 'base64url')),
           decipher.final(),

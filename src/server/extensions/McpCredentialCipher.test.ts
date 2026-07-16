@@ -11,6 +11,8 @@ test('MCP credentials are authenticated, encrypted, and support bounded key rota
   assert.deepEqual(new McpCredentialCipher([newKey, oldKey]).decrypt(payload), {
     bearerToken: 'secret-token',
   })
+  const [prefix, iv, encrypted] = payload!.split('.')
+  assert.throws(() => new McpCredentialCipher([oldKey]).decrypt(`${prefix}.${iv}.${encrypted}.AA`))
   assert.throws(() => new McpCredentialCipher([newKey]).decrypt(payload))
   assert.throws(() => new McpCredentialCipher([]).encrypt({ bearerToken: 'secret-token' }))
 })
