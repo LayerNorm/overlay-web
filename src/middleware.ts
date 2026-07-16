@@ -22,11 +22,8 @@ const PUBLIC_ROUTES = [
   '/api/checkout/verify',
 ]
 
-function isDocsProxyRequest(request: NextRequest): boolean {
-  const { hostname, pathname } = request.nextUrl
-
+function isDocsProxyRoute(pathname: string): boolean {
   return (
-    hostname.toLowerCase() === 'docs.getoverlay.io' ||
     pathname === '/docs' ||
     pathname.startsWith('/docs/') ||
     pathname.startsWith('/_mintlify/') ||
@@ -186,7 +183,7 @@ function applyBrowserSecurityHeaders(
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  if (isDocsProxyRequest(request)) {
+  if (isDocsProxyRoute(pathname)) {
     return NextResponse.next()
   }
 
