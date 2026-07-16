@@ -140,21 +140,32 @@ rerunning the creation statements.
 </Step>
 
 <Step title="Clone the approved release">
-Use the customer-controlled repository when one exists.
+Clone the public repository for the initial sanity check. If your organization
+maintains an approved private mirror, set `OVERLAY_REPOSITORY_URL` to that
+mirror instead. The commands below default to the tested `v0.1.0-rc.1`
+release; change `OVERLAY_RELEASE` only when you have approved another published
+release.
 
 ```bash
-git clone <CUSTOMER_REPOSITORY_URL> overlay-web
+export OVERLAY_REPOSITORY_URL="${OVERLAY_REPOSITORY_URL:-https://github.com/LayerNorm/overlay-web.git}"
+export OVERLAY_RELEASE="${OVERLAY_RELEASE:-v0.1.0-rc.1}"
+
+git clone "$OVERLAY_REPOSITORY_URL" overlay-web
 cd overlay-web
-git fetch --tags
-git checkout --detach <APPROVED_RELEASE_TAG_OR_SHA>
+git fetch --tags --force
+git checkout --detach "$OVERLAY_RELEASE"
 git status --short --branch
 ```
 
-Record the exact commit:
+Record the exact commit and tag:
 
 ```bash
 git rev-parse HEAD
+git tag --points-at HEAD
 ```
+
+Published releases are listed at
+[github.com/LayerNorm/overlay-web/releases](https://github.com/LayerNorm/overlay-web/releases).
 </Step>
 
 <Step title="Create the runtime files">

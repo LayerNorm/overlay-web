@@ -112,14 +112,22 @@ value, build log, document, ticket, email, or chat.
 
 <Steps>
 <Step title="Prepare the customer repository">
-Create a customer-controlled private repository. Import the approved Overlay
-release and retain `layernorm/overlay-web` as the upstream remote.
+Fork or mirror the public
+[LayerNorm/overlay-web](https://github.com/LayerNorm/overlay-web) repository into
+the customer's GitHub organization. Clone that customer-controlled repository,
+retain the public repository as `upstream`, and branch from an approved
+published release. The example defaults to the tested `v0.1.0-rc.1` release.
 
 ```bash
+export CUSTOMER_REPOSITORY_URL="https://github.com/<CUSTOMER_ORGANIZATION>/<CUSTOMER_REPOSITORY>.git"
+export OVERLAY_RELEASE="${OVERLAY_RELEASE:-v0.1.0-rc.1}"
+
+git clone "$CUSTOMER_REPOSITORY_URL" overlay-web
+cd overlay-web
 git remote add upstream https://github.com/layernorm/overlay-web.git
-git fetch upstream --tags
-git checkout -b release/overlay-<VERSION>-customer.1 <APPROVED_TAG>
-git push -u origin release/overlay-<VERSION>-customer.1
+git fetch upstream --tags --force
+git checkout -b "release/${OVERLAY_RELEASE#v}-customer.1" "$OVERLAY_RELEASE"
+git push -u origin "release/${OVERLAY_RELEASE#v}-customer.1"
 ```
 
 Merge only through a reviewed pull request with required checks.

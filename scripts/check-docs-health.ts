@@ -30,6 +30,8 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const docsDir = path.join(root, 'docs')
 const configExamplesDir = path.join(docsDir, 'config')
 const openApiFile = path.join(docsDir, 'openapi/overlay-web.openapi.json')
+const packageJsonFile = path.join(root, 'package.json')
+const publicRepositoryUrl = 'https://github.com/LayerNorm/overlay-web'
 
 const allowedDocsEntries = new Set([
   'README.md',
@@ -87,6 +89,8 @@ async function main() {
   await checkMdxOrphans(navPages, failures)
   await checkLocalLinks(failures)
   await checkStalePublicTerms(failures)
+  await checkPublicationReadiness(failures)
+  await checkDocumentedCommands(failures)
   await checkConfigExamples(failures)
   await checkOpenApiOutput(failures)
   await checkProviderDocs(failures)
@@ -244,6 +248,81 @@ async function checkStalePublicTerms(failures: string[]) {
     const text = await readFile(file, 'utf8')
     for (const { label, pattern } of stalePublicPatterns) {
       if (pattern.test(text)) failures.push(`${relative(file)} contains ${label}`)
+    }
+  }
+}
+
+async function checkPublicationReadiness(failures: string[]) {
+  const markdownFiles = (await listFiles(docsDir)).filter(
+    (file) => file.endsWith('.mdx') || file.endsWith('.md'),
+  )
+
+  for (const file of markdownFiles) {
+    const text = await readFile(file, 'utf8')
+    if (/\[(?:TODO|TBD):|\bTODO:\s/i.test(text)) {
+      failures.push(`${relative(file)} contains an unfinished TODO/TBD marker`)
+    }
+  }
+
+  const requiredSourcePages = [
+    'introduction.mdx',
+    'start/quickstart.mdx',
+    'deploy-operate/docker-ec2.mdx',
+    'deploy-operate/aws.mdx',
+  ]
+  for (const page of requiredSourcePages) {
+    const file = path.join(docsDir, page)
+    const text = await readFile(file, 'utf8')
+    if (!text.toLowerCase().includes(publicRepositoryUrl.toLowerCase())) {
+      failures.push(`docs/${page} does not identify the public source repository ${publicRepositoryUrl}`)
+    }
+  }
+
+  const quickstart = await readFile(path.join(docsDir, 'start/quickstart.mdx'), 'utf8')
+  if (!/Node\.js 22 or newer/i.test(quickstart)) {
+    failures.push('docs/start/quickstart.mdx must require Node.js 22 or newer')
+  }
+  if (!/npm 11 or newer/i.test(quickstart)) {
+    failures.push('docs/start/quickstart.mdx must require npm 11 or newer')
+  }
+
+  const forbiddenCommandFragments = [
+    'scripts/app-db-admin.ts',
+    '--userId=',
+    'git clone <CUSTOMER_REPOSITORY_URL>',
+  ]
+  const combined = await Promise.all(markdownFiles.map((file) => readFile(file, 'utf8')))
+  const publicDocs = combined.join('\n')
+  for (const fragment of forbiddenCommandFragments) {
+    if (publicDocs.includes(fragment)) {
+      failures.push(`public docs contain obsolete command fragment ${JSON.stringify(fragment)}`)
+    }
+  }
+}
+
+async function checkDocumentedCommands(failures: string[]) {
+  const packageJson = JSON.parse(await readFile(packageJsonFile, 'utf8')) as {
+    scripts?: Record<string, string>
+  }
+  const packageScripts = new Set(Object.keys(packageJson.scripts ?? {}))
+  const markdownFiles = (await listFiles(docsDir)).filter(
+    (file) => file.endsWith('.mdx') || file.endsWith('.md'),
+  )
+
+  for (const file of markdownFiles) {
+    const text = await readFile(file, 'utf8')
+    for (const match of text.matchAll(/\bnpm run ([A-Za-z0-9:_-]+)/g)) {
+      const script = match[1]
+      if (script && !packageScripts.has(script)) {
+        failures.push(`${relative(file)} references missing package script npm run ${script}`)
+      }
+    }
+
+    for (const match of text.matchAll(/\bscripts\/[A-Za-z0-9._/-]+\.(?:ts|mjs|js)\b/g)) {
+      const scriptPath = match[0]
+      if (!(await fileExists(path.join(root, scriptPath)))) {
+        failures.push(`${relative(file)} references missing repository script ${scriptPath}`)
+      }
     }
   }
 }

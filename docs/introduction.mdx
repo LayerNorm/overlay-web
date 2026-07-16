@@ -7,6 +7,15 @@ Overlay Web is the Next.js application that powers the browser experience for Ov
 
 These docs are for developers and self-hosters working with the web app. They cover local setup, runtime configuration, provider wiring, deployment, operational checks, and the stable `/api/v1` web API surface.
 
+<CardGroup cols={2}>
+  <Card title="Source repository" icon="github" href="https://github.com/LayerNorm/overlay-web">
+    Browse, fork, or clone the public Overlay Web repository.
+  </Card>
+  <Card title="Published releases" icon="tag" href="https://github.com/LayerNorm/overlay-web/releases">
+    Use a versioned release for deployment instead of an unpinned branch.
+  </Card>
+</CardGroup>
+
 ## Scope
 
 Included:
@@ -15,7 +24,7 @@ Included:
 - Web route orchestration under `src/server/app-api`.
 - Browser-safe contracts under `src/shared`.
 - Feature containers under `src/features`.
-- Convex workflow where it affects the web app.
+- Convex and Postgres workflows where they affect the web app.
 - Public `/api/v1` request, query, and form schemas.
 
 Excluded:

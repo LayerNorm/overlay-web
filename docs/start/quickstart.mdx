@@ -1,12 +1,13 @@
 ---
 title: "Quickstart"
-description: "Run Overlay Web locally against the development Convex backend."
+description: "Clone Overlay Web and run the hosted-development profile locally."
 ---
 
 ## Prerequisites
 
-- Node.js 20 or newer.
-- npm.
+- Git.
+- Node.js 22 or newer.
+- npm 11 or newer.
 - Access to the development Convex deployment.
 - WorkOS credentials for sign-in flows.
 - Stripe test credentials when testing billing.
@@ -18,9 +19,17 @@ The local web app starts the Next.js browser shell, `/api/v1` route wrappers, se
 ## Install
 
 ```bash
-npm install
+git clone https://github.com/LayerNorm/overlay-web.git
+cd overlay-web
+npm ci
 cp .env.example .env.local
 ```
+
+This quickstart follows the current development branch and the hosted Convex
+profile. For a reproducible self-hosted deployment, use a versioned
+[GitHub release](https://github.com/LayerNorm/overlay-web/releases) and follow
+[Docker on EC2](/deploy-operate/docker-ec2) or the
+[full AWS guide](/deploy-operate/aws).
 
 Fill in the required web environment variables before starting the app. For local web work against the development backend, prefer:
 
