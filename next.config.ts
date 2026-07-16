@@ -45,6 +45,38 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR?.trim() || ".next",
   output: process.env.NEXT_OUTPUT_MODE?.trim() === "standalone" ? "standalone" : undefined,
   transpilePackages: ["@overlay/app-core"],
+  async redirects() {
+    if (!mintlifyDocsOrigin) return [];
+
+    const docsHost = [{ type: "host" as const, value: "docs.getoverlay.io" }];
+
+    return [
+      {
+        source: "/mintlify-assets/:path*",
+        has: docsHost,
+        destination: "https://www.getoverlay.io/mintlify-assets/:path*",
+        permanent: false,
+      },
+      {
+        source: "/_mintlify/:path*",
+        has: docsHost,
+        destination: "https://www.getoverlay.io/_mintlify/:path*",
+        permanent: false,
+      },
+      {
+        source: "/api/request",
+        has: docsHost,
+        destination: "https://www.getoverlay.io/api/request",
+        permanent: false,
+      },
+      {
+        source: "/:match*",
+        has: docsHost,
+        destination: "https://www.getoverlay.io/docs/:match*",
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     const rewrites: Array<{
       source: string;
@@ -93,16 +125,6 @@ const nextConfig: NextConfig = {
         {
           source: "/mintlify-assets/:path*",
           destination: `${mintlifyDocsOrigin}/mintlify-assets/:path*`,
-        },
-        {
-          source: "/",
-          has: [{ type: "host", value: "docs.getoverlay.io" }],
-          destination: mintlifyDocsOrigin,
-        },
-        {
-          source: "/:match*",
-          has: [{ type: "host", value: "docs.getoverlay.io" }],
-          destination: `${mintlifyDocsOrigin}/:match*`,
         },
       );
     }
