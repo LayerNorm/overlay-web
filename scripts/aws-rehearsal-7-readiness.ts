@@ -26,7 +26,7 @@ async function main() {
 
   const redisUrl = required('OVERLAY_REDIS_URL')
   const redisHost = new URL(redisUrl).hostname.toLowerCase()
-  if (!redisHost.includes('.cache.amazonaws.com')) {
+  if (!redisHost.endsWith('.cache.amazonaws.com') && !redisHost.endsWith('.cache.amazonaws.com.cn')) {
     throw new Error(`AWS Rehearsal 7 requires ElastiCache; received ${redisHost}`)
   }
   const redis = new TcpRedisRateLimitStore(redisUrl, `overlay:p7-rehearsal:${Date.now()}:`)

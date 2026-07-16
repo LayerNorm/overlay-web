@@ -9,6 +9,7 @@ import type {
   IdempotencyRepository,
   IdempotencyReservationResult,
 } from '@/server/idempotency'
+import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import { isStreamIdempotencyMarker } from '@/shared/api/idempotency-markers'
 
 const MUTATION_METHODS = new Set(['POST', 'PATCH', 'DELETE'])
@@ -46,7 +47,10 @@ function keyHashFor(args: {
   pathname: string
   userId: string
 }): string {
-  return sha256(`${args.userId}\n${args.method.toUpperCase()}\n${args.pathname}\n${args.key}`)
+  return hashOperationalIdentifier(
+    'api-idempotency-key:v1',
+    `${args.userId}\n${args.method.toUpperCase()}\n${args.pathname}\n${args.key}`,
+  )
 }
 
 async function requestHashFor(request: NextRequest): Promise<string> {

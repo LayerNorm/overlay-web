@@ -181,6 +181,11 @@ test('Executor adapter satisfies the shared integration-provider contract and ex
   })
   assert.equal(result.status, 'completed')
   assert.deepEqual(result.output, { messages: [] })
+  await assert.rejects(provider.execute({
+    args: {},
+    toolId: 'gmail.org.main.messages.list\"](); throw new Error("injected") //',
+    userId: 'user-1',
+  }), /tool address is invalid/)
 })
 
 test('integration policy reflects provider approval and lifecycle capabilities', () => {

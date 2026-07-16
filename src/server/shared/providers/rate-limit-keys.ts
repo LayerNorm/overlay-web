@@ -1,11 +1,11 @@
 import 'server-only'
 
-import { createHash } from 'node:crypto'
 import type { RateLimitSpec } from '@overlay/app-core'
+import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 
 export function getRateLimitBucketKey(scope: string, spec: RateLimitSpec): string | null {
   const rawKey = spec.key?.trim() || scope.trim()
   if (!rawKey) return null
-  const digest = createHash('sha256').update(rawKey).digest('hex')
+  const digest = hashOperationalIdentifier('rate-limit-bucket:v1', rawKey)
   return `${spec.bucket}:${digest}`
 }

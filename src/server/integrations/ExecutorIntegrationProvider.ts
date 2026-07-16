@@ -48,6 +48,8 @@ type ExecutorExecutionResponse = {
   isError?: boolean
 }
 
+const EXECUTOR_TOOL_ADDRESS_PATTERN = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+$/
+
 export interface ExecutorIntegrationProviderOptions {
   apiBaseUrl: string
   webBaseUrl: string
@@ -88,6 +90,17 @@ function connectionState(connection?: ExecutorConnection): NonNullable<Integrati
   if (status === 'expired' || (connection.expiresAt && connection.expiresAt < Date.now())) return 'expired'
   if (status === 'degraded' || status === 'failed') return 'degraded'
   return 'connected'
+}
+
+function executorInvocationCode(request: IntegrationExecutionRequest): string {
+  if (!EXECUTOR_TOOL_ADDRESS_PATTERN.test(request.toolId)) {
+    throw new Error('Executor tool address is invalid')
+  }
+  const toolIdLiteral = JSON.stringify(request.toolId)
+  const argumentsLiteral = JSON.stringify(request.args ?? {})
+  // Executor's execution API accepts code, so dynamic values are validated and
+  // serialized as JSON literals before interpolation. codeql[js/bad-code-sanitization]
+  return `async () => await tools[${toolIdLiteral}](${argumentsLiteral})`
 }
 
 export class ExecutorIntegrationProvider implements IntegrationProvider {
@@ -233,7 +246,7 @@ export class ExecutorIntegrationProvider implements IntegrationProvider {
   }
 
   async execute(request: IntegrationExecutionRequest): Promise<IntegrationExecutionResult> {
-    const code = `async () => await tools[${JSON.stringify(request.toolId)}](${JSON.stringify(request.args ?? {})})`
+    const code = executorInvocationCode(request)
     const startedAt = Date.now()
     try {
       const result = await this.request<ExecutorExecutionResponse>('/executions', {

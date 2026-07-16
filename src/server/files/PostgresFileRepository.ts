@@ -37,6 +37,14 @@ type OutputStatus = 'pending' | 'completed' | 'failed'
 const UPLOAD_INTENT_FINALIZE_GRACE_MS = 15 * 60_000
 const FILE_PREVIEW_CHARS = 1200
 const UNLIMITED_STORAGE_BYTES = Number.MAX_SAFE_INTEGER
+const PREVIEW_HTML_ENTITIES: Readonly<Record<string, string>> = {
+  '#39': "'",
+  amp: '&',
+  gt: '>',
+  lt: '<',
+  nbsp: ' ',
+  quot: '"',
+}
 
 const utf8Encoder = new TextEncoder()
 
@@ -1000,12 +1008,9 @@ function previewTextOf(value: string): string {
     .replace(/<\/(?:p|div|li|h[1-6]|blockquote|pre|tr)>/gi, '\n')
     .replace(/<li\b[^>]*>/gi, '- ')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
+    .replace(/&(nbsp|amp|lt|gt|quot|#39);/gi, (entity, name: string) => (
+      PREVIEW_HTML_ENTITIES[name.toLowerCase()] ?? entity
+    ))
     .replace(/\r\n?/g, '\n')
     .replace(/[ \t]+/g, ' ')
     .replace(/ *\n */g, '\n')

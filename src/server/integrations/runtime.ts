@@ -1,7 +1,7 @@
 import 'server-only'
 
-import { createHash } from 'node:crypto'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
+import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import { ComposioIntegrationProvider } from './ComposioIntegrationProvider'
 import { ExecutorIntegrationProvider } from './ExecutorIntegrationProvider'
 import type { IntegrationProvider } from './contracts'
@@ -28,7 +28,7 @@ export function getIntegrationProvider(): IntegrationProvider {
         executor.apiBaseUrl,
         executor.webBaseUrl,
         executor.connectionOwner,
-        createHash('sha256').update(executor.apiKey ?? '').digest('hex'),
+        hashOperationalIdentifier('executor-provider-cache:v1', executor.apiKey ?? ''),
       ].join(':')
     : selected
   if (cached?.key === key) return cached.provider
