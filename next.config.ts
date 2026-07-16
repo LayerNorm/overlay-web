@@ -11,7 +11,7 @@ const hasSentryUploadConfig = Boolean(
   process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT,
 );
 
-const mintlifyDocsOrigin = process.env.MINTLIFY_DOCS_URL?.trim().replace(/\/+$/, "").replace(/\/docs$/, "");
+const mintlifyDocsOrigin = process.env.MINTLIFY_DOCS_URL?.trim().replace(/\/+$/, "");
 
 const staticSecurityHeaders = [
   {
@@ -52,27 +52,21 @@ const nextConfig: NextConfig = {
 
     return [
       {
-        source: "/mintlify-assets/:path*",
+        source: "/docs",
         has: docsHost,
-        destination: "https://www.getoverlay.io/mintlify-assets/:path*",
+        destination: "https://www.getoverlay.io/docs",
         permanent: false,
       },
       {
-        source: "/_mintlify/:path*",
+        source: "/docs/:path*",
         has: docsHost,
-        destination: "https://www.getoverlay.io/_mintlify/:path*",
+        destination: "https://www.getoverlay.io/docs/:path*",
         permanent: false,
       },
       {
-        source: "/api/request",
+        source: "/:path*",
         has: docsHost,
-        destination: "https://www.getoverlay.io/api/request",
-        permanent: false,
-      },
-      {
-        source: "/:match*",
-        has: docsHost,
-        destination: "https://www.getoverlay.io/docs/:match*",
+        destination: "https://www.getoverlay.io/docs/:path*",
         permanent: false,
       },
     ];
@@ -87,44 +81,16 @@ const nextConfig: NextConfig = {
     if (mintlifyDocsOrigin) {
       rewrites.push(
         {
-          source: "/_mintlify/:path*",
-          destination: `${mintlifyDocsOrigin}/_mintlify/:path*`,
-        },
-        {
-          source: "/api/request",
-          destination: `${mintlifyDocsOrigin}/_mintlify/api/request`,
-        },
-        {
-          source: "/docs/llms.txt",
-          destination: `${mintlifyDocsOrigin}/llms.txt`,
-        },
-        {
-          source: "/docs/llms-full.txt",
-          destination: `${mintlifyDocsOrigin}/llms-full.txt`,
-        },
-        {
-          source: "/docs/sitemap.xml",
-          destination: `${mintlifyDocsOrigin}/sitemap.xml`,
-        },
-        {
-          source: "/docs/robots.txt",
-          destination: `${mintlifyDocsOrigin}/robots.txt`,
-        },
-        {
-          source: "/docs/mcp",
-          destination: `${mintlifyDocsOrigin}/mcp`,
+          source: "/.well-known/vercel/:path*",
+          destination: `${mintlifyDocsOrigin}/.well-known/vercel/:path*`,
         },
         {
           source: "/docs",
-          destination: mintlifyDocsOrigin,
+          destination: `${mintlifyDocsOrigin}/docs`,
         },
         {
           source: "/docs/:match*",
-          destination: `${mintlifyDocsOrigin}/:match*`,
-        },
-        {
-          source: "/mintlify-assets/:path*",
-          destination: `${mintlifyDocsOrigin}/mintlify-assets/:path*`,
+          destination: `${mintlifyDocsOrigin}/docs/:match*`,
         },
       );
     }
