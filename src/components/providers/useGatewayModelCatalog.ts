@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GatewayCatalogModel } from '@/shared/ai/gateway/gateway-catalog'
-import { registerGatewayCatalogModels } from '@/shared/ai/gateway/model-data'
+import {
+  getGatewayCatalogRevision,
+  registerGatewayCatalogModels,
+} from '@/shared/ai/gateway/model-data'
 
 let cachedModels: GatewayCatalogModel[] | null = null
 let inFlight: Promise<GatewayCatalogModel[]> | null = null
@@ -50,7 +53,10 @@ async function fetchCatalogWithRetry(force: boolean): Promise<GatewayCatalogMode
 }
 
 async function loadCatalog(force = false): Promise<GatewayCatalogModel[]> {
-  if (!force && cachedModels) return cachedModels
+  if (!force && cachedModels) {
+    registerGatewayCatalogModels(cachedModels)
+    return cachedModels
+  }
   if (!force && inFlight) return inFlight
   inFlight = fetchCatalogWithRetry(force)
     .then((models) => {
@@ -64,12 +70,24 @@ async function loadCatalog(force = false): Promise<GatewayCatalogModel[]> {
   return inFlight
 }
 
+/** Start the catalog fetch as early as possible (app shell), before chat mounts. */
+export function prefetchGatewayModelCatalog(): void {
+  if (typeof window === 'undefined') return
+  void loadCatalog()
+}
+
 export function useGatewayModelCatalog() {
   const backgroundRetryCyclesRef = useRef(0)
   const [models, setModels] = useState<GatewayCatalogModel[]>(() => cachedModels ?? [])
+  const [revision, setRevision] = useState(() => getGatewayCatalogRevision())
   const [isLoading, setIsLoading] = useState(!cachedModels)
   const [error, setError] = useState<string | null>(null)
   const [canAutoRetry, setCanAutoRetry] = useState(false)
+
+  const applyCatalog = useCallback((next: GatewayCatalogModel[]) => {
+    setModels(next)
+    setRevision(getGatewayCatalogRevision())
+  }, [])
 
   const refresh = useCallback(async () => {
     setIsLoading(true)
@@ -77,7 +95,7 @@ export function useGatewayModelCatalog() {
     setCanAutoRetry(false)
     try {
       const next = await loadCatalog(true)
-      setModels(next)
+      applyCatalog(next)
       backgroundRetryCyclesRef.current = 0
     } catch (value) {
       setError(value instanceof Error ? value.message : 'Failed to load models')
@@ -85,18 +103,22 @@ export function useGatewayModelCatalog() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [applyCatalog])
 
   useEffect(() => {
+    let active = true
     if (cachedModels) {
       registerGatewayCatalogModels(cachedModels)
-      return
+      applyCatalog(cachedModels)
+      setIsLoading(false)
+      return () => {
+        active = false
+      }
     }
-    let active = true
     void loadCatalog()
       .then((next) => {
         if (active) {
-          setModels(next)
+          applyCatalog(next)
           setCanAutoRetry(false)
           backgroundRetryCyclesRef.current = 0
         }
@@ -113,7 +135,7 @@ export function useGatewayModelCatalog() {
     return () => {
       active = false
     }
-  }, [])
+  }, [applyCatalog])
 
   useEffect(() => {
     if (!error || !canAutoRetry || backgroundRetryCyclesRef.current >= MAX_BACKGROUND_RETRY_CYCLES) return
@@ -130,5 +152,5 @@ export function useGatewayModelCatalog() {
     }
   }, [canAutoRetry, error, refresh])
 
-  return { models, isLoading, error, refresh }
+  return { models, isLoading, error, refresh, revision }
 }

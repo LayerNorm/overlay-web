@@ -90,9 +90,17 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
           },
           { throwOnError: true },
         ).catch((_error) => DEFAULT_APP_SETTINGS),
-      getGatewayLanguageCatalog().catch((_error) => []),
+      getGatewayLanguageCatalog().catch((error) => {
+        logger.warn('[app/bootstrap] gateway language catalog unavailable; using curated fallback', error)
+        return null
+      }),
     ])
-    registerGatewayCatalogModels(gatewayModels)
+    // Only register when the catalog fetch succeeds. Registering `[]` would leave
+    // AVAILABLE_MODELS as the curated fallback and cause enabled-model filters to
+    // drop most user-enabled gateway IDs until the next successful load.
+    if (gatewayModels) {
+      registerGatewayCatalogModels(gatewayModels)
+    }
 
     const user =
       browserSession?.user ??

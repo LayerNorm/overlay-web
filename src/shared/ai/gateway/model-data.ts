@@ -30,6 +30,7 @@ const CURATED_FALLBACK_CHAT_MODELS: ChatModel[] = [
   { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', provider: 'deepseek', intelligence: 0, cost: 2, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', provider: 'deepseek', intelligence: 0, cost: 1, speedTier: 3, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'minimax/minimax-m2.7', name: 'MiniMax M2.7', provider: 'minimax', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
+  { id: 'moonshotai/kimi-k3', name: 'Kimi K3', provider: 'moonshotai', intelligence: 0, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'moonshotai/kimi-k2.6', name: 'Kimi K2.6', provider: 'moonshotai', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'z-ai/glm-5.1', name: 'GLM 5.1', provider: 'z-ai', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'qwen/qwen3.6-plus', name: 'Qwen3.6 Plus', provider: 'qwen', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
@@ -50,6 +51,7 @@ export const DEFAULT_CURATED_CHAT_MODEL_IDS = [
   'deepseek/deepseek-v4-pro',
   'deepseek/deepseek-v4-flash',
   'minimax/minimax-m2.7',
+  'moonshotai/kimi-k3',
   'moonshotai/kimi-k2.6',
   'z-ai/glm-5.1',
   'qwen/qwen3.6-plus',
@@ -60,6 +62,9 @@ export const DEFAULT_CURATED_CHAT_MODEL_IDS = [
 export const AVAILABLE_MODELS: ChatModel[] = [...CURATED_FALLBACK_CHAT_MODELS, ...SPECIAL_CHAT_MODELS]
 
 const gatewayCatalogModels = new Map<string, ChatModel>()
+/** Bumps whenever the gateway catalog is registered so React can re-render pickers. */
+let gatewayCatalogRevision = 0
+let gatewayCatalogRegistered = false
 const ZDR_MODEL_IDS = new Set([
   'gemini-3.1-pro-preview',
   'gemini-3-flash-preview',
@@ -69,6 +74,14 @@ const ZDR_MODEL_IDS = new Set([
   'claude-haiku-4-5',
   'openai/gpt-oss-120b',
 ])
+
+export function getGatewayCatalogRevision(): number {
+  return gatewayCatalogRevision
+}
+
+export function isGatewayCatalogRegistered(): boolean {
+  return gatewayCatalogRegistered
+}
 
 export function registerGatewayCatalogModels(models: readonly GatewayCatalogModel[]): void {
   const registered: ChatModel[] = []
@@ -85,6 +98,8 @@ export function registerGatewayCatalogModels(models: readonly GatewayCatalogMode
   const fallbackMissingFromCatalog = CURATED_FALLBACK_CHAT_MODELS.filter((model) => !registeredIds.has(model.id))
   AVAILABLE_MODELS.splice(0, AVAILABLE_MODELS.length, ...registered, ...fallbackMissingFromCatalog, ...SPECIAL_CHAT_MODELS)
   _intelRange = null
+  gatewayCatalogRegistered = true
+  gatewayCatalogRevision += 1
 }
 
 /**
@@ -99,6 +114,7 @@ export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'xai/grok-4.20-reasoning',
   'deepseek/deepseek-v4-pro',
   'deepseek/deepseek-v4-flash',
+  'moonshotai/kimi-k3',
   'moonshotai/kimi-k2.6',
   'qwen/qwen3.6-plus',
   'gemini-3-flash-preview',
@@ -158,6 +174,35 @@ export function getModel(id: string): ChatModel | undefined {
   return AVAILABLE_MODELS.find((m) => m.id === resolved) ?? gatewayCatalogModels.get(resolved)
 }
 
+/** Display-name fallback for enabled IDs that are not in the static/curated catalog yet. */
+export function provisionalChatModelFromId(id: string): ChatModel {
+  const resolved = LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id
+  const leaf = resolved.split('/').pop() ?? resolved
+  const name = leaf
+    .replace(/:free$/i, '')
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => {
+      if (/^\d/.test(part) || part === part.toUpperCase()) return part
+      return part.charAt(0).toUpperCase() + part.slice(1)
+    })
+    .join(' ')
+  const provider = resolved.includes('/') ? resolved.slice(0, resolved.indexOf('/')) : 'unknown'
+  const isFree = isFreeTierChatModelId(resolved) || resolved.endsWith(':free')
+  return {
+    id: resolved,
+    name: isFree && !name.toLowerCase().startsWith('free') ? `Free: ${name}` : name,
+    provider,
+    intelligence: 0,
+    cost: isFree ? 0 : 1,
+    speedTier: 2,
+    supportsVision: false,
+    supportsReasoning: false,
+    supportsSearch: false,
+    supportsZeroDataRetention: ZDR_MODEL_IDS.has(resolved),
+  }
+}
+
 /** 1–5 segments for relative response latency (higher = faster). */
 export function speedTierToBarFill5(tier: ChatModel['speedTier']): number {
   return tier === 1 ? 2 : tier === 2 ? 3 : 5
@@ -212,20 +257,23 @@ export function getProviderModels(provider: ChatModel['provider']): ChatModel[] 
 
 /**
  * Models sorted by intelligence (CHAT_MODEL_QUALITY_PRIORITY order).
- * For free-tier users, free models are hoisted above premium models so the
- * options they can actually use without upgrading appear first.
+ * Free-tier users: free models first (Auto on top), then premium.
+ * Paid users: premium first, free section last — so unknown/gateway premium
+ * models are never trapped under the FREE divider.
  */
 export function getModelsByIntelligence(isFreeTier: boolean): ChatModel[] {
   const idxMap = new Map(CHAT_MODEL_QUALITY_PRIORITY.map((id, i) => [id, i]))
   const sorted = [...AVAILABLE_MODELS].sort(
     (a, b) => (idxMap.get(a.id) ?? 999) - (idxMap.get(b.id) ?? 999),
   )
-  if (!isFreeTier) return sorted
   const free = sorted.filter((m) => isFreeTierChatModelId(m.id))
   const premium = sorted.filter((m) => !isFreeTierChatModelId(m.id))
   const freeAuto = free.filter((m) => m.id === FREE_TIER_AUTO_MODEL_ID)
   const explicitFree = free.filter((m) => m.id !== FREE_TIER_AUTO_MODEL_ID)
-  return [...freeAuto, ...explicitFree, ...premium]
+  if (isFreeTier) {
+    return [...freeAuto, ...explicitFree, ...premium]
+  }
+  return [...premium, ...freeAuto, ...explicitFree]
 }
 
 export function getEnabledChatModels(
@@ -233,13 +281,15 @@ export function getEnabledChatModels(
   isFreeTier: boolean,
 ): ChatModel[] {
   const ids = enabledModelIds.length > 0 ? enabledModelIds : DEFAULT_CURATED_CHAT_MODEL_IDS
-  const enabled = new Set(ids)
+  const enabled = new Set(ids.map((id) => LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id))
   const curated = getModelsByIntelligence(isFreeTier).filter((model) => enabled.has(model.id))
   const curatedIds = new Set(curated.map((model) => model.id))
+  // Keep every enabled id visible even before the gateway catalog has registered —
+  // unresolved ids get a provisional entry so the picker never shrinks to 1–2 rows.
   const additional = ids
+    .map((id) => LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id)
     .filter((id) => !curatedIds.has(id))
-    .map((id) => getModel(id))
-    .filter((model): model is ChatModel => Boolean(model))
+    .map((id) => getModel(id) ?? provisionalChatModelFromId(id))
     .sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name))
   const ordered = [...curated, ...additional]
   const free = ordered.filter((model) => isFreeTierChatModelId(model.id))

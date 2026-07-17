@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   getModelForId,
+  getModelsByIntelligence,
   listModelInfo,
   resolveModelId,
   toAnthropicApiModelId,
@@ -31,4 +32,42 @@ test('maps Overlay OpenRouter registry ids to OpenRouter API ids', () => {
 test('maps provider-prefixed direct ids to native API ids', () => {
   assert.equal(toOpenAIApiModelId('openai/gpt-5.4-mini'), 'gpt-5.4-mini')
   assert.equal(toAnthropicApiModelId('anthropic/claude-opus-4.7'), 'claude-opus-4.7')
+})
+
+test('paid users keep unknown premium models above the free section', () => {
+  const models = [
+    { id: 'openrouter/free' },
+    { id: 'openai/gpt-5.6-luna' },
+    { id: 'stepfun-ai/step-3.5-flash' },
+    { id: 'google/gemma-4-26b-a4b-it' },
+    { id: 'minimax/minimax-m3' },
+  ]
+  assert.deepEqual(
+    getModelsByIntelligence(models, false).map((model) => model.id),
+    [
+      'google/gemma-4-26b-a4b-it',
+      'openai/gpt-5.6-luna',
+      'minimax/minimax-m3',
+      'openrouter/free',
+      'stepfun-ai/step-3.5-flash',
+    ],
+  )
+})
+
+test('free-tier users hoist free models above premium', () => {
+  const models = [
+    { id: 'google/gemma-4-26b-a4b-it' },
+    { id: 'openrouter/free' },
+    { id: 'openai/gpt-5.6-luna' },
+    { id: 'stepfun-ai/step-3.5-flash' },
+  ]
+  assert.deepEqual(
+    getModelsByIntelligence(models, true).map((model) => model.id),
+    [
+      'openrouter/free',
+      'stepfun-ai/step-3.5-flash',
+      'google/gemma-4-26b-a4b-it',
+      'openai/gpt-5.6-luna',
+    ],
+  )
 })

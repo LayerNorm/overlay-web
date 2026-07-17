@@ -521,6 +521,54 @@ export function finalizeStreamingConversationParts(
   )
 }
 
+const CONNECTION_LOST_LABEL =
+  'Connection lost mid-response. Check your network and try again.'
+
+/** True when `message` is a short stored failure string, not leftover assistant prose. */
+export function looksLikeStoredGenerationError(message: string): boolean {
+  const text = message.trim()
+  if (!text) return false
+  if (text.length > 220) return false
+  if (
+    /^(Generation failed\.?|generation_interrupted_|weekly_limit|premium_model|generation_not_allowed|insufficient_credits|storage_limit_exceeded|bandwidth_limit_exceeded)/i.test(
+      text,
+    )
+  ) {
+    return true
+  }
+  if (
+    /failed to fetch|networkerror|load failed|err_internet|err_name_not_resolved|websocket|connection (lost|failed|closed|reset)|internet disconnected|network (error|request failed)|ECONNRESET|ETIMEDOUT|AbortError|The operation was aborted/i.test(
+      text,
+    )
+  ) {
+    return true
+  }
+  if (
+    text.includes('OpenRouter') ||
+    text.includes('AI Gateway') ||
+    text.includes('model provider') ||
+    /gateway.*(auth|key|billing|quota|limit)|provider.*(blocked|billing|quota|limit)/i.test(text) ||
+    /model.*not found|not found.*model|model_not_found/i.test(text)
+  ) {
+    return true
+  }
+  // Conversational / markdown assistant output kept after an interrupted stream.
+  if (/[.!?]/.test(text) && text.split(/\s+/).length >= 12) return false
+  return text.length <= 160
+}
+
+/**
+ * When a message is marked `status: 'error'`, Convex often keeps the partial
+ * assistant reply in `content`. Only treat that text as the error when it looks
+ * like a real failure string; otherwise surface a connection/interrupt label.
+ */
+export function persistedGenerationErrorMessage(responseText: string | null | undefined): string {
+  const text = responseText?.trim() ?? ''
+  if (!text) return 'Generation failed'
+  if (looksLikeStoredGenerationError(text)) return text
+  return 'generation_interrupted_connection'
+}
+
 export function errorLabel(err: Error | null | undefined): string | null {
   if (!err) return null
   const message = err.message || ''
@@ -546,6 +594,14 @@ export function errorLabel(err: Error | null | undefined): string | null {
   if (message.includes('bandwidth_limit_exceeded')) return 'File bandwidth limit reached for this billing period.'
   if (message.includes('generation_interrupted_server_timeout')) {
     return 'Generation was interrupted by the server. Try sending your message again.'
+  }
+  if (
+    message.includes('generation_interrupted_connection') ||
+    /failed to fetch|networkerror|load failed|err_internet|err_name_not_resolved|websocket|connection (lost|failed|closed|reset)|internet disconnected|network (error|request failed)|ECONNRESET|ETIMEDOUT/i.test(
+      message,
+    )
+  ) {
+    return CONNECTION_LOST_LABEL
   }
   if (message.includes('supported image formats') || message.includes('does not represent a valid image')) {
     return 'Unsupported image format. Use JPEG, PNG, GIF, or WebP.'

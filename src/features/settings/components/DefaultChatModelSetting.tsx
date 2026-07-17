@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { Bot } from 'lucide-react'
 import { SettingsActionRow } from '@overlay/modules-react/settings'
 import { getEnabledChatModels } from '@/shared/ai/gateway/model-data'
@@ -23,11 +24,14 @@ export function DefaultChatModelSetting({
   disabled?: boolean
   onSelect: (actModelId: string, askModelIds: string[]) => void
 }) {
-  useGatewayModelCatalog()
+  const { revision: catalogRevision } = useGatewayModelCatalog()
   const effectiveOnlyAllowZdr = onlyAllowZdrModels && !isFreeTier
-  const models = getEnabledChatModels(enabledModelIds, isFreeTier)
-    .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
-    .filter((model) => !effectiveOnlyAllowZdr || model.supportsZeroDataRetention)
+  const models = useMemo(() => {
+    void catalogRevision
+    return getEnabledChatModels(enabledModelIds, isFreeTier)
+      .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
+      .filter((model) => !effectiveOnlyAllowZdr || model.supportsZeroDataRetention)
+  }, [catalogRevision, effectiveOnlyAllowZdr, enabledModelIds, isFreeTier])
 
   const currentSelection = resolveDefaultChatModelSelection({
     defaultActModelId,

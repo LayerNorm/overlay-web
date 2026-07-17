@@ -21,11 +21,14 @@ const mdSanitizeSchema = {
   },
 }
 
+/** `strict: 'ignore'` avoids console noise for Unicode punctuation in math-adjacent text. */
+const rehypeKatexSafe: Pluggable = [rehypeKatex, { strict: 'ignore', throwOnError: false } as const]
+
 export const markdownRemarkPlugins = [remarkGfm, remarkMath]
 export const markdownRehypePlugins: Pluggable[] = [
   rehypeRaw,
   [rehypeSanitize, mdSanitizeSchema] as Pluggable,
-  rehypeKatex,
+  rehypeKatexSafe,
 ]
 
 /**
@@ -130,7 +133,7 @@ export const markdownRehypePluginsStreaming: Pluggable[] = [
   rehypeRaw,
   rehypeWrapStreamChars as Pluggable,
   [rehypeSanitize, mdSanitizeSchema] as Pluggable,
-  rehypeKatex,
+  rehypeKatexSafe,
 ]
 
 /**

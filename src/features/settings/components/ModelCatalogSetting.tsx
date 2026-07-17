@@ -25,7 +25,7 @@ export function ModelCatalogSetting({
   disabled?: boolean
   onChange: (ids: string[]) => void
 }) {
-  const { models, isLoading, error, refresh } = useGatewayModelCatalog()
+  const { models, isLoading, error, refresh, revision } = useGatewayModelCatalog()
   const [query, setQuery] = useState('')
 
   const effectiveIds = enabledModelIds.length > 0
@@ -34,6 +34,7 @@ export function ModelCatalogSetting({
   const enabled = useMemo(() => new Set(effectiveIds), [effectiveIds])
   const curatedIds = useMemo(() => new Set<string>(DEFAULT_CURATED_CHAT_MODEL_IDS), [])
   const displayModels = useMemo(() => {
+    void revision
     const gatewayIds = new Set(models.map((model) => model.id))
     const existingDefaults: GatewayCatalogModel[] = AVAILABLE_MODELS
       .filter((model) => curatedIds.has(model.id) && !gatewayIds.has(model.id))
@@ -53,7 +54,7 @@ export function ModelCatalogSetting({
         outputPricePerMillion: 0,
       }))
     return [...existingDefaults, ...models]
-  }, [curatedIds, models])
+  }, [curatedIds, models, revision])
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     if (!normalized) return displayModels

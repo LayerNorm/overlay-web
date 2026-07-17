@@ -13,6 +13,7 @@ export const CHAT_MODEL_QUALITY_PRIORITY: readonly string[] = [
   'xai/grok-4.20-reasoning',
   'deepseek/deepseek-v4-pro',
   'deepseek/deepseek-v4-flash',
+  'moonshotai/kimi-k3',
   'moonshotai/kimi-k2.6',
   'qwen/qwen3.6-plus',
   'gemini-3-flash-preview',
@@ -39,9 +40,9 @@ export function isFreeTierModel(modelId: string | undefined): modelId is string 
 
 /**
  * Models sorted by intelligence (CHAT_MODEL_QUALITY_PRIORITY order).
- * For free-tier users, free models are hoisted above premium models so the
- * options they can actually use without upgrading appear first, with "Auto"
- * (free router) at the very top.
+ * Free-tier users: free models first (Auto on top), then premium.
+ * Paid users: premium first, free section last — so the picker FREE divider
+ * never traps unknown/gateway premium models (priority index 999) underneath it.
  *
  * Generic over the model shape so it accepts both `OverlayModelInfo[]`
  * (shared catalog) and `ChatModel[]` (app-core contract with optional fields).
@@ -54,12 +55,14 @@ export function getModelsByIntelligence<T extends { id: string }>(
   const sorted = [...models].sort(
     (a, b) => (idxMap.get(a.id) ?? 999) - (idxMap.get(b.id) ?? 999),
   )
-  if (!isFreeTier) return sorted
   const free = sorted.filter((m) => isFreeTierModel(m.id))
   const premium = sorted.filter((m) => !isFreeTierModel(m.id))
   const freeAuto = free.filter((m) => m.id === FREE_TIER_AUTO_MODEL_ID)
   const explicitFree = free.filter((m) => m.id !== FREE_TIER_AUTO_MODEL_ID)
-  return [...freeAuto, ...explicitFree, ...premium]
+  if (isFreeTier) {
+    return [...freeAuto, ...explicitFree, ...premium]
+  }
+  return [...premium, ...freeAuto, ...explicitFree]
 }
 
 /** Pick the highest-quality model from a multi-model selection. */

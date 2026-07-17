@@ -25,6 +25,7 @@ import {
   getUserMessageDocNames,
   getUserReplyThreadMeta,
   getUserTurnId,
+  persistedGenerationErrorMessage,
   resolveActAssistant,
   splitUserDisplayText,
 } from '@overlay/chat-core'
@@ -170,8 +171,8 @@ function TextChatMessage(props: TextChatMessageProps) {
     isOptimisticLoading
   )
   const instLoading = activeHttpLoading || persistedStatus === 'generating'
-  const persistedErrorText = persistedStatus === 'error' && responseText.trim()
-    ? responseText.trim()
+  const persistedErrorText = persistedStatus === 'error'
+    ? persistedGenerationErrorMessage(responseText)
     : 'Generation failed'
   const instError = isLatest
     ? persistedStatus === 'error'

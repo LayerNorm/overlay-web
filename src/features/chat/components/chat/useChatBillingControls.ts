@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_MODEL_ID,
   FREE_TIER_AUTO_MODEL_ID,
@@ -41,6 +41,7 @@ function budgetRemainingCentsFor(entitlements: Entitlements): number {
 export function useChatBillingControls({
   activeChatId,
   billingEnabled,
+  catalogRevision,
   chatPrefsHydrated,
   onlyAllowZdrModels,
   enabledModelIds,
@@ -56,6 +57,8 @@ export function useChatBillingControls({
 }: {
   activeChatId: string | null
   billingEnabled: boolean
+  /** From useGatewayModelCatalog — forces recompute when AVAILABLE_MODELS mutates. */
+  catalogRevision: number
   chatPrefsHydrated: boolean
   onlyAllowZdrModels: boolean
   enabledModelIds: readonly string[]
@@ -86,11 +89,16 @@ export function useChatBillingControls({
   const isFreeTier = billingEnabled && Boolean(entitlements) && (!isPaidSubscription || isBudgetExhaustedPaid)
   const isModelAccessRestricted = isFreeTier
   const effectiveOnlyAllowZdrModels = isPaidSubscription && !isBudgetExhaustedPaid && onlyAllowZdrModels
-  const enabledTextModels = getEnabledChatModels(enabledModelIds, isModelAccessRestricted)
-    .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
-  const selectableTextModels = effectiveOnlyAllowZdrModels
-    ? enabledTextModels.filter((model) => model.supportsZeroDataRetention)
-    : enabledTextModels
+  // catalogRevision is required: getEnabledChatModels reads module-level AVAILABLE_MODELS
+  // which mutates when the gateway catalog registers.
+  const selectableTextModels = useMemo(() => {
+    void catalogRevision
+    const enabledTextModels = getEnabledChatModels(enabledModelIds, isModelAccessRestricted)
+      .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
+    return effectiveOnlyAllowZdrModels
+      ? enabledTextModels.filter((model) => model.supportsZeroDataRetention)
+      : enabledTextModels
+  }, [catalogRevision, effectiveOnlyAllowZdrModels, enabledModelIds, isModelAccessRestricted])
   const premiumModelBlocked =
     isModelAccessRestricted && !isFreeTierChatModelId(selectedActModel)
   const isSendBlocked = premiumModelBlocked

@@ -163,6 +163,7 @@ export default function ChatExperience({
   const {
     models: gatewayCatalogModels,
     isLoading: gatewayModelsLoading,
+    revision: gatewayCatalogRevision,
   } = useGatewayModelCatalog()
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
   const billingEnabled = capabilities.billing
@@ -377,6 +378,7 @@ export default function ChatExperience({
   } = useChatBillingControls({
     activeChatId,
     billingEnabled,
+    catalogRevision: gatewayCatalogRevision,
     chatPrefsHydrated,
     onlyAllowZdrModels: settings.onlyAllowZdrModels,
     enabledModelIds: settings.enabledChatModelIds,

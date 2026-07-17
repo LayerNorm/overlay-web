@@ -41,6 +41,7 @@ const MODEL_DEFINITIONS: readonly MinimalModelDefinition[] = [
   ['deepseek/deepseek-v4-pro', 'DeepSeek V4 Pro', 'deepseek', false, true],
   ['deepseek/deepseek-v4-flash', 'DeepSeek V4 Flash', 'deepseek', false, true],
   ['minimax/minimax-m2.7', 'MiniMax M2.7', 'minimax', false, true],
+  ['moonshotai/kimi-k3', 'Kimi K3', 'moonshotai', true, true],
   ['moonshotai/kimi-k2.6', 'Kimi K2.6', 'moonshotai', true, true],
   ['z-ai/glm-5.1', 'GLM 5.1', 'zai', false, true],
   ['qwen/qwen3.6-plus', 'Qwen 3.6 Plus', 'alibaba', false, true],
