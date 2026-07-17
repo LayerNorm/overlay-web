@@ -15,6 +15,7 @@
     "./markdown-table-fix": "./src/markdown-table-fix.ts",
     "./messages": "./src/messages.ts",
     "./paste": "./src/paste.ts",
+    "./parity-fixtures": "./src/parity-fixtures.ts",
     "./shim-incomplete-markdown": "./src/shim-incomplete-markdown.ts",
     "./sources": "./src/sources.ts",
     "./state": "./src/state.ts",

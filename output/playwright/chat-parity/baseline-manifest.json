@@ -1,0 +1,32 @@
+{
+  "fixtureVersion": "2026-07-17.1",
+  "capturedAt": "2026-07-17",
+  "scenarioMatrix": {
+    "rich-markdown": {
+      "platforms": ["web", "desktop"],
+      "themes": ["light", "dark"],
+      "widths": [390, 640, 896]
+    },
+    "gallery": {
+      "platforms": ["web", "desktop"],
+      "themes": ["light"],
+      "widths": [896]
+    }
+  },
+  "screenshots": {
+    "baselines/desktop-gallery-light-896.png": "3176fb98617b91910447b08a1bb4df3e024ffe8b9246cb343f9b1548e3865904",
+    "baselines/desktop-rich-markdown-dark-390.png": "f37198a5112d19a5c5d68172445789df7fdf22f0a037737af5a2e58b62ee21e0",
+    "baselines/desktop-rich-markdown-dark-640.png": "c963e6d170200bcedb111e50ca8a971c242ada69673b821dc0c6d3f263979014",
+    "baselines/desktop-rich-markdown-dark-896.png": "934e2ea58586b1dadb5f74b184cfdd1c63b1f0a0bc09dabb0f64d9f0d5c3ab75",
+    "baselines/desktop-rich-markdown-light-390.png": "c47473c4d4fd9f1c5b85b5bcf816b28a599a72651ea8c65e828c4e003e2e6d55",
+    "baselines/desktop-rich-markdown-light-640.png": "10f628a132c85d770c47bdfa39ec6ee91f2b1ec06e3ec28231c750bb9719691e",
+    "baselines/desktop-rich-markdown-light-896.png": "cc126fd8e60f7f18b41c6277465cd383cd13975bb7eb02123b6876f8cff99716",
+    "baselines/web-gallery-light-896.png": "106d102c4514fd9d5a4a4e43724d7ac17b830e7b31dcc255e5e8407c15c4dfed",
+    "baselines/web-rich-markdown-dark-390.png": "fd150e0f18db08f0b2f8a710c094ae580388429c3599eb09e0097d165f9fcfb4",
+    "baselines/web-rich-markdown-dark-640.png": "ef38d724496251bcd9b9aebe9f2472b267719b457c5b60d4d783597947fd16fd",
+    "baselines/web-rich-markdown-dark-896.png": "edc783dd5332ce2a273d884a401fcbb1d37769d1562855e920ef615091abfe46",
+    "baselines/web-rich-markdown-light-390.png": "5c36375aab28e3724faee7fa3add68c8187780c9cf9aa86c9c1b0483f930619d",
+    "baselines/web-rich-markdown-light-640.png": "1fcc74fe3590006f28d41dd6001f30c1604ff3c32b6e64ab38567b5158ded975",
+    "baselines/web-rich-markdown-light-896.png": "6b79df01d6805eadd5beca3cccc1dc412dda79af03547c2ede1284587f44e6ec"
+  }
+}

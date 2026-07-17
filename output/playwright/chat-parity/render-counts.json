@@ -1,0 +1,19 @@
+{
+  "fixtureVersion": "2026-07-17.1",
+  "capture": {
+    "scenario": "rich-markdown",
+    "theme": "light",
+    "width": 896,
+    "reactStrictMode": true,
+    "timingsAreBaseline": false
+  },
+  "web": {
+    "ExchangeBlock": 2,
+    "MarkdownMessage": 2
+  },
+  "desktop": {
+    "DesktopSharedMessageList": 2,
+    "DesktopMessageRow": 4,
+    "MarkdownMessage": 2
+  }
+}

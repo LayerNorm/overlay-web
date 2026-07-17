@@ -37,11 +37,14 @@ export function isPerfDebugEnabled(): boolean {
 // ── render counters ──────────────────────────────────────────────────────────
 const renderCounts = new Map<string, number>()
 const slowTimings = new Map<string, { count: number; totalMs: number; maxMs: number }>()
+const totalRenderCounts = new Map<string, number>()
+const totalTimings = new Map<string, { count: number; totalMs: number; maxMs: number }>()
 let reportersStarted = false
 
 export function recordRender(name: string): void {
   if (!isPerfDebugEnabled()) return
   renderCounts.set(name, (renderCounts.get(name) ?? 0) + 1)
+  totalRenderCounts.set(name, (totalRenderCounts.get(name) ?? 0) + 1)
 }
 
 /** Time a synchronous function, accumulating stats under `label`. Returns its result. */
@@ -57,11 +60,36 @@ export function timeSync<T>(label: string, fn: () => T): T {
     cur.totalMs += ms
     cur.maxMs = Math.max(cur.maxMs, ms)
     slowTimings.set(label, cur)
+    const total = totalTimings.get(label) ?? { count: 0, totalMs: 0, maxMs: 0 }
+    total.count += 1
+    total.totalMs += ms
+    total.maxMs = Math.max(total.maxMs, ms)
+    totalTimings.set(label, total)
     if (ms > 30) {
       // eslint-disable-next-line no-console
       console.warn(`[perf] slow ${label}: ${ms.toFixed(1)}ms`)
     }
   }
+}
+export type PerfDebugSnapshot = {
+  renders: Record<string, number>
+  timings: Record<string, { count: number; totalMs: number; maxMs: number }>
+}
+
+export function getPerfDebugSnapshot(): PerfDebugSnapshot {
+  return {
+    renders: Object.fromEntries([...totalRenderCounts.entries()].sort(([a], [b]) => a.localeCompare(b))),
+    timings: Object.fromEntries(
+      [...totalTimings.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([label, stats]) => [label, { ...stats }]),
+    ),
+  }
+}
+
+export function resetPerfDebugSnapshot(): void {
+  totalRenderCounts.clear()
+  totalTimings.clear()
 }
 
 function isLongTaskDebugEnabled(): boolean {
