@@ -104,7 +104,7 @@ export function ChatMessageList({
   }, [reserveLatestExchangeStartSpace, messagesScrollRef])
 
   return (
-    <div className="relative min-h-0 flex-1">
+    <div className="overlay-chat-surface relative min-h-0 flex-1">
       <div
         ref={messagesScrollRef}
         className="h-full min-h-0 w-full overscroll-contain overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4"

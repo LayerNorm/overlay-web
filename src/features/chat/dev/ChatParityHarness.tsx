@@ -305,7 +305,7 @@ export function ChatParityHarness({
     mediaScenarios.length > 0;
 
   return (
-    <main className="min-h-screen bg-[var(--background)] px-3 py-5 text-[var(--foreground)] sm:px-5">
+    <main className="overlay-chat-surface min-h-screen bg-[var(--background)] px-3 py-5 text-[var(--foreground)] sm:px-5">
       <div
         className="mx-auto flex w-full flex-col gap-5"
         style={{ maxWidth: width }}

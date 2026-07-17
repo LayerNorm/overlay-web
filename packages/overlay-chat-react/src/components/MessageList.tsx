@@ -249,7 +249,7 @@ export function MessageList({ messages, activeRun, appBaseUrl }: MessageListProp
     activeRun?.status === 'streaming' || activeRun?.status === 'executing_tool' ? activeRun : null
 
   return (
-    <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4">
+    <div className="overlay-chat-surface flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4">
       {messages.map((message) => {
         const user = message.role === 'user'
         const rowActiveRun =

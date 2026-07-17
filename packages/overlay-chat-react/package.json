@@ -4,6 +4,7 @@
   "private": true,
   "license": "Apache-2.0",
   "sideEffects": [
+    "./src/styles/chat-surface.css",
     "./src/styles/overlay-theme.css"
   ],
   "main": "./src/index.ts",
@@ -18,6 +19,7 @@
     "./model-indicators": "./src/components/ModelIndicators.tsx",
     "./model-qualities-panel": "./src/components/ModelQualitiesPanel.tsx",
     "./sources-panel": "./src/components/SourcesPanel.tsx",
+    "./chat-surface.css": "./src/styles/chat-surface.css",
     "./styles.css": "./src/styles/overlay-theme.css"
   },
   "scripts": {

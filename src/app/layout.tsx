@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "katex/dist/katex.min.css";
+import "@overlay/chat-react/chat-surface.css";
 import "./globals.css";
 
 export const metadata: Metadata = {

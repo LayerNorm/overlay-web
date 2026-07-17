@@ -77,6 +77,7 @@
   /* Assistant tool rows ("2 tools called", browser label) — readable on light bg */
   --tool-line-label: #52525b;
   --tool-line-chevron: #a1a1aa;
+  --overlay-mark-logo-url: url('/assets/overlay-logo.png');
   --button-primary-bg: #0a0a0a;
   --button-primary-text: #ffffff;
   --button-secondary-bg: #ffffff;
@@ -270,165 +271,7 @@ html {
   font-family: var(--font-serif);
 }
 
-/* Markdown streaming animations */
-@keyframes mdBlockAppear {
-  from {
-    opacity: 0;
-    transform: translateY(3px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.md-block-appear {
-  animation: mdBlockAppear 0.3s ease-out forwards;
-}
-
-.md-block-streaming {
-  opacity: 0.55;
-  transition: opacity 0.1s ease;
-}
-
-/* Tool chip: gentle pulse while a tool is running */
-@keyframes tool-chip-soft-blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.68;
-  }
-}
-
-.tool-chip-running {
-  animation: tool-chip-soft-blink 1.4s ease-in-out infinite;
-}
-
-/* Code block with header */
-.code-block-wrapper {
-  margin: 0 0 1em;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  overflow: hidden;
-}
-
-.code-block-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.45rem 0.9rem;
-  background: var(--surface-subtle);
-  border-bottom: 1px solid var(--border);
-}
-
-.code-block-lang {
-  font-size: 0.75rem;
-  color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
-}
-
-.code-block-copy {
-  font-size: 0.72rem;
-  color: var(--muted);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-}
-
-.code-block-copy:hover {
-  color: var(--foreground);
-}
-
-.code-block-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-}
-
-.code-block-action {
-  display: inline-flex;
-  width: 1.75rem;
-  height: 1.75rem;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
-}
-
-.code-block-action:hover:not(:disabled),
-.code-block-action[data-active='true'] {
-  border-color: var(--border);
-  background: var(--surface-elevated);
-  color: var(--foreground);
-}
-
-.code-block-action:disabled {
-  cursor: not-allowed;
-  opacity: 0.38;
-}
-
-.code-block-render {
-  min-height: 320px;
-  background: #fff;
-}
-
-.code-block-render-frame {
-  display: block;
-  width: 100%;
-  height: clamp(320px, 58vh, 560px);
-  border: 0;
-  background: #fff;
-}
-
-@media (max-width: 640px) {
-  .code-block-render {
-    min-height: 260px;
-  }
-
-  .code-block-render-frame {
-    height: clamp(260px, 55vh, 460px);
-  }
-}
-
-/* Prism / syntax-highlighter: keep code body on-theme in dark mode (inline styles from oneLight otherwise win). */
-[data-theme='dark'] .code-block-wrapper .react-syntax-highlighter {
-  background: var(--surface-subtle) !important;
-}
-
-[data-theme='dark'] .code-block-wrapper pre,
-[data-theme='dark'] .code-block-wrapper code {
-  background: transparent !important;
-}
-
-[data-theme='dark'] .code-block-wrapper .react-syntax-highlighter code[class*='language-'] {
-  text-shadow: none;
-}
-
-/* Table styling */
-/*
- * Wrapper is the horizontal scroll container. It is constrained by the
- * parent (`.markdown-content`'s `min-width: 0`) so the table never bleeds
- * past the chat column; the table itself is allowed to grow wider than the
- * wrapper when columns have more natural content than will fit, triggering
- * the scrollbar instead of squishing each column.
- */
-.table-wrapper {
-  overflow-x: auto;
-  margin: 0 0 1em;
-  max-width: 100%;
-  border-radius: 0.5rem;
-  -webkit-overflow-scrolling: touch;
-}
-
-.markdown-content table,
+/* Rich-text note editor. Chat markdown lives in @overlay/chat-react. */
 .app-note-editor table {
   min-width: 100%;
   width: auto;
@@ -438,7 +281,6 @@ html {
   table-layout: auto;
 }
 
-.markdown-content th,
 .app-note-editor th {
   background: var(--surface-muted);
   font-weight: 600;
@@ -456,7 +298,6 @@ html {
   overflow-wrap: normal;
 }
 
-.markdown-content td,
 .app-note-editor td {
   padding: 0.45rem 0.85rem;
   border: 1px solid var(--border);
@@ -467,23 +308,10 @@ html {
   overflow-wrap: normal;
 }
 
-/* Keep lists inside a single cell visually grouped (GFM + merged continuations). */
-.markdown-content td ul,
-.markdown-content td ol {
-  margin: 0.35em 0 0;
-  padding-left: 1.25em;
-}
-
-.markdown-content td li {
-  margin: 0.15em 0;
-}
-
-.markdown-content tr:nth-child(even) td,
 .app-note-editor tr:nth-child(even) td {
   background: var(--background);
 }
 
-.markdown-content,
 .app-note-editor {
   color: var(--foreground);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -492,49 +320,14 @@ html {
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
-}
-
-/*
- * Secondary-surface markdown: used for reasoning and browser-tool task
- * descriptions. Visually distinct from the main assistant reply — smaller,
- * tighter, and already muted by the wrapping div.
- */
-.reasoning-markdown .markdown-content {
-  font-size: 0.8125rem; /* 13px */
-  line-height: 1.55;
-  color: inherit;
-}
-.reasoning-markdown .markdown-content p {
-  margin: 0 0 0.5em;
-}
-.reasoning-markdown .markdown-content h1,
-.reasoning-markdown .markdown-content h2,
-.reasoning-markdown .markdown-content h3,
-.reasoning-markdown .markdown-content h4 {
-  font-size: 0.875rem;
-  margin: 0.4em 0 0.25em;
-  font-weight: 600;
-}
-.reasoning-markdown .markdown-content ul,
-.reasoning-markdown .markdown-content ol {
-  margin: 0.25em 0 0.5em;
-  padding-left: 1.1rem;
-}
-.reasoning-markdown .markdown-content li {
-  margin: 0.1em 0;
-}
-
-.app-note-editor {
   min-height: 300px;
   outline: none;
 }
 
-.markdown-content p,
 .app-note-editor p {
   margin: 0 0 0.8em;
 }
 
-.markdown-content h1,
 .app-note-editor h1 {
   margin: 0 0 0.45em;
   font-size: 2rem;
@@ -542,7 +335,6 @@ html {
   font-weight: 600;
 }
 
-.markdown-content h2,
 .app-note-editor h2 {
   margin: 0.4em 0 0.45em;
   font-size: 1.45rem;
@@ -550,7 +342,6 @@ html {
   font-weight: 600;
 }
 
-.markdown-content h3,
 .app-note-editor h3 {
   margin: 0.4em 0 0.4em;
   font-size: 1.15rem;
@@ -558,7 +349,6 @@ html {
   font-weight: 600;
 }
 
-.markdown-content h4,
 .app-note-editor h4 {
   margin: 0.35em 0 0.35em;
   font-size: 1rem;
@@ -566,8 +356,6 @@ html {
   font-weight: 600;
 }
 
-.markdown-content h5,
-.markdown-content h6,
 .app-note-editor h5,
 .app-note-editor h6 {
   margin: 0.3em 0 0.3em;
@@ -577,30 +365,24 @@ html {
   color: #525252;
 }
 
-.markdown-content ul,
-.markdown-content ol,
 .app-note-editor ul,
 .app-note-editor ol {
   margin: 0 0 0.9em 1.4em;
   padding: 0;
 }
 
-.markdown-content ul,
 .app-note-editor ul {
   list-style-type: disc;
 }
 
-.markdown-content ol,
 .app-note-editor ol {
   list-style-type: decimal;
 }
 
-.markdown-content li,
 .app-note-editor li {
   margin: 0.2em 0;
 }
 
-.markdown-content blockquote,
 .app-note-editor blockquote {
   margin: 0 0 1em;
   border-left: 3px solid #d4d4d8;
@@ -608,30 +390,6 @@ html {
   color: #52525b;
 }
 
-.markdown-content .katex {
-  font-size: 1.02em;
-}
-
-.markdown-content .katex-display {
-  display: block;
-  margin: 0.85em auto 1.1em;
-  padding: 0.35em 0 0.5rem;
-  overflow-x: auto;
-  overflow-y: hidden;
-  text-align: center;
-  font-size: 1.12em;
-}
-
-.markdown-content .katex-display > .katex {
-  font-size: 1.2em;
-}
-
-.markdown-content .katex-error {
-  color: inherit !important;
-  border-bottom: 1px dotted color-mix(in srgb, currentColor 35%, transparent);
-}
-
-.markdown-content pre,
 .app-note-editor pre {
   margin: 0 0 1em;
   overflow-x: auto;
@@ -642,7 +400,6 @@ html {
   line-height: 1.6;
 }
 
-.markdown-content code,
 .app-note-editor code {
   border-radius: 6px;
   background: #f5f5f5;
@@ -651,20 +408,17 @@ html {
   font-size: 0.9em;
 }
 
-.markdown-content pre code,
 .app-note-editor pre code {
   background: transparent;
   padding: 0;
 }
 
-.markdown-content hr,
 .app-note-editor hr {
   margin: 1.25rem 0;
   border: 0;
   border-top: 1px solid #e4e4e7;
 }
 
-.markdown-content a,
 .app-note-editor a {
   color: #0a0a0a;
   text-decoration: underline;
@@ -755,158 +509,8 @@ html {
   margin: 0.25rem 0 1rem;
 }
 
-/* Streaming marker — pulsing Overlay logo. Used in two places:
-   1. Inline at the tail of the most recent streaming token (token mode).
-   2. Standalone before any tokens exist, as the "thinking" indicator.
-   The same pulse animates opacity and scale so the logo breathes in place. */
-@keyframes overlayStreamMarkerPulse {
-  0%, 100% {
-    opacity: 0.5;
-    transform: scale(0.82);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.04);
-  }
-}
-
-.overlay-stream-marker {
-  display: inline-block;
-  width: 0.95em;
-  height: 0.95em;
-  margin-left: 0.35em;
-  vertical-align: -0.12em;
-  background-image: url('/assets/overlay-logo.png');
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: contain;
-  animation: overlayStreamMarkerPulse 1.3s ease-in-out infinite;
-  pointer-events: none;
-  /* Ensure the marker is visible even on the first frame when the paragraph is empty. */
-  min-width: 14px;
-  min-height: 14px;
-}
-
-/* Standalone variant — the pre-generation "thinking" indicator (used by the bottom-of-
-   exchange loader and any case where the marker stands on its own line). Bigger and
-   centered so it reads clearly without any text alongside it. */
-.overlay-stream-marker--standalone,
-.markdown-content--streaming p:first-child > .overlay-stream-marker:only-child,
-.markdown-content--streaming > .overlay-stream-marker:only-child {
-  margin-left: 0;
-  width: 1rem;
-  height: 1rem;
-  min-width: 16px;
-  min-height: 16px;
-  vertical-align: middle;
-}
-
-/* Softer entrance for newly-mounted block elements while streaming so boundaries
-   don't snap in as hard rectangles. Short and translate-free. */
-@keyframes overlayStreamBlockSoften {
-  from {
-    opacity: 0.4;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.markdown-content--streaming p,
-.markdown-content--streaming li,
-.markdown-content--streaming td,
-.markdown-content--streaming th,
-.markdown-content--streaming h1,
-.markdown-content--streaming h2,
-.markdown-content--streaming h3,
-.markdown-content--streaming h4,
-.markdown-content--streaming h5,
-.markdown-content--streaming h6,
-.markdown-content--streaming blockquote,
-.markdown-content--streaming pre {
-  animation: overlayStreamBlockSoften 260ms ease-out both;
-  will-change: opacity;
-}
-
-/* The marker is its own animation — don't let block soften override it. */
-.markdown-content--streaming .overlay-stream-marker {
-  animation: overlayStreamMarkerPulse 1.3s ease-in-out infinite;
-  opacity: 1;
-}
-
-/* Respect reduced-motion users: skip all streaming fades and just reveal text. */
-@media (prefers-reduced-motion: reduce) {
-  .markdown-content--streaming p,
-  .markdown-content--streaming li,
-  .markdown-content--streaming td,
-  .markdown-content--streaming th,
-  .markdown-content--streaming h1,
-  .markdown-content--streaming h2,
-  .markdown-content--streaming h3,
-  .markdown-content--streaming h4,
-  .markdown-content--streaming h5,
-  .markdown-content--streaming h6,
-  .markdown-content--streaming blockquote,
-  .markdown-content--streaming pre {
-    animation: none;
-  }
-}
-
-/* Message row appear animation */
-@keyframes messageAppear {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.message-appear {
-  animation: messageAppear 0.18s ease-out forwards;
-}
-
-/* Tool-call line: left-to-right shimmer while a tool is executing */
-@keyframes tool-line-shimmer {
-  0% {
-    background-position: 200% 50%;
-  }
-  100% {
-    background-position: -200% 50%;
-  }
-}
-
-.tool-line-shimmer {
-  background-image: linear-gradient(
-    90deg,
-    #71717a 0%,
-    #71717a 40%,
-    #a1a1aa 50%,
-    #71717a 60%,
-    #71717a 100%
-  );
-  background-size: 200% 100%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-  animation: tool-line-shimmer 1.35s linear infinite;
-}
-
-[data-theme='dark'] .tool-line-shimmer {
-  background-image: linear-gradient(
-    90deg,
-    #a1a1aa 0%,
-    #a1a1aa 38%,
-    #e4e4e7 50%,
-    #a1a1aa 62%,
-    #a1a1aa 100%
-  );
-}
-
-/* Gray shimmer skeleton for media generation */
-@keyframes media-shimmer-slide {
+/* App-wide skeleton: same sheen as media-gen-mesh, for cards / large placeholders */
+@keyframes ui-skeleton-shimmer-slide {
   0% {
     transform: translateX(0);
   }
@@ -915,81 +519,6 @@ html {
   }
 }
 
-.media-gen-shimmer {
-  position: relative;
-  overflow: hidden;
-  background-color: #d4d4d4;
-  min-height: 8rem;
-  min-width: 8rem;
-  flex-shrink: 0;
-  box-sizing: border-box;
-}
-
-.media-gen-shimmer::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -55%;
-  width: 55%;
-  height: 100%;
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.12) 32%,
-    rgba(255, 255, 255, 0.85) 50%,
-    rgba(255, 255, 255, 0.12) 68%,
-    transparent 100%
-  );
-  animation: media-shimmer-slide 1.25s ease-in-out infinite;
-}
-
-/* Soft mesh + sheen for image/video generation (loading) */
-.media-gen-mesh {
-  position: relative;
-  overflow: hidden;
-  flex-shrink: 0;
-  box-sizing: border-box;
-  background: linear-gradient(
-    135deg,
-    #efe8f4 0%,
-    #e6dcf2 28%,
-    #ddd0ea 52%,
-    #e8dff6 78%,
-    #f0e9f8 100%
-  );
-  min-width: 8rem;
-  min-height: 8rem;
-}
-
-.media-gen-mesh::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -60%;
-  width: 55%;
-  height: 100%;
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.08) 38%,
-    rgba(255, 255, 255, 0.65) 50%,
-    rgba(255, 255, 255, 0.08) 62%,
-    transparent 100%
-  );
-  filter: blur(0.5px);
-  animation: media-shimmer-slide 1.65s ease-in-out infinite;
-}
-
-.media-gen-mesh--fill {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-}
-
-/* App-wide skeleton: same sheen as media-gen-mesh, for cards / large placeholders */
 .ui-skeleton-mesh {
   position: relative;
   overflow: hidden;
@@ -1022,7 +551,7 @@ html {
     transparent 100%
   );
   filter: blur(0.5px);
-  animation: media-shimmer-slide 1.65s ease-in-out infinite;
+  animation: ui-skeleton-shimmer-slide 1.65s ease-in-out infinite;
 }
 
 [data-theme='dark'] .ui-skeleton-mesh {
@@ -1071,7 +600,7 @@ html {
     rgba(128, 128, 128, 0.06) 65%,
     transparent 100%
   );
-  animation: media-shimmer-slide 1.4s ease-in-out infinite;
+  animation: ui-skeleton-shimmer-slide 1.4s ease-in-out infinite;
 }
 
 [data-theme='dark'] .ui-skeleton-line {
@@ -1089,52 +618,31 @@ html {
   );
 }
 
-/* Selection on user bubbles — adapts to theme */
-.chat-user-bubble::selection,
-.chat-user-bubble *::selection {
-  background-color: rgba(128, 128, 128, 0.35) !important;
-  color: inherit !important;
-  -webkit-text-fill-color: inherit !important;
-}
-
-.chat-user-bubble::-moz-selection,
-.chat-user-bubble *::-moz-selection {
-  background-color: rgba(128, 128, 128, 0.35) !important;
-  color: inherit !important;
-}
-
-/* Dark-mode overrides for hardcoded markdown/editor colors */
-[data-theme='dark'] .markdown-content pre,
+/* Dark-mode overrides for hardcoded editor colors */
 [data-theme='dark'] .app-note-editor pre {
   background: var(--surface-subtle);
   color: var(--foreground);
 }
 
-[data-theme='dark'] .markdown-content code,
 [data-theme='dark'] .app-note-editor code {
   background: var(--surface-subtle);
   color: var(--foreground);
 }
 
-[data-theme='dark'] .markdown-content blockquote,
 [data-theme='dark'] .app-note-editor blockquote {
   border-left-color: var(--border);
   color: var(--muted);
 }
 
-[data-theme='dark'] .markdown-content h5,
-[data-theme='dark'] .markdown-content h6,
 [data-theme='dark'] .app-note-editor h5,
 [data-theme='dark'] .app-note-editor h6 {
   color: var(--muted);
 }
 
-[data-theme='dark'] .markdown-content hr,
 [data-theme='dark'] .app-note-editor hr {
   border-top-color: var(--border);
 }
 
-[data-theme='dark'] .markdown-content a,
 [data-theme='dark'] .app-note-editor a {
   color: var(--foreground);
 }
