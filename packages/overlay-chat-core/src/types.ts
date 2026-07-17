@@ -84,6 +84,16 @@ export type AssistantVisualBlock =
     }
   | { kind: 'text'; text: string }
   | { kind: 'file'; url: string; mediaType?: string }
+  | {
+      kind: 'source'
+      id: string
+      sourceKind: 'url' | 'document'
+      sourceId: string
+      url?: string
+      title?: string
+      mediaType?: string
+      filename?: string
+    }
   | { kind: 'generated-ui'; part: GeneratedUiPart }
   | { kind: 'reasoning'; key: string; text: string; state?: string }
 

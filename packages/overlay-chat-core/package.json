@@ -20,12 +20,13 @@
     "./sources": "./src/sources.ts",
     "./state": "./src/state.ts",
     "./tool-labels": "./src/tool-labels.ts",
+    "./transcript-view": "./src/transcript-view.ts",
     "./turns": "./src/turns.ts",
     "./types": "./src/types.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/**/*.test.mjs"
+    "test": "tsx --test src/**/*.test.ts"
   },
   "devDependencies": {
     "typescript": "^5"
