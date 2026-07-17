@@ -13,6 +13,7 @@ import type {
   AttachmentPreview,
   AttachmentPreviewOpenOptions,
   GeneratedUiConnectorActions,
+  ChatTranscriptPresentation,
 } from '@overlay/chat-react'
 import { normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
 import {
@@ -74,6 +75,7 @@ type TextChatMessageProps = CommonMessageProps & {
   onContinue: () => void
   onGeneratedUiChange: (messageId: string, partId: string, data: GeneratedUiData) => void
   generatedUiConnectorActions?: GeneratedUiConnectorActions
+  presentation?: Partial<ChatTranscriptPresentation>
 }
 
 export type ChatMessageProps = ComponentProps<typeof ChatMediaMessage> | TextChatMessageProps
@@ -257,6 +259,7 @@ function TextChatMessage(props: TextChatMessageProps) {
       getModelDisplayName={getChatModelDisplayName}
       onGeneratedUiChange={responseMessageId ? (partId, data) => props.onGeneratedUiChange(responseMessageId, partId, data) : undefined}
       generatedUiConnectorActions={props.generatedUiConnectorActions}
+      presentation={props.presentation}
     />
   )
 }

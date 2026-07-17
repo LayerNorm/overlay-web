@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode, RefObject } from 'react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { WebSourceItem } from '@/shared/web/web-sources'
@@ -11,10 +11,13 @@ import type {
   AttachmentPreviewOpenOptions,
   GeneratedUiConnectorActions,
 } from '@overlay/chat-react'
+import { ChatTranscript, type ChatTranscriptPresentation } from '@overlay/chat-react/transcript'
+import type { ChatTranscriptExchangeView } from '@overlay/chat-core'
 import type { DraftModalState, GenerationResult } from './chat-interface/types'
 import { streamingReservedSpacerHeight } from '../lib/constrain-streaming-scroll'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { ChatMessage } from './ChatMessage'
+import { toChatTranscriptView } from './chat/toChatTranscriptView'
 
 type ChatInstance = UseChatHelpers<UIMessage>
 
@@ -144,23 +147,57 @@ function ChatMessages({
   actions,
 }: Pick<ChatMessageListProps, 'state' | 'runtime' | 'actions'>) {
   recordRender('ChatMessages(list)')
-  const blocks: ReactNode[] = []
-  let exchangeIndex = 0
+  const userMessages = useMemo(
+    () => state.primaryMessages.filter((message) => message.role === 'user'),
+    [state.primaryMessages],
+  )
+  const transcriptView = useMemo(
+    () => toChatTranscriptView({
+      primaryMessages: state.primaryMessages,
+      exchangeModes: state.exchangeModes,
+      exchangeModels: state.exchangeModels,
+      selectedTabPerExchange: state.selectedTabPerExchange,
+      selectedModels: state.selectedModels,
+      exchangeGenTypes: state.exchangeGenTypes,
+      generationResults: state.generationResults,
+      latestExchangeIndex: state.latestExchangeIndex,
+      isActiveLoading: runtime.isActiveLoading,
+      isOptimisticLoading: runtime.isOptimisticLoading,
+      interruptedExchangeIdx: runtime.interruptedExchangeIdx,
+      getResponseForExchangeForModel: runtime.getResponseForExchangeForModel,
+    }),
+    [
+      runtime.getResponseForExchangeForModel,
+      runtime.interruptedExchangeIdx,
+      runtime.isActiveLoading,
+      runtime.isOptimisticLoading,
+      state.exchangeGenTypes,
+      state.exchangeModels,
+      state.exchangeModes,
+      state.generationResults,
+      state.latestExchangeIndex,
+      state.primaryMessages,
+      state.selectedModels,
+      state.selectedTabPerExchange,
+    ],
+  )
 
-  for (const message of state.primaryMessages) {
-    if (message.role !== 'user') continue
-    const currentExchangeIndex = exchangeIndex++
-    const generationType = state.exchangeGenTypes[currentExchangeIndex]
+  const renderExchange = useCallback((
+    exchange: ChatTranscriptExchangeView,
+    presentation: ChatTranscriptPresentation,
+  ) => {
+    const message = userMessages[exchange.index]
+    if (!message) return null
+    const generationType = exchange.generationMode
 
     if (generationType === 'image' || generationType === 'video') {
-      blocks.push(
+      return (
         <ChatMessage
-          key={message.id}
           kind={generationType}
           message={message}
-          exchangeIndex={currentExchangeIndex}
-          generationResults={state.generationResults.get(currentExchangeIndex)}
-          exchangeModels={state.exchangeModels[currentExchangeIndex] ?? []}
+          exchangeIndex={exchange.index}
+          generationResults={state.generationResults.get(exchange.index)}
+          exchangeModels={state.exchangeModels[exchange.index] ?? []}
           selectedImageModels={state.selectedImageModels}
           selectedVideoModels={state.selectedVideoModels}
           exitingTurnIds={runtime.exitingTurnIds}
@@ -168,17 +205,15 @@ function ChatMessages({
           onDeleteTurn={actions.onDeleteTurn}
           onReplyToMediaPrompt={actions.onReplyToMediaPrompt}
           onOpenAttachmentPreview={actions.onOpenAttachmentPreview}
-        />,
+        />
       )
-      continue
     }
 
-    blocks.push(
+    return (
       <ChatMessage
-        key={message.id}
         kind="text"
         message={message}
-        exchangeIndex={currentExchangeIndex}
+        exchangeIndex={exchange.index}
         primaryMessages={state.primaryMessages}
         latestExchangeIndex={state.latestExchangeIndex}
         actChat={runtime.actChat}
@@ -207,11 +242,18 @@ function ChatMessages({
         onContinue={actions.onContinue}
         onGeneratedUiChange={actions.onGeneratedUiChange}
         generatedUiConnectorActions={actions.generatedUiConnectorActions}
-      />,
+        presentation={presentation}
+      />
     )
-  }
+  }, [actions, runtime, state, userMessages])
+  const transcriptActions = useMemo(() => ({ renderExchange }), [renderExchange])
 
-  return blocks
+  return (
+    <ChatTranscript
+      view={transcriptView}
+      actions={transcriptActions}
+    />
+  )
 }
 
 function ChatMessageListSkeleton() {

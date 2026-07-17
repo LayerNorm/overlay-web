@@ -9,7 +9,8 @@ import {
   type ChatParityTextScenario,
 } from "@overlay/chat-core/parity-fixtures";
 import {
-  ExchangeBlock,
+  ChatExchange,
+  DEFAULT_CHAT_TRANSCRIPT_PRESENTATION,
   getPerfDebugSnapshot,
   resetPerfDebugSnapshot,
   type PerfDebugSnapshot,
@@ -137,7 +138,7 @@ function WebTextFixture({
   index: number;
 }) {
   return (
-    <ExchangeBlock
+    <ChatExchange
       userMsgId={`fixture-user-${scenario.id}`}
       userBodyText={scenario.userText}
       userDocumentNames={scenario.userDocuments}
@@ -182,6 +183,7 @@ function WebTextFixture({
         openExternalUrl: () => undefined,
       }}
       onGeneratedUiChange={() => undefined}
+      presentation={DEFAULT_CHAT_TRANSCRIPT_PRESENTATION}
     />
   );
 }

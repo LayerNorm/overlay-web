@@ -46,7 +46,7 @@ export interface WebChatTranscriptAdapterInput {
   getResponseForExchangeForModel: (
     modelId: string,
     exchangeIndex: number,
-    slotOrder?: readonly string[],
+    slotOrder?: string[],
   ) => UIMessage | null
   getResponseRuntime?: (
     modelId: string,

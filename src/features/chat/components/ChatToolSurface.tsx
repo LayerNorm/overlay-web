@@ -1,10 +1,10 @@
 'use client'
 
-import { ExchangeBlock } from '@overlay/chat-react/exchange-block'
+import { ChatExchange } from '@overlay/chat-react/transcript'
 import type { ComponentProps } from 'react'
 
-type ChatToolSurfaceProps = ComponentProps<typeof ExchangeBlock>
+type ChatToolSurfaceProps = ComponentProps<typeof ChatExchange>
 
 export function ChatToolSurface(props: ChatToolSurfaceProps) {
-  return <ExchangeBlock {...props} />
+  return <ChatExchange {...props} />
 }

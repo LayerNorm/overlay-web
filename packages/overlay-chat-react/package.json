@@ -19,11 +19,13 @@
     "./model-indicators": "./src/components/ModelIndicators.tsx",
     "./model-qualities-panel": "./src/components/ModelQualitiesPanel.tsx",
     "./sources-panel": "./src/components/SourcesPanel.tsx",
+    "./transcript": "./src/components/transcript/index.ts",
     "./chat-surface.css": "./src/styles/chat-surface.css",
     "./styles.css": "./src/styles/overlay-theme.css"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "TSX_TSCONFIG_PATH=tsconfig.json node --import tsx --test src/**/*.test.tsx"
   },
   "dependencies": {
     "@overlay/chat-core": "file:../overlay-chat-core",
