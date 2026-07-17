@@ -12,8 +12,6 @@ import {
 
 const SPECIAL_CHAT_MODELS: ChatModel[] = [
   { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
-  { id: 'openrouter/moonshotai/kimi-k2.6:free', name: 'Free: Kimi K2.6', provider: 'openrouter', intelligence: 0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
-  { id: 'openrouter/z-ai/glm-4.5-air:free', name: 'Free: GLM 4.5 Air', provider: 'openrouter', intelligence: 0, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
   { id: 'openrouter/nvidia/nemotron-3-super-120b-a12b:free', name: 'Free: Nemotron 3 Super 120B', provider: 'openrouter', intelligence: 0, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
   { id: 'stepfun-ai/step-3.5-flash', name: 'Free: Step 3.5 Flash', provider: 'nvidia', intelligence: 0, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
 ]
@@ -112,9 +110,7 @@ export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'openai/gpt-oss-120b',
   'nvidia/nemotron-nano-9b-v2',
   'minimax/minimax-m2.7',
-  'openrouter/moonshotai/kimi-k2.6:free',
   'stepfun-ai/step-3.5-flash',
-  'openrouter/z-ai/glm-4.5-air:free',
   'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
   FREE_TIER_AUTO_MODEL_ID,
 ]
@@ -145,6 +141,7 @@ const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
   'gemini-2.5-flash-lite': 'google/gemma-4-26b-a4b-it',
   'zai/glm-5.1': 'z-ai/glm-5.1',
   'alibaba/qwen3.6-plus': 'qwen/qwen3.6-plus',
+  'openrouter/moonshotai/kimi-k2.6:free': FREE_TIER_DEFAULT_MODEL_ID,
   'openrouter/z-ai/glm-4.5-air:free': FREE_TIER_DEFAULT_MODEL_ID,
   'openrouter/inclusionai/ring-2.6-1t:free': FREE_TIER_DEFAULT_MODEL_ID,
   'openrouter/deepseek/deepseek-v4-flash:free': FREE_TIER_DEFAULT_MODEL_ID,

@@ -52,6 +52,7 @@ export const FREE_TIER_DEFAULT_MODEL_ID = FREE_TIER_AUTO_MODEL_ID
 export const PAID_TIER_DEFAULT_MODEL_ID = 'moonshotai/kimi-k2.6' as const
 // Retired free IDs stay here only so saved user preferences migrate to the current default.
 export const FREE_TIER_LEGACY_DEFAULT_MODEL_IDS = [
+  'openrouter/moonshotai/kimi-k2.6:free',
   'openrouter/z-ai/glm-4.5-air:free',
   'openrouter/inclusionai/ring-2.6-1t:free',
   'openrouter/deepseek/deepseek-v4-flash:free',
@@ -65,8 +66,6 @@ export const NVIDIA_NIM_MODEL_IDS = [
 ] as const
 
 export const FREE_TIER_OPENROUTER_MODEL_IDS = [
-  'openrouter/moonshotai/kimi-k2.6:free',
-  'openrouter/z-ai/glm-4.5-air:free',
   'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
 ] as const
 

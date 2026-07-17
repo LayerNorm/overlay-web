@@ -24,9 +24,7 @@ export const CHAT_MODEL_QUALITY_PRIORITY: readonly string[] = [
   'openai/gpt-oss-120b',
   'nvidia/nemotron-nano-9b-v2',
   'minimax/minimax-m2.7',
-  'openrouter/moonshotai/kimi-k2.6:free',
   'stepfun-ai/step-3.5-flash',
-  'openrouter/z-ai/glm-4.5-air:free',
   'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
   FREE_TIER_AUTO_MODEL_ID,
 ]

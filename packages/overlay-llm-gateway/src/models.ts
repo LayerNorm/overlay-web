@@ -47,16 +47,12 @@ const MODEL_DEFINITIONS: readonly MinimalModelDefinition[] = [
   ['openai/gpt-oss-120b', 'GPT OSS 120B', 'groq', false, true],
   ['nvidia/nemotron-nano-9b-v2', 'Nemotron Nano 9B', 'nvidia'],
   [FREE_TIER_AUTO_MODEL_ID, 'Free Router', 'openrouter', true, true],
-  ['openrouter/moonshotai/kimi-k2.6:free', 'Free: Kimi K2.6', 'openrouter', true, true],
-  ['openrouter/z-ai/glm-4.5-air:free', 'Free: GLM 4.5 Air', 'openrouter', false, true],
   ['openrouter/nvidia/nemotron-3-super-120b-a12b:free', 'Free: Nemotron 3 Super 120B', 'openrouter', false, true],
   ['stepfun-ai/step-3.5-flash', 'Free: Step 3.5 Flash', 'nvidia', false, true],
 ]
 
 const FREE_MODEL_IDS = new Set([
   FREE_TIER_AUTO_MODEL_ID,
-  'openrouter/moonshotai/kimi-k2.6:free',
-  'openrouter/z-ai/glm-4.5-air:free',
   'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
   'stepfun-ai/step-3.5-flash',
 ])

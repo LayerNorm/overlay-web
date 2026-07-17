@@ -23,8 +23,8 @@ test('lists model info without package-internal ranking fields', () => {
 test('maps Overlay OpenRouter registry ids to OpenRouter API ids', () => {
   assert.equal(toOpenRouterApiModelId('openrouter/free'), 'openrouter/free')
   assert.equal(
-    toOpenRouterApiModelId('openrouter/moonshotai/kimi-k2.6:free'),
-    'moonshotai/kimi-k2.6:free',
+    toOpenRouterApiModelId('openrouter/nvidia/nemotron-3-super-120b-a12b:free'),
+    'nvidia/nemotron-3-super-120b-a12b:free',
   )
 })
 

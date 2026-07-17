@@ -112,8 +112,8 @@ test('runActModelAttempts describes the full budget fallback chain', async () =>
   const events: string[] = []
   const result = await runActModelAttempts<string>({
     attemptModelIds: [
-      'openrouter/moonshotai/kimi-k2.6:free',
-      'openrouter/z-ai/glm-4.5-air:free',
+      'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
+      'openrouter/free',
       'stepfun-ai/step-3.5-flash',
     ],
     reserveBudgetForAttempt: async (attemptModelId) => {
@@ -136,8 +136,8 @@ test('runActModelAttempts describes the full budget fallback chain', async () =>
 
   assert.equal(result, 'ok')
   assert.deepEqual(events, [
-    'fallback:openrouter/z-ai/glm-4.5-air:free->stepfun-ai/step-3.5-flash:openrouter/moonshotai/kimi-k2.6:free,openrouter/z-ai/glm-4.5-air:free',
-    'run:stepfun-ai/step-3.5-flash:Free: Kimi K2.6 and Free Router exceeded remaining budget, switching to Free: Step 3.5 Flash.',
+    'fallback:openrouter/free->stepfun-ai/step-3.5-flash:openrouter/nvidia/nemotron-3-super-120b-a12b:free,openrouter/free',
+    'run:stepfun-ai/step-3.5-flash:Free: Nemotron 3 Super 120B and Free Router exceeded remaining budget, switching to Free: Step 3.5 Flash.',
   ])
 })
 
