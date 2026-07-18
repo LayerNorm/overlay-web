@@ -14,6 +14,9 @@ test('tool rail uses the host-provided Overlay logo URL', () => {
   )
 
   assert.match(markup, /src="app:\/\/overlay-logo\.png"/)
+  assert.match(markup, /width="18"/)
+  assert.match(markup, /height="18"/)
+  assert.match(markup, /size-\[18px\]/)
 })
 
 test('tool rail retains the web logo fallback', () => {

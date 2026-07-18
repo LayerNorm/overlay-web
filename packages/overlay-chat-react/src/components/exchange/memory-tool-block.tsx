@@ -87,7 +87,7 @@ export function MemoryToolBlock({
         </div>
         {hasDetails ? (
           <div
-            className={`ml-[26px] overflow-hidden transition-[max-height] duration-300 ${
+            className={`ml-7 overflow-hidden transition-[max-height] duration-300 ${
               showDetails ? 'max-h-[min(42vh,304px)] pt-2' : 'max-h-0'
             }`}
           >

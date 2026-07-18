@@ -1,4 +1,14 @@
 import type { AssistantVisualBlock, ChatExchangeStatus } from '@overlay/chat-core'
+import React from 'react'
+
+export const EXCHANGE_LOADING_LABELS = [
+  'Thinking…',
+  'Contemplating…',
+  'Comprehending…',
+  'Reasoning…',
+  'Pondering…',
+  'Considering…',
+] as const
 
 const ACTIVE_EXCHANGE_STATUSES = new Set<ChatExchangeStatus>([
   'submitted',
@@ -42,16 +52,28 @@ export function ExchangeLoadingState({
   const compact = presentation.marker === 'compact'
   return (
     <div
-      className={`flex items-center px-1 ${compact ? 'min-h-5 py-1' : 'min-h-7 py-2'}`}
+      className={`flex items-center px-1 ${compact ? 'min-h-5 py-1' : 'min-h-8 gap-2.5 py-2'}`}
       aria-live="polite"
       aria-busy="true"
+      aria-label={compact ? 'Response still generating' : 'Thinking'}
+      role="status"
       data-loading-presentation={presentation.marker}
     >
       <span
         className={`overlay-stream-marker overlay-stream-marker--standalone${compact ? ' scale-75 opacity-80' : ''}`}
-        aria-label={compact ? 'Response still generating' : 'Response loading'}
-        role="img"
+        aria-hidden="true"
       />
+      {!compact ? (
+        <span className="overlay-loading-word-viewport" aria-hidden="true">
+          <span className="overlay-loading-word-track">
+            {[...EXCHANGE_LOADING_LABELS, EXCHANGE_LOADING_LABELS[0]].map((label, index) => (
+              <span className="overlay-loading-word" key={`${label}-${index}`}>
+                {label}
+              </span>
+            ))}
+          </span>
+        </span>
+      ) : null}
     </div>
   )
 }

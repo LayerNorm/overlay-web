@@ -75,6 +75,7 @@ type ChatMessageListProps = {
   floatingControl?: ReactNode
   showLoadingState: boolean
   reserveLatestExchangeStartSpace?: boolean
+  transcriptKey?: string | null
   state: ChatMessageListState
   runtime: ChatMessageListRuntime
   actions: ChatMessageListActions
@@ -86,6 +87,7 @@ export function ChatMessageList({
   floatingControl,
   showLoadingState,
   reserveLatestExchangeStartSpace = false,
+  transcriptKey,
   state,
   runtime,
   actions,
@@ -99,6 +101,7 @@ export function ChatMessageList({
     endRef: messagesEndRef,
     submittedTurnCount,
     active: reserveLatestExchangeStartSpace,
+    transcriptKey,
   })
 
   return (
@@ -118,11 +121,11 @@ export function ChatMessageList({
             />
           )}
           <div ref={messagesEndRef} className="h-px shrink-0" />
-          {reserveLatestExchangeStartSpace ? (
+          {reservedSpace !== null ? (
             <div
               aria-hidden
               className="shrink-0"
-              style={{ height: reservedSpace ?? undefined }}
+              style={{ height: reservedSpace }}
             />
           ) : null}
         </div>

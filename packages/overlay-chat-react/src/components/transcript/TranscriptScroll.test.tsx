@@ -6,6 +6,8 @@ import {
 } from './ChatTranscript'
 import {
   isTranscriptNearBottom,
+  submittedExchangeReservedSpace,
+  submittedExchangeScrollTop,
   streamingTranscriptReservedSpace,
   streamingTranscriptTailHeight,
   transcriptDistanceFromBottom,
@@ -35,4 +37,23 @@ test('active transcript tail reserve scales and clamps with the viewport', () =>
   assert.equal(streamingTranscriptTailHeight(1_000), 200)
   assert.equal(streamingTranscriptTailHeight(2_000), 240)
   assert.equal(streamingTranscriptReservedSpace(1_000), 800)
+})
+
+test('submitted exchange reserve shrinks as the response grows without moving its start', () => {
+  assert.equal(submittedExchangeReservedSpace(800, 64), 720)
+  assert.equal(submittedExchangeReservedSpace(800, 784), 0)
+  assert.equal(submittedExchangeReservedSpace(800, 900), 0)
+})
+
+test('submitted exchange top alignment is one-shot and independent of response height', () => {
+  assert.equal(submittedExchangeScrollTop({
+    containerTop: 100,
+    exchangeTop: 640,
+    currentScrollTop: 300,
+  }), 824)
+  assert.equal(submittedExchangeScrollTop({
+    containerTop: 100,
+    exchangeTop: 108,
+    currentScrollTop: 0,
+  }), 0)
 })

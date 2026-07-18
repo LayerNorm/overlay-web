@@ -926,21 +926,11 @@ export default function ChatExperience({
         `[data-exchange-turn="${CSS.escape(turnId)}"]`,
       )
       if (!target) return
-
-      const containerRect = container.getBoundingClientRect()
-      const targetRect = target.getBoundingClientRect()
-      const targetTop = targetRect.top - containerRect.top + container.scrollTop
-      const desiredTop = Math.max(0, targetTop - 16)
-      const maxTop = Math.max(0, container.scrollHeight - container.clientHeight)
-      const nextTop = Math.min(desiredTop, maxTop)
-      container.scrollTo({
-        top: nextTop,
-        behavior: 'smooth',
-      })
-      if (desiredTop <= maxTop + 2 || (!isActiveLoading && !isOptimisticLoading)) {
-        pendingScrollTurnIdRef.current = null
-        pendingScrollChatIdRef.current = null
-      }
+      // The shared transcript hook performs the single top-alignment. These
+      // refs only suppress the older send-to-bottom path until the optimistic
+      // exchange is mounted; streaming updates must never move the viewport.
+      pendingScrollTurnIdRef.current = null
+      pendingScrollChatIdRef.current = null
     })
     return () => window.cancelAnimationFrame(scrollFrame)
   }, [
@@ -1858,6 +1848,7 @@ export default function ChatExperience({
               ) : null,
               showLoadingState: showChatLoadingState,
               reserveLatestExchangeStartSpace,
+              transcriptKey: activeChatId ?? (isTemporaryChat ? 'temporary-chat' : null),
               state: {
                 primaryMessages,
                 latestExchangeIndex: latestExchIdx,

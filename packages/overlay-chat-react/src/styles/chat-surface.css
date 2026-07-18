@@ -409,6 +409,39 @@
   }
 }
 
+/* Loading copy advances like a compact mechanical reel: most of each beat is
+   still, with a short upward transition between words. The duplicated final
+   word makes the loop seam visually identical to its first frame. */
+@keyframes overlayChatLoadingWordReel {
+  0%,
+  14.3% {
+    transform: translate3d(0, 0, 0);
+  }
+  16.667%,
+  30.967% {
+    transform: translate3d(0, -1.25rem, 0);
+  }
+  33.333%,
+  47.633% {
+    transform: translate3d(0, -2.5rem, 0);
+  }
+  50%,
+  64.3% {
+    transform: translate3d(0, -3.75rem, 0);
+  }
+  66.667%,
+  80.967% {
+    transform: translate3d(0, -5rem, 0);
+  }
+  83.333%,
+  97.633% {
+    transform: translate3d(0, -6.25rem, 0);
+  }
+  100% {
+    transform: translate3d(0, -7.5rem, 0);
+  }
+}
+
 :where(.overlay-chat-surface) .overlay-stream-marker {
   display: inline-block;
   width: 0.95em;
@@ -434,11 +467,37 @@
   .markdown-content--streaming
   > .overlay-stream-marker:only-child {
   margin-left: 0;
-  width: 1rem;
-  height: 1rem;
-  min-width: 16px;
-  min-height: 16px;
+  width: 1.25rem;
+  height: 1.25rem;
+  min-width: 20px;
+  min-height: 20px;
   vertical-align: middle;
+}
+
+:where(.overlay-chat-surface) .overlay-loading-word-viewport {
+  display: inline-block;
+  height: 1.25rem;
+  min-width: 8.75rem;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 450;
+  line-height: 1.25rem;
+  vertical-align: middle;
+}
+
+:where(.overlay-chat-surface) .overlay-loading-word-track {
+  display: flex;
+  flex-direction: column;
+  will-change: transform;
+  animation: overlayChatLoadingWordReel 10s cubic-bezier(0.77, 0, 0.175, 1) infinite;
+}
+
+:where(.overlay-chat-surface) .overlay-loading-word {
+  display: block;
+  height: 1.25rem;
+  flex: 0 0 1.25rem;
+  white-space: nowrap;
 }
 
 /* Pointer hover is an enhancement. Keyboard focus and touch/coarse-pointer
@@ -669,6 +728,11 @@
     .markdown-content--streaming
     .overlay-stream-marker {
     animation: overlayChatStreamMarkerReducedPulse 1.8s ease-in-out infinite;
+    transform: none;
+  }
+
+  :where(.overlay-chat-surface) .overlay-loading-word-track {
+    animation: none;
     transform: none;
   }
 

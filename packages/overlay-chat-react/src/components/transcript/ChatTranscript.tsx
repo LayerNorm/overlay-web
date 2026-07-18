@@ -35,8 +35,8 @@ export const APPROVED_CLASS_B_WEB_DIFFERENCES = [
   },
   {
     id: 'intent-preserving-autoscroll',
-    before: 'Streaming growth did not consistently follow the tail near the bottom.',
-    after: 'Streaming follows only near the bottom; a new submitted turn always follows.',
+    before: 'Streaming growth could pull the viewport back toward the composer.',
+    after: 'A submitted turn is aligned near the top once; streaming then grows without moving the viewport.',
   },
 ] as const
 
