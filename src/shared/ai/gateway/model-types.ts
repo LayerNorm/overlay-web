@@ -69,6 +69,11 @@ export const FREE_TIER_OPENROUTER_MODEL_IDS = [
   'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
 ] as const
 
+export type FreeTierChatModelId =
+  | typeof FREE_TIER_AUTO_MODEL_ID
+  | (typeof NVIDIA_NIM_MODEL_IDS)[number]
+  | (typeof FREE_TIER_OPENROUTER_MODEL_IDS)[number]
+
 export function isNvidiaNimChatModelId(modelId: string): boolean {
   return (NVIDIA_NIM_MODEL_IDS as readonly string[]).includes(modelId)
 }
@@ -81,7 +86,9 @@ export function isLegacyFreeTierDefaultModelId(modelId: string | undefined): mod
   return Boolean(modelId && (FREE_TIER_LEGACY_DEFAULT_MODEL_IDS as readonly string[]).includes(modelId))
 }
 
-export function isFreeTierChatModelId(modelId: string | undefined): modelId is string {
+export function isFreeTierChatModelId(
+  modelId: string | undefined,
+): modelId is FreeTierChatModelId {
   return Boolean(
     modelId &&
       (modelId === FREE_TIER_AUTO_MODEL_ID ||

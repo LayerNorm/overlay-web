@@ -185,3 +185,59 @@ test('equivalent web and desktop deterministic fixtures produce the same transcr
 
   assert.deepEqual(desktopView, webView)
 })
+
+test('99 completed web exchanges stay stable while the 100th receives 100 stream chunks', () => {
+  const adapt = createWebChatTranscriptAdapter()
+  const exchangeCount = 100
+  const activeIndex = exchangeCount - 1
+  const users = Array.from({ length: exchangeCount }, (_, index) =>
+    message({
+      id: `user-${index}`,
+      turnId: `turn-${index}`,
+      role: 'user',
+      parts: [{ type: 'text', text: `Prompt ${index}` }],
+    }),
+  )
+  const responses: UIMessage[] = Array.from({ length: exchangeCount }, (_, index) =>
+    message({
+      id: `assistant-${index}`,
+      role: 'assistant',
+      status: index === activeIndex ? 'generating' : 'completed',
+      parts: [{ type: 'text', text: index === activeIndex ? '' : `Answer ${index}` }],
+    }),
+  )
+  const exchangeModes: Array<'ask'> = Array.from({ length: exchangeCount }, () => 'ask')
+  const exchangeModels = Array.from({ length: exchangeCount }, () => ['parity-model'])
+  const selectedTabs = Array.from({ length: exchangeCount }, () => 0)
+  const getResponse = (_modelId: string, exchangeIndex: number) =>
+    responses[exchangeIndex] ?? null
+  const input = () => ({
+    primaryMessages: users,
+    exchangeModes,
+    exchangeModels,
+    selectedTabPerExchange: selectedTabs,
+    selectedModels: ['parity-model'],
+    latestExchangeIndex: activeIndex,
+    isActiveLoading: true,
+    getResponseForExchangeForModel: getResponse,
+  })
+
+  let previous = adapt(input())
+  const completed = previous.exchanges.slice(0, activeIndex)
+  assert.equal(previous.exchanges.length, exchangeCount)
+
+  for (let chunk = 1; chunk <= 100; chunk += 1) {
+    responses[activeIndex] = message({
+      id: `assistant-${activeIndex}`,
+      role: 'assistant',
+      status: 'generating',
+      parts: [{ type: 'text', text: `chunk-${chunk}` }],
+    })
+    const next = adapt(input())
+    for (let index = 0; index < activeIndex; index += 1) {
+      assert.equal(next.exchanges[index], completed[index])
+    }
+    assert.notEqual(next.exchanges[activeIndex], previous.exchanges[activeIndex])
+    previous = next
+  }
+})

@@ -15,5 +15,17 @@
     "ChatExchange": 2,
     "ChatTranscript": 2,
     "MarkdownMessage": 2
+  },
+  "stressFixture": {
+    "exchangeCount": 100,
+    "streamChunkCount": 100,
+    "completedExchangeIdentityChanges": {
+      "web": 0,
+      "desktop": 0
+    },
+    "activeExchangeIdentityChanges": {
+      "web": 100,
+      "desktop": 100
+    }
   }
 }

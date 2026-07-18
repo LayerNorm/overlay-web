@@ -36,6 +36,15 @@ The gallery includes rich Markdown, reasoning, sequential tools, generated UI,
 multi-model text, loading, streaming, interruption/error, completed and loading
 images, and completed/failed videos.
 
+## Performance evidence
+
+`render-counts.json` records the current `ChatTranscript`, `ChatExchange`, and
+`MarkdownMessage` Strict Mode mount counts for fixture version `2026-07-17.3`.
+It also records the executable 100-exchange stress gate: the first 99 completed
+exchanges retain identity while the final exchange receives 100 stream chunks.
+The web and desktop adapter tests enforce zero completed-exchange identity
+changes and 100 active-exchange updates.
+
 ## Capture rules
 
 - Capture with Chromium through the bundled Playwright CLI.
