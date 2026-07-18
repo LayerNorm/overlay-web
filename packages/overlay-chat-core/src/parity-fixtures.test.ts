@@ -27,6 +27,11 @@ test("parity fixtures never depend on live or mutable URLs", () => {
 
 test("parity fixtures cover loading, streaming, errors, image, and video states", () => {
   assert.ok(
+    CHAT_PARITY_TEXT_SCENARIOS.some(
+      (scenario) => (scenario.responseVariants?.length ?? 0) > 1,
+    ),
+  );
+  assert.ok(
     CHAT_PARITY_TEXT_SCENARIOS.some((scenario) => scenario.responseInProgress),
   );
   assert.ok(

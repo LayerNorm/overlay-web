@@ -1,6 +1,6 @@
 import type { AssistantVisualBlock, GenerationResult } from "./types";
 
-export const CHAT_PARITY_FIXTURE_VERSION = "2026-07-17.1" as const;
+export const CHAT_PARITY_FIXTURE_VERSION = "2026-07-17.2" as const;
 export const CHAT_PARITY_FIXTURE_TIMESTAMP = 1_721_177_600_000;
 
 const fixtureSvg = `
@@ -34,6 +34,12 @@ export type ChatParityTextScenario = {
   userMentions: Array<{ type: string; id: string; name: string }>;
   replyThreadMeta: { replyToTurnId: string; replySnippet: string } | null;
   assistantBlocks: AssistantVisualBlock[];
+  responseVariants?: Array<{
+    modelId: string;
+    modelName: string;
+    assistantBlocks: AssistantVisualBlock[];
+  }>;
+  selectedResponseIndex?: number;
   isStreaming: boolean;
   isTextStreaming: boolean;
   responseInProgress: boolean;
@@ -107,6 +113,51 @@ export const CHAT_PARITY_TEXT_SCENARIOS: readonly ChatParityTextScenario[] = [
         "Please include the table and the final verification equation.",
     },
     assistantBlocks: [{ kind: "text", text: richMarkdown }],
+    isStreaming: false,
+    isTextStreaming: false,
+    responseInProgress: false,
+    errorMessage: null,
+    interrupted: false,
+  },
+  {
+    id: "multi-model-text",
+    title: "Multi-model text responses",
+    description:
+      "Response tabs stay inside their exchange and switch the selected assistant presentation.",
+    userText: "Compare the two rollout recommendations.",
+    userDocuments: [],
+    userImages: [],
+    userMentions: [],
+    replyThreadMeta: null,
+    assistantBlocks: [
+      {
+        kind: "text",
+        text: "## Beta recommendation\n\nShip to the internal cohort first, then expand after the parity checks pass.",
+      },
+    ],
+    responseVariants: [
+      {
+        modelId: "openai/gpt-5.2",
+        modelName: "GPT-5.2",
+        assistantBlocks: [
+          {
+            kind: "text",
+            text: "## Alpha recommendation\n\nShip broadly after one final smoke test.",
+          },
+        ],
+      },
+      {
+        modelId: "anthropic/claude-sonnet-4.5",
+        modelName: "Claude Sonnet 4.5",
+        assistantBlocks: [
+          {
+            kind: "text",
+            text: "## Beta recommendation\n\nShip to the internal cohort first, then expand after the parity checks pass.",
+          },
+        ],
+      },
+    ],
+    selectedResponseIndex: 1,
     isStreaming: false,
     isTextStreaming: false,
     responseInProgress: false,

@@ -137,6 +137,24 @@ function WebTextFixture({
   scenario: ChatParityTextScenario;
   index: number;
 }) {
+  const responseVariants = scenario.responseVariants?.length
+    ? scenario.responseVariants
+    : [
+        {
+          modelId: "openai/gpt-5.2",
+          modelName: "GPT-5.2",
+          assistantBlocks: scenario.assistantBlocks,
+        },
+      ];
+  const [requestedSelectedTab, setSelectedTab] = useState(
+    scenario.selectedResponseIndex ?? 0,
+  );
+  const selectedTab = Math.min(
+    requestedSelectedTab,
+    responseVariants.length - 1,
+  );
+  const selectedResponse = responseVariants[selectedTab]!;
+
   return (
     <ChatExchange
       userMsgId={`fixture-user-${scenario.id}`}
@@ -149,18 +167,18 @@ function WebTextFixture({
       userImages={scenario.userImages}
       userMentions={scenario.userMentions}
       exchIdx={index}
-      responseModelId="openai/gpt-5.2"
-      assistantVisualBlocks={[...scenario.assistantBlocks]}
+      responseModelId={selectedResponse.modelId}
+      assistantVisualBlocks={[...selectedResponse.assistantBlocks]}
       isStreaming={scenario.isStreaming}
       isTextStreaming={scenario.isTextStreaming}
       errorMessage={scenario.errorMessage}
-      exchModelList={["openai/gpt-5.2"]}
-      selectedTab={0}
-      onTabSelect={() => undefined}
+      exchModelList={responseVariants.map((response) => response.modelId)}
+      selectedTab={selectedTab}
+      onTabSelect={setSelectedTab}
       isLoadingTabs={false}
       responseInProgress={scenario.responseInProgress}
       turnIdForActions={`fixture-turn-${scenario.id}`}
-      modelLabel="GPT-5.2"
+      modelLabel={selectedResponse.modelName}
       onDeleteTurn={() => undefined}
       onReply={() => undefined}
       onBranch={() => undefined}
@@ -177,7 +195,10 @@ function WebTextFixture({
       onOpenFilePreview={() => undefined}
       onOpenAttachmentPreview={() => undefined}
       onContinue={scenario.interrupted ? () => undefined : undefined}
-      getModelDisplayName={() => "GPT-5.2"}
+      getModelDisplayName={(modelId) =>
+        responseVariants.find((response) => response.modelId === modelId)
+          ?.modelName ?? modelId
+      }
       generatedUiConnectorActions={{
         openEmailDraft: () => undefined,
         openExternalUrl: () => undefined,

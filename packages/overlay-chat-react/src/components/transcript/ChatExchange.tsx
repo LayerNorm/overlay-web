@@ -73,7 +73,7 @@ export interface ChatExchangeProps {
   modelLabel: string
   onDeleteTurn: () => void
   onReply: () => void
-  onBranch: () => void
+  onBranch?: () => void
   /** User stopped streaming for this exchange; show notice + footer actions. */
   interrupted?: boolean
   actionsLocked: boolean
@@ -83,7 +83,7 @@ export interface ChatExchangeProps {
   onOpenDraft: (state: DraftModalState) => void
   onCreateAutomationDraft: (state: AutomationDraftModalState) => void | Promise<void>
   /** Open the shared sources sidebar with these web sources (lifted to ChatInterface). */
-  onOpenSources: (turnId: string, sources: WebSourceItem[]) => void
+  onOpenSources?: (turnId: string, sources: WebSourceItem[]) => void
   /** Whether the shared sidebar is currently showing this exchange's sources. */
   isSourcesOpenForThis: boolean
   onRetry?: () => void
@@ -222,8 +222,10 @@ export function ChatExchange({
               return (
                 <button
                   key={mId}
+                  type="button"
                   onClick={() => !isLoadingTabs && onTabSelect(tabIdx)}
                   disabled={isLoadingTabs}
+                  aria-pressed={isActive}
                   className={`px-2.5 py-0.5 rounded-full text-xs transition-colors ${
                     isLoadingTabs ? 'cursor-not-allowed opacity-60' : ''
                   } ${

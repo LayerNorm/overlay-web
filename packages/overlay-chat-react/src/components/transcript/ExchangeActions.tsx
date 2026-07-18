@@ -9,11 +9,11 @@ export interface ExchangeActionsProps {
   retryDisabled: boolean
   onDeleteTurn: () => void
   onReply: () => void
-  onBranch: () => void
+  onBranch?: () => void
   turnIdForActions: string | null
   actionsLocked: boolean
   webSources: readonly WebSourceItem[]
-  onOpenSources: (turnId: string, sources: WebSourceItem[]) => void
+  onOpenSources?: (turnId: string, sources: WebSourceItem[]) => void
   userMsgId: string
   isSourcesOpenForThis: boolean
   modelLabel: string
@@ -80,17 +80,19 @@ export function ExchangeActions({
       >
         <Reply size={14} strokeWidth={1.75} />
       </button>
-      <button
-        type="button"
-        onClick={onBranch}
-        disabled={!turnIdForActions || actionsLocked || isExiting}
-        className="rounded-md p-1.5 text-[var(--muted)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30"
-        aria-label="Branch chat from here"
-        title="Branch chat from here"
-      >
-        <GitBranch size={14} strokeWidth={1.75} />
-      </button>
-      {webSources.length > 0 ? (
+      {onBranch ? (
+        <button
+          type="button"
+          onClick={onBranch}
+          disabled={!turnIdForActions || actionsLocked || isExiting}
+          className="rounded-md p-1.5 text-[var(--muted)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30"
+          aria-label="Branch chat from here"
+          title="Branch chat from here"
+        >
+          <GitBranch size={14} strokeWidth={1.75} />
+        </button>
+      ) : null}
+      {webSources.length > 0 && onOpenSources ? (
         <button
           type="button"
           onClick={() => onOpenSources(turnIdForActions ?? userMsgId, [...webSources])}
