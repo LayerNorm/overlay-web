@@ -1,6 +1,6 @@
 import type { AssistantVisualBlock, GenerationResult } from "./types";
 
-export const CHAT_PARITY_FIXTURE_VERSION = "2026-07-17.2" as const;
+export const CHAT_PARITY_FIXTURE_VERSION = "2026-07-17.3" as const;
 export const CHAT_PARITY_FIXTURE_TIMESTAMP = 1_721_177_600_000;
 
 const fixtureSvg = `

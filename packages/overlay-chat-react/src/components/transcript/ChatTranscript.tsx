@@ -5,13 +5,14 @@ import { recordRender } from '../../lib/perf-debug'
 export interface ChatTranscriptPresentation {
   density: 'comfortable' | 'compact'
   actionVisibility: 'always' | 'hover'
+  showActions: boolean
   showModelLabel: boolean
   maxContentWidth: string
 }
-
 export const DEFAULT_CHAT_TRANSCRIPT_PRESENTATION: ChatTranscriptPresentation = {
   density: 'comfortable',
   actionVisibility: 'hover',
+  showActions: true,
   showModelLabel: true,
   maxContentWidth: '56rem',
 }

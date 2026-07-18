@@ -1,6 +1,6 @@
 # @overlay/chat-react
 
-React components for the Overlay chat UI, including exchange blocks, generated UI cards, markdown rendering, and model indicators.
+React components for the Overlay chat UI, including the canonical transcript renderer, generated UI cards, markdown rendering, and model indicators.
 
 ## Install
 
@@ -13,7 +13,7 @@ npm install @overlay/chat-react
 ## Usage
 
 ```tsx
-import { ExchangeBlock } from '@overlay/chat-react'
+import { ChatTranscript } from "@overlay/chat-react/transcript";
 ```
 
 ## Documentation

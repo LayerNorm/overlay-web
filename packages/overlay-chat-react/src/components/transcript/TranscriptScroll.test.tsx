@@ -13,6 +13,7 @@ import {
 
 test('Class B defaults and approved web differences stay explicit', () => {
   assert.equal(DEFAULT_CHAT_TRANSCRIPT_PRESENTATION.actionVisibility, 'hover')
+  assert.equal(DEFAULT_CHAT_TRANSCRIPT_PRESENTATION.showActions, true)
   assert.deepEqual(
     APPROVED_CLASS_B_WEB_DIFFERENCES.map((difference) => difference.id),
     [
@@ -22,7 +23,6 @@ test('Class B defaults and approved web differences stay explicit', () => {
     ],
   )
 })
-
 test('near-bottom intent uses the shared threshold without negative distances', () => {
   assert.equal(transcriptDistanceFromBottom({ scrollHeight: 1_000, scrollTop: 700, clientHeight: 250 }), 50)
   assert.equal(transcriptDistanceFromBottom({ scrollHeight: 100, scrollTop: 20, clientHeight: 120 }), 0)

@@ -45,7 +45,6 @@ export type UserImageAttachment = {
   name: string
   mediaType?: string
 }
-
 export type AttachmentPreviewRequest = AttachmentPreview
 
 type AutomationDraftModalState = Extract<DraftModalState, { kind: 'automation' }>
@@ -111,7 +110,7 @@ export function ChatExchange({
   onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue, getModelDisplayName,
   generatedUiConnectorActions, onGeneratedUiChange, presentation,
 }: ChatExchangeProps) {
-    recordRender(isStreaming ? 'ExchangeBlock(streaming)' : 'ExchangeBlock')
+    recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
     const lastTextBlockIndex = (() => {
@@ -139,7 +138,9 @@ export function ChatExchange({
           : 'Response was interrupted.'
         : assistantPlainText
     const showFooter =
-      responseSettled && (assistantPlainText.length > 0 || !!errorMessage || interrupted)
+      presentation?.showActions !== false &&
+      responseSettled &&
+      (assistantPlainText.length > 0 || !!errorMessage || interrupted)
     const densityClass = presentation?.density === 'compact' ? 'gap-1' : 'gap-2'
     return (
       <div

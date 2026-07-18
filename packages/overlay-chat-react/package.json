@@ -12,7 +12,6 @@
   "exports": {
     ".": "./src/index.ts",
     "./draft-review-modal": "./src/components/DraftReviewModal.tsx",
-    "./exchange-block": "./src/components/ExchangeBlock.tsx",
     "./generated-ui-card": "./src/components/GeneratedUiCard.tsx",
     "./lazy-syntax-highlighter": "./src/components/LazySyntaxHighlighter.tsx",
     "./media-slot-output": "./src/components/MediaSlotOutput.tsx",
@@ -25,7 +24,8 @@
     "./styles.css": "./src/styles/overlay-theme.css"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "check:transcript-boundaries": "node scripts/check-transcript-boundaries.mjs",
+    "typecheck": "npm run check:transcript-boundaries && tsc --noEmit",
     "test": "TSX_TSCONFIG_PATH=tsconfig.json node --import tsx --test src/**/*.test.tsx"
   },
   "dependencies": {

@@ -9,11 +9,10 @@ export function getToolName(part: unknown): string {
   if (type.startsWith('tool-')) return type.slice(5)
   return ''
 }
-
 export function isToolUIPart(part: unknown): boolean {
   if (!part || typeof part !== 'object') return false
   const type = (part as { type?: unknown }).type
-  return typeof type === 'string' && (type === 'dynamic-tool' || type.startsWith('tool-'))
+  return typeof type === 'string' && (type === 'tool' || type === 'dynamic-tool' || type.startsWith('tool-'))
 }
 
 export function isReasoningUIPart(part: unknown): boolean {

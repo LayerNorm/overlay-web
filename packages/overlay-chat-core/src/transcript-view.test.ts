@@ -26,7 +26,6 @@ test('groups explicit turns while preserving response ordering', () => {
     { turnId: 'turn-2', user: 'u-2', assistants: [] },
   ])
 })
-
 test('uses a safe alternating fallback for legacy histories without turn ids', () => {
   const groups = groupTranscriptMessages([
     { id: 'u-1', role: 'user' as const },
@@ -69,6 +68,13 @@ test('normalizes ordered reasoning, tool, text, file, generated UI, and source p
       input: { query: 'launch' },
       output: { ok: true },
     },
+    {
+      type: 'tool',
+      toolCallId: 'tool-2',
+      toolName: 'browser_read_page',
+      state: 'input-available',
+      input: { focus: 'primary action' },
+    },
     { type: 'text', text: 'Launch is ready.' },
     { type: 'source', id: 'source-1', sourceKind: 'url', sourceId: 'url-1', url: 'https://example.test' },
     { type: 'file', url: 'data:image/png;base64,AA==', mediaType: 'image/png' },
@@ -83,6 +89,7 @@ test('normalizes ordered reasoning, tool, text, file, generated UI, and source p
   assert.deepEqual(normalized.blocks.map((block) => block.kind), [
     'reasoning',
     'tool',
+    'tool',
     'text',
     'source',
     'file',
@@ -93,7 +100,7 @@ test('normalizes ordered reasoning, tool, text, file, generated UI, and source p
     sourceKind: 'url',
     sourceId: 'url-1',
     url: 'https://example.test',
-    originIndex: 3,
+    originIndex: 4,
   }])
 })
 
