@@ -1,11 +1,13 @@
-import {
-OVERLAY_LOGO_SRC
-} from '@overlay/chat-core'
+import { OVERLAY_LOGO_SRC } from '@overlay/chat-core'
+import { useChatReactConfig } from '../../context/chat-react-config'
 
 export function ToolLineLogo() {
+  const { toolLogoUrl } = useChatReactConfig()
   return (
+    // Platform-neutral shared code cannot use Next.js Image in Electron.
+    // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={OVERLAY_LOGO_SRC}
+      src={toolLogoUrl ?? OVERLAY_LOGO_SRC}
       alt=""
       width={8}
       height={8}
@@ -16,7 +18,13 @@ export function ToolLineLogo() {
 }
 
 /** Vertical connector between consecutive tool rows (logo stays top-aligned; line in logo column). */
-export function ToolLogoColumn({ connectTop, connectBottom }: { connectTop: boolean; connectBottom: boolean }) {
+export function ToolLogoColumn({
+  connectTop,
+  connectBottom
+}: {
+  connectTop: boolean
+  connectBottom: boolean
+}) {
   const showLine = connectTop || connectBottom
   const logoBottom = 'calc(0.3125rem + 0.5rem)' /* mt-[5px] + size-2 */
   return (

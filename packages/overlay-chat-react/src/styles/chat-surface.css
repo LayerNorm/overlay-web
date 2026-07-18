@@ -397,6 +397,18 @@
   }
 }
 
+/* Keep the active-response cue visible for people who reduce spatial motion.
+   This variant changes opacity only; it does not scale or move the mark. */
+@keyframes overlayChatStreamMarkerReducedPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 :where(.overlay-chat-surface) .overlay-stream-marker {
   display: inline-block;
   width: 0.95em;
@@ -656,8 +668,7 @@
   :where(.overlay-chat-surface)
     .markdown-content--streaming
     .overlay-stream-marker {
-    animation: none;
-    opacity: 1;
+    animation: overlayChatStreamMarkerReducedPulse 1.8s ease-in-out infinite;
     transform: none;
   }
 
