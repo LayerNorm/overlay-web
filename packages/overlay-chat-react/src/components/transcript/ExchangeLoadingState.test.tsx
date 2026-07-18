@@ -41,14 +41,16 @@ test('loading presentation follows normalized exchange status and visible output
   assert.equal(exchangeLoadingPresentation('error', text).active, false)
 })
 
-test('standalone loading renders the large mark and rotating thinking vocabulary', () => {
+test('standalone loading reuses the tool-row mark and rotating thinking vocabulary', () => {
   const markup = renderToStaticMarkup(
     <ExchangeLoadingState
       presentation={{ active: true, inlineTextMarker: false, marker: 'standalone' }}
     />,
   )
 
-  assert.match(markup, /overlay-stream-marker--standalone/)
+  assert.match(markup, /overlay-loading-tool-logo/)
+  assert.match(markup, /width="8"/)
+  assert.match(markup, /height="8"/)
   assert.match(markup, /overlay-loading-word-track/)
   assert.match(markup, /overlay-loading-word tool-line-shimmer/)
   for (const label of EXCHANGE_LOADING_LABELS) assert.ok(markup.includes(label))
@@ -67,9 +69,9 @@ test('compact loading keeps the mark without adding the word reel', () => {
   assert.doesNotMatch(markup, /overlay-loading-word-track/)
 })
 
-test('loading word reel advances promptly and is not disabled by reduced motion', () => {
-  assert.match(chatSurfaceCss, /animation: overlayChatLoadingWordReel 4\.8s linear infinite/)
-  assert.match(chatSurfaceCss, /0%,\s*12\.5%\s*\{\s*transform: translate3d\(0, 0, 0\)/)
+test('loading word reel holds each label for 2000ms and is not disabled by reduced motion', () => {
+  assert.match(chatSurfaceCss, /animation: overlayChatLoadingWordReel 12s linear infinite/)
+  assert.match(chatSurfaceCss, /0%,\s*15%\s*\{\s*transform: translate3d\(0, 0, 0\)/)
   assert.doesNotMatch(
     chatSurfaceCss,
     /overlay-loading-word-track\s*\{\s*animation:\s*none/,

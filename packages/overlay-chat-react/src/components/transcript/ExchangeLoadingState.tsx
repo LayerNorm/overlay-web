@@ -1,5 +1,6 @@
 import type { AssistantVisualBlock, ChatExchangeStatus } from '@overlay/chat-core'
 import React from 'react'
+import { ToolLineLogo } from '../exchange/tool-rail'
 
 export const EXCHANGE_LOADING_LABELS = [
   'Thinking',
@@ -52,28 +53,34 @@ export function ExchangeLoadingState({
   const compact = presentation.marker === 'compact'
   return (
     <div
-      className={`flex items-center px-1 ${compact ? 'min-h-5 py-1' : 'min-h-8 gap-2.5 py-2'}`}
+      className={`flex px-1 ${compact ? 'min-h-5 items-center py-1' : 'items-stretch gap-2.5 py-1 text-[13px] leading-snug'}`}
       aria-live="polite"
       aria-busy="true"
       aria-label={compact ? 'Response still generating' : 'Thinking'}
       role="status"
       data-loading-presentation={presentation.marker}
     >
-      <span
-        className={`overlay-stream-marker overlay-stream-marker--standalone${compact ? ' scale-75 opacity-80' : ''}`}
-        aria-hidden="true"
-      />
-      {!compact ? (
-        <span className="overlay-loading-word-viewport" aria-hidden="true">
-          <span className="overlay-loading-word-track">
-            {[...EXCHANGE_LOADING_LABELS, EXCHANGE_LOADING_LABELS[0]].map((label, index) => (
-              <span className="overlay-loading-word tool-line-shimmer" key={`${label}-${index}`}>
-                {label}
-              </span>
-            ))}
+      {compact ? (
+        <span
+          className="overlay-stream-marker overlay-stream-marker--standalone scale-75 opacity-80"
+          aria-hidden="true"
+        />
+      ) : (
+        <>
+          <span className="overlay-loading-tool-logo" aria-hidden="true">
+            <ToolLineLogo />
           </span>
-        </span>
-      ) : null}
+          <span className="overlay-loading-word-viewport" aria-hidden="true">
+            <span className="overlay-loading-word-track">
+              {[...EXCHANGE_LOADING_LABELS, EXCHANGE_LOADING_LABELS[0]].map((label, index) => (
+                <span className="overlay-loading-word tool-line-shimmer" key={`${label}-${index}`}>
+                  {label}
+                </span>
+              ))}
+            </span>
+          </span>
+        </>
+      )}
     </div>
   )
 }

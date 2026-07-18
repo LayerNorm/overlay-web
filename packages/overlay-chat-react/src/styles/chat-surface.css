@@ -414,32 +414,40 @@
    word makes the loop seam visually identical to its first frame. */
 @keyframes overlayChatLoadingWordReel {
   0%,
-  12.5% {
+  15% {
     transform: translate3d(0, 0, 0);
   }
   16.667%,
-  29.167% {
+  31.667% {
     transform: translate3d(0, -1.125rem, 0);
   }
   33.333%,
-  45.833% {
+  48.333% {
     transform: translate3d(0, -2.25rem, 0);
   }
   50%,
-  62.5% {
+  65% {
     transform: translate3d(0, -3.375rem, 0);
   }
   66.667%,
-  79.167% {
+  81.667% {
     transform: translate3d(0, -4.5rem, 0);
   }
   83.333%,
-  95.833% {
+  98.333% {
     transform: translate3d(0, -5.625rem, 0);
   }
   100% {
     transform: translate3d(0, -6.75rem, 0);
   }
+}
+
+:where(.overlay-chat-surface) .overlay-loading-tool-logo {
+  display: inline-flex;
+  width: 0.5rem;
+  flex: 0 0 0.5rem;
+  transform-origin: 50% 0.5625rem;
+  animation: overlayChatStreamMarkerPulse 1.3s ease-in-out infinite;
 }
 
 :where(.overlay-chat-surface) .overlay-stream-marker {
@@ -479,18 +487,13 @@
   height: 1.125rem;
   min-width: 8.75rem;
   overflow: hidden;
-  color: var(--tool-line-label);
-  font-size: 0.8125rem;
-  font-weight: 400;
-  line-height: 1.125rem;
-  vertical-align: middle;
 }
 
 :where(.overlay-chat-surface) .overlay-loading-word-track {
   display: flex;
   flex-direction: column;
   will-change: transform;
-  animation: overlayChatLoadingWordReel 4.8s linear infinite;
+  animation: overlayChatLoadingWordReel 12s linear infinite;
 }
 
 :where(.overlay-chat-surface) .overlay-loading-word {
@@ -724,6 +727,7 @@
   }
 
   :where(.overlay-chat-surface) .overlay-stream-marker,
+  :where(.overlay-chat-surface) .overlay-loading-tool-logo,
   :where(.overlay-chat-surface)
     .markdown-content--streaming
     .overlay-stream-marker {
