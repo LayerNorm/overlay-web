@@ -1,5 +1,5 @@
 {
-  "fixtureVersion": "2026-07-17.1",
+  "fixtureVersion": "2026-07-17.3",
   "capture": {
     "scenario": "rich-markdown",
     "theme": "light",
@@ -8,12 +8,12 @@
     "timingsAreBaseline": false
   },
   "web": {
-    "ExchangeBlock": 2,
+    "ChatExchange": 2,
     "MarkdownMessage": 2
   },
   "desktop": {
-    "DesktopSharedMessageList": 2,
-    "DesktopMessageRow": 4,
+    "ChatExchange": 2,
+    "ChatTranscript": 2,
     "MarkdownMessage": 2
   }
 }

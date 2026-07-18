@@ -1,6 +1,7 @@
 # Desktop/web chat parity baselines
 
-These artifacts capture fixture version `2026-07-17.1` before the desktop parity refactor. They are characterization evidence, not assertions that the two surfaces already match.
+These deterministic artifacts capture fixture version `2026-07-17.3` after the
+shared transcript cutover. They are the Phase 8 visual reference set.
 
 ## Harnesses
 
@@ -15,26 +16,42 @@ Both harnesses accept:
 - `scenario=gallery|<fixture-id>`
 - `perf=1` to publish `window.__CHAT_PARITY_BASELINE__`
 
-The web route returns 404 in production unless the server-only `CHAT_PARITY_FIXTURES=1` flag is explicitly set. Electron fixture mode is rejected by packaged builds and bypasses auth providers, analytics initialization, and live Convex renderer initialization.
+The web route returns 404 in production unless the server-only
+`CHAT_PARITY_FIXTURES=1` flag is explicitly set. Packaged Electron builds reject
+fixture mode. Neither harness requires authentication, analytics, Convex, or a
+live model call.
 
-## Baseline set
+## Required matrix
 
-- `rich-markdown`: web and desktop at 390, 640, and 896 pixels in light and dark mode.
-- `gallery`: web and desktop at 896 pixels in light mode, covering rich text, reasoning/tools, loading, streaming, interruption/error, generated UI, image states, and video states.
-- `render-counts.json`: Strict Mode mount counts for the static `rich-markdown` fixture at 896 pixels.
+The 66 screenshots recorded by `baseline-manifest.json` cover:
 
-`baseline-manifest.json` records SHA-256 hashes for every screenshot. Timing values are deliberately not treated as a baseline because they vary by hardware; only render counts are characterized.
+- Web and desktop gallery states in light/dark at 390, 640, and 896 pixels.
+- Default, real pointer hover, and real keyboard focus action states on both
+  platforms at every theme and width.
+- Streaming with `prefers-reduced-motion: reduce` on both platforms at every
+  theme and width.
+- Desktop browser/notebook embedded consumers in light/dark at every width.
 
-## Approved Class B web differences (P6)
+The gallery includes rich Markdown, reasoning, sequential tools, generated UI,
+multi-model text, loading, streaming, interruption/error, completed and loading
+images, and completed/failed videos.
 
-The following changes intentionally update the web baseline and are not parity regressions:
+## Capture rules
 
-- `exchange-actions-hover-focus`: completed actions reveal on exchange hover or `focus-within`; coarse-pointer and touch layouts keep them visible.
-- `status-driven-loading`: the selected response status owns standalone, inline-text, and partial non-text loading presentation.
-- `intent-preserving-autoscroll`: streaming follows the tail only when the user is near the bottom, while a newly submitted turn always follows.
+- Capture with Chromium through the bundled Playwright CLI.
+- Wait for `data-parity-ready="true"`, fonts, images, and video metadata.
+- Pause fixture videos at time zero and remove Next development chrome.
+- Use actual Playwright hover/focus operations for interaction baselines.
+- Use Playwright media emulation for reduced-motion baselines.
+- Disable animations during the screenshot operation to eliminate timing noise.
+- Run `npm run chat-parity:manifest` after capture. It rejects missing or stale
+  PNGs and records a SHA-256 hash for every expected artifact.
 
-The executable allowlist is `APPROVED_CLASS_B_WEB_DIFFERENCES` in `@overlay/chat-react/transcript`; its test locks these identifiers and the new hover default.
+## Approved Class B web differences
 
-## Capture notes
+- `exchange-actions-hover-focus`
+- `status-driven-loading`
+- `intent-preserving-autoscroll`
 
-The screenshots were captured with the repository Playwright CLI workflow against Next dev and Electron Vite dev on macOS. The Next development indicator was removed from the page before capture because it is framework chrome, not product UI. No network, auth, conversation, or generation data is used by the fixtures.
+The executable allowlist is `APPROVED_CLASS_B_WEB_DIFFERENCES` in
+`@overlay/chat-react/transcript`.
