@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
-import { Reply, Trash2 } from 'lucide-react'
+import { Reply, RotateCw, Trash2 } from 'lucide-react'
 import type { GenerationResult } from '@overlay/chat-core'
 import type {
   AttachmentPreview,
@@ -26,6 +26,7 @@ export interface MediaExchangeProps {
   onJumpToReply: (turnId: string) => void
   onDeleteTurn: (turnId: string) => void | Promise<void>
   onReply: (prompt: string, kind: 'image' | 'video', turnId: string | null) => void
+  onRetry?: () => void
   onOpenAttachmentPreview: (
     preview: AttachmentPreview,
     options?: AttachmentPreviewOpenOptions,
@@ -48,6 +49,7 @@ export function MediaExchange({
   onJumpToReply,
   onDeleteTurn,
   onReply,
+  onRetry,
   onOpenAttachmentPreview,
   actionVisibility = 'hover',
 }: MediaExchangeProps) {
@@ -117,6 +119,11 @@ export function MediaExchange({
           >
             <Reply size={14} strokeWidth={1.75} />
           </TranscriptIconAction>
+          {results.some((result) => result.status === 'failed') && onRetry ? (
+            <TranscriptIconAction label="Retry generation" disabled={isExiting} onClick={onRetry}>
+              <RotateCw size={14} strokeWidth={1.75} />
+            </TranscriptIconAction>
+          ) : null}
           <span className="ml-2 shrink-0 text-left text-[11px] text-[var(--muted-light)]">
             {modelLabel}
           </span>

@@ -94,3 +94,47 @@ test('MediaExchange keeps platform-neutral image/video loading behavior', () => 
   assert.match(markup, /playsinline=""/)
   assert.doesNotMatch(markup, /autoplay/)
 })
+
+test('MediaExchange exposes retry only for failed generations', () => {
+  const failedMarkup = renderToStaticMarkup(
+    <MediaExchange
+      exchangeIndex={0}
+      turnId="turn-image"
+      kind="image"
+      promptText="Draw this"
+      userImages={[]}
+      replyThread={null}
+      results={[{ type: 'image', status: 'failed', error: 'Provider failed' }]}
+      modelIds={['image-model']}
+      modelLabel="Image model"
+      getModelDisplayName={() => 'Image model'}
+      onJumpToReply={() => undefined}
+      onDeleteTurn={() => undefined}
+      onReply={() => undefined}
+      onRetry={() => undefined}
+      onOpenAttachmentPreview={() => undefined}
+    />,
+  )
+
+  const webCompatibleMarkup = renderToStaticMarkup(
+    <MediaExchange
+      exchangeIndex={0}
+      turnId="turn-image"
+      kind="image"
+      promptText="Draw this"
+      userImages={[]}
+      replyThread={null}
+      results={[{ type: 'image', status: 'failed', error: 'Provider failed' }]}
+      modelIds={['image-model']}
+      modelLabel="Image model"
+      getModelDisplayName={() => 'Image model'}
+      onJumpToReply={() => undefined}
+      onDeleteTurn={() => undefined}
+      onReply={() => undefined}
+      onOpenAttachmentPreview={() => undefined}
+    />,
+  )
+
+  assert.match(failedMarkup, /aria-label="Retry generation"/)
+  assert.doesNotMatch(webCompatibleMarkup, /aria-label="Retry generation"/)
+})
