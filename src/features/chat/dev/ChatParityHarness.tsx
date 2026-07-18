@@ -177,6 +177,13 @@ function WebTextFixture({
       onTabSelect={setSelectedTab}
       isLoadingTabs={false}
       responseInProgress={scenario.responseInProgress}
+      status={scenario.errorMessage
+        ? 'error'
+        : scenario.interrupted
+          ? 'interrupted'
+          : scenario.responseInProgress
+            ? scenario.assistantBlocks.length > 0 ? 'streaming' : 'submitted'
+            : 'completed'}
       turnIdForActions={`fixture-turn-${scenario.id}`}
       modelLabel={selectedResponse.modelName}
       onDeleteTurn={() => undefined}

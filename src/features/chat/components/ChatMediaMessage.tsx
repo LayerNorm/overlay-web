@@ -15,6 +15,7 @@ import {
   getUserTurnId,
 } from '@overlay/chat-core'
 import type { GenerationResult } from './chat-interface/types'
+import type { ChatTranscriptPresentation } from '@overlay/chat-react/transcript'
 
 export type ChatMediaMessageProps = {
   message: UIMessage
@@ -32,6 +33,7 @@ export type ChatMediaMessageProps = {
     preview: AttachmentPreview,
     options?: AttachmentPreviewOpenOptions,
   ) => void
+  presentation?: Partial<ChatTranscriptPresentation>
 }
 
 export function ChatMediaMessage({
@@ -47,6 +49,7 @@ export function ChatMediaMessage({
   onDeleteTurn,
   onReplyToMediaPrompt,
   onOpenAttachmentPreview,
+  presentation,
 }: ChatMediaMessageProps) {
   let modelList = exchangeModels
   if (modelList.length === 0) {
@@ -84,6 +87,7 @@ export function ChatMediaMessage({
       onDeleteTurn={onDeleteTurn}
       onReply={onReplyToMediaPrompt}
       onOpenAttachmentPreview={onOpenAttachmentPreview}
+      actionVisibility={presentation?.actionVisibility}
     />
   )
 }

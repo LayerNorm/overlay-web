@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode, RefObject } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { WebSourceItem } from '@/shared/web/web-sources'
@@ -11,10 +11,13 @@ import type {
   AttachmentPreviewOpenOptions,
   GeneratedUiConnectorActions,
 } from '@overlay/chat-react'
-import { ChatTranscript, type ChatTranscriptPresentation } from '@overlay/chat-react/transcript'
+import {
+  ChatTranscript,
+  type ChatTranscriptPresentation,
+  useTranscriptScroll,
+} from '@overlay/chat-react/transcript'
 import type { ChatTranscriptExchangeView } from '@overlay/chat-core'
 import type { DraftModalState, GenerationResult } from './chat-interface/types'
-import { streamingReservedSpacerHeight } from '../lib/constrain-streaming-scroll'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { ChatMessage } from './ChatMessage'
 import { toChatTranscriptView } from './chat/toChatTranscriptView'
@@ -87,24 +90,16 @@ export function ChatMessageList({
   runtime,
   actions,
 }: ChatMessageListProps) {
-  // Size the reserved tail spacer to the viewport so the scroll limit is a
-  // natural boundary. This keeps the streaming exchange's tail visible without
-  // correcting scrollTop on every scroll event (which fights inertial scrolling
-  // and makes the stream flicker, especially near the header).
-  const [reservedSpacerHeight, setReservedSpacerHeight] = useState<number | null>(null)
-  useEffect(() => {
-    if (!reserveLatestExchangeStartSpace) return
-    const container = messagesScrollRef.current
-    if (!container) return
-    // ResizeObserver fires once immediately on observe() with the current size,
-    // then on every resize. Setting state only from this callback keeps the
-    // measurement in sync without a synchronous setState in the effect body.
-    const observer = new ResizeObserver(() => {
-      setReservedSpacerHeight(streamingReservedSpacerHeight(container.clientHeight))
-    })
-    observer.observe(container)
-    return () => observer.disconnect()
-  }, [reserveLatestExchangeStartSpace, messagesScrollRef])
+  const submittedTurnCount = useMemo(
+    () => state.primaryMessages.filter((message) => message.role === 'user').length,
+    [state.primaryMessages],
+  )
+  const { reservedSpace } = useTranscriptScroll({
+    containerRef: messagesScrollRef,
+    endRef: messagesEndRef,
+    submittedTurnCount,
+    active: reserveLatestExchangeStartSpace,
+  })
 
   return (
     <div className="overlay-chat-surface relative min-h-0 flex-1">
@@ -127,7 +122,7 @@ export function ChatMessageList({
             <div
               aria-hidden
               className="shrink-0"
-              style={{ height: reservedSpacerHeight ?? undefined }}
+              style={{ height: reservedSpace ?? undefined }}
             />
           ) : null}
         </div>
@@ -205,6 +200,7 @@ function ChatMessages({
           onDeleteTurn={actions.onDeleteTurn}
           onReplyToMediaPrompt={actions.onReplyToMediaPrompt}
           onOpenAttachmentPreview={actions.onOpenAttachmentPreview}
+          presentation={presentation}
         />
       )
     }
@@ -243,6 +239,7 @@ function ChatMessages({
         onGeneratedUiChange={actions.onGeneratedUiChange}
         generatedUiConnectorActions={actions.generatedUiConnectorActions}
         presentation={presentation}
+        status={exchange.status}
       />
     )
   }, [actions, runtime, state, userMessages])

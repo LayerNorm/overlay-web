@@ -30,6 +30,7 @@ export interface MediaExchangeProps {
     preview: AttachmentPreview,
     options?: AttachmentPreviewOpenOptions,
   ) => void
+  actionVisibility?: 'always' | 'hover'
 }
 
 export function MediaExchange({
@@ -48,13 +49,14 @@ export function MediaExchange({
   onDeleteTurn,
   onReply,
   onOpenAttachmentPreview,
+  actionVisibility = 'hover',
 }: MediaExchangeProps) {
   const isMulti = modelIds.length > 1
   const stillGenerating = results.some((result) => !result || result.status === 'generating')
 
   return (
     <div
-      className={`flex flex-col gap-3 message-appear transition-all duration-300 ease-out ${
+      className={`group/exchange flex flex-col gap-3 message-appear transition-all duration-300 ease-out ${
         isExiting ? 'pointer-events-none -translate-y-1 opacity-0' : 'translate-y-0 opacity-100'
       }`}
       data-exchange-idx={exchangeIndex}
@@ -91,7 +93,11 @@ export function MediaExchange({
         ))}
       </div>
       {!stillGenerating && (
-        <div className="message-appear flex items-center gap-1 px-1 pt-0.5">
+        <div className={`${actionVisibility === 'always' ? 'message-appear' : ''} flex items-center gap-1 px-1 pt-0.5 ${
+          actionVisibility === 'hover'
+            ? 'chat-exchange-actions--hover opacity-0 transition-opacity group-hover/exchange:opacity-100 focus-within:opacity-100'
+            : ''
+        }`}>
           <FlashCopyIconButton
             copyText={promptText}
             disabled={!promptText || isExiting}

@@ -9,6 +9,7 @@ import {
 } from '@/shared/ai/gateway/model-data'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
+import type { ChatExchangeStatus } from '@overlay/chat-core'
 import type {
   AttachmentPreview,
   AttachmentPreviewOpenOptions,
@@ -76,6 +77,7 @@ type TextChatMessageProps = CommonMessageProps & {
   onGeneratedUiChange: (messageId: string, partId: string, data: GeneratedUiData) => void
   generatedUiConnectorActions?: GeneratedUiConnectorActions
   presentation?: Partial<ChatTranscriptPresentation>
+  status: ChatExchangeStatus
 }
 
 export type ChatMessageProps = ComponentProps<typeof ChatMediaMessage> | TextChatMessageProps
@@ -235,6 +237,7 @@ function TextChatMessage(props: TextChatMessageProps) {
       onTabSelect={(tabIndex) => props.onTabSelect(exchangeIndex, tabIndex)}
       isLoadingTabs={false}
       responseInProgress={instLoading}
+      status={props.status}
       sourceCitations={(responseMsg as { metadata?: { sourceCitations?: SourceCitationMap } } | undefined)?.metadata?.sourceCitations}
       turnIdForActions={turnId}
       modelLabel={modelList.length > 1 ? `${modelLabelSingle} · ${modelList.length} models` : modelLabelSingle}

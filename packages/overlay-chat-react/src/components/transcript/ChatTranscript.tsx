@@ -11,10 +11,33 @@ export interface ChatTranscriptPresentation {
 
 export const DEFAULT_CHAT_TRANSCRIPT_PRESENTATION: ChatTranscriptPresentation = {
   density: 'comfortable',
-  actionVisibility: 'always',
+  actionVisibility: 'hover',
   showModelLabel: true,
   maxContentWidth: '56rem',
 }
+
+/**
+ * P6 intentionally changes these web behaviors. Keeping the approved Class B
+ * differences beside the default presentation makes later parity work fail
+ * loudly if somebody treats them as accidental screenshot drift.
+ */
+export const APPROVED_CLASS_B_WEB_DIFFERENCES = [
+  {
+    id: 'exchange-actions-hover-focus',
+    before: 'Completed exchange actions were always visible.',
+    after: 'Actions reveal on hover or focus-within, with a coarse-pointer fallback.',
+  },
+  {
+    id: 'status-driven-loading',
+    before: 'Loading markers were selected from host-specific booleans.',
+    after: 'Loading presentation follows the normalized selected-response status.',
+  },
+  {
+    id: 'intent-preserving-autoscroll',
+    before: 'Streaming growth did not consistently follow the tail near the bottom.',
+    after: 'Streaming follows only near the bottom; a new submitted turn always follows.',
+  },
+] as const
 
 /**
  * Compatibility rendering bridge for platform actions. The normalized view

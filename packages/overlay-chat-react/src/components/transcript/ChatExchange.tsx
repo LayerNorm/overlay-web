@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
 import { lazy, Suspense, useMemo } from 'react'
 import { AlertCircle, FileText, Play, Reply } from 'lucide-react'
-import type { AssistantVisualBlock, DraftModalState, ToolVisualBlock } from '@overlay/chat-core'
+import type { AssistantVisualBlock, ChatExchangeStatus, DraftModalState, ToolVisualBlock } from '@overlay/chat-core'
 import {
   assistantBlocksToPlainText,
   buildAssistantVisualSegments,
@@ -33,6 +33,7 @@ import {
 } from '../exchange'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { ExchangeActions } from './ExchangeActions'
+import { ExchangeLoadingState, exchangeLoadingPresentation } from './ExchangeLoadingState'
 import type { ChatTranscriptPresentation } from './ChatTranscript'
 
 const GeneratedUiCard = lazy(() =>
@@ -68,6 +69,8 @@ export interface ChatExchangeProps {
   onTabSelect: (tabIdx: number) => void
   isLoadingTabs: boolean
   responseInProgress: boolean
+  /** Normalized selected-response status. Host booleans remain as a compatibility fallback. */
+  status?: ChatExchangeStatus
   sourceCitations?: SourceCitationMap
   turnIdForActions: string | null
   modelLabel: string
@@ -103,7 +106,7 @@ export interface ChatExchangeProps {
 
 export function ChatExchange({
   userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, isTextStreaming, errorMessage,
-  exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, sourceCitations,
+  exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, status, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue, getModelDisplayName,
   generatedUiConnectorActions, onGeneratedUiChange, presentation,
@@ -124,7 +127,11 @@ export function ChatExchange({
     )
     const toolChainFlags = useMemo(() => computeToolChainFlags(assistantSegments), [assistantSegments])
     const webSources = useMemo(() => collectWebSourcesFromBlocks(assistantVisualBlocks), [assistantVisualBlocks])
-    const responseSettled = !responseInProgress
+    const normalizedStatus: ChatExchangeStatus = status ?? (
+      responseInProgress ? (assistantVisualBlocks.length > 0 ? 'streaming' : 'submitted') : 'completed'
+    )
+    const loadingPresentation = exchangeLoadingPresentation(normalizedStatus, assistantVisualBlocks)
+    const responseSettled = !loadingPresentation.active
     const copyPlainText =
       interrupted && !errorMessage
         ? assistantPlainText.trim()
@@ -409,32 +416,14 @@ export function ChatExchange({
                 isStreaming={isTextStreaming && isLastText}
                 sourceCitations={isLastText ? sourceCitations : undefined}
                 webSources={isLastText && webSources.length > 0 ? webSources : undefined}
-                suppressTypingIndicator
+                suppressTypingIndicator={!loadingPresentation.inlineTextMarker}
                 onOpenAttachmentPreview={onOpenAttachmentPreview}
               />
             </div>
           )
         })}
 
-        {responseInProgress && assistantVisualBlocks.length === 0 && (
-          <div className="flex items-center px-1 py-2 min-h-7" aria-live="polite" aria-busy="true">
-            <span
-              className="overlay-stream-marker overlay-stream-marker--standalone"
-              aria-label="Response loading"
-              role="img"
-            />
-          </div>
-        )}
-
-        {responseInProgress && assistantVisualBlocks.length > 0 && !errorMessage ? (
-          <div className="flex items-center px-1 py-1 min-h-5" aria-live="polite" aria-busy="true">
-            <span
-              className="overlay-stream-marker overlay-stream-marker--standalone scale-75 opacity-80"
-              aria-label="Response still generating"
-              role="img"
-            />
-          </div>
-        ) : null}
+        {!errorMessage ? <ExchangeLoadingState presentation={loadingPresentation} /> : null}
 
         {errorMessage && !responseInProgress && (
           <div className="flex justify-start">

@@ -429,6 +429,14 @@
   vertical-align: middle;
 }
 
+/* Pointer hover is an enhancement. Keyboard focus and touch/coarse-pointer
+   layouts must keep completed exchange actions discoverable. */
+@media (hover: none), (pointer: coarse) {
+  :where(.overlay-chat-surface) .chat-exchange-actions--hover {
+    opacity: 1 !important;
+  }
+}
+
 @keyframes overlayChatStreamBlockSoften {
   from {
     opacity: 0.4;
@@ -640,6 +648,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  :where(.overlay-chat-surface) .chat-exchange-actions--hover {
+    transition: none;
+  }
+
   :where(.overlay-chat-surface) .overlay-stream-marker,
   :where(.overlay-chat-surface)
     .markdown-content--streaming

@@ -25,6 +25,16 @@ The web route returns 404 in production unless the server-only `CHAT_PARITY_FIXT
 
 `baseline-manifest.json` records SHA-256 hashes for every screenshot. Timing values are deliberately not treated as a baseline because they vary by hardware; only render counts are characterized.
 
+## Approved Class B web differences (P6)
+
+The following changes intentionally update the web baseline and are not parity regressions:
+
+- `exchange-actions-hover-focus`: completed actions reveal on exchange hover or `focus-within`; coarse-pointer and touch layouts keep them visible.
+- `status-driven-loading`: the selected response status owns standalone, inline-text, and partial non-text loading presentation.
+- `intent-preserving-autoscroll`: streaming follows the tail only when the user is near the bottom, while a newly submitted turn always follows.
+
+The executable allowlist is `APPROVED_CLASS_B_WEB_DIFFERENCES` in `@overlay/chat-react/transcript`; its test locks these identifiers and the new hover default.
+
 ## Capture notes
 
 The screenshots were captured with the repository Playwright CLI workflow against Next dev and Electron Vite dev on macOS. The Next development indicator was removed from the page before capture because it is framework chrome, not product UI. No network, auth, conversation, or generation data is used by the fixtures.

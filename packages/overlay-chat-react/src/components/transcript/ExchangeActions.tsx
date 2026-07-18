@@ -36,15 +36,16 @@ export function ExchangeActions({
   userMsgId,
   isSourcesOpenForThis,
   modelLabel,
-  actionVisibility = 'always',
+  actionVisibility = 'hover',
   showModelLabel = true,
 }: ExchangeActionsProps) {
   const visibilityClass = actionVisibility === 'hover'
-    ? 'opacity-0 transition-opacity group-hover/exchange:opacity-100 focus-within:opacity-100'
+    ? 'chat-exchange-actions--hover opacity-0 transition-opacity group-hover/exchange:opacity-100 focus-within:opacity-100'
     : ''
+  const entranceClass = actionVisibility === 'always' ? 'message-appear' : ''
 
   return (
-    <div className={`message-appear flex items-center gap-1 px-1 pt-0.5 ${visibilityClass}`}>
+    <div className={`${entranceClass} flex items-center gap-1 px-1 pt-0.5 ${visibilityClass}`}>
       <FlashCopyIconButton
         copyText={copyPlainText}
         disabled={copyPlainText.length === 0 || isExiting}
