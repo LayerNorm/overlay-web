@@ -2,12 +2,12 @@ import type { AssistantVisualBlock, ChatExchangeStatus } from '@overlay/chat-cor
 import React from 'react'
 
 export const EXCHANGE_LOADING_LABELS = [
-  'Thinking…',
-  'Contemplating…',
-  'Comprehending…',
-  'Reasoning…',
-  'Pondering…',
-  'Considering…',
+  'Thinking',
+  'Contemplating',
+  'Comprehending',
+  'Reasoning',
+  'Pondering',
+  'Considering',
 ] as const
 
 const ACTIVE_EXCHANGE_STATUSES = new Set<ChatExchangeStatus>([
@@ -67,7 +67,7 @@ export function ExchangeLoadingState({
         <span className="overlay-loading-word-viewport" aria-hidden="true">
           <span className="overlay-loading-word-track">
             {[...EXCHANGE_LOADING_LABELS, EXCHANGE_LOADING_LABELS[0]].map((label, index) => (
-              <span className="overlay-loading-word" key={`${label}-${index}`}>
+              <span className="overlay-loading-word tool-line-shimmer" key={`${label}-${index}`}>
                 {label}
               </span>
             ))}

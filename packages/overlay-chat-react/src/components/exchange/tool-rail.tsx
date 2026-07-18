@@ -10,9 +10,9 @@ export function ToolLineLogo() {
     <img
       src={toolLogoUrl ?? OVERLAY_LOGO_SRC}
       alt=""
-      width={18}
-      height={18}
-      className="mt-px size-[18px] shrink-0 select-none"
+      width={8}
+      height={8}
+      className="mt-[5px] size-2 shrink-0 select-none"
       draggable={false}
     />
   )
@@ -27,9 +27,9 @@ export function ToolLogoColumn({
   connectBottom: boolean
 }) {
   const showLine = connectTop || connectBottom
-  const logoBottom = 'calc(1px + 18px)'
+  const logoBottom = 'calc(0.3125rem + 0.5rem)' /* mt-[5px] + size-2 */
   return (
-    <div className="relative flex w-[18px] shrink-0 flex-col items-center self-stretch">
+    <div className="relative flex w-2 shrink-0 flex-col items-center self-stretch">
       {showLine && (
         <div
           className="absolute left-1/2 z-0 w-px -translate-x-1/2 bg-[var(--surface-subtle)]"

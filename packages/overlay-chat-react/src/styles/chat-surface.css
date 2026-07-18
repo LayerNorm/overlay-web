@@ -414,31 +414,31 @@
    word makes the loop seam visually identical to its first frame. */
 @keyframes overlayChatLoadingWordReel {
   0%,
-  14.3% {
+  12.5% {
     transform: translate3d(0, 0, 0);
   }
   16.667%,
-  30.967% {
-    transform: translate3d(0, -1.25rem, 0);
+  29.167% {
+    transform: translate3d(0, -1.125rem, 0);
   }
   33.333%,
-  47.633% {
-    transform: translate3d(0, -2.5rem, 0);
+  45.833% {
+    transform: translate3d(0, -2.25rem, 0);
   }
   50%,
-  64.3% {
-    transform: translate3d(0, -3.75rem, 0);
+  62.5% {
+    transform: translate3d(0, -3.375rem, 0);
   }
   66.667%,
-  80.967% {
-    transform: translate3d(0, -5rem, 0);
+  79.167% {
+    transform: translate3d(0, -4.5rem, 0);
   }
   83.333%,
-  97.633% {
-    transform: translate3d(0, -6.25rem, 0);
+  95.833% {
+    transform: translate3d(0, -5.625rem, 0);
   }
   100% {
-    transform: translate3d(0, -7.5rem, 0);
+    transform: translate3d(0, -6.75rem, 0);
   }
 }
 
@@ -476,13 +476,13 @@
 
 :where(.overlay-chat-surface) .overlay-loading-word-viewport {
   display: inline-block;
-  height: 1.25rem;
+  height: 1.125rem;
   min-width: 8.75rem;
   overflow: hidden;
-  color: var(--muted);
-  font-size: 0.875rem;
-  font-weight: 450;
-  line-height: 1.25rem;
+  color: var(--tool-line-label);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.125rem;
   vertical-align: middle;
 }
 
@@ -490,13 +490,13 @@
   display: flex;
   flex-direction: column;
   will-change: transform;
-  animation: overlayChatLoadingWordReel 10s cubic-bezier(0.77, 0, 0.175, 1) infinite;
+  animation: overlayChatLoadingWordReel 4.8s linear infinite;
 }
 
 :where(.overlay-chat-surface) .overlay-loading-word {
   display: block;
-  height: 1.25rem;
-  flex: 0 0 1.25rem;
+  height: 1.125rem;
+  flex: 0 0 1.125rem;
   white-space: nowrap;
 }
 
@@ -728,11 +728,6 @@
     .markdown-content--streaming
     .overlay-stream-marker {
     animation: overlayChatStreamMarkerReducedPulse 1.8s ease-in-out infinite;
-    transform: none;
-  }
-
-  :where(.overlay-chat-surface) .overlay-loading-word-track {
-    animation: none;
     transform: none;
   }
 
