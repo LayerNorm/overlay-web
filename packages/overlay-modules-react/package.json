@@ -3,7 +3,9 @@
   "version": "0.0.1",
   "private": true,
   "license": "Apache-2.0",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/styles/*.css"
+  ],
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -13,6 +15,9 @@
     "./projects": "./src/projects.tsx",
     "./extensions": "./src/extensions.tsx",
     "./file-parity-fixture": "./src/file-parity-fixture.tsx",
+    "./file-viewer.css": "./src/styles/file-viewer.css",
+    "./knowledge-surface.css": "./src/styles/knowledge-surface.css",
+    "./notebook-editor.css": "./src/styles/notebook-editor.css",
     "./settings": "./src/settings.tsx",
     "./automations": "./src/automations.tsx",
     "./shell": "./src/shell.tsx"
