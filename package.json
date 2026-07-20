@@ -119,6 +119,7 @@
     "lint": "eslint",
     "check:chat-transcript-boundaries": "node packages/overlay-chat-react/scripts/check-transcript-boundaries.mjs && TSX_TSCONFIG_PATH=tsconfig.json node --import tsx --test src/features/chat/components/chat/toChatTranscriptView.test.ts",
     "chat-parity:manifest": "node scripts/chat-parity-baseline-manifest.mjs",
+    "file-parity:manifest": "node scripts/file-parity-baseline-manifest.mjs",
     "typecheck": "npm run check:chat-transcript-boundaries && tsc --noEmit",
     "ui:typecheck": "npm --prefix packages/overlay-ui run typecheck",
     "ui:test": "npm --prefix packages/overlay-ui run test",

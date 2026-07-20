@@ -12,6 +12,7 @@
     "./notes": "./src/notes.tsx",
     "./projects": "./src/projects.tsx",
     "./extensions": "./src/extensions.tsx",
+    "./file-parity-fixture": "./src/file-parity-fixture.tsx",
     "./settings": "./src/settings.tsx",
     "./automations": "./src/automations.tsx",
     "./shell": "./src/shell.tsx"
