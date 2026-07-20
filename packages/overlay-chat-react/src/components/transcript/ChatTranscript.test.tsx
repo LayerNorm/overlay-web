@@ -4,6 +4,7 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { ChatTranscriptView } from '@overlay/chat-core'
 import { ChatTranscript } from './ChatTranscript'
+import { ExchangeActions } from './ExchangeActions'
 import { MediaExchange } from './MediaExchange'
 
 test('ChatTranscript renders normalized exchanges in contract order without wrapper markup', () => {
@@ -137,4 +138,37 @@ test('MediaExchange exposes retry only for failed generations', () => {
 
   assert.match(failedMarkup, /aria-label="Retry generation"/)
   assert.doesNotMatch(webCompatibleMarkup, /aria-label="Retry generation"/)
+})
+
+test('exchange actions keep branch and sources immediately after reply', () => {
+  const markup = renderToStaticMarkup(
+    <ExchangeActions
+      copyPlainText="Answer"
+      isExiting={false}
+      retryDisabled={false}
+      onDeleteTurn={() => undefined}
+      onReply={() => undefined}
+      onBranch={() => undefined}
+      turnIdForActions="turn-1"
+      actionsLocked={false}
+      webSources={[
+        {
+          url: 'https://example.com/source',
+          title: 'Source',
+          origin: 'web-search',
+        },
+      ]}
+      onOpenSources={() => undefined}
+      userMsgId="user-1"
+      isSourcesOpenForThis={false}
+      modelLabel="Model"
+    />,
+  )
+
+  const replyIndex = markup.indexOf('aria-label="Reply"')
+  const branchIndex = markup.indexOf('aria-label="Branch chat from here"')
+  const sourcesIndex = markup.indexOf('aria-label="Open sources"')
+  assert.ok(replyIndex >= 0)
+  assert.ok(replyIndex < branchIndex)
+  assert.ok(branchIndex < sourcesIndex)
 })

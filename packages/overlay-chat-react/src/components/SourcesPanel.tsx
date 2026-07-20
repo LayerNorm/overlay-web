@@ -13,11 +13,13 @@ import { AppScreenSidePanel } from '@overlay/modules-react/shell'
 export function SourcesPanel({
   open,
   onClose,
+  onOpenSource,
   sources,
   variant = 'inline',
 }: {
   open: boolean
   onClose: () => void
+  onOpenSource?: (url: string) => void
   sources: WebSourceItem[]
   variant?: 'inline' | 'shell'
 }) {
@@ -59,6 +61,14 @@ export function SourcesPanel({
               href={safeUrl}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={
+                onOpenSource
+                  ? (event) => {
+                      event.preventDefault()
+                      onOpenSource(safeUrl)
+                    }
+                  : undefined
+              }
               className="group block rounded-lg px-2 py-2 transition-colors hover:bg-[var(--surface-subtle)]"
             >
               <div className="flex min-w-0 items-start gap-2.5">
