@@ -42,6 +42,7 @@ export interface FileQueryContract extends PaginationQueryContract {
 
 export interface CreateFileRequest {
   name: string
+  clientId?: string
   type?: 'file' | 'folder' | string
   kind?: KnowledgeFileKind
   parentId?: string | null
