@@ -775,6 +775,7 @@ export default function KnowledgeView({
       )}
 
       <AppScreenShell
+        className="overlay-knowledge-surface"
         header={
           <KnowledgeViewHeader
             activeFolder={activeFolder}

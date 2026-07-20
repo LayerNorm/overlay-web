@@ -1,0 +1,106 @@
+{
+  "fixtureVersion": "2026-07-20.1",
+  "capturedAt": "2026-07-20",
+  "browser": "Chromium via Playwright CLI",
+  "coverage": {
+    "platforms": [
+      "web",
+      "desktop"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "widths": [
+      1024,
+      1280,
+      1440
+    ],
+    "scenarios": [
+      "gallery",
+      "viewers",
+      "notebook"
+    ],
+    "listStates": [
+      "empty",
+      "loading",
+      "refreshing",
+      "error"
+    ],
+    "content": [
+      "files",
+      "folders",
+      "notes",
+      "outputs",
+      "nested-folders",
+      "long-names",
+      "unicode",
+      "duplicate-names",
+      "missing-previews"
+    ],
+    "interactions": [
+      "search",
+      "selected-row",
+      "bulk-selection",
+      "context-menu"
+    ],
+    "viewers": [
+      "markdown",
+      "text",
+      "csv",
+      "html",
+      "pdf",
+      "docx",
+      "image",
+      "audio",
+      "video"
+    ],
+    "editor": [
+      "formatting",
+      "tables",
+      "tasks",
+      "code",
+      "math",
+      "images",
+      "links"
+    ],
+    "persistence": [
+      "offline",
+      "syncing",
+      "conflicted",
+      "migration"
+    ]
+  },
+  "cssExtraction": {
+    "webScreenshotDiff": 0,
+    "comparedScreenshots": 10,
+    "stylesheets": [
+      "knowledge-surface.css",
+      "file-viewer.css",
+      "notebook-editor.css"
+    ]
+  },
+  "screenshotCount": 20,
+  "screenshots": {
+    "baselines/desktop-gallery-dark-1024.png": "4d03ba5957771dfdd4c5506f05d5253bcad2fd7fbb32fc05ddbf5fdfefb22a0b",
+    "baselines/desktop-gallery-dark-1280.png": "9c4923b609fb90ab17c9931c4d2b48057fbb993cc27e1d2d2f9a87a3e1a18408",
+    "baselines/desktop-gallery-dark-1440.png": "baf53f0a5bc89ed64fa2e3714b9ea74b53020f9513ab52ffa122d45db6db2ece",
+    "baselines/desktop-gallery-light-1024.png": "649d99ada1e54790c10b5a11e81802d22a45648bb0565f423ab99d771431ec04",
+    "baselines/desktop-gallery-light-1280.png": "0f5561e0898ac48c2c87e102fee3a4a9d8917394b34085746f489489905c9933",
+    "baselines/desktop-gallery-light-1440.png": "ee095504d62601bacb15ddf6a6ddc2b97fea4ecf8f384d5838e847bec26c00d4",
+    "baselines/desktop-notebook-dark-1280.png": "2cc5e4c0a4b64fc955a7545a0eb45e349ea06dbca674b1eb787243f2f921ced2",
+    "baselines/desktop-notebook-light-1280.png": "8633558e76e6e23a0e99d8cfa87c6dd9a8928d4a107e99a22588e083a7d19466",
+    "baselines/desktop-viewers-dark-1280.png": "6d05393dcf365786321086daceaee3c14b46f2c2352b7ae26497fb6a904ca1a3",
+    "baselines/desktop-viewers-light-1280.png": "650762ba2b9d5cae9648e9464c0beb89466baa3141760a6e8ed71a8faa808a05",
+    "baselines/web-gallery-dark-1024.png": "04d163223518339399d21ce67b2537c7748e58777692fc186ce8418c6acc70a7",
+    "baselines/web-gallery-dark-1280.png": "c0d47205b1dc9dd74648f513d298b9542faa7076569f3517ad5f9b9fa5baa912",
+    "baselines/web-gallery-dark-1440.png": "f56442d18d07e48c06c5756e808d9d528ed83cfb6f268cf4861bd08a2b1912e4",
+    "baselines/web-gallery-light-1024.png": "916ca76a7a9d27001a0b715e7d20c17d2dd4d826aa8135babee4a4fa1f3bd99f",
+    "baselines/web-gallery-light-1280.png": "cc39050a2529056ca6d11a0e692ee153b6c5768597c48ea2c0a4d455a8271678",
+    "baselines/web-gallery-light-1440.png": "d45e3f1b87838681044a65444b687c6c6626804c27b91093f8543ea1bac19454",
+    "baselines/web-notebook-dark-1280.png": "d7f99e4ebb93a583fd4f50adf17bed8879460888a1c732cd1438c43d2f578a4b",
+    "baselines/web-notebook-light-1280.png": "78d4c680dc88697d97a97c908a9082fc0fb9d68f1a91fb67e205e9d074fdd268",
+    "baselines/web-viewers-dark-1280.png": "2b396161cef9b35fae4b20d4a39b03acc4fbd02cda3bd310abe0a07ee695ce10",
+    "baselines/web-viewers-light-1280.png": "7441360f76ccb8096cbfb03df9715805a8dddc2857e5a4cbfc9950cd9b2e7ec4"
+  }
+}

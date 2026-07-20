@@ -30,7 +30,7 @@ export function KnowledgeFileList({
   onMove?: (fileId: string, parentId: string | null) => void
 }) {
   return (
-    <div className="mx-auto max-w-3xl space-y-0.5">
+    <div className="overlay-knowledge-list mx-auto max-w-3xl space-y-0.5">
       {nodes.map((node) => (
         <FileTreeRow
           key={node._id}
@@ -117,7 +117,7 @@ export function FileTreeRow({
             handleRowClick()
           }
         }}
-        className={`group flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors hover:border-[var(--border)] hover:bg-[var(--surface-muted)] ${
+        className={`overlay-knowledge-row group flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors hover:border-[var(--border)] hover:bg-[var(--surface-muted)] ${
           dragOver
             ? 'border-[var(--foreground)] bg-[var(--surface-muted)]'
             : isFileViewerSelected && !bulkSelectMode
@@ -175,7 +175,7 @@ export function KnowledgeFileCards({
   onMove?: (fileId: string, parentId: string | null) => void
 }) {
   return (
-    <div className="mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4">
+    <div className="overlay-knowledge-card-grid mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4">
       {folders.map((folder) => (
         <FolderCard
           key={folder._id}
@@ -226,7 +226,7 @@ export function FileCard({
         event.dataTransfer.effectAllowed = 'move'
       }}
       onClick={onOpen}
-      className={`group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-[var(--surface-elevated)] text-left transition-shadow hover:shadow-md ${
+      className={`overlay-knowledge-card overlay-knowledge-card--file group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-[var(--surface-elevated)] text-left transition-shadow hover:shadow-md ${
         bulkSel ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20' : 'border-[var(--border)]'
       }`}
       style={{ breakInside: 'avoid' }}
@@ -297,7 +297,7 @@ export function FolderCard({
         onMove(fileId, folder._id)
       }}
       onClick={onOpen}
-      className={`group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-[var(--surface-elevated)] text-left transition-shadow hover:shadow-md ${
+      className={`overlay-knowledge-card overlay-knowledge-card--folder group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-[var(--surface-elevated)] text-left transition-shadow hover:shadow-md ${
         dragOver
           ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20'
           : bulkSel ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20' : 'border-[var(--border)]'
@@ -317,7 +317,7 @@ export function FolderCard({
 
 export function KnowledgeFileCardsSkeleton({ cards = 10 }: { cards?: number }) {
   return (
-    <div className="mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4" aria-hidden>
+    <div className="overlay-knowledge-card-grid mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4" aria-hidden>
       {Array.from({ length: cards }).map((_, index) => (
         <div
           key={index}

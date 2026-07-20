@@ -131,7 +131,7 @@ function DocumentViewer({ url }: { url: string }) {
 
   if (loading) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-[var(--muted)]">
+      <div className="overlay-file-viewer overlay-file-viewer--document flex flex-1 flex-col items-center justify-center gap-3 p-8 text-[var(--muted)]">
         <Loader2 size={24} className="animate-spin" />
         <p className="text-xs">Loading document…</p>
       </div>
@@ -140,7 +140,7 @@ function DocumentViewer({ url }: { url: string }) {
 
   if (error) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-[var(--muted)]">
+      <div className="overlay-file-viewer overlay-file-viewer--document flex flex-1 flex-col items-center justify-center gap-3 p-8 text-[var(--muted)]">
         <FileType size={28} />
         <p className="text-sm font-medium text-[var(--foreground)]">Could not load document</p>
         <p className="text-xs text-red-500">{error}</p>
@@ -149,7 +149,7 @@ function DocumentViewer({ url }: { url: string }) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-8 py-6">
+    <div className="overlay-file-viewer overlay-file-viewer--document flex-1 overflow-y-auto px-8 py-6">
       <div
         className="prose prose-sm max-w-3xl text-[var(--foreground)] prose-headings:font-semibold prose-headings:text-[var(--foreground)] prose-p:text-[var(--foreground)] prose-li:text-[var(--foreground)] prose-strong:text-[var(--foreground)] prose-a:text-blue-600 dark:prose-a:text-sky-400 prose-code:rounded prose-code:bg-[var(--surface-subtle)] prose-code:px-1 prose-code:text-[var(--foreground)] prose-pre:bg-[var(--surface-subtle)] prose-pre:text-[var(--foreground)] prose-blockquote:border-[var(--border)] prose-blockquote:text-[var(--muted)]"
         dangerouslySetInnerHTML={{ __html: html ?? '' }}
@@ -166,7 +166,7 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
 
   if (type === 'markdown') {
     return (
-      <div className="flex-1 overflow-y-auto px-8 py-6">
+      <div className="overlay-file-viewer overlay-file-viewer--markdown flex-1 overflow-y-auto px-8 py-6">
         <div className={proseMarkdown}>
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
         </div>
@@ -176,7 +176,7 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
 
   if (type === 'text') {
     return (
-      <div className="flex-1 overflow-y-auto px-8 py-6">
+      <div className="overlay-file-viewer overlay-file-viewer--text flex-1 overflow-y-auto px-8 py-6">
         <pre className="text-sm leading-relaxed font-mono whitespace-pre-wrap text-[var(--foreground)]">
           {content}
         </pre>
@@ -186,7 +186,7 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
 
   if (type === 'html') {
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+      <div className="overlay-file-viewer overlay-file-viewer--html flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
         <iframe
           srcDoc={source}
           sandbox="allow-scripts allow-forms allow-pointer-lock allow-modals"
@@ -202,7 +202,7 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
     const headers = rows[0] ?? []
     const body = rows.slice(1)
     return (
-      <div className="flex-1 overflow-auto px-4 py-4">
+      <div className="overlay-file-viewer overlay-file-viewer--csv flex-1 overflow-auto px-4 py-4">
         <table className="border-collapse text-xs">
           <thead>
             <tr>
@@ -237,7 +237,7 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
 
   if (type === 'image') {
     return (
-      <div className="flex flex-1 items-center justify-center overflow-auto bg-[var(--surface-subtle)] p-8">
+      <div className="overlay-file-viewer overlay-file-viewer--image flex flex-1 items-center justify-center overflow-auto bg-[var(--surface-subtle)] p-8">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={source} alt={name} className="max-h-full max-w-full rounded-lg object-contain shadow-sm" />
       </div>
@@ -246,7 +246,7 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
 
   if (type === 'audio') {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
+      <div className="overlay-file-viewer overlay-file-viewer--audio flex flex-1 flex-col items-center justify-center gap-6 p-8">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--surface-subtle)]">
           <Music size={28} className="text-[var(--muted)]" />
         </div>
@@ -258,7 +258,7 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
 
   if (type === 'video') {
     return (
-      <div className="flex flex-1 items-center justify-center overflow-hidden bg-black p-4">
+      <div className="overlay-file-viewer overlay-file-viewer--video flex flex-1 items-center justify-center overflow-hidden bg-black p-4">
         <video controls src={source} className="max-h-full max-w-full" />
       </div>
     )
@@ -274,14 +274,14 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
       iframeSrc.startsWith('/api/')
     if (canEmbed) {
       return (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="overlay-file-viewer overlay-file-viewer--pdf flex min-h-0 flex-1 flex-col overflow-hidden">
           <iframe src={iframeSrc} className="min-h-0 flex-1 w-full border-none" title={name} />
         </div>
       )
     }
     if (content.trim()) {
       return (
-        <div className="flex-1 overflow-y-auto px-8 py-6">
+        <div className="overlay-file-viewer overlay-file-viewer--pdf flex-1 overflow-y-auto px-8 py-6">
           <p className="mb-4 max-w-2xl text-xs text-[var(--muted)]">
             This PDF is stored as extracted text for search and the notebook (not the original layout).
           </p>
@@ -292,7 +292,7 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
       )
     }
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-[var(--muted)]">
+      <div className="overlay-file-viewer overlay-file-viewer--pdf flex flex-1 flex-col items-center justify-center gap-3 p-8 text-[var(--muted)]">
         <FileType size={28} />
         <p className="text-sm font-medium text-[var(--foreground)]">Could not load PDF preview</p>
       </div>
@@ -315,7 +315,7 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
   const downloadUrl = safeHttpUrl(url) || (url?.startsWith('/api/') ? url : undefined) || (content.startsWith('/api/') ? content : undefined)
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-[var(--muted)]">
+    <div className="overlay-file-viewer overlay-file-viewer--binary flex flex-1 flex-col items-center justify-center gap-4 p-8 text-[var(--muted)]">
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--surface-subtle)]">
         {labels[ext] ? (
           <FileTypeIcon file={{ name, extension: ext }} size={30} framed />
@@ -365,7 +365,7 @@ export function FileViewerPanel({
 
   return (
     <AppScreenShell
-      className="flex min-h-0 flex-1 flex-col"
+      className="overlay-file-viewer-panel flex min-h-0 flex-1 flex-col"
       header={
         <AppScreenHeader className="px-6">
           <div className="flex min-w-0 items-center justify-between gap-3">

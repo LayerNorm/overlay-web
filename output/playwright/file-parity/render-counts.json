@@ -1,0 +1,40 @@
+{
+  "fixtureVersion": "2026-07-20.1",
+  "capture": {
+    "scenario": "gallery",
+    "theme": "light",
+    "width": 1280
+  },
+  "web": {
+    "reactDevelopmentDoubleRender": true,
+    "fetches": 1,
+    "mounts": {
+      "FileParityFixtureSurface": 1
+    },
+    "renders": {
+      "FileParityFixtureSurface": 2,
+      "FileStateCard": 26,
+      "FileViewerFixture": 20,
+      "NotebookEditorFixture": 10
+    },
+    "editorHydrations": 1,
+    "editorSaveQueued": 1,
+    "editorSaveCommitted": 1
+  },
+  "desktop": {
+    "reactDevelopmentDoubleRender": false,
+    "fetches": 1,
+    "mounts": {
+      "FileParityFixtureSurface": 1
+    },
+    "renders": {
+      "FileParityFixtureSurface": 1,
+      "FileStateCard": 13,
+      "FileViewerFixture": 10,
+      "NotebookEditorFixture": 5
+    },
+    "editorHydrations": 1,
+    "editorSaveQueued": 1,
+    "editorSaveCommitted": 1
+  }
+}
