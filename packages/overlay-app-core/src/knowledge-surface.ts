@@ -148,7 +148,7 @@ export interface FilePickerAdapter {
 }
 
 export interface FileNavigationAdapter {
-  open(node: KnowledgeSurfaceNode): void | Promise<void>
+  open(node: KnowledgeSurfaceNode, options?: { replace?: boolean }): void | Promise<void>
   reveal?(node: KnowledgeSurfaceNode): void | Promise<void>
   download?(node: KnowledgeSurfaceNode): void | Promise<void>
 }

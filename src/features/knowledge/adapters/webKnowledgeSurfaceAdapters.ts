@@ -76,7 +76,7 @@ async function responseNode(response: Response, fallback: KnowledgeCreateInput):
 
 export function createWebKnowledgeRepository(
   client: WebKnowledgeAppClient = overlayAppClient,
-  eventTarget: Pick<Window, 'addEventListener' | 'removeEventListener'> | undefined =
+  eventTarget: Pick<Window, 'addEventListener' | 'removeEventListener'> | null | undefined =
     typeof window === 'undefined' ? undefined : window,
 ): KnowledgeRepository {
   const listeners = new Set<(event: KnowledgeMutationEvent) => void>()
@@ -151,7 +151,7 @@ export function createWebKnowledgeRepository(
     },
     async delete(input: KnowledgeDeleteInput) {
       for (const id of input.ids) {
-        const node = byId.get(id)
+        const node = byId.get(id) ?? await repository.get(id)
         const response = node?.kind === 'note'
           ? await client.notes.deleteResponse({ noteId: id })
           : await client.files.deleteResponse({ fileId: id })
@@ -194,7 +194,7 @@ function routeFromUrl(url: URL): KnowledgeSurfaceRouteState {
 export function createWebKnowledgeRouteAdapter(options: {
   currentUrl?: () => URL
   navigate?: (url: string, replace: boolean) => void
-  eventTarget?: Pick<Window, 'addEventListener' | 'removeEventListener'>
+  eventTarget?: Pick<Window, 'addEventListener' | 'removeEventListener'> | null
 } = {}): KnowledgeRouteAdapter {
   const currentUrl = options.currentUrl ?? (() => new URL(window.location.href))
   const navigate = options.navigate ?? ((url, replace) => {
@@ -263,15 +263,15 @@ export function createWebKnowledgeSurfaceAdapters(options: {
   client?: WebKnowledgeAppClient
   route?: KnowledgeRouteAdapter
   filePicker?: FilePickerAdapter
-  navigate?: (url: string) => void
+  navigate?: (url: string, options?: { replace?: boolean }) => void
   capture?: (event: string, properties?: Record<string, unknown>) => void
-  eventTarget?: Pick<Window, 'addEventListener' | 'removeEventListener'>
+  eventTarget?: Pick<Window, 'addEventListener' | 'removeEventListener'> | null
 } = {}): KnowledgeSurfaceAdapters {
   const navigate = options.navigate ?? ((url) => window.location.assign(url))
   const navigation: FileNavigationAdapter = {
-    open(node) {
-      if (opensInDocumentEditor(node)) navigate(`/app/notes?id=${encodeURIComponent(node.id)}`)
-      else navigate(`/app/files?file=${encodeURIComponent(node.id)}`)
+    open(node, navigationOptions) {
+      if (opensInDocumentEditor(node)) navigate(`/app/notes?id=${encodeURIComponent(node.id)}`, navigationOptions)
+      else navigate(`/app/files?file=${encodeURIComponent(node.id)}`, navigationOptions)
     },
   }
   const analytics: KnowledgeAnalyticsAdapter = {
@@ -281,7 +281,7 @@ export function createWebKnowledgeSurfaceAdapters(options: {
   }
   return {
     repository: createWebKnowledgeRepository(options.client, options.eventTarget),
-    route: options.route ?? createWebKnowledgeRouteAdapter({ eventTarget: options.eventTarget }),
+    route: options.route ?? createWebKnowledgeRouteAdapter({ eventTarget: options.eventTarget ?? undefined }),
     filePicker: options.filePicker ?? createWebFilePickerAdapter(),
     navigation,
     analytics,
