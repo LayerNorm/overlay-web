@@ -15,6 +15,7 @@
     "./knowledge": "./src/knowledge.ts",
     "./knowledge-surface": "./src/knowledge-surface.ts",
     "./knowledge-surface-fixture": "./src/knowledge-surface-fixture.ts",
+    "./knowledge-migration": "./src/knowledge-migration.ts",
     "./extensions": "./src/extensions.ts",
     "./file-parity-fixtures": "./src/file-parity-fixtures.ts",
     "./modules": "./src/modules.ts",
