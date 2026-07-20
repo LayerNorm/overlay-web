@@ -966,6 +966,7 @@ export default defineSchema({
 
   files: defineTable({
     userId: v.string(),
+    clientId: v.optional(v.string()),
     name: v.string(),
     type: v.union(v.literal('file'), v.literal('folder')),
     kind: v.optional(v.union(
@@ -1024,6 +1025,7 @@ export default defineSchema({
     shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
     sharedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
+    .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_contentHash', ['userId', 'contentHash'])
     .index('by_duplicateOfFileId', ['duplicateOfFileId'])
     .index('by_projectId', ['projectId'])

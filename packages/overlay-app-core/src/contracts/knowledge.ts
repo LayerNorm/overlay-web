@@ -2,6 +2,7 @@ import type { MutationSuccessResponse, PaginationQueryContract } from './common'
 
 export interface KnowledgeFile {
   _id: string
+  clientId?: string
   name: string
   type: 'file' | 'folder' | 'note' | 'output' | string
   kind?: 'folder' | 'note' | 'upload' | 'output' | string

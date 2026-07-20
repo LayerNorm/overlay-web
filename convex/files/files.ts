@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { Doc, Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
+import { selectNoteClientIdCandidate } from '../../src/shared/knowledge/note-client-id'
 import { mutation, query, type MutationCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import {
@@ -70,6 +71,7 @@ function normalizeFile(file: Doc<'files'>) {
   return {
     _id: file._id,
     userId: file.userId,
+    clientId: file.clientId,
     name: file.name,
     type: file.type,
     kind,
@@ -611,6 +613,7 @@ export const create = mutation({
     userId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
+    clientId: v.optional(v.string()),
     name: v.string(),
     type: v.optional(v.union(v.literal('file'), v.literal('folder'))),
     kind: v.optional(v.union(
@@ -673,6 +676,78 @@ export const create = mutation({
     const textBytes = type === 'file' ? utf8ByteLength(textContent) : 0
     const explicitSize = args.sizeBytesOverride ?? args.sizeBytes ?? 0
     const sizeBytes = type === 'file' ? Math.max(textBytes, explicitSize) : 0
+    const clientId = args.clientId?.trim() || undefined
+    if (kind === 'note' && clientId) {
+      const exactCandidate = await ctx.db
+        .query('files')
+        .withIndex('by_userId_clientId', (q) =>
+          q.eq('userId', args.userId).eq('clientId', clientId),
+        )
+        .first()
+      const candidates = exactCandidate
+        ? [exactCandidate]
+        : await ctx.db
+            .query('files')
+            .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+            .collect()
+      const existingNote = selectNoteClientIdCandidate(candidates, {
+        clientId,
+        title: args.name,
+        contentHash: args.contentHash,
+      })
+
+      if (existingNote) {
+        const previousText = textOf(existingNote)
+        const previousSize = existingNote.deletedAt
+          ? 0
+          : (existingNote.sizeBytes ?? utf8ByteLength(previousText))
+        const storageDelta = sizeBytes - previousSize
+        if (storageDelta > 0) await ensureStorageAvailable(ctx as never, args.userId, storageDelta)
+        const canonicalDuplicate = args.contentHash
+          ? await findCanonicalDuplicate(
+              ctx as never,
+              args.userId,
+              args.contentHash,
+              existingNote._id,
+            )
+          : null
+        const indexable = isTextIndexable(kind, textContent)
+        const contentChanged = previousText !== textContent || Boolean(existingNote.deletedAt)
+        await ctx.db.patch(existingNote._id, {
+          clientId,
+          name: args.name,
+          content: textContent,
+          textContent: undefined,
+          sizeBytes,
+          contentHash: args.contentHash,
+          duplicateOfFileId: canonicalDuplicate?._id,
+          indexable,
+          indexStatus: indexable && !canonicalDuplicate ? 'pending' : 'skipped',
+          indexError: undefined,
+          projectId: args.projectId,
+          deletedAt: undefined,
+          updatedAt: args.updatedAt ?? now,
+        })
+        if (storageDelta !== 0) {
+          await applyStorageUsageDelta(ctx as never, args.userId, storageDelta)
+        }
+        if (contentChanged) {
+          await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
+            sourceKind: 'file',
+            sourceId: existingNote._id,
+            userId: args.userId,
+          })
+          if (indexable && !canonicalDuplicate) {
+            await ctx.scheduler.runAfter(
+              0,
+              internal.knowledge.knowledge.reindexFileInternal,
+              { fileId: existingNote._id },
+            )
+          }
+        }
+        return existingNote._id
+      }
+    }
     if (shouldCountStorage(kind, type, sizeBytes)) {
       await ensureStorageAvailable(ctx as never, args.userId, sizeBytes)
     }
@@ -683,6 +758,7 @@ export const create = mutation({
         : null
     const id = await ctx.db.insert('files', {
       userId: args.userId,
+      clientId,
       name: args.name,
       type,
       kind,
