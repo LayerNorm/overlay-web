@@ -430,6 +430,8 @@ export function KnowledgeViewHeaderBrowseStory() {
       createMenuOpen={false}
       createMenuRef={createMenuRef}
       fileCount={files.length}
+      fileSearchOpen={false}
+      fileSearchQuery=""
       filesCategory="files"
       fileTitle=""
       fileUploadRef={fileUploadRef}
@@ -450,6 +452,8 @@ export function KnowledgeViewHeaderBrowseStory() {
       onCreateNoteFile={() => undefined}
       onExitSelectMode={() => undefined}
       onFileTitleChange={() => undefined}
+      onSetFileSearchOpen={() => undefined}
+      onSetFileSearchQuery={() => undefined}
       onImportMemory={() => undefined}
       onNewMemory={() => undefined}
       onRefreshOutputs={() => undefined}

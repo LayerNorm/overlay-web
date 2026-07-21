@@ -1,7 +1,7 @@
 'use client'
 
-// Compatibility wrapper: canonical project contracts/controllers live in @overlay/app-core,
-// typed transport lives in @overlay/api-client, and reusable presentation lives in @overlay/modules-react.
+// Web host adapter: Next routing and browser transport stay at the platform
+// boundary while reusable project and file presentation lives in @overlay/modules-react.
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { Folder, Loader2, Plus } from 'lucide-react'
@@ -47,7 +47,7 @@ import {
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { FileViewerSkeleton } from '@overlay/ui/feedback'
 import dynamic from 'next/dynamic'
-import { FileViewerPanel, isEditableType } from '@/features/files/components/FileViewer'
+import { FileViewerPanel, isEditableType } from '@overlay/modules-react/knowledge'
 import { FileShareMenu } from '@/features/files/components/FileShareMenu'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { buildSharePageUrl } from '@/shared/share/share-page-url'

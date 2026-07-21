@@ -108,7 +108,7 @@ function FolderHeader({
         <ArrowLeft size={17} />
       </button>
       <FolderOpen size={18} className="shrink-0 text-[var(--muted-light)]" />
-      <div className="flex min-w-0 items-center gap-1 truncate text-sm">
+      <nav aria-label="Folder breadcrumbs" className="flex min-w-0 items-center gap-1 truncate text-sm">
         <button
           type="button"
           onClick={() => navigateToFolder(null)}
@@ -120,7 +120,7 @@ function FolderHeader({
           <span key={node._id} className="flex min-w-0 items-center gap-1">
             <ChevronRight size={12} className="shrink-0 text-[var(--muted-light)]" />
             {i === folderBreadcrumb.length - 1 ? (
-              <span className="truncate font-medium text-[var(--foreground)]">{node.name}</span>
+              <span aria-current="page" className="truncate font-medium text-[var(--foreground)]">{node.name}</span>
             ) : (
               <button
                 type="button"
@@ -132,7 +132,7 @@ function FolderHeader({
             )}
           </span>
         ))}
-      </div>
+      </nav>
       {!memorySearchOpen && (
         <span className="shrink-0 text-xs text-[var(--muted-light)]">{itemCount} items</span>
       )}
@@ -215,6 +215,7 @@ function BulkSelectControls({
       <button
         type="button"
         title="Select items"
+        aria-label="Select items"
         onClick={() => onSetSelectMode(true)}
         className={TOOLBAR_ICON_BUTTON_CLASS}
       >
@@ -257,6 +258,8 @@ function LayoutControls({
       <button
         type="button"
         title="List"
+        aria-label="List layout"
+        aria-pressed={layout === 'list'}
         onClick={() => onUpdateQuery({ layout: 'list' })}
         className={`inline-flex h-7 items-center rounded px-2 transition-colors ${
           layout === 'list'
@@ -269,6 +272,8 @@ function LayoutControls({
       <button
         type="button"
         title="Cards"
+        aria-label="Cards layout"
+        aria-pressed={layout === 'cards'}
         onClick={() => onUpdateQuery({ layout: 'cards' })}
         className={`inline-flex h-7 items-center rounded px-2 transition-colors ${
           layout === 'cards'
@@ -332,6 +337,8 @@ export function KnowledgeViewHeader({
   createMenuOpen,
   createMenuRef,
   fileCount,
+  fileSearchOpen,
+  fileSearchQuery,
   filesCategory,
   fileTitle,
   fileUploadRef,
@@ -354,6 +361,8 @@ export function KnowledgeViewHeader({
   onPickFolder,
   onExitSelectMode,
   onFileTitleChange,
+  onSetFileSearchOpen,
+  onSetFileSearchQuery,
   onImportMemory,
   onNewMemory,
   onRefreshOutputs,
@@ -385,6 +394,8 @@ export function KnowledgeViewHeader({
   createMenuOpen: boolean
   createMenuRef: React.RefObject<HTMLDivElement | null>
   fileCount: number
+  fileSearchOpen: boolean
+  fileSearchQuery: string
   filesCategory: FilesCategory
   fileTitle: string
   fileUploadRef: React.RefObject<HTMLInputElement | null>
@@ -407,6 +418,8 @@ export function KnowledgeViewHeader({
   onPickFolder?: () => void
   onExitSelectMode: () => void
   onFileTitleChange: (value: string) => void
+  onSetFileSearchOpen: (value: boolean | ((value: boolean) => boolean)) => void
+  onSetFileSearchQuery: (value: string) => void
   onImportMemory: () => void
   onNewMemory: () => void
   onRefreshOutputs: () => void
@@ -463,7 +476,16 @@ export function KnowledgeViewHeader({
               mode={mode}
             />
           )}
-          {activeTab === 'memories' && memorySearchOpen ? (
+          {activeTab === 'files' && fileSearchOpen ? (
+            <input
+              value={fileSearchQuery}
+              onChange={(e) => onSetFileSearchQuery(e.target.value)}
+              placeholder="Search files…"
+              aria-label="Search files"
+              autoFocus
+              className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] max-sm:order-3 max-sm:w-full max-sm:flex-none"
+            />
+          ) : activeTab === 'memories' && memorySearchOpen ? (
             <input
               value={memorySearchQuery}
               onChange={(e) => onSetMemorySearchQuery(e.target.value)}
@@ -532,6 +554,17 @@ export function KnowledgeViewHeader({
                 </button>
               </>
             ) : activeTab === 'files' ? (
+              <>
+              <button
+                type="button"
+                title="Search files"
+                onClick={() => onSetFileSearchOpen((value) => !value)}
+                className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                  fileSearchOpen ? 'border-[var(--muted)] bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
+                }`}
+              >
+                <Search size={14} strokeWidth={1.75} />
+              </button>
               <FilesCreateUploadControls
                 activeFolder={activeFolder}
                 createMenuOpen={createMenuOpen}
@@ -549,6 +582,7 @@ export function KnowledgeViewHeader({
                 uploadMenuOpen={uploadMenuOpen}
                 uploadMenuRef={uploadMenuRef}
               />
+              </>
             ) : null}
             {mode === 'files' && activeTab === 'files' ? (
               <FilesCategoryControls

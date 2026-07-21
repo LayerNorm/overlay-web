@@ -1,7 +1,7 @@
 'use client'
 
-// Compatibility wrapper: Next routing and web transport stay in the host while
-// the complete files/knowledge experience lives in @overlay/modules-react.
+// Web host adapter: Next routing and browser transport stay at the platform
+// boundary while presentation lives in @overlay/modules-react.
 import { getFileType, isEditableType } from '@/shared/files/file-viewer-types'
 import { shouldIngestDocument } from '@/shared/files/file-ingestion'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'

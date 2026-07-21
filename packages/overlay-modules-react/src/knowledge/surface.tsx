@@ -209,6 +209,7 @@ export function SharedKnowledgeSurface({
   const [isCreating, setIsCreating] = useState(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastFileTriggerRef = useRef<HTMLElement | null>(null)
   const fileUploadRef = useRef<HTMLInputElement>(null)
   const folderUploadRef = useRef<HTMLInputElement>(null)
   const createMenuRef = useRef<HTMLDivElement>(null)
@@ -218,7 +219,8 @@ export function SharedKnowledgeSurface({
 
   const [memorySearchOpen, setMemorySearchOpen] = useState(false)
   const [memorySearchQuery, setMemorySearchQuery] = useState('')
-  const [fileSearchQuery] = useState('')
+  const [fileSearchOpen, setFileSearchOpen] = useState(false)
+  const [fileSearchQuery, setFileSearchQuery] = useState('')
 
   const [selectMode, setSelectMode] = useState(false)
   const [selectedMemoryIds, setSelectedMemoryIds] = useState<Set<string>>(() => new Set())
@@ -330,6 +332,9 @@ export function SharedKnowledgeSurface({
   }
 
   const loadFile = useCallback(async (fileId: string) => {
+    if (document.activeElement instanceof HTMLElement) {
+      lastFileTriggerRef.current = document.activeElement
+    }
     const file = await adapters.repository.get(fileId)
     if (!file) return
     if (opensInDocumentEditor(file)) {
@@ -502,6 +507,9 @@ export function SharedKnowledgeSurface({
     setFileContent('')
     setFileTitle('')
     updateQuery({ file: null })
+    requestAnimationFrame(() => {
+      if (lastFileTriggerRef.current?.isConnected) lastFileTriggerRef.current.focus()
+    })
   }
 
   // ── File handlers ──
@@ -844,6 +852,8 @@ export function SharedKnowledgeSurface({
             createMenuOpen={createMenuOpen}
             createMenuRef={createMenuRef}
             fileCount={filesFiltered.length}
+            fileSearchOpen={fileSearchOpen}
+            fileSearchQuery={fileSearchQuery}
             filesCategory={filesCategory}
             fileTitle={fileTitle}
             fileUploadRef={fileUploadRef}
@@ -867,6 +877,8 @@ export function SharedKnowledgeSurface({
             onPickFolder={() => void handleNativePick(true)}
             onExitSelectMode={exitSelectMode}
             onFileTitleChange={handleFileTitleChange}
+            onSetFileSearchOpen={setFileSearchOpen}
+            onSetFileSearchQuery={setFileSearchQuery}
             onImportMemory={() => { setShowImportMemory(true); setImportMemoryError(null) }}
             onNewMemory={() => { setShowAddMemory(true); setMemorySaveError(null) }}
             onRefreshOutputs={() => setOutputsRefreshKey((k) => k + 1)}

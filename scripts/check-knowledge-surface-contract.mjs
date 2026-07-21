@@ -12,12 +12,11 @@ const sharedSurfacePath = path.join(root, 'packages/overlay-modules-react/src/kn
 const webWrapperPath = path.join(root, 'src/features/knowledge/components/KnowledgeView.tsx')
 const desktopSharedPath = path.join(root, 'overlay-desktop/src/renderer/src/pages/SharedDesktopFilesSurface.tsx')
 const desktopMainPath = path.join(root, 'overlay-desktop/src/renderer/src/pages/MainWindow.tsx')
-const desktopFlagPath = path.join(root, 'overlay-desktop/src/renderer/src/features/files/shared-files-surface-flag.ts')
 const sharedViewerPath = path.join(root, 'packages/overlay-modules-react/src/knowledge/file-viewer.tsx')
 const webViewerHostPath = path.join(root, 'src/app/app/_components/KnowledgeViewHost.tsx')
 const desktopOutputViewerPath = path.join(root, 'overlay-desktop/src/renderer/src/pages/OutputPreviewPage.tsx')
 
-for (const file of [contractPath, fixturePath, webAdapterPath, desktopAdapterPath, sharedSurfacePath, webWrapperPath, desktopSharedPath, desktopMainPath, desktopFlagPath, sharedViewerPath, webViewerHostPath, desktopOutputViewerPath]) {
+for (const file of [contractPath, fixturePath, webAdapterPath, desktopAdapterPath, sharedSurfacePath, webWrapperPath, desktopSharedPath, desktopMainPath, sharedViewerPath, webViewerHostPath, desktopOutputViewerPath]) {
   if (!fs.existsSync(file)) throw new Error(`Missing knowledge surface contract boundary: ${path.relative(root, file)}`)
 }
 
@@ -103,33 +102,25 @@ if (!fs.readFileSync(desktopOutputViewerPath, 'utf8').includes('<OutputViewer'))
 
 const webWrapper = fs.readFileSync(webWrapperPath, 'utf8')
 if (!webWrapper.includes("from '@overlay/modules-react/knowledge'")) {
-  throw new Error('Web KnowledgeView must remain a compatibility wrapper around the shared surface')
+  throw new Error('Web KnowledgeView host adapter must render the shared surface')
 }
 if (webWrapper.split('\n').length > 260) {
-  throw new Error('Web KnowledgeView compatibility wrapper regained presentation/orchestration')
+  throw new Error('Web KnowledgeView host adapter regained presentation/orchestration')
 }
 
-const desktopLegacyPage = fs.readFileSync(
-  path.join(root, 'overlay-desktop/src/renderer/src/pages/FilesListPage.tsx'),
-  'utf8',
-)
 const desktopShared = fs.readFileSync(desktopSharedPath, 'utf8')
 const desktopMain = fs.readFileSync(desktopMainPath, 'utf8')
-const desktopFlag = fs.readFileSync(desktopFlagPath, 'utf8')
 if (!desktopShared.includes("from '@overlay/modules-react/knowledge'")) {
   throw new Error('Desktop files must render the canonical shared knowledge surface')
 }
 for (const required of ['openFilesInHost', 'enableExternalDrop', 'createDesktopKnowledgeSurfaceAdapters']) {
   if (!desktopShared.includes(required)) throw new Error(`Desktop shared surface lost ${required}`)
 }
-if (!desktopMain.includes('<SharedDesktopFilesSurface') || !desktopMain.includes('sharedFilesSurfaceEnabled ?')) {
-  throw new Error('MainWindow must use the shared files surface by default with an explicit rollback branch')
+if (!desktopMain.includes('<SharedDesktopFilesSurface')) {
+  throw new Error('MainWindow must use the shared files surface')
 }
-if (!desktopFlag.includes("'legacy'") || !desktopFlag.includes('VITE_DESKTOP_SHARED_FILES_SURFACE')) {
-  throw new Error('Desktop files cutover must retain its temporary rollback flag')
-}
-if (desktopLegacyPage.includes("from '@overlay/modules-react/knowledge'")) {
-  throw new Error('The legacy rollback renderer must not masquerade as the canonical shared surface')
+if (/FilesListPage|sharedFilesSurfaceEnabled|VITE_DESKTOP_SHARED_FILES_SURFACE/.test(desktopMain)) {
+  throw new Error('MainWindow restored a legacy files renderer or rollback branch')
 }
 for (const forbidden of ['FileParityFixtureSurface', 'KnowledgeFileList', 'KnowledgeFileCards']) {
   if (desktopShared.includes(`function ${forbidden}`)) {

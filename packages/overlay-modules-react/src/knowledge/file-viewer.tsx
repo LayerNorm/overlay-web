@@ -411,6 +411,7 @@ function UnavailablePreview({ name }: { name: string }) {
 
 export function FileViewerPanel({
   name,
+  previewName,
   content,
   url,
   isSaving,
@@ -421,6 +422,8 @@ export function FileViewerPanel({
   operations,
 }: {
   name: string
+  /** Optional classification name when the displayed file name differs from its preview payload. */
+  previewName?: string
   content: string
   url?: string
   isSaving?: boolean
@@ -471,7 +474,7 @@ export function FileViewerPanel({
           </div>
         </>
       ) : (
-        <FileViewer name={name} content={content} url={url} operations={operations} />
+        <FileViewer name={previewName ?? name} content={content} url={url} operations={operations} />
       )}
       </AppScreenBody>
     </AppScreenShell>

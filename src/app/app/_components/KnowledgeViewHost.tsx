@@ -2,7 +2,7 @@
 
 import type { ComponentProps } from 'react'
 import KnowledgeView from '@/features/knowledge/components/KnowledgeView'
-import { FileViewer, OutputViewer, type FileViewerAsset } from '@/features/files/components/FileViewer'
+import { FileViewer, OutputViewer, type FileViewerAsset } from '@overlay/modules-react/knowledge'
 
 type KnowledgeViewProps = ComponentProps<typeof KnowledgeView>
 

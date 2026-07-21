@@ -142,6 +142,7 @@ export function FileTreeRow({
         {!bulkSelectMode ? (
           <button
             type="button"
+            aria-label={`Delete ${node.name}`}
             onClick={(event) => onDelete(node._id, event)}
             className="shrink-0 rounded p-1 text-[var(--muted-light)] opacity-0 transition-opacity hover:bg-[var(--surface-subtle)] hover:text-red-500 group-hover:opacity-100"
           >

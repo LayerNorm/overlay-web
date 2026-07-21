@@ -119,7 +119,7 @@
     "lint": "eslint",
     "check:chat-transcript-boundaries": "node packages/overlay-chat-react/scripts/check-transcript-boundaries.mjs && TSX_TSCONFIG_PATH=tsconfig.json node --import tsx --test src/features/chat/components/chat/toChatTranscriptView.test.ts",
     "check:file-parity-boundaries": "node scripts/check-file-parity-boundaries.mjs",
-    "check:knowledge-surface-contract": "node scripts/check-knowledge-surface-contract.mjs && TSX_TSCONFIG_PATH=tsconfig.json node --import tsx --test src/features/knowledge/adapters/webKnowledgeSurfaceAdapters.test.ts && TSX_TSCONFIG_PATH=packages/overlay-modules-react/tsconfig.json node --import tsx --test packages/overlay-modules-react/src/knowledge/surface.test.tsx packages/overlay-modules-react/src/knowledge/file-viewer.test.tsx",
+    "check:knowledge-surface-contract": "node scripts/check-knowledge-surface-contract.mjs && TSX_TSCONFIG_PATH=tsconfig.json node --import tsx --test src/features/knowledge/adapters/webKnowledgeSurfaceAdapters.test.ts && TSX_TSCONFIG_PATH=packages/overlay-modules-react/tsconfig.json node --import tsx --test packages/overlay-modules-react/src/knowledge/surface.test.tsx packages/overlay-modules-react/src/knowledge/file-viewer.test.tsx packages/overlay-modules-react/src/projects/native-file-tree.test.tsx",
     "chat-parity:manifest": "node scripts/chat-parity-baseline-manifest.mjs",
     "file-parity:manifest": "node scripts/file-parity-baseline-manifest.mjs",
     "typecheck": "npm run check:chat-transcript-boundaries && npm run check:file-parity-boundaries && npm run check:knowledge-surface-contract && tsc --noEmit",

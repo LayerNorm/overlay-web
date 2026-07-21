@@ -115,7 +115,7 @@ const TopUpPreferenceControl = dynamic(
   { loading: () => null },
 )
 const FileViewerPanel = dynamic(
-  () => import('@/features/files/components/FileViewer').then((mod) => ({ default: mod.FileViewerPanel })),
+  () => import('@overlay/modules-react/knowledge').then((mod) => ({ default: mod.FileViewerPanel })),
   { loading: () => null },
 )
 const ExportMenu = dynamic(
