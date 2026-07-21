@@ -46,6 +46,12 @@ const BRAND_ICON_SRC: Record<BrandFileIconKind, string> = {
   word: '/assets/file-icons/microsoft-word.svg',
 }
 
+function resolveSharedAssetPath(path: string): string {
+  if (typeof document === 'undefined') return path
+  const base = document.documentElement.dataset.overlayAssetBase?.replace(/\/$/, '')
+  return base ? `${base}/${path.replace(/^\//, '')}` : path
+}
+
 function isBrandFileIconKind(kind: FileIconKind): kind is BrandFileIconKind {
   return kind === 'excel' || kind === 'pdf' || kind === 'powerpoint' || kind === 'word'
 }
@@ -187,7 +193,7 @@ export function FileTypeIcon({
   const frameSize = Math.max(18, Math.round(size * 1.75))
 
   if (isBrandFileIconKind(kind)) {
-    const brandSrc = BRAND_ICON_SRC[kind]
+    const brandSrc = resolveSharedAssetPath(BRAND_ICON_SRC[kind])
     const img = (
       // eslint-disable-next-line @next/next/no-img-element
       <img

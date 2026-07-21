@@ -350,6 +350,8 @@ export function KnowledgeViewHeader({
   onBulkDeleteOutputs,
   onCloseFile,
   onCreateNoteFile,
+  onPickFile,
+  onPickFolder,
   onExitSelectMode,
   onFileTitleChange,
   onImportMemory,
@@ -401,6 +403,8 @@ export function KnowledgeViewHeader({
   onBulkDeleteOutputs: () => void
   onCloseFile: () => void
   onCreateNoteFile: () => void
+  onPickFile?: () => void
+  onPickFolder?: () => void
   onExitSelectMode: () => void
   onFileTitleChange: (value: string) => void
   onImportMemory: () => void
@@ -536,6 +540,8 @@ export function KnowledgeViewHeader({
                 folderUploadRef={folderUploadRef}
                 mode={mode}
                 onCreateNoteFile={onCreateNoteFile}
+                onPickFile={onPickFile}
+                onPickFolder={onPickFolder}
                 setCreateMenuOpen={setCreateMenuOpen}
                 setDialog={setDialog}
                 setDialogName={setDialogName}

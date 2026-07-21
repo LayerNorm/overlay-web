@@ -79,6 +79,8 @@ export function FilesCreateUploadControls({
   folderUploadRef,
   mode,
   onCreateNoteFile,
+  onPickFile,
+  onPickFolder,
   setCreateMenuOpen,
   setDialog,
   setDialogName,
@@ -93,6 +95,8 @@ export function FilesCreateUploadControls({
   folderUploadRef: React.RefObject<HTMLInputElement | null>
   mode: 'knowledge' | 'files'
   onCreateNoteFile: () => void
+  onPickFile?: () => void
+  onPickFolder?: () => void
   setCreateMenuOpen: (value: boolean | ((value: boolean) => boolean)) => void
   setDialog: (value: { type: 'file' | 'folder'; parentId: string | null } | null) => void
   setDialogName: (value: string) => void
@@ -166,7 +170,8 @@ export function FilesCreateUploadControls({
               type="button"
               onClick={() => {
                 setUploadMenuOpen(false)
-                fileUploadRef.current?.click()
+                if (onPickFile) onPickFile()
+                else fileUploadRef.current?.click()
               }}
               className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
             >
@@ -177,7 +182,8 @@ export function FilesCreateUploadControls({
               type="button"
               onClick={() => {
                 setUploadMenuOpen(false)
-                folderUploadRef.current?.click()
+                if (onPickFolder) onPickFolder()
+                else folderUploadRef.current?.click()
               }}
               className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
             >

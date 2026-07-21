@@ -16,6 +16,7 @@ import {
   resolveKnowledgeOutputFilter,
   resolveKnowledgeTab,
   type KnowledgeLayout,
+  type KnowledgePickedFile,
   type KnowledgeSurfaceAdapters,
   sortedCurrentFolderFiles,
   sortedCurrentFolderFolders,
@@ -89,7 +90,7 @@ export interface SharedKnowledgeMemoryPort {
 
 export interface SharedKnowledgeFilePort {
   saveContent(fileId: string, content: string): Promise<boolean>
-  upload(file: File, parentId: string | null): Promise<{ ok: boolean; error?: string }>
+  upload(file: File, parentId: string | null): Promise<{ ok: boolean; error?: string; file?: FileNode }>
   isEditable(name: string): boolean
   contentUrl(file: FileNode): string | undefined
   filesChanged(): void
@@ -106,7 +107,10 @@ export interface SharedKnowledgeSurfaceProps {
   adapters: KnowledgeSurfaceAdapters
   memories: SharedKnowledgeMemoryPort
   files: SharedKnowledgeFilePort
-  renderFileViewer(props: { name: string; content: string; url?: string }): ReactNode
+  renderFileViewer(props: { file: FileNode; name: string; content: string; url?: string }): ReactNode
+  openFilesInHost?: boolean
+  selectedFileId?: string | null
+  enableExternalDrop?: boolean
 }
 
 export function SharedKnowledgeSurface({
@@ -120,6 +124,9 @@ export function SharedKnowledgeSurface({
   memories: memoryPort,
   files: filePort,
   renderFileViewer,
+  openFilesInHost = false,
+  selectedFileId: hostSelectedFileId = null,
+  enableExternalDrop = false,
 }: SharedKnowledgeSurfaceProps) {
   const fileOpenParam = route.file
   const memoryOpenParam = route.memory
@@ -513,7 +520,7 @@ export function SharedKnowledgeSurface({
       if (created) {
         adapters.analytics.track('knowledge_file_created', { file_name: name, type: dialog.type })
         if (dialog.type === 'folder') adapters.analytics.track('knowledge_folder_created', { folder_name: name })
-        setDialogName(''); setDialog(null); await loadFiles()
+        setDialogName(''); setDialog(null)
         filePort.filesChanged()
       }
     } finally { setIsCreating(false) }
@@ -532,7 +539,7 @@ export function SharedKnowledgeSurface({
   }
 
   function handleSelectFile(node: FileNode) {
-    if (opensInDocumentEditor(node)) {
+    if (openFilesInHost || opensInDocumentEditor(node)) {
       void adapters.navigation.open(node as Parameters<typeof adapters.navigation.open>[0])
       return
     }
@@ -592,12 +599,74 @@ export function SharedKnowledgeSurface({
     }, 600)
   }
 
-  async function uploadSingleFile(file: File, parentId: string | null): Promise<{ ok: boolean; error?: string }> {
+  async function uploadSingleFile(file: File, parentId: string | null): Promise<{ ok: boolean; error?: string; file?: FileNode }> {
     try {
       return await filePort.upload(file, parentId)
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : 'Upload failed' }
     }
+  }
+
+  async function pickedFileToBrowserFile(picked: KnowledgePickedFile): Promise<File> {
+    const file = new File([Uint8Array.from(await picked.read())], picked.name, {
+      type: picked.mimeType ?? 'application/octet-stream',
+    })
+    if (picked.relativePath) {
+      Object.defineProperty(file, 'webkitRelativePath', { value: picked.relativePath })
+    }
+    return file
+  }
+
+  async function uploadFiles(list: readonly File[], folderUpload: boolean) {
+    if (list.length === 0) return
+    setFileUploadError(null)
+    setFileUploadPending({ label: list.length === 1 ? list[0]!.name : `${folderUpload ? 'Folder' : 'Files'} · ${list.length} files` })
+    try {
+      if (!folderUpload) {
+        for (const file of list) {
+          const result = await uploadSingleFile(file, activeFolder?._id ?? null)
+          if (!result.ok) {
+            setFileUploadError(result.error ?? 'One or more files failed to upload.')
+            break
+          }
+          if (result.file) setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
+        }
+      } else {
+        const folders = new Map<string, string>()
+        for (const file of list) {
+          const parts = file.webkitRelativePath.split('/').filter(Boolean)
+          for (let index = 0; index < parts.length - 1; index += 1) {
+            const folderPath = parts.slice(0, index + 1).join('/')
+            if (folders.has(folderPath)) continue
+            const parentPath = index === 0 ? null : parts.slice(0, index).join('/')
+            const created = await adapters.repository.create({
+              name: parts[index] ?? 'Folder',
+              kind: 'folder',
+              parentId: parentPath ? (folders.get(parentPath) ?? null) : (activeFolder?._id ?? null),
+            })
+            folders.set(folderPath, created.id)
+          }
+          const parentFolderPath = parts.slice(0, -1).join('/')
+          const result = await uploadSingleFile(file, folders.get(parentFolderPath) ?? activeFolder?._id ?? null)
+          if (!result.ok) {
+            setFileUploadError(result.error ?? 'One or more files failed to upload.')
+            break
+          }
+          if (result.file) setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
+        }
+      }
+      filePort.filesChanged()
+    } finally {
+      setFileUploadPending(null)
+    }
+  }
+
+  async function handleNativePick(folder: boolean) {
+    const picked = folder
+      ? await adapters.filePicker.pickFolder?.() ?? []
+      : await adapters.filePicker.pickFiles({ multiple: true })
+    const files = await Promise.all(picked.map(pickedFileToBrowserFile))
+    await uploadFiles(files, folder)
   }
 
   async function handleUploadFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -611,7 +680,7 @@ export function SharedKnowledgeSurface({
         setFileUploadError(result.error ?? 'Upload failed. Check the file and try again.')
         return
       }
-      await loadFiles()
+      if (result.file) setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
       filePort.filesChanged()
     } finally {
       setFileUploadPending(null)
@@ -649,8 +718,8 @@ export function SharedKnowledgeSurface({
           setFileUploadError(result.error ?? 'One or more files failed to upload.')
           break
         }
+        if (result.file) setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
       }
-      await loadFiles()
       filePort.filesChanged()
     } finally {
       setFileUploadPending(null)
@@ -668,7 +737,6 @@ export function SharedKnowledgeSurface({
     if (!canMoveKnowledgeFile(files, fileId, parentId)) return
     try {
       await adapters.repository.move({ id: fileId, parentId })
-      await loadFiles()
       filePort.filesChanged()
     } catch {
       // Keep the previous hierarchy when the host rejects the move.
@@ -761,6 +829,14 @@ export function SharedKnowledgeSurface({
 
       <AppScreenShell
         className="overlay-knowledge-surface"
+        onDragOver={enableExternalDrop ? (event) => {
+          if (event.dataTransfer.types.includes('Files')) event.preventDefault()
+        } : undefined}
+        onDrop={enableExternalDrop ? (event) => {
+          if (event.dataTransfer.files.length === 0) return
+          event.preventDefault()
+          void uploadFiles(Array.from(event.dataTransfer.files), false)
+        } : undefined}
         header={
           <KnowledgeViewHeader
             activeFolder={activeFolder}
@@ -788,6 +864,8 @@ export function SharedKnowledgeSurface({
             onCloseFile={closeFileDialog}
             onCommitOutputFilter={commitOutputFilter}
             onCreateNoteFile={() => void handleCreateNoteFile()}
+            onPickFile={() => void handleNativePick(false)}
+            onPickFolder={() => void handleNativePick(true)}
             onExitSelectMode={exitSelectMode}
             onFileTitleChange={handleFileTitleChange}
             onImportMemory={() => { setShowImportMemory(true); setImportMemoryError(null) }}
@@ -833,6 +911,7 @@ export function SharedKnowledgeSurface({
             renderViewer={() =>
               renderFileViewer({
                 name: selectedFile.name,
+                file: selectedFile,
                 content: fileContent,
                 url: filePort.contentUrl(selectedFile),
               })
@@ -892,7 +971,7 @@ export function SharedKnowledgeSurface({
             flatFiles={flatFilesSorted}
             allFiles={filesFiltered}
             layout={visibleFilesLayout}
-            selectedFileId={null}
+            selectedFileId={hostSelectedFileId}
             selectedIds={selectedFileIds}
             selectMode={selectMode}
             onSelect={handleSelectFile}

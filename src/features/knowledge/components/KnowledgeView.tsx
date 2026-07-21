@@ -7,7 +7,9 @@ import { shouldIngestDocument } from '@/shared/files/file-ingestion'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   FILES_CHANGED_EVENT,
+  normalizeKnowledgeSurfaceNode,
   createManualMemoryRequest,
+  type CreateFileResponse,
   type KnowledgeFileNode,
   type MemoryRow,
 } from '@overlay/app-core'
@@ -32,16 +34,36 @@ async function responseError(response: Response, fallback: string): Promise<stri
 async function uploadWebFile(
   file: File,
   parentId: string | null,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; file?: KnowledgeFileNode }> {
+  const createdResult = async (response: Response, fallback: string) => {
+    if (!response.ok) return { ok: false, error: await responseError(response, fallback) }
+    const body = await response.json() as CreateFileResponse
+    if (!body.id) return { ok: false, error: 'The server did not return the uploaded file.' }
+    const now = Date.now()
+    return {
+      ok: true,
+      file: normalizeKnowledgeSurfaceNode({
+        _id: body.id,
+        name: file.name,
+        type: 'file',
+        kind: 'upload',
+        parentId,
+        mimeType: file.type || undefined,
+        extension: file.name.split('.').pop()?.toLowerCase(),
+        sizeBytes: file.size,
+        isStorageBacked: file.size > 0,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    }
+  }
   try {
     if (shouldIngestDocument(file.name)) {
       const form = new FormData()
       form.append('file', file)
       if (parentId) form.append('parentId', parentId)
       const response = await overlayAppClient.files.ingestDocumentResponse(form)
-      return response.ok
-        ? { ok: true }
-        : { ok: false, error: await responseError(response, 'Failed to index document') }
+      return createdResult(response, 'Failed to index document')
     }
 
     const fileType = getFileType(file.name)
@@ -52,9 +74,7 @@ async function uploadWebFile(
         parentId,
         content: await file.text(),
       })
-      return response.ok
-        ? { ok: true }
-        : { ok: false, error: await responseError(response, 'Failed to save file') }
+      return createdResult(response, 'Failed to save file')
     }
 
     const uploadUrlResponse = await overlayAppClient.files.uploadUrlResponse({
@@ -84,9 +104,7 @@ async function uploadWebFile(
       r2Key,
       sizeBytes: file.size,
     })
-    return createResponse.ok
-      ? { ok: true }
-      : { ok: false, error: await responseError(createResponse, 'Failed to save file') }
+    return createdResult(createResponse, 'Failed to save file')
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Upload failed' }
   }
@@ -103,7 +121,7 @@ export default function KnowledgeView({
   mode?: 'knowledge' | 'files'
   initialFiles?: KnowledgeFileNode[]
   initialMemories?: MemoryRow[]
-  renderFileViewer(props: { name: string; content: string; url?: string }): ReactNode
+  renderFileViewer(props: { file: KnowledgeFileNode; name: string; content: string; url?: string }): ReactNode
 }) {
   void _userId
   const router = useRouter()

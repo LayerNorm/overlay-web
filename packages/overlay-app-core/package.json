@@ -18,6 +18,7 @@
     "./knowledge-migration": "./src/knowledge-migration.ts",
     "./extensions": "./src/extensions.ts",
     "./file-parity-fixtures": "./src/file-parity-fixtures.ts",
+    "./file-viewer": "./src/file-viewer.ts",
     "./modules": "./src/modules.ts",
     "./notes": "./src/notes.ts",
     "./projects": "./src/projects.ts",

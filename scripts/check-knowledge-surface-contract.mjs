@@ -10,8 +10,11 @@ const webAdapterPath = path.join(root, 'src/features/knowledge/adapters/webKnowl
 const desktopAdapterPath = path.join(root, 'overlay-desktop/src/renderer/src/adapters/desktopKnowledgeSurfaceAdapters.ts')
 const sharedSurfacePath = path.join(root, 'packages/overlay-modules-react/src/knowledge/surface.tsx')
 const webWrapperPath = path.join(root, 'src/features/knowledge/components/KnowledgeView.tsx')
+const desktopSharedPath = path.join(root, 'overlay-desktop/src/renderer/src/pages/SharedDesktopFilesSurface.tsx')
+const desktopMainPath = path.join(root, 'overlay-desktop/src/renderer/src/pages/MainWindow.tsx')
+const desktopFlagPath = path.join(root, 'overlay-desktop/src/renderer/src/features/files/shared-files-surface-flag.ts')
 
-for (const file of [contractPath, fixturePath, webAdapterPath, desktopAdapterPath, sharedSurfacePath, webWrapperPath]) {
+for (const file of [contractPath, fixturePath, webAdapterPath, desktopAdapterPath, sharedSurfacePath, webWrapperPath, desktopSharedPath, desktopMainPath, desktopFlagPath]) {
   if (!fs.existsSync(file)) throw new Error(`Missing knowledge surface contract boundary: ${path.relative(root, file)}`)
 }
 
@@ -66,12 +69,32 @@ if (webWrapper.split('\n').length > 260) {
   throw new Error('Web KnowledgeView compatibility wrapper regained presentation/orchestration')
 }
 
-const desktopFilesPage = fs.readFileSync(
+const desktopLegacyPage = fs.readFileSync(
   path.join(root, 'overlay-desktop/src/renderer/src/pages/FilesListPage.tsx'),
   'utf8',
 )
-if (desktopFilesPage.includes('SharedKnowledgeSurface')) {
-  throw new Error('PR 4 must not cut the production desktop renderer over')
+const desktopShared = fs.readFileSync(desktopSharedPath, 'utf8')
+const desktopMain = fs.readFileSync(desktopMainPath, 'utf8')
+const desktopFlag = fs.readFileSync(desktopFlagPath, 'utf8')
+if (!desktopShared.includes("from '@overlay/modules-react/knowledge'")) {
+  throw new Error('Desktop files must render the canonical shared knowledge surface')
+}
+for (const required of ['openFilesInHost', 'enableExternalDrop', 'createDesktopKnowledgeSurfaceAdapters']) {
+  if (!desktopShared.includes(required)) throw new Error(`Desktop shared surface lost ${required}`)
+}
+if (!desktopMain.includes('<SharedDesktopFilesSurface') || !desktopMain.includes('sharedFilesSurfaceEnabled ?')) {
+  throw new Error('MainWindow must use the shared files surface by default with an explicit rollback branch')
+}
+if (!desktopFlag.includes("'legacy'") || !desktopFlag.includes('VITE_DESKTOP_SHARED_FILES_SURFACE')) {
+  throw new Error('Desktop files cutover must retain its temporary rollback flag')
+}
+if (desktopLegacyPage.includes("from '@overlay/modules-react/knowledge'")) {
+  throw new Error('The legacy rollback renderer must not masquerade as the canonical shared surface')
+}
+for (const forbidden of ['FileParityFixtureSurface', 'KnowledgeFileList', 'KnowledgeFileCards']) {
+  if (desktopShared.includes(`function ${forbidden}`)) {
+    throw new Error(`Desktop files introduced an independent ${forbidden} renderer`)
+  }
 }
 
 console.log('Knowledge surface contract boundaries passed.')

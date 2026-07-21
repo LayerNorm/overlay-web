@@ -4,7 +4,7 @@ import { SharedKnowledgeSurfaceHarness } from '@/features/files/dev/SharedKnowle
 import type { FileParityFixtureScenario } from '@overlay/modules-react/file-parity-fixture'
 
 type FixtureSearchParams = Record<string, string | string[] | undefined>
-const SCENARIOS = new Set<FileParityFixtureScenario>(['gallery', 'states', 'inventory', 'viewers', 'notebook', 'sync'])
+const SCENARIOS = new Set<FileParityFixtureScenario>(['gallery', 'states', 'inventory', 'viewers', 'notebook', 'sync', 'surface'])
 
 function first(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value

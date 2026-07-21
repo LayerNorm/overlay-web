@@ -11,7 +11,11 @@ import {
   type FileParitySyncState,
   type FileParityViewerScenario,
 } from '@overlay/app-core/file-parity-fixtures'
-import type { KnowledgeFileNode } from '@overlay/app-core'
+import {
+  createFixtureKnowledgeSurfaceAdapters,
+  normalizeKnowledgeSurfaceNode,
+  type KnowledgeFileNode,
+} from '@overlay/app-core'
 import {
   AlertCircle,
   BookOpen,
@@ -32,7 +36,8 @@ import {
   Search,
   TriangleAlert,
 } from 'lucide-react'
-import { useEffect, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { SharedKnowledgeSurface, type SharedKnowledgeRouteState } from './knowledge/surface'
 
 export type FileParityFixtureScenario =
   | 'gallery'
@@ -41,6 +46,7 @@ export type FileParityFixtureScenario =
   | 'viewers'
   | 'notebook'
   | 'sync'
+  | 'surface'
 
 export type FileParityFixtureSurfaceProps = {
   platform: 'web' | 'desktop'
@@ -55,6 +61,45 @@ const SYNC_LABELS: Record<FileParitySyncState, string> = {
   syncing: 'Syncing changes',
   conflicted: 'Resolve conflict',
   migration: 'Migrating notes',
+}
+
+function CanonicalFilesSurfaceFixture() {
+  const [route, setRoute] = useState<SharedKnowledgeRouteState>({
+    file: null, memory: null, folder: null, view: null, layout: 'list', outputFilter: null,
+  })
+  const files = useMemo(() => FILE_PARITY_FILES.map((file) => ({ ...file })), [])
+  const adapters = useMemo(() => createFixtureKnowledgeSurfaceAdapters({
+    nodes: files.map(normalizeKnowledgeSurfaceNode),
+  }), [files])
+  return (
+    <div className="shared-app-scope h-[760px] overflow-hidden rounded-xl border border-[var(--border)]">
+      <SharedKnowledgeSurface
+        mode="files"
+        initialFiles={files}
+        initialMemories={[]}
+        route={route}
+        onUpdateQuery={(updates) => setRoute((current) => ({
+          ...current,
+          file: updates.file === undefined ? current.file : updates.file ?? null,
+          folder: updates.folder === undefined ? current.folder : updates.folder ?? null,
+          view: updates.view === undefined ? current.view : updates.view ?? null,
+          layout: updates.layout === undefined ? current.layout : updates.layout ?? null,
+          outputFilter: updates.out === undefined ? current.outputFilter : updates.out ?? null,
+        }))}
+        adapters={adapters}
+        memories={{ list: async () => [], create: async () => ({ ok: true }), delete: async () => true }}
+        files={{
+          saveContent: async () => true,
+          upload: async () => ({ ok: true }),
+          isEditable: () => false,
+          contentUrl: () => undefined,
+          filesChanged: () => undefined,
+          noteCreated: () => undefined,
+        }}
+        renderFileViewer={() => null}
+      />
+    </div>
+  )
 }
 
 function titleMatches(file: KnowledgeFileNode, query: string): boolean {
@@ -388,6 +433,12 @@ export function FileParityFixtureSurface({
           <div className="file-parity-grid file-parity-grid--editors">
             {FILE_PARITY_EDITOR_SCENARIOS.map((editor) => <EditorCard key={editor.id} editor={editor} instrumentation={instrumentation} />)}
           </div>
+        </Section>
+      ) : null}
+
+      {scenario === 'surface' ? (
+        <Section title="Canonical files surface" description="The exact shared renderer used by web and desktop.">
+          <CanonicalFilesSurfaceFixture />
         </Section>
       ) : null}
 

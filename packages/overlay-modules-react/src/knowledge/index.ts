@@ -1,5 +1,6 @@
 export * from './dialogs'
 export * from './file-detail-panel'
+export * from './file-viewer'
 export * from './file-views'
 export * from './memory-views'
 export * from './panels'
