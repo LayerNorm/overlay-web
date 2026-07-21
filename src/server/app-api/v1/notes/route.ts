@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { repositoryProxy } from '@/server/app-data/errors'
-import { NoteService, NoteServiceError, type NoteRepository } from '@/server/notes'
+import { NoteRevisionConflictError, NoteService, NoteServiceError, type NoteRepository } from '@/server/notes'
 import type { CreateNoteRequest, UpdateNoteRequest } from '@overlay/app-core'
 
 const noteService = new NoteService({
@@ -34,6 +34,18 @@ async function readJsonBody<T>(request: NextRequest, fallback: T): Promise<T> {
 }
 
 function toErrorResponse(error: unknown, fallbackMessage: string) {
+  if (error instanceof NoteRevisionConflictError) {
+    return NextResponse.json({
+      success: false,
+      note: null,
+      error: error.message,
+      conflict: {
+        localRevision: error.expectedUpdatedAt === undefined ? undefined : String(error.expectedUpdatedAt),
+        remoteRevision: String(error.currentUpdatedAt),
+        message: error.message,
+      },
+    }, { status: 409 })
+  }
   if (error instanceof NoteServiceError) {
     return NextResponse.json({ error: error.message }, { status: error.statusCode })
   }
@@ -96,6 +108,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       content: body.content,
       tags: body.tags,
       projectId: body.projectId,
+      expectedUpdatedAt: body.expectedUpdatedAt,
       userId: auth.userId,
     })
     return NextResponse.json(result)

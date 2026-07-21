@@ -955,11 +955,15 @@ export const update = mutation({
     outputErrorMessage: v.optional(v.string()),
     outputCompletedAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
+    expectedUpdatedAt: v.optional(v.number()),
   },
   handler: async (ctx, { userId, accessToken, serverSecret, fileId, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const existing = await ctx.db.get(fileId)
     if (!existing || existing.userId !== userId || existing.deletedAt) throw new Error('Unauthorized')
+    if (updates.expectedUpdatedAt !== undefined && existing.updatedAt !== updates.expectedUpdatedAt) {
+      throw new Error('NOTE_REVISION_CONFLICT')
+    }
     if (updates.parentId !== undefined || updates.projectId !== undefined) {
       await assertParentAndProject(ctx, {
         fileId,

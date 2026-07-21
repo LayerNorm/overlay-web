@@ -66,3 +66,33 @@ test('NoteService.createNote checks billing write quota before creating', async 
   )
   assert.equal(createCalls, 0)
 })
+
+test('NoteService.updateNote forwards the expected revision to the repository', async () => {
+  let expectedRevision: number | undefined
+  const repository = createNoteRepository()
+  repository.updateNote = async (args) => {
+    expectedRevision = args.expectedUpdatedAt
+    return {
+      _id: args.noteId,
+      userId: args.userId,
+      name: args.title ?? 'Untitled',
+      kind: 'note',
+      content: args.content ?? '',
+      textContent: args.content ?? '',
+      createdAt: now,
+      updatedAt: now + 1,
+    }
+  }
+
+  const service = new NoteService({ noteRepository: repository })
+  const result = await service.updateNote({
+    noteId: 'note_1',
+    userId: 'user_1',
+    title: 'Updated',
+    content: '<p>Updated</p>',
+    expectedUpdatedAt: now,
+  })
+
+  assert.equal(expectedRevision, now)
+  assert.equal(result.note?.updatedAt, now + 1)
+})

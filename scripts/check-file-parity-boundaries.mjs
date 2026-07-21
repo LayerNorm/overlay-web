@@ -9,6 +9,10 @@ const requireText = (path, pattern, message) => {
   const source = read(path)
   if (!pattern.test(source)) failures.push(`${path}: ${message}`)
 }
+const forbidText = (path, pattern, message) => {
+  const source = read(path)
+  if (pattern.test(source)) failures.push(`${path}: ${message}`)
+}
 
 const stylesheets = ['knowledge-surface.css', 'file-viewer.css', 'notebook-editor.css']
 for (const stylesheet of stylesheets) {
@@ -56,6 +60,56 @@ for (const productionEditor of [
     'PR 2 must not cut over the production desktop editor',
   )
 }
+
+const sharedNotebookFiles = [
+  'packages/overlay-modules-react/src/notes/editor.tsx',
+  'packages/overlay-modules-react/src/notes/editor-content.ts',
+  'packages/overlay-modules-react/src/notes/inline-diff-extension.ts',
+  'packages/overlay-modules-react/src/notes/slash-menu.tsx',
+]
+
+for (const path of sharedNotebookFiles) {
+  if (!existsSync(join(root, path))) {
+    failures.push(`${path}: missing canonical notebook source`)
+    continue
+  }
+  forbidText(
+    path,
+    /(?:from\s+|import\s*\()["'](?:next(?:\/|["'])|electron(?:\/|["'])|node:|@\/)/,
+    'shared notebook source cannot import Next.js, Electron, Node builtins, or web aliases',
+  )
+}
+
+requireText(
+  'packages/overlay-modules-react/src/notes/editor.tsx',
+  /new NotebookEditorController\(/,
+  'canonical editor must delegate hydration and persistence to NotebookEditorController',
+)
+requireText(
+  'packages/overlay-modules-react/src/notes/editor.tsx',
+  /useEditor\(\{[\s\S]*InlineDiffExtension/,
+  'canonical editor must own the TipTap extension configuration',
+)
+requireText(
+  'packages/overlay-modules-react/src/notes/editor.tsx',
+  /<SlashMenu\b/,
+  'canonical editor must own the slash menu integration',
+)
+requireText(
+  'src/features/notebook/components/NotebookEditor.tsx',
+  /<CanonicalNotebookEditor\b/,
+  'web notebook route must render the shared canonical editor',
+)
+forbidText(
+  'src/features/notebook/components/NotebookEditor.tsx',
+  /\buseEditor\s*\(/,
+  'web compatibility wrapper cannot introduce an independent TipTap renderer',
+)
+requireText(
+  'packages/overlay-modules-react/src/file-parity-fixture.tsx',
+  /<CanonicalNotebookEditor\b/,
+  'notebook fixture must exercise the canonical editor',
+)
 
 if (failures.length) {
   console.error(`File parity boundary check failed:\n${failures.map((failure) => `- ${failure}`).join('\n')}`)

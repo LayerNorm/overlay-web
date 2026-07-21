@@ -1,6 +1,6 @@
 import type { KnowledgeFileNode } from './knowledge'
 
-export const FILE_PARITY_FIXTURE_VERSION = '2026-07-20.1' as const
+export const FILE_PARITY_FIXTURE_VERSION = '2026-07-20.2' as const
 export const FILE_PARITY_FIXTURE_TIMESTAMP = 1_721_433_600_000
 
 export type FileParityLoadState =
@@ -298,8 +298,8 @@ export const FILE_PARITY_NOTE_HTML = `
 <p>Formatting includes <strong>bold</strong>, <em>italic</em>, <u>underline</u>, <mark>highlight</mark>, and <a href="https://example.com">links</a>.</p>
 <h2>Tasks and structure</h2>
 <ul data-type="taskList">
-  <li data-checked="true"><label><input type="checkbox" checked disabled></label><div><p>Capture deterministic fixtures</p></div></li>
-  <li data-checked="false"><label><input type="checkbox" disabled></label><div><p>Cut over the production desktop editor later</p></div></li>
+  <li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked disabled></label><div><p>Capture deterministic fixtures</p></div></li>
+  <li data-type="taskItem" data-checked="false"><label><input type="checkbox" disabled></label><div><p>Cut over the production desktop editor later</p></div></li>
 </ul>
 <blockquote><p>The web remains the visual source of truth.</p></blockquote>
 <table><thead><tr><th>Surface</th><th>State</th></tr></thead><tbody><tr><td>Web</td><td>Canonical</td></tr><tr><td>Desktop</td><td>Fixture</td></tr></tbody></table>

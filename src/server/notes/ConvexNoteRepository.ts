@@ -3,7 +3,7 @@ import 'server-only'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { hashTextContent } from '@/server/storage/text-content-hash'
-import type { NoteRecord, NoteRepository } from './NoteService'
+import { NoteRevisionConflictError, type NoteRecord, type NoteRepository } from './NoteService'
 
 export class ConvexNoteRepository implements NoteRepository {
   private get serverSecret(): string {
@@ -96,6 +96,7 @@ export class ConvexNoteRepository implements NoteRepository {
     content?: string
     projectId?: string | null
     tags?: string[]
+    expectedUpdatedAt?: number
   }): Promise<NoteRecord | null> {
     void args.tags
     const existing = await this.getNote({
@@ -104,16 +105,27 @@ export class ConvexNoteRepository implements NoteRepository {
     })
     if (!existing) return null
 
-    await convex.mutation('files/files:update', {
-      userId: args.userId,
-      serverSecret: this.serverSecret,
-      fileId: existing._id,
-      name: args.title,
-      ...(args.content !== undefined
-        ? { content: args.content, contentHash: hashTextContent(args.content) }
-        : {}),
-      projectId: args.projectId,
-    })
+    try {
+      await convex.mutation('files/files:update', {
+        userId: args.userId,
+        serverSecret: this.serverSecret,
+        fileId: existing._id,
+        name: args.title,
+        ...(args.content !== undefined
+          ? { content: args.content, contentHash: hashTextContent(args.content) }
+          : {}),
+        projectId: args.projectId,
+        ...(args.expectedUpdatedAt !== undefined
+          ? { expectedUpdatedAt: args.expectedUpdatedAt }
+          : {}),
+      })
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('NOTE_REVISION_CONFLICT')) {
+        const current = await this.getNote({ noteId: args.noteId, userId: args.userId })
+        throw new NoteRevisionConflictError(args.expectedUpdatedAt, current?.updatedAt ?? existing.updatedAt)
+      }
+      throw error
+    }
 
     return await this.getCanonicalFile({
       fileId: existing._id,

@@ -54,11 +54,22 @@ export interface NoteRepository {
     content?: string
     projectId?: string | null
     tags?: string[]
+    expectedUpdatedAt?: number
   }): Promise<NoteRecord | null>
   deleteNote(args: {
     noteId: string
     userId: string
   }): Promise<{ noteId: string; deletedAt: number } | null>
+}
+
+export class NoteRevisionConflictError extends Error {
+  constructor(
+    readonly expectedUpdatedAt: number | undefined,
+    readonly currentUpdatedAt: number,
+  ) {
+    super('This note changed in another session.')
+    this.name = 'NoteRevisionConflictError'
+  }
 }
 
 export class NoteServiceError extends Error {
@@ -147,6 +158,7 @@ export class NoteService {
       content: args.content,
       projectId: args.projectId,
       tags: args.tags,
+      expectedUpdatedAt: args.expectedUpdatedAt,
     })
     if (!note) {
       throw new NoteServiceError('Not found', 404)

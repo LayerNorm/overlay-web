@@ -5,7 +5,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import { notes } from '@/server/database/postgres/schema'
 import { assertActivePostgresProject } from '@/server/projects/PostgresProjectAccess'
-import type { NoteRecord, NoteRepository } from './NoteService'
+import { NoteRevisionConflictError, type NoteRecord, type NoteRepository } from './NoteService'
 
 export class PostgresNoteRepository implements NoteRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
@@ -98,6 +98,7 @@ export class PostgresNoteRepository implements NoteRepository {
     content?: string
     projectId?: string | null
     tags?: string[]
+    expectedUpdatedAt?: number
   }): Promise<NoteRecord | null> {
     const set: Partial<typeof notes.$inferInsert> = {
       updatedAt: new Date(),
@@ -121,9 +122,16 @@ export class PostgresNoteRepository implements NoteRepository {
           eq(notes.id, args.noteId),
           eq(notes.userId, args.userId),
           isNull(notes.deletedAt),
+          args.expectedUpdatedAt === undefined
+            ? undefined
+            : eq(notes.updatedAt, new Date(args.expectedUpdatedAt)),
         ))
         .returning()
     })
+    if (!row && args.expectedUpdatedAt !== undefined) {
+      const current = await this.getNote({ noteId: args.noteId, userId: args.userId })
+      if (current) throw new NoteRevisionConflictError(args.expectedUpdatedAt, current.updatedAt)
+    }
     return row ? noteRowToRecord(row) : null
   }
 

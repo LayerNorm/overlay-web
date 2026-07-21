@@ -5,6 +5,7 @@ export { PostgresNoteRepository } from './PostgresNoteRepository'
 export {
   NoteService,
   NoteServiceError,
+  NoteRevisionConflictError,
   type NoteRecord,
   type NoteRepository,
   type ServerNoteDoc,

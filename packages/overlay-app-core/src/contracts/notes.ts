@@ -40,6 +40,7 @@ export interface UpdateNoteRequest {
   content?: string
   tags?: string[]
   projectId?: string | null
+  expectedUpdatedAt?: number
   accessToken?: string
   userId?: string
 }
@@ -47,6 +48,11 @@ export interface UpdateNoteRequest {
 export interface UpdateNoteResponse {
   success: boolean
   note: NoteDoc | null
+  conflict?: {
+    localRevision?: string
+    remoteRevision?: string
+    message: string
+  }
   error?: string
 }
 

@@ -4,6 +4,7 @@ import {
   FILE_PARITY_EDITOR_SCENARIOS,
   FILE_PARITY_FILES,
   FILE_PARITY_LIST_SCENARIOS,
+  FILE_PARITY_NOTE_HTML,
   FILE_PARITY_VIEWER_SCENARIOS,
   type FileParityEditorScenario,
   type FileParityInstrumentation,
@@ -15,6 +16,7 @@ import {
   createFixtureKnowledgeSurfaceAdapters,
   normalizeKnowledgeSurfaceNode,
   type KnowledgeFileNode,
+  type NoteDoc,
 } from '@overlay/app-core'
 import {
   AlertCircle,
@@ -37,6 +39,7 @@ import {
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { SharedKnowledgeSurface, type SharedKnowledgeRouteState } from './knowledge/surface'
 import { FileViewer } from './knowledge/file-viewer'
+import { CanonicalNotebookEditor, type NotebookEditorRepository } from './notes/editor'
 
 export type FileParityFixtureScenario =
   | 'gallery'
@@ -96,6 +99,41 @@ function CanonicalFilesSurfaceFixture() {
           noteCreated: () => undefined,
         }}
         renderFileViewer={() => null}
+      />
+    </div>
+  )
+}
+
+const CANONICAL_NOTE_FIXTURE: NoteDoc = {
+  _id: 'note-canonical-fixture',
+  title: 'Notebook parity',
+  content: FILE_PARITY_NOTE_HTML,
+  tags: [],
+  createdAt: 1_721_264_400_000,
+  updatedAt: 1_721_264_460_000,
+}
+
+function CanonicalNotebookEditorFixture() {
+  const repository = useMemo<NotebookEditorRepository>(() => ({
+    list: async () => [CANONICAL_NOTE_FIXTURE],
+    get: async (noteId) => noteId === CANONICAL_NOTE_FIXTURE._id ? CANONICAL_NOTE_FIXTURE : null,
+    create: async () => CANONICAL_NOTE_FIXTURE,
+    save: async ({ title, content }) => ({
+      note: { ...CANONICAL_NOTE_FIXTURE, title, content, updatedAt: CANONICAL_NOTE_FIXTURE.updatedAt + 1 },
+    }),
+  }), [])
+
+  return (
+    <div className="shared-app-scope h-[760px] overflow-hidden rounded-xl border border-[var(--border)]">
+      <CanonicalNotebookEditor
+        noteId={CANONICAL_NOTE_FIXTURE._id}
+        hideSidebar
+        repository={repository}
+        runAgent={async () => new Response(null, { status: 204 })}
+        models={[{ id: 'fixture-model', name: 'Fixture model' }]}
+        initialModelId="fixture-model"
+        onNavigateNote={() => undefined}
+        onBackToFiles={() => undefined}
       />
     </div>
   )
@@ -394,6 +432,7 @@ export function FileParityFixtureSurface({
 
       {(scenario === 'gallery' || scenario === 'notebook') ? (
         <Section title="Notebook editor" description="Formatting, tables, tasks, code, math, images, links, hydration, saves, and conflicts.">
+          {scenario === 'notebook' ? <CanonicalNotebookEditorFixture /> : null}
           <div className="file-parity-grid file-parity-grid--editors">
             {FILE_PARITY_EDITOR_SCENARIOS.map((editor) => <EditorCard key={editor.id} editor={editor} instrumentation={instrumentation} />)}
           </div>
