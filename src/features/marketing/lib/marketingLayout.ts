@@ -2,7 +2,7 @@
  * Shared layout + typography helpers for marketing pages.
  *
  * These consolidate the section/container/grid/eyebrow/heading strings that
- * were previously inlined (and drifted) across home, use-cases/business, and pricing.
+ * were previously inlined (and drifted) across home and pricing.
  * All token-based — they resolve correctly under LandingThemeProvider.
  *
  * Lives in `features/marketing/` so both `features/marketing/components/*` and
@@ -44,6 +44,18 @@ export function marketingHeadingLg(): string {
 export function marketingSerifStyle(): { fontFamily: string } {
   return { fontFamily: "var(--font-serif)" };
 }
+
+/**
+ * Shared class for marketing nav / chrome text that should match the brand
+ * wordmark face (Libre Baskerville via `--font-serif`). Pair with
+ * `marketingSerifStyle()` for the actual font-family.
+ */
+export function marketingNavText(): string {
+  return "text-sm tracking-tight";
+}
+
+/** App sidebar brand mark size — keep marketing logo identical. */
+export const MARKETING_LOGO_SIZE = 10 as const;
 
 /**
  * Small icon chip used in feature/workflow lists. Matches the app's

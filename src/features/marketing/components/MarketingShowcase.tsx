@@ -3,24 +3,20 @@ import type { ReactNode } from "react";
 import {
   ArrowRight,
   Bot,
-  BriefcaseBusiness,
   Check,
   Code2,
   FileText,
   FolderOpen,
-  GraduationCap,
   Image as ImageIcon,
   Lock,
   MessageSquare,
   Puzzle,
   Search,
   ShieldCheck,
-  Sparkles,
   Workflow,
   Zap,
-  type LucideIcon,
 } from "lucide-react";
-import type { AudiencePageKey } from "@/shared/marketing/marketing";
+import { MARKETING_LOGO_SIZE, marketingSerifStyle } from "@/features/marketing/lib/marketingLayout";
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -149,6 +145,33 @@ const demoNavItems = [
  * for contrast sections (e.g. a dark demo on a light page). When omitted,
  * the demo inherits the surrounding page theme.
  */
+function DemoBrandMark() {
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5">
+      <Image
+        src="/assets/overlay-logo.png"
+        alt=""
+        width={MARKETING_LOGO_SIZE}
+        height={MARKETING_LOGO_SIZE}
+        className="shrink-0"
+      />
+      <span className="text-sm font-medium tracking-tight" style={marketingSerifStyle()}>
+        overlay
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Token-based product workspace mockup. Mirrors the real app layout:
+ * w-56 sidebar (SidebarShell), h-9 rounded-md nav items (AppSidebar),
+ * rounded-xl send button, rounded-lg composer. All colors come from CSS
+ * variables so it responds to light/dark automatically.
+ *
+ * `tone` forces a specific theme via a scoped `data-theme` wrapper — useful
+ * for contrast sections (e.g. a dark demo on a light page). When omitted,
+ * the demo inherits the surrounding page theme.
+ */
 export function ProductWorkspaceDemo({
   tone,
   compact = false,
@@ -162,16 +185,15 @@ export function ProductWorkspaceDemo({
     <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] shadow-[0_18px_60px_var(--overlay-scrim)]">
       <div
         className={cx(
-          "grid min-h-[420px]",
-          compact ? "md:grid-cols-[180px_minmax(0,1fr)]" : "md:grid-cols-[224px_minmax(0,1fr)_240px]",
+          "grid min-h-[400px]",
+          compact
+            ? "md:grid-cols-[180px_minmax(0,1fr)]"
+            : "md:grid-cols-[224px_minmax(0,1fr)_240px]",
         )}
       >
         {/* Sidebar — mirrors SidebarShell (w-56, border-r, sidebar-surface) */}
         <aside className="hidden border-r border-[var(--border)] bg-[var(--sidebar-surface)] p-2 md:block">
-          <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
-            <span className="h-2.5 w-2.5 rounded-full bg-[var(--foreground)] opacity-70" />
-            <span className="font-medium">overlay</span>
-          </div>
+          <DemoBrandMark />
           <div className="mt-4 space-y-0.5">
             {demoNavItems.map((item, index) => (
               <div
@@ -180,7 +202,7 @@ export function ProductWorkspaceDemo({
                   "flex h-9 items-center rounded-md px-3 text-sm transition-colors",
                   index === 0
                     ? "bg-[var(--surface-subtle)] text-[var(--foreground)]"
-                    : "text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]",
+                    : "text-[var(--muted)]",
                 )}
               >
                 <item.icon className="h-[15px] w-[15px] shrink-0" strokeWidth={1.75} />
@@ -211,11 +233,13 @@ export function ProductWorkspaceDemo({
               </span>
             </div>
           </div>
-          <div className="flex min-h-[360px] flex-col items-center justify-center px-4 py-8">
-            <p className="text-3xl tracking-tight md:text-4xl" style={{ fontFamily: "var(--font-serif)" }}>
+          <div className="flex min-h-[340px] flex-col items-center justify-center px-4 py-8">
+            <p
+              className="text-3xl tracking-tight md:text-4xl"
+              style={marketingSerifStyle()}
+            >
               {title}
             </p>
-            {/* Composer — rounded-lg input matching app Input primitive */}
             <div className="mt-8 w-full max-w-xl rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
               <p className="text-sm text-[var(--muted-light)]">
                 Ask anything, use @ to reference files, memory, tools...
@@ -227,7 +251,6 @@ export function ProductWorkspaceDemo({
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="hidden text-xs text-[var(--muted)] sm:inline">Chat</span>
-                  {/* Send button — rounded-xl matching app Button lg size */}
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--button-primary-bg)] text-[var(--button-primary-text)]">
                     <ArrowRight className="h-4 w-4" strokeWidth={1.8} />
                   </span>
@@ -235,7 +258,12 @@ export function ProductWorkspaceDemo({
               </div>
             </div>
             <div className="mt-4 grid w-full max-w-xl gap-2 sm:grid-cols-2">
-              {["Summarize this folder", "Create a report", "What changed?", "Build an automation"].map((prompt) => (
+              {[
+                "Summarize this folder",
+                "Create a report",
+                "What changed?",
+                "Build an automation",
+              ].map((prompt) => (
                 <div
                   key={prompt}
                   className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-xs text-[var(--muted)]"
@@ -251,7 +279,11 @@ export function ProductWorkspaceDemo({
         {!compact ? (
           <aside className="hidden border-l border-[var(--border)] bg-[var(--sidebar-surface)] p-3 md:block">
             <RailBlock title="Files" items={["Q1 plan.docx", "Financials.xlsx", "Roadmap.pdf"]} />
-            <RailBlock title="Memory" items={["Project brief", "Customer prefs", "Launch plan"]} className="mt-5" />
+            <RailBlock
+              title="Memory"
+              items={["Project brief", "Customer prefs", "Launch plan"]}
+              className="mt-5"
+            />
             <div className="mt-5 flex flex-wrap gap-1.5">
               {["Drive", "Notion", "Slack"].map((item) => (
                 <span
@@ -268,11 +300,261 @@ export function ProductWorkspaceDemo({
     </div>
   );
 
-  // Force a specific theme when `tone` is set; otherwise inherit the page theme.
   if (tone) {
     return <div data-theme={tone}>{inner}</div>;
   }
   return inner;
+}
+
+/** Shared chrome shell for capability placeholder panels. */
+function DemoShell({
+  children,
+  sidebarLabel = "overlay",
+  sidebarItems,
+  activeIndex = 0,
+}: {
+  children: ReactNode;
+  sidebarLabel?: string;
+  sidebarItems?: Array<{ label: string; icon: typeof MessageSquare }>;
+  activeIndex?: number;
+}) {
+  const items = sidebarItems ?? demoNavItems;
+  return (
+    <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] shadow-[0_18px_60px_var(--overlay-scrim)]">
+      <div className="grid min-h-[360px] md:grid-cols-[200px_minmax(0,1fr)]">
+        <aside className="hidden border-r border-[var(--border)] bg-[var(--sidebar-surface)] p-2 md:block">
+          <DemoBrandMark />
+          <div className="mt-4 space-y-0.5">
+            {items.map((item, index) => (
+              <div
+                key={item.label}
+                className={cx(
+                  "flex h-9 items-center rounded-md px-3 text-sm",
+                  index === activeIndex
+                    ? "bg-[var(--surface-subtle)] text-[var(--foreground)]"
+                    : "text-[var(--muted)]",
+                )}
+              >
+                <item.icon className="h-[15px] w-[15px] shrink-0" strokeWidth={1.75} />
+                <span className="ml-2.5">{item.label}</span>
+              </div>
+            ))}
+          </div>
+          {sidebarLabel !== "overlay" ? (
+            <p className="mt-4 px-2 text-[10px] uppercase tracking-[0.16em] text-[var(--muted-light)]">
+              {sidebarLabel}
+            </p>
+          ) : null}
+        </aside>
+        <div className="min-w-0">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function ModelsPanel() {
+  const models = [
+    { name: "Auto", detail: "Routes by quality & cost", badge: "Free" },
+    { name: "GPT-5.4", detail: "Strong reasoning", badge: "Hosted" },
+    { name: "Claude Opus", detail: "Long-context writing", badge: "Hosted" },
+    { name: "Private model", detail: "Your keys / VPC", badge: "Private" },
+    { name: "Local model", detail: "On-device or on-prem", badge: "Local" },
+  ];
+  return (
+    <DemoShell activeIndex={0}>
+      <div className="flex h-12 items-center border-b border-[var(--border)] bg-[var(--surface-elevated)] px-4">
+        <p className="text-xs font-medium">Models</p>
+      </div>
+      <div className="space-y-2 p-4">
+        <p className="text-xs text-[var(--muted)]">
+          Use leading hosted models, private models, local models, or your own API keys.
+        </p>
+        <div className="mt-3 divide-y divide-[var(--border)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
+          {models.map((model, i) => (
+            <div
+              key={model.name}
+              className={cx(
+                "flex items-center justify-between gap-3 px-3 py-2.5",
+                i === 0 && "bg-[var(--surface-subtle)]",
+              )}
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{model.name}</p>
+                <p className="text-[11px] text-[var(--muted)]">{model.detail}</p>
+              </div>
+              <span className="shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
+                {model.badge}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </DemoShell>
+  );
+}
+
+function KnowledgePanel() {
+  const files = [
+    { name: "Curriculum.pdf", kind: "File" },
+    { name: "Q1 plan.docx", kind: "File" },
+    { name: "Team memory", kind: "Memory" },
+    { name: "Notion wiki", kind: "Source" },
+  ];
+  return (
+    <DemoShell activeIndex={1}>
+      <div className="flex h-12 items-center border-b border-[var(--border)] bg-[var(--surface-elevated)] px-4">
+        <p className="text-xs font-medium">Knowledge</p>
+      </div>
+      <div className="grid gap-0 md:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-2 p-4">
+          <p className="text-xs text-[var(--muted)]">
+            Connect files, institutional resources, and persistent memory.
+          </p>
+          <div className="mt-3 space-y-1.5">
+            {files.map((file) => (
+              <div
+                key={file.name}
+                className="flex items-center justify-between rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 text-sm"
+              >
+                <span className="truncate">{file.name}</span>
+                <span className="text-[10px] text-[var(--muted-light)]">{file.kind}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="border-t border-[var(--border)] bg-[var(--sidebar-surface)] p-4 md:border-l md:border-t-0">
+          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-light)]">
+            In context
+          </p>
+          <div className="mt-3 space-y-2 text-xs text-[var(--muted)]">
+            <p className="rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2">
+              Project brief · last used yesterday
+            </p>
+            <p className="rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2">
+              Curriculum grounding · always on
+            </p>
+            <p className="rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2">
+              Customer prefs · shared with team
+            </p>
+          </div>
+        </div>
+      </div>
+    </DemoShell>
+  );
+}
+
+function ToolsPanel() {
+  const tools = [
+    { name: "Web research", status: "Allowed" },
+    { name: "File export", status: "Allowed" },
+    { name: "Send email", status: "Needs approval" },
+    { name: "Deploy change", status: "Needs approval" },
+    { name: "CRM write", status: "Blocked" },
+  ];
+  return (
+    <DemoShell activeIndex={2}>
+      <div className="flex h-12 items-center justify-between border-b border-[var(--border)] bg-[var(--surface-elevated)] px-4">
+        <p className="text-xs font-medium">Tools & agents</p>
+        <span className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
+          Governed
+        </span>
+      </div>
+      <div className="p-4">
+        <p className="text-xs text-[var(--muted)]">
+          Let agents research, generate, and act—while people approve consequential steps.
+        </p>
+        <div className="mt-4 divide-y divide-[var(--border)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
+          {tools.map((tool) => (
+            <div key={tool.name} className="flex items-center justify-between px-3 py-2.5 text-sm">
+              <span>{tool.name}</span>
+              <span
+                className={cx(
+                  "text-[11px]",
+                  tool.status === "Allowed"
+                    ? "text-[var(--foreground)]"
+                    : tool.status === "Blocked"
+                      ? "text-[var(--muted-light)]"
+                      : "text-[var(--muted)]",
+                )}
+              >
+                {tool.status}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </DemoShell>
+  );
+}
+
+function DeployPanel() {
+  const options = [
+    {
+      title: "Hosted",
+      body: "Start on Overlay's managed service.",
+    },
+    {
+      title: "Private cloud",
+      body: "Deploy inside your VPC or tenant.",
+    },
+    {
+      title: "On-premises",
+      body: "Run on infrastructure you control.",
+    },
+  ];
+  return (
+    <DemoShell activeIndex={0}>
+      <div className="flex h-12 items-center border-b border-[var(--border)] bg-[var(--surface-elevated)] px-4">
+        <p className="text-xs font-medium">Deployment</p>
+      </div>
+      <div className="grid gap-3 p-4 sm:grid-cols-3">
+        {options.map((option, i) => (
+          <div
+            key={option.title}
+            className={cx(
+              "rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4",
+              i === 1 && "ring-1 ring-[var(--foreground)]",
+            )}
+          >
+            <p className="text-sm font-medium" style={marketingSerifStyle()}>
+              {option.title}
+            </p>
+            <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{option.body}</p>
+          </div>
+        ))}
+      </div>
+      <div className="border-t border-[var(--border)] px-4 py-3 text-[11px] text-[var(--muted)]">
+        Same interface. You choose where data and models live.
+      </div>
+    </DemoShell>
+  );
+}
+
+export const CAPABILITY_PANELS = {
+  chat: "chat",
+  models: "models",
+  knowledge: "knowledge",
+  tools: "tools",
+  deploy: "deploy",
+} as const;
+
+export type CapabilityPanelKey = keyof typeof CAPABILITY_PANELS;
+
+/** Static panel renderer used by the interactive CapabilityShowcase. */
+export function CapabilityPanel({ panel }: { panel: CapabilityPanelKey }) {
+  switch (panel) {
+    case "models":
+      return <ModelsPanel />;
+    case "knowledge":
+      return <KnowledgePanel />;
+    case "tools":
+      return <ToolsPanel />;
+    case "deploy":
+      return <DeployPanel />;
+    case "chat":
+    default:
+      return <ProductWorkspaceDemo compact title="One workspace." />;
+  }
 }
 
 function RailBlock({ title, items, className }: { title: string; items: string[]; className?: string }) {
@@ -295,138 +577,6 @@ function RailBlock({ title, items, className }: { title: string; items: string[]
       </div>
     </div>
   );
-}
-
-const audienceData = {
-  business: {
-    icon: BriefcaseBusiness,
-    title: "Market analysis",
-    context: "Sources, browser tasks, and team memory stay attached to the brief.",
-    steps: ["Search source set", "Compare model answers", "Draft recommendation", "Schedule follow-up"],
-    side: ["Research", "Operations", "Governance"],
-  },
-  content: {
-    icon: Sparkles,
-    title: "Campaign draft",
-    context: "Ideas, scripts, images, and video prompts live in one project.",
-    steps: ["Capture voice note", "Summarize references", "Draft script", "Generate assets"],
-    side: ["Ideation", "Drafting", "Generation"],
-  },
-  developers: {
-    icon: Code2,
-    title: "Debug workflow",
-    context: "Switch models, run browser checks, and execute code without leaving the thread.",
-    steps: ["Read repo notes", "Run sandbox", "Inspect browser", "Open pull request"],
-    side: ["Models", "Browser", "MCP tools"],
-  },
-  education: {
-    icon: GraduationCap,
-    title: "School AI layer",
-    context: "Teachers, students, parents, and admins use a governed private workspace.",
-    steps: ["Create worksheet", "Generate practice plan", "Approve parent summary", "Review adoption"],
-    side: ["Teachers", "Students", "Parents", "Admins"],
-  },
-} satisfies Record<AudiencePageKey, {
-  icon: LucideIcon;
-  title: string;
-  context: string;
-  steps: string[];
-  side: string[];
-}>;
-
-/**
- * Token-based audience workflow mockup. Same CSS-variable approach as
- * ProductWorkspaceDemo. `tone` forces a specific theme via `data-theme`.
- */
-export function AudienceWorkflowDemo({
-  audience,
-  tone,
-}: {
-  audience: AudiencePageKey;
-  tone?: "light" | "dark";
-}) {
-  const data = audienceData[audience];
-  const Icon = data.icon;
-
-  const inner = (
-    <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] shadow-[0_18px_60px_var(--overlay-scrim)]">
-      <div className="flex h-12 items-center justify-between border-b border-[var(--border)] bg-[var(--surface-elevated)] px-4">
-        <div className="flex items-center gap-2 text-xs">
-          <span className="flex h-6 w-6 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)]">
-            <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
-          </span>
-          <span>{data.title}</span>
-        </div>
-        <span className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-1 text-[11px]">
-          Private workspace
-        </span>
-      </div>
-      <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_220px]">
-        <div className="p-4">
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-            <p className="text-sm font-medium">{data.title}</p>
-            <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{data.context}</p>
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
-              {data.steps.map((step, index) => (
-                <div key={step} className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--success)_40%,transparent)] text-[10px] text-[var(--success)]">
-                      {index + 1}
-                    </span>
-                    <p className="text-xs font-medium">{step}</p>
-                  </div>
-                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--surface-subtle)]">
-                    <div
-                      className="h-full rounded-full bg-[var(--success)]"
-                      style={{ width: `${46 + index * 13}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            {[
-              ["Model routing", "Use the right model per step"],
-              ["Files + memory", "Keep context attached"],
-              ["Audit trail", "Govern work without drag"],
-            ].map(([label, text]) => (
-              <div key={label} className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3">
-                <p className="text-xs font-medium">{label}</p>
-                <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">{text}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-        <aside className="border-t border-[var(--border)] bg-[var(--sidebar-surface)] p-4 md:border-l md:border-t-0">
-          <p className="text-xs font-medium">Workspace views</p>
-          <div className="mt-3 space-y-2">
-            {data.side.map((item, index) => (
-              <div
-                key={item}
-                className={cx(
-                  "rounded-lg border p-3 text-xs",
-                  index === 1
-                    ? "border-[color:color-mix(in_srgb,var(--foreground)_25%,transparent)] bg-[var(--surface-subtle)]"
-                    : "border-[var(--border)] bg-[var(--surface-elevated)]",
-                )}
-              >
-                <p className="font-medium">{item}</p>
-                <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">
-                  {index === 1 ? "Selected view" : "Configured"}
-                </p>
-              </div>
-            ))}
-          </div>
-        </aside>
-      </div>
-    </div>
-  );
-
-  if (tone) {
-    return <div data-theme={tone}>{inner}</div>;
-  }
-  return inner;
 }
 
 export function PricingControlPreview({ amount = "$24" }: { amount?: string }) {
