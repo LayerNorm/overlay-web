@@ -1,7 +1,7 @@
 'use client'
 
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react'
-import { ArrowLeft, FolderOpen, MessageCircle, Plus } from 'lucide-react'
+import { ArrowLeft, FolderOpen, MessageCircle, Plus, Trash2 } from 'lucide-react'
 import type { NotebookNote } from '@overlay/app-core'
 import { AppScreenHeader } from '../shell'
 
@@ -13,6 +13,9 @@ export interface NotebookHeaderProps {
   agentPanelOpen?: boolean
   exportMenu?: ReactNode
   assistantHeader?: ReactNode
+  leading?: ReactNode
+  hideBackButton?: boolean
+  onDeleteNote?: () => void
   onBackToFiles: () => void
   onCreateNote: () => void
   onTitleChange: (event: ChangeEvent<HTMLInputElement>) => void
@@ -29,6 +32,9 @@ export function NotebookHeader({
   agentPanelOpen,
   exportMenu,
   assistantHeader,
+  leading,
+  hideBackButton,
+  onDeleteNote,
   onBackToFiles,
   onCreateNote,
   onTitleChange,
@@ -57,14 +63,17 @@ export function NotebookHeader({
   return (
     <AppScreenHeader className="px-0 py-0">
       <div className="flex flex-1 items-center justify-between gap-2 px-3">
-        <button
-          type="button"
-          onClick={onBackToFiles}
-          title="Back to files"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-        >
-          <ArrowLeft size={17} />
-        </button>
+        {leading}
+        {!hideBackButton ? (
+          <button
+            type="button"
+            onClick={onBackToFiles}
+            title="Back to files"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          >
+            <ArrowLeft size={17} />
+          </button>
+        ) : null}
         <input
           type="text"
           value={title}
@@ -84,6 +93,17 @@ export function NotebookHeader({
           )}
           {isDirty && <span className="text-[11px] text-[var(--muted-light)]">Unsaved</span>}
           {exportMenu}
+          {onDeleteNote ? (
+            <button
+              type="button"
+              onClick={onDeleteNote}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              aria-label="Delete note"
+              title="Delete note"
+            >
+              <Trash2 size={15} />
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onToggleAgentPanel}

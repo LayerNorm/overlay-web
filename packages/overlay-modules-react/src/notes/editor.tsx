@@ -79,7 +79,7 @@ import {
 } from '@overlay/app-core'
 import { NotebookAgentComposer, NotebookAgentPanel } from './agent-panel'
 import { NotebookAgentHeader, NotebookHeader } from './header'
-import { NotebookEmptyState } from './sidebar'
+import { NotebookEmptyState, NotebookNotesSidebar } from './sidebar'
 import { NotebookFloatingFormatToolbar } from './format-toolbar'
 import { AppScreenBody, AppScreenShell } from '../shell'
 import {
@@ -103,18 +103,26 @@ export interface NotebookEditorModel {
 export interface NotebookEditorRepository {
   list(signal?: AbortSignal): Promise<NoteDoc[]>
   get(noteId: string, signal?: AbortSignal): Promise<NoteDoc | null>
-  create(): Promise<NoteDoc>
+  create(input?: { title?: string; content?: string }): Promise<NoteDoc>
   save(input: {
     noteId: string
     title: string
     content: string
     expectedUpdatedAt?: number
   }): Promise<{ note?: NoteDoc | null; conflict?: NotebookEditorConflict }>
+  delete?(noteId: string): Promise<void>
+}
+
+export interface NotebookEditorMediaAdapter {
+  persistImage(file: File): Promise<{ src: string; alt?: string }>
 }
 
 export interface CanonicalNotebookEditorProps {
   noteId: string | null
   hideSidebar?: boolean
+  showNotesSidebar?: boolean
+  hideBackButton?: boolean
+  headerLeading?: ReactNode
   projectName?: string
   repository: NotebookEditorRepository
   runAgent(request: NotebookAgentRequest, signal: AbortSignal): Promise<Response>
@@ -135,6 +143,12 @@ export interface CanonicalNotebookEditorProps {
   }): ReactNode
   renderMarkdown?(text: string, streaming: boolean): ReactNode
   logo?: ReactNode
+  media?: NotebookEditorMediaAdapter
+  focusRequest?: number
+  externalInsertion?: { id: string; text: string }
+  onHydrated?(note: NotebookNote): void
+  onAgentPanelOpenChange?(open: boolean): void
+  onDeleteNote?(noteId: string): void
 }
 
 const lowlight = createLowlight(common)
@@ -162,6 +176,9 @@ function promptForValue(message: string, defaultValue = ''): string | null {
 export function CanonicalNotebookEditor({
   noteId,
   hideSidebar,
+  showNotesSidebar,
+  hideBackButton,
+  headerLeading,
   projectName,
   repository,
   runAgent,
@@ -175,6 +192,12 @@ export function CanonicalNotebookEditor({
   renderAgentInput,
   renderMarkdown,
   logo,
+  media,
+  focusRequest,
+  externalInsertion,
+  onHydrated,
+  onAgentPanelOpenChange,
+  onDeleteNote,
 }: CanonicalNotebookEditorProps) {
   const [notes, setNotes] = useState<NotebookNote[]>([])
   const [activeNote, setActiveNote] = useState<NotebookNote | null>(null)
@@ -200,12 +223,15 @@ export function CanonicalNotebookEditor({
   const flushSaveRef = useRef<() => Promise<void> | void>(() => {})
   const repositoryRef = useRef(repository)
   const onNoteChangedRef = useRef(onNoteChanged)
+  const mediaRef = useRef(media)
+  const lastInsertionRef = useRef<string | null>(null)
   const [editorConflict, setEditorConflict] = useState<NotebookEditorConflict | undefined>()
 
   useEffect(() => {
     repositoryRef.current = repository
     onNoteChangedRef.current = onNoteChanged
-  }, [onNoteChanged, repository])
+    mediaRef.current = media
+  }, [media, onNoteChanged, repository])
 
   const lifecycleController = useMemo(() => new NotebookEditorController({
     debounceMs: 800,
@@ -369,6 +395,31 @@ export function CanonicalNotebookEditor({
     editorProps: {
       attributes: {
         class: 'app-note-editor',
+      },
+      handlePaste(view, event) {
+        const file = Array.from(event.clipboardData?.files ?? []).find((item) => item.type.startsWith('image/'))
+        if (!file || !mediaRef.current) return false
+        event.preventDefault()
+        const position = view.state.selection.from
+        void mediaRef.current.persistImage(file).then(({ src, alt }) => {
+          if (!view.dom.isConnected) return
+          const node = view.state.schema.nodes.image?.create({ src, alt: alt ?? file.name })
+          if (node) view.dispatch(view.state.tr.insert(position, node))
+        })
+        return true
+      },
+      handleDrop(view, event, _slice, moved) {
+        const file = Array.from(event.dataTransfer?.files ?? []).find((item) => item.type.startsWith('image/'))
+        if (moved || !file || !mediaRef.current) return false
+        event.preventDefault()
+        const position = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
+        if (position === undefined) return true
+        void mediaRef.current.persistImage(file).then(({ src, alt }) => {
+          if (!view.dom.isConnected) return
+          const node = view.state.schema.nodes.image?.create({ src, alt: alt ?? file.name })
+          if (node) view.dispatch(view.state.tr.insert(position, node))
+        })
+        return true
       },
     },
   })
@@ -752,8 +803,23 @@ export function CanonicalNotebookEditor({
     editor.commands.setContent(normalizeNotebookContent(activeNote.content || ''))
     migrateMathStrings(editor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
     hydratingEditorRef.current = false
+    onHydrated?.(activeNote)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, activeNote?._id])
+
+  useEffect(() => {
+    if (!editor || focusRequest === undefined) return
+    editor.commands.focus('end')
+  }, [editor, focusRequest])
+
+  useEffect(() => {
+    if (!editor || !externalInsertion || lastInsertionRef.current === externalInsertion.id) return
+    lastInsertionRef.current = externalInsertion.id
+    editor.chain().focus().insertContentAt(editor.state.doc.content.size, {
+      type: 'paragraph',
+      content: [{ type: 'text', text: externalInsertion.text }],
+    }).run()
+  }, [editor, externalInsertion])
 
   useEffect(() => {
     setSelectedSlashIndex(0)
@@ -821,8 +887,12 @@ export function CanonicalNotebookEditor({
 
   const handleToggleAgentPanel = useCallback(async () => {
     await flushSaveRef.current()
-    setAgentPanelOpen((open) => !open)
-  }, [])
+    setAgentPanelOpen((open) => {
+      const next = !open
+      onAgentPanelOpenChange?.(next)
+      return next
+    })
+  }, [onAgentPanelOpenChange])
 
   const stopNotebookAgent = useCallback(() => {
     notebookAgentAbortRef.current?.abort()
@@ -912,13 +982,31 @@ export function CanonicalNotebookEditor({
     }
   }, [activeNote, agentInput, agentMentions, agentRunning, editor, runAgent, selectedModelId, title])
 
-  async function createNote() {
-    const created = await repository.create()
+  async function createNote(input?: { title?: string; content?: string }) {
+    const created = await repository.create(input)
     const note = noteDocToNotebookNote(created)
     setNotes((prev) => upsertNotebookNote(prev, note))
     onNoteChanged?.(note)
     openNote(note)
   }
+
+  const deleteNote = useCallback(async (noteId: string, event?: React.MouseEvent) => {
+    event?.stopPropagation()
+    if (!repository.delete) return
+    await repository.delete(noteId)
+    const remaining = notes.filter((note) => note._id !== noteId)
+    setNotes(remaining)
+    onDeleteNote?.(noteId)
+    if (activeNoteRef.current?._id !== noteId) return
+    const next = remaining[0]
+    if (next) openNote(next)
+    else {
+      activeNoteRef.current = null
+      setActiveNote(null)
+      setTitle('')
+      lifecycleController.clearSelection()
+    }
+  }, [lifecycleController, notes, onDeleteNote, openNote, repository])
 
   function handleTitleChange(event: React.ChangeEvent<HTMLInputElement>) {
     const newTitle = event.target.value
@@ -1062,6 +1150,9 @@ export function CanonicalNotebookEditor({
           projectName={projectName}
           isDirty={isDirty}
           agentPanelOpen={agentPanelOpen}
+          leading={headerLeading}
+          hideBackButton={hideBackButton}
+          onDeleteNote={repository.delete && activeNote ? () => void deleteNote(activeNote._id) : undefined}
           exportMenu={activeNote ? renderExportMenu?.({
             note: activeNote,
             title: title || 'Untitled',
@@ -1091,9 +1182,19 @@ export function CanonicalNotebookEditor({
       rightPanelWidth={400}
       onRightPanelClose={() => void handleToggleAgentPanel()}
     >
-      <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex h-full flex-col">
-        {activeNote ? (
-          <>
+      <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex h-full flex-row">
+        {showNotesSidebar ? (
+          <NotebookNotesSidebar
+            notes={notes}
+            activeNoteId={activeNote?._id}
+            onCreateNote={() => void createNote()}
+            onOpenNote={openNote}
+            onDeleteNote={(noteId, event) => void deleteNote(noteId, event)}
+          />
+        ) : null}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {activeNote ? (
+            <>
             {editorConflict ? (
               <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-6 py-2 text-xs text-amber-800 dark:text-amber-200" role="alert">
                 {editorConflict.message} Your local draft has been preserved.
@@ -1125,10 +1226,11 @@ export function CanonicalNotebookEditor({
                 setSlashMenuFilter('')
               }}
             />
-          </>
-        ) : (
-          <NotebookEmptyState onCreateNote={() => void createNote()} />
-        )}
+            </>
+          ) : (
+            <NotebookEmptyState onCreateNote={() => void createNote()} />
+          )}
+        </div>
       </AppScreenBody>
     </AppScreenShell>
   )

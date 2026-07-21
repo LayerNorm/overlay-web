@@ -56,8 +56,13 @@ for (const productionEditor of [
 ]) {
   requireText(
     productionEditor,
-    /NotebookStyles/,
-    'PR 2 must not cut over the production desktop editor',
+    /DesktopNotebookEditor/,
+    'desktop notebook consumers must use the shared editor adapter',
+  )
+  forbidText(
+    productionEditor,
+    /\buseEditor\s*\(|NotebookStyles|NotebookToolbar|InlineDiffExtension|SlashMenu/,
+    'desktop notebook consumers cannot restore an independent renderer',
   )
 }
 

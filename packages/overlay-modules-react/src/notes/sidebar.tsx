@@ -1,6 +1,6 @@
 'use client'
 
-import type { MouseEvent } from 'react'
+import { memo, type MouseEvent } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import type { NotebookNote } from '@overlay/app-core'
 
@@ -32,28 +32,56 @@ export function NotebookNotesSidebar({
       </div>
       <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
         {notes.map((note) => (
-          <div
+          <NotebookNoteRow
             key={note._id}
-            onClick={() => onOpenNote(note)}
-            className={`group flex cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 transition-colors ${
-              activeNoteId === note._id
-                ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                : 'text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]'
-            }`}
-          >
-            <span className="text-xs truncate">{note.title || 'Untitled'}</span>
-            <button
-              onClick={(event) => onDeleteNote(note._id, event)}
-              className="ml-1 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-            >
-              <Trash2 size={11} />
-            </button>
-          </div>
+            note={note}
+            active={activeNoteId === note._id}
+            onOpenNote={onOpenNote}
+            onDeleteNote={onDeleteNote}
+          />
         ))}
       </div>
     </div>
   )
 }
+
+interface NotebookNoteRowProps {
+  note: NotebookNote
+  active: boolean
+  onOpenNote: (note: NotebookNote) => void
+  onDeleteNote: (noteId: string, event: MouseEvent) => void
+}
+
+const NotebookNoteRow = memo(function NotebookNoteRow({
+  note,
+  active,
+  onOpenNote,
+  onDeleteNote,
+}: NotebookNoteRowProps) {
+  return (
+    <div className={`group flex items-center justify-between rounded-md transition-colors ${
+      active
+        ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+        : 'text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]'
+    }`}>
+      <button
+        type="button"
+        onClick={() => onOpenNote(note)}
+        className="min-w-0 flex-1 truncate px-2.5 py-1.5 text-left text-xs"
+      >
+        {note.title || 'Untitled'}
+      </button>
+      <button
+        type="button"
+        onClick={(event) => onDeleteNote(note._id, event)}
+        aria-label={`Delete ${note.title || 'Untitled'}`}
+        className="mr-1 rounded p-1 opacity-0 transition-opacity hover:bg-[var(--border)] focus:opacity-100 group-hover:opacity-100"
+      >
+        <Trash2 size={11} />
+      </button>
+    </div>
+  )
+})
 
 export interface NotebookEmptyStateProps {
   onCreateNote: () => void
