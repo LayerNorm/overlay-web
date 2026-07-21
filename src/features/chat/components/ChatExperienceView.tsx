@@ -38,6 +38,7 @@ export type ChatExperienceViewProps = {
     rightPanel: React.ReactNode
     rightPanelOpen: boolean
     rightPanelWidth?: number
+    rightPanelMode?: 'docked' | 'floating'
     onRightPanelClose?: () => void
   }
   main: {
@@ -78,6 +79,7 @@ export function ChatExperienceView({
         rightPanel={shell.rightPanel}
         rightPanelOpen={shell.rightPanelOpen}
         rightPanelWidth={shell.rightPanelWidth}
+        rightPanelMode={shell.rightPanelMode}
         onRightPanelClose={shell.onRightPanelClose}
       >
         <div

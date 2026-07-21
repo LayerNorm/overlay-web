@@ -1,7 +1,7 @@
 'use client'
 
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react'
-import { ArrowLeft, FolderOpen, MessageCircle, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, FolderOpen, MessageCircle, Plus, Trash2, X } from 'lucide-react'
 import type { NotebookNote } from '@overlay/app-core'
 import { AppScreenHeader } from '../shell'
 
@@ -143,6 +143,7 @@ export interface NotebookAgentHeaderProps {
   modelPicker: ReactNode
   onAcceptAllDiffs: () => void
   onRejectAllDiffs: () => void
+  onClose: () => void
 }
 
 export function NotebookAgentHeader({
@@ -150,10 +151,11 @@ export function NotebookAgentHeader({
   modelPicker,
   onAcceptAllDiffs,
   onRejectAllDiffs,
+  onClose,
 }: NotebookAgentHeaderProps) {
   return (
-    <div className="flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
-      <span className="text-xs font-medium text-[var(--foreground)]">Assistant</span>
+    <div className="flex h-11 min-h-11 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3">
+      <span className="text-[13px] font-medium text-[var(--foreground)]">Assistant</span>
       <div className="flex items-center gap-2">
         {pendingDiffCount > 0 && (
           <>
@@ -174,6 +176,15 @@ export function NotebookAgentHeader({
           </>
         )}
         {modelPicker}
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          aria-label="Close note assistant"
+          title="Close note assistant"
+        >
+          <X size={14} strokeWidth={1.8} />
+        </button>
       </div>
     </div>
   )

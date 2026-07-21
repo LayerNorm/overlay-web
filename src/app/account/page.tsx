@@ -2,7 +2,7 @@
 
 // Compatibility wrapper: account and billing transport lives behind @overlay/api-client
 // while this web container keeps current billing flows and redirects unchanged.
-import { useState, useEffect, Suspense, useRef } from 'react'
+import { useState, useEffect, Suspense, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { RefreshCw, ArrowRight } from 'lucide-react'
@@ -15,9 +15,14 @@ import { StaticMarketingShell } from '@/features/marketing/components/StaticMark
 import { MarketingFooter } from '@/features/marketing/components/MarketingFooter'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
+  clearStoredDesktopPkceChallenge,
   getStoredDesktopPkceChallenge,
   persistMobilePkceChallengeFromUrl,
 } from '@/shared/auth/mobile-auth-client'
+import {
+  isValidDesktopCodeChallenge,
+  shouldStartDesktopHandoff,
+} from '@/shared/auth/desktop-auth-handoff'
 import {
   marketingBody,
   marketingHeading,
@@ -34,7 +39,11 @@ import {
 
 // Always use overlay:// for deep links (registered in WorkOS for both environments)
 const APP_PROTOCOL = 'overlay'
-const PKCE_CHALLENGE_RE = /^[A-Za-z0-9._~-]{43,128}$/
+
+function triggerDeepLink(url: string) {
+  console.log('[Account] Triggering deep link:', url)
+  window.location.href = url
+}
 
 function AccountPageContent() {
   const { isLandingDark } = useLandingTheme()
@@ -48,10 +57,12 @@ function AccountPageContent() {
   }
   const router = useRouter()
   const searchParams = useSearchParams()
-  const desktopCodeChallenge = searchParams?.get('desktop_code_challenge')?.trim() || getStoredDesktopPkceChallenge() || ''
+  const desktopCodeChallengeFromUrl = searchParams?.get('desktop_code_challenge')?.trim() || ''
+  const desktopCodeChallenge = desktopCodeChallengeFromUrl || getStoredDesktopPkceChallenge() || ''
   const extensionHandoff = searchParams?.get('extension_handoff') === '1'
   const chromeExtensionIdRaw = searchParams?.get('chrome_extension_id')?.trim() || ''
   const extensionHandoffSentRef = useRef(false)
+  const desktopHandoffSentRef = useRef(false)
 
   // Get userId from AuthContext (session-based)
   const { user, isLoading: authLoading, isAuthenticated, signOut, refreshSession } = useAuth()
@@ -210,16 +221,14 @@ function AccountPageContent() {
     }
   }
 
-  // Handler for manual "Open in App" button
-  // This generates a deep link with auth tokens so the desktop app signs in with the current account
-  const handleOpenInApp = async () => {
+  const performDesktopHandoff = useCallback(async (fallbackToApp: boolean): Promise<boolean> => {
     setActionLoading('openApp')
     try {
       const codeChallenge = desktopCodeChallenge.trim()
-      if (!PKCE_CHALLENGE_RE.test(codeChallenge)) {
-        console.warn('[Account] Missing desktop auth handshake; opening desktop app without session transfer')
-        triggerDeepLink(`${APP_PROTOCOL}://subscription-updated`)
-        return
+      if (!isValidDesktopCodeChallenge(codeChallenge)) {
+        console.warn('[Account] Missing desktop auth handshake')
+        if (fallbackToApp) triggerDeepLink(`${APP_PROTOCOL}://subscription-updated`)
+        return false
       }
 
       const response = await overlayAppClient.account.desktopLinkResponse({ codeChallenge })
@@ -229,8 +238,8 @@ function AccountPageContent() {
           status: response.status,
           error: errorBody,
         })
-        triggerDeepLink(`${APP_PROTOCOL}://subscription-updated`)
-        return
+        if (fallbackToApp) triggerDeepLink(`${APP_PROTOCOL}://subscription-updated`)
+        return false
       }
 
       const { deepLink } = await response.json()
@@ -250,7 +259,8 @@ function AccountPageContent() {
           })
           if (localRes.ok) {
             console.log('[Account] Auth handled via local dev server')
-            return
+            clearStoredDesktopPkceChallenge()
+            return true
           }
         } catch {
           // Dev server not available — fall through to deep link (production path)
@@ -258,21 +268,44 @@ function AccountPageContent() {
       }
 
       console.log('[Account] Opening desktop app via deep link')
+      clearStoredDesktopPkceChallenge()
       triggerDeepLink(deepLink)
+      return true
     } catch (error) {
       console.error('[Account] Error generating desktop link:', error)
-      triggerDeepLink(`${APP_PROTOCOL}://subscription-updated`)
+      if (fallbackToApp) triggerDeepLink(`${APP_PROTOCOL}://subscription-updated`)
+      return false
     } finally {
       setActionLoading(null)
     }
-  }
+  }, [desktopCodeChallenge, setActionLoading])
 
-  // Trigger deep link - now uses short URLs that work reliably
-  const triggerDeepLink = (url: string) => {
-    console.log('[Account] Triggering deep link:', url)
-    // Direct navigation works for short URLs
-    window.location.href = url
-  }
+  // A PKCE challenge in the URL proves this tab was opened by the desktop app.
+  // Once the existing web session is ready, return it to the app automatically.
+  useEffect(() => {
+    if (!shouldStartDesktopHandoff({
+      codeChallenge: desktopCodeChallengeFromUrl,
+      isAuthenticated,
+      userId: currentUserId,
+      sessionCheckComplete,
+    })) return
+    if (desktopHandoffSentRef.current) return
+
+    desktopHandoffSentRef.current = true
+    void performDesktopHandoff(false).then((completed) => {
+      if (!completed) desktopHandoffSentRef.current = false
+    })
+  }, [
+    currentUserId,
+    desktopCodeChallengeFromUrl,
+    isAuthenticated,
+    performDesktopHandoff,
+    sessionCheckComplete,
+  ])
+
+  const handleOpenInApp = useCallback(() => {
+    void performDesktopHandoff(true)
+  }, [performDesktopHandoff])
 
   return (
     <StaticMarketingShell>

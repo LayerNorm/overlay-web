@@ -53,6 +53,15 @@ export function clearStoredMobilePkceChallenge(): void {
   }
 }
 
+export function clearStoredDesktopPkceChallenge(): void {
+  if (typeof window === 'undefined') return
+  try {
+    sessionStorage.removeItem(DESKTOP_STORAGE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
 /** PKCE challenge for SSO: prefer current URL (app-opened tab), else session fallback across in-site navigation. */
 export function resolveCodeChallengeForSso(searchParams: Pick<URLSearchParams, 'get'> | null): string | null {
   // Check mobile challenge from URL

@@ -108,7 +108,8 @@ export function SourcesPanel({
         closeLabel="Close sources"
         aria-label="Sources"
         aria-hidden={!open}
-        className="bg-[var(--background)]"
+        compactHeader
+        className="bg-[var(--sidebar-surface)]"
         bodyClassName="overflow-y-auto px-3 py-3"
       >
         {sourceList}
@@ -120,8 +121,10 @@ export function SourcesPanel({
     <aside
       aria-label="Sources"
       aria-hidden={!open}
-      className={`hidden h-full shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--background)] transition-[width,opacity,border-color] duration-300 ease-[var(--overlay-ease)] md:flex ${
-        open ? 'w-[min(40vw,380px)] opacity-100' : 'w-0 border-l-0 opacity-0'
+      className={`absolute inset-y-2 right-2 z-30 hidden w-[min(40vw,380px)] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--sidebar-surface)] shadow-xl transition-[transform,opacity] duration-300 ease-[var(--overlay-ease)] md:flex ${
+        open
+          ? 'translate-x-0 opacity-100'
+          : 'pointer-events-none translate-x-[calc(100%+0.5rem)] opacity-0'
       }`}
     >
       <div className="flex h-full w-[min(40vw,380px)] flex-col">
@@ -129,7 +132,8 @@ export function SourcesPanel({
           title="Sources"
           onClose={onClose}
           closeLabel="Close sources"
-          className="bg-[var(--background)]"
+          compactHeader
+          className="bg-[var(--sidebar-surface)]"
           bodyClassName="overflow-y-auto px-3 py-3"
         >
           {sourceList}

@@ -20,9 +20,10 @@ import {
 } from "@/features/landing/lib/landingPageStyles";
 import { DEFAULT_OVERLAY_CAPABILITIES, type CapabilityCheck } from "@overlay/app-core";
 import { SsoProviderIcon, useAuthUiOptions } from "../_components/useAuthUiOptions";
+import { shouldReuseExistingWebSession } from "@/shared/auth/desktop-auth-handoff";
 
 function SignInContent() {
-  const { refreshSession } = useAuth();
+  const { refreshSession, isAuthenticated, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
@@ -33,6 +34,7 @@ function SignInContent() {
   const [pendingVerification, setPendingVerification] = useState(false);
   const [sessionCleared, setSessionCleared] = useState(false);
   const [clearingSession, setClearingSession] = useState(false);
+  const [redirectingExistingSession, setRedirectingExistingSession] = useState(false);
   const [ssoEnabled, setSsoEnabled] = useState<boolean | null>(null);
   const authUiOptions = useAuthUiOptions();
 
@@ -96,6 +98,17 @@ function SignInContent() {
     }
   }, [isDesktopAuth, forceLogin, sessionCleared, clearingSession]);
 
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || forceLogin || isDesktopAuth) return;
+
+    setRedirectingExistingSession(true);
+    if (redirectUrl.startsWith("overlay://")) {
+      window.location.href = redirectUrl;
+    } else {
+      router.replace(redirectUrl);
+    }
+  }, [authLoading, forceLogin, isAuthenticated, isDesktopAuth, redirectUrl, router]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -158,6 +171,23 @@ function SignInContent() {
   const ssoProviders = authUiOptions?.ssoProviders ?? [];
   const showSso = Boolean(ssoEnabled && authUiOptions?.supportsSso && ssoProviders.length > 0);
   const showPassword = authUiOptions?.supportsPasswordSignIn === true;
+  const shouldReuseExistingSession = shouldReuseExistingWebSession({
+    authLoading,
+    isAuthenticated,
+    forceLogin,
+    isDirectDesktopCallback: isDesktopAuth,
+  });
+
+  if (shouldReuseExistingSession || redirectingExistingSession) {
+    return (
+      <LandingAuthPageChrome
+        mainClassName="relative z-10 flex flex-1 items-center justify-center px-4"
+        footerClassName="relative z-10 mt-auto flex justify-center border-t border-[var(--border)] px-8 py-6 text-sm text-[var(--muted)] sm:justify-start"
+      >
+        <p className="text-sm text-[var(--muted)]">Continuing to Overlay…</p>
+      </LandingAuthPageChrome>
+    );
+  }
 
   return (
     <LandingAuthPageChrome

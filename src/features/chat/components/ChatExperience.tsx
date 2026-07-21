@@ -1720,6 +1720,7 @@ export default function ChatExperience({
   const {
     shellRightPanel,
     shellRightPanelClose,
+    shellRightPanelMode,
     shellRightPanelWidth,
   } = useChatShellPanels({
     attachmentPreview,
@@ -1740,6 +1741,7 @@ export default function ChatExperience({
         rightPanel: shellRightPanel,
         rightPanelOpen: Boolean(shellRightPanel),
         rightPanelWidth: shellRightPanelWidth,
+        rightPanelMode: shellRightPanelMode,
         onRightPanelClose: shellRightPanelClose,
       }}
       main={{

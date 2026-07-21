@@ -18,6 +18,7 @@ export interface AppScreenShellProps extends HTMLAttributes<HTMLDivElement> {
   rightPanel?: ReactNode
   rightPanelOpen?: boolean
   rightPanelWidth?: AppScreenPanelWidth
+  rightPanelMode?: 'docked' | 'floating'
   onRightPanelClose?: () => void
   rightPanelOverlayLabel?: string
   contentClassName?: string
@@ -47,6 +48,7 @@ export function AppScreenShell({
   rightPanel,
   rightPanelOpen,
   rightPanelWidth = 'md',
+  rightPanelMode = 'docked',
   onRightPanelClose,
   rightPanelOverlayLabel = 'Screen side panel',
   contentClassName,
@@ -74,6 +76,7 @@ export function AppScreenShell({
   const showRightPanel = rightPanelMounted && Boolean(rightPanelContent)
   const rightPanelClassName = panelWidthClass(rightPanelWidth)
   const rightPanelStyle = panelWidthStyle(rightPanelWidth)
+  const floatingRightPanel = rightPanelMode === 'floating'
 
   return (
     <div
@@ -122,13 +125,15 @@ export function AppScreenShell({
         {showRightPanel ? (
           <aside
             className={cn(
-              // Mobile: overlay that slides in from the right edge.
-              // Desktop: static column that reveals via width — matching the
-              // AppSidebar's collapse/expand motion.
-              'absolute inset-y-0 right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 overflow-hidden border-l border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl transition-[transform,width] duration-300 ease-[var(--overlay-ease)] lg:static lg:z-auto lg:max-w-none lg:shadow-none',
+              'absolute right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 overflow-hidden bg-[var(--surface-elevated)] transition-[transform,width,opacity] duration-300 ease-[var(--overlay-ease)]',
+              floatingRightPanel
+                ? 'inset-y-2 right-2 max-w-[calc(100vw-1rem)] rounded-xl border border-[var(--border)] bg-[var(--sidebar-surface)] shadow-xl lg:max-w-none'
+                : 'inset-y-0 border-l border-[var(--border)] shadow-2xl lg:static lg:z-auto lg:max-w-none lg:shadow-none',
               rightPanelVisible
-                ? cn('translate-x-0', rightPanelClassName)
-                : 'translate-x-full lg:w-0 lg:translate-x-0 lg:border-l-0',
+                ? cn('translate-x-0 opacity-100', rightPanelClassName)
+                : floatingRightPanel
+                  ? 'pointer-events-none translate-x-[calc(100%+0.5rem)] opacity-0'
+                  : 'translate-x-full opacity-0 lg:w-0 lg:translate-x-0 lg:border-l-0',
             )}
             style={rightPanelStyle}
             role="complementary"
@@ -277,6 +282,7 @@ export interface AppScreenSidePanelProps extends Omit<HTMLAttributes<HTMLElement
   onClose?: () => void
   closeLabel?: string
   bodyClassName?: string
+  compactHeader?: boolean
 }
 
 export function AppScreenSidePanel({
@@ -286,6 +292,7 @@ export function AppScreenSidePanel({
   onClose,
   closeLabel = 'Close side panel',
   bodyClassName,
+  compactHeader = false,
   className,
   children,
   ...props
@@ -299,7 +306,12 @@ export function AppScreenSidePanel({
       {...props}
     >
       {(title || description || actions || onClose) ? (
-        <div className="flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
+        <div
+          className={cn(
+            'flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)]',
+            compactHeader ? 'h-11 min-h-11 px-3' : 'min-h-16 px-4',
+          )}
+        >
           <div className="min-w-0">
             {title ? <h2 className="truncate text-sm font-medium text-[var(--foreground)]">{title}</h2> : null}
             {description ? <p className="truncate text-xs text-[var(--muted)]">{description}</p> : null}
@@ -311,10 +323,13 @@ export function AppScreenSidePanel({
                 <button
                   type="button"
                   aria-label={closeLabel}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  className={cn(
+                    'inline-flex items-center justify-center text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]',
+                    compactHeader ? 'h-7 w-7 rounded-md' : 'h-8 w-8 rounded-lg',
+                  )}
                   onClick={onClose}
                 >
-                  <X size={16} strokeWidth={1.8} />
+                  <X size={compactHeader ? 14 : 16} strokeWidth={1.8} />
                 </button>
               ) : null}
             </div>

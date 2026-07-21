@@ -24,7 +24,7 @@ export function NotebookAgentPanel({
 }: NotebookAgentPanelProps) {
   return (
     <AppScreenSidePanel
-      className="overlay-chat-surface bg-[var(--surface)]"
+      className="overlay-chat-surface bg-[var(--sidebar-surface)]"
       bodyClassName="flex min-h-0 flex-col overflow-hidden"
       aria-label="Note assistant"
     >
@@ -91,7 +91,7 @@ export function NotebookAgentPanel({
           )
         })}
       </div>
-      <div className="shrink-0 p-3">{composer}</div>
+      <div className="shrink-0 bg-[var(--sidebar-surface)] p-3">{composer}</div>
     </AppScreenSidePanel>
   )
 }

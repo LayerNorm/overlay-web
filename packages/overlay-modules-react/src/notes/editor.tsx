@@ -1103,6 +1103,7 @@ export function CanonicalNotebookEditor({
       modelPicker={modelPicker}
       onAcceptAllDiffs={() => editor?.chain().focus().acceptAllDiffs().run()}
       onRejectAllDiffs={() => editor?.chain().focus().rejectAllDiffs().run()}
+      onClose={() => void handleToggleAgentPanel()}
     />
   )
 
@@ -1182,6 +1183,7 @@ export function CanonicalNotebookEditor({
       ) : null}
       rightPanelOpen={agentPanelOpen && Boolean(activeNote)}
       rightPanelWidth={400}
+      rightPanelMode="floating"
       onRightPanelClose={() => void handleToggleAgentPanel()}
     >
       <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex h-full flex-row">
