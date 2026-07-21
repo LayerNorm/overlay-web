@@ -16,6 +16,8 @@ export interface KnowledgeFile {
   isStorageBacked?: boolean
   downloadUrl?: string
   outputType?: string
+  modelId?: string
+  prompt?: string
   createdAt: number
   updatedAt: number
   projectId?: string

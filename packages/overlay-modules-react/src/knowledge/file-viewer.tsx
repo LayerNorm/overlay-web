@@ -3,26 +3,36 @@
 import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Music, FileQuestion, Download, Loader2, FileType } from 'lucide-react'
+import { Music, FileQuestion, Download, ExternalLink, FolderSearch, Loader2, FileType } from 'lucide-react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '../shell'
 import { FileTypeIcon } from '../shared/file-type-icon'
 
 import {
+  FILE_VIEWER_HTML_SANDBOX,
   getFileType,
   isEditableType,
   isPreviewableType,
   prefersUrlPreview,
+  resolveSafeViewerUrl,
   type FileViewerType,
 } from '@overlay/app-core/file-viewer'
 
-function safeHttpUrl(value?: string): string | undefined {
-  if (!value) return undefined
-  try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : undefined
-  } catch {
-    return undefined
-  }
+export interface FileViewerAsset {
+  name: string
+  url?: string
+}
+
+export interface FileViewerOperations {
+  download?: (asset: FileViewerAsset) => void | Promise<void>
+  openExternal?: (asset: FileViewerAsset) => void | Promise<void>
+  revealLocal?: (asset: FileViewerAsset) => void | Promise<void>
+}
+
+export interface FileViewerProps {
+  name: string
+  content: string
+  url?: string
+  operations?: FileViewerOperations
 }
 
 function previewSource(name: string, content: string, url?: string): string {
@@ -31,6 +41,12 @@ function previewSource(name: string, content: string, url?: string): string {
     return trimmedUrl
   }
   return content.trim() || trimmedUrl
+}
+
+export const DOCX_SANITIZE_CONFIG = {
+  USE_PROFILES: { html: true },
+  FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button'],
+  FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'style'],
 }
 
 export type { FileViewerType }
@@ -109,9 +125,10 @@ function DocumentViewer({ url }: { url: string }) {
 
   useEffect(() => {
     let cancelled = false
+    const controller = new AbortController()
     setLoading(true)
     setError(null)
-    fetch(url)
+    fetch(url, { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`Failed to load (${r.status})`)
         return r.arrayBuffer()
@@ -121,21 +138,21 @@ function DocumentViewer({ url }: { url: string }) {
         const DOMPurify = (await import('dompurify')).default
         const result = await mammoth.convertToHtml({ arrayBuffer: buf })
         if (!cancelled) {
-          setHtml(DOMPurify.sanitize(result.value, {
-            USE_PROFILES: { html: true },
-            FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button'],
-            FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'style'],
-          }))
+          setHtml(DOMPurify.sanitize(result.value, DOCX_SANITIZE_CONFIG))
           setLoading(false)
         }
       })
-      .catch((e) => {
+      .catch((e: unknown) => {
+        if (e instanceof DOMException && e.name === 'AbortError') return
         if (!cancelled) {
           setError(e instanceof Error ? e.message : String(e))
           setLoading(false)
         }
       })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
   }, [url])
 
   if (loading) {
@@ -169,7 +186,43 @@ function DocumentViewer({ url }: { url: string }) {
 
 // ─── FileViewer ───────────────────────────────────────────────────────────────
 
-export function FileViewer({ name, content, url }: { name: string; content: string; url?: string }) {
+function ViewerOperationButtons({
+  name,
+  url,
+  operations,
+}: FileViewerAsset & { operations?: FileViewerOperations }) {
+  const downloadUrl = resolveSafeViewerUrl(url, 'download')
+  const externalUrl = resolveSafeViewerUrl(url, 'external')
+  if (!operations && !downloadUrl) return null
+  const asset = { name, url: downloadUrl }
+  const buttonClass = 'inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]'
+
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-2">
+      {operations?.download ? (
+        <button type="button" className={buttonClass} onClick={() => void operations.download?.(asset)}>
+          <Download size={12} /> Download
+        </button>
+      ) : downloadUrl ? (
+        <a href={downloadUrl} download={name} className={buttonClass}>
+          <Download size={12} /> Download
+        </a>
+      ) : null}
+      {operations?.openExternal && externalUrl ? (
+        <button type="button" className={buttonClass} onClick={() => void operations.openExternal?.({ name, url: externalUrl })}>
+          <ExternalLink size={12} /> Open externally
+        </button>
+      ) : null}
+      {operations?.revealLocal ? (
+        <button type="button" className={buttonClass} onClick={() => void operations.revealLocal?.(asset)}>
+          <FolderSearch size={12} /> Show locally
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+export function FileViewer({ name, content, url, operations }: FileViewerProps) {
   const type = getFileType(name)
   const source = previewSource(name, content, url)
 
@@ -198,7 +251,8 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
       <div className="overlay-file-viewer overlay-file-viewer--html flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
         <iframe
           srcDoc={source}
-          sandbox="allow-scripts allow-forms allow-pointer-lock allow-modals"
+          sandbox={FILE_VIEWER_HTML_SANDBOX}
+          referrerPolicy="no-referrer"
           className="min-h-0 flex-1 w-full border-none bg-white"
           title={name}
         />
@@ -245,47 +299,47 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
   }
 
   if (type === 'image') {
+    const mediaUrl = resolveSafeViewerUrl(source, 'media')
+    if (!mediaUrl) return <UnavailablePreview name={name} />
     return (
       <div className="overlay-file-viewer overlay-file-viewer--image flex flex-1 items-center justify-center overflow-auto bg-[var(--surface-subtle)] p-8">
         {/* Shared web/Electron viewer; Next's image runtime is intentionally unavailable here. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={source} alt={name} className="max-h-full max-w-full rounded-lg object-contain shadow-sm" />
+        <img src={mediaUrl} alt={name} className="max-h-full max-w-full rounded-lg object-contain shadow-sm" />
       </div>
     )
   }
 
   if (type === 'audio') {
+    const mediaUrl = resolveSafeViewerUrl(source, 'media')
+    if (!mediaUrl) return <UnavailablePreview name={name} />
     return (
       <div className="overlay-file-viewer overlay-file-viewer--audio flex flex-1 flex-col items-center justify-center gap-6 p-8">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--surface-subtle)]">
           <Music size={28} className="text-[var(--muted)]" />
         </div>
         <p className="text-sm font-medium text-[var(--foreground)]">{name}</p>
-        <audio controls src={source} className="w-full max-w-lg" />
+        <audio controls src={mediaUrl} className="w-full max-w-lg" />
       </div>
     )
   }
 
   if (type === 'video') {
+    const mediaUrl = resolveSafeViewerUrl(source, 'media')
+    if (!mediaUrl) return <UnavailablePreview name={name} />
     return (
       <div className="overlay-file-viewer overlay-file-viewer--video flex flex-1 items-center justify-center overflow-hidden bg-black p-4">
-        <video controls src={source} className="max-h-full max-w-full" />
+        <video controls src={mediaUrl} className="max-h-full max-w-full" />
       </div>
     )
   }
 
   if (type === 'pdf') {
-    const iframeSrc = source.trim()
-    const canEmbed =
-      iframeSrc.startsWith('http://') ||
-      iframeSrc.startsWith('https://') ||
-      iframeSrc.startsWith('data:') ||
-      iframeSrc.startsWith('blob:') ||
-      iframeSrc.startsWith('/api/')
-    if (canEmbed) {
+    const iframeSrc = resolveSafeViewerUrl(source, 'pdf')
+    if (iframeSrc) {
       return (
         <div className="overlay-file-viewer overlay-file-viewer--pdf flex min-h-0 flex-1 flex-col overflow-hidden">
-          <iframe src={iframeSrc} className="min-h-0 flex-1 w-full border-none" title={name} />
+          <iframe src={iframeSrc} sandbox="" referrerPolicy="no-referrer" className="min-h-0 flex-1 w-full border-none" title={name} />
         </div>
       )
     }
@@ -309,8 +363,9 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
     )
   }
 
-  if (type === 'document' && url) {
-    return <DocumentViewer url={url} />
+  if (type === 'document') {
+    const documentUrl = resolveSafeViewerUrl(url, 'document')
+    if (documentUrl) return <DocumentViewer url={documentUrl} />
   }
 
   // binary fallback
@@ -322,9 +377,8 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
     epub: 'EPUB Book',
     zip: 'ZIP Archive', gz: 'GZip Archive', tar: 'TAR Archive',
   }
-  const downloadUrl = safeHttpUrl(url)
-    || (url?.startsWith('/api/') || url?.startsWith('blob:') ? url : undefined)
-    || (content.startsWith('/api/') ? content : undefined)
+  const downloadUrl = resolveSafeViewerUrl(url, 'download')
+    ?? resolveSafeViewerUrl(content, 'download')
 
   return (
     <div className="overlay-file-viewer overlay-file-viewer--binary flex flex-1 flex-col items-center justify-center gap-4 p-8 text-[var(--muted)]">
@@ -339,16 +393,16 @@ export function FileViewer({ name, content, url }: { name: string; content: stri
         <p className="text-sm font-medium text-[var(--foreground)]">{name}</p>
         <p className="mt-1 text-xs text-[var(--muted-light)]">{labels[ext] ?? 'Binary file'} — preview not available</p>
       </div>
-      {downloadUrl && (
-        <a
-          href={downloadUrl}
-          download={name}
-          className="flex items-center gap-1.5 rounded-md bg-[var(--foreground)] px-3 py-1.5 text-xs text-[var(--background)] transition-opacity hover:opacity-90"
-        >
-          <Download size={12} />
-          Download
-        </a>
-      )}
+      <ViewerOperationButtons name={name} url={downloadUrl} operations={operations} />
+    </div>
+  )
+}
+
+function UnavailablePreview({ name }: { name: string }) {
+  return (
+    <div className="overlay-file-viewer overlay-file-viewer--unavailable flex flex-1 flex-col items-center justify-center gap-3 p-8 text-[var(--muted)]">
+      <FileQuestion size={28} />
+      <p className="text-sm font-medium text-[var(--foreground)]">Could not safely preview {name}</p>
     </div>
   )
 }
@@ -364,6 +418,7 @@ export function FileViewerPanel({
   onContentChange,
   headerLeft,
   headerRight,
+  operations,
 }: {
   name: string
   content: string
@@ -373,6 +428,7 @@ export function FileViewerPanel({
   onContentChange?: (val: string) => void
   headerLeft?: React.ReactNode
   headerRight?: React.ReactNode
+  operations?: FileViewerOperations
 }) {
   const type = getFileType(name)
   const editable = isEditable && (type === 'text' || type === 'html' || type === 'markdown') && onContentChange
@@ -391,6 +447,7 @@ export function FileViewerPanel({
               {isSaving ? (
                 <span className="flex shrink-0 items-center gap-1 text-xs text-[var(--muted-light)]">Saving...</span>
               ) : null}
+              <ViewerOperationButtons name={name} url={url} operations={operations} />
               {headerRight}
             </div>
           </div>
@@ -414,8 +471,76 @@ export function FileViewerPanel({
           </div>
         </>
       ) : (
-        <FileViewer name={name} content={content} url={url} />
+        <FileViewer name={name} content={content} url={url} operations={operations} />
       )}
+      </AppScreenBody>
+    </AppScreenShell>
+  )
+}
+
+export interface OutputViewerProps {
+  name: string
+  content?: string
+  url?: string
+  mimeType?: string
+  outputType?: string
+  modelId?: string
+  prompt?: string
+  createdAt?: number
+  headerLeft?: React.ReactNode
+  operations?: FileViewerOperations
+}
+
+function formatOutputDate(timestamp?: number): string {
+  if (!timestamp) return ''
+  return new Date(timestamp).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+/** Canonical generated-output presentation used by web and Electron hosts. */
+export function OutputViewer({
+  name,
+  content = '',
+  url,
+  mimeType,
+  outputType,
+  modelId,
+  prompt,
+  createdAt,
+  headerLeft,
+  operations,
+}: OutputViewerProps) {
+  const metadata = [modelId, outputType || mimeType, formatOutputDate(createdAt)].filter(Boolean)
+  const safeDownloadUrl = resolveSafeViewerUrl(url, 'download')
+
+  return (
+    <AppScreenShell
+      className="overlay-output-viewer flex min-h-0 flex-1 flex-col"
+      header={(
+        <AppScreenHeader className="px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            {headerLeft}
+            <FileTypeIcon file={{ name, mimeType, extension: name.split('.').pop() }} size={16} />
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--foreground)]">{name || 'Output'}</span>
+            <ViewerOperationButtons name={name || 'output'} url={safeDownloadUrl} operations={operations} />
+          </div>
+        </AppScreenHeader>
+      )}
+    >
+      <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex min-h-0 flex-1 flex-col">
+        {(metadata.length > 0 || prompt) ? (
+          <div className="shrink-0 border-b border-[var(--border)] px-6 py-3">
+            {metadata.length > 0 ? (
+              <p className="text-xs text-[var(--muted-light)]">{metadata.join(' / ')}</p>
+            ) : null}
+            {prompt ? <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">{prompt}</p> : null}
+          </div>
+        ) : null}
+        <FileViewer name={name} content={content} url={url} operations={operations} />
       </AppScreenBody>
     </AppScreenShell>
   )

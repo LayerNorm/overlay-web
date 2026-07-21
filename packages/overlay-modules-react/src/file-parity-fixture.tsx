@@ -21,7 +21,6 @@ import {
   BookOpen,
   Check,
   ChevronRight,
-  CircleEllipsis,
   CloudOff,
   FileAudio,
   FileCode2,
@@ -31,13 +30,13 @@ import {
   Folder,
   LoaderCircle,
   MoreHorizontal,
-  Play,
   RefreshCw,
   Search,
   TriangleAlert,
 } from 'lucide-react'
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { SharedKnowledgeSurface, type SharedKnowledgeRouteState } from './knowledge/surface'
+import { FileViewer } from './knowledge/file-viewer'
 
 export type FileParityFixtureScenario =
   | 'gallery'
@@ -272,48 +271,13 @@ function FileStateCard({
   )
 }
 
-function parseCsv(content: string): string[][] {
-  return content.split(/\r?\n/).map((line) => line.split(','))
-}
-
 function ViewerBody({ viewer }: { viewer: FileParityViewerScenario }) {
-  // Shared web/Electron fixture; Next's image runtime is intentionally unavailable here.
-  // eslint-disable-next-line @next/next/no-img-element
-  if (viewer.kind === 'image') return <img src={viewer.source} alt={viewer.name} />
-  if (viewer.kind === 'audio') return <audio controls src={viewer.source} />
-  if (viewer.kind === 'video') {
-    return (
-      <div className="file-parity-video-preview">
-        <video aria-label={viewer.name} muted preload="none" src={viewer.source} />
-        <span><Play size={11} fill="currentColor" /> 0:00</span>
-      </div>
-    )
-  }
-  if (viewer.kind === 'csv') {
-    const [headers = [], ...rows] = parseCsv(viewer.content)
-    return (
-      <table><thead><tr>{headers.map((cell) => <th key={cell}>{cell}</th>)}</tr></thead>
-        <tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell) => <td key={cell}>{cell}</td>)}</tr>)}</tbody>
-      </table>
-    )
-  }
-  if (viewer.kind === 'html' || viewer.kind === 'docx') {
+  // The DOCX fixture is deterministic post-conversion HTML; live DOCX files use
+  // the same shared viewer's abortable fetch, Mammoth conversion, and sanitizer.
+  if (viewer.kind === 'docx') {
     return <div className="file-parity-document" dangerouslySetInnerHTML={{ __html: viewer.content }} />
   }
-  if (viewer.kind === 'markdown') {
-    return (
-      <div className="file-parity-markdown">
-        <h1>Release readiness</h1>
-        <ul><li>☑ Deterministic fixtures</li><li>☐ Desktop cutover</li></ul>
-        <table><thead><tr><th>Surface</th><th>Status</th></tr></thead><tbody><tr><td>Web</td><td>Source of truth</td></tr><tr><td>Desktop</td><td>Baseline only</td></tr></tbody></table>
-        <pre><code>const parity = true</code></pre>
-      </div>
-    )
-  }
-  if (viewer.kind === 'missing-preview') {
-    return <div className="file-parity-missing"><CircleEllipsis size={25} /><span>Preview not available</span></div>
-  }
-  return <pre>{viewer.content}</pre>
+  return <FileViewer name={viewer.name} content={viewer.content} url={viewer.source} />
 }
 
 function ViewerCard({

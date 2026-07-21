@@ -2,16 +2,46 @@
 
 import type { ComponentProps } from 'react'
 import KnowledgeView from '@/features/knowledge/components/KnowledgeView'
-import { FileViewer } from '@/features/files/components/FileViewer'
+import { FileViewer, OutputViewer, type FileViewerAsset } from '@/features/files/components/FileViewer'
 
 type KnowledgeViewProps = ComponentProps<typeof KnowledgeView>
+
+function downloadInBrowser({ name, url }: FileViewerAsset): void {
+  if (!url) return
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = name
+  anchor.rel = 'noopener noreferrer'
+  anchor.click()
+}
+
+function openInBrowser({ url }: FileViewerAsset): void {
+  if (url) window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+const browserViewerOperations = {
+  download: downloadInBrowser,
+  openExternal: openInBrowser,
+}
 
 export default function KnowledgeViewHost(props: Omit<KnowledgeViewProps, 'renderFileViewer'>) {
   return (
     <KnowledgeView
       {...props}
-      renderFileViewer={({ name, content, url }) => (
-        <FileViewer name={name} content={content} url={url} />
+      renderFileViewer={({ file, name, content, url }) => file.kind === 'output' ? (
+        <OutputViewer
+          name={name}
+          content={content}
+          url={url}
+          mimeType={file.mimeType}
+          outputType={file.outputType}
+          modelId={file.modelId}
+          prompt={file.prompt}
+          createdAt={file.createdAt}
+          operations={browserViewerOperations}
+        />
+      ) : (
+        <FileViewer name={name} content={content} url={url} operations={browserViewerOperations} />
       )}
     />
   )

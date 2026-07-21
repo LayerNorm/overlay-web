@@ -13,8 +13,11 @@ const webWrapperPath = path.join(root, 'src/features/knowledge/components/Knowle
 const desktopSharedPath = path.join(root, 'overlay-desktop/src/renderer/src/pages/SharedDesktopFilesSurface.tsx')
 const desktopMainPath = path.join(root, 'overlay-desktop/src/renderer/src/pages/MainWindow.tsx')
 const desktopFlagPath = path.join(root, 'overlay-desktop/src/renderer/src/features/files/shared-files-surface-flag.ts')
+const sharedViewerPath = path.join(root, 'packages/overlay-modules-react/src/knowledge/file-viewer.tsx')
+const webViewerHostPath = path.join(root, 'src/app/app/_components/KnowledgeViewHost.tsx')
+const desktopOutputViewerPath = path.join(root, 'overlay-desktop/src/renderer/src/pages/OutputPreviewPage.tsx')
 
-for (const file of [contractPath, fixturePath, webAdapterPath, desktopAdapterPath, sharedSurfacePath, webWrapperPath, desktopSharedPath, desktopMainPath, desktopFlagPath]) {
+for (const file of [contractPath, fixturePath, webAdapterPath, desktopAdapterPath, sharedSurfacePath, webWrapperPath, desktopSharedPath, desktopMainPath, desktopFlagPath, sharedViewerPath, webViewerHostPath, desktopOutputViewerPath]) {
   if (!fs.existsSync(file)) throw new Error(`Missing knowledge surface contract boundary: ${path.relative(root, file)}`)
 }
 
@@ -59,6 +62,27 @@ for (const pattern of [
 }
 if (!sharedSurface.includes('SharedKnowledgeSurface')) {
   throw new Error('Shared knowledge package must own SharedKnowledgeSurface')
+}
+
+const sharedViewer = fs.readFileSync(sharedViewerPath, 'utf8')
+for (const pattern of [
+  /from ['"]next(?:\/|['"])/,
+  /from ['"]electron(?:\/|['"])/,
+  /from ['"]node:/,
+  /from ['"]@\//,
+  /\bwindow\.bridge\b/,
+  /\bipcRenderer\b/,
+]) {
+  if (pattern.test(sharedViewer)) throw new Error(`Platform capability leaked into shared file viewer: ${pattern}`)
+}
+for (const required of ['resolveSafeViewerUrl', 'DOCX_SANITIZE_CONFIG', 'FILE_VIEWER_HTML_SANDBOX', 'controller.abort()', 'OutputViewer']) {
+  if (!sharedViewer.includes(required)) throw new Error(`Shared file viewer lost security or output boundary: ${required}`)
+}
+if (!fs.readFileSync(webViewerHostPath, 'utf8').includes('<OutputViewer')) {
+  throw new Error('Web outputs must render through the canonical OutputViewer')
+}
+if (!fs.readFileSync(desktopOutputViewerPath, 'utf8').includes('<OutputViewer')) {
+  throw new Error('Desktop outputs must render through the canonical OutputViewer')
 }
 
 const webWrapper = fs.readFileSync(webWrapperPath, 'utf8')
