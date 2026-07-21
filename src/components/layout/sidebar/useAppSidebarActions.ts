@@ -2,7 +2,12 @@
 
 import { useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import type { OverlaySidebarAction, OverlaySidebarActionKey } from '@overlay/app-core'
+import {
+  KNOWLEDGE_ENTITY_MUTATION_EVENT,
+  createKnowledgeMutationPublisher,
+  type OverlaySidebarAction,
+  type OverlaySidebarActionKey,
+} from '@overlay/app-core'
 import { resolveNewChatModelFields } from '@/shared/chat/chat-model-prefs'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { dispatchChatCreated } from '@/shared/chat/chat-title'
@@ -11,6 +16,16 @@ import { createIdempotencyKey, toRequestInit } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { GateReason } from '@/components/providers/GuestGateProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+
+const nextSidebarActionMutation = createKnowledgeMutationPublisher(
+  `web-sidebar-action:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
+)
+
+function publishCreatedNote(id: string): void {
+  window.dispatchEvent(new CustomEvent(KNOWLEDGE_ENTITY_MUTATION_EVENT, {
+    detail: nextSidebarActionMutation({ entity: 'note', id, operation: 'created' }),
+  }))
+}
 
 export interface UseAppSidebarActionsOptions {
   user: object | null
@@ -148,21 +163,7 @@ export function useAppSidebarActions({
         }
       }
       if (!data.id) return false
-      const note = data.note
-      const updatedAt = note?.updatedAt ?? note?.createdAt ?? Number.MAX_SAFE_INTEGER
-      window.dispatchEvent(new CustomEvent('overlay:notes-changed', {
-        detail: {
-          note: {
-            _id: data.id,
-            title: note?.title || 'Untitled',
-            content: note?.content ?? '',
-            tags: note?.tags ?? [],
-            projectId: note?.projectId,
-            createdAt: note?.createdAt ?? updatedAt,
-            updatedAt,
-          },
-        },
-      }))
+      publishCreatedNote(data.id)
       onCloseMobileMenu()
       router.push(`/app/notes?id=${encodeURIComponent(data.id)}`)
       return true
@@ -191,21 +192,7 @@ export function useAppSidebarActions({
       }
     }
     if (!data.id) return false
-    const file = data.file
-    const updatedAt = file?.updatedAt ?? file?.createdAt ?? Number.MAX_SAFE_INTEGER
-    window.dispatchEvent(new CustomEvent('overlay:notes-changed', {
-      detail: {
-        note: {
-          _id: data.id,
-          title: file?.name || 'Untitled',
-          content: file?.textContent ?? file?.content ?? '',
-          tags: [],
-          createdAt: file?.createdAt ?? updatedAt,
-          updatedAt,
-        },
-      },
-    }))
-    window.dispatchEvent(new CustomEvent('overlay:files-changed'))
+    publishCreatedNote(data.id)
     onCloseMobileMenu()
     router.push(`/app/notes?id=${encodeURIComponent(data.id)}`)
     return true

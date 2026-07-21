@@ -7,6 +7,7 @@ import {
   type KnowledgeFile,
 } from '@overlay/app-core'
 import {
+  createWebKnowledgeRepository,
   createWebKnowledgeRouteAdapter,
   createWebKnowledgeSurfaceAdapters,
   type WebKnowledgeAppClient,
@@ -125,4 +126,55 @@ test('web navigation preserves note editor compatibility', () => {
     _id: 'note', name: 'Note', type: 'note', kind: 'note', parentId: null, createdAt: 1, updatedAt: 1,
   }))
   assert.deepEqual(opened, ['/app/notes?id=note'])
+})
+
+test('opening 100 web files causes zero list refetches', async () => {
+  let fileLists = 0
+  const client = createClient()
+  const originalGet = client.files.get
+  client.files.get = async function <T>(query?: { limit?: number }) {
+    fileLists += 1
+    return originalGet<T>(query)
+  }
+  const opened: string[] = []
+  const adapters = createWebKnowledgeSurfaceAdapters({
+    client,
+    route: createWebKnowledgeRouteAdapter({
+      currentUrl: () => new URL('https://getoverlay.io/app/files'),
+      navigate() {},
+      eventTarget: { addEventListener() {}, removeEventListener() {} } as Pick<Window, 'addEventListener' | 'removeEventListener'>,
+    }),
+    filePicker: { async pickFiles() { return [] } },
+    navigate: (url) => opened.push(url),
+    capture() {},
+    eventTarget: null,
+  })
+  const snapshot = await adapters.repository.list()
+  for (let index = 0; index < 100; index += 1) await adapters.navigation.open(snapshot.nodes[0]!)
+  assert.equal(fileLists, 1)
+  assert.equal(opened.length, 100)
+})
+
+test('web repositories consume mutation payloads without refetching the list', async () => {
+  let fileLists = 0
+  const client = createClient()
+  const originalGet = client.files.get
+  client.files.get = async function <T>(query?: { limit?: number }) {
+    fileLists += 1
+    return originalGet<T>(query)
+  }
+  const target = new EventTarget() as unknown as Window
+  const producer = createWebKnowledgeRepository(client, target, 'web-producer')
+  const consumer = createWebKnowledgeRepository(client, target, 'web-consumer')
+  await producer.list()
+  await consumer.list()
+  const names: string[] = []
+  const unsubscribe = consumer.subscribe((event) => {
+    if (event.type === 'updated') names.push(event.node.name)
+  })
+  await producer.rename({ id: 'seed', name: 'Payload update' })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.ok(names.includes('Payload update'))
+  assert.equal(fileLists, 2)
+  unsubscribe()
 })

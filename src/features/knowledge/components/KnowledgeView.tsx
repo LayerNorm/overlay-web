@@ -6,7 +6,8 @@ import { getFileType, isEditableType } from '@/shared/files/file-viewer-types'
 import { shouldIngestDocument } from '@/shared/files/file-ingestion'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
-  FILES_CHANGED_EVENT,
+  KNOWLEDGE_ENTITY_MUTATION_EVENT,
+  createKnowledgeMutationPublisher,
   normalizeKnowledgeSurfaceNode,
   createManualMemoryRequest,
   type CreateFileResponse,
@@ -23,6 +24,20 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { useCallback, useMemo, useTransition } from 'react'
 import { createWebKnowledgeSurfaceAdapters } from '../adapters/webKnowledgeSurfaceAdapters'
+
+const nextKnowledgeMutation = createKnowledgeMutationPublisher(
+  `web-knowledge:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
+)
+
+function publishKnowledgeMutation(
+  entity: 'file' | 'note',
+  id: string,
+  operation: 'created' | 'updated' | 'moved' | 'deleted',
+): void {
+  window.dispatchEvent(new CustomEvent(KNOWLEDGE_ENTITY_MUTATION_EVENT, {
+    detail: nextKnowledgeMutation({ entity, id, operation }),
+  }))
+}
 
 async function responseError(response: Response, fallback: string): Promise<string> {
   const body = (await response.json().catch(() => null)) as
@@ -154,7 +169,6 @@ export default function KnowledgeView({
 
   const adapters = useMemo(() => createWebKnowledgeSurfaceAdapters({
     navigate: (url, options) => options?.replace ? router.replace(url) : router.push(url),
-    eventTarget: null,
   }), [router])
 
   const memories = useMemo<SharedKnowledgeMemoryPort>(() => ({
@@ -181,11 +195,8 @@ export default function KnowledgeView({
         ? `/api/v1/files/${file._id}/content`
         : undefined
     },
-    filesChanged() {
-      window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
-    },
-    noteCreated(file) {
-      window.dispatchEvent(new CustomEvent('overlay:notes-changed', { detail: { file } }))
+    entityChanged(entity, id, operation) {
+      publishKnowledgeMutation(entity, id, operation)
     },
   }), [])
 

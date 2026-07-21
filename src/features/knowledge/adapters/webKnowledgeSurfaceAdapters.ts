@@ -3,7 +3,11 @@
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import posthog from 'posthog-js'
 import {
-  FILES_CHANGED_EVENT,
+  KNOWLEDGE_ENTITY_MUTATION_EVENT,
+  KNOWLEDGE_RECONCILE_EVENT,
+  KnowledgeMutationConsumer,
+  createKnowledgeMutationPublisher,
+  isKnowledgeEntityMutation,
   noteDocToKnowledgeFile,
   opensInDocumentEditor,
   normalizeKnowledgeSurfaceNode,
@@ -15,6 +19,7 @@ import {
   type KnowledgeDeleteInput,
   type KnowledgeFile,
   type KnowledgeMutationEvent,
+  type KnowledgeEntityMutation,
   type KnowledgePickedFile,
   type KnowledgeRenameInput,
   type KnowledgeRepository,
@@ -28,15 +33,15 @@ import {
 } from '@overlay/app-core'
 
 interface FilesClientLike {
-  get<T>(query?: { limit?: number }): Promise<T>
-  getResponse(query: { fileId: string }): Promise<Response>
+  get<T>(query?: { limit?: number }, options?: { signal?: AbortSignal }): Promise<T>
+  getResponse(query: { fileId: string }, options?: { signal?: AbortSignal }): Promise<Response>
   createResponse(input: CreateFileRequest): Promise<Response>
   updateResponse(input: UpdateFileRequest): Promise<Response>
   deleteResponse(input: { fileId: string }): Promise<Response>
 }
 
 interface NotesClientLike {
-  get<T>(query?: { limit?: number }): Promise<T>
+  get<T>(query?: { limit?: number; noteId?: string }, options?: { signal?: AbortSignal }): Promise<T>
   deleteResponse(input: { noteId: string }): Promise<Response>
 }
 
@@ -44,6 +49,9 @@ export interface WebKnowledgeAppClient {
   files: FilesClientLike
   notes: NotesClientLike
 }
+
+type KnowledgeEventTarget = Pick<Window, 'addEventListener' | 'removeEventListener'>
+  & Partial<Pick<Window, 'dispatchEvent'>>
 
 function responseError(response: Response, fallback: string): Promise<Error> {
   return response.json()
@@ -76,21 +84,30 @@ async function responseNode(response: Response, fallback: KnowledgeCreateInput):
 
 export function createWebKnowledgeRepository(
   client: WebKnowledgeAppClient = overlayAppClient,
-  eventTarget: Pick<Window, 'addEventListener' | 'removeEventListener'> | null | undefined =
+  eventTarget: KnowledgeEventTarget | null | undefined =
     typeof window === 'undefined' ? undefined : window,
+  origin = `web:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
 ): KnowledgeRepository {
   const listeners = new Set<(event: KnowledgeMutationEvent) => void>()
   const byId = new Map<string, KnowledgeSurfaceNode>()
   let externalCleanup: (() => void) | undefined
+  const nextMutation = createKnowledgeMutationPublisher(origin)
 
   function emit(event: KnowledgeMutationEvent): void {
     for (const listener of listeners) listener(event)
   }
 
-  async function list(): Promise<{ nodes: KnowledgeSurfaceNode[]; revision: string }> {
+  function publish(mutation: Omit<KnowledgeEntityMutation, 'origin' | 'revision'>): void {
+    if (!eventTarget?.dispatchEvent || typeof CustomEvent === 'undefined') return
+    eventTarget.dispatchEvent(new CustomEvent(KNOWLEDGE_ENTITY_MUTATION_EVENT, {
+      detail: nextMutation(mutation),
+    }))
+  }
+
+  async function list(signal?: AbortSignal): Promise<{ nodes: KnowledgeSurfaceNode[]; revision: string }> {
     const [fileRows, noteRows] = await Promise.all([
-      client.files.get<KnowledgeFile[]>({ limit: 100 }),
-      client.notes.get<NoteDoc[]>({ limit: 100 }),
+      client.files.get<KnowledgeFile[]>({ limit: 100 }, { signal }),
+      client.notes.get<NoteDoc[]>({ limit: 100 }, { signal }),
     ])
     const files = Array.isArray(fileRows) ? fileRows : []
     const notes = Array.isArray(noteRows) ? noteRows.map(noteDocToKnowledgeFile) : []
@@ -105,8 +122,8 @@ export function createWebKnowledgeRepository(
 
   const repository: KnowledgeRepository = {
     list,
-    async get(id) {
-      const response = await client.files.getResponse({ fileId: id })
+    async get(id, signal) {
+      const response = await client.files.getResponse({ fileId: id }, { signal })
       if (response.status === 404) return null
       if (!response.ok) throw await responseError(response, 'Could not load file')
       const node = normalizeKnowledgeSurfaceNode(await response.json() as KnowledgeFile)
@@ -127,6 +144,7 @@ export function createWebKnowledgeRepository(
       }), input)
       byId.set(node.id, node)
       emit({ type: 'created', node })
+      publish({ entity: node.kind === 'note' ? 'note' : 'file', id: node.id, operation: 'created' })
       return node
     },
     async rename(input: KnowledgeRenameInput) {
@@ -137,6 +155,7 @@ export function createWebKnowledgeRepository(
       const node = { ...current, name: input.name, updatedAt: Date.now() }
       byId.set(node.id, node)
       emit({ type: 'updated', node })
+      publish({ entity: node.kind === 'note' ? 'note' : 'file', id: node.id, operation: 'updated' })
       return node
     },
     async move(input: KnowledgeMoveInput) {
@@ -147,6 +166,7 @@ export function createWebKnowledgeRepository(
       const node = { ...current, parentId: input.parentId, updatedAt: Date.now() }
       byId.set(node.id, node)
       emit({ type: 'moved', id: node.id, parentId: node.parentId, revision: node.revision })
+      publish({ entity: node.kind === 'note' ? 'note' : 'file', id: node.id, operation: 'moved' })
       return node
     },
     async delete(input: KnowledgeDeleteInput) {
@@ -157,17 +177,54 @@ export function createWebKnowledgeRepository(
           : await client.files.deleteResponse({ fileId: id })
         if (!response.ok) throw await responseError(response, 'Could not delete file')
       }
+      const deleted = input.ids.map((id) => byId.get(id)).filter(Boolean) as KnowledgeSurfaceNode[]
       for (const id of input.ids) byId.delete(id)
       emit({ type: 'deleted', ids: input.ids })
+      for (const node of deleted) {
+        publish({ entity: node.kind === 'note' ? 'note' : 'file', id: node.id, operation: 'deleted' })
+      }
     },
     subscribe(listener) {
       listeners.add(listener)
       if (listeners.size === 1 && eventTarget) {
-        const handleExternalChange = () => {
-          void list().then((result) => emit({ type: 'reset', ...result }))
+        const consumer = new KnowledgeMutationConsumer({
+          origin,
+          repository,
+          async loadNode(mutation, signal) {
+            if (mutation.entity !== 'note') return repository.get(mutation.id, signal)
+            try {
+              const note = await client.notes.get<NoteDoc>({ noteId: mutation.id }, { signal })
+              const node = normalizeKnowledgeSurfaceNode(noteDocToKnowledgeFile(note))
+              byId.set(node.id, node)
+              return node
+            } catch (error) {
+              if (signal.aborted) throw error
+              return repository.get(mutation.id, signal)
+            }
+          },
+          apply: emit,
+        })
+        const handleMutation = (event: Event) => {
+          const mutation = (event as CustomEvent<unknown>).detail
+          if (isKnowledgeEntityMutation(mutation)) void consumer.handle(mutation).catch(() => undefined)
         }
-        eventTarget.addEventListener(FILES_CHANGED_EVENT, handleExternalChange)
-        externalCleanup = () => eventTarget.removeEventListener(FILES_CHANGED_EVENT, handleExternalChange)
+        const handleReconcile = (event: Event) => {
+          const reason = (event as CustomEvent<{ reason?: string }>).detail?.reason
+          const normalized = reason === 'authentication-changed' || reason === 'cache-corruption'
+            ? reason
+            : 'explicit-refresh'
+          void consumer.reconcile(normalized).catch(() => undefined)
+        }
+        const handleOnline = () => { void consumer.reconcile('reconnected').catch(() => undefined) }
+        eventTarget.addEventListener(KNOWLEDGE_ENTITY_MUTATION_EVENT, handleMutation)
+        eventTarget.addEventListener(KNOWLEDGE_RECONCILE_EVENT, handleReconcile)
+        eventTarget.addEventListener('online', handleOnline)
+        externalCleanup = () => {
+          consumer.dispose()
+          eventTarget.removeEventListener(KNOWLEDGE_ENTITY_MUTATION_EVENT, handleMutation)
+          eventTarget.removeEventListener(KNOWLEDGE_RECONCILE_EVENT, handleReconcile)
+          eventTarget.removeEventListener('online', handleOnline)
+        }
       }
       return () => {
         listeners.delete(listener)
@@ -194,7 +251,7 @@ function routeFromUrl(url: URL): KnowledgeSurfaceRouteState {
 export function createWebKnowledgeRouteAdapter(options: {
   currentUrl?: () => URL
   navigate?: (url: string, replace: boolean) => void
-  eventTarget?: Pick<Window, 'addEventListener' | 'removeEventListener'> | null
+  eventTarget?: KnowledgeEventTarget | null
 } = {}): KnowledgeRouteAdapter {
   const currentUrl = options.currentUrl ?? (() => new URL(window.location.href))
   const navigate = options.navigate ?? ((url, replace) => {
@@ -265,7 +322,8 @@ export function createWebKnowledgeSurfaceAdapters(options: {
   filePicker?: FilePickerAdapter
   navigate?: (url: string, options?: { replace?: boolean }) => void
   capture?: (event: string, properties?: Record<string, unknown>) => void
-  eventTarget?: Pick<Window, 'addEventListener' | 'removeEventListener'> | null
+  eventTarget?: KnowledgeEventTarget | null
+  origin?: string
 } = {}): KnowledgeSurfaceAdapters {
   const navigate = options.navigate ?? ((url) => window.location.assign(url))
   const navigation: FileNavigationAdapter = {
@@ -280,7 +338,7 @@ export function createWebKnowledgeSurfaceAdapters(options: {
     },
   }
   return {
-    repository: createWebKnowledgeRepository(options.client, options.eventTarget),
+    repository: createWebKnowledgeRepository(options.client, options.eventTarget, options.origin),
     route: options.route ?? createWebKnowledgeRouteAdapter({ eventTarget: options.eventTarget ?? undefined }),
     filePicker: options.filePicker ?? createWebFilePickerAdapter(),
     navigation,

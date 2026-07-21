@@ -1,6 +1,7 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { KNOWLEDGE_RECONCILE_EVENT } from '@overlay/app-core'
 
 export interface AuthUser {
   id: string
@@ -90,6 +91,7 @@ export function AuthProvider({
 }: AuthProviderProps) {
   const [user, setUser] = useState<AuthUser | null>(initialUser)
   const [isLoading, setIsLoading] = useState(!initialSessionResolved)
+  const reconciledUserId = useRef(initialUser?.id ?? null)
 
   useEffect(() => {
     if (initialUser) {
@@ -99,6 +101,16 @@ export function AuthProvider({
       setIsLoading(false)
     }
   }, [initialUser, initialSessionResolved])
+
+  useEffect(() => {
+    if (isLoading) return
+    const nextUserId = user?.id ?? null
+    if (reconciledUserId.current === nextUserId) return
+    reconciledUserId.current = nextUserId
+    window.dispatchEvent(new CustomEvent(KNOWLEDGE_RECONCILE_EVENT, {
+      detail: { reason: 'authentication-changed' },
+    }))
+  }, [isLoading, user?.id])
 
   const checkSession = useCallback(async () => {
     try {

@@ -93,8 +93,7 @@ export interface SharedKnowledgeFilePort {
   upload(file: File, parentId: string | null): Promise<{ ok: boolean; error?: string; file?: FileNode }>
   isEditable(name: string): boolean
   contentUrl(file: FileNode): string | undefined
-  filesChanged(): void
-  noteCreated(file: FileNode): void
+  entityChanged(entity: 'file' | 'note', id: string, operation: 'created' | 'updated' | 'moved' | 'deleted'): void
 }
 
 export interface SharedKnowledgeSurfaceProps {
@@ -312,7 +311,6 @@ export function SharedKnowledgeSurface({
       if (activeFolder && deletedIds.has(activeFolder._id)) {
         navigateToFolder(null)
       }
-      filePort.filesChanged()
       exitSelectMode()
     } finally {
       setBulkDeleting(false)
@@ -521,7 +519,6 @@ export function SharedKnowledgeSurface({
         adapters.analytics.track('knowledge_file_created', { file_name: name, type: dialog.type })
         if (dialog.type === 'folder') adapters.analytics.track('knowledge_folder_created', { folder_name: name })
         setDialogName(''); setDialog(null)
-        filePort.filesChanged()
       }
     } finally { setIsCreating(false) }
   }
@@ -533,8 +530,6 @@ export function SharedKnowledgeSurface({
       content: '',
       parentId: activeFolder?._id ?? null,
     })
-    filePort.noteCreated(created)
-    filePort.filesChanged()
     await adapters.navigation.open(created)
   }
 
@@ -565,7 +560,6 @@ export function SharedKnowledgeSurface({
     if (activeFolder && deletedIds.has(activeFolder._id)) {
       navigateToFolder(null)
     }
-    filePort.filesChanged()
   }
 
   function handleFileContentChange(val: string) {
@@ -574,7 +568,8 @@ export function SharedKnowledgeSurface({
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(async () => {
       setIsSavingFile(true)
-      await filePort.saveContent(selectedFile._id, val)
+      const saved = await filePort.saveContent(selectedFile._id, val)
+      if (saved) filePort.entityChanged('file', selectedFile._id, 'updated')
       setFiles((prev) => prev.map((f) => f._id === selectedFile._id ? { ...f } : f))
       setIsSavingFile(false)
     }, 800)
@@ -591,7 +586,6 @@ export function SharedKnowledgeSurface({
         await adapters.repository.rename({ id: selectedFile._id, name: nextName })
         setSelectedFile((prev) => prev ? { ...prev, name: nextName } : prev)
         setFiles((prev) => prev.map((f) => f._id === selectedFile._id ? { ...f, name: nextName } : f))
-        filePort.filesChanged()
       } catch {
         // Keep the previous persisted title when the host rejects the rename.
       }
@@ -629,7 +623,10 @@ export function SharedKnowledgeSurface({
             setFileUploadError(result.error ?? 'One or more files failed to upload.')
             break
           }
-          if (result.file) setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
+          if (result.file) {
+            setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
+            filePort.entityChanged('file', result.file._id, 'created')
+          }
         }
       } else {
         const folders = new Map<string, string>()
@@ -655,7 +652,6 @@ export function SharedKnowledgeSurface({
           if (result.file) setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
         }
       }
-      filePort.filesChanged()
     } finally {
       setFileUploadPending(null)
     }
@@ -680,8 +676,10 @@ export function SharedKnowledgeSurface({
         setFileUploadError(result.error ?? 'Upload failed. Check the file and try again.')
         return
       }
-      if (result.file) setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
-      filePort.filesChanged()
+      if (result.file) {
+        setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
+        filePort.entityChanged('file', result.file._id, 'created')
+      }
     } finally {
       setFileUploadPending(null)
       e.target.value = ''
@@ -718,9 +716,11 @@ export function SharedKnowledgeSurface({
           setFileUploadError(result.error ?? 'One or more files failed to upload.')
           break
         }
-        if (result.file) setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
+        if (result.file) {
+          setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
+          filePort.entityChanged('file', result.file._id, 'created')
+        }
       }
-      filePort.filesChanged()
     } finally {
       setFileUploadPending(null)
       e.target.value = ''
@@ -737,7 +737,6 @@ export function SharedKnowledgeSurface({
     if (!canMoveKnowledgeFile(files, fileId, parentId)) return
     try {
       await adapters.repository.move({ id: fileId, parentId })
-      filePort.filesChanged()
     } catch {
       // Keep the previous hierarchy when the host rejects the move.
     }

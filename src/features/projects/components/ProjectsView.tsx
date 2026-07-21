@@ -14,10 +14,17 @@ import {
   type ChatTitleUpdatedDetail,
 } from '@/shared/chat/chat-title'
 import {
-  FILES_CHANGED_EVENT,
+  KNOWLEDGE_ENTITY_MUTATION_EVENT,
+  KNOWLEDGE_RECONCILE_EVENT,
+  KnowledgeMutationConsumer,
   PROJECT_META_UPDATED_EVENT,
   PROJECTS_CHANGED_EVENT,
   createProjectNoteRequest,
+  createKnowledgeMutationPublisher,
+  isKnowledgeEntityMutation,
+  normalizeKnowledgeSurfaceNode,
+  noteDocToKnowledgeFile,
+  removeKnowledgeFileSubtrees,
   childProjects as getChildProjects,
   projectHubHref,
   projectItemHref,
@@ -30,6 +37,7 @@ import {
   type ProjectHubTab,
   type ProjectMetaUpdatedDetail,
   type ProjectSummary,
+  type NoteDoc,
 } from '@overlay/app-core'
 import {
   ProjectHubActions,
@@ -50,6 +58,9 @@ type ProjectFileRecord = ProjectFileSummary
 
 const ChatSuspenseBoundary = dynamic(() => import('@/features/chat/components/ChatSuspenseBoundary'))
 const NotebookEditor = dynamic(() => import('@/features/notebook/components/NotebookEditor'))
+const nextProjectFileMutation = createKnowledgeMutationPublisher(
+  `web-project:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
+)
 
 // ─── File viewer fetched by ID ────────────────────────────────────────────────
 
@@ -213,7 +224,9 @@ function ProjectHubBody({
     function onChatCreated(e: Event) {
       const { detail } = e as CustomEvent<ChatCreatedDetail>
       if (!detail?.chat?._id) return
-      void loadHubItems()
+      setChats((current) => current.some((chat) => chat._id === detail.chat!._id)
+        ? current.map((chat) => chat._id === detail.chat!._id ? detail.chat! : chat)
+        : [...current, detail.chat])
     }
     function onChatDeleted(e: Event) {
       const { detail } = e as CustomEvent<ChatDeletedDetail>
@@ -227,9 +240,6 @@ function ProjectHubBody({
         prev.map((c) => (c._id === detail.chatId ? { ...c, title: detail.title } : c)),
       )
     }
-    function onFilesChanged() {
-      void loadHubItems()
-    }
     function onProjectMeta(e: Event) {
       const d = (e as CustomEvent<ProjectMetaUpdatedDetail>).detail
       if (d?.projectId !== projectId || !d.name) return
@@ -241,16 +251,66 @@ function ProjectHubBody({
     window.addEventListener(CHAT_CREATED_EVENT, onChatCreated)
     window.addEventListener(CHAT_DELETED_EVENT, onChatDeleted)
     window.addEventListener(CHAT_TITLE_UPDATED_EVENT, onTitleUpdated)
-    window.addEventListener(FILES_CHANGED_EVENT, onFilesChanged)
+    const consumer = new KnowledgeMutationConsumer({
+      origin: 'web-project-consumer',
+      repository: {
+        async list(signal) {
+          const rows = await overlayAppClient.files.get<ProjectFileRecord[]>({ projectId, limit: 100, summary: true }, { signal })
+          return {
+            nodes: (Array.isArray(rows) ? rows : []).map((file) => normalizeKnowledgeSurfaceNode({
+              ...file,
+              createdAt: file.updatedAt ?? 0,
+            })),
+          }
+        },
+        async get() { return null },
+      },
+      async loadNode(mutation, signal) {
+        if (mutation.entity === 'note') {
+          const note = await overlayAppClient.notes.get<NoteDoc>({ noteId: mutation.id }, { signal })
+          return normalizeKnowledgeSurfaceNode(noteDocToKnowledgeFile(note))
+        }
+        const response = await overlayAppClient.files.getResponse({ fileId: mutation.id }, { signal })
+        if (response.status === 404) return null
+        if (!response.ok) throw new Error('Could not update project file')
+        return normalizeKnowledgeSurfaceNode(await response.json())
+      },
+      apply(event) {
+        if (event.type === 'reset') setFiles([...event.nodes])
+        else if (event.type === 'created' || event.type === 'updated') {
+          setFiles((current) => {
+            const exists = current.some((file) => file._id === event.node.id)
+            if (!exists && event.node.projectId !== projectId) return current
+            return exists
+              ? current.map((file) => file._id === event.node.id ? event.node : file)
+              : [...current, event.node]
+          })
+        } else if (event.type === 'deleted') {
+          setFiles((current) => removeKnowledgeFileSubtrees(current, event.ids))
+        }
+      },
+    })
+    const onKnowledgeMutation = (event: Event) => {
+      const mutation = (event as CustomEvent<unknown>).detail
+      if (isKnowledgeEntityMutation(mutation)) void consumer.handle(mutation).catch(() => undefined)
+    }
+    const onKnowledgeReconcile = () => { void consumer.reconcile('explicit-refresh').catch(() => undefined) }
+    const onOnline = () => { void consumer.reconcile('reconnected').catch(() => undefined) }
+    window.addEventListener(KNOWLEDGE_ENTITY_MUTATION_EVENT, onKnowledgeMutation)
+    window.addEventListener(KNOWLEDGE_RECONCILE_EVENT, onKnowledgeReconcile)
+    window.addEventListener('online', onOnline)
     window.addEventListener(PROJECT_META_UPDATED_EVENT, onProjectMeta)
     return () => {
       window.removeEventListener(CHAT_CREATED_EVENT, onChatCreated)
       window.removeEventListener(CHAT_DELETED_EVENT, onChatDeleted)
       window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, onTitleUpdated)
-      window.removeEventListener(FILES_CHANGED_EVENT, onFilesChanged)
+      consumer.dispose()
+      window.removeEventListener(KNOWLEDGE_ENTITY_MUTATION_EVENT, onKnowledgeMutation)
+      window.removeEventListener(KNOWLEDGE_RECONCILE_EVENT, onKnowledgeReconcile)
+      window.removeEventListener('online', onOnline)
       window.removeEventListener(PROJECT_META_UPDATED_EVENT, onProjectMeta)
     }
-  }, [loadHubItems, pathname, projectId, router, searchParams])
+  }, [pathname, projectId, router, searchParams])
 
   async function commitProjectRename() {
     setEditingName(false)
@@ -286,7 +346,7 @@ function ProjectHubBody({
     if (!res.ok) return
     const data = (await res.json()) as { id?: string }
     if (!data.id) return
-    void loadHubItems()
+    setChats((current) => [...current, { _id: data.id!, title: 'New Chat', updatedAt: Date.now() }])
     router.push(projectItemHref({ project: { _id: projectId, name: projectName }, view: 'chat', id: data.id }))
   }
 
@@ -295,7 +355,9 @@ function ProjectHubBody({
     if (!res.ok) return
     const data = (await res.json()) as { id?: string }
     if (!data.id) return
-    void loadHubItems()
+    window.dispatchEvent(new CustomEvent(KNOWLEDGE_ENTITY_MUTATION_EVENT, {
+      detail: nextProjectFileMutation({ entity: 'note', id: data.id, operation: 'created' }),
+    }))
     router.push(projectItemHref({ project: { _id: projectId, name: projectName }, view: 'note', id: data.id }))
   }
 
@@ -318,10 +380,16 @@ function ProjectHubBody({
         const form = new FormData()
         form.append('file', file)
         form.append('projectId', projectId)
-        await overlayAppClient.files.ingestDocumentResponse(form).catch(() => null)
+        const response = await overlayAppClient.files.ingestDocumentResponse(form).catch(() => null)
+        if (!response?.ok) continue
+        const body = await response.json().catch(() => null) as { id?: string; file?: { _id?: string } } | null
+        const id = body?.file?._id ?? body?.id
+        if (id) {
+          window.dispatchEvent(new CustomEvent(KNOWLEDGE_ENTITY_MUTATION_EVENT, {
+            detail: nextProjectFileMutation({ entity: 'file', id, operation: 'created' }),
+          }))
+        }
       }
-      window.dispatchEvent(new Event(FILES_CHANGED_EVENT))
-      void loadHubItems()
     } finally {
       setUploading(false)
     }

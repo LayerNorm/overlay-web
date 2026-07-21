@@ -4,6 +4,59 @@ export type KnowledgeEntityKind = 'folder' | 'note' | 'file' | 'output'
 export type KnowledgeSurfaceLayout = 'list' | 'grid'
 export type KnowledgeMutationStatus = 'optimistic' | 'committed' | 'failed'
 export type KnowledgeUploadStatus = 'queued' | 'uploading' | 'processing' | 'complete' | 'failed'
+export type KnowledgeMutationEntity = 'file' | 'note'
+export type KnowledgeMutationOperation = 'created' | 'updated' | 'moved' | 'deleted'
+
+export const KNOWLEDGE_ENTITY_MUTATION_EVENT = 'overlay:knowledge-entity-mutation'
+export const KNOWLEDGE_RECONCILE_EVENT = 'overlay:knowledge-reconcile'
+
+/** Compact cross-surface mutation payload. It intentionally contains no platform data. */
+export interface KnowledgeEntityMutation {
+  entity: KnowledgeMutationEntity
+  id: string
+  operation: KnowledgeMutationOperation
+  revision: string
+  origin: string
+}
+
+export type KnowledgeReconciliationReason =
+  | 'missed-revision'
+  | 'authentication-changed'
+  | 'reconnected'
+  | 'explicit-refresh'
+  | 'cache-corruption'
+
+export function isKnowledgeEntityMutation(value: unknown): value is KnowledgeEntityMutation {
+  if (!value || typeof value !== 'object') return false
+  const mutation = value as Partial<KnowledgeEntityMutation>
+  return (mutation.entity === 'file' || mutation.entity === 'note')
+    && (mutation.operation === 'created' || mutation.operation === 'updated'
+      || mutation.operation === 'moved' || mutation.operation === 'deleted')
+    && typeof mutation.id === 'string' && mutation.id.length > 0
+    && typeof mutation.revision === 'string' && mutation.revision.length > 0
+    && typeof mutation.origin === 'string' && mutation.origin.length > 0
+}
+
+export function createKnowledgeMutationPublisher(origin: string): (
+  mutation: Omit<KnowledgeEntityMutation, 'origin' | 'revision'>,
+) => KnowledgeEntityMutation {
+  let revision = 0
+  return (mutation) => ({ ...mutation, origin, revision: String(++revision) })
+}
+
+export class KnowledgeMutationRevisionTracker {
+  private readonly revisions = new Map<string, number>()
+
+  observe(mutation: KnowledgeEntityMutation): 'apply' | 'duplicate' | 'missed' {
+    const next = Number(mutation.revision)
+    if (!Number.isSafeInteger(next) || next < 1) return 'apply'
+    const previous = this.revisions.get(mutation.origin)
+    this.revisions.set(mutation.origin, Math.max(previous ?? 0, next))
+    if (previous === undefined) return next === 1 ? 'apply' : 'missed'
+    if (next <= previous) return 'duplicate'
+    return next === previous + 1 ? 'apply' : 'missed'
+  }
+}
 
 export interface KnowledgeConflictMetadata {
   localRevision: string
@@ -134,6 +187,89 @@ export interface KnowledgeRepository {
   delete(input: KnowledgeDeleteInput): Promise<void>
   upload?(input: KnowledgeUploadInput): Promise<KnowledgeSurfaceNode>
   subscribe(listener: (event: KnowledgeMutationEvent) => void): () => void
+}
+
+export interface KnowledgeMutationConsumerOptions {
+  origin: string
+  repository: Pick<KnowledgeRepository, 'get' | 'list'>
+  loadNode?(mutation: KnowledgeEntityMutation, signal: AbortSignal): Promise<KnowledgeSurfaceNode | null>
+  apply(event: KnowledgeMutationEvent): void
+}
+
+/**
+ * Turns compact cross-surface mutations into direct repository events. Newer
+ * detail requests cancel older requests for the same entity; full list reads
+ * are reserved for an observed revision gap or an explicit reconciliation.
+ */
+export class KnowledgeMutationConsumer {
+  private readonly revisions = new KnowledgeMutationRevisionTracker()
+  private readonly detailRequests = new Map<string, AbortController>()
+  private reconciliation?: AbortController
+  private disposed = false
+
+  constructor(private readonly options: KnowledgeMutationConsumerOptions) {}
+
+  async handle(mutation: KnowledgeEntityMutation): Promise<void> {
+    if (this.disposed || mutation.origin === this.options.origin) return
+    const observation = this.revisions.observe(mutation)
+    if (observation === 'duplicate') return
+    if (observation === 'missed') {
+      await this.reconcile('missed-revision')
+      return
+    }
+    if (mutation.operation === 'deleted') {
+      this.detailRequests.get(mutation.id)?.abort()
+      this.detailRequests.delete(mutation.id)
+      this.options.apply({ type: 'deleted', ids: [mutation.id], revision: mutation.revision })
+      return
+    }
+
+    this.detailRequests.get(mutation.id)?.abort()
+    const request = new AbortController()
+    this.detailRequests.set(mutation.id, request)
+    try {
+      const node = await (this.options.loadNode
+        ? this.options.loadNode(mutation, request.signal)
+        : this.options.repository.get(mutation.id, request.signal))
+      if (request.signal.aborted || this.disposed || this.detailRequests.get(mutation.id) !== request) return
+      this.options.apply(node
+        ? {
+            type: mutation.operation === 'created' ? 'created' : 'updated',
+            node,
+            revision: mutation.revision,
+          }
+        : { type: 'deleted', ids: [mutation.id], revision: mutation.revision })
+    } catch (error) {
+      if (!request.signal.aborted) throw error
+    } finally {
+      if (this.detailRequests.get(mutation.id) === request) this.detailRequests.delete(mutation.id)
+    }
+  }
+
+  async reconcile(_reason: KnowledgeReconciliationReason): Promise<void> {
+    if (this.disposed) return
+    this.reconciliation?.abort()
+    for (const request of this.detailRequests.values()) request.abort()
+    this.detailRequests.clear()
+    const request = new AbortController()
+    this.reconciliation = request
+    try {
+      const result = await this.options.repository.list(request.signal)
+      if (request.signal.aborted || this.disposed || this.reconciliation !== request) return
+      this.options.apply({ type: 'reset', ...result })
+    } catch (error) {
+      if (!request.signal.aborted) throw error
+    } finally {
+      if (this.reconciliation === request) this.reconciliation = undefined
+    }
+  }
+
+  dispose(): void {
+    this.disposed = true
+    this.reconciliation?.abort()
+    for (const request of this.detailRequests.values()) request.abort()
+    this.detailRequests.clear()
+  }
 }
 
 export interface KnowledgeRouteAdapter {
@@ -270,6 +406,7 @@ export class KnowledgeSurfaceController {
   private listeners = new Set<() => void>()
   private repositoryCleanup?: () => void
   private routeCleanup?: () => void
+  private refreshRequest?: AbortController
   private snapshot: KnowledgeSurfaceSnapshot
 
   constructor(private readonly adapters: KnowledgeSurfaceAdapters) {
@@ -296,18 +433,25 @@ export class KnowledgeSurfaceController {
   }
 
   async refresh(): Promise<void> {
+    this.refreshRequest?.abort()
+    const request = new AbortController()
+    this.refreshRequest = request
     const isInitial = !this.initialized && this.nodes.length === 0
     this.initialLoading = isInitial
     this.refreshing = !isInitial
     this.error = null
     this.emit()
     try {
-      const result = await this.adapters.repository.list()
+      const result = await this.adapters.repository.list(request.signal)
+      if (request.signal.aborted || this.refreshRequest !== request) return
       this.nodes = result.nodes.map(normalizeKnowledgeSurfaceNode)
       this.revision = result.revision ?? this.revision
     } catch (error) {
+      if (request.signal.aborted || this.refreshRequest !== request) return
       this.error = error instanceof Error ? error.message : String(error)
     } finally {
+      if (request.signal.aborted || this.refreshRequest !== request) return
+      this.refreshRequest = undefined
       this.initialLoading = false
       this.refreshing = false
       this.initialized = true
@@ -484,6 +628,7 @@ export class KnowledgeSurfaceController {
   }
 
   dispose(): void {
+    this.refreshRequest?.abort()
     this.repositoryCleanup?.()
     this.routeCleanup?.()
     this.listeners.clear()

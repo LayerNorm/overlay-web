@@ -95,8 +95,7 @@ function CanonicalFilesSurfaceFixture() {
           upload: async () => ({ ok: true }),
           isEditable: () => false,
           contentUrl: () => undefined,
-          filesChanged: () => undefined,
-          noteCreated: () => undefined,
+          entityChanged: () => undefined,
         }}
         renderFileViewer={() => null}
       />

@@ -78,3 +78,34 @@ test('revision conflicts preserve the local draft', async () => {
   assert.equal(controller.snapshot().dirty, true)
   assert.equal(controller.snapshot().conflict?.remoteRevision, '2')
 })
+
+test('hydrating 100 notes causes zero writes', () => {
+  let saves = 0
+  const controller = new NotebookEditorController({
+    save: async () => {
+      saves += 1
+      return {}
+    },
+  })
+  for (let index = 0; index < 100; index += 1) {
+    const token = controller.beginHydration(String(index))
+    assert.equal(controller.hydrate(note(String(index), `content ${index}`), token), true)
+  }
+  assert.equal(saves, 0)
+  assert.equal(controller.snapshot().dirty, false)
+})
+
+test('a 100-edit burst produces one bounded save', async () => {
+  const requests: string[] = []
+  const controller = new NotebookEditorController({
+    debounceMs: 5,
+    save: async (request) => {
+      requests.push(request.content)
+      return { document: { ...request, revision: '2' } }
+    },
+  })
+  controller.select(note('burst'))
+  for (let index = 1; index <= 100; index += 1) controller.edit({ content: `edit ${index}` })
+  await wait(20)
+  assert.deepEqual(requests, ['edit 100'])
+})

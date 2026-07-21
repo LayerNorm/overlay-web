@@ -30,6 +30,9 @@ for (const name of [
   'KnowledgeAnalyticsAdapter',
   'KnowledgeSurfaceController',
   'KnowledgeMutationEvent',
+  'KnowledgeEntityMutation',
+  'KnowledgeMutationConsumer',
+  'KnowledgeMutationRevisionTracker',
 ]) {
   if (!contract.includes(name)) throw new Error(`Knowledge surface contract is missing ${name}`)
 }
@@ -62,6 +65,19 @@ for (const pattern of [
 }
 if (!sharedSurface.includes('SharedKnowledgeSurface')) {
   throw new Error('Shared knowledge package must own SharedKnowledgeSurface')
+}
+if (/\bfilesChanged\b|\bnoteCreated\b/.test(sharedSurface)) {
+  throw new Error('Shared knowledge surface restored broadcast-and-refetch callbacks')
+}
+
+for (const adapterPath of [webAdapterPath, desktopAdapterPath]) {
+  const adapter = fs.readFileSync(adapterPath, 'utf8')
+  for (const required of ['KNOWLEDGE_ENTITY_MUTATION_EVENT', 'KnowledgeMutationConsumer', 'isKnowledgeEntityMutation']) {
+    if (!adapter.includes(required)) throw new Error(`${path.relative(root, adapterPath)} lost payload mutation handling: ${required}`)
+  }
+  if (/FILES_CHANGED_EVENT/.test(adapter)) {
+    throw new Error(`${path.relative(root, adapterPath)} restored broadcast-and-refetch behavior`)
+  }
 }
 
 const sharedViewer = fs.readFileSync(sharedViewerPath, 'utf8')

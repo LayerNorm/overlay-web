@@ -3,14 +3,13 @@
 import dynamic from 'next/dynamic'
 import NextImage from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 import {
-  FILES_CHANGED_EVENT,
-  NOTES_CHANGED_EVENT,
+  KNOWLEDGE_ENTITY_MUTATION_EVENT,
+  createKnowledgeMutationPublisher,
   createLocalNotebookNote,
   type CreateNoteResponse,
   type NoteDoc,
-  type NotebookNote,
   type UpdateNoteResponse,
 } from '@overlay/app-core'
 import {
@@ -27,6 +26,19 @@ import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 const MarkdownMessage = dynamic(() =>
   import('@/features/chat/components/MarkdownMessage').then((module) => ({ default: module.MarkdownMessage })),
 )
+
+const nextNotebookMutation = createKnowledgeMutationPublisher(
+  `web-notebook:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
+)
+
+function publishNotebookMutation(
+  id: string,
+  operation: 'created' | 'updated' | 'deleted',
+): void {
+  window.dispatchEvent(new CustomEvent(KNOWLEDGE_ENTITY_MUTATION_EVENT, {
+    detail: nextNotebookMutation({ entity: 'note', id, operation }),
+  }))
+}
 
 export default function NotebookEditor({
   userId: _userId,
@@ -54,6 +66,7 @@ export default function NotebookEditor({
     }),
     async create() {
       const result = await overlayAppClient.notes.create({ title: 'Untitled', content: '' }) as CreateNoteResponse
+      publishNotebookMutation(result.note?._id ?? result.id, 'created')
       return result.note ?? {
         ...createLocalNotebookNote(result.id),
         title: 'Untitled',
@@ -79,14 +92,15 @@ export default function NotebookEditor({
         }
       }
       if (!response.ok) throw new Error(body?.error || 'Could not save note')
+      publishNotebookMutation(body?.note?._id ?? noteId, 'updated')
       return { note: body?.note }
     },
+    async delete(noteId) {
+      const response = await overlayAppClient.notes.deleteResponse({ noteId })
+      if (!response.ok) throw new Error('Could not delete note')
+      publishNotebookMutation(noteId, 'deleted')
+    },
   }), [])
-
-  const handleNoteChanged = useCallback((note: NotebookNote) => {
-    window.dispatchEvent(new CustomEvent(NOTES_CHANGED_EVENT, { detail: { note } }))
-    window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
-  }, [])
 
   return (
     <CanonicalNotebookEditor
@@ -105,7 +119,6 @@ export default function NotebookEditor({
       }}
       onNavigateNote={(noteId) => router.replace(`/app/notes?id=${encodeURIComponent(noteId)}`)}
       onBackToFiles={() => router.push('/app/files')}
-      onNoteChanged={handleNoteChanged}
       renderExportMenu={({ note, title, content }) => (
         <ExportMenu
           type="note"

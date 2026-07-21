@@ -1007,6 +1007,9 @@ export function CanonicalNotebookEditor({
       lifecycleController.clearSelection()
     }
   }, [lifecycleController, notes, onDeleteNote, openNote, repository])
+  const deleteSidebarNote = useCallback((noteId: string, event: React.MouseEvent) => {
+    void deleteNote(noteId, event)
+  }, [deleteNote])
 
   function handleTitleChange(event: React.ChangeEvent<HTMLInputElement>) {
     const newTitle = event.target.value
@@ -1189,7 +1192,7 @@ export function CanonicalNotebookEditor({
             activeNoteId={activeNote?._id}
             onCreateNote={() => void createNote()}
             onOpenNote={openNote}
-            onDeleteNote={(noteId, event) => void deleteNote(noteId, event)}
+            onDeleteNote={deleteSidebarNote}
           />
         ) : null}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">

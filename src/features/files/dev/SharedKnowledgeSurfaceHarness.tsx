@@ -58,8 +58,7 @@ export function SharedKnowledgeSurfaceHarness({
           upload: async () => ({ ok: true }),
           isEditable: (name) => /\.(?:md|markdown|txt|csv)$/i.test(name),
           contentUrl: () => undefined,
-          filesChanged: () => undefined,
-          noteCreated: () => undefined,
+          entityChanged: () => undefined,
         }}
         renderFileViewer={({ content }) => <pre>{content}</pre>}
       />

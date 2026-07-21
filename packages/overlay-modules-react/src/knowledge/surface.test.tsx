@@ -25,8 +25,7 @@ test('shared surface preserves the web files markup and controls', () => {
         upload: async () => ({ ok: true }),
         isEditable: () => false,
         contentUrl: () => undefined,
-        filesChanged: () => undefined,
-        noteCreated: () => undefined,
+        entityChanged: () => undefined,
       }}
       renderFileViewer={() => null}
     />,

@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'reac
 import { useRouter, useSearchParams } from 'next/navigation'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
-  FILES_CHANGED_EVENT,
-  NOTES_CHANGED_EVENT,
+  KNOWLEDGE_ENTITY_MUTATION_EVENT,
+  KNOWLEDGE_RECONCILE_EVENT,
+  KnowledgeMutationConsumer,
   PROJECT_META_UPDATED_EVENT,
   canMoveProjectFile,
   filterProjectFilesForSearch,
@@ -16,6 +17,10 @@ import {
   projectRouteViewForFile,
   renameProjectInList,
   noteDocToKnowledgeFile,
+  normalizeKnowledgeSurfaceNode,
+  removeKnowledgeFileSubtrees,
+  createKnowledgeMutationPublisher,
+  isKnowledgeEntityMutation,
   sortProjectsByName,
   type ProjectChatSummary,
   type ProjectFileSummary,
@@ -33,6 +38,9 @@ type ProjectFile = ProjectFileSummary
 
 const arrayOrEmpty = <T,>(value: unknown): T[] => Array.isArray(value) ? value : []
 const INITIAL_SIDEBAR_LIST_LIMIT = 24
+const nextSidebarMutation = createKnowledgeMutationPublisher(
+  `web-sidebar:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
+)
 
 export function FilesInlinePanel({
   searchQuery = '',
@@ -50,24 +58,28 @@ export function FilesInlinePanel({
   const activeNoteId = searchParams?.get('id') ?? null
   const activeCanonicalFileId = activeFileId ?? activeNoteId
 
+  const fetchItems = useCallback(async (signal?: AbortSignal): Promise<ProjectFile[]> => {
+    const [fileRows, noteRows] = await Promise.all([
+      overlayAppClient.files.get<ProjectFile[]>({ limit: 100, summary: true }, { signal }),
+      overlayAppClient.notes.get<NoteDoc[]>({ limit: 100 }, { signal }),
+    ])
+    const files = arrayOrEmpty<ProjectFile>(fileRows)
+    const fileIds = new Set(files.map((file) => file._id))
+    const notes = arrayOrEmpty<NoteDoc>(noteRows)
+      .map(noteDocToKnowledgeFile)
+      .filter((note) => !fileIds.has(note._id))
+    return [...files, ...notes]
+  }, [])
+
   const loadItems = useCallback(async () => {
     try {
-      const [fileRows, noteRows] = await Promise.all([
-        overlayAppClient.files.get<ProjectFile[]>({ limit: 100, summary: true }),
-        overlayAppClient.notes.get<NoteDoc[]>({ limit: 100 }),
-      ])
-      const files = arrayOrEmpty<ProjectFile>(fileRows)
-      const fileIds = new Set(files.map((file) => file._id))
-      const notes = arrayOrEmpty<NoteDoc>(noteRows)
-        .map(noteDocToKnowledgeFile)
-        .filter((note) => !fileIds.has(note._id))
-      setFiles([...files, ...notes])
+      setFiles(await fetchItems())
     } catch {
       // ignore
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [fetchItems])
 
   useEffect(() => {
     setLoading(true)
@@ -75,16 +87,57 @@ export function FilesInlinePanel({
   }, [loadItems])
 
   useEffect(() => {
-    function handleFilesChanged() {
-      void loadItems()
+    const consumer = new KnowledgeMutationConsumer({
+      origin: 'web-sidebar-consumer',
+      repository: {
+        async list(signal) {
+          return {
+            nodes: (await fetchItems(signal)).map((file) => normalizeKnowledgeSurfaceNode({
+              ...file,
+              createdAt: file.updatedAt ?? 0,
+            })),
+          }
+        },
+        async get() { return null },
+      },
+      async loadNode(mutation, signal) {
+        if (mutation.entity === 'note') {
+          const note = await overlayAppClient.notes.get<NoteDoc>({ noteId: mutation.id }, { signal })
+          return normalizeKnowledgeSurfaceNode(noteDocToKnowledgeFile(note))
+        }
+        const response = await overlayAppClient.files.getResponse({ fileId: mutation.id }, { signal })
+        if (response.status === 404) return null
+        if (!response.ok) throw new Error('Could not update sidebar file')
+        return normalizeKnowledgeSurfaceNode(await response.json())
+      },
+      apply(event) {
+        if (event.type === 'reset') {
+          setFiles([...event.nodes])
+        } else if (event.type === 'created' || event.type === 'updated') {
+          setFiles((current) => current.some((file) => file._id === event.node.id)
+            ? current.map((file) => file._id === event.node.id ? event.node : file)
+            : [...current, event.node])
+        } else if (event.type === 'deleted') {
+          setFiles((current) => removeKnowledgeFileSubtrees(current, event.ids))
+        }
+      },
+    })
+    const handleMutation = (event: Event) => {
+      const mutation = (event as CustomEvent<unknown>).detail
+      if (isKnowledgeEntityMutation(mutation)) void consumer.handle(mutation).catch(() => undefined)
     }
-    window.addEventListener(NOTES_CHANGED_EVENT, handleFilesChanged)
-    window.addEventListener(FILES_CHANGED_EVENT, handleFilesChanged)
+    const handleReconcile = () => { void consumer.reconcile('explicit-refresh').catch(() => undefined) }
+    const handleOnline = () => { void consumer.reconcile('reconnected').catch(() => undefined) }
+    window.addEventListener(KNOWLEDGE_ENTITY_MUTATION_EVENT, handleMutation)
+    window.addEventListener(KNOWLEDGE_RECONCILE_EVENT, handleReconcile)
+    window.addEventListener('online', handleOnline)
     return () => {
-      window.removeEventListener(NOTES_CHANGED_EVENT, handleFilesChanged)
-      window.removeEventListener(FILES_CHANGED_EVENT, handleFilesChanged)
+      consumer.dispose()
+      window.removeEventListener(KNOWLEDGE_ENTITY_MUTATION_EVENT, handleMutation)
+      window.removeEventListener(KNOWLEDGE_RECONCILE_EVENT, handleReconcile)
+      window.removeEventListener('online', handleOnline)
     }
-  }, [loadItems])
+  }, [fetchItems])
 
   function toggleFile(fileId: string) {
     setExpanded((prev) => {
@@ -113,8 +166,10 @@ export function FilesInlinePanel({
     if (!canMoveProjectFile(files, fileId, parentId)) return
     const res = await overlayAppClient.files.updateResponse({ fileId, parentId })
     if (res.ok) {
-      await loadItems()
-      window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT))
+      setFiles((current) => current.map((file) => file._id === fileId ? { ...file, parentId } : file))
+      window.dispatchEvent(new CustomEvent(KNOWLEDGE_ENTITY_MUTATION_EVENT, {
+        detail: nextSidebarMutation({ entity: 'file', id: fileId, operation: 'moved' }),
+      }))
     }
   }
 
