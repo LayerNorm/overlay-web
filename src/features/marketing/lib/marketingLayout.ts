@@ -69,3 +69,37 @@ export function marketingIconChip(): string {
 export function marketingFeatureCard(): string {
   return "bg-[var(--surface-elevated)] p-5";
 }
+
+/** Large product demo window chrome. */
+export function marketingDemoFrame(): string {
+  return "overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--background)] shadow-[0_24px_80px_var(--overlay-scrim)]";
+}
+
+/**
+ * Muted tint fills for collection cards (light paper palette).
+ * Dark mode falls back to elevated surfaces via CSS vars on the element.
+ */
+export const MARKETING_TINTS = {
+  clay: "bg-[#c9ad8f] text-[#1c1712]",
+  slate: "bg-[#8fa3b0] text-[#12181c]",
+  olive: "bg-[#9a9b7a] text-[#17180f]",
+  stone: "bg-[#b8b2a7] text-[#1a1814]",
+  sand: "bg-[#d4c4a8] text-[#1c1710]",
+  mist: "bg-[#a8b4a6] text-[#141914]",
+} as const;
+
+export type MarketingTint = keyof typeof MARKETING_TINTS;
+
+export function marketingTint(tint: MarketingTint): string {
+  return MARKETING_TINTS[tint];
+}
+
+/** Mini-scene stage inside a feature card. */
+export function marketingMiniScene(): string {
+  return "relative h-[140px] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3";
+}
+
+/** Dark ownership / security band surface. */
+export function marketingDarkBand(): string {
+  return "bg-[#121212] text-[#f5f5f5]";
+}
