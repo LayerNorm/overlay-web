@@ -122,6 +122,8 @@ export interface CanonicalNotebookEditorProps {
   hideSidebar?: boolean
   showNotesSidebar?: boolean
   hideBackButton?: boolean
+  compactHeader?: boolean
+  selectionPending?: boolean
   headerLeading?: ReactNode
   projectName?: string
   repository: NotebookEditorRepository
@@ -178,6 +180,8 @@ export function CanonicalNotebookEditor({
   hideSidebar,
   showNotesSidebar,
   hideBackButton,
+  compactHeader,
+  selectionPending,
   headerLeading,
   projectName,
   repository,
@@ -764,14 +768,6 @@ export function CanonicalNotebookEditor({
     const noteId = idParam
     if (activeNote?._id === noteId) return
 
-    if (!hideSidebar && notes.length > 0) {
-      const existing = notes.find((note) => note._id === noteId)
-      if (existing && activeNote?._id !== noteId) {
-        openNote(existing)
-        return
-      }
-    }
-
     const controller = new AbortController()
     async function loadNoteById() {
       try {
@@ -789,7 +785,7 @@ export function CanonicalNotebookEditor({
 
     void loadNoteById()
     return () => controller.abort()
-  }, [activeNote?._id, hideSidebar, idParam, notes, openNote, repository])
+  }, [activeNote?._id, hideSidebar, idParam, openNote, repository])
 
   useEffect(() => {
     if (!editor) return
@@ -999,14 +995,14 @@ export function CanonicalNotebookEditor({
     onDeleteNote?.(noteId)
     if (activeNoteRef.current?._id !== noteId) return
     const next = remaining[0]
-    if (next) openNote(next)
+    if (next) onNavigateNote(next._id)
     else {
       activeNoteRef.current = null
       setActiveNote(null)
       setTitle('')
       lifecycleController.clearSelection()
     }
-  }, [lifecycleController, notes, onDeleteNote, openNote, repository])
+  }, [lifecycleController, notes, onDeleteNote, onNavigateNote, repository])
   const deleteSidebarNote = useCallback((noteId: string, event: React.MouseEvent) => {
     void deleteNote(noteId, event)
   }, [deleteNote])
@@ -1143,12 +1139,15 @@ export function CanonicalNotebookEditor({
   )
 
   const overlayLogo = logo ?? <span className="overlay-stream-marker h-3.5 w-3.5" aria-hidden />
+  const resolvingRequestedNote = Boolean(selectionPending || (noteId && activeNote?._id !== noteId))
 
   return (
     <AppScreenShell
       header={
         <NotebookHeader
           activeNote={activeNote}
+          loading={resolvingRequestedNote}
+          compact={compactHeader}
           title={title}
           projectName={projectName}
           isDirty={isDirty}
@@ -1191,7 +1190,7 @@ export function CanonicalNotebookEditor({
             notes={notes}
             activeNoteId={activeNote?._id}
             onCreateNote={() => void createNote()}
-            onOpenNote={openNote}
+            onOpenNote={(note) => onNavigateNote(note._id)}
             onDeleteNote={deleteSidebarNote}
           />
         ) : null}
@@ -1230,6 +1229,10 @@ export function CanonicalNotebookEditor({
               }}
             />
             </>
+          ) : resolvingRequestedNote ? (
+            <div className="h-full w-full" aria-busy="true">
+              <span className="sr-only">Loading note</span>
+            </div>
           ) : (
             <NotebookEmptyState onCreateNote={() => void createNote()} />
           )}

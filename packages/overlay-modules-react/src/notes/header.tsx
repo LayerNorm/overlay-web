@@ -7,6 +7,8 @@ import { AppScreenHeader } from '../shell'
 
 export interface NotebookHeaderProps {
   activeNote: NotebookNote | null
+  loading?: boolean
+  compact?: boolean
   title: string
   projectName?: string
   isDirty?: boolean
@@ -26,6 +28,8 @@ export interface NotebookHeaderProps {
 
 export function NotebookHeader({
   activeNote,
+  loading,
+  compact,
   title,
   projectName,
   isDirty,
@@ -42,11 +46,23 @@ export function NotebookHeader({
   onTitleKeyDown,
   onToggleAgentPanel,
 }: NotebookHeaderProps) {
+  const headerClassName = compact ? 'h-11 min-h-11 gap-0 px-0 py-0' : 'px-6'
+  const headerStyle = compact ? { height: 44, minHeight: 44, padding: 0 } : undefined
+
+  if (!activeNote && loading) {
+    return (
+      <AppScreenHeader className={headerClassName} style={headerStyle} aria-busy="true">
+        <span className="sr-only">Loading note</span>
+      </AppScreenHeader>
+    )
+  }
+
   if (!activeNote) {
     return (
       <AppScreenHeader
         title="Notes"
-        className="px-6"
+        className={headerClassName}
+        style={headerStyle}
         actions={
           <button
             onClick={onCreateNote}
@@ -61,17 +77,17 @@ export function NotebookHeader({
   }
 
   return (
-    <AppScreenHeader className="px-0 py-0">
-      <div className="flex flex-1 items-center justify-between gap-2 px-3">
+    <AppScreenHeader className={compact ? headerClassName : 'px-0 py-0'} style={headerStyle}>
+      <div className={`flex flex-1 items-center justify-between gap-2 px-3 ${compact ? 'h-11' : ''}`}>
         {leading}
         {!hideBackButton ? (
           <button
             type="button"
             onClick={onBackToFiles}
             title="Back to files"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            className={`inline-flex shrink-0 items-center justify-center text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${compact ? 'h-7 w-7 rounded-md' : 'h-9 w-9 rounded-lg'}`}
           >
-            <ArrowLeft size={17} />
+            <ArrowLeft size={compact ? 13 : 17} />
           </button>
         ) : null}
         <input
@@ -81,7 +97,7 @@ export function NotebookHeader({
           onBlur={onTitleBlur}
           onKeyDown={onTitleKeyDown}
           placeholder="Note title..."
-          className="flex-1 bg-transparent font-medium text-xl text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+          className={`flex-1 bg-transparent font-medium text-[var(--foreground)] outline-none placeholder:text-[var(--muted)] ${compact ? 'text-[19px]' : 'text-xl'}`}
           style={{ fontFamily: 'var(--font-serif)' }}
         />
         <div className="flex shrink-0 items-center gap-1.5">
@@ -97,23 +113,23 @@ export function NotebookHeader({
             <button
               type="button"
               onClick={onDeleteNote}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              className={`inline-flex shrink-0 items-center justify-center text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${compact ? 'h-7 w-7 rounded-md' : 'h-9 w-9 rounded-lg'}`}
               aria-label="Delete note"
               title="Delete note"
             >
-              <Trash2 size={15} />
+              <Trash2 size={compact ? 13 : 15} />
             </button>
           ) : null}
           <button
             type="button"
             onClick={onToggleAgentPanel}
-            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+            className={`inline-flex shrink-0 items-center justify-center text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${compact ? 'h-7 w-7 rounded-md' : 'h-9 w-9 rounded-lg'} ${
               agentPanelOpen ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
             }`}
             aria-label={agentPanelOpen ? 'Close note assistant' : 'Open note assistant'}
             title="Note assistant"
           >
-            <MessageCircle size={16} />
+            <MessageCircle size={compact ? 13 : 16} />
           </button>
         </div>
       </div>

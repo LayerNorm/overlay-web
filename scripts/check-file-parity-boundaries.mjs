@@ -129,11 +129,9 @@ const retiredPlatformFiles = [
   'src/features/knowledge/components/KnowledgeToolbarMenus.tsx',
   'src/features/notebook/components/SlashMenu.tsx',
   'src/features/notebook/components/InlineDiffExtension.ts',
-  'overlay-desktop/src/renderer/src/pages/FilesListPage.tsx',
   'overlay-desktop/src/renderer/src/pages/NotesListPage.tsx',
   'overlay-desktop/src/renderer/src/pages/InlineNoteView.tsx',
   'overlay-desktop/src/renderer/src/pages/inlineNoteSaveQueue.ts',
-  'overlay-desktop/src/renderer/src/services/files-list-cache.ts',
   'overlay-desktop/src/renderer/src/features/files/shared-files-surface-flag.ts',
   'overlay-desktop/src/renderer/src/components/ui/ProjectFileTree.tsx',
 ]
@@ -152,8 +150,8 @@ const platformFileSources = [
 for (const path of platformFileSources) {
   const source = read(path)
   const base = path.split('/').at(-1) ?? path
-  if (/^(?:FilesListPage|NotesListPage|NotebookStyles|NotebookToolbar|SlashMenu|InlineDiffExtension|FileViewer)\.[cm]?[jt]sx?$/.test(base)) {
-    failures.push(`${path}: independent file sidebar, viewer, or notebook renderer is forbidden`)
+  if (/^(?:NotesListPage|NotebookStyles|NotebookToolbar|SlashMenu|InlineDiffExtension|FileViewer)\.[cm]?[jt]sx?$/.test(base)) {
+    failures.push(`${path}: independent file viewer or notebook renderer is forbidden`)
   }
   if (/\bfunction\s+(?:FileViewer|KnowledgeFileList|KnowledgeFileCards)\b|\bReactMarkdown\b|\bmammoth\.convertToHtml\b/.test(source)) {
     failures.push(`${path}: platform source cannot implement an independent file renderer`)
@@ -176,10 +174,22 @@ for (const [path, required] of [
   requireText(path, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `embedded consumer must retain canonical shared boundary: ${required}`)
 }
 
+requireText(
+  'overlay-desktop/src/renderer/src/pages/MainWindow.tsx',
+  /<FilesListPage\b/,
+  'desktop MainWindow must retain its compact native files sidebar',
+)
+for (const sharedConsumer of ['DesktopNotebookEditor', 'RemoteFilePreviewPage', 'OutputPreviewPage']) {
+  requireText(
+    'overlay-desktop/src/renderer/src/pages/MainWindow.tsx',
+    new RegExp(`<${sharedConsumer}\\b`),
+    `desktop file content must retain the shared ${sharedConsumer} consumer`,
+  )
+}
 forbidText(
   'overlay-desktop/src/renderer/src/pages/MainWindow.tsx',
-  /FilesListPage|sharedFilesSurfaceEnabled|VITE_DESKTOP_SHARED_FILES_SURFACE/,
-  'desktop MainWindow cannot restore the files rollback renderer or flag',
+  /sharedFilesSurfaceEnabled|VITE_DESKTOP_SHARED_FILES_SURFACE|<SharedDesktopFilesSurface\b/,
+  'desktop MainWindow cannot restore the files rollback flag or replace the native sidebar',
 )
 forbidText(
   'overlay-desktop/src/renderer/src/adapters/desktopKnowledgeSurfaceAdapters.ts',
@@ -190,6 +200,11 @@ requireText(
   'overlay-desktop/src/renderer/src/pages/SharedDesktopFilesSurface.tsx',
   /authority === 'on-this-mac'[\s\S]*createDesktopLocalKnowledgeSurfaceAdapters/,
   'desktop local-only operation must be explicit and must not merge with cloud entities',
+)
+forbidText(
+  'overlay-desktop/src/renderer/src/services/files-list-cache.ts',
+  /mergeDesktopFileList|Promise\.all\(\s*\[\s*fetchRemoteFiles/,
+  'desktop sidebar cache must select one authority and never merge raw local and remote entities',
 )
 
 for (const adapterTest of [

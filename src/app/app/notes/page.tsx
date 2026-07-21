@@ -3,7 +3,11 @@ import { getOverlaySession } from '@/server/auth/session'
 import { redirect } from 'next/navigation'
 
 const NotebookEditor = dynamic(() => import('@/features/notebook/components/NotebookEditor'), {
-  loading: () => <div className="flex min-h-[40vh] items-center justify-center text-sm text-[#888]">Loading...</div>,
+  loading: () => (
+    <div className="h-full min-h-[40vh] w-full" aria-busy="true">
+      <span className="sr-only">Loading notes</span>
+    </div>
+  ),
 })
 
 export default async function NotesPage() {

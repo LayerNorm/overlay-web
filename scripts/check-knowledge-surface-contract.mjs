@@ -116,11 +116,16 @@ if (!desktopShared.includes("from '@overlay/modules-react/knowledge'")) {
 for (const required of ['openFilesInHost', 'enableExternalDrop', 'createDesktopKnowledgeSurfaceAdapters']) {
   if (!desktopShared.includes(required)) throw new Error(`Desktop shared surface lost ${required}`)
 }
-if (!desktopMain.includes('<SharedDesktopFilesSurface')) {
-  throw new Error('MainWindow must use the shared files surface')
+if (!desktopMain.includes('<FilesListPage')) {
+  throw new Error('MainWindow must retain the compact native files sidebar')
 }
-if (/FilesListPage|sharedFilesSurfaceEnabled|VITE_DESKTOP_SHARED_FILES_SURFACE/.test(desktopMain)) {
-  throw new Error('MainWindow restored a legacy files renderer or rollback branch')
+for (const required of ['<DesktopNotebookEditor', '<RemoteFilePreviewPage', '<OutputPreviewPage']) {
+  if (!desktopMain.includes(required)) {
+    throw new Error(`MainWindow file content lost shared consumer ${required}`)
+  }
+}
+if (/sharedFilesSurfaceEnabled|VITE_DESKTOP_SHARED_FILES_SURFACE|<SharedDesktopFilesSurface/.test(desktopMain)) {
+  throw new Error('MainWindow restored a files rollback branch or replaced its native sidebar')
 }
 for (const forbidden of ['FileParityFixtureSurface', 'KnowledgeFileList', 'KnowledgeFileCards']) {
   if (desktopShared.includes(`function ${forbidden}`)) {
