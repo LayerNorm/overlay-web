@@ -99,7 +99,7 @@ export function marketingMiniScene(): string {
   return "relative h-[140px] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3";
 }
 
-/** Dark ownership / security band surface. */
+/** Dark ownership / security band surface — inverts the theme tokens. */
 export function marketingDarkBand(): string {
-  return "bg-[#121212] text-[#f5f5f5]";
+  return "bg-[var(--foreground)] text-[var(--background)]";
 }

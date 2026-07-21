@@ -1,12 +1,28 @@
 "use client";
 
 import {
+  ArrowUp,
+  AtSign,
+  BookOpen,
+  Brain,
   Check,
+  ChevronDown,
   FileText,
   FolderOpen,
+  Globe2,
+  Image as ImageIcon,
+  LayoutGrid,
+  LayoutList,
+  Loader2,
   MessageSquare,
+  Paperclip,
+  PenLine,
+  Plus,
   Puzzle,
+  Search,
+  Upload,
   Workflow,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import Image from "next/image";
@@ -19,7 +35,6 @@ import {
 } from "react";
 import {
   MARKETING_LOGO_SIZE,
-  marketingDemoFrame,
   marketingSerifStyle,
 } from "@/features/marketing/lib/marketingLayout";
 
@@ -44,7 +59,6 @@ const SURFACES: Array<{
 
 const SURFACE_ORDER = SURFACES.map((s) => s.key);
 
-/** Step clocks are ms from surface activation. */
 type PlayClock = number;
 
 function subscribeReducedMotion(onStoreChange: () => void) {
@@ -58,13 +72,13 @@ function getReducedMotion() {
 }
 
 function usePrefersReducedMotion() {
-  return useSyncExternalStore(subscribeReducedMotion, getReducedMotion, () => false);
+  return useSyncExternalStore(
+    subscribeReducedMotion,
+    getReducedMotion,
+    () => false,
+  );
 }
 
-/**
- * Animation clock driven by rAF. Resets when `activeKey` changes.
- * Reduced-motion users jump to the end state.
- */
 function usePlayClock(activeKey: string, durationMs: number, reduced: boolean) {
   const [elapsed, setElapsed] = useState(0);
   const [trackedKey, setTrackedKey] = useState(activeKey);
@@ -102,149 +116,327 @@ function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
-/* ─── Surface plays ───────────────────────────────────────────────────────── */
+/* ─── Shared app primitives ──────────────────────────────────────────────── */
 
-function ChatPlay({ t }: { t: PlayClock }) {
-  const showUser = at(t, 400);
-  const userLen = Math.min(
-    42,
-    Math.floor(Math.max(0, t - 400) / 28),
-  );
-  const userText =
-    "Summarize Q1 and draft a board update".slice(0, userLen);
-  const showTools = at(t, 2200);
-  const showReply = at(t, 3000);
-  const replyLen = Math.min(
-    180,
-    Math.floor(Math.max(0, t - 3000) / 12),
-  );
-  const fullReply =
-    "Revenue grew 18% QoQ. Three risks need board attention: enterprise churn, hiring lag in infra, and the Europe launch slip. Draft memo attached with recommended asks.";
-  const reply = fullReply.slice(0, replyLen);
-  const showDone = at(t, 6200);
-
+/** App header bar — matches AppScreenShell header (min-h-14, px-3 py-2.5). */
+function AppHeader({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-full min-h-[480px] flex-col">
-      <div className="flex h-12 items-center justify-between border-b border-[var(--border)] px-4">
-        <span className="text-xs font-medium">New conversation</span>
-        <span className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-1 text-[11px]">
-          GPT-5.4
-        </span>
-      </div>
-      <div className="flex flex-1 flex-col gap-4 overflow-hidden p-5">
-        {showUser ? (
-          <div className="ml-auto max-w-[85%] rounded-2xl bg-[var(--foreground)] px-4 py-2.5 text-sm text-[var(--background)]">
-            {userText}
-            {userLen < 42 ? (
-              <span className="ml-0.5 inline-block h-3 w-0.5 animate-pulse bg-[var(--background)]" />
-            ) : null}
-          </div>
-        ) : null}
-        {showTools ? (
-          <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-            <span className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-1">
-              2 tools called
-            </span>
-            <span className="text-[var(--muted-light)]">Files · Memory</span>
-          </div>
-        ) : null}
-        {showReply ? (
-          <div className="max-w-[92%] space-y-2">
-            <p className="text-sm leading-6 text-[var(--foreground)]">
-              {reply}
-              {replyLen < fullReply.length ? (
-                <span className="ml-0.5 inline-block h-3 w-0.5 animate-pulse bg-[var(--foreground)]" />
-              ) : null}
-            </p>
-            {showDone ? (
-              <div className="flex flex-wrap gap-2 pt-1">
-                <span className="rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1 text-[11px] text-[var(--muted)]">
-                  Board_update_Q1.md
-                </span>
-                <span className="rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1 text-[11px] text-[var(--muted)]">
-                  Sources: 4
-                </span>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-      <div className="border-t border-[var(--border)] p-3">
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-sm text-[var(--muted-light)]">
-          Ask anything, use @ to reference files, memory, tools…
+    <div className="flex min-h-14 items-center gap-2 border-b border-[var(--border)] px-3 py-2.5 sm:px-4 md:min-h-16 md:py-0">
+      {children}
+    </div>
+  );
+}
+
+/** Model picker pill — matches ChatExperienceHeader (h-8 rounded-md surface-subtle). */
+function ModelPill({ model = "Auto" }: { model?: string }) {
+  return (
+    <button
+      type="button"
+      className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] md:max-w-[13rem]"
+    >
+      <span className="truncate">{model}</span>
+      <ChevronDown
+        className="h-[11px] w-[11px] shrink-0 opacity-60"
+        strokeWidth={1.75}
+      />
+    </button>
+  );
+}
+
+/** Composer card — matches ChatComposer (rounded-2xl border surface-elevated). */
+function ComposerShell({
+  children,
+  active = false,
+}: {
+  children: ReactNode;
+  active?: boolean;
+}) {
+  return (
+    <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+      <div className="p-2.5 sm:p-3">
+        {children}
+        <div className="mt-2.5 flex items-center gap-1">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-muted)]">
+            <Paperclip className="h-4 w-4" strokeWidth={1.75} />
+          </span>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-muted)]">
+            <AtSign className="h-4 w-4" strokeWidth={1.75} />
+          </span>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-muted)]">
+            <Brain className="h-4 w-4" strokeWidth={1.75} />
+          </span>
+          <span className="flex-1" />
+          <span
+            className={cx(
+              "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
+              active
+                ? "bg-[var(--foreground)] text-[var(--background)]"
+                : "bg-[var(--surface-subtle)] text-[var(--muted-light)]",
+            )}
+          >
+            <ArrowUp className="h-4 w-4" strokeWidth={2} />
+          </span>
         </div>
       </div>
     </div>
   );
 }
 
-function FilesPlay({ t }: { t: PlayClock }) {
-  const files = [
-    { name: "Curriculum.pdf", kind: "PDF", delay: 300 },
-    { name: "Q1 plan.docx", kind: "Doc", delay: 700 },
-    { name: "Financials.xlsx", kind: "Sheet", delay: 1100 },
-    { name: "Launch notes", kind: "Note", delay: 1500 },
-  ];
-  const selected = at(t, 2000);
-  const preview = at(t, 2600);
-  const mention = at(t, 3400);
+/** Section label — matches integrations section headers (text-[11px] uppercase tracking). */
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-light)]">
+      {children}
+    </p>
+  );
+}
+
+/* ─── Chat play ──────────────────────────────────────────────────────────── */
+
+const CHAT_SUGGESTIONS = [
+  { icon: ImageIcon, label: "Create an image" },
+  { icon: PenLine, label: "Write or edit" },
+  { icon: Globe2, label: "Look something up" },
+];
+
+const CHAT_USER_PROMPT = "Summarize Q1 performance and draft a board update";
+const CHAT_REPLY =
+  "Revenue grew 18% QoQ. Three risks need board attention: enterprise churn, hiring lag in infra, and the Europe launch slip. Draft memo attached with recommended asks.";
+
+function ChatPlay({ t }: { t: PlayClock }) {
+  const showGreeting = at(t, 0);
+  const showSuggestions = at(t, 200);
+  const selectedPill = at(t, 1200);
+  const typedLen = Math.min(
+    CHAT_USER_PROMPT.length,
+    Math.floor(Math.max(0, t - 1600) / 22),
+  );
+  const typed = CHAT_USER_PROMPT.slice(0, typedLen);
+  const showUserMsg = at(t, 3400);
+  const showTools = at(t, 4200);
+  const showReply = at(t, 5000);
+  const replyLen = Math.min(
+    CHAT_REPLY.length,
+    Math.floor(Math.max(0, t - 5000) / 14),
+  );
+  const reply = CHAT_REPLY.slice(0, replyLen);
+  const showSources = at(t, 8200);
+
+  const isComposing = selectedPill && !showUserMsg;
 
   return (
     <div className="flex h-full min-h-[480px] flex-col">
-      <div className="flex h-12 items-center border-b border-[var(--border)] px-4">
-        <span className="text-xs font-medium">Files</span>
-      </div>
-      <div className="grid flex-1 md:grid-cols-[1.1fr_0.9fr]">
-        <div className="space-y-1.5 border-b border-[var(--border)] p-4 md:border-b-0 md:border-r">
-          <p className="mb-3 text-[11px] uppercase tracking-[0.14em] text-[var(--muted-light)]">
-            Library
-          </p>
-          {files.map((file) => {
-            const visible = at(t, file.delay);
-            if (!visible) return null;
-            const isActive = selected && file.name === "Q1 plan.docx";
-            return (
-              <div
-                key={file.name}
-                className={cx(
-                  "flex items-center justify-between rounded-md border px-3 py-2 text-sm transition-colors",
-                  isActive
-                    ? "border-[var(--foreground)] bg-[var(--surface-subtle)]"
-                    : "border-[var(--border)] bg-[var(--surface-elevated)]",
-                )}
-              >
-                <span className="truncate">{file.name}</span>
-                <span className="text-[10px] text-[var(--muted-light)]">
-                  {file.kind}
-                </span>
+      <AppHeader>
+        <ModelPill model="Auto" />
+        <span className="flex h-8 min-h-8 w-8 shrink-0 items-center justify-center rounded-md border border-transparent bg-[var(--surface-subtle)] text-[var(--muted)]">
+          <MessageSquare className="h-4 w-4" strokeWidth={1.75} />
+        </span>
+      </AppHeader>
+
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {showUserMsg ? (
+          <div className="flex flex-1 flex-col gap-4 overflow-hidden px-3 py-3 sm:px-4 sm:py-4">
+            <div className="mx-auto w-full max-w-4xl">
+              <div className="ml-auto max-w-[85%] rounded-2xl bg-[var(--foreground)] px-4 py-2.5 text-sm text-[var(--background)]">
+                {CHAT_USER_PROMPT}
               </div>
-            );
-          })}
+            </div>
+            {showTools ? (
+              <div className="mx-auto w-full max-w-4xl">
+                <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                  <span className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-1">
+                    2 tools called
+                  </span>
+                  <span className="text-[var(--muted-light)]">
+                    Files · Memory
+                  </span>
+                </div>
+              </div>
+            ) : null}
+            {showReply ? (
+              <div className="mx-auto w-full max-w-4xl">
+                <div className="max-w-[92%] space-y-2">
+                  <p className="text-sm leading-6 text-[var(--foreground)]">
+                    {reply}
+                    {replyLen < CHAT_REPLY.length ? (
+                      <span className="ml-0.5 inline-block h-3 w-0.5 animate-pulse bg-[var(--foreground)]" />
+                    ) : null}
+                  </p>
+                  {showSources ? (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <span className="rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1 text-[11px] text-[var(--muted)]">
+                        Board_update_Q1.md
+                      </span>
+                      <span className="rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1 text-[11px] text-[var(--muted)]">
+                        Sources: 4
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center px-4 py-8">
+            {showGreeting ? (
+              <p
+                className="text-3xl text-[var(--foreground)]"
+                style={marketingSerifStyle()}
+              >
+                Good morning
+              </p>
+            ) : null}
+            {showSuggestions ? (
+              <div className="mt-8 flex flex-wrap justify-center gap-2">
+                {CHAT_SUGGESTIONS.map((s, i) => {
+                  const visible = at(t, 400 + i * 200);
+                  const isSelected = selectedPill && i === 1;
+                  if (!visible) return null;
+                  return (
+                    <span
+                      key={s.label}
+                      className={cx(
+                        "inline-flex h-9 shrink-0 items-center gap-2 rounded-2xl border px-3.5 text-sm transition-colors",
+                        isSelected
+                          ? "border-[var(--foreground)] bg-[var(--surface-muted)] text-[var(--foreground)]"
+                          : "border-[var(--border)] bg-transparent text-[var(--foreground)]",
+                      )}
+                    >
+                      <s.icon
+                        className="h-[15px] w-[15px] shrink-0"
+                        strokeWidth={1.75}
+                      />
+                      {s.label}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <div className="px-3 pb-3 sm:px-4 sm:pb-4">
+        <div className="mx-auto max-w-[56rem]">
+          <ComposerShell active={showUserMsg}>
+            {isComposing || showUserMsg ? (
+              <p className="min-h-[1.5rem] px-1.5 py-1.5 text-sm text-[var(--foreground)]">
+                {typed}
+                {typedLen < CHAT_USER_PROMPT.length && typedLen > 0 ? (
+                  <span className="ml-0.5 inline-block h-3 w-0.5 animate-pulse bg-[var(--foreground)]" />
+                ) : null}
+              </p>
+            ) : (
+              <p className="min-h-[1.5rem] px-1.5 py-1.5 text-sm text-[var(--muted-light)]">
+                Ask anything, use @ to reference files, memory, tools…
+              </p>
+            )}
+          </ComposerShell>
         </div>
-        <div className="bg-[var(--sidebar-surface)] p-4">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--muted-light)]">
-            Preview
-          </p>
-          {preview ? (
-            <div className="mt-3 space-y-2">
-              <p className="text-sm font-medium" style={marketingSerifStyle()}>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Files play ─────────────────────────────────────────────────────────── */
+
+const FILES_LIST = [
+  {
+    name: "Q1 plan.docx",
+    kind: "Doc",
+    icon: FileText,
+    delay: 200,
+    selected: true,
+  },
+  { name: "Curriculum.pdf", kind: "PDF", icon: FileText, delay: 500 },
+  { name: "Financials.xlsx", kind: "Sheet", icon: FileText, delay: 800 },
+  { name: "Launch notes", kind: "Note", icon: BookOpen, delay: 1100 },
+  { name: "Team memory", kind: "Memory", icon: Brain, delay: 1400 },
+];
+
+function FilesPlay({ t }: { t: PlayClock }) {
+  const showPreview = at(t, 1800);
+  const showMention = at(t, 3000);
+  const visibleCount = FILES_LIST.filter((f) => at(t, f.delay)).length;
+
+  return (
+    <div className="flex h-full min-h-[480px] flex-col">
+      <AppHeader>
+        <span className="text-sm font-medium text-[var(--foreground)]">
+          Files
+        </span>
+        <span className="text-xs text-[var(--muted-light)]">
+          {visibleCount} items
+        </span>
+        <span className="flex-1" />
+        <span className="flex h-8 min-h-8 items-center rounded-md border border-[var(--border)]">
+          <span className="flex h-8 w-8 items-center justify-center rounded-l-md bg-[var(--surface-subtle)] text-[var(--foreground)]">
+            <LayoutList className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-r-md text-[var(--muted)] hover:text-[var(--foreground)]">
+            <LayoutGrid className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </span>
+        </span>
+      </AppHeader>
+
+      <div className="flex flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden border-r border-[var(--border)] p-3 sm:p-4">
+          <div className="mx-auto max-w-3xl space-y-1">
+            {FILES_LIST.map((file) => {
+              if (!at(t, file.delay)) return null;
+              const isSelected = file.selected && showPreview;
+              return (
+                <div
+                  key={file.name}
+                  className={cx(
+                    "flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors",
+                    isSelected
+                      ? "border-[var(--border)] bg-[var(--surface-muted)]"
+                      : "border-transparent hover:bg-[var(--surface-muted)]",
+                  )}
+                >
+                  <file.icon
+                    className="mt-0.5 h-[15px] w-[15px] shrink-0 text-[var(--muted-light)]"
+                    strokeWidth={1.75}
+                  />
+                  <span className="min-w-0 flex-1 truncate leading-relaxed text-[var(--foreground)]">
+                    {file.name}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-[var(--muted-light)]">
+                    {file.kind}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="hidden w-[280px] shrink-0 overflow-hidden bg-[var(--sidebar-surface)] p-4 md:block">
+          <SectionLabel>Preview</SectionLabel>
+          {showPreview ? (
+            <div className="mt-3 space-y-3">
+              <p
+                className="text-sm font-medium text-[var(--foreground)]"
+                style={marketingSerifStyle()}
+              >
                 Q1 plan.docx
               </p>
-              <div className="space-y-1.5">
-                {["Goals", "Risks", "Hiring", "Board asks"].map((line, i) =>
-                  at(t, 2800 + i * 200) ? (
-                    <div
-                      key={line}
-                      className="h-2 rounded-full bg-[var(--border)]"
-                      style={{ width: `${70 - i * 10}%` }}
-                    />
-                  ) : null,
-                )}
+              <div className="space-y-2">
+                {[100, 92, 96, 70].map((w, i) => (
+                  <div
+                    key={i}
+                    className="h-2 rounded-full bg-[var(--surface-subtle)]"
+                    style={{ width: `${w}%` }}
+                  />
+                ))}
               </div>
-              {mention ? (
+              {showMention ? (
                 <div className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1 text-[11px]">
-                  <span className="text-[var(--muted)]">@</span>
-                  <span>Q1 plan.docx</span>
+                  <AtSign
+                    className="h-3 w-3 text-[var(--muted)]"
+                    strokeWidth={1.75}
+                  />
+                  <span className="text-[var(--foreground)]">Q1 plan.docx</span>
                   <span className="text-[var(--muted-light)]">in chat</span>
                 </div>
               ) : null}
@@ -260,212 +452,432 @@ function FilesPlay({ t }: { t: PlayClock }) {
   );
 }
 
+/* ─── Extensions play ────────────────────────────────────────────────────── */
+
+const INTEGRATIONS = [
+  { name: "Drive", status: "Connected", delay: 200, letter: "D" },
+  { name: "Notion", status: "Connected", delay: 500, letter: "N" },
+  {
+    name: "Slack",
+    status: "Connecting…",
+    delay: 800,
+    letter: "S",
+    final: "Connected",
+  },
+  { name: "GitHub", status: "Available", delay: 1200, letter: "G" },
+  { name: "Calendar", status: "Available", delay: 1500, letter: "C" },
+  { name: "Private MCP", status: "Available", delay: 1800, letter: "M" },
+];
+
 function ExtensionsPlay({ t }: { t: PlayClock }) {
-  const items = [
-    { name: "Drive", status: "Connected", delay: 400 },
-    { name: "Notion", status: "Connected", delay: 800 },
-    { name: "Slack", status: "Connecting…", delay: 1200, final: "Connected" },
-    { name: "GitHub", status: "Available", delay: 1600 },
-    { name: "Calendar", status: "Available", delay: 2000 },
-    { name: "Private MCP", status: "Available", delay: 2400 },
-  ];
-  const slackDone = at(t, 3200);
+  const slackDone = at(t, 2600);
+  const githubConnecting = at(t, 3400);
+
+  const connected = INTEGRATIONS.filter(
+    (i) =>
+      at(t, i.delay) &&
+      (i.status === "Connected" || (i.name === "Slack" && slackDone)),
+  );
+  const available = INTEGRATIONS.filter(
+    (i) =>
+      at(t, i.delay) &&
+      i.status === "Available" &&
+      !(i.name === "GitHub" && githubConnecting),
+  );
+
+  function IntegrationRow({ item }: { item: (typeof INTEGRATIONS)[number] }) {
+    const status =
+      item.name === "Slack" && slackDone
+        ? (item.final ?? item.status)
+        : item.name === "GitHub" && githubConnecting
+          ? "Connecting…"
+          : item.status;
+    const isConnected = status === "Connected";
+    const isConnecting = status === "Connecting…";
+
+    return (
+      <div className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className="inline-flex flex-shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] text-xs font-medium text-[var(--foreground)]"
+            style={{ width: 28, height: 28 }}
+          >
+            {item.letter}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-[var(--foreground)]">
+              {item.name}
+            </p>
+            <p className="truncate text-xs text-[var(--muted)]">
+              {isConnected
+                ? "Connected"
+                : isConnecting
+                  ? "Establishing connection…"
+                  : "Available"}
+            </p>
+          </div>
+        </div>
+        <span
+          className={cx(
+            "shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs",
+            isConnected
+              ? "text-[var(--muted)]"
+              : "text-[var(--foreground)] hover:bg-[var(--surface-muted)]",
+          )}
+        >
+          {isConnected ? (
+            <span className="inline-flex items-center gap-1">
+              <Check className="h-3 w-3" strokeWidth={2} />
+              Configure
+            </span>
+          ) : isConnecting ? (
+            <span className="inline-flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.75} />
+              Connecting
+            </span>
+          ) : (
+            "Connect"
+          )}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-[480px] flex-col">
-      <div className="flex h-12 items-center justify-between border-b border-[var(--border)] px-4">
-        <span className="text-xs font-medium">Extensions</span>
-        <span className="text-[11px] text-[var(--muted)]">Connect tools</span>
-      </div>
-      <div className="grid flex-1 gap-2 p-4 sm:grid-cols-2">
-        {items.map((item) => {
-          if (!at(t, item.delay)) return null;
-          const status =
-            item.name === "Slack" && slackDone
-              ? (item.final ?? item.status)
-              : item.status;
-          const connected = status === "Connected";
-          return (
-            <div
-              key={item.name}
-              className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-3"
-            >
-              <div className="flex items-center gap-2.5">
-                <span className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] text-xs font-medium">
-                  {item.name.slice(0, 1)}
-                </span>
-                <span className="text-sm">{item.name}</span>
+      <AppHeader>
+        <span className="text-sm font-medium text-[var(--foreground)]">
+          Integrations
+        </span>
+        <span className="flex-1" />
+        <span className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)]">
+          <Search
+            className="h-3.5 w-3.5 text-[var(--muted)]"
+            strokeWidth={1.75}
+          />
+        </span>
+      </AppHeader>
+
+      <div className="flex-1 overflow-hidden p-4">
+        <div className="mx-auto max-w-2xl space-y-6">
+          {connected.length > 0 ? (
+            <div>
+              <SectionLabel>Connected</SectionLabel>
+              <div className="mt-3 space-y-2">
+                {connected.map((item) => (
+                  <IntegrationRow key={item.name} item={item} />
+                ))}
               </div>
-              <span
-                className={cx(
-                  "text-[11px]",
-                  connected
-                    ? "text-[var(--foreground)]"
-                    : "text-[var(--muted-light)]",
-                )}
-              >
-                {connected ? (
-                  <span className="inline-flex items-center gap-1">
-                    <Check className="h-3 w-3" strokeWidth={2} />
-                    Connected
-                  </span>
-                ) : (
-                  status
-                )}
-              </span>
             </div>
-          );
-        })}
+          ) : null}
+          {available.length > 0 ? (
+            <div>
+              <SectionLabel>Available</SectionLabel>
+              <div className="mt-3 space-y-2">
+                {available.map((item) => (
+                  <IntegrationRow key={item.name} item={item} />
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
 }
 
+/* ─── Projects play ──────────────────────────────────────────────────────── */
+
+const PROJECT_CHATS = ["Q1 narrative", "Risk memo", "Hiring plan"];
+const PROJECT_FILES = ["Metrics.xlsx", "Deck v3.pdf", "Board notes"];
+
 function ProjectsPlay({ t }: { t: PlayClock }) {
-  const showHeader = at(t, 300);
-  const chats = at(t, 900);
-  const files = at(t, 1600);
-  const cta = at(t, 2400);
+  const showHeader = at(t, 200);
+  const showFiles = at(t, 1600);
+  const showInstructions = at(t, 2400);
+  // Derive active tab from play clock — no state needed, no effect cascade.
+  const activeTab: "chats" | "files" | "instructions" = showInstructions
+    ? "instructions"
+    : showFiles
+      ? "files"
+      : "chats";
 
   return (
     <div className="flex h-full min-h-[480px] flex-col">
-      <div className="flex h-12 items-center border-b border-[var(--border)] px-4">
-        <span className="text-xs font-medium">Projects</span>
-      </div>
-      <div className="flex-1 p-5">
+      <AppHeader>
         {showHeader ? (
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5">
-            <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--muted-light)]">
-              Active project
-            </p>
-            <h3
-              className="mt-2 text-2xl tracking-tight"
+          <>
+            <FolderOpen
+              className="h-4 w-4 text-[var(--muted)]"
+              strokeWidth={1.75}
+            />
+            <span
+              className="text-sm font-medium text-[var(--foreground)]"
               style={marketingSerifStyle()}
             >
               Board readiness
-            </h3>
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              Chats, files, and automations scoped to one workspace.
-            </p>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              {chats ? (
-                <div>
-                  <p className="text-[11px] font-medium text-[var(--muted-light)]">
-                    Chats
+            </span>
+            <span className="flex-1" />
+            <span className="inline-flex h-8 items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 text-xs">
+              <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <span className="hidden sm:inline">New chat</span>
+              <ChevronDown className="h-3 w-3 opacity-60" strokeWidth={1.75} />
+            </span>
+            <span className="inline-flex h-8 items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 text-xs">
+              <Upload className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <span className="hidden sm:inline">Upload</span>
+            </span>
+          </>
+        ) : null}
+      </AppHeader>
+
+      <div className="flex-1 overflow-hidden p-4">
+        <div className="mx-auto max-w-3xl">
+          <div className="inline-flex items-center gap-1 rounded-md p-1">
+            {(["chats", "files", "instructions"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                className={cx(
+                  "inline-flex items-center rounded-md px-3 py-1.5 text-xs capitalize transition-colors",
+                  activeTab === tab
+                    ? "bg-[var(--surface-subtle)] text-[var(--foreground)]"
+                    : "text-[var(--muted)] hover:text-[var(--foreground)]",
+                )}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4">
+            {activeTab === "chats" ? (
+              <div className="divide-y divide-[var(--border)]">
+                {PROJECT_CHATS.map((chat, i) =>
+                  at(t, 1000 + i * 300) ? (
+                    <div
+                      key={chat}
+                      className="flex w-full items-center gap-2 py-2 text-left text-sm text-[var(--foreground)] hover:opacity-80"
+                    >
+                      <MessageSquare
+                        className="h-[13px] w-[13px] text-[var(--muted-light)]"
+                        strokeWidth={1.75}
+                      />
+                      <span className="min-w-0 flex-1 truncate">{chat}</span>
+                    </div>
+                  ) : null,
+                )}
+              </div>
+            ) : null}
+            {activeTab === "files" ? (
+              <div className="divide-y divide-[var(--border)]">
+                {PROJECT_FILES.map((file, i) =>
+                  at(t, 1800 + i * 300) ? (
+                    <div
+                      key={file}
+                      className="flex w-full items-center gap-2 py-2 text-left text-sm text-[var(--foreground)] hover:opacity-80"
+                    >
+                      <FileText
+                        className="h-[13px] w-[13px] text-[var(--muted-light)]"
+                        strokeWidth={1.75}
+                      />
+                      <span className="min-w-0 flex-1 truncate">{file}</span>
+                    </div>
+                  ) : null,
+                )}
+              </div>
+            ) : null}
+            {activeTab === "instructions" ? (
+              <div>
+                <p className="text-xs text-[var(--muted)]">
+                  Set context and customize how Overlay responds in this
+                  project.
+                </p>
+                <div className="mt-3 rounded-md border border-[var(--border)] bg-[var(--background)] p-3">
+                  <p className="min-h-[6rem] text-sm text-[var(--foreground)]">
+                    This project tracks board readiness. Prioritize concise
+                    summaries, flag risks early, and reference the latest
+                    metrics from Financials.xlsx.
+                    {at(t, 3000) ? (
+                      <span className="ml-1 inline-block h-3 w-0.5 animate-pulse bg-[var(--foreground)]" />
+                    ) : null}
                   </p>
-                  <ul className="mt-2 space-y-1.5 text-sm">
-                    {["Q1 narrative", "Risk memo", "Hiring plan"].map(
-                      (item, i) =>
-                        at(t, 1000 + i * 250) ? (
-                          <li
-                            key={item}
-                            className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-1.5"
-                          >
-                            {item}
-                          </li>
-                        ) : null,
-                    )}
-                  </ul>
                 </div>
-              ) : null}
-              {files ? (
-                <div>
-                  <p className="text-[11px] font-medium text-[var(--muted-light)]">
-                    Files
-                  </p>
-                  <ul className="mt-2 space-y-1.5 text-sm">
-                    {["Metrics.xlsx", "Deck v3.pdf"].map((item, i) =>
-                      at(t, 1700 + i * 250) ? (
-                        <li
-                          key={item}
-                          className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-1.5"
-                        >
-                          {item}
-                        </li>
-                      ) : null,
-                    )}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
-            {cta ? (
-              <div className="mt-5 inline-flex rounded-lg bg-[var(--foreground)] px-3 py-2 text-xs font-medium text-[var(--background)]">
-                Open workspace
+                <p className="mt-2 text-[11px] text-[var(--muted-light)]">
+                  {at(t, 3200) ? "Saved" : "Saving…"}
+                </p>
               </div>
             ) : null}
           </div>
-        ) : null}
+        </div>
       </div>
     </div>
   );
 }
 
+/* ─── Automations play ───────────────────────────────────────────────────── */
+
+const AUTO_SUGGESTIONS = [
+  { icon: Zap, label: "Build a workflow" },
+  { icon: Globe2, label: "Monitor a site" },
+  { icon: PenLine, label: "Schedule a report" },
+];
+
+const AUTO_STEPS = [
+  { label: "Trigger · New file in Drive", delay: 1800 },
+  { label: "Extract knowledge", delay: 2600 },
+  { label: "Draft summary in Chat", delay: 3400 },
+  { label: "Request human approval", delay: 4200 },
+  { label: "Notify Slack channel", delay: 5400 },
+];
+
 function AutomationsPlay({ t }: { t: PlayClock }) {
-  const steps = [
-    { label: "Trigger · New file in Drive", delay: 400 },
-    { label: "Extract knowledge", delay: 1200 },
-    { label: "Draft summary in Chat", delay: 2000 },
-    { label: "Request human approval", delay: 2800 },
-    { label: "Notify Slack channel", delay: 3600 },
-  ];
-  const done = at(t, 4400);
+  const showGreeting = at(t, 0);
+  const showSuggestions = at(t, 200);
+  const selectedPill = at(t, 1200);
+  const showSteps = at(t, 1800);
+  const allDone = at(t, 6200);
 
   return (
     <div className="flex h-full min-h-[480px] flex-col">
-      <div className="flex h-12 items-center justify-between border-b border-[var(--border)] px-4">
-        <span className="text-xs font-medium">Automations</span>
-        <span className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-0.5 text-[10px]">
+      <AppHeader>
+        <ModelPill model="Auto" />
+        <span className="rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
           Governed
         </span>
-      </div>
-      <div className="flex-1 p-5">
-        <p className="text-sm font-medium" style={marketingSerifStyle()}>
-          Weekly knowledge digest
-        </p>
-        <p className="mt-1 text-xs text-[var(--muted)]">
-          Runs on a schedule. Consequential steps wait for approval.
-        </p>
-        <ol className="mt-6 space-y-2">
-          {steps.map((step, i) => {
-            if (!at(t, step.delay)) return null;
-            const isApproval = i === 3;
-            const complete = at(t, step.delay + 600);
-            return (
-              <li
-                key={step.label}
-                className={cx(
-                  "flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm",
-                  isApproval && !done
-                    ? "border-[var(--foreground)] bg-[var(--surface-subtle)]"
-                    : "border-[var(--border)] bg-[var(--surface-elevated)]",
-                )}
+      </AppHeader>
+
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {showSteps ? (
+          <div className="flex-1 overflow-hidden p-4">
+            <div className="mx-auto max-w-2xl">
+              <p
+                className="text-sm font-medium text-[var(--foreground)]"
+                style={marketingSerifStyle()}
               >
-                <span className="flex items-center gap-2">
-                  <span className="font-mono text-[10px] text-[var(--muted-light)]">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  {step.label}
-                </span>
-                <span className="text-[11px] text-[var(--muted)]">
-                  {isApproval && !done
-                    ? "Needs approval"
-                    : complete
-                      ? "Done"
-                      : "Running…"}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-        {done ? (
-          <p className="mt-4 text-xs text-[var(--muted)]">
-            Digest ready. Waiting on approval before notify.
-          </p>
-        ) : null}
+                Weekly knowledge digest
+              </p>
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                Runs on a schedule. Consequential steps wait for approval.
+              </p>
+              <ol className="mt-6 space-y-2">
+                {AUTO_STEPS.map((step, i) => {
+                  if (!at(t, step.delay)) return null;
+                  const isApproval = i === 3;
+                  const complete = at(t, step.delay + 600);
+                  return (
+                    <li
+                      key={step.label}
+                      className={cx(
+                        "flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm transition-colors",
+                        isApproval && !allDone
+                          ? "border-[var(--foreground)] bg-[var(--surface-subtle)]"
+                          : "border-[var(--border)] bg-[var(--surface-elevated)]",
+                      )}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="font-mono text-[10px] text-[var(--muted-light)]">
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        <span className="text-[var(--foreground)]">
+                          {step.label}
+                        </span>
+                      </span>
+                      <span className="text-[11px] text-[var(--muted)]">
+                        {isApproval && !allDone ? (
+                          <span className="inline-flex items-center gap-1">
+                            <Loader2
+                              className="h-3 w-3 animate-spin"
+                              strokeWidth={1.75}
+                            />
+                            Needs approval
+                          </span>
+                        ) : complete ? (
+                          <span className="inline-flex items-center gap-1 text-[var(--foreground)]">
+                            <Check className="h-3 w-3" strokeWidth={2} />
+                            Done
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1">
+                            <Loader2
+                              className="h-3 w-3 animate-spin"
+                              strokeWidth={1.75}
+                            />
+                            Running…
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+              {allDone ? (
+                <p className="mt-4 text-xs text-[var(--muted)]">
+                  Digest ready. Notifications sent.
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center px-4 py-8">
+            {showGreeting ? (
+              <p
+                className="text-3xl text-[var(--foreground)]"
+                style={marketingSerifStyle()}
+              >
+                Automate work
+              </p>
+            ) : null}
+            {showSuggestions ? (
+              <div className="mt-8 flex flex-wrap justify-center gap-2">
+                {AUTO_SUGGESTIONS.map((s, i) => {
+                  const visible = at(t, 400 + i * 200);
+                  const isSelected = selectedPill && i === 0;
+                  if (!visible) return null;
+                  return (
+                    <span
+                      key={s.label}
+                      className={cx(
+                        "inline-flex h-9 shrink-0 items-center gap-2 rounded-2xl border px-3.5 text-sm transition-colors",
+                        isSelected
+                          ? "border-[var(--foreground)] bg-[var(--surface-muted)] text-[var(--foreground)]"
+                          : "border-[var(--border)] bg-transparent text-[var(--foreground)]",
+                      )}
+                    >
+                      <s.icon
+                        className="h-[15px] w-[15px] shrink-0"
+                        strokeWidth={1.75}
+                      />
+                      {s.label}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <div className="px-3 pb-3 sm:px-4 sm:pb-4">
+        <div className="mx-auto max-w-[56rem]">
+          <ComposerShell active={showSteps}>
+            {selectedPill ? (
+              <p className="min-h-[1.5rem] px-1.5 py-1.5 text-sm text-[var(--foreground)]">
+                Build a workflow that digests new Drive files weekly
+              </p>
+            ) : (
+              <p className="min-h-[1.5rem] px-1.5 py-1.5 text-sm text-[var(--muted-light)]">
+                Describe a workflow to automate…
+              </p>
+            )}
+          </ComposerShell>
+        </div>
       </div>
     </div>
   );
 }
+
+/* ─── Surface stage ──────────────────────────────────────────────────────── */
 
 function SurfaceStage({ surface, t }: { surface: DemoSurface; t: PlayClock }) {
   switch (surface) {
@@ -484,19 +896,17 @@ function SurfaceStage({ surface, t }: { surface: DemoSurface; t: PlayClock }) {
 }
 
 const PLAY_DURATION: Record<DemoSurface, number> = {
-  chat: 7500,
+  chat: 9500,
   files: 4500,
   extensions: 4500,
   projects: 4000,
-  automations: 5500,
+  automations: 7000,
 };
 
-const AUTO_ADVANCE_GAP = 1800;
+const AUTO_ADVANCE_GAP = 2000;
 
-/**
- * One large product window. Sidebar switches surfaces; each surface runs a
- * short play script. Auto-advances when idle; pauses on hover/focus.
- */
+/* ─── Main demo component ────────────────────────────────────────────────── */
+
 export function ProductAppDemo() {
   const reduced = usePrefersReducedMotion();
   const [surface, setSurface] = useState<DemoSurface>("chat");
@@ -510,7 +920,6 @@ export function ProductAppDemo() {
     setPlayKey((k) => k + 1);
   }, []);
 
-  // Auto-advance when a play finishes (unless reduced motion / paused).
   useEffect(() => {
     if (reduced || paused) return;
     if (t < duration) return;
@@ -524,7 +933,7 @@ export function ProductAppDemo() {
 
   return (
     <div
-      className={marketingDemoFrame()}
+      className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--background)] shadow-[0_24px_80px_var(--overlay-scrim)]"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}
@@ -547,6 +956,7 @@ export function ProductAppDemo() {
       </div>
 
       <div className="grid md:grid-cols-[220px_minmax(0,1fr)]">
+        {/* Sidebar */}
         <aside className="hidden border-r border-[var(--border)] bg-[var(--sidebar-surface)] p-2 md:block">
           <div className="flex items-center gap-2 px-2 py-2">
             <Image
@@ -564,7 +974,7 @@ export function ProductAppDemo() {
             </span>
           </div>
           <nav
-            className="mt-3 space-y-0.5"
+            className="mt-3 space-y-0.5 px-2 py-3"
             aria-label="Product surfaces"
           >
             {SURFACES.map((item) => {
@@ -576,7 +986,7 @@ export function ProductAppDemo() {
                   aria-current={active ? "page" : undefined}
                   onClick={() => selectSurface(item.key)}
                   className={cx(
-                    "flex h-9 w-full items-center rounded-md px-3 text-left text-sm transition-colors",
+                    "flex h-9 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
                     active
                       ? "bg-[var(--surface-subtle)] text-[var(--foreground)]"
                       : "text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]",
@@ -586,27 +996,11 @@ export function ProductAppDemo() {
                     className="h-[15px] w-[15px] shrink-0"
                     strokeWidth={1.75}
                   />
-                  <span className="ml-2.5">{item.label}</span>
+                  <span>{item.label}</span>
                 </button>
               );
             })}
           </nav>
-          <div className="mt-6 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] p-2.5">
-            <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted-light)]">
-              Playing
-            </p>
-            <p className="mt-1 text-xs text-[var(--muted)]">
-              {SURFACES.find((s) => s.key === surface)?.label} session
-            </p>
-            <div className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--surface-subtle)]">
-              <div
-                className="h-full rounded-full bg-[var(--foreground)] transition-[width] duration-100 ease-linear"
-                style={{
-                  width: `${Math.min(100, (t / duration) * 100)}%`,
-                }}
-              />
-            </div>
-          </div>
         </aside>
 
         {/* Mobile surface switcher */}
@@ -631,6 +1025,7 @@ export function ProductAppDemo() {
           })}
         </div>
 
+        {/* Surface stage */}
         <div className="min-w-0 bg-[var(--background)]">
           <SurfaceStage surface={surface} t={t} />
         </div>
@@ -639,24 +1034,28 @@ export function ProductAppDemo() {
   );
 }
 
-/** Static mini-scenes for feature cards (no animation). */
+/* ─── Mini scenes for feature cards ──────────────────────────────────────── */
+
 export function MiniSceneModels() {
   return (
     <div className="space-y-1.5">
-      {["Auto", "GPT-5.4", "Private model"].map((name, i) => (
+      {[
+        { name: "Auto", tag: "Free" },
+        { name: "GPT-5.4", tag: "Hosted" },
+        { name: "Claude 4.5", tag: "Hosted" },
+        { name: "Private model", tag: "Private" },
+      ].map((m, i) => (
         <div
-          key={name}
+          key={m.name}
           className={cx(
-            "flex items-center justify-between rounded-md border border-[var(--border)] px-2 py-1.5 text-[11px]",
+            "flex items-center justify-between rounded-md border px-2 py-1.5 text-[11px]",
             i === 0
-              ? "bg-[var(--surface-elevated)]"
-              : "bg-[var(--background)]/60",
+              ? "border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]"
+              : "border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)]",
           )}
         >
-          <span>{name}</span>
-          <span className="text-[var(--muted-light)]">
-            {i === 2 ? "Private" : "Hosted"}
-          </span>
+          <span>{m.name}</span>
+          <span className="text-[var(--muted-light)]">{m.tag}</span>
         </div>
       ))}
     </div>
@@ -666,12 +1065,20 @@ export function MiniSceneModels() {
 export function MiniSceneKnowledge() {
   return (
     <div className="space-y-1.5">
-      {["Curriculum.pdf", "Team memory", "Notion wiki"].map((item) => (
+      {[
+        { icon: FileText, name: "Curriculum.pdf" },
+        { icon: Brain, name: "Team memory" },
+        { icon: BookOpen, name: "Notion wiki" },
+      ].map((item) => (
         <div
-          key={item}
-          className="rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1.5 text-[11px]"
+          key={item.name}
+          className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1.5 text-[11px]"
         >
-          {item}
+          <item.icon
+            className="h-3 w-3 text-[var(--muted-light)]"
+            strokeWidth={1.75}
+          />
+          <span className="truncate text-[var(--foreground)]">{item.name}</span>
         </div>
       ))}
     </div>
@@ -682,16 +1089,24 @@ export function MiniSceneAgents() {
   return (
     <div className="space-y-1.5">
       {[
-        { l: "Web research", s: "Allowed" },
-        { l: "Send email", s: "Approve" },
-        { l: "CRM write", s: "Blocked" },
+        { l: "Web research", s: "Allowed", ok: true },
+        { l: "Send email", s: "Approve", ok: false },
+        { l: "CRM write", s: "Blocked", ok: false },
       ].map((row) => (
         <div
           key={row.l}
-          className="flex justify-between rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1.5 text-[11px]"
+          className="flex items-center justify-between rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1.5 text-[11px]"
         >
-          <span>{row.l}</span>
-          <span className="text-[var(--muted-light)]">{row.s}</span>
+          <span className="text-[var(--foreground)]">{row.l}</span>
+          <span
+            className={cx(
+              "inline-flex items-center gap-1",
+              row.ok ? "text-[var(--foreground)]" : "text-[var(--muted)]",
+            )}
+          >
+            {row.ok ? <Check className="h-3 w-3" strokeWidth={2} /> : null}
+            {row.s}
+          </span>
         </div>
       ))}
     </div>
@@ -703,12 +1118,10 @@ export function MiniSceneWorkflows() {
     <div className="flex items-center gap-2 pt-4">
       {["01", "02", "03"].map((n, i) => (
         <div key={n} className="flex items-center gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] font-mono text-[11px]">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] font-mono text-[11px] text-[var(--foreground)]">
             {n}
           </span>
-          {i < 2 ? (
-            <span className="h-px w-4 bg-[var(--border)]" />
-          ) : null}
+          {i < 2 ? <span className="h-px w-4 bg-[var(--border)]" /> : null}
         </div>
       ))}
     </div>
@@ -722,10 +1135,10 @@ export function MiniSceneInfra() {
         <span
           key={label}
           className={cx(
-            "rounded-full border px-2.5 py-1 text-[11px]",
+            "rounded-md border px-2.5 py-1 text-[11px]",
             i === 1
-              ? "border-[var(--foreground)] bg-[var(--surface-elevated)]"
-              : "border-[var(--border)] bg-[var(--background)]/50 text-[var(--muted)]",
+              ? "border-[var(--foreground)] bg-[var(--surface-subtle)] text-[var(--foreground)]"
+              : "border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)]",
           )}
         >
           {label}
@@ -739,7 +1152,9 @@ export function MiniSceneData() {
   return (
     <div className="flex h-full flex-col justify-center gap-2">
       <div className="rounded-md border border-dashed border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-4 text-center">
-        <p className="text-xs font-medium">You define retention</p>
+        <p className="text-xs font-medium text-[var(--foreground)]">
+          You define retention
+        </p>
         <p className="mt-1 text-[10px] text-[var(--muted)]">
           Storage · providers · access
         </p>

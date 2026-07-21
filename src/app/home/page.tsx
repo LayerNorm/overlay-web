@@ -35,8 +35,6 @@ import {
   marketingEyebrow,
   marketingHeadingLg,
   marketingSerifStyle,
-  marketingTint,
-  type MarketingTint,
 } from "@/features/marketing/lib/marketingLayout";
 import {
   MARKETING_DEPLOY_URL,
@@ -125,13 +123,13 @@ const ENTERPRISE_ATTRIBUTES: Array<{
   },
 ];
 
-const EDUCATION_CARDS: Array<{ title: string; tint: MarketingTint }> = [
-  { title: "Curriculum-grounded lessons", tint: "clay" },
-  { title: "Rubric-based feedback", tint: "slate" },
-  { title: "Teacher assistants", tint: "olive" },
-  { title: "Student revision plans", tint: "stone" },
-  { title: "Admin reporting", tint: "sand" },
-  { title: "Governed knowledge", tint: "mist" },
+const EDUCATION_CARDS: Array<{ title: string }> = [
+  { title: "Curriculum-grounded lessons" },
+  { title: "Rubric-based feedback" },
+  { title: "Teacher assistants" },
+  { title: "Student revision plans" },
+  { title: "Admin reporting" },
+  { title: "Governed knowledge" },
 ];
 
 const FORWARD_STEPS = [
@@ -172,7 +170,11 @@ function SectionHeading({
   align?: "left" | "center";
 }) {
   return (
-    <div className={align === "center" ? "mx-auto max-w-3xl text-center" : "max-w-3xl"}>
+    <div
+      className={
+        align === "center" ? "mx-auto max-w-3xl text-center" : "max-w-3xl"
+      }
+    >
       <p className={marketingEyebrow()}>{eyebrow}</p>
       <h2
         className={`mt-4 ${marketingHeadingLg()}`}
@@ -197,7 +199,10 @@ function HomeLandingContent() {
     <StaticMarketingShell>
       <main className="flex-1">
         {/* Hero — copy first, one large demo below */}
-        <section id="hero" className="scroll-mt-20 px-5 pb-10 pt-10 md:px-8 md:pb-16 md:pt-14">
+        <section
+          id="hero"
+          className="scroll-mt-20 px-5 pb-10 pt-10 md:px-8 md:pb-16 md:pt-14"
+        >
           <div className="mx-auto max-w-7xl">
             <div className="mx-auto max-w-3xl text-center">
               <p className={marketingEyebrow()}>The open-source AI interface</p>
@@ -209,8 +214,8 @@ function HomeLandingContent() {
               </h1>
               <p className="mx-auto mt-6 max-w-2xl text-pretty text-base leading-7 text-[var(--muted)] md:text-lg">
                 One private workspace for models, knowledge, tools, and
-                agents—without locking you into a single vendor or infrastructure
-                provider.
+                agents—without locking you into a single vendor or
+                infrastructure provider.
               </p>
               <MarketingCtaRow className="justify-center">
                 <MarketingButton
@@ -242,8 +247,7 @@ function HomeLandingContent() {
             <div className="mt-12 md:mt-16">
               <ProductAppDemo />
               <p className="mt-3 text-center text-[11px] text-[var(--muted-light)]">
-                Click Chat, Files, Extensions, Projects, or Automations in the
-                sidebar to play each surface.
+                Hover to pause · click a surface in the sidebar to explore
               </p>
             </div>
           </div>
@@ -335,19 +339,15 @@ function HomeLandingContent() {
             align="center"
           />
           <div className="mt-10 grid gap-4 lg:grid-cols-2">
-            <div
-              className={`rounded-2xl p-7 md:p-9 ${marketingTint("clay")}`}
-            >
-              <p className="text-xs font-medium uppercase tracking-[0.2em] opacity-70">
-                For individuals
-              </p>
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-7 md:p-9">
+              <p className={marketingEyebrow()}>For individuals</p>
               <h3
                 className="mt-4 text-2xl tracking-tight md:text-3xl"
                 style={marketingSerifStyle()}
               >
                 Stop rebuilding context across AI tools.
               </h3>
-              <p className="mt-4 text-sm leading-6 opacity-85">
+              <p className="mt-4 text-sm leading-6 text-[var(--muted)]">
                 Models, files, memory, integrations, and generated work in one
                 workspace—something you can understand, customize, and take with
                 you.
@@ -362,19 +362,15 @@ function HomeLandingContent() {
                 </MarketingButton>
               </div>
             </div>
-            <div
-              className={`rounded-2xl p-7 md:p-9 ${marketingTint("slate")}`}
-            >
-              <p className="text-xs font-medium uppercase tracking-[0.2em] opacity-70">
-                For organizations
-              </p>
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-7 md:p-9">
+              <p className={marketingEyebrow()}>For organizations</p>
               <h3
                 className="mt-4 text-2xl tracking-tight md:text-3xl"
                 style={marketingSerifStyle()}
               >
                 Your own AI environment.
               </h3>
-              <p className="mt-4 text-sm leading-6 opacity-85">
+              <p className="mt-4 text-sm leading-6 text-[var(--muted)]">
                 Deploy a governed workspace on infrastructure you control.
                 Choose models, connect private knowledge, set permissions, and
                 keep ownership of the resulting intelligence.
@@ -407,26 +403,32 @@ function HomeLandingContent() {
                 className="mt-4 text-3xl tracking-tight md:text-5xl"
                 style={marketingSerifStyle()}
               >
-                Most enterprise AI products offer access. Overlay is built around
-                ownership.
+                Most enterprise AI products offer access. Overlay is built
+                around ownership.
               </h2>
             </div>
-            <div className="mt-10 grid gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-10 grid gap-px overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--border)] sm:grid-cols-2 lg:grid-cols-4">
               {ENTERPRISE_ATTRIBUTES.map((attr) => (
-                <article key={attr.title} className="bg-[#1a1a1a] p-5 md:p-6">
-                  <attr.icon className="h-5 w-5 text-white/90" strokeWidth={1.7} />
-                  <h3 className="mt-4 text-sm font-medium text-white">
+                <article
+                  key={attr.title}
+                  className="bg-[var(--surface-elevated)] p-5 md:p-6"
+                >
+                  <attr.icon
+                    className="h-5 w-5 text-[var(--foreground)]"
+                    strokeWidth={1.7}
+                  />
+                  <h3 className="mt-4 text-sm font-medium text-[var(--foreground)]">
                     {attr.title}
                   </h3>
-                  <p className="mt-2 text-sm leading-6 text-white/55">
+                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
                     {attr.body}
                   </p>
                 </article>
               ))}
             </div>
-            <div className="mt-14 grid gap-8 border-t border-white/10 pt-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
+            <div className="mt-14 grid gap-8 border-t border-[var(--border)] pt-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
               <div>
-                <p className="text-xs font-medium uppercase tracking-[0.24em] text-white/45">
+                <p className="text-xs font-medium uppercase tracking-[0.24em] text-[var(--muted-light)]">
                   Privacy you can verify
                 </p>
                 <h3
@@ -437,7 +439,7 @@ function HomeLandingContent() {
                 </h3>
               </div>
               <div>
-                <p className="text-base leading-7 text-white/60">
+                <p className="text-base leading-7 text-[var(--muted)]">
                   Overlay is open source because control requires access to the
                   software itself. Inspect it. Extend it. Self-host it. Fork it.
                   Open source is the architectural basis for sovereignty.
@@ -447,7 +449,7 @@ function HomeLandingContent() {
                     href={MARKETING_GITHUB_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex h-10 items-center gap-2 rounded-xl bg-white px-5 text-sm font-medium text-[#0a0a0a] transition-opacity hover:opacity-90"
+                    className="inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--background)] px-5 text-sm font-medium text-[var(--foreground)] transition-opacity hover:opacity-90"
                   >
                     View on GitHub
                     <ArrowRight className="h-4 w-4" strokeWidth={1.8} />
@@ -456,7 +458,7 @@ function HomeLandingContent() {
                     href={MARKETING_DOCS_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/20 bg-transparent px-5 text-sm font-medium text-white transition-colors hover:bg-white/10"
+                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--border)] bg-transparent px-5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
                   >
                     Documentation
                     <ArrowRight className="h-4 w-4" strokeWidth={1.8} />
@@ -480,10 +482,10 @@ function HomeLandingContent() {
                 {EDUCATION_CARDS.map((card) => (
                   <div
                     key={card.title}
-                    className={`rounded-xl p-4 text-sm leading-5 ${marketingTint(card.tint)}`}
+                    className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-sm leading-5 text-[var(--foreground)]"
                   >
                     <GraduationCap
-                      className="mb-3 h-4 w-4 opacity-70"
+                      className="mb-3 h-4 w-4 text-[var(--muted)]"
                       strokeWidth={1.7}
                     />
                     {card.title}
