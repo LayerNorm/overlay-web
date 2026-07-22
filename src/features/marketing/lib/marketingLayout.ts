@@ -2,7 +2,7 @@
  * Shared layout + typography helpers for marketing pages.
  *
  * These consolidate the section/container/grid/eyebrow/heading strings that
- * were previously inlined (and drifted) across home, use-cases/business, and pricing.
+ * were previously inlined (and drifted) across home and pricing.
  * All token-based — they resolve correctly under LandingThemeProvider.
  *
  * Lives in `features/marketing/` so both `features/marketing/components/*` and
@@ -46,6 +46,18 @@ export function marketingSerifStyle(): { fontFamily: string } {
 }
 
 /**
+ * Shared class for marketing nav / chrome text that should match the brand
+ * wordmark face (Libre Baskerville via `--font-serif`). Pair with
+ * `marketingSerifStyle()` for the actual font-family.
+ */
+export function marketingNavText(): string {
+  return "text-sm tracking-tight";
+}
+
+/** App sidebar brand mark size — keep marketing logo identical. */
+export const MARKETING_LOGO_SIZE = 10 as const;
+
+/**
  * Small icon chip used in feature/workflow lists. Matches the app's
  * `rounded-md` control styling (not `rounded-lg`).
  */
@@ -56,4 +68,38 @@ export function marketingIconChip(): string {
 /** Small feature card in a primitives grid. */
 export function marketingFeatureCard(): string {
   return "bg-[var(--surface-elevated)] p-5";
+}
+
+/** Large product demo window chrome. */
+export function marketingDemoFrame(): string {
+  return "overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--background)] shadow-[0_24px_80px_var(--overlay-scrim)]";
+}
+
+/**
+ * Muted tint fills for collection cards (light paper palette).
+ * Dark mode falls back to elevated surfaces via CSS vars on the element.
+ */
+export const MARKETING_TINTS = {
+  clay: "bg-[#c9ad8f] text-[#1c1712]",
+  slate: "bg-[#8fa3b0] text-[#12181c]",
+  olive: "bg-[#9a9b7a] text-[#17180f]",
+  stone: "bg-[#b8b2a7] text-[#1a1814]",
+  sand: "bg-[#d4c4a8] text-[#1c1710]",
+  mist: "bg-[#a8b4a6] text-[#141914]",
+} as const;
+
+export type MarketingTint = keyof typeof MARKETING_TINTS;
+
+export function marketingTint(tint: MarketingTint): string {
+  return MARKETING_TINTS[tint];
+}
+
+/** Mini-scene stage inside a feature card. */
+export function marketingMiniScene(): string {
+  return "relative h-[140px] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3";
+}
+
+/** Dark ownership / security band surface — inverts the theme tokens. */
+export function marketingDarkBand(): string {
+  return "bg-[var(--foreground)] text-[var(--background)]";
 }
