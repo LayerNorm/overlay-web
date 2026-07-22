@@ -3,7 +3,15 @@
 // Canonical notebook editor. Platform routing, persistence, and rich host UI
 // are supplied through the adapter props declared below.
 
-import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  type ReactNode,
+  type Ref,
+} from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -79,7 +87,11 @@ import {
 } from '@overlay/app-core'
 import { NotebookAgentComposer, NotebookAgentPanel } from './agent-panel'
 import { NotebookAgentHeader, NotebookHeader } from './header'
-import { NotebookEmptyState, NotebookNotesSidebar } from './sidebar'
+import {
+  NotebookEmptyState,
+  NotebookNotesSidebar,
+  type NotebookNotesSidebarProps,
+} from './sidebar'
 import { NotebookFloatingFormatToolbar } from './format-toolbar'
 import { AppScreenBody, AppScreenShell } from '../shell'
 import {
@@ -117,6 +129,36 @@ export interface NotebookEditorMediaAdapter {
   persistImage(file: File): Promise<{ src: string; alt?: string }>
 }
 
+export interface NotebookAgentComposerRenderProps {
+  value: string
+  disabled: boolean
+  running: boolean
+  canSend: boolean
+  placeholder: string
+  models: readonly NotebookEditorModel[]
+  selectedModelId: string
+  onChange(value: string): void
+  onMentionsChange(mentions: NotebookEditorMention[]): void
+  onModelChange(modelId: string): void
+  onKeyDown(event: React.KeyboardEvent): void
+  onSend(): void
+  onStop(): void
+}
+
+export interface NotebookEditorHeaderRenderProps {
+  activeNote: NotebookNote | null
+  loading: boolean
+  title: string
+  isDirty: boolean
+  agentPanelOpen: boolean
+  onCreateNote(): void
+  onDeleteNote?(): void
+  onTitleChange(value: string): void
+  onTitleBlur(): void
+  onTitleKeyDown(event: React.KeyboardEvent<HTMLInputElement>): void
+  onToggleAgentPanel(): void
+}
+
 export interface CanonicalNotebookEditorProps {
   noteId: string | null
   hideSidebar?: boolean
@@ -147,10 +189,17 @@ export interface CanonicalNotebookEditorProps {
   logo?: ReactNode
   media?: NotebookEditorMediaAdapter
   focusRequest?: number
+  contentContainerRef?: Ref<HTMLDivElement>
   externalInsertion?: { id: string; text: string }
+  controlledAgentPanelOpen?: boolean
+  agentPanelMode?: 'docked' | 'floating'
+  createNoteRequest?: number
   onHydrated?(note: NotebookNote): void
   onAgentPanelOpenChange?(open: boolean): void
   onDeleteNote?(noteId: string): void
+  renderNotesSidebar?(props: NotebookNotesSidebarProps): ReactNode
+  renderAgentComposer?(props: NotebookAgentComposerRenderProps): ReactNode
+  renderHeader?(props: NotebookEditorHeaderRenderProps): ReactNode
 }
 
 const lowlight = createLowlight(common)
@@ -198,10 +247,17 @@ export function CanonicalNotebookEditor({
   logo,
   media,
   focusRequest,
+  contentContainerRef,
   externalInsertion,
+  controlledAgentPanelOpen,
+  agentPanelMode = 'floating',
+  createNoteRequest,
   onHydrated,
   onAgentPanelOpenChange,
   onDeleteNote,
+  renderNotesSidebar,
+  renderAgentComposer,
+  renderHeader,
 }: CanonicalNotebookEditorProps) {
   const [notes, setNotes] = useState<NotebookNote[]>([])
   const [activeNote, setActiveNote] = useState<NotebookNote | null>(null)
@@ -229,6 +285,7 @@ export function CanonicalNotebookEditor({
   const onNoteChangedRef = useRef(onNoteChanged)
   const mediaRef = useRef(media)
   const lastInsertionRef = useRef<string | null>(null)
+  const lastCreateNoteRequestRef = useRef(createNoteRequest)
   const [editorConflict, setEditorConflict] = useState<NotebookEditorConflict | undefined>()
 
   useEffect(() => {
@@ -299,6 +356,11 @@ export function CanonicalNotebookEditor({
     setAgentRunning(false)
     setAgentItems([])
   }, [activeNote?._id])
+
+  useEffect(() => {
+    if (controlledAgentPanelOpen === undefined) return
+    setAgentPanelOpen(controlledAgentPanelOpen)
+  }, [controlledAgentPanelOpen])
 
   const editor = useEditor({
     extensions: [
@@ -986,6 +1048,15 @@ export function CanonicalNotebookEditor({
     openNote(note)
   }
 
+  const createNoteRef = useRef(createNote)
+  createNoteRef.current = createNote
+  useEffect(() => {
+    if (createNoteRequest === undefined) return
+    if (lastCreateNoteRequestRef.current === createNoteRequest) return
+    lastCreateNoteRequestRef.current = createNoteRequest
+    void createNoteRef.current()
+  }, [createNoteRequest])
+
   const deleteNote = useCallback(async (noteId: string, event?: React.MouseEvent) => {
     event?.stopPropagation()
     if (!repository.delete) return
@@ -1003,12 +1074,11 @@ export function CanonicalNotebookEditor({
       lifecycleController.clearSelection()
     }
   }, [lifecycleController, notes, onDeleteNote, onNavigateNote, repository])
-  const deleteSidebarNote = useCallback((noteId: string, event: React.MouseEvent) => {
+  const deleteSidebarNote = useCallback((noteId: string, event?: React.MouseEvent) => {
     void deleteNote(noteId, event)
   }, [deleteNote])
 
-  function handleTitleChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const newTitle = event.target.value
+  function updateTitle(newTitle: string) {
     setTitle(newTitle)
     titleRef.current = newTitle
     if (activeNoteRef.current) {
@@ -1017,6 +1087,10 @@ export function CanonicalNotebookEditor({
         content: editor?.getHTML() || activeNoteRef.current.content || '',
       })
     }
+  }
+
+  function handleTitleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    updateTitle(event.target.value)
   }
 
   async function commitTitleChange() {
@@ -1107,7 +1181,30 @@ export function CanonicalNotebookEditor({
     />
   )
 
-  const agentComposer = (
+  const agentComposerProps: NotebookAgentComposerRenderProps = {
+    value: agentInput,
+    disabled: agentRunning,
+    running: agentRunning,
+    canSend: Boolean(agentInput.trim()),
+    placeholder: 'Ask about this note or describe edits, use @ to reference files, skills...',
+    models,
+    selectedModelId,
+    onChange: setAgentInput,
+    onMentionsChange: setAgentMentions,
+    onModelChange: (modelId) => {
+      setSelectedModelId(modelId)
+      onModelChange?.(modelId)
+    },
+    onKeyDown: (event) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault()
+        if (!agentRunning && agentInput.trim()) void runNotebookAgent()
+      }
+    },
+    onSend: () => void runNotebookAgent(),
+    onStop: stopNotebookAgent,
+  }
+  const agentComposer = renderAgentComposer?.(agentComposerProps) ?? (
     <NotebookAgentComposer
       running={agentRunning}
       canSend={Boolean(agentInput.trim())}
@@ -1141,10 +1238,23 @@ export function CanonicalNotebookEditor({
 
   const overlayLogo = logo ?? <span className="overlay-stream-marker h-3.5 w-3.5" aria-hidden />
   const resolvingRequestedNote = Boolean(selectionPending || (noteId && activeNote?._id !== noteId))
+  const notebookHeaderProps: NotebookEditorHeaderRenderProps = {
+    activeNote,
+    loading: resolvingRequestedNote,
+    title,
+    isDirty,
+    agentPanelOpen,
+    onCreateNote: () => void createNote(),
+    onDeleteNote: repository.delete && activeNote ? () => void deleteNote(activeNote._id) : undefined,
+    onTitleChange: updateTitle,
+    onTitleBlur: () => void commitTitleChange(),
+    onTitleKeyDown: handleTitleKeyDown,
+    onToggleAgentPanel: () => void handleToggleAgentPanel(),
+  }
 
   return (
     <AppScreenShell
-      header={
+      header={renderHeader ? renderHeader(notebookHeaderProps) : (
         <NotebookHeader
           activeNote={activeNote}
           loading={resolvingRequestedNote}
@@ -1168,7 +1278,7 @@ export function CanonicalNotebookEditor({
           onTitleKeyDown={handleTitleKeyDown}
           onToggleAgentPanel={() => void handleToggleAgentPanel()}
         />
-      }
+      )}
       rightPanel={agentPanelOpen && activeNote ? (
         <NotebookAgentPanel
           header={assistantHeader}
@@ -1183,19 +1293,27 @@ export function CanonicalNotebookEditor({
       ) : null}
       rightPanelOpen={agentPanelOpen && Boolean(activeNote)}
       rightPanelWidth={400}
-      rightPanelMode="floating"
+      rightPanelMode={agentPanelMode}
       onRightPanelClose={() => void handleToggleAgentPanel()}
     >
-      <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex h-full flex-row">
-        {showNotesSidebar ? (
-          <NotebookNotesSidebar
-            notes={notes}
-            activeNoteId={activeNote?._id}
-            onCreateNote={() => void createNote()}
-            onOpenNote={(note) => onNavigateNote(note._id)}
-            onDeleteNote={deleteSidebarNote}
-          />
-        ) : null}
+      <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="relative flex h-full flex-row">
+        {showNotesSidebar
+          ? (renderNotesSidebar?.({
+              notes,
+              activeNoteId: activeNote?._id,
+              onCreateNote: () => void createNote(),
+              onOpenNote: (note) => onNavigateNote(note._id),
+              onDeleteNote: deleteSidebarNote,
+            }) ?? (
+              <NotebookNotesSidebar
+                notes={notes}
+                activeNoteId={activeNote?._id}
+                onCreateNote={() => void createNote()}
+                onOpenNote={(note) => onNavigateNote(note._id)}
+                onDeleteNote={deleteSidebarNote}
+              />
+            ))
+          : null}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {activeNote ? (
             <>
@@ -1206,7 +1324,7 @@ export function CanonicalNotebookEditor({
             ) : null}
             <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-                <div className="h-full overflow-y-auto px-6 py-4">
+                <div ref={contentContainerRef} className="h-full overflow-y-auto px-6 py-4">
                   <EditorContent editor={editor} />
                 </div>
 

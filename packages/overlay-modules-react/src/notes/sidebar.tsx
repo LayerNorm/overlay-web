@@ -9,7 +9,7 @@ export interface NotebookNotesSidebarProps {
   activeNoteId?: string | null
   onCreateNote: () => void
   onOpenNote: (note: NotebookNote) => void
-  onDeleteNote: (noteId: string, event: MouseEvent) => void
+  onDeleteNote: (noteId: string, event?: MouseEvent) => void
 }
 
 export function NotebookNotesSidebar({
@@ -49,7 +49,7 @@ interface NotebookNoteRowProps {
   note: NotebookNote
   active: boolean
   onOpenNote: (note: NotebookNote) => void
-  onDeleteNote: (noteId: string, event: MouseEvent) => void
+  onDeleteNote: (noteId: string, event?: MouseEvent) => void
 }
 
 const NotebookNoteRow = memo(function NotebookNoteRow({

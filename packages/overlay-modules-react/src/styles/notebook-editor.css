@@ -90,7 +90,7 @@
   font-size: 0.9rem;
   line-height: 1.4;
   font-weight: 600;
-  color: #525252;
+  color: var(--muted);
 }
 
 .app-note-editor ul,
@@ -113,16 +113,17 @@
 
 .app-note-editor blockquote {
   margin: 0 0 1em;
-  border-left: 3px solid #d4d4d8;
+  border-left: 3px solid var(--border);
   padding-left: 0.9rem;
-  color: #52525b;
+  color: var(--muted);
 }
 
 .app-note-editor pre {
   margin: 0 0 1em;
   overflow-x: auto;
   border-radius: 12px;
-  background: #f5f5f5;
+  background: var(--surface-subtle);
+  color: var(--foreground);
   padding: 0.9rem 1rem;
   font-size: 0.9rem;
   line-height: 1.6;
@@ -130,7 +131,8 @@
 
 .app-note-editor code {
   border-radius: 6px;
-  background: #f5f5f5;
+  background: var(--surface-subtle);
+  color: var(--foreground);
   padding: 0.1rem 0.35rem;
   font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
   font-size: 0.9em;
@@ -144,18 +146,18 @@
 .app-note-editor hr {
   margin: 1.25rem 0;
   border: 0;
-  border-top: 1px solid #e4e4e7;
+  border-top: 1px solid var(--border);
 }
 
 .app-note-editor a {
-  color: #0a0a0a;
+  color: var(--link, var(--foreground));
   text-decoration: underline;
   text-underline-offset: 0.18em;
 }
 
 .app-note-editor p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
-  color: #a1a1aa;
+  color: var(--muted-light);
   pointer-events: none;
   float: left;
   height: 0;
@@ -184,7 +186,8 @@
 }
 
 .app-note-editor mark {
-  background: #fff3a3;
+  background: color-mix(in srgb, var(--warning, #f59e0b) 35%, transparent);
+  color: var(--foreground);
   border-radius: 0.25rem;
   padding: 0.05rem 0.2rem;
 }
@@ -200,7 +203,8 @@
 }
 
 .app-note-editor .Tiptap-mathematics-editor {
-  background: #f5f5f5;
+  background: var(--surface-subtle);
+  color: var(--foreground);
   border-radius: 0.35rem;
   padding: 0.1rem 0.4rem;
   font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
@@ -235,40 +239,6 @@
   border: 0;
   border-radius: 0.85rem;
   margin: 0.25rem 0 1rem;
-}
-
-/* Dark-mode overrides for hardcoded editor colors */
-[data-theme='dark'] .app-note-editor pre {
-  background: var(--surface-subtle);
-  color: var(--foreground);
-}
-
-[data-theme='dark'] .app-note-editor code {
-  background: var(--surface-subtle);
-  color: var(--foreground);
-}
-
-[data-theme='dark'] .app-note-editor blockquote {
-  border-left-color: var(--border);
-  color: var(--muted);
-}
-
-[data-theme='dark'] .app-note-editor h5,
-[data-theme='dark'] .app-note-editor h6 {
-  color: var(--muted);
-}
-
-[data-theme='dark'] .app-note-editor hr {
-  border-top-color: var(--border);
-}
-
-[data-theme='dark'] .app-note-editor a {
-  color: var(--foreground);
-}
-
-[data-theme='dark'] .app-note-editor .Tiptap-mathematics-editor {
-  background: var(--surface-subtle);
-  color: var(--foreground);
 }
 
 /* Deterministic parity harness notebook states. */

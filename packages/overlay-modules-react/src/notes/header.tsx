@@ -17,6 +17,7 @@ export interface NotebookHeaderProps {
   assistantHeader?: ReactNode
   leading?: ReactNode
   hideBackButton?: boolean
+  hideActions?: boolean
   onDeleteNote?: () => void
   onBackToFiles: () => void
   onCreateNote: () => void
@@ -38,6 +39,7 @@ export function NotebookHeader({
   assistantHeader,
   leading,
   hideBackButton,
+  hideActions,
   onDeleteNote,
   onBackToFiles,
   onCreateNote,
@@ -63,7 +65,7 @@ export function NotebookHeader({
         title="Notes"
         className={headerClassName}
         style={headerStyle}
-        actions={
+        actions={!hideActions ? (
           <button
             onClick={onCreateNote}
             className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-1.5 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
@@ -71,7 +73,7 @@ export function NotebookHeader({
             <Plus size={14} />
             New note
           </button>
-        }
+        ) : undefined}
       />
     )
   }
@@ -100,7 +102,7 @@ export function NotebookHeader({
           className={`flex-1 bg-transparent font-medium text-[var(--foreground)] outline-none placeholder:text-[var(--muted)] ${compact ? 'text-[19px]' : 'text-xl'}`}
           style={{ fontFamily: 'var(--font-serif)' }}
         />
-        <div className="flex shrink-0 items-center gap-1.5">
+        {!hideActions ? <div className="flex shrink-0 items-center gap-1.5">
           {projectName && (
             <span className="flex items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
               <FolderOpen size={9} />
@@ -131,7 +133,7 @@ export function NotebookHeader({
           >
             <MessageCircle size={compact ? 13 : 16} />
           </button>
-        </div>
+        </div> : null}
       </div>
       {agentPanelOpen ? assistantHeader : null}
     </AppScreenHeader>
