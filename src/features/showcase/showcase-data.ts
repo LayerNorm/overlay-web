@@ -212,12 +212,12 @@ export const SHOWCASE_KNOWLEDGE_NODES: KnowledgeSurfaceNode[] = SHOWCASE_FILES.m
 })
 
 export const SHOWCASE_CONNECTORS: ConnectorCatalogItem[] = [
-  { id: 'gmail', providerKey: 'gmail', slug: 'gmail', name: 'Gmail', description: 'Search, draft, and send email', icon: '', isConnected: true },
-  { id: 'drive', providerKey: 'googledrive', slug: 'googledrive', name: 'Google Drive', description: 'Find and work with files', icon: '', isConnected: true },
-  { id: 'linear', providerKey: 'linear', slug: 'linear', name: 'Linear', description: 'Create and update issues', icon: '', isConnected: true },
-  { id: 'notion', providerKey: 'notion', slug: 'notion', name: 'Notion', description: 'Search and create pages', icon: '' },
-  { id: 'slack', providerKey: 'slack', slug: 'slack', name: 'Slack', description: 'Read channels and send messages', icon: '' },
-  { id: 'github', providerKey: 'github', slug: 'github', name: 'GitHub', description: 'Inspect repositories and manage work', icon: '' },
+  { id: 'gmail', providerKey: 'gmail', slug: 'gmail', name: 'Gmail', description: 'Search, draft, and send email', icon: '', logoUrl: 'https://api.iconify.design/logos:google-gmail.svg', isConnected: true },
+  { id: 'drive', providerKey: 'googledrive', slug: 'googledrive', name: 'Google Drive', description: 'Find and work with files', icon: '', logoUrl: 'https://api.iconify.design/logos:google-drive.svg', isConnected: true },
+  { id: 'linear', providerKey: 'linear', slug: 'linear', name: 'Linear', description: 'Create and update issues', icon: '', logoUrl: 'https://api.iconify.design/logos:linear-icon.svg', isConnected: true },
+  { id: 'notion', providerKey: 'notion', slug: 'notion', name: 'Notion', description: 'Search and create pages', icon: '', logoUrl: 'https://api.iconify.design/logos:notion-icon.svg' },
+  { id: 'slack', providerKey: 'slack', slug: 'slack', name: 'Slack', description: 'Read channels and send messages', icon: '', logoUrl: 'https://api.iconify.design/logos:slack-icon.svg' },
+  { id: 'github', providerKey: 'github', slug: 'github', name: 'GitHub', description: 'Inspect repositories and manage work', icon: '', logoUrl: 'https://api.iconify.design/logos:github-icon.svg' },
 ]
 
 export const SHOWCASE_PROJECTS = [

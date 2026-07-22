@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { useLandingTheme } from "@/contexts/LandingThemeContext";
 import { AuthBoundary } from "@/contexts/AuthContext";
 import { PublicSiteRail } from '@/components/layout/PublicSiteRail'
@@ -42,6 +43,11 @@ export function useStaticMarketingTheme() {
 
 export function StaticMarketingShell({ children }: { children: ReactNode }) {
   const theme = useStaticMarketingTheme();
+  const pathname = usePathname() ?? "";
+
+  if (pathname.startsWith("/app/")) {
+    return <>{children}</>;
+  }
 
   return (
     <AuthBoundary>

@@ -9,6 +9,9 @@ const required = [
   'src/app/about/page.tsx',
   'src/app/explore/[surface]/page.tsx',
   'src/app/app/_components/AppShellSidebar.tsx',
+  'src/app/app/home/page.tsx',
+  'src/app/app/manifesto/page.tsx',
+  'src/app/app/pricing/page.tsx',
   'src/components/layout/AppSidebar.tsx',
   'src/features/chat/components/ChatExperience.tsx',
   'src/features/showcase/PublicShowcaseKnowledgeView.tsx',
@@ -44,6 +47,10 @@ if (!rootPage.includes("redirect('/app/chat?showcase=1&id=showcase-welcome')")) 
 const appSidebar = read('src/components/layout/AppSidebar.tsx')
 if (!appSidebar.includes('publicShowcase')) violations.push('the real app sidebar must own public showcase mode')
 if (!appSidebar.includes('setShowcaseSidebarCollapsed')) violations.push('the real app sidebar must remain expandable in public mode')
+if (!appSidebar.includes('useState(false)')) violations.push('the public showcase sidebar must start expanded')
+for (const route of ['/app/home?showcase=1', '/app/manifesto?showcase=1', '/app/pricing?showcase=1']) {
+  if (!appSidebar.includes(route)) violations.push(`public marketing navigation must remain in the app shell: ${route}`)
+}
 
 const shellSidebar = read('src/app/app/_components/AppShellSidebar.tsx')
 for (const adapter of [
@@ -69,7 +76,8 @@ if (!knowledge.includes('SharedKnowledgeSurface')) violations.push('public files
 if (!knowledge.includes('FileViewer')) violations.push('public files must use the shared production file viewer')
 
 const projects = read('src/features/showcase/PublicShowcaseProjectsView.tsx')
-if (!projects.includes('ProjectsModuleShell')) violations.push('public projects must use the production project shell')
+if (!projects.includes('ProjectDetail')) violations.push('public projects must use the production project detail')
+if (projects.includes('ProjectsModuleShell')) violations.push('public projects must not render a second project sidebar')
 
 const automations = read('src/features/showcase/PublicShowcaseAutomationsView.tsx')
 if (!automations.includes('AutomationGraphCanvas')) violations.push('public automations must use the production automation graph')
@@ -77,8 +85,30 @@ if (!automations.includes('AutomationGraphCanvas')) violations.push('public auto
 const tools = read('src/features/showcase/PublicShowcaseToolsView.tsx')
 if (!tools.includes('IntegrationsPanel')) violations.push('public extensions must use the production integrations panel')
 
+const showcaseData = read('src/features/showcase/showcase-data.ts')
+if (!showcaseData.includes('logos:google-gmail.svg') || !showcaseData.includes('logos:github-icon.svg')) {
+  violations.push('static showcase connectors must include real logo assets')
+}
+
+const signInForm = read('src/features/auth/components/SignInForm.tsx')
+if (!signInForm.includes('Loading sign-in options')) violations.push('sign-in prompts must render a loading state while auth options hydrate')
+
+const marketingShell = read('src/features/marketing/components/StaticMarketingShell.tsx')
+if (!marketingShell.includes('pathname.startsWith("/app/")')) {
+  violations.push('marketing bodies must embed inside the production app shell')
+}
+
 const home = read('src/app/home/page.tsx')
-if (!home.includes("redirect('/')")) violations.push('/home must redirect to the public workspace')
+if (!home.includes("redirect('/app/home?showcase=1')")) violations.push('/home must redirect to the in-shell public marketing page')
+for (const [path, destination] of [
+  ['src/app/about/page.tsx', '/app/home?showcase=1'],
+  ['src/app/manifesto/page.tsx', '/app/manifesto?showcase=1'],
+  ['src/app/pricing/page.tsx', '/app/pricing?showcase=1'],
+]) {
+  if (!read(path).includes(`redirect('${destination}')`)) {
+    violations.push(`${path} must redirect to ${destination}`)
+  }
+}
 
 if (violations.length > 0) {
   console.error('Public showcase boundary check failed:')

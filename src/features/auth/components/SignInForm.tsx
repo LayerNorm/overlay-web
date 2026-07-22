@@ -38,6 +38,26 @@ export function SignInForm({ redirectTo, onClose, ssoEnabled = true }: SignInFor
   const showSso = Boolean(ssoEnabled && authUiOptions?.supportsSso && ssoProviders.length > 0)
   const showEmail = Boolean(authUiOptions?.supportsPasswordSignIn || authUiOptions?.supportsPasswordSignUp)
 
+  if (authUiOptions === null) {
+    return (
+      <div className="space-y-2" role="status" aria-label="Loading sign-in options">
+        {[0, 1, 2].map((item) => (
+          <div
+            key={item}
+            className="flex h-[42px] w-full animate-pulse items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)]"
+          >
+            <span className="h-3 w-32 rounded bg-[var(--border)]" />
+          </div>
+        ))}
+        <div className="flex gap-2 pt-1">
+          <div className="h-[42px] min-w-0 flex-1 animate-pulse rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)]" />
+          <div className="h-[42px] w-20 animate-pulse rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)]" />
+        </div>
+        <span className="sr-only">Loading sign-in options…</span>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-2">
       {showSso ? (

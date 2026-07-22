@@ -108,7 +108,7 @@ export default function AppSidebar({
     getSidebarCollapsedSnapshot,
     () => false,
   )
-  const [showcaseSidebarCollapsed, setShowcaseSidebarCollapsed] = useState(true)
+  const [showcaseSidebarCollapsed, setShowcaseSidebarCollapsed] = useState(false)
   const sidebarCollapsed = publicShowcase ? showcaseSidebarCollapsed : storedSidebarCollapsed
   const setSidebarCollapsed = useCallback((next: boolean) => {
     if (publicShowcase) setShowcaseSidebarCollapsed(next)
@@ -680,10 +680,9 @@ export default function AppSidebar({
       <SidebarSection className={`space-y-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
         {publicShowcase && !sidebarCollapsed ? (
           <nav aria-label="Overlay information" className="grid grid-cols-2 gap-x-3 gap-y-1 px-2 text-[11px] text-[var(--muted)]">
-            <Link href="/" className="hover:text-[var(--foreground)]">Home</Link>
-            <Link href="/about" className="hover:text-[var(--foreground)]">About</Link>
-            <Link href="/manifesto" className="hover:text-[var(--foreground)]">Manifesto</Link>
-            <Link href="/pricing" className="hover:text-[var(--foreground)]">Pricing</Link>
+            <Link href="/app/home?showcase=1" className="hover:text-[var(--foreground)]">Home</Link>
+            <Link href="/app/manifesto?showcase=1" className="hover:text-[var(--foreground)]">Manifesto</Link>
+            <Link href="/app/pricing?showcase=1" className="hover:text-[var(--foreground)]">Pricing</Link>
             <Link href="https://github.com/DevelopedByDev/overlay-web#readme" className="hover:text-[var(--foreground)]">Docs</Link>
           </nav>
         ) : null}

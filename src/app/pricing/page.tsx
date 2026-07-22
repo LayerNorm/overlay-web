@@ -1,7 +1,5 @@
-import PricingClient from './PricingClient'
-import { getOverlayCapabilitiesSync } from '@/server/capabilities'
+import { redirect } from 'next/navigation'
 
 export default function PricingPage() {
-  const capabilities = getOverlayCapabilitiesSync()
-  return <PricingClient billingEnabled={capabilities.billing} />
+  redirect('/app/pricing?showcase=1')
 }

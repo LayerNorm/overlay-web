@@ -19,6 +19,7 @@ test('public workspace has a deterministic outcome-led seed', () => {
   assert.equal(SHOWCASE_AUTOMATIONS.length, 3)
   assert.ok(SHOWCASE_CONNECTORS.some((connector) => connector.isConnected))
   assert.ok(SHOWCASE_CONNECTORS.some((connector) => !connector.isConnected))
+  assert.ok(SHOWCASE_CONNECTORS.every((connector) => connector.logoUrl?.endsWith('.svg')))
   assert.ok(SHOWCASE_SKILLS.length >= 3)
   assert.ok(SHOWCASE_MCPS.length >= 2)
 
