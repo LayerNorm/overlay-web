@@ -5,6 +5,7 @@ import { getInitialChatHistory } from '@/server/app/route-data'
 import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
 import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
+import { PublicShowcaseAutomationsView } from '@/features/showcase/PublicShowcaseAutomationsView'
 
 function DisabledAutomationsRoute() {
   return (
@@ -45,9 +46,17 @@ async function AutomationsRouteContent({
   )
 }
 
-export default async function AutomationsPage() {
+export default async function AutomationsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ showcase?: string | string[] }>
+}) {
   const capabilities = getOverlayCapabilitiesSync()
   const session = await getOverlaySession()
+  const params = await searchParams
+  const showcaseParam = Array.isArray(params?.showcase) ? params.showcase[0] : params?.showcase
+
+  if (showcaseParam === '1') return <PublicShowcaseAutomationsView />
 
   if (!capabilities.automations) return <DisabledAutomationsRoute />
 

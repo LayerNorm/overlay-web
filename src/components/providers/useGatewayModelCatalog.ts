@@ -76,11 +76,11 @@ export function prefetchGatewayModelCatalog(): void {
   void loadCatalog()
 }
 
-export function useGatewayModelCatalog() {
+export function useGatewayModelCatalog({ enabled = true }: { enabled?: boolean } = {}) {
   const backgroundRetryCyclesRef = useRef(0)
   const [models, setModels] = useState<GatewayCatalogModel[]>(() => cachedModels ?? [])
   const [revision, setRevision] = useState(() => getGatewayCatalogRevision())
-  const [isLoading, setIsLoading] = useState(!cachedModels)
+  const [isLoading, setIsLoading] = useState(enabled && !cachedModels)
   const [error, setError] = useState<string | null>(null)
   const [canAutoRetry, setCanAutoRetry] = useState(false)
 
@@ -90,6 +90,7 @@ export function useGatewayModelCatalog() {
   }, [])
 
   const refresh = useCallback(async () => {
+    if (!enabled) return
     setIsLoading(true)
     setError(null)
     setCanAutoRetry(false)
@@ -103,10 +104,16 @@ export function useGatewayModelCatalog() {
     } finally {
       setIsLoading(false)
     }
-  }, [applyCatalog])
+  }, [applyCatalog, enabled])
 
   useEffect(() => {
     let active = true
+    if (!enabled) {
+      setIsLoading(false)
+      return () => {
+        active = false
+      }
+    }
     if (cachedModels) {
       registerGatewayCatalogModels(cachedModels)
       applyCatalog(cachedModels)
@@ -135,10 +142,10 @@ export function useGatewayModelCatalog() {
     return () => {
       active = false
     }
-  }, [applyCatalog])
+  }, [applyCatalog, enabled])
 
   useEffect(() => {
-    if (!error || !canAutoRetry || backgroundRetryCyclesRef.current >= MAX_BACKGROUND_RETRY_CYCLES) return
+    if (!enabled || !error || !canAutoRetry || backgroundRetryCyclesRef.current >= MAX_BACKGROUND_RETRY_CYCLES) return
     let cancelled = false
     const delay = 5_000 * (backgroundRetryCyclesRef.current + 1)
     const timeoutId = window.setTimeout(() => {
@@ -150,7 +157,7 @@ export function useGatewayModelCatalog() {
       cancelled = true
       window.clearTimeout(timeoutId)
     }
-  }, [canAutoRetry, error, refresh])
+  }, [canAutoRetry, enabled, error, refresh])
 
   return { models, isLoading, error, refresh, revision }
 }

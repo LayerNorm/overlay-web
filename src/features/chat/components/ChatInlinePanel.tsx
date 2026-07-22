@@ -41,18 +41,21 @@ export function ChatInlinePanel({
   refreshKey,
   searchQuery = '',
   onNavigate,
+  seededChats,
 }: {
   refreshKey: number
   searchQuery?: string
   onNavigate?: () => void
+  seededChats?: Conversation[]
 }) {
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
   const { sessions, getUnread } = useAsyncSessions()
   const { user, isLoading: authLoading } = useAuth()
-  const [chats, setChats] = useState<Conversation[]>([])
-  const [loading, setLoading] = useState(true)
+  const isPublicShowcase = seededChats !== undefined
+  const [chats, setChats] = useState<Conversation[]>(() => seededChats ?? [])
+  const [loading, setLoading] = useState(!isPublicShowcase)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(() => getCachedChatListPageInfo().hasMore)
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
@@ -62,6 +65,12 @@ export function ChatInlinePanel({
   const activeId = searchParams?.get('id') ?? null
 
   const loadChats = useCallback(async (signal?: { cancelled: boolean }) => {
+    if (seededChats) {
+      setChats(seededChats)
+      setHasMore(false)
+      setLoading(false)
+      return
+    }
     if (authLoading) return
     if (!user) {
       clearChatListCache()
@@ -92,7 +101,7 @@ export function ChatInlinePanel({
     }
     // Exhausted retries; stop the skeleton so the UI doesn't hang indefinitely.
     if (!signal?.cancelled) setLoading(false)
-  }, [authLoading, user])
+  }, [authLoading, seededChats, user])
 
   async function loadMoreChats() {
     if (!user) return
@@ -106,6 +115,12 @@ export function ChatInlinePanel({
   }
 
   useEffect(() => {
+    if (seededChats) {
+      setChats(seededChats)
+      setHasMore(false)
+      setLoading(false)
+      return
+    }
     if (authLoading) {
       setLoading(true)
       return
@@ -135,9 +150,10 @@ export function ChatInlinePanel({
       signal.cancelled = true
       window.clearTimeout(timeoutId)
     }
-  }, [authLoading, loadChats, refreshKey, user])
+  }, [authLoading, loadChats, refreshKey, seededChats, user])
 
   useEffect(() => {
+    if (isPublicShowcase) return
     if (!user) return
 
     function handleChatUpserted(event: Event) {
@@ -199,7 +215,7 @@ export function ChatInlinePanel({
       window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
       window.removeEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
     }
-  }, [user])
+  }, [isPublicShowcase, user])
 
   function beginRename(chat: Conversation, event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
@@ -279,7 +295,10 @@ export function ChatInlinePanel({
                 onClick={() => {
                   if (isDeleting) return
                   if (isEditing) return
-                  const href = `/app/chat?id=${encodeURIComponent(chat._id)}`
+                  const href = `/app/chat?${new URLSearchParams({
+                    ...(isPublicShowcase ? { showcase: '1' } : {}),
+                    id: chat._id,
+                  }).toString()}`
                   if (pathname === '/app/chat') {
                     window.history.pushState(null, '', href)
                     window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
@@ -295,7 +314,7 @@ export function ChatInlinePanel({
                 } ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
               >
                 <MessageSquare size={12} className="shrink-0" />
-                {isEditing ? (
+                {!isPublicShowcase && isEditing ? (
                   <input
                     autoFocus
                     value={editingTitle}
@@ -324,7 +343,7 @@ export function ChatInlinePanel({
                     {unread > 9 ? '9+' : unread}
                   </span>
                 ) : null}
-                {isEditing ? (
+                {isPublicShowcase ? null : isEditing ? (
                   <button
                     type="button"
                     onMouseDown={(event) => {

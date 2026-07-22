@@ -28,7 +28,7 @@ function resolveConnectorSlug(serviceName: string, slug?: string): string | null
   return slug?.trim() || resolveSlugFromName(serviceName)
 }
 
-export function useGeneratedUiConnectorActions(): GeneratedUiConnectorActions {
+export function useGeneratedUiConnectorActions({ enabled = true }: { enabled?: boolean } = {}): GeneratedUiConnectorActions {
   const [connected, setConnected] = useState<Set<string>>(() => new Set())
 
   const loadConnected = useCallback(async () => {
@@ -44,6 +44,7 @@ export function useGeneratedUiConnectorActions(): GeneratedUiConnectorActions {
   }, [])
 
   useEffect(() => {
+    if (!enabled) return
     void warmIntegrationLogoCache()
     const initialLoad = window.setTimeout(() => void loadConnected(), 0)
 
@@ -61,7 +62,7 @@ export function useGeneratedUiConnectorActions(): GeneratedUiConnectorActions {
       window.removeEventListener('overlay:integrations-changed', onChanged)
       bc?.close()
     }
-  }, [loadConnected])
+  }, [enabled, loadConnected])
 
   const getLogoUrl = useCallback((serviceName: string, slug?: string) => {
     const resolved = resolveConnectorSlug(serviceName, slug)

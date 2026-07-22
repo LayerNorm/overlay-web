@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
 import { LANDING_THEME_STORAGE_KEY } from "@/features/landing/lib/landingThemeConstants";
 
 export type LandingTheme = "light" | "dark";
@@ -165,6 +166,8 @@ const LANDING_CSS_VARS: Record<LandingTheme, React.CSSProperties> = {
 };
 
 export function LandingThemeProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname() ?? "";
+  const embeddedInApp = pathname.startsWith("/app/");
   const landingTheme = useSyncExternalStore<LandingTheme>(
     subscribeToLandingTheme,
     readStoredLandingTheme,
@@ -195,11 +198,11 @@ export function LandingThemeProvider({ children }: { children: React.ReactNode }
       <div
         suppressHydrationWarning
         data-landing-theme={landingTheme}
-        style={{
+        style={embeddedInApp ? undefined : {
           colorScheme: landingTheme,
           ...LANDING_CSS_VARS[landingTheme],
         }}
-        className="flex min-h-screen flex-col bg-[var(--background)] text-[var(--foreground)]"
+        className={`flex flex-col bg-[var(--background)] text-[var(--foreground)] ${embeddedInApp ? "min-h-full" : "min-h-screen"}`}
       >
         {children}
       </div>

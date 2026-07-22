@@ -97,6 +97,7 @@ import type {
 import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
+import type { ConversationLoadSnapshot } from './chat/chatTransport'
 
 // Heavy, conditionally-rendered surfaces are code-split out of the initial chat
 // bundle. They only mount on specific interactions (billing top-up, export,
@@ -135,6 +136,7 @@ export default function ChatExperience({
   belowEmptyComposer,
   initialChats,
   initialChatPageInfo,
+  publicShowcaseSnapshots,
 }: {
   userId: string | null
   firstName?: string
@@ -145,11 +147,13 @@ export default function ChatExperience({
   belowEmptyComposer?: React.ReactNode
   initialChats?: Conversation[]
   initialChatPageInfo?: ChatListPageInfo
+  publicShowcaseSnapshots?: Readonly<Record<string, ConversationLoadSnapshot>>
 }) {
   recordRender('ChatExperience')
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const isPublicShowcase = Boolean(publicShowcaseSnapshots)
   /** When chat is opened inside a project, files/docs attach to this project for search scoping. */
   const rawEmbedProjectId = hideSidebar ? searchParams?.get('projectId')?.trim() ?? null : null
   const embedProjectId =
@@ -164,15 +168,15 @@ export default function ChatExperience({
     models: gatewayCatalogModels,
     isLoading: gatewayModelsLoading,
     revision: gatewayCatalogRevision,
-  } = useGatewayModelCatalog()
+  } = useGatewayModelCatalog({ enabled: !isPublicShowcase })
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
   const billingEnabled = capabilities.billing
-  const convexLiveSyncEnabled =
+  const convexLiveSyncEnabled = !isPublicShowcase &&
     appDataCapabilities.requiresConvexClient && appDataCapabilities.supportsRealtime
-  const postgresLiveSyncEnabled =
+  const postgresLiveSyncEnabled = !isPublicShowcase &&
     appDataCapabilities.provider === 'postgres' && appDataCapabilities.supportsRealtime
-  const titleGenerationEnabled = appDataCapabilities.supportsChatPersistence
-  const generatedOutputsEnabled = appDataCapabilities.provider !== 'postgres'
+  const titleGenerationEnabled = !isPublicShowcase && appDataCapabilities.supportsChatPersistence
+  const generatedOutputsEnabled = !isPublicShowcase && appDataCapabilities.provider !== 'postgres'
   const { user: authUser, isLoading: authLoading } = useAuth()
   const convexAccessToken = useConvexAuthToken()
   const { startSession, completeSession, markRead, setActiveViewer, sessions } = useAsyncSessions()
@@ -210,6 +214,7 @@ export default function ChatExperience({
     initialChatPageInfo,
     initialChats,
     pendingTitleRef,
+    useSeededGuestData: isPublicShowcase,
     userId,
   })
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
@@ -278,7 +283,7 @@ export default function ChatExperience({
   const askModelSelectionModeRef = useRef(askModelSelectionMode)
   askModelSelectionModeRef.current = askModelSelectionMode
   const [, setIsSwitchingChat] = useState(false)
-  const generatedUiConnectorActions = useGeneratedUiConnectorActions()
+  const generatedUiConnectorActions = useGeneratedUiConnectorActions({ enabled: !isPublicShowcase })
 
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [showModeMenu, setShowModeMenu] = useState(false)
@@ -642,7 +647,7 @@ export default function ChatExperience({
   // runtime's loaded messages to the current useChat instances so the greeting
   // disappears immediately. Using refs avoids stale closures from loadChat.
   useEffect(() => {
-    if (!activeChatId) return
+    if (!activeChatId || isPublicShowcase) return
     const runtime = runtimesRef.current.get(activeChatId)
     if (!runtime) return
     if (chat0Ref.current.messages !== runtime.askChats[0].messages) {
@@ -660,7 +665,7 @@ export default function ChatExperience({
     if (actChatRef.current.messages !== runtime.actChat.messages) {
       actChatRef.current.setMessages([...runtime.actChat.messages] as UIMessage[])
     }
-  }, [activeChatId, actChatRef, chat0Ref, chat1Ref, chat2Ref, chat3Ref, runtimeHydrationVersion, runtimesRef])
+  }, [activeChatId, actChatRef, chat0Ref, chat1Ref, chat2Ref, chat3Ref, isPublicShowcase, runtimeHydrationVersion, runtimesRef])
 
   const {
     beginHeaderChatRename,
@@ -742,7 +747,7 @@ export default function ChatExperience({
       forceLiveSyncRender((value) => value + 1)
     }
 
-    if (isTemporaryChatRef.current || !targetChatId || targetChatId === TEMPORARY_CHAT_ID) return
+    if (isPublicShowcase || isTemporaryChatRef.current || !targetChatId || targetChatId === TEMPORARY_CHAT_ID) return
     void overlayAppClient.conversations.updateMessageUiPartResponse({
       conversationId: targetChatId,
       messageId,
@@ -756,7 +761,7 @@ export default function ChatExperience({
       setComposerNotice('Could not save draft edits.')
       window.setTimeout(() => setComposerNotice(null), 4000)
     })
-  }, [actChatRef, chat0Ref, chat1Ref, chat2Ref, chat3Ref, emptyRuntimeRef, forceLiveSyncRender, runtimesRef])
+  }, [actChatRef, chat0Ref, chat1Ref, chat2Ref, chat3Ref, emptyRuntimeRef, forceLiveSyncRender, isPublicShowcase, runtimesRef])
 
   /** Hide header rename until `loadChat` has applied messages/meta (`runtime.hydrated`). */
   const activeChatHydrated = Boolean(
@@ -766,11 +771,11 @@ export default function ChatExperience({
   useEffect(() => {
     if (authLoading) return
     if (initialChats === undefined || (!userId && authUser?.id)) void loadChats()
-    void loadSubscription()
-  }, [authLoading, authUser?.id, initialChats, loadChats, loadSubscription, userId])
+    if (!isPublicShowcase) void loadSubscription()
+  }, [authLoading, authUser?.id, initialChats, isPublicShowcase, loadChats, loadSubscription, userId])
 
   useEffect(() => {
-    if (!activeChatId) return
+    if (!activeChatId || isPublicShowcase) return
     const t = window.setTimeout(() => {
       const normalized = normalizeChatModelSelection({
         askModelIds: selectedModels,
@@ -784,7 +789,7 @@ export default function ChatExperience({
       })
     }, 600)
     return () => clearTimeout(t)
-  }, [selectedModels, selectedActModel, activeChatId])
+  }, [selectedModels, selectedActModel, activeChatId, isPublicShowcase])
 
   const automationHeaderModelId = selectedAutomation?.modelId ?? selectedActModel ?? DEFAULT_MODEL_ID
 
@@ -813,6 +818,7 @@ export default function ChatExperience({
     applyUiStateToView,
     chats,
     clearTransientComposerState,
+    conversationSnapshots: publicShowcaseSnapshots,
     ensureConversationRuntime,
     emptyRuntimeRef,
     hasAutomationContext,
@@ -1380,6 +1386,14 @@ export default function ChatExperience({
     videoSubMode,
   })
 
+  const effectiveHandleSend = useCallback(async () => {
+    if (isPublicShowcase) {
+      requireAuth('nav')
+      return
+    }
+    await handleSend()
+  }, [handleSend, isPublicShowcase, requireAuth])
+
   const focusComposer = useCallback(() => {
     window.setTimeout(() => {
       textareaRef.current?.focus()
@@ -1512,7 +1526,7 @@ export default function ChatExperience({
     isActiveLoading,
     lastStreamChunkAtRef,
     liveMessages,
-    onSend: handleSend,
+    onSend: effectiveHandleSend,
     primaryMessages,
     replaceConversationRuntime,
     runtimesRef,
@@ -1520,8 +1534,8 @@ export default function ChatExperience({
     setInterruptedExchangeIdx,
   })
 
-  const handleSendRef = useRef(handleSend)
-  handleSendRef.current = handleSend
+  const handleSendRef = useRef(effectiveHandleSend)
+  handleSendRef.current = effectiveHandleSend
 
   const handleCreateAutomationDraftViaChat = useCallback(async () => {
     if (isActiveLoadingRef.current) return
@@ -1792,7 +1806,7 @@ export default function ChatExperience({
         showAutomationHeaderControls,
         titleLabel: headerTitleLabel,
         onBeginHeaderChatRename: beginHeaderChatRename,
-        showRenameButton: Boolean(activeChatId && !selectedAutomation),
+        showRenameButton: Boolean(activeChatId && !selectedAutomation && !isPublicShowcase),
         projectName,
         showAutomationChatTab,
         appMode: mode,
@@ -1876,18 +1890,18 @@ export default function ChatExperience({
               actions: {
                 onTabSelect: handleTabSelect,
                 onJumpToReply: jumpToReplyTarget,
-                onDeleteTurn: handleDeleteTurnById,
+                onDeleteTurn: isPublicShowcase ? () => requireAuth('history') : handleDeleteTurnById,
                 onReplyToMediaPrompt: beginReplyToMediaPrompt,
                 onReplyToAssistantText: beginReplyToAssistantText,
-                onBranch: handleBranchConversationAtTurn,
+                onBranch: isPublicShowcase ? () => requireAuth('history') : handleBranchConversationAtTurn,
                 onOpenDraft: setDraftModalState,
-                onCreateAutomationDraft: handleCreateAutomationDraftViaChat,
+                onCreateAutomationDraft: isPublicShowcase ? () => requireAuth('nav') : handleCreateAutomationDraftViaChat,
                 onOpenSources: openSourcesPanel,
-                onRetry: handleRetryExchange,
+                onRetry: isPublicShowcase ? () => requireAuth('history') : handleRetryExchange,
                 onOpenFilePreview: openFilePreview,
                 onOpenAttachmentPreview: openAttachmentPreview,
                 onContinue: handleContinue,
-                onGeneratedUiChange: handleGeneratedUiChange,
+                onGeneratedUiChange: isPublicShowcase ? () => requireAuth('nav') : handleGeneratedUiChange,
                 generatedUiConnectorActions,
               },
             }
@@ -2009,7 +2023,7 @@ export default function ChatExperience({
               },
               actions: {
                 onStop: stopActiveChat,
-                onSend: handleSend,
+                onSend: effectiveHandleSend,
                 onEmptySuggestion: handleEmptySuggestion,
                 onAutomateSuggestion: handleAutomateSuggestion,
               },
