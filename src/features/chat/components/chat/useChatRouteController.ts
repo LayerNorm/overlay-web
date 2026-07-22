@@ -85,7 +85,11 @@ export function useChatRouteController({
       return
     }
     const basePath = '/app/chat'
-    replaceUrl(chatId ? `${basePath}?id=${encodeURIComponent(chatId)}` : basePath)
+    const params = new URLSearchParams()
+    if (searchParams?.get('showcase') === '1') params.set('showcase', '1')
+    if (chatId) params.set('id', chatId)
+    const query = params.toString()
+    replaceUrl(query ? `${basePath}?${query}` : basePath)
   }, [hideSidebar, mode, searchParams])
 
   const resetToBlankChatSurface = useCallback((options: { temporary: boolean }) => {

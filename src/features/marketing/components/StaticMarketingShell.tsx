@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useLandingTheme } from "@/contexts/LandingThemeContext";
 import { AuthBoundary } from "@/contexts/AuthContext";
-import { MarketingNavbar } from "@/features/marketing/components/MarketingNavbar";
+import { PublicSiteRail } from '@/components/layout/PublicSiteRail'
 
 /**
  * Token-based theme for every marketing / account / legal surface.
@@ -45,9 +45,9 @@ export function StaticMarketingShell({ children }: { children: ReactNode }) {
 
   return (
     <AuthBoundary>
-      <div className={`flex min-h-screen flex-col ${theme.shellClass}`}>
-        <MarketingNavbar />
-        <div className="flex-1">{children}</div>
+      <div className={`flex min-h-screen ${theme.shellClass}`}>
+        <PublicSiteRail />
+        <div className="min-w-0 flex-1">{children}</div>
       </div>
     </AuthBoundary>
   );

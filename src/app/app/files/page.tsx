@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { resolveKnowledgeLayout } from '@overlay/app-core'
 import { FilesRouteSkeleton, type FilesRouteSkeletonLayout } from '../_components/AppRouteSkeletons'
 import { FilesRouteLoadingSkeleton } from './FilesRouteLoadingSkeleton'
+import { PublicShowcaseKnowledgeView } from '@/features/showcase/PublicShowcaseKnowledgeView'
 
 const KnowledgeView = dynamic(() => import('../_components/KnowledgeViewHost'), {
   loading: () => <FilesRouteLoadingSkeleton />,
@@ -13,6 +14,7 @@ const KnowledgeView = dynamic(() => import('../_components/KnowledgeViewHost'), 
 
 type FilesSearchParams = {
   layout?: string | string[]
+  showcase?: string | string[]
 }
 
 function firstParam(value: string | string[] | undefined): string | undefined {
@@ -44,9 +46,12 @@ export default async function FilesPage({
   searchParams?: Promise<FilesSearchParams>
 }) {
   const session = await getOverlaySession()
+  const params = await searchParams
+  const publicShowcase = firstParam(params?.showcase) === '1'
 
+  if (publicShowcase) return <PublicShowcaseKnowledgeView />
   if (!session) redirect('/app/chat?signin=nav')
-  const layout = resolveFilesLayout(await searchParams)
+  const layout = resolveFilesLayout(params)
   return (
     <Suspense fallback={<FilesRouteSkeleton layout={layout} />}>
       <FilesRouteContent userId={session.user.id} />

@@ -58,6 +58,7 @@ export interface UseChatConversationLoaderParams {
   ) => void
   syncStandaloneChatUrl: (chatId: string | null, options?: { replaceUrl?: boolean }) => void
   clearTransientComposerState: () => void
+  conversationSnapshots?: Readonly<Record<string, import('./chatTransport').ConversationLoadSnapshot>>
 }
 
 export function useChatConversationLoader({
@@ -65,6 +66,7 @@ export function useChatConversationLoader({
   applyUiStateToView,
   chats,
   clearTransientComposerState,
+  conversationSnapshots,
   ensureConversationRuntime,
   emptyRuntimeRef,
   hasAutomationContext,
@@ -153,7 +155,11 @@ export function useChatConversationLoader({
     runtime.hydrated = false
     try {
       const shouldLoadMeta = !chatMeta?.title || !chatMeta?.askModelIds?.length || !chatMeta?.actModelId
-      const snapshot = await loadConversationSnapshot({ chatId, loadGeneratedOutputs, shouldLoadMeta })
+      const snapshot = conversationSnapshots?.[chatId] ?? await loadConversationSnapshot({
+        chatId,
+        loadGeneratedOutputs,
+        shouldLoadMeta,
+      })
       if (requestId !== loadChatRequestRef.current) return
       if (snapshot.status === 'missing') {
         removeCachedChat(chatId)
@@ -309,6 +315,7 @@ export function useChatConversationLoader({
     applyUiStateToView,
     chats,
     clearTransientComposerState,
+    conversationSnapshots,
     ensureConversationRuntime,
     emptyRuntimeRef,
     hasAutomationContext,
