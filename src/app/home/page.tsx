@@ -247,7 +247,7 @@ function HomeLandingContent() {
             <div className="mt-12 md:mt-16">
               <ProductAppDemo />
               <p className="mt-3 text-center text-[11px] text-[var(--muted-light)]">
-                Hover to pause · click a surface in the sidebar to explore
+                Type a question and press enter to try Overlay · click a surface in the sidebar to explore
               </p>
             </div>
           </div>
