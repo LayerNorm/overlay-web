@@ -190,11 +190,13 @@ function createFixture(): Fixture {
         async assignUser() { throw new Error('not used') },
         async revokeUser() { throw new Error('not used') },
         async listForUser(userId) { return userRoles.filter((value) => value.userId === userId) },
+        async listUsersForRole(roleId) { return userRoles.filter((value) => value.roleId === roleId) },
         async assignGroup() { throw new Error('not used') },
         async revokeGroup() { throw new Error('not used') },
         async listForGroups(groupIds) {
           return groupRoles.filter((value) => groupIds.includes(value.groupId))
         },
+        async listGroupsForRole(roleId) { return groupRoles.filter((value) => value.roleId === roleId) },
       },
       resourceGrants: {
         async upsert() { throw new Error('not used') },

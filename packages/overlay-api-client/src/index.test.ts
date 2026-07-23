@@ -77,6 +77,7 @@ test('authorization administration methods preserve resource routes and payloads
     subjectId: 'group_1',
     roleId: 'role_1',
   })
+  await client.adminAuthorization.listRoleAssignments('role_1')
   await client.adminAuthorization.upsertResourceGrantResponse({
     resourceType: 'knowledge_base',
     resourceId: 'kb_1',
@@ -94,8 +95,9 @@ test('authorization administration methods preserve resource routes and payloads
   assert.equal(String(calls[1]!.input), 'https://example.test/api/v1/admin/authorization/groups')
   assert.equal(String(calls[2]!.input), 'https://example.test/api/v1/admin/authorization/memberships')
   assert.equal(String(calls[3]!.input), 'https://example.test/api/v1/admin/authorization/assignments')
-  assert.equal(String(calls[4]!.input), 'https://example.test/api/v1/admin/authorization/grants')
-  assert.deepEqual(await jsonBody(calls[4]!), {
+  assert.equal(String(calls[4]!.input), 'https://example.test/api/v1/admin/authorization/assignments?roleId=role_1')
+  assert.equal(String(calls[5]!.input), 'https://example.test/api/v1/admin/authorization/grants')
+  assert.deepEqual(await jsonBody(calls[5]!), {
     resourceType: 'knowledge_base',
     resourceId: 'kb_1',
     principalType: 'group',

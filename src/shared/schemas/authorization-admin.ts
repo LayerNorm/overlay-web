@@ -49,11 +49,15 @@ export const AdminAuthorizationMembershipRequest = z.object({
   userId: Identifier,
 })
 
-export const AdminAuthorizationAssignmentQuery = z.object({
+const AdminAuthorizationSubjectAssignmentQuery = z.object({
   subjectType: z.enum(['user', 'group']),
   subjectId: Identifier,
 })
-export const AdminAuthorizationAssignmentRequest = AdminAuthorizationAssignmentQuery.extend({
+export const AdminAuthorizationAssignmentQuery = z.union([
+  AdminAuthorizationSubjectAssignmentQuery,
+  z.object({ roleId: Identifier }),
+])
+export const AdminAuthorizationAssignmentRequest = AdminAuthorizationSubjectAssignmentQuery.extend({
   roleId: Identifier,
 })
 

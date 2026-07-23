@@ -128,6 +128,19 @@ export class AdminAuthorizationClient {
     return assignments
   }
 
+  async listRoleAssignments(roleId: string, init?: RequestInit) {
+    const { assignments } = await this.checkedJson<{
+      assignments: {
+        users: UserRoleAssignment[]
+        groups: GroupRoleAssignment[]
+      }
+    }>(
+      this.http.appendQuery('/api/v1/admin/authorization/assignments', { roleId }),
+      init,
+    )
+    return assignments
+  }
+
   assignRoleResponse(body: {
     subjectType: 'user' | 'group'
     subjectId: string

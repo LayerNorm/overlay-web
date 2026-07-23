@@ -67,9 +67,11 @@ export interface RoleAssignmentRepository {
   assignUser(args: { userId: string; roleId: string; assignedBy?: string }): Promise<UserRoleAssignment>
   revokeUser(args: { userId: string; roleId: string }): Promise<boolean>
   listForUser(userId: string): Promise<UserRoleAssignment[]>
+  listUsersForRole(roleId: string): Promise<UserRoleAssignment[]>
   assignGroup(args: { groupId: string; roleId: string; assignedBy?: string }): Promise<GroupRoleAssignment>
   revokeGroup(args: { groupId: string; roleId: string }): Promise<boolean>
   listForGroups(groupIds: string[]): Promise<GroupRoleAssignment[]>
+  listGroupsForRole(roleId: string): Promise<GroupRoleAssignment[]>
 }
 
 export type UpsertResourceGrantInput = Omit<ResourceGrant, 'createdAt' | 'updatedAt'>

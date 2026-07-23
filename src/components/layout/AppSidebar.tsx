@@ -7,7 +7,7 @@ import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore
 import {
   MessageSquare, User,
   ChevronUp, Plug, Sparkles, Server, Package,
-  Loader2, Menu, X, Settings, ChevronDown, ChevronLeft, ChevronRight,
+  Loader2, Menu, X, Settings, ChevronDown, ChevronLeft, ChevronRight, ShieldCheck,
 } from 'lucide-react'
 import {
   resolveOverlayAppShellConfig,
@@ -103,6 +103,7 @@ export default function AppSidebar({
   const [entitlements, setEntitlements] = useState<SidebarEntitlements | null>(null)
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false)
   const [temporaryChatUiHidden, setTemporaryChatUiHidden] = useState(false)
+  const [canAccessAdmin, setCanAccessAdmin] = useState(false)
   const storedSidebarCollapsed = useSyncExternalStore(
     subscribeToSidebarCollapsed,
     getSidebarCollapsedSnapshot,
@@ -162,6 +163,21 @@ export default function AppSidebar({
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+    if (publicShowcase || authLoading || !user) {
+      return () => { cancelled = true }
+    }
+    void overlayAppClient.adminAuthorization.listCapabilities({ cache: 'no-store' })
+      .then(() => {
+        if (!cancelled) setCanAccessAdmin(true)
+      })
+      .catch(() => {
+        if (!cancelled) setCanAccessAdmin(false)
+      })
+    return () => { cancelled = true }
+  }, [authLoading, publicShowcase, user])
+
+  useEffect(() => {
     function onTemporaryChatUi(event: Event) {
       const active = Boolean((event as CustomEvent<TemporaryChatUiEventDetail>).detail?.active)
       setTemporaryChatUiHidden(active)
@@ -184,6 +200,8 @@ export default function AppSidebar({
   const filesOpen = pathname.startsWith('/app/files')
   const filesSectionOpen = filesOpen || notesOpen
   const chatOpen = pathname.startsWith('/app/chat')
+  const adminOpen = pathname.startsWith('/app/admin')
+  const showAdminNavigation = canAccessAdmin && !publicShowcase && Boolean(user)
   const automationsOpen = pathname.startsWith('/app/automations')
   const automationsSectionOpen = automationsOpen && capabilities.automations
   const settingsPathActive = pathname.startsWith('/app/settings')
@@ -415,6 +433,32 @@ export default function AppSidebar({
 
       <div className="flex min-h-0 flex-1 flex-col">
         <SidebarNav className="shrink-0">
+          {showAdminNavigation ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (adminOpen) return
+                setMobileMenuOpen(false)
+                setPendingNav({ href: '/app/admin', fromPath: pathname })
+                router.push('/app/admin')
+              }}
+              title="Admin"
+              aria-label="Admin"
+              aria-current={adminOpen ? 'page' : undefined}
+              className={`group flex h-9 w-full items-center rounded-md px-3 text-sm transition-colors ${
+                adminOpen
+                  ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                  : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+              } ${sidebarCollapsed ? 'justify-center' : 'gap-2.5'}`}
+            >
+              {sidebarCollapsed && effectivePendingHref === '/app/admin' ? (
+                <Loader2 size={14} className="shrink-0 animate-spin text-[var(--muted)]" aria-hidden />
+              ) : (
+                <ShieldCheck size={15} />
+              )}
+              {!sidebarCollapsed ? <div className="min-w-0 flex-1 text-left">Admin</div> : null}
+            </button>
+          ) : null}
           {navItems.map((item, navIdx) => {
             const { href, label, icon: Icon, disabled } = item
             const active =

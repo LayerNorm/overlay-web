@@ -281,6 +281,15 @@ export const listUserRolesByServer = query({
   },
 })
 
+export const listUsersForRoleByServer = query({
+  args: { serverSecret: v.string(), roleId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    return await ctx.db.query('authorizationUserRoles')
+      .withIndex('by_roleId', (q) => q.eq('roleId', args.roleId)).collect()
+  },
+})
+
 export const assignGroupRoleByServer = mutation({
   args: { serverSecret: v.string(), groupId: v.string(), roleId: v.string(), assignedBy: v.optional(v.string()) },
   handler: async (ctx, args) => {
@@ -323,6 +332,15 @@ export const listGroupRolesByServer = query({
       await ctx.db.query('authorizationGroupRoles')
         .withIndex('by_groupId', (q) => q.eq('groupId', groupId)).collect()))
     return rows.flat()
+  },
+})
+
+export const listGroupsForRoleByServer = query({
+  args: { serverSecret: v.string(), roleId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    return await ctx.db.query('authorizationGroupRoles')
+      .withIndex('by_roleId', (q) => q.eq('roleId', args.roleId)).collect()
   },
 })
 

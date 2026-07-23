@@ -59,10 +59,12 @@ export async function runAuthorizationRepositoryContract(
       await args.repositories.assignments.assignUser({ userId, roleId, assignedBy: userId })
       await args.repositories.assignments.assignUser({ userId, roleId, assignedBy: userId })
       assert.equal((await args.repositories.assignments.listForUser(userId)).length, 1)
+      assert.equal((await args.repositories.assignments.listUsersForRole(roleId)).length, 1)
 
       await args.repositories.assignments.assignGroup({ groupId, roleId, assignedBy: userId })
       await args.repositories.assignments.assignGroup({ groupId, roleId, assignedBy: userId })
       assert.equal((await args.repositories.assignments.listForGroups([groupId])).length, 1)
+      assert.equal((await args.repositories.assignments.listGroupsForRole(roleId)).length, 1)
     })
 
     await t.test('persists direct, group, and role resource ACLs', async () => {

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { RefreshCw, Search, ShieldCheck, WalletCards } from 'lucide-react'
+import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { AuthorizationAdminPanel } from '@/features/admin/authorization/AuthorizationAdminPanel'
 
 type UsageRow = {
@@ -82,44 +83,54 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-5 py-8" data-testid="admin-console">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--foreground)]">Administration</h1>
-          <p className="mt-1 text-sm text-[var(--muted)]">Manage access, budgets, and audit activity.</p>
-        </div>
-        <button type="button" aria-label="Refresh administration" className="inline-flex size-9 items-center justify-center rounded-md border border-[var(--border)]" onClick={() => void load()}>
-          <RefreshCw size={15} />
-        </button>
-      </div>
+    <AppScreenShell
+      data-testid="admin-console"
+      header={(
+        <AppScreenHeader
+          title="Administration"
+          subtitle="Workspace controls"
+          actions={(
+            <button
+              type="button"
+              aria-label="Refresh administration"
+              className="inline-flex size-8 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              onClick={() => void load()}
+            >
+              <RefreshCw size={15} />
+            </button>
+          )}
+          tabs={(
+            <nav className="flex gap-5" aria-label="Administration sections">
+              {(['overview', 'roles', 'groups'] as const).map((value) => (
+                <button
+                  type="button"
+                  key={value}
+                  aria-current={section === value ? 'page' : undefined}
+                  className={`border-b-2 pb-1.5 text-xs capitalize transition-colors ${section === value ? 'border-[var(--foreground)] font-medium text-[var(--foreground)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--foreground)]'}`}
+                  onClick={() => setSection(value)}
+                >
+                  {value}
+                </button>
+              ))}
+            </nav>
+          )}
+        />
+      )}
+    >
+      <AppScreenBody maxWidth="xl" padding="md">
+        {error ? <p className="mb-5 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
 
-      {error ? <p className="mt-5 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+        {section !== 'overview' ? <AuthorizationAdminPanel view={section} userDirectory={usage} /> : null}
 
-      <nav className="mt-7 flex gap-1 border-b border-[var(--border)]" aria-label="Administration sections">
-        {(['overview', 'roles', 'groups'] as const).map((value) => (
-          <button
-            type="button"
-            key={value}
-            aria-current={section === value ? 'page' : undefined}
-            className={`border-b-2 px-3 py-2 text-sm capitalize ${section === value ? 'border-[var(--foreground)] font-medium' : 'border-transparent text-[var(--muted)]'}`}
-            onClick={() => setSection(value)}
-          >
-            {value}
-          </button>
-        ))}
-      </nav>
+        {section === 'overview' && forbidden ? (
+          <div className="py-12" data-testid="admin-forbidden">
+            <ShieldCheck size={22} />
+            <h2 className="mt-4 text-lg font-semibold">Administrative access required</h2>
+            <p className="mt-2 text-sm text-[var(--muted)]">This account cannot view usage or audit data.</p>
+          </div>
+        ) : null}
 
-      {section !== 'overview' ? <div className="mt-7"><AuthorizationAdminPanel view={section} /></div> : null}
-
-      {section === 'overview' && forbidden ? (
-        <div className="py-12" data-testid="admin-forbidden">
-          <ShieldCheck size={22} />
-          <h2 className="mt-4 text-lg font-semibold">Administrative access required</h2>
-          <p className="mt-2 text-sm text-[var(--muted)]">This account cannot view usage or audit data.</p>
-        </div>
-      ) : null}
-
-      {section === 'overview' && !forbidden ? <><section className="mt-8" data-testid="admin-usage">
+        {section === 'overview' && !forbidden ? <><section data-testid="admin-usage">
         <div className="flex items-center gap-2"><WalletCards size={17} /><h2 className="text-sm font-semibold">Usage and budgets</h2></div>
         <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
           <div className="relative">
@@ -158,8 +169,9 @@ export default function AdminPage() {
             </div>
           ))}
         </div>
-      </section></> : null}
-    </main>
+        </section></> : null}
+      </AppScreenBody>
+    </AppScreenShell>
   )
 }
 

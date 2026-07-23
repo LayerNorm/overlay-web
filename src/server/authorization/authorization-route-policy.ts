@@ -1,0 +1,319 @@
+import type {
+  AuthorizationCapability,
+  ResourceAction,
+} from '@overlay/authz-contracts'
+
+export const AUTHORIZATION_ROUTE_ACCESS = [
+  'public',
+  'authenticated',
+  'capability',
+  'resource',
+  'internal',
+] as const
+
+export type AuthorizationRouteAccess = (typeof AUTHORIZATION_ROUTE_ACCESS)[number]
+
+export type AuthorizationRoutePolicy = {
+  access: AuthorizationRouteAccess
+  capabilities?: readonly AuthorizationCapability[]
+  resource?: {
+    action: ResourceAction
+    type: string
+  }
+}
+
+type MethodPolicies = Partial<Record<string, AuthorizationRoutePolicy>>
+
+export type AuthorizationRoutePolicyRule = {
+  path: string
+  methods: MethodPolicies
+}
+
+const publicPolicy = (): AuthorizationRoutePolicy => ({ access: 'public' })
+const authenticated = (): AuthorizationRoutePolicy => ({ access: 'authenticated' })
+const capability = (
+  ...capabilities: AuthorizationCapability[]
+): AuthorizationRoutePolicy => ({ access: 'capability', capabilities })
+const resource = (
+  type: string,
+  action: ResourceAction,
+  ...capabilities: AuthorizationCapability[]
+): AuthorizationRoutePolicy => ({
+  access: 'resource',
+  capabilities,
+  resource: { action, type },
+})
+
+export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule[] = [
+  { path: '/api/v1/capabilities', methods: { GET: publicPolicy() } },
+  { path: '/api/v1/bootstrap', methods: { GET: authenticated() } },
+  { path: '/api/v1/chat-suggestions', methods: { GET: capability('conversations.create') } },
+  { path: '/api/v1/settings', methods: { GET: authenticated(), PATCH: authenticated() } },
+  { path: '/api/v1/onboarding/status', methods: { GET: authenticated() } },
+  { path: '/api/v1/onboarding/complete', methods: { POST: authenticated() } },
+  { path: '/api/v1/onboarding/reset', methods: { POST: authenticated() } },
+  { path: '/api/v1/subscription', methods: { GET: authenticated() } },
+  {
+    path: '/api/v1/subscription/settings',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+
+  { path: '/api/v1/admin/audit', methods: { GET: capability('audit.read') } },
+  {
+    path: '/api/v1/admin/usage',
+    methods: { GET: capability('usage.read'), POST: capability('usage.manage') },
+  },
+  {
+    path: '/api/v1/admin/principals',
+    methods: {
+      GET: capability('users.read'),
+      POST: capability('users.manage'),
+      DELETE: capability('users.manage'),
+    },
+  },
+  {
+    path: '/api/v1/admin/authorization/capabilities',
+    methods: { GET: capability('roles.read') },
+  },
+  {
+    path: '/api/v1/admin/authorization/roles',
+    methods: {
+      GET: capability('roles.read'),
+      POST: capability('roles.manage'),
+      PATCH: capability('roles.manage'),
+      DELETE: capability('roles.manage'),
+    },
+  },
+  {
+    path: '/api/v1/admin/authorization/groups',
+    methods: {
+      GET: capability('groups.read'),
+      POST: capability('groups.manage'),
+      PATCH: capability('groups.manage'),
+      DELETE: capability('groups.manage'),
+    },
+  },
+  {
+    path: '/api/v1/admin/authorization/memberships',
+    methods: {
+      GET: capability('groups.read'),
+      POST: capability('groups.manage'),
+      DELETE: capability('groups.manage'),
+    },
+  },
+  {
+    path: '/api/v1/admin/authorization/assignments',
+    methods: {
+      GET: capability('roles.read'),
+      POST: capability('roles.manage'),
+      DELETE: capability('roles.manage'),
+    },
+  },
+  {
+    path: '/api/v1/admin/authorization/grants',
+    methods: {
+      GET: capability('roles.read'),
+      POST: capability('roles.manage'),
+      DELETE: capability('roles.manage'),
+    },
+  },
+
+  {
+    path: '/api/v1/conversations',
+    methods: {
+      GET: capability('conversations.read'),
+      POST: capability('conversations.create'),
+      PATCH: resource('conversation', 'edit', 'conversations.edit'),
+      DELETE: resource('conversation', 'delete', 'conversations.delete'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/events',
+    methods: { GET: resource('conversation', 'view', 'conversations.read') },
+  },
+  {
+    path: '/api/v1/conversations/act',
+    methods: { POST: resource('conversation', 'edit', 'conversations.edit', 'models.use') },
+  },
+  {
+    path: '/api/v1/conversations/act/extension-plan',
+    methods: { POST: resource('conversation', 'edit', 'conversations.edit', 'models.use') },
+  },
+  {
+    path: '/api/v1/conversations/message',
+    methods: {
+      POST: resource('conversation', 'edit', 'conversations.edit'),
+      DELETE: resource('conversation', 'edit', 'conversations.edit'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/share',
+    methods: { PATCH: resource('conversation', 'share', 'conversations.share') },
+  },
+  {
+    path: '/api/v1/conversations/stop',
+    methods: { POST: resource('conversation', 'edit', 'conversations.edit') },
+  },
+  {
+    path: '/api/v1/conversations/stream-auth',
+    methods: { POST: resource('conversation', 'view', 'conversations.read') },
+  },
+
+  {
+    path: '/api/v1/files',
+    methods: {
+      GET: capability('files.read'),
+      POST: capability('files.upload'),
+      PATCH: resource('file', 'edit', 'files.edit'),
+      DELETE: resource('file', 'delete', 'files.delete'),
+    },
+  },
+  {
+    path: '/api/v1/files/:fileId/content',
+    methods: { GET: resource('file', 'view', 'files.read') },
+  },
+  { path: '/api/v1/files/ingest-document', methods: { POST: capability('files.upload') } },
+  { path: '/api/v1/files/presign', methods: { GET: resource('file', 'view', 'files.read') } },
+  { path: '/api/v1/files/search-text', methods: { POST: capability('files.read') } },
+  {
+    path: '/api/v1/files/share',
+    methods: { PATCH: resource('file', 'share', 'files.share') },
+  },
+  { path: '/api/v1/files/upload-url', methods: { POST: capability('files.upload') } },
+
+  {
+    path: '/api/v1/projects',
+    methods: {
+      GET: capability('projects.read'),
+      POST: capability('projects.create'),
+      PATCH: resource('project', 'edit', 'projects.edit'),
+      DELETE: resource('project', 'delete', 'projects.delete'),
+    },
+  },
+  {
+    path: '/api/v1/notes',
+    methods: {
+      GET: capability('notes.read'),
+      POST: capability('notes.create'),
+      PATCH: resource('note', 'edit', 'notes.edit'),
+      DELETE: resource('note', 'delete', 'notes.delete'),
+    },
+  },
+  {
+    path: '/api/v1/outputs',
+    methods: {
+      GET: capability('outputs.read'),
+      DELETE: resource('output', 'delete', 'outputs.delete'),
+    },
+  },
+  {
+    path: '/api/v1/outputs/:outputId/content',
+    methods: { GET: resource('output', 'view', 'outputs.read') },
+  },
+
+  { path: '/api/v1/model-catalog', methods: { GET: capability('models.use') } },
+  { path: '/api/v1/generate-title', methods: { POST: capability('models.use') } },
+  { path: '/api/v1/generate-tab-group-label', methods: { POST: capability('models.use') } },
+  { path: '/api/v1/generate-image', methods: { POST: capability('models.use') } },
+  { path: '/api/v1/generate-video', methods: { POST: capability('models.use') } },
+  { path: '/api/v1/notebook-agent', methods: { POST: capability('models.use', 'tools.use') } },
+  { path: '/api/v1/browser-task', methods: { POST: capability('tools.use') } },
+  { path: '/api/v1/daytona/run', methods: { POST: capability('tools.use') } },
+  { path: '/api/v1/transcribe', methods: { POST: capability('tools.use') } },
+  { path: '/api/v1/extensions/:extensionId/*', methods: { ALL: capability('tools.use') } },
+  {
+    path: '/api/v1/integrations',
+    methods: { GET: capability('integrations.use'), POST: capability('integrations.use') },
+  },
+  {
+    path: '/api/v1/skills',
+    methods: {
+      GET: capability('skills.use'),
+      POST: capability('skills.use'),
+      PATCH: capability('skills.use'),
+      DELETE: capability('skills.use'),
+    },
+  },
+  {
+    path: '/api/v1/mcps',
+    methods: {
+      GET: capability('mcp.use'),
+      POST: capability('mcp.use'),
+      PATCH: capability('mcp.use'),
+      DELETE: capability('mcp.use'),
+    },
+  },
+  { path: '/api/v1/mcps/test', methods: { POST: capability('mcp.use') } },
+  {
+    path: '/api/v1/memory',
+    methods: {
+      GET: capability('memory.use'),
+      POST: capability('memory.use'),
+      PATCH: capability('memory.use'),
+      DELETE: capability('memory.use'),
+    },
+  },
+  { path: '/api/v1/knowledge/search', methods: { POST: capability('knowledge.read') } },
+  {
+    path: '/api/v1/automations',
+    methods: {
+      GET: capability('automations.use'),
+      POST: capability('automations.use'),
+      PATCH: capability('automations.use'),
+      DELETE: capability('automations.use'),
+    },
+  },
+  { path: '/api/v1/automations/run', methods: { POST: capability('automations.use') } },
+  { path: '/api/v1/automations/test', methods: { POST: capability('automations.use') } },
+  {
+    path: '/api/v1/api-keys',
+    methods: {
+      GET: capability('api_keys.manage'),
+      POST: capability('api_keys.manage'),
+      PATCH: capability('api_keys.manage'),
+      DELETE: capability('api_keys.manage'),
+    },
+  },
+  {
+    path: '/api/v1/webhooks',
+    methods: {
+      GET: capability('webhooks.manage'),
+      POST: capability('webhooks.manage'),
+      PATCH: capability('webhooks.manage'),
+      DELETE: capability('webhooks.manage'),
+    },
+  },
+] as const
+
+export function getAuthorizationRoutePolicy(
+  method: string,
+  pathname: string,
+): AuthorizationRoutePolicy | null {
+  const normalizedMethod = method.toUpperCase()
+  const normalizedPath = normalizePath(pathname)
+  for (const rule of AUTHORIZATION_ROUTE_POLICIES) {
+    if (!matchesPath(rule.path, normalizedPath)) continue
+    return rule.methods[normalizedMethod] ?? rule.methods.ALL ?? null
+  }
+  return null
+}
+
+function normalizePath(pathname: string): string {
+  const normalized = pathname.replace(/\/+$/, '')
+  return normalized || '/'
+}
+
+function matchesPath(pattern: string, pathname: string): boolean {
+  const patternSegments = normalizePath(pattern).split('/').filter(Boolean)
+  const pathSegments = pathname.split('/').filter(Boolean)
+  let index = 0
+  for (; index < patternSegments.length; index += 1) {
+    const expected = patternSegments[index]
+    if (expected === '*') return true
+    const actual = pathSegments[index]
+    if (actual === undefined) return false
+    if (expected.startsWith(':')) continue
+    if (expected !== actual) return false
+  }
+  return index === pathSegments.length
+}

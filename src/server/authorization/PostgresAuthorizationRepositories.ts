@@ -240,6 +240,17 @@ export class PostgresAuthorizationRoleAssignmentRepository implements RoleAssign
     return result.rows.map(userRoleFromRow)
   }
 
+  async listUsersForRole(roleId: string): Promise<UserRoleAssignment[]> {
+    const result = await this.db.execute<UserRoleRow>(sql`
+      SELECT assignments.user_id AS "userId", assignments.role_id AS "roleId",
+             assignments.assigned_by AS "assignedBy", assignments.created_at AS "createdAt"
+      FROM authorization_user_roles assignments
+      WHERE assignments.role_id = ${roleId}
+      ORDER BY assignments.created_at, assignments.user_id
+    `)
+    return result.rows.map(userRoleFromRow)
+  }
+
   async assignGroup(args: {
     groupId: string
     roleId: string
@@ -273,6 +284,17 @@ export class PostgresAuthorizationRoleAssignmentRepository implements RoleAssign
       WHERE assignments.group_id IN (${sql.join(groupIds.map((id) => sql`${id}`), sql`, `)})
         AND roles.archived_at IS NULL
       ORDER BY assignments.created_at, assignments.group_id, assignments.role_id
+    `)
+    return result.rows.map(groupRoleFromRow)
+  }
+
+  async listGroupsForRole(roleId: string): Promise<GroupRoleAssignment[]> {
+    const result = await this.db.execute<GroupRoleRow>(sql`
+      SELECT assignments.group_id AS "groupId", assignments.role_id AS "roleId",
+             assignments.assigned_by AS "assignedBy", assignments.created_at AS "createdAt"
+      FROM authorization_group_roles assignments
+      WHERE assignments.role_id = ${roleId}
+      ORDER BY assignments.created_at, assignments.group_id
     `)
     return result.rows.map(groupRoleFromRow)
   }

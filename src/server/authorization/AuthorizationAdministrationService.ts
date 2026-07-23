@@ -206,6 +206,16 @@ export class AuthorizationAdministrationService {
     return await this.deps.repositories.assignments.listForGroups([input.subjectId])
   }
 
+  async listRoleAssignments(actor: AuthorizationAdministrationActor, roleId: string) {
+    await this.assertAdministrator(actor)
+    await this.requireRole(roleId)
+    const [users, groups] = await Promise.all([
+      this.deps.repositories.assignments.listUsersForRole(roleId),
+      this.deps.repositories.assignments.listGroupsForRole(roleId),
+    ])
+    return { users, groups }
+  }
+
   async assignRole(actor: AuthorizationAdministrationActor, input: {
     subjectType: 'user' | 'group'
     subjectId: string

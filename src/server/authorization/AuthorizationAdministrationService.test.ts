@@ -57,6 +57,10 @@ test('administration service manages roles, groups, assignments, and grants with
     subjectType: 'group',
     subjectId: group.id,
   }), [assignment])
+  assert.deepEqual(await fixture.service.listRoleAssignments(ACTOR, role.id), {
+    users: [],
+    groups: [assignment],
+  })
   assert.deepEqual(await fixture.service.listResourceGrants(ACTOR, {
     resourceType: 'knowledge_base',
     resourceId: 'kb_1',
@@ -212,6 +216,7 @@ function createFixture(options: { administrator?: boolean } = {}) {
         return true
       },
       async listForUser(userId) { return userAssignments.filter((item) => item.userId === userId) },
+      async listUsersForRole(roleId) { return userAssignments.filter((item) => item.roleId === roleId) },
       async assignGroup(input) {
         const value = { ...input, createdAt: now() }
         groupAssignments.push(value)
@@ -224,6 +229,7 @@ function createFixture(options: { administrator?: boolean } = {}) {
         return true
       },
       async listForGroups(groupIds) { return groupAssignments.filter((item) => groupIds.includes(item.groupId)) },
+      async listGroupsForRole(roleId) { return groupAssignments.filter((item) => item.roleId === roleId) },
     },
     resourceGrants: {
       async upsert(input) {

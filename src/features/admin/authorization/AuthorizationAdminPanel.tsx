@@ -15,8 +15,15 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { authorizationDescription, groupCapabilityDefinitions, groupIsEditable, roleIsEditable } from './authorization-ui'
 
 type AuthorizationView = 'roles' | 'groups'
+type AuthorizationUserSummary = { userId: string; email?: string }
 
-export function AuthorizationAdminPanel({ view }: { view: AuthorizationView }) {
+export function AuthorizationAdminPanel({
+  view,
+  userDirectory = [],
+}: {
+  view: AuthorizationView
+  userDirectory?: AuthorizationUserSummary[]
+}) {
   const [capabilities, setCapabilities] = useState<AuthorizationCapabilityDefinition[]>([])
   const [roles, setRoles] = useState<AuthorizationRole[]>([])
   const [groups, setGroups] = useState<AuthorizationGroup[]>([])
@@ -70,7 +77,7 @@ export function AuthorizationAdminPanel({ view }: { view: AuthorizationView }) {
       </div>
       {error ? <ErrorMessage value={error} /> : null}
       {view === 'roles' ? (
-        <RolesPanel capabilities={capabilities} roles={roles} onChanged={load} />
+        <RolesPanel capabilities={capabilities} roles={roles} userDirectory={userDirectory} onChanged={load} />
       ) : (
         <GroupsPanel groups={groups} roles={roles} onChanged={load} />
       )}
@@ -81,10 +88,12 @@ export function AuthorizationAdminPanel({ view }: { view: AuthorizationView }) {
 function RolesPanel({
   capabilities,
   roles,
+  userDirectory,
   onChanged,
 }: {
   capabilities: AuthorizationCapabilityDefinition[]
   roles: AuthorizationRole[]
+  userDirectory: AuthorizationUserSummary[]
   onChanged(): Promise<void>
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(roles[0]?.id ?? null)
@@ -229,7 +238,7 @@ function RolesPanel({
                 <Check size={15} /> Save role
               </button>
             ) : null}
-            {!creating && selected ? <UserRoleAssignments role={selected} onChanged={onChanged} /> : null}
+            {!creating && selected ? <UserRoleAssignments role={selected} userDirectory={userDirectory} onChanged={onChanged} /> : null}
           </>
         ) : (
           <EmptyState icon={<Shield size={18} />} title="Select or create a role" />
@@ -278,27 +287,42 @@ function CapabilityPicker({
   )
 }
 
-function UserRoleAssignments({ role, onChanged }: { role: AuthorizationRole; onChanged(): Promise<void> }) {
+function UserRoleAssignments({
+  role,
+  userDirectory,
+  onChanged,
+}: {
+  role: AuthorizationRole
+  userDirectory: AuthorizationUserSummary[]
+  onChanged(): Promise<void>
+}) {
   const [userId, setUserId] = useState('')
-  const [assignments, setAssignments] = useState<UserRoleAssignment[]>([])
-  const [loadedUserId, setLoadedUserId] = useState('')
+  const [users, setUsers] = useState<UserRoleAssignment[]>([])
+  const [groups, setGroups] = useState<GroupRoleAssignment[]>([])
+  const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function loadAssignments(target = userId.trim()) {
-    if (!target) return
+  const loadAssignments = useCallback(async () => {
+    setLoading(true)
     setError(null)
     try {
-      const values = await overlayAppClient.adminAuthorization.listAssignments({
-        subjectType: 'user',
-        subjectId: target,
-      })
-      setAssignments(values as UserRoleAssignment[])
-      setLoadedUserId(target)
+      const assignments = await overlayAppClient.adminAuthorization.listRoleAssignments(
+        role.id,
+        { cache: 'no-store' },
+      )
+      setUsers(assignments.users)
+      setGroups(assignments.groups)
     } catch (loadError) {
       setError(message(loadError))
+    } finally {
+      setLoading(false)
     }
-  }
+  }, [role.id])
+
+  useEffect(() => {
+    void loadAssignments()
+  }, [loadAssignments])
 
   async function assign() {
     const target = userId.trim()
@@ -313,7 +337,8 @@ function UserRoleAssignments({ role, onChanged }: { role: AuthorizationRole; onC
         }),
         'Role assignment failed',
       )
-      await loadAssignments(target)
+      setUserId('')
+      await loadAssignments()
       await onChanged()
     } catch (assignError) {
       setError(message(assignError))
@@ -322,19 +347,18 @@ function UserRoleAssignments({ role, onChanged }: { role: AuthorizationRole; onC
     }
   }
 
-  async function revoke() {
-    if (!loadedUserId) return
+  async function revoke(targetUserId: string) {
     setBusy(true)
     try {
       await ensureOk(
         overlayAppClient.adminAuthorization.revokeRoleResponse({
           subjectType: 'user',
-          subjectId: loadedUserId,
+          subjectId: targetUserId,
           roleId: role.id,
         }),
         'Role revocation failed',
       )
-      await loadAssignments(loadedUserId)
+      await loadAssignments()
       await onChanged()
     } catch (revokeError) {
       setError(message(revokeError))
@@ -343,10 +367,12 @@ function UserRoleAssignments({ role, onChanged }: { role: AuthorizationRole; onC
     }
   }
 
-  const assigned = assignments.some((assignment) => assignment.roleId === role.id)
   return (
     <section className="mt-8 border-t border-[var(--border)] pt-6">
-      <h3 className="text-sm font-semibold">User assignment</h3>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold">Assigned users</h3>
+        <span className={badgeClass}>{users.length}</span>
+      </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <input
           aria-label="User ID for role assignment"
@@ -355,22 +381,43 @@ function UserRoleAssignments({ role, onChanged }: { role: AuthorizationRole; onC
           value={userId}
           onChange={(event) => setUserId(event.target.value)}
         />
-        <button type="button" className={secondaryButtonClass} onClick={() => void loadAssignments()} disabled={!userId.trim()}>
-          Check
-        </button>
-        <button type="button" className={primaryButtonClass} onClick={() => void assign()} disabled={busy || !userId.trim() || assigned}>
+        <button type="button" className={primaryButtonClass} onClick={() => void assign()} disabled={busy || !userId.trim()}>
           <UserPlus size={15} /> Assign
         </button>
       </div>
-      {loadedUserId ? (
-        <p className="mt-3 text-xs text-[var(--muted)]">
-          {assigned ? 'Assigned' : 'Not assigned'} to {loadedUserId}
-        </p>
-      ) : null}
-      {assigned ? (
-        <button type="button" className={`${secondaryButtonClass} mt-3`} disabled={busy} onClick={() => void revoke()}>
-          <Trash2 size={14} /> Revoke
-        </button>
+      <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+        {loading ? <p className="py-4 text-sm text-[var(--muted)]">Loading assigned users...</p> : null}
+        {!loading && users.length === 0 ? <p className="py-4 text-sm text-[var(--muted)]">No users are assigned directly to this role.</p> : null}
+        {!loading ? users.map((assignment) => {
+          const user = userDirectory.find(({ userId: candidate }) => candidate === assignment.userId)
+          return (
+            <div key={assignment.userId} className="flex min-w-0 items-center justify-between gap-3 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{user?.email || assignment.userId}</p>
+                <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
+                  {user?.email ? `${assignment.userId} · ` : ''}Assigned {new Date(assignment.createdAt).toLocaleDateString()}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label={`Revoke ${role.name} from ${assignment.userId}`}
+                className={iconButtonClass}
+                disabled={busy}
+                onClick={() => void revoke(assignment.userId)}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          )
+        }) : null}
+      </div>
+      {groups.length > 0 ? (
+        <div className="mt-5">
+          <h4 className="text-xs font-medium text-[var(--muted)]">Assigned groups</h4>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {groups.map((assignment) => <span key={assignment.groupId} className={badgeClass}>{assignment.groupId}</span>)}
+          </div>
+        </div>
       ) : null}
       {error ? <ErrorMessage value={error} /> : null}
     </section>

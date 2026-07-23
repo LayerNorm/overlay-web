@@ -1,6 +1,7 @@
 export * from './PostgresAuthorizationRepositories'
 export * from './ConvexAuthorizationRepositories'
 export * from './AuthorizationService'
+export * from './authorization-route-policy'
 export * from './AuthorizationAdministrationService'
 export * from './FixedRoleAuthorizationBridge'
 export * from './runtime-capability-policy'

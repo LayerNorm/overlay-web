@@ -7,7 +7,9 @@ import type { AuthorizationCapabilityPolicy } from './AuthorizationService'
 const CAPABILITY_FEATURE: Partial<Record<AuthorizationCapability, keyof CapabilityCheck>> = {
   'automations.use': 'automations',
   'files.delete': 'files',
+  'files.edit': 'files',
   'files.read': 'files',
+  'files.share': 'files',
   'files.upload': 'files',
   'integrations.use': 'integrations',
   'knowledge.create': 'knowledge',
@@ -20,6 +22,7 @@ const CAPABILITY_FEATURE: Partial<Record<AuthorizationCapability, keyof Capabili
   'memory.use': 'memory',
   'models.use': 'modelRouting',
   'projects.create': 'projects',
+  'projects.delete': 'projects',
   'projects.edit': 'projects',
   'projects.read': 'projects',
   'projects.share': 'projects',

@@ -9,6 +9,13 @@ import {
 
 const listAssignments: BffDomainService = async (request, context) => {
   try {
+    const roleId = context.parsedQuery.roleId as string | undefined
+    if (roleId) {
+      return NextResponse.json({ assignments: await authorizationAdministrationService().listRoleAssignments(
+        authorizationActor(request, context),
+        roleId,
+      ) })
+    }
     return NextResponse.json({ assignments: await authorizationAdministrationService().listAssignments(
       authorizationActor(request, context),
       {

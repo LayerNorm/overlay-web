@@ -149,6 +149,11 @@ class ConvexAuthorizationRoleAssignmentRepository implements RoleAssignmentRepos
     return rows.map(clean)
   }
 
+  async listUsersForRole(roleId: string): Promise<UserRoleAssignment[]> {
+    const rows = await query<UserRoleAssignment[]>('listUsersForRoleByServer', { roleId }) ?? []
+    return rows.map(clean)
+  }
+
   async assignGroup(args: {
     groupId: string
     roleId: string
@@ -164,6 +169,11 @@ class ConvexAuthorizationRoleAssignmentRepository implements RoleAssignmentRepos
 
   async listForGroups(groupIds: string[]): Promise<GroupRoleAssignment[]> {
     const rows = await query<GroupRoleAssignment[]>('listGroupRolesByServer', { groupIds }) ?? []
+    return rows.map(clean)
+  }
+
+  async listGroupsForRole(roleId: string): Promise<GroupRoleAssignment[]> {
+    const rows = await query<GroupRoleAssignment[]>('listGroupsForRoleByServer', { roleId }) ?? []
     return rows.map(clean)
   }
 }
