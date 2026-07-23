@@ -13,6 +13,7 @@ import type {
   GroupRoleAssignment,
   ResourceGrant,
   ResourceGrantRepository,
+  ResourceOwnerRepository,
   RoleAssignmentRepository,
   RoleRepository,
   UpdateGroupInput,
@@ -372,6 +373,33 @@ export class PostgresAuthorizationResourceGrantRepository implements ResourceGra
   }
 }
 
+export class PostgresAuthorizationResourceOwnerRepository implements ResourceOwnerRepository {
+  constructor(private readonly db: OverlayPostgresDb) {}
+
+  async getOwner(args: { resourceType: string; resourceId: string }): Promise<string | null> {
+    if (args.resourceType === 'output') {
+      const result = await this.db.execute<{ userId: string }>(sql`
+        SELECT user_id AS "userId" FROM files
+        WHERE id = ${args.resourceId} AND kind = 'output' AND deleted_at IS NULL
+        UNION ALL
+        SELECT user_id AS "userId" FROM outputs
+        WHERE id = ${args.resourceId}
+        LIMIT 1
+      `)
+      return result.rows[0]?.userId ?? null
+    }
+    const table = resourceTable(args.resourceType)
+    if (!table) return null
+    const result = await this.db.execute<{ userId: string }>(sql`
+      SELECT user_id AS "userId"
+      FROM ${table}
+      WHERE id = ${args.resourceId} AND deleted_at IS NULL
+      LIMIT 1
+    `)
+    return result.rows[0]?.userId ?? null
+  }
+}
+
 export function createPostgresAuthorizationRepositories(
   db: OverlayPostgresDb,
 ): AuthorizationRepositories {
@@ -380,6 +408,17 @@ export function createPostgresAuthorizationRepositories(
     groups: new PostgresAuthorizationGroupRepository(db),
     assignments: new PostgresAuthorizationRoleAssignmentRepository(db),
     resourceGrants: new PostgresAuthorizationResourceGrantRepository(db),
+    resourceOwners: new PostgresAuthorizationResourceOwnerRepository(db),
+  }
+}
+
+function resourceTable(resourceType: string): SQL | null {
+  switch (resourceType) {
+    case 'conversation': return sql.raw('conversations')
+    case 'file': return sql.raw('files')
+    case 'note': return sql.raw('notes')
+    case 'project': return sql.raw('projects')
+    default: return null
   }
 }
 

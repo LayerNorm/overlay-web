@@ -88,9 +88,14 @@ export interface ResourceGrantRepository {
   }): Promise<ResourceGrant[]>
 }
 
+export interface ResourceOwnerRepository {
+  getOwner(args: { resourceType: string; resourceId: string }): Promise<string | null>
+}
+
 export interface AuthorizationRepositories {
   roles: RoleRepository
   groups: GroupRepository
   assignments: RoleAssignmentRepository
   resourceGrants: ResourceGrantRepository
+  resourceOwners: ResourceOwnerRepository
 }

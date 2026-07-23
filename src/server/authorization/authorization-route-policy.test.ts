@@ -25,7 +25,11 @@ test('every API v1 route method has an explicit authorization policy', async () 
 })
 
 test('route policies are exact and expose typed resource requirements', () => {
-  assert.equal(getAuthorizationRoutePolicy('GET', '/api/v1/files')?.access, 'capability')
+  assert.deepEqual(getAuthorizationRoutePolicy('GET', '/api/v1/files'), {
+    access: 'resource',
+    capabilities: ['files.read'],
+    resource: { action: 'view', optional: true, type: 'file' },
+  })
   assert.deepEqual(
     getAuthorizationRoutePolicy('DELETE', '/api/v1/files'),
     {

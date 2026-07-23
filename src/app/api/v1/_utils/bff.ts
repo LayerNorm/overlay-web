@@ -22,6 +22,7 @@ import { isOverlayConfigError } from '@/server/config'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   evaluateAuthorizationRoute,
+  evaluateResourceRoute,
   firstDeniedCapability,
   getAuthorizationEnforcementMode,
   getAuthorizationRoutePolicy,
@@ -166,6 +167,34 @@ export async function handleBffRoute(
     }, { status: 403 })
   }
 
+  const routeParams = await resolveRouteParams(context)
+  const resourceAuthorization = await evaluateResourceRoute({
+    authorization: serverContext.authorizationService,
+    evaluation: authorizationEvaluation,
+    mode: authorizationEvaluation.mode,
+    params: routeParams,
+    parsedJson: parsedInput.parsedJson,
+    parsedQuery: parsedInput.parsedQuery,
+    policy: authorizationPolicy,
+  })
+  if (resourceAuthorization.decision && !resourceAuthorization.decision.allowed) {
+    logger.warn('[Authorization] Resource access denied', {
+      action: resourceAuthorization.decision.requiredAction,
+      method: request.method,
+      pathname: request.nextUrl.pathname,
+      reason: resourceAuthorization.decision.reason,
+      resourceId: resourceAuthorization.resourceId,
+      resourceType: resourceAuthorization.decision.resourceType,
+      userId: auth.userId,
+    })
+    if (authorizationEvaluation.mode === 'enforce') {
+      return NextResponse.json({
+        error: 'Not found',
+        code: 'resource_not_found',
+      }, { status: 404 })
+    }
+  }
+
   const rateLimits = getEndpointRateLimitSpecs({
     ip: clientIp,
     method: request.method,
@@ -188,7 +217,7 @@ export async function handleBffRoute(
   }
 
   const serviceContext = {
-    params: Promise.resolve({}),
+    params: Promise.resolve(routeParams),
     ...(context && typeof context === 'object' ? context as object : {}),
     auth,
     parsedQuery: parsedInput.parsedQuery,
@@ -199,6 +228,10 @@ export async function handleBffRoute(
     authorization: {
       evaluation: authorizationEvaluation,
       policy: authorizationPolicy,
+      resourceDecision: resourceAuthorization.decision,
+      resourceId: resourceAuthorization.resourceId,
+      resourceOwnerUserId: resourceAuthorization.ownerUserId,
+      grantedResources: resourceAuthorization.grantedResources,
     },
   } as AppApiRouteContext
 
@@ -209,6 +242,12 @@ export async function handleBffRoute(
     { repository: idempotencyRepository },
   )
   return standardizePaginatedListResponse(request, response)
+}
+
+async function resolveRouteParams(context: unknown): Promise<Record<string, string | string[]>> {
+  if (!context || typeof context !== 'object' || !('params' in context)) return {}
+  const params = await Promise.resolve((context as BffRouteContext).params)
+  return params ?? {}
 }
 
 function getBearerToken(request: NextRequest): string | undefined {

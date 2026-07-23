@@ -11,6 +11,7 @@ import type {
   GroupRoleAssignment,
   ResourceGrant,
   ResourceGrantRepository,
+  ResourceOwnerRepository,
   RoleAssignmentRepository,
   RoleRepository,
   UpdateGroupInput,
@@ -215,12 +216,20 @@ class ConvexAuthorizationResourceGrantRepository implements ResourceGrantReposit
   }
 }
 
+class ConvexAuthorizationResourceOwnerRepository implements ResourceOwnerRepository {
+  async getOwner(args: { resourceType: string; resourceId: string }): Promise<string | null> {
+    const result = await query<{ userId: string } | null>('getResourceOwnerByServer', args)
+    return result?.userId ?? null
+  }
+}
+
 export function createConvexAuthorizationRepositories(): AuthorizationRepositories {
   return {
     roles: new ConvexAuthorizationRoleRepository(),
     groups: new ConvexAuthorizationGroupRepository(),
     assignments: new ConvexAuthorizationRoleAssignmentRepository(),
     resourceGrants: new ConvexAuthorizationResourceGrantRepository(),
+    resourceOwners: new ConvexAuthorizationResourceOwnerRepository(),
   }
 }
 

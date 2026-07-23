@@ -258,6 +258,9 @@ function createFixture(options: { administrator?: boolean } = {}) {
       },
       async listForPrincipals() { return [] },
     },
+    resourceOwners: {
+      async getOwner() { return null },
+    },
   }
 
   const auditRepository: AuditRepository = {

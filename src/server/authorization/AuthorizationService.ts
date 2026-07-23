@@ -30,6 +30,10 @@ export type ResourceAuthorizationRequest = {
   userId: string
 }
 
+export type ResolvedResourceAuthorizationRequest = Omit<ResourceAuthorizationRequest, 'userId'> & {
+  subject: AuthorizationSubject
+}
+
 export class AuthorizationDeniedError extends Error {
   readonly statusCode = 403
 
@@ -98,6 +102,13 @@ export class AuthorizationService {
     args: ResourceAuthorizationRequest,
   ): Promise<AuthorizationDecision> {
     const subject = await this.resolveSubject(args.userId)
+    return this.checkResolvedResourceAccess({ ...args, subject })
+  }
+
+  async checkResolvedResourceAccess(
+    args: ResolvedResourceAuthorizationRequest,
+  ): Promise<AuthorizationDecision> {
+    const subject = args.subject
     const capability = this.capabilityDecision(subject, args.capability)
     if (!capability.allowed) {
       return {
@@ -118,7 +129,7 @@ export class AuthorizationService {
         reason: 'deployment_owner',
       }
     }
-    if (args.ownerUserId === args.userId) {
+    if (args.ownerUserId === subject.userId) {
       return {
         allowed: true,
         capability: args.capability,
@@ -153,6 +164,41 @@ export class AuthorizationService {
       effectiveAccessRole,
       reason: allowed ? 'resource_access_granted' : 'resource_access_missing',
     }
+  }
+
+  async getResourceOwner(args: { resourceType: string; resourceId: string }): Promise<string | null> {
+    return this.deps.repositories.resourceOwners.getOwner(args)
+  }
+
+  async listAccessibleResourceIds(args: {
+    action: ResourceAction
+    resourceType: string
+    subject: AuthorizationSubject
+  }): Promise<string[]> {
+    const grants = await this.deps.repositories.resourceGrants.listForPrincipals({
+      userId: args.subject.userId,
+      groupIds: args.subject.groupIds,
+      roleIds: args.subject.roleIds,
+      resourceType: args.resourceType,
+    })
+    return [...new Set(grants
+      .filter(({ accessRole }) => accessRoleAllows(accessRole, args.action))
+      .map(({ resourceId }) => resourceId))]
+  }
+
+  async listAccessibleResources(args: {
+    action: ResourceAction
+    resourceType: string
+    subject: AuthorizationSubject
+  }): Promise<Array<{ ownerUserId: string; resourceId: string }>> {
+    const resourceIds = await this.listAccessibleResourceIds(args)
+    const values = await Promise.all(resourceIds.map(async (resourceId) => ({
+      ownerUserId: await this.getResourceOwner({ resourceId, resourceType: args.resourceType }),
+      resourceId,
+    })))
+    return values.filter((value): value is { ownerUserId: string; resourceId: string } => (
+      Boolean(value.ownerUserId) && value.ownerUserId !== args.subject.userId
+    ))
   }
 
   async assertResourceAccess(

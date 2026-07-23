@@ -14,6 +14,7 @@ export type {
   CreateRoleInput,
   GroupRepository,
   ResourceGrantRepository,
+  ResourceOwnerRepository,
   RoleAssignmentRepository,
   RoleRepository,
   UpdateGroupInput,

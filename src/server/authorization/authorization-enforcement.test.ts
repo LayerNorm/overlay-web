@@ -127,6 +127,9 @@ function createAuthorization(
       async listForResource() { return [] },
       async listForPrincipals() { return [] },
     },
+    resourceOwners: {
+      async getOwner() { return null },
+    },
   }
   return new AuthorizationService({
     repositories,

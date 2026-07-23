@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, getGrantedResources, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   DEFAULT_MODEL_ID,
@@ -59,6 +59,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     const { searchParams } = request.nextUrl
     const conversationId = searchParams.get('conversationId')
+    const resourceUserId = getAuthorizedResourceUserId(context)
     const includeMessages = searchParams.get('messages') === 'true'
     const projectId = searchParams.get('projectId')
     const updatedSinceParam = searchParams.get('updatedSince')
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     if (conversationId && !includeMessages) {
       const conv = await repository.getConversationById({
         conversationId: conversationId as Id<'conversations'>,
-        userId: auth.userId,
+        userId: resourceUserId,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
       return NextResponse.json(conv)
@@ -81,7 +82,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     if (conversationId && includeMessages) {
       const conv = await repository.getConversationById({
         conversationId: conversationId as Id<'conversations'>,
-        userId: auth.userId,
+        userId: resourceUserId,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -90,7 +91,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         try {
           messages = await repository.getRecentMessages({
             conversationId: conversationId as Id<'conversations'>,
-            userId: auth.userId,
+            userId: resourceUserId,
             limit: messageLimit,
             ...(Number.isFinite(beforeCreatedAt) ? { beforeCreatedAt } : {}),
             compactToolPayloads,
@@ -102,13 +103,13 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
           })
           messages = await repository.getConversationMessages({
             conversationId: conversationId as Id<'conversations'>,
-            userId: auth.userId,
+            userId: resourceUserId,
           })
         }
       } else {
         messages = await repository.getConversationMessages({
           conversationId: conversationId as Id<'conversations'>,
-          userId: auth.userId,
+          userId: resourceUserId,
         })
       }
 
@@ -133,7 +134,12 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
         ...(includeDeleted !== undefined ? { includeDeleted } : {}),
       })
-      return NextResponse.json(list)
+      const granted = await loadGrantedConversations(context, repository)
+      return NextResponse.json([...list, ...granted].filter((conversation) => (
+        conversation.projectId === projectId &&
+        (!Number.isFinite(updatedSince) || (conversation.updatedAt ?? conversation.lastModified) >= updatedSince!) &&
+        (includeDeleted === true || !conversation.deletedAt)
+      )))
     }
 
     const list = await repository.listConversations({
@@ -142,11 +148,24 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })
 
-    return NextResponse.json(list)
+    return NextResponse.json([...list, ...await loadGrantedConversations(context, repository)])
   } catch (error) {
     logger.error('[conversations GET]', error)
     return NextResponse.json({ error: 'Failed to fetch conversations' }, { status: 500 })
   }
+}
+
+async function loadGrantedConversations(
+  context: AppApiRouteContext,
+  repository: ReturnType<typeof getOverlayServerContext>['appData']['repositories']['conversations'],
+) {
+  const values = await Promise.all(getGrantedResources(context).map(({ ownerUserId, resourceId }) => (
+    repository.getConversationById({
+      conversationId: resourceId as Id<'conversations'>,
+      userId: ownerUserId,
+    })
+  )))
+  return values.filter((value): value is NonNullable<typeof value> => Boolean(value))
 }
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
@@ -162,6 +181,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId?: string
     }
     const { auth } = context
+    const resourceUserId = getAuthorizedResourceUserId(context)
     const { appData, chatUsagePolicy } = getOverlayServerContext()
     const repository = appData.repositories.conversations
     const entitlements = await chatUsagePolicy.getEntitlements({ userId: auth.userId })
@@ -173,7 +193,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       FREE_TIER_DEFAULT_MODEL_ID
     const paidModels = normalizePaidChatModels(body.askModelIds, body.actModelId)
     const id = await repository.createConversation({
-      userId: auth.userId,
+      userId: resourceUserId,
       clientId: body.clientId?.trim() || undefined,
       title: body.title || 'New Chat',
       projectId: body.projectId ?? undefined,
@@ -183,7 +203,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
     const conversation = await repository.getConversationById({
       conversationId: id,
-      userId: auth.userId,
+      userId: resourceUserId,
     })
     return NextResponse.json({ id, conversation })
   } catch (error) {
@@ -205,6 +225,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       userId?: string
     }
     const { auth } = context
+    const resourceUserId = getAuthorizedResourceUserId(context)
     const { appData, chatUsagePolicy } = getOverlayServerContext()
     const repository = appData.repositories.conversations
     if (!body.conversationId) {
@@ -233,7 +254,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
 
     await repository.updateConversation({
       conversationId: body.conversationId as Id<'conversations'>,
-      userId: auth.userId,
+      userId: resourceUserId,
       title: body.title,
       projectId: body.projectId,
       askModelIds,

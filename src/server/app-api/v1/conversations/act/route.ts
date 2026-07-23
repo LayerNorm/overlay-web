@@ -73,6 +73,7 @@ import {
   prepareActTooling,
   preloadActExternalToolTasks,
 } from './tooling'
+import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
 
 export const maxDuration = 800
 
@@ -82,6 +83,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let budgetReservationId: string | null = null
   let budgetReservationFinalized = false
   let currentUserId: string | undefined
+  let currentResourceUserId: string | undefined
   let actWebhookConversationId: Id<'conversations'> | undefined
   let actWebhookTurnId: string | undefined
   let actWebhookSkip = false
@@ -149,8 +151,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const isPostgresAppData = overlayContext.appDataCapabilities.provider === 'postgres'
     actWebhookSkip = automationExecution === true || isPostgresAppData
     const { auth } = context
-	    const userId = auth.userId
-	    currentUserId = userId
+    const userId = auth.userId
+    const conversationUserId = getAuthorizedResourceUserId(context)
+    currentUserId = userId
+    currentResourceUserId = conversationUserId
     const accessToken = auth.accessToken || undefined
 	    const streamPersistence = resolveActStreamPersistence({
 	      requestedMode: streamPersistenceMode,
@@ -197,7 +201,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     if (!cid && trimmedClientId) {
       const ensureStartedAt = _ttftDebug ? performance.now() : 0
       cid = await ensureActConversationId({
-        userId,
+        userId: conversationUserId,
         repository: actConversationRepository,
         conversationClientId: trimmedClientId,
         entitlements: runtimeEntitlements,
@@ -232,7 +236,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     // P3.2 Wave 1: user-message save + context fetches stay parallel.
     const saveUserMessageTask = actMessagePersistenceService.persistUserMessage({
       conversationId: cid,
-      userId,
+      userId: conversationUserId,
       turnId: tid,
       modelId: effectiveModelId,
       latestUserContent,
@@ -251,7 +255,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       memoryEnabled,
       mentions: rawMentions,
       serverSecret,
-      userId,
+      userId: conversationUserId,
       externalContextEnabled: !isPostgresAppData,
     })
 
@@ -295,7 +299,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       latestUserMessage,
       latestTurnId: tid,
       conversationId: cid,
-      userId,
+      userId: conversationUserId,
       targetModelId: effectiveModelId,
       historyBaseModelId,
     })
@@ -307,7 +311,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       messages: messagesForModel,
       replyContextForModel,
       targetModelId: effectiveModelId,
-      userId,
+      userId: conversationUserId,
     })
     const userSystemPromptExtension = buildSecondarySystemPromptExtension(systemPrompt)
 
@@ -325,7 +329,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	    const [generatingMessageId, actTooling] = await Promise.all([
 	      actGeneratingMessageService.start({
 	        conversationId: cid,
-	        userId,
+	        userId: conversationUserId,
 	        turnId: tid,
 	        modelId: effectiveModelId,
 	        multiModelTotal,
@@ -544,7 +548,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           timeoutMs: actAbortTimeoutMsResolved,
           toolFailuresByCallId,
           turnId: tid,
-          userId,
+          userId: conversationUserId,
         })
       },
       })
@@ -620,7 +624,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
                 : err,
               messageId: generatingMessageId,
               turnId: actWebhookTurnId,
-              userId,
+              userId: conversationUserId,
             })
           }
         })
@@ -641,7 +645,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
                   modelId: attemptModelId,
                   requestId,
                   turnId: tid,
-                  userId,
+                  userId: conversationUserId,
                   variantIndex: multiModelSlotIndex,
                 },
               })
@@ -876,7 +880,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       error,
       messageId: pendingGeneratingMessageId,
       turnId: actWebhookTurnId,
-      userId: currentUserId,
+      userId: currentResourceUserId,
     })
     return NextResponse.json(
       { error: userFacingOpenRouterError(error), requestId },

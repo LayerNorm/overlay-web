@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { fileErrorResponse, fileService } from '@/server/files/http'
 
 function originForShareUrl(request: NextRequest): string {
@@ -15,11 +15,10 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       accessToken?: string
       userId?: string
     }
-    const { auth } = context
     const result = await fileService.setShare({
       fileId: body.fileId,
       visibility: body.visibility,
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
       origin: originForShareUrl(request),
     })
     return NextResponse.json(result)

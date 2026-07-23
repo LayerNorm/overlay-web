@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, getGrantedResources, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { isKnownOutputType } from '@/shared/tools/output-types'
 import { outputService } from '@/server/outputs/http'
 
@@ -18,7 +18,14 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       conversationId: request.nextUrl.searchParams.get('conversationId'),
       type,
     })
-    return NextResponse.json(outputs)
+    const granted = await Promise.all(getGrantedResources(context).map(({ ownerUserId, resourceId }) => (
+      outputService.get({ outputId: resourceId, userId: ownerUserId })
+    )))
+    return NextResponse.json([...outputs, ...granted.filter((output) => (
+      output && (!type || output.type === type) &&
+      (!request.nextUrl.searchParams.get('conversationId') ||
+        output.conversationId === request.nextUrl.searchParams.get('conversationId'))
+    ))])
   } catch (error) {
     logger.error('[Outputs API] list failed:', error)
     return NextResponse.json({ error: 'Failed to fetch outputs' }, { status: 500 })
@@ -38,7 +45,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const result = await outputService.share({
       origin: originForShareUrl(request),
       outputId: body.outputId,
-      userId: context.auth.userId,
+      userId: getAuthorizedResourceUserId(context),
       visibility: body.visibility,
     })
     return NextResponse.json(result)
@@ -53,7 +60,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
   try {
     const outputId = request.nextUrl.searchParams.get('outputId')
     if (!outputId) return NextResponse.json({ error: 'outputId required' }, { status: 400 })
-    await outputService.delete({ outputId, userId: context.auth.userId })
+    await outputService.delete({ outputId, userId: getAuthorizedResourceUserId(context) })
     return NextResponse.json({ success: true })
   } catch (error) {
     logger.error('[Outputs API] delete failed:', error)

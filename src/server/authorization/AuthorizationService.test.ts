@@ -140,11 +140,34 @@ test('resource authorization denies by default and deployment owner bypass is ex
   assert.equal(decision.effectiveAccessRole, 'owner')
 })
 
+test('resource ownership is resolved server-side and granted lists exclude owned and stale resources', async () => {
+  const fixture = createFixture()
+  fixture.roles.push(role('reader', ['files.read']))
+  fixture.userRoles.push({ userId: 'user_1', roleId: 'reader', createdAt: 1 })
+  fixture.owners.set('file:shared', 'user_2')
+  fixture.owners.set('file:owned', 'user_1')
+  fixture.grants.push(
+    grantForResource('grant_shared', 'shared', 'user', 'user_1', 'viewer'),
+    grantForResource('grant_owned', 'owned', 'user', 'user_1', 'viewer'),
+    grantForResource('grant_stale', 'stale', 'user', 'user_1', 'viewer'),
+  )
+  const service = new AuthorizationService({ repositories: fixture.repositories })
+  const subject = await service.resolveSubject('user_1')
+
+  assert.equal(await service.getResourceOwner({ resourceType: 'file', resourceId: 'shared' }), 'user_2')
+  assert.deepEqual(await service.listAccessibleResources({
+    action: 'view',
+    resourceType: 'file',
+    subject,
+  }), [{ ownerUserId: 'user_2', resourceId: 'shared' }])
+})
+
 type Fixture = {
   grants: ResourceGrant[]
   groupRoles: GroupRoleAssignment[]
   groups: AuthorizationGroup[]
   memberships: GroupMembership[]
+  owners: Map<string, string>
   repositories: AuthorizationRepositories
   roles: AuthorizationRole[]
   userRoles: UserRoleAssignment[]
@@ -157,6 +180,7 @@ function createFixture(): Fixture {
   const userRoles: UserRoleAssignment[] = []
   const groupRoles: GroupRoleAssignment[] = []
   const grants: ResourceGrant[] = []
+  const owners = new Map<string, string>()
   return {
     roles,
     groups,
@@ -164,6 +188,7 @@ function createFixture(): Fixture {
     userRoles,
     groupRoles,
     grants,
+    owners,
     repositories: {
       roles: {
         async create() { throw new Error('not used') },
@@ -213,6 +238,11 @@ function createFixture(): Fixture {
             ))
         },
       },
+      resourceOwners: {
+        async getOwner({ resourceType, resourceId }) {
+          return owners.get(`${resourceType}:${resourceId}`) ?? null
+        },
+      },
     },
   }
 }
@@ -241,4 +271,14 @@ function grant(
     createdAt: 1,
     updatedAt: 1,
   }
+}
+
+function grantForResource(
+  id: string,
+  resourceId: string,
+  principalType: ResourceGrant['principalType'],
+  principalId: string,
+  accessRole: ResourceGrant['accessRole'],
+): ResourceGrant {
+  return { ...grant(id, principalType, principalId, accessRole), resourceType: 'file', resourceId }
 }

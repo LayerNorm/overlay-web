@@ -18,6 +18,8 @@ export type AuthorizationRoutePolicy = {
   capabilities?: readonly AuthorizationCapability[]
   resource?: {
     action: ResourceAction
+    identifiers?: readonly string[]
+    optional?: boolean
     type: string
   }
 }
@@ -37,11 +39,12 @@ const capability = (
 const resource = (
   type: string,
   action: ResourceAction,
+  options: { identifiers?: readonly string[]; optional?: boolean },
   ...capabilities: AuthorizationCapability[]
 ): AuthorizationRoutePolicy => ({
   access: 'resource',
   capabilities,
-  resource: { action, type },
+  resource: { action, type, ...options },
 })
 
 export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule[] = [
@@ -121,94 +124,95 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   {
     path: '/api/v1/conversations',
     methods: {
-      GET: capability('conversations.read'),
+      GET: resource('conversation', 'view', { optional: true }, 'conversations.read'),
       POST: capability('conversations.create'),
-      PATCH: resource('conversation', 'edit', 'conversations.edit'),
-      DELETE: resource('conversation', 'delete', 'conversations.delete'),
+      PATCH: resource('conversation', 'edit', {}, 'conversations.edit'),
+      DELETE: resource('conversation', 'delete', {}, 'conversations.delete'),
     },
   },
   {
     path: '/api/v1/conversations/events',
-    methods: { GET: resource('conversation', 'view', 'conversations.read') },
+    methods: { GET: capability('conversations.read') },
   },
   {
     path: '/api/v1/conversations/act',
-    methods: { POST: resource('conversation', 'edit', 'conversations.edit', 'models.use') },
+    methods: { POST: resource('conversation', 'edit', { optional: true }, 'conversations.edit', 'models.use') },
   },
   {
     path: '/api/v1/conversations/act/extension-plan',
-    methods: { POST: resource('conversation', 'edit', 'conversations.edit', 'models.use') },
+    methods: { POST: capability('conversations.edit', 'models.use') },
   },
   {
     path: '/api/v1/conversations/message',
     methods: {
-      POST: resource('conversation', 'edit', 'conversations.edit'),
-      DELETE: resource('conversation', 'edit', 'conversations.edit'),
+      POST: resource('conversation', 'edit', {}, 'conversations.edit'),
+      DELETE: resource('conversation', 'edit', {}, 'conversations.edit'),
     },
   },
   {
     path: '/api/v1/conversations/share',
-    methods: { PATCH: resource('conversation', 'share', 'conversations.share') },
+    methods: { PATCH: resource('conversation', 'share', {}, 'conversations.share') },
   },
   {
     path: '/api/v1/conversations/stop',
-    methods: { POST: resource('conversation', 'edit', 'conversations.edit') },
+    methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
   },
   {
     path: '/api/v1/conversations/stream-auth',
-    methods: { POST: resource('conversation', 'view', 'conversations.read') },
+    methods: { POST: resource('conversation', 'view', {}, 'conversations.read') },
   },
 
   {
     path: '/api/v1/files',
     methods: {
-      GET: capability('files.read'),
+      GET: resource('file', 'view', { optional: true }, 'files.read'),
       POST: capability('files.upload'),
-      PATCH: resource('file', 'edit', 'files.edit'),
-      DELETE: resource('file', 'delete', 'files.delete'),
+      PATCH: resource('file', 'edit', {}, 'files.edit'),
+      DELETE: resource('file', 'delete', {}, 'files.delete'),
     },
   },
   {
     path: '/api/v1/files/:fileId/content',
-    methods: { GET: resource('file', 'view', 'files.read') },
+    methods: { GET: resource('file', 'view', {}, 'files.read') },
   },
   { path: '/api/v1/files/ingest-document', methods: { POST: capability('files.upload') } },
-  { path: '/api/v1/files/presign', methods: { GET: resource('file', 'view', 'files.read') } },
+  { path: '/api/v1/files/presign', methods: { GET: capability('files.upload') } },
   { path: '/api/v1/files/search-text', methods: { POST: capability('files.read') } },
   {
     path: '/api/v1/files/share',
-    methods: { PATCH: resource('file', 'share', 'files.share') },
+    methods: { PATCH: resource('file', 'share', {}, 'files.share') },
   },
   { path: '/api/v1/files/upload-url', methods: { POST: capability('files.upload') } },
 
   {
     path: '/api/v1/projects',
     methods: {
-      GET: capability('projects.read'),
+      GET: resource('project', 'view', { optional: true }, 'projects.read'),
       POST: capability('projects.create'),
-      PATCH: resource('project', 'edit', 'projects.edit'),
-      DELETE: resource('project', 'delete', 'projects.delete'),
+      PATCH: resource('project', 'edit', {}, 'projects.edit'),
+      DELETE: resource('project', 'delete', {}, 'projects.delete'),
     },
   },
   {
     path: '/api/v1/notes',
     methods: {
-      GET: capability('notes.read'),
+      GET: resource('note', 'view', { optional: true }, 'notes.read'),
       POST: capability('notes.create'),
-      PATCH: resource('note', 'edit', 'notes.edit'),
-      DELETE: resource('note', 'delete', 'notes.delete'),
+      PATCH: resource('note', 'edit', {}, 'notes.edit'),
+      DELETE: resource('note', 'delete', {}, 'notes.delete'),
     },
   },
   {
     path: '/api/v1/outputs',
     methods: {
-      GET: capability('outputs.read'),
-      DELETE: resource('output', 'delete', 'outputs.delete'),
+      GET: resource('output', 'view', { optional: true }, 'outputs.read'),
+      PATCH: resource('output', 'share', {}, 'outputs.delete'),
+      DELETE: resource('output', 'delete', {}, 'outputs.delete'),
     },
   },
   {
     path: '/api/v1/outputs/:outputId/content',
-    methods: { GET: resource('output', 'view', 'outputs.read') },
+    methods: { GET: resource('output', 'view', {}, 'outputs.read') },
   },
 
   { path: '/api/v1/model-catalog', methods: { GET: capability('models.use') } },

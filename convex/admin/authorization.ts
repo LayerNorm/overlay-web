@@ -427,3 +427,41 @@ export const listPrincipalGrantsByServer = query({
     return rows.flat().filter((row) => !args.resourceType || row.resourceType === args.resourceType)
   },
 })
+
+export const getResourceOwnerByServer = query({
+  args: {
+    serverSecret: v.string(),
+    resourceType: v.string(),
+    resourceId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    if (args.resourceType === 'output') {
+      const fileId = ctx.db.normalizeId('files', args.resourceId)
+      if (fileId) {
+        const file = await ctx.db.get(fileId)
+        if (file?.kind === 'output' && file.deletedAt === undefined) return { userId: file.userId }
+      }
+      const outputId = ctx.db.normalizeId('outputs', args.resourceId)
+      const output = outputId ? await ctx.db.get(outputId) : null
+      return output ? { userId: output.userId } : null
+    }
+    const table = resourceTable(args.resourceType)
+    if (!table) return null
+    const id = ctx.db.normalizeId(table, args.resourceId)
+    if (!id) return null
+    const row = await ctx.db.get(id)
+    if (!row || ('deletedAt' in row && row.deletedAt !== undefined)) return null
+    return { userId: row.userId }
+  },
+})
+
+function resourceTable(resourceType: string) {
+  switch (resourceType) {
+    case 'conversation': return 'conversations' as const
+    case 'file': return 'files' as const
+    case 'note': return 'notes' as const
+    case 'project': return 'projects' as const
+    default: return null
+  }
+}

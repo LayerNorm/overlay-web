@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, getGrantedResources, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { repositoryProxy } from '@/server/app-data/errors'
 import { handleRouteError } from '@/server/app-api/route-errors'
 import { readValidatedJson, readValidatedQuery } from '@/server/app-api/validated-input'
@@ -31,13 +31,12 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const queryResult = readValidatedQuery(request, context, ProjectListQuery)
     if (!queryResult.ok) return queryResult.response
     const query = queryResult.data
-    const { auth } = context
     const projectId = query.projectId ?? null
 
     if (projectId) {
       const project = await projectService.getProject({
         projectId,
-        userId: auth.userId,
+        userId: getAuthorizedResourceUserId(context),
       })
       if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
       return NextResponse.json(project)
@@ -48,11 +47,14 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const includeDeleted = readBooleanParam(query.includeDeleted ?? null)
 
     const projects = await projectService.listProjects({
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
       ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
       ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })
-    return NextResponse.json(projects || [])
+    const granted = await Promise.all(getGrantedResources(context).map(({ ownerUserId, resourceId }) => (
+      projectService.getProject({ projectId: resourceId, userId: ownerUserId })
+    )))
+    return NextResponse.json([...(projects || []), ...granted.filter(Boolean)])
   } catch (error) {
     return handleRouteError(error, {
       route: 'projects',
@@ -67,10 +69,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const bodyResult = await readValidatedJson(request, context, CreateProjectRequest)
     if (!bodyResult.ok) return bodyResult.response
     const body = bodyResult.data
-    const { auth } = context
     const { name, parentId, instructions, clientId } = body
     const project = await projectService.createProject({
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
       clientId: clientId?.trim() || undefined,
       name,
       instructions: instructions?.trim() || undefined,
@@ -94,12 +95,11 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const bodyResult = await readValidatedJson(request, context, UpdateProjectRequest)
     if (!bodyResult.ok) return bodyResult.response
     const body = bodyResult.data
-    const { auth } = context
     const { projectId, name, instructions, parentId } = body
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
     const project = await projectService.updateProject({
       projectId,
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
       name,
       instructions,
       parentId,
@@ -122,12 +122,11 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     const queryResult = readValidatedQuery(request, context, DeleteProjectRequest)
     if (!queryResult.ok) return queryResult.response
     const query = queryResult.data
-    const { auth } = context
     const projectId = query.projectId ?? null
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
     const result = await projectService.deleteProjectTree({
       projectId,
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
     })
     return NextResponse.json({
       success: true,

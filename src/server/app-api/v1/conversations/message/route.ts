@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   buildPersistedMessageContent,
@@ -28,7 +28,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       accessToken?: string
       userId?: string
     }
-    const { auth } = context
 
 
     const normalizedParts = sanitizeMessagePartsForPersistence(body.parts, {
@@ -51,7 +50,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const modelId = body.modelId ?? body.model
     await getOverlayServerContext().appData.repositories.conversations.addMessage({
       conversationId: body.conversationId as Id<'conversations'>,
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
       turnId,
       role: body.role,
       mode,
@@ -81,7 +80,6 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
       accessToken?: string
       userId?: string
     }
-    const { auth } = context
     const conversationId = body.conversationId?.trim()
     const turnId = body.turnId?.trim()
     if (!conversationId || !turnId) {
@@ -91,7 +89,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     try {
       await getOverlayServerContext().appData.repositories.conversations.deleteTurn({
         conversationId: conversationId as Id<'conversations'>,
-        userId: auth.userId,
+        userId: getAuthorizedResourceUserId(context),
         turnId,
       })
     } catch (err) {
@@ -120,7 +118,6 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       accessToken?: string
       userId?: string
     }
-    const { auth } = context
     const conversationId = body.conversationId?.trim()
     const messageId = body.messageId?.trim()
     const partId = body.partId?.trim()
@@ -136,7 +133,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       const updated = await getOverlayServerContext().appData.repositories.conversations.updateMessageUiPart({
         conversationId: conversationId as Id<'conversations'>,
         messageId: messageId as Id<'conversationMessages'>,
-        userId: auth.userId,
+        userId: getAuthorizedResourceUserId(context),
         partId,
         data: data as unknown as Record<string, unknown>,
       })

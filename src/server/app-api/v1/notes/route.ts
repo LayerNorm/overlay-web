@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, getGrantedResources, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { repositoryProxy } from '@/server/app-data/errors'
 import { NoteRevisionConflictError, NoteService, NoteServiceError, type NoteRepository } from '@/server/notes'
@@ -56,11 +56,10 @@ function toErrorResponse(error: unknown, fallbackMessage: string) {
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const { auth } = context
 
     const noteId = request.nextUrl.searchParams.get('noteId')
     if (noteId) {
-      const note = await noteService.getNote({ noteId, userId: auth.userId })
+      const note = await noteService.getNote({ noteId, userId: getAuthorizedResourceUserId(context) })
       if (!note) return NextResponse.json({ error: 'Not found' }, { status: 404 })
       return NextResponse.json(note)
     }
@@ -68,11 +67,16 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const projectId = request.nextUrl.searchParams.get('projectId') ?? undefined
     const includeDeleted = readBooleanParam(request.nextUrl.searchParams.get('includeDeleted'))
     const notes = await noteService.listNotes({
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
       projectId,
       includeDeleted,
     })
-    return NextResponse.json(notes)
+    const granted = await Promise.all(getGrantedResources(context).map(({ ownerUserId, resourceId }) => (
+      noteService.getNote({ noteId: resourceId, userId: ownerUserId })
+    )))
+    return NextResponse.json([...notes, ...granted.filter((note) => (
+      note && (!projectId || note.projectId === projectId)
+    ))])
   } catch (error) {
     return toErrorResponse(error, 'Failed to fetch notes')
   }
@@ -81,7 +85,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await readJsonBody<CreateNoteRequest>(request, {})
-    const { auth } = context
 
     const result = await noteService.createNote({
       title: body.title,
@@ -89,7 +92,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       tags: body.tags,
       projectId: body.projectId,
       clientId: body.clientId,
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
     })
     return NextResponse.json(result)
   } catch (error) {
@@ -100,7 +103,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await readJsonBody<Partial<UpdateNoteRequest>>(request, {})
-    const { auth } = context
 
     const result = await noteService.updateNote({
       noteId: body.noteId ?? '',
@@ -109,7 +111,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       tags: body.tags,
       projectId: body.projectId,
       expectedUpdatedAt: body.expectedUpdatedAt,
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
     })
     return NextResponse.json(result)
   } catch (error) {
@@ -119,11 +121,10 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
 
 export async function DELETE(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const { auth } = context
 
     const result = await noteService.deleteNote({
       noteId: request.nextUrl.searchParams.get('noteId'),
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
     })
     return NextResponse.json(result)
   } catch (error) {
