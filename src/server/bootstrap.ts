@@ -75,6 +75,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   appDataCapabilities: AppDataCapabilities
   administrativeService: AdministrativeService
   authorizationAdministrationService: AuthorizationAdministrationService
+  fixedRoleAuthorizationBridge: FixedRoleAuthorizationBridge
   authorizationService: AuthorizationService
   auditService: AuditService
   chatUsagePolicy: ActUsagePolicy
@@ -121,10 +122,6 @@ export function createOverlayServerContext(
     runtimeConfig,
     unlimitedEntitlements: chatUsagePolicy,
   })
-  const userService = new UserService({
-    authProvider: selectedAuthProviderForUserService(runtimeConfig),
-    repository: appData.repositories.users,
-  })
   const memoryService = new MemoryService(appData.repositories.memories)
   const auditService = new AuditService(appData.repositories.audit)
   const authorizationService = new AuthorizationService({
@@ -139,6 +136,11 @@ export function createOverlayServerContext(
   const fixedRoleAuthorizationBridge = new FixedRoleAuthorizationBridge(
     appData.repositories.authorization,
   )
+  const userService = new UserService({
+    authProvider: selectedAuthProviderForUserService(runtimeConfig),
+    afterUpsert: ({ userId }) => fixedRoleAuthorizationBridge.ensureDefaultUserRole(userId),
+    repository: appData.repositories.users,
+  })
   const administrativeService = new AdministrativeService({
     audit: auditService,
     repository: appData.repositories.administration,
@@ -170,6 +172,7 @@ export function createOverlayServerContext(
     appDataCapabilities: appData.capabilities,
     administrativeService,
     authorizationAdministrationService,
+    fixedRoleAuthorizationBridge,
     authorizationService,
     auditService,
     chatUsagePolicy,

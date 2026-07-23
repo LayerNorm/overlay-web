@@ -98,6 +98,16 @@ test('resource authorization uses ownership and the strongest matching ACL', asy
   assert.equal(remove.allowed, false)
   assert.equal(remove.reason, 'resource_access_missing')
 
+  const foreignUser = await service.checkResourceAccess({
+    userId: 'user_2',
+    capability: 'knowledge.edit',
+    resourceType: 'knowledge_base',
+    resourceId: 'kb_1',
+    action: 'edit',
+  })
+  assert.equal(foreignUser.allowed, false)
+  assert.equal(foreignUser.reason, 'capability_missing')
+
   const owner = await service.checkResourceAccess({
     userId: 'user_1',
     capability: 'knowledge.delete',

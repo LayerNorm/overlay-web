@@ -30,12 +30,16 @@ async function AppLayoutContent({ children }: { children: React.ReactNode }) {
     session = await getOverlaySession()
     capabilities = getOverlayCapabilitiesSync()
     appDataCapabilities = getAppDataCapabilitiesSync()
-    authorization = session?.user
-      ? {
-          ...await getOverlayServerContext().authorizationService.resolveSubject(session.user.id),
+    if (session?.user) {
+      const server = getOverlayServerContext()
+      await server.fixedRoleAuthorizationBridge.ensureDefaultUserRole(session.user.id)
+      authorization = {
+          ...await server.authorizationService.resolveSubject(session.user.id),
           enforcementMode: getAuthorizationEnforcementMode(),
-        }
-      : null
+      }
+    } else {
+      authorization = null
+    }
   } catch (error) {
     return <AppConfigurationErrorState error={error} />
   }

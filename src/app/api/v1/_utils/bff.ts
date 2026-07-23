@@ -27,6 +27,7 @@ import {
   getAuthorizationEnforcementMode,
   getAuthorizationRoutePolicy,
 } from '@/server/authorization'
+import { recordAuthorizationDenial } from '@/server/authorization/authorization-denial-audit'
 import { logger } from '@/server/observability/logger'
 import {
   appDataRouteUnsupportedResponse,
@@ -139,6 +140,7 @@ export async function handleBffRoute(
       code: 'authorization_policy_missing',
     }, { status: 500 })
   }
+  await serverContext.fixedRoleAuthorizationBridge.ensureDefaultUserRole(auth.userId)
   const authorizationEvaluation = await evaluateAuthorizationRoute({
     authorization: serverContext.authorizationService,
     mode: getAuthorizationEnforcementMode(),
@@ -159,6 +161,16 @@ export async function handleBffRoute(
     })
   }
   if (!authorizationEvaluation.allowed) {
+    await recordAuthorizationDenial({
+      auditService: serverContext.auditService,
+      actor: auth,
+      clientIp,
+      capability: deniedCapability?.capability,
+      method: request.method,
+      pathname: request.nextUrl.pathname,
+      reason: deniedCapability?.reason ?? 'authorization_denied',
+      requestId: request.headers.get('x-request-id') ?? undefined,
+    })
     return NextResponse.json({
       error: 'Forbidden',
       code: 'authorization_denied',
@@ -188,6 +200,18 @@ export async function handleBffRoute(
       userId: auth.userId,
     })
     if (authorizationEvaluation.mode === 'enforce') {
+      await recordAuthorizationDenial({
+        auditService: serverContext.auditService,
+        actor: auth,
+        clientIp,
+        capability: resourceAuthorization.decision.capability,
+        method: request.method,
+        pathname: request.nextUrl.pathname,
+        reason: resourceAuthorization.decision.reason,
+        requestId: request.headers.get('x-request-id') ?? undefined,
+        resourceId: resourceAuthorization.resourceId,
+        resourceType: resourceAuthorization.decision.resourceType,
+      })
       return NextResponse.json({
         error: 'Not found',
         code: 'resource_not_found',

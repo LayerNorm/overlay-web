@@ -11,6 +11,8 @@ import {
   createOverlayPostgresDb,
   createOverlayPostgresPool,
 } from '../src/server/database/postgres/client'
+import { sql } from 'drizzle-orm'
+import { getInternalApiSecret } from '../src/server/shared/internal-api-secret'
 
 async function main() {
   const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
@@ -22,10 +24,13 @@ async function main() {
     try {
       const db = createOverlayPostgresDb(pool)
       const principals = await new PostgresAdministrativeRepository(db).list()
-      const result = await new FixedRoleAuthorizationBridge(
+      const bridge = new FixedRoleAuthorizationBridge(
         createPostgresAuthorizationRepositories(db),
-      ).migrate(principals)
-      console.log(JSON.stringify({ ok: true, provider: 'postgres', ...result }, null, 2))
+      )
+      const userRows = await db.execute<{ id: string }>(sql`SELECT id FROM users ORDER BY id`)
+      const assignedUsers = await bridge.migrateUsers(userRows.rows.map(({ id }) => id))
+      const result = await bridge.migrate(principals)
+      console.log(JSON.stringify({ ok: true, provider: 'postgres', assignedUsers, ...result }, null, 2))
     } finally {
       await pool.end()
     }
@@ -33,10 +38,16 @@ async function main() {
   }
 
   const principals = await new ConvexAdministrativeRepository().list()
-  const result = await new FixedRoleAuthorizationBridge(
+  const { convex } = await import('../src/server/database/convex')
+  const userIds = await convex.query<string[]>('auth/users:listUserIdsByServer', {
+    serverSecret: getInternalApiSecret(),
+  }, { throwOnError: true }) ?? []
+  const bridge = new FixedRoleAuthorizationBridge(
     createConvexAuthorizationRepositories(),
-  ).migrate(principals)
-  console.log(JSON.stringify({ ok: true, provider: 'convex', ...result }, null, 2))
+  )
+  const assignedUsers = await bridge.migrateUsers(userIds)
+  const result = await bridge.migrate(principals)
+  console.log(JSON.stringify({ ok: true, provider: 'convex', assignedUsers, ...result }, null, 2))
 }
 
 main().catch((error) => {

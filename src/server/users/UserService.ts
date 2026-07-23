@@ -9,10 +9,12 @@ import type {
 } from './types'
 
 export class UserService {
+  private readonly afterUpsert?: UserServiceOptions['afterUpsert']
   private readonly authProvider: UserAuthProvider
   private readonly repository: UserRepository
 
   constructor(options: UserServiceOptions) {
+    this.afterUpsert = options.afterUpsert
     this.authProvider = options.authProvider
     this.repository = options.repository
   }
@@ -21,7 +23,7 @@ export class UserService {
     const userId = normalizeRequiredString(session.user.id, 'session.user.id')
     const email = normalizeEmail(session.user.email)
 
-    return await this.repository.upsertFromIdentity({
+    const result = await this.repository.upsertFromIdentity({
       identity: {
         provider: this.authProvider,
         subject: userId,
@@ -38,6 +40,8 @@ export class UserService {
       },
       now: new Date(),
     })
+    await this.afterUpsert?.(result)
+    return result
   }
 }
 

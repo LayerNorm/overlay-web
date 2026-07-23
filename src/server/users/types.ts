@@ -28,6 +28,7 @@ export interface UserRepository {
 
 export interface UserServiceOptions {
   authProvider: UserAuthProvider
+  afterUpsert?: (result: UserUpsertResult) => Promise<void>
   repository: UserRepository
 }
 

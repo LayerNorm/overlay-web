@@ -5,6 +5,7 @@ import { AuthorizationService } from './AuthorizationService'
 import {
   FIXED_AUTHORIZATION_ROLE_IDS,
   FixedRoleAuthorizationBridge,
+  MEMBER_AUTHORIZATION_ROLE_ID,
 } from './FixedRoleAuthorizationBridge'
 
 export async function runAuthorizationRepositoryContract(
@@ -20,8 +21,10 @@ export async function runAuthorizationRepositoryContract(
   const roleId = `${args.scope}_role`
   const groupId = `${args.scope}_group`
   const grantId = `${args.scope}_grant`
+  const memberUserId = `${args.scope}_member_user`
 
   await args.createUser(userId)
+  await args.createUser(memberUserId)
   try {
     await t.test('persists custom roles and capabilities', async () => {
       const created = await args.repositories.roles.create({
@@ -120,30 +123,36 @@ export async function runAuthorizationRepositoryContract(
 
     await t.test('migrates fixed administrative roles idempotently', async () => {
       const bridge = new FixedRoleAuthorizationBridge(args.repositories)
+      await bridge.ensureDefaultUserRole(memberUserId)
       await bridge.syncPrincipal({
-        userId,
+        userId: memberUserId,
         role: 'admin',
-        grantedBy: userId,
+        grantedBy: memberUserId,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       })
       await bridge.syncPrincipal({
-        userId,
+        userId: memberUserId,
         role: 'admin',
-        grantedBy: userId,
+        grantedBy: memberUserId,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       })
       const systemRole = await args.repositories.roles.get(FIXED_AUTHORIZATION_ROLE_IDS.admin)
       assert.equal(systemRole?.isSystem, true)
       assert.ok(systemRole?.capabilities.includes('roles.manage'))
-      assert.equal((await args.repositories.assignments.listForUser(userId))
+      assert.equal((await args.repositories.assignments.listForUser(memberUserId))
         .filter(({ roleId }) => roleId === FIXED_AUTHORIZATION_ROLE_IDS.admin).length, 1)
       assert.equal((await new AuthorizationService({ repositories: args.repositories })
-        .checkCapability({ userId, capability: 'roles.manage' })).allowed, true)
-      await bridge.revokePrincipal(userId)
-      assert.equal((await args.repositories.assignments.listForUser(userId))
+        .checkCapability({ userId: memberUserId, capability: 'roles.manage' })).allowed, true)
+      await bridge.revokePrincipal(memberUserId)
+      const remainingAssignments = await args.repositories.assignments.listForUser(memberUserId)
+      assert.equal(remainingAssignments
         .some(({ roleId }) => roleId === FIXED_AUTHORIZATION_ROLE_IDS.admin), false)
+      assert.equal(remainingAssignments
+        .some(({ roleId }) => roleId === MEMBER_AUTHORIZATION_ROLE_ID), true)
+      assert.equal((await new AuthorizationService({ repositories: args.repositories })
+        .checkCapability({ userId: memberUserId, capability: 'conversations.read' })).allowed, true)
     })
 
     await t.test('archives roles and groups without returning them by default', async () => {
@@ -156,6 +165,7 @@ export async function runAuthorizationRepositoryContract(
     })
   } finally {
     await args.cleanupUser(userId)
+    await args.cleanupUser(memberUserId)
     assert.equal((await args.repositories.groups.listMembers(groupId)).length, 0)
     assert.equal((await args.repositories.assignments.listForUser(userId)).length, 0)
     assert.equal((await args.repositories.resourceGrants.listForPrincipals({

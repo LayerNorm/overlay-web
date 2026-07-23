@@ -183,6 +183,15 @@ export const syncUserProfileByServer = mutation({
   },
 })
 
+export const listUserIdsByServer = query({
+  args: { serverSecret: v.string() },
+  handler: async (ctx, { serverSecret }) => {
+    requireServerSecret(serverSecret)
+    const subscriptions = await ctx.db.query('subscriptions').collect()
+    return [...new Set(subscriptions.map(({ userId }) => userId))]
+  },
+})
+
 // Get user profile with subscription and usage data (for account page).
 // creditsUsed is read from the subscription row directly — no tokenUsage join needed.
 export const getUserProfile = query({
