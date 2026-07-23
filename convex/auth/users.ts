@@ -547,6 +547,45 @@ export const deleteUserAccountByServer = mutation({
     for (const row of resourceGrants) {
       if (row.grantedBy === userId) await ctx.db.patch(row._id, { grantedBy: undefined })
     }
+    const knowledgeBases = (await ctx.db.query('knowledgeBases').collect())
+      .filter((row) => row.ownerUserId === userId)
+    const knowledgeBaseIds = new Set(knowledgeBases.map((row) => row.knowledgeBaseId))
+    const knowledgeSources = (await ctx.db.query('knowledgeSources').collect())
+      .filter((row) => row.ownerUserId === userId)
+    const knowledgeSourceIds = new Set(knowledgeSources.map((row) => row.sourceId))
+    const knowledgeBaseSources = await ctx.db.query('knowledgeBaseSources').collect()
+    for (const row of knowledgeBaseSources) {
+      if (knowledgeBaseIds.has(row.knowledgeBaseId) || knowledgeSourceIds.has(row.sourceId)) {
+        await ctx.db.delete(row._id)
+        deletedRowCount += 1
+      } else if (row.addedBy === userId) {
+        await ctx.db.patch(row._id, { addedBy: undefined })
+      }
+    }
+    const knowledgeBaseConversations = await ctx.db.query('knowledgeBaseConversations').collect()
+    for (const row of knowledgeBaseConversations) {
+      if (knowledgeBaseIds.has(row.knowledgeBaseId)) {
+        await ctx.db.delete(row._id)
+        deletedRowCount += 1
+      } else if (row.createdBy === userId) {
+        await ctx.db.patch(row._id, { createdBy: undefined })
+      }
+    }
+    const knowledgeSourceVersions = await ctx.db.query('knowledgeSourceVersions').collect()
+    for (const row of knowledgeSourceVersions) {
+      if (knowledgeSourceIds.has(row.sourceId)) {
+        await ctx.db.delete(row._id)
+        deletedRowCount += 1
+      }
+    }
+    for (const row of knowledgeSources) {
+      await ctx.db.delete(row._id)
+      deletedRowCount += 1
+    }
+    for (const row of knowledgeBases) {
+      await ctx.db.delete(row._id)
+      deletedRowCount += 1
+    }
     const actorAuditRows = await ctx.db
       .query('auditEvents')
       .withIndex('by_actorUserId_createdAt', (q) => q.eq('actorUserId', userId))

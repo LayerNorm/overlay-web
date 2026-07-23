@@ -100,6 +100,32 @@ export const knowledgeSourceKind = pgEnum('overlay_knowledge_source_kind', [
   'memory',
 ])
 
+export const knowledgeBaseKind = pgEnum('overlay_knowledge_base_kind', [
+  'personal',
+  'organization',
+])
+
+export const knowledgeBaseStatus = pgEnum('overlay_knowledge_base_status', [
+  'active',
+  'archived',
+])
+
+export const canonicalKnowledgeSourceKind = pgEnum('overlay_canonical_knowledge_source_kind', [
+  'file',
+  'note',
+  'memory',
+  'text',
+])
+
+export const canonicalKnowledgeSourceStatus = pgEnum('overlay_knowledge_source_status', [
+  'pending',
+  'extracting',
+  'indexing',
+  'ready',
+  'failed',
+  'deleting',
+])
+
 export const memoryExtractionStatus = pgEnum('overlay_memory_extraction_status', [
   'running',
   'succeeded',
@@ -292,6 +318,79 @@ export const authIdentities = pgTable('auth_identities', {
   primaryKey({ columns: [table.provider, table.subject] }),
   index('auth_identities_user_id_idx').on(table.userId),
   index('auth_identities_email_idx').on(table.email),
+])
+
+export const knowledgeBases = pgTable('knowledge_bases', {
+  id: text('id').primaryKey(),
+  ownerUserId: text('owner_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  description: text('description'),
+  kind: knowledgeBaseKind('kind').default('personal').notNull(),
+  status: knowledgeBaseStatus('status').default('active').notNull(),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+}, (table) => [
+  index('knowledge_bases_owner_status_updated_idx').on(table.ownerUserId, table.status, table.updatedAt),
+  index('knowledge_bases_kind_status_idx').on(table.kind, table.status),
+])
+
+export const knowledgeSources = pgTable('knowledge_sources', {
+  id: text('id').primaryKey(),
+  ownerUserId: text('owner_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  kind: canonicalKnowledgeSourceKind('kind').notNull(),
+  sourceRef: text('source_ref'),
+  title: text('title').notNull(),
+  mimeType: text('mime_type'),
+  contentHash: text('content_hash'),
+  status: canonicalKnowledgeSourceStatus('status').default('pending').notNull(),
+  statusMessage: text('status_message'),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (table) => [
+  index('knowledge_sources_owner_status_updated_idx').on(table.ownerUserId, table.status, table.updatedAt),
+  uniqueIndex('knowledge_sources_owner_ref_active_idx')
+    .on(table.ownerUserId, table.kind, table.sourceRef)
+    .where(sql`${table.sourceRef} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+])
+
+export const knowledgeSourceVersions = pgTable('knowledge_source_versions', {
+  id: text('id').primaryKey(),
+  sourceId: text('source_id')
+    .notNull()
+    .references(() => knowledgeSources.id, { onDelete: 'cascade' }),
+  version: integer('version').notNull(),
+  contentHash: text('content_hash').notNull(),
+  status: canonicalKnowledgeSourceStatus('status').default('pending').notNull(),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('knowledge_source_versions_source_version_idx').on(table.sourceId, table.version),
+  uniqueIndex('knowledge_source_versions_source_hash_idx').on(table.sourceId, table.contentHash),
+])
+
+export const knowledgeBaseSources = pgTable('knowledge_base_sources', {
+  knowledgeBaseId: text('knowledge_base_id')
+    .notNull()
+    .references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+  sourceId: text('source_id')
+    .notNull()
+    .references(() => knowledgeSources.id, { onDelete: 'cascade' }),
+  addedBy: text('added_by').references(() => users.id, { onDelete: 'set null' }),
+  enabled: boolean('enabled').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.knowledgeBaseId, table.sourceId] }),
+  index('knowledge_base_sources_source_idx').on(table.sourceId, table.knowledgeBaseId),
 ])
 
 export const authorizationRoles = pgTable('authorization_roles', {
@@ -567,6 +666,19 @@ export const conversations = pgTable('conversations', {
   uniqueIndex('conversations_share_token_idx').on(table.shareToken),
 ])
 
+export const knowledgeBaseConversations = pgTable('knowledge_base_conversations', {
+  conversationId: text('conversation_id')
+    .primaryKey()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  knowledgeBaseId: text('knowledge_base_id')
+    .notNull()
+    .references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('knowledge_base_conversations_base_created_idx').on(table.knowledgeBaseId, table.createdAt),
+])
+
 export const conversationMessages = pgTable('conversation_messages', {
   id: text('id').primaryKey(),
   conversationId: text('conversation_id')
@@ -731,6 +843,10 @@ export const knowledgeChunks = pgTable('knowledge_chunks', {
   projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
   sourceKind: knowledgeSourceKind('source_kind').notNull(),
   sourceId: text('source_id').notNull(),
+  knowledgeSourceId: text('knowledge_source_id')
+    .references(() => knowledgeSources.id, { onDelete: 'cascade' }),
+  knowledgeSourceVersionId: text('knowledge_source_version_id')
+    .references(() => knowledgeSourceVersions.id, { onDelete: 'cascade' }),
   chunkIndex: integer('chunk_index').notNull(),
   startOffset: integer('start_offset').notNull(),
   text: text('text').notNull(),
@@ -743,6 +859,8 @@ export const knowledgeChunks = pgTable('knowledge_chunks', {
   index('knowledge_chunks_user_source_idx').on(table.userId, table.sourceKind),
   index('knowledge_chunks_user_project_idx').on(table.userId, table.projectId),
   index('knowledge_chunks_source_idx').on(table.sourceKind, table.sourceId),
+  index('knowledge_chunks_canonical_source_idx').on(table.knowledgeSourceId, table.chunkIndex),
+  index('knowledge_chunks_source_version_idx').on(table.knowledgeSourceVersionId),
 ])
 
 export const knowledgeChunkEmbeddings = pgTable('knowledge_chunk_embeddings', {

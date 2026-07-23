@@ -943,12 +943,98 @@ export default defineSchema({
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt']),
 
+  knowledgeBases: defineTable({
+    knowledgeBaseId: v.string(),
+    ownerUserId: v.string(),
+    title: v.string(),
+    description: v.optional(v.string()),
+    kind: v.union(v.literal('personal'), v.literal('organization')),
+    status: v.union(v.literal('active'), v.literal('archived')),
+    createdBy: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
+  })
+    .index('by_knowledgeBaseId', ['knowledgeBaseId'])
+    .index('by_ownerUserId_status', ['ownerUserId', 'status'])
+    .index('by_kind_status', ['kind', 'status']),
+
+  knowledgeSources: defineTable({
+    sourceId: v.string(),
+    ownerUserId: v.string(),
+    kind: v.union(v.literal('file'), v.literal('note'), v.literal('memory'), v.literal('text')),
+    sourceRef: v.optional(v.string()),
+    title: v.string(),
+    mimeType: v.optional(v.string()),
+    contentHash: v.optional(v.string()),
+    status: v.union(
+      v.literal('pending'),
+      v.literal('extracting'),
+      v.literal('indexing'),
+      v.literal('ready'),
+      v.literal('failed'),
+      v.literal('deleting'),
+    ),
+    statusMessage: v.optional(v.string()),
+    metadata: v.any(),
+    createdBy: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index('by_sourceId', ['sourceId'])
+    .index('by_ownerUserId_status', ['ownerUserId', 'status'])
+    .index('by_owner_kind_ref', ['ownerUserId', 'kind', 'sourceRef']),
+
+  knowledgeSourceVersions: defineTable({
+    sourceVersionId: v.string(),
+    sourceId: v.string(),
+    version: v.number(),
+    contentHash: v.string(),
+    status: v.union(
+      v.literal('pending'),
+      v.literal('extracting'),
+      v.literal('indexing'),
+      v.literal('ready'),
+      v.literal('failed'),
+      v.literal('deleting'),
+    ),
+    metadata: v.any(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_sourceVersionId', ['sourceVersionId'])
+    .index('by_sourceId_version', ['sourceId', 'version'])
+    .index('by_sourceId_contentHash', ['sourceId', 'contentHash']),
+
+  knowledgeBaseSources: defineTable({
+    knowledgeBaseId: v.string(),
+    sourceId: v.string(),
+    addedBy: v.optional(v.string()),
+    enabled: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index('by_base_source', ['knowledgeBaseId', 'sourceId'])
+    .index('by_knowledgeBaseId', ['knowledgeBaseId'])
+    .index('by_sourceId', ['sourceId']),
+
+  knowledgeBaseConversations: defineTable({
+    knowledgeBaseId: v.string(),
+    conversationId: v.string(),
+    createdBy: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index('by_conversationId', ['conversationId'])
+    .index('by_knowledgeBaseId', ['knowledgeBaseId']),
+
   // Searchable chunks for hybrid vector + full-text retrieval (files + memories).
   knowledgeChunks: defineTable({
     userId: v.string(),
     projectId: v.optional(v.string()),
     sourceKind: v.union(v.literal('file'), v.literal('memory')),
     sourceId: v.string(),
+    knowledgeSourceId: v.optional(v.string()),
+    knowledgeSourceVersionId: v.optional(v.string()),
     chunkIndex: v.number(),
     startOffset: v.number(),
     text: v.string(),

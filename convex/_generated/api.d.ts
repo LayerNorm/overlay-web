@@ -32,6 +32,7 @@ import type * as files_storageAdmin from "../files/storageAdmin.js";
 import type * as http from "../http.js";
 import type * as integrations_mcpServers from "../integrations/mcpServers.js";
 import type * as integrations_skills from "../integrations/skills.js";
+import type * as knowledge_bases from "../knowledge/bases.js";
 import type * as knowledge_knowledge from "../knowledge/knowledge.js";
 import type * as knowledge_memories from "../knowledge/memories.js";
 import type * as knowledge_memoryExtractor from "../knowledge/memoryExtractor.js";
@@ -84,6 +85,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "integrations/mcpServers": typeof integrations_mcpServers;
   "integrations/skills": typeof integrations_skills;
+  "knowledge/bases": typeof knowledge_bases;
   "knowledge/knowledge": typeof knowledge_knowledge;
   "knowledge/memories": typeof knowledge_memories;
   "knowledge/memoryExtractor": typeof knowledge_memoryExtractor;

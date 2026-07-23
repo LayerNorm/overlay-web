@@ -148,6 +148,13 @@
       "when": 1784919600000,
       "tag": "0020_authorization_fixed_role_compatibility",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1785006000000,
+      "tag": "0021_knowledge_bases",
+      "breakpoints": true
     }
   ]
 }

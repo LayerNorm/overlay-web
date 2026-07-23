@@ -102,6 +102,11 @@ import {
   createConvexAuthorizationRepositories,
   createPostgresAuthorizationRepositories,
 } from '@/server/authorization'
+import type { KnowledgeBaseRepositories } from '@overlay/app-core'
+import {
+  createConvexKnowledgeBaseRepositories,
+  createPostgresKnowledgeBaseRepositories,
+} from '@/server/knowledge-bases'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -119,6 +124,7 @@ export interface AppDataRepositories {
   daytonaWorkspaces: DaytonaWorkspaceRepository
   files: FileRepository
   idempotency: IdempotencyRepository
+  knowledgeBases: KnowledgeBaseRepositories
   modelCatalog: ModelCatalogRepository
   memories: MemoryRepository
   mcpServers: McpServerRepository
@@ -177,6 +183,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),
         files: new PostgresFileRepository(db),
         idempotency: new PostgresIdempotencyRepository(db),
+        knowledgeBases: createPostgresKnowledgeBaseRepositories(db),
         modelCatalog: new PostgresModelCatalogRepository(db),
         memories: new PostgresMemoryRepository(db),
         mcpServers: new PostgresMcpServerRepository(db),
@@ -212,6 +219,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       daytonaWorkspaces: new ConvexDaytonaWorkspaceRepository(),
       files: new ConvexFileRepository(),
       idempotency: new ConvexIdempotencyRepository(),
+      knowledgeBases: createConvexKnowledgeBaseRepositories(),
       modelCatalog: new ConvexModelCatalogRepository(),
       memories: new ConvexMemoryRepository(),
       mcpServers: new ConvexMcpServerRepository(),
