@@ -29,6 +29,12 @@ export function createConvexKnowledgeBaseRepositories(): KnowledgeBaseRepositori
         const row = await query<ConvexBase | null>('getBaseByServer', { knowledgeBaseId: id })
         return row ? base(row) : null
       },
+      async listAll(options = {}) {
+        const rows = await query<ConvexBase[]>('listBasesByServer', {
+          includeArchived: options.includeArchived ?? false,
+        }) ?? []
+        return rows.map(base)
+      },
       async listForOwner(ownerUserId, options = {}) {
         const rows = await query<ConvexBase[]>('listBasesForOwnerByServer', {
           ownerUserId,

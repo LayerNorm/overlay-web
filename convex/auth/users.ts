@@ -192,6 +192,23 @@ export const listUserIdsByServer = query({
   },
 })
 
+export const listUserDirectoryByServer = query({
+  args: { serverSecret: v.string() },
+  handler: async (ctx, { serverSecret }) => {
+    requireServerSecret(serverSecret)
+    const rows = await ctx.db.query('subscriptions').collect()
+    return rows
+      .filter((row) => Boolean(row.email))
+      .map((row) => ({
+        id: row.userId,
+        email: row.email!,
+        name: row.name,
+        profilePictureUrl: row.profilePictureUrl,
+      }))
+      .sort((a, b) => a.email.localeCompare(b.email) || a.id.localeCompare(b.id))
+  },
+})
+
 // Get user profile with subscription and usage data (for account page).
 // creditsUsed is read from the subscription row directly — no tokenUsage join needed.
 export const getUserProfile = query({

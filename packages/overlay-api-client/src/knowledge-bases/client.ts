@@ -15,6 +15,8 @@ import type {
   KnowledgeBaseSearchResponse,
   KnowledgeBaseSourcesResponse,
   UpdateKnowledgeBaseInput,
+  AdministrativeKnowledgeBaseListResponse,
+  KnowledgeBaseShareDirectoryResponse,
 } from './types'
 
 export class KnowledgeBasesClient {
@@ -22,6 +24,20 @@ export class KnowledgeBasesClient {
 
   list(init?: RequestInit) {
     return this.http.json<KnowledgeBaseListResponse>('/api/v1/knowledge-bases', init)
+  }
+
+  listAdministrative(init?: RequestInit) {
+    return this.http.json<AdministrativeKnowledgeBaseListResponse>(
+      '/api/v1/admin/knowledge-bases',
+      init,
+    )
+  }
+
+  listShareDirectory(init?: RequestInit) {
+    return this.http.json<KnowledgeBaseShareDirectoryResponse>(
+      '/api/v1/knowledge-bases/share-directory',
+      init,
+    )
   }
 
   create(body: CreateKnowledgeBaseInput, init?: RequestInit) {

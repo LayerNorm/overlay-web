@@ -2,6 +2,8 @@ import { z } from 'zod'
 import { FormDataBoundary } from './common'
 
 export const KnowledgeBaseListQuery = z.object({})
+export const KnowledgeBaseShareDirectoryQuery = z.object({})
+export const AdminKnowledgeBaseListQuery = z.object({})
 
 export const CreateKnowledgeBaseRequest = z.object({
   title: z.string().trim().min(1).max(160),

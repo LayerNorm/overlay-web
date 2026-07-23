@@ -38,6 +38,7 @@ export async function runKnowledgeBaseRepositoryContract(
       (await args.repositories.bases.listForOwner(args.ownerUserId)).map(({ id }) => id),
       [baseId],
     )
+    assert.ok((await args.repositories.bases.listAll()).some(({ id }) => id === baseId))
   })
 
   await t.test('reuses one canonical source across multiple bases', async () => {

@@ -120,6 +120,10 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
       DELETE: capability('roles.manage'),
     },
   },
+  {
+    path: '/api/v1/admin/knowledge-bases',
+    methods: { GET: capability('administration.access', 'knowledge.publish') },
+  },
 
   {
     path: '/api/v1/conversations',
@@ -258,6 +262,10 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   { path: '/api/v1/knowledge/search', methods: { POST: capability('knowledge.read') } },
+  {
+    path: '/api/v1/knowledge-bases/share-directory',
+    methods: { GET: capability('knowledge.share') },
+  },
   {
     path: '/api/v1/knowledge-bases',
     methods: {

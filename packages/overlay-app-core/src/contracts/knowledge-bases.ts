@@ -100,6 +100,7 @@ export type UpdateKnowledgeSourceInput = Pick<KnowledgeSource, 'id'> & Partial<P
 export interface KnowledgeBaseRepository {
   create(input: CreateKnowledgeBaseInput): Promise<KnowledgeBase>
   get(id: string): Promise<KnowledgeBase | null>
+  listAll(options?: { includeArchived?: boolean }): Promise<KnowledgeBase[]>
   listForOwner(ownerUserId: string, options?: { includeArchived?: boolean }): Promise<KnowledgeBase[]>
   update(input: UpdateKnowledgeBaseInput): Promise<KnowledgeBase | null>
   archive(id: string): Promise<boolean>

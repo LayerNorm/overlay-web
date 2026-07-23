@@ -8,6 +8,7 @@ import { createOverlayPostgresDb, createOverlayPostgresPool } from '@/server/dat
 import { conversations, users } from '@/server/database/postgres/schema'
 import { createPostgresKnowledgeBaseRepositories } from './PostgresKnowledgeBaseRepositories'
 import { runKnowledgeBaseRepositoryContract } from './knowledge-base-repository-contract'
+import { PostgresUserRepository } from '@/server/users'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
 
@@ -44,6 +45,8 @@ test('real Postgres knowledge-base repository contract', {
       ownerUserId,
       conversationId,
     })
+    const directory = await new PostgresUserRepository(db).listDirectory()
+    assert.ok(directory.some(({ id, email }) => id === ownerUserId && email === `${ownerUserId}@example.com`))
 
     const residue = await db.execute<{ count: string }>(sql`
       SELECT count(*)::text AS count

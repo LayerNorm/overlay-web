@@ -56,6 +56,15 @@ export function createPostgresKnowledgeBaseRepositories(
         `)
         return result.rows[0] ? baseFromRow(result.rows[0]) : null
       },
+      async listAll(options = {}) {
+        const result = await db.execute<BaseRow>(sql`
+          SELECT ${baseColumns}
+          FROM knowledge_bases
+          WHERE ${options.includeArchived ? sql`true` : sql`status = 'active'`}
+          ORDER BY updated_at DESC, id
+        `)
+        return result.rows.map(baseFromRow)
+      },
       async listForOwner(ownerUserId: string, options = {}) {
         const result = await db.execute<BaseRow>(sql`
           SELECT ${baseColumns}

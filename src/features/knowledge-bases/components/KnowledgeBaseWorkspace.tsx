@@ -34,11 +34,13 @@ import type { KnowledgeBase } from '@overlay/app-core'
 import type {
   KnowledgeBaseGrantsResponse,
   KnowledgeBaseSearchResponse,
+  KnowledgeBaseShareDirectoryResponse,
   KnowledgeBaseSourceDetail,
 } from '@overlay/api-client'
 import { Button, DialogFrame, IconButton } from '@overlay/ui'
 import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useAuth } from '@/contexts/AuthContext'
 
 const ChatSuspenseBoundary = dynamic(() => import('@/features/chat/components/ChatSuspenseBoundary'), {
   loading: () => (
@@ -76,6 +78,7 @@ export function KnowledgeBaseWorkspace({
   userId: string
 }) {
   const router = useRouter()
+  const { refreshSession } = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [knowledgeBase, setKnowledgeBase] = useState(initialKnowledgeBase)
   const [sources, setSources] = useState(initialSources)
@@ -99,6 +102,12 @@ export function KnowledgeBaseWorkspace({
   const [sharePrincipalId, setSharePrincipalId] = useState('')
   const [shareAccessRole, setShareAccessRole] = useState<'viewer' | 'editor'>('viewer')
   const [grants, setGrants] = useState<KnowledgeBaseGrantsResponse['grants']>([])
+  const [shareDirectory, setShareDirectory] = useState<KnowledgeBaseShareDirectoryResponse>({
+    users: [],
+    groups: [],
+    roles: [],
+  })
+  const [shareDirectoryLoading, setShareDirectoryLoading] = useState(false)
   const [sharing, setSharing] = useState(false)
 
   const selectedSource = useMemo(
@@ -223,11 +232,24 @@ export function KnowledgeBaseWorkspace({
 
   async function openShareDialog() {
     setShareOpen(true)
+    setShareDirectoryLoading(true)
+    setNotice(null)
     try {
-      const response = await overlayAppClient.knowledgeBases.listGrants(knowledgeBase.id)
-      setGrants(response.grants)
-    } catch {
+      // Direct page loads can render before the client session check settles.
+      // Resolve that boundary before protected sharing requests so a transient
+      // 401 cannot leave the directory in a permanently empty state.
+      await refreshSession()
+      const [grantsResponse, directoryResponse] = await Promise.all([
+        overlayAppClient.knowledgeBases.listGrants(knowledgeBase.id),
+        overlayAppClient.knowledgeBases.listShareDirectory(),
+      ])
+      setGrants(grantsResponse.grants)
+      setShareDirectory(directoryResponse)
+    } catch (error) {
       setGrants([])
+      setNotice(error instanceof Error ? error.message : 'Could not load sharing options')
+    } finally {
+      setShareDirectoryLoading(false)
     }
   }
 
@@ -418,14 +440,28 @@ export function KnowledgeBaseWorkspace({
         description="Grant access to a user, group, or custom role."
         className="w-[min(540px,94vw)]"
       >
-        <div className="mt-5 grid grid-cols-[110px_1fr_100px] gap-2">
-          <select value={sharePrincipalType} onChange={(event) => setSharePrincipalType(event.target.value as typeof sharePrincipalType)} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs">
+        <div className="mt-5 grid gap-2 sm:grid-cols-[110px_minmax(0,1fr)_100px]">
+          <select aria-label="Principal type" value={sharePrincipalType} onChange={(event) => {
+            setSharePrincipalType(event.target.value as typeof sharePrincipalType)
+            setSharePrincipalId('')
+          }} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs">
             <option value="user">User</option>
             <option value="group">Group</option>
             <option value="role">Role</option>
           </select>
-          <input value={sharePrincipalId} onChange={(event) => setSharePrincipalId(event.target.value)} placeholder={`${sharePrincipalType} ID`} className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-xs outline-none" />
-          <select value={shareAccessRole} onChange={(event) => setShareAccessRole(event.target.value as typeof shareAccessRole)} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs">
+          <select
+            aria-label={`Select ${sharePrincipalType}`}
+            value={sharePrincipalId}
+            onChange={(event) => setSharePrincipalId(event.target.value)}
+            disabled={shareDirectoryLoading}
+            className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-xs outline-none disabled:opacity-60"
+          >
+            <option value="">{shareDirectoryLoading ? 'Loading directory...' : `Select ${sharePrincipalType}`}</option>
+            {directoryEntries(shareDirectory, sharePrincipalType).map((entry) => (
+              <option key={entry.id} value={entry.id}>{directoryEntryLabel(entry)}</option>
+            ))}
+          </select>
+          <select aria-label="Access role" value={shareAccessRole} onChange={(event) => setShareAccessRole(event.target.value as typeof shareAccessRole)} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs">
             <option value="viewer">Viewer</option>
             <option value="editor">Editor</option>
           </select>
@@ -443,7 +479,7 @@ export function KnowledgeBaseWorkspace({
               {grants.map((grant) => (
                 <div key={grant.id} className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-0">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium">{grant.principalId}</p>
+                    <p className="truncate text-xs font-medium">{principalLabel(shareDirectory, grant.principalType, grant.principalId)}</p>
                     <p className="text-[11px] text-[var(--muted)]">{grant.principalType} · {grant.accessRole}</p>
                   </div>
                   <IconButton aria-label="Remove access" onClick={() => void revokeGrant(grant.id)}>
@@ -457,6 +493,29 @@ export function KnowledgeBaseWorkspace({
       </DialogFrame>
     </>
   )
+}
+
+function directoryEntries(
+  directory: KnowledgeBaseShareDirectoryResponse,
+  type: 'user' | 'group' | 'role',
+) {
+  if (type === 'user') return directory.users
+  if (type === 'group') return directory.groups
+  return directory.roles
+}
+
+function directoryEntryLabel(entry: KnowledgeBaseShareDirectoryResponse['users'][number]): string {
+  if (entry.email && entry.name && entry.name !== entry.email) return `${entry.name} (${entry.email})`
+  return entry.email || entry.name || entry.id
+}
+
+function principalLabel(
+  directory: KnowledgeBaseShareDirectoryResponse,
+  type: 'user' | 'group' | 'role',
+  id: string,
+): string {
+  const entry = directoryEntries(directory, type).find((candidate) => candidate.id === id)
+  return entry ? directoryEntryLabel(entry) : id
 }
 
 function KnowledgeSourcePanel({

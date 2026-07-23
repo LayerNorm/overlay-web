@@ -65,6 +65,17 @@ export const listBasesForOwnerByServer = query({
   },
 })
 
+export const listBasesByServer = query({
+  args: { serverSecret: v.string(), includeArchived: v.boolean() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db.query('knowledgeBases').collect()
+    return rows
+      .filter((row) => args.includeArchived || row.status === 'active')
+      .sort((a, b) => b.updatedAt - a.updatedAt || a.knowledgeBaseId.localeCompare(b.knowledgeBaseId))
+  },
+})
+
 export const updateBaseByServer = mutation({
   args: {
     serverSecret: v.string(),

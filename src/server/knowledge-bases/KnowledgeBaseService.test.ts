@@ -29,7 +29,6 @@ test('knowledge-base service enforces owner, editor, viewer, and private boundar
   const base = await service.createKnowledgeBase({
     userId: 'owner',
     title: ' IB Chemistry ',
-    kind: 'organization',
   })
   assert.equal(base.title, 'IB Chemistry')
 
@@ -213,6 +212,82 @@ test('knowledge-base owners distribute access to users, groups, and custom roles
   assert.equal(role.principalType, 'role')
 })
 
+test('knowledge administrators inspect every base while the share directory remains capability-gated', async () => {
+  const fixture = createFixture()
+  const base = await fixture.service.createKnowledgeBase({ userId: 'owner', title: 'Organization Brain' })
+  await fixture.service.createAndAttachSource({
+    knowledgeBaseId: base.id,
+    kind: 'text',
+    title: 'Curriculum',
+    userId: 'owner',
+  })
+  fixture.groups.push({ id: 'teachers', name: 'Teachers', source: 'local', createdAt: 1, updatedAt: 1 })
+  await fixture.service.shareKnowledgeBase({
+    accessRole: 'viewer',
+    knowledgeBaseId: base.id,
+    principalId: 'teachers',
+    principalType: 'group',
+    userId: 'owner',
+  })
+
+  const administered = await fixture.service.listAdministrativeKnowledgeBases('admin')
+  assert.equal(administered[0]?.id, base.id)
+  assert.equal(administered[0]?.sourceCount, 1)
+  assert.equal(administered[0]?.grantCount, 1)
+  const directory = await fixture.service.listShareDirectory('owner')
+  assert.ok(directory.users.some(({ id }) => id === 'viewer'))
+  assert.equal(directory.groups[0]?.name, 'Teachers')
+  assert.ok(directory.roles.some(({ id }) => id === 'editor-role'))
+
+  await assert.rejects(
+    fixture.service.listAdministrativeKnowledgeBases('owner'),
+    (error: unknown) => error instanceof KnowledgeBaseServiceError && error.statusCode === 404,
+  )
+  await assert.rejects(
+    fixture.service.shareKnowledgeBase({
+      accessRole: 'viewer',
+      knowledgeBaseId: base.id,
+      principalId: 'missing-user',
+      principalType: 'user',
+      userId: 'owner',
+    }),
+    (error: unknown) => error instanceof KnowledgeBaseServiceError && error.statusCode === 404,
+  )
+})
+
+test('organization knowledge bases require publishing capability', async () => {
+  const fixture = createFixture()
+
+  await assert.rejects(
+    fixture.service.createKnowledgeBase({
+      kind: 'organization',
+      title: 'Unauthorized organization brain',
+      userId: 'owner',
+    }),
+    (error: unknown) => error instanceof KnowledgeBaseServiceError && error.statusCode === 404,
+  )
+
+  const personal = await fixture.service.createKnowledgeBase({
+    title: 'Personal brain',
+    userId: 'owner',
+  })
+  await assert.rejects(
+    fixture.service.updateKnowledgeBase({
+      knowledgeBaseId: personal.id,
+      kind: 'organization',
+      userId: 'owner',
+    }),
+    (error: unknown) => error instanceof KnowledgeBaseServiceError && error.statusCode === 404,
+  )
+
+  const organization = await fixture.service.createKnowledgeBase({
+    kind: 'organization',
+    title: 'Published organization brain',
+    userId: 'admin',
+  })
+  assert.equal(organization.kind, 'organization')
+})
+
 function createFixture() {
   const roles: AuthorizationRole[] = [
     role('member', [
@@ -223,7 +298,7 @@ function createFixture() {
     role('viewer-role', ['knowledge.read', 'conversations.read', 'conversations.edit']),
     role('admin-role', [
       'administration.access', 'knowledge.create', 'knowledge.read', 'knowledge.edit',
-      'knowledge.share', 'knowledge.delete',
+      'knowledge.share', 'knowledge.delete', 'knowledge.publish',
     ]),
   ]
   const groups: AuthorizationGroup[] = []
@@ -321,6 +396,13 @@ function createFixture() {
       authorization,
       authorizationRepositories,
       repositories,
+      users: {
+        async upsertFromIdentity() { throw new Error('not used') },
+        async listDirectory() {
+          return ['owner', 'editor', 'viewer', 'unshared', 'group-viewer', 'role-editor', 'admin']
+            .map((id) => ({ id, email: `${id}@example.com`, name: id }))
+        },
+      },
     }),
   }
 }
@@ -346,6 +428,9 @@ function inMemoryKnowledgeRepositories(): KnowledgeBaseRepositories {
         return value
       },
       async get(id) { return bases.get(id) ?? null },
+      async listAll(options = {}) {
+        return [...bases.values()].filter((value) => options.includeArchived || value.status === 'active')
+      },
       async listForOwner(ownerUserId, options = {}) {
         return [...bases.values()].filter((value) => value.ownerUserId === ownerUserId &&
           (options.includeArchived || value.status === 'active'))

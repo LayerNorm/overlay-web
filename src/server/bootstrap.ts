@@ -168,6 +168,7 @@ export function createOverlayServerContext(
     authorization: authorizationService,
     authorizationRepositories: appData.repositories.authorization,
     repositories: appData.repositories.knowledgeBases,
+    users: appData.repositories.users,
   })
   const canonicalIndexQueue = appData.capabilities.provider === 'postgres'
     ? new PostgresCanonicalKnowledgeIndexQueue(requiredPostgres(appData).db)

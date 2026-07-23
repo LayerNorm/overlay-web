@@ -20,5 +20,7 @@ export {
   KNOWLEDGE_BASE_RESOURCE_TYPE,
   KnowledgeBaseService,
   KnowledgeBaseServiceError,
+  type AdministrativeKnowledgeBase,
+  type KnowledgeBaseShareDirectory,
   type KnowledgeBaseSourceDetail,
 } from './KnowledgeBaseService'

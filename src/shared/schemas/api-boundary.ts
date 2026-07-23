@@ -67,6 +67,8 @@ import {
   KnowledgeBaseEmptyQuery,
   KnowledgeBaseSourceUploadForm,
   KnowledgeBaseListQuery,
+  KnowledgeBaseShareDirectoryQuery,
+  AdminKnowledgeBaseListQuery,
   CreateKnowledgeBaseRequest,
   UpdateKnowledgeBaseRequest,
   DeleteKnowledgeBaseRequest,
@@ -411,9 +413,23 @@ export const webApiBoundaryDefinitions = [
   },
   {
     method: 'GET',
+    path: '/api/v1/admin/knowledge-bases',
+    schema: { query: AdminKnowledgeBaseListQuery },
+    summary: 'List all knowledge bases for administration',
+    tag: 'Administration',
+  },
+  {
+    method: 'GET',
     path: '/api/v1/knowledge-bases',
     schema: { query: KnowledgeBaseListQuery },
     summary: 'List accessible knowledge bases',
+    tag: 'Knowledge Bases',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/knowledge-bases/share-directory',
+    schema: { query: KnowledgeBaseShareDirectoryQuery },
+    summary: 'List users, groups, and roles available for knowledge sharing',
     tag: 'Knowledge Bases',
   },
   {

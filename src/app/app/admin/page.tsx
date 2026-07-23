@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { RefreshCw, Search, ShieldCheck, WalletCards } from 'lucide-react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { AuthorizationAdminPanel } from '@/features/admin/authorization/AuthorizationAdminPanel'
+import { KnowledgeAdminPanel } from '@/features/admin/knowledge/KnowledgeAdminPanel'
 import { useAuthorization } from '@/components/providers/AuthorizationProvider'
 
 type UsageRow = {
@@ -35,7 +36,9 @@ export default function AdminPage() {
   const canManageRoles = can('roles.manage')
   const canViewGroups = can('groups.read')
   const canManageGroups = can('groups.manage')
-  const [section, setSection] = useState<'overview' | 'roles' | 'groups'>('overview')
+  const canViewKnowledge = can('knowledge.publish') && can('knowledge.share') && can('roles.read')
+  const canManageKnowledge = canViewKnowledge && can('roles.manage')
+  const [section, setSection] = useState<'overview' | 'roles' | 'groups' | 'knowledge'>('overview')
   const [usage, setUsage] = useState<UsageRow[]>([])
   const [events, setEvents] = useState<AuditRow[]>([])
   const [userFilter, setUserFilter] = useState('')
@@ -74,10 +77,12 @@ export default function AdminPage() {
     if (section === 'overview' && (canViewUsage || canViewAudit)) return
     if (section === 'roles' && canViewRoles) return
     if (section === 'groups' && canViewGroups) return
+    if (section === 'knowledge' && canViewKnowledge) return
     if (canViewUsage || canViewAudit) setSection('overview')
     else if (canViewRoles) setSection('roles')
     else if (canViewGroups) setSection('groups')
-  }, [canViewAudit, canViewGroups, canViewRoles, canViewUsage, section])
+    else if (canViewKnowledge) setSection('knowledge')
+  }, [canViewAudit, canViewGroups, canViewKnowledge, canViewRoles, canViewUsage, section])
 
   async function adjustBudget() {
     const amount = Number(amountCents)
@@ -124,6 +129,7 @@ export default function AdminPage() {
                 ...(canViewUsage || canViewAudit ? ['overview'] as const : []),
                 ...(canViewRoles ? ['roles'] as const : []),
                 ...(canViewGroups ? ['groups'] as const : []),
+                ...(canViewKnowledge ? ['knowledge'] as const : []),
               ] as const).map((value) => (
                 <button
                   type="button"
@@ -160,6 +166,9 @@ export default function AdminPage() {
             view="groups"
             userDirectory={usage}
           />
+        ) : null}
+        {section === 'knowledge' && canViewKnowledge ? (
+          <KnowledgeAdminPanel canManage={canManageKnowledge} />
         ) : null}
 
         {section === 'overview' && (forbidden || (!canViewUsage && !canViewAudit)) ? (

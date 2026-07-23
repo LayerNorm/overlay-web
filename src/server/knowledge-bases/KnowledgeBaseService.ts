@@ -22,12 +22,24 @@ import {
   AuthorizationDeniedError,
   AuthorizationService,
 } from '@/server/authorization/AuthorizationService'
+import type { UserDirectoryEntry, UserRepository } from '@/server/users'
 
 export const KNOWLEDGE_BASE_RESOURCE_TYPE = 'knowledge_base'
 
 export type KnowledgeBaseSourceDetail = {
   membership: KnowledgeBaseSource
   source: KnowledgeSource
+}
+
+export type KnowledgeBaseShareDirectory = {
+  users: UserDirectoryEntry[]
+  groups: Array<{ id: string; name: string; description?: string }>
+  roles: Array<{ id: string; name: string; description?: string }>
+}
+
+export type AdministrativeKnowledgeBase = KnowledgeBase & {
+  grantCount: number
+  sourceCount: number
 }
 
 export class KnowledgeBaseServiceError extends Error {
@@ -42,6 +54,7 @@ export class KnowledgeBaseService {
     authorization: AuthorizationService
     authorizationRepositories: AuthorizationRepositories
     repositories: KnowledgeBaseRepositories
+    users?: UserRepository
   }) {}
 
   async listKnowledgeBases(userId: string): Promise<KnowledgeBase[]> {
@@ -63,6 +76,41 @@ export class KnowledgeBaseService {
       .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
   }
 
+  async listAdministrativeKnowledgeBases(userId: string): Promise<AdministrativeKnowledgeBase[]> {
+    await Promise.all([
+      this.requireCapability(userId, 'administration.access'),
+      this.requireCapability(userId, 'knowledge.publish'),
+    ])
+    const bases = await this.deps.repositories.bases.listAll({ includeArchived: true })
+    return await Promise.all(bases.map(async (base) => {
+      const [memberships, grants] = await Promise.all([
+        this.deps.repositories.memberships.listForBase(base.id),
+        this.deps.authorizationRepositories.resourceGrants.listForResource({
+          resourceType: KNOWLEDGE_BASE_RESOURCE_TYPE,
+          resourceId: base.id,
+        }),
+      ])
+      return { ...base, sourceCount: memberships.length, grantCount: grants.length }
+    }))
+  }
+
+  async listShareDirectory(userId: string): Promise<KnowledgeBaseShareDirectory> {
+    await this.requireCapability(userId, 'knowledge.share')
+    if (!this.deps.users?.listDirectory) {
+      throw new KnowledgeBaseServiceError('User directory is not available', 503)
+    }
+    const [users, groups, roles] = await Promise.all([
+      this.deps.users.listDirectory(),
+      this.deps.authorizationRepositories.groups.list(),
+      this.deps.authorizationRepositories.roles.list(),
+    ])
+    return {
+      users,
+      groups: groups.map(({ id, name, description }) => ({ id, name, description })),
+      roles: roles.map(({ id, name, description }) => ({ id, name, description })),
+    }
+  }
+
   async getKnowledgeBase(args: { knowledgeBaseId: string; userId: string }): Promise<KnowledgeBase> {
     const base = await this.requiredBase(args.knowledgeBaseId)
     await this.assertBaseAccess('view', 'knowledge.read', base, args.userId)
@@ -76,6 +124,9 @@ export class KnowledgeBaseService {
     userId: string
   }): Promise<KnowledgeBase> {
     await this.requireCapability(args.userId, 'knowledge.create')
+    if (args.kind === 'organization') {
+      await this.requireCapability(args.userId, 'knowledge.publish')
+    }
     return await this.deps.repositories.bases.create({
       id: randomUUID(),
       ownerUserId: args.userId,
@@ -95,6 +146,9 @@ export class KnowledgeBaseService {
   }): Promise<KnowledgeBase> {
     const base = await this.requiredBase(args.knowledgeBaseId)
     await this.assertBaseAccess('edit', 'knowledge.edit', base, args.userId)
+    if (args.kind === 'organization' && base.kind !== 'organization') {
+      await this.requireCapability(args.userId, 'knowledge.publish')
+    }
     const updated = await this.deps.repositories.bases.update({
       id: base.id,
       title: args.title === undefined ? undefined : requiredTitle(args.title),
@@ -394,7 +448,13 @@ export class KnowledgeBaseService {
     principalType: AuthorizationPrincipalType,
     principalId: string,
   ): Promise<void> {
-    if (principalType === 'user') return
+    if (principalType === 'user') {
+      if (this.deps.users?.listDirectory) {
+        const users = await this.deps.users.listDirectory()
+        if (!users.some(({ id }) => id === principalId)) throw notFound('User')
+      }
+      return
+    }
     if (principalType === 'group') {
       const group = await this.deps.authorizationRepositories.groups.get(principalId)
       if (!group || group.archivedAt) throw notFound('Authorization group')

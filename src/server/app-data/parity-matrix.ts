@@ -121,8 +121,8 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     name: 'Knowledge, memory, and vector search',
     targetPhase: 'P4',
     capabilities: [{ key: 'supportsVectorSearch', expectedAtParity: true, runtimeConfigured: true }],
-    routeRuleIds: ['knowledge-memory-vector-search'],
-    exitGate: 'Upload, extract, embed, retrieve, cite, reindex, and delete pass shared pgvector and Convex characterization.',
+    routeRuleIds: ['knowledge-memory-vector-search', 'knowledge-bases'],
+    exitGate: 'Knowledge bases, upload, extract, embed, retrieve, cite, reindex, sharing, and delete pass shared Postgres and Convex characterization.',
   },
   {
     id: 'stabilization-resilience',
