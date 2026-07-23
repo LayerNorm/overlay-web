@@ -159,6 +159,22 @@ export function createPostgresKnowledgeBaseRepositories(
         `)
         return versionFromRow(required(result.rows[0], 'create knowledge source version'))
       },
+      async updateVersion(input) {
+        const currentResult = await db.execute<VersionRow>(sql`
+          SELECT ${versionColumns} FROM knowledge_source_versions WHERE id = ${input.id} LIMIT 1
+        `)
+        const current = currentResult.rows[0]
+        if (!current) return null
+        const result = await db.execute<VersionRow>(sql`
+          UPDATE knowledge_source_versions SET
+            status = ${input.status ?? current.status},
+            metadata = ${JSON.stringify(input.metadata ?? current.metadata)}::jsonb,
+            updated_at = now()
+          WHERE id = ${input.id}
+          RETURNING ${versionColumns}
+        `)
+        return result.rows[0] ? versionFromRow(result.rows[0]) : null
+      },
       async listVersions(sourceId: string) {
         const result = await db.execute<VersionRow>(sql`
           SELECT ${versionColumns}

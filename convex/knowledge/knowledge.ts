@@ -255,6 +255,149 @@ export const fetchChunkPayloads = internalQuery({
 
 // ─── Reindex (scheduled / internal) ─────────────────────────────────────────
 
+export const getCanonicalSourceForReindex = internalQuery({
+  args: {
+    contentHash: v.string(),
+    sourceId: v.string(),
+    sourceVersionId: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const source = await ctx.db.query('knowledgeSources')
+      .withIndex('by_sourceId', (q) => q.eq('sourceId', args.sourceId)).unique()
+    const version = await ctx.db.query('knowledgeSourceVersions')
+      .withIndex('by_sourceVersionId', (q) => q.eq('sourceVersionId', args.sourceVersionId)).unique()
+    if (!source || source.deletedAt || source.ownerUserId !== args.userId || !version) return null
+    if (source.contentHash !== args.contentHash || version.contentHash !== args.contentHash) {
+      return { kind: 'stale' as const }
+    }
+    const versionMetadata = version.metadata as Record<string, unknown>
+    const sourceMetadata = source.metadata as Record<string, unknown>
+    const content = typeof versionMetadata.content === 'string'
+      ? versionMetadata.content
+      : typeof sourceMetadata.content === 'string' ? sourceMetadata.content : ''
+    return {
+      kind: 'ready' as const,
+      content,
+      source,
+      version,
+    }
+  },
+})
+
+export const replaceCanonicalSource = internalMutation({
+  args: {
+    sourceId: v.string(),
+    sourceVersionId: v.string(),
+    userId: v.string(),
+    segments: v.array(v.object({
+      chunkIndex: v.number(),
+      embedding: v.array(v.float64()),
+      startOffset: v.number(),
+      text: v.string(),
+    })),
+  },
+  handler: async (ctx, args) => {
+    const source = await ctx.db.query('knowledgeSources')
+      .withIndex('by_sourceId', (q) => q.eq('sourceId', args.sourceId)).unique()
+    const version = await ctx.db.query('knowledgeSourceVersions')
+      .withIndex('by_sourceVersionId', (q) => q.eq('sourceVersionId', args.sourceVersionId)).unique()
+    if (!source || source.deletedAt || source.ownerUserId !== args.userId || !version) return { replaced: false }
+    const existing = await ctx.db.query('knowledgeChunks')
+      .withIndex('by_knowledgeSourceId', (q) => q.eq('knowledgeSourceId', args.sourceId)).collect()
+    for (const chunk of existing) {
+      const embedding = await ctx.db.query('knowledgeChunkEmbeddings')
+        .withIndex('by_chunkId', (q) => q.eq('chunkId', chunk._id)).first()
+      if (embedding) await ctx.db.delete(embedding._id)
+      await ctx.db.delete(chunk._id)
+    }
+    const sourceKind = source.kind === 'memory' ? 'memory' as const : 'file' as const
+    for (const segment of args.segments) {
+      const chunkId = await ctx.db.insert('knowledgeChunks', {
+        chunkIndex: segment.chunkIndex,
+        knowledgeSourceId: args.sourceId,
+        knowledgeSourceVersionId: args.sourceVersionId,
+        sourceId: args.sourceId,
+        sourceKind,
+        startOffset: segment.startOffset,
+        text: segment.text,
+        title: source.title,
+        userId: args.userId,
+      })
+      await ctx.db.insert('knowledgeChunkEmbeddings', {
+        chunkId,
+        embedding: segment.embedding,
+        sourceKind,
+        userId: args.userId,
+      })
+    }
+    const now = Date.now()
+    await ctx.db.patch(version._id, {
+      status: 'ready',
+      metadata: { ...(version.metadata as Record<string, unknown>), chunks: args.segments.length },
+      updatedAt: now,
+    })
+    await ctx.db.patch(source._id, { status: 'ready', statusMessage: undefined, updatedAt: now })
+    return { replaced: true }
+  },
+})
+
+export const markCanonicalSourceFailed = internalMutation({
+  args: { sourceId: v.string(), sourceVersionId: v.string(), message: v.string() },
+  handler: async (ctx, args) => {
+    const source = await ctx.db.query('knowledgeSources')
+      .withIndex('by_sourceId', (q) => q.eq('sourceId', args.sourceId)).unique()
+    const version = await ctx.db.query('knowledgeSourceVersions')
+      .withIndex('by_sourceVersionId', (q) => q.eq('sourceVersionId', args.sourceVersionId)).unique()
+    const now = Date.now()
+    if (source) await ctx.db.patch(source._id, { status: 'failed', statusMessage: args.message.slice(0, 2000), updatedAt: now })
+    if (version) await ctx.db.patch(version._id, { status: 'failed', updatedAt: now })
+  },
+})
+
+export const reindexCanonicalSourceInternal = internalAction({
+  args: {
+    contentHash: v.string(),
+    sourceId: v.string(),
+    sourceVersionId: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ chunks: number; skipped?: 'stale' | 'deleted' }> => {
+    const value: {
+      kind: 'stale' | 'ready'
+      content?: string
+    } | null = await ctx.runQuery(internal.knowledge.knowledge.getCanonicalSourceForReindex, args)
+    if (!value || value.kind === 'stale') return { chunks: 0, skipped: value ? 'stale' : 'deleted' }
+    const content = (value.content ?? '').trim()
+    if (!content) {
+      await ctx.runMutation(internal.knowledge.knowledge.markCanonicalSourceFailed, {
+        sourceId: args.sourceId,
+        sourceVersionId: args.sourceVersionId,
+        message: 'Extracted source content is unavailable',
+      })
+      throw new Error('Extracted source content is unavailable')
+    }
+    const segments = chunkText(content)
+    try {
+      const { vectors } = await embedViaGateway(segments.map((segment) => segment.text))
+      await ctx.runMutation(internal.knowledge.knowledge.replaceCanonicalSource, {
+        sourceId: args.sourceId,
+        sourceVersionId: args.sourceVersionId,
+        userId: args.userId,
+        segments: segments.map((segment, index) => ({ ...segment, embedding: vectors[index]! })),
+      })
+      return { chunks: segments.length }
+    } catch (error) {
+      await ctx.runMutation(internal.knowledge.knowledge.markCanonicalSourceFailed, {
+        sourceId: args.sourceId,
+        sourceVersionId: args.sourceVersionId,
+        message: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
+  },
+})
+
 export const reindexFileInternal = internalAction({
   args: { fileId: v.id('files') },
   handler: async (ctx, { fileId }) => {

@@ -86,6 +86,14 @@ export function createConvexKnowledgeBaseRepositories(): KnowledgeBaseRepositori
           id: undefined,
         }))
       },
+      async updateVersion(input) {
+        const row = await mutation<ConvexVersion | null>('updateSourceVersionByServer', {
+          sourceVersionId: input.id,
+          status: input.status,
+          metadata: input.metadata,
+        })
+        return row ? version(row) : null
+      },
       async listVersions(sourceId) {
         const rows = await query<ConvexVersion[]>('listSourceVersionsByServer', { sourceId }) ?? []
         return rows.map(version)

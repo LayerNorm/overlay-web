@@ -53,7 +53,12 @@ import {
   createEmbeddingProvider,
 } from '@/server/knowledge'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
-import { KnowledgeBaseService } from '@/server/knowledge-bases'
+import {
+  ConvexCanonicalKnowledgeIndexQueue,
+  KnowledgeBaseService,
+  KnowledgeSourceIngestionService,
+  PostgresCanonicalKnowledgeIndexQueue,
+} from '@/server/knowledge-bases'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -84,6 +89,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   memoryService: MemoryService
   knowledgeSearchService: KnowledgeSearchService
   knowledgeBaseService: KnowledgeBaseService
+  knowledgeSourceIngestionService: KnowledgeSourceIngestionService
   noteRepository: NoteRepository
   apiKeyService: ApiKeyService
   userService: UserService
@@ -161,6 +167,15 @@ export function createOverlayServerContext(
     authorizationRepositories: appData.repositories.authorization,
     repositories: appData.repositories.knowledgeBases,
   })
+  const canonicalIndexQueue = appData.capabilities.provider === 'postgres'
+    ? new PostgresCanonicalKnowledgeIndexQueue(requiredPostgres(appData).db)
+    : new ConvexCanonicalKnowledgeIndexQueue()
+  const knowledgeSourceIngestionService = new KnowledgeSourceIngestionService({
+    authorization: authorizationService,
+    bases: knowledgeBaseService,
+    indexQueue: canonicalIndexQueue,
+    repositories: appData.repositories.knowledgeBases,
+  })
   const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
 
   return {
@@ -186,11 +201,17 @@ export function createOverlayServerContext(
     generationUsagePolicy,
     memoryService,
     knowledgeBaseService,
+    knowledgeSourceIngestionService,
     knowledgeSearchService,
     noteRepository: appData.repositories.notes,
     apiKeyService: new ApiKeyService(appData.repositories.apiKeys),
     userService,
   }
+}
+
+function requiredPostgres(appData: AppDataContext): NonNullable<AppDataContext['postgres']> {
+  if (!appData.postgres) throw new Error('Postgres application data context is unavailable')
+  return appData.postgres
 }
 
 function createKnowledgeSearchService(

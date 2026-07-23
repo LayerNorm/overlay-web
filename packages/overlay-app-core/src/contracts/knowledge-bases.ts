@@ -112,6 +112,10 @@ export interface KnowledgeSourceRepository {
   update(input: UpdateKnowledgeSourceInput): Promise<KnowledgeSource | null>
   markDeleted(id: string): Promise<boolean>
   createVersion(input: Omit<KnowledgeSourceVersion, 'createdAt' | 'updatedAt'>): Promise<KnowledgeSourceVersion>
+  updateVersion(input: Pick<KnowledgeSourceVersion, 'id'> & Partial<Pick<
+    KnowledgeSourceVersion,
+    'status' | 'metadata'
+  >>): Promise<KnowledgeSourceVersion | null>
   listVersions(sourceId: string): Promise<KnowledgeSourceVersion[]>
 }
 

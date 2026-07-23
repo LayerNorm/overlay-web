@@ -326,6 +326,13 @@ function inMemoryKnowledgeRepositories(): KnowledgeBaseRepositories {
         versions.set(value.id, value)
         return value
       },
+      async updateVersion(input) {
+        const current = [...versions.values()].find((entry) => entry.id === input.id)
+        if (!current) return null
+        const updated = { ...current, ...input, updatedAt: Date.now() }
+        versions.set(updated.id, updated)
+        return updated
+      },
       async listVersions(sourceId) { return [...versions.values()].filter((value) => value.sourceId === sourceId) },
     },
     memberships: {

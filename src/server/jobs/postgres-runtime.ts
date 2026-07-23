@@ -60,6 +60,10 @@ import {
 import { PostgresUsageRepository } from '@/server/usage'
 import type { AuthorizationService } from '@/server/authorization'
 import { authorizeDurableJob } from './DurableJobAuthorization'
+import {
+  CANONICAL_KNOWLEDGE_INDEX_JOB,
+  PostgresCanonicalKnowledgeIndexService,
+} from '@/server/knowledge-bases/PostgresCanonicalKnowledgeIndex'
 
 export function createPostgresRuntime(args: {
   db: OverlayPostgresDb
@@ -107,6 +111,14 @@ export function createPostgresRuntime(args: {
       repository: new PostgresKnowledgeIndexRepository(args.db),
     })
     return knowledgeIndex
+  }
+  let canonicalKnowledgeIndex: PostgresCanonicalKnowledgeIndexService | null = null
+  const getCanonicalKnowledgeIndex = () => {
+    canonicalKnowledgeIndex ??= new PostgresCanonicalKnowledgeIndexService({
+      db: args.db,
+      embeddings: args.embeddingProvider ?? createEmbeddingProvider(runtimeConfig()),
+    })
+    return canonicalKnowledgeIndex
   }
   let memoryExtraction: MemoryExtractionService | null = null
   const getMemoryExtraction = () => {
@@ -201,6 +213,16 @@ export function createPostgresRuntime(args: {
           expectedContentHash: stringPayload(job.payload.contentHash),
           sourceId: requiredStringPayload(job.payload.sourceId, 'sourceId'),
           sourceKind: sourceKindPayload(job.payload.sourceKind),
+          userId: requiredStringPayload(job.payload.userId, 'userId'),
+        })
+      },
+      [CANONICAL_KNOWLEDGE_INDEX_JOB]: async (job) => {
+        const authorization = await requireUserJobAuthorization(job, args.authorizationService)
+        if (!authorization.allowed) return { status: 'authorization_denied' }
+        return await getCanonicalKnowledgeIndex().index({
+          contentHash: requiredStringPayload(job.payload.contentHash, 'contentHash'),
+          sourceId: requiredStringPayload(job.payload.sourceId, 'sourceId'),
+          sourceVersionId: requiredStringPayload(job.payload.sourceVersionId, 'sourceVersionId'),
           userId: requiredStringPayload(job.payload.userId, 'userId'),
         })
       },

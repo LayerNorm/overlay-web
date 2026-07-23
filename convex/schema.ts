@@ -1041,6 +1041,8 @@ export default defineSchema({
     title: v.optional(v.string()),
   })
     .index('by_source', ['sourceKind', 'sourceId'])
+    .index('by_knowledgeSourceId', ['knowledgeSourceId'])
+    .index('by_knowledgeSourceVersionId', ['knowledgeSourceVersionId'])
     .index('by_userId', ['userId'])
     .searchIndex('search_text', {
       searchField: 'text',

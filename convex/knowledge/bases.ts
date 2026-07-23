@@ -1,5 +1,6 @@
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
+import { internal } from '../_generated/api'
 import { requireServerSecret } from '../lib/auth'
 
 const baseKind = v.union(v.literal('personal'), v.literal('organization'))
@@ -262,6 +263,67 @@ export const listSourceVersionsByServer = query({
     return await ctx.db.query('knowledgeSourceVersions')
       .withIndex('by_sourceId_version', (q) => q.eq('sourceId', args.sourceId))
       .order('desc').collect()
+  },
+})
+
+export const updateSourceVersionByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    sourceVersionId: v.string(),
+    status: v.optional(sourceStatus),
+    metadata: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const existing = await ctx.db.query('knowledgeSourceVersions')
+      .withIndex('by_sourceVersionId', (q) => q.eq('sourceVersionId', args.sourceVersionId)).unique()
+    if (!existing) return null
+    const values = {
+      ...(args.status !== undefined ? { status: args.status } : {}),
+      ...(args.metadata !== undefined ? { metadata: args.metadata } : {}),
+      updatedAt: Date.now(),
+    }
+    await ctx.db.patch(existing._id, values)
+    return { ...existing, ...values }
+  },
+})
+
+export const scheduleCanonicalSourceIndexByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    contentHash: v.string(),
+    sourceId: v.string(),
+    sourceVersionId: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ jobId: string }> => {
+    requireServerSecret(args.serverSecret)
+    const jobId: unknown = await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexCanonicalSourceInternal, {
+      contentHash: args.contentHash,
+      sourceId: args.sourceId,
+      sourceVersionId: args.sourceVersionId,
+      userId: args.userId,
+    })
+    return { jobId: String(jobId) }
+  },
+})
+
+export const purgeCanonicalSourceByServer = mutation({
+  args: { serverSecret: v.string(), sourceId: v.string(), userId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const chunks = await ctx.db.query('knowledgeChunks')
+      .withIndex('by_knowledgeSourceId', (q) => q.eq('knowledgeSourceId', args.sourceId)).collect()
+    let removed = 0
+    for (const chunk of chunks) {
+      if (chunk.userId !== args.userId) continue
+      const embedding = await ctx.db.query('knowledgeChunkEmbeddings')
+        .withIndex('by_chunkId', (q) => q.eq('chunkId', chunk._id)).first()
+      if (embedding) await ctx.db.delete(embedding._id)
+      await ctx.db.delete(chunk._id)
+      removed += 1
+    }
+    return { removed }
   },
 })
 
