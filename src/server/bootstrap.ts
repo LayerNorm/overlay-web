@@ -41,6 +41,7 @@ import { UserService, type UserAuthProvider } from '@/server/users'
 import {
   AuthorizationAdministrationService,
   AuthorizationService,
+  FixedRoleAuthorizationBridge,
   createAuthorizationCapabilityPolicy,
 } from '@/server/authorization'
 import type { NoteRepository } from '@/server/notes'
@@ -126,10 +127,6 @@ export function createOverlayServerContext(
   })
   const memoryService = new MemoryService(appData.repositories.memories)
   const auditService = new AuditService(appData.repositories.audit)
-  const administrativeService = new AdministrativeService({
-    audit: auditService,
-    repository: appData.repositories.administration,
-  })
   const authorizationService = new AuthorizationService({
     repositories: appData.repositories.authorization,
     capabilityPolicy: createAuthorizationCapabilityPolicy(
@@ -139,9 +136,19 @@ export function createOverlayServerContext(
       ),
     ),
   })
+  const fixedRoleAuthorizationBridge = new FixedRoleAuthorizationBridge(
+    appData.repositories.authorization,
+  )
+  const administrativeService = new AdministrativeService({
+    audit: auditService,
+    repository: appData.repositories.administration,
+    authorization: authorizationService,
+    compatibility: fixedRoleAuthorizationBridge,
+  })
   const authorizationAdministrationService = new AuthorizationAdministrationService({
     assertAdministrator: (userId) => administrativeService.assertCanManageAdministrators(userId),
     audit: auditService,
+    prepareAuthorization: () => fixedRoleAuthorizationBridge.ensureSystemRoles(),
     repositories: appData.repositories.authorization,
   })
   const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)

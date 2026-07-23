@@ -22,6 +22,7 @@ export type AuthorizationAdministrationActor = {
 export type AuthorizationAdministrationServiceDeps = {
   assertAdministrator(userId: string): Promise<void>
   audit: AuditService
+  prepareAuthorization?(): Promise<void>
   repositories: AuthorizationRepositories
 }
 
@@ -35,6 +36,7 @@ export class AuthorizationAdministrationService {
 
   async listRoles(actor: AuthorizationAdministrationActor, includeArchived = false) {
     await this.assertAdministrator(actor)
+    await this.deps.prepareAuthorization?.()
     return await this.deps.repositories.roles.list({ includeArchived })
   }
 

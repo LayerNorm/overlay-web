@@ -2,6 +2,10 @@ import assert from 'node:assert/strict'
 import type { TestContext } from 'node:test'
 import type { AuthorizationRepositories } from '@overlay/authz-contracts'
 import { AuthorizationService } from './AuthorizationService'
+import {
+  FIXED_AUTHORIZATION_ROLE_IDS,
+  FixedRoleAuthorizationBridge,
+} from './FixedRoleAuthorizationBridge'
 
 export async function runAuthorizationRepositoryContract(
   t: TestContext,
@@ -110,6 +114,34 @@ export async function runAuthorizationRepositoryContract(
         accessRole: 'owner',
         grantedBy: userId,
       })
+    })
+
+    await t.test('migrates fixed administrative roles idempotently', async () => {
+      const bridge = new FixedRoleAuthorizationBridge(args.repositories)
+      await bridge.syncPrincipal({
+        userId,
+        role: 'admin',
+        grantedBy: userId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      await bridge.syncPrincipal({
+        userId,
+        role: 'admin',
+        grantedBy: userId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      const systemRole = await args.repositories.roles.get(FIXED_AUTHORIZATION_ROLE_IDS.admin)
+      assert.equal(systemRole?.isSystem, true)
+      assert.ok(systemRole?.capabilities.includes('roles.manage'))
+      assert.equal((await args.repositories.assignments.listForUser(userId))
+        .filter(({ roleId }) => roleId === FIXED_AUTHORIZATION_ROLE_IDS.admin).length, 1)
+      assert.equal((await new AuthorizationService({ repositories: args.repositories })
+        .checkCapability({ userId, capability: 'roles.manage' })).allowed, true)
+      await bridge.revokePrincipal(userId)
+      assert.equal((await args.repositories.assignments.listForUser(userId))
+        .some(({ roleId }) => roleId === FIXED_AUTHORIZATION_ROLE_IDS.admin), false)
     })
 
     await t.test('archives roles and groups without returning them by default', async () => {

@@ -9,6 +9,7 @@ export const AUTHORIZATION_CAPABILITY_DEFINITIONS = [
   { key: 'audit.read', category: 'governance', label: 'View audit events' },
   { key: 'usage.read', category: 'governance', label: 'View usage and budgets' },
   { key: 'usage.manage', category: 'governance', label: 'Manage usage and budgets' },
+  { key: 'support.access', category: 'governance', label: 'Access support controls' },
   { key: 'knowledge.create', category: 'knowledge', label: 'Create knowledge bases' },
   { key: 'knowledge.read', category: 'knowledge', label: 'Use knowledge bases' },
   { key: 'knowledge.edit', category: 'knowledge', label: 'Edit knowledge bases' },

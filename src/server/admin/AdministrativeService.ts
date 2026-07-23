@@ -1,7 +1,9 @@
 import 'server-only'
 
 import type { AuditService } from './AuditService'
+import type { AuthorizationCapability, AuthorizationDecision } from '@overlay/authz-contracts'
 import type {
+  AdministrativePrincipal,
   AdministrativeRepository,
   AdministrativeRole,
 } from './AdministrativeRepository'
@@ -17,25 +19,37 @@ export class AdministrativeService {
   constructor(private readonly deps: {
     audit: AuditService
     repository: AdministrativeRepository
+    authorization?: {
+      checkCapability(args: {
+        capability: AuthorizationCapability
+        userId: string
+      }): Promise<AuthorizationDecision>
+    }
+    compatibility?: {
+      migrate(principals: AdministrativePrincipal[]): Promise<{
+        active: number
+        revoked: number
+        total: number
+      }>
+      revokePrincipal(userId: string): Promise<void>
+      syncPrincipal(principal: AdministrativePrincipal): Promise<void>
+    }
   }) {}
 
   async canManageAdministrators(userId: string): Promise<boolean> {
-    return (await this.activeRole(userId)) === 'admin'
+    return await this.capabilityOrLegacy(userId, 'roles.manage', ['admin'])
   }
 
   async canViewAudit(userId: string): Promise<boolean> {
-    const role = await this.activeRole(userId)
-    return role === 'admin' || role === 'auditor'
+    return await this.capabilityOrLegacy(userId, 'audit.read', ['admin', 'auditor'])
   }
 
   async canManageBilling(userId: string): Promise<boolean> {
-    const role = await this.activeRole(userId)
-    return role === 'admin' || role === 'billing_admin'
+    return await this.capabilityOrLegacy(userId, 'usage.manage', ['admin', 'billing_admin'])
   }
 
   async canAccessSupportControls(userId: string): Promise<boolean> {
-    const role = await this.activeRole(userId)
-    return role === 'admin' || role === 'support'
+    return await this.capabilityOrLegacy(userId, 'support.access', ['admin', 'support'])
   }
 
   async assertCanManageAdministrators(userId: string): Promise<void> {
@@ -48,7 +62,13 @@ export class AdministrativeService {
 
   async list(actorUserId: string) {
     await this.assertCanManageAdministrators(actorUserId)
-    return await this.deps.repository.list()
+    const principals = await this.deps.repository.list()
+    await this.syncCompatibility(() => this.deps.compatibility?.migrate(principals), {
+      action: 'authorization.compatibility.migrate',
+      actorUserId,
+      resourceId: 'fixed-administrative-roles',
+    })
+    return principals
   }
 
   async grant(args: {
@@ -65,6 +85,11 @@ export class AdministrativeService {
       reason: args.reason,
       role: args.role,
       userId: args.userId,
+    })
+    await this.syncCompatibility(() => this.deps.compatibility?.syncPrincipal(principal), {
+      action: 'authorization.compatibility.sync',
+      actorUserId: args.actorUserId,
+      resourceId: args.userId,
     })
     await this.deps.audit.record({
       action: 'administration.principal.grant',
@@ -94,6 +119,13 @@ export class AdministrativeService {
       revokedBy: args.actorUserId,
       userId: args.userId,
     })
+    if (revoked) {
+      await this.syncCompatibility(() => this.deps.compatibility?.revokePrincipal(args.userId), {
+        action: 'authorization.compatibility.revoke',
+        actorUserId: args.actorUserId,
+        resourceId: args.userId,
+      })
+    }
     await this.deps.audit.record({
       action: 'administration.principal.revoke',
       actorType: 'user',
@@ -107,8 +139,63 @@ export class AdministrativeService {
     return revoked
   }
 
+  async migrateAuthorizationCompatibility(): Promise<{
+    active: number
+    revoked: number
+    total: number
+  }> {
+    const principals = await this.deps.repository.list()
+    if (!this.deps.compatibility) {
+      return {
+        active: principals.filter(({ revokedAt }) => !revokedAt).length,
+        revoked: principals.filter(({ revokedAt }) => Boolean(revokedAt)).length,
+        total: principals.length,
+      }
+    }
+    return await this.deps.compatibility.migrate(principals)
+  }
+
   private async activeRole(userId: string): Promise<AdministrativeRole | null> {
     const principal = await this.deps.repository.get({ userId })
     return principal && !principal.revokedAt ? principal.role : null
+  }
+
+  private async capabilityOrLegacy(
+    userId: string,
+    capability: AuthorizationCapability,
+    legacyRoles: AdministrativeRole[],
+  ): Promise<boolean> {
+    if (this.deps.authorization) {
+      try {
+        if ((await this.deps.authorization.checkCapability({ capability, userId })).allowed) {
+          return true
+        }
+      } catch (_error) {
+        // Legacy authorization remains authoritative until compatibility migration is complete.
+      }
+    }
+    const role = await this.activeRole(userId)
+    return Boolean(role && legacyRoles.includes(role))
+  }
+
+  private async syncCompatibility(
+    operation: () => Promise<unknown> | undefined,
+    context: { action: string; actorUserId: string; resourceId: string },
+  ): Promise<void> {
+    try {
+      await operation()
+    } catch (error) {
+      await this.deps.audit.record({
+        action: context.action,
+        actorType: 'user',
+        actorUserId: context.actorUserId,
+        metadata: {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        outcome: 'failure',
+        resourceId: context.resourceId,
+        resourceType: 'authorization_compatibility',
+      })
+    }
   }
 }
