@@ -2,11 +2,23 @@
 
 import {
   ArrowRight,
+  BarChart3,
+  BookOpen,
+  Bot,
+  Building2,
+  Check,
+  ClipboardCheck,
+  Database,
   Eye,
-  GraduationCap,
+  ListChecks,
   Lock,
   Plug,
+  Server,
   ShieldCheck,
+  User,
+  Users,
+  Workflow,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -18,6 +30,7 @@ import {
   EditorialIntro,
   MarketingBand,
   MarketingCtaRow,
+  ProductWorkspaceDemo,
 } from "@/features/marketing/components/MarketingShowcase";
 import { StaticMarketingShell } from "@/features/marketing/components/StaticMarketingShell";
 import {
@@ -50,30 +63,37 @@ const CONTROL_ITEMS = [
 ];
 
 const FEATURE_CARDS: Array<{
+  icon: LucideIcon;
   title: string;
   body: string;
 }> = [
   {
+    icon: Bot,
     title: "Any model",
     body: "Hosted, private, local, or your own API keys—from one interface.",
   },
   {
+    icon: BookOpen,
     title: "Your knowledge",
     body: "Files, institutional resources, and memory without rebuilding context.",
   },
   {
+    icon: Wrench,
     title: "Governed tools",
     body: "Agents research and act through approved tools. People stay in control.",
   },
   {
+    icon: Workflow,
     title: "Workflows",
     body: "Turn repeated work into reusable, role-specific AI workflows.",
   },
   {
+    icon: Server,
     title: "Your infrastructure",
     body: "Hosted, private cloud, or on-premises—same product.",
   },
   {
+    icon: Database,
     title: "Your data",
     body: "Define storage, retention, access, and which providers may see it.",
   },
@@ -106,13 +126,13 @@ const ENTERPRISE_ATTRIBUTES: Array<{
   },
 ];
 
-const EDUCATION_CARDS: Array<{ title: string }> = [
-  { title: "Curriculum-grounded lessons" },
-  { title: "Rubric-based feedback" },
-  { title: "Teacher assistants" },
-  { title: "Student revision plans" },
-  { title: "Admin reporting" },
-  { title: "Governed knowledge" },
+const EDUCATION_CARDS: Array<{ icon: LucideIcon; title: string }> = [
+  { icon: BookOpen, title: "Curriculum-grounded lessons" },
+  { icon: ClipboardCheck, title: "Rubric-based feedback" },
+  { icon: Users, title: "Teacher assistants" },
+  { icon: ListChecks, title: "Student revision plans" },
+  { icon: BarChart3, title: "Admin reporting" },
+  { icon: ShieldCheck, title: "Governed knowledge" },
 ];
 
 const FORWARD_STEPS = [
@@ -188,7 +208,10 @@ function HomeLandingContent() {
         >
           <div className="mx-auto max-w-7xl">
             <div className="mx-auto max-w-3xl text-center">
-              <p className={marketingEyebrow()}>The open-source AI interface</p>
+              <span className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-3.5 py-1.5 text-xs font-medium tracking-wide text-[var(--muted)]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[var(--foreground)] opacity-50" />
+                The open-source AI interface
+              </span>
               <h1
                 className="mt-4 text-balance text-5xl leading-[0.95] tracking-tight md:text-6xl lg:text-7xl"
                 style={marketingSerifStyle()}
@@ -227,17 +250,20 @@ function HomeLandingContent() {
               </div>
             </div>
 
-            <div className="mt-12 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-8 text-center md:mt-16 md:p-12">
-              <p className={marketingEyebrow()}>The product is now the homepage</p>
-              <h2 className="mx-auto mt-4 max-w-2xl text-2xl tracking-tight md:text-4xl" style={marketingSerifStyle()}>
-                Learn Overlay by using Overlay.
-              </h2>
-              <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-[var(--muted)]">
-                Explore populated chats, real file viewers, projects, automations, and extensions in a session-only public workspace.
-              </p>
-              <MarketingCtaRow className="mt-7 justify-center">
-                <MarketingButton href="/" variant="primary" arrow="right">Open the showcase</MarketingButton>
-              </MarketingCtaRow>
+            <div className="mt-14 md:mt-20">
+              <div className="mx-auto max-w-5xl">
+                <ProductWorkspaceDemo title="What are we working on?" />
+                <div className="mt-8 flex flex-col items-center gap-4 text-center">
+                  <p className="max-w-xl text-sm leading-6 text-[var(--muted)]">
+                    Learn Overlay by using Overlay—explore populated chats,
+                    real file viewers, projects, automations, and extensions in
+                    a session-only public workspace.
+                  </p>
+                  <MarketingButton href="/" variant="secondary" size="md" arrow="right">
+                    Open the live showcase
+                  </MarketingButton>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -251,13 +277,16 @@ function HomeLandingContent() {
             align="center"
           />
           <div className="mt-12 grid gap-px overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--border)] sm:grid-cols-2 lg:grid-cols-3">
-            {FEATURE_CARDS.map((card, index) => (
+            {FEATURE_CARDS.map((card) => (
               <article
                 key={card.title}
-                className="bg-[var(--surface-elevated)] p-5 md:p-6"
+                className="bg-[var(--surface-elevated)] p-5 transition-colors hover:bg-[var(--surface-muted)] md:p-6"
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] text-sm text-[var(--muted)]">
-                  {String(index + 1).padStart(2, '0')}
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)]">
+                  <card.icon
+                    className="h-[18px] w-[18px] text-[var(--foreground)]"
+                    strokeWidth={1.6}
+                  />
                 </div>
                 <h3
                   className="mt-5 text-lg tracking-tight"
@@ -307,10 +336,9 @@ function HomeLandingContent() {
                     key={item}
                     className="flex items-start gap-3 py-3 text-sm text-[var(--foreground)]"
                   >
-                    <ArrowRight
-                      className="mt-0.5 h-4 w-4 shrink-0 text-[var(--muted)]"
-                      strokeWidth={1.8}
-                    />
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-subtle)]">
+                      <Check className="h-3 w-3" strokeWidth={2} />
+                    </span>
                     <span>{item}</span>
                   </li>
                 ))}
@@ -331,6 +359,9 @@ function HomeLandingContent() {
           />
           <div className="mt-10 grid gap-4 lg:grid-cols-2">
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-7 md:p-9">
+              <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)]">
+                <User className="h-[18px] w-[18px] text-[var(--foreground)]" strokeWidth={1.6} />
+              </div>
               <p className={marketingEyebrow()}>For individuals</p>
               <h3
                 className="mt-4 text-2xl tracking-tight md:text-3xl"
@@ -354,6 +385,9 @@ function HomeLandingContent() {
               </div>
             </div>
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-7 md:p-9">
+              <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)]">
+                <Building2 className="h-[18px] w-[18px] text-[var(--foreground)]" strokeWidth={1.6} />
+              </div>
               <p className={marketingEyebrow()}>For organizations</p>
               <h3
                 className="mt-4 text-2xl tracking-tight md:text-3xl"
@@ -402,12 +436,14 @@ function HomeLandingContent() {
               {ENTERPRISE_ATTRIBUTES.map((attr) => (
                 <article
                   key={attr.title}
-                  className="bg-[var(--surface-elevated)] p-5 md:p-6"
+                  className="bg-[var(--surface-elevated)] p-5 transition-colors hover:bg-[var(--surface-muted)] md:p-6"
                 >
-                  <attr.icon
-                    className="h-5 w-5 text-[var(--foreground)]"
-                    strokeWidth={1.7}
-                  />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]">
+                    <attr.icon
+                      className="h-[18px] w-[18px] text-[var(--foreground)]"
+                      strokeWidth={1.6}
+                    />
+                  </div>
                   <h3 className="mt-4 text-sm font-medium text-[var(--foreground)]">
                     {attr.title}
                   </h3>
@@ -473,9 +509,9 @@ function HomeLandingContent() {
                 {EDUCATION_CARDS.map((card) => (
                   <div
                     key={card.title}
-                    className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-sm leading-5 text-[var(--foreground)]"
+                    className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-sm leading-5 text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
                   >
-                    <GraduationCap
+                    <card.icon
                       className="mb-3 h-4 w-4 text-[var(--muted)]"
                       strokeWidth={1.7}
                     />
@@ -540,10 +576,10 @@ function HomeLandingContent() {
             {VISION_LAYERS.map((layer) => (
               <div
                 key={layer.index}
-                className={`rounded-2xl border border-[var(--border)] p-6 ${
+                className={`rounded-2xl border border-[var(--border)] p-6 transition-colors ${
                   layer.accent
                     ? "bg-[var(--foreground)] text-[var(--background)]"
-                    : "bg-[var(--surface-elevated)]"
+                    : "bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)]"
                 }`}
               >
                 <span
