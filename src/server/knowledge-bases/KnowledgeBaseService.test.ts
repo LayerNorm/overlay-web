@@ -109,10 +109,11 @@ test('knowledge-base editors can manage their own canonical sources without taki
   assert.equal((await fixture.repositories.memberships.listForBase(base.id)).length, 0)
 })
 
-test('knowledge-base chat attachment requires ownership of both resources and deletion clears ACLs', async () => {
+test('knowledge-base chat attachment permits viewers while preserving private conversation ownership', async () => {
   const fixture = createFixture()
   const base = await fixture.service.createKnowledgeBase({ userId: 'owner', title: 'Grounded Chat' })
   fixture.owners.set('conversation:owner-chat', 'owner')
+  fixture.owners.set('conversation:viewer-chat', 'viewer')
   fixture.owners.set('conversation:foreign-chat', 'unshared')
 
   const attached = await fixture.service.attachConversation({
@@ -131,6 +132,26 @@ test('knowledge-base chat attachment requires ownership of both resources and de
   )
 
   fixture.grants.push(resourceGrant('viewer-grant', base.id, 'viewer', 'viewer'))
+  const viewerAttachment = await fixture.service.attachConversation({
+    conversationId: 'viewer-chat',
+    knowledgeBaseId: base.id,
+    userId: 'viewer',
+  })
+  assert.equal(viewerAttachment.knowledgeBaseId, base.id)
+  assert.equal((await fixture.service.getConversationKnowledgeBase({
+    conversationId: 'viewer-chat',
+    userId: 'viewer',
+  }))?.id, base.id)
+  await assert.rejects(
+    fixture.service.getConversationKnowledgeBase({
+      conversationId: 'viewer-chat',
+      userId: 'owner',
+    }),
+    (error: unknown) => error instanceof KnowledgeBaseServiceError && error.statusCode === 404,
+  )
+  await fixture.service.detachConversation({ conversationId: 'viewer-chat', userId: 'viewer' })
+  assert.equal(await fixture.repositories.conversations.getForConversation('viewer-chat'), null)
+
   await fixture.service.deleteKnowledgeBase({ knowledgeBaseId: base.id, userId: 'owner' })
   assert.equal(await fixture.repositories.bases.get(base.id), null)
   assert.equal(fixture.grants.some(({ resourceId }) => resourceId === base.id), false)
@@ -140,10 +161,10 @@ function createFixture() {
   const roles: AuthorizationRole[] = [
     role('member', [
       'knowledge.create', 'knowledge.read', 'knowledge.edit', 'knowledge.delete',
-      'conversations.edit',
+      'conversations.read', 'conversations.edit',
     ]),
     role('editor-role', ['knowledge.read', 'knowledge.edit', 'knowledge.delete']),
-    role('viewer-role', ['knowledge.read']),
+    role('viewer-role', ['knowledge.read', 'conversations.read', 'conversations.edit']),
     role('admin-role', [
       'administration.access', 'knowledge.create', 'knowledge.read', 'knowledge.edit',
       'knowledge.share', 'knowledge.delete',

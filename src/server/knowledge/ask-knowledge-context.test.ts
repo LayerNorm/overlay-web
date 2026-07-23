@@ -20,3 +20,23 @@ test('auto retrieval asks the model for UI-linkable source numbers', () => {
     '1': { kind: 'memory', sourceId: 'memory_1' },
   })
 })
+
+test('knowledge-base retrieval emits notebook-scoped citations', () => {
+  const bundle = formatAutoRetrievalBundle([
+    {
+      chunkIndex: 0,
+      knowledgeSourceId: 'source_1',
+      knowledgeSourceVersionId: 'version_1',
+      score: 1,
+      sourceId: 'source_1',
+      sourceKind: 'file',
+      text: 'Electrophilic substitution requires a catalyst.',
+      title: 'Organic Chemistry',
+    },
+  ], false, { knowledgeBaseId: 'kb_1' })
+
+  assert.match(bundle.extension, /from the selected knowledge base/)
+  assert.deepEqual(bundle.citations, {
+    '1': { kind: 'knowledge', knowledgeBaseId: 'kb_1', sourceId: 'source_1' },
+  })
+})

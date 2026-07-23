@@ -243,7 +243,7 @@ export class KnowledgeBaseService {
     })
     if (!conversationOwnerUserId) throw notFound('Conversation')
     await Promise.all([
-      this.assertBaseAccess('edit', 'knowledge.edit', base, args.userId),
+      this.assertBaseAccess('view', 'knowledge.read', base, args.userId),
       this.deps.authorization.assertResourceAccess({
         action: 'edit',
         capability: 'conversations.edit',
@@ -258,6 +258,62 @@ export class KnowledgeBaseService {
       conversationId: args.conversationId,
       createdBy: args.userId,
     })
+  }
+
+  async getConversationKnowledgeBase(args: {
+    conversationId: string
+    userId: string
+  }): Promise<KnowledgeBase | null> {
+    const attachment = await this.deps.repositories.conversations.getForConversation(args.conversationId)
+    if (!attachment) return null
+    const [base, conversationOwnerUserId] = await Promise.all([
+      this.requiredBase(attachment.knowledgeBaseId),
+      this.deps.authorization.getResourceOwner({
+        resourceId: args.conversationId,
+        resourceType: 'conversation',
+      }),
+    ])
+    if (!conversationOwnerUserId) throw notFound('Conversation')
+    await Promise.all([
+      this.assertBaseAccess('view', 'knowledge.read', base, args.userId),
+      this.deps.authorization.assertResourceAccess({
+        action: 'view',
+        capability: 'conversations.read',
+        ownerUserId: conversationOwnerUserId,
+        resourceId: args.conversationId,
+        resourceType: 'conversation',
+        userId: args.userId,
+      }).catch(mapAuthorizationError),
+    ])
+    return base
+  }
+
+  async detachConversation(args: {
+    conversationId: string
+    userId: string
+  }): Promise<void> {
+    const attachment = await this.deps.repositories.conversations.getForConversation(args.conversationId)
+    if (!attachment) return
+    const [base, conversationOwnerUserId] = await Promise.all([
+      this.requiredBase(attachment.knowledgeBaseId),
+      this.deps.authorization.getResourceOwner({
+        resourceId: args.conversationId,
+        resourceType: 'conversation',
+      }),
+    ])
+    if (!conversationOwnerUserId) throw notFound('Conversation')
+    await Promise.all([
+      this.assertBaseAccess('view', 'knowledge.read', base, args.userId),
+      this.deps.authorization.assertResourceAccess({
+        action: 'edit',
+        capability: 'conversations.edit',
+        ownerUserId: conversationOwnerUserId,
+        resourceId: args.conversationId,
+        resourceType: 'conversation',
+        userId: args.userId,
+      }).catch(mapAuthorizationError),
+    ])
+    await this.deps.repositories.conversations.detach(args.conversationId)
   }
 
   private async requiredBase(id: string): Promise<KnowledgeBase> {

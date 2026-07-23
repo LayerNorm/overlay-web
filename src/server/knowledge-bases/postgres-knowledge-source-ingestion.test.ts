@@ -7,6 +7,7 @@ import { eq, sql } from 'drizzle-orm'
 import { createOverlayPostgresDb, createOverlayPostgresPool } from '@/server/database/postgres/client'
 import {
   durableJobs,
+  conversations,
   knowledgeChunks,
   knowledgeSources,
   knowledgeSourceVersions,
@@ -56,6 +57,16 @@ test('Postgres canonical knowledge source lifecycle', {
       repositories,
     })
     const base = await bases.createKnowledgeBase({ title: 'Organic Chemistry', userId })
+    const conversationId = `kb_conversation_${randomUUID()}`
+    await db.insert(conversations).values({
+      id: conversationId,
+      userId,
+      title: 'Grounded chemistry chat',
+      lastMode: 'act',
+      actModelId: 'openrouter/free',
+    })
+    await bases.attachConversation({ conversationId, knowledgeBaseId: base.id, userId })
+    assert.equal((await bases.getConversationKnowledgeBase({ conversationId, userId }))?.id, base.id)
     const created = await ingestion.createTextSource({
       content: 'A nucleophile donates an electron pair to form a new covalent bond.',
       knowledgeBaseId: base.id,
@@ -182,6 +193,7 @@ function permissiveAuthorization(userId: string): AuthorizationService {
     isDeploymentOwner: false,
     capabilities: [
       'knowledge.create', 'knowledge.read', 'knowledge.edit', 'knowledge.delete',
+      'conversations.read', 'conversations.edit',
     ],
     groupIds: [],
     roleIds: [],

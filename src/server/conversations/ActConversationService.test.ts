@@ -188,6 +188,50 @@ test('act context service keeps auto retrieval enabled when external provider co
   assert.equal(context.mentionsContext, '')
 })
 
+test('act context service scopes attached knowledge-base conversations and disables personal memory retrieval', async () => {
+  let retrievalArgs: Record<string, unknown> | undefined
+  const service = new ActContextService({
+    repository: repository({
+      getConversation: async () => ({ projectId: 'project_1' }),
+      getProject: async () => ({ instructions: 'Project rules' }),
+      listMemories: async () => [],
+      listSkills: async () => [],
+    }),
+    resolveKnowledgeBaseId: async () => 'kb_1',
+    buildAutoRetrievalBundle: async (args) => {
+      retrievalArgs = args
+      return {
+        extension: '\nKB_GROUNDED_CONTEXT',
+        citations: {
+          '1': { kind: 'knowledge', knowledgeBaseId: 'kb_1', sourceId: 'source_1' },
+        },
+      }
+    },
+  })
+
+  const context = await service.loadTurnContext({
+    conversationId: 'conversation_1' as Id<'conversations'>,
+    externalContextEnabled: false,
+    indexedAttachments: [],
+    latestUserText: 'Explain the reaction mechanism.',
+    memoryEnabled: true,
+    serverSecret: 'server-secret',
+    userId: 'user_1',
+  })
+
+  assert.deepEqual(retrievalArgs, {
+    includeMemories: false,
+    knowledgeBaseId: 'kb_1',
+    projectId: 'project_1',
+    userId: 'user_1',
+    userMessage: 'Explain the reaction mechanism.',
+  })
+  assert.equal(context.autoRetrieval, '\nKB_GROUNDED_CONTEXT')
+  assert.deepEqual(context.sourceCitationMap, {
+    '1': { kind: 'knowledge', knowledgeBaseId: 'kb_1', sourceId: 'source_1' },
+  })
+})
+
 test('act context service preloads attached documents through the active file repository', async () => {
   const loadedFileIds: string[] = []
   const service = new ActContextService({

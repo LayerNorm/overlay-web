@@ -18,6 +18,7 @@ export async function buildAutoRetrievalBundle(args: {
   userMessage: string
   userId: string
   accessToken?: string
+  knowledgeBaseId?: string
   projectId?: string
   includeMemories?: boolean
 }): Promise<AutoRetrievalBundle> {
@@ -27,9 +28,22 @@ export async function buildAutoRetrievalBundle(args: {
   }
 
   try {
+    const query = q.slice(0, MAX_QUERY_CHARS)
+    if (args.knowledgeBaseId) {
+      const result = await getOverlayServerContext().knowledgeBaseRetrievalService.search({
+        accessToken: args.accessToken,
+        knowledgeBaseId: args.knowledgeBaseId,
+        limit: 10,
+        query,
+        userId: args.userId,
+      })
+      return formatAutoRetrievalBundle(result.chunks, false, {
+        knowledgeBaseId: args.knowledgeBaseId,
+      })
+    }
     const result = await getOverlayServerContext().knowledgeSearchService.hybridSearch({
       userId: args.userId,
-      query: q.slice(0, MAX_QUERY_CHARS),
+      query,
       projectId: args.projectId,
       ...(args.accessToken ? { accessToken: args.accessToken } : {}),
       ...(args.includeMemories === false ? { sourceKind: 'file' as const } : {}),
@@ -48,13 +62,16 @@ export async function buildAutoRetrievalBundle(args: {
 export function formatAutoRetrievalBundle(
   chunks: HybridSearchChunk[],
   includeMemories = true,
+  options?: { knowledgeBaseId?: string },
 ): AutoRetrievalBundle {
   if (chunks.length === 0) return { extension: '', citations: {} }
 
   const citations: SourceCitationMap = {}
-  const sourceLabel = includeMemories
-    ? "from the user's indexed files and saved memories"
-    : "from the user's indexed files"
+  const sourceLabel = options?.knowledgeBaseId
+    ? 'from the selected knowledge base'
+    : includeMemories
+      ? "from the user's indexed files and saved memories"
+      : "from the user's indexed files"
   const lines: string[] = [
     '---',
     `AUTO_RETRIEVED_KNOWLEDGE (${sourceLabel}).`,
@@ -72,7 +89,13 @@ export function formatAutoRetrievalBundle(
     const citationNumber = Object.keys(citations).length + 1
     const block = `[${citationNumber}] (${kind}) ${title}\n${chunk.text}`
     if (used + block.length > BLOCK_CHAR_BUDGET) break
-    citations[String(citationNumber)] = { kind: chunk.sourceKind, sourceId: chunk.sourceId }
+    citations[String(citationNumber)] = options?.knowledgeBaseId && chunk.knowledgeSourceId
+      ? {
+          kind: 'knowledge',
+          knowledgeBaseId: options.knowledgeBaseId,
+          sourceId: chunk.knowledgeSourceId,
+        }
+      : { kind: chunk.sourceKind, sourceId: chunk.sourceId }
     lines.push(block, '')
     used += block.length
   }

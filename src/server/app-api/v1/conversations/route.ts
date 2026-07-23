@@ -17,6 +17,7 @@ import type {
   ConversationMessageRow,
 } from '@/server/conversations/ActConversationRepository'
 import type { Id } from '../../../../../convex/_generated/dataModel'
+import { KnowledgeBaseServiceError } from '@/server/knowledge-bases'
 
 function clampFreeTierAskModels(modelIds: string[] | undefined): string[] {
   const requested =
@@ -76,7 +77,11 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         userId: resourceUserId,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-      return NextResponse.json(conv)
+      return NextResponse.json({
+        ...conv,
+        knowledgeBaseId: (await getOverlayServerContext().knowledgeBaseService
+          .getConversationKnowledgeBase({ conversationId, userId: resourceUserId }))?.id,
+      })
     }
 
     if (conversationId && includeMessages) {
@@ -177,6 +182,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       actModelId?: string
       lastMode?: 'ask' | 'act'
       clientId?: string
+      knowledgeBaseId?: string
       accessToken?: string
       userId?: string
     }
@@ -201,13 +207,33 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       actModelId: isFreeTier ? freeActModelId : paidModels.actModelId,
       lastMode: body.lastMode,
     })
+    if (body.knowledgeBaseId) {
+      try {
+        await getOverlayServerContext().knowledgeBaseService.attachConversation({
+          conversationId: id,
+          knowledgeBaseId: body.knowledgeBaseId,
+          userId: resourceUserId,
+        })
+      } catch (error) {
+        await repository.deleteConversation({ conversationId: id, userId: resourceUserId }).catch((_error) => {})
+        throw error
+      }
+    }
     const conversation = await repository.getConversationById({
       conversationId: id,
       userId: resourceUserId,
     })
-    return NextResponse.json({ id, conversation })
+    return NextResponse.json({
+      id,
+      conversation: conversation
+        ? { ...conversation, knowledgeBaseId: body.knowledgeBaseId }
+        : conversation,
+    })
   } catch (error) {
     logger.error('[conversations POST]', error)
+    if (error instanceof KnowledgeBaseServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode })
+    }
     return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 })
   }
 }
@@ -223,6 +249,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       lastMode?: 'ask' | 'act'
       accessToken?: string
       userId?: string
+      knowledgeBaseId?: string | null
     }
     const { auth } = context
     const resourceUserId = getAuthorizedResourceUserId(context)
@@ -261,13 +288,36 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       actModelId,
       lastMode: body.lastMode,
     })
+    if (body.knowledgeBaseId === null) {
+      await getOverlayServerContext().knowledgeBaseService.detachConversation({
+        conversationId: body.conversationId,
+        userId: resourceUserId,
+      })
+    } else if (body.knowledgeBaseId) {
+      await getOverlayServerContext().knowledgeBaseService.attachConversation({
+        conversationId: body.conversationId,
+        knowledgeBaseId: body.knowledgeBaseId,
+        userId: resourceUserId,
+      })
+    }
     const conversation = await repository.getConversationById({
       conversationId: body.conversationId as Id<'conversations'>,
-      userId: auth.userId,
+      userId: resourceUserId,
     })
-    return NextResponse.json({ success: true, conversation })
+    const knowledgeBase = await getOverlayServerContext().knowledgeBaseService
+      .getConversationKnowledgeBase({
+        conversationId: body.conversationId,
+        userId: resourceUserId,
+      })
+    return NextResponse.json({
+      success: true,
+      conversation: conversation ? { ...conversation, knowledgeBaseId: knowledgeBase?.id } : conversation,
+    })
   } catch (error) {
     logger.error('[conversations PATCH]', error)
+    if (error instanceof KnowledgeBaseServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode })
+    }
     return NextResponse.json({ error: 'Failed to update conversation' }, { status: 500 })
   }
 }
@@ -281,6 +331,10 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     const conversationId = request.nextUrl.searchParams.get('conversationId')
     if (!conversationId) return NextResponse.json({ error: 'conversationId required' }, { status: 400 })
 
+    await getOverlayServerContext().knowledgeBaseService.detachConversation({
+      conversationId,
+      userId: auth.userId,
+    })
     await repository.deleteConversation({
       conversationId: conversationId as Id<'conversations'>,
       userId: auth.userId,

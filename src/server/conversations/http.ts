@@ -20,6 +20,9 @@ const actUsagePolicy = repositoryProxy(
 
 export const actContextService = new ActContextService({
   repository: actConversationRepository,
+  resolveKnowledgeBaseId: async (args) => (
+    (await getOverlayServerContext().knowledgeBaseService.getConversationKnowledgeBase(args))?.id ?? null
+  ),
   loadDocumentFile: async (args) => (
     await getOverlayServerContext().appData.repositories.files.getFile(args)
   ),

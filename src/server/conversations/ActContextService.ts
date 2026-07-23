@@ -18,6 +18,7 @@ import {
   parseIndexedAttachmentsFromRequest,
   type IndexedAttachmentRef,
 } from '@/shared/knowledge/knowledge-agent-types'
+import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import type {
   ActConversationRepository,
@@ -80,7 +81,7 @@ export type ActTurnContext = {
   mentionsContext: string
   projectInstructions: string
   skillsContext: string
-  sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
+  sourceCitationMap: SourceCitationMap
 }
 
 type AutoRetrievalBuilder = (args: {
@@ -88,10 +89,11 @@ type AutoRetrievalBuilder = (args: {
   userId: string
   accessToken?: string
   projectId?: string
+  knowledgeBaseId?: string
   includeMemories?: boolean
 }) => Promise<{
   extension: string
-  citations: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
+  citations: SourceCitationMap
 }>
 
 export class ActContextService {
@@ -99,6 +101,10 @@ export class ActContextService {
     repository: ActConversationRepository
     buildAutoRetrievalBundle?: AutoRetrievalBuilder
     loadDocumentFile?: DocumentContextFileLoader
+    resolveKnowledgeBaseId?: (args: {
+      conversationId: string
+      userId: string
+    }) => Promise<string | null>
   }) {}
 
   async buildMessagesForModel(params: {
@@ -177,10 +183,18 @@ export class ActContextService {
       }
     })()
 
-    const [effectiveMemories, enabledSkills, conv] = await Promise.all([
+    const knowledgeBaseTask = args.conversationId && this.deps.resolveKnowledgeBaseId
+      ? this.deps.resolveKnowledgeBaseId({
+          conversationId: args.conversationId,
+          userId: args.userId,
+        }).catch((_error) => null)
+      : Promise.resolve(null)
+
+    const [effectiveMemories, enabledSkills, conv, knowledgeBaseId] = await Promise.all([
       memoriesTask,
       skillsTask,
       conversationTask,
+      knowledgeBaseTask,
     ])
 
     const mentionsContextTask = externalContextEnabled
@@ -210,7 +224,7 @@ export class ActContextService {
 
     const autoRetrievalTask: Promise<{
       extension: string
-      citations: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
+      citations: SourceCitationMap
     }> = (async () => {
       try {
         const buildAutoRetrievalBundle = this.deps.buildAutoRetrievalBundle ?? (async (
@@ -223,8 +237,9 @@ export class ActContextService {
           userMessage: args.latestUserText ?? '',
           userId: args.userId,
           ...(args.accessToken ? { accessToken: args.accessToken } : {}),
+          ...(knowledgeBaseId ? { knowledgeBaseId } : {}),
           projectId: conversationProjectId,
-          includeMemories: memoryEnabled,
+          includeMemories: knowledgeBaseId ? false : memoryEnabled,
         })
         return { extension: bundle.extension, citations: bundle.citations }
       } catch (_error) {

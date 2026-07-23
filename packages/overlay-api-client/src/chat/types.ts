@@ -29,6 +29,7 @@ export interface CreateConversationRequest {
   actModelId?: string
   lastMode?: 'ask' | 'act'
   clientId?: string
+  knowledgeBaseId?: string
 }
 
 export interface CreateConversationResponse {
@@ -45,6 +46,7 @@ export interface UpdateConversationRequest {
   askModelIds?: string[]
   actModelId?: string
   lastModified?: number
+  knowledgeBaseId?: string | null
 }
 
 export interface ConversationMessageRequest {

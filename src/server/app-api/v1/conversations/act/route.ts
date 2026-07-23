@@ -126,6 +126,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       conversationId,
       conversationClientId,
       projectId,
+      knowledgeBaseId,
       askModelIds,
       turnId,
       modelId,
@@ -224,6 +225,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         actModelId: effectiveModelId,
       })
       if (_ttftDebug) _tEnsureConversationMs = performance.now() - ensureStartedAt
+    }
+    if (cid && knowledgeBaseId) {
+      await overlayContext.knowledgeBaseService.attachConversation({
+        conversationId: cid,
+        knowledgeBaseId,
+        userId: conversationUserId,
+      })
     }
     const tid = resolveActTurnId(turnId)
     actWebhookConversationId = cid

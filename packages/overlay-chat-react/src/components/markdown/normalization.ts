@@ -87,7 +87,9 @@ function linkifySourceCitations(text: string, citations: SourceCitationMap, appB
         const href =
           src.kind === 'memory'
             ? `${base}/app/knowledge?memory=${encodeURIComponent(src.sourceId)}`
-            : `${base}/app/knowledge?file=${encodeURIComponent(src.sourceId)}`
+            : src.kind === 'knowledge'
+              ? `${base}/app/knowledge/${encodeURIComponent(src.knowledgeBaseId)}?source=${encodeURIComponent(src.sourceId)}`
+              : `${base}/app/knowledge?file=${encodeURIComponent(src.sourceId)}`
         return `[${d}](${href})`
       })
     })

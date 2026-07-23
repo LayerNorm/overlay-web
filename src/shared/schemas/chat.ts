@@ -23,12 +23,14 @@ export const CreateConversationRequest = z.object({
   actModelId: z.string().optional(),
   lastMode: z.enum(['ask', 'act']).optional(),
   clientId: z.string().optional(),
+  knowledgeBaseId: z.string().min(1).optional(),
 })
 
 export const UpdateConversationRequest = CreateConversationRequest.partial().extend({
   ...AuthFields,
   conversationId: z.string().min(1),
   projectId: z.string().nullable().optional(),
+  knowledgeBaseId: z.string().min(1).nullable().optional(),
 })
 
 export const DeleteConversationRequest = z.object({
@@ -75,6 +77,7 @@ export const ActConversationRequest = z.object({
   conversationId: z.string().optional(),
   conversationClientId: z.string().min(1).optional(),
   projectId: z.string().optional(),
+  knowledgeBaseId: z.string().min(1).optional(),
   askModelIds: z.array(z.string()).optional(),
   messages: z.array(z.unknown()).optional(),
   prompt: z.string().optional(),
