@@ -194,6 +194,13 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'vector-search',
   },
   {
+    id: 'knowledge-bases',
+    methods: '*',
+    prefixes: ['/api/v1/knowledge-bases'],
+    status: 'supported',
+    feature: 'knowledge-bases',
+  },
+  {
     id: 'mcp-and-skills',
     methods: '*',
     prefixes: ['/api/v1/mcps', '/api/v1/skills'],

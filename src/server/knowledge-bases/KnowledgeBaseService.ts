@@ -11,9 +11,12 @@ import type {
 } from '@overlay/app-core'
 import type {
   AuthorizationCapability,
+  AuthorizationPrincipalType,
   AuthorizationRepositories,
   AuthorizationSubject,
+  ResourceAccessRole,
   ResourceAction,
+  ResourceGrant,
 } from '@overlay/authz-contracts'
 import {
   AuthorizationDeniedError,
@@ -288,6 +291,26 @@ export class KnowledgeBaseService {
     return base
   }
 
+  async listUserConversationAttachments(args: {
+    knowledgeBaseId: string
+    userId: string
+  }): Promise<KnowledgeBaseConversation[]> {
+    const base = await this.requiredBase(args.knowledgeBaseId)
+    await this.assertBaseAccess('view', 'knowledge.read', base, args.userId)
+    const attachments = await this.deps.repositories.conversations.listForBase(base.id)
+    const owned = await Promise.all(attachments.map(async (attachment) => ({
+      attachment,
+      ownerUserId: await this.deps.authorization.getResourceOwner({
+        resourceId: attachment.conversationId,
+        resourceType: 'conversation',
+      }),
+    })))
+    return owned
+      .filter(({ ownerUserId }) => ownerUserId === args.userId)
+      .map(({ attachment }) => attachment)
+      .sort((a, b) => b.createdAt - a.createdAt)
+  }
+
   async detachConversation(args: {
     conversationId: string
     userId: string
@@ -314,6 +337,71 @@ export class KnowledgeBaseService {
       }).catch(mapAuthorizationError),
     ])
     await this.deps.repositories.conversations.detach(args.conversationId)
+  }
+
+  async listShares(args: {
+    knowledgeBaseId: string
+    userId: string
+  }): Promise<ResourceGrant[]> {
+    const base = await this.requiredBase(args.knowledgeBaseId)
+    await this.assertBaseAccess('share', 'knowledge.share', base, args.userId)
+    return await this.deps.authorizationRepositories.resourceGrants.listForResource({
+      resourceType: KNOWLEDGE_BASE_RESOURCE_TYPE,
+      resourceId: base.id,
+    })
+  }
+
+  async shareKnowledgeBase(args: {
+    accessRole: Exclude<ResourceAccessRole, 'owner'>
+    knowledgeBaseId: string
+    principalId: string
+    principalType: AuthorizationPrincipalType
+    userId: string
+  }): Promise<ResourceGrant> {
+    const base = await this.requiredBase(args.knowledgeBaseId)
+    await this.assertBaseAccess('share', 'knowledge.share', base, args.userId)
+    const principalId = args.principalId.trim()
+    if (!principalId) throw new KnowledgeBaseServiceError('principalId is required', 400)
+    if (args.accessRole !== 'viewer' && args.accessRole !== 'editor') {
+      throw new KnowledgeBaseServiceError('Knowledge bases can be shared as viewer or editor', 400)
+    }
+    await this.requireSharePrincipal(args.principalType, principalId)
+    return await this.deps.authorizationRepositories.resourceGrants.upsert({
+      id: randomUUID(),
+      resourceType: KNOWLEDGE_BASE_RESOURCE_TYPE,
+      resourceId: base.id,
+      principalType: args.principalType,
+      principalId,
+      accessRole: args.accessRole,
+      grantedBy: args.userId,
+    })
+  }
+
+  async revokeKnowledgeBaseShare(args: {
+    grantId: string
+    knowledgeBaseId: string
+    userId: string
+  }): Promise<void> {
+    const shares = await this.listShares(args)
+    const grant = shares.find(({ id }) => id === args.grantId)
+    if (!grant) throw notFound('Knowledge base share')
+    if (!await this.deps.authorizationRepositories.resourceGrants.remove(grant.id)) {
+      throw notFound('Knowledge base share')
+    }
+  }
+
+  private async requireSharePrincipal(
+    principalType: AuthorizationPrincipalType,
+    principalId: string,
+  ): Promise<void> {
+    if (principalType === 'user') return
+    if (principalType === 'group') {
+      const group = await this.deps.authorizationRepositories.groups.get(principalId)
+      if (!group || group.archivedAt) throw notFound('Authorization group')
+      return
+    }
+    const role = await this.deps.authorizationRepositories.roles.get(principalId)
+    if (!role || role.archivedAt) throw notFound('Authorization role')
   }
 
   private async requiredBase(id: string): Promise<KnowledgeBase> {

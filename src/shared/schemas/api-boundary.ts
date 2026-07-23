@@ -64,6 +64,17 @@ import {
   IntegrationConnectRequest,
   IntegrationListQuery,
   KnowledgeSearchRequest,
+  KnowledgeBaseEmptyQuery,
+  KnowledgeBaseListQuery,
+  CreateKnowledgeBaseRequest,
+  UpdateKnowledgeBaseRequest,
+  DeleteKnowledgeBaseRequest,
+  CreateKnowledgeBaseSourceRequest,
+  UpdateKnowledgeBaseSourceRequest,
+  DeleteKnowledgeBaseSourceRequest,
+  SearchKnowledgeBaseRequest,
+  CreateKnowledgeBaseGrantRequest,
+  DeleteKnowledgeBaseGrantRequest,
   McpTestRequest,
   MemoryListQuery,
   NoteListQuery,
@@ -126,6 +137,23 @@ export type WebApiExcludedRouteDefinition = {
 const ModelCatalogQuery = z.object({
   refresh: z.enum(['1']).optional(),
 })
+
+function knowledgeBaseDynamicBoundaries(): WebApiBoundaryDefinition[] {
+  const route = (suffix: string) => `/api/v1/knowledge-bases/{knowledgeBaseId}${suffix}`
+  const routePath = (suffix: string) => `/api/v1/knowledge-bases/[knowledgeBaseId]${suffix}`
+  const pattern = (suffix: string) => new RegExp(`^/api/v1/knowledge-bases/[^/]+${suffix}$`)
+  return [
+    { method: 'GET', path: route('/sources'), routePath: routePath('/sources'), pattern: pattern('/sources'), schema: { query: KnowledgeBaseEmptyQuery }, summary: 'List knowledge-base sources', tag: 'Knowledge Bases' },
+    { method: 'POST', path: route('/sources'), routePath: routePath('/sources'), pattern: pattern('/sources'), schema: { json: CreateKnowledgeBaseSourceRequest }, summary: 'Add a knowledge-base source', tag: 'Knowledge Bases' },
+    { method: 'PATCH', path: route('/sources'), routePath: routePath('/sources'), pattern: pattern('/sources'), schema: { json: UpdateKnowledgeBaseSourceRequest }, summary: 'Update a knowledge-base source', tag: 'Knowledge Bases' },
+    { method: 'DELETE', path: route('/sources'), routePath: routePath('/sources'), pattern: pattern('/sources'), schema: { json: DeleteKnowledgeBaseSourceRequest }, summary: 'Remove a knowledge-base source', tag: 'Knowledge Bases' },
+    { method: 'POST', path: route('/search'), routePath: routePath('/search'), pattern: pattern('/search'), schema: { json: SearchKnowledgeBaseRequest }, summary: 'Search an authorized knowledge base', tag: 'Knowledge Bases' },
+    { method: 'GET', path: route('/conversations'), routePath: routePath('/conversations'), pattern: pattern('/conversations'), schema: { query: KnowledgeBaseEmptyQuery }, summary: 'List personal conversations attached to a knowledge base', tag: 'Knowledge Bases' },
+    { method: 'GET', path: route('/grants'), routePath: routePath('/grants'), pattern: pattern('/grants'), schema: { query: KnowledgeBaseEmptyQuery }, summary: 'List knowledge-base shares', tag: 'Knowledge Bases' },
+    { method: 'POST', path: route('/grants'), routePath: routePath('/grants'), pattern: pattern('/grants'), schema: { json: CreateKnowledgeBaseGrantRequest }, summary: 'Share a knowledge base', tag: 'Knowledge Bases' },
+    { method: 'DELETE', path: route('/grants'), routePath: routePath('/grants'), pattern: pattern('/grants'), schema: { json: DeleteKnowledgeBaseGrantRequest }, summary: 'Revoke a knowledge-base share', tag: 'Knowledge Bases' },
+  ]
+}
 
 export const webApiBoundaryDefinitions = [
   {
@@ -379,6 +407,35 @@ export const webApiBoundaryDefinitions = [
     summary: 'Search knowledge',
     tag: 'Knowledge',
   },
+  {
+    method: 'GET',
+    path: '/api/v1/knowledge-bases',
+    schema: { query: KnowledgeBaseListQuery },
+    summary: 'List accessible knowledge bases',
+    tag: 'Knowledge Bases',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/knowledge-bases',
+    schema: { json: CreateKnowledgeBaseRequest },
+    summary: 'Create a knowledge base',
+    tag: 'Knowledge Bases',
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/knowledge-bases',
+    schema: { json: UpdateKnowledgeBaseRequest },
+    summary: 'Update a knowledge base',
+    tag: 'Knowledge Bases',
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/knowledge-bases',
+    schema: { json: DeleteKnowledgeBaseRequest },
+    summary: 'Delete a knowledge base',
+    tag: 'Knowledge Bases',
+  },
+  ...knowledgeBaseDynamicBoundaries(),
   { method: 'GET', path: '/api/v1/mcps', schema: { query: EntityListQuery }, summary: 'List MCP servers', tag: 'MCP Servers' },
   { method: 'POST', path: '/api/v1/mcps', schema: { json: EntityMutationRequest }, summary: 'Create an MCP server', tag: 'MCP Servers' },
   { method: 'PATCH', path: '/api/v1/mcps', schema: { json: EntityMutationRequest }, summary: 'Update an MCP server', tag: 'MCP Servers' },

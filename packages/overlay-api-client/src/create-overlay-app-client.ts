@@ -10,6 +10,7 @@ import { ChatAuxClient } from './chat/chat-aux-client'
 import { ConversationsClient } from './chat/conversations-client'
 import { FilesClient } from './files/client'
 import { IntegrationsClient } from './integrations/client'
+import { KnowledgeBasesClient } from './knowledge-bases/client'
 import { McpServersClient } from './mcp-servers/client'
 import { MemoryClient } from './memory/client'
 import { NotesClient } from './notes/client'
@@ -37,6 +38,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     notes: new NotesClient(http),
     projects: new ProjectsClient(http),
     integrations: new IntegrationsClient(http),
+    knowledgeBases: new KnowledgeBasesClient(http),
     skills: new SkillsClient(http),
     mcpServers: new McpServersClient(http),
     automations: new AutomationsClient(http),

@@ -44,6 +44,9 @@
       "name": "Knowledge"
     },
     {
+      "name": "Knowledge Bases"
+    },
+    {
       "name": "MCP Servers"
     },
     {
@@ -332,31 +335,7 @@
               }
             }
           }
-        },
-        "parameters": [
-          {
-            "name": "subjectType",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "user",
-                "group"
-              ]
-            }
-          },
-          {
-            "name": "subjectId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256
-            }
-          }
-        ]
+        }
       },
       "post": {
         "operationId": "postAdminAuthorizationAssignments",
@@ -3335,6 +3314,11 @@
                   "clientId": {
                     "type": "string"
                   },
+                  "knowledgeBaseId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "nullable": true
+                  },
                   "conversationId": {
                     "type": "string",
                     "minLength": 1
@@ -3446,6 +3430,10 @@
                   },
                   "clientId": {
                     "type": "string"
+                  },
+                  "knowledgeBaseId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "additionalProperties": false
@@ -3536,6 +3524,10 @@
                   },
                   "projectId": {
                     "type": "string"
+                  },
+                  "knowledgeBaseId": {
+                    "type": "string",
+                    "minLength": 1
                   },
                   "askModelIds": {
                     "type": "array",
@@ -3744,6 +3736,10 @@
                   },
                   "projectId": {
                     "type": "string"
+                  },
+                  "knowledgeBaseId": {
+                    "type": "string",
+                    "minLength": 1
                   },
                   "askModelIds": {
                     "type": "array",
@@ -6117,6 +6113,1107 @@
                   }
                 },
                 "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases": {
+      "delete": {
+        "operationId": "deleteKnowledgeBases",
+        "summary": "Delete a knowledge base",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "knowledgeBaseId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "knowledgeBaseId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "getKnowledgeBases",
+        "summary": "List accessible knowledge bases",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchKnowledgeBases",
+        "summary": "Update a knowledge base",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "personal",
+                      "organization"
+                    ]
+                  },
+                  "knowledgeBaseId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "knowledgeBaseId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "postKnowledgeBases",
+        "summary": "Create a knowledge base",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "personal",
+                      "organization"
+                    ]
+                  }
+                },
+                "required": [
+                  "title"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{knowledgeBaseId}/conversations": {
+      "get": {
+        "operationId": "getKnowledgeBasesKnowledgeBaseIdConversations",
+        "summary": "List personal conversations attached to a knowledge base",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "knowledgeBaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/knowledge-bases/{knowledgeBaseId}/grants": {
+      "delete": {
+        "operationId": "deleteKnowledgeBasesKnowledgeBaseIdGrants",
+        "summary": "Revoke a knowledge-base share",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "knowledgeBaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "grantId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "grantId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "getKnowledgeBasesKnowledgeBaseIdGrants",
+        "summary": "List knowledge-base shares",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "knowledgeBaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "postKnowledgeBasesKnowledgeBaseIdGrants",
+        "summary": "Share a knowledge base",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "knowledgeBaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "principalType": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "group",
+                      "role"
+                    ]
+                  },
+                  "principalId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "accessRole": {
+                    "type": "string",
+                    "enum": [
+                      "viewer",
+                      "editor"
+                    ]
+                  }
+                },
+                "required": [
+                  "principalType",
+                  "principalId",
+                  "accessRole"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{knowledgeBaseId}/search": {
+      "post": {
+        "operationId": "postKnowledgeBasesKnowledgeBaseIdSearch",
+        "summary": "Search an authorized knowledge base",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "knowledgeBaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
+                  }
+                },
+                "required": [
+                  "query"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{knowledgeBaseId}/sources": {
+      "delete": {
+        "operationId": "deleteKnowledgeBasesKnowledgeBaseIdSources",
+        "summary": "Remove a knowledge-base source",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "knowledgeBaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sourceId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "deleteCanonical": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "sourceId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "getKnowledgeBasesKnowledgeBaseIdSources",
+        "summary": "List knowledge-base sources",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "knowledgeBaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "patchKnowledgeBasesKnowledgeBaseIdSources",
+        "summary": "Update a knowledge-base source",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "knowledgeBaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sourceId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "content": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 12582912
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "retry": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "sourceId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "postKnowledgeBasesKnowledgeBaseIdSources",
+        "summary": "Add a knowledge-base source",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "knowledgeBaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 240
+                  },
+                  "content": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 12582912
+                  },
+                  "mimeType": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "sourceRef": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "title",
+                  "content"
+                ],
+                "additionalProperties": false
               }
             }
           }

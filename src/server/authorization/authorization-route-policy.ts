@@ -259,6 +259,40 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
   { path: '/api/v1/knowledge/search', methods: { POST: capability('knowledge.read') } },
   {
+    path: '/api/v1/knowledge-bases',
+    methods: {
+      GET: capability('knowledge.read'),
+      POST: capability('knowledge.create'),
+      PATCH: resource('knowledge_base', 'edit', {}, 'knowledge.edit'),
+      DELETE: resource('knowledge_base', 'delete', {}, 'knowledge.delete'),
+    },
+  },
+  {
+    path: '/api/v1/knowledge-bases/:knowledgeBaseId/sources',
+    methods: {
+      GET: resource('knowledge_base', 'view', {}, 'knowledge.read'),
+      POST: resource('knowledge_base', 'edit', {}, 'knowledge.edit'),
+      PATCH: resource('knowledge_base', 'edit', {}, 'knowledge.edit'),
+      DELETE: resource('knowledge_base', 'edit', {}, 'knowledge.edit'),
+    },
+  },
+  {
+    path: '/api/v1/knowledge-bases/:knowledgeBaseId/search',
+    methods: { POST: resource('knowledge_base', 'view', {}, 'knowledge.read') },
+  },
+  {
+    path: '/api/v1/knowledge-bases/:knowledgeBaseId/conversations',
+    methods: { GET: resource('knowledge_base', 'view', {}, 'knowledge.read') },
+  },
+  {
+    path: '/api/v1/knowledge-bases/:knowledgeBaseId/grants',
+    methods: {
+      GET: resource('knowledge_base', 'share', {}, 'knowledge.share'),
+      POST: resource('knowledge_base', 'share', {}, 'knowledge.share'),
+      DELETE: resource('knowledge_base', 'share', {}, 'knowledge.share'),
+    },
+  },
+  {
     path: '/api/v1/automations',
     methods: {
       GET: capability('automations.use'),

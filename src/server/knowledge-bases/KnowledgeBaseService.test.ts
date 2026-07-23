@@ -157,11 +157,67 @@ test('knowledge-base chat attachment permits viewers while preserving private co
   assert.equal(fixture.grants.some(({ resourceId }) => resourceId === base.id), false)
 })
 
+test('knowledge-base owners distribute access to users, groups, and custom roles with immediate revocation', async () => {
+  const fixture = createFixture()
+  const base = await fixture.service.createKnowledgeBase({ userId: 'owner', title: 'Distributed Brain' })
+  fixture.groups.push({
+    id: 'students',
+    name: 'Students',
+    source: 'local',
+    createdAt: 1,
+    updatedAt: 1,
+  })
+  fixture.memberships.push({ groupId: 'students', userId: 'group-viewer', source: 'local', createdAt: 1 })
+
+  const direct = await fixture.service.shareKnowledgeBase({
+    accessRole: 'viewer',
+    knowledgeBaseId: base.id,
+    principalId: 'unshared',
+    principalType: 'user',
+    userId: 'owner',
+  })
+  const group = await fixture.service.shareKnowledgeBase({
+    accessRole: 'viewer',
+    knowledgeBaseId: base.id,
+    principalId: 'students',
+    principalType: 'group',
+    userId: 'owner',
+  })
+  const role = await fixture.service.shareKnowledgeBase({
+    accessRole: 'editor',
+    knowledgeBaseId: base.id,
+    principalId: 'editor-role',
+    principalType: 'role',
+    userId: 'owner',
+  })
+
+  assert.equal((await fixture.service.listShares({ knowledgeBaseId: base.id, userId: 'owner' })).length, 3)
+  assert.equal((await fixture.service.getKnowledgeBase({ knowledgeBaseId: base.id, userId: 'unshared' })).id, base.id)
+  assert.equal((await fixture.service.getKnowledgeBase({ knowledgeBaseId: base.id, userId: 'group-viewer' })).id, base.id)
+  assert.equal((await fixture.service.updateKnowledgeBase({
+    knowledgeBaseId: base.id,
+    title: 'Edited through custom role',
+    userId: 'role-editor',
+  })).title, 'Edited through custom role')
+
+  await fixture.service.revokeKnowledgeBaseShare({
+    grantId: direct.id,
+    knowledgeBaseId: base.id,
+    userId: 'owner',
+  })
+  await assert.rejects(
+    fixture.service.getKnowledgeBase({ knowledgeBaseId: base.id, userId: 'unshared' }),
+    (error: unknown) => error instanceof KnowledgeBaseServiceError && error.statusCode === 404,
+  )
+  assert.equal(group.principalType, 'group')
+  assert.equal(role.principalType, 'role')
+})
+
 function createFixture() {
   const roles: AuthorizationRole[] = [
     role('member', [
       'knowledge.create', 'knowledge.read', 'knowledge.edit', 'knowledge.delete',
-      'conversations.read', 'conversations.edit',
+      'knowledge.share', 'conversations.read', 'conversations.edit',
     ]),
     role('editor-role', ['knowledge.read', 'knowledge.edit', 'knowledge.delete']),
     role('viewer-role', ['knowledge.read', 'conversations.read', 'conversations.edit']),
@@ -177,6 +233,8 @@ function createFixture() {
     assignment('editor', 'editor-role'),
     assignment('viewer', 'viewer-role'),
     assignment('unshared', 'viewer-role'),
+    assignment('group-viewer', 'viewer-role'),
+    assignment('role-editor', 'editor-role'),
     assignment('admin', 'admin-role'),
   ]
   const groupRoles: GroupRoleAssignment[] = []
@@ -255,6 +313,8 @@ function createFixture() {
   const authorization = new AuthorizationService({ repositories: authorizationRepositories })
   return {
     grants,
+    groups,
+    memberships,
     owners,
     repositories,
     service: new KnowledgeBaseService({
