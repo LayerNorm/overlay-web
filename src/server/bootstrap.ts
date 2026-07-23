@@ -27,7 +27,10 @@ import { InMemoryVectorStore } from '@/server/storage/providers/in-memory-vector
 import { NoOpObjectStore } from '@/server/storage/providers/noop-object-store'
 import { R2ObjectStore } from '@/server/storage/providers/r2-object-store'
 import { S3CompatibleObjectStore } from '@/server/storage/providers/s3-compatible-object-store'
-import type { AppDataCapabilities } from '@/server/app-data/capabilities'
+import {
+  applyAppDataCapabilitiesToOverlayCapabilities,
+  type AppDataCapabilities,
+} from '@/server/app-data/capabilities'
 import { createAppDataContext, type AppDataContext } from '@/server/app-data/repositories'
 import { createActUsagePolicy, type ActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import {
@@ -35,6 +38,10 @@ import {
   type GenerationUsagePolicy,
 } from '@/server/outputs/GenerationUsagePolicy'
 import { UserService, type UserAuthProvider } from '@/server/users'
+import {
+  AuthorizationService,
+  createAuthorizationCapabilityPolicy,
+} from '@/server/authorization'
 import type { NoteRepository } from '@/server/notes'
 import { MemoryService } from '@/server/memory'
 import {
@@ -65,6 +72,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   appData: AppDataContext
   appDataCapabilities: AppDataCapabilities
   administrativeService: AdministrativeService
+  authorizationService: AuthorizationService
   auditService: AuditService
   chatUsagePolicy: ActUsagePolicy
   generationUsagePolicy: GenerationUsagePolicy
@@ -120,6 +128,15 @@ export function createOverlayServerContext(
     audit: auditService,
     repository: appData.repositories.administration,
   })
+  const authorizationService = new AuthorizationService({
+    repositories: appData.repositories.authorization,
+    capabilityPolicy: createAuthorizationCapabilityPolicy(
+      applyAppDataCapabilitiesToOverlayCapabilities(
+        resolveOverlayCapabilities(runtimeConfig),
+        appData.capabilities,
+      ),
+    ),
+  })
   const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
 
   return {
@@ -137,6 +154,7 @@ export function createOverlayServerContext(
     appData,
     appDataCapabilities: appData.capabilities,
     administrativeService,
+    authorizationService,
     auditService,
     chatUsagePolicy,
     generationUsagePolicy,

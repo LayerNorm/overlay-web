@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import type { TestContext } from 'node:test'
 import type { AuthorizationRepositories } from '@overlay/authz-contracts'
+import { AuthorizationService } from './AuthorizationService'
 
 export async function runAuthorizationRepositoryContract(
   t: TestContext,
@@ -87,6 +88,17 @@ export async function runAuthorizationRepositoryContract(
         roleIds: [roleId],
         resourceType: 'knowledge_base',
       })).length, 1)
+      const decision = await new AuthorizationService({
+        repositories: args.repositories,
+      }).checkResourceAccess({
+        userId,
+        capability: 'knowledge.edit',
+        resourceType: 'knowledge_base',
+        resourceId: `${args.scope}_knowledge`,
+        action: 'edit',
+      })
+      assert.equal(decision.allowed, true)
+      assert.equal(decision.effectiveAccessRole, 'editor')
       assert.equal(await args.repositories.resourceGrants.remove(grantId), true)
       assert.equal(await args.repositories.resourceGrants.remove(grantId), false)
       await args.repositories.resourceGrants.upsert({

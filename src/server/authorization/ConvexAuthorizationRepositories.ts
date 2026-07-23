@@ -237,24 +237,24 @@ async function requiredMutation<T>(operation: string, args: Record<string, unkno
 }
 
 function role(row: ConvexRole): AuthorizationRole {
-  return { ...clean(row), id: row.roleId ?? row.id }
+  const { roleId, ...value } = clean(row)
+  return { ...value, id: roleId ?? row.id }
 }
 
 function group(row: ConvexGroup): AuthorizationGroup {
-  return { ...clean(row), id: row.groupId ?? row.id }
+  const { groupId, ...value } = clean(row)
+  return { ...value, id: groupId ?? row.id }
 }
 
 function grant(row: ConvexGrant): ResourceGrant {
-  return { ...clean(row), id: row.grantId ?? row.id }
+  const { grantId, ...value } = clean(row)
+  return { ...value, id: grantId ?? row.id }
 }
 
 function clean<T>(row: T): T {
-  const { _id: _, _creationTime: __, roleId: ___, groupId: ____, grantId: _____, ...value } = row as T & {
+  const { _id: _, _creationTime: __, ...value } = row as T & {
     _id?: string
     _creationTime?: number
-    roleId?: string
-    groupId?: string
-    grantId?: string
   }
   return value as T
 }
