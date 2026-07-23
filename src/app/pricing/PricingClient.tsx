@@ -3,9 +3,9 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowRight, Check, GaugeCircle, MessageSquare, PlusCircle, SlidersHorizontal, Wallet } from 'lucide-react'
+import { ArrowRight, Check, MessageSquare, SlidersHorizontal } from 'lucide-react'
 import { MarketingFooter } from '@/features/marketing/components/MarketingFooter'
-import { StaticMarketingShell, useStaticMarketingTheme } from '@/features/marketing/components/StaticMarketingShell'
+import { StaticMarketingShell } from '@/features/marketing/components/StaticMarketingShell'
 import { AuthBoundary, useAuth } from '@/contexts/AuthContext'
 import { LandingThemeProvider } from '@/contexts/LandingThemeContext'
 import {
@@ -17,15 +17,16 @@ import {
   formatDollarAmount,
   getStorageLimitBytes,
 } from '@/shared/billing/billing-pricing'
-import {
-  marketingBody,
-  marketingFeatureText,
-  marketingHeading,
-  marketingMuted,
-  marketingPageTitle,
-  marketingPanel,
-} from '@/features/landing/lib/landingPageStyles'
 import { PricingControlPreview } from '@/features/marketing/components/MarketingShowcase'
+import { Reveal } from '@/features/marketing/components/Reveal'
+import {
+  minimalBody,
+  minimalDisplay,
+  minimalLabel,
+  minimalPanel,
+  minimalSection,
+  minimalSerif,
+} from '@/features/marketing/lib/minimalLayout'
 import { formatBytes } from '@/shared/storage/storage-limits'
 
 const TIER_STARTER_CENTS = 800
@@ -72,7 +73,6 @@ function UserIdExtractor() {
 
 function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
   const router = useRouter()
-  const staticTheme = useStaticMarketingTheme()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const [selectedTier, setSelectedTier] = useState<TierId>('starter')
   const [selectedPlanAmountCents, setSelectedPlanAmountCents] = useState(TIER_STARTER_CENTS)
@@ -135,11 +135,11 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
   )
 
   const theme = {
-    title: marketingPageTitle(),
-    heading: marketingHeading(),
-    body: marketingBody(),
-    muted: marketingMuted(),
-    panel: marketingPanel(),
+    title: 'font-serif text-4xl tracking-tight text-[var(--foreground)]',
+    heading: 'text-[var(--foreground)]',
+    body: 'text-[var(--muted)]',
+    muted: 'text-[var(--muted)]',
+    panel: minimalPanel(),
     heroGlow: '',
     primaryButton:
       'bg-[var(--button-primary-bg)] text-[var(--button-primary-text)] hover:opacity-90',
@@ -149,10 +149,10 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
     iconChip:
       'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)]',
     tierCard:
-      'flex h-full flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-sm',
-    subtleCard: 'rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4',
+      'flex h-full flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6',
+    subtleCard: 'rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4',
     sliderTrack:
-      'mt-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-[var(--surface-subtle)] accent-[var(--accent)]',
+      'mt-3 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[var(--surface-subtle)] accent-[var(--foreground)]',
     currentPlanPill:
       'inline-flex w-full items-center justify-center rounded-xl border border-[color:color-mix(in_srgb,var(--success)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--success)_14%,transparent)] px-4 py-3 text-sm text-[var(--success)]',
   }
@@ -357,22 +357,25 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
   if (!billingEnabled) {
     return (
       <StaticMarketingShell>
-        <main className="px-6 py-16 md:px-8 md:py-20">
+        <main className={minimalSection()}>
           <div className="mx-auto max-w-2xl text-center">
-            <p className={`text-sm uppercase tracking-[0.2em] ${staticTheme.subtleClass}`}>Plans and pricing</p>
-            <h1 className="mt-4 text-4xl tracking-tight md:text-6xl" style={{ fontFamily: 'var(--font-serif)' }}>
-              Billing unavailable.
-            </h1>
-            <p className={`mx-auto mt-5 max-w-xl text-base leading-7 ${staticTheme.mutedClass}`}>
-              This deployment does not use Overlay-managed billing. Workspace access is controlled by the deployment administrator.
-            </p>
-            <Link
-              href="/app/chat"
-              className={`mt-8 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition-colors ${theme.primaryButton}`}
-            >
-              Open app
-              <ArrowRight className="h-4 w-4" />
-            </Link>
+            <Reveal>
+              <p className={minimalLabel()}>Plans and pricing</p>
+              <h1 className={`mt-6 ${minimalDisplay()}`} style={minimalSerif()}>
+                Billing unavailable.
+              </h1>
+              <p className={`mx-auto mt-6 max-w-xl ${minimalBody()}`}>
+                This deployment does not use Overlay-managed billing. Workspace
+                access is controlled by the deployment administrator.
+              </p>
+              <Link
+                href="/app/chat"
+                className={`mt-8 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition-colors ${theme.primaryButton}`}
+              >
+                Open app
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Reveal>
           </div>
         </main>
         <MarketingFooter />
@@ -386,256 +389,250 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
         <UserIdExtractor />
       </Suspense>
 
-      <main className="px-5 py-16 md:px-8 md:py-24">
-        <div className="mx-auto flex max-w-6xl flex-col gap-10">
-          <div className="grid gap-10 lg:grid-cols-[0.72fr_1.28fr] lg:items-center">
-            <div>
-              <p className={`text-xs font-medium uppercase tracking-[0.24em] ${staticTheme.subtleClass}`}>Plans and pricing</p>
-              <h1 className="mt-4 text-5xl leading-[0.95] tracking-tight md:text-7xl">
-                Pay for the platform and the AI you use.
-              </h1>
-              <p className={`mt-6 max-w-2xl text-base leading-7 ${staticTheme.mutedClass}`}>
-                Start free. Upgrade when you want premium models, agents, browser tasks, and more monthly budget.
-              </p>
-              {!authLoading && !isAuthenticated ? (
-                <div className="mt-6 inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-2 text-sm text-[var(--foreground)]">
-                  Sign in to subscribe.
-                  <Link href="/auth/sign-in?redirect=/pricing" className="font-medium underline underline-offset-4">
-                    Sign in
-                  </Link>
-                </div>
-              ) : null}
-              {error ? (
-                <div className="mt-6 inline-flex rounded-lg border border-[color:color-mix(in_srgb,var(--danger)_35%,transparent)] bg-[color:color-mix(in_srgb,var(--danger)_12%,transparent)] px-4 py-2 text-sm text-[var(--danger)]">
-                  {error}
-                </div>
-              ) : null}
+      <main className={minimalSection()}>
+        <div className="mx-auto flex max-w-5xl flex-col gap-16">
+          {/* Hero */}
+          <Reveal>
+            <div className="grid gap-10 lg:grid-cols-[0.72fr_1.28fr] lg:items-center">
+              <div>
+                <p className={minimalLabel()}>Plans and pricing</p>
+                <h1 className={`mt-6 ${minimalDisplay()}`} style={minimalSerif()}>
+                  Pay for the platform and the AI you use.
+                </h1>
+                <p className={`mt-6 max-w-2xl ${minimalBody()}`}>
+                  Start free. Upgrade when you want premium models, agents,
+                  browser tasks, and more monthly budget.
+                </p>
+                {!authLoading && !isAuthenticated ? (
+                  <div className="mt-6 inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-2 text-sm text-[var(--foreground)]">
+                    Sign in to subscribe.
+                    <Link href="/auth/sign-in?redirect=/pricing" className="font-medium underline underline-offset-4">
+                      Sign in
+                    </Link>
+                  </div>
+                ) : null}
+                {error ? (
+                  <div className="mt-6 inline-flex rounded-lg border border-[color:color-mix(in_srgb,var(--danger)_35%,transparent)] bg-[color:color-mix(in_srgb,var(--danger)_12%,transparent)] px-4 py-2 text-sm text-[var(--danger)]">
+                    {error}
+                  </div>
+                ) : null}
+              </div>
+              <PricingControlPreview amount={formatDollarAmount(selectedPlanAmountCents)} />
             </div>
-            <PricingControlPreview amount={formatDollarAmount(selectedPlanAmountCents)} />
-          </div>
+          </Reveal>
 
+          {/* Tier toggle */}
           <div className="hidden gap-3 lg:grid lg:grid-cols-3">
             <div className="hidden lg:block" />
             {renderPaidTierToggle()}
             <div className="hidden lg:block" />
           </div>
 
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-            {/* Free */}
-            <section className={theme.tierCard}>
-              <div className="flex min-h-[56px] items-center gap-3">
-                <div className={theme.iconChip}>
-                  <MessageSquare className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-                </div>
-                <div>
-                  <h2 className={`text-lg font-semibold ${theme.heading}`}>Free</h2>
-                  <p className={`text-xs ${theme.muted}`}>Auto model and core workspace</p>
-                </div>
-              </div>
-              <div className="mt-6 min-h-[82px]">
-                <div className={`text-4xl font-serif ${theme.title}`}>$0</div>
-                <p className={`mt-1 text-sm ${theme.body}`}>No card required</p>
-              </div>
-              <ul className="mt-4 flex flex-col gap-2.5">
-                {[
-                  'Unlimited Auto model messages',
-                  'Notes, chats, knowledge, projects',
-                  'Basic AI tools and core flows',
-                  '10 MB file storage',
-                ].map((feature) => (
-                  <li key={feature} className="flex items-start gap-2">
-                    <Check className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]`} />
-                    <span className={`text-sm leading-snug ${marketingFeatureText(true)}`}>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-auto pt-6">
-                {currentPlanKind === 'free' ? (
-                  <div className={theme.currentPlanPill}>{subscriptionLoading ? 'Loading…' : 'Current plan'}</div>
-                ) : (
-                  <Link
-                    href={isAuthenticated ? '/app/chat' : '/auth/sign-in?redirect=%2Fapp%2Fchat'}
-                    className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${theme.secondaryButton}`}
-                  >
-                    Start free
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                )}
-              </div>
-            </section>
-
-            <div className="lg:hidden">{renderPaidTierToggle()}</div>
-
-            {/* Paid */}
-            <section className={tierCardClass(selectedPaidOption.tier)} onClick={() => selectTier(selectedPaidOption.tier)}>
-              <div className="flex min-h-[56px] items-center justify-between gap-3">
-                <div>
-                  <h2 className={`text-lg font-semibold ${theme.heading}`}>Paid</h2>
-                  <p className={`text-xs ${theme.muted}`}>{selectedPaidOption.note}</p>
-                </div>
-              </div>
-              <div className="mt-6 min-h-[82px]">
-                <div className="flex flex-wrap items-end gap-1.5">
-                  <span className={`text-4xl font-serif ${theme.title}`}>${selectedPaidOption.amountCents / 100}</span>
-                  <span className={`pb-1 text-sm ${theme.muted}`}>/ month</span>
-                </div>
-                <p className={`mt-2 text-xs leading-relaxed ${theme.muted}`}>
-                  {formatBytes(getStorageLimitBytes({ planKind: 'paid', planAmountCents: selectedPaidOption.amountCents }))} storage
-                </p>
-              </div>
-              <ul className="mt-4 flex flex-col gap-2">
-                <li className={`text-xs font-medium ${theme.muted}`}>Everything in Free, plus:</li>
-                {PAID_FEATURE_BULLETS_COMPACT.map((feature) => (
-                  <li key={feature} className="flex items-start gap-2">
-                    <Check className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]`} />
-                    <span className={`text-sm leading-snug ${marketingFeatureText(true)}`}>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-auto pt-6">{paidCtaForAmount(selectedPaidOption.amountCents, selectedPaidOption.tier)}</div>
-            </section>
-
-            {/* Choose your own */}
-            <section className={`${tierCardClass('custom')} relative overflow-hidden`} onClick={() => selectTier('custom')}>
-              <div className={`pointer-events-none absolute inset-0 ${theme.heroGlow}`} />
-              <div className="relative flex min-h-[56px] items-center gap-3">
-                <div className={theme.iconChip}>
-                  <SlidersHorizontal className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-                </div>
-                <div>
-                  <h2 className={`text-lg font-semibold ${theme.heading}`}>Choose my own</h2>
-                  <p className={`text-xs ${theme.muted}`}>Pick any monthly budget ($8–$200)</p>
-                </div>
-              </div>
-              <div className="relative mt-6 min-h-[82px]">
-                <div className="flex flex-wrap items-end gap-1.5">
-                  <span className={`text-4xl font-serif ${theme.title}`}>{formatDollarAmount(selectedPlanAmountCents)}</span>
-                  <span className={`pb-1 text-sm ${theme.muted}`}>/ month</span>
-                </div>
-                <p className={`mt-2 text-xs ${theme.muted}`}>
-                  {formatBytes(selectedStorageBytes)} storage · {Math.round(selectedPlanAmountCents / 100)} × $1 units
-                </p>
-              </div>
-
-              <ul className="relative mt-4 flex flex-col gap-2">
-                <li className={`text-xs font-medium ${theme.muted}`}>Everything in Free, plus:</li>
-                {PAID_FEATURE_BULLETS.map((feature) => (
-                  <li key={feature} className="flex items-start gap-2">
-                    <Check className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]`} />
-                    <span className={`text-sm leading-snug ${marketingFeatureText(true)}`}>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <div className={`relative mt-5 ${theme.subtleCard}`}>
-                <div className="flex items-center justify-between text-xs">
-                  <span className={theme.muted}>Monthly budget</span>
-                  <span className={`font-medium ${theme.heading}`}>{formatDollarAmount(selectedPlanAmountCents)}</span>
-                </div>
-                <input
-                  type="range"
-                  min={PAID_PLAN_MIN_AMOUNT_CENTS / 100}
-                  max={PAID_PLAN_MAX_AMOUNT_CENTS / 100}
-                  step={PAID_PLAN_STEP_AMOUNT_CENTS / 100}
-                  value={selectedPlanDollars}
-                  onChange={(event) => {
-                    const next = Math.round(Number(event.target.value) * 100)
-                    selectTier('custom', next)
-                  }}
-                  aria-label="Choose monthly budget"
-                  onPointerDown={() => {
-                    if (selectedTier !== 'custom') selectTier('custom', selectedPlanAmountCents)
-                  }}
-                  className={theme.sliderTrack}
-                />
-                <div className={`mt-1 flex justify-between text-[11px] ${theme.muted}`}>
-                  <span>$8</span>
-                  <span>$200</span>
-                </div>
-              </div>
-
-              <div className="relative mt-auto pt-6">{paidCtaForAmount(selectedPlanAmountCents, 'custom')}</div>
-            </section>
-          </div>
-
-          {/* Billing preferences: fixed $8 top-up, optional auto top-up */}
-          <section className={theme.panel}>
-            <h2 className={`text-sm font-medium ${theme.heading}`}>Top-ups</h2>
-              <p className={`mt-2 max-w-2xl text-sm leading-relaxed ${theme.body}`}>
-              One-time and automatic top-ups use <span className="font-medium">$8</span> per recharge unless you change this in{' '}
-              <Link href="/account" className={`font-medium underline underline-offset-4 ${theme.heading}`}>
-                Account
-              </Link>
-              . Automatic top-ups are off until you opt in—they never apply unless you enable them below (paid accounts only).
-            </p>
-            <label
-              className="mt-5 flex cursor-pointer items-start gap-3 rounded-2xl border p-4 border-[var(--border)] bg-[var(--surface-muted)]"
-            >
-              <input
-                type="checkbox"
-                checked={autoTopUpEnabled}
-                onChange={(event) => setAutoTopUpEnabled(event.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 rounded border-[var(--input-border)] text-[var(--accent)] focus:ring-[var(--accent)]"
-              />
-              <div>
-                <p className={`text-sm font-medium ${theme.heading}`}>Enable automatic top-ups</p>
-                <p className={`mt-1 text-xs leading-relaxed ${theme.muted}`}>
-                  When enabled, we add $8 when your cumulative budget reaches zero. Leave unchecked to never auto-charge—you can
-                  still add budget manually.
-                </p>
-              </div>
-            </label>
-            {currentPlanKind === 'paid' ? (
-              <button
-                type="button"
-                onClick={() => void handleSaveTopUpPreference()}
-                disabled={loading === 'topup-settings' || subscriptionLoading}
-                className={`mt-4 inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-50 ${theme.secondaryButton}`}
-              >
-                {loading === 'topup-settings' ? 'Saving…' : 'Save top-up preference'}
-              </button>
-            ) : null}
-          </section>
-
-          <section className={theme.panel}>
-            <h2 className={`text-sm font-medium ${theme.heading}`}>How billing works</h2>
-            <div className="mt-5 grid gap-4 sm:grid-cols-3">
-              {[
-                {
-                  Icon: Wallet,
-                  label: 'Monthly budget',
-                  hint: 'Your subscription sets how much usage budget you get each cycle.',
-                },
-                {
-                  Icon: GaugeCircle,
-                  label: 'Usage draws it down',
-                  hint: 'Premium features consume budget with a small markup.',
-                },
-                {
-                  Icon: PlusCircle,
-                  label: 'Top up if needed',
-                  hint: 'Add $8 (or more from Account) when you need extra headroom.',
-                },
-              ].map(({ Icon, label, hint }) => (
-                <div key={label} className={`flex gap-3 ${theme.subtleCard}`}>
+          {/* Tier cards */}
+          <Reveal>
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+              {/* Free */}
+              <section className={theme.tierCard}>
+                <div className="flex min-h-[56px] items-center gap-3">
                   <div className={theme.iconChip}>
-                    <Icon className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+                    <MessageSquare className="h-4 w-4" strokeWidth={1.75} aria-hidden />
                   </div>
-                  <div className="min-w-0">
-                    <p className={`text-sm font-medium ${theme.heading}`}>{label}</p>
-                    <p className={`mt-1 text-xs leading-relaxed ${theme.muted}`}>{hint}</p>
+                  <div>
+                    <h2 className={`text-lg font-semibold ${theme.heading}`}>Free</h2>
+                    <p className={`text-xs ${theme.muted}`}>Auto model and core workspace</p>
                   </div>
                 </div>
-              ))}
+                <div className="mt-6 min-h-[82px]">
+                  <div className={theme.title} style={minimalSerif()}>$0</div>
+                  <p className={`mt-1 text-sm ${theme.body}`}>No card required</p>
+                </div>
+                <ul className="mt-4 flex flex-col gap-2.5">
+                  {[
+                    'Unlimited Auto model messages',
+                    'Notes, chats, knowledge, projects',
+                    'Basic AI tools and core flows',
+                    '10 MB file storage',
+                  ].map((feature) => (
+                    <li key={feature} className="flex items-start gap-2">
+                      <Check className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]`} />
+                      <span className="text-sm leading-snug text-[var(--foreground)]">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-auto pt-6">
+                  {currentPlanKind === 'free' ? (
+                    <div className={theme.currentPlanPill}>{subscriptionLoading ? 'Loading…' : 'Current plan'}</div>
+                  ) : (
+                    <Link
+                      href={isAuthenticated ? '/app/chat' : '/auth/sign-in?redirect=%2Fapp%2Fchat'}
+                      className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${theme.secondaryButton}`}
+                    >
+                      Start free
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  )}
+                </div>
+              </section>
+
+              <div className="lg:hidden">{renderPaidTierToggle()}</div>
+
+              {/* Paid */}
+              <section className={tierCardClass(selectedPaidOption.tier)} onClick={() => selectTier(selectedPaidOption.tier)}>
+                <div className="flex min-h-[56px] items-center justify-between gap-3">
+                  <div>
+                    <h2 className={`text-lg font-semibold ${theme.heading}`}>Paid</h2>
+                    <p className={`text-xs ${theme.muted}`}>{selectedPaidOption.note}</p>
+                  </div>
+                </div>
+                <div className="mt-6 min-h-[82px]">
+                  <div className="flex flex-wrap items-end gap-1.5">
+                    <span className={theme.title} style={minimalSerif()}>${selectedPaidOption.amountCents / 100}</span>
+                    <span className={`pb-1 text-sm ${theme.muted}`}>/ month</span>
+                  </div>
+                  <p className={`mt-2 text-xs leading-relaxed ${theme.muted}`}>
+                    {formatBytes(getStorageLimitBytes({ planKind: 'paid', planAmountCents: selectedPaidOption.amountCents }))} storage
+                  </p>
+                </div>
+                <ul className="mt-4 flex flex-col gap-2">
+                  <li className={`text-xs font-medium ${theme.muted}`}>Everything in Free, plus:</li>
+                  {PAID_FEATURE_BULLETS_COMPACT.map((feature) => (
+                    <li key={feature} className="flex items-start gap-2">
+                      <Check className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]`} />
+                      <span className="text-sm leading-snug text-[var(--foreground)]">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-auto pt-6">{paidCtaForAmount(selectedPaidOption.amountCents, selectedPaidOption.tier)}</div>
+              </section>
+
+              {/* Choose your own */}
+              <section className={`${tierCardClass('custom')} relative overflow-hidden`} onClick={() => selectTier('custom')}>
+                <div className={`pointer-events-none absolute inset-0 ${theme.heroGlow}`} />
+                <div className="relative flex min-h-[56px] items-center gap-3">
+                  <div className={theme.iconChip}>
+                    <SlidersHorizontal className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+                  </div>
+                  <div>
+                    <h2 className={`text-lg font-semibold ${theme.heading}`}>Choose my own</h2>
+                    <p className={`text-xs ${theme.muted}`}>Pick any monthly budget ($8–$200)</p>
+                  </div>
+                </div>
+                <div className="relative mt-6 min-h-[82px]">
+                  <div className="flex flex-wrap items-end gap-1.5">
+                    <span className={theme.title} style={minimalSerif()}>{formatDollarAmount(selectedPlanAmountCents)}</span>
+                    <span className={`pb-1 text-sm ${theme.muted}`}>/ month</span>
+                  </div>
+                  <p className={`mt-2 text-xs ${theme.muted}`}>
+                    {formatBytes(selectedStorageBytes)} storage · {Math.round(selectedPlanAmountCents / 100)} × $1 units
+                  </p>
+                </div>
+
+                <ul className="relative mt-4 flex flex-col gap-2">
+                  <li className={`text-xs font-medium ${theme.muted}`}>Everything in Free, plus:</li>
+                  {PAID_FEATURE_BULLETS.map((feature) => (
+                    <li key={feature} className="flex items-start gap-2">
+                      <Check className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]`} />
+                      <span className="text-sm leading-snug text-[var(--foreground)]">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className={`relative mt-5 ${theme.subtleCard}`}>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className={theme.muted}>Monthly budget</span>
+                    <span className={`font-medium ${theme.heading}`}>{formatDollarAmount(selectedPlanAmountCents)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={PAID_PLAN_MIN_AMOUNT_CENTS / 100}
+                    max={PAID_PLAN_MAX_AMOUNT_CENTS / 100}
+                    step={PAID_PLAN_STEP_AMOUNT_CENTS / 100}
+                    value={selectedPlanDollars}
+                    onChange={(event) => {
+                      const next = Math.round(Number(event.target.value) * 100)
+                      selectTier('custom', next)
+                    }}
+                    aria-label="Choose monthly budget"
+                    onPointerDown={() => {
+                      if (selectedTier !== 'custom') selectTier('custom', selectedPlanAmountCents)
+                    }}
+                    className={theme.sliderTrack}
+                  />
+                  <div className={`mt-1 flex justify-between text-[11px] ${theme.muted}`}>
+                    <span>$8</span>
+                    <span>$200</span>
+                  </div>
+                </div>
+
+                <div className="relative mt-auto pt-6">{paidCtaForAmount(selectedPlanAmountCents, 'custom')}</div>
+              </section>
             </div>
-            <p className={`mt-5 text-sm ${theme.body}`}>
-              Manage payment method and invoices in{' '}
-              <Link href="/account" className={`font-medium underline underline-offset-4 ${theme.heading}`}>
-                Account
-              </Link>
-              .
-            </p>
-          </section>
+          </Reveal>
+
+          {/* Top-ups + how billing works — consolidated */}
+          <Reveal>
+            <div className="grid gap-5 md:grid-cols-2">
+              <section className={theme.panel + ' p-6'}>
+                <h2 className={`text-sm font-medium ${theme.heading}`}>Top-ups</h2>
+                <p className={`mt-2 text-sm leading-relaxed ${theme.body}`}>
+                  One-time and automatic top-ups use <span className="font-medium">$8</span> per recharge unless you change this in{' '}
+                  <Link href="/account" className={`font-medium underline underline-offset-4 ${theme.heading}`}>
+                    Account
+                  </Link>
+                  . Automatic top-ups are off until you opt in.
+                </p>
+                <label
+                  className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4"
+                >
+                  <input
+                    type="checkbox"
+                    checked={autoTopUpEnabled}
+                    onChange={(event) => setAutoTopUpEnabled(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-[var(--input-border)] text-[var(--accent)] focus:ring-[var(--accent)]"
+                  />
+                  <div>
+                    <p className={`text-sm font-medium ${theme.heading}`}>Enable automatic top-ups</p>
+                    <p className={`mt-1 text-xs leading-relaxed ${theme.muted}`}>
+                      When enabled, we add $8 when your cumulative budget reaches zero.
+                    </p>
+                  </div>
+                </label>
+                {currentPlanKind === 'paid' ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveTopUpPreference()}
+                    disabled={loading === 'topup-settings' || subscriptionLoading}
+                    className={`mt-4 inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-50 ${theme.secondaryButton}`}
+                  >
+                    {loading === 'topup-settings' ? 'Saving…' : 'Save top-up preference'}
+                  </button>
+                ) : null}
+              </section>
+
+              <section className={theme.panel + ' p-6'}>
+                <h2 className={`text-sm font-medium ${theme.heading}`}>How billing works</h2>
+                <div className="mt-4 space-y-4">
+                  {[
+                    { label: 'Monthly budget', hint: 'Your subscription sets how much usage budget you get each cycle.' },
+                    { label: 'Usage draws it down', hint: 'Premium features consume budget with a small markup.' },
+                    { label: 'Top up if needed', hint: 'Add $8 (or more from Account) when you need extra headroom.' },
+                  ].map(({ label, hint }) => (
+                    <div key={label}>
+                      <p className={`text-sm font-medium ${theme.heading}`}>{label}</p>
+                      <p className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>{hint}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className={`mt-4 text-sm ${theme.body}`}>
+                  Manage payment method and invoices in{' '}
+                  <Link href="/account" className={`font-medium underline underline-offset-4 ${theme.heading}`}>
+                    Account
+                  </Link>
+                  .
+                </p>
+              </section>
+            </div>
+          </Reveal>
         </div>
       </main>
       <MarketingFooter />

@@ -24,12 +24,13 @@ import {
   shouldStartDesktopHandoff,
 } from '@/shared/auth/desktop-auth-handoff'
 import {
-  marketingBody,
-  marketingHeading,
-  marketingMuted,
-  marketingPageTitle,
-} from '@/features/landing/lib/landingPageStyles'
-import { PricingControlPreview } from '@/features/marketing/components/MarketingShowcase'
+  minimalBody,
+  minimalDisplaySm,
+  minimalLabel,
+  minimalPanel,
+  minimalSectionSm,
+  minimalSerif,
+} from '@/features/marketing/lib/minimalLayout'
 import {
   AccountLoadingState,
   AccountMessageBanner,
@@ -47,13 +48,13 @@ function triggerDeepLink(url: string) {
 
 function AccountPageContent() {
   const { isLandingDark } = useLandingTheme()
-  const panel = 'rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-5'
-  const panelLg = 'mx-auto max-w-md rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-8'
+  const panel = minimalPanel() + ' p-5'
+  const panelLg = 'mx-auto max-w-md ' + minimalPanel() + ' p-8'
   const t = {
-    title: marketingPageTitle(),
-    h: marketingHeading(),
-    muted: marketingMuted(),
-    body: marketingBody(),
+    title: 'font-serif text-[var(--foreground)]',
+    h: 'text-[var(--foreground)]',
+    muted: 'text-[var(--muted)]',
+    body: minimalBody(),
   }
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -309,8 +310,8 @@ function AccountPageContent() {
 
   return (
     <StaticMarketingShell>
-      <main className="px-5 py-12 md:px-8 md:py-16">
-        <div className="mx-auto max-w-6xl">
+      <main className={minimalSectionSm()}>
+        <div className="mx-auto max-w-3xl">
       {message ? (
         <AccountMessageBanner
           message={message}
@@ -320,23 +321,14 @@ function AccountPageContent() {
         />
       ) : null}
 
-      <div className="mb-10 grid gap-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-end">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.24em] text-[var(--muted-light)]">Account</p>
-          <h1 className={`mt-4 text-5xl leading-[0.95] tracking-tight md:text-7xl ${t.title}`}>
-            Your Overlay control center.
-          </h1>
-          <p className={`mt-5 max-w-2xl text-sm leading-7 ${t.muted}`}>
-            Manage plan status, usage, top-ups, desktop handoff, and account access outside the main app chrome.
-          </p>
-        </div>
-        <PricingControlPreview
-          amount={
-            entitlements && entitlements.planKind === 'paid'
-              ? `$${Math.max(0, entitlements.budgetRemainingCents / 100).toFixed(2)}`
-              : '$0'
-          }
-        />
+      <div className="mb-12">
+        <p className={minimalLabel()}>Account</p>
+        <h1 className={`mt-4 ${minimalDisplaySm()}`} style={minimalSerif()}>
+          Your Overlay control center.
+        </h1>
+        <p className={`mt-5 max-w-xl ${minimalBody()}`}>
+          Manage plan status, usage, top-ups, desktop handoff, and account access.
+        </p>
       </div>
 
       {loading || authLoading || !sessionCheckComplete || !capabilitiesLoaded ? (
