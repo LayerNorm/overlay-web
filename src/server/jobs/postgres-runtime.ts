@@ -58,11 +58,14 @@ import {
   type ScheduledAutomationTurn,
 } from '@/server/agent/run-act-turn'
 import { PostgresUsageRepository } from '@/server/usage'
+import type { AuthorizationService } from '@/server/authorization'
+import { authorizeDurableJob } from './DurableJobAuthorization'
 
 export function createPostgresRuntime(args: {
   db: OverlayPostgresDb
   leaseMs: number
   automationExecutor?: (input: ScheduledAutomationTurn) => Promise<{ conversationId: string }>
+  authorizationService?: AuthorizationService
   daytonaReconciler?: Pick<PostgresDaytonaReconciliationService, 'reconcile'>
   embeddingProvider?: EmbeddingProvider
   memoryExtractionProvider?: MemoryExtractionProvider
@@ -136,6 +139,14 @@ export function createPostgresRuntime(args: {
       [AUTOMATION_SCHEDULE_DUE_JOB]: async () => await automationRuns.enqueueDueRuns(),
       [AUTOMATION_EXECUTE_JOB]: async (job) => {
         const runId = requiredStringPayload(job.payload.runId, 'runId')
+        const authorization = await requireUserJobAuthorization(job, args.authorizationService)
+        if (!authorization.allowed) {
+          await automationRuns.denyRunForAuthorization({
+            error: authorizationError(authorization),
+            runId,
+          })
+          return { runId, status: 'authorization_denied' }
+        }
         const started = await automationRuns.startAttempt({
           attemptNumber: job.attempts,
           jobId: job.id,
@@ -164,7 +175,18 @@ export function createPostgresRuntime(args: {
           throw error
         }
       },
-      [WEBHOOK_DELIVERY_JOB]: async (job) => await webhookDeliveries.deliver(job),
+      [WEBHOOK_DELIVERY_JOB]: async (job) => {
+        const deliveryId = requiredStringPayload(job.payload.deliveryId, 'deliveryId')
+        const authorization = await requireUserJobAuthorization(job, args.authorizationService)
+        if (!authorization.allowed) {
+          await webhookDeliveries.denyForAuthorization({
+            deliveryId,
+            error: authorizationError(authorization),
+          })
+          return { deliveryId, status: 'authorization_denied' }
+        }
+        return await webhookDeliveries.deliver(job)
+      },
       [DAYTONA_RECONCILE_JOB]: async () => {
         const config = runtimeConfig()
         if (!config.features.sandboxes || config.providers.sandbox?.provider !== 'daytona') {
@@ -172,18 +194,26 @@ export function createPostgresRuntime(args: {
         }
         return await getDaytonaReconciler().reconcile()
       },
-      [KNOWLEDGE_REINDEX_JOB]: async (job) => await getKnowledgeIndex().reindex({
-        expectedContentHash: stringPayload(job.payload.contentHash),
-        sourceId: requiredStringPayload(job.payload.sourceId, 'sourceId'),
-        sourceKind: sourceKindPayload(job.payload.sourceKind),
-        userId: requiredStringPayload(job.payload.userId, 'userId'),
-      }),
-      [MEMORY_EXTRACT_TURN_JOB]: async (job) => await getMemoryExtraction().extractTurn({
-        conversationId: requiredStringPayload(job.payload.conversationId, 'conversationId'),
-        messageId: requiredStringPayload(job.payload.messageId, 'messageId'),
-        turnId: requiredStringPayload(job.payload.turnId, 'turnId'),
-        userId: requiredStringPayload(job.payload.userId, 'userId'),
-      }),
+      [KNOWLEDGE_REINDEX_JOB]: async (job) => {
+        const authorization = await requireUserJobAuthorization(job, args.authorizationService)
+        if (!authorization.allowed) return { status: 'authorization_denied' }
+        return await getKnowledgeIndex().reindex({
+          expectedContentHash: stringPayload(job.payload.contentHash),
+          sourceId: requiredStringPayload(job.payload.sourceId, 'sourceId'),
+          sourceKind: sourceKindPayload(job.payload.sourceKind),
+          userId: requiredStringPayload(job.payload.userId, 'userId'),
+        })
+      },
+      [MEMORY_EXTRACT_TURN_JOB]: async (job) => {
+        const authorization = await requireUserJobAuthorization(job, args.authorizationService)
+        if (!authorization.allowed) return { status: 'authorization_denied' }
+        return await getMemoryExtraction().extractTurn({
+          conversationId: requiredStringPayload(job.payload.conversationId, 'conversationId'),
+          messageId: requiredStringPayload(job.payload.messageId, 'messageId'),
+          turnId: requiredStringPayload(job.payload.turnId, 'turnId'),
+          userId: requiredStringPayload(job.payload.userId, 'userId'),
+        })
+      },
       'knowledge.maintenance': async () => {
         const config = runtimeConfig()
         if (!isPostgresKnowledgeRuntimeEnabled(config)) {
@@ -208,6 +238,22 @@ export function createPostgresRuntime(args: {
   })
 
   return { automationRuns, jobs, scheduler, worker }
+}
+
+async function requireUserJobAuthorization(
+  job: Parameters<typeof authorizeDurableJob>[0]['job'],
+  authorizationService?: AuthorizationService,
+) {
+  if (!authorizationService) {
+    return { allowed: true, deniedCapabilities: [] }
+  }
+  return await authorizeDurableJob({ authorization: authorizationService, job })
+}
+
+function authorizationError(result: Awaited<ReturnType<typeof requireUserJobAuthorization>>): string {
+  return result.reason === 'authorization_metadata_missing'
+    ? 'Durable job authorization metadata is missing'
+    : `Authorization revoked before execution: ${result.deniedCapabilities.join(', ')}`
 }
 
 function stringPayload(value: unknown): string | undefined {

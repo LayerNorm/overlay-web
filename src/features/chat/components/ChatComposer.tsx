@@ -28,6 +28,7 @@ import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
 import { AttachmentPreviewTray, ComposerAlerts } from './ChatComposerAttachments'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import { toComposerViewProps, type ChatComposerProps, type ComposerViewProps } from './ChatComposerTypes'
+import { useAuthorization } from '@/components/providers/AuthorizationProvider'
 
 const DOCUMENT_FILE_ACCEPT = [
   '.pdf',
@@ -222,6 +223,9 @@ type ComposerControlsProps = ComposerViewProps & {
 }
 
 function ComposerControls(props: ComposerControlsProps) {
+  const { allows } = useAuthorization()
+  const can = (capability: Parameters<ReturnType<typeof useAuthorization>['can']>[0]) =>
+    allows({ all: [capability] })
   const mentionTooltip = mentionReferenceLabel(props.capabilities)
   return (
     <div className={`mt-2 grid min-h-9 items-center gap-2 ${
@@ -236,7 +240,7 @@ function ComposerControls(props: ComposerControlsProps) {
         </button>
       </DelayedTooltip>
       <div className="flex min-w-0 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {props.capabilities.memory && props.capabilities.vectorSearch && !props.memoryEnabled && (
+        {can('memory.use') && props.capabilities.memory && props.capabilities.vectorSearch && !props.memoryEnabled && (
           <DelayedTooltip label="Memory is off for this message." side="top">
             <div className="shrink-0">
               <ToolRequestChip
@@ -247,7 +251,7 @@ function ComposerControls(props: ComposerControlsProps) {
             </div>
           </DelayedTooltip>
         )}
-        {props.selectedToolIds.filter((toolId) => isToolRequestEnabled(toolId, props)).map((toolId) => {
+        {props.selectedToolIds.filter((toolId) => isToolRequestEnabled(toolId, props, can)).map((toolId) => {
           const tool = TOOL_REQUEST_BY_ID.get(toolId)
           if (!tool) return null
           return (
@@ -309,6 +313,9 @@ function composerPlaceholder(props: ComposerViewProps): string {
 
 function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HTMLInputElement | null> }) {
   const [menuDirection, setMenuDirection] = useState<'up' | 'down'>('up')
+  const { allows } = useAuthorization()
+  const can = (capability: Parameters<ReturnType<typeof useAuthorization>['can']>[0]) =>
+    allows({ all: [capability] })
 
   function handleToggle(event: MouseEvent<HTMLButtonElement>) {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -338,7 +345,7 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
               suffix="Images, docs"
             />
           )}
-          {TOOL_REQUEST_OPTIONS.filter((tool) => isToolRequestEnabled(tool.id, props)).map((tool) => {
+          {TOOL_REQUEST_OPTIONS.filter((tool) => isToolRequestEnabled(tool.id, props, can)).map((tool) => {
             const active = props.selectedToolIds.includes(tool.id)
             const Icon = tool.Icon
             return (
@@ -358,7 +365,7 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
           })}
           <AttachMenuButton onClick={() => { props.onModeChange('image'); props.setShowAttachMenu(false) }} icon={<ImageIcon size={13} className="text-[var(--foreground)]" />} label="Generate images" />
           <AttachMenuButton onClick={() => { props.onModeChange('video'); props.setShowAttachMenu(false) }} icon={<Video size={13} className="text-[var(--foreground)]" />} label="Generate videos" />
-          {props.capabilities.memory && props.capabilities.vectorSearch && (
+          {can('memory.use') && props.capabilities.memory && props.capabilities.vectorSearch && (
             <>
               <div className="my-1 border-t border-[var(--border)]" />
               <AttachMenuButton
@@ -383,11 +390,13 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
 function isToolRequestEnabled(
   toolId: ChatToolRequestId,
   props: Pick<ComposerViewProps, 'capabilities'>,
+  can: ReturnType<typeof useAuthorization>['can'],
 ): boolean {
-  if (toolId === 'web_search') return props.capabilities.webSearch
+  if (!can('tools.use')) return false
+  if (toolId === 'web_search') return can('web_search.use') && props.capabilities.webSearch
   if (toolId === 'browser') return props.capabilities.browserUse
   if (toolId === 'sandbox') return props.capabilities.sandboxes
-  if (toolId === 'memory') return props.capabilities.memory && props.capabilities.vectorSearch
+  if (toolId === 'memory') return can('memory.use') && props.capabilities.memory && props.capabilities.vectorSearch
   return true
 }
 

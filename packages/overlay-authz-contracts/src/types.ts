@@ -86,6 +86,7 @@ export type AuthorizationDecision = {
     | 'capability_disabled'
     | 'capability_missing'
     | 'resource_owner'
+    | 'resource_unrestricted'
     | 'resource_access_granted'
     | 'resource_access_missing'
 }

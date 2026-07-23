@@ -18,6 +18,7 @@ import {
   getBudgetTotals,
   isPaidPlan,
 } from '@/server/billing/billing-runtime'
+import { authorizeCatalogResource, filterCatalogResources } from '@/server/authorization'
 
 export const maxDuration = 120
 
@@ -34,7 +35,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 })
     }
 
-    const { generationUsagePolicy } = getOverlayServerContext()
+    const { authorizationService, generationUsagePolicy } = getOverlayServerContext()
+
+    if (modelId) {
+      const denied = await authorizeCatalogResource({
+        authorization: authorizationService,
+        capability: 'models.use',
+        context,
+        resourceId: modelId,
+        resourceType: 'model',
+      })
+      if (denied) return denied
+    }
 
     // ── Subscription enforcement ──────────────────────────────────────────────
     const entitlements = await generationUsagePolicy.getEntitlements({ userId: auth.userId })
@@ -69,9 +81,17 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     // ── Model selection: when user picks a model, use only that model ─────────
     // Fall back through all models only when no model is specified
-    const priorityList = modelId
+    const candidatePriorityList = modelId
       ? [modelId]
       : IMAGE_MODELS.map((m) => m.id)
+    const priorityList = await filterCatalogResources({
+      authorization: authorizationService,
+      capability: 'models.use',
+      context,
+      getId: (candidateId) => candidateId,
+      resourceType: 'model',
+      values: candidatePriorityList,
+    })
     const priceEntries = await Promise.all(
       priorityList.map(async (candidateId) => [
         candidateId,

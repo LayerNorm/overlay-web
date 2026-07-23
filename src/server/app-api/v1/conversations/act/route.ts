@@ -74,6 +74,11 @@ import {
   preloadActExternalToolTasks,
 } from './tooling'
 import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
+import {
+  authorizeCapability,
+  authorizeCatalogResource,
+} from '@/server/authorization'
+import type { AuthorizationCapability } from '@overlay/authz-contracts'
 
 export const maxDuration = 800
 
@@ -175,6 +180,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const serverSecret = getInternalApiSecret()
     const requestedToolIds = normalizeChatToolRequestIds(rawRequestedToolIds)
     const memoryEnabled = rawMemoryEnabled !== false
+    const dynamicAuthorization = await authorizeActRequest({
+      authorization: overlayContext.authorizationService,
+      context,
+      effectiveModelId,
+      memoryEnabled,
+      mentions: rawMentions,
+      requestedToolIds,
+    })
+    if (dynamicAuthorization) return dynamicAuthorization
     const {
       appSettings,
       paid,
@@ -887,6 +901,56 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       { status: 500, headers: { 'x-request-id': requestId } },
     )
   }
+}
+
+async function authorizeActRequest(args: {
+  authorization: ReturnType<typeof getOverlayServerContext>['authorizationService']
+  context: AppApiRouteContext
+  effectiveModelId: string
+  memoryEnabled: boolean
+  mentions: unknown
+  requestedToolIds: readonly string[]
+}): Promise<NextResponse | null> {
+  const modelDenied = await authorizeCatalogResource({
+    authorization: args.authorization,
+    capability: 'models.use',
+    context: args.context,
+    resourceId: args.effectiveModelId,
+    resourceType: 'model',
+  })
+  if (modelDenied) return modelDenied
+
+  const capabilityRequirements = new Set<AuthorizationCapability>()
+  if (args.requestedToolIds.length > 0) capabilityRequirements.add('tools.use')
+  if (args.requestedToolIds.includes('web_search')) capabilityRequirements.add('web_search.use')
+  if (args.memoryEnabled || args.requestedToolIds.includes('memory')) capabilityRequirements.add('memory.use')
+  for (const mention of Array.isArray(args.mentions) ? args.mentions : []) {
+    if (!mention || typeof mention !== 'object') continue
+    const type = 'type' in mention ? mention.type : undefined
+    if (type === 'connector') capabilityRequirements.add('integrations.use')
+    if (type === 'skill') capabilityRequirements.add('skills.use')
+    if (type === 'mcp') capabilityRequirements.add('mcp.use')
+    if (type === 'automation') capabilityRequirements.add('automations.use')
+  }
+  for (const capability of capabilityRequirements) {
+    const denied = await authorizeCapability({
+      authorization: args.authorization,
+      capability,
+      context: args.context,
+    })
+    if (denied) return denied
+  }
+  for (const toolId of args.requestedToolIds) {
+    const denied = await authorizeCatalogResource({
+      authorization: args.authorization,
+      capability: 'tools.use',
+      context: args.context,
+      resourceId: toolId,
+      resourceType: 'tool',
+    })
+    if (denied) return denied
+  }
+  return null
 }
 
 function modelAttemptFailureReasonFromReservation(errorCode?: string): ActModelAttemptFailureReason {

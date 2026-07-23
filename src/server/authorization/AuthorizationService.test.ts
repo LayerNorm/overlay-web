@@ -162,6 +162,37 @@ test('resource ownership is resolved server-side and granted lists exclude owned
   }), [{ ownerUserId: 'user_2', resourceId: 'shared' }])
 })
 
+test('catalog resources stay open until an exact or wildcard policy is configured', async () => {
+  const fixture = createFixture()
+  fixture.roles.push(role('model_user', ['models.use']))
+  fixture.userRoles.push({ userId: 'user_1', roleId: 'model_user', createdAt: 1 })
+  const service = new AuthorizationService({ repositories: fixture.repositories })
+  const subject = await service.resolveSubject('user_1')
+
+  assert.equal((await service.checkResolvedCatalogResourceAccess({
+    capability: 'models.use',
+    resourceId: 'open-model',
+    resourceType: 'model',
+    subject,
+  })).reason, 'resource_unrestricted')
+
+  fixture.grants.push(catalogGrant('restricted', 'model', 'restricted-model', 'user', 'user_2'))
+  assert.equal((await service.checkResolvedCatalogResourceAccess({
+    capability: 'models.use',
+    resourceId: 'restricted-model',
+    resourceType: 'model',
+    subject,
+  })).allowed, false)
+
+  fixture.grants.push(catalogGrant('wildcard', 'model', '*', 'role', 'model_user'))
+  assert.deepEqual(await service.filterCatalogResourceIds({
+    capability: 'models.use',
+    resourceIds: ['open-model', 'restricted-model'],
+    resourceType: 'model',
+    subject,
+  }), ['open-model', 'restricted-model'])
+})
+
 type Fixture = {
   grants: ResourceGrant[]
   groupRoles: GroupRoleAssignment[]
@@ -281,4 +312,23 @@ function grantForResource(
   accessRole: ResourceGrant['accessRole'],
 ): ResourceGrant {
   return { ...grant(id, principalType, principalId, accessRole), resourceType: 'file', resourceId }
+}
+
+function catalogGrant(
+  id: string,
+  resourceType: string,
+  resourceId: string,
+  principalType: ResourceGrant['principalType'],
+  principalId: string,
+): ResourceGrant {
+  return {
+    id,
+    resourceType,
+    resourceId,
+    principalType,
+    principalId,
+    accessRole: 'viewer',
+    createdAt: 1,
+    updatedAt: 1,
+  }
 }

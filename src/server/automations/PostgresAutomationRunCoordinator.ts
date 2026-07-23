@@ -13,6 +13,7 @@ import {
 } from '@/server/database/postgres/schema'
 import { computeNextAutomationRunAt, normalizeAutomationSchedule } from './AutomationSchedule'
 import type { AutomationSchedule } from './AutomationRepository'
+import { durableJobAuthorization } from '@/server/jobs/DurableJobAuthorization'
 
 export const AUTOMATION_SCHEDULE_DUE_JOB = 'automation.schedule-due'
 export const AUTOMATION_EXECUTE_JOB = 'automation.execute'
@@ -115,7 +116,10 @@ export class PostgresAutomationRunCoordinator {
               dedupeKey: `automation-run:${runId}`,
               id: jobId,
               maxAttempts: 5,
-              payload: { runId },
+              payload: {
+                runId,
+                ...durableJobAuthorization(item.userId, ['automations.use', 'models.use']),
+              },
               priority: 10,
               type: AUTOMATION_EXECUTE_JOB,
             })
@@ -344,6 +348,27 @@ export class PostgresAutomationRunCoordinator {
       ))
       .returning({ id: automationRuns.id })
     return rows.length > 0
+  }
+
+  async denyRunForAuthorization(args: { error: string; runId: string }): Promise<void> {
+    const now = new Date()
+    const error = args.error.slice(0, 4_000)
+    const [run] = await this.db
+      .update(automationRuns)
+      .set({ completedAt: now, error, status: 'cancelled', updatedAt: now })
+      .where(and(
+        eq(automationRuns.id, args.runId),
+        inArray(automationRuns.status, ['queued', 'running', 'cancel_requested']),
+      ))
+      .returning({ automationId: automationRuns.automationId })
+    if (run) {
+      await this.db.update(automations).set({
+        lastError: error,
+        lastRunAt: now,
+        lastRunStatus: 'cancelled',
+        updatedAt: now,
+      }).where(eq(automations.id, run.automationId))
+    }
   }
 }
 

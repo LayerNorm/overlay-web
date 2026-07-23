@@ -71,6 +71,7 @@ import { DelayedTooltip } from './DelayedTooltip'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { useAuthorization } from '@/components/providers/AuthorizationProvider'
 import { buildSharePageUrl } from '@/features/share/lib/share-url'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { createIdempotencyKey } from '@overlay/api-client'
@@ -170,6 +171,7 @@ export default function ChatExperience({
     revision: gatewayCatalogRevision,
   } = useGatewayModelCatalog({ enabled: !isPublicShowcase })
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
+  const { allows: allowsAuthorization } = useAuthorization()
   const billingEnabled = capabilities.billing
   const convexLiveSyncEnabled = !isPublicShowcase &&
     appDataCapabilities.requiresConvexClient && appDataCapabilities.supportsRealtime
@@ -293,6 +295,17 @@ export default function ChatExperience({
   const [memoryEnabled, setMemoryEnabled] = useState(() =>
     defaultMemoryEnabled({ temporary: false }),
   )
+  useEffect(() => {
+    const toolsAllowed = allowsAuthorization({ all: ['tools.use'] })
+    const webSearchAllowed = toolsAllowed && allowsAuthorization({ all: ['web_search.use'] })
+    const memoryAllowed = allowsAuthorization({ all: ['memory.use'] })
+    if (!memoryAllowed) setMemoryEnabled(false)
+    setSelectedToolIds((current) => current.filter((toolId) => {
+      if (toolId === 'web_search') return webSearchAllowed
+      if (toolId === 'memory') return toolsAllowed && memoryAllowed
+      return toolsAllowed
+    }))
+  }, [allowsAuthorization])
   const [isDragging, setIsDragging] = useState(false)
   const lastStreamChunkAtRef = useRef<number>(Date.now())
   const autoContinuedForMessageRef = useRef<Set<string>>(new Set())

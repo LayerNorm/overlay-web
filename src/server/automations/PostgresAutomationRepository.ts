@@ -28,6 +28,7 @@ import type {
   UpdateAutomationInput,
 } from './AutomationRepository'
 import { AUTOMATION_EXECUTE_JOB } from './PostgresAutomationRunCoordinator'
+import { durableJobAuthorization } from '@/server/jobs/DurableJobAuthorization'
 
 type AutomationRow = typeof automations.$inferSelect
 type AutomationRunRow = typeof automationRuns.$inferSelect
@@ -278,7 +279,10 @@ export class PostgresAutomationRepository implements AutomationRepository {
         dedupeKey: `automation-run:${runId}`,
         id: jobId,
         maxAttempts: 5,
-        payload: { runId },
+        payload: {
+          runId,
+          ...durableJobAuthorization(args.userId, ['automations.use', 'models.use']),
+        },
         priority: 10,
         type: AUTOMATION_EXECUTE_JOB,
       })

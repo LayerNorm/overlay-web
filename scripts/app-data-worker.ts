@@ -9,6 +9,12 @@ import { createPostgresRuntime } from '../src/server/jobs/postgres-runtime'
 import { PostgresRuntimeHealthService } from '../src/server/jobs/PostgresRuntimeHealthService'
 import { createObjectStoreForRuntime } from '../src/server/bootstrap'
 import { getOverlayRuntimeConfigSync } from '../src/server/config'
+import {
+  AuthorizationService,
+  createAuthorizationCapabilityPolicy,
+  createPostgresAuthorizationRepositories,
+} from '../src/server/authorization'
+import { getOverlayCapabilitiesSync } from '../src/server/capabilities'
 
 void main()
 
@@ -35,6 +41,10 @@ async function main(): Promise<void> {
   const db = createOverlayPostgresDb(pool)
   const runtimeConfig = getOverlayRuntimeConfigSync()
   const runtime = createPostgresRuntime({
+    authorizationService: new AuthorizationService({
+      capabilityPolicy: createAuthorizationCapabilityPolicy(getOverlayCapabilitiesSync()),
+      repositories: createPostgresAuthorizationRepositories(db),
+    }),
     db,
     leaseMs,
     objectStore: lazyObjectStore(),

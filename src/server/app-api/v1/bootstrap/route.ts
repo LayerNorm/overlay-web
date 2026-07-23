@@ -35,6 +35,7 @@ import { getOverlayCapabilities } from '@/server/capabilities'
 import { deriveAppDataCapabilities, type AppDataCapabilities } from '@/server/app-data/capabilities'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getAuthorizationEnforcementMode } from '@/server/authorization'
+import { filterCatalogResources } from '@/server/authorization'
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   let runtimeConfig
@@ -117,19 +118,45 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
           }
         : null)
     const modelPolicyContext = { user, entitlements }
-    const chatModels = [
+    const policyChatModels = [
       ...(overlayAppConfig.modelPolicy?.filterChatModels?.(AVAILABLE_MODELS, modelPolicyContext) ??
         AVAILABLE_MODELS),
     ]
-    const imageModels = [
+    const policyImageModels = [
       ...(overlayAppConfig.modelPolicy?.filterImageModels?.(IMAGE_MODELS, modelPolicyContext) ??
         IMAGE_MODELS),
     ]
-    const videoModels = [
+    const policyVideoModels = [
       ...(overlayAppConfig.modelPolicy?.filterVideoModels?.(VIDEO_MODELS, modelPolicyContext) ??
         VIDEO_MODELS),
     ]
-    const capabilities = await getOverlayCapabilities()
+    const [chatModels, imageModels, videoModels, capabilities] = await Promise.all([
+      filterCatalogResources({
+        authorization: serverContext.authorizationService,
+        capability: 'models.use',
+        context,
+        getId: (model) => model.id,
+        resourceType: 'model',
+        values: policyChatModels,
+      }),
+      filterCatalogResources({
+        authorization: serverContext.authorizationService,
+        capability: 'models.use',
+        context,
+        getId: (model) => model.id,
+        resourceType: 'model',
+        values: policyImageModels,
+      }),
+      filterCatalogResources({
+        authorization: serverContext.authorizationService,
+        capability: 'models.use',
+        context,
+        getId: (model) => model.id,
+        resourceType: 'model',
+        values: policyVideoModels,
+      }),
+      getOverlayCapabilities(),
+    ])
     const appShell = resolveOverlayAppShellConfig(overlayAppConfig, { capabilities })
 
     const response: AppBootstrapResponse & {

@@ -34,6 +34,13 @@ export type ResolvedResourceAuthorizationRequest = Omit<ResourceAuthorizationReq
   subject: AuthorizationSubject
 }
 
+export type CatalogResourceAuthorizationRequest = {
+  capability: AuthorizationCapability
+  resourceId: string
+  resourceType: string
+  subject: AuthorizationSubject
+}
+
 export class AuthorizationDeniedError extends Error {
   readonly statusCode = 403
 
@@ -166,6 +173,84 @@ export class AuthorizationService {
     }
   }
 
+  async checkResolvedCatalogResourceAccess(
+    args: CatalogResourceAuthorizationRequest,
+  ): Promise<AuthorizationDecision> {
+    const capability = this.capabilityDecision(args.subject, args.capability)
+    if (!capability.allowed) {
+      return {
+        ...capability,
+        resourceType: args.resourceType,
+        resourceId: args.resourceId,
+        requiredAction: 'view',
+      }
+    }
+    if (args.subject.isDeploymentOwner) {
+      return {
+        allowed: true,
+        capability: args.capability,
+        resourceType: args.resourceType,
+        resourceId: args.resourceId,
+        requiredAction: 'view',
+        effectiveAccessRole: 'owner',
+        reason: 'deployment_owner',
+      }
+    }
+
+    const [exactGrants, wildcardGrants] = await Promise.all([
+      this.deps.repositories.resourceGrants.listForResource({
+        resourceId: args.resourceId,
+        resourceType: args.resourceType,
+      }),
+      this.deps.repositories.resourceGrants.listForResource({
+        resourceId: '*',
+        resourceType: args.resourceType,
+      }),
+    ])
+    const policyGrants = [...exactGrants, ...wildcardGrants]
+    if (policyGrants.length === 0) {
+      return {
+        allowed: true,
+        capability: args.capability,
+        resourceType: args.resourceType,
+        resourceId: args.resourceId,
+        requiredAction: 'view',
+        reason: 'resource_unrestricted',
+      }
+    }
+
+    const effectiveAccessRole = strongestAccessRole(policyGrants
+      .filter((grant) => principalMatches(args.subject, grant.principalType, grant.principalId))
+      .map(({ accessRole }) => accessRole))
+    return {
+      allowed: Boolean(effectiveAccessRole),
+      capability: args.capability,
+      resourceType: args.resourceType,
+      resourceId: args.resourceId,
+      requiredAction: 'view',
+      effectiveAccessRole,
+      reason: effectiveAccessRole ? 'resource_access_granted' : 'resource_access_missing',
+    }
+  }
+
+  async filterCatalogResourceIds(args: {
+    capability: AuthorizationCapability
+    resourceIds: readonly string[]
+    resourceType: string
+    subject: AuthorizationSubject
+  }): Promise<string[]> {
+    const decisions = await Promise.all(args.resourceIds.map(async (resourceId) => ({
+      resourceId,
+      decision: await this.checkResolvedCatalogResourceAccess({
+        capability: args.capability,
+        resourceId,
+        resourceType: args.resourceType,
+        subject: args.subject,
+      }),
+    })))
+    return decisions.filter(({ decision }) => decision.allowed).map(({ resourceId }) => resourceId)
+  }
+
   async getResourceOwner(args: { resourceType: string; resourceId: string }): Promise<string | null> {
     return this.deps.repositories.resourceOwners.getOwner(args)
   }
@@ -223,4 +308,14 @@ export class AuthorizationService {
     }
     return { allowed: true, capability, reason: 'resource_access_granted' }
   }
+}
+
+function principalMatches(
+  subject: AuthorizationSubject,
+  principalType: 'user' | 'group' | 'role',
+  principalId: string,
+): boolean {
+  if (principalType === 'user') return principalId === subject.userId
+  if (principalType === 'group') return subject.groupIds.includes(principalId)
+  return subject.roleIds.includes(principalId)
 }
