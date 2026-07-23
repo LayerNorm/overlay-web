@@ -104,6 +104,18 @@ test('authorization administration methods preserve resource routes and payloads
   })
 })
 
+test('authorization administration list methods preserve forbidden status', async () => {
+  const client = createOverlayAppClient({
+    baseUrl: 'https://example.test',
+    fetch: async () => Response.json({ error: 'Forbidden' }, { status: 403 }),
+  })
+
+  await assert.rejects(
+    client.adminAuthorization.listCapabilities(),
+    (error: Error & { status?: number }) => error.message === 'Forbidden' && error.status === 403,
+  )
+})
+
 test('file mutations accept null parent and project IDs', async () => {
   const { calls, client } = createRecordedClient()
 

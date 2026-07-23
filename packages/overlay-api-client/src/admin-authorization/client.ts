@@ -18,14 +18,14 @@ export class AdminAuthorizationClient {
   constructor(private readonly http: HttpContext) {}
 
   async listCapabilities(init?: RequestInit) {
-    const { capabilities } = await this.http.json<{
+    const { capabilities } = await this.checkedJson<{
       capabilities: AuthorizationCapabilityDefinition[]
     }>('/api/v1/admin/authorization/capabilities', init)
     return capabilities
   }
 
   async listRoles(query: { includeArchived?: boolean } = {}, init?: RequestInit) {
-    const { roles } = await this.http.json<{ roles: AuthorizationRole[] }>(
+    const { roles } = await this.checkedJson<{ roles: AuthorizationRole[] }>(
       this.http.appendQuery('/api/v1/admin/authorization/roles', query),
       init,
     )
@@ -63,7 +63,7 @@ export class AdminAuthorizationClient {
   }
 
   async listGroups(query: { includeArchived?: boolean } = {}, init?: RequestInit) {
-    const { groups } = await this.http.json<{ groups: AuthorizationGroup[] }>(
+    const { groups } = await this.checkedJson<{ groups: AuthorizationGroup[] }>(
       this.http.appendQuery('/api/v1/admin/authorization/groups', query),
       init,
     )
@@ -96,7 +96,7 @@ export class AdminAuthorizationClient {
   }
 
   async listMemberships(groupId: string, init?: RequestInit) {
-    const { memberships } = await this.http.json<{ memberships: GroupMembership[] }>(
+    const { memberships } = await this.checkedJson<{ memberships: GroupMembership[] }>(
       this.http.appendQuery('/api/v1/admin/authorization/memberships', { groupId }),
       init,
     )
@@ -121,7 +121,7 @@ export class AdminAuthorizationClient {
     subjectType: 'user' | 'group'
     subjectId: string
   }, init?: RequestInit) {
-    const { assignments } = await this.http.json<{ assignments: Assignment[] }>(
+    const { assignments } = await this.checkedJson<{ assignments: Assignment[] }>(
       this.http.appendQuery('/api/v1/admin/authorization/assignments', query),
       init,
     )
@@ -154,7 +154,7 @@ export class AdminAuthorizationClient {
     resourceType: string
     resourceId: string
   }, init?: RequestInit) {
-    const { grants } = await this.http.json<{ grants: ResourceGrant[] }>(
+    const { grants } = await this.checkedJson<{ grants: ResourceGrant[] }>(
       this.http.appendQuery('/api/v1/admin/authorization/grants', query),
       init,
     )
@@ -179,5 +179,17 @@ export class AdminAuthorizationClient {
       '/api/v1/admin/authorization/grants',
       this.http.jsonRequest({ grantId }, { ...init, method: 'DELETE' }),
     )
+  }
+
+  private async checkedJson<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await this.http.request(path, init)
+    const payload = await response.json().catch(() => ({})) as T & { error?: string }
+    if (!response.ok) {
+      throw Object.assign(
+        new Error(payload.error || 'Authorization administration request failed'),
+        { status: response.status },
+      )
+    }
+    return payload
   }
 }

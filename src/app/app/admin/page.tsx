@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { RefreshCw, Search, ShieldCheck, WalletCards } from 'lucide-react'
+import { AuthorizationAdminPanel } from '@/features/admin/authorization/AuthorizationAdminPanel'
 
 type UsageRow = {
   userId: string
@@ -24,6 +25,7 @@ type AuditRow = {
 }
 
 export default function AdminPage() {
+  const [section, setSection] = useState<'overview' | 'roles' | 'groups'>('overview')
   const [usage, setUsage] = useState<UsageRow[]>([])
   const [events, setEvents] = useState<AuditRow[]>([])
   const [userFilter, setUserFilter] = useState('')
@@ -79,22 +81,12 @@ export default function AdminPage() {
     }
   }
 
-  if (forbidden) {
-    return (
-      <main className="mx-auto max-w-3xl px-6 py-12" data-testid="admin-forbidden">
-        <ShieldCheck size={22} />
-        <h1 className="mt-4 text-xl font-semibold">Administrative access required</h1>
-        <p className="mt-2 text-sm text-[var(--muted)]">This account does not have an active administrative role.</p>
-      </main>
-    )
-  }
-
   return (
     <main className="mx-auto w-full max-w-6xl px-5 py-8" data-testid="admin-console">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-[var(--foreground)]">Administration</h1>
-          <p className="mt-1 text-sm text-[var(--muted)]">Review budgets and immutable audit activity.</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">Manage access, budgets, and audit activity.</p>
         </div>
         <button type="button" aria-label="Refresh administration" className="inline-flex size-9 items-center justify-center rounded-md border border-[var(--border)]" onClick={() => void load()}>
           <RefreshCw size={15} />
@@ -103,7 +95,31 @@ export default function AdminPage() {
 
       {error ? <p className="mt-5 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
 
-      <section className="mt-8" data-testid="admin-usage">
+      <nav className="mt-7 flex gap-1 border-b border-[var(--border)]" aria-label="Administration sections">
+        {(['overview', 'roles', 'groups'] as const).map((value) => (
+          <button
+            type="button"
+            key={value}
+            aria-current={section === value ? 'page' : undefined}
+            className={`border-b-2 px-3 py-2 text-sm capitalize ${section === value ? 'border-[var(--foreground)] font-medium' : 'border-transparent text-[var(--muted)]'}`}
+            onClick={() => setSection(value)}
+          >
+            {value}
+          </button>
+        ))}
+      </nav>
+
+      {section !== 'overview' ? <div className="mt-7"><AuthorizationAdminPanel view={section} /></div> : null}
+
+      {section === 'overview' && forbidden ? (
+        <div className="py-12" data-testid="admin-forbidden">
+          <ShieldCheck size={22} />
+          <h2 className="mt-4 text-lg font-semibold">Administrative access required</h2>
+          <p className="mt-2 text-sm text-[var(--muted)]">This account cannot view usage or audit data.</p>
+        </div>
+      ) : null}
+
+      {section === 'overview' && !forbidden ? <><section className="mt-8" data-testid="admin-usage">
         <div className="flex items-center gap-2"><WalletCards size={17} /><h2 className="text-sm font-semibold">Usage and budgets</h2></div>
         <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
           <div className="relative">
@@ -142,7 +158,7 @@ export default function AdminPage() {
             </div>
           ))}
         </div>
-      </section>
+      </section></> : null}
     </main>
   )
 }
