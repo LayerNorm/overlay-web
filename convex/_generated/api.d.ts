@@ -9,6 +9,7 @@
  */
 
 import type * as admin_administration from "../admin/administration.js";
+import type * as admin_authorization from "../admin/authorization.js";
 import type * as ai_sandbox_daytona from "../ai/sandbox/daytona.js";
 import type * as ai_sandbox_daytonaReconcile from "../ai/sandbox/daytonaReconcile.js";
 import type * as auth_apiKeys from "../auth/apiKeys.js";
@@ -60,6 +61,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "admin/administration": typeof admin_administration;
+  "admin/authorization": typeof admin_authorization;
   "ai/sandbox/daytona": typeof ai_sandbox_daytona;
   "ai/sandbox/daytonaReconcile": typeof ai_sandbox_daytonaReconcile;
   "auth/apiKeys": typeof auth_apiKeys;

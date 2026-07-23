@@ -4,6 +4,9 @@ export interface AccountDataDeletionCounts {
   apiIdempotencyKeys: number
   apiKeys: number
   administrativePrincipals: number
+  authorizationGroupMemberships: number
+  authorizationResourceGrants: number
+  authorizationUserRoles: number
   automationRunAttempts: number
   automationRuns: number
   automationTriggers: number

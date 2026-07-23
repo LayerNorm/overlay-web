@@ -276,6 +276,82 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_createdAt', ['createdAt']),
 
+  authorizationRoles: defineTable({
+    roleId: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    capabilities: v.array(v.string()),
+    isSystem: v.boolean(),
+    createdBy: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
+  })
+    .index('by_roleId', ['roleId'])
+    .index('by_name', ['name'])
+    .index('by_archivedAt', ['archivedAt']),
+
+  authorizationGroups: defineTable({
+    groupId: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    source: v.union(v.literal('local'), v.literal('external')),
+    externalId: v.optional(v.string()),
+    createdBy: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
+  })
+    .index('by_groupId', ['groupId'])
+    .index('by_name', ['name'])
+    .index('by_source_externalId', ['source', 'externalId'])
+    .index('by_archivedAt', ['archivedAt']),
+
+  authorizationGroupMemberships: defineTable({
+    groupId: v.string(),
+    userId: v.string(),
+    source: v.union(v.literal('local'), v.literal('external')),
+    createdAt: v.number(),
+  })
+    .index('by_groupId_userId', ['groupId', 'userId'])
+    .index('by_groupId', ['groupId'])
+    .index('by_userId', ['userId']),
+
+  authorizationUserRoles: defineTable({
+    userId: v.string(),
+    roleId: v.string(),
+    assignedBy: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index('by_userId_roleId', ['userId', 'roleId'])
+    .index('by_userId', ['userId'])
+    .index('by_roleId', ['roleId']),
+
+  authorizationGroupRoles: defineTable({
+    groupId: v.string(),
+    roleId: v.string(),
+    assignedBy: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index('by_groupId_roleId', ['groupId', 'roleId'])
+    .index('by_groupId', ['groupId'])
+    .index('by_roleId', ['roleId']),
+
+  authorizationResourceGrants: defineTable({
+    grantId: v.string(),
+    resourceType: v.string(),
+    resourceId: v.string(),
+    principalType: v.union(v.literal('user'), v.literal('group'), v.literal('role')),
+    principalId: v.string(),
+    accessRole: v.union(v.literal('viewer'), v.literal('editor'), v.literal('owner')),
+    grantedBy: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_grantId', ['grantId'])
+    .index('by_resource', ['resourceType', 'resourceId'])
+    .index('by_principal', ['principalType', 'principalId', 'resourceType']),
+
   auditEvents: defineTable({
     eventId: v.string(),
     actorType: v.union(

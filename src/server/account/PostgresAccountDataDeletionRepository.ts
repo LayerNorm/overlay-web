@@ -17,6 +17,9 @@ const ZERO_COUNTS: AccountDataDeletionCounts = {
   apiIdempotencyKeys: 0,
   apiKeys: 0,
   administrativePrincipals: 0,
+  authorizationGroupMemberships: 0,
+  authorizationResourceGrants: 0,
+  authorizationUserRoles: 0,
   automationRunAttempts: 0,
   automationRuns: 0,
   automationTriggers: 0,
@@ -71,6 +74,11 @@ export class PostgresAccountDataDeletionRepository implements AccountDataDeletio
       })
 
       await deleteUserOwnedDurableJobs(tx, args.userId)
+
+      await tx.execute(sql`
+        DELETE FROM authorization_resource_grants
+        WHERE principal_type = 'user' AND principal_id = ${args.userId}
+      `)
 
       await tx.execute(sql`
         DELETE FROM users
@@ -159,6 +167,9 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     api_idempotency_keys: number
     api_keys: number
     administrative_principals: number
+    authorization_group_memberships: number
+    authorization_resource_grants: number
+    authorization_user_roles: number
     automation_run_attempts: number
     automation_runs: number
     automation_triggers: number
@@ -198,6 +209,9 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
       (SELECT count(*)::int FROM api_idempotency_keys WHERE user_id = ${userId}) AS api_idempotency_keys,
       (SELECT count(*)::int FROM api_keys WHERE user_id = ${userId}) AS api_keys,
       (SELECT count(*)::int FROM administrative_principals WHERE user_id = ${userId}) AS administrative_principals,
+      (SELECT count(*)::int FROM authorization_group_memberships WHERE user_id = ${userId}) AS authorization_group_memberships,
+      (SELECT count(*)::int FROM authorization_resource_grants WHERE principal_type = 'user' AND principal_id = ${userId}) AS authorization_resource_grants,
+      (SELECT count(*)::int FROM authorization_user_roles WHERE user_id = ${userId}) AS authorization_user_roles,
       (SELECT count(*)::int FROM automations WHERE user_id = ${userId}) AS automations,
       (SELECT count(*)::int FROM billing_subscriptions WHERE user_id = ${userId}) AS billing_subscriptions,
       (SELECT count(*)::int FROM billing_top_ups WHERE user_id = ${userId}) AS billing_top_ups,
@@ -240,6 +254,9 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     apiIdempotencyKeys: Number(row.api_idempotency_keys ?? 0),
     apiKeys: Number(row.api_keys ?? 0),
     administrativePrincipals: Number(row.administrative_principals ?? 0),
+    authorizationGroupMemberships: Number(row.authorization_group_memberships ?? 0),
+    authorizationResourceGrants: Number(row.authorization_resource_grants ?? 0),
+    authorizationUserRoles: Number(row.authorization_user_roles ?? 0),
     automationRunAttempts: Number(row.automation_run_attempts ?? 0),
     automationRuns: Number(row.automation_runs ?? 0),
     automationTriggers: Number(row.automation_triggers ?? 0),

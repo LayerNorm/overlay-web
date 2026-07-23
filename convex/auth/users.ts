@@ -498,6 +498,46 @@ export const deleteUserAccountByServer = mutation({
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect(),
     )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('authorizationGroupMemberships')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('authorizationUserRoles')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('authorizationResourceGrants')
+        .withIndex('by_principal', (q) =>
+          q.eq('principalType', 'user').eq('principalId', userId),
+        )
+        .collect(),
+    )
+    const createdRoles = await ctx.db.query('authorizationRoles').collect()
+    for (const row of createdRoles) {
+      if (row.createdBy === userId) await ctx.db.patch(row._id, { createdBy: undefined })
+    }
+    const createdGroups = await ctx.db.query('authorizationGroups').collect()
+    for (const row of createdGroups) {
+      if (row.createdBy === userId) await ctx.db.patch(row._id, { createdBy: undefined })
+    }
+    const userRoleAssignments = await ctx.db.query('authorizationUserRoles').collect()
+    for (const row of userRoleAssignments) {
+      if (row.assignedBy === userId) await ctx.db.patch(row._id, { assignedBy: undefined })
+    }
+    const groupRoleAssignments = await ctx.db.query('authorizationGroupRoles').collect()
+    for (const row of groupRoleAssignments) {
+      if (row.assignedBy === userId) await ctx.db.patch(row._id, { assignedBy: undefined })
+    }
+    const resourceGrants = await ctx.db.query('authorizationResourceGrants').collect()
+    for (const row of resourceGrants) {
+      if (row.grantedBy === userId) await ctx.db.patch(row._id, { grantedBy: undefined })
+    }
     const actorAuditRows = await ctx.db
       .query('auditEvents')
       .withIndex('by_actorUserId_createdAt', (q) => q.eq('actorUserId', userId))

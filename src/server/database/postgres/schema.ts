@@ -294,6 +294,114 @@ export const authIdentities = pgTable('auth_identities', {
   index('auth_identities_email_idx').on(table.email),
 ])
 
+export const authorizationRoles = pgTable('authorization_roles', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description'),
+  capabilities: text('capabilities').array().default(sql`'{}'::text[]`).notNull(),
+  isSystem: boolean('is_system').default(false).notNull(),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+}, (table) => [
+  uniqueIndex('authorization_roles_name_idx').on(sql`lower(${table.name})`),
+  index('authorization_roles_archived_at_idx').on(table.archivedAt),
+])
+
+export const authorizationGroups = pgTable('authorization_groups', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description'),
+  source: text('source').default('local').notNull(),
+  externalId: text('external_id'),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+}, (table) => [
+  uniqueIndex('authorization_groups_name_idx').on(sql`lower(${table.name})`),
+  uniqueIndex('authorization_groups_external_idx').on(table.source, table.externalId),
+  index('authorization_groups_archived_at_idx').on(table.archivedAt),
+  check('authorization_groups_source_check', sql`${table.source} IN ('local', 'external')`),
+])
+
+export const authorizationGroupMemberships = pgTable('authorization_group_memberships', {
+  groupId: text('group_id')
+    .notNull()
+    .references(() => authorizationGroups.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  source: text('source').default('local').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.groupId, table.userId] }),
+  index('authorization_group_memberships_user_idx').on(table.userId),
+  check('authorization_group_memberships_source_check', sql`${table.source} IN ('local', 'external')`),
+])
+
+export const authorizationUserRoles = pgTable('authorization_user_roles', {
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  roleId: text('role_id')
+    .notNull()
+    .references(() => authorizationRoles.id, { onDelete: 'cascade' }),
+  assignedBy: text('assigned_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.roleId] }),
+  index('authorization_user_roles_role_idx').on(table.roleId),
+])
+
+export const authorizationGroupRoles = pgTable('authorization_group_roles', {
+  groupId: text('group_id')
+    .notNull()
+    .references(() => authorizationGroups.id, { onDelete: 'cascade' }),
+  roleId: text('role_id')
+    .notNull()
+    .references(() => authorizationRoles.id, { onDelete: 'cascade' }),
+  assignedBy: text('assigned_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.groupId, table.roleId] }),
+  index('authorization_group_roles_role_idx').on(table.roleId),
+])
+
+export const authorizationResourceGrants = pgTable('authorization_resource_grants', {
+  id: text('id').primaryKey(),
+  resourceType: text('resource_type').notNull(),
+  resourceId: text('resource_id').notNull(),
+  principalType: text('principal_type').notNull(),
+  principalId: text('principal_id').notNull(),
+  accessRole: text('access_role').notNull(),
+  grantedBy: text('granted_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('authorization_resource_grants_principal_idx').on(
+    table.resourceType,
+    table.resourceId,
+    table.principalType,
+    table.principalId,
+  ),
+  index('authorization_resource_grants_resource_idx').on(table.resourceType, table.resourceId),
+  index('authorization_resource_grants_principal_lookup_idx').on(
+    table.principalType,
+    table.principalId,
+    table.resourceType,
+  ),
+  check(
+    'authorization_resource_grants_principal_type_check',
+    sql`${table.principalType} IN ('user', 'group', 'role')`,
+  ),
+  check(
+    'authorization_resource_grants_access_role_check',
+    sql`${table.accessRole} IN ('viewer', 'editor', 'owner')`,
+  ),
+])
+
 export const userSettings = pgTable('user_settings', {
   userId: text('user_id')
     .primaryKey()

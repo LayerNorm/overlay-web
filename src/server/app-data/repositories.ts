@@ -97,10 +97,16 @@ import {
   type McpServerRepository,
   type SkillRepository,
 } from '@/server/extensions'
+import type { AuthorizationRepositories } from '@overlay/authz-contracts'
+import {
+  createConvexAuthorizationRepositories,
+  createPostgresAuthorizationRepositories,
+} from '@/server/authorization'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
   administration: AdministrativeRepository
+  authorization: AuthorizationRepositories
   apiKeys: ApiKeyRepository
   audit: AuditRepository
   automations: AutomationRepository
@@ -158,6 +164,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       repositories: {
         accountDeletion: new PostgresAccountDataDeletionRepository(db),
         administration: new PostgresAdministrativeRepository(db),
+        authorization: createPostgresAuthorizationRepositories(db),
         apiKeys: new PostgresApiKeyRepository(db),
         audit: new PostgresAuditRepository(db),
         automations: new PostgresAutomationRepository(db, conversations),
@@ -192,6 +199,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
     repositories: {
       accountDeletion: unsupportedRepository<AccountDataDeletionRepository>('AccountDataDeletionRepository'),
       administration: new ConvexAdministrativeRepository(),
+      authorization: createConvexAuthorizationRepositories(),
       apiKeys: new ConvexApiKeyRepository(),
       audit: new ConvexAuditRepository(),
       automations: new ConvexAutomationRepository(),
