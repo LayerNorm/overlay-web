@@ -219,6 +219,7 @@
     "@overlay/api-client": "file:./packages/overlay-api-client",
     "@overlay/app-core": "file:./packages/overlay-app-core",
     "@overlay/auth-contracts": "file:./packages/overlay-auth-contracts",
+    "@overlay/authz-contracts": "file:./packages/overlay-authz-contracts",
     "@overlay/billing": "file:./packages/overlay-billing",
     "@overlay/chat-core": "file:./packages/overlay-chat-core",
     "@overlay/chat-react": "file:./packages/overlay-chat-react",
