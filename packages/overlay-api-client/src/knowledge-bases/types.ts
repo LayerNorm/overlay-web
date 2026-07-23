@@ -5,15 +5,36 @@ import type {
 } from '@overlay/app-core'
 import type { ResourceGrant } from '@overlay/authz-contracts'
 
+export type KnowledgeBaseSearchChunk = {
+  chunkIndex: number
+  knowledgeSourceId?: string
+  knowledgeSourceVersionId?: string
+  score: number
+  sourceId: string
+  sourceKind: 'file' | 'memory'
+  text: string
+  title?: string
+}
+
+export type KnowledgeBaseCitation = {
+  sourceId: string
+  sourceVersionId?: string
+  title: string
+}
+
 export type KnowledgeBaseSourceDetail = {
   membership: KnowledgeBaseSource
-  source: KnowledgeSource
+  source: KnowledgeSource & { contentPreview?: string }
 }
 
 export type KnowledgeBaseListResponse = { knowledgeBases: KnowledgeBase[] }
 export type KnowledgeBaseDetailResponse = { knowledgeBase: KnowledgeBase }
 export type KnowledgeBaseSourcesResponse = { sources: KnowledgeBaseSourceDetail[] }
 export type KnowledgeBaseGrantsResponse = { grants: ResourceGrant[] }
+export type KnowledgeBaseSearchResponse = {
+  chunks: KnowledgeBaseSearchChunk[]
+  citations: KnowledgeBaseCitation[]
+}
 
 export type CreateKnowledgeBaseInput = {
   title: string

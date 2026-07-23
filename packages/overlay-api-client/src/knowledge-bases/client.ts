@@ -12,6 +12,7 @@ import type {
   KnowledgeBaseDetailResponse,
   KnowledgeBaseGrantsResponse,
   KnowledgeBaseListResponse,
+  KnowledgeBaseSearchResponse,
   KnowledgeBaseSourcesResponse,
   UpdateKnowledgeBaseInput,
 } from './types'
@@ -55,6 +56,15 @@ export class KnowledgeBasesClient {
     )
   }
 
+  async uploadSource(knowledgeBaseId: string, file: File, init?: RequestInit) {
+    const formData = new FormData()
+    formData.set('file', file)
+    return this.http.parseJson<Record<string, unknown>>(await this.http.request(
+      this.path(knowledgeBaseId, 'sources/upload'),
+      { ...init, method: 'POST', body: formData },
+    ))
+  }
+
   updateSource(knowledgeBaseId: string, body: UpdateKnowledgeBaseSourceRequest, init?: RequestInit) {
     return this.http.json<Record<string, unknown>>(
       this.path(knowledgeBaseId, 'sources'),
@@ -70,7 +80,7 @@ export class KnowledgeBasesClient {
   }
 
   search(knowledgeBaseId: string, body: SearchKnowledgeBaseRequest, init?: RequestInit) {
-    return this.http.json<Record<string, unknown>>(
+    return this.http.json<KnowledgeBaseSearchResponse>(
       this.path(knowledgeBaseId, 'search'),
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )

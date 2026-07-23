@@ -11,6 +11,7 @@ const NAVIGATION_REQUIREMENTS: Record<string, ClientAuthorizationRequirement> = 
   files: { any: ['files.read', 'notes.read', 'outputs.read'] },
   extensions: { any: ['integrations.use', 'skills.use', 'mcp.use', 'tools.use'] },
   projects: { any: ['projects.read', 'projects.create'] },
+  knowledge: { any: ['knowledge.read', 'knowledge.create'] },
   automations: { all: ['automations.use'] },
 }
 

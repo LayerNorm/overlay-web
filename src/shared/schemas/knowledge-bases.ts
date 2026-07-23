@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { FormDataBoundary } from './common'
 
 export const KnowledgeBaseListQuery = z.object({})
 
@@ -51,6 +52,7 @@ export const DeleteKnowledgeBaseGrantRequest = z.object({
 })
 
 export const KnowledgeBaseEmptyQuery = z.object({})
+export const KnowledgeBaseSourceUploadForm = FormDataBoundary
 
 export type UpdateKnowledgeBaseSourceRequest = z.infer<typeof UpdateKnowledgeBaseSourceRequest>
 export type DeleteKnowledgeBaseSourceRequest = z.infer<typeof DeleteKnowledgeBaseSourceRequest>

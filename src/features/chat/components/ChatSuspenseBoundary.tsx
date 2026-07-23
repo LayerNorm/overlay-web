@@ -10,6 +10,7 @@ type ChatInterfaceProps = {
   projectName?: string
   mode?: 'chat' | 'automate'
   hideHeader?: boolean
+  knowledgeBaseId?: string
   belowEmptyComposer?: ReactNode
   initialChats?: CachedConversation[]
   initialChatPageInfo?: ChatListPageInfo

@@ -44,6 +44,14 @@ test('route policies are exact and expose typed resource requirements', () => {
   )
   assert.equal(getAuthorizationRoutePolicy('GET', '/api/v1/files-archive'), null)
   assert.equal(getAuthorizationRoutePolicy('POST', '/api/v1/unknown'), null)
+  assert.deepEqual(
+    getAuthorizationRoutePolicy('POST', '/api/v1/knowledge-bases/kb_1/sources/upload'),
+    {
+      access: 'resource',
+      capabilities: ['knowledge.edit', 'files.upload'],
+      resource: { action: 'edit', type: 'knowledge_base' },
+    },
+  )
 })
 
 test('policy registry does not contain duplicate path rules', () => {

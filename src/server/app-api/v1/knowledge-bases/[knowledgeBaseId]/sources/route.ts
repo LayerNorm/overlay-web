@@ -10,9 +10,25 @@ export async function GET(_request: NextRequest, context: AppApiRouteContext) {
       knowledgeBaseId,
       userId: context.auth.userId,
     })
-    return NextResponse.json({ sources })
+    return NextResponse.json({ sources: sources.map(summarizeSourceDetail) })
   } catch (error) {
     return knowledgeBaseErrorResponse('list sources for', error)
+  }
+}
+
+function summarizeSourceDetail<T extends { source: { metadata: Record<string, unknown> } }>(detail: T) {
+  const content = typeof detail.source.metadata.content === 'string'
+    ? detail.source.metadata.content
+    : ''
+  const { content: _content, ...metadata } = detail.source.metadata
+  void _content
+  return {
+    ...detail,
+    source: {
+      ...detail.source,
+      metadata,
+      ...(content ? { contentPreview: content.slice(0, 8000) } : {}),
+    },
   }
 }
 

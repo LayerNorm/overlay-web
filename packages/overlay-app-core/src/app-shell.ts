@@ -89,6 +89,14 @@ export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
     requiredCapabilities: ['projects'],
   },
   {
+    id: 'knowledge',
+    href: '/app/knowledge',
+    label: 'Knowledge',
+    icon: 'book-open',
+    featureFlagId: 'knowledge',
+    requiredCapabilities: ['knowledge'],
+  },
+  {
     id: 'automations',
     href: '/app/automations',
     label: 'Automations',

@@ -132,6 +132,7 @@ export default function ChatExperience({
   firstName,
   hideSidebar,
   projectName,
+  knowledgeBaseId,
   mode = 'chat',
   hideHeader = false,
   belowEmptyComposer,
@@ -143,6 +144,7 @@ export default function ChatExperience({
   firstName?: string
   hideSidebar?: boolean
   projectName?: string
+  knowledgeBaseId?: string
   mode?: 'chat' | 'automate'
   hideHeader?: boolean
   belowEmptyComposer?: React.ReactNode
@@ -1343,6 +1345,7 @@ export default function ChatExperience({
     completeSession,
     effectiveGenType,
     embedProjectId,
+    knowledgeBaseId,
     emptyRuntimeRef,
     ensureConversationRuntime,
     inputRef,

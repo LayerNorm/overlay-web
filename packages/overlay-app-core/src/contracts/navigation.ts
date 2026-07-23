@@ -42,6 +42,7 @@ export const CANONICAL_APP_DESTINATIONS: readonly AppDestinationConfig[] = [
     subviews: ['connectors', 'skills', 'mcps', 'apps', 'all'],
   },
   { id: 'projects', label: 'Projects', href: '/app/projects' },
+  { id: 'knowledge', label: 'Knowledge', href: '/app/knowledge' },
   { id: 'automations', label: 'Automations', href: '/app/automations' },
   {
     id: 'settings',

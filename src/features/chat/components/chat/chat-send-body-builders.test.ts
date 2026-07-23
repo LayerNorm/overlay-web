@@ -108,6 +108,7 @@ test('builds pending-first and normal act bodies without null conversation ids',
     pendingConversationClientId: 'client-1',
     temporaryChatSnapshot: false,
     embedProjectId: 'project-1',
+    knowledgeBaseId: 'knowledge-1',
     textModelsForTurn: ['model-a'],
     turnId: 'turn-1',
     requestMode: 'automate',
@@ -124,6 +125,7 @@ test('builds pending-first and normal act bodies without null conversation ids',
   const pendingRecord = pendingBody as Record<string, unknown>
   assert.equal(pendingRecord.conversationClientId, 'client-1')
   assert.equal(pendingRecord.projectId, 'project-1')
+  assert.equal(pendingRecord.knowledgeBaseId, 'knowledge-1')
   assert.equal(pendingRecord.conversationId, undefined)
   assert.equal(pendingRecord.automationId, 'automation-1')
   assert.deepEqual(pendingRecord.askModelIds, ['model-a'])
@@ -133,6 +135,7 @@ test('builds pending-first and normal act bodies without null conversation ids',
     pendingConversationClientId: null,
     temporaryChatSnapshot: false,
     embedProjectId: null,
+    knowledgeBaseId: undefined,
     textModelsForTurn: ['model-a'],
     turnId: 'turn-1',
     requestMode: 'chat',

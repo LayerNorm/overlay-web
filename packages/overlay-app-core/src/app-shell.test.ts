@@ -56,3 +56,15 @@ test('sidebar registries resolve feature modules and actions from routes', () =>
   assert.equal(resolveSidebarActionForPath('/app/notes', shell.sidebarActions)?.actionKey, 'notes.create')
   assert.equal(resolveSidebarActionForPath('/app/settings', shell.sidebarActions), null)
 })
+
+test('knowledge navigation is placed after projects and capability gated', () => {
+  const enabled = resolveOverlayAppShellConfig()
+  const ids = enabled.navigation.map(({ id }) => id)
+  assert.equal(ids.indexOf('knowledge'), ids.indexOf('projects') + 1)
+  assert.equal(enabled.navigation.find(({ id }) => id === 'knowledge')?.href, '/app/knowledge')
+
+  const disabled = resolveOverlayAppShellConfig(undefined, {
+    capabilities: { knowledge: false },
+  })
+  assert.equal(disabled.navigation.some(({ id }) => id === 'knowledge'), false)
+})

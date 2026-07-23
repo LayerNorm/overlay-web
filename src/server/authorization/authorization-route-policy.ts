@@ -277,6 +277,12 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   {
+    path: '/api/v1/knowledge-bases/:knowledgeBaseId/sources/upload',
+    methods: {
+      POST: resource('knowledge_base', 'edit', {}, 'knowledge.edit', 'files.upload'),
+    },
+  },
+  {
     path: '/api/v1/knowledge-bases/:knowledgeBaseId/search',
     methods: { POST: resource('knowledge_base', 'view', {}, 'knowledge.read') },
   },

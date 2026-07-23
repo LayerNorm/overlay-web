@@ -262,6 +262,7 @@ export function buildCommonActBody({
   pendingConversationClientId,
   temporaryChatSnapshot,
   embedProjectId,
+  knowledgeBaseId,
   textModelsForTurn,
   turnId,
   requestMode,
@@ -278,6 +279,7 @@ export function buildCommonActBody({
   pendingConversationClientId: string | null
   temporaryChatSnapshot: boolean
   embedProjectId: string | null
+  knowledgeBaseId?: string
   textModelsForTurn: string[]
   turnId: string
   requestMode: 'chat' | 'automate'
@@ -300,6 +302,7 @@ export function buildCommonActBody({
             askModelIds: textModelsForTurn,
           }
         : { conversationId: chatId }),
+    ...(knowledgeBaseId ? { knowledgeBaseId } : {}),
     turnId,
     mode: requestMode,
     automationMode: requestMode === 'automate',

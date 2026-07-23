@@ -34,7 +34,9 @@ export class KnowledgeSourceIngestionService {
     content: string
     knowledgeBaseId: string
     kind?: KnowledgeSourceKind
+    metadata?: Record<string, unknown>
     mimeType?: string
+    sourceRef?: string
     title: string
     userId: string
   }): Promise<{ source: KnowledgeSource; version: KnowledgeSourceVersion; jobId: string }> {
@@ -43,8 +45,9 @@ export class KnowledgeSourceIngestionService {
     const detail = await this.deps.bases.createAndAttachSource({
       knowledgeBaseId: args.knowledgeBaseId,
       kind: args.kind ?? 'text',
-      metadata: { content },
+      metadata: { ...args.metadata, content },
       mimeType: args.mimeType ?? 'text/plain',
+      sourceRef: args.sourceRef,
       title: args.title,
       userId: args.userId,
     })
