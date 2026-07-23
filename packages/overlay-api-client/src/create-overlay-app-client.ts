@@ -1,4 +1,5 @@
 import { AccountClient } from './auth/account-client'
+import { AdminAuthorizationClient } from './admin-authorization/client'
 import { BillingClient } from './auth/billing-client'
 import { SubscriptionClient } from './auth/subscription-client'
 import { TopUpsClient } from './auth/topups-client'
@@ -27,6 +28,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
   return {
     request: http.request,
     json: http.json,
+    adminAuthorization: new AdminAuthorizationClient(http),
     bootstrap: new BootstrapClient(http),
     conversations: new ConversationsClient(http),
     files: new FilesClient(http),

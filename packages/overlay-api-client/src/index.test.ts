@@ -63,6 +63,47 @@ test('file methods preserve route paths, methods, queries, and JSON bodies', asy
   assert.equal(calls[4]!.init?.method, undefined)
 })
 
+test('authorization administration methods preserve resource routes and payloads', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.adminAuthorization.createRoleResponse({
+    name: 'Knowledge publisher',
+    capabilities: ['knowledge.read', 'knowledge.publish'],
+  })
+  await client.adminAuthorization.createGroupResponse({ name: 'Curriculum team' })
+  await client.adminAuthorization.addMembershipResponse({ groupId: 'group_1', userId: 'user_1' })
+  await client.adminAuthorization.assignRoleResponse({
+    subjectType: 'group',
+    subjectId: 'group_1',
+    roleId: 'role_1',
+  })
+  await client.adminAuthorization.upsertResourceGrantResponse({
+    resourceType: 'knowledge_base',
+    resourceId: 'kb_1',
+    principalType: 'group',
+    principalId: 'group_1',
+    accessRole: 'editor',
+  })
+
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/admin/authorization/roles')
+  assert.equal(calls[0]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[0]!), {
+    name: 'Knowledge publisher',
+    capabilities: ['knowledge.read', 'knowledge.publish'],
+  })
+  assert.equal(String(calls[1]!.input), 'https://example.test/api/v1/admin/authorization/groups')
+  assert.equal(String(calls[2]!.input), 'https://example.test/api/v1/admin/authorization/memberships')
+  assert.equal(String(calls[3]!.input), 'https://example.test/api/v1/admin/authorization/assignments')
+  assert.equal(String(calls[4]!.input), 'https://example.test/api/v1/admin/authorization/grants')
+  assert.deepEqual(await jsonBody(calls[4]!), {
+    resourceType: 'knowledge_base',
+    resourceId: 'kb_1',
+    principalType: 'group',
+    principalId: 'group_1',
+    accessRole: 'editor',
+  })
+})
+
 test('file mutations accept null parent and project IDs', async () => {
   const { calls, client } = createRecordedClient()
 

@@ -1,4 +1,5 @@
 export * from './PostgresAuthorizationRepositories'
 export * from './ConvexAuthorizationRepositories'
 export * from './AuthorizationService'
+export * from './AuthorizationAdministrationService'
 export * from './runtime-capability-policy'

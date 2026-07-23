@@ -39,6 +39,7 @@ import {
 } from '@/server/outputs/GenerationUsagePolicy'
 import { UserService, type UserAuthProvider } from '@/server/users'
 import {
+  AuthorizationAdministrationService,
   AuthorizationService,
   createAuthorizationCapabilityPolicy,
 } from '@/server/authorization'
@@ -72,6 +73,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   appData: AppDataContext
   appDataCapabilities: AppDataCapabilities
   administrativeService: AdministrativeService
+  authorizationAdministrationService: AuthorizationAdministrationService
   authorizationService: AuthorizationService
   auditService: AuditService
   chatUsagePolicy: ActUsagePolicy
@@ -137,6 +139,11 @@ export function createOverlayServerContext(
       ),
     ),
   })
+  const authorizationAdministrationService = new AuthorizationAdministrationService({
+    assertAdministrator: (userId) => administrativeService.assertCanManageAdministrators(userId),
+    audit: auditService,
+    repositories: appData.repositories.authorization,
+  })
   const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
 
   return {
@@ -154,6 +161,7 @@ export function createOverlayServerContext(
     appData,
     appDataCapabilities: appData.capabilities,
     administrativeService,
+    authorizationAdministrationService,
     authorizationService,
     auditService,
     chatUsagePolicy,
