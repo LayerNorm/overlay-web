@@ -10,15 +10,19 @@ test('custom capabilities authorize legacy administration checks', async () => {
   const service = createService({
     allowedCapabilities: new Set<AuthorizationCapability>([
       'roles.manage',
+      'users.read',
       'audit.read',
+      'usage.read',
       'usage.manage',
       'support.access',
     ]),
   }).service
 
   assert.equal(await service.canManageAdministrators('custom_admin'), true)
+  assert.equal(await service.canViewUsers('custom_admin'), true)
   assert.equal(await service.canViewAudit('custom_admin'), true)
   assert.equal(await service.canManageBilling('custom_admin'), true)
+  assert.equal(await service.canViewUsage('custom_admin'), true)
   assert.equal(await service.canAccessSupportControls('custom_admin'), true)
 })
 
@@ -33,6 +37,24 @@ test('legacy roles remain authoritative when custom authorization is absent or u
 
   assert.equal(await service.canViewAudit('legacy_auditor'), true)
   assert.equal(await service.canManageAdministrators('legacy_auditor'), false)
+})
+
+test('generic capability assertions preserve legacy role compatibility', async () => {
+  const service = createService({
+    principal: {
+      userId: 'legacy_billing',
+      role: 'billing_admin',
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    authorizationThrows: true,
+  }).service
+
+  await service.assertCapability('legacy_billing', 'usage.read')
+  await assert.rejects(
+    service.assertCapability('legacy_billing', 'roles.manage'),
+    /Administrative authorization required/,
+  )
 })
 
 test('legacy grants remain successful when compatibility synchronization temporarily fails', async () => {

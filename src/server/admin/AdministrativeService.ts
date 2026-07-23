@@ -40,12 +40,20 @@ export class AdministrativeService {
     return await this.capabilityOrLegacy(userId, 'roles.manage', ['admin'])
   }
 
+  async canViewUsers(userId: string): Promise<boolean> {
+    return await this.capabilityOrLegacy(userId, 'users.read', ['admin'])
+  }
+
   async canViewAudit(userId: string): Promise<boolean> {
     return await this.capabilityOrLegacy(userId, 'audit.read', ['admin', 'auditor'])
   }
 
   async canManageBilling(userId: string): Promise<boolean> {
     return await this.capabilityOrLegacy(userId, 'usage.manage', ['admin', 'billing_admin'])
+  }
+
+  async canViewUsage(userId: string): Promise<boolean> {
+    return await this.capabilityOrLegacy(userId, 'usage.read', ['admin', 'billing_admin'])
   }
 
   async canAccessSupportControls(userId: string): Promise<boolean> {
@@ -58,6 +66,19 @@ export class AdministrativeService {
 
   async assertCanViewAudit(userId: string): Promise<void> {
     if (!await this.canViewAudit(userId)) throw new AdministrativeAuthorizationError()
+  }
+
+  async assertCapability(
+    userId: string,
+    capability: AuthorizationCapability,
+  ): Promise<void> {
+    if (!await this.capabilityOrLegacy(
+      userId,
+      capability,
+      legacyRolesForCapability(capability),
+    )) {
+      throw new AdministrativeAuthorizationError()
+    }
   }
 
   async list(actorUserId: string) {
@@ -198,4 +219,15 @@ export class AdministrativeService {
       })
     }
   }
+}
+
+function legacyRolesForCapability(
+  capability: AuthorizationCapability,
+): AdministrativeRole[] {
+  if (capability === 'audit.read') return ['admin', 'auditor']
+  if (capability === 'usage.read' || capability === 'usage.manage') {
+    return ['admin', 'billing_admin']
+  }
+  if (capability === 'support.access') return ['admin', 'support']
+  return ['admin']
 }

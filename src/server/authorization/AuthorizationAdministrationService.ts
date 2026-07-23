@@ -20,7 +20,7 @@ export type AuthorizationAdministrationActor = {
 }
 
 export type AuthorizationAdministrationServiceDeps = {
-  assertAdministrator(userId: string): Promise<void>
+  assertCapability(userId: string, capability: AuthorizationCapability): Promise<void>
   audit: AuditService
   prepareAuthorization?(): Promise<void>
   repositories: AuthorizationRepositories
@@ -30,12 +30,12 @@ export class AuthorizationAdministrationService {
   constructor(private readonly deps: AuthorizationAdministrationServiceDeps) {}
 
   async listCapabilities(actor: AuthorizationAdministrationActor) {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'roles.read')
     return AUTHORIZATION_CAPABILITY_DEFINITIONS
   }
 
   async listRoles(actor: AuthorizationAdministrationActor, includeArchived = false) {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'roles.read')
     await this.deps.prepareAuthorization?.()
     return await this.deps.repositories.roles.list({ includeArchived })
   }
@@ -45,7 +45,7 @@ export class AuthorizationAdministrationService {
     description?: string
     capabilities: AuthorizationCapability[]
   }) {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'roles.manage')
     const role = await this.deps.repositories.roles.create({
       id: prefixedId('role'),
       name: input.name,
@@ -67,7 +67,7 @@ export class AuthorizationAdministrationService {
     description?: string
     capabilities?: AuthorizationCapability[]
   }) {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'roles.manage')
     const existing = await this.requireRole(input.roleId)
     assertMutableRole(existing)
     const role = await this.deps.repositories.roles.update({
@@ -85,7 +85,7 @@ export class AuthorizationAdministrationService {
   }
 
   async archiveRole(actor: AuthorizationAdministrationActor, roleId: string): Promise<boolean> {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'roles.manage')
     const existing = await this.requireRole(roleId)
     assertMutableRole(existing)
     const archived = await this.deps.repositories.roles.archive({
@@ -99,7 +99,7 @@ export class AuthorizationAdministrationService {
   }
 
   async listGroups(actor: AuthorizationAdministrationActor, includeArchived = false) {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'groups.read')
     return await this.deps.repositories.groups.list({ includeArchived })
   }
 
@@ -107,7 +107,7 @@ export class AuthorizationAdministrationService {
     name: string
     description?: string
   }) {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'groups.manage')
     const group = await this.deps.repositories.groups.create({
       id: prefixedId('group'),
       name: input.name,
@@ -126,7 +126,7 @@ export class AuthorizationAdministrationService {
     name?: string
     description?: string
   }) {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'groups.manage')
     const existing = await this.requireGroup(input.groupId)
     assertMutableGroup(existing)
     const group = await this.deps.repositories.groups.update({
@@ -142,7 +142,7 @@ export class AuthorizationAdministrationService {
   }
 
   async archiveGroup(actor: AuthorizationAdministrationActor, groupId: string): Promise<boolean> {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'groups.manage')
     const existing = await this.requireGroup(groupId)
     assertMutableGroup(existing)
     const archived = await this.deps.repositories.groups.archive({
@@ -156,7 +156,7 @@ export class AuthorizationAdministrationService {
   }
 
   async listGroupMembers(actor: AuthorizationAdministrationActor, groupId: string) {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'groups.read')
     await this.requireGroup(groupId)
     return await this.deps.repositories.groups.listMembers(groupId)
   }
@@ -165,7 +165,7 @@ export class AuthorizationAdministrationService {
     groupId: string
     userId: string
   }) {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'groups.manage')
     const group = await this.requireGroup(input.groupId)
     assertMutableGroup(group)
     const membership = await this.deps.repositories.groups.addMember({
@@ -183,7 +183,7 @@ export class AuthorizationAdministrationService {
     groupId: string
     userId: string
   }): Promise<boolean> {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'groups.manage')
     const group = await this.requireGroup(input.groupId)
     assertMutableGroup(group)
     const removed = await this.deps.repositories.groups.removeMember(input)
@@ -198,7 +198,7 @@ export class AuthorizationAdministrationService {
     subjectType: 'user' | 'group'
     subjectId: string
   }) {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'roles.read')
     if (input.subjectType === 'user') {
       return await this.deps.repositories.assignments.listForUser(input.subjectId)
     }
@@ -207,7 +207,7 @@ export class AuthorizationAdministrationService {
   }
 
   async listRoleAssignments(actor: AuthorizationAdministrationActor, roleId: string) {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'roles.read')
     await this.requireRole(roleId)
     const [users, groups] = await Promise.all([
       this.deps.repositories.assignments.listUsersForRole(roleId),
@@ -221,7 +221,7 @@ export class AuthorizationAdministrationService {
     subjectId: string
     roleId: string
   }) {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'roles.manage')
     const role = await this.requireRole(input.roleId)
     if (role.archivedAt) throw new Error('Cannot assign an archived authorization role')
     const assignment = input.subjectType === 'user'
@@ -243,7 +243,7 @@ export class AuthorizationAdministrationService {
     subjectId: string
     roleId: string
   }): Promise<boolean> {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'roles.manage')
     const revoked = input.subjectType === 'user'
       ? await this.deps.repositories.assignments.revokeUser({
           userId: input.subjectId,
@@ -265,7 +265,7 @@ export class AuthorizationAdministrationService {
     resourceType: string
     resourceId: string
   }) {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'roles.read')
     return await this.deps.repositories.resourceGrants.listForResource(input)
   }
 
@@ -276,7 +276,7 @@ export class AuthorizationAdministrationService {
     principalId: string
     accessRole: ResourceAccessRole
   }) {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'roles.manage')
     await this.requirePrincipal(input.principalType, input.principalId)
     const grant = await this.deps.repositories.resourceGrants.upsert({
       id: prefixedId('grant'),
@@ -292,7 +292,7 @@ export class AuthorizationAdministrationService {
   }
 
   async removeResourceGrant(actor: AuthorizationAdministrationActor, grantId: string): Promise<boolean> {
-    await this.assertAdministrator(actor)
+    await this.assertAllowed(actor, 'roles.manage')
     const removed = await this.deps.repositories.resourceGrants.remove(grantId)
     await this.audit(actor, 'authorization.resource_grant.remove', 'authorization_resource_grant', grantId, {
       removed,
@@ -333,8 +333,11 @@ export class AuthorizationAdministrationService {
     return group
   }
 
-  private async assertAdministrator(actor: AuthorizationAdministrationActor): Promise<void> {
-    await this.deps.assertAdministrator(actor.actorUserId)
+  private async assertAllowed(
+    actor: AuthorizationAdministrationActor,
+    capability: AuthorizationCapability,
+  ): Promise<void> {
+    await this.deps.assertCapability(actor.actorUserId, capability)
   }
 
   private async audit(

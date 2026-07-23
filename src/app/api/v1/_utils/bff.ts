@@ -21,6 +21,13 @@ import { parseApiBoundaryInput } from '@/server/app-api/boundary'
 import { isOverlayConfigError } from '@/server/config'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
+  evaluateAuthorizationRoute,
+  firstDeniedCapability,
+  getAuthorizationEnforcementMode,
+  getAuthorizationRoutePolicy,
+} from '@/server/authorization'
+import { logger } from '@/server/observability/logger'
+import {
   appDataRouteUnsupportedResponse,
   getAppDataRouteSupport,
 } from '@/server/app-data/route-support'
@@ -58,8 +65,9 @@ export async function handleBffRoute(
   }
   let appDataCapabilities
   let idempotencyRepository
+  let serverContext: ReturnType<typeof getOverlayServerContext>
   try {
-    const serverContext = getOverlayServerContext()
+    serverContext = getOverlayServerContext()
     appDataCapabilities = serverContext.appDataCapabilities
     idempotencyRepository = serverContext.appData.repositories.idempotency
   } catch (error) {
@@ -116,6 +124,48 @@ export async function handleBffRoute(
   }
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const authorizationPolicy = getAuthorizationRoutePolicy(
+    request.method,
+    request.nextUrl.pathname,
+  )
+  if (!authorizationPolicy) {
+    logger.error('[Authorization] Missing route policy', {
+      method: request.method,
+      pathname: request.nextUrl.pathname,
+    })
+    return NextResponse.json({
+      error: 'Authorization policy missing',
+      code: 'authorization_policy_missing',
+    }, { status: 500 })
+  }
+  const authorizationEvaluation = await evaluateAuthorizationRoute({
+    authorization: serverContext.authorizationService,
+    mode: getAuthorizationEnforcementMode(),
+    policy: authorizationPolicy,
+    userId: auth.userId,
+  })
+  const deniedCapability = firstDeniedCapability(authorizationEvaluation)
+  if (deniedCapability) {
+    logger.warn('[Authorization] Route capability denied', {
+      allowed: authorizationEvaluation.allowed,
+      authType: auth.authType,
+      capability: deniedCapability.capability,
+      method: request.method,
+      mode: authorizationEvaluation.mode,
+      pathname: request.nextUrl.pathname,
+      reason: deniedCapability.reason,
+      userId: auth.userId,
+    })
+  }
+  if (!authorizationEvaluation.allowed) {
+    return NextResponse.json({
+      error: 'Forbidden',
+      code: 'authorization_denied',
+      capability: deniedCapability?.capability,
+      reason: deniedCapability?.reason ?? 'authorization_denied',
+    }, { status: 403 })
+  }
+
   const rateLimits = getEndpointRateLimitSpecs({
     ip: clientIp,
     method: request.method,
@@ -146,6 +196,10 @@ export async function handleBffRoute(
     parsedFormData: parsedInput.parsedFormData,
     capabilities,
     appDataCapabilities,
+    authorization: {
+      evaluation: authorizationEvaluation,
+      policy: authorizationPolicy,
+    },
   } as AppApiRouteContext
 
   const response = await handleIdempotentMutation(

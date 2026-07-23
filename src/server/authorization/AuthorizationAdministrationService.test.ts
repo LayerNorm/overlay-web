@@ -74,7 +74,7 @@ test('administration service manages roles, groups, assignments, and grants with
   ])
 })
 
-test('administration service preserves the legacy administrator gate', async () => {
+test('administration service rejects missing granular administration capabilities', async () => {
   const fixture = createFixture({ administrator: false })
 
   await assert.rejects(
@@ -273,7 +273,7 @@ function createFixture(options: { administrator?: boolean } = {}) {
     async list() { return auditEvents },
   }
   const service = new AuthorizationAdministrationService({
-    assertAdministrator: async () => {
+    assertCapability: async () => {
       if (options.administrator === false) throw new AdministrativeAuthorizationError()
     },
     audit: new AuditService(auditRepository),

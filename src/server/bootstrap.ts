@@ -146,7 +146,8 @@ export function createOverlayServerContext(
     compatibility: fixedRoleAuthorizationBridge,
   })
   const authorizationAdministrationService = new AuthorizationAdministrationService({
-    assertAdministrator: (userId) => administrativeService.assertCanManageAdministrators(userId),
+    assertCapability: (userId, capability) =>
+      administrativeService.assertCapability(userId, capability),
     audit: auditService,
     prepareAuthorization: () => fixedRoleAuthorizationBridge.ensureSystemRoles(),
     repositories: appData.repositories.authorization,

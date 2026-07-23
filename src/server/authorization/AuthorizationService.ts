@@ -74,7 +74,14 @@ export class AuthorizationService {
     userId: string
   }): Promise<AuthorizationDecision> {
     const subject = await this.resolveSubject(args.userId)
-    return this.capabilityDecision(subject, args.capability)
+    return this.checkResolvedCapability(subject, args.capability)
+  }
+
+  checkResolvedCapability(
+    subject: AuthorizationSubject,
+    capability: AuthorizationCapability,
+  ): AuthorizationDecision {
+    return this.capabilityDecision(subject, capability)
   }
 
   async assertCapability(args: {
@@ -82,7 +89,7 @@ export class AuthorizationService {
     userId: string
   }): Promise<AuthorizationSubject> {
     const subject = await this.resolveSubject(args.userId)
-    const decision = this.capabilityDecision(subject, args.capability)
+    const decision = this.checkResolvedCapability(subject, args.capability)
     if (!decision.allowed) throw new AuthorizationDeniedError(decision)
     return subject
   }
