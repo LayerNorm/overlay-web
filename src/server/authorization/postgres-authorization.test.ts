@@ -9,6 +9,7 @@ import { createOverlayPostgresDb, createOverlayPostgresPool } from '@/server/dat
 import { projects, users } from '@/server/database/postgres/schema'
 import { createPostgresAuthorizationRepositories } from './PostgresAuthorizationRepositories'
 import { runAuthorizationRepositoryContract } from './authorization-repository-contract'
+import { createPostgresKnowledgeBaseRepositories } from '@/server/knowledge-bases'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
 
@@ -53,6 +54,16 @@ test('real Postgres authorization repository contract and account cleanup', {
         resourceType: 'project',
         resourceId: `${projectId}_missing`,
       }), null)
+      const knowledgeBase = await createPostgresKnowledgeBaseRepositories(db).bases.create({
+        id: `${scope}_knowledge_base`,
+        ownerUserId,
+        title: 'Ownership contract',
+        createdBy: ownerUserId,
+      })
+      assert.equal(await repositories.resourceOwners.getOwner({
+        resourceType: 'knowledge_base',
+        resourceId: knowledgeBase.id,
+      }), ownerUserId)
       await deletion.deleteUserAccount({ userId: ownerUserId })
     })
   } finally {

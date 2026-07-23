@@ -53,6 +53,7 @@ import {
   createEmbeddingProvider,
 } from '@/server/knowledge'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
+import { KnowledgeBaseService } from '@/server/knowledge-bases'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -82,6 +83,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   generationUsagePolicy: GenerationUsagePolicy
   memoryService: MemoryService
   knowledgeSearchService: KnowledgeSearchService
+  knowledgeBaseService: KnowledgeBaseService
   noteRepository: NoteRepository
   apiKeyService: ApiKeyService
   userService: UserService
@@ -154,6 +156,11 @@ export function createOverlayServerContext(
     prepareAuthorization: () => fixedRoleAuthorizationBridge.ensureSystemRoles(),
     repositories: appData.repositories.authorization,
   })
+  const knowledgeBaseService = new KnowledgeBaseService({
+    authorization: authorizationService,
+    authorizationRepositories: appData.repositories.authorization,
+    repositories: appData.repositories.knowledgeBases,
+  })
   const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
 
   return {
@@ -178,6 +185,7 @@ export function createOverlayServerContext(
     chatUsagePolicy,
     generationUsagePolicy,
     memoryService,
+    knowledgeBaseService,
     knowledgeSearchService,
     noteRepository: appData.repositories.notes,
     apiKeyService: new ApiKeyService(appData.repositories.apiKeys),

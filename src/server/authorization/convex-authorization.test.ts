@@ -9,6 +9,7 @@ import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { ConvexProjectRepository } from '@/server/projects/ConvexProjectRepository'
 import assert from 'node:assert/strict'
+import { createConvexKnowledgeBaseRepositories } from '@/server/knowledge-bases'
 
 const enabled = process.env.AUTHORIZATION_CONTRACT_CONVEX === '1'
 const hasConvexUrl = Boolean(process.env.DEV_NEXT_PUBLIC_CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL)
@@ -53,6 +54,16 @@ test('real Convex authorization repository contract and account cleanup', {
     assert.equal(await repositories.resourceOwners.getOwner({
       resourceType: 'project',
       resourceId: project._id,
+    }), ownerUserId)
+    const knowledgeBase = await createConvexKnowledgeBaseRepositories().bases.create({
+      id: `${scope}_knowledge_base`,
+      ownerUserId,
+      title: 'Ownership contract',
+      createdBy: ownerUserId,
+    })
+    assert.equal(await repositories.resourceOwners.getOwner({
+      resourceType: 'knowledge_base',
+      resourceId: knowledgeBase.id,
     }), ownerUserId)
     await convex.mutation('auth/users:deleteUserAccountByServer', {
       serverSecret: getInternalApiSecret(),

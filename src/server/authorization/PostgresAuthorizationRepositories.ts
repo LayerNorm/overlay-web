@@ -377,6 +377,14 @@ export class PostgresAuthorizationResourceOwnerRepository implements ResourceOwn
   constructor(private readonly db: OverlayPostgresDb) {}
 
   async getOwner(args: { resourceType: string; resourceId: string }): Promise<string | null> {
+    if (args.resourceType === 'knowledge_base') {
+      const result = await this.db.execute<{ userId: string }>(sql`
+        SELECT owner_user_id AS "userId" FROM knowledge_bases
+        WHERE id = ${args.resourceId} AND status = 'active'
+        LIMIT 1
+      `)
+      return result.rows[0]?.userId ?? null
+    }
     if (args.resourceType === 'output') {
       const result = await this.db.execute<{ userId: string }>(sql`
         SELECT user_id AS "userId" FROM files

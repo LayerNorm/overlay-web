@@ -436,6 +436,12 @@ export const getResourceOwnerByServer = query({
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
+    if (args.resourceType === 'knowledge_base') {
+      const knowledgeBase = await ctx.db.query('knowledgeBases')
+        .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.resourceId))
+        .unique()
+      return knowledgeBase?.status === 'active' ? { userId: knowledgeBase.ownerUserId } : null
+    }
     if (args.resourceType === 'output') {
       const fileId = ctx.db.normalizeId('files', args.resourceId)
       if (fileId) {
