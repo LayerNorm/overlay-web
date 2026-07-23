@@ -34,6 +34,7 @@ import { isRuntimeConfigSummaryVisible } from '@/shared/config'
 import { getOverlayCapabilities } from '@/server/capabilities'
 import { deriveAppDataCapabilities, type AppDataCapabilities } from '@/server/app-data/capabilities'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { getAuthorizationEnforcementMode } from '@/server/authorization'
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   let runtimeConfig
@@ -59,7 +60,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const isPostgresAppData = appDataCapabilities.provider === 'postgres'
     const serverContext = getOverlayServerContext()
 
-    const [profile, entitlements, uiSettings, gatewayModels] = await Promise.all([
+    const [profile, entitlements, uiSettings, gatewayModels, authorization] = await Promise.all([
       !isPostgresAppData && auth.accessToken
         ? convex.query<{
             profile?: {
@@ -94,6 +95,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         logger.warn('[app/bootstrap] gateway language catalog unavailable; using curated fallback', error)
         return null
       }),
+      serverContext.authorizationService.resolveSubject(auth.userId),
     ])
     // Only register when the catalog fetch succeeds. Registering `[]` would leave
     // AVAILABLE_MODELS as the curated fallback and cause enabled-model filters to
@@ -154,6 +156,10 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       theme: appShell.theme,
       featureFlags: appShell.appFeatureFlags,
       capabilities,
+      authorization: {
+        ...authorization,
+        enforcementMode: getAuthorizationEnforcementMode(),
+      },
       appDataCapabilities,
       destinations: overlayNavigationToDestinations(appShell.navigation, appShell.settingsSections),
       defaults: {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { RefreshCw, Search, ShieldCheck, WalletCards } from 'lucide-react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { AuthorizationAdminPanel } from '@/features/admin/authorization/AuthorizationAdminPanel'
+import { useAuthorization } from '@/components/providers/AuthorizationProvider'
 
 type UsageRow = {
   userId: string
@@ -26,6 +27,14 @@ type AuditRow = {
 }
 
 export default function AdminPage() {
+  const { can } = useAuthorization()
+  const canViewUsage = can('usage.read')
+  const canManageUsage = can('usage.manage')
+  const canViewAudit = can('audit.read')
+  const canViewRoles = can('roles.read')
+  const canManageRoles = can('roles.manage')
+  const canViewGroups = can('groups.read')
+  const canManageGroups = can('groups.manage')
   const [section, setSection] = useState<'overview' | 'roles' | 'groups'>('overview')
   const [usage, setUsage] = useState<UsageRow[]>([])
   const [events, setEvents] = useState<AuditRow[]>([])
@@ -43,22 +52,32 @@ export default function AdminPage() {
     const auditUrl = new URL('/api/v1/admin/audit', window.location.origin)
     if (auditFilter.trim()) auditUrl.searchParams.set('action', auditFilter.trim())
     const [usageResponse, auditResponse] = await Promise.all([
-      fetch(usageUrl, { cache: 'no-store' }),
-      fetch(auditUrl, { cache: 'no-store' }),
+      canViewUsage ? fetch(usageUrl, { cache: 'no-store' }) : Promise.resolve(null),
+      canViewAudit ? fetch(auditUrl, { cache: 'no-store' }) : Promise.resolve(null),
     ])
-    if (usageResponse.status === 403 || auditResponse.status === 403) {
+    if (usageResponse?.status === 403 || auditResponse?.status === 403) {
       setForbidden(true)
       return
     }
-    if (!usageResponse.ok || !auditResponse.ok) throw new Error('Failed to load administration data')
+    if (usageResponse && !usageResponse.ok) throw new Error('Failed to load usage data')
+    if (auditResponse && !auditResponse.ok) throw new Error('Failed to load audit data')
     setForbidden(false)
-    setUsage((await usageResponse.json() as { usage: UsageRow[] }).usage)
-    setEvents((await auditResponse.json() as { events: AuditRow[] }).events)
-  }, [auditFilter, userFilter])
+    setUsage(usageResponse ? (await usageResponse.json() as { usage: UsageRow[] }).usage : [])
+    setEvents(auditResponse ? (await auditResponse.json() as { events: AuditRow[] }).events : [])
+  }, [auditFilter, canViewAudit, canViewUsage, userFilter])
 
   useEffect(() => {
     void load().catch((loadError) => setError(message(loadError)))
   }, [load])
+
+  useEffect(() => {
+    if (section === 'overview' && (canViewUsage || canViewAudit)) return
+    if (section === 'roles' && canViewRoles) return
+    if (section === 'groups' && canViewGroups) return
+    if (canViewUsage || canViewAudit) setSection('overview')
+    else if (canViewRoles) setSection('roles')
+    else if (canViewGroups) setSection('groups')
+  }, [canViewAudit, canViewGroups, canViewRoles, canViewUsage, section])
 
   async function adjustBudget() {
     const amount = Number(amountCents)
@@ -101,7 +120,11 @@ export default function AdminPage() {
           )}
           tabs={(
             <nav className="flex gap-5" aria-label="Administration sections">
-              {(['overview', 'roles', 'groups'] as const).map((value) => (
+              {([
+                ...(canViewUsage || canViewAudit ? ['overview'] as const : []),
+                ...(canViewRoles ? ['roles'] as const : []),
+                ...(canViewGroups ? ['groups'] as const : []),
+              ] as const).map((value) => (
                 <button
                   type="button"
                   key={value}
@@ -120,9 +143,26 @@ export default function AdminPage() {
       <AppScreenBody maxWidth="xl" padding="md">
         {error ? <p className="mb-5 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
 
-        {section !== 'overview' ? <AuthorizationAdminPanel view={section} userDirectory={usage} /> : null}
+        {section === 'roles' && canViewRoles ? (
+          <AuthorizationAdminPanel
+            canManage={canManageRoles}
+            canManageRoles={canManageRoles}
+            canReadRoles={canViewRoles}
+            view="roles"
+            userDirectory={usage}
+          />
+        ) : null}
+        {section === 'groups' && canViewGroups ? (
+          <AuthorizationAdminPanel
+            canManage={canManageGroups}
+            canManageRoles={canManageRoles}
+            canReadRoles={canViewRoles}
+            view="groups"
+            userDirectory={usage}
+          />
+        ) : null}
 
-        {section === 'overview' && forbidden ? (
+        {section === 'overview' && (forbidden || (!canViewUsage && !canViewAudit)) ? (
           <div className="py-12" data-testid="admin-forbidden">
             <ShieldCheck size={22} />
             <h2 className="mt-4 text-lg font-semibold">Administrative access required</h2>
@@ -130,7 +170,7 @@ export default function AdminPage() {
           </div>
         ) : null}
 
-        {section === 'overview' && !forbidden ? <><section data-testid="admin-usage">
+        {section === 'overview' && !forbidden && (canViewUsage || canViewAudit) ? <>{canViewUsage ? <section data-testid="admin-usage">
         <div className="flex items-center gap-2"><WalletCards size={17} /><h2 className="text-sm font-semibold">Usage and budgets</h2></div>
         <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
           <div className="relative">
@@ -147,14 +187,14 @@ export default function AdminPage() {
             </tbody>
           </table>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto]">
+        {canManageUsage ? <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto]">
           <input aria-label="Budget user ID" className="h-9 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm" placeholder="User ID" value={adjustUserId} onChange={(event) => setAdjustUserId(event.target.value)} />
           <input aria-label="Budget adjustment cents" className="h-9 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm" placeholder="Amount in cents" inputMode="numeric" value={amountCents} onChange={(event) => setAmountCents(event.target.value)} />
           <button type="button" className="h-9 rounded-md bg-[var(--foreground)] px-4 text-sm font-medium text-[var(--background)] disabled:opacity-50" disabled={busy} onClick={() => void adjustBudget()}>Adjust budget</button>
-        </div>
-      </section>
+        </div> : null}
+      </section> : null}
 
-      <section className="mt-10" data-testid="admin-audit">
+      {canViewAudit ? <section className="mt-10" data-testid="admin-audit">
         <div className="flex items-center gap-2"><ShieldCheck size={17} /><h2 className="text-sm font-semibold">Audit events</h2></div>
         <div className="mt-4 flex gap-3">
           <input aria-label="Filter audit action" className="h-9 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm" placeholder="Exact action" value={auditFilter} onChange={(event) => setAuditFilter(event.target.value)} />
@@ -169,7 +209,7 @@ export default function AdminPage() {
             </div>
           ))}
         </div>
-        </section></> : null}
+        </section> : null}</> : null}
       </AppScreenBody>
     </AppScreenShell>
   )

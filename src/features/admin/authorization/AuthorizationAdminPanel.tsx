@@ -18,9 +18,15 @@ type AuthorizationView = 'roles' | 'groups'
 type AuthorizationUserSummary = { userId: string; email?: string }
 
 export function AuthorizationAdminPanel({
+  canManage,
+  canManageRoles,
+  canReadRoles,
   view,
   userDirectory = [],
 }: {
+  canManage: boolean
+  canManageRoles: boolean
+  canReadRoles: boolean
   view: AuthorizationView
   userDirectory?: AuthorizationUserSummary[]
 }) {
@@ -36,11 +42,15 @@ export function AuthorizationAdminPanel({
     setError(null)
     try {
       const [nextCapabilities, nextRoles, nextGroups] = await Promise.all([
-        overlayAppClient.adminAuthorization.listCapabilities({
-          cache: 'no-store',
-        }),
-        overlayAppClient.adminAuthorization.listRoles({}, { cache: 'no-store' }),
-        overlayAppClient.adminAuthorization.listGroups({}, { cache: 'no-store' }),
+        view === 'roles'
+          ? overlayAppClient.adminAuthorization.listCapabilities({ cache: 'no-store' })
+          : Promise.resolve([]),
+        view === 'roles' || canReadRoles
+          ? overlayAppClient.adminAuthorization.listRoles({}, { cache: 'no-store' })
+          : Promise.resolve([]),
+        view === 'groups'
+          ? overlayAppClient.adminAuthorization.listGroups({}, { cache: 'no-store' })
+          : Promise.resolve([]),
       ])
       setCapabilities(nextCapabilities)
       setRoles(nextRoles)
@@ -52,7 +62,7 @@ export function AuthorizationAdminPanel({
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [canReadRoles, view])
 
   useEffect(() => {
     void load()
@@ -77,20 +87,29 @@ export function AuthorizationAdminPanel({
       </div>
       {error ? <ErrorMessage value={error} /> : null}
       {view === 'roles' ? (
-        <RolesPanel capabilities={capabilities} roles={roles} userDirectory={userDirectory} onChanged={load} />
+        <RolesPanel canManage={canManage} capabilities={capabilities} roles={roles} userDirectory={userDirectory} onChanged={load} />
       ) : (
-        <GroupsPanel groups={groups} roles={roles} onChanged={load} />
+        <GroupsPanel
+          canManage={canManage}
+          canManageRoles={canManageRoles}
+          canReadRoles={canReadRoles}
+          groups={groups}
+          roles={roles}
+          onChanged={load}
+        />
       )}
     </div>
   )
 }
 
 function RolesPanel({
+  canManage,
   capabilities,
   roles,
   userDirectory,
   onChanged,
 }: {
+  canManage: boolean
   capabilities: AuthorizationCapabilityDefinition[]
   roles: AuthorizationRole[]
   userDirectory: AuthorizationUserSummary[]
@@ -170,14 +189,14 @@ function RolesPanel({
     setError(null)
   }
 
-  const editable = creating || roleIsEditable(selected)
+  const editable = canManage && (creating || roleIsEditable(selected))
 
   return (
     <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
       <aside className="border-r-0 border-[var(--border)] lg:border-r lg:pr-5">
-        <button type="button" className={`${secondaryButtonClass} w-full justify-center`} onClick={startCreate}>
+        {canManage ? <button type="button" className={`${secondaryButtonClass} w-full justify-center`} onClick={startCreate}>
           <Plus size={15} /> New role
-        </button>
+        </button> : null}
         <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
           {roles.map((role) => (
             <button
@@ -209,7 +228,7 @@ function RolesPanel({
                 <Shield size={17} />
                 <h2 className="text-sm font-semibold">{creating ? 'New role' : selected?.name}</h2>
               </div>
-              {!creating && selected && roleIsEditable(selected) ? (
+              {canManage && !creating && selected && roleIsEditable(selected) ? (
                 <button type="button" aria-label="Archive role" className={iconButtonClass} disabled={busy} onClick={() => void archive()}>
                   <Archive size={15} />
                 </button>
@@ -238,7 +257,7 @@ function RolesPanel({
                 <Check size={15} /> Save role
               </button>
             ) : null}
-            {!creating && selected ? <UserRoleAssignments role={selected} userDirectory={userDirectory} onChanged={onChanged} /> : null}
+            {!creating && selected ? <UserRoleAssignments canManage={canManage} role={selected} userDirectory={userDirectory} onChanged={onChanged} /> : null}
           </>
         ) : (
           <EmptyState icon={<Shield size={18} />} title="Select or create a role" />
@@ -288,10 +307,12 @@ function CapabilityPicker({
 }
 
 function UserRoleAssignments({
+  canManage,
   role,
   userDirectory,
   onChanged,
 }: {
+  canManage: boolean
   role: AuthorizationRole
   userDirectory: AuthorizationUserSummary[]
   onChanged(): Promise<void>
@@ -373,7 +394,7 @@ function UserRoleAssignments({
         <h3 className="text-sm font-semibold">Assigned users</h3>
         <span className={badgeClass}>{users.length}</span>
       </div>
-      <div className="mt-3 flex flex-wrap gap-2">
+      {canManage ? <div className="mt-3 flex flex-wrap gap-2">
         <input
           aria-label="User ID for role assignment"
           className={`${inputClass} min-w-52 flex-1`}
@@ -384,7 +405,7 @@ function UserRoleAssignments({
         <button type="button" className={primaryButtonClass} onClick={() => void assign()} disabled={busy || !userId.trim()}>
           <UserPlus size={15} /> Assign
         </button>
-      </div>
+      </div> : null}
       <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
         {loading ? <p className="py-4 text-sm text-[var(--muted)]">Loading assigned users...</p> : null}
         {!loading && users.length === 0 ? <p className="py-4 text-sm text-[var(--muted)]">No users are assigned directly to this role.</p> : null}
@@ -398,7 +419,7 @@ function UserRoleAssignments({
                   {user?.email ? `${assignment.userId} · ` : ''}Assigned {new Date(assignment.createdAt).toLocaleDateString()}
                 </p>
               </div>
-              <button
+              {canManage ? <button
                 type="button"
                 aria-label={`Revoke ${role.name} from ${assignment.userId}`}
                 className={iconButtonClass}
@@ -406,7 +427,7 @@ function UserRoleAssignments({
                 onClick={() => void revoke(assignment.userId)}
               >
                 <Trash2 size={14} />
-              </button>
+              </button> : null}
             </div>
           )
         }) : null}
@@ -424,7 +445,7 @@ function UserRoleAssignments({
   )
 }
 
-function GroupsPanel({ groups, roles, onChanged }: { groups: AuthorizationGroup[]; roles: AuthorizationRole[]; onChanged(): Promise<void> }) {
+function GroupsPanel({ canManage, canManageRoles, canReadRoles, groups, roles, onChanged }: { canManage: boolean; canManageRoles: boolean; canReadRoles: boolean; groups: AuthorizationGroup[]; roles: AuthorizationRole[]; onChanged(): Promise<void> }) {
   const [selectedId, setSelectedId] = useState<string | null>(groups[0]?.id ?? null)
   const [creating, setCreating] = useState(false)
   const selected = groups.find((group) => group.id === selectedId) ?? null
@@ -485,11 +506,11 @@ function GroupsPanel({ groups, roles, onChanged }: { groups: AuthorizationGroup[
     }
   }
 
-  const editable = creating || groupIsEditable(selected)
+  const editable = canManage && (creating || groupIsEditable(selected))
   return (
     <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
       <aside className="border-r-0 border-[var(--border)] lg:border-r lg:pr-5">
-        <button
+        {canManage ? <button
           type="button"
           className={`${secondaryButtonClass} w-full justify-center`}
           onClick={() => {
@@ -501,7 +522,7 @@ function GroupsPanel({ groups, roles, onChanged }: { groups: AuthorizationGroup[
           }}
         >
           <Plus size={15} /> New group
-        </button>
+        </button> : null}
         <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
           {groups.map((group) => (
             <button
@@ -532,7 +553,7 @@ function GroupsPanel({ groups, roles, onChanged }: { groups: AuthorizationGroup[
                 <Users size={17} />
                 <h2 className="text-sm font-semibold">{creating ? 'New group' : selected?.name}</h2>
               </div>
-              {!creating && selected && groupIsEditable(selected) ? (
+              {canManage && !creating && selected && groupIsEditable(selected) ? (
                 <button type="button" aria-label="Archive group" className={iconButtonClass} disabled={busy} onClick={() => void archive()}>
                   <Archive size={15} />
                 </button>
@@ -562,7 +583,15 @@ function GroupsPanel({ groups, roles, onChanged }: { groups: AuthorizationGroup[
                 <Check size={15} /> Save group
               </button>
             ) : null}
-            {!creating && selected ? <GroupAccess group={selected} roles={roles} editable={groupIsEditable(selected)} /> : null}
+            {!creating && selected ? (
+              <GroupAccess
+                canManageGroup={canManage && groupIsEditable(selected)}
+                canManageRoleAssignments={canManageRoles}
+                canReadRoles={canReadRoles}
+                group={selected}
+                roles={roles}
+              />
+            ) : null}
           </>
         ) : (
           <EmptyState icon={<Users size={18} />} title="Select or create a group" />
@@ -572,7 +601,7 @@ function GroupsPanel({ groups, roles, onChanged }: { groups: AuthorizationGroup[
   )
 }
 
-function GroupAccess({ group, roles, editable }: { group: AuthorizationGroup; roles: AuthorizationRole[]; editable: boolean }) {
+function GroupAccess({ canManageGroup, canManageRoleAssignments, canReadRoles, group, roles }: { canManageGroup: boolean; canManageRoleAssignments: boolean; canReadRoles: boolean; group: AuthorizationGroup; roles: AuthorizationRole[] }) {
   const [memberships, setMemberships] = useState<GroupMembership[]>([])
   const [assignments, setAssignments] = useState<GroupRoleAssignment[]>([])
   const [userId, setUserId] = useState('')
@@ -584,10 +613,12 @@ function GroupAccess({ group, roles, editable }: { group: AuthorizationGroup; ro
     try {
       const [nextMemberships, nextAssignments] = await Promise.all([
         overlayAppClient.adminAuthorization.listMemberships(group.id),
-        overlayAppClient.adminAuthorization.listAssignments({
-          subjectType: 'group',
-          subjectId: group.id,
-        }),
+        canReadRoles
+          ? overlayAppClient.adminAuthorization.listAssignments({
+              subjectType: 'group',
+              subjectId: group.id,
+            })
+          : Promise.resolve([]),
       ])
       setMemberships(nextMemberships)
       setAssignments(nextAssignments as GroupRoleAssignment[])
@@ -595,7 +626,7 @@ function GroupAccess({ group, roles, editable }: { group: AuthorizationGroup; ro
     } catch (loadError) {
       setError(message(loadError))
     }
-  }, [group.id])
+  }, [canReadRoles, group.id])
 
   useEffect(() => {
     void load()
@@ -617,7 +648,7 @@ function GroupAccess({ group, roles, editable }: { group: AuthorizationGroup; ro
     <div className="mt-8 grid gap-8 border-t border-[var(--border)] pt-6 md:grid-cols-2">
       <section>
         <h3 className="text-sm font-semibold">Members</h3>
-        {editable ? (
+        {canManageGroup ? (
           <div className="mt-3 flex gap-2">
             <input
               aria-label="Group member user ID"
@@ -650,7 +681,7 @@ function GroupAccess({ group, roles, editable }: { group: AuthorizationGroup; ro
           {memberships.map((membership) => (
             <div key={membership.userId} className="flex items-center justify-between gap-2 py-2 text-sm">
               <span className="min-w-0 truncate">{membership.userId}</span>
-              {editable && membership.source === 'local' ? (
+              {canManageGroup && membership.source === 'local' ? (
                 <button
                   type="button"
                   aria-label={`Remove ${membership.userId}`}
@@ -674,7 +705,7 @@ function GroupAccess({ group, roles, editable }: { group: AuthorizationGroup; ro
       </section>
       <section>
         <h3 className="text-sm font-semibold">Assigned roles</h3>
-        {editable ? (
+        {canManageRoleAssignments && canReadRoles ? (
           <div className="mt-3 flex gap-2">
             <select
               aria-label="Role to assign to group"
@@ -712,7 +743,7 @@ function GroupAccess({ group, roles, editable }: { group: AuthorizationGroup; ro
           {assignments.map((assignment) => (
             <div key={assignment.roleId} className="flex items-center justify-between gap-2 py-2 text-sm">
               <span>{roles.find((role) => role.id === assignment.roleId)?.name ?? assignment.roleId}</span>
-              {editable ? (
+              {canManageRoleAssignments ? (
                 <button
                   type="button"
                   aria-label="Revoke group role"

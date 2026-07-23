@@ -32,6 +32,12 @@ import {
 import { useAppSidebarActions } from './sidebar/useAppSidebarActions'
 import overlayAppConfig from '@/overlay.config'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { useAuthorization } from '@/components/providers/AuthorizationProvider'
+import {
+  getNavigationAuthorizationRequirement,
+  getSettingsSectionAuthorizationRequirement,
+  getSidebarActionAuthorizationRequirement,
+} from '@/shared/authorization/client-policy'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import dynamic from 'next/dynamic'
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
@@ -68,6 +74,7 @@ export default function AppSidebar({
     [routeSearchParams],
   )
   const { capabilities } = useOverlayCapabilities()
+  const { allows, can } = useAuthorization()
   const { requireAuth } = useGuestGate()
   const { user, isLoading: authLoading } = useAuth()
   const appShell = useMemo(
@@ -76,20 +83,28 @@ export default function AppSidebar({
   )
   const availableToolsInlineItems = useMemo(
     () => toolsInlineItems.filter((item) => {
-      if (item.id === 'skills') return capabilities.skills
-      if (item.id === 'mcps') return capabilities.mcpServers
+      if (item.id === 'skills') return capabilities.skills && allows({ all: ['skills.use'] })
+      if (item.id === 'mcps') return capabilities.mcpServers && allows({ all: ['mcp.use'] })
+      if (item.id === 'connectors') return allows({ all: ['integrations.use'] })
       return true
     }),
-    [capabilities.mcpServers, capabilities.skills],
+    [allows, capabilities.mcpServers, capabilities.skills],
   )
   const navItems = useMemo(
-    () => appShell.navigation.map((item) => ({
-      ...item,
-      icon: ICON_COMPONENTS[item.icon] ?? MessageSquare,
-    })),
-    [appShell.navigation],
+    () => appShell.navigation
+      .filter((item) => publicShowcase || !user || allows(getNavigationAuthorizationRequirement(item.id)))
+      .map((item) => ({
+        ...item,
+        icon: ICON_COMPONENTS[item.icon] ?? MessageSquare,
+      })),
+    [allows, appShell.navigation, publicShowcase, user],
   )
-  const settingsSections = appShell.settingsSections
+  const settingsSections = useMemo(
+    () => appShell.settingsSections.filter((section) => (
+      publicShowcase || !user || allows(getSettingsSectionAuthorizationRequirement(section.id))
+    )),
+    [allows, appShell.settingsSections, publicShowcase, user],
+  )
   const brandConfig = appShell.brand
   const billingEnabled = capabilities.billing
   const authUserId = user?.id ?? null
@@ -103,7 +118,6 @@ export default function AppSidebar({
   const [entitlements, setEntitlements] = useState<SidebarEntitlements | null>(null)
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false)
   const [temporaryChatUiHidden, setTemporaryChatUiHidden] = useState(false)
-  const [canAccessAdmin, setCanAccessAdmin] = useState(false)
   const storedSidebarCollapsed = useSyncExternalStore(
     subscribeToSidebarCollapsed,
     getSidebarCollapsedSnapshot,
@@ -119,7 +133,12 @@ export default function AppSidebar({
   const [projectsPanelRefreshKey, setProjectsPanelRefreshKey] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
-  const sidebarActions = appShell.sidebarActions
+  const sidebarActions = useMemo(
+    () => appShell.sidebarActions.filter((action) => (
+      publicShowcase || !user || allows(getSidebarActionAuthorizationRequirement(action.actionKey))
+    )),
+    [allows, appShell.sidebarActions, publicShowcase, user],
+  )
   const primaryNavActionByItemId = useMemo(() => {
     const entries = sidebarActions
       .filter((action) => action.primaryNavAction && action.navigationItemId)
@@ -163,21 +182,6 @@ export default function AppSidebar({
   }, [])
 
   useEffect(() => {
-    let cancelled = false
-    if (publicShowcase || authLoading || !user) {
-      return () => { cancelled = true }
-    }
-    void overlayAppClient.adminAuthorization.listCapabilities({ cache: 'no-store' })
-      .then(() => {
-        if (!cancelled) setCanAccessAdmin(true)
-      })
-      .catch(() => {
-        if (!cancelled) setCanAccessAdmin(false)
-      })
-    return () => { cancelled = true }
-  }, [authLoading, publicShowcase, user])
-
-  useEffect(() => {
     function onTemporaryChatUi(event: Event) {
       const active = Boolean((event as CustomEvent<TemporaryChatUiEventDetail>).detail?.active)
       setTemporaryChatUiHidden(active)
@@ -201,7 +205,7 @@ export default function AppSidebar({
   const filesSectionOpen = filesOpen || notesOpen
   const chatOpen = pathname.startsWith('/app/chat')
   const adminOpen = pathname.startsWith('/app/admin')
-  const showAdminNavigation = canAccessAdmin && !publicShowcase && Boolean(user)
+  const showAdminNavigation = can('administration.access') && !publicShowcase && Boolean(user)
   const automationsOpen = pathname.startsWith('/app/automations')
   const automationsSectionOpen = automationsOpen && capabilities.automations
   const settingsPathActive = pathname.startsWith('/app/settings')
