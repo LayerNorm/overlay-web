@@ -4,6 +4,7 @@ import type { HybridSearchResult } from '@/shared/knowledge/hybrid-search'
 
 export type KnowledgeSearchArgs = {
   accessToken?: string
+  canonicalSourceIds?: string[]
   kLex?: number
   kVec?: number
   m?: number

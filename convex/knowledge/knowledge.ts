@@ -21,6 +21,8 @@ export type HybridSearchChunk = {
   title?: string
   sourceKind: 'file' | 'memory'
   sourceId: string
+  knowledgeSourceId?: string
+  knowledgeSourceVersionId?: string
   chunkIndex: number
   score: number
 }
@@ -659,6 +661,8 @@ function packChunksForContext(
       title: row.title,
       sourceKind: row.sourceKind,
       sourceId: row.sourceId,
+      knowledgeSourceId: row.knowledgeSourceId,
+      knowledgeSourceVersionId: row.knowledgeSourceVersionId,
       chunkIndex: row.chunkIndex,
       score: scores.get(row._id) ?? 0,
     })
@@ -681,6 +685,7 @@ export const hybridSearch = action({
     kLex: v.optional(v.number()),
     m: v.optional(v.number()),
     minVecScore: v.optional(v.number()),
+    canonicalSourceIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args): Promise<{ chunks: HybridSearchChunk[] }> => {
     if (!validateServerSecret(args.serverSecret)) {
@@ -821,10 +826,14 @@ export const hybridSearch = action({
     const byId = new Map<Id<'knowledgeChunks'>, Doc<'knowledgeChunks'>>(
       payloads.map((p) => [p._id, p]),
     )
+    const canonicalSourceIds = args.canonicalSourceIds ? new Set(args.canonicalSourceIds) : null
     const filtered = rankedIds
       .map((id) => byId.get(id))
       .filter((row): row is NonNullable<typeof row> => !!row)
       .filter((row) => chunkMatchesProject(args.projectId, row.projectId))
+      .filter((row) => !canonicalSourceIds || (
+        row.knowledgeSourceId !== undefined && canonicalSourceIds.has(row.knowledgeSourceId)
+      ))
 
     // Prefer chunks whose file was saved under this project when the user is in a project chat.
     const PROJECT_CHUNK_BOOST = 1.85

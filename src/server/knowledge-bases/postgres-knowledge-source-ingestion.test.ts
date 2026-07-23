@@ -17,8 +17,10 @@ import { PostgresJobWorker } from '@/server/jobs/PostgresJobWorker'
 import type { AuthorizationRepositories, AuthorizationSubject } from '@overlay/authz-contracts'
 import type { AuthorizationService } from '@/server/authorization/AuthorizationService'
 import type { EmbeddingProvider } from '@/server/knowledge'
+import { KnowledgeSearchService, PostgresKnowledgeSearchRepository } from '@/server/knowledge'
 import { KnowledgeBaseService } from './KnowledgeBaseService'
 import { KnowledgeSourceIngestionService } from './KnowledgeSourceIngestionService'
+import { KnowledgeBaseRetrievalService } from './KnowledgeBaseRetrievalService'
 import {
   CANONICAL_KNOWLEDGE_INDEX_JOB,
   PostgresCanonicalKnowledgeIndexQueue,
@@ -106,6 +108,36 @@ test('Postgres canonical knowledge source lifecycle', {
     })
     assert.equal(unchanged.unchanged, true)
     assert.equal((await repositories.sources.listVersions(created.source.id)).length, 2)
+
+    const otherBase = await bases.createKnowledgeBase({ title: 'Private Biology', userId })
+    const other = await ingestion.createTextSource({
+      content: 'Isolation marker: mitochondrial inheritance is maternal.',
+      knowledgeBaseId: otherBase.id,
+      title: 'Biology marker',
+      userId,
+    })
+    assert.equal(await worker.runOnce(Date.now() + 1_000), 'succeeded')
+    const retrieval = new KnowledgeBaseRetrievalService({
+      bases,
+      search: new KnowledgeSearchService(new PostgresKnowledgeSearchRepository({
+        db,
+        embeddings: fakeEmbeddings(),
+      })),
+    })
+    const chemistrySearch = await retrieval.search({
+      knowledgeBaseId: base.id,
+      query: 'electron pair mechanism',
+      userId,
+    })
+    assert.ok(chemistrySearch.chunks.some((chunk) => chunk.text.includes('Electrophiles')))
+    assert.equal(chemistrySearch.chunks.some((chunk) => chunk.text.includes('mitochondrial')), false)
+    assert.deepEqual(chemistrySearch.citations.map(({ sourceId }) => sourceId), [created.source.id])
+    const biologySearch = await retrieval.search({
+      knowledgeBaseId: otherBase.id,
+      query: 'maternal mitochondrial inheritance',
+      userId,
+    })
+    assert.ok(biologySearch.chunks.every((chunk) => chunk.knowledgeSourceId === other.source.id))
 
     await db.update(knowledgeSources).set({ status: 'failed', statusMessage: 'forced failure' })
       .where(eq(knowledgeSources.id, created.source.id))

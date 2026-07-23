@@ -12,6 +12,11 @@ export {
   type CanonicalKnowledgeIndexRequest,
 } from './KnowledgeSourceIngestionService'
 export {
+  KnowledgeBaseRetrievalService,
+  type KnowledgeBaseCitation,
+  type KnowledgeBaseSearchResult,
+} from './KnowledgeBaseRetrievalService'
+export {
   KNOWLEDGE_BASE_RESOURCE_TYPE,
   KnowledgeBaseService,
   KnowledgeBaseServiceError,

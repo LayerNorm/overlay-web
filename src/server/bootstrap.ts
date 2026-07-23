@@ -56,6 +56,7 @@ import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowle
 import {
   ConvexCanonicalKnowledgeIndexQueue,
   KnowledgeBaseService,
+  KnowledgeBaseRetrievalService,
   KnowledgeSourceIngestionService,
   PostgresCanonicalKnowledgeIndexQueue,
 } from '@/server/knowledge-bases'
@@ -89,6 +90,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   memoryService: MemoryService
   knowledgeSearchService: KnowledgeSearchService
   knowledgeBaseService: KnowledgeBaseService
+  knowledgeBaseRetrievalService: KnowledgeBaseRetrievalService
   knowledgeSourceIngestionService: KnowledgeSourceIngestionService
   noteRepository: NoteRepository
   apiKeyService: ApiKeyService
@@ -177,6 +179,10 @@ export function createOverlayServerContext(
     repositories: appData.repositories.knowledgeBases,
   })
   const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
+  const knowledgeBaseRetrievalService = new KnowledgeBaseRetrievalService({
+    bases: knowledgeBaseService,
+    search: knowledgeSearchService,
+  })
 
   return {
     auth: appConfig.authProvider ?? createAuthProvider(runtimeConfig, userService),
@@ -201,6 +207,7 @@ export function createOverlayServerContext(
     generationUsagePolicy,
     memoryService,
     knowledgeBaseService,
+    knowledgeBaseRetrievalService,
     knowledgeSourceIngestionService,
     knowledgeSearchService,
     noteRepository: appData.repositories.notes,

@@ -3,6 +3,8 @@ export type HybridSearchChunk = {
   score: number
   sourceId: string
   sourceKind: 'file' | 'memory'
+  knowledgeSourceId?: string
+  knowledgeSourceVersionId?: string
   text: string
   title?: string
 }
