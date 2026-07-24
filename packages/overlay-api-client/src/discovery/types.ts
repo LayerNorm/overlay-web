@@ -13,6 +13,7 @@ export type OverlayServerDiscovery = {
   minimumDesktopVersion: string
   nativeAuth: {
     authorizationPath: string
+    browserHandoffPath?: string
     flow: 'system_browser_pkce'
     refreshPath: string
     supported: boolean

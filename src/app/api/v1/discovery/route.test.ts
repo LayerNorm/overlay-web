@@ -10,6 +10,10 @@ test('public discovery exposes only versioned non-secret server metadata', async
   const body = await response.json() as Record<string, unknown>
   assert.deepEqual(body.api, { currentVersion: 'v1', supportedVersions: ['v1'] })
   assert.deepEqual(body.deployment, { id: 'https://overlay.example' })
+  assert.equal(
+    (body.nativeAuth as { browserHandoffPath?: unknown }).browserHandoffPath,
+    '/account',
+  )
   assert.equal(JSON.stringify(body).match(/secret|apiKey|tokenValue|internalTopology/), null)
 })
 

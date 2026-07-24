@@ -120,7 +120,20 @@ export async function handleBffRoute(
     if (isOverlayConfigError(error)) return runtimeConfigErrorResponse(error)
     throw error
   }
-  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!auth) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      {
+        status: 401,
+        headers: {
+          'Cache-Control': 'no-store',
+          'WWW-Authenticate': bearer
+            ? 'Bearer error="invalid_token"'
+            : 'Bearer',
+        },
+      },
+    )
+  }
 
   const ownerFundedOperation = getOwnerFundedOperation(
     request.method,

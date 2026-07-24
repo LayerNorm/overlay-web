@@ -17,6 +17,16 @@ export type AuthenticatedAppUser = {
   scopes?: ApiKeyScope[]
 }
 
+export function resolveVerifiedBearerUserId(
+  claims: Record<string, unknown> | null,
+  claimedUserId: string,
+): string | null {
+  const verifiedUserId = typeof claims?.sub === 'string' ? claims.sub.trim() : ''
+  if (!verifiedUserId) return null
+  if (claimedUserId && claimedUserId !== verifiedUserId) return null
+  return verifiedUserId
+}
+
 type ResolveAuthenticatedAppUserOptions = {
   clientIp?: string
   requiredApiKeyScopes?: readonly ApiKeyScope[]
@@ -97,18 +107,19 @@ export async function resolveAuthenticatedAppUser(
   const token =
     (typeof body.accessToken === 'string' && body.accessToken.trim()) || bearer
   const queryUserId = request.nextUrl.searchParams.get('userId')?.trim() || ''
-  const uid =
+  const claimedUserId =
     typeof body.userId === 'string' && body.userId.trim()
       ? body.userId.trim()
       : queryUserId
-  if (!token || !uid) return null
+  if (!token) return null
 
-  const claims = await ctx.auth.verifyAccessToken(token)
-  if (!claims || claims.sub !== uid) return null
+  const claims = await ctx.auth.verifyAccessToken(token).catch((_error) => null)
+  const verifiedUserId = resolveVerifiedBearerUserId(claims, claimedUserId)
+  if (!claims || !verifiedUserId) return null
 
   const organizationId = organizationIdFromClaims(claims)
   return cacheAuthenticatedAppUser(request, {
-    userId: uid,
+    userId: verifiedUserId,
     accessToken: token,
     authType: 'access-token',
     ...(organizationId ? { organizationId } : {}),

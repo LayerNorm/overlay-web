@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
     minimumDesktopVersion: '0.1.23',
     nativeAuth: {
       authorizationPath: '/api/auth/native/authorize',
+      browserHandoffPath: '/account',
       flow: 'system_browser_pkce',
       refreshPath: '/api/auth/native/refresh',
       supported: true,

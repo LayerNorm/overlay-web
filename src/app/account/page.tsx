@@ -64,6 +64,11 @@ function AccountPageContent() {
   const chromeExtensionIdRaw = searchParams?.get('chrome_extension_id')?.trim() || ''
   const extensionHandoffSentRef = useRef(false)
   const desktopHandoffSentRef = useRef(false)
+  const accountSignInHref = desktopCodeChallenge
+    ? `/auth/sign-in?redirect=${encodeURIComponent(
+        `/account?desktop_code_challenge=${encodeURIComponent(desktopCodeChallenge)}`,
+      )}`
+    : '/auth/sign-in'
 
   // Get userId from AuthContext (session-based)
   const { user, isLoading: authLoading, isAuthenticated, signOut, refreshSession } = useAuth()
@@ -340,7 +345,7 @@ function AccountPageContent() {
           mutedClass={t.muted}
           action={
             <Link
-              href="/auth/sign-in"
+              href={accountSignInHref}
               className="inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium transition-opacity hover:opacity-90 bg-[var(--button-primary-bg)] text-[var(--button-primary-text)]"
             >
               Sign in

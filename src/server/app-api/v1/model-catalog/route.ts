@@ -10,8 +10,15 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     userId: context.auth.userId,
   })
   if (!entitlements) return NextResponse.json({ error: 'Could not verify subscription.' }, { status: 401 })
-  const authorized = await resolveAuthorizedModelIds({ entitlements })
-  const models = (await getGatewayLanguageCatalog(force))
+
+  // Authorize after (or while) loading the full gateway catalog so the allowlist
+  // is every language model from AI Gateway — not just the curated fallback list.
+  const authorized = await resolveAuthorizedModelIds({
+    entitlements,
+    forceCatalogRefresh: force,
+  })
+  // Catalog is already warm from authorization; force was applied there when requested.
+  const models = (await getGatewayLanguageCatalog(false))
     .filter((model) => authorized.chat.has(model.id))
   return NextResponse.json({ models })
 }

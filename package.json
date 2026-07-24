@@ -316,15 +316,17 @@
     "eslint-config-next": "16.1.1",
     "mintlify": "^4.2.626",
     "playwright": "^1.61.1",
-    "postcss": "8.5.12",
+    "postcss": "8.5.23",
     "remotion": "^4.0.441",
     "tailwindcss": "^3.4.19",
     "typescript": "^5",
     "zod-to-json-schema": "^3.25.2"
   },
   "overrides": {
+    "axios": "1.18.1",
     "follow-redirects": "1.16.0",
-    "postcss": "8.5.12",
-    "protobufjs": "8.6.6"
+    "postcss": "8.5.23",
+    "protobufjs": "8.6.6",
+    "tar": "7.5.22"
   }
 }
