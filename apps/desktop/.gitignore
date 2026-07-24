@@ -29,7 +29,8 @@ certs/
 # Build output
 dist
 out
-build
+# Ignore build artifacts but keep release entitlements tracked for public CI.
+build/*
 !build/entitlements.mac.plist
 *.local
 *.tsbuildinfo
