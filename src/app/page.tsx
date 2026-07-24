@@ -1,8 +1,18 @@
 import { redirect } from 'next/navigation'
 import { getOverlaySession } from '@/server/auth/session'
+import { RootEntryResolver } from '@/features/showcase/RootEntryResolver'
+import { ROOT_APP_DESTINATION } from '@/shared/auth/root-entry'
 
 export default async function Page() {
-  const session = await getOverlaySession()
-  if (session) redirect('/app/chat')
-  redirect('/app/chat?showcase=1&id=showcase-welcome')
+  let session: Awaited<ReturnType<typeof getOverlaySession>> = null
+  try {
+    session = await getOverlaySession()
+  } catch {
+    // The refresh-capable client resolver below deliberately handles
+    // transient provider/configuration failures without treating them as a
+    // confirmed guest session.
+  }
+
+  if (session) redirect(ROOT_APP_DESTINATION)
+  return <RootEntryResolver />
 }

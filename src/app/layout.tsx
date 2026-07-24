@@ -4,6 +4,7 @@ import "@overlay/chat-react/chat-surface.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://getoverlay.io"),
   title: "overlay",
   description:
     "Overlay is the unified AI interaction layer: chat, voice notes, browser tasks, agents, automations, context, and content generation in one open-source workspace.",

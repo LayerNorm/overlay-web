@@ -1,4 +1,5 @@
 import { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getOverlaySession } from '@/server/auth/session'
 import { AppShellSidebar } from './_components/AppShellSidebar'
 import { AsyncSessionsProvider } from '@/components/providers/async-sessions-store'
@@ -11,6 +12,13 @@ import { AppClientProviders } from '@/components/providers/AppClientProviders'
 import { getAppDataCapabilitiesSync, getOverlayCapabilitiesSync } from '@/server/capabilities'
 import { AppConfigurationErrorState } from './_components/AppConfigurationErrorState'
 import { AppShellLoadingFallback, ChatRouteSkeleton } from './_components/AppRouteSkeletons'
+
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+}
 
 function AppMainFallback() {
   return <ChatRouteSkeleton />

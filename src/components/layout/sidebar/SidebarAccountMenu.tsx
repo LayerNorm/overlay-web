@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { LogOut, User } from 'lucide-react'
+import { LogOut, Sparkles, User } from 'lucide-react'
 import { PROFILE_APP_LINKS } from './sidebarNavigation'
 import { StorageBar, UsageBar, type SidebarEntitlements } from './SidebarUsageMeters'
 
@@ -9,12 +9,14 @@ export function SidebarAccountMenu({
   billingEnabled,
   entitlements,
   itemPaddingClass = 'py-2',
+  demoHref,
   onAccountClick,
   onSignOut,
 }: {
   billingEnabled: boolean
   entitlements: SidebarEntitlements | null
   itemPaddingClass?: string
+  demoHref?: string
   onAccountClick: () => void
   onSignOut: () => void
 }) {
@@ -50,6 +52,18 @@ export function SidebarAccountMenu({
           </button>
         ))}
       </div>
+      {demoHref ? (
+        <div className="border-t border-[var(--border)]">
+          <Link
+            href={demoHref}
+            onClick={onAccountClick}
+            className={`flex w-full items-center gap-2 px-3 ${itemPaddingClass} text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]`}
+          >
+            <Sparkles size={13} />
+            Demo
+          </Link>
+        </div>
+      ) : null}
       <div className="border-t border-[var(--border)]">
         <Link
           href="/account"

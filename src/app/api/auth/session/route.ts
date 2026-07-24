@@ -48,8 +48,12 @@ export async function GET(request: NextRequest) {
     })
     logger.error('[Auth] Session check error:', error)
     return NextResponse.json(
-      { authenticated: false },
-      { status: 200, headers: NO_STORE_HEADERS },
+      {
+        authenticated: false,
+        error: 'Session could not be resolved',
+        code: 'session_resolution_failed',
+      },
+      { status: 503, headers: NO_STORE_HEADERS },
     )
   }
 }

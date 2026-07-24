@@ -8,7 +8,6 @@ import {
   File,
   FolderKanban,
   Home,
-  Info,
   MessageSquare,
   Moon,
   Plug,
@@ -71,8 +70,7 @@ export function PublicSiteRail({
         </>
       ) : null}
       <div className="flex flex-col gap-1">
-        <RailLink href="/" label="Home" active={pathname === '/' && !onNavigateSurface} icon={Home} />
-        <RailLink href="/about" label="About" active={pathname === '/about'} icon={Info} />
+        <RailLink href="/home" label="Home" active={pathname === '/home' && !onNavigateSurface} icon={Home} />
         <RailLink href="/manifesto" label="Manifesto" active={pathname === '/manifesto'} icon={Sparkles} />
         <RailLink href="/pricing" label="Pricing" active={pathname === '/pricing'} icon={CircleHelp} />
         <a href={MARKETING_DOCS_URL} target="_blank" rel="noreferrer" aria-label="Docs" title="Docs" className="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
