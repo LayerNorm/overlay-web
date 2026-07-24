@@ -130,6 +130,9 @@
   "exclude": [
     "node_modules",
     "archives",
+    ".agents",
+    ".agent",
+    "agent",
     "overlay-chrome",
     "overlay-desktop",
     "overlay-mobile",
