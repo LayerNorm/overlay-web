@@ -217,6 +217,16 @@ export async function middleware(request: NextRequest) {
       cspPolicy,
     )
 
+  // /app/account is an implementation detail; the canonical URL is /account.
+  if (pathname === '/app/account') {
+    const destination = new URL('/account' + request.nextUrl.search, request.url)
+    return applyBrowserSecurityHeaders(
+      NextResponse.redirect(destination),
+      cspHeaderName,
+      cspPolicy,
+    )
+  }
+
   const publicMarketingDestination = PUBLIC_MARKETING_REWRITES[pathname]
   if (publicMarketingDestination) {
     const destination = new URL(publicMarketingDestination, request.url)
@@ -315,6 +325,20 @@ export async function middleware(request: NextRequest) {
         cspPolicy,
       )
     }
+  }
+
+  // Render the account page inside the app shell while keeping /account canonical.
+  if (pathname === '/account') {
+    const destination = new URL('/app/account' + request.nextUrl.search, request.url)
+    return applyBrowserSecurityHeaders(
+      NextResponse.rewrite(destination, {
+        request: {
+          headers: requestHeaders,
+        },
+      }),
+      cspHeaderName,
+      cspPolicy,
+    )
   }
 
   return nextResponse()
