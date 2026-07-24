@@ -1,0 +1,142 @@
+.parity-fixture-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 20px 12px;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+}
+
+.parity-fixture-content {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  margin: 0 auto;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.parity-fixture-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+}
+
+.parity-fixture-header h1,
+.parity-fixture-section h2,
+.parity-fixture-header p,
+.parity-fixture-section p {
+  margin: 0;
+}
+
+.parity-fixture-header h1 {
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.parity-fixture-eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  opacity: 0.55;
+  text-transform: uppercase;
+}
+
+.parity-fixture-meta {
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 10px;
+  line-height: 1.55;
+  opacity: 0.55;
+}
+
+.parity-fixture-section {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, currentColor 3%, transparent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+}
+
+.parity-fixture-section__header {
+  margin: 16px 12px 0;
+  padding: 0 0 12px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.parity-fixture-section__header h2 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.parity-fixture-section__header p {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.55;
+  opacity: 0.62;
+}
+
+.parity-fixture-section__header code {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 10px;
+  opacity: 0.45;
+}
+
+.parity-fixture-section > .shared-chat-scope {
+  padding: 12px;
+}
+
+.parity-fixture-perf {
+  border: 1px dashed color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 12px;
+  opacity: 0.72;
+}
+
+.parity-fixture-perf summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.parity-fixture-perf pre {
+  overflow-x: auto;
+  margin: 12px 0 0;
+  white-space: pre-wrap;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.parity-fixture-unknown {
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  padding: 16px;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 14px;
+}
+
+@media (min-width: 640px) {
+  .parity-fixture-page {
+    padding: 20px;
+  }
+
+  .parity-fixture-section__header {
+    margin-right: 20px;
+    margin-left: 20px;
+  }
+
+  .parity-fixture-section > .shared-chat-scope {
+    padding-top: 12px;
+    padding-bottom: 12px;
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+}

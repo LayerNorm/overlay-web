@@ -1,0 +1,101 @@
+{
+  "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
+  "include": [
+    "src/renderer/src/env.d.ts",
+    "src/renderer/src/**/*",
+    "src/renderer/src/**/*.tsx",
+    "src/preload/*.d.ts",
+    "src/types/**/*"
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "jsx": "react-jsx",
+    "noImplicitReturns": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "baseUrl": ".",
+    "paths": {
+      "@renderer/*": [
+        "src/renderer/src/*"
+      ],
+      "@overlay/api-client": [
+        "packages/overlay-api-client/src/index.ts"
+      ],
+      "@overlay/api-client/*": [
+        "packages/overlay-api-client/src/*"
+      ],
+      "@overlay/app-core": [
+        "packages/overlay-app-core/src/index.ts"
+      ],
+      "@overlay/app-core/*": [
+        "packages/overlay-app-core/src/*"
+      ],
+      "@overlay/auth-contracts": [
+        "packages/overlay-auth-contracts/src/index.ts"
+      ],
+      "@overlay/auth-contracts/*": [
+        "packages/overlay-auth-contracts/src/*"
+      ],
+      "@overlay/storage-contracts": [
+        "packages/overlay-storage-contracts/src/index.ts"
+      ],
+      "@overlay/storage-contracts/*": [
+        "packages/overlay-storage-contracts/src/*"
+      ],
+      "@overlay/billing": [
+        "packages/overlay-billing/src/index.ts"
+      ],
+      "@overlay/billing/*": [
+        "packages/overlay-billing/src/*"
+      ],
+      "@overlay/chat-core": [
+        "packages/overlay-chat-core/src/index.ts"
+      ],
+      "@overlay/chat-core/*": [
+        "packages/overlay-chat-core/src/*"
+      ],
+      "@overlay/chat-react": [
+        "packages/overlay-chat-react/src/index.ts"
+      ],
+      "@overlay/chat-react/*": [
+        "packages/overlay-chat-react/src/*"
+      ],
+      "@overlay/llm-gateway": [
+        "packages/overlay-llm-gateway/src/index.ts"
+      ],
+      "@overlay/llm-gateway/*": [
+        "packages/overlay-llm-gateway/src/*"
+      ],
+      "@overlay/modules-react": [
+        "packages/overlay-modules-react/src/index.ts"
+      ],
+      "@overlay/modules-react/*": [
+        "packages/overlay-modules-react/src/*"
+      ],
+      "@overlay/tools-core": [
+        "packages/overlay-tools-core/src/index.ts"
+      ],
+      "@overlay/tools-core/*": [
+        "packages/overlay-tools-core/src/*"
+      ],
+      "@overlay/ui": [
+        "packages/overlay-ui/src/index.ts"
+      ],
+      "@overlay/ui/*": [
+        "packages/overlay-ui/src/*"
+      ],
+      "@ai-sdk/anthropic": [
+        "node_modules/@ai-sdk/anthropic"
+      ],
+      "@ai-sdk/groq": [
+        "node_modules/@ai-sdk/groq"
+      ],
+      "@ai-sdk/openai": [
+        "node_modules/@ai-sdk/openai"
+      ],
+      "@openrouter/ai-sdk-provider": [
+        "node_modules/@openrouter/ai-sdk-provider"
+      ]
+    }
+  }
+}

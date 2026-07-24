@@ -1,0 +1,17 @@
+# These files support private development and security remediation. They are
+# intentionally excluded from `git archive`, which is the input to the
+# history-free public repository described in guides/PUBLIC_REPOSITORY_EXPORT.md.
+/.windsurf export-ignore
+/AGENTS.md export-ignore
+/CLAUDE.md export-ignore
+/DESIGN.md export-ignore
+/OVERLAY.md export-ignore
+/ai-sdk.md export-ignore
+/composio-full.md export-ignore
+/composio-index.md export-ignore
+/landing-page-flow.md export-ignore
+/overlay-grand-slam-offer-checklist.csv export-ignore
+/overlay-pitch-deck.md export-ignore
+/plans export-ignore
+/reports export-ignore
+/token-counting.md export-ignore

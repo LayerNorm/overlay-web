@@ -1,0 +1,39 @@
+{
+  "name": "@overlay/chat-core",
+  "version": "0.0.1",
+  "private": false,
+  "license": "Apache-2.0",
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "files": ["src", "README.md", "LICENSE", "tsconfig.json"],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./agent-assistant-text": "./src/agent-assistant-text.ts",
+    "./constants": "./src/constants.ts",
+    "./gating": "./src/gating.ts",
+    "./generated-ui": "./src/generated-ui.ts",
+    "./markdown-table-fix": "./src/markdown-table-fix.ts",
+    "./messages": "./src/messages.ts",
+    "./paste": "./src/paste.ts",
+    "./parity-fixtures": "./src/parity-fixtures.ts",
+    "./shim-incomplete-markdown": "./src/shim-incomplete-markdown.ts",
+    "./sources": "./src/sources.ts",
+    "./state": "./src/state.ts",
+    "./tool-labels": "./src/tool-labels.ts",
+    "./transcript-view": "./src/transcript-view.ts",
+    "./turns": "./src/turns.ts",
+    "./types": "./src/types.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/**/*.test.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}

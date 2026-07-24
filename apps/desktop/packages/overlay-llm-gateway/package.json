@@ -1,0 +1,38 @@
+{
+  "name": "@overlay/llm-gateway",
+  "version": "0.0.1",
+  "private": false,
+  "license": "Apache-2.0",
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "files": ["src", "README.md", "LICENSE", "tsconfig.json"],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./adapters": "./src/adapters/index.ts",
+    "./anthropic": "./src/adapters/anthropic.ts",
+    "./contracts": "./src/contracts.ts",
+    "./groq": "./src/adapters/groq.ts",
+    "./models": "./src/models.ts",
+    "./openai": "./src/adapters/openai.ts",
+    "./openrouter": "./src/adapters/openrouter.ts"
+  },
+  "scripts": {
+    "test": "tsx --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.58",
+    "@ai-sdk/groq": "^3.0.29",
+    "@ai-sdk/openai": "^3.0.41",
+    "@openrouter/ai-sdk-provider": "^2.3.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.8.1",
+    "typescript": "^5"
+  }
+}

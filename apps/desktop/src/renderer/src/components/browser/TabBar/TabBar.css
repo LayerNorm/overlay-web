@@ -1,0 +1,20 @@
+/* Hide scrollbar for tabs scroll area */
+.browser-tabs-scroll {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.browser-tabs-scroll::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+/* Hover effect for inactive tabs */
+.browser-tab:not(.browser-tab-active):hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Show close button on hover for inactive tabs */
+.browser-tab:hover .browser-tab-close {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}

@@ -1,0 +1,90 @@
+appId: com.layernorm.overlay
+productName: Overlay
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!**/*.md'
+  - '!**/*.map'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!whisperkit-bundle'
+  - '!whisperkit-bundle/**/*'
+  - '!parakeet-bundle'
+  - '!parakeet-bundle/**/*'
+  - '!ParakeetServer'
+  - '!ParakeetServer/**/*'
+  - '!scripts'
+  - '!scripts/**/*'
+  - '!node_modules/onnxruntime-node/bin/napi-v3/linux/**'
+  - '!node_modules/onnxruntime-node/bin/napi-v3/win32/**'
+  - '!node_modules/@xenova/transformers/**'
+  - '!node_modules/onnxruntime-web/**'
+asarUnpack:
+  - resources/**
+  - node_modules/node-pty/**
+extraResources:
+  - from: resources
+    to: resources
+    filter:
+      - '**/*'
+      - '!models/embeddings/**'
+  - from: whisperkit-bundle
+    to: whisperkit
+    filter:
+      - 'whisperkit-cli'
+      - '!Models/**'
+  - from: parakeet-bundle
+    to: parakeet
+    filter:
+      - '**/*'
+win:
+  icon: resources/logos/logo-big.png
+  executableName: overlay
+nsis:
+  artifactName: overlay-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+mac:
+  icon: resources/logos/logo-big.png
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    - NSCameraUsageDescription: Application requests access to the device's camera.
+    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
+    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  notarize: true
+  target:
+    - dmg
+    - zip
+dmg:
+  artifactName: overlay-${version}.${ext}
+linux:
+  icon: resources/logos/logo-big.png
+  target:
+    - AppImage
+    - snap
+    - deb
+  maintainer: electronjs.org
+  category: Utility
+appImage:
+  artifactName: overlay-${version}.${ext}
+npmRebuild: true
+publish:
+  provider: github
+  owner: DevelopedByDev
+  repo: overlay-releases
+  releaseType: release

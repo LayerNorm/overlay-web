@@ -1,0 +1,244 @@
+:root {
+  --background: #fafafa;
+  --foreground: #0a0a0a;
+  --muted: #71717a;
+  --muted-light: #a1a1aa;
+  --border: #e4e4e7;
+  --surface-elevated: #ffffff;
+  --surface-muted: #f5f5f5;
+  --surface-subtle: #f0f0f0;
+  --sidebar-surface: #f5f5f5;
+  --overlay-scrim: rgba(0, 0, 0, 0.4);
+  --button-primary-bg: #0a0a0a;
+  --button-primary-text: #ffffff;
+  --button-secondary-bg: #ffffff;
+  --button-secondary-border: #e4e4e7;
+  --button-secondary-text: #0a0a0a;
+  --input-background: #ffffff;
+  --input-border: #e4e4e7;
+  --input-text: #0a0a0a;
+  --input-placeholder: #a1a1aa;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --overlay-space-0: 0;
+  --overlay-space-1: 0.25rem;
+  --overlay-space-2: 0.5rem;
+  --overlay-space-3: 0.75rem;
+  --overlay-space-4: 1rem;
+  --overlay-space-5: 1.25rem;
+  --overlay-space-6: 1.5rem;
+  --overlay-space-8: 2rem;
+  --overlay-space-10: 2.5rem;
+  --overlay-space-12: 3rem;
+  --overlay-radius-sm: 0.375rem;
+  --overlay-radius-md: 0.5rem;
+  --overlay-radius-lg: 0.75rem;
+  --overlay-radius-xl: 1rem;
+  --overlay-radius-full: 9999px;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --font-serif: var(--font-sans);
+  --overlay-text-xs: 0.75rem;
+  --overlay-text-sm: 0.875rem;
+  --overlay-text-base: 1rem;
+  --overlay-text-lg: 1.125rem;
+  --overlay-text-xl: 1.25rem;
+  --overlay-leading-tight: 1.25;
+  --overlay-leading-normal: 1.5;
+  --overlay-leading-relaxed: 1.625;
+  --overlay-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --overlay-duration-fast: 150ms;
+  --overlay-duration: 220ms;
+  --overlay-duration-panel: 300ms;
+}
+
+[data-theme='dark'] {
+  --background: #09090b;
+  --foreground: #f5f5f5;
+  --muted: #a1a1aa;
+  --muted-light: #71717a;
+  --border: #27272a;
+  --surface-elevated: #111113;
+  --surface-muted: #151518;
+  --surface-subtle: #1c1c20;
+  --sidebar-surface: #111113;
+  --overlay-scrim: rgba(0, 0, 0, 0.58);
+  --button-primary-bg: #f5f5f5;
+  --button-primary-text: #09090b;
+  --button-secondary-bg: #111113;
+  --button-secondary-border: #27272a;
+  --button-secondary-text: #f5f5f5;
+  --input-background: #111113;
+  --input-border: #27272a;
+  --input-text: #f5f5f5;
+  --input-placeholder: #71717a;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+}
+
+@keyframes media-shimmer-slide {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.ui-skeleton-mesh {
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  background: linear-gradient(
+    135deg,
+    #efe8f4 0%,
+    #e6dcf2 28%,
+    #ddd0ea 52%,
+    #e8dff6 78%,
+    #f0e9f8 100%
+  );
+  min-height: 4rem;
+}
+
+.ui-skeleton-mesh::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 38%,
+    rgba(255, 255, 255, 0.65) 50%,
+    rgba(255, 255, 255, 0.08) 62%,
+    transparent 100%
+  );
+  filter: blur(0.5px);
+  animation: media-shimmer-slide 1.65s ease-in-out infinite;
+}
+
+[data-theme='dark'] .ui-skeleton-mesh {
+  background: linear-gradient(
+    135deg,
+    #2a2630 0%,
+    #252028 35%,
+    #1f1c24 55%,
+    #2c2733 78%,
+    #322c38 100%
+  );
+}
+
+[data-theme='dark'] .ui-skeleton-mesh::after {
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 38%,
+    rgba(255, 255, 255, 0.22) 50%,
+    rgba(255, 255, 255, 0.04) 62%,
+    transparent 100%
+  );
+}
+
+.ui-skeleton-line {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.375rem;
+  background-color: var(--surface-muted);
+  min-height: 0.625rem;
+}
+
+.ui-skeleton-line::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -55%;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(128, 128, 128, 0.06) 35%,
+    rgba(255, 255, 255, 0.45) 50%,
+    rgba(128, 128, 128, 0.06) 65%,
+    transparent 100%
+  );
+  animation: media-shimmer-slide 1.4s ease-in-out infinite;
+}
+
+[data-theme='dark'] .ui-skeleton-line {
+  background-color: var(--surface-subtle);
+}
+
+[data-theme='dark'] .ui-skeleton-line::after {
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.03) 35%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.03) 65%,
+    transparent 100%
+  );
+}
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes overlayPopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes overlayDialogIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.overlay-fade-in {
+  animation: overlayFadeIn var(--overlay-duration-fast) var(--overlay-ease) both;
+}
+
+.overlay-pop-in {
+  animation: overlayPopIn var(--overlay-duration-fast) var(--overlay-ease) both;
+  transform-origin: top;
+}
+
+.overlay-dialog-in {
+  animation: overlayDialogIn var(--overlay-duration) var(--overlay-ease) both;
+}
+
+.overlay-backdrop-in {
+  animation: overlayFadeIn var(--overlay-duration) var(--overlay-ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay-fade-in,
+  .overlay-pop-in,
+  .overlay-dialog-in,
+  .overlay-backdrop-in {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+}

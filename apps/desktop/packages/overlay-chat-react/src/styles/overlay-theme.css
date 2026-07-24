@@ -1,0 +1,97 @@
+/* Legacy full-host entrypoint retained for the Chrome extension. */
+@import url("https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap");
+@import "@overlay/ui/styles.css";
+@import "./chat-surface.css";
+
+:root {
+  --background: #fafafa;
+  --foreground: #0a0a0a;
+  --muted: #71717a;
+  --muted-light: #a1a1aa;
+  --border: #e4e4e7;
+  --surface-elevated: #ffffff;
+  --surface-muted: #f5f5f5;
+  --surface-subtle: #f0f0f0;
+  --sidebar-surface: #f5f5f5;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --selection-bg: rgba(0, 0, 0, 0.1);
+  --scrollbar-thumb: #d4d4d8;
+  --scrollbar-thumb-hover: #a1a1aa;
+  --overlay-scrim: rgba(0, 0, 0, 0.4);
+  --font-serif-family: "Libre Baskerville", Georgia, "Times New Roman", serif;
+  --chat-badge-free-bg: #ecfdf5;
+  --chat-badge-free-fg: #065f46;
+  --chat-badge-upgrade-bg: #fef9ec;
+  --chat-badge-upgrade-fg: #b45309;
+  --chat-badge-upgrade-hover: #fde68a;
+  --chat-alert-error-bg: #fef2f2;
+  --chat-alert-error-border: #fecaca;
+  --chat-alert-error-text: #dc2626;
+  --chat-alert-warn-bg: #fffbeb;
+  --chat-alert-warn-border: #fde68a;
+  --chat-alert-warn-text: #92400e;
+  --chat-media-error-bg: linear-gradient(180deg, #fffafa 0%, #fff5f5 100%);
+  --chat-media-error-border: #fecaca;
+  --tool-line-label: #52525b;
+  --tool-line-chevron: #a1a1aa;
+  --overlay-brand-serif: var(--font-serif-family);
+  --overlay-mark-logo-url: url("/overlay-logo.png");
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-overlay-background: var(--background);
+  --color-overlay-foreground: var(--foreground);
+  --color-overlay-border: var(--border);
+  --font-overlay-serif: var(--font-serif-family);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: var(--selection-bg);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.font-serif {
+  font-family: var(--font-serif-family), Georgia, "Times New Roman", serif;
+}

@@ -1,0 +1,752 @@
+/*
+ * Canonical chat presentation shared by the web and desktop renderers.
+ *
+ * Hosts own page layout, fonts, theme variables, Tailwind, and global resets.
+ * The :where() scope keeps the selectors from leaking outside chat without
+ * increasing the specificity of the web rules this stylesheet replaces.
+ */
+
+@keyframes overlayChatMdBlockAppear {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+:where(.overlay-chat-surface) .md-block-appear {
+  animation: overlayChatMdBlockAppear 0.3s ease-out forwards;
+}
+
+:where(.overlay-chat-surface) .md-block-streaming {
+  opacity: 0.55;
+  transition: opacity 0.1s ease;
+}
+
+@keyframes overlayChatToolChipSoftBlink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.68;
+  }
+}
+
+:where(.overlay-chat-surface) .tool-chip-running,
+:where(.overlay-chat-surface) .overlay-tool-chip-running {
+  animation: overlayChatToolChipSoftBlink 1.4s ease-in-out infinite;
+}
+
+:where(.overlay-chat-surface) .code-block-wrapper {
+  margin: 0 0 1em;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+:where(.overlay-chat-surface) .code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.9rem;
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+}
+
+:where(.overlay-chat-surface) .code-block-lang {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+
+:where(.overlay-chat-surface) .code-block-copy {
+  font-size: 0.72rem;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+:where(.overlay-chat-surface) .code-block-copy:hover {
+  color: var(--foreground);
+}
+
+:where(.overlay-chat-surface) .code-block-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+:where(.overlay-chat-surface) .code-block-action {
+  display: inline-flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease;
+}
+
+:where(.overlay-chat-surface) .code-block-action:hover:not(:disabled),
+:where(.overlay-chat-surface) .code-block-action[data-active="true"] {
+  border-color: var(--border);
+  background: var(--surface-elevated);
+  color: var(--foreground);
+}
+
+:where(.overlay-chat-surface) .code-block-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+:where(.overlay-chat-surface) .code-block-render {
+  min-height: 320px;
+  background: #fff;
+}
+
+:where(.overlay-chat-surface) .code-block-render-frame {
+  display: block;
+  width: 100%;
+  height: clamp(320px, 58vh, 560px);
+  border: 0;
+  background: #fff;
+}
+
+@media (max-width: 640px) {
+  :where(.overlay-chat-surface) .code-block-render {
+    min-height: 260px;
+  }
+
+  :where(.overlay-chat-surface) .code-block-render-frame {
+    height: clamp(260px, 55vh, 460px);
+  }
+}
+
+[data-theme="dark"]
+  :where(.overlay-chat-surface)
+  .code-block-wrapper
+  .react-syntax-highlighter,
+:where(.overlay-chat-surface[data-theme="dark"])
+  .code-block-wrapper
+  .react-syntax-highlighter {
+  background: var(--surface-subtle) !important;
+}
+
+[data-theme="dark"] :where(.overlay-chat-surface) .code-block-wrapper pre,
+[data-theme="dark"] :where(.overlay-chat-surface) .code-block-wrapper code,
+:where(.overlay-chat-surface[data-theme="dark"]) .code-block-wrapper pre,
+:where(.overlay-chat-surface[data-theme="dark"]) .code-block-wrapper code {
+  background: transparent !important;
+}
+
+[data-theme="dark"]
+  :where(.overlay-chat-surface)
+  .code-block-wrapper
+  .react-syntax-highlighter
+  code[class*="language-"],
+:where(.overlay-chat-surface[data-theme="dark"])
+  .code-block-wrapper
+  .react-syntax-highlighter
+  code[class*="language-"] {
+  text-shadow: none;
+}
+
+:where(.overlay-chat-surface) .table-wrapper {
+  overflow-x: auto;
+  margin: 0 0 1em;
+  max-width: 100%;
+  border-radius: 0.5rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+:where(.overlay-chat-surface) .markdown-content table {
+  min-width: 100%;
+  width: auto;
+  max-width: none;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  table-layout: auto;
+}
+
+:where(.overlay-chat-surface) .markdown-content th {
+  background: var(--surface-muted);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--border);
+  min-width: 7rem;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+:where(.overlay-chat-surface) .markdown-content td {
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--border);
+  vertical-align: top;
+  min-width: 7rem;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+:where(.overlay-chat-surface) .markdown-content td ul,
+:where(.overlay-chat-surface) .markdown-content td ol {
+  margin: 0.35em 0 0;
+  padding-left: 1.25em;
+}
+
+:where(.overlay-chat-surface) .markdown-content td li {
+  margin: 0.15em 0;
+}
+
+:where(.overlay-chat-surface) .markdown-content tr:nth-child(even) td {
+  background: var(--background);
+}
+
+:where(.overlay-chat-surface) .markdown-content {
+  color: var(--foreground);
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+:where(.overlay-chat-surface) .reasoning-markdown .markdown-content {
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: inherit;
+}
+
+:where(.overlay-chat-surface) .reasoning-markdown .markdown-content p {
+  margin: 0 0 0.5em;
+}
+
+:where(.overlay-chat-surface) .reasoning-markdown .markdown-content h1,
+:where(.overlay-chat-surface) .reasoning-markdown .markdown-content h2,
+:where(.overlay-chat-surface) .reasoning-markdown .markdown-content h3,
+:where(.overlay-chat-surface) .reasoning-markdown .markdown-content h4 {
+  font-size: 0.875rem;
+  margin: 0.4em 0 0.25em;
+  font-weight: 600;
+}
+
+:where(.overlay-chat-surface) .reasoning-markdown .markdown-content ul,
+:where(.overlay-chat-surface) .reasoning-markdown .markdown-content ol {
+  margin: 0.25em 0 0.5em;
+  padding-left: 1.1rem;
+}
+
+:where(.overlay-chat-surface) .reasoning-markdown .markdown-content li {
+  margin: 0.1em 0;
+}
+
+:where(.overlay-chat-surface) .markdown-content p {
+  margin: 0 0 0.8em;
+}
+
+:where(.overlay-chat-surface) .markdown-content h1 {
+  margin: 0 0 0.45em;
+  font-size: 2rem;
+  line-height: 1.15;
+  font-weight: 600;
+}
+
+:where(.overlay-chat-surface) .markdown-content h2 {
+  margin: 0.4em 0 0.45em;
+  font-size: 1.45rem;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+:where(.overlay-chat-surface) .markdown-content h3 {
+  margin: 0.4em 0 0.4em;
+  font-size: 1.15rem;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+:where(.overlay-chat-surface) .markdown-content h4 {
+  margin: 0.35em 0 0.35em;
+  font-size: 1rem;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+:where(.overlay-chat-surface) .markdown-content h5,
+:where(.overlay-chat-surface) .markdown-content h6 {
+  margin: 0.3em 0 0.3em;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  font-weight: 600;
+  color: #525252;
+}
+
+:where(.overlay-chat-surface) .markdown-content ul,
+:where(.overlay-chat-surface) .markdown-content ol {
+  margin: 0 0 0.9em 1.4em;
+  padding: 0;
+}
+
+:where(.overlay-chat-surface) .markdown-content ul {
+  list-style-type: disc;
+}
+
+:where(.overlay-chat-surface) .markdown-content ol {
+  list-style-type: decimal;
+}
+
+:where(.overlay-chat-surface) .markdown-content li {
+  margin: 0.2em 0;
+}
+
+:where(.overlay-chat-surface) .markdown-content blockquote {
+  margin: 0 0 1em;
+  border-left: 3px solid #d4d4d8;
+  padding-left: 0.9rem;
+  color: #52525b;
+}
+
+:where(.overlay-chat-surface) .markdown-content .katex {
+  font-size: 1.02em;
+}
+
+:where(.overlay-chat-surface) .markdown-content .katex-display {
+  display: block;
+  margin: 0.85em auto 1.1em;
+  padding: 0.35em 0 0.5rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+  font-size: 1.12em;
+}
+
+:where(.overlay-chat-surface) .markdown-content .katex-display > .katex {
+  font-size: 1.2em;
+}
+
+:where(.overlay-chat-surface) .markdown-content .katex-error {
+  color: inherit !important;
+  border-bottom: 1px dotted color-mix(in srgb, currentColor 35%, transparent);
+}
+
+:where(.overlay-chat-surface) .markdown-content pre {
+  margin: 0 0 1em;
+  overflow-x: auto;
+  border-radius: 12px;
+  background: #f5f5f5;
+  padding: 0.9rem 1rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+:where(.overlay-chat-surface) .markdown-content code {
+  border-radius: 6px;
+  background: #f5f5f5;
+  padding: 0.1rem 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 0.9em;
+}
+
+:where(.overlay-chat-surface) .markdown-content pre code {
+  background: transparent;
+  padding: 0;
+}
+
+:where(.overlay-chat-surface) .markdown-content hr {
+  margin: 1.25rem 0;
+  border: 0;
+  border-top: 1px solid #e4e4e7;
+}
+
+:where(.overlay-chat-surface) .markdown-content a {
+  color: #0a0a0a;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+@keyframes overlayChatStreamMarkerPulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+/* Keep the active-response cue visible for people who reduce spatial motion.
+   This variant changes opacity only; it does not scale or move the mark. */
+@keyframes overlayChatStreamMarkerReducedPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Loading copy advances like a compact mechanical reel: most of each beat is
+   still, with a short upward transition between words. The duplicated final
+   word makes the loop seam visually identical to its first frame. */
+@keyframes overlayChatLoadingWordReel {
+  0%,
+  15% {
+    transform: translate3d(0, 0, 0);
+  }
+  16.667%,
+  31.667% {
+    transform: translate3d(0, -1.125rem, 0);
+  }
+  33.333%,
+  48.333% {
+    transform: translate3d(0, -2.25rem, 0);
+  }
+  50%,
+  65% {
+    transform: translate3d(0, -3.375rem, 0);
+  }
+  66.667%,
+  81.667% {
+    transform: translate3d(0, -4.5rem, 0);
+  }
+  83.333%,
+  98.333% {
+    transform: translate3d(0, -5.625rem, 0);
+  }
+  100% {
+    transform: translate3d(0, -6.75rem, 0);
+  }
+}
+
+:where(.overlay-chat-surface) .overlay-loading-tool-logo {
+  display: inline-flex;
+  width: 0.5rem;
+  flex: 0 0 0.5rem;
+  transform-origin: 50% 0.5625rem;
+  animation: overlayChatStreamMarkerPulse 1.3s ease-in-out infinite;
+}
+
+:where(.overlay-chat-surface) .overlay-stream-marker {
+  display: inline-block;
+  width: 0.95em;
+  height: 0.95em;
+  margin-left: 0.35em;
+  vertical-align: -0.12em;
+  background-image: var(--overlay-mark-logo-url, none);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  animation: overlayChatStreamMarkerPulse 1.3s ease-in-out infinite;
+  pointer-events: none;
+  min-width: 14px;
+  min-height: 14px;
+}
+
+:where(.overlay-chat-surface) .overlay-stream-marker--standalone,
+:where(.overlay-chat-surface)
+  .markdown-content--streaming
+  p:first-child
+  > .overlay-stream-marker:only-child,
+:where(.overlay-chat-surface)
+  .markdown-content--streaming
+  > .overlay-stream-marker:only-child {
+  margin-left: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  min-width: 20px;
+  min-height: 20px;
+  vertical-align: middle;
+}
+
+:where(.overlay-chat-surface) .overlay-loading-word-viewport {
+  display: inline-block;
+  height: 1.125rem;
+  min-width: 8.75rem;
+  overflow: hidden;
+}
+
+:where(.overlay-chat-surface) .overlay-loading-word-track {
+  display: flex;
+  flex-direction: column;
+  will-change: transform;
+  animation: overlayChatLoadingWordReel 12s linear infinite;
+}
+
+:where(.overlay-chat-surface) .overlay-loading-word {
+  display: block;
+  height: 1.125rem;
+  flex: 0 0 1.125rem;
+  white-space: nowrap;
+}
+
+/* Pointer hover is an enhancement. Keyboard focus and touch/coarse-pointer
+   layouts must keep completed exchange actions discoverable. */
+@media (hover: none), (pointer: coarse) {
+  :where(.overlay-chat-surface) .chat-exchange-actions--hover {
+    opacity: 1 !important;
+  }
+}
+
+@keyframes overlayChatStreamBlockSoften {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+:where(.overlay-chat-surface) .markdown-content--streaming p,
+:where(.overlay-chat-surface) .markdown-content--streaming li,
+:where(.overlay-chat-surface) .markdown-content--streaming td,
+:where(.overlay-chat-surface) .markdown-content--streaming th,
+:where(.overlay-chat-surface) .markdown-content--streaming h1,
+:where(.overlay-chat-surface) .markdown-content--streaming h2,
+:where(.overlay-chat-surface) .markdown-content--streaming h3,
+:where(.overlay-chat-surface) .markdown-content--streaming h4,
+:where(.overlay-chat-surface) .markdown-content--streaming h5,
+:where(.overlay-chat-surface) .markdown-content--streaming h6,
+:where(.overlay-chat-surface) .markdown-content--streaming blockquote,
+:where(.overlay-chat-surface) .markdown-content--streaming pre {
+  animation: overlayChatStreamBlockSoften 260ms ease-out both;
+  will-change: opacity;
+}
+
+:where(.overlay-chat-surface)
+  .markdown-content--streaming
+  .overlay-stream-marker {
+  animation: overlayChatStreamMarkerPulse 1.3s ease-in-out infinite;
+  opacity: 1;
+}
+
+@keyframes overlayChatMessageAppear {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+:where(.overlay-chat-surface) .message-appear {
+  animation: overlayChatMessageAppear 0.18s ease-out forwards;
+}
+
+@keyframes overlayChatToolLineShimmer {
+  0% {
+    background-position: 200% 50%;
+  }
+  100% {
+    background-position: -200% 50%;
+  }
+}
+
+:where(.overlay-chat-surface) .tool-line-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    #71717a 0%,
+    #71717a 40%,
+    #a1a1aa 50%,
+    #71717a 60%,
+    #71717a 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: overlayChatToolLineShimmer 1.35s linear infinite;
+}
+
+[data-theme="dark"] :where(.overlay-chat-surface) .tool-line-shimmer,
+:where(.overlay-chat-surface[data-theme="dark"]) .tool-line-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    #a1a1aa 0%,
+    #a1a1aa 38%,
+    #e4e4e7 50%,
+    #a1a1aa 62%,
+    #a1a1aa 100%
+  );
+}
+
+@keyframes overlayChatMediaShimmerSlide {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+:where(.overlay-chat-surface) .media-gen-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: #d4d4d4;
+  min-height: 8rem;
+  min-width: 8rem;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+:where(.overlay-chat-surface) .media-gen-shimmer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -55%;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.12) 32%,
+    rgba(255, 255, 255, 0.85) 50%,
+    rgba(255, 255, 255, 0.12) 68%,
+    transparent 100%
+  );
+  animation: overlayChatMediaShimmerSlide 1.25s ease-in-out infinite;
+}
+
+:where(.overlay-chat-surface) .media-gen-mesh {
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  background: linear-gradient(
+    135deg,
+    #efe8f4 0%,
+    #e6dcf2 28%,
+    #ddd0ea 52%,
+    #e8dff6 78%,
+    #f0e9f8 100%
+  );
+  min-width: 8rem;
+  min-height: 8rem;
+}
+
+:where(.overlay-chat-surface) .media-gen-mesh::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 38%,
+    rgba(255, 255, 255, 0.65) 50%,
+    rgba(255, 255, 255, 0.08) 62%,
+    transparent 100%
+  );
+  filter: blur(0.5px);
+  animation: overlayChatMediaShimmerSlide 1.65s ease-in-out infinite;
+}
+
+:where(.overlay-chat-surface) .media-gen-mesh--fill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+:where(.overlay-chat-surface) .chat-user-bubble::selection,
+:where(.overlay-chat-surface) .chat-user-bubble *::selection {
+  background-color: rgba(128, 128, 128, 0.35) !important;
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
+}
+
+:where(.overlay-chat-surface) .chat-user-bubble::-moz-selection,
+:where(.overlay-chat-surface) .chat-user-bubble *::-moz-selection {
+  background-color: rgba(128, 128, 128, 0.35) !important;
+  color: inherit !important;
+}
+
+[data-theme="dark"] :where(.overlay-chat-surface) .markdown-content pre,
+[data-theme="dark"] :where(.overlay-chat-surface) .markdown-content code,
+:where(.overlay-chat-surface[data-theme="dark"]) .markdown-content pre,
+:where(.overlay-chat-surface[data-theme="dark"]) .markdown-content code {
+  background: var(--surface-subtle);
+  color: var(--foreground);
+}
+
+[data-theme="dark"] :where(.overlay-chat-surface) .markdown-content blockquote,
+:where(.overlay-chat-surface[data-theme="dark"]) .markdown-content blockquote {
+  border-left-color: var(--border);
+  color: var(--muted);
+}
+
+[data-theme="dark"] :where(.overlay-chat-surface) .markdown-content h5,
+[data-theme="dark"] :where(.overlay-chat-surface) .markdown-content h6,
+:where(.overlay-chat-surface[data-theme="dark"]) .markdown-content h5,
+:where(.overlay-chat-surface[data-theme="dark"]) .markdown-content h6 {
+  color: var(--muted);
+}
+
+[data-theme="dark"] :where(.overlay-chat-surface) .markdown-content hr,
+:where(.overlay-chat-surface[data-theme="dark"]) .markdown-content hr {
+  border-top-color: var(--border);
+}
+
+[data-theme="dark"] :where(.overlay-chat-surface) .markdown-content a,
+:where(.overlay-chat-surface[data-theme="dark"]) .markdown-content a {
+  color: var(--foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(.overlay-chat-surface) .chat-exchange-actions--hover {
+    transition: none;
+  }
+
+  :where(.overlay-chat-surface) .overlay-stream-marker,
+  :where(.overlay-chat-surface) .overlay-loading-tool-logo,
+  :where(.overlay-chat-surface)
+    .markdown-content--streaming
+    .overlay-stream-marker {
+    animation: overlayChatStreamMarkerReducedPulse 1.8s ease-in-out infinite;
+    transform: none;
+  }
+
+  :where(.overlay-chat-surface) .markdown-content--streaming p,
+  :where(.overlay-chat-surface) .markdown-content--streaming li,
+  :where(.overlay-chat-surface) .markdown-content--streaming td,
+  :where(.overlay-chat-surface) .markdown-content--streaming th,
+  :where(.overlay-chat-surface) .markdown-content--streaming h1,
+  :where(.overlay-chat-surface) .markdown-content--streaming h2,
+  :where(.overlay-chat-surface) .markdown-content--streaming h3,
+  :where(.overlay-chat-surface) .markdown-content--streaming h4,
+  :where(.overlay-chat-surface) .markdown-content--streaming h5,
+  :where(.overlay-chat-surface) .markdown-content--streaming h6,
+  :where(.overlay-chat-surface) .markdown-content--streaming blockquote,
+  :where(.overlay-chat-surface) .markdown-content--streaming pre {
+    animation: none;
+  }
+}

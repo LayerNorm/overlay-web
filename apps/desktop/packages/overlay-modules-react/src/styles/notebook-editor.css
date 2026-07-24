@@ -1,0 +1,252 @@
+/* Canonical rich-text notebook/editor styling shared by web and desktop. */
+
+.app-note-editor table {
+  min-width: 100%;
+  width: auto;
+  max-width: none;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  table-layout: auto;
+}
+
+.app-note-editor th {
+  background: var(--surface-muted);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--border);
+  /* Keep column text from getting squished into tiny stacks when there are
+   * many columns; whitespace inside a cell still wraps normally, but each
+   * column reserves enough width to read 1–2 short words on one line. */
+  min-width: 7rem;
+  white-space: normal;
+  /* Override the ancestor `word-break: break-word` so compact header labels
+   * (e.g. "Nick Bostrom") stay on a single line when space is available. */
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.app-note-editor td {
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--border);
+  vertical-align: top;
+  min-width: 7rem;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.app-note-editor tr:nth-child(even) td {
+  background: var(--background);
+}
+
+.app-note-editor {
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-height: 300px;
+  outline: none;
+}
+
+.app-note-editor p {
+  margin: 0 0 0.8em;
+}
+
+.app-note-editor h1 {
+  margin: 0 0 0.45em;
+  font-size: 2rem;
+  line-height: 1.15;
+  font-weight: 600;
+}
+
+.app-note-editor h2 {
+  margin: 0.4em 0 0.45em;
+  font-size: 1.45rem;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.app-note-editor h3 {
+  margin: 0.4em 0 0.4em;
+  font-size: 1.15rem;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.app-note-editor h4 {
+  margin: 0.35em 0 0.35em;
+  font-size: 1rem;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.app-note-editor h5,
+.app-note-editor h6 {
+  margin: 0.3em 0 0.3em;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.app-note-editor ul,
+.app-note-editor ol {
+  margin: 0 0 0.9em 1.4em;
+  padding: 0;
+}
+
+.app-note-editor ul {
+  list-style-type: disc;
+}
+
+.app-note-editor ol {
+  list-style-type: decimal;
+}
+
+.app-note-editor li {
+  margin: 0.2em 0;
+}
+
+.app-note-editor blockquote {
+  margin: 0 0 1em;
+  border-left: 3px solid var(--border);
+  padding-left: 0.9rem;
+  color: var(--muted);
+}
+
+.app-note-editor pre {
+  margin: 0 0 1em;
+  overflow-x: auto;
+  border-radius: 12px;
+  background: var(--surface-subtle);
+  color: var(--foreground);
+  padding: 0.9rem 1rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.app-note-editor code {
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  color: var(--foreground);
+  padding: 0.1rem 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.app-note-editor pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.app-note-editor hr {
+  margin: 1.25rem 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.app-note-editor a {
+  color: var(--link, var(--foreground));
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.app-note-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted-light);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+.app-note-editor ul[data-type="taskList"] {
+  list-style: none;
+  margin-left: 0;
+  padding-left: 0;
+}
+
+.app-note-editor ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.app-note-editor ul[data-type="taskList"] li > label {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+}
+
+.app-note-editor ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.app-note-editor mark {
+  background: color-mix(in srgb, var(--warning, #f59e0b) 35%, transparent);
+  color: var(--foreground);
+  border-radius: 0.25rem;
+  padding: 0.05rem 0.2rem;
+}
+
+.app-note-editor u {
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.16em;
+}
+
+.app-note-editor sub,
+.app-note-editor sup {
+  font-size: 0.78em;
+}
+
+.app-note-editor .Tiptap-mathematics-editor {
+  background: var(--surface-subtle);
+  color: var(--foreground);
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.4rem;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  font-size: 0.92em;
+}
+
+.app-note-editor .Tiptap-mathematics-render {
+  padding: 0.1rem 0.15rem;
+}
+
+.app-note-editor .Tiptap-mathematics-render--editable {
+  cursor: pointer;
+}
+
+.app-note-editor .katex-display {
+  margin: 0.45em 0 1em;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.1rem;
+}
+
+.app-note-editor img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.85rem;
+  margin: 0.25rem 0 1rem;
+}
+
+.app-note-editor iframe {
+  width: 100%;
+  min-height: 22rem;
+  border: 0;
+  border-radius: 0.85rem;
+  margin: 0.25rem 0 1rem;
+}
+
+/* Deterministic parity harness notebook states. */
+.file-parity-editor-card { min-height: 430px; }
+.file-parity-editor-card > header { align-items: center; border-bottom: 1px solid var(--border); display: flex; gap: 8px; justify-content: space-between; min-height: 42px; padding: 8px 11px; }
+.file-parity-editor-card > header span { color: var(--foreground); font-size: 11px; font-weight: 620; }
+.file-parity-editor-card > header small { color: var(--muted-light); font-family: var(--font-mono, ui-monospace, monospace); font-size: 9px; font-weight: 400; }
+.file-parity-editor-card > header > div { display: flex; flex-direction: column; }
+.file-parity-editor-card .app-note-editor { height: 385px; min-height: 0; overflow: auto; padding: 22px 24px; }
+.file-parity-editor-status { border: 1px solid var(--border); border-radius: 999px; color: var(--muted) !important; font-size: 9px !important; font-weight: 500 !important; padding: 4px 7px; text-transform: capitalize; }
+.file-parity-editor-status--conflicted { color: var(--danger) !important; }

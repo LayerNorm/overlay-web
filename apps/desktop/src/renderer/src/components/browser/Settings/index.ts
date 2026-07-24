@@ -1,0 +1,8 @@
+export { SettingsPanel } from './SettingsPanel'
+export { SettingsSidebar } from './SettingsSidebar'
+export { ShortcutsTab } from './ShortcutsTab'
+export { HistoryTab } from './HistoryTab'
+export { DownloadsTab } from './DownloadsTab'
+export { BookmarksTab } from './BookmarksTab'
+export { CookiesTab } from './CookiesTab'
+export { PermissionsTab } from './PermissionsTab'

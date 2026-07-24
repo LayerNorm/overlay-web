@@ -1,0 +1,70 @@
+export const overlayDesignTokens = {
+  colors: {
+    background: 'var(--background)',
+    foreground: 'var(--foreground)',
+    muted: 'var(--muted)',
+    mutedLight: 'var(--muted-light)',
+    border: 'var(--border)',
+    surfaceElevated: 'var(--surface-elevated)',
+    surfaceMuted: 'var(--surface-muted)',
+    surfaceSubtle: 'var(--surface-subtle)',
+    sidebarSurface: 'var(--sidebar-surface)',
+    success: 'var(--success)',
+    warning: 'var(--warning)',
+    danger: 'var(--danger)',
+  },
+  spacing: {
+    0: '0',
+    1: '0.25rem',
+    2: '0.5rem',
+    3: '0.75rem',
+    4: '1rem',
+    5: '1.25rem',
+    6: '1.5rem',
+    8: '2rem',
+    10: '2.5rem',
+    12: '3rem',
+  },
+  typography: {
+    sans: 'var(--font-sans)',
+    mono: 'var(--font-mono)',
+    serif: 'var(--font-serif)',
+    sizes: {
+      xs: '0.75rem',
+      sm: '0.875rem',
+      base: '1rem',
+      lg: '1.125rem',
+      xl: '1.25rem',
+    },
+    lineHeights: {
+      tight: '1.25',
+      normal: '1.5',
+      relaxed: '1.625',
+    },
+  },
+  radii: {
+    sm: '0.375rem',
+    md: '0.5rem',
+    lg: '0.75rem',
+    xl: '1rem',
+    full: '9999px',
+  },
+} as const
+
+export const overlayTailwindTheme = {
+  colors: overlayDesignTokens.colors,
+  spacing: overlayDesignTokens.spacing,
+  borderRadius: overlayDesignTokens.radii,
+  fontFamily: {
+    sans: ['var(--font-sans)'],
+    mono: ['var(--font-mono)'],
+    serif: ['var(--font-serif)'],
+  },
+  fontSize: {
+    xs: ['var(--overlay-text-xs)', { lineHeight: 'var(--overlay-leading-normal)' }],
+    sm: ['var(--overlay-text-sm)', { lineHeight: 'var(--overlay-leading-normal)' }],
+    base: ['var(--overlay-text-base)', { lineHeight: 'var(--overlay-leading-normal)' }],
+    lg: ['var(--overlay-text-lg)', { lineHeight: 'var(--overlay-leading-tight)' }],
+    xl: ['var(--overlay-text-xl)', { lineHeight: 'var(--overlay-leading-tight)' }],
+  },
+} as const

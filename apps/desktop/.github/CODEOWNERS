@@ -1,0 +1,16 @@
+* @DevelopedByDev
+
+/src/main/ipc/ @DevelopedByDev
+/src/main/services/security/ @DevelopedByDev
+/src/main/services/subscription-service.ts @DevelopedByDev
+/src/main/services/key-cache-service.ts @DevelopedByDev
+/src/main/services/auto-updater-service.ts @DevelopedByDev
+/src/preload/ @DevelopedByDev
+/src/types/ @DevelopedByDev
+/build/ @DevelopedByDev
+/electron-builder.yml @DevelopedByDev
+/.github/workflows/ @DevelopedByDev
+/scripts/verify-macos-artifact.mjs @DevelopedByDev
+/packages/overlay-auth-contracts/ @DevelopedByDev
+/packages/overlay-billing/ @DevelopedByDev
+/packages/overlay-tools-core/ @DevelopedByDev

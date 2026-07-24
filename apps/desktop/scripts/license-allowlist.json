@@ -1,0 +1,39 @@
+{
+  "runtimeLicenseExceptions": [
+    {
+      "package": "posthog-js",
+      "licenses": ["SEE LICENSE IN LICENSE"],
+      "reason": "The bundled package license file declares Apache-2.0."
+    },
+    {
+      "package": "busboy",
+      "licenses": ["MISSING"],
+      "reason": "The package metadata and bundled license declare MIT."
+    },
+    {
+      "package": "format",
+      "licenses": ["MISSING"],
+      "reason": "The package metadata declares MIT."
+    },
+    {
+      "package": "json-bignum",
+      "licenses": ["MISSING"],
+      "reason": "The bundled LICENSE is the MIT license."
+    },
+    {
+      "package": "once",
+      "licenses": ["MISSING"],
+      "reason": "The package metadata and bundled license declare ISC."
+    },
+    {
+      "package": "streamsearch",
+      "licenses": ["MISSING"],
+      "reason": "The package metadata and bundled license declare MIT."
+    },
+    {
+      "package": "wrappy",
+      "licenses": ["MISSING"],
+      "reason": "The package metadata and bundled license declare ISC."
+    }
+  ]
+}

@@ -1,0 +1,192 @@
+/* Canonical knowledge/files surface. The fixture classes are intentionally
+   production-safe: they only activate inside the parity harness. */
+.overlay-knowledge-surface {
+  color: var(--foreground);
+  min-height: 0;
+  min-width: 0;
+}
+
+.overlay-knowledge-list {
+  margin-inline: auto;
+  max-width: 48rem;
+}
+
+.overlay-knowledge-row {
+  align-items: flex-start;
+  border-radius: 0.5rem;
+  border-style: solid;
+  border-width: 1px;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.875rem;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+}
+
+.overlay-knowledge-card-grid {
+  column-gap: 1rem;
+  margin-inline: auto;
+  max-width: 1440px;
+  width: 100%;
+}
+
+.overlay-knowledge-card {
+  background: var(--surface-elevated);
+  border-radius: 0.75rem;
+  border-style: solid;
+  border-width: 1px;
+  break-inside: avoid;
+  display: block;
+  margin-bottom: 1rem;
+  overflow: hidden;
+  position: relative;
+  text-align: left;
+  width: 100%;
+}
+
+body[data-file-parity-fixture="true"] nextjs-portal {
+  display: none !important;
+}
+
+.file-parity-page {
+  background: var(--background);
+  color: var(--foreground);
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.file-parity-page__content {
+  margin: 0 auto;
+  width: 100%;
+}
+
+.file-parity-page__header {
+  align-items: flex-end;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+
+.file-parity-page__header p,
+.file-parity-page__header h1 {
+  margin: 0;
+}
+
+.file-parity-page__header p {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.file-parity-page__header h1 {
+  color: var(--foreground);
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: -0.025em;
+}
+
+.file-parity-page__header code {
+  color: var(--muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+}
+
+.file-parity-fixture {
+  --file-parity-radius: 14px;
+  --file-parity-shadow: 0 18px 50px rgba(10, 10, 10, 0.06);
+  box-sizing: border-box;
+  color: var(--foreground);
+  font-family: var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.file-parity-fixture *,
+.file-parity-fixture *::before,
+.file-parity-fixture *::after {
+  box-sizing: border-box;
+}
+
+.file-parity-fixture button {
+  color: inherit;
+  font: inherit;
+}
+
+.file-parity-section + .file-parity-section { margin-top: 28px; }
+.file-parity-section__header { align-items: flex-end; display: flex; justify-content: space-between; margin-bottom: 12px; }
+.file-parity-section__header h2 { color: var(--foreground); font-size: 15px; font-weight: 620; letter-spacing: -0.01em; margin: 0; }
+.file-parity-section__header p { color: var(--muted); font-size: 12px; margin: 3px 0 0; }
+.file-parity-grid { display: grid; gap: 12px; }
+.file-parity-grid--states, .file-parity-grid--interactions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.file-parity-grid--viewers { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.file-parity-grid--editors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.file-parity-layout { display: grid; gap: 12px; grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.6fr); }
+
+.file-parity-card,
+.file-parity-viewer,
+.file-parity-editor-card {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--file-parity-radius);
+  box-shadow: var(--file-parity-shadow);
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.file-parity-card { min-height: 210px; padding: 12px; }
+.file-parity-card__header { align-items: flex-start; display: flex; gap: 8px; justify-content: space-between; margin-bottom: 10px; }
+.file-parity-card__header h3 { color: var(--foreground); font-size: 12px; font-weight: 620; margin: 0; }
+.file-parity-card__header p { color: var(--muted); display: -webkit-box; font-size: 10px; line-height: 1.35; margin: 2px 0 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+
+.file-parity-sync { align-items: center; background: var(--surface-muted); border: 1px solid var(--border); border-radius: 999px; color: var(--muted); display: inline-flex; flex: none; font-size: 9px; gap: 4px; line-height: 1; padding: 5px 7px; white-space: nowrap; }
+.file-parity-sync--conflicted { background: color-mix(in srgb, var(--danger) 10%, var(--surface-elevated)); border-color: color-mix(in srgb, var(--danger) 28%, var(--border)); color: var(--danger); }
+.file-parity-sync--syncing svg, .file-parity-sync--migration svg { animation: file-parity-spin 1.4s linear infinite; }
+.file-parity-fixture .file-parity-sync--syncing svg,
+.file-parity-fixture .file-parity-sync--migration svg,
+.file-parity-fixture .animate-spin {
+  animation-delay: -350ms;
+  animation-play-state: paused;
+}
+
+.file-parity-search,
+.file-parity-notice { align-items: center; background: var(--surface-muted); border: 1px solid var(--border); border-radius: 8px; color: var(--muted); display: flex; font-size: 10px; gap: 6px; margin-bottom: 8px; min-height: 28px; padding: 5px 8px; }
+.file-parity-notice--error { background: color-mix(in srgb, var(--danger) 8%, var(--surface-elevated)); color: var(--danger); }
+.file-parity-empty { align-items: center; color: var(--muted-light); display: flex; flex-direction: column; font-size: 11px; gap: 8px; justify-content: center; min-height: 132px; }
+
+.file-parity-list { display: flex; flex-direction: column; gap: 3px; }
+.file-parity-list[data-compact="true"] { max-height: 270px; overflow: hidden; }
+.file-parity-row-wrap { min-width: 0; padding-left: calc(var(--file-depth, 0) * 12px); position: relative; }
+.file-parity-row { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 8px; cursor: default; display: flex; gap: 7px; min-height: 30px; padding: 5px 7px; text-align: left; width: 100%; }
+.file-parity-row:hover, .file-parity-row[data-selected="true"], .file-parity-row[data-bulk-selected="true"] { background: var(--surface-muted); border-color: var(--border); }
+.file-parity-row[data-selected="true"] { box-shadow: inset 2px 0 var(--foreground); }
+.file-parity-row__icon, .file-parity-row__chevron, .file-parity-row__actions { color: var(--muted-light); display: inline-flex; flex: none; }
+.file-parity-row__name { color: var(--foreground); flex: 1; font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-parity-row__actions { opacity: 0; }
+.file-parity-row:hover .file-parity-row__actions, .file-parity-row__actions[aria-hidden="false"] { opacity: 1; }
+.file-parity-kind { background: var(--surface-subtle); border-radius: 999px; color: var(--muted); font-size: 8px; padding: 3px 5px; }
+.file-parity-checkbox { align-items: center; border: 1px solid var(--border); border-radius: 4px; color: var(--background); display: inline-flex; height: 15px; justify-content: center; width: 15px; }
+.file-parity-checkbox[data-checked="true"] { background: var(--foreground); border-color: var(--foreground); }
+
+.file-parity-context-menu { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 14px 35px rgba(0, 0, 0, 0.16); display: flex; flex-direction: column; padding: 4px; position: absolute; right: 5px; top: 28px; width: 130px; z-index: 5; }
+.file-parity-context-menu button { background: transparent; border: 0; border-radius: 6px; color: var(--foreground); font-size: 10px; padding: 6px 8px; text-align: left; }
+.file-parity-context-menu button:hover { background: var(--surface-muted); }
+.file-parity-context-menu button[data-danger] { color: var(--danger); }
+
+@keyframes file-parity-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 1180px) {
+  .file-parity-grid--states, .file-parity-grid--interactions, .file-parity-grid--viewers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .file-parity-layout { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+  .file-parity-grid--states, .file-parity-grid--interactions, .file-parity-grid--viewers, .file-parity-grid--editors { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .file-parity-fixture *, .file-parity-fixture *::before, .file-parity-fixture *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+}

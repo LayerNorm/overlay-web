@@ -1,0 +1,79 @@
+# Dependencies
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# testing docs
+resources/documents/
+*.pdf
+*.docx
+*.xlsx
+
+*.pem
+*.p12
+*.pfx
+*.mobileprovision
+private_keys/
+keys/
+certs/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build output
+dist
+out
+build
+!build/entitlements.mac.plist
+*.local
+*.tsbuildinfo
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+
+# Electron
+*.log
+.eslintcache
+electron.vite.config.*.mjs
+
+# Testing
+coverage
+
+# Security / internal audit reports (do not publish)
+/reports/
+/plans/*security*.md
+
+# Misc
+.cache
+
+# Embedding models (ONNX) - downloaded during build/packaging
+resources/models/embeddings/**/*.onnx
+
+# WhisperKit
+WhisperKit/.build
+WhisperKit/Models
+
+ParakeetServer/Models/*
+ParakeetServer/.build/*
+# Keep the whisperkit-bundle for distribution
+!whisperkit-bundle
+
+# Mobile app (separate repository)
+mobile/

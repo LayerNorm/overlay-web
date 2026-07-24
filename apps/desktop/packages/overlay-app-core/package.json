@@ -1,0 +1,47 @@
+{
+  "name": "@overlay/app-core",
+  "version": "0.0.1",
+  "private": false,
+  "license": "Apache-2.0",
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "files": ["src", "README.md", "LICENSE", "tsconfig.json"],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./app-shell": "./src/app-shell.ts",
+    "./automations": "./src/automations.ts",
+    "./capabilities": "./src/capabilities.ts",
+    "./contracts": "./src/contracts.ts",
+    "./knowledge": "./src/knowledge.ts",
+    "./knowledge-surface": "./src/knowledge-surface.ts",
+    "./knowledge-surface-fixture": "./src/knowledge-surface-fixture.ts",
+    "./knowledge-migration": "./src/knowledge-migration.ts",
+    "./extensions": "./src/extensions.ts",
+    "./file-parity-fixtures": "./src/file-parity-fixtures.ts",
+    "./file-viewer": "./src/file-viewer.ts",
+    "./modules": "./src/modules.ts",
+    "./notes": "./src/notes.ts",
+    "./projects": "./src/projects.ts",
+    "./settings-account": "./src/settings-account.ts",
+    "./theme": "./src/theme.ts"
+  },
+  "dependencies": {
+    "@overlay/auth-contracts": "0.0.1",
+    "@overlay/billing": "0.0.1",
+    "@overlay/llm-gateway": "0.0.1",
+    "@overlay/storage-contracts": "0.0.1"
+  },
+  "scripts": {
+    "test": "tsx --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "tsx": "^4.8.1",
+    "typescript": "^5"
+  }
+}

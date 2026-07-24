@@ -1,0 +1,154 @@
+/*
+ * shared-chat.css — Tailwind utilities + shared @overlay/chat-react component
+ * styles, scoped for the desktop renderer.
+ *
+ * Tailwind preflight is disabled (see tailwind.config.js) to avoid breaking the
+ * desktop's existing inline-style + <style> tag UI. The scoped resets below
+ * provide the minimal preflight-like behavior that shared components need
+ * (border-style defaults, box-sizing) only within .shared-chat-scope.
+ */
+
+/* Shared primitives plus the same chat-only presentation used by the web app. */
+@import '@overlay/ui/styles.css';
+@import '@overlay/chat-react/chat-surface.css';
+@import '@overlay/modules-react/knowledge-surface.css';
+@import '@overlay/modules-react/file-viewer.css';
+@import '@overlay/modules-react/notebook-editor.css';
+
+@tailwind utilities;
+
+/* App-chrome sidebar motion retained after removing the legacy chat style injector. */
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+}
+
+/*
+ * Scoped resets — only apply within the shared chat container so the rest of
+ * the desktop app is unaffected. These replicate the subset of Tailwind
+ * preflight that shared components rely on.
+ */
+:where(.shared-chat-scope) :where(*, *::before, *::after) {
+  box-sizing: border-box;
+  border-style: solid;
+  border-width: 0;
+}
+
+/* Shared non-chat packages need the same narrow preflight subset. Keeping this
+   opt-in avoids changing legacy desktop panels while matching the web host. */
+:where(.shared-app-scope) :where(*, *::before, *::after) {
+  box-sizing: border-box;
+  border-style: solid;
+  border-width: 0;
+}
+
+:where(.shared-app-scope) :where(h1, h2, h3, h4, h5, h6, p, ul, ol, blockquote, pre, hr) {
+  margin: 0;
+}
+
+:where(.shared-app-scope) :where(ul, ol) {
+  list-style: none;
+  padding: 0;
+}
+
+:where(.shared-app-scope) :where(img, video) {
+  max-width: 100%;
+  height: auto;
+}
+
+:where(.shared-app-scope) button {
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+:where(.shared-app-scope) a {
+  color: inherit;
+  text-decoration: inherit;
+}
+
+/* Reset margins for headings/lists/paragraphs ONLY when they are not inside
+   a shared .markdown-content block. The canonical chat stylesheet supplies
+   proper paragraph/list/heading spacing inside .markdown-content; resetting
+   those values here made desktop messages look vertically crowded. */
+:where(.shared-chat-scope)
+  :where(h1, h2, h3, h4, h5, h6, p, ul, ol, blockquote, pre, hr):not(.markdown-content *) {
+  margin: 0;
+}
+
+:where(.shared-chat-scope) :where(ul, ol):not(.markdown-content *) {
+  list-style: none;
+  padding: 0;
+}
+
+:where(.shared-chat-scope) :where(img, video) {
+  max-width: 100%;
+  height: auto;
+}
+
+:where(.shared-chat-scope) button {
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  border: inherit;
+}
+
+:where(.shared-chat-scope) a {
+  color: inherit;
+  text-decoration: inherit;
+}
+
+/*
+ * The canonical chat stylesheet defines a pulsing stream marker using
+ * --overlay-mark-logo-url. Point it to the desktop's bundled logo asset.
+ * The actual URL is set inline by the theme bridge; this is a fallback.
+ */
+.shared-chat-scope {
+  --overlay-mark-logo-url: var(--desktop-overlay-logo-url, url(''));
+}
+
+/*
+ * Base typography for the shared chat surface. Shared components rely on the
+ * host page providing a sans-serif base; without this, text inherited the
+ * browser's default serif (Times New Roman). Sizes match the web chat
+ * (~14px body text) and hard overflow guards prevent horizontal scrolling.
+ */
+.shared-chat-scope {
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.shared-chat-scope pre {
+  max-width: 100%;
+  overflow-x: auto;
+}

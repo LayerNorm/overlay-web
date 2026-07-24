@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "artifacts": [
+    {
+      "path": "whisperkit-bundle/whisperkit-cli",
+      "sha256": "c2c4ef6abde93ee905c7f2b7b7394f216e4c5a32f3cb947c5e4209af75d9466c",
+      "architecture": "arm64",
+      "source": "https://github.com/argmaxinc/WhisperKit.git",
+      "sourceRevision": "cb00a08d08d2dad37ca8aa488ee0695e97ab6045",
+      "sourceLicense": "MIT",
+      "licenseFile": "third_party/licenses/WhisperKit-LICENSE",
+      "buildScript": "scripts/build-whisperkit-bundle.sh"
+    },
+    {
+      "path": "parakeet-bundle/parakeet-cli",
+      "sha256": "b251e660abd27609992c0561d7cdd612d11e88f95478e8e9a0a6f12849cccb02",
+      "architecture": "arm64",
+      "source": "ParakeetServer",
+      "sourceRevision": "3c575bef7354c1c654959d4976c9bf78b2962e4e1913bcdf6e7c5c2309c0c580",
+      "upstreamRevision": "2d18c856aad09b509d07322ae2e811f06c98a2a9",
+      "sourceLicense": "Apache-2.0",
+      "licenseFile": "third_party/licenses/FluidAudio-LICENSE",
+      "buildScript": "scripts/build-parakeet-bundle.sh"
+    },
+    {
+      "path": "resources/ax-helper",
+      "sha256": "4ce96e9a634c0e9e918406639940afe4cec193aadd13b5855e09e4d53e484edf",
+      "architecture": "arm64",
+      "source": "ax-helper/ax-helper.swift",
+      "sourceRevision": "c365ffcb36f043548e6cdb6b4fa511b642b1d93b912f486779a92d239c388711",
+      "sourceLicense": "AGPL-3.0-or-later",
+      "licenseFile": "LICENSE",
+      "buildScript": "scripts/build-ax-helper.sh"
+    }
+  ]
+}

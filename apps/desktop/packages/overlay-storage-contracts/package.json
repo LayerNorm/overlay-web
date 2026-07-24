@@ -1,0 +1,27 @@
+{
+  "name": "@overlay/storage-contracts",
+  "version": "0.0.1",
+  "private": false,
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "files": ["src", "README.md", "LICENSE", "tsconfig.json"],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts"
+  },
+  "scripts": {
+    "test": "tsx --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "tsx": "^4.8.1",
+    "typescript": "^5"
+  }
+}

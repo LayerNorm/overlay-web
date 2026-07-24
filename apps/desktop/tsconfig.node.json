@@ -1,0 +1,25 @@
+{
+  "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
+  "include": ["electron.vite.config.*", "src/main/**/*", "src/preload/**/*", "src/types/**/*"],
+  "compilerOptions": {
+    "composite": true,
+    "types": ["electron-vite/node"],
+    "baseUrl": ".",
+    "paths": {
+      "@overlay/app-core": ["packages/overlay-app-core/src/index.ts"],
+      "@overlay/app-core/*": ["packages/overlay-app-core/src/*"],
+      "@overlay/auth-contracts": ["packages/overlay-auth-contracts/src/index.ts"],
+      "@overlay/auth-contracts/*": ["packages/overlay-auth-contracts/src/*"],
+      "@overlay/storage-contracts": ["packages/overlay-storage-contracts/src/index.ts"],
+      "@overlay/storage-contracts/*": ["packages/overlay-storage-contracts/src/*"],
+      "@overlay/billing": ["packages/overlay-billing/src/index.ts"],
+      "@overlay/billing/*": ["packages/overlay-billing/src/*"],
+      "@overlay/llm-gateway": ["packages/overlay-llm-gateway/src/index.ts"],
+      "@overlay/llm-gateway/*": ["packages/overlay-llm-gateway/src/*"],
+      "@ai-sdk/anthropic": ["node_modules/@ai-sdk/anthropic"],
+      "@ai-sdk/groq": ["node_modules/@ai-sdk/groq"],
+      "@ai-sdk/openai": ["node_modules/@ai-sdk/openai"],
+      "@openrouter/ai-sdk-provider": ["node_modules/@openrouter/ai-sdk-provider"]
+    }
+  }
+}

@@ -1,0 +1,147 @@
+name: Release macOS
+
+# SECURITY CONTAINMENT: Official desktop releases are frozen until the Gate B
+# requirements in guides/RELEASE_PROCESS.md pass. Keep this workflow non-runnable
+# rather than relying on maintainers to remember not to push a release tag.
+on:
+  workflow_dispatch:
+    inputs:
+      release_source_sha:
+        description: Full 40-character source commit to build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+concurrency:
+  group: desktop-release-${{ inputs.release_source_sha }}
+  cancel-in-progress: false
+
+jobs:
+  build-mac:
+    if: ${{ false }}
+    runs-on: macos-latest
+    environment: release-macos
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Validate immutable source
+        env:
+          RELEASE_SOURCE_SHA: ${{ inputs.release_source_sha }}
+        run: |
+          if ! [[ "$RELEASE_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "release_source_sha must be a full lowercase commit SHA" >&2
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.release_source_sha }}
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify source and dependencies
+        env:
+          RELEASE_SOURCE_SHA: ${{ inputs.release_source_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_SOURCE_SHA"
+          test -z "$(git status --porcelain)"
+          npm run check:standalone
+          npm run license:check
+          npm run check:dependencies:all
+          npm run check:release-security
+          npm run check:launch-controls
+          npm run security:verify:source
+
+      - name: Build, sign, and notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          WORKOS_CLIENT_ID: ${{ secrets.WORKOS_CLIENT_ID }}
+          DEV_WORKOS_CLIENT_ID: ${{ secrets.DEV_WORKOS_CLIENT_ID }}
+          WORKOS_REDIRECT_URI: overlay://auth/callback
+          AUTH_STORAGE_KEY: overlay-auth-session
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: npm run build:mac:ci
+
+      - name: Generate dependency SBOM
+        run: npm run generate:sbom
+
+      - name: Verify signed artifacts
+        env:
+          RELEASE_SOURCE_SHA: ${{ inputs.release_source_sha }}
+        run: npm run verify:mac-artifact
+
+      - name: Attest verified artifacts
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        with:
+          subject-path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.yml
+            dist/*.blockmap
+            dist/sbom.cdx.json
+
+      - name: Upload immutable release candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: overlay-macos-${{ inputs.release_source_sha }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.yml
+            dist/*.blockmap
+            dist/sbom.cdx.json
+            dist/release-manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-mac:
+    if: ${{ false }}
+    needs: build-mac
+    runs-on: macos-latest
+    environment: release-publish
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download verified release candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: overlay-macos-${{ inputs.release_source_sha }}
+          path: dist
+
+      - name: Create release publishing token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          owner: DevelopedByDev
+          repositories: overlay-releases
+
+      - name: Publish verified artifacts
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_SOURCE_SHA: ${{ inputs.release_source_sha }}
+        run: |
+          VERSION="$(node -p "require('./dist/release-manifest.json').version")"
+          gh release create "v${VERSION}" dist/* \
+            --repo DevelopedByDev/overlay-releases \
+            --title "Overlay v${VERSION}" \
+            --notes "Built from source commit ${RELEASE_SOURCE_SHA}."

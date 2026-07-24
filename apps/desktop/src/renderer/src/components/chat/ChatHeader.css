@@ -1,0 +1,20 @@
+/* Hide scrollbar for tabs scroll area */
+.chat-tabs-scroll {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.chat-tabs-scroll::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+/* Hover effect for inactive tabs */
+.chat-tab:not(.chat-tab-active):hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Show close button on hover for inactive tabs */
+.chat-tab:hover .chat-tab-close {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
