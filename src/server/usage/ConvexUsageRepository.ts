@@ -26,12 +26,16 @@ export class ConvexUsageRepository implements UsageRepository {
     entitlements: Entitlements
     expiresAt?: number
     kind: UsageEvent['kind']
+    metadata?: Record<string, unknown>
     modelId?: string
+    operationId: string
+    requestFingerprint: string
     reservationId: string
     reservedCents: number
     userId: string
   }): Promise<UsageReservationResult> {
     let result: {
+      idempotent: boolean
       reservationId: string
       reservedCents: number
       status: UsageReservationStatus
@@ -41,6 +45,8 @@ export class ConvexUsageRepository implements UsageRepository {
         expiresAt: args.expiresAt,
         kind: args.kind,
         modelId: args.modelId,
+        operationId: args.operationId,
+        requestFingerprint: args.requestFingerprint,
         reservationId: args.reservationId,
         reservedCents: args.reservedCents,
         serverSecret: this.serverSecret,
@@ -65,8 +71,10 @@ export class ConvexUsageRepository implements UsageRepository {
     return {
       ok: true,
       entitlements: args.entitlements,
+      replayed: result.idempotent,
       reservationId: args.reservationId,
       reservedCents: args.reservedCents,
+      status: result.status,
     }
   }
 
@@ -76,7 +84,10 @@ export class ConvexUsageRepository implements UsageRepository {
     reservationId: string
     userId: string
   }): Promise<{ status: UsageReservationStatus }> {
-    const result = await convex.mutation<{ status: UsageReservationStatus }>('platform/usage:finalizeBudgetReservationByServer', {
+    const result = await convex.mutation<{
+      error?: string
+      status: UsageReservationStatus
+    }>('platform/usage:finalizeBudgetReservationByServer', {
       actualCents: args.actualCostCents,
       events: args.events?.map(toConvexEvent),
       reservationId: args.reservationId,
@@ -84,6 +95,24 @@ export class ConvexUsageRepository implements UsageRepository {
       userId: args.userId,
     }, { throwOnError: true })
     if (!result) throw new Error('Failed to finalize usage reservation')
+    if (result.error) throw new Error(result.error)
+    return { status: result.status }
+  }
+
+  async markStarted(args: {
+    reservationId: string
+    userId: string
+  }): Promise<{ status: UsageReservationStatus }> {
+    const result = await convex.mutation<{ status: UsageReservationStatus | 'missing' }>(
+      'platform/usage:markBudgetReservationStartedByServer',
+      {
+        reservationId: args.reservationId,
+        serverSecret: this.serverSecret,
+        userId: args.userId,
+      },
+      { throwOnError: true },
+    )
+    if (!result || result.status === 'missing') throw new Error('Usage reservation not found before provider start')
     return { status: result.status }
   }
 
@@ -154,6 +183,7 @@ function toConvexEvent(event: UsageEvent) {
   return {
     cachedTokens: event.cachedTokens,
     cost: event.costCents,
+    durationSeconds: event.durationSeconds,
     inputTokens: event.inputTokens,
     modelId: event.modelId,
     outputTokens: event.outputTokens,

@@ -7,6 +7,7 @@ import {
   billableBudgetCentsFromProviderUsd,
   finalizeProviderBudgetReservation,
   markProviderBudgetReconcile,
+  markProviderBudgetStarted,
   releaseProviderBudgetReservation,
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
@@ -33,9 +34,12 @@ export interface ActUsagePolicy {
   reserveForAttempt(args: {
     entitlements: Entitlements
     estimatedInputTokens: number
+    idempotencyKey?: string | null
     maxOutputTokens: number
     modelId: string
+    operationId: string
     paid: boolean
+    requestFingerprint: string
     userId: string
   }): Promise<ActBudgetReservationResult>
   recordFinishedUsage(args: {
@@ -46,6 +50,10 @@ export interface ActUsagePolicy {
     reservationId: string | null
     userId: string
   }): Promise<{ finalized: boolean; reservationId: string | null }>
+  markReservationStarted(args: {
+    reservationId: string | null | undefined
+    userId: string
+  }): Promise<void>
   releaseReservation(args: {
     reason?: string
     reservationId: string | null | undefined
@@ -88,9 +96,12 @@ export class UnlimitedUsagePolicy implements ActUsagePolicy {
   async reserveForAttempt(_args: {
     entitlements: Entitlements
     estimatedInputTokens: number
+    idempotencyKey?: string | null
     maxOutputTokens: number
     modelId: string
+    operationId: string
     paid: boolean
+    requestFingerprint: string
     userId: string
   }): Promise<ActBudgetReservationResult> {
     return { ok: true, reservationId: null }
@@ -106,6 +117,10 @@ export class UnlimitedUsagePolicy implements ActUsagePolicy {
   }): Promise<{ finalized: boolean; reservationId: string | null }> {
     return { finalized: false, reservationId: null }
   }
+  async markReservationStarted(_args: {
+    reservationId: string | null | undefined
+    userId: string
+  }): Promise<void> {}
 
   async releaseReservation(_args: {
     reason?: string
@@ -135,9 +150,12 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
   async reserveForAttempt(args: {
     entitlements: Entitlements
     estimatedInputTokens: number
+    idempotencyKey?: string | null
     maxOutputTokens: number
     modelId: string
+    operationId: string
     paid: boolean
+    requestFingerprint: string
     userId: string
   }): Promise<ActBudgetReservationResult> {
     if (!this.deps.accountAllUsage && (!args.paid || !isPremiumModel(args.modelId))) {
@@ -164,9 +182,12 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
     const reservation = await reserveProviderBudget({
       userId: args.userId,
       entitlements: args.entitlements,
+      idempotencyKey: args.idempotencyKey,
       providerCostUsd: estimatedProviderCostUsd,
       kind: 'agent',
       modelId: args.modelId,
+      operationId: args.operationId,
+      requestFingerprint: args.requestFingerprint,
     })
     if (!reservation.ok) {
       return {
@@ -267,6 +288,13 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
       }
       return { finalized: false, reservationId: args.reservationId }
     }
+  }
+
+  async markReservationStarted(args: {
+    reservationId: string | null | undefined
+    userId: string
+  }): Promise<void> {
+    await markProviderBudgetStarted(args)
   }
 
   async releaseReservation(args: {

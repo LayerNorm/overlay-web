@@ -53,7 +53,7 @@ function keyHashFor(args: {
   )
 }
 
-async function requestHashFor(request: NextRequest): Promise<string> {
+export async function fingerprintApiRequest(request: NextRequest): Promise<string> {
   const body = await request.clone().arrayBuffer().catch((_error) => new ArrayBuffer(0))
   const bodyHash = sha256(Buffer.from(body))
   return sha256(`${request.method.toUpperCase()}\n${request.nextUrl.pathname}\n${request.nextUrl.search}\n${bodyHash}`)
@@ -156,7 +156,7 @@ export async function handleIdempotentMutation(
     pathname: request.nextUrl.pathname,
     userId,
   })
-  const requestHash = await requestHashFor(request)
+  const requestHash = await fingerprintApiRequest(request)
   const reservation = await options.repository.reserve({
       userId,
       keyHash,

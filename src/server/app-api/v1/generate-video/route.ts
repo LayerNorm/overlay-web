@@ -4,6 +4,7 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { readValidatedJson } from '@/server/app-api/validated-input'
 import { experimental_generateVideo as generateVideo } from '@/server/ai/sdk'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import { outputService } from '@/server/outputs/http'
 import { getGatewayVideoModel } from '@/server/ai/model-runtime'
 import type { VideoSubMode } from '@/shared/ai/gateway/model-types'
@@ -115,13 +116,23 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           controller.close()
           return
         }
+        const authorizedModelIds = await resolveAuthorizedModelIds({ entitlements: currentEntitlements })
+        if (!authorizedModelIds.video.has(selectedModelId)) {
+          controller.enqueue(encode(sseChunk({
+            type: 'error',
+            error: 'model_not_allowed',
+            message: `Video model ${selectedModelId} is not allowed by the server model policy.`,
+          })))
+          controller.close()
+          return
+        }
         if ((currentEntitlements.overlayStorageBytesUsed ?? 0) >= (currentEntitlements.overlayStorageBytesLimit ?? 0)) {
           controller.enqueue(encode(sseChunk({ type: 'error', error: 'storage_limit_exceeded', message: 'Overlay storage limit reached. Delete files or outputs, or upgrade your plan.' })))
           controller.close()
           return
         }
 
-        const subModeModels = allowedModels
+        const subModeModels = allowedModels.filter((candidateId) => authorizedModelIds.video.has(candidateId))
         const priorityList = [selectedModelId, ...subModeModels.filter((id) => id !== selectedModelId)]
         const priceEntries = await Promise.all(
           priorityList.map(async (candidateId) => [
@@ -152,9 +163,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         const reservation = await generationUsagePolicy.reserve({
           userId: auth.userId,
           entitlements: currentEntitlements,
+          idempotencyKey: context.requestIdempotencyKey,
           providerCostUsd: maxProviderCostUsd,
           kind: 'generation',
           modelId: modelId ?? 'video-fallback',
+          operationId: 'media.generate-video',
+          requestFingerprint: context.requestFingerprint,
         })
         if (!reservation.ok) {
           controller.enqueue(encode(sseChunk({ type: 'error', ...reservation.payload, error: reservation.code })))
@@ -203,6 +217,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         let usedModelId: string | null = null
         let usedDuration = effectiveDuration
         let videoBase64: string | null = null
+        await generationUsagePolicy.markStarted({
+          userId: auth.userId,
+          reservationId,
+        })
         for (const tryModelId of pricedPriorityList) {
           try {
             const videoModel = await getGatewayVideoModel(

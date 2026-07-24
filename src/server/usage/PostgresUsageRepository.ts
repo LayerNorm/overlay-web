@@ -25,6 +25,10 @@ type BudgetAccountRow = {
 
 type ReservationRow = {
   actualMicros: number | string | null
+  kind: string
+  metadata: Record<string, unknown>
+  modelId: string | null
+  providerWorkStarted: boolean
   reservedMicros: number | string
   status: UsageReservationStatus
   userId: string
@@ -48,6 +52,8 @@ export class PostgresUsageRepository implements UsageRepository {
     kind: UsageEvent['kind']
     metadata?: Record<string, unknown>
     modelId?: string
+    operationId: string
+    requestFingerprint: string
     reservationId: string
     reservedCents: number
     userId: string
@@ -57,14 +63,23 @@ export class PostgresUsageRepository implements UsageRepository {
       const account = await lockOrCreateAccount(tx, args.userId)
       const existing = await selectReservationForUpdate(tx, args.reservationId)
       if (existing) {
-        assertReservationIdentity(existing, args.userId, reservedMicros)
+        assertReservationIdentity(existing, {
+          kind: args.kind,
+          modelId: args.modelId,
+          operationId: args.operationId,
+          requestFingerprint: args.requestFingerprint,
+          reservedMicros,
+          userId: args.userId,
+        })
         return {
           ok: true,
           entitlements: entitlementsFromAccount(account),
+          replayed: true,
           reservationId: existing.status === 'released' || existing.status === 'expired'
             ? null
             : args.reservationId,
           reservedCents: microsToCents(Number(existing.reservedMicros)),
+          status: existing.status,
         }
       }
 
@@ -86,7 +101,11 @@ export class PostgresUsageRepository implements UsageRepository {
           expires_at, created_at, updated_at
         ) VALUES (
           ${args.reservationId}, ${args.userId}, ${args.kind}, ${args.modelId ?? null},
-          ${reservedMicros}, 'reserved', ${JSON.stringify(args.metadata ?? {})}::jsonb,
+          ${reservedMicros}, 'reserved', ${JSON.stringify({
+            ...(args.metadata ?? {}),
+            operationId: args.operationId,
+            requestFingerprint: args.requestFingerprint,
+          })}::jsonb,
           ${new Date(args.expiresAt ?? Date.now() + DEFAULT_RESERVATION_TTL_MS)}, ${now}, ${now}
         )
       `)
@@ -110,8 +129,10 @@ export class PostgresUsageRepository implements UsageRepository {
           ...account,
           reservedMicros: Number(account.reservedMicros) + reservedMicros,
         }),
+        replayed: false,
         reservationId: args.reservationId,
         reservedCents: microsToCents(reservedMicros),
+        status: 'reserved',
       }
     })
   }
@@ -123,7 +144,7 @@ export class PostgresUsageRepository implements UsageRepository {
     userId: string
   }): Promise<{ status: UsageReservationStatus }> {
     const actualMicros = centsToMicros(args.actualCostCents)
-    return await this.db.transaction(async (tx) => {
+    const outcome: { error?: string; status: UsageReservationStatus } = await this.db.transaction(async (tx) => {
       const account = await lockOrCreateAccount(tx, args.userId)
       const reservation = await requireReservation(tx, args.reservationId, args.userId)
       if (reservation.status === 'finalized') return { status: 'finalized' }
@@ -132,6 +153,10 @@ export class PostgresUsageRepository implements UsageRepository {
       }
 
       const reservedMicros = Number(reservation.reservedMicros)
+      if (actualMicros > reservedMicros) {
+        await updateReservationReconcile(tx, args.reservationId, 'actual_cost_exceeds_reservation')
+        return { status: 'reconcile_required' as const, error: 'actual_cost_exceeds_reservation' }
+      }
       const now = new Date()
       await tx.execute(sql`
         UPDATE usage_reservations
@@ -162,6 +187,24 @@ export class PostgresUsageRepository implements UsageRepository {
       void account
       return { status: 'finalized' }
     })
+    if ('error' in outcome && outcome.error) throw new Error(outcome.error)
+    return { status: outcome.status }
+  }
+
+  async markStarted(args: {
+    reservationId: string
+    userId: string
+  }): Promise<{ status: UsageReservationStatus }> {
+    return await this.db.transaction(async (tx) => {
+      const reservation = await requireReservation(tx, args.reservationId, args.userId)
+      if (reservation.status !== 'reserved') return { status: reservation.status }
+      await tx.execute(sql`
+        UPDATE usage_reservations
+        SET provider_work_started = true, updated_at = ${new Date()}
+        WHERE id = ${args.reservationId} AND user_id = ${args.userId} AND status = 'reserved'
+      `)
+      return { status: 'reserved' }
+    })
   }
 
   async release(args: {
@@ -174,7 +217,7 @@ export class PostgresUsageRepository implements UsageRepository {
       await lockOrCreateAccount(tx, args.userId)
       const reservation = await requireReservation(tx, args.reservationId, args.userId)
       if (reservation.status !== 'reserved') return { status: reservation.status }
-      if (args.providerWorkStarted) {
+      if (args.providerWorkStarted || reservation.providerWorkStarted) {
         await updateReservationReconcile(tx, args.reservationId, args.reason)
         return { status: 'reconcile_required' }
       }
@@ -318,8 +361,9 @@ async function lockOrCreateAccount(tx: Transaction, userId: string): Promise<Bud
 
 async function selectReservationForUpdate(tx: Transaction, id: string): Promise<ReservationRow | null> {
   const result = await tx.execute<ReservationRow>(sql`
-    SELECT user_id AS "userId", reserved_micros AS "reservedMicros",
-           actual_micros AS "actualMicros", status
+    SELECT user_id AS "userId", kind, model_id AS "modelId",
+           reserved_micros AS "reservedMicros", actual_micros AS "actualMicros",
+           provider_work_started AS "providerWorkStarted", metadata, status
     FROM usage_reservations
     WHERE id = ${id}
     FOR UPDATE
@@ -333,8 +377,25 @@ async function requireReservation(tx: Transaction, id: string, userId: string): 
   return reservation
 }
 
-function assertReservationIdentity(row: ReservationRow, userId: string, reservedMicros: number): void {
-  if (row.userId !== userId || Number(row.reservedMicros) !== reservedMicros) {
+function assertReservationIdentity(
+  row: ReservationRow,
+  expected: {
+    kind: string
+    modelId?: string
+    operationId: string
+    requestFingerprint: string
+    reservedMicros: number
+    userId: string
+  },
+): void {
+  if (
+    row.userId !== expected.userId ||
+    Number(row.reservedMicros) !== expected.reservedMicros ||
+    row.kind !== expected.kind ||
+    (row.modelId ?? undefined) !== expected.modelId ||
+    row.metadata?.operationId !== expected.operationId ||
+    row.metadata?.requestFingerprint !== expected.requestFingerprint
+  ) {
     throw new Error('Usage reservation id was reused with different parameters')
   }
 }
@@ -371,7 +432,10 @@ async function insertEvents(tx: Transaction, args: {
         ${event.kind}, ${event.modelId ?? null}, ${event.inputTokens ?? null},
         ${event.outputTokens ?? null}, ${event.cachedTokens ?? null},
         ${providerCostMicros}, ${billableMicros},
-        ${JSON.stringify(event.metadata ?? {})}::jsonb, ${new Date(event.occurredAt)}
+        ${JSON.stringify({
+          ...(event.metadata ?? {}),
+          ...(event.durationSeconds === undefined ? {} : { durationSeconds: event.durationSeconds }),
+        })}::jsonb, ${new Date(event.occurredAt)}
       )
       ON CONFLICT (id) DO NOTHING
       RETURNING id

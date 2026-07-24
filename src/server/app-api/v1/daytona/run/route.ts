@@ -105,7 +105,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let meteringEndedAt: number | null = null
   const budgetReservation = await reserveDaytonaRunBudget({
     userId,
+    idempotencyKey: context.requestIdempotencyKey,
     maxDurationSeconds: maxDuration,
+    operationId: 'sandbox.daytona-run',
+    requestFingerprint: context.requestFingerprint,
     deps: {
       getEntitlementsByServer: (args) => generationUsagePolicy.getEntitlements(args),
       ensureBudgetAvailable: (args) => generationUsagePolicy.ensureBudgetAvailable({
@@ -121,6 +124,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   const sandboxBudgetReservationId = budgetReservation.reservationId
 
   try {
+    await generationUsagePolicy.markStarted({
+      userId,
+      reservationId: sandboxBudgetReservationId,
+    })
     workspaceRun = await ensureWorkspaceSandbox({
       repository: appData.repositories.daytonaWorkspaces,
       userId,

@@ -8,6 +8,20 @@ import {
   resolveGatewayApiKey,
   resolveGatewayProviderToolProxyModelId,
 } from './gateway-runtime'
+import type { Entitlements } from '@/shared/app/app-contracts'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import { calculateLanguageModelTokenCostOrNull } from './live-model-pricing'
+import { providerRequestFingerprint } from '@/server/billing/ServerProviderUsageMeter'
+import { billableBudgetCentsFromProviderUsd } from '@/server/billing/billing-runtime'
+
+const GATEWAY_SEARCH_REQUEST_USD = 0.005
+const GATEWAY_SEARCH_MAX_PROVIDER_COST_USD = 0.05
+
+export type GatewaySearchBillingContext = {
+  entitlements: Entitlements
+  requestFingerprint: string
+  userId: string
+}
 
 const PERPLEXITY_DEFAULTS = {
   maxResults: 10,
@@ -218,8 +232,9 @@ export async function runPerplexitySearchDirectForRepair(
   query: string | string[],
   options?: Partial<Omit<GatewayPerplexitySearchParams, 'query'>>,
   innerProxyModelId: string = resolveGatewayProviderToolProxyModelId(),
+  billingContext?: GatewaySearchBillingContext,
 ): Promise<unknown> {
-  return executeGatewayPerplexitySearch(accessToken, { query, ...options }, innerProxyModelId)
+  return executeGatewayPerplexitySearch(accessToken, { query, ...options }, innerProxyModelId, billingContext)
 }
 
 async function runInnerGenerateTextWithTool<T extends 'perplexity_search' | 'parallel_search'>(params: {
@@ -229,10 +244,15 @@ async function runInnerGenerateTextWithTool<T extends 'perplexity_search' | 'par
   gw: ReturnType<typeof createGateway>
   innerProxyModelId: string
   maxAttempts: number
-}): Promise<ReturnType<typeof generateText>> {
+}): Promise<{
+  attempts: number
+  modelId: string
+  result: Awaited<ReturnType<typeof generateText>>
+}> {
   const { toolName, tool: providerTool, prompt, gw, innerProxyModelId, maxAttempts } = params
   let last: Awaited<ReturnType<typeof generateText>> | undefined
   let lastError: unknown
+  let attempts = 0
 
   for (const modelId of toolProxyModelAttempts(innerProxyModelId)) {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -240,6 +260,7 @@ async function runInnerGenerateTextWithTool<T extends 'perplexity_search' | 'par
         innerProxyModelId: modelId,
       })
       try {
+        attempts += 1
         last = await generateText({
           model: gw(modelId),
           tools: { [toolName]: providerTool },
@@ -256,7 +277,7 @@ async function runInnerGenerateTextWithTool<T extends 'perplexity_search' | 'par
         })
         break
       }
-      if (hasToolResult(last, toolName)) return last
+      if (hasToolResult(last, toolName)) return { attempts, modelId, result: last }
       logger.warn(`[AI Gateway] ${toolName} missing tool result, retrying`, {
         attempt,
         finishReason: last.finishReason,
@@ -265,8 +286,89 @@ async function runInnerGenerateTextWithTool<T extends 'perplexity_search' | 'par
     }
     logToolProxyFallback(modelId, toolName)
   }
-  if (last) return last
+  if (last) {
+    return {
+      attempts,
+      modelId: last.steps.at(-1)?.response.modelId ?? innerProxyModelId,
+      result: last,
+    }
+  }
   throw lastError instanceof Error ? lastError : new Error(String(lastError ?? 'AI Gateway tool model failed'))
+}
+
+async function reserveGatewaySearch(params: {
+  billingContext: GatewaySearchBillingContext | undefined
+  input: unknown
+  innerProxyModelId: string
+  toolName: 'perplexity_search' | 'parallel_search'
+}) {
+  if (!params.billingContext) throw new Error('gateway_search_billing_context_required')
+  const policy = getOverlayServerContext().generationUsagePolicy
+  const operationId = `gateway.${params.toolName}:${globalThis.crypto.randomUUID()}`
+  const reservation = await policy.reserve({
+    entitlements: params.billingContext.entitlements,
+    idempotencyKey: operationId,
+    kind: 'generation',
+    modelId: `gateway-tool/${params.toolName}`,
+    operationId,
+    providerCostUsd: GATEWAY_SEARCH_MAX_PROVIDER_COST_USD,
+    requestFingerprint: providerRequestFingerprint({
+      parent: params.billingContext.requestFingerprint,
+      input: params.input,
+      proxyModel: params.innerProxyModelId,
+    }),
+    userId: params.billingContext.userId,
+  })
+  if (!reservation.ok) throw new Error(reservation.code)
+  await policy.markStarted({
+    reservationId: reservation.reservationId,
+    userId: params.billingContext.userId,
+  })
+  return { policy, reservationId: reservation.reservationId }
+}
+
+async function finalizeGatewaySearch(params: {
+  attempts: number
+  billingContext: GatewaySearchBillingContext
+  meter: Awaited<ReturnType<typeof reserveGatewaySearch>>
+  modelId: string
+  result: Awaited<ReturnType<typeof generateText>>
+  toolName: 'perplexity_search' | 'parallel_search'
+}) {
+  const usage = params.result.totalUsage
+  const inputTokens = usage?.inputTokens ?? 0
+  const outputTokens = usage?.outputTokens ?? 0
+  const cachedTokens = usage?.inputTokenDetails?.cacheReadTokens ?? 0
+  const modelCostUsd = await calculateLanguageModelTokenCostOrNull(
+    params.modelId,
+    inputTokens,
+    cachedTokens,
+    outputTokens,
+  )
+  if (modelCostUsd === null) {
+    await params.meter.policy.markForReconcile({
+      errorMessage: `pricing_missing:${params.modelId}`,
+      reservationId: params.meter.reservationId,
+      userId: params.billingContext.userId,
+    })
+    throw new Error(`pricing_missing:${params.modelId}`)
+  }
+  const actualProviderCostUsd =
+    Math.max(1, params.attempts) * GATEWAY_SEARCH_REQUEST_USD + modelCostUsd
+  await params.meter.policy.finalize({
+    actualProviderCostUsd,
+    events: [{
+      type: 'generation',
+      modelId: `gateway-tool/${params.toolName}`,
+      inputTokens,
+      outputTokens,
+      cachedTokens,
+      cost: billableBudgetCentsFromProviderUsd(actualProviderCostUsd),
+      timestamp: Date.now(),
+    }],
+    reservationId: params.meter.reservationId,
+    userId: params.billingContext.userId,
+  })
 }
 
 function extractProviderToolOutput(
@@ -294,6 +396,7 @@ export async function executeGatewayPerplexitySearch(
   accessToken: string | undefined,
   params: GatewayPerplexitySearchParams,
   innerProxyModelId: string = resolveGatewayProviderToolProxyModelId(),
+  billingContext?: GatewaySearchBillingContext,
 ): Promise<unknown> {
   const apiKey = await resolveGatewayApiKey(accessToken)
   if (!apiKey) {
@@ -307,14 +410,37 @@ export async function executeGatewayPerplexitySearch(
   })
   const prompt = `Call perplexity_search exactly once with this JSON input and no other tools:\n${JSON.stringify(buildPerplexityProviderPayload(params))}`
 
-  const result = await runInnerGenerateTextWithTool({
-    toolName: 'perplexity_search',
-    tool: perplexityTool,
-    prompt,
-    gw,
+  const meter = await reserveGatewaySearch({
+    billingContext,
     innerProxyModelId,
-    maxAttempts: INNER_TOOL_ATTEMPTS,
+    input: params,
+    toolName: 'perplexity_search',
   })
+  let meteredResult: Awaited<ReturnType<typeof runInnerGenerateTextWithTool>>
+  try {
+    meteredResult = await runInnerGenerateTextWithTool({
+      toolName: 'perplexity_search',
+      tool: perplexityTool,
+      prompt,
+      gw,
+      innerProxyModelId,
+      maxAttempts: INNER_TOOL_ATTEMPTS,
+    })
+    await finalizeGatewaySearch({
+      ...meteredResult,
+      billingContext: billingContext!,
+      meter,
+      toolName: 'perplexity_search',
+    })
+  } catch (error) {
+    await meter.policy.markForReconcile({
+      errorMessage: error instanceof Error ? error.message : 'gateway_search_failed',
+      reservationId: meter.reservationId,
+      userId: billingContext!.userId,
+    }).catch((_error) => undefined)
+    throw error
+  }
+  const result = meteredResult.result
   const extracted = extractProviderToolOutput(result, 'perplexity_search', 'Perplexity search')
   if (extracted !== undefined) {
     logger.info('[AI Gateway] perplexity_search inner generateText OK')
@@ -332,7 +458,7 @@ export async function executeGatewayPerplexitySearch(
           maxResults: params.maxResults ?? PARALLEL_DEFAULTS.maxResults,
           maxCharsPerResult: PARALLEL_DEFAULTS.excerpts.maxCharsPerResult,
           maxCharsTotal: PARALLEL_DEFAULTS.excerpts.maxCharsTotal,
-        }, innerProxyModelId)
+        }, innerProxyModelId, billingContext)
         const repaired = mergeExactEntityFallbackResults(extracted, fallbackOutput, fallbackPlan)
         if (repaired !== extracted) {
           logger.info('[AI Gateway] perplexity_search exact entity enriched with parallel_search', {
@@ -399,6 +525,7 @@ export async function executeGatewayParallelSearch(
   accessToken: string | undefined,
   params: GatewayParallelSearchParams,
   innerProxyModelId: string = resolveGatewayProviderToolProxyModelId(),
+  billingContext?: GatewaySearchBillingContext,
 ): Promise<unknown> {
   const apiKey = await resolveGatewayApiKey(accessToken)
   if (!apiKey) {
@@ -412,14 +539,37 @@ export async function executeGatewayParallelSearch(
   })
   const prompt = `Call parallel_search exactly once with this JSON input and no other tools:\n${JSON.stringify(buildParallelProviderPayload(params))}`
 
-  const result = await runInnerGenerateTextWithTool({
-    toolName: 'parallel_search',
-    tool: parallelTool,
-    prompt,
-    gw,
+  const meter = await reserveGatewaySearch({
+    billingContext,
     innerProxyModelId,
-    maxAttempts: INNER_TOOL_ATTEMPTS,
+    input: params,
+    toolName: 'parallel_search',
   })
+  let meteredResult: Awaited<ReturnType<typeof runInnerGenerateTextWithTool>>
+  try {
+    meteredResult = await runInnerGenerateTextWithTool({
+      toolName: 'parallel_search',
+      tool: parallelTool,
+      prompt,
+      gw,
+      innerProxyModelId,
+      maxAttempts: INNER_TOOL_ATTEMPTS,
+    })
+    await finalizeGatewaySearch({
+      ...meteredResult,
+      billingContext: billingContext!,
+      meter,
+      toolName: 'parallel_search',
+    })
+  } catch (error) {
+    await meter.policy.markForReconcile({
+      errorMessage: error instanceof Error ? error.message : 'gateway_search_failed',
+      reservationId: meter.reservationId,
+      userId: billingContext!.userId,
+    }).catch((_error) => undefined)
+    throw error
+  }
+  const result = meteredResult.result
   const extracted = extractProviderToolOutput(result, 'parallel_search', 'Parallel search')
   if (extracted !== undefined) {
     logger.info('[AI Gateway] parallel_search inner generateText OK')
@@ -495,35 +645,47 @@ export const parallelSearchInputSchema = z.object({
   maxAgeSeconds: z.number().int().min(0).optional(),
 })
 
-export async function getGatewayPerplexitySearchTool(accessToken?: string, chatModelId?: string) {
+export async function getGatewayPerplexitySearchTool(
+  accessToken?: string,
+  chatModelId?: string,
+  billingContext?: GatewaySearchBillingContext,
+) {
   try {
     await getOrCreateGateway(accessToken)
     const innerProxyModelId = resolveGatewayProviderToolProxyModelId(chatModelId)
     logger.info('[AI Gateway] perplexity_search: function-tool wrapper for chat model', chatModelId ?? '(unknown)', {
       innerProxyModelId,
     })
-    return createPerplexitySearchFunctionTool(accessToken, innerProxyModelId)
+    return createPerplexitySearchFunctionTool(accessToken, innerProxyModelId, billingContext)
   } catch (err) {
     logger.error('[AI Gateway] perplexity_search unavailable — check AI_GATEWAY_API_KEY:', err)
     return null
   }
 }
 
-export async function getGatewayParallelSearchTool(accessToken?: string, chatModelId?: string) {
+export async function getGatewayParallelSearchTool(
+  accessToken?: string,
+  chatModelId?: string,
+  billingContext?: GatewaySearchBillingContext,
+) {
   try {
     await getOrCreateGateway(accessToken)
     const innerProxyModelId = resolveGatewayProviderToolProxyModelId(chatModelId)
     logger.info('[AI Gateway] parallel_search: function-tool wrapper for chat model', chatModelId ?? '(unknown)', {
       innerProxyModelId,
     })
-    return createParallelSearchFunctionTool(accessToken, innerProxyModelId)
+    return createParallelSearchFunctionTool(accessToken, innerProxyModelId, billingContext)
   } catch (err) {
     logger.error('[AI Gateway] parallel_search unavailable — check AI_GATEWAY_API_KEY:', err)
     return null
   }
 }
 
-function createPerplexitySearchFunctionTool(accessToken: string | undefined, innerProxyModelId: string) {
+function createPerplexitySearchFunctionTool(
+  accessToken: string | undefined,
+  innerProxyModelId: string,
+  billingContext?: GatewaySearchBillingContext,
+) {
   return tool({
     description:
       'Search the public web (Perplexity via Vercel AI Gateway). Use for quick lookups, news, and general web search. ' +
@@ -544,11 +706,15 @@ function createPerplexitySearchFunctionTool(accessToken: string | undefined, inn
       lastUpdatedAfterFilter: input.lastUpdatedAfterFilter,
       lastUpdatedBeforeFilter: input.lastUpdatedBeforeFilter,
       searchRecencyFilter: input.searchRecencyFilter,
-    }, innerProxyModelId),
+    }, innerProxyModelId, billingContext),
   })
 }
 
-function createParallelSearchFunctionTool(accessToken: string | undefined, innerProxyModelId: string) {
+function createParallelSearchFunctionTool(
+  accessToken: string | undefined,
+  innerProxyModelId: string,
+  billingContext?: GatewaySearchBillingContext,
+) {
   return tool({
     description:
       'Deep web research (Parallel AI via Vercel AI Gateway): LLM-optimized excerpts, strong for synthesis, ' +
@@ -567,7 +733,7 @@ function createParallelSearchFunctionTool(accessToken: string | undefined, inner
       maxCharsPerResult: input.maxCharsPerResult,
       maxCharsTotal: input.maxCharsTotal,
       maxAgeSeconds: input.maxAgeSeconds,
-    }, innerProxyModelId),
+    }, innerProxyModelId, billingContext),
   })
 }
 

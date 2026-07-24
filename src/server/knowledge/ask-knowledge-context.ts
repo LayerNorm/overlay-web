@@ -15,6 +15,11 @@ const BLOCK_CHAR_BUDGET = 9000
  * Hybrid search for the latest user message: system extension + citation map for source metadata.
  */
 export async function buildAutoRetrievalBundle(args: {
+  billing: {
+    idempotencyKey: string
+    operationId: string
+    requestFingerprint: string
+  }
   userMessage: string
   userId: string
   accessToken?: string
@@ -28,6 +33,7 @@ export async function buildAutoRetrievalBundle(args: {
 
   try {
     const result = await getOverlayServerContext().knowledgeSearchService.hybridSearch({
+      billing: args.billing,
       userId: args.userId,
       query: q.slice(0, MAX_QUERY_CHARS),
       projectId: args.projectId,
@@ -84,6 +90,11 @@ export function formatAutoRetrievalBundle(
  * @deprecated Prefer {@link buildAutoRetrievalBundle} when you need citation metadata.
  */
 export async function buildAutoRetrievalSystemExtension(args: {
+  billing: {
+    idempotencyKey: string
+    operationId: string
+    requestFingerprint: string
+  }
   userMessage: string
   userId: string
   accessToken?: string

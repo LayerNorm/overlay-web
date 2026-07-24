@@ -236,6 +236,8 @@ export default defineSchema({
       v.literal('sandbox'),
     ),
     modelId: v.optional(v.string()),
+    operationId: v.optional(v.string()),
+    requestFingerprint: v.optional(v.string()),
     reservedCents: v.number(),
     finalizedCents: v.optional(v.number()),
     providerWorkStarted: v.optional(v.boolean()),

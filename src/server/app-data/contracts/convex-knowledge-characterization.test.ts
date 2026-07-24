@@ -32,7 +32,17 @@ test('Convex knowledge characterization', {
       ])
       const query = 'Cedar Lantern Silver Orchard Quartz Harbor Indigo Compass Crimson Delta'
       for (let attempt = 0; attempt < 30; attempt += 1) {
-        const result = await search.hybridSearch({ m: 20, query, userId: fixture.userId })
+        const nonce = globalThis.crypto.randomUUID()
+        const result = await search.hybridSearch({
+          billing: {
+            idempotencyKey: nonce,
+            operationId: 'knowledge.characterization.await-indexed',
+            requestFingerprint: nonce,
+          },
+          m: 20,
+          query,
+          userId: fixture.userId,
+        })
         const found = new Set(result.chunks.map((chunk) => chunk.sourceId))
         if ([...expected].every((sourceId) => found.has(sourceId))) return
         await new Promise((resolve) => setTimeout(resolve, 2_000))

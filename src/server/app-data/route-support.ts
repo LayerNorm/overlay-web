@@ -43,6 +43,13 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'app-shell',
   },
   {
+    id: 'discovery',
+    methods: ['GET'],
+    paths: ['/api/v1/discovery'],
+    status: 'supported',
+    feature: 'server-discovery',
+  },
+  {
     id: 'model-catalog',
     methods: ['GET'],
     paths: ['/api/v1/model-catalog'],

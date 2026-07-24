@@ -44,6 +44,7 @@ import {
   createEmbeddingProvider,
 } from '@/server/knowledge'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
+import { ServerProviderUsageMeter } from '@/server/billing/ServerProviderUsageMeter'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -162,6 +163,7 @@ function createKnowledgeSearchService(
   return new KnowledgeSearchService(new PostgresKnowledgeSearchRepository({
     db: appData.postgres.db,
     embeddings: createEmbeddingProvider(runtimeConfig),
+    usageMeter: new ServerProviderUsageMeter(appData.repositories.usage),
   }))
 }
 

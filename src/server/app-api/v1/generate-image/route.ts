@@ -5,6 +5,7 @@ import { handleRouteError } from '@/server/app-api/route-errors'
 import { readValidatedJson } from '@/server/app-api/validated-input'
 import { generateImage } from '@/server/ai/sdk'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import { outputService } from '@/server/outputs/http'
 import { getGatewayImageModel } from '@/server/ai/model-runtime'
 import { IMAGE_MODELS } from '@/shared/ai/gateway/model-data'
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         { status: 403 }
       )
     }
+    const authorizedModelIds = await resolveAuthorizedModelIds({ entitlements: currentEntitlements })
     if ((currentEntitlements.overlayStorageBytesUsed ?? 0) >= (currentEntitlements.overlayStorageBytesLimit ?? 0)) {
       return NextResponse.json(
         { error: 'storage_limit_exceeded', message: 'Overlay storage limit reached. Delete files or outputs, or upgrade your plan.' },
@@ -69,9 +71,20 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     // ── Model selection: when user picks a model, use only that model ─────────
     // Fall back through all models only when no model is specified
+    if (modelId && !authorizedModelIds.image.has(modelId)) {
+      return NextResponse.json(
+        {
+          error: 'model_not_allowed',
+          message: `Image model ${modelId} is not allowed by the server model policy.`,
+        },
+        { status: 403 },
+      )
+    }
     const priorityList = modelId
       ? [modelId]
-      : IMAGE_MODELS.map((m) => m.id)
+      : IMAGE_MODELS.map((m) => m.id).filter((candidateId) =>
+          authorizedModelIds.image.has(candidateId),
+        )
     const priceEntries = await Promise.all(
       priorityList.map(async (candidateId) => [
         candidateId,
@@ -99,9 +112,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const reservation = await generationUsagePolicy.reserve({
       userId: auth.userId,
       entitlements: currentEntitlements,
+      idempotencyKey: context.requestIdempotencyKey,
       providerCostUsd: maxProviderCostUsd,
       kind: 'generation',
       modelId: modelId ?? 'image-fallback',
+      operationId: 'media.generate-image',
+      requestFingerprint: context.requestFingerprint,
     })
     if (!reservation.ok) {
       return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })
@@ -112,6 +128,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     let usedModelId: string | null = null
     let imageBase64: string | null = null
 
+    await generationUsagePolicy.markStarted({
+      userId: auth.userId,
+      reservationId: reservation.reservationId,
+    })
     for (const tryModelId of pricedPriorityList) {
       try {
         const imageModel = await getGatewayImageModel(tryModelId, auth.accessToken || undefined)

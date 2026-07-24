@@ -10,11 +10,16 @@ const paidEntitlements = {
   creditsTotal: 0,
   dailyUsage: { ask: 0, write: 0, agent: 0 },
 } as Entitlements
+const requestIdentity = {
+  operationId: 'sandbox.daytona-run',
+  requestFingerprint: 'daytona-test-fingerprint',
+}
 
 test('reserveDaytonaRunBudget preserves auth and paid-plan error payloads', async () => {
   assert.deepEqual(await reserveDaytonaRunBudget({
     userId: 'user_1',
     maxDurationSeconds: 300,
+    ...requestIdentity,
     deps: { getEntitlementsByServer: async () => null },
   }), {
     ok: false,
@@ -25,6 +30,7 @@ test('reserveDaytonaRunBudget preserves auth and paid-plan error payloads', asyn
   assert.deepEqual(await reserveDaytonaRunBudget({
     userId: 'user_1',
     maxDurationSeconds: 300,
+    ...requestIdentity,
     deps: {
       getEntitlementsByServer: async () => paidEntitlements,
       isPaidPlan: () => false,
@@ -40,6 +46,7 @@ test('reserveDaytonaRunBudget preserves insufficient-credit and provider-reserva
   const insufficient = await reserveDaytonaRunBudget({
     userId: 'user_1',
     maxDurationSeconds: 300,
+    ...requestIdentity,
     deps: {
       getEntitlementsByServer: async () => paidEntitlements,
       isPaidPlan: () => true,
@@ -58,6 +65,7 @@ test('reserveDaytonaRunBudget preserves insufficient-credit and provider-reserva
   assert.deepEqual(await reserveDaytonaRunBudget({
     userId: 'user_1',
     maxDurationSeconds: 300,
+    ...requestIdentity,
     deps: {
       getEntitlementsByServer: async () => paidEntitlements,
       isPaidPlan: () => true,
@@ -81,6 +89,7 @@ test('reserveDaytonaRunBudget reserves sandbox budget with current entitlement s
   const result = await reserveDaytonaRunBudget({
     userId: 'user_1',
     maxDurationSeconds: 300,
+    ...requestIdentity,
     deps: {
       getEntitlementsByServer: async () => paidEntitlements,
       isPaidPlan: () => true,

@@ -9,6 +9,7 @@ import {
   billableBudgetCentsFromProviderUsd,
   finalizeProviderBudgetReservation,
   markProviderBudgetReconcile,
+  markProviderBudgetStarted,
   releaseProviderBudgetReservation,
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
@@ -48,6 +49,9 @@ export async function classifyMediaToolIntentForTurn(params: {
   userId: string
   accessToken?: string
   entitlements: Entitlements
+  idempotencyKey?: string | null
+  operationId: string
+  requestFingerprint: string
 }): Promise<MediaToolIntent> {
   const text = params.userText?.trim()
   if (!text) return null
@@ -77,14 +81,21 @@ export async function classifyMediaToolIntentForTurn(params: {
   const reservation = await reserveProviderBudget({
     userId: params.userId,
     entitlements: params.entitlements,
+    idempotencyKey: params.idempotencyKey,
     providerCostUsd: estimatedProviderCostUsd,
     kind: 'generation',
     modelId: MEDIA_INTENT_MODEL,
+    operationId: params.operationId,
+    requestFingerprint: params.requestFingerprint,
   })
   if (!reservation.ok) return null
 
   try {
     const model = await getLanguageModel(MEDIA_INTENT_MODEL, params.accessToken)
+    await markProviderBudgetStarted({
+      userId: params.userId,
+      reservationId: reservation.reservationId,
+    })
     const result = await generateObject({
       model,
       schema: mediaIntentSchema,

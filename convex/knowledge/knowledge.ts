@@ -7,7 +7,7 @@ import {
 } from '../_generated/server'
 import { internal, api } from '../_generated/api'
 import type { Doc, Id } from '../_generated/dataModel'
-import { requireAccessToken, validateServerSecret } from '../lib/auth'
+import { validateServerSecret } from '../lib/auth'
 import { calculateGatewayEmbeddingModelCostOrNull } from '../lib/gatewayCatalogPricing'
 import { applyMarkupToDollars } from '../../src/shared/billing/billing-pricing'
 import {
@@ -33,6 +33,11 @@ const EMBEDDING_MODEL = 'openai/text-embedding-3-small'
 const EMBEDDING_DIM = 1536
 const GATEWAY_EMBED_URL =
   process.env.AI_GATEWAY_EMBED_URL?.trim() || 'https://ai-gateway.vercel.sh/v1/embeddings'
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
 
 function estimateEmbeddingTokens(texts: string[]): number {
   return Math.max(1, Math.ceil(texts.reduce((sum, text) => sum + text.length, 0) / 4))
@@ -286,16 +291,22 @@ export const reindexFileInternal = internalAction({
     const estimatedTokens = estimateEmbeddingTokens(segments.map((s) => s.text))
     const estimatedCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, estimatedTokens)
     if (estimatedCostUsd === null) return
-    const reservationId = `embedding_${crypto.randomUUID()}`
+    const requestFingerprint = await sha256Hex(`file:${fileId}:${content}`)
+    const reservationId = `embedding_${(await sha256Hex(
+      `${userId}:knowledge.reindex-file:${requestFingerprint}`,
+    )).slice(0, 40)}`
     try {
-      await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
+      const reservation = await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
         serverSecret,
         userId,
         reservationId,
         kind: 'embedding',
         modelId: EMBEDDING_MODEL,
+        operationId: 'knowledge.reindex-file',
+        requestFingerprint,
         reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
       })
+      if (reservation.idempotent) return
     } catch {
       return
     }
@@ -304,6 +315,11 @@ export const reindexFileInternal = internalAction({
     const allEmb: number[][] = []
     let totalTokens = 0
     try {
+      await ctx.runMutation(api.platform.usage.markBudgetReservationStartedByServer, {
+        serverSecret,
+        userId,
+        reservationId,
+      })
       for (let i = 0; i < segments.length; i += BATCH) {
         const batch = segments.slice(i, i + BATCH).map((s) => s.text)
         const { vectors, promptTokens } = await embedViaGateway(batch)
@@ -351,22 +367,12 @@ export const reindexFileInternal = internalAction({
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'file_indexing_failed'
-      const providerStarted = totalTokens > 0
-      if (providerStarted) {
-        await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
-          serverSecret,
-          userId,
-          reservationId,
-          errorMessage: message,
-        }).catch(() => {})
-      } else {
-        await ctx.runMutation(api.platform.usage.releaseBudgetReservationByServer, {
-          serverSecret,
-          userId,
-          reservationId,
-          reason: message,
-        }).catch(() => {})
-      }
+      await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
+        serverSecret,
+        userId,
+        reservationId,
+        errorMessage: message,
+      }).catch(() => {})
       throw err
     }
   },
@@ -404,22 +410,33 @@ export const reindexMemoryInternal = internalAction({
     const estimatedTokens = estimateEmbeddingTokens(segments.map((s) => s.text))
     const estimatedCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, estimatedTokens)
     if (estimatedCostUsd === null) return
-    const reservationId = `embedding_${crypto.randomUUID()}`
+    const requestFingerprint = await sha256Hex(`memory:${memoryId}:${meta.content}`)
+    const reservationId = `embedding_${(await sha256Hex(
+      `${meta.userId}:knowledge.reindex-memory:${requestFingerprint}`,
+    )).slice(0, 40)}`
     try {
-      await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
+      const reservation = await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
         serverSecret,
         userId: meta.userId,
         reservationId,
         kind: 'embedding',
         modelId: EMBEDDING_MODEL,
+        operationId: 'knowledge.reindex-memory',
+        requestFingerprint,
         reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
       })
+      if (reservation.idempotent) return
     } catch {
       return
     }
 
     let promptTokens = 0
     try {
+      await ctx.runMutation(api.platform.usage.markBudgetReservationStartedByServer, {
+        serverSecret,
+        userId: meta.userId,
+        reservationId,
+      })
       const embedded = await embedViaGateway(segments.map((s) => s.text))
       promptTokens = embedded.promptTokens
       await ctx.runMutation(internal.knowledge.knowledge.replaceKnowledgeSource, {
@@ -463,21 +480,12 @@ export const reindexMemoryInternal = internalAction({
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'memory_indexing_failed'
-      if (promptTokens > 0) {
-        await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
-          serverSecret,
-          userId: meta.userId,
-          reservationId,
-          errorMessage: message,
-        }).catch(() => {})
-      } else {
-        await ctx.runMutation(api.platform.usage.releaseBudgetReservationByServer, {
-          serverSecret,
-          userId: meta.userId,
-          reservationId,
-          reason: message,
-        }).catch(() => {})
-      }
+      await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
+        serverSecret,
+        userId: meta.userId,
+        reservationId,
+        errorMessage: message,
+      }).catch(() => {})
       throw err
     }
   },
@@ -523,14 +531,15 @@ function packChunksForContext(
   return out
 }
 
-// ─── Public hybrid search (auth via entitlements query) ──────────────────────
+// ─── Server-brokered hybrid search ───────────────────────────────────────────
 
 export const hybridSearch = action({
   args: {
-    accessToken: v.optional(v.string()),
     userId: v.string(),
-    /** When set to INTERNAL_API_SECRET, caller is trusted (e.g. Next.js after session or tool middleware auth). */
-    serverSecret: v.optional(v.string()),
+    serverSecret: v.string(),
+    idempotencyKey: v.string(),
+    operationId: v.string(),
+    requestFingerprint: v.string(),
     query: v.string(),
     projectId: v.optional(v.string()),
     sourceKind: v.optional(v.union(v.literal('file'), v.literal('memory'))),
@@ -540,9 +549,7 @@ export const hybridSearch = action({
     minVecScore: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<{ chunks: HybridSearchChunk[] }> => {
-    if (!validateServerSecret(args.serverSecret)) {
-      await requireAccessToken(args.accessToken ?? '', args.userId)
-    }
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
 
     const kVec = Math.min(256, Math.max(1, args.kVec ?? 48))
     const kLex = Math.min(1024, Math.max(1, args.kLex ?? 48))
@@ -557,20 +564,28 @@ export const hybridSearch = action({
     if (estimatedCostUsd === null) {
       throw new Error('pricing_missing: embedding model')
     }
-    const serverSecret = validateServerSecret(args.serverSecret) ? args.serverSecret! : getServerSecretForBackground()
-    if (!serverSecret) {
-      throw new Error('background_budget_exhausted: missing server secret')
-    }
-    const reservationId = `embedding_${crypto.randomUUID()}`
+    const serverSecret = args.serverSecret
+    const reservationId = `embedding_${(await sha256Hex([
+      args.userId,
+      args.operationId,
+      args.idempotencyKey,
+      args.requestFingerprint,
+      EMBEDDING_MODEL,
+    ].join(':'))).slice(0, 40)}`
     try {
-      await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
+      const reservation = await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
         serverSecret,
         userId: args.userId,
         reservationId,
         kind: 'embedding',
         modelId: EMBEDDING_MODEL,
+        operationId: args.operationId,
+        requestFingerprint: args.requestFingerprint,
         reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
       })
+      if (reservation.idempotent || reservation.status !== 'reserved') {
+        throw new Error(`provider_operation_already_reserved:${reservation.status}`)
+      }
     } catch {
       throw new Error('background_budget_exhausted')
     }
@@ -578,15 +593,20 @@ export const hybridSearch = action({
     let vectors: number[][] = []
     let promptTokens = 0
     try {
+      await ctx.runMutation(api.platform.usage.markBudgetReservationStartedByServer, {
+        serverSecret,
+        userId: args.userId,
+        reservationId,
+      })
       const embedded = await embedViaGateway([q])
       vectors = embedded.vectors
       promptTokens = embedded.promptTokens
     } catch (err) {
-      await ctx.runMutation(api.platform.usage.releaseBudgetReservationByServer, {
+      await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
         serverSecret,
         userId: args.userId,
         reservationId,
-        reason: err instanceof Error ? err.message : 'embedding_search_failed',
+        errorMessage: err instanceof Error ? err.message : 'embedding_search_failed',
       }).catch(() => {})
       throw err
     }

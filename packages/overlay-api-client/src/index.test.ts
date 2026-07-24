@@ -272,10 +272,14 @@ test('settings and account methods preserve billing/auth route contracts', async
 
   await client.account.entitlementsResponse()
   await client.account.desktopLinkResponse({ codeChallenge: 'challenge', chromeExtensionId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' })
-  await client.billing.portalResponse({ sessionId: 'cs_123' })
+  await client.billing.portalResponse({
+    confirmation: 'OPEN_BILLING_PORTAL',
+    sessionId: 'cs_123',
+  })
   await client.billing.verifyCheckoutResponse({ sessionId: 'cs_123' })
   await client.subscription.updateSettingsResponse({
     autoTopUpEnabled: true,
+    confirmation: 'UPDATE_BILLING_SETTINGS',
     topUpAmountCents: 1200,
     grantOffSessionConsent: true,
   })
@@ -294,7 +298,10 @@ test('settings and account methods preserve billing/auth route contracts', async
 
   assert.equal(String(calls[2]!.input), 'https://example.test/api/portal')
   assert.equal(calls[2]!.init?.method, 'POST')
-  assert.deepEqual(await jsonBody(calls[2]!), { sessionId: 'cs_123' })
+  assert.deepEqual(await jsonBody(calls[2]!), {
+    confirmation: 'OPEN_BILLING_PORTAL',
+    sessionId: 'cs_123',
+  })
 
   assert.equal(String(calls[3]!.input), 'https://example.test/api/checkout/verify')
   assert.equal(calls[3]!.init?.method, 'POST')
@@ -304,6 +311,7 @@ test('settings and account methods preserve billing/auth route contracts', async
   assert.equal(calls[4]!.init?.method, 'POST')
   assert.deepEqual(await jsonBody(calls[4]!), {
     autoTopUpEnabled: true,
+    confirmation: 'UPDATE_BILLING_SETTINGS',
     topUpAmountCents: 1200,
     grantOffSessionConsent: true,
   })

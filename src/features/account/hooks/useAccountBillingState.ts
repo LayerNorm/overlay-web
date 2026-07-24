@@ -248,7 +248,10 @@ export function useAccountBillingState({
     }
     setActionLoading('billing')
     try {
-      const data = await overlayAppClient.billing.portal({ sessionId })
+      const data = await overlayAppClient.billing.portal({
+        confirmation: 'OPEN_BILLING_PORTAL',
+        sessionId,
+      })
       if (data.url) {
         window.location.href = data.url
       } else {
@@ -296,6 +299,7 @@ export function useAccountBillingState({
     try {
       const response = await overlayAppClient.subscription.updateSettingsResponse({
         autoTopUpEnabled: autoTopUpEnabledDraft,
+        confirmation: 'UPDATE_BILLING_SETTINGS',
         topUpAmountCents: topUpAmountDraftCents,
         grantOffSessionConsent: autoTopUpEnabledDraft,
       })

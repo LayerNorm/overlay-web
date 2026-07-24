@@ -77,6 +77,8 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `apiKeys` | `userId` | Deployment boundary | Add `tenantId`; validation, scopes, rotation, revocation, audit, and rate limits must enforce tenant context. |
 | `tokenUsage` | `userId` | Deployment boundary | Add `tenantId`; usage and billing rollups must be tenant-scoped. |
 | `budgetReservations` | `userId` | Deployment boundary | Add `tenantId`; reservation and reconciliation queries must be tenant-scoped. |
+| `usageOperations` | `userId` | Deployment boundary | Add `tenantId`; operation identity, request fingerprints, and reconciliation must be tenant-scoped. |
+| `administrativePrincipals` | `userId` | Deployment boundary | Add `tenantId`; administrative role grants and revocations must be tenant-scoped and audited. |
 | `daytonaWorkspaces` | `userId` | Deployment boundary | Add `tenantId`; sandbox lifecycle and metering indexes must include tenant context. |
 | `daytonaUsageLedger` | `userId` | Deployment boundary | Add `tenantId`; ledger reads and reconciliation must be tenant-scoped. |
 | `toolInvocations` | `userId` | Deployment boundary | Add `tenantId`; audit/cost views must include tenant context. |
@@ -86,6 +88,7 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `automations` | `userId` | Deployment boundary | Add `tenantId`; scheduling and runner queries must not cross tenants. |
 | `automationRuns` | `userId` | Deployment boundary | Add `tenantId`; run history and scheduler claims must be tenant-scoped. |
 | `mcpServers` | `userId` | Deployment boundary | Add `tenantId`; connector credentials and enabled indexes must be tenant-scoped. |
+| `mcpToolExecutions` | `userId` | Deployment boundary | Add `tenantId`; connector execution audit, authorization, and usage records must be tenant-scoped. |
 | `conversations` | `userId` | Deployment boundary | Add `tenantId`; share tokens need explicit cross-tenant policy. |
 | `conversationMessages` | `userId` | Deployment boundary | Add `tenantId`; conversation/message indexes must include tenant context. |
 | `conversationMessageDeltas` | `userId` | Deployment boundary | Add `tenantId`; streaming/delta cleanup queries must include tenant context. |

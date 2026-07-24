@@ -171,11 +171,18 @@ test('act context service keeps auto retrieval enabled when external provider co
     latestUserText: 'What is the deployment checkpoint?',
     memoryEnabled: true,
     mentions: [{ type: 'file', id: 'file_1', name: 'Runbook' }],
+    requestIdempotencyKey: 'act-test-idempotency',
+    requestFingerprint: 'act-test-fingerprint',
     serverSecret: 'server-secret',
     userId: 'user_1',
   })
 
   assert.deepEqual(retrievalArgs, {
+    billing: {
+      idempotencyKey: 'act-test-idempotency',
+      operationId: 'conversation.act.auto-retrieval',
+      requestFingerprint: 'act-test-fingerprint',
+    },
     includeMemories: true,
     projectId: 'project_1',
     userId: 'user_1',
@@ -212,6 +219,8 @@ test('act context service preloads attached documents through the active file re
     externalContextEnabled: false,
     indexedAttachments: [{ name: 'runbook.pdf', fileIds: ['file_1'] }],
     latestUserText: 'What is the deployment checkpoint?',
+    requestIdempotencyKey: 'act-document-idempotency',
+    requestFingerprint: 'act-document-fingerprint',
     serverSecret: 'server-secret',
     userId: 'user_1',
   })
@@ -312,7 +321,9 @@ test('act usage budget service skips reservations for unpaid/free-model attempts
     estimatedInputTokens: 1000,
     maxOutputTokens: 1000,
     modelId: 'openrouter/free',
+    operationId: 'conversation.act',
     paid: false,
+    requestFingerprint: 'free-attempt',
     userId: 'user_1',
   })
 
@@ -331,7 +342,9 @@ test('unlimited usage policy exposes explicit paid entitlements and no-op accoun
     estimatedInputTokens: 1000,
     maxOutputTokens: 1000,
     modelId: 'claude-sonnet-4-6',
+    operationId: 'conversation.act',
     paid: true,
+    requestFingerprint: 'unlimited-attempt',
     userId: 'user_1',
   }), { ok: true, reservationId: null })
   assert.deepEqual(await policy.recordFinishedUsage({

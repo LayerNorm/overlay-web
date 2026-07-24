@@ -15,8 +15,10 @@ import {
 
 const originalNextPhase = process.env.NEXT_PHASE
 const originalInternalApiSecret = process.env.INTERNAL_API_SECRET
+const originalOverlayDeploymentEnv = process.env.OVERLAY_DEPLOYMENT_ENV
 process.env.NEXT_PHASE = 'phase-production-build'
 process.env.INTERNAL_API_SECRET = 'test-internal-secret'
+process.env.OVERLAY_DEPLOYMENT_ENV = 'test'
 test.after(() => {
   if (originalNextPhase === undefined) {
     delete process.env.NEXT_PHASE
@@ -27,6 +29,11 @@ test.after(() => {
     delete process.env.INTERNAL_API_SECRET
   } else {
     process.env.INTERNAL_API_SECRET = originalInternalApiSecret
+  }
+  if (originalOverlayDeploymentEnv === undefined) {
+    delete process.env.OVERLAY_DEPLOYMENT_ENV
+  } else {
+    process.env.OVERLAY_DEPLOYMENT_ENV = originalOverlayDeploymentEnv
   }
 })
 
@@ -87,6 +94,8 @@ function context(): AppApiRouteContext {
     parsedJson: {},
     parsedQuery: {},
     appDataCapabilities: TEST_CONVEX_APP_DATA_CAPABILITIES,
+    requestFingerprint: 'fixture-request-fingerprint',
+    requestIdempotencyKey: 'fixture-idempotency-key',
   }
 }
 
@@ -608,6 +617,76 @@ test('billing customer routes preserve unauthenticated/invalid body response sha
   const entitlementsResponse = await entitlements.GET(request('/api/entitlements', { method: 'GET' }))
   assert.equal(entitlementsResponse.status, 401)
   assert.deepEqual(await readJson(entitlementsResponse), { error: 'Unauthorized' })
+})
+
+test('sensitive billing mutations require an interactive same-origin confirmation', async (t) => {
+  const { getOverlayServerContext } = await import('@/server/bootstrap')
+  const { billingCheckoutService, billingCustomerService } = await import('@/server/billing/http')
+  const server = getOverlayServerContext()
+  t.mock.method(server.auth, 'getSession', async () => ({
+    accessToken: 'session-access-token',
+    user: { id: 'user_1', email: 'user@example.test' },
+  }))
+  t.mock.method(server.rateLimiter, 'check', async (
+    _scope: Parameters<typeof server.rateLimiter.check>[0],
+    rules: Parameters<typeof server.rateLimiter.check>[1],
+  ) => ({
+    allowed: true,
+    retryAfterSeconds: 0,
+    decisions: rules.map((rule) => ({
+      bucket: rule.bucket,
+      allowed: true,
+      remaining: rule.limit - 1,
+      retryAfterSeconds: 0,
+    })),
+  }))
+  t.mock.method(server.auditService, 'record', async () => undefined)
+  t.mock.method(billingCustomerService, 'updateBillingSettings', async () => ({
+    planKind: 'paid' as const,
+    autoTopUpEnabled: false,
+    topUpAmountCents: 800,
+    autoTopUpAmountCents: 800,
+    topUpMinAmountCents: 800,
+    topUpMaxAmountCents: 20_000,
+    topUpStepAmountCents: 100,
+  }))
+  t.mock.method(billingCheckoutService, 'createPortalSession', async () => ({
+    url: 'https://billing.example.test/session',
+  }))
+
+  const settings = await import('@/app/api/subscription/settings/route')
+  const portal = await import('@/app/api/portal/route')
+
+  const missingOrigin = await settings.POST(request('/api/subscription/settings', {
+    method: 'POST',
+    body: JSON.stringify({
+      autoTopUpEnabled: false,
+      confirmation: 'UPDATE_BILLING_SETTINGS',
+      topUpAmountCents: 800,
+    }),
+  }))
+  assert.equal(missingOrigin.status, 403)
+
+  const settingsResponse = await settings.POST(request('/api/subscription/settings', {
+    method: 'POST',
+    headers: { Origin: 'https://overlay.test', 'Sec-Fetch-Site': 'same-origin' },
+    body: JSON.stringify({
+      autoTopUpEnabled: false,
+      confirmation: 'UPDATE_BILLING_SETTINGS',
+      topUpAmountCents: 800,
+    }),
+  }))
+  assert.equal(settingsResponse.status, 200)
+
+  const portalResponse = await portal.POST(request('/api/portal', {
+    method: 'POST',
+    headers: { Origin: 'https://overlay.test', 'Sec-Fetch-Site': 'same-origin' },
+    body: JSON.stringify({ confirmation: 'OPEN_BILLING_PORTAL' }),
+  }))
+  assert.equal(portalResponse.status, 200)
+  assert.deepEqual(await readJson(portalResponse), {
+    url: 'https://billing.example.test/session',
+  })
 })
 
 test('conversations act preserves premium gating response shape for free users', async (t) => {

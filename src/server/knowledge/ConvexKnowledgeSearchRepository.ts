@@ -7,8 +7,10 @@ import type { KnowledgeSearchArgs, KnowledgeSearchRepository } from './Knowledge
 
 export class ConvexKnowledgeSearchRepository implements KnowledgeSearchRepository {
   async hybridSearch(args: KnowledgeSearchArgs): Promise<HybridSearchResult> {
+    const { accessToken: _accessToken, billing, ...search } = args
     const result = await convex.action<HybridSearchResult>('knowledge/knowledge:hybridSearch', {
-      ...args,
+      ...search,
+      ...billing,
       serverSecret: getInternalApiSecret(),
     })
     if (!result) throw new Error('Convex knowledge search failed')

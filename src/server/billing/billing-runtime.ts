@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { createHash } from 'node:crypto'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import type { UsageEvent, UsageRepository } from '@/server/usage'
 import {
@@ -12,6 +13,8 @@ import {
   TOP_UP_STEP_AMOUNT_CENTS,
 } from '@/shared/billing/billing-pricing'
 import { maybeAutoTopUpBudget } from '@/server/billing/stripe-billing'
+import { logSecurityEvent } from '@/server/observability/security-events'
+import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 
 export function isPaidPlan(entitlements: Pick<Entitlements, 'tier' | 'planKind'>): boolean {
   if (entitlements.planKind) return entitlements.planKind === 'paid'
@@ -76,6 +79,7 @@ export type ProviderUsageEvent = {
   outputTokens?: number
   cachedTokens?: number
   cost: number
+  durationSeconds?: number
   timestamp: number
 }
 
@@ -83,12 +87,35 @@ export function createBudgetReservationId(prefix = 'provider'): string {
   return `${prefix}_${globalThis.crypto.randomUUID()}`
 }
 
+export function createRequestBoundBudgetReservationId(params: {
+  discriminator?: string
+  idempotencyKey: string
+  operationId: string
+  requestFingerprint: string
+  userId: string
+}): string {
+  const digest = createHash('sha256')
+    .update([
+      'overlay-usage-reservation:v1',
+      params.userId,
+      params.operationId,
+      params.idempotencyKey,
+      params.requestFingerprint,
+      params.discriminator ?? '',
+    ].join('\n'))
+    .digest('hex')
+  return `usage_${digest}`
+}
+
 export async function reserveProviderBudget(params: {
   userId: string
   entitlements: Entitlements
+  idempotencyKey?: string | null
   providerCostUsd: number
   kind: ProviderSpendKind
   modelId?: string
+  operationId: string
+  requestFingerprint: string
   reservationId?: string
 }) {
   const reservedCents = billableBudgetCentsFromProviderUsd(params.providerCostUsd)
@@ -108,6 +135,10 @@ export async function reserveProviderBudget(params: {
   })
 
   if (!isPaidPlan(budget.entitlements) || budget.remainingCents + 0.000001 < reservedCents) {
+    logBudgetSecurityEvent('owner_funded_budget_declined', params, {
+      requiredCents: reservedCents,
+      remainingCents: budget.remainingCents,
+    })
     return {
       ok: false,
       status: 402,
@@ -119,16 +150,40 @@ export async function reserveProviderBudget(params: {
     } as const
   }
 
-  const reservationId = params.reservationId ?? createBudgetReservationId(params.kind)
-  const result = await (await usageRepository()).reserve({
-    entitlements: budget.entitlements,
-    kind: params.kind,
-    modelId: params.modelId,
-    reservationId,
-    reservedCents,
-    userId: params.userId,
-  })
+  const reservationId = params.reservationId ?? (
+    params.idempotencyKey
+      ? createRequestBoundBudgetReservationId({
+          discriminator: `${params.kind}:${params.modelId ?? ''}`,
+          idempotencyKey: params.idempotencyKey,
+          operationId: params.operationId,
+          requestFingerprint: params.requestFingerprint,
+          userId: params.userId,
+        })
+      : createBudgetReservationId(params.kind)
+  )
+  let result
+  try {
+    result = await (await usageRepository()).reserve({
+      entitlements: budget.entitlements,
+      kind: params.kind,
+      modelId: params.modelId,
+      operationId: params.operationId,
+      requestFingerprint: params.requestFingerprint,
+      reservationId,
+      reservedCents,
+      userId: params.userId,
+    })
+  } catch (error) {
+    logBudgetSecurityEvent('usage_reservation_integrity_failure', params, {
+      reason: safeReservationErrorCode(error),
+    }, 'error')
+    throw error
+  }
   if (!result.ok) {
+    logBudgetSecurityEvent('owner_funded_budget_declined', params, {
+      requiredCents: result.requiredCents,
+      remainingCents: result.remainingCents,
+    })
     return {
       ok: false,
       status: 402,
@@ -139,6 +194,20 @@ export async function reserveProviderBudget(params: {
       ),
     } as const
   }
+  if (result.replayed || result.status !== 'reserved') {
+    logBudgetSecurityEvent('usage_reservation_replay_blocked', params, {
+      reservationStatus: result.status,
+    })
+    return {
+      ok: false,
+      status: 409,
+      code: 'usage_reservation_replay',
+      payload: {
+        error: 'usage_reservation_replay',
+        message: 'This owner-funded operation was already reserved. Retry with a new Idempotency-Key.',
+      },
+    } as const
+  }
 
   return {
     ok: true,
@@ -146,6 +215,36 @@ export async function reserveProviderBudget(params: {
     reservedCents,
     entitlements: budget.entitlements,
   } as const
+}
+
+function logBudgetSecurityEvent(
+  type: string,
+  params: {
+    kind: ProviderSpendKind
+    modelId?: string
+    operationId: string
+    userId: string
+  },
+  details: Record<string, unknown>,
+  level: 'warning' | 'error' = 'warning',
+): void {
+  logSecurityEvent(type, {
+    ...details,
+    kind: params.kind,
+    modelId: params.modelId?.slice(0, 160),
+    operationId: params.operationId.slice(0, 160),
+    userHash: hashOperationalIdentifier('security-user:v1', params.userId),
+  }, level)
+}
+
+function safeReservationErrorCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/reservation_parameter_mismatch|reused with different parameters/.test(message)) {
+    return 'reservation_parameter_mismatch'
+  }
+  if (/reservation_user_mismatch/.test(message)) return 'reservation_user_mismatch'
+  if (/insufficient_budget|paid plan required/.test(message)) return 'insufficient_budget'
+  return 'reservation_backend_error'
 }
 
 export async function finalizeProviderBudgetReservation(params: {
@@ -162,6 +261,21 @@ export async function finalizeProviderBudgetReservation(params: {
     reservationId: params.reservationId,
     userId: params.userId,
   })
+}
+
+export async function markProviderBudgetStarted(params: {
+  userId: string
+  reservationId: string | null | undefined
+}) {
+  if (!params.reservationId) return { success: true, skipped: true } as const
+  const result = await (await usageRepository()).markStarted({
+    reservationId: params.reservationId,
+    userId: params.userId,
+  })
+  if (result.status !== 'reserved') {
+    throw new Error(`usage_reservation_not_startable:${result.status}`)
+  }
+  return result
 }
 
 export async function releaseProviderBudgetReservation(params: {
@@ -210,6 +324,7 @@ function toUsageEvent(event: ProviderUsageEvent): UsageEvent {
   return {
     cachedTokens: event.cachedTokens,
     costCents: event.cost,
+    durationSeconds: event.durationSeconds,
     inputTokens: event.inputTokens,
     kind: event.type,
     modelId: event.modelId,

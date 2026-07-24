@@ -3,6 +3,11 @@ import 'server-only'
 import type { MemoryExtractionProvider } from './MemoryExtractionProvider'
 import { hashMemoryContent, PostgresMemoryRepository } from './PostgresMemoryRepository'
 import { PostgresMemoryExtractionRepository } from './PostgresMemoryExtractionRepository'
+import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
+import {
+  providerRequestFingerprint,
+  ServerProviderUsageMeter,
+} from '@/server/billing/ServerProviderUsageMeter'
 
 const MIN_CONFIDENCE = 0.4
 const MAX_CANDIDATES = 8
@@ -13,6 +18,7 @@ export class MemoryExtractionService {
     extractor: MemoryExtractionProvider
     memories: PostgresMemoryRepository
     runs: PostgresMemoryExtractionRepository
+    usageMeter?: ServerProviderUsageMeter
   }) {}
 
   async extractTurn(args: {
@@ -54,10 +60,38 @@ export class MemoryExtractionService {
     }
 
     try {
-      const candidates = (await this.deps.extractor.extract({
+      const estimatedInputTokens = Math.ceil((
+        turn.targetText.length +
+        turn.contextMessages.reduce((sum, message) => sum + message.role.length + message.text.length, 0) +
+        1_000
+      ) / 4)
+      const providerCostUsd = await calculateLanguageModelTokenCostOrNull(
+        this.deps.extractor.modelId,
+        estimatedInputTokens,
+        0,
+        1_200,
+      )
+      if (providerCostUsd === null) throw new Error(`pricing_missing:${this.deps.extractor.modelId}`)
+      const extract = () => this.deps.extractor.extract({
         contextMessages: turn.contextMessages,
         targetText: turn.targetText,
-      })).filter((candidate) => (
+      })
+      const extracted = this.deps.usageMeter
+        ? await this.deps.usageMeter.run({
+            execute: extract,
+            kind: 'generation',
+            modelId: this.deps.extractor.modelId,
+            operationId: `memory.extract-turn:${args.conversationId}:${args.turnId}`,
+            providerCostUsd,
+            requestFingerprint: providerRequestFingerprint({
+              contextMessages: turn.contextMessages,
+              targetText: turn.targetText,
+            }),
+            usageEvent: { inputTokens: estimatedInputTokens, outputTokens: 1_200 },
+            userId: args.userId,
+          })
+        : await extract()
+      const candidates = extracted.filter((candidate) => (
         candidate.content.trim().length > 5 && candidate.confidence >= MIN_CONFIDENCE
       )).slice(0, MAX_CANDIDATES)
       const existingHashes = new Set(

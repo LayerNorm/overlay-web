@@ -5,6 +5,8 @@ import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import type { HybridSearchChunk, HybridSearchResult } from '@/shared/knowledge/hybrid-search'
 import type { EmbeddingProvider } from './EmbeddingProvider'
 import type { KnowledgeSearchArgs, KnowledgeSearchRepository } from './KnowledgeSearchRepository'
+import { calculateEmbeddingModelCostOrNull } from '@/server/ai/gateway/live-model-pricing'
+import { ServerProviderUsageMeter } from '@/server/billing/ServerProviderUsageMeter'
 
 const RRF_K = 60
 const PROJECT_CHUNK_BOOST = 1.85
@@ -25,6 +27,7 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
   constructor(private readonly deps: {
     db: OverlayPostgresDb
     embeddings: EmbeddingProvider
+    usageMeter?: ServerProviderUsageMeter
   }) {}
 
   async hybridSearch(args: KnowledgeSearchArgs): Promise<HybridSearchResult> {
@@ -33,7 +36,26 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
     const kVec = normalizeLimit(args.kVec, 48, 256)
     const kLex = normalizeLimit(args.kLex, 48, 1024)
     const maxChunks = normalizeLimit(args.m, 12, 50)
-    const [queryVector] = await this.deps.embeddings.embed([query])
+    const estimatedInputTokens = Math.ceil(query.length / 4)
+    const pricingModelId = this.deps.embeddings.identity.modelId.includes('/')
+      ? this.deps.embeddings.identity.modelId
+      : `openai/${this.deps.embeddings.identity.modelId}`
+    const providerCostUsd = await calculateEmbeddingModelCostOrNull(pricingModelId, estimatedInputTokens)
+    if (providerCostUsd === null) throw new Error(`pricing_missing:${pricingModelId}`)
+    const embed = () => this.deps.embeddings.embed([query])
+    const [queryVector] = this.deps.usageMeter
+      ? await this.deps.usageMeter.run({
+          execute: embed,
+          idempotencyKey: args.billing.idempotencyKey,
+          kind: 'embedding',
+          modelId: pricingModelId,
+          operationId: args.billing.operationId,
+          providerCostUsd,
+          requestFingerprint: args.billing.requestFingerprint,
+          usageEvent: { inputTokens: estimatedInputTokens },
+          userId: args.userId,
+        })
+      : await embed()
     if (!queryVector) throw new Error('Embedding provider returned no query vector')
 
     const sourceFilter = args.sourceKind

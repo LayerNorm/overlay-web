@@ -161,6 +161,7 @@
     "docs:check": "npm run docs:generate:api && npm run docs:health && cd docs && node ../scripts/run-mint.mjs validate && node ../scripts/run-mint.mjs broken-links --check-anchors",
     "docs:check:self-hosting": "npm run docs:health",
     "security:audit": "npm audit --omit=dev --audit-level=high",
+    "check:owner-funded-boundary": "node scripts/check-owner-funded-boundary.mjs",
     "video:studio": "npx remotion studio src/remotion/index.ts",
     "video:render:launch": "mkdir -p renders && npx remotion render src/remotion/index.ts overlay-launch-video renders/overlay-launch-video.mp4",
     "test:auth:env": "node --experimental-strip-types scripts/auth-dev-env-check.ts",

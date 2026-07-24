@@ -3,9 +3,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
+import {
+  billableBudgetCentsFromProviderUsd,
+  isPaidPlan,
+} from '@/server/billing/billing-runtime'
+import {
+  MAX_RESERVED_TRANSCRIPTION_SECONDS,
+  transcriptionProviderCostUsd,
+  trustedTranscriptionDurationSeconds,
+  type GroqVerboseTranscription,
+} from '@/server/billing/transcription-billing'
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024
-const ESTIMATED_TRANSCRIPTION_SECONDS = 60
+const TRANSCRIPTION_MODEL = 'groq/whisper-large-v3-turbo'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -15,6 +25,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const serverContext = getOverlayServerContext()
     const entitlements = await serverContext.generationUsagePolicy.getEntitlements({ userId: auth.userId })
     if (!entitlements) return NextResponse.json({ error: 'Could not verify subscription.' }, { status: 401 })
+    if (!isPaidPlan(entitlements)) {
+      return NextResponse.json(
+        {
+          error: 'hosted_transcription_requires_paid_plan',
+          message: 'Hosted transcription requires a paid plan. Local on-device transcription remains available.',
+        },
+        { status: 403 },
+      )
+    }
     const remainingSeconds =
       (entitlements.transcriptionSecondsLimit ?? 0) - (entitlements.transcriptionSecondsUsed ?? 0)
     if (!entitlements.localTranscriptionEnabled && remainingSeconds <= 0) {
@@ -35,45 +54,105 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const groqApiKey = await getServerProviderKey('groq')
 
     if (groqApiKey) {
+      const reservation = await serverContext.generationUsagePolicy.reserve({
+        entitlements,
+        idempotencyKey: context.requestIdempotencyKey,
+        kind: 'transcription',
+        modelId: TRANSCRIPTION_MODEL,
+        operationId: 'audio.transcribe',
+        providerCostUsd: transcriptionProviderCostUsd(MAX_RESERVED_TRANSCRIPTION_SECONDS),
+        requestFingerprint: context.requestFingerprint,
+        userId: auth.userId,
+      })
+      if (!reservation.ok) {
+        return NextResponse.json(
+          { ...reservation.payload, error: reservation.code },
+          { status: reservation.status },
+        )
+      }
+
       // Preserve the original filename (e.g. audio.m4a) so Groq picks the right
       // decoder. Sending 'audio.webm' for an M4A file causes intermittent 400s.
       const fileName = audioFile.name || 'audio.m4a'
       const groqFormData = new FormData()
       groqFormData.append('file', audioFile, fileName)
       groqFormData.append('model', 'whisper-large-v3-turbo')
-      groqFormData.append('response_format', 'json')
+      groqFormData.append('response_format', 'verbose_json')
+      groqFormData.append('timestamp_granularities[]', 'segment')
       if (prompt) {
         groqFormData.append('prompt', prompt)
       }
 
-      const groqResponse = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${groqApiKey}` },
-        body: groqFormData,
-      })
+      let groqResponse: Response
+      try {
+        await serverContext.generationUsagePolicy.markStarted({
+          reservationId: reservation.reservationId,
+          userId: auth.userId,
+        })
+        groqResponse = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${groqApiKey}` },
+          body: groqFormData,
+        })
+      } catch (error) {
+        await serverContext.generationUsagePolicy.release({
+          providerWorkStarted: true,
+          reason: error instanceof Error ? error.message : 'transcription_provider_failed',
+          reservationId: reservation.reservationId,
+          userId: auth.userId,
+        }).catch((_error) => undefined)
+        throw error
+      }
 
       if (!groqResponse.ok) {
         const err = await groqResponse.text()
         logger.error('[Transcribe] Groq error:', err)
+        await serverContext.generationUsagePolicy.release({
+          providerWorkStarted: true,
+          reason: `groq_http_${groqResponse.status}`,
+          reservationId: reservation.reservationId,
+          userId: auth.userId,
+        }).catch((_error) => undefined)
         return NextResponse.json(
           { error: 'Groq transcription failed. Check GROQ_API_KEY and audio codec support.' },
           { status: 500 }
         )
       }
 
-      const data = await groqResponse.json()
-      await serverContext.appData.repositories.usage.recordBatch({
-        operationId: `transcription_${globalThis.crypto.randomUUID()}`,
-        userId: auth.userId,
-        events: [{
-          kind: 'transcription',
-          modelId: 'groq/whisper-large-v3-turbo',
-          costCents: 0,
-          occurredAt: Date.now(),
-          metadata: { estimatedDurationSeconds: ESTIMATED_TRANSCRIPTION_SECONDS },
-        }],
-      })
-      return NextResponse.json({ text: data.text })
+      const data = await groqResponse.json() as GroqVerboseTranscription
+      const durationSeconds = trustedTranscriptionDurationSeconds(data)
+      if (durationSeconds === null) {
+        await serverContext.generationUsagePolicy.markForReconcile({
+          errorMessage: 'groq_response_missing_duration',
+          reservationId: reservation.reservationId,
+          userId: auth.userId,
+        }).catch((_error) => undefined)
+        return NextResponse.json({ error: 'Transcription provider returned incomplete usage metadata.' }, { status: 502 })
+      }
+      const actualProviderCostUsd = transcriptionProviderCostUsd(durationSeconds)
+      const costCents = billableBudgetCentsFromProviderUsd(actualProviderCostUsd)
+      try {
+        await serverContext.generationUsagePolicy.finalize({
+          actualProviderCostUsd,
+          events: [{
+            type: 'transcription',
+            modelId: TRANSCRIPTION_MODEL,
+            cost: costCents,
+            durationSeconds,
+            timestamp: Date.now(),
+          }],
+          reservationId: reservation.reservationId,
+          userId: auth.userId,
+        })
+      } catch (error) {
+        await serverContext.generationUsagePolicy.markForReconcile({
+          errorMessage: error instanceof Error ? error.message : 'transcription_finalize_failed',
+          reservationId: reservation.reservationId,
+          userId: auth.userId,
+        }).catch((_error) => undefined)
+        throw error
+      }
+      return NextResponse.json({ text: typeof data.text === 'string' ? data.text : '' })
     }
 
     return NextResponse.json(

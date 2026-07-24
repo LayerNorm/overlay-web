@@ -23,6 +23,13 @@ export type P7ProviderContractBackend = {
   usage: UsageRepository
 }
 
+function reservationSecurityContext(reservationId: string) {
+  return {
+    operationId: 'contract.usage-reservation',
+    requestFingerprint: reservationId,
+  }
+}
+
 export async function runP7ProviderContract(
   t: TestContext,
   backend: P7ProviderContractBackend,
@@ -70,11 +77,24 @@ export async function runP7ProviderContract(
       const reserved = await backend.usage.reserve({
         entitlements,
         kind: 'ask',
+        ...reservationSecurityContext(reservationId),
         reservationId,
         reservedCents: 100,
         userId,
       })
       assert.equal(reserved.ok, true)
+      await assert.rejects(
+        backend.usage.reserve({
+          entitlements,
+          kind: 'agent',
+          ...reservationSecurityContext(reservationId),
+          modelId: 'different/model',
+          reservationId,
+          reservedCents: 100,
+          userId,
+        }),
+        /mismatch|different parameters/,
+      )
       assert.equal((await backend.usage.finalize({ actualCostCents: 75, reservationId, userId })).status, 'finalized')
       assert.equal((await backend.usage.finalize({ actualCostCents: 75, reservationId, userId })).status, 'finalized')
 
@@ -82,12 +102,28 @@ export async function runP7ProviderContract(
       assert.equal((await backend.usage.reserve({
         entitlements: await requireEntitlements(backend.usage, userId),
         kind: 'generation',
+        ...reservationSecurityContext(releaseId),
         reservationId: releaseId,
         reservedCents: 50,
         userId,
       })).ok, true)
       assert.equal((await backend.usage.release({ reservationId: releaseId, userId })).status, 'released')
       assert.equal((await backend.usage.release({ reservationId: releaseId, userId })).status, 'released')
+
+      const overageId = `${scope}_overage`
+      assert.equal((await backend.usage.reserve({
+        entitlements: await requireEntitlements(backend.usage, userId),
+        kind: 'generation',
+        ...reservationSecurityContext(overageId),
+        reservationId: overageId,
+        reservedCents: 10,
+        userId,
+      })).ok, true)
+      await backend.usage.markStarted({ reservationId: overageId, userId })
+      await assert.rejects(
+        backend.usage.finalize({ actualCostCents: 11, reservationId: overageId, userId }),
+        /actual_cost_exceeds_reservation/,
+      )
 
       const operationId = `${scope}_record`
       const event = {
@@ -117,6 +153,7 @@ export async function runP7ProviderContract(
           const result = await backend.usage.reserve({
             entitlements: await requireEntitlements(backend.usage, budgetUserId),
             kind: 'agent',
+            ...reservationSecurityContext(reservationId),
             reservationId,
             reservedCents: perReservationCents,
             userId: budgetUserId,
@@ -138,12 +175,16 @@ export async function runP7ProviderContract(
       await backend.usage.reserve({
         entitlements: await requireEntitlements(backend.usage, userId),
         kind: 'generation',
+        ...reservationSecurityContext(reconcileId),
         reservationId: reconcileId,
         reservedCents: 25,
         userId,
       })
+      assert.equal((await backend.usage.markStarted({
+        reservationId: reconcileId,
+        userId,
+      })).status, 'reserved')
       assert.equal((await backend.usage.release({
-        providerWorkStarted: true,
         reason: 'simulated worker death',
         reservationId: reconcileId,
         userId,
@@ -159,6 +200,7 @@ export async function runP7ProviderContract(
         entitlements: await requireEntitlements(backend.usage, userId),
         expiresAt: Date.now() - 1,
         kind: 'ask',
+        ...reservationSecurityContext(expiredId),
         reservationId: expiredId,
         reservedCents: 10,
         userId,

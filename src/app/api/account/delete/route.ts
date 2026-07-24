@@ -21,6 +21,24 @@ export async function POST(request: NextRequest) {
   if (!auth) {
     return NextResponse.json({ error: 'Not signed in' }, { status: 401 })
   }
+  if (auth.authType !== 'session') {
+    return NextResponse.json(
+      { error: 'Account deletion requires an interactive signed-in browser session.' },
+      { status: 403 },
+    )
+  }
+  const origin = request.headers.get('origin')
+  if (origin !== request.nextUrl.origin || request.headers.get('sec-fetch-site') === 'cross-site') {
+    return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 })
+  }
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    !('confirmation' in body) ||
+    body.confirmation !== 'DELETE'
+  ) {
+    return NextResponse.json({ error: 'Type DELETE to confirm account deletion.' }, { status: 400 })
+  }
 
   const userId = auth.userId
   const userEmail = session?.user?.id === userId ? session.user.email : undefined
@@ -32,7 +50,17 @@ export async function POST(request: NextRequest) {
 
   let result: Awaited<ReturnType<AccountDeletionService['deleteAccount']>>
   try {
-    result = await new AccountDeletionService(getOverlayServerContext()).deleteAccount({ userId, request })
+    const server = getOverlayServerContext()
+    await server.auditService.record({
+      action: 'account.delete.requested',
+      actorType: 'user',
+      actorUserId: userId,
+      ipAddress: getClientIp(request),
+      outcome: 'success',
+      resourceId: userId,
+      resourceType: 'account',
+    })
+    result = await new AccountDeletionService(server).deleteAccount({ userId, request })
   } catch (error) {
     logger.error('[account/delete] Account deletion failed:', error)
     return NextResponse.json(

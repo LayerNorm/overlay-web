@@ -55,6 +55,8 @@ test('Postgres P7 replacement and recovery faults', {
       assert.equal((await usage.reserve({
         entitlements: entitlements!,
         kind: 'ask',
+        operationId: 'fault.reconnect',
+        requestFingerprint: reservationId,
         reservationId,
         reservedCents: 10,
         userId,

@@ -60,7 +60,10 @@ export type DaytonaBudgetReservationResult =
 
 export async function reserveDaytonaRunBudget(params: {
   deps?: Partial<DaytonaBudgetDeps>
+  idempotencyKey?: string | null
   maxDurationSeconds: number
+  operationId: string
+  requestFingerprint: string
   userId: string
 }): Promise<DaytonaBudgetReservationResult> {
   const deps = { ...defaultBudgetDeps, ...params.deps }
@@ -104,9 +107,12 @@ export async function reserveDaytonaRunBudget(params: {
   const sandboxReservation = await deps.reserveProviderBudget({
     userId: params.userId,
     entitlements: currentEntitlements,
+    idempotencyKey: params.idempotencyKey,
     providerCostUsd: maxDaytonaRuntimeCostUsd(params.maxDurationSeconds),
     kind: 'sandbox',
     modelId: 'daytona/pro',
+    operationId: params.operationId,
+    requestFingerprint: params.requestFingerprint,
   })
   if (!sandboxReservation.ok) {
     return {

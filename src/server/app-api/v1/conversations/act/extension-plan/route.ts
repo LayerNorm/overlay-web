@@ -3,8 +3,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { generateObject } from '@/server/ai/sdk'
 import { z } from 'zod'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import {
   FREE_TIER_DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
@@ -13,7 +11,8 @@ import {
 import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import { isPremiumModel } from '@/server/ai/pricing'
 import { getLanguageModel } from '@/server/ai/model-runtime'
-import type { Entitlements } from '@/shared/app/app-contracts'
+import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   billableBudgetCentsFromProviderUsd,
   buildInsufficientCreditsPayload,
@@ -23,6 +22,7 @@ import {
   getBudgetTotals,
   isPaidPlan,
   markProviderBudgetReconcile,
+  markProviderBudgetStarted,
   releaseProviderBudgetReservation,
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
@@ -313,9 +313,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const effectiveModelId: string = isLegacyFreeTierDefaultModelId(requestedModelId)
       ? FREE_TIER_DEFAULT_MODEL_ID
       : requestedModelId
-    const serverSecret = getInternalApiSecret()
-    const entitlements = await convex.query<Entitlements>('platform/usage:getEntitlementsByServer', {
-      serverSecret,
+    const entitlements = await getOverlayServerContext().generationUsagePolicy.getEntitlements({
       userId: auth.userId,
     })
 
@@ -339,6 +337,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
 
     const paid = canUsePaidBudgetFeatures(runtimeEntitlements)
+    const authorizedModelIds = await resolveAuthorizedModelIds({ entitlements: runtimeEntitlements })
+    if (!authorizedModelIds.chat.has(effectiveModelId)) {
+      return NextResponse.json(
+        {
+          error: 'model_not_allowed',
+          message: `Model ${effectiveModelId} is not allowed by the server model policy.`,
+        },
+        { status: 403 },
+      )
+    }
 
     if (!paid && !isFreeTierChatModelId(effectiveModelId)) {
       if (isPaidPlan(runtimeEntitlements)) {
@@ -418,9 +426,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       const reservation = await reserveProviderBudget({
         userId: auth.userId,
         entitlements: runtimeEntitlements,
+        idempotencyKey: context.requestIdempotencyKey,
         providerCostUsd: estimatedProviderCostUsd,
         kind: 'agent',
         modelId: effectiveModelId,
+        operationId: 'conversation.extension-plan',
+        requestFingerprint: context.requestFingerprint,
       })
       if (!reservation.ok) {
         return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })
@@ -430,6 +441,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     let result: { object: z.infer<typeof plannerSchema>; usage?: { inputTokens?: number; outputTokens?: number } }
     try {
+      await markProviderBudgetStarted({
+        userId: auth.userId,
+        reservationId,
+      })
       result = await generateObject({
         model,
         schema: plannerSchema,

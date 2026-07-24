@@ -57,7 +57,11 @@ export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean
     setSubmitting(true)
     setError(null)
     try {
-      const response = await fetch('/api/account/delete', { method: 'POST' })
+      const response = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmation: 'DELETE' }),
+      })
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string }
         throw new Error(body.error || `Server returned ${response.status}`)

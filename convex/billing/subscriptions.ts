@@ -108,39 +108,6 @@ export const getByEmail = query({
   }
 })
 
-// Link existing subscription to new userId (for reinstallation scenarios)
-export const linkSubscriptionToUser = internalMutation({
-  args: {
-    email: v.string(),
-    newUserId: v.string()
-  },
-  handler: async (ctx, { email, newUserId }) => {
-    const existingByUserId = await ctx.db
-      .query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', newUserId))
-      .first()
-
-    if (existingByUserId) {
-      return { success: true, action: 'already_linked', subscription: existingByUserId }
-    }
-
-    const subscriptionByEmail = await ctx.db
-      .query('subscriptions')
-      .withIndex('by_email', (q) => q.eq('email', email))
-      .first()
-
-    if (!subscriptionByEmail) {
-      return { success: false, action: 'not_found' }
-    }
-
-    await ctx.db.patch(subscriptionByEmail._id, {
-      userId: newUserId
-    })
-
-    return { success: true, action: 'linked', subscription: { ...subscriptionByEmail, userId: newUserId } }
-  }
-})
-
 // Get subscription by Stripe customer ID (for webhook lookups — internal only)
 export const getByStripeCustomerId = query({
   args: { accessToken: v.string(), stripeCustomerId: v.string() },

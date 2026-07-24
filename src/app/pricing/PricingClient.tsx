@@ -266,6 +266,7 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
       const response = await fetch('/api/portal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmation: 'OPEN_BILLING_PORTAL' }),
       })
       const data = await response.json()
       if (!response.ok || !data.url) {
@@ -296,6 +297,7 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
         body: JSON.stringify({
           topUpAmountCents: TOP_UP_MIN_AMOUNT_CENTS,
           autoTopUpEnabled,
+          confirmation: 'UPDATE_BILLING_SETTINGS',
           grantOffSessionConsent: autoTopUpEnabled,
         }),
       })

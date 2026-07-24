@@ -1,8 +1,7 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import { convex } from '@/server/database/convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { getVerifiedAccessTokenClaims, debugAccessTokenVerification } from '../../../../../../convex/lib/auth'
+import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { rateLimitByIp } from '@/server/security/rate-limit'
 
 const NO_STORE_HEADERS = {
@@ -10,44 +9,8 @@ const NO_STORE_HEADERS = {
   Pragma: 'no-cache',
 } as const
 
-interface ConvexEntitlements {
-  tier: 'free' | 'pro' | 'max'
-  planKind: 'free' | 'paid'
-  planAmountCents: number
-  budgetUsedCents: number
-  budgetTotalCents: number
-  budgetRemainingCents: number
-  autoTopUpEnabled: boolean
-  autoTopUpAmountCents: number
-  autoTopUpConsentGranted: boolean
-  creditsUsed: number
-  creditsTotal: number
-  dailyUsage: { ask: number; write: number; agent: number }
-  dailyLimits: { ask: number; write: number; agent: number }
-  transcriptionSecondsUsed: number
-  transcriptionSecondsLimit: number
-  localTranscriptionEnabled: boolean
-  resetAt: string
-  billingPeriodEnd: string
-  lastSyncedAt: number
-}
-
 async function getAuthenticatedUserId(request: NextRequest): Promise<string | null> {
-  const authHeader = request.headers.get('authorization')
-  const bearer =
-    authHeader?.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : ''
-
-  if (!bearer) {
-    return null
-  }
-
-  const claims = await getVerifiedAccessTokenClaims(bearer)
-  if (typeof claims?.sub !== 'string' || !claims.sub.trim()) {
-    const debug = await debugAccessTokenVerification(bearer)
-    logger.error('[NativeSubscription] Token verification failed:', JSON.stringify(debug))
-    return null
-  }
-  return claims.sub
+  return (await resolveAuthenticatedAppUser(request, {}))?.userId ?? null
 }
 
 export async function GET(request: NextRequest) {
@@ -62,14 +25,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const entitlements = await convex.query<ConvexEntitlements>(
-      'platform/usage:getEntitlementsByServer',
-      {
-        userId,
-        serverSecret: getInternalApiSecret(),
-      },
-      { throwOnError: true }
-    )
+    const entitlements = await getOverlayServerContext().appData.repositories.usage
+      .getEntitlements({ userId })
 
     if (!entitlements) {
       return NextResponse.json(

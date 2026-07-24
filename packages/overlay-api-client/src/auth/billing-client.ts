@@ -9,11 +9,11 @@ import type { HttpContext } from '../shared/http'
 export class BillingClient {
   constructor(private readonly http: HttpContext) {}
 
-  portal(body: BillingPortalRequest = {}, init?: RequestInit) {
+  portal(body: BillingPortalRequest, init?: RequestInit) {
     return this.http.json<BillingPortalResponse>('/api/portal', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
-  portalResponse(body: BillingPortalRequest = {}, init?: RequestInit) {
+  portalResponse(body: BillingPortalRequest, init?: RequestInit) {
     return this.http.request('/api/portal', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 

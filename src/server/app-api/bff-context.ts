@@ -10,4 +10,6 @@ export type AppApiRouteContext = {
   parsedFormData: FormData | null
   capabilities: CapabilityCheck
   appDataCapabilities: AppDataCapabilities
+  requestFingerprint: string
+  requestIdempotencyKey: string | null
 }
