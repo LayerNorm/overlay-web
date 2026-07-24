@@ -1,5 +1,5 @@
 import { logger } from '@/server/observability/logger'
-import type { Sandbox } from '@daytonaio/sdk'
+import type { Sandbox } from '@daytona/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Sandbox } from '@daytonaio/sdk'
+import type { Sandbox } from '@daytona/sdk'
 import {
   buildDaytonaRunResult,
   collectDaytonaArtifacts,

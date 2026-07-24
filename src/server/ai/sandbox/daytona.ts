@@ -9,7 +9,7 @@ import {
   type Resources,
   type Sandbox,
   type VolumeMount,
-} from '@daytonaio/sdk'
+} from '@daytona/sdk'
 import type {
   DaytonaWorkspaceRecord,
   DaytonaWorkspaceRepository,
@@ -328,19 +328,22 @@ export async function ensureVolume(userId: string): Promise<DaytonaVolumeRecord>
 }
 
 async function findExistingWorkspaceSandbox(userId: string): Promise<Sandbox | null> {
-  const result = await getDaytonaClient().list(
-    {
+  const sandboxes: Sandbox[] = []
+  for await (const sandbox of getDaytonaClient().list({
+    labels: {
       overlay: 'true',
       'overlay.kind': 'workspace',
       'overlay.userId': userId,
     },
-    1,
-    100,
-  )
+    limit: 100,
+  })) {
+    sandboxes.push(sandbox)
+  }
+
   const sandboxName = getWorkspaceSandboxName(userId)
   const sandbox =
-    result.items.find((candidate) => candidate.name === sandboxName) ??
-    result.items.find((candidate) => candidate.name?.startsWith(sandboxName))
+    sandboxes.find((candidate) => candidate.name === sandboxName) ??
+    sandboxes.find((candidate) => candidate.name?.startsWith(sandboxName))
 
   if (!sandbox) {
     return null
