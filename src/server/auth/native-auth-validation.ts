@@ -12,7 +12,10 @@ export function isNativeAuthProvider(value: unknown): value is NativeAuthProvide
   return typeof value === 'string' && (NATIVE_AUTH_PROVIDERS as readonly string[]).includes(value)
 }
 
-export function isAllowedNativeRedirectUri(value: unknown): value is string {
+export function isAllowedNativeRedirectUri(
+  value: unknown,
+  expectedOrigin = 'https://www.getoverlay.io',
+): value is string {
   if (typeof value !== 'string') return false
   const trimmed = value.trim()
   if (!trimmed) return false
@@ -22,8 +25,7 @@ export function isAllowedNativeRedirectUri(value: unknown): value is string {
     const hasNoInjectedParams = url.search === '' && url.hash === ''
     return (
       hasNoInjectedParams &&
-      url.protocol === 'https:' &&
-      url.hostname === 'www.getoverlay.io' &&
+      url.origin === new URL(expectedOrigin).origin &&
       url.pathname === '/auth/native/callback'
     )
   } catch (_error) {
@@ -48,9 +50,11 @@ export function isAllowedWorkOsAuthorizationUrl(value: unknown): value is string
 
   try {
     const url = new URL(value)
-    return url.protocol === 'https:' &&
+    return (
+      url.protocol === 'https:' &&
       url.hostname === 'api.workos.com' &&
       url.pathname === '/user_management/authorize'
+    )
   } catch (_error) {
     return false
   }

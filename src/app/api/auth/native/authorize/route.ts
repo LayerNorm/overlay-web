@@ -33,7 +33,9 @@ export async function POST(request: NextRequest) {
       forceSignIn?: unknown
     }
 
-    const provider = typeof body.provider === 'string' ? body.provider.trim() : ''
+    // The native client intentionally does not select an auth implementation.
+    // The selected Overlay Server owns that policy.
+    const provider = typeof body.provider === 'string' ? body.provider.trim() : 'authkit'
     const redirectUri = typeof body.redirectUri === 'string' ? body.redirectUri.trim() : ''
     const codeChallenge = typeof body.codeChallenge === 'string' ? normalizeCodeChallenge(body.codeChallenge) : null
     const state = typeof body.state === 'string' ? body.state.trim() : ''
@@ -47,7 +49,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unsupported provider' }, { status: 400, headers: NO_STORE_HEADERS })
     }
 
-    if (!isAllowedNativeRedirectUri(redirectUri)) {
+    if (!isAllowedNativeRedirectUri(redirectUri, request.nextUrl.origin)) {
       logSecurityEvent('native_authorize_rejected', {
         reason: 'invalid_redirect_uri',
         path: request.nextUrl.pathname,
