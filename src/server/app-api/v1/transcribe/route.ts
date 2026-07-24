@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     const prompt = (formData.get('prompt') as string | null) || undefined
 
-    const groqApiKey = (await getServerProviderKey('groq')) ?? process.env.GROQ_API_KEY
+    const groqApiKey = await getServerProviderKey('groq')
 
     if (groqApiKey) {
       // Preserve the original filename (e.g. audio.m4a) so Groq picks the right

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { WorkOS } from '@workos-inc/node'
+import { assertHostedProviderAccessEnabled } from './hosted-provider-kill-switch'
 
 // Maps provider name → vault object name (= env var name, as stored in WorkOS Vault dashboard)
 const PROVIDER_VAULT_NAMES: Record<string, string> = {
@@ -52,7 +53,9 @@ async function readFromVault(vaultName: string): Promise<string | null> {
     if (!id) return null
 
     type VaultObject = { value?: unknown }
-    const obj = (await (workos.vault.readObject as (args: { id: string }) => Promise<VaultObject>)({ id }))
+    const obj = await (workos.vault.readObject as (args: { id: string }) => Promise<VaultObject>)({
+      id,
+    })
     const val = typeof obj.value === 'string' ? obj.value.trim() : ''
     return val.length > 0 ? val : null
   } catch (_error) {
@@ -61,6 +64,10 @@ async function readFromVault(vaultName: string): Promise<string | null> {
 }
 
 export async function getServerProviderKey(provider: string): Promise<string | null> {
+  // Check before the in-memory cache so activating the switch takes effect on
+  // the next operation without a process restart.
+  assertHostedProviderAccessEnabled()
+
   const cached = valueCache.get(provider)
   if (cached && cached.expiresAt > Date.now()) return cached.value
 

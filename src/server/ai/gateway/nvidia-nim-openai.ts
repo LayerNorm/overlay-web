@@ -22,13 +22,8 @@ export const FREE_TIER_NVIDIA_PREFERRED_MODEL_ORDER = [
 ] as const satisfies readonly (typeof NVIDIA_NIM_MODEL_IDS)[number][]
 
 export async function resolveNvidiaApiKey(accessToken?: string): Promise<string | null> {
-  if (accessToken) {
-    const fromVault = await getServerProviderKey('nvidia')
-    if (fromVault) {
-      return fromVault
-    }
-  }
-  return process.env.NVIDIA_API_KEY?.trim() || null
+  void accessToken
+  return await getServerProviderKey('nvidia')
 }
 
 /**

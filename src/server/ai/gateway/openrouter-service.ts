@@ -208,13 +208,8 @@ export function buildOpenRouterMessagesFromUi(
 }
 
 async function resolveApiKey(accessToken?: string): Promise<string | null> {
-  if (accessToken) {
-    const serverKey = await getServerProviderKey('openrouter')
-    if (serverKey) {
-      return serverKey
-    }
-  }
-  return process.env.OPENROUTER_API_KEY ?? null
+  void accessToken
+  return await getServerProviderKey('openrouter')
 }
 
 export async function streamOpenRouterChat({
