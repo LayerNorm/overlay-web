@@ -9,6 +9,11 @@ const NO_STORE_HEADERS = {
   Pragma: 'no-cache',
 } as const
 
+const INVALID_TOKEN_HEADERS = {
+  ...NO_STORE_HEADERS,
+  'WWW-Authenticate': 'Bearer error="invalid_token"',
+} as const
+
 async function getAuthenticatedUserId(request: NextRequest): Promise<string | null> {
   return (await resolveAuthenticatedAppUser(request, {}))?.userId ?? null
 }
@@ -21,7 +26,7 @@ export async function GET(request: NextRequest) {
     if (!userId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
-        { status: 401, headers: NO_STORE_HEADERS }
+        { status: 401, headers: INVALID_TOKEN_HEADERS }
       )
     }
 
