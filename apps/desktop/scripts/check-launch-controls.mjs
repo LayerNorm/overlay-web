@@ -20,12 +20,16 @@ for (const required of [
 }
 
 const releaseWorkflow = read('.github/workflows/release-mac.yml')
-const frozenJobs = releaseWorkflow.match(/if:\s*\$\{\{\s*false\s*\}\}/g) ?? []
-assert.equal(frozenJobs.length, 2, 'build and publish jobs must remain frozen before Gate B')
+// Publish stays frozen until Gate B. Signed dry-run builds may unfreeze build-mac only.
 assert.match(
   releaseWorkflow,
-  /environment:\s*release-macos[\s\S]*environment:\s*release-publish/,
-  'release build and publish must use separate protected environments'
+  /publish-mac:[\s\S]*if:\s*\$\{\{\s*false\s*\}\}/,
+  'publish-mac must remain frozen before Gate B',
+)
+assert.match(
+  releaseWorkflow,
+  /environment:\s*mac-release[\s\S]*environment:\s*release-publish/,
+  'release build and publish must use separate protected environments (mac-release + release-publish)',
 )
 
 for (const gate of [
