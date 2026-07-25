@@ -17,8 +17,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Dry-run build enabled: signs/notarizes and uploads artifacts only.
+  # publish-mac stays frozen until Gate B.
   build-mac:
-    if: ${{ false }}
     runs-on: macos-latest
     # Signing secrets live only in this protected environment (not repo-wide).
     environment: mac-release
