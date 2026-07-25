@@ -184,6 +184,15 @@ export const webApiBoundaryDefinitions = [
   },
   {
     method: 'GET',
+    path: '/api/v1/discovery',
+    schema: { query: EmptyQuery, response: UnknownResponse },
+    summary: 'Public Overlay Server discovery metadata',
+    description:
+      'Unauthenticated desktop/server discovery: API versions, capabilities, native auth paths, and minimum desktop version. No secrets.',
+    tag: 'Discovery',
+  },
+  {
+    method: 'GET',
     path: '/api/v1/conversations',
     schema: { query: ConversationListQuery },
     summary: 'List or read conversations',

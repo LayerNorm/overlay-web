@@ -1,8 +1,8 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Overlay Web",
-  "description": "Developer and self-hosting documentation for the Overlay web app.",
+  "name": "Overlay",
+  "description": "Documentation for Overlay across web, desktop, and self-hosted deployments.",
   "colors": {
     "primary": "#111827"
   },
@@ -30,6 +30,29 @@
       {
         "group": "Start",
         "pages": ["introduction", "start/quickstart", "start/repository-map"]
+      },
+      {
+        "group": "Desktop",
+        "pages": [
+          "desktop/overview",
+          "desktop/download-install",
+          "desktop/system-requirements",
+          "desktop/sign-in",
+          "desktop/self-hosted-server",
+          "desktop/build-from-source",
+          "desktop/local-vs-cloud",
+          "desktop/chat-permissions",
+          "desktop/macos-permissions",
+          "desktop/browser-security",
+          "desktop/transcription",
+          "desktop/updates",
+          "desktop/uninstall",
+          "desktop/privacy-diagnostics",
+          "desktop/security-reporting",
+          "desktop/troubleshooting",
+          "desktop/release-verification",
+          "desktop/changelog"
+        ]
       },
       {
         "group": "Configure",

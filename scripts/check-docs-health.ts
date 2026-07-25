@@ -40,6 +40,7 @@ const allowedDocsEntries = new Set([
   'config',
   'configure',
   'deploy-operate',
+  'desktop',
   'develop',
   'docs.json',
   'help',
@@ -310,6 +311,9 @@ async function checkDocumentedCommands(failures: string[]) {
   )
 
   for (const file of markdownFiles) {
+    // Desktop pages document LayerNorm/overlay-desktop scripts, not this package.
+    if (relative(file).startsWith('docs/desktop/')) continue
+
     const text = await readFile(file, 'utf8')
     for (const match of text.matchAll(/\bnpm run ([A-Za-z0-9:_-]+)/g)) {
       const script = match[1]

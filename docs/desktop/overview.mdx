@@ -1,0 +1,30 @@
+---
+title: "Desktop overview"
+description: "Architecture and scope of Overlay Desktop on macOS."
+---
+
+Overlay Desktop is the Electron macOS client for Overlay. It provides voice input, chat, notes, files, and permissioned agent operations on Apple Silicon.
+
+## Surfaces
+
+| Surface | Role |
+| --- | --- |
+| Main / overlay windows | App shell, settings, launcher |
+| Chat | Permissioned host tools + hosted models |
+| Notebook | Local notes with optional cloud sync |
+| Browser | Interactive browsing; agent browser is isolated |
+| Transcription | Local and/or cloud speech-to-text |
+
+## Processes
+
+- **Main** — trusted host capabilities, IPC, Keychain-backed secrets, policy.
+- **Preload** — narrow typed bridge (`window.bridge` only).
+- **Renderer** — React UI; no Node privileged APIs.
+
+## Source
+
+- Public repository: [LayerNorm/overlay-desktop](https://github.com/LayerNorm/overlay-desktop)
+- Website: [getoverlay.io](https://getoverlay.io)
+- Download (after Gate B): [getoverlay.io/download](https://getoverlay.io/download)
+
+Hosted authentication, model policy, entitlements, billing, and usage accounting remain server-authoritative on Overlay Server.

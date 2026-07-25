@@ -1,0 +1,18 @@
+---
+title: "Sign-in and hosted server"
+description: "How Overlay Desktop authenticates against Overlay Server."
+---
+
+Official builds authenticate against the hosted Overlay Server at
+`https://getoverlay.io`.
+
+Flow:
+
+1. Desktop opens the system browser to the server sign-in page.
+2. After success, the browser returns via an `overlay://` callback.
+3. Main process validates the handoff and stores session material using OS
+   secure storage / Keychain-backed APIs.
+
+Hosted mode still requires Overlay Server for account features, hosted models,
+entitlements, and billing. Local notes and some tools can work on-device after
+sign-in depending on configuration.

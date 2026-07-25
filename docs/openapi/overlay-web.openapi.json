@@ -35,6 +35,9 @@
       "name": "Conversations"
     },
     {
+      "name": "Discovery"
+    },
+    {
       "name": "Files"
     },
     {
@@ -3004,6 +3007,66 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/discovery": {
+      "get": {
+        "operationId": "getDiscovery",
+        "summary": "Public Overlay Server discovery metadata",
+        "tags": [
+          "Discovery"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Unauthenticated desktop/server discovery: API versions, capabilities, native auth paths, and minimum desktop version. No secrets."
       }
     },
     "/api/v1/files": {
@@ -8095,6 +8158,12 @@
                   "autoTopUpEnabled": {
                     "type": "boolean"
                   },
+                  "confirmation": {
+                    "type": "string",
+                    "enum": [
+                      "UPDATE_BILLING_SETTINGS"
+                    ]
+                  },
                   "grantOffSessionConsent": {
                     "type": "boolean"
                   },
@@ -8106,7 +8175,8 @@
                   }
                 },
                 "required": [
-                  "autoTopUpEnabled"
+                  "autoTopUpEnabled",
+                  "confirmation"
                 ],
                 "additionalProperties": true
               }

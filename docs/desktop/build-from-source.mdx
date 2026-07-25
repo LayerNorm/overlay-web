@@ -1,0 +1,30 @@
+---
+title: "Building from source"
+description: "Clone and run Overlay Desktop on Apple Silicon."
+---
+
+```bash
+git clone https://github.com/LayerNorm/overlay-desktop.git
+cd overlay-desktop
+cp .env.example .env.local
+npm ci
+npm run dev
+```
+
+Checks:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+Local package (typically unsigned in CI dry-runs):
+
+```bash
+npm run build:mac:ci
+```
+
+See the repository [README](https://github.com/LayerNorm/overlay-desktop#build-from-source)
+and [RELEASE_PROCESS](https://github.com/LayerNorm/overlay-desktop/blob/main/guides/RELEASE_PROCESS.md)
+for signed release requirements.

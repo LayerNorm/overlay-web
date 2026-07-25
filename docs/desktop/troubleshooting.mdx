@@ -1,0 +1,26 @@
+---
+title: "Desktop troubleshooting"
+description: "Common Overlay Desktop setup and runtime issues."
+---
+
+## Authentication
+
+- Confirm the Overlay Server URL is reachable (`APP_SERVER_URL` or hosted default).
+- Complete browser sign-in; ensure `overlay://` callbacks reach this app.
+- After server-side session revocation, sign in again.
+
+## Keychain
+
+- Deny Keychain access → auth/API keys will not persist.
+- After Keychain reset or new Mac, sign in again and re-enter user-owned keys.
+
+## Permissions
+
+- Grant Microphone / Accessibility / Automation / Files in System Settings as needed.
+- Relaunch Overlay after TCC changes.
+
+## Native helpers / models
+
+- Confirm Apple Silicon.
+- Official builds include pinned arm64 helpers; stripped copies will fail.
+- From-source packages need a successful native artifact layout.

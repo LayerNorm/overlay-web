@@ -1,0 +1,16 @@
+---
+title: "macOS permissions"
+description: "Why Overlay requests system permissions."
+---
+
+| Permission | Why Overlay may ask |
+| --- | --- |
+| Microphone | Voice input / transcription |
+| Accessibility | Approved UI automation tools |
+| Apple Events / Automation | Control other apps when an approved tool needs it |
+| Files / folders | Read/write user-selected or approved paths |
+| Network / browser | Interactive browsing and policy-restricted agent browsing |
+| Keychain | Persist auth and user-owned API keys via OS secure storage |
+
+Deny any permission you do not want to grant. Related features fail closed.
+After changing **System Settings → Privacy & Security**, quit and relaunch Overlay.
