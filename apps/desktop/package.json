@@ -9,10 +9,10 @@
   "description": "overlay - personal computing, reimagined",
   "main": "./out/main/index.js",
   "author": "DevelopedByDev",
-  "homepage": "https://github.com/DevelopedByDev/overlay-desktop.git",
+  "homepage": "https://github.com/LayerNorm/overlay-desktop",
   "repository": {
     "type": "git",
-    "url": "https://github.com/DevelopedByDev/overlay-desktop.git"
+    "url": "https://github.com/LayerNorm/overlay-desktop.git"
   },
   "scripts": {
     "format": "prettier --write .",

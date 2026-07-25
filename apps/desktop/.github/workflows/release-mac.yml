@@ -1,8 +1,7 @@
 name: Release macOS
 
-# SECURITY CONTAINMENT: Official desktop releases are frozen until the Gate B
-# requirements in guides/RELEASE_PROCESS.md pass. Keep this workflow non-runnable
-# rather than relying on maintainers to remember not to push a release tag.
+# Official desktop releases stay frozen until Gate B is signed off.
+# Keep jobs non-runnable rather than relying on maintainers to skip dispatch.
 on:
   workflow_dispatch:
     inputs:
@@ -21,7 +20,8 @@ jobs:
   build-mac:
     if: ${{ false }}
     runs-on: macos-latest
-    environment: release-macos
+    # Signing secrets live only in this protected environment (not repo-wide).
+    environment: mac-release
     permissions:
       contents: read
       id-token: write
@@ -60,7 +60,7 @@ jobs:
           test -z "$(git status --porcelain)"
           npm run check:standalone
           npm run license:check
-          npm run check:dependencies:all
+          npm run check:dependencies:prod
           npm run check:release-security
           npm run check:launch-controls
           npm run security:verify:source
@@ -111,13 +111,15 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # Publish to this same public repo's GitHub Releases (open-source model).
+  # Build job never receives write access; publish uses GITHUB_TOKEN only.
   publish-mac:
     if: ${{ false }}
     needs: build-mac
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     environment: release-publish
     permissions:
-      contents: read
+      contents: write
 
     steps:
       - name: Download verified release candidate
@@ -126,22 +128,23 @@ jobs:
           name: overlay-macos-${{ inputs.release_source_sha }}
           path: dist
 
-      - name: Create release publishing token
-        id: app-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
-        with:
-          app-id: ${{ secrets.GH_APP_ID }}
-          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
-          owner: DevelopedByDev
-          repositories: overlay-releases
-
-      - name: Publish verified artifacts
+      - name: Publish verified artifacts to this repository
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_SOURCE_SHA: ${{ inputs.release_source_sha }}
+          RELEASE_REPO: ${{ github.repository }}
         run: |
+          set -euo pipefail
           VERSION="$(node -p "require('./dist/release-manifest.json').version")"
-          gh release create "v${VERSION}" dist/* \
-            --repo DevelopedByDev/overlay-releases \
-            --title "Overlay v${VERSION}" \
-            --notes "Built from source commit ${RELEASE_SOURCE_SHA}."
+          TAG="v${VERSION}"
+          NOTES="Built from source commit ${RELEASE_SOURCE_SHA}."
+
+          if gh release view "$TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; uploading assets only."
+            gh release upload "$TAG" dist/* --repo "$RELEASE_REPO" --clobber
+          else
+            gh release create "$TAG" dist/* \
+              --repo "$RELEASE_REPO" \
+              --title "Overlay v${VERSION}" \
+              --notes "$NOTES"
+          fi

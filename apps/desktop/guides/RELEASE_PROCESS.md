@@ -16,11 +16,16 @@ helper is rebuilt and verified for those architectures.
 
 ## Required repository controls
 
-- Protect the `release-macos` and `release-publish` GitHub environments.
+- Protect the `mac-release` and `release-publish` GitHub environments on
+  `LayerNorm/overlay-desktop`.
 - Require reviewer approval for both environments.
-- Store Apple signing/notarization credentials only in `release-macos`.
-- Store the cross-repository GitHub App credentials only in `release-publish`.
-- Give that GitHub App write access only to `DevelopedByDev/overlay-releases`.
+- Store Apple signing/notarization credentials only in `mac-release`
+  (not repository-level secrets).
+- Publish signed artifacts as **GitHub Releases on the same public repo**
+  (`LayerNorm/overlay-desktop`). The publish job uses `GITHUB_TOKEN` with
+  `contents: write`; the build job never receives write access.
+- The legacy `DevelopedByDev/overlay-releases` repository is private/retired.
+  Do not publish new public DMGs there.
 - Do not store copies of production credentials in repository `.env` files.
 - Keep all Actions pinned to immutable commit SHAs.
 

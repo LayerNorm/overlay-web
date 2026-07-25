@@ -85,6 +85,6 @@ appImage:
 npmRebuild: true
 publish:
   provider: github
-  owner: DevelopedByDev
-  repo: overlay-releases
+  owner: LayerNorm
+  repo: overlay-desktop
   releaseType: release
