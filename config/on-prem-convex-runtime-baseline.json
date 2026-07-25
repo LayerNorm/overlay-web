@@ -8,7 +8,6 @@
     "src/app/api/auth/forgot-password/route.ts",
     "src/app/api/auth/native/authorize/route.ts",
     "src/app/api/auth/native/exchange/route.ts",
-    "src/app/api/auth/native/provider-keys/route.ts",
     "src/app/api/auth/native/refresh/route.ts",
     "src/app/api/auth/native/subscription/route.ts",
     "src/app/api/auth/options/route.ts",

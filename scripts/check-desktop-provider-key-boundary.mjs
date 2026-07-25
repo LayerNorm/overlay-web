@@ -1,19 +1,11 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 const routePath = 'src/app/api/auth/native/provider-keys/route.ts'
-const routeSource = readFileSync(routePath, 'utf8')
-
-assert.doesNotMatch(
-  routeSource,
-  /getServerProviderKey|resolveAuthenticatedAppUser|keys\s*:/,
-  `${routePath} must remain a fail-closed tombstone and must not resolve provider credentials`,
-)
-assert.match(routeSource, /status:\s*410/, `${routePath} must return 410 Gone to legacy clients`)
-assert.match(
-  routeSource,
-  /provider_credentials_server_only/,
-  `${routePath} must return the stable server-only error code`,
+assert.equal(
+  existsSync(routePath),
+  false,
+  `${routePath} must not exist — owner provider credentials are server-only and must never be exposed via a client HTTP route`,
 )
 
 const providerResolverPath = 'src/server/ai/gateway/server-provider-keys.ts'
@@ -23,5 +15,10 @@ assert.match(
   /assertHostedProviderAccessEnabled\(\)/,
   `${providerResolverPath} must enforce the emergency kill switch before resolving credentials`,
 )
+assert.match(
+  providerResolverSource,
+  /workos\.vault|WORKOS_API_KEY|PROVIDER_VAULT_NAMES/,
+  `${providerResolverPath} must resolve credentials only on the server (vault/env), never for client delivery`,
+)
 
-console.log('Desktop provider-key server boundary check passed.')
+console.log('Desktop provider-key server boundary check passed (route removed; kill switch enforced).')

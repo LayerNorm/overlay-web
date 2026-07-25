@@ -124,7 +124,7 @@
     "chat-parity:manifest": "node scripts/chat-parity-baseline-manifest.mjs",
     "file-parity:manifest": "node scripts/file-parity-baseline-manifest.mjs",
     "check:public-showcase": "node --import tsx --test src/features/showcase/showcase-data.test.ts src/shared/auth/root-entry.test.ts src/shared/marketing/marketing-seo.test.ts && node scripts/check-public-showcase-boundaries.mjs",
-    "check:desktop-provider-key-boundary": "NODE_OPTIONS=--require=./scripts/register-server-only.cjs tsx --test src/app/api/auth/native/provider-keys/route.test.ts src/server/ai/gateway/hosted-provider-kill-switch.test.ts && node scripts/check-desktop-provider-key-boundary.mjs",
+    "check:desktop-provider-key-boundary": "NODE_OPTIONS=--require=./scripts/register-server-only.cjs tsx --test src/server/ai/gateway/hosted-provider-kill-switch.test.ts && node scripts/check-desktop-provider-key-boundary.mjs",
     "typecheck": "npm run check:desktop-provider-key-boundary && npm run check:chat-transcript-boundaries && npm run check:file-parity-boundaries && npm run check:knowledge-surface-contract && npm run check:public-showcase && tsc --noEmit",
     "ui:typecheck": "npm --prefix packages/overlay-ui run typecheck",
     "ui:test": "npm --prefix packages/overlay-ui run test",

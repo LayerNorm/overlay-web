@@ -1,4 +1,5 @@
-export const GITHUB_REPO = "DevelopedByDev/overlay-releases";
+/** Official signed DMGs ship as GitHub Releases on the public desktop repo. */
+export const GITHUB_REPO = "LayerNorm/overlay-desktop";
 export const CACHE_DURATION = 600; // 10 minutes in seconds
 export const LATEST_RELEASE_DOWNLOAD_PATH = "/api/latest-release/download";
 
