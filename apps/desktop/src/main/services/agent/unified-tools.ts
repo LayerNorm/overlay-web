@@ -2402,10 +2402,13 @@ function addCodingTools(tools: ToolSet, options: ToolSetOptions): void {
         { pattern, directory, file_glob },
         async () => {
           const searchDir = directory || cwd || homedir()
-          const flags = case_sensitive ? '' : '-i '
-          const globFlag = file_glob ? `-g '${file_glob}' ` : ''
-          const cmd = `rg ${flags}${globFlag}--line-number --max-count 50 -e '${pattern.replace(/'/g, "'\\''")}' '${searchDir}'`
-          const result = await terminalService.runCommand(cmd, { cwd: searchDir, timeoutMs: 15000 })
+          const args = ['--line-number', '--max-count', '50', '-e', pattern, searchDir]
+          if (!case_sensitive) args.unshift('-i')
+          if (file_glob) args.unshift('-g', file_glob)
+          const result = await terminalService.runExecFile('rg', args, {
+            cwd: searchDir,
+            timeoutMs: 15000
+          })
           return {
             success: result.success || result.stdout.length > 0,
             matches: result.stdout || result.stderr || 'No matches found'
@@ -2424,15 +2427,18 @@ function addCodingTools(tools: ToolSet, options: ToolSetOptions): void {
     execute: async ({ pattern, timeout_ms }) =>
       runWithLifecycle(options, 'code_run_tests', { pattern }, async () => {
         const testCwd = cwd || homedir()
-        const patternFlag = pattern ? ` -- ${pattern}` : ''
-        const cmd = `npm test${patternFlag} 2>&1 || true`
-        const result = await terminalService.runCommand(cmd, {
+        const args = ['test']
+        if (pattern) args.push('--', pattern)
+        const result = await terminalService.runExecFile('npm', args, {
           cwd: testCwd,
           timeoutMs: timeout_ms ?? 60000
         })
         return {
           success: result.success,
-          output: truncate(result.stdout, MAX_TOOL_RESULT_CHARS),
+          output: truncate(
+            [result.stdout, result.stderr].filter(Boolean).join('\n'),
+            MAX_TOOL_RESULT_CHARS
+          ),
           exitCode: result.exitCode
         }
       })
@@ -2443,9 +2449,11 @@ function addCodingTools(tools: ToolSet, options: ToolSetOptions): void {
     inputSchema: z.object({}),
     execute: async () =>
       runWithLifecycle(options, 'code_git_status', {}, async () => {
-        const result = await terminalService.runCommand('git status --short --branch', {
-          cwd: cwd || homedir()
-        })
+        const result = await terminalService.runExecFile(
+          'git',
+          ['status', '--short', '--branch'],
+          { cwd: cwd || homedir() }
+        )
         return { success: result.success, status: result.stdout || result.stderr }
       })
   })
@@ -2459,13 +2467,26 @@ function addCodingTools(tools: ToolSet, options: ToolSetOptions): void {
     }),
     execute: async ({ staged, path: filePath }) =>
       runWithLifecycle(options, 'code_git_diff', { staged, path: filePath }, async () => {
-        const stagedFlag = staged ? '--staged ' : ''
-        const pathArg = filePath ? ` -- '${filePath}'` : ''
-        const result = await terminalService.runCommand(
-          `git diff ${stagedFlag}--stat${pathArg} && git diff ${stagedFlag}${pathArg}`,
-          { cwd: cwd || homedir(), timeoutMs: 15000 }
-        )
-        return { success: result.success, diff: truncate(result.stdout, MAX_TOOL_RESULT_CHARS) }
+        const gitCwd = cwd || homedir()
+        const statArgs = ['diff', '--stat']
+        const diffArgs = ['diff']
+        if (staged) {
+          statArgs.splice(1, 0, '--staged')
+          diffArgs.splice(1, 0, '--staged')
+        }
+        if (filePath) {
+          statArgs.push('--', filePath)
+          diffArgs.push('--', filePath)
+        }
+        const [statResult, diffResult] = await Promise.all([
+          terminalService.runExecFile('git', statArgs, { cwd: gitCwd, timeoutMs: 15000 }),
+          terminalService.runExecFile('git', diffArgs, { cwd: gitCwd, timeoutMs: 15000 })
+        ])
+        const combined = [statResult.stdout, diffResult.stdout].filter(Boolean).join('\n')
+        return {
+          success: statResult.success || diffResult.success,
+          diff: truncate(combined || diffResult.stderr || statResult.stderr, MAX_TOOL_RESULT_CHARS)
+        }
       })
   })
 
@@ -2481,12 +2502,27 @@ function addCodingTools(tools: ToolSet, options: ToolSetOptions): void {
     execute: async ({ message, stage_all = true }) =>
       runWithLifecycle(options, 'code_git_commit', { message }, async () => {
         auditSensitiveTool('tool:code_git_commit', { message }, true)
-        const stageCmd = stage_all ? 'git add -A && ' : ''
-        const result = await terminalService.runCommand(
-          `${stageCmd}git commit -m '${message.replace(/'/g, "'\\''")}' 2>&1`,
-          { cwd: cwd || homedir(), timeoutMs: 20000 }
-        )
-        return { success: result.success, output: result.stdout || result.stderr }
+        const gitCwd = cwd || homedir()
+        if (stage_all) {
+          const stageResult = await terminalService.runExecFile('git', ['add', '-A'], {
+            cwd: gitCwd,
+            timeoutMs: 20000
+          })
+          if (!stageResult.success) {
+            return {
+              success: false,
+              output: stageResult.stderr || stageResult.stdout || stageResult.error || 'git add failed'
+            }
+          }
+        }
+        const result = await terminalService.runExecFile('git', ['commit', '-m', message], {
+          cwd: gitCwd,
+          timeoutMs: 20000
+        })
+        return {
+          success: result.success,
+          output: result.stdout || result.stderr || result.error || ''
+        }
       })
   })
 
@@ -2503,14 +2539,30 @@ function addCodingTools(tools: ToolSet, options: ToolSetOptions): void {
       runWithLifecycle(options, 'code_lint', { path: lintPath }, async () => {
         const targetPath = lintPath || '.'
         const lintCwd = cwd || homedir()
-        const cmd = `npx eslint '${targetPath}' --format compact 2>&1 || npx biome check '${targetPath}' 2>&1 || true`
-        const result = await terminalService.runCommand(cmd, {
+        const eslintResult = await terminalService.runExecFile(
+          'npx',
+          ['eslint', targetPath, '--format', 'compact'],
+          { cwd: lintCwd, timeoutMs: 30000 }
+        )
+        if (eslintResult.stdout || eslintResult.success) {
+          return {
+            success: eslintResult.success,
+            output: truncate(
+              [eslintResult.stdout, eslintResult.stderr].filter(Boolean).join('\n'),
+              MAX_TOOL_RESULT_CHARS
+            )
+          }
+        }
+        const biomeResult = await terminalService.runExecFile('npx', ['biome', 'check', targetPath], {
           cwd: lintCwd,
           timeoutMs: 30000
         })
         return {
-          success: result.success,
-          output: truncate(result.stdout, MAX_TOOL_RESULT_CHARS)
+          success: biomeResult.success,
+          output: truncate(
+            [biomeResult.stdout, biomeResult.stderr].filter(Boolean).join('\n'),
+            MAX_TOOL_RESULT_CHARS
+          )
         }
       })
   })

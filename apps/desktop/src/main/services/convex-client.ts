@@ -10,91 +10,51 @@ const appServerUrl = process.env.APP_SERVER_URL || ''
 const isUsingProdServer = Boolean(appServerUrl && !appServerUrl.includes('localhost'))
 const isDev = !app.isPackaged && !isUsingProdServer
 
-const DEFAULT_DEV_DEPLOYMENT = 'different-caiman-77'
-const DEFAULT_PROD_DEPLOYMENT = 'colorful-chickadee-419'
-
 function toConvexCloudUrl(value: string): string {
   return value.replace(/\.cloud\.convex\.cloud$/, '.convex.cloud')
 }
 
-function deploymentToUrl(deployment: string | undefined): string | null {
-  if (!deployment) return null
-  const slug = deployment
-    .trim()
-    .replace(/^dev:/, '')
-    .replace(/^prod:/, '')
-    .trim()
-  if (!slug) return null
-  return `https://${slug}.convex.cloud`
+function deploymentNameFromUrl(url: string): string | null {
+  try {
+    const host = new URL(url).hostname
+    const match = host.match(/^([a-z0-9-]+)\.convex\.cloud$/i)
+    return match?.[1] ?? null
+  } catch {
+    return null
+  }
 }
 
 function resolveConvexUrl(): { url: string; source: string; deployment: string } {
-  if (process.env.CONVEX_URL) {
-    return {
-      url: toConvexCloudUrl(process.env.CONVEX_URL),
-      source: 'CONVEX_URL',
-      deployment: isDev ? 'custom-dev' : 'custom-prod'
-    }
-  }
+  const candidates: Array<[string, string | undefined]> = isDev
+    ? [
+        ['CONVEX_URL', process.env.CONVEX_URL],
+        ['VITE_CONVEX_URL', process.env.VITE_CONVEX_URL],
+        ['DEV_CONVEX_URL', process.env.DEV_CONVEX_URL],
+        ['DEV_NEXT_PUBLIC_CONVEX_URL', process.env.DEV_NEXT_PUBLIC_CONVEX_URL],
+        ['NEXT_PUBLIC_CONVEX_URL', process.env.NEXT_PUBLIC_CONVEX_URL]
+      ]
+    : [
+        ['CONVEX_URL', process.env.CONVEX_URL],
+        ['CONVEX_PROD_URL', process.env.CONVEX_PROD_URL],
+        ['NEXT_PUBLIC_CONVEX_URL', process.env.NEXT_PUBLIC_CONVEX_URL]
+      ]
 
-  if (isDev) {
-    if (process.env.VITE_CONVEX_URL) {
-      return {
-        url: toConvexCloudUrl(process.env.VITE_CONVEX_URL),
-        source: 'VITE_CONVEX_URL',
-        deployment: process.env.CONVEX_DEPLOYMENT || `dev:${DEFAULT_DEV_DEPLOYMENT}`
-      }
-    }
-
-    if (process.env.DEV_CONVEX_URL) {
-      return {
-        url: toConvexCloudUrl(process.env.DEV_CONVEX_URL),
-        source: 'DEV_CONVEX_URL',
-        deployment: process.env.CONVEX_DEPLOYMENT || `dev:${DEFAULT_DEV_DEPLOYMENT}`
-      }
-    }
-
-    const derivedDevUrl =
-      deploymentToUrl(process.env.CONVEX_DEPLOYMENT) ||
-      deploymentToUrl(`dev:${DEFAULT_DEV_DEPLOYMENT}`)
-    if (!derivedDevUrl) {
-      throw new Error('Unable to resolve Convex dev URL')
-    }
-
-    return {
-      url: derivedDevUrl,
-      source: 'CONVEX_DEPLOYMENT',
-      deployment: process.env.CONVEX_DEPLOYMENT || `dev:${DEFAULT_DEV_DEPLOYMENT}`
-    }
-  }
-
-  if (process.env.CONVEX_PROD_URL) {
-    return {
-      url: toConvexCloudUrl(process.env.CONVEX_PROD_URL),
-      source: 'CONVEX_PROD_URL',
-      deployment: process.env.CONVEX_PROD_DEPLOYMENT || DEFAULT_PROD_DEPLOYMENT
-    }
-  }
-
-  if (process.env.NEXT_PUBLIC_CONVEX_URL) {
-    return {
-      url: toConvexCloudUrl(process.env.NEXT_PUBLIC_CONVEX_URL),
-      source: 'NEXT_PUBLIC_CONVEX_URL',
-      deployment: process.env.CONVEX_PROD_DEPLOYMENT || DEFAULT_PROD_DEPLOYMENT
-    }
-  }
-
-  const derivedProdUrl =
-    deploymentToUrl(process.env.CONVEX_PROD_DEPLOYMENT) ||
-    deploymentToUrl(DEFAULT_PROD_DEPLOYMENT)
-  if (!derivedProdUrl) {
-    throw new Error('Unable to resolve Convex prod URL')
+  for (const [source, value] of candidates) {
+    const trimmed = value?.trim()
+    if (!trimmed) continue
+    const url = toConvexCloudUrl(trimmed)
+    const deployment =
+      process.env.CONVEX_DEPLOYMENT?.trim() ||
+      process.env.CONVEX_PROD_DEPLOYMENT?.trim() ||
+      deploymentNameFromUrl(url) ||
+      'configured'
+    return { url, source, deployment }
   }
 
   return {
-    url: derivedProdUrl,
-    source: 'CONVEX_PROD_DEPLOYMENT',
-    deployment: process.env.CONVEX_PROD_DEPLOYMENT || DEFAULT_PROD_DEPLOYMENT
+    url: '',
+    source: 'unconfigured',
+    deployment: 'unconfigured'
   }
 }
 
@@ -104,9 +64,15 @@ const {
   deployment: CONVEX_DEPLOYMENT_NAME
 } = resolveConvexUrl()
 
-console.log(
-  `[Convex] Using URL: ${CONVEX_URL} (source: ${CONVEX_URL_SOURCE}, deployment: ${CONVEX_DEPLOYMENT_NAME}, isDev: ${isDev})`
-)
+if (CONVEX_URL) {
+  console.log(
+    `[Convex] Using URL: ${CONVEX_URL} (source: ${CONVEX_URL_SOURCE}, deployment: ${CONVEX_DEPLOYMENT_NAME}, isDev: ${isDev})`
+  )
+} else {
+  console.warn(
+    '[Convex] No Convex URL configured. Set CONVEX_URL (or DEV_NEXT_PUBLIC_CONVEX_URL / NEXT_PUBLIC_CONVEX_URL). Direct Convex calls will fail closed.'
+  )
+}
 
 interface ConvexResponse<T> {
   status: 'success' | 'error'
@@ -196,6 +162,7 @@ async function callConvex<T>(
 
 export const convexClient = {
   query: <T>(path: string, args: Record<string, unknown>) => callConvex<T>('query', path, args),
-  mutation: <T>(path: string, args: Record<string, unknown>) => callConvex<T>('mutation', path, args),
+  mutation: <T>(path: string, args: Record<string, unknown>) =>
+    callConvex<T>('mutation', path, args),
   action: <T>(path: string, args: Record<string, unknown>) => callConvex<T>('action', path, args)
 }

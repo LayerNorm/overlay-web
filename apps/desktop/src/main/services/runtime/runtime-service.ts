@@ -473,44 +473,6 @@ class RuntimeService {
     }
   }
 
-  // ── Legacy Sandbox API (backwards compatible, now routes to base env) ───
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  createSandbox(_runtime: 'python' | 'javascript'): { sandboxId: string; path: string } {
-    // Return base env as the "sandbox" — no separate dirs needed
-    return { sandboxId: 'base', path: BASE_ENV_DIR }
-  }
-
-  async runInSandbox(_sandboxId: string, code: string, timeoutMs?: number): Promise<ScriptResult> {
-    // Route to base env
-    return this.runScript({ runtime: 'python', code, timeoutMs })
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  destroySandbox(_sandboxId: string): boolean {
-    // No-op — we don't destroy the base env
-    console.log('[RuntimeService] destroySandbox is a no-op with the shared base env architecture')
-    return true
-  }
-
-  listSandboxes(): Array<{
-    id: string
-    runtime: 'python' | 'javascript'
-    path: string
-    created: number
-    diskUsage: number
-  }> {
-    return [
-      {
-        id: 'base',
-        runtime: 'python',
-        path: BASE_ENV_DIR,
-        created: 0,
-        diskUsage: 0
-      }
-    ]
-  }
-
   // ── Session-based Cleanup ────────────────────────────────────────────────
 
   /**

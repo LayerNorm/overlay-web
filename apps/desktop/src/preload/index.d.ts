@@ -994,34 +994,7 @@ interface Bridge {
       sandboxPath?: string
       error?: string
     }>
-    createSandbox(runtime: 'python' | 'javascript'): Promise<{ sandboxId: string; path: string }>
-    installPackages(
-      sandboxId: string,
-      packages: string[]
-    ): Promise<{ success: boolean; error?: string }>
-    runInSandbox(
-      sandboxId: string,
-      code: string,
-      timeoutMs?: number
-    ): Promise<{
-      success: boolean
-      stdout: string
-      stderr: string
-      exitCode?: number
-      timedOut?: boolean
-      sandboxPath?: string
-      error?: string
-    }>
-    destroySandbox(sandboxId: string): Promise<{ success: boolean }>
-    listSandboxes(): Promise<
-      Array<{
-        id: string
-        runtime: 'python' | 'javascript'
-        path: string
-        created: number
-        diskUsage: number
-      }>
-    >
+    installPackages(packages: string[]): Promise<{ success: boolean; error?: string }>
     cleanup(): Promise<{ cleaned: number }>
   }
 

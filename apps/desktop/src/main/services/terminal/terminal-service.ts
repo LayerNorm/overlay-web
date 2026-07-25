@@ -1,7 +1,11 @@
 import * as pty from 'node-pty'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { homedir, platform } from 'node:os'
 import { existsSync } from 'node:fs'
 import { auditLogger } from '../security/security-service'
+
+const execFileAsync = promisify(execFile)
 
 export interface TerminalSession {
   id: string
@@ -185,6 +189,83 @@ class TerminalService {
     })
 
     return true
+  }
+
+  /**
+   * Run an executable with an argv array (no shell). Prefer this over runCommand
+   * whenever arguments come from tool/model input.
+   */
+  async runExecFile(
+    file: string,
+    args: string[],
+    options?: { cwd?: string; timeoutMs?: number; env?: NodeJS.ProcessEnv }
+  ): Promise<TerminalRunResult> {
+    const commandForChecks = [file, ...args].join(' ')
+    const dangerCheck = this.isDangerous(commandForChecks)
+    if (dangerCheck.dangerous) {
+      auditLogger.log({
+        type: 'ipc:sensitive_call',
+        action: 'terminal:command_blocked',
+        details: { command: commandForChecks.slice(0, 200), reason: dangerCheck.reason },
+        success: false
+      })
+      return {
+        success: false,
+        stdout: '',
+        stderr: '',
+        error: `Command blocked: ${dangerCheck.reason}`
+      }
+    }
+
+    const cwd = options?.cwd && existsSync(options.cwd) ? options.cwd : homedir()
+    const timeoutMs = Math.min(
+      Math.max(options?.timeoutMs || DEFAULT_COMMAND_TIMEOUT_MS, 1000),
+      MAX_COMMAND_TIMEOUT_MS
+    )
+
+    auditLogger.log({
+      type: 'ipc:sensitive_call',
+      action: 'terminal:exec_file',
+      details: { file, args: args.slice(0, 20), cwd, timeoutMs },
+      success: true
+    })
+
+    try {
+      const { stdout, stderr } = await execFileAsync(file, args, {
+        cwd,
+        timeout: timeoutMs,
+        maxBuffer: 1024 * 1024,
+        env: options?.env ?? {
+          ...process.env,
+          TERM: 'xterm-256color',
+          PAGER: 'cat',
+          GIT_PAGER: 'cat'
+        }
+      })
+      return {
+        success: true,
+        exitCode: 0,
+        stdout: String(stdout).slice(0, 50_000),
+        stderr: String(stderr).slice(0, 10_000)
+      }
+    } catch (err: unknown) {
+      const error = err as {
+        code?: string
+        killed?: boolean
+        stdout?: string
+        stderr?: string
+        status?: number
+      }
+      const timedOut = error.killed === true || error.code === 'ERR_CHILD_PROCESS_TIMEOUT'
+      return {
+        success: false,
+        exitCode: error.status ?? undefined,
+        stdout: String(error.stdout || '').slice(0, 50_000),
+        stderr: String(error.stderr || '').slice(0, 10_000),
+        timedOut,
+        error: timedOut ? 'Command timed out' : String(error.stderr || error.code || 'exec failed')
+      }
+    }
   }
 
   /**

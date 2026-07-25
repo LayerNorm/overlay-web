@@ -152,7 +152,11 @@ export default defineConfig(({ mode }) => {
         'process.env.DEV_WORKOS_CLIENT_ID': JSON.stringify(devWorkosClientId),
         'process.env.WORKOS_REDIRECT_URI': JSON.stringify(workosRedirectUri),
         'process.env.SENTRY_DSN': JSON.stringify(sentryDsn),
-        'process.env.APP_SERVER_URL': JSON.stringify(appServerUrl)
+        'process.env.APP_SERVER_URL': JSON.stringify(appServerUrl),
+        // Bake the resolved Convex URL into the main bundle so packaged builds
+        // do not rely on hardcoded deployment slugs in source.
+        'process.env.CONVEX_URL': JSON.stringify(convexUrl),
+        'process.env.NEXT_PUBLIC_CONVEX_URL': JSON.stringify(convexUrl)
       }
     },
     preload: {

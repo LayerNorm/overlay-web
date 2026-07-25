@@ -1899,6 +1899,7 @@ const bridge = {
   },
 
   // ── Runtime (Script Execution) ──────────────────────────────────────────────
+  // Host Python/JS helpers only — there is no process sandbox/isolation here.
   runtime: {
     ensurePython() {
       return ipcRenderer.invoke('runtime:ensure-python')
@@ -1912,20 +1913,8 @@ const bridge = {
     }) {
       return ipcRenderer.invoke('runtime:run-script', options)
     },
-    createSandbox(runtime: 'python' | 'javascript') {
-      return ipcRenderer.invoke('runtime:create-sandbox', { runtime })
-    },
-    installPackages(sandboxId: string, packages: string[]) {
-      return ipcRenderer.invoke('runtime:install-packages', { sandboxId, packages })
-    },
-    runInSandbox(sandboxId: string, code: string, timeoutMs?: number) {
-      return ipcRenderer.invoke('runtime:run-in-sandbox', { sandboxId, code, timeoutMs })
-    },
-    destroySandbox(sandboxId: string) {
-      return ipcRenderer.invoke('runtime:destroy-sandbox', { sandboxId })
-    },
-    listSandboxes() {
-      return ipcRenderer.invoke('runtime:list-sandboxes')
+    installPackages(packages: string[]) {
+      return ipcRenderer.invoke('runtime:install-packages', { packages })
     },
     cleanup() {
       return ipcRenderer.invoke('runtime:cleanup')

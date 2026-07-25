@@ -24,39 +24,11 @@ export function registerRuntimeIPC(): void {
   )
 
   ipcMain.handle(
-    'runtime:create-sandbox',
-    async (_event, { runtime }: { runtime: 'python' | 'javascript' }) => {
-      return runtimeService.createSandbox(runtime)
-    }
-  )
-
-  ipcMain.handle(
     'runtime:install-packages',
-    async (_event, { packages }: { sandboxId: string; packages: string[] }) => {
+    async (_event, { packages }: { packages: string[] }) => {
       return runtimeService.installPackages(packages)
     }
   )
-
-  ipcMain.handle(
-    'runtime:run-in-sandbox',
-    async (
-      _event,
-      { sandboxId, code, timeoutMs }: { sandboxId: string; code: string; timeoutMs?: number }
-    ) => {
-      return runtimeService.runInSandbox(sandboxId, code, timeoutMs)
-    }
-  )
-
-  ipcMain.handle(
-    'runtime:destroy-sandbox',
-    async (_event, { sandboxId }: { sandboxId: string }) => {
-      return { success: runtimeService.destroySandbox(sandboxId) }
-    }
-  )
-
-  ipcMain.handle('runtime:list-sandboxes', async () => {
-    return runtimeService.listSandboxes()
-  })
 
   ipcMain.handle('runtime:cleanup', async () => {
     return { cleaned: runtimeService.cleanup() }

@@ -1,7 +1,7 @@
 # Desktop release todo (post–P0 ops)
 
 **Status:** open  
-**Last updated:** 2026-07-24  
+**Last updated:** 2026-07-25  
 **Context:** Code-side P0 security work is largely done. Public history-free source lives at [LayerNorm/overlay-desktop](https://github.com/LayerNorm/overlay-desktop). Official macOS downloads remain frozen until Gate B.
 
 This list is **owner/operator work**. Do not paste secrets into chat, issues, or commits. Put replacements only in production secret stores / protected GitHub environments.
@@ -9,6 +9,17 @@ This list is **owner/operator work**. Do not paste secrets into chat, issues, or
 ---
 
 ## P0 — Owner actions before treating open source as “done”
+
+### 0. Already completed (2026-07-25)
+
+- [x] Draft `v0.1.19`–`v0.1.23` on `DevelopedByDev/overlay-releases` (assets retained; not deleted)
+- [x] Keep `LayerNorm/overlay-desktop` as the canonical public history-free repo
+- [x] Repository policy on `LayerNorm/overlay-desktop`:
+  - no direct pushes to `main` (1 approving review + CODEOWNERS + required `verify` check)
+  - protected release tags (`v*` ruleset)
+  - protected `mac-release` / `release-publish` environments with required reviewers
+  - signing/release secrets stored as **environment** secrets on `mac-release` (repo-level secrets empty)
+  - org 2FA requirement enabled for LayerNorm
 
 ### 1. Rotate previously client-deliverable provider credentials
 
@@ -25,14 +36,20 @@ This list is **owner/operator work**. Do not paste secrets into chat, issues, or
 
 ### 2. Session revocation window
 
-- [ ] Choose a time window when existing desktop sessions will be revoked
-- [ ] Communicate that users must sign in again
-- [ ] Execute revocation (server/session invalidation path)
+**Scheduled:** Tuesday 2026-07-28, 09:00–09:30 America/Los_Angeles  
+Users will need to sign in again.
+
+- [ ] Communicate ahead of the window (in-app / email / Discord as applicable)
+- [ ] Execute revocation (server/session invalidation path) during the window
 - [ ] Spot-check: revoked refresh token cannot obtain a new access token
+- [ ] Record completion time and any support impact
 
 ### 3. Hosted-operation kill-switch drill
 
-- [ ] Approve a short production window
+**Scheduled:** Monday 2026-07-27, 10:00–10:15 America/Los_Angeles  
+Deliberately blocks owner-funded hosted operations for ~15 minutes.
+
+- [ ] Confirm no overlapping launch/demo during the window
 - [ ] Set `OVERLAY_HOSTED_PROVIDER_KILL_SWITCH=1` in production
 - [ ] Confirm owner-funded chat/agents fail closed with a clear error
 - [ ] Unset the flag and confirm recovery
@@ -40,9 +57,8 @@ This list is **owner/operator work**. Do not paste secrets into chat, issues, or
 
 ### 4. Org 2FA (LayerNorm)
 
-- [ ] Enable **Require two-factor authentication** for the LayerNorm GitHub org (Settings → Authentication security), if the plan allows
-- [ ] Or upgrade the org plan if the free tier cannot enforce org-wide 2FA
-- [ ] Confirm every org admin/maintainer has 2FA enabled before enforcing
+- [x] Org-wide **Require two-factor authentication** is enabled for LayerNorm
+- [ ] Confirm every org admin/maintainer still has 2FA enabled before Gate A sign-off
 
 ### 5. Signing / notarization secrets → protected environments on **LayerNorm/overlay-desktop**
 
@@ -54,11 +70,12 @@ For open-source releases they must live on **public** `LayerNorm/overlay-desktop
 | `mac-release` | `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`, `CSC_LINK`, `CSC_KEY_PASSWORD`, `WORKOS_CLIENT_ID`, `DEV_WORKOS_CLIENT_ID`, optional `SENTRY_DSN` | Copy values from private repo secrets UI (GitHub never shows them again—re-enter from your password manager / Apple / p12 backup) |
 | `release-publish` | none required for same-repo publish | Publish uses `GITHUB_TOKEN`. Legacy `GH_APP_ID` / `GH_APP_PRIVATE_KEY` + “Overlay Release Publisher” app are **optional/legacy** for `overlay-releases` only |
 
-- [ ] Open https://github.com/LayerNorm/overlay-desktop/settings/environments
-- [ ] For **mac-release**, add each Apple/signing secret (from 1Password / your records—not from chat)
-- [ ] Confirm environment requires reviewer approval before deploy
+- [x] `mac-release` environment exists with required reviewer + protected-branch deploy policy
+- [x] Apple/signing + WorkOS secrets present as **environment** secrets (not repo-level)
+- [ ] Confirm values are current (rotate Apple app-specific password if unsure)
 - [ ] Optional: delete or leave dormant `GH_APP_*` on the private repo; do not put the private key on the public repo
 - [ ] After Gate B, remove Apple secrets from **repository-level** secrets on the private repo so there is one place of truth
+
 
 ### 6. Independent security + legal review (Gate A)
 
