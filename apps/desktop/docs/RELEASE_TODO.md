@@ -48,13 +48,17 @@ Ownership legend:
 
 ### 3. Kill-switch drill — **You** (agent can help verify fail-closed UX)
 
-**Scheduled:** Monday 2026-07-27, 10:00–10:15 America/Los_Angeles
+**Executed early (Vercel half):** Saturday 2026-07-25 (~14:00–14:06 America/Los_Angeles)
+on production `overlay-landing` / `www.getoverlay.io`. Evidence in
+[GATE_A_SOURCE_PUBLICATION_CHECKLIST.md](./GATE_A_SOURCE_PUBLICATION_CHECKLIST.md).
 
-- [ ] Confirm no overlapping launch/demo
-- [ ] Set `OVERLAY_HOSTED_PROVIDER_KILL_SWITCH=1` in production
-- [ ] Confirm owner-funded ops fail closed
-- [ ] Unset flag and confirm recovery
-- [ ] Record duration / impact
+- [x] Confirm no overlapping launch/demo (ad-hoc window; owner-approved)
+- [x] Set `OVERLAY_HOSTED_PROVIDER_KILL_SWITCH=1` in production
+- [x] Confirm discovery fail-closed (`hostedInference: false`)
+- [x] Unset flag and confirm recovery (`hostedInference: true`)
+- [x] Record duration / impact (~6 minutes aliased prod; see Gate A checklist)
+- [ ] Optional: re-run in the original Mon 2026-07-27 window if you want a
+      calendar-aligned drill with broader owner-funded chat smoke
 
 ### 4. Org / maintainer hygiene — **You**
 
@@ -203,8 +207,10 @@ Publish freeze (`if: ${{ false }}`) remains until you confirm Apple credentials.
 | 2026-07-24 | Created public `LayerNorm/overlay-desktop` from history-free export | ops |
 | 2026-07-25 | Canonical submodule + remotes → LayerNorm; private desktop archived | ops |
 | 2026-07-25 | Kill-switch drill scheduled Mon 2026-07-27 10:00–10:15 PT | owner |
+| 2026-07-25 | Vercel kill-switch drill executed early on www.getoverlay.io | agent |
 | 2026-07-25 | Session revocation scheduled Tue 2026-07-28 09:00–09:30 PT | owner |
 | 2026-07-25 | P1 docs/Mintlify/download UX landed; publish freeze kept | agent |
+| 2026-07-25 | Gate A checklist candidate SHA + history-free root filled | agent |
 | _unset_ | Gate A signed | _unset_ |
 | _unset_ | Gate B signed | _unset_ |
 | _unset_ | Apple signing/notarization creds confirmed → unfreeze publish | _unset_ |
