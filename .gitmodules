@@ -1,6 +1,6 @@
 [submodule "overlay-desktop"]
 	path = overlay-desktop
-	url = ./overlay-desktop
+	url = https://github.com/LayerNorm/overlay-desktop.git
 [submodule "overlay-mobile"]
 	path = overlay-mobile
 	url = ./overlay-mobile
