@@ -1,0 +1,18 @@
+---
+title: "Uninstall and local data"
+description: "Remove Overlay Desktop and optional local files."
+---
+
+1. Quit Overlay.
+2. Delete `Overlay.app` (Applications or your build output).
+3. Optional — remove local application data:
+
+```bash
+rm -rf ~/Library/Application\ Support/Overlay
+# Dev Electron builds may use Application Support/Electron instead.
+```
+
+4. Optional — remove Keychain items labeled for Overlay.
+
+Uninstalling the desktop app does **not** delete your cloud account or
+server-side data on Overlay Server.

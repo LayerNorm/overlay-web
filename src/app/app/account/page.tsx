@@ -392,6 +392,13 @@ function AccountPageContent() {
                         )}
                       </button>
                       <Link
+                        href="/download"
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition-colors hover:bg-[var(--surface-muted)]"
+                      >
+                        Download for macOS
+                        <ArrowRight className="h-4 w-4" />
+                      </Link>
+                      <Link
                         href="/app/chat"
                         className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--button-primary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-primary-text)] transition-opacity hover:opacity-90"
                       >

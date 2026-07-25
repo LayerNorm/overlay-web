@@ -60,10 +60,13 @@ function HomeLandingContent() {
                 >
                   Try Overlay
                 </MarketingButton>
+                <MarketingButton href="/download" variant="secondary" arrow="right">
+                  Download for macOS
+                </MarketingButton>
                 <MarketingButton
                   href={MARKETING_DEPLOY_URL}
                   external
-                  variant="secondary"
+                  variant="ghost"
                   arrow="up-right"
                 >
                   Deploy privately

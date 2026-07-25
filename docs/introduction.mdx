@@ -1,49 +1,48 @@
 ---
-title: "Overlay Web"
-description: "Developer and self-hosting documentation for the Overlay web app."
+title: "Overlay"
+description: "Documentation for Overlay across web, desktop, and self-hosted deployments."
 ---
 
-Overlay Web is the Next.js application that powers the browser experience for Overlay. It owns the public web routes, the browser app shell, API route wrappers, server-side orchestration, provider adapters, and the shared contracts used by the app.
-
-These docs are for developers and self-hosters working with the web app. They cover local setup, runtime configuration, provider wiring, deployment, operational checks, and the stable `/api/v1` web API surface.
+Overlay is a private workspace for models, knowledge, tools, and agents. These
+docs cover the **web app / Overlay Server**, **Overlay Desktop** on macOS, and
+self-hosting.
 
 <CardGroup cols={2}>
-  <Card title="Source repository" icon="github" href="https://github.com/LayerNorm/overlay-web">
-    Browse, fork, or clone the public Overlay Web repository.
+  <Card title="Web / server source" icon="github" href="https://github.com/LayerNorm/overlay-web">
+    Next.js app, APIs, and self-hosting surface.
   </Card>
-  <Card title="Published releases" icon="tag" href="https://github.com/LayerNorm/overlay-web/releases">
-    Use a versioned release for deployment instead of an unpinned branch.
+  <Card title="Overlay Desktop source" icon="laptop" href="https://github.com/LayerNorm/overlay-desktop">
+    macOS Apple Silicon client (public source; signed downloads after Gate B).
+  </Card>
+  <Card title="Desktop download" icon="download" href="https://getoverlay.io/download">
+    Official macOS builds when Gate B is open.
+  </Card>
+  <Card title="Desktop docs" icon="book-open" href="/desktop/overview">
+    Install, permissions, security model, and troubleshooting.
   </Card>
 </CardGroup>
 
 ## Scope
 
-Included:
+**Web / server**
 
-- The Next.js web app under `src/app`.
-- Web route orchestration under `src/server/app-api`.
-- Browser-safe contracts under `src/shared`.
-- Feature containers under `src/features`.
-- Convex and Postgres workflows where they affect the web app.
-- Public `/api/v1` request, query, and form schemas.
+- Next.js app under `src/app`
+- `/api/v1` contracts and server orchestration
+- Convex / Postgres workflows that affect the product
+- Self-hosting and operations
 
-Excluded:
+**Desktop**
 
-- Mobile, desktop, and Chrome extension implementation details.
-- Internal audit reports and design exploration assets.
-- Private security notes.
+- Electron macOS client (Apple Silicon)
+- Local vs cloud data flows and chat permissions
+- Build-from-source and (after Gate B) signed releases
+
+**Excluded**
+
+- Mobile and Chrome extension deep internals
+- Internal audit reports and private security notes
 
 ## Source of truth
 
-The API reference is generated from `src/shared/schemas/api-boundary.ts`. Prose pages explain workflows, deployment, and maintenance expectations that cannot be captured cleanly in OpenAPI.
-
-Run this before publishing docs changes:
-
-```bash
-npm run docs:check
-```
-
-## Audience
-
-- **Developers and operators** — this documentation covers setup, runtime config, deployment, and the API reference.
-- **End users** — see the [Help Center](./help/index) for chat, memory, files, projects, automations, settings, and FAQ.
+The web API reference is generated from `src/shared/schemas/api-boundary.ts`.
+Desktop release notes live in the desktop repository changelog and GitHub Releases.

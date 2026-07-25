@@ -1,0 +1,26 @@
+---
+title: "Download and installation"
+description: "Install Overlay Desktop on Apple Silicon Macs."
+---
+
+## Official builds
+
+Signed, notarized builds will ship from GitHub Releases on
+[LayerNorm/overlay-desktop](https://github.com/LayerNorm/overlay-desktop) and
+from [getoverlay.io/download](https://getoverlay.io/download) after **Gate B**.
+
+Until Gate B is approved, the website download APIs return **503** and do not
+advertise a DMG.
+
+### After Gate B
+
+1. Open [getoverlay.io/download](https://getoverlay.io/download).
+2. Confirm **macOS, Apple Silicon**.
+3. Download the DMG via the site (routes through `/api/latest-release/download`).
+4. Open the DMG and drag Overlay to Applications.
+5. Launch Overlay and complete sign-in in your browser.
+
+## From source
+
+See [Building from source](/desktop/build-from-source). From-source builds are
+unsigned unless you configure your own Developer ID credentials.

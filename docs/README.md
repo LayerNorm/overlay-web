@@ -1,7 +1,8 @@
 # Overlay Docs
 
-`docs/` is the Mintlify site root and contains only publishable developer,
-self-hosting, operator, API, and legal documentation.
+`docs/` is the Mintlify site root and contains publishable documentation for
+Overlay across **web**, **desktop**, self-hosting, operator, API, and legal
+topics.
 
 ## Edit Model
 
@@ -15,6 +16,7 @@ self-hosting, operator, API, and legal documentation.
 ## Structure
 
 - `introduction.mdx` - docs home.
+- `desktop/` - Overlay Desktop (macOS) install, permissions, security, troubleshooting.
 - `start/` - quickstart and repository map.
 - `configure/` - environment variables, runtime config, provider matrix, and feature gates.
 - `develop/` - architecture, Convex workflow, customization, modules, and API source of truth.
