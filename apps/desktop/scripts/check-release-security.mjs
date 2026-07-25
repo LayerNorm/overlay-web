@@ -83,11 +83,29 @@ requireText(
 )
 requireText(workflow, 'persist-credentials: false', 'checkout credentials must not persist')
 requireText(workflow, "node-version: '22'", 'release Node version must match package engines')
+// At least one job remains frozen until Gate B (publish-mac dry-run freeze is OK).
 requireText(workflow, 'if: ${{ false }}', 'release workflow must remain frozen until Gate B')
 const buildIndex = workflow.indexOf('Build, sign, and notarize')
-const publishTokenIndex = workflow.indexOf('Create release publishing token')
-if (buildIndex < 0 || publishTokenIndex < buildIndex) {
+// Same-repo publish uses GITHUB_TOKEN only in the publish job (after build).
+// Legacy path created a GitHub App token after the verified build.
+const publishIndex = Math.max(
+  workflow.indexOf('Create release publishing token'),
+  workflow.indexOf('Publish verified artifacts to this repository'),
+  workflow.indexOf('Publish verified artifacts'),
+)
+if (buildIndex < 0 || publishIndex < 0 || publishIndex < buildIndex) {
   failures.push('release publishing credentials must be created only after the verified build')
+}
+// Build job must not mint a cross-repo publish token.
+const buildSection = workflow.slice(
+  workflow.indexOf('build-mac:'),
+  workflow.indexOf('publish-mac:'),
+)
+if (buildSection.includes('create-github-app-token') || buildSection.includes('GH_APP_PRIVATE_KEY')) {
+  failures.push('build job must not create release publishing credentials')
+}
+if (!workflow.includes('environment: mac-release')) {
+  failures.push('signing must use the protected mac-release environment')
 }
 
 for (const text of [
