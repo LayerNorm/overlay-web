@@ -77,8 +77,10 @@ renders/*
 .deepsec/*
 .agents/*
 .agent/skills/*
+.agent/memory/*
 agents/*
 agent/skills/*
+agent/memory/*
 
 
 # codealmanac
