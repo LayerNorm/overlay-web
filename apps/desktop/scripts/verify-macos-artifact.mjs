@@ -14,6 +14,7 @@ const allowUnsignedLocal = process.env.ALLOW_UNSIGNED_LOCAL_ARTIFACT === '1'
 const allowDirectoryOnlyLocal =
   allowUnsignedLocal && process.env.ALLOW_DIRECTORY_ONLY_LOCAL_ARTIFACT === '1'
 const failures = []
+const nativeArtifacts = []
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -46,6 +47,13 @@ if (appBundle) {
   } catch (error) {
     if (!allowUnsignedLocal)
       failures.push(`signature or Gatekeeper verification failed: ${error.message}`)
+  }
+
+  try {
+    execFileSync('/usr/bin/xcrun', ['stapler', 'validate', appBundle], { stdio: 'pipe' })
+  } catch (error) {
+    if (!allowUnsignedLocal)
+      failures.push(`app notarization staple validation failed: ${error.message}`)
   }
 
   const fuseWire = await getCurrentFuseWire(appBundle)
@@ -120,23 +128,55 @@ if (appBundle) {
       failures.push(`packaged native artifact is missing: ${packagedRelative}`)
       continue
     }
-    const packagedDigest = createHash('sha256')
-      .update(fs.readFileSync(packagedPath))
-      .digest('hex')
-    if (packagedDigest !== artifact.sha256) {
-      failures.push(
-        `packaged native artifact hash mismatch: ${packagedRelative} expected ${artifact.sha256} got ${packagedDigest}`
-      )
-    }
-  }
-}
 
-for (const artifact of walk(dist).filter((file) => file.endsWith('.dmg'))) {
-  try {
-    execFileSync('/usr/bin/xcrun', ['stapler', 'validate', artifact], { stdio: 'pipe' })
-  } catch (error) {
-    if (!allowUnsignedLocal)
-      failures.push(`notarization staple validation failed: ${error.message}`)
+    const sourcePath = path.join(root, artifact.path)
+    if (fs.existsSync(sourcePath)) {
+      const sourceDigest = createHash('sha256').update(fs.readFileSync(sourcePath)).digest('hex')
+      if (sourceDigest !== artifact.sha256) {
+        failures.push(
+          `native artifact source hash mismatch: ${artifact.path} expected ${artifact.sha256} got ${sourceDigest}`
+        )
+      }
+    }
+
+    if (process.platform === 'darwin') {
+      try {
+        const description = execFileSync('/usr/bin/file', [packagedPath], { encoding: 'utf8' })
+        if (!description.includes('Mach-O') || !description.includes(artifact.architecture)) {
+          failures.push(`${packagedRelative} is not a ${artifact.architecture} Mach-O executable`)
+        }
+      } catch (error) {
+        failures.push(`failed to identify ${packagedRelative}: ${error.message}`)
+      }
+
+      try {
+        const strings = execFileSync('/usr/bin/strings', [packagedPath], {
+          encoding: 'utf8',
+          maxBuffer: 64 * 1024 * 1024
+        })
+        if (/\/Users\/|\/var\/folders\//.test(strings)) {
+          failures.push(`${packagedRelative} contains a private workstation path`)
+        }
+      } catch (error) {
+        failures.push(`failed to scan strings in ${packagedRelative}: ${error.message}`)
+      }
+
+      if (!allowUnsignedLocal) {
+        try {
+          execFileSync('/usr/bin/codesign', ['--verify', '--verbose=2', packagedPath], {
+            stdio: 'pipe'
+          })
+        } catch (error) {
+          failures.push(`${packagedRelative} signature verification failed: ${error.message}`)
+        }
+      }
+    }
+
+    nativeArtifacts.push({
+      file: path.relative(dist, packagedPath),
+      sha256: createHash('sha256').update(fs.readFileSync(packagedPath)).digest('hex'),
+      bytes: fs.statSync(packagedPath).size
+    })
   }
 }
 
@@ -170,7 +210,8 @@ fs.writeFileSync(
       sourceCommit: process.env.RELEASE_SOURCE_SHA || null,
       architecture: 'arm64',
       verificationMode: allowDirectoryOnlyLocal ? 'unsigned-directory-local' : 'release',
-      files: manifestFiles
+      files: manifestFiles,
+      nativeArtifacts
     },
     null,
     2
