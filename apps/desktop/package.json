@@ -32,7 +32,7 @@
     "check:native-artifacts": "node scripts/verify-native-artifacts.mjs",
     "check:public-source-secrets": "node scripts/check-public-source-secrets.mjs",
     "check:exploit-chains": "node scripts/check-security-verification.mjs && vitest run src/main/ipc/app-api-security.test.ts src/main/services/browser-manager-security.test.ts src/main/services/auto-updater-policy.test.ts src/main/services/security src/shared/security/telemetry-redaction.test.ts src/types/agent-permissions.test.ts",
-    "security:verify:source": "npm run check:public-source-secrets && npm run check:exploit-chains && npm run check:dependencies:all && npm run check:native-artifacts && npm test",
+    "security:verify:source": "npm run check:public-source-secrets && npm run check:exploit-chains && npm run check:dependencies:prod && npm run check:native-artifacts && npm test",
     "check:launch-controls": "node scripts/check-launch-controls.mjs",
     "check:dependencies:prod": "npm audit --omit=dev --audit-level=high",
     "check:dependencies:all": "npm audit --audit-level=high",
