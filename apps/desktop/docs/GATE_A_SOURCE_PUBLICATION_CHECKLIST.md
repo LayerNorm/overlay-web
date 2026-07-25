@@ -2,8 +2,8 @@
 
 **Gate status:** PENDING (evidence partially filled; signatures still required)
 
-**Candidate source commit:** `38d8c8dc99936def49bdd03a68b20bb9d8a39197`
-(`LayerNorm/overlay-desktop` `main` tip as of 2026-07-25 after [#21](https://github.com/LayerNorm/overlay-desktop/pull/21))
+**Candidate source commit:** `f6895c2e4651260b97ded711db1ed9a6cb51ee9d`
+(`LayerNorm/overlay-desktop` `main` tip as of 2026-07-25 after [#22](https://github.com/LayerNorm/overlay-desktop/pull/22))
 
 **History-free public root commit:** `7abc946e5c8264856a7d74fe54fb21831b012072`
 (`Initial public release of Overlay Desktop.`)
