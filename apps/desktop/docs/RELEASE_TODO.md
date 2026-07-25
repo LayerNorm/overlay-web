@@ -64,16 +64,18 @@ on production `overlay-landing` / `www.getoverlay.io`. Evidence in
 
 - [x] LayerNorm org 2FA required
 - [ ] Confirm every admin/maintainer has 2FA before Gate A sign-off
-- [ ] Confirm `mac-release` Apple/signing secrets are still current
+- [x] Confirm `mac-release` Apple/signing secrets are still current (owner 2026-07-25)
 
 ### 5. Gate A sign-off — **You** (external reviewers); agent can package evidence
 
-Gate A checklist is still **PENDING**.
+Gate A checklist is still **PENDING** (commit fields + partial evidence filled;
+all five signatures blank).
 
 - [ ] Independent Electron/agent (+ backend hostile-client) review
 - [ ] Explicit accept/reject of unsandboxed **Full access** exception
 - [ ] Legal: AGPL/Apache, notices, trademarks, fonts, icons, models, native helpers
-- [ ] Fill and sign [GATE_A_SOURCE_PUBLICATION_CHECKLIST.md](./GATE_A_SOURCE_PUBLICATION_CHECKLIST.md)
+- [x] Fill [GATE_A_SOURCE_PUBLICATION_CHECKLIST.md](./GATE_A_SOURCE_PUBLICATION_CHECKLIST.md) commit fields + recorded evidence
+- [ ] Sign Gate A checklist (five roles)
 - [ ] Keep detailed security reports private (do not publish remediation reports)
 
 ### Optional follow-ups (not Gate A blockers)

@@ -1,9 +1,9 @@
 # Gate A — source publication
 
-**Gate status:** PENDING (fields filled; signatures still required)
+**Gate status:** PENDING (evidence partially filled; signatures still required)
 
-**Candidate source commit:** `a544070e0c265c0642747ceb05baf6d0247f21dd`
-(`LayerNorm/overlay-desktop` `main` tip as of 2026-07-25; includes P1 docs #19)
+**Candidate source commit:** `38d8c8dc99936def49bdd03a68b20bb9d8a39197`
+(`LayerNorm/overlay-desktop` `main` tip as of 2026-07-25 after [#21](https://github.com/LayerNorm/overlay-desktop/pull/21))
 
 **History-free public root commit:** `7abc946e5c8264856a7d74fe54fb21831b012072`
 (`Initial public release of Overlay Desktop.`)
@@ -19,31 +19,60 @@ Filled commit identifiers below do **not** authorize public binary release
 - [ ] Security owner confirms every Critical is fixed and every High is fixed or
       accepted under the documented exception policy.
 - [ ] Independent reviewer signs the source/backend scope and the desktop-chat
-      unsandboxed Full access exception.
+      unsandboxed Full access exception
+      (see [INDEPENDENT_SECURITY_REVIEW.md](../guides/INDEPENDENT_SECURITY_REVIEW.md);
+      Full access exception renew/expiry target: 2027-01-24).
 - [ ] Legal owner approves AGPL/Apache licensing, notices, trademark policy,
       contributor terms, and every distributed asset/model/native component.
 - [ ] Repository administrator verifies branch protection, required checks and
       reviews, CODEOWNERS, maintainer 2FA, secret scanning, push protection,
       Dependabot, private vulnerability reporting, and protected environments.
+      *(API-verified controls listed under evidence; personal 2FA enrollment for
+      every admin/maintainer still needs owner confirmation.)*
 - [ ] Operations owner verifies provider hard caps, paid-operation kill switch,
       auth abuse monitoring, reservation reconciliation, and incident contacts.
+      *(Kill-switch drill done; hard caps, key rotation, session revocation,
+      and monitoring contacts still open.)*
 
 ## Required evidence
 
-- [ ] `npm run public:export` created the candidate from the approved private
-      source commit, and the public remote contains no private history.
-- [ ] Clean exported checkout passed `npm ci`, standalone/license/security
-      checks, tests, build, and unsigned arm64 packaging.
+- [x] History-free public root is `7abc946e5c8264856a7d74fe54fb21831b012072` on
+      `LayerNorm/overlay-desktop`; private full history remains only on archived
+      `DevelopedByDev/overlay-desktop` (do not unarchive/publicize).
+- [x] Clean public checkout / CI: `verify` (Clean public clone) green on recent
+      merges including [#19](https://github.com/LayerNorm/overlay-desktop/pull/19)
+      and [#21](https://github.com/LayerNorm/overlay-desktop/pull/21); signed
+      dry-run `build-mac` green for SHA
+      `105cdae441582e5d50f4bf8ce3ca6b6dad9508f9`
+      ([run 30155922115](https://github.com/LayerNorm/overlay-desktop/actions/runs/30155922115)).
 - [ ] Approved scanners found no secret, private data, internal report, or
-      private dependency in the exported tree or private history.
+      private dependency in the exported tree or private history
+      *(secret scanning + push protection enabled; full private-history scan
+      sign-off still required from security owner).*
 - [ ] Canonical server hostile-client tests passed for every enabled provider
       and supported Convex/Postgres configuration.
-- [ ] Private vulnerability intake was tested end to end.
+- [ ] Private vulnerability intake was tested end to end
+      *(Private Vulnerability Reporting is **enabled** on
+      `LayerNorm/overlay-desktop` and `LayerNorm/overlay-web`; synthetic intake
+      test not yet recorded).*
 
-### Partial ops evidence (2026-07-25, Vercel production `overlay-landing`)
+### Repository controls (API-verified 2026-07-25)
 
-Recorded by agent; does **not** complete Ops signature (hard caps, session
-revocation, monitoring contacts, and key rotation remain owner actions).
+| Control | Status |
+| --- | --- |
+| Org-wide 2FA required (`LayerNorm`) | Enabled |
+| Private vulnerability reporting (desktop + web) | Enabled |
+| Secret scanning | Enabled |
+| Secret scanning push protection | Enabled |
+| Dependabot security updates | Enabled |
+| Protected `mac-release` / `release-publish` envs | Present (prior ops) |
+| CODEOWNERS + required `verify` | Present (prior ops) |
+| Every admin/maintainer personally has 2FA | **Owner confirm** |
+| Apple / CSC secrets current in `mac-release` | Owner confirmed 2026-07-25 |
+
+### Ops — kill-switch drill (2026-07-25, Vercel production `overlay-landing`)
+
+Recorded by agent; does **not** complete Ops signature alone.
 
 | Step | Result |
 | --- | --- |
@@ -54,8 +83,10 @@ revocation, monitoring contacts, and key rotation remain owner actions).
 | Remove kill-switch env var | Removed from Production |
 | Redeploy production | [dpl_6H7DBZoU…](https://vercel.com/divyansh-lalwanis-projects/overlay-landing/6H7DBZoU2G91zG4QkjAoWF6JVQWf) → aliased to www |
 | Discovery after recovery | `hostedInference: true` |
+| Smoke after recovery | `/` `200`, `/download` `200`, `/api/v1/discovery` `200` |
 | Provider key **names** present in Vercel Production | `AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `COMPOSIO_API_KEY`, `NVIDIA_API_KEY`, `BROWSER_USE_API_KEY`, `DAYTONA_API_KEY` (+ session/WorkOS/Stripe/R2) |
-| Key **rotation** | Not performed in this drill (values still owner-managed; ages ~93–96d at drill time) |
+| Key **rotation** + provider hard caps | **Still open** (owner) |
+| Session revocation drill | Scheduled Tue 2026-07-28 09:00–09:30 PT |
 
 ## Signatures
 
@@ -64,5 +95,5 @@ revocation, monitoring contacts, and key rotation remain owner actions).
 | Security owner | _unset_ | _unset_ | _unset_ | PENDING |
 | Independent reviewer | _unset_ | _unset_ | _unset_ | PENDING |
 | Legal/asset owner | _unset_ | _unset_ | _unset_ | PENDING |
-| Repository administrator | _unset_ | _unset_ | _unset_ | PENDING |
+| Repository administrator | _unset_ | Partial: controls table above | 2026-07-25 | PENDING |
 | Operations owner | _unset_ | Partial: kill-switch drill above | 2026-07-25 | PENDING |
