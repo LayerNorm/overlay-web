@@ -1,134 +1,197 @@
-# Desktop release todo (post–P0 ops)
+# Desktop release todo
 
 **Status:** open  
 **Last updated:** 2026-07-25  
-**Context:** Code-side P0 security work is largely done. Public history-free source lives at [LayerNorm/overlay-desktop](https://github.com/LayerNorm/overlay-desktop). Official macOS downloads remain frozen until Gate B.
+**Context:** Public history-free source is live at [LayerNorm/overlay-desktop](https://github.com/LayerNorm/overlay-desktop) (`main` tip after Dependabot batch). Official macOS downloads remain frozen until Gate B. Do not paste secrets into chat, issues, or commits.
 
-This list is **owner/operator work**. Do not paste secrets into chat, issues, or commits. Put replacements only in production secret stores / protected GitHub environments.
+Ownership legend:
+
+- **You (owner)** — credentials, Apple account, production drills, legal, external review, final Gate A/B signatures
+- **Agent** — docs, Mintlify, website download UX, CI/release plumbing that does not require private keys
+- **Shared** — agent prepares; you approve / run in production / sign
 
 ---
 
-## P0 — Owner actions before treating open source as “done”
+## P0 — Remaining before treating open source / Gate A as done
 
 ### 0. Already completed (2026-07-25)
 
-- [x] Draft `v0.1.19`–`v0.1.23` on `DevelopedByDev/overlay-releases` (assets retained; not deleted)
-- [x] Keep `LayerNorm/overlay-desktop` as the canonical public history-free repo
-- [x] Repository policy on `LayerNorm/overlay-desktop`:
-  - no direct pushes to `main` (1 approving review + CODEOWNERS + required `verify` check)
-  - protected release tags (`v*` ruleset)
-  - protected `mac-release` / `release-publish` environments with required reviewers
-  - signing/release secrets stored as **environment** secrets on `mac-release` (repo-level secrets empty)
-  - org 2FA requirement enabled for LayerNorm
+- [x] Draft `v0.1.19`–`v0.1.23` on `DevelopedByDev/overlay-releases`
+- [x] Create/keep `LayerNorm/overlay-desktop` as canonical history-free public repo
+- [x] Repository policy (PR reviews, CODEOWNERS, required `verify`, protected `v*` tags, `mac-release` / `release-publish`, env secrets, org 2FA)
+- [x] Point mono + `overlay-landing` submodule remotes at LayerNorm
+- [x] Archive private `DevelopedByDev/overlay-desktop` (still private)
+- [x] Merge host-exec hardening + Dependabot batch on LayerNorm `main`
+- [x] Website downloads fail closed until Gate B (`OVERLAY_DESKTOP_DOWNLOADS_ENABLED`)
 
-### 1. Rotate previously client-deliverable provider credentials
+### 1. Rotate provider credentials — **You**
 
-- [ ] **AI Gateway** — rotate/revoke keys that any desktop client could have received historically
-- [ ] **OpenRouter** — rotate/revoke
-- [ ] **Groq** — rotate/revoke
-- [ ] **Composio** — rotate/revoke
-- [ ] **NVIDIA** — rotate/revoke
-- [ ] **Browser Use** — review and rotate if ever exposed or embedded
-- [ ] **Daytona** — review and rotate if ever exposed or embedded
-- [ ] Configure **hard spending caps** and **billing alerts** on each provider dashboard
-- [ ] Prove old credentials fail (sample denied request) after rotation
-- [ ] Install new secrets only in production stores (Vercel/Convex/server env, not local chat)
+- [ ] AI Gateway — rotate/revoke historically deliverable keys
+- [ ] OpenRouter — rotate/revoke
+- [ ] Groq — rotate/revoke
+- [ ] Composio — rotate/revoke
+- [ ] NVIDIA — rotate/revoke
+- [ ] Browser Use — review/rotate if ever exposed
+- [ ] Daytona — review/rotate if ever exposed
+- [ ] Hard spending caps + billing alerts on each provider
+- [ ] Prove old credentials fail
+- [ ] Install replacements only in production secret stores
 
-### 2. Session revocation window
+### 2. Session revocation — **You** (agent can help prepare scripts/checklist)
 
-**Scheduled:** Tuesday 2026-07-28, 09:00–09:30 America/Los_Angeles  
-Users will need to sign in again.
+**Scheduled:** Tuesday 2026-07-28, 09:00–09:30 America/Los_Angeles
 
-- [ ] Communicate ahead of the window (in-app / email / Discord as applicable)
-- [ ] Execute revocation (server/session invalidation path) during the window
-- [ ] Spot-check: revoked refresh token cannot obtain a new access token
-- [ ] Record completion time and any support impact
+- [ ] Communicate ahead of the window
+- [ ] Execute revocation
+- [ ] Spot-check revoked refresh tokens
+- [ ] Record completion / impact
 
-### 3. Hosted-operation kill-switch drill
+### 3. Kill-switch drill — **You** (agent can help verify fail-closed UX)
 
-**Scheduled:** Monday 2026-07-27, 10:00–10:15 America/Los_Angeles  
-Deliberately blocks owner-funded hosted operations for ~15 minutes.
+**Scheduled:** Monday 2026-07-27, 10:00–10:15 America/Los_Angeles
 
-- [ ] Confirm no overlapping launch/demo during the window
+- [ ] Confirm no overlapping launch/demo
 - [ ] Set `OVERLAY_HOSTED_PROVIDER_KILL_SWITCH=1` in production
-- [ ] Confirm owner-funded chat/agents fail closed with a clear error
-- [ ] Unset the flag and confirm recovery
-- [ ] Record duration and any customer impact
+- [ ] Confirm owner-funded ops fail closed
+- [ ] Unset flag and confirm recovery
+- [ ] Record duration / impact
 
-### 4. Org 2FA (LayerNorm)
+### 4. Org / maintainer hygiene — **You**
 
-- [x] Org-wide **Require two-factor authentication** is enabled for LayerNorm
-- [ ] Confirm every org admin/maintainer still has 2FA enabled before Gate A sign-off
+- [x] LayerNorm org 2FA required
+- [ ] Confirm every admin/maintainer has 2FA before Gate A sign-off
+- [ ] Confirm `mac-release` Apple/signing secrets are still current
 
-### 5. Signing / notarization secrets → protected environments on **LayerNorm/overlay-desktop**
+### 5. Gate A sign-off — **You** (external reviewers); agent can package evidence
 
-Secrets already exist on **private** `DevelopedByDev/overlay-desktop` as **repository** secrets (updated ~2026-01–03).  
-For open-source releases they must live on **public** `LayerNorm/overlay-desktop` as **environment** secrets only.
-
-| Environment | Secrets | Notes |
-| --- | --- | --- |
-| `mac-release` | `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`, `CSC_LINK`, `CSC_KEY_PASSWORD`, `WORKOS_CLIENT_ID`, `DEV_WORKOS_CLIENT_ID`, optional `SENTRY_DSN` | Copy values from private repo secrets UI (GitHub never shows them again—re-enter from your password manager / Apple / p12 backup) |
-| `release-publish` | none required for same-repo publish | Publish uses `GITHUB_TOKEN`. Legacy `GH_APP_ID` / `GH_APP_PRIVATE_KEY` + “Overlay Release Publisher” app are **optional/legacy** for `overlay-releases` only |
-
-- [x] `mac-release` environment exists with required reviewer + protected-branch deploy policy
-- [x] Apple/signing + WorkOS secrets present as **environment** secrets (not repo-level)
-- [ ] Confirm values are current (rotate Apple app-specific password if unsure)
-- [ ] Optional: delete or leave dormant `GH_APP_*` on the private repo; do not put the private key on the public repo
-- [ ] After Gate B, remove Apple secrets from **repository-level** secrets on the private repo so there is one place of truth
-
-
-### 6. Independent security + legal review (Gate A)
-
-Gate A is still **PENDING** as a sign-off record even though the public repo exists.
+Gate A checklist is still **PENDING**.
 
 - [ ] Independent Electron/agent (+ backend hostile-client) review
-- [ ] Explicit accept/reject of time-bounded unsandboxed **Full access** exception
-- [ ] Legal: AGPL/Apache package exceptions, notices, trademarks, fonts, icons, models, native helpers
+- [ ] Explicit accept/reject of unsandboxed **Full access** exception
+- [ ] Legal: AGPL/Apache, notices, trademarks, fonts, icons, models, native helpers
 - [ ] Fill and sign [GATE_A_SOURCE_PUBLICATION_CHECKLIST.md](./GATE_A_SOURCE_PUBLICATION_CHECKLIST.md)
+- [ ] Keep detailed security reports private (do not publish remediation reports)
 
-### 7. Gate B / public DMG
+### Optional follow-ups (not Gate A blockers)
 
-Blocked until signing, notarization, and the protected release pipeline are real.
+- [ ] Rebuild Parakeet after Swift NIO bumps + update `native-artifacts.json` (**Agent + You** for Apple build machine)
+- [ ] Later majors: `ai@7` + `@openrouter/ai-sdk-provider@3`; Vite 8 + `@vitejs/plugin-react@6` (**Agent** when scheduled)
 
-- [ ] Apple Developer account + Team ID confirmed
-- [ ] Bundle ID ownership (`com.layernorm.overlay` or current ID) confirmed
-- [ ] Developer ID Application certificate created/valid
-- [ ] Notarization credentials working end-to-end
-- [ ] Protected `release-macos` / `release-publish` environments reviewed
-- [ ] Remove intentional `if: ${{ false }}` freeze only after Gate B sign-off
-- [ ] Build from immutable 40-char SHA; verify nested signatures, fuses, SBOM, staple, Gatekeeper
-- [ ] Clean Apple Silicon install/QA
-- [ ] Fill and sign [GATE_B_BINARY_RELEASE_CHECKLIST.md](./GATE_B_BINARY_RELEASE_CHECKLIST.md)
-- [ ] Only then re-enable website downloads (`OVERLAY_DESKTOP_DOWNLOADS_ENABLED=1`)
+---
+
+## P1 — README and repository documents — **Agent** (except assets you supply)
+
+Before public launch polish (can start before Gate B; live DMG CTA waits for Gate B):
+
+- [x] Update [README.md](../README.md) with canonical repo + website URLs
+- [x] Fix `getoverlay.app` vs `getoverlay.io` inconsistency (README / SUPPORT)
+- [x] Add “Download for macOS” section (points to getoverlay.io; fail-closed until Gate B)
+- [x] Label Apple Silicon / macOS-only support
+- [x] Label initial release beta if appropriate
+- [x] Explain hosted cloud features require Overlay Server
+- [x] Local vs cloud features compact table
+- [x] Document `APP_SERVER_URL` and self-hosted server compatibility
+- [ ] Add screenshots or short product demo (**You** supply media if needed; **Agent** wires them)
+- [x] Document macOS permissions (microphone, Accessibility, Apple Events, files, browser, Keychain)
+- [x] Explain Ask for approval vs Full access prominently
+- [x] Troubleshooting: auth, Keychain, permissions, native models
+- [x] Uninstall + local-data removal instructions
+- [x] Add `CHANGELOG.md`
+- [x] Add `SUPPORT.md` (supported / unsupported configs)
+- [x] Verify links in README, SECURITY, CONTRIBUTING, privacy, release docs
+- [x] Retain SECURITY.md, CONTRIBUTING.md, SECURITY_ARCHITECTURE.md, THREAT_MODEL.md; keep detailed reports private
+
+---
+
+## P1 — Mintlify documentation — **Agent**
+
+Rename site description from “Overlay Web” to “Overlay”. Add top-level **Desktop** group
+(lives in `LayerNorm/overlay-web` `docs/`):
+
+- [x] Desktop overview and architecture
+- [x] Download and installation
+- [x] System requirements and supported Macs
+- [x] Sign-in and hosted Overlay Server behavior
+- [x] Connecting to a self-hosted Overlay Server
+- [x] Building from source
+- [x] Local versus cloud data flows
+- [x] Chat operation permissions
+- [x] macOS permissions and why they are requested
+- [x] Browser-agent security model
+- [x] Local and cloud transcription
+- [x] Updating and release channels
+- [x] Uninstalling and deleting local data
+- [x] Privacy and diagnostics
+- [x] Security reporting
+- [x] Troubleshooting
+- [x] Release verification (signature, notarization, checksum, provenance)
+- [x] Desktop changelog / release notes
+
+---
+
+## P1 — Official macOS build and download (Gate B) — **Shared**
+
+After Gate A. Credentials/Apple account = **You**. Pipeline/docs/QA scripts = **Agent**.
+
+**Agent prepared (do not use until Apple creds confirmed):**
+[GATE_B_CLEAN_MAC_QA.md](./qa/GATE_B_CLEAN_MAC_QA.md),
+[RELEASE_FREEZE_REMOVAL.md](./qa/RELEASE_FREEZE_REMOVAL.md).
+Publish freeze (`if: ${{ false }}`) remains until you confirm Apple credentials.
+
+- [ ] Confirm Apple Developer account and Team ID — **You**
+- [ ] Confirm ownership of `com.layernorm.overlay` — **You**
+- [ ] Create/validate Developer ID Application certificate — **You**
+- [ ] Configure notarization credentials — **You**
+- [ ] Confirm protected `mac-release` / `release-publish` environments — **Shared** (mostly done)
+- [ ] Store signing/notarization credentials only in protected build env — **You**
+- [ ] Least-privilege GitHub App for `overlay-releases` if still needed — **You** / optional
+- [ ] Remove intentional `if: ${{ false }}` release freeze only after review — **Shared** (see freeze-removal doc)
+- [ ] Build from immutable 40-char SHA — **Agent** (CI) / **You** approve
+- [ ] Verify nested signatures, hardened runtime, entitlements, fuses, ASAR, SBOM, native-helper hashes — **Shared**
+- [ ] Notarize and staple DMG + ZIP — **CI with your creds**
+- [ ] Gatekeeper accept on clean Apple Silicon Mac — **You** or **Agent** with access to a clean Mac
+- [ ] Publish DMG, ZIP, updater metadata, SBOM, checksums, manifest, provenance — **CI**
+- [ ] Test install without developer certs / local env files — **Shared** (use clean-Mac QA)
+- [ ] First-run auth; dialogs say “Overlay” not “Electron” — **Shared**
+- [ ] Test update / interrupted update / replay / downgrade rejection / rollback / compromised metadata — **Shared**
+- [ ] Test uninstall + retained local-data behavior — **Shared**
+- [ ] Fill and sign [GATE_B_BINARY_RELEASE_CHECKLIST.md](./GATE_B_BINARY_RELEASE_CHECKLIST.md) — **You**
+
+---
+
+## P1 — Website download experience — **Agent** (enable flag = **You** after Gate B)
+
+- [x] Dedicated `/download` page
+- [x] “Download for macOS” on homepage + account page
+- [x] Route through `/api/latest-release/download`
+- [x] Show current version + release date (when downloads enabled + release exists)
+- [x] State “macOS, Apple Silicon” before download
+- [x] Link release notes, checksum, privacy, source repo, system requirements
+- [x] Useful fallback when GitHub unavailable / no DMG
+- [x] Do not advertise a release before Gate B passes (fail-closed copy + API 503)
+- [ ] Test Safari, Chrome, signed-out, mobile — **Shared** (after deploy)
+- [ ] Confirm auto-update metadata and website resolve to same version — after Gate B
+- [ ] After Gate B: set `OVERLAY_DESKTOP_DOWNLOADS_ENABLED=1` in production — **You**
 
 ---
 
 ## Related docs
 
+- [GATE_A_SOURCE_PUBLICATION_CHECKLIST.md](./GATE_A_SOURCE_PUBLICATION_CHECKLIST.md)
+- [GATE_B_BINARY_RELEASE_CHECKLIST.md](./GATE_B_BINARY_RELEASE_CHECKLIST.md)
 - [PUBLIC_REPOSITORY_EXPORT.md](../guides/PUBLIC_REPOSITORY_EXPORT.md)
 - [RELEASE_PROCESS.md](../guides/RELEASE_PROCESS.md)
 - [SECURITY_OPERATIONS.md](../guides/SECURITY_OPERATIONS.md)
 - [INDEPENDENT_SECURITY_REVIEW.md](../guides/INDEPENDENT_SECURITY_REVIEW.md)
 
-## Repo map (target / simplified)
+## Repo map
 
 | Repo | Role |
 | --- | --- |
-| **`LayerNorm/overlay-desktop`** | **Canonical** public source + signed GitHub Releases + CI (submodule target) |
-| `DevelopedByDev/overlay-desktop` | Legacy private full-history clone — stop day-to-day development; archive when migrated |
-| `DevelopedByDev/overlay-releases` | **Private / retired** — old drafted tags only; no new public DMGs |
-| `LayerNorm/overlay-web` | Public web/server monorepo |
-
-### Dual-repo streamlining (recommended)
-
-**Make `LayerNorm/overlay-desktop` the only active desktop repo** and the monorepo submodule:
-
-1. Point monorepo submodule URL at `https://github.com/LayerNorm/overlay-desktop.git`.
-2. Develop only on LayerNorm (PRs + clean-clone CI).
-3. Archive or freeze `DevelopedByDev/overlay-desktop` (read-only) so history stays private but unused.
-4. Do **not** force-push private history into LayerNorm.
-
-Keeping two active remotes is what caused the confusion. One public canonical repo is enough for open source.
+| **`LayerNorm/overlay-desktop`** | Canonical public desktop source + future signed releases |
+| `DevelopedByDev/overlay-desktop` | Archived private full-history (do not unarchive/publicize) |
+| `DevelopedByDev/overlay-releases` | Private; old drafted tags only |
+| `LayerNorm/overlay-web` | Public web/server |
 
 ---
 
@@ -138,9 +201,10 @@ Keeping two active remotes is what caused the confusion. One public canonical re
 | --- | --- | --- |
 | 2026-07-24 | Drafted `v0.1.19`–`v0.1.23` on `overlay-releases` | ops |
 | 2026-07-24 | Created public `LayerNorm/overlay-desktop` from history-free export | ops |
-| 2026-07-24 | Privatized `DevelopedByDev/overlay-releases` | ops |
-| 2026-07-24 | Point publish + updater + website at `LayerNorm/overlay-desktop` releases | ops |
-| _unset_ | Session revocation window | _unset_ |
-| _unset_ | Kill-switch drill window | _unset_ |
+| 2026-07-25 | Canonical submodule + remotes → LayerNorm; private desktop archived | ops |
+| 2026-07-25 | Kill-switch drill scheduled Mon 2026-07-27 10:00–10:15 PT | owner |
+| 2026-07-25 | Session revocation scheduled Tue 2026-07-28 09:00–09:30 PT | owner |
+| 2026-07-25 | P1 docs/Mintlify/download UX landed; publish freeze kept | agent |
 | _unset_ | Gate A signed | _unset_ |
 | _unset_ | Gate B signed | _unset_ |
+| _unset_ | Apple signing/notarization creds confirmed → unfreeze publish | _unset_ |
