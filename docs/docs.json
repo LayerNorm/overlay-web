@@ -64,7 +64,7 @@
       },
       {
         "group": "Develop",
-        "pages": ["develop/architecture", "develop/convex-workflow", "develop/local-integrations", "develop/customization", "develop/feature-modules", "develop/api-source-of-truth"]
+        "pages": ["develop/architecture", "develop/multiplayer-foundations", "develop/convex-workflow", "develop/local-integrations", "develop/customization", "develop/feature-modules", "develop/api-source-of-truth"]
       },
       {
         "group": "Deploy & Operate",

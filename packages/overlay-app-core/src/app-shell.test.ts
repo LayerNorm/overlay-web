@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  DEFAULT_OVERLAY_FEATURE_FLAGS,
   DEFAULT_OVERLAY_FEATURE_MODULES,
   DEFAULT_OVERLAY_NAVIGATION,
   DEFAULT_OVERLAY_SETTINGS_PANELS,
@@ -9,6 +10,22 @@ import {
   resolveFeatureModuleForPath,
   resolveSidebarActionForPath,
 } from './app-shell'
+
+test('multiplayer rollout flags remain disabled at the Phase 0 boundary', () => {
+  const expectedFlags = [
+    'workspaces',
+    'collaborativeChats',
+    'channels',
+    'agents',
+    'resourceSharing',
+  ]
+
+  for (const id of expectedFlags) {
+    const flag = DEFAULT_OVERLAY_FEATURE_FLAGS.find((candidate) => candidate.id === id)
+    assert.ok(flag, `missing ${id} rollout flag`)
+    assert.equal(flag.enabled, false, `${id} must remain disabled until its release gate passes`)
+  }
+})
 
 test('resolveOverlayAppShellConfig merges registry overrides by id', () => {
   const shell = resolveOverlayAppShellConfig({

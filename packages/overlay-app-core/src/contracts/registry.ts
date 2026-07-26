@@ -37,6 +37,11 @@ export type OverlayFeatureFlagId =
   | 'projects'
   | 'automations'
   | 'extensions'
+  | 'workspaces'
+  | 'collaborativeChats'
+  | 'channels'
+  | 'agents'
+  | 'resourceSharing'
   | (string & {})
 
 export interface OverlayFeatureFlag {

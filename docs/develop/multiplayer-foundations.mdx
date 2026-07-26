@@ -1,0 +1,83 @@
+---
+title: "Multiplayer Foundations"
+description: "Accepted Phase 0 decisions for workspace isolation, collaborative chats, agents, and resource sharing."
+---
+
+## Status
+
+Accepted on July 26, 2026. The rollout flags described here remain disabled until their individual implementation and release gates pass.
+
+## Workspace Is The Isolation Boundary
+
+Every account receives a Personal workspace and may join organization workspaces. Every persisted resource, grant, search document, cache key, realtime topic, background job, agent run, usage record, and audit event must resolve to exactly one workspace.
+
+The active workspace is stored in the authenticated session for navigation and list operations. Resource authorization still resolves the resource's persisted workspace server-side; a client-provided workspace ID is never proof of access.
+
+Organization defaults:
+
+- The creator becomes an owner.
+- New organizations receive a `#general` channel after Channels ship.
+- Owners and administrators manage workspace invitations and policy.
+- Members may create direct messages, channels, teams, and agents unless a later workspace policy restricts them.
+- Invitations expire, can be cancelled or replaced, and may be accepted only by the invited email address.
+- The final owner cannot leave, be removed, or lose the owner role until ownership is transferred.
+- Workspace deletion is an archive operation. Permanent erasure is a separate audited retention workflow.
+- Single-tenant deployments use the same workspace-scoped repositories and authorization checks even when the workspace switcher is hidden.
+
+## Conversation Taxonomy
+
+- A **Personal chat** contains one human and unnamed model executions.
+- A **Direct Message** contains an explicit set of named human or agent principals.
+- A Direct Message with three or more named participants is a **group DM**.
+- A **Channel** is an explicitly named, durable workspace room. Participant count never creates a Channel automatically.
+- Adding a named agent to a Personal chat makes it a Direct Message.
+- Creating a Channel from a private conversation forks it and preserves the source.
+
+DMs and Channels will use Slack-style reply threads. Personal chats keep their linear turn experience. Inline quoted replies remain deferred and must not be accepted as a persisted workspace setting until implemented.
+
+## Principals And Authorization
+
+Humans, named agents, and services receive distinct workspace-scoped identities and audit attribution. Unnamed model executions and system events remain message-author kinds without becoming reusable principals.
+
+Workspace roles, room membership, and resource grants remain separate:
+
+- Workspace roles govern administration and broad creation capabilities.
+- Room membership governs reading, posting, and membership management.
+- Resource grants govern access to files, projects, knowledge bases, automations, and agents.
+- Teams are the user-facing name for authorization groups and may contain humans and agents.
+- Agents execute with their own authorization subject. They never inherit unrelated privileges from the human who invoked them.
+
+## Dynamic Room Grants
+
+Sharing a resource with a Team or conversation is dynamic. Adding or removing a Team or room member changes effective access without materializing permanent individual grants.
+
+Restricted attachments require an explicit prompt before a room grant is created. Public-link access remains a separate, workspace-policy-controlled general-access mode.
+
+## Agent Runtime Boundary
+
+Agents are workspace-owned reusable definitions. Overlay may use AgentOS as an execution adapter, but agent identity, authorization, persistence, and room membership remain Overlay contracts.
+
+Mention-first is the only initial behavior:
+
+- A human message in a one-to-one agent DM implicitly invokes that agent.
+- Group DMs and Channels require an explicit mention or a human reply in the agent's thread.
+- Agent-authored mentions do not invoke other agents in the first release.
+- Proactive and always-respond modes remain disabled until loop budgets and approval policies ship.
+
+Block Buzz is a product and interaction reference only. Overlay does not adopt Buzz's relay, protocol, tenancy, or persistence substrate.
+
+## Characterized Starting Point
+
+Phase 0 intentionally preserves the current behavior before multiplayer schemas are introduced:
+
+| Surface | Current boundary |
+| --- | --- |
+| Conversations | Owner-scoped with private/public token sharing |
+| Files | Owner-scoped with private/public token sharing |
+| Knowledge bases | Viewer/editor/owner grants for users, groups, and roles |
+| Projects | Owner-scoped; no collaborator share endpoint |
+| Automations | Capability-gated; run and edit are not resource-separated |
+| Agents | No durable reusable agent directory or principal |
+| Multi-tenancy | Disabled by runtime validation |
+
+`npm run test:workspaces:phase0` locks these boundaries and the disabled rollout flags. Later phases must update the characterization test in the same commit that deliberately changes a boundary.

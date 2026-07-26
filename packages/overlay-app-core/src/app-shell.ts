@@ -66,6 +66,36 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
     enabled: true,
     requiredAnyCapabilities: ['integrations', 'skills', 'mcpServers'],
   },
+  {
+    id: 'workspaces',
+    label: 'Workspaces',
+    description: 'Workspace isolation, membership, invitations, teams, and active-workspace routing.',
+    enabled: false,
+  },
+  {
+    id: 'collaborativeChats',
+    label: 'Collaborative chats',
+    description: 'Principal-addressed direct messages, group direct messages, and multiplayer read state.',
+    enabled: false,
+  },
+  {
+    id: 'channels',
+    label: 'Channels',
+    description: 'Named workspace rooms, membership, discovery, and reply threads.',
+    enabled: false,
+  },
+  {
+    id: 'agents',
+    label: 'Agents',
+    description: 'Workspace-owned reusable agents that participate as named principals.',
+    enabled: false,
+  },
+  {
+    id: 'resourceSharing',
+    label: 'Resource sharing',
+    description: 'Unified sharing with people, agents, teams, rooms, and resource guests.',
+    enabled: false,
+  },
 ] as const
 
 export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
