@@ -115,6 +115,7 @@ export interface ChatExperienceHeaderProps {
   onBeginHeaderChatRename?: () => void
   showRenameButton: boolean
   projectName?: string | null
+  contextNavigation?: ReactNode
   showAutomationChatTab: boolean
   appMode: 'chat' | 'automate'
   isTemporaryChat: boolean
@@ -181,6 +182,7 @@ export function ChatExperienceHeader({
   onBeginHeaderChatRename,
   showRenameButton,
   projectName,
+  contextNavigation,
   showAutomationChatTab,
   appMode,
   isTemporaryChat,
@@ -399,6 +401,7 @@ export function ChatExperienceHeader({
 
       {appMode === 'automate' || !showAutomationChatTab ? null : (
       <div className="flex w-full min-w-0 flex-col gap-2 md:min-w-0 md:flex-1 md:flex-row md:items-center md:justify-end md:gap-2">
+        {contextNavigation ? <div className="shrink-0">{contextNavigation}</div> : null}
         {generationMode === 'video' ? (
           <div ref={videoSubModePickerRef} className="relative w-full min-w-0 md:w-auto">
             <button

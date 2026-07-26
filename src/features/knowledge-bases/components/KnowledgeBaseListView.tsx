@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { BookOpen, Loader2, Plus, Search, Users } from 'lucide-react'
 import type { KnowledgeBase } from '@overlay/app-core'
-import { Button, DialogFrame } from '@overlay/ui'
+import { Button, DialogFrame, IconButton } from '@overlay/ui'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
@@ -19,6 +19,7 @@ export function KnowledgeBaseListView({
   const router = useRouter()
   const [knowledgeBases, setKnowledgeBases] = useState(initialKnowledgeBases)
   const [query, setQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -60,24 +61,44 @@ export function KnowledgeBaseListView({
       header={(
         <AppScreenHeader
           title="Knowledge"
-          description="Build searchable brains from your files and share them with the people who need them."
-          search={(
-            <label className="relative block w-52 max-w-[55vw]">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" size={14} />
-              <span className="sr-only">Search knowledge bases</span>
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search"
-                className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] pl-8 pr-3 text-sm outline-none focus:border-[var(--muted)]"
-              />
-            </label>
-          )}
           actions={(
-            <Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus size={14} />
-              New knowledge base
-            </Button>
+            <>
+              {searchOpen ? (
+                <label className="relative block w-52 max-w-[45vw]">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" size={14} />
+                  <span className="sr-only">Search knowledge bases</span>
+                  <input
+                    autoFocus
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') {
+                        setQuery('')
+                        setSearchOpen(false)
+                      }
+                    }}
+                    placeholder="Search"
+                    className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] pl-8 pr-3 text-xs outline-none focus:border-[var(--muted)]"
+                  />
+                </label>
+              ) : null}
+              <IconButton
+                aria-label={searchOpen ? 'Close search' : 'Search knowledge bases'}
+                aria-pressed={searchOpen}
+                onClick={() => {
+                  setSearchOpen((open) => {
+                    if (open) setQuery('')
+                    return !open
+                  })
+                }}
+              >
+                <Search size={15} />
+              </IconButton>
+              <Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
+                <Plus size={14} />
+                New
+              </Button>
+            </>
           )}
         />
       )}
@@ -125,7 +146,7 @@ export function KnowledgeBaseListView({
             {!query ? (
               <Button variant="primary" className="mt-5" onClick={() => setCreateOpen(true)}>
                 <Plus size={15} />
-                New knowledge base
+                New
               </Button>
             ) : null}
           </div>

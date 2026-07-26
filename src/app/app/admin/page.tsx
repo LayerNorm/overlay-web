@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { RefreshCw, Search, ShieldCheck, WalletCards } from 'lucide-react'
+import { SegmentedControl } from '@overlay/ui'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { AuthorizationAdminPanel } from '@/features/admin/authorization/AuthorizationAdminPanel'
 import { KnowledgeAdminPanel } from '@/features/admin/knowledge/KnowledgeAdminPanel'
@@ -48,6 +49,12 @@ export default function AdminPage() {
   const [busy, setBusy] = useState(false)
   const [forbidden, setForbidden] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const sections = [
+    ...(canViewUsage || canViewAudit ? [{ value: 'overview' as const, label: 'Overview' }] : []),
+    ...(canViewRoles ? [{ value: 'roles' as const, label: 'Roles' }] : []),
+    ...(canViewGroups ? [{ value: 'groups' as const, label: 'Groups' }] : []),
+    ...(canViewKnowledge ? [{ value: 'knowledge' as const, label: 'Knowledge' }] : []),
+  ]
 
   const load = useCallback(async () => {
     const usageUrl = new URL('/api/v1/admin/usage', window.location.origin)
@@ -114,34 +121,22 @@ export default function AdminPage() {
           title="Administration"
           subtitle="Workspace controls"
           actions={(
-            <button
-              type="button"
-              aria-label="Refresh administration"
-              className="inline-flex size-8 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-              onClick={() => void load()}
-            >
-              <RefreshCw size={15} />
-            </button>
-          )}
-          tabs={(
-            <nav className="flex gap-5" aria-label="Administration sections">
-              {([
-                ...(canViewUsage || canViewAudit ? ['overview'] as const : []),
-                ...(canViewRoles ? ['roles'] as const : []),
-                ...(canViewGroups ? ['groups'] as const : []),
-                ...(canViewKnowledge ? ['knowledge'] as const : []),
-              ] as const).map((value) => (
-                <button
-                  type="button"
-                  key={value}
-                  aria-current={section === value ? 'page' : undefined}
-                  className={`border-b-2 pb-1.5 text-xs capitalize transition-colors ${section === value ? 'border-[var(--foreground)] font-medium text-[var(--foreground)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--foreground)]'}`}
-                  onClick={() => setSection(value)}
-                >
-                  {value}
-                </button>
-              ))}
-            </nav>
+            <>
+              <SegmentedControl
+                value={section}
+                options={sections}
+                onChange={setSection}
+                ariaLabel="Administration sections"
+              />
+              <button
+                type="button"
+                aria-label="Refresh administration"
+                className="inline-flex size-8 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                onClick={() => void load()}
+              >
+                <RefreshCw size={15} />
+              </button>
+            </>
           )}
         />
       )}

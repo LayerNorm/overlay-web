@@ -27,7 +27,7 @@ async function KnowledgeBaseWorkspaceContent({
     if (error instanceof KnowledgeBaseServiceError && error.statusCode === 404) notFound()
     throw error
   }
-  return <KnowledgeBaseWorkspace {...data} userId={userId} />
+  return <KnowledgeBaseWorkspace {...data} />
 }
 
 async function loadKnowledgeBaseWorkspace({
@@ -39,15 +39,8 @@ async function loadKnowledgeBaseWorkspace({
 }) {
   const server = getOverlayServerContext()
   const knowledgeBase = await server.knowledgeBaseService.getKnowledgeBase({ knowledgeBaseId, userId })
-  const [sourceDetails, conversations, editDecision, shareDecision] = await Promise.all([
+  const [sourceDetails, editDecision, shareDecision] = await Promise.all([
       server.knowledgeBaseService.listSources({ knowledgeBaseId, userId }),
-      server.knowledgeBaseService.listUserConversationAttachments({ knowledgeBaseId, userId })
-        .then(async (attachments) => (await Promise.all(attachments.map(({ conversationId }) => (
-          server.appData.repositories.conversations.getConversationById({
-            conversationId: conversationId as never,
-            userId,
-          })
-        )))).filter((value): value is NonNullable<typeof value> => value !== null)),
       server.authorizationService.checkResourceAccess({
         action: 'edit',
         capability: 'knowledge.edit',
@@ -68,7 +61,6 @@ async function loadKnowledgeBaseWorkspace({
   return {
     canEdit: editDecision.allowed,
     canShare: shareDecision.allowed,
-    initialConversations: conversations,
     initialKnowledgeBase: knowledgeBase,
     initialSources: sourceDetails.map(summarizeSourceDetail),
   }

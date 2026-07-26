@@ -8,6 +8,7 @@ type ChatInterfaceProps = {
   firstName?: string
   hideSidebar?: boolean
   projectName?: string
+  contextNavigation?: ReactNode
   mode?: 'chat' | 'automate'
   hideHeader?: boolean
   knowledgeBaseId?: string

@@ -132,6 +132,7 @@ export default function ChatExperience({
   firstName,
   hideSidebar,
   projectName,
+  contextNavigation,
   knowledgeBaseId,
   mode = 'chat',
   hideHeader = false,
@@ -144,6 +145,7 @@ export default function ChatExperience({
   firstName?: string
   hideSidebar?: boolean
   projectName?: string
+  contextNavigation?: React.ReactNode
   knowledgeBaseId?: string
   mode?: 'chat' | 'automate'
   hideHeader?: boolean
@@ -1824,6 +1826,7 @@ export default function ChatExperience({
         onBeginHeaderChatRename: beginHeaderChatRename,
         showRenameButton: Boolean(activeChatId && !selectedAutomation && !isPublicShowcase),
         projectName,
+        contextNavigation,
         showAutomationChatTab,
         appMode: mode,
         isTemporaryChat,

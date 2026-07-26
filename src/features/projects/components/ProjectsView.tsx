@@ -4,7 +4,7 @@
 // boundary while reusable project and file presentation lives in @overlay/modules-react.
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import { Folder, Loader2, Plus } from 'lucide-react'
+import { FilePlus2, Folder, Loader2, Plus, Upload } from 'lucide-react'
 import {
   CHAT_CREATED_EVENT,
   CHAT_DELETED_EVENT,
@@ -40,8 +40,8 @@ import {
   type NoteDoc,
 } from '@overlay/app-core'
 import {
-  ProjectHubActions,
   ProjectHubHeader,
+  ProjectHubModeControl,
   ProjectHubTabs,
 } from '@overlay/modules-react/projects'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
@@ -168,7 +168,10 @@ function ProjectHubBody({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const [activeTab, setActiveTab] = useState<ProjectHubTab>('chats')
+  const requestedTab = searchParams?.get('tab')
+  const [activeTab, setActiveTab] = useState<ProjectHubTab>(
+    requestedTab === 'files' || requestedTab === 'settings' ? requestedTab : 'chat',
+  )
   const [chats, setChats] = useState<HubChat[]>([])
   const [files, setFiles] = useState<ProjectFileRecord[]>([])
   const [listsLoading, setListsLoading] = useState(true)
@@ -177,6 +180,9 @@ function ProjectHubBody({
   const [draftName, setDraftName] = useState(projectName)
   const [savingName, setSavingName] = useState(false)
   useEffect(() => { setDraftName(projectName) }, [projectName])
+  useEffect(() => {
+    setActiveTab(requestedTab === 'files' || requestedTab === 'settings' ? requestedTab : 'chat')
+  }, [requestedTab])
 
   const [instructions, setInstructions] = useState<string>('')
   const [instructionsLoaded, setInstructionsLoaded] = useState(false)
@@ -341,15 +347,6 @@ function ProjectHubBody({
     }
   }
 
-  async function createChat() {
-    const res = await overlayAppClient.conversations.createResponse({ projectId, title: 'New Chat' })
-    if (!res.ok) return
-    const data = (await res.json()) as { id?: string }
-    if (!data.id) return
-    setChats((current) => [...current, { _id: data.id!, title: 'New Chat', updatedAt: Date.now() }])
-    router.push(projectItemHref({ project: { _id: projectId, name: projectName }, view: 'chat', id: data.id }))
-  }
-
   async function createNote() {
     const res = await overlayAppClient.files.createResponse(createProjectNoteRequest(projectId))
     if (!res.ok) return
@@ -369,7 +366,6 @@ function ProjectHubBody({
   }
 
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const folderInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
 
   async function uploadFiles(filesIn: FileList | null) {
@@ -409,36 +405,18 @@ function ProjectHubBody({
     }, 700)
   }
 
-  // Header actions: + dropdown, Upload dropdown
-  const [plusOpen, setPlusOpen] = useState(false)
-  const [uploadOpen, setUploadOpen] = useState(false)
-  const plusRef = useRef<HTMLDivElement>(null)
-  const uploadRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    function onClick(e: globalThis.MouseEvent) {
-      if (plusRef.current && !plusRef.current.contains(e.target as Node)) setPlusOpen(false)
-      if (uploadRef.current && !uploadRef.current.contains(e.target as Node)) setUploadOpen(false)
-    }
-    window.addEventListener('mousedown', onClick)
-    return () => window.removeEventListener('mousedown', onClick)
-  }, [])
+  const handleTabChange = useCallback((tab: ProjectHubTab) => {
+    setActiveTab(tab)
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
+    if (tab === 'chat') params.delete('tab')
+    else params.set('tab', tab)
+    params.delete('view')
+    params.delete('id')
+    router.replace(`${pathname}?${params.toString()}`)
+  }, [pathname, router, searchParams])
 
-  const headerActions = (
-    <ProjectHubActions
-      creatingOpen={plusOpen}
-      uploadOpen={uploadOpen}
-      uploading={uploading}
-      plusRef={plusRef}
-      uploadRef={uploadRef}
-      fileInputRef={fileInputRef}
-      folderInputRef={folderInputRef}
-      onToggleCreate={() => { setPlusOpen((value) => !value); setUploadOpen(false) }}
-      onToggleUpload={() => { setUploadOpen((value) => !value); setPlusOpen(false) }}
-      onCreateChat={() => { setPlusOpen(false); void createChat() }}
-      onCreateNote={() => { setPlusOpen(false); void createNote() }}
-      onUploadFiles={(event) => { void uploadFiles(event.target.files); event.currentTarget.value = '' }}
-      onUploadFolder={(event) => { void uploadFiles(event.target.files); event.currentTarget.value = '' }}
-    />
+  const modeControl = (
+    <ProjectHubModeControl activeTab={activeTab} onTabChange={handleTabChange} />
   )
 
   const projectHeaderTitle = (
@@ -447,7 +425,7 @@ function ProjectHubBody({
       editingName={editingName}
       draftName={draftName}
       savingName={savingName}
-      actions={headerActions}
+      actions={<div className="ml-auto">{modeControl}</div>}
       onStartRename={() => { setDraftName(projectName); setEditingName(true) }}
       onDraftNameChange={setDraftName}
       onCommitRename={() => void commitProjectRename()}
@@ -464,7 +442,39 @@ function ProjectHubBody({
     [files],
   )
 
-  const tabs = (
+  const fileActions = (
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => void createNote()}
+        className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[var(--surface-subtle)] px-2.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+      >
+        <FilePlus2 size={13} />
+        New
+      </button>
+      <button
+        type="button"
+        disabled={uploading}
+        onClick={() => fileInputRef.current?.click()}
+        className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[var(--surface-subtle)] px-2.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
+      >
+        {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+        Upload
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(event) => {
+          void uploadFiles(event.target.files)
+          event.currentTarget.value = ''
+        }}
+      />
+    </div>
+  )
+
+  const tabContent = (
     <ProjectHubTabs
       activeTab={activeTab}
       chats={sortedChats}
@@ -474,24 +484,30 @@ function ProjectHubBody({
       instructionsLoaded={instructionsLoaded}
       savingInstructions={savingInstructions}
       instructionsSavedAt={instructionsSavedAt}
-      onTabChange={setActiveTab}
+      fileActions={fileActions}
       onOpenChat={openChat}
       onOpenFile={openFile}
       onInstructionsChange={onInstructionsChange}
     />
   )
 
+  if (activeTab === 'chat') {
+    return (
+      <ChatSuspenseBoundary
+        userId={userId}
+        firstName={firstName}
+        hideSidebar
+        projectName={projectName}
+        contextNavigation={modeControl}
+        belowEmptyComposer={tabContent}
+      />
+    )
+  }
+
   return (
     <AppScreenShell header={projectHeaderTitle}>
-      <AppScreenBody padding="none" maxWidth="none" scroll="hidden">
-        <ChatSuspenseBoundary
-          userId={userId}
-          firstName={firstName}
-          hideSidebar
-          hideHeader
-          projectName={projectName}
-          belowEmptyComposer={tabs}
-        />
+      <AppScreenBody padding="md" maxWidth="xl">
+        {tabContent}
       </AppScreenBody>
     </AppScreenShell>
   )
@@ -622,6 +638,15 @@ export default function ProjectsView({
   const projectId = searchParams?.get('projectId') ?? null
   const initialProject = projectId ? projects.find((project) => project._id === projectId) : undefined
   const projectName = searchParams?.get('projectName') ?? initialProject?.name ?? undefined
+  const navigateProjectMode = useCallback((tab: ProjectHubTab) => {
+    if (!projectId) return
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
+    params.delete('view')
+    params.delete('id')
+    if (tab === 'chat') params.delete('tab')
+    else params.set('tab', tab)
+    router.push(`/app/projects?${params.toString()}`)
+  }, [projectId, router, searchParams])
 
   const loadProjects = useCallback(async () => {
     setProjectsLoading(true)
@@ -678,7 +703,15 @@ export default function ProjectsView({
 
   if (view === 'chat' && id) {
     return (
-      <ChatSuspenseBoundary userId={userId} firstName={firstName} hideSidebar projectName={projectName} />
+      <ChatSuspenseBoundary
+        userId={userId}
+        firstName={firstName}
+        hideSidebar
+        projectName={projectName}
+        contextNavigation={projectId ? (
+          <ProjectHubModeControl activeTab="chat" onTabChange={navigateProjectMode} />
+        ) : undefined}
+      />
     )
   }
 

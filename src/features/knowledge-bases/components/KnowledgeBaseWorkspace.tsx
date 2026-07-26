@@ -1,6 +1,5 @@
 'use client'
 
-import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -20,7 +19,6 @@ import {
   FileText,
   Loader2,
   Menu,
-  MessageSquare,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -37,52 +35,31 @@ import type {
   KnowledgeBaseShareDirectoryResponse,
   KnowledgeBaseSourceDetail,
 } from '@overlay/api-client'
-import { Button, DialogFrame, IconButton } from '@overlay/ui'
+import { Button, DialogFrame, IconButton, SegmentedControl } from '@overlay/ui'
 import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useAuth } from '@/contexts/AuthContext'
 
-const ChatSuspenseBoundary = dynamic(() => import('@/features/chat/components/ChatSuspenseBoundary'), {
-  loading: () => (
-    <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
-      <Loader2 className="mr-2 animate-spin" size={15} />
-      Loading chat
-    </div>
-  ),
-})
-
-type ConversationSummary = {
-  _id?: string
-  id?: string
-  title?: string
-  updatedAt?: number
-}
-
-type SourceTab = 'sources' | 'search' | 'chats'
+type SourceTab = 'sources' | 'search'
 
 const ACTIVE_SOURCE_STATUSES = new Set(['pending', 'extracting', 'indexing', 'deleting'])
 
 export function KnowledgeBaseWorkspace({
   canEdit,
   canShare,
-  initialConversations,
   initialKnowledgeBase,
   initialSources,
-  userId,
 }: {
   canEdit: boolean
   canShare: boolean
-  initialConversations: ConversationSummary[]
   initialKnowledgeBase: KnowledgeBase
   initialSources: KnowledgeBaseSourceDetail[]
-  userId: string
 }) {
   const router = useRouter()
   const { refreshSession } = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [knowledgeBase, setKnowledgeBase] = useState(initialKnowledgeBase)
   const [sources, setSources] = useState(initialSources)
-  const [conversations, setConversations] = useState(initialConversations)
   const [sourceTab, setSourceTab] = useState<SourceTab>('sources')
   const [mobileSourcesOpen, setMobileSourcesOpen] = useState(false)
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
@@ -120,11 +97,6 @@ export function KnowledgeBaseWorkspace({
   const loadSources = useCallback(async () => {
     const response = await overlayAppClient.knowledgeBases.listSources(knowledgeBase.id)
     setSources(response.sources)
-  }, [knowledgeBase.id])
-
-  const loadConversations = useCallback(async () => {
-    const response = await overlayAppClient.knowledgeBases.listConversations<ConversationSummary[]>(knowledgeBase.id)
-    setConversations(response.conversations)
   }, [knowledgeBase.id])
 
   useEffect(() => {
@@ -280,7 +252,6 @@ export function KnowledgeBaseWorkspace({
   const sourcePanel = (
     <KnowledgeSourcePanel
       canEdit={canEdit}
-      conversations={conversations}
       dragging={dragging}
       knowledgeBaseId={knowledgeBase.id}
       notice={notice}
@@ -293,11 +264,6 @@ export function KnowledgeBaseWorkspace({
       onDrop={handleDrop}
       onDragActive={setDragging}
       onOpenFilePicker={() => fileInputRef.current?.click()}
-      onRefreshConversations={() => void loadConversations()}
-      onSelectConversation={(conversationId) => {
-        router.replace(`/app/knowledge/${encodeURIComponent(knowledgeBase.id)}?id=${encodeURIComponent(conversationId)}`)
-        setMobileSourcesOpen(false)
-      }}
       onSelectSource={(sourceId) => {
         setSelectedSourceId(sourceId)
         setMobileSourcesOpen(false)
@@ -360,19 +326,23 @@ export function KnowledgeBaseWorkspace({
         }}
         rightPanelOverlayLabel={selectedSource ? 'Knowledge source details' : 'Knowledge sources'}
       >
-        <div className="min-h-0 min-w-0 flex-1">
-          <ChatSuspenseBoundary
-            userId={userId}
-            hideHeader
-            hideSidebar
-            knowledgeBaseId={knowledgeBase.id}
-            projectName={knowledgeBase.title}
-            belowEmptyComposer={readySourceCount === 0 ? (
-              <p className="mt-3 text-center text-xs text-[var(--muted)]">
-                Add a source before asking source-backed questions.
-              </p>
-            ) : undefined}
-          />
+        <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center p-6">
+          <div className="w-full max-w-xl text-center">
+            <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-md bg-[var(--surface-subtle)] text-[var(--muted)]">
+              <BookOpen size={18} />
+            </span>
+            <h2 className="mt-4 text-sm font-medium text-[var(--foreground)]">{knowledgeBase.title}</h2>
+            <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-[var(--muted)]">
+              {knowledgeBase.description || 'A curated source collection for semantic and keyword retrieval.'}
+            </p>
+            <div className="mt-5 flex items-center justify-center gap-5 text-xs text-[var(--muted)]">
+              <span><strong className="font-medium text-[var(--foreground)]">{sources.length}</strong> sources</span>
+              <span><strong className="font-medium text-[var(--foreground)]">{readySourceCount}</strong> ready</span>
+            </div>
+            <p className="mt-6 text-[11px] text-[var(--muted-light)]">
+              Use Sources to manage the corpus or Search to inspect retrieved passages.
+            </p>
+          </div>
         </div>
       </AppScreenShell>
 
@@ -520,7 +490,6 @@ function principalLabel(
 
 function KnowledgeSourcePanel({
   canEdit,
-  conversations,
   dragging,
   knowledgeBaseId,
   notice,
@@ -533,14 +502,11 @@ function KnowledgeSourcePanel({
   onDragActive,
   onDrop,
   onOpenFilePicker,
-  onRefreshConversations,
-  onSelectConversation,
   onSelectSource,
   onTabChange,
   onToggleSource,
 }: {
   canEdit: boolean
-  conversations: ConversationSummary[]
   dragging: boolean
   knowledgeBaseId: string
   notice: string | null
@@ -553,8 +519,6 @@ function KnowledgeSourcePanel({
   onDragActive: (active: boolean) => void
   onDrop: (event: DragEvent<HTMLDivElement>) => void
   onOpenFilePicker: () => void
-  onRefreshConversations: () => void
-  onSelectConversation: (id: string) => void
   onSelectSource: (id: string) => void
   onTabChange: (tab: SourceTab) => void
   onToggleSource: (sourceId: string, enabled: boolean) => void
@@ -582,12 +546,17 @@ function KnowledgeSourcePanel({
         <div className="flex items-center gap-2 text-sm font-medium"><BookOpen size={15} /> Notebook</div>
         <IconButton className="lg:hidden" aria-label="Close sources" onClick={onCloseMobile}><X size={15} /></IconButton>
       </div>
-      <div className="grid grid-cols-3 border-b border-[var(--border)] px-2 py-2">
-        {(['sources', 'search', 'chats'] as const).map((tab) => (
-          <button key={tab} type="button" onClick={() => onTabChange(tab)} className={`h-8 rounded-md text-xs font-medium capitalize ${sourceTab === tab ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}>
-            {tab}
-          </button>
-        ))}
+      <div className="flex justify-center border-b border-[var(--border)] px-3 py-2">
+        <SegmentedControl
+          value={sourceTab}
+          options={[
+            { value: 'sources', label: 'Sources' },
+            { value: 'search', label: 'Search' },
+          ]}
+          onChange={onTabChange}
+          ariaLabel="Knowledge base views"
+          className="w-full [&>button]:flex-1"
+        />
       </div>
       {sourceTab === 'sources' ? (
         <>
@@ -656,26 +625,7 @@ function KnowledgeSourcePanel({
             <p className="px-3 py-10 text-center text-xs leading-relaxed text-[var(--muted)]">Find passages across every enabled source using keyword and semantic search.</p>
           )}
         </div>
-      ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto p-2">
-          <div className="flex items-center justify-between px-2 py-1.5">
-            <p className="text-xs font-medium">Notebook chats</p>
-            <IconButton aria-label="Refresh chats" onClick={onRefreshConversations}><RefreshCw size={13} /></IconButton>
-          </div>
-          {conversations.length === 0 ? (
-            <p className="px-4 py-10 text-center text-xs text-[var(--muted)]">Your grounded chats will appear here.</p>
-          ) : conversations.map((conversation) => {
-            const id = conversation._id ?? conversation.id
-            if (!id) return null
-            return (
-              <button key={id} type="button" onClick={() => onSelectConversation(id)} className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-xs hover:bg-[var(--surface-subtle)]">
-                <MessageSquare size={13} className="shrink-0 text-[var(--muted)]" />
-                <span className="truncate">{conversation.title || 'New chat'}</span>
-              </button>
-            )
-          })}
-        </div>
-      )}
+      ) : null}
     </div>
   )
 }

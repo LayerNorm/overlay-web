@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ComponentType } from 'react'
 import { MessageSquare, ImageIcon, Video, ChevronDown, Check, Bot } from 'lucide-react'
+import { SegmentedControl } from '../primitives/SegmentedControl'
 
 export type GenerationMode = 'text' | 'image' | 'video'
 
@@ -29,36 +30,14 @@ export function GenerationModeToggle({
 }: GenerationModeToggleProps) {
   const stretch = layout === 'stretch'
   return (
-    <div
-      className={`flex h-8 items-center rounded-lg bg-[var(--surface-subtle)] p-0.5 shrink-0 ${stretch ? 'w-full min-w-0' : ''} ${className}`}
-    >
-      {MODES.map(({ value, label, Icon }) => {
-        const active = mode === value
-        return (
-          <button
-            key={value}
-            onClick={() => !disabled && onChange(value)}
-            disabled={disabled}
-            title={label}
-            type="button"
-            className={`flex items-center justify-center rounded-md text-xs transition-colors ${
-              stretch
-                ? 'min-w-0 flex-1 flex-col gap-0.5 px-0.5 py-1.5 sm:flex-row sm:gap-1 sm:px-2 sm:py-1'
-                : 'h-7 gap-1 px-2.5'
-            } ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${
-              active
-                ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
-                : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-            }`}
-          >
-            <Icon size={stretch ? 13 : 11} className="shrink-0" />
-            <span className={stretch ? 'max-w-full truncate text-center text-[10px] leading-none sm:text-xs' : ''}>
-              {label}
-            </span>
-          </button>
-        )
-      })}
-    </div>
+    <SegmentedControl
+      value={mode}
+      options={MODES.map(({ value, label, Icon }) => ({ value, label, icon: Icon }))}
+      onChange={onChange}
+      ariaLabel="Generation mode"
+      disabled={disabled}
+      className={`${stretch ? 'w-full min-w-0 [&>button]:flex-1' : ''} ${className}`}
+    />
   )
 }
 

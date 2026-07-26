@@ -6,10 +6,11 @@ ProjectFileSummary,
 ProjectHubTab
 } from '@overlay/app-core'
 import { projectRouteViewForFile } from '@overlay/app-core'
-import { BookOpen,ChevronDown,FileText,FolderOpen,FolderPlus,Loader2,MessageSquare,Pencil,Plus,Upload } from 'lucide-react'
+import { BookOpen,ChevronDown,FileText,FolderOpen,FolderPlus,Loader2,MessageSquare,Pencil,Plus,Settings,Upload } from 'lucide-react'
 import { type ChangeEvent,type ReactNode,type RefObject } from 'react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '../shell'
 import { FileTypeIcon } from '../shared/file-type-icon'
+import { SegmentedControl } from '@overlay/ui'
 
 export interface ProjectHubHeaderProps {
   projectName: string
@@ -36,7 +37,7 @@ export function ProjectHubHeader({
 }: ProjectHubHeaderProps) {
   return (
     <AppScreenHeader className="px-3 py-2.5 md:px-4 md:py-0">
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex w-full min-w-0 items-center gap-2">
         <FolderOpen size={16} className="shrink-0 text-[var(--muted)]" />
         {editingName ? (
           <input
@@ -60,7 +61,6 @@ export function ProjectHubHeader({
           <div className="group/project-head flex min-w-0 items-center gap-1">
             <h1
               className="min-w-0 truncate text-sm font-medium text-[var(--foreground)]"
-              style={{ fontFamily: 'var(--font-serif)' }}
             >
               {projectName || 'Project'}
             </h1>
@@ -77,6 +77,29 @@ export function ProjectHubHeader({
         {actions}
       </div>
     </AppScreenHeader>
+  )
+}
+
+const PROJECT_HUB_MODES = [
+  { value: 'chat' as const, label: 'Chat', icon: MessageSquare },
+  { value: 'files' as const, label: 'Files', icon: FileText },
+  { value: 'settings' as const, label: 'Settings', icon: Settings },
+]
+
+export function ProjectHubModeControl({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: ProjectHubTab
+  onTabChange: (tab: ProjectHubTab) => void
+}) {
+  return (
+    <SegmentedControl
+      value={activeTab}
+      options={PROJECT_HUB_MODES}
+      onChange={onTabChange}
+      ariaLabel="Project views"
+    />
   )
 }
 
@@ -208,7 +231,7 @@ export interface ProjectHubTabsProps {
   instructionsLoaded: boolean
   savingInstructions?: boolean
   instructionsSavedAt?: number | null
-  onTabChange: (tab: ProjectHubTab) => void
+  fileActions?: ReactNode
   onOpenChat: (id: string) => void
   onOpenFile: (file: ProjectFileSummary) => void
   onInstructionsChange: (value: string) => void
@@ -223,34 +246,16 @@ export function ProjectHubTabs({
   instructionsLoaded,
   savingInstructions,
   instructionsSavedAt,
-  onTabChange,
+  fileActions,
   onOpenChat,
   onOpenFile,
   onInstructionsChange,
 }: ProjectHubTabsProps) {
-  const tabBtnClass = (active: boolean) =>
-    `inline-flex items-center rounded-md px-3 py-1.5 text-xs transition-colors ${
-      active
-        ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-        : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-    }`
-
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-1">
-        <button type="button" onClick={() => onTabChange('chats')} className={tabBtnClass(activeTab === 'chats')}>
-          Chats
-        </button>
-        <button type="button" onClick={() => onTabChange('files')} className={tabBtnClass(activeTab === 'files')}>
-          Files
-        </button>
-        <button type="button" onClick={() => onTabChange('instructions')} className={tabBtnClass(activeTab === 'instructions')}>
-          Instructions
-        </button>
-      </div>
-
-      {activeTab === 'chats' && (
+      {activeTab === 'chat' && (
         <div>
+          {chats.length > 0 ? <p className="mb-1 px-1 text-[11px] font-medium text-[var(--muted)]">Recent chats</p> : null}
           {listsLoading ? (
             <div className="flex justify-center py-6 text-[var(--muted)]"><Loader2 size={16} className="animate-spin" /></div>
           ) : chats.length === 0 ? (
@@ -276,6 +281,13 @@ export function ProjectHubTabs({
 
       {activeTab === 'files' && (
         <div>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-medium text-[var(--foreground)]">Project files</h2>
+              <p className="mt-1 text-xs text-[var(--muted)]">Working materials scoped to this project.</p>
+            </div>
+            {fileActions}
+          </div>
           {listsLoading ? (
             <div className="flex justify-center py-6 text-[var(--muted)]"><Loader2 size={16} className="animate-spin" /></div>
           ) : files.length === 0 ? (
@@ -303,11 +315,14 @@ export function ProjectHubTabs({
         </div>
       )}
 
-      {activeTab === 'instructions' && (
-        <div className="flex flex-col gap-2">
-          <p className="text-xs text-[var(--muted)]">
-            Set context and customize how Overlay responds in this project.
-          </p>
+      {activeTab === 'settings' && (
+        <div className="flex max-w-2xl flex-col gap-2">
+          <div className="mb-2">
+            <h2 className="text-sm font-medium text-[var(--foreground)]">Instructions</h2>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Set context and customize how Overlay responds in this project.
+            </p>
+          </div>
           <textarea
             value={instructions}
             disabled={!instructionsLoaded}
