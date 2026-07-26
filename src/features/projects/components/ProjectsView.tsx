@@ -4,7 +4,17 @@
 // boundary while reusable project and file presentation lives in @overlay/modules-react.
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import { FilePlus2, Folder, Loader2, Plus, Upload } from 'lucide-react'
+import {
+  Archive,
+  BookOpen,
+  FilePlus2,
+  Folder,
+  Loader2,
+  Plus,
+  RotateCcw,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import {
   CHAT_CREATED_EVENT,
   CHAT_DELETED_EVENT,
@@ -19,7 +29,6 @@ import {
   KnowledgeMutationConsumer,
   PROJECT_META_UPDATED_EVENT,
   PROJECTS_CHANGED_EVENT,
-  createProjectNoteRequest,
   createKnowledgeMutationPublisher,
   isKnowledgeEntityMutation,
   normalizeKnowledgeSurfaceNode,
@@ -38,6 +47,7 @@ import {
   type ProjectMetaUpdatedDetail,
   type ProjectSummary,
   type NoteDoc,
+  type KnowledgeBase,
 } from '@overlay/app-core'
 import {
   ProjectHubHeader,
@@ -46,6 +56,7 @@ import {
 } from '@overlay/modules-react/projects'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { FileViewerSkeleton } from '@overlay/ui/feedback'
+import { SegmentedControl } from '@overlay/ui'
 import dynamic from 'next/dynamic'
 import { FileViewerPanel, isEditableType } from '@overlay/modules-react/knowledge'
 import { FileShareMenu } from '@/features/files/components/FileShareMenu'
@@ -189,20 +200,35 @@ function ProjectHubBody({
   const [savingInstructions, setSavingInstructions] = useState(false)
   const [instructionsSavedAt, setInstructionsSavedAt] = useState<number | null>(null)
   const instructionsSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
+  const [knowledgeBaseId, setKnowledgeBaseId] = useState<string | null>(null)
+  const [knowledgeBaseSettingsLoaded, setKnowledgeBaseSettingsLoaded] = useState(false)
+  const [savingKnowledgeBase, setSavingKnowledgeBase] = useState(false)
+  const [archivedAt, setArchivedAt] = useState<number | null>(null)
+  const [changingLifecycle, setChangingLifecycle] = useState(false)
 
   // Load project instructions
   useEffect(() => {
     let cancelled = false
     setInstructionsLoaded(false)
-    overlayAppClient.projects.get<{ instructions?: string } | null>({ projectId })
-      .then((data: { instructions?: string } | null) => {
-        if (cancelled) return
-        setInstructions((data?.instructions ?? '') as string)
-        setInstructionsLoaded(true)
-      })
-      .catch(() => {
-        if (!cancelled) setInstructionsLoaded(true)
-      })
+    setKnowledgeBaseSettingsLoaded(false)
+    void Promise.allSettled([
+      overlayAppClient.projects.get<ProjectSummary | null>({ projectId }),
+      overlayAppClient.knowledgeBases.list(),
+    ]).then(([projectResult, knowledgeResult]) => {
+      if (cancelled) return
+      if (projectResult.status === 'fulfilled') {
+        const project = projectResult.value
+        setInstructions(project?.instructions ?? '')
+        setKnowledgeBaseId(project?.knowledgeBaseId ?? null)
+        setArchivedAt(project?.archivedAt ?? null)
+      }
+      if (knowledgeResult.status === 'fulfilled') {
+        setKnowledgeBases(knowledgeResult.value.knowledgeBases)
+      }
+      setInstructionsLoaded(true)
+      setKnowledgeBaseSettingsLoaded(true)
+    })
     return () => {
       cancelled = true
     }
@@ -348,7 +374,11 @@ function ProjectHubBody({
   }
 
   async function createNote() {
-    const res = await overlayAppClient.files.createResponse(createProjectNoteRequest(projectId))
+    const res = await overlayAppClient.notes.createResponse({
+      title: 'Untitled',
+      content: '',
+      projectId,
+    })
     if (!res.ok) return
     const data = (await res.json()) as { id?: string }
     if (!data.id) return
@@ -405,6 +435,55 @@ function ProjectHubBody({
     }, 700)
   }
 
+  async function updateProjectKnowledgeBase(nextKnowledgeBaseId: string | null) {
+    if (savingKnowledgeBase || nextKnowledgeBaseId === knowledgeBaseId) return
+    setSavingKnowledgeBase(true)
+    try {
+      const response = await overlayAppClient.projects.updateResponse({
+        projectId,
+        knowledgeBaseId: nextKnowledgeBaseId,
+      })
+      if (!response.ok) return
+      const body = await response.json().catch(() => null) as {
+        project?: ProjectSummary
+      } | null
+      setKnowledgeBaseId(body?.project?.knowledgeBaseId ?? nextKnowledgeBaseId)
+      window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
+    } finally {
+      setSavingKnowledgeBase(false)
+    }
+  }
+
+  async function setProjectArchived(archived: boolean) {
+    if (changingLifecycle) return
+    setChangingLifecycle(true)
+    try {
+      const response = await overlayAppClient.projects.updateResponse({ projectId, archived })
+      if (!response.ok) return
+      window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
+      if (archived) {
+        router.replace('/app/projects?archived=1')
+      } else {
+        setArchivedAt(null)
+      }
+    } finally {
+      setChangingLifecycle(false)
+    }
+  }
+
+  async function deleteProject() {
+    if (changingLifecycle || !window.confirm('Delete this project and its chats and working files?')) return
+    setChangingLifecycle(true)
+    try {
+      const response = await overlayAppClient.projects.deleteResponse({ projectId })
+      if (!response.ok) return
+      window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
+      router.replace('/app/projects')
+    } finally {
+      setChangingLifecycle(false)
+    }
+  }
+
   const handleTabChange = useCallback((tab: ProjectHubTab) => {
     setActiveTab(tab)
     const params = new URLSearchParams(searchParams?.toString() ?? '')
@@ -415,8 +494,24 @@ function ProjectHubBody({
     router.replace(`${pathname}?${params.toString()}`)
   }, [pathname, router, searchParams])
 
+  const activeKnowledgeBase = knowledgeBases.find(({ id }) => id === knowledgeBaseId) ?? null
   const modeControl = (
     <ProjectHubModeControl activeTab={activeTab} onTabChange={handleTabChange} />
+  )
+  const contextControls = (
+    <div className="ml-auto flex min-w-0 items-center gap-2">
+      {activeKnowledgeBase ? (
+        <span
+          className="hidden max-w-52 items-center gap-1.5 truncate text-xs text-[var(--muted)] sm:inline-flex"
+          title={`Trusted knowledge: ${activeKnowledgeBase.title}`}
+          data-testid="project-active-knowledge-base"
+        >
+          <BookOpen size={13} className="shrink-0" />
+          <span className="truncate">{activeKnowledgeBase.title}</span>
+        </span>
+      ) : null}
+      {modeControl}
+    </div>
   )
 
   const projectHeaderTitle = (
@@ -425,7 +520,7 @@ function ProjectHubBody({
       editingName={editingName}
       draftName={draftName}
       savingName={savingName}
-      actions={<div className="ml-auto">{modeControl}</div>}
+      actions={contextControls}
       onStartRename={() => { setDraftName(projectName); setEditingName(true) }}
       onDraftNameChange={setDraftName}
       onCommitRename={() => void commitProjectRename()}
@@ -474,6 +569,68 @@ function ProjectHubBody({
     </div>
   )
 
+  const knowledgeBaseSettings = (
+    <div>
+      <div className="mb-4">
+        <h2 className="text-sm font-medium text-[var(--foreground)]">Trusted knowledge</h2>
+        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+          Attach one reusable knowledge base. Its enabled sources are automatically available to every chat in this project.
+        </p>
+      </div>
+      <label className="block text-xs font-medium text-[var(--foreground)]">
+        Knowledge base
+        <select
+          value={knowledgeBaseId ?? ''}
+          disabled={!knowledgeBaseSettingsLoaded || savingKnowledgeBase}
+          onChange={(event) => void updateProjectKnowledgeBase(event.target.value || null)}
+          className="mt-1.5 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] disabled:opacity-60"
+          data-testid="project-knowledge-base-select"
+        >
+          <option value="">None</option>
+          {knowledgeBases.map((base) => (
+            <option key={base.id} value={base.id}>{base.title}</option>
+          ))}
+        </select>
+      </label>
+      <p className="mt-2 min-h-4 text-[11px] text-[var(--muted-light)]">
+        {savingKnowledgeBase
+          ? 'Saving…'
+          : activeKnowledgeBase
+            ? `${activeKnowledgeBase.title} is active in Project Chat.`
+            : 'Project working files remain available separately.'}
+      </p>
+    </div>
+  )
+
+  const lifecycleSettings = (
+    <div>
+      <h2 className="text-sm font-medium text-[var(--foreground)]">Project lifecycle</h2>
+      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+        Archive preserves the workspace for later. Delete removes the project and its linked working data.
+      </p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={changingLifecycle}
+          onClick={() => void setProjectArchived(!archivedAt)}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] px-3 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)] disabled:opacity-50"
+        >
+          {archivedAt ? <RotateCcw size={13} /> : <Archive size={13} />}
+          {archivedAt ? 'Restore project' : 'Archive project'}
+        </button>
+        <button
+          type="button"
+          disabled={changingLifecycle}
+          onClick={() => void deleteProject()}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-500/30 px-3 text-xs text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50"
+        >
+          <Trash2 size={13} />
+          Delete project
+        </button>
+      </div>
+    </div>
+  )
+
   const tabContent = (
     <ProjectHubTabs
       activeTab={activeTab}
@@ -485,6 +642,8 @@ function ProjectHubBody({
       savingInstructions={savingInstructions}
       instructionsSavedAt={instructionsSavedAt}
       fileActions={fileActions}
+      knowledgeBaseSettings={knowledgeBaseSettings}
+      lifecycleSettings={lifecycleSettings}
       onOpenChat={openChat}
       onOpenFile={openFile}
       onInstructionsChange={onInstructionsChange}
@@ -498,7 +657,8 @@ function ProjectHubBody({
         firstName={firstName}
         hideSidebar
         projectName={projectName}
-        contextNavigation={modeControl}
+        contextNavigation={contextControls}
+        knowledgeBaseId={knowledgeBaseId ?? undefined}
         belowEmptyComposer={tabContent}
       />
     )
@@ -528,18 +688,27 @@ function ProjectsLanding({
   projects,
   loading,
   creating,
+  showArchived,
   onCreateProject,
+  onRestoreProject,
+  onShowArchivedChange,
 }: {
   projects: readonly ProjectSummary[]
   loading: boolean
   creating: boolean
+  showArchived: boolean
   onCreateProject: () => void
+  onRestoreProject: (projectId: string) => void
+  onShowArchivedChange: (showArchived: boolean) => void
 }) {
   const router = useRouter()
   const rootProjectRows = useMemo(() => {
-    const roots = getRootProjects(projects)
-    return roots.length > 0 ? roots : [...projects]
-  }, [projects])
+    const visible = projects.filter((project) => showArchived
+      ? Boolean(project.archivedAt)
+      : !project.archivedAt)
+    const roots = getRootProjects(visible)
+    return roots.length > 0 ? roots : visible
+  }, [projects, showArchived])
 
   return (
     <AppScreenShell
@@ -548,15 +717,28 @@ function ProjectsLanding({
           title="Projects"
           className="px-3 py-2.5 md:px-4 md:py-0"
           actions={
-            <button
-              type="button"
-              onClick={onCreateProject}
-              disabled={creating}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
-            >
-              {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-              New project
-            </button>
+            <>
+              <SegmentedControl
+                value={showArchived ? 'archived' : 'active'}
+                options={[
+                  { value: 'active', label: 'Active' },
+                  { value: 'archived', label: 'Archived' },
+                ]}
+                onChange={(value) => onShowArchivedChange(value === 'archived')}
+                ariaLabel="Project lifecycle"
+              />
+              {!showArchived ? (
+                <button
+                  type="button"
+                  onClick={onCreateProject}
+                  disabled={creating}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[var(--surface-subtle)] px-3 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
+                >
+                  {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  New
+                </button>
+              ) : null}
+            </>
           }
         />
       }
@@ -578,13 +760,17 @@ function ProjectsLanding({
               const subprojectCount = getChildProjects(projects, project._id).length
               const updatedLabel = formatProjectUpdatedAt(project.updatedAt)
               return (
-                <button
+                <div
                   key={project._id}
-                  type="button"
-                  onClick={() => router.push(projectHubHref(project))}
                   className="group flex min-h-32 flex-col justify-between rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-left transition-colors hover:border-[var(--muted-light)] hover:bg-[var(--surface-subtle)]"
                 >
-                  <div className="flex min-w-0 items-start gap-3">
+                  <button
+                    type="button"
+                    onClick={() => router.push(showArchived
+                      ? `${projectHubHref(project)}&tab=settings`
+                      : projectHubHref(project))}
+                    className="flex min-w-0 items-start gap-3 text-left"
+                  >
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]">
                       <Folder size={16} strokeWidth={1.75} />
                     </span>
@@ -598,18 +784,31 @@ function ProjectsLanding({
                         <p className="mt-1 text-xs text-[var(--muted)]">Project workspace</p>
                       )}
                     </div>
-                  </div>
+                  </button>
                   <div className="mt-5 flex items-center justify-between gap-3 text-[11px] text-[var(--muted-light)]">
-                    <span>{subprojectCount > 0 ? `${subprojectCount} nested project${subprojectCount === 1 ? '' : 's'}` : 'Project'}</span>
+                    {showArchived ? (
+                      <button
+                        type="button"
+                        onClick={() => onRestoreProject(project._id)}
+                        className="inline-flex items-center gap-1 text-[var(--muted)] hover:text-[var(--foreground)]"
+                      >
+                        <RotateCcw size={11} />
+                        Restore
+                      </button>
+                    ) : (
+                      <span>{subprojectCount > 0 ? `${subprojectCount} nested project${subprojectCount === 1 ? '' : 's'}` : 'Project'}</span>
+                    )}
                     {updatedLabel ? <span>Updated {updatedLabel}</span> : null}
                   </div>
-                </button>
+                </div>
               )
             })}
           </div>
         ) : (
           <div className="flex min-h-full flex-col items-center justify-center gap-4 px-6">
-            <p className="text-sm text-[var(--muted)]">No projects yet.</p>
+            <p className="text-sm text-[var(--muted)]">
+              {showArchived ? 'No archived projects.' : 'No projects yet.'}
+            </p>
           </div>
         )}
       </AppScreenBody>
@@ -636,6 +835,7 @@ export default function ProjectsView({
   const view = searchParams?.get('view') ?? null
   const id = searchParams?.get('id') ?? null
   const projectId = searchParams?.get('projectId') ?? null
+  const showArchived = searchParams?.get('archived') === '1'
   const initialProject = projectId ? projects.find((project) => project._id === projectId) : undefined
   const projectName = searchParams?.get('projectName') ?? initialProject?.name ?? undefined
   const navigateProjectMode = useCallback((tab: ProjectHubTab) => {
@@ -651,7 +851,10 @@ export default function ProjectsView({
   const loadProjects = useCallback(async () => {
     setProjectsLoading(true)
     try {
-      const data = await overlayAppClient.projects.get<ProjectSummary[]>({ limit: 100 })
+      const data = await overlayAppClient.projects.get<ProjectSummary[]>({
+        includeArchived: true,
+        limit: 100,
+      })
       setProjects(Array.isArray(data) ? data : [])
     } finally {
       setProjectsLoading(false)
@@ -701,6 +904,22 @@ export default function ProjectsView({
     }
   }, [creatingProject, loadProjects, router])
 
+  const restoreProject = useCallback(async (restoreProjectId: string) => {
+    const response = await overlayAppClient.projects.updateResponse({
+      projectId: restoreProjectId,
+      archived: false,
+    })
+    if (!response.ok) return
+    await loadProjects()
+  }, [loadProjects])
+
+  const setShowArchived = useCallback((nextShowArchived: boolean) => {
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
+    if (nextShowArchived) params.set('archived', '1')
+    else params.delete('archived')
+    router.replace(`/app/projects${params.size > 0 ? `?${params.toString()}` : ''}`)
+  }, [router, searchParams])
+
   if (view === 'chat' && id) {
     return (
       <ChatSuspenseBoundary
@@ -708,6 +927,7 @@ export default function ProjectsView({
         firstName={firstName}
         hideSidebar
         projectName={projectName}
+        knowledgeBaseId={initialProject?.knowledgeBaseId ?? undefined}
         contextNavigation={projectId ? (
           <ProjectHubModeControl activeTab="chat" onTabChange={navigateProjectMode} />
         ) : undefined}
@@ -739,7 +959,10 @@ export default function ProjectsView({
       projects={projects}
       loading={projectsLoading}
       creating={creatingProject}
+      showArchived={showArchived}
       onCreateProject={() => void createProject()}
+      onRestoreProject={(restoreProjectId) => void restoreProject(restoreProjectId)}
+      onShowArchivedChange={setShowArchived}
     />
   )
 }

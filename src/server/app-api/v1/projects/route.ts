@@ -4,6 +4,7 @@ import { repositoryProxy } from '@/server/app-data/errors'
 import { handleRouteError } from '@/server/app-api/route-errors'
 import { readValidatedJson, readValidatedQuery } from '@/server/app-api/validated-input'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { KnowledgeBaseServiceError } from '@/server/knowledge-bases'
 import {
   ProjectService,
   ProjectServiceError,
@@ -17,7 +18,21 @@ import {
 } from '@/shared/schemas/projects'
 const projectService = new ProjectService(repositoryProxy<ProjectRepository>(
   () => getOverlayServerContext().appData.repositories.projects,
-))
+), {
+  assertKnowledgeBaseAccess: async ({ knowledgeBaseId, userId }) => {
+    try {
+      await getOverlayServerContext().knowledgeBaseService.getKnowledgeBase({
+        knowledgeBaseId,
+        userId,
+      })
+    } catch (error) {
+      if (error instanceof KnowledgeBaseServiceError) {
+        throw new ProjectServiceError(error.message, error.statusCode)
+      }
+      throw error
+    }
+  },
+})
 
 function readBooleanParam(value: string | null): boolean | undefined {
   if (value == null) return undefined
@@ -44,11 +59,13 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     const updatedSinceParam = query.updatedSince
     const updatedSince = updatedSinceParam ? Number(updatedSinceParam) : undefined
+    const includeArchived = readBooleanParam(query.includeArchived ?? null)
     const includeDeleted = readBooleanParam(query.includeDeleted ?? null)
 
     const projects = await projectService.listProjects({
       userId: getAuthorizedResourceUserId(context),
       ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
+      ...(includeArchived !== undefined ? { includeArchived } : {}),
       ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })
     const granted = await Promise.all(getGrantedResources(context).map(({ ownerUserId, resourceId }) => (
@@ -69,12 +86,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const bodyResult = await readValidatedJson(request, context, CreateProjectRequest)
     if (!bodyResult.ok) return bodyResult.response
     const body = bodyResult.data
-    const { name, parentId, instructions, clientId } = body
+    const { name, parentId, instructions, knowledgeBaseId, clientId } = body
     const project = await projectService.createProject({
       userId: getAuthorizedResourceUserId(context),
       clientId: clientId?.trim() || undefined,
       name,
       instructions: instructions?.trim() || undefined,
+      knowledgeBaseId,
       parentId,
     })
     return NextResponse.json({ id: project._id, project })
@@ -95,14 +113,16 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const bodyResult = await readValidatedJson(request, context, UpdateProjectRequest)
     if (!bodyResult.ok) return bodyResult.response
     const body = bodyResult.data
-    const { projectId, name, instructions, parentId } = body
+    const { projectId, name, instructions, knowledgeBaseId, parentId, archived } = body
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
     const project = await projectService.updateProject({
       projectId,
       userId: getAuthorizedResourceUserId(context),
       name,
       instructions,
+      knowledgeBaseId,
       parentId,
+      archived,
     })
     return NextResponse.json({ success: true, project })
   } catch (error) {

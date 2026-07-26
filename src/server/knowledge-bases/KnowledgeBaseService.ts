@@ -260,7 +260,11 @@ export class KnowledgeBaseService {
   }): Promise<void> {
     const base = await this.requiredBase(args.knowledgeBaseId)
     await this.assertBaseAccess('edit', 'knowledge.edit', base, args.userId)
-    if (!await this.deps.repositories.memberships.setEnabled(args)) throw notFound('Knowledge source')
+    if (!await this.deps.repositories.memberships.setEnabled({
+      knowledgeBaseId: args.knowledgeBaseId,
+      sourceId: args.sourceId,
+      enabled: args.enabled,
+    })) throw notFound('Knowledge source')
   }
 
   async removeSource(args: {
@@ -270,7 +274,10 @@ export class KnowledgeBaseService {
   }): Promise<void> {
     const base = await this.requiredBase(args.knowledgeBaseId)
     await this.assertBaseAccess('edit', 'knowledge.edit', base, args.userId)
-    if (!await this.deps.repositories.memberships.remove(args)) throw notFound('Knowledge source')
+    if (!await this.deps.repositories.memberships.remove({
+      knowledgeBaseId: args.knowledgeBaseId,
+      sourceId: args.sourceId,
+    })) throw notFound('Knowledge source')
   }
 
   async deleteCanonicalSource(args: { sourceId: string; userId: string }): Promise<void> {

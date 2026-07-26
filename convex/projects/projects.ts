@@ -20,9 +20,10 @@ export const list = query({
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     updatedSince: v.optional(v.number()),
+    includeArchived: v.optional(v.boolean()),
     includeDeleted: v.optional(v.boolean()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
+  handler: async (ctx, { userId, accessToken, serverSecret, updatedSince, includeArchived, includeDeleted }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -35,6 +36,7 @@ export const list = query({
       .collect()
     return projects
       .filter((project) => (updatedSince !== undefined ? project.updatedAt > updatedSince : true))
+      .filter((project) => (includeArchived ? true : !project.archivedAt))
       .filter((project) => (includeDeleted ? true : !project.deletedAt))
   },
 })
@@ -60,9 +62,10 @@ export const create = mutation({
     clientId: v.optional(v.string()),
     name: v.string(),
     instructions: v.optional(v.string()),
+    knowledgeBaseId: v.optional(v.string()),
     parentId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, clientId, name, instructions, parentId }) => {
+  handler: async (ctx, { userId, accessToken, serverSecret, clientId, name, instructions, knowledgeBaseId, parentId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (clientId?.trim()) {
       const existing = await ctx.db
@@ -78,7 +81,9 @@ export const create = mutation({
           })
           await ctx.db.patch(existing._id, {
             deletedAt: undefined,
+            archivedAt: undefined,
             instructions: instructions?.trim() || undefined,
+            knowledgeBaseId,
             name,
             parentId,
             updatedAt: Date.now(),
@@ -94,6 +99,7 @@ export const create = mutation({
       clientId: clientId?.trim() || undefined,
       name,
       instructions: instructions?.trim() || undefined,
+      knowledgeBaseId,
       parentId,
       createdAt: now,
       updatedAt: now,
@@ -108,10 +114,22 @@ export const update = mutation({
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     name: v.optional(v.string()),
+    archivedAt: v.optional(v.union(v.number(), v.null())),
     instructions: v.optional(v.union(v.string(), v.null())),
+    knowledgeBaseId: v.optional(v.union(v.string(), v.null())),
     parentId: v.optional(v.union(v.string(), v.null())),
   },
-  handler: async (ctx, { projectId, userId, accessToken, serverSecret, name, instructions, parentId }) => {
+  handler: async (ctx, {
+    projectId,
+    userId,
+    accessToken,
+    serverSecret,
+    name,
+    archivedAt,
+    instructions,
+    knowledgeBaseId,
+    parentId,
+  }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const project = await ctx.db.get(projectId)
     if (!project || project.userId !== userId) {
@@ -122,7 +140,9 @@ export const update = mutation({
     }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
     if (name !== undefined) patch.name = name
+    if (archivedAt !== undefined) patch.archivedAt = archivedAt ?? undefined
     if (instructions !== undefined) patch.instructions = instructions?.trim() || undefined
+    if (knowledgeBaseId !== undefined) patch.knowledgeBaseId = knowledgeBaseId?.trim() || undefined
     if (parentId !== undefined) patch.parentId = parentId || undefined
     await ctx.db.patch(projectId, patch)
   },
@@ -198,7 +218,7 @@ async function validateParentChange(
     throw new Error('Project cannot be its own parent')
   }
   const parent = await ctx.db.get(args.parentId as Id<'projects'>)
-  if (!parent || parent.userId !== args.userId || parent.deletedAt) {
+  if (!parent || parent.userId !== args.userId || parent.archivedAt || parent.deletedAt) {
     throw new Error('Invalid parent project')
   }
   const seen = new Set<string>(args.projectId ? [args.projectId] : [])

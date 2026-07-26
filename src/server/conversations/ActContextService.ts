@@ -190,7 +190,7 @@ export class ActContextService {
         }).catch((_error) => null)
       : Promise.resolve(null)
 
-    const [effectiveMemories, enabledSkills, conv, knowledgeBaseId] = await Promise.all([
+    const [effectiveMemories, enabledSkills, conv, conversationKnowledgeBaseId] = await Promise.all([
       memoriesTask,
       skillsTask,
       conversationTask,
@@ -209,18 +209,20 @@ export class ActContextService {
       : Promise.resolve('')
 
     const conversationProjectId = conv?.projectId
-    const projectTask: Promise<string> = (async () => {
-      if (!conversationProjectId) return ''
+    const project = await (async () => {
+      if (!conversationProjectId) return null
       try {
-        const project = await this.deps.repository.getProject({
+        return await this.deps.repository.getProject({
           projectId: conversationProjectId as Id<'projects'>,
           userId: args.userId,
         })
-        return project?.instructions?.trim() || ''
       } catch (_error) {
-        return ''
+        return null
       }
     })()
+    const activeProject = project?.archivedAt ? null : project
+    const projectInstructions = activeProject?.instructions?.trim() || ''
+    const knowledgeBaseId = activeProject?.knowledgeBaseId ?? conversationKnowledgeBaseId
 
     const autoRetrievalTask: Promise<{
       extension: string
@@ -266,9 +268,8 @@ export class ActContextService {
           })()
         : Promise.resolve(emptyDocumentContextBundle)
 
-    const [projectInstructions, autoRetrievalBundle, mentionsContext, docContextBundle] =
+    const [autoRetrievalBundle, mentionsContext, docContextBundle] =
       await Promise.all([
-        projectTask,
         autoRetrievalTask,
         mentionsContextTask,
         docContextTask,

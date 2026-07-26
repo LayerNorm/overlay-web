@@ -10,6 +10,7 @@ import { projects, users } from '@/server/database/postgres/schema'
 import { createPostgresAuthorizationRepositories } from './PostgresAuthorizationRepositories'
 import { runAuthorizationRepositoryContract } from './authorization-repository-contract'
 import { createPostgresKnowledgeBaseRepositories } from '@/server/knowledge-bases'
+import { PostgresNoteRepository } from '@/server/notes/PostgresNoteRepository'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
 
@@ -54,6 +55,15 @@ test('real Postgres authorization repository contract and account cleanup', {
         resourceType: 'project',
         resourceId: `${projectId}_missing`,
       }), null)
+      const note = await new PostgresNoteRepository(db).createNote({
+        userId: ownerUserId,
+        title: 'Owned note',
+        content: '',
+      })
+      assert.equal(await repositories.resourceOwners.getOwner({
+        resourceType: 'note',
+        resourceId: note.id,
+      }), ownerUserId)
       const knowledgeBase = await createPostgresKnowledgeBaseRepositories(db).bases.create({
         id: `${scope}_knowledge_base`,
         ownerUserId,

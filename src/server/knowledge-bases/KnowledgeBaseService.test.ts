@@ -108,6 +108,53 @@ test('knowledge-base editors can manage their own canonical sources without taki
   assert.equal((await fixture.repositories.memberships.listForBase(base.id)).length, 0)
 })
 
+test('knowledge-base lifecycle calls do not leak authorization context into repositories', async () => {
+  const fixture = createFixture()
+  const base = await fixture.service.createKnowledgeBase({ userId: 'owner', title: 'Repository Boundary' })
+  const detail = await fixture.service.createAndAttachSource({
+    knowledgeBaseId: base.id,
+    kind: 'text',
+    sourceRef: 'boundary-source',
+    title: 'Boundary source',
+    userId: 'owner',
+  })
+
+  let setEnabledInput: unknown
+  let removeInput: unknown
+  const setEnabled = fixture.repositories.memberships.setEnabled
+  const remove = fixture.repositories.memberships.remove
+  fixture.repositories.memberships.setEnabled = async (input) => {
+    setEnabledInput = input
+    return setEnabled(input)
+  }
+  fixture.repositories.memberships.remove = async (input) => {
+    removeInput = input
+    return remove(input)
+  }
+
+  await fixture.service.setSourceEnabled({
+    knowledgeBaseId: base.id,
+    sourceId: detail.source.id,
+    enabled: false,
+    userId: 'owner',
+  })
+  assert.deepEqual(setEnabledInput, {
+    knowledgeBaseId: base.id,
+    sourceId: detail.source.id,
+    enabled: false,
+  })
+
+  await fixture.service.removeSource({
+    knowledgeBaseId: base.id,
+    sourceId: detail.source.id,
+    userId: 'owner',
+  })
+  assert.deepEqual(removeInput, {
+    knowledgeBaseId: base.id,
+    sourceId: detail.source.id,
+  })
+})
+
 test('knowledge-base chat attachment permits viewers while preserving private conversation ownership', async () => {
   const fixture = createFixture()
   const base = await fixture.service.createKnowledgeBase({ userId: 'owner', title: 'Grounded Chat' })

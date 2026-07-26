@@ -26,6 +26,7 @@ export class ConvexProjectRepository implements ProjectRepository {
   }
 
   async listProjects(args: {
+    includeArchived?: boolean
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
@@ -34,6 +35,7 @@ export class ConvexProjectRepository implements ProjectRepository {
       userId: args.userId,
       serverSecret: this.serverSecret,
       updatedSince: args.updatedSince,
+      includeArchived: args.includeArchived,
       includeDeleted: args.includeDeleted,
     }) ?? []
   }
@@ -41,6 +43,7 @@ export class ConvexProjectRepository implements ProjectRepository {
   async createProject(args: {
     clientId?: string
     instructions?: string
+    knowledgeBaseId?: string | null
     name: string
     parentId?: string | null
     userId: string
@@ -50,6 +53,7 @@ export class ConvexProjectRepository implements ProjectRepository {
       serverSecret: this.serverSecret,
       clientId: args.clientId,
       instructions: args.instructions,
+      knowledgeBaseId: args.knowledgeBaseId ?? undefined,
       name: args.name,
       parentId: args.parentId ?? undefined,
     }, { throwOnError: true })
@@ -60,7 +64,9 @@ export class ConvexProjectRepository implements ProjectRepository {
   }
 
   async updateProject(args: {
+    archivedAt?: number | null
     instructions?: string | null
+    knowledgeBaseId?: string | null
     name?: string
     parentId?: string | null
     projectId: string
@@ -72,7 +78,9 @@ export class ConvexProjectRepository implements ProjectRepository {
       projectId: args.projectId as Id<'projects'>,
       userId: args.userId,
       serverSecret: this.serverSecret,
+      archivedAt: args.archivedAt,
       instructions: args.instructions,
+      knowledgeBaseId: args.knowledgeBaseId,
       name: args.name,
       parentId: args.parentId,
     }, { throwOnError: true })

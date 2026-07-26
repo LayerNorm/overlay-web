@@ -61,6 +61,7 @@ export function KnowledgeBaseWorkspace({
   const [knowledgeBase, setKnowledgeBase] = useState(initialKnowledgeBase)
   const [sources, setSources] = useState(initialSources)
   const [sourceTab, setSourceTab] = useState<SourceTab>('sources')
+  const [searchRevision, setSearchRevision] = useState(0)
   const [mobileSourcesOpen, setMobileSourcesOpen] = useState(false)
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -160,6 +161,7 @@ export function KnowledgeBaseWorkspace({
       : detail))
     try {
       await overlayAppClient.knowledgeBases.updateSource(knowledgeBase.id, { sourceId, enabled })
+      setSearchRevision((current) => current + 1)
     } catch {
       await loadSources()
     }
@@ -256,6 +258,7 @@ export function KnowledgeBaseWorkspace({
       knowledgeBaseId={knowledgeBase.id}
       notice={notice}
       selectedSourceId={selectedSourceId}
+      searchRevision={searchRevision}
       sourceTab={sourceTab}
       sources={sources}
       uploading={uploading}
@@ -494,6 +497,7 @@ function KnowledgeSourcePanel({
   knowledgeBaseId,
   notice,
   selectedSourceId,
+  searchRevision,
   sourceTab,
   sources,
   uploading,
@@ -511,6 +515,7 @@ function KnowledgeSourcePanel({
   knowledgeBaseId: string
   notice: string | null
   selectedSourceId: string | null
+  searchRevision: number
   sourceTab: SourceTab
   sources: KnowledgeBaseSourceDetail[]
   uploading: boolean
@@ -526,6 +531,10 @@ function KnowledgeSourcePanel({
   const [searchQuery, setSearchQuery] = useState('')
   const [searching, setSearching] = useState(false)
   const [searchResult, setSearchResult] = useState<KnowledgeBaseSearchResponse | null>(null)
+
+  useEffect(() => {
+    setSearchResult(null)
+  }, [searchRevision])
 
   async function searchKnowledgeBase() {
     if (!searchQuery.trim() || searching) return
