@@ -490,14 +490,17 @@ export default defineSchema({
     clientId: v.optional(v.string()),
     name: v.string(),
     instructions: v.optional(v.string()),
+    knowledgeBaseId: v.optional(v.string()),
     parentId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
     deletedAt: v.optional(v.number()),
   })
     .index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
-    .index('by_userId_updatedAt', ['userId', 'updatedAt']),
+    .index('by_userId_updatedAt', ['userId', 'updatedAt'])
+    .index('by_knowledgeBaseId', ['knowledgeBaseId']),
 
   skills: defineTable({
     userId: v.string(),

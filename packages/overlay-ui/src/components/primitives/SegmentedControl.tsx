@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import type { ComponentType, ReactNode } from 'react'
 import { cn } from '../../utils/cn'
 

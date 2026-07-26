@@ -396,6 +396,17 @@ export class PostgresAuthorizationResourceOwnerRepository implements ResourceOwn
       `)
       return result.rows[0]?.userId ?? null
     }
+    if (args.resourceType === 'note') {
+      const result = await this.db.execute<{ userId: string }>(sql`
+        SELECT user_id AS "userId" FROM notes
+        WHERE id = ${args.resourceId} AND deleted_at IS NULL
+        UNION ALL
+        SELECT user_id AS "userId" FROM files
+        WHERE id = ${args.resourceId} AND kind = 'note' AND deleted_at IS NULL
+        LIMIT 1
+      `)
+      return result.rows[0]?.userId ?? null
+    }
     const table = resourceTable(args.resourceType)
     if (!table) return null
     const result = await this.db.execute<{ userId: string }>(sql`
@@ -424,7 +435,6 @@ function resourceTable(resourceType: string): SQL | null {
   switch (resourceType) {
     case 'conversation': return sql.raw('conversations')
     case 'file': return sql.raw('files')
-    case 'note': return sql.raw('notes')
     case 'project': return sql.raw('projects')
     default: return null
   }

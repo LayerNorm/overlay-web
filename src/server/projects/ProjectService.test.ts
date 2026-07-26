@@ -46,13 +46,84 @@ test('ProjectService normalizes create and explicit clear updates', async () => 
   })
 
   await service.updateProject({
+    archived: true,
     instructions: ' ',
+    knowledgeBaseId: null,
     parentId: null,
     projectId: 'project_1',
     userId: 'user_1',
   })
+  assert.equal(typeof updateArgs?.archivedAt, 'number')
   assert.equal(updateArgs?.instructions, null)
+  assert.equal(updateArgs?.knowledgeBaseId, null)
   assert.equal(updateArgs?.parentId, null)
+})
+
+test('ProjectService verifies knowledge-base access before attaching it', async () => {
+  const accessChecks: Array<{ knowledgeBaseId: string; userId: string }> = []
+  let createArgs: Parameters<ProjectRepository['createProject']>[0] | undefined
+  let updateArgs: Parameters<ProjectRepository['updateProject']>[0] | undefined
+  const service = new ProjectService(repository({
+    createProject: async (args) => {
+      createArgs = args
+      return { ...project, knowledgeBaseId: args.knowledgeBaseId }
+    },
+    updateProject: async (args) => {
+      updateArgs = args
+      return { ...project, knowledgeBaseId: args.knowledgeBaseId }
+    },
+  }), {
+    assertKnowledgeBaseAccess: async (args) => {
+      accessChecks.push(args)
+    },
+  })
+
+  await service.createProject({
+    knowledgeBaseId: ' kb_1 ',
+    name: 'Project',
+    userId: 'user_1',
+  })
+  await service.updateProject({
+    knowledgeBaseId: ' kb_2 ',
+    projectId: 'project_1',
+    userId: 'user_1',
+  })
+  await service.updateProject({
+    knowledgeBaseId: null,
+    projectId: 'project_1',
+    userId: 'user_1',
+  })
+
+  assert.deepEqual(accessChecks, [
+    { knowledgeBaseId: 'kb_1', userId: 'user_1' },
+    { knowledgeBaseId: 'kb_2', userId: 'user_1' },
+  ])
+  assert.equal(createArgs?.knowledgeBaseId, 'kb_1')
+  assert.equal(updateArgs?.knowledgeBaseId, null)
+})
+
+test('ProjectService does not persist a knowledge base when access is denied', async () => {
+  let mutationCalls = 0
+  const service = new ProjectService(repository({
+    updateProject: async () => {
+      mutationCalls += 1
+      return project
+    },
+  }), {
+    assertKnowledgeBaseAccess: async () => {
+      throw new ProjectServiceError('Knowledge base not found', 404)
+    },
+  })
+
+  await assert.rejects(
+    service.updateProject({
+      knowledgeBaseId: 'foreign_kb',
+      projectId: 'project_1',
+      userId: 'user_1',
+    }),
+    (error: unknown) => error instanceof ProjectServiceError && error.statusCode === 404,
+  )
+  assert.equal(mutationCalls, 0)
 })
 
 test('ProjectService rejects blank names and maps hierarchy failures', async () => {

@@ -7,6 +7,7 @@ ProjectHubTab
 } from '@overlay/app-core'
 import { projectRouteViewForFile } from '@overlay/app-core'
 import { BookOpen,ChevronDown,FileText,FolderOpen,FolderPlus,Loader2,MessageSquare,Pencil,Plus,Settings,Upload } from 'lucide-react'
+import React from 'react'
 import { type ChangeEvent,type ReactNode,type RefObject } from 'react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '../shell'
 import { FileTypeIcon } from '../shared/file-type-icon'
@@ -232,6 +233,8 @@ export interface ProjectHubTabsProps {
   savingInstructions?: boolean
   instructionsSavedAt?: number | null
   fileActions?: ReactNode
+  knowledgeBaseSettings?: ReactNode
+  lifecycleSettings?: ReactNode
   onOpenChat: (id: string) => void
   onOpenFile: (file: ProjectFileSummary) => void
   onInstructionsChange: (value: string) => void
@@ -247,6 +250,8 @@ export function ProjectHubTabs({
   savingInstructions,
   instructionsSavedAt,
   fileActions,
+  knowledgeBaseSettings,
+  lifecycleSettings,
   onOpenChat,
   onOpenFile,
   onInstructionsChange,
@@ -316,24 +321,36 @@ export function ProjectHubTabs({
       )}
 
       {activeTab === 'settings' && (
-        <div className="flex max-w-2xl flex-col gap-2">
-          <div className="mb-2">
-            <h2 className="text-sm font-medium text-[var(--foreground)]">Instructions</h2>
-            <p className="mt-1 text-xs text-[var(--muted)]">
-              Set context and customize how Overlay responds in this project.
-            </p>
-          </div>
-          <textarea
-            value={instructions}
-            disabled={!instructionsLoaded}
-            onChange={(event) => onInstructionsChange(event.target.value)}
-            placeholder={instructionsLoaded ? 'Project instructions…' : 'Loading…'}
-            rows={8}
-            className="w-full resize-y rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
-          />
-          <div className="flex h-4 items-center text-[11px] text-[var(--muted-light)]">
-            {savingInstructions ? 'Saving…' : instructionsSavedAt ? 'Saved' : ''}
-          </div>
+        <div className="flex max-w-2xl flex-col">
+          <section className="pb-6">
+            <div className="mb-4">
+              <h2 className="text-sm font-medium text-[var(--foreground)]">Instructions</h2>
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                Set context and customize how Overlay responds in this project.
+              </p>
+            </div>
+            <textarea
+              value={instructions}
+              disabled={!instructionsLoaded}
+              onChange={(event) => onInstructionsChange(event.target.value)}
+              placeholder={instructionsLoaded ? 'Project instructions…' : 'Loading…'}
+              rows={8}
+              className="w-full resize-y rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+            />
+            <div className="flex h-4 items-center pt-1 text-[11px] text-[var(--muted-light)]">
+              {savingInstructions ? 'Saving…' : instructionsSavedAt ? 'Saved' : ''}
+            </div>
+          </section>
+          {knowledgeBaseSettings ? (
+            <section className="border-t border-[var(--border)] py-6">
+              {knowledgeBaseSettings}
+            </section>
+          ) : null}
+          {lifecycleSettings ? (
+            <section className="border-t border-[var(--border)] py-6">
+              {lifecycleSettings}
+            </section>
+          ) : null}
         </div>
       )}
     </div>

@@ -33,7 +33,9 @@ export type ActConversationRow = {
 }
 
 export type ActProjectRow = {
+  archivedAt?: number
   instructions?: string
+  knowledgeBaseId?: string
 }
 
 export type ConversationListRow = {

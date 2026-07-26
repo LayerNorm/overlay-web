@@ -4,6 +4,7 @@ import { AuthFields, BooleanQueryValue, IdQuery, IntegerQueryValue, PaginationQu
 export const ProjectListQuery = PaginationQuery.extend({
   projectId: IdQuery,
   updatedSince: IntegerQueryValue,
+  includeArchived: BooleanQueryValue,
   includeDeleted: BooleanQueryValue,
 })
 
@@ -12,6 +13,7 @@ export const CreateProjectRequest = z.object({
   name: z.string().min(1).max(200).optional(),
   parentId: z.string().min(1).nullable().optional(),
   instructions: z.string().optional(),
+  knowledgeBaseId: z.string().min(1).nullable().optional(),
   clientId: z.string().optional(),
   description: z.string().optional(),
   color: z.string().optional(),
@@ -20,6 +22,7 @@ export const CreateProjectRequest = z.object({
 export const UpdateProjectRequest = CreateProjectRequest.partial().extend({
   ...AuthFields,
   projectId: z.string().min(1),
+  archived: z.boolean().optional(),
 })
 
 export const DeleteProjectRequest = z.object({

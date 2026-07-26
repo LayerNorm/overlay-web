@@ -8,7 +8,9 @@ export interface ProjectSummary {
   name: string
   description?: string
   instructions?: string
+  knowledgeBaseId?: string | null
   parentId?: string | null
+  archivedAt?: number
   deletedAt?: number
   updatedAt: number
   createdAt: number
@@ -17,6 +19,7 @@ export interface ProjectSummary {
 export interface ProjectQueryContract extends PaginationQueryContract {
   projectId?: string
   updatedSince?: number
+  includeArchived?: boolean
   includeDeleted?: boolean
 }
 
@@ -36,6 +39,7 @@ export interface CreateProjectRequest {
   name: string
   parentId?: string | null
   instructions?: string
+  knowledgeBaseId?: string | null
   clientId?: string
   accessToken?: string
   userId?: string
@@ -51,7 +55,9 @@ export interface UpdateProjectRequest {
   projectId: string
   name?: string
   instructions?: string
+  knowledgeBaseId?: string | null
   parentId?: string | null
+  archived?: boolean
   accessToken?: string
   userId?: string
 }

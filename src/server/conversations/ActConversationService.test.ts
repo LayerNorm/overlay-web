@@ -232,6 +232,94 @@ test('act context service scopes attached knowledge-base conversations and disab
   })
 })
 
+test('act context service gives the active project knowledge base precedence while preserving project instructions', async () => {
+  let retrievalArgs: Record<string, unknown> | undefined
+  const service = new ActContextService({
+    repository: repository({
+      getConversation: async () => ({ projectId: 'project_1' }),
+      getProject: async () => ({
+        instructions: 'Write a concise implementation plan.',
+        knowledgeBaseId: 'project_kb',
+      }),
+      listMemories: async () => [],
+      listSkills: async () => [],
+    }),
+    resolveKnowledgeBaseId: async () => 'conversation_kb',
+    buildAutoRetrievalBundle: async (args) => {
+      retrievalArgs = args
+      return {
+        extension: '\nPROJECT_KB_CONTEXT',
+        citations: {
+          '1': {
+            kind: 'knowledge',
+            knowledgeBaseId: 'project_kb',
+            sourceId: 'policy_source',
+          },
+        },
+      }
+    },
+  })
+
+  const context = await service.loadTurnContext({
+    conversationId: 'conversation_1' as Id<'conversations'>,
+    externalContextEnabled: false,
+    indexedAttachments: [],
+    latestUserText: 'Revise the working draft using the policy.',
+    memoryEnabled: true,
+    serverSecret: 'server-secret',
+    userId: 'user_1',
+  })
+
+  assert.equal(context.projectInstructions, 'Write a concise implementation plan.')
+  assert.deepEqual(retrievalArgs, {
+    includeMemories: false,
+    knowledgeBaseId: 'project_kb',
+    projectId: 'project_1',
+    userId: 'user_1',
+    userMessage: 'Revise the working draft using the policy.',
+  })
+  assert.equal(context.autoRetrieval, '\nPROJECT_KB_CONTEXT')
+})
+
+test('act context service ignores archived project instructions and knowledge attachment', async () => {
+  let retrievalArgs: Record<string, unknown> | undefined
+  const service = new ActContextService({
+    repository: repository({
+      getConversation: async () => ({ projectId: 'project_1' }),
+      getProject: async () => ({
+        archivedAt: Date.now(),
+        instructions: 'Do not use archived instructions.',
+        knowledgeBaseId: 'archived_project_kb',
+      }),
+      listMemories: async () => [],
+      listSkills: async () => [],
+    }),
+    resolveKnowledgeBaseId: async () => null,
+    buildAutoRetrievalBundle: async (args) => {
+      retrievalArgs = args
+      return { extension: '', citations: {} }
+    },
+  })
+
+  const context = await service.loadTurnContext({
+    conversationId: 'conversation_1' as Id<'conversations'>,
+    externalContextEnabled: false,
+    indexedAttachments: [],
+    latestUserText: 'Continue',
+    memoryEnabled: true,
+    serverSecret: 'server-secret',
+    userId: 'user_1',
+  })
+
+  assert.equal(context.projectInstructions, '')
+  assert.deepEqual(retrievalArgs, {
+    includeMemories: true,
+    projectId: 'project_1',
+    userId: 'user_1',
+    userMessage: 'Continue',
+  })
+})
+
 test('act context service preloads attached documents through the active file repository', async () => {
   const loadedFileIds: string[] = []
   const service = new ActContextService({

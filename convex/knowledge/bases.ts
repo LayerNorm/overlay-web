@@ -124,7 +124,15 @@ export const removeBaseByServer = mutation({
       .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId)).collect()
     const conversations = await ctx.db.query('knowledgeBaseConversations')
       .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId)).collect()
+    const projects = await ctx.db.query('projects')
+      .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId)).collect()
     for (const row of [...memberships, ...conversations]) await ctx.db.delete(row._id)
+    for (const project of projects) {
+      await ctx.db.patch(project._id, {
+        knowledgeBaseId: undefined,
+        updatedAt: Date.now(),
+      })
+    }
     await ctx.db.delete(existing._id)
     return { removed: true }
   },

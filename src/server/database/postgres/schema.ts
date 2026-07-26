@@ -550,14 +550,19 @@ export const projects = pgTable('projects', {
   clientId: text('client_id'),
   name: text('name').notNull(),
   instructions: text('instructions'),
+  knowledgeBaseId: text('knowledge_base_id')
+    .references((): AnyPgColumn => knowledgeBases.id, { onDelete: 'set null' }),
   parentId: text('parent_id').references((): AnyPgColumn => projects.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 }, (table) => [
   index('projects_user_id_idx').on(table.userId),
   uniqueIndex('projects_user_id_client_id_idx').on(table.userId, table.clientId),
   index('projects_user_id_updated_at_idx').on(table.userId, table.updatedAt),
+  index('projects_knowledge_base_id_idx').on(table.knowledgeBaseId),
+  index('projects_user_id_archived_at_idx').on(table.userId, table.archivedAt),
   index('projects_parent_id_idx').on(table.parentId),
   check('projects_parent_not_self_check', sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`),
 ])

@@ -466,7 +466,7 @@ export const create = mutation({
     }
     if (projectId) {
       const project = await ctx.db.get(projectId as Id<'projects'>)
-      if (!project || project.userId !== userId || project.deletedAt) {
+      if (!project || project.userId !== userId || project.archivedAt || project.deletedAt) {
         throw new Error('Unauthorized')
       }
     }
@@ -509,7 +509,7 @@ export const update = mutation({
     }
     if (projectId !== undefined && projectId !== null) {
       const project = await ctx.db.get(projectId as Id<'projects'>)
-      if (!project || project.userId !== userId || project.deletedAt) {
+      if (!project || project.userId !== userId || project.archivedAt || project.deletedAt) {
         throw new Error('Unauthorized')
       }
     }

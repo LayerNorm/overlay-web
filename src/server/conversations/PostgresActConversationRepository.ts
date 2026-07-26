@@ -434,7 +434,11 @@ export class PostgresActConversationRepository implements ActConversationReposit
     userId: string
   }): Promise<ActProjectRow | null> {
     const [row] = await this.db
-      .select({ instructions: projects.instructions })
+      .select({
+        archivedAt: projects.archivedAt,
+        instructions: projects.instructions,
+        knowledgeBaseId: projects.knowledgeBaseId,
+      })
       .from(projects)
       .where(and(
         eq(projects.id, args.projectId),
@@ -442,7 +446,11 @@ export class PostgresActConversationRepository implements ActConversationReposit
         isNull(projects.deletedAt),
       ))
       .limit(1)
-    return row ? { instructions: row.instructions ?? undefined } : null
+    return row ? {
+      archivedAt: row.archivedAt?.getTime(),
+      instructions: row.instructions ?? undefined,
+      knowledgeBaseId: row.knowledgeBaseId ?? undefined,
+    } : null
   }
 
   async getContextSummary(args: {

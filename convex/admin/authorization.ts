@@ -452,6 +452,16 @@ export const getResourceOwnerByServer = query({
       const output = outputId ? await ctx.db.get(outputId) : null
       return output ? { userId: output.userId } : null
     }
+    if (args.resourceType === 'note') {
+      const fileId = ctx.db.normalizeId('files', args.resourceId)
+      if (fileId) {
+        const file = await ctx.db.get(fileId)
+        if (file?.kind === 'note' && file.deletedAt === undefined) return { userId: file.userId }
+      }
+      const noteId = ctx.db.normalizeId('notes', args.resourceId)
+      const note = noteId ? await ctx.db.get(noteId) : null
+      return note && note.deletedAt === undefined ? { userId: note.userId } : null
+    }
     const table = resourceTable(args.resourceType)
     if (!table) return null
     const id = ctx.db.normalizeId(table, args.resourceId)
@@ -466,7 +476,6 @@ function resourceTable(resourceType: string) {
   switch (resourceType) {
     case 'conversation': return 'conversations' as const
     case 'file': return 'files' as const
-    case 'note': return 'notes' as const
     case 'project': return 'projects' as const
     default: return null
   }
