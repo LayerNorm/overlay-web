@@ -936,6 +936,7 @@ async function authorizeActRequest(args: {
     if (!mention || typeof mention !== 'object') continue
     const type = 'type' in mention ? mention.type : undefined
     if (type === 'connector') capabilityRequirements.add('integrations.use')
+    if (type === 'knowledge') capabilityRequirements.add('knowledge.read')
     if (type === 'skill') capabilityRequirements.add('skills.use')
     if (type === 'mcp') capabilityRequirements.add('mcp.use')
     if (type === 'automation') capabilityRequirements.add('automations.use')

@@ -292,6 +292,11 @@ export function buildCommonActBody({
   selectedToolIdsSnapshot: ChatToolRequestId[]
   memoryEnabledSnapshot: boolean
 }) {
+  const mentionedKnowledgeBaseId = userMeta.mentions
+    ?.find((mention) => mention.type === 'knowledge')
+    ?.id
+  const effectiveKnowledgeBaseId = knowledgeBaseId || mentionedKnowledgeBaseId
+
   return {
     ...(temporaryChatSnapshot
       ? { temporaryChat: true }
@@ -302,7 +307,7 @@ export function buildCommonActBody({
             askModelIds: textModelsForTurn,
           }
         : { conversationId: chatId }),
-    ...(knowledgeBaseId ? { knowledgeBaseId } : {}),
+    ...(effectiveKnowledgeBaseId ? { knowledgeBaseId: effectiveKnowledgeBaseId } : {}),
     turnId,
     mode: requestMode,
     automationMode: requestMode === 'automate',

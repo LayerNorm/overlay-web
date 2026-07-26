@@ -1,6 +1,13 @@
 /** @-mention token types (shared between chat UI and server parsers). */
 
-export type MentionType = 'file' | 'connector' | 'automation' | 'skill' | 'mcp' | 'chat'
+export type MentionType =
+  | 'file'
+  | 'knowledge'
+  | 'connector'
+  | 'automation'
+  | 'skill'
+  | 'mcp'
+  | 'chat'
 
 export interface MentionItem {
   type: MentionType

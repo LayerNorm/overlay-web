@@ -109,7 +109,14 @@ export type AssistantVisualSegment =
   | { kind: 'browser'; block: ToolVisualBlock; originIndex: number }
   | { kind: 'tools'; items: ToolGroupItem[]; originIndex: number }
 
-export type MentionType = 'file' | 'connector' | 'automation' | 'skill' | 'mcp' | 'chat'
+export type MentionType =
+  | 'file'
+  | 'knowledge'
+  | 'connector'
+  | 'automation'
+  | 'skill'
+  | 'mcp'
+  | 'chat'
 
 export interface ChatMessageMention {
   type: MentionType

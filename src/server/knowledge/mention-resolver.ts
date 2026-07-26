@@ -133,6 +133,21 @@ async function resolveOne(
       case 'connector': {
         return `- connector slug=${m.id} name="${safeName}" — Composio tools for this app are available; prefer them over generic web tools.`
       }
+      case 'knowledge': {
+        const knowledgeBase = await getOverlayServerContext().knowledgeBaseService
+          .getKnowledgeBase({
+            knowledgeBaseId: m.id,
+            userId,
+          })
+          .catch((_error) => null)
+        if (!knowledgeBase) {
+          return `- knowledge id=${m.id} name="${safeName}" — (not found or inaccessible)`
+        }
+        const description = knowledgeBase.description
+          ? `description="${knowledgeBase.description.slice(0, 160)}"`
+          : 'curated retrieval corpus'
+        return `- knowledge id=${knowledgeBase.id} name="${knowledgeBase.title || safeName}" — ${description}`
+      }
       case 'chat': {
         const c = await convex
           .query<ConversationDoc | null>('chat/conversations:get', {

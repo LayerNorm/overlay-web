@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { useRouter } from 'next/navigation'
 import { CommandPalette, type CommandPaletteRow } from '@overlay/ui/overlays'
 import {
+  BookOpen,
   FileText,
   MessageSquare,
   Plug,
@@ -20,6 +21,7 @@ import { invalidateMentionCache, searchMentions } from '@/components/mentions/me
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
 const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; strokeWidth?: number }>> = {
+  BookOpen,
   FileText,
   Plug,
   Zap,
@@ -31,6 +33,7 @@ const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; str
 const CATEGORY_ORDER: Array<{ type: MentionType; label: string; icon: string }> = [
   { type: 'chat', label: 'Chats', icon: 'MessageSquare' },
   { type: 'file', label: 'Files', icon: 'FileText' },
+  { type: 'knowledge', label: 'Knowledge', icon: 'BookOpen' },
   { type: 'automation', label: 'Automations', icon: 'Zap' },
   { type: 'skill', label: 'Skills', icon: 'Sparkles' },
   { type: 'mcp', label: 'MCP Servers', icon: 'Server' },
@@ -50,6 +53,8 @@ function hrefForItem(item: MentionItem): string {
     case 'file':
       if (item.description === 'note') return `/app/notes?id=${encodeURIComponent(item.id)}`
       return `/app/files?file=${encodeURIComponent(item.id)}`
+    case 'knowledge':
+      return `/app/knowledge/${encodeURIComponent(item.id)}`
     case 'automation':
       return `/app/automations?automationId=${encodeURIComponent(item.id)}`
     case 'skill':

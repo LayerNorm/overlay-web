@@ -542,7 +542,7 @@ function KnowledgeSourcePanel({
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-[var(--sidebar-surface)]">
-      <div className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--border)] px-4">
+      <div className="flex h-14 min-h-14 shrink-0 items-center justify-between border-b border-[var(--border)] px-4 md:h-16 md:min-h-16">
         <div className="flex items-center gap-2 text-sm font-medium"><BookOpen size={15} /> Notebook</div>
         <IconButton className="lg:hidden" aria-label="Close sources" onClick={onCloseMobile}><X size={15} /></IconButton>
       </div>
@@ -684,7 +684,7 @@ function SourceInspector({
     : null
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--border)] px-4">
+      <div className="flex h-14 min-h-14 shrink-0 items-center gap-3 border-b border-[var(--border)] px-4 md:h-16 md:min-h-16">
         <FileText size={15} />
         <p className="min-w-0 flex-1 truncate text-sm font-medium">{detail.source.title}</p>
         <IconButton aria-label="Close source" onClick={onClose}><X size={15} /></IconButton>

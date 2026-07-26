@@ -150,6 +150,30 @@ test('builds pending-first and normal act bodies without null conversation ids',
   const normalRecord = normalBody as Record<string, unknown>
   assert.equal(normalRecord.conversationId, 'chat-1')
   assert.equal(normalRecord.conversationClientId, undefined)
+
+  const mentionedKnowledgeBody = buildCommonActBody({
+    chatId: 'chat-2',
+    pendingConversationClientId: null,
+    temporaryChatSnapshot: false,
+    embedProjectId: null,
+    knowledgeBaseId: undefined,
+    textModelsForTurn: ['model-a'],
+    turnId: 'turn-2',
+    requestMode: 'chat',
+    automationIdParam: null,
+    indexedFileNames: [],
+    indexedAttachments: [],
+    replyContext: null,
+    userMeta: {
+      mentions: [{ type: 'knowledge', id: 'knowledge-mentioned', name: 'Policy library' }],
+    },
+    selectedToolIdsSnapshot: [],
+    memoryEnabledSnapshot: false,
+  })
+  assert.equal(
+    (mentionedKnowledgeBody as Record<string, unknown>).knowledgeBaseId,
+    'knowledge-mentioned',
+  )
 })
 
 test('builds media prompt with reply context only when user text exists', () => {

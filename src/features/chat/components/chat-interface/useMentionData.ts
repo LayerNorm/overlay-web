@@ -8,6 +8,7 @@ import { useAuthorization } from '@/components/providers/AuthorizationProvider'
 interface CachedData {
   cacheKey: string
   files: MentionItem[]
+  knowledge: MentionItem[]
   connectors: MentionItem[]
   automations: MentionItem[]
   skills: MentionItem[]
@@ -19,6 +20,7 @@ type MentionListKey = Exclude<keyof CachedData, 'cacheKey'>
 
 const CATEGORY_META: Array<{ type: MentionType; label: string; icon: string }> = [
   { type: 'file', label: 'Files', icon: 'FileText' },
+  { type: 'knowledge', label: 'Knowledge', icon: 'BookOpen' },
   { type: 'connector', label: 'Connectors', icon: 'Plug' },
   { type: 'automation', label: 'Automations', icon: 'Zap' },
   { type: 'skill', label: 'Skills', icon: 'Sparkles' },
@@ -35,6 +37,8 @@ function supportedMentionTypes(
       switch (cat.type) {
         case 'file':
           return capabilities.files && can('files.read')
+        case 'knowledge':
+          return capabilities.knowledge && can('knowledge.read')
         case 'connector':
           return capabilities.integrations && can('integrations.use')
         case 'automation':
@@ -97,11 +101,14 @@ export function useMentionData() {
     setLoading(true)
 
     try {
-      const [filesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
+      const [filesRes, knowledgeRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
         await Promise.allSettled([
           capabilities.files && can('files.read')
             ? overlayAppClient.files.getResponse({ limit: 100, summary: true }).then((r) => r.ok ? r.json() : [])
             : Promise.resolve([]),
+          capabilities.knowledge && can('knowledge.read')
+            ? overlayAppClient.knowledgeBases.list()
+            : Promise.resolve({ knowledgeBases: [] }),
           capabilities.integrations && can('integrations.use')
             ? overlayAppClient.integrations.getResponse().then((r) => r.ok ? r.json() : { items: [] })
             : Promise.resolve({ items: [] }),
@@ -129,6 +136,16 @@ export function useMentionData() {
         name: f.name || 'Untitled',
         description: f.kind || f.mimeType || 'file',
         icon: 'FileText',
+      }))
+
+      const knowledge: MentionItem[] = (
+        knowledgeRes.status === 'fulfilled' ? knowledgeRes.value.knowledgeBases : []
+      ).map((knowledgeBase) => ({
+        type: 'knowledge' as const,
+        id: knowledgeBase.id,
+        name: knowledgeBase.title,
+        description: knowledgeBase.description || 'Knowledge base',
+        icon: 'BookOpen',
       }))
 
       const connectorsRaw = connectorsRes.status === 'fulfilled' ? connectorsRes.value : { items: [] }
@@ -194,7 +211,16 @@ export function useMentionData() {
         icon: 'MessageSquare',
       }))
 
-      const data: CachedData = { cacheKey, files, connectors, automations, skills, mcps, chats }
+      const data: CachedData = {
+        cacheKey,
+        files,
+        knowledge,
+        connectors,
+        automations,
+        skills,
+        mcps,
+        chats,
+      }
       cacheRef.current = data
       return data
     } finally {
@@ -207,6 +233,7 @@ export function useMentionData() {
     capabilities.chat,
     capabilities.files,
     capabilities.integrations,
+    capabilities.knowledge,
     capabilities.mcpServers,
     capabilities.skills,
     can,
@@ -243,5 +270,6 @@ export function useMentionData() {
 }
 
 function mentionListKey(type: MentionType): MentionListKey {
+  if (type === 'knowledge') return 'knowledge'
   return type === 'connector' ? 'connectors' : `${type}s` as MentionListKey
 }

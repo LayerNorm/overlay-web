@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  BookOpen,
   ChevronRight,
   FileText,
   MessageSquare,
@@ -14,6 +15,7 @@ import {
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
 const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; strokeWidth?: number }>> = {
+  BookOpen,
   FileText,
   Plug,
   Zap,
@@ -24,6 +26,7 @@ const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; str
 
 const CATEGORY_ORDER: Array<{ type: MentionType; label: string; icon: string }> = [
   { type: 'file', label: 'Files', icon: 'FileText' },
+  { type: 'knowledge', label: 'Knowledge', icon: 'BookOpen' },
   { type: 'connector', label: 'Connectors', icon: 'Plug' },
   { type: 'automation', label: 'Automations', icon: 'Zap' },
   { type: 'skill', label: 'Skills', icon: 'Sparkles' },
