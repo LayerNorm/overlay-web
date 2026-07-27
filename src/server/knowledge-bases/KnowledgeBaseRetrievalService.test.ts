@@ -291,6 +291,83 @@ test('several passages from one source collapse into one citation', async () => 
   assert.deepEqual(result.citations[0]!.passages.map(({ chunkIndex }) => chunkIndex), [0, 1])
 })
 
+test('a corpus-wide question spreads across sources instead of one document', async () => {
+  // One source dominates on score. A factual question should follow that ranking;
+  // a question about the corpus itself should still reach every document.
+  const sources = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, title: `Doc ${id}` }))
+  const candidates = [
+    // Six high-scoring passages from one document...
+    ...Array.from({ length: 6 }, (_value, index) => chunk({
+      chunkIndex: index,
+      knowledgeSourceId: 'a',
+      score: 1 - index * 0.001,
+      text: `Doc a passage ${index}`,
+    })),
+    // ...and one weaker passage from each of the others.
+    ...sources.slice(1).map((source, index) => chunk({
+      knowledgeSourceId: source.id,
+      score: 0.5 - index * 0.01,
+      text: `Doc ${source.id} passage`,
+    })),
+  ]
+  const build = () => new KnowledgeBaseRetrievalService({
+    bases: fakeBases([{ id: 'kb-1', title: 'Notes', sources }]),
+    search: fakeSearch(() => candidates),
+  })
+
+  const narrow = await build().search({
+    knowledgeBaseIds: ['kb-1'],
+    limit: 5,
+    query: 'which deficiency causes rickets',
+    userId: 'user-1',
+  })
+  const narrowSources = new Set(narrow.citations.map(({ sourceId }) => sourceId))
+  assert.ok(
+    narrowSources.size < sources.length,
+    'a narrow question should follow score ranking, concentrating on the best source',
+  )
+
+  const broad = await build().search({
+    knowledgeBaseIds: ['kb-1'],
+    limit: 5,
+    query: 'take me through what is in Notes',
+    userId: 'user-1',
+  })
+  assert.deepEqual(
+    [...new Set(broad.citations.map(({ sourceId }) => sourceId))].sort(),
+    ['a', 'b', 'c', 'd', 'e'],
+    'a corpus-wide question must reach every source',
+  )
+})
+
+test('breadthFirst can be forced independently of the query wording', async () => {
+  const sources = ['a', 'b'].map((id) => ({ id, title: `Doc ${id}` }))
+  const candidates = [
+    ...Array.from({ length: 4 }, (_value, index) => chunk({
+      chunkIndex: index,
+      knowledgeSourceId: 'a',
+      score: 1 - index * 0.001,
+      text: `Doc a passage ${index}`,
+    })),
+    chunk({ knowledgeSourceId: 'b', score: 0.2, text: 'Doc b passage' }),
+  ]
+  const service = new KnowledgeBaseRetrievalService({
+    bases: fakeBases([{ id: 'kb-1', title: 'Notes', sources }]),
+    search: fakeSearch(() => candidates),
+  })
+  const result = await service.search({
+    breadthFirst: true,
+    knowledgeBaseIds: ['kb-1'],
+    limit: 2,
+    query: 'a plainly factual question',
+    userId: 'user-1',
+  })
+  assert.deepEqual(
+    [...new Set(result.citations.map(({ sourceId }) => sourceId))].sort(),
+    ['a', 'b'],
+  )
+})
+
 test('requested bases are deduped and capped', async () => {
   const spy = { calls: 0 } as { canonicalSourceIds?: string[]; calls: number }
   const bases = Array.from({ length: 12 }, (_value, index) => ({

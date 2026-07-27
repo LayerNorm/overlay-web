@@ -87,6 +87,8 @@ export async function prepareActTooling(params: {
   baseUrl: string
   conversationId?: string
   conversationProjectId?: string
+  /** Knowledge bases in scope this turn; steers tools toward the scoped variants. */
+  activeKnowledgeBaseIds?: readonly string[]
   effectiveModelId: string
   forwardCookie?: string | null
   isMultiModelFollowUpSlot: boolean
@@ -146,6 +148,7 @@ export async function prepareActTooling(params: {
         forwardCookie: params.forwardCookie ?? undefined,
         includePaidOnlyOverlayTools: params.paid,
         memoryEnabled,
+        activeKnowledgeBaseIds: params.activeKnowledgeBaseIds,
       }),
     ),
     params.paid && capabilities.webSearch

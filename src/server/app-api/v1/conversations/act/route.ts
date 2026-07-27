@@ -374,6 +374,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	        baseUrl: getInternalApiBaseUrl(request),
 	        conversationId: cid,
 	        conversationProjectId,
+	        activeKnowledgeBaseIds: turnKnowledgeBaseIds,
 	        effectiveModelId,
 	        forwardCookie: request.headers.get('cookie'),
 	        isMultiModelFollowUpSlot,

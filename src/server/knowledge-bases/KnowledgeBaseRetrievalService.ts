@@ -65,6 +65,8 @@ export class KnowledgeBaseRetrievalService {
    */
   async search(args: {
     accessToken?: string
+    /** Force coverage across sources; inferred from the query when omitted. */
+    breadthFirst?: boolean
     knowledgeBaseIds: string[]
     limit?: number
     query: string
@@ -108,6 +110,7 @@ export class KnowledgeBaseRetrievalService {
       attribution,
       candidates: result.chunks,
       limit,
+      breadthFirst: args.breadthFirst ?? isCorpusWideQuestion(args.query),
     })
     return {
       chunks: selected,
@@ -146,18 +149,28 @@ function selectFairly(args: {
   attribution: Map<string, { base: ResolvedBase; title: string }>
   candidates: HybridSearchChunk[]
   limit: number
+  /**
+   * When true, round-robin by *source* rather than by base, so every document
+   * contributes before any single one contributes twice. Broad questions ("take
+   * me through this") need coverage across the corpus; narrow factual questions
+   * are better served by depth on the best-matching source.
+   */
+  breadthFirst?: boolean
 }): HybridSearchChunk[] {
-  const byBase = new Map<string, HybridSearchChunk[]>()
+  const groups = new Map<string, HybridSearchChunk[]>()
   for (const chunk of args.candidates) {
     const owner = chunk.knowledgeSourceId
       ? args.attribution.get(chunk.knowledgeSourceId)
       : undefined
     if (!owner) continue
-    const bucket = byBase.get(owner.base.id)
+    const key = args.breadthFirst
+      ? `${owner.base.id}:${chunk.knowledgeSourceId}`
+      : owner.base.id
+    const bucket = groups.get(key)
     if (bucket) bucket.push(chunk)
-    else byBase.set(owner.base.id, [chunk])
+    else groups.set(key, [chunk])
   }
-  for (const bucket of byBase.values()) bucket.sort((a, b) => b.score - a.score)
+  for (const bucket of groups.values()) bucket.sort((a, b) => b.score - a.score)
 
   const seenText = new Set<string>()
   const selected: HybridSearchChunk[] = []
@@ -165,9 +178,9 @@ function selectFairly(args: {
   let exhausted = false
   while (selected.length < args.limit && !exhausted) {
     exhausted = true
-    for (const [baseId, bucket] of byBase) {
+    for (const [key, bucket] of groups) {
       if (selected.length >= args.limit) break
-      let cursor = cursors.get(baseId) ?? 0
+      let cursor = cursors.get(key) ?? 0
       while (cursor < bucket.length) {
         const chunk = bucket[cursor]!
         cursor += 1
@@ -178,7 +191,7 @@ function selectFairly(args: {
         exhausted = false
         break
       }
-      cursors.set(baseId, cursor)
+      cursors.set(key, cursor)
     }
   }
   return selected
@@ -222,6 +235,31 @@ function buildCitations(args: {
 
 function emptyResult(skippedKnowledgeBaseIds: string[]): KnowledgeBaseSearchResult {
   return { chunks: [], citations: [], skippedKnowledgeBaseIds }
+}
+
+/**
+ * Recognizes questions about the corpus as a whole rather than a fact inside it,
+ * such as "what is in this", "take me through it", or "summarize everything".
+ *
+ * These deserve coverage across every source. Ranking them by similarity to the
+ * question is close to meaningless, since the question contains no subject
+ * matter to match against.
+ */
+export function isCorpusWideQuestion(query: string): boolean {
+  const text = query.toLowerCase().replace(/\s+/g, ' ').trim()
+  if (!text) return false
+  const patterns = [
+    /\bwhat(?:'s| is| are)?\s+(?:in|inside|within)\b/,
+    /\bwhat\s+does\s+(?:this|it|that)\s+(?:contain|cover|include|have)\b/,
+    /\b(?:take|walk|run)\s+(?:me\s+)?through\b/,
+    /\bgive\s+me\s+(?:an\s+)?(?:overview|rundown|tour|walkthrough)\b/,
+    /\b(?:overview|rundown|walkthrough|table of contents|contents|manifest|inventory)\b/,
+    /\bsummar(?:ise|ize|y)\b.*\b(?:all|everything|whole|entire|each)\b/,
+    /\b(?:all|everything|each)\s+(?:the\s+)?(?:sources?|documents?|files?|material)\b/,
+    /\bhow many\s+(?:sources?|documents?|files?)\b/,
+    /\blist\s+(?:the\s+)?(?:sources?|documents?|files?|contents?)\b/,
+  ]
+  return patterns.some((pattern) => pattern.test(text))
 }
 
 function dedupe(values: string[]): string[] {

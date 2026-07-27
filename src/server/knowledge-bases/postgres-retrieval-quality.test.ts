@@ -132,6 +132,10 @@ test('Postgres retrieval quality, isolation, and index plan', {
         userId,
       })
       assert.ok(result.chunks > 0, `${entry.key} must index at least one chunk`)
+      // Drain the now-redundant queue row immediately. durable_jobs is shared, so
+      // a leftover job can be claimed by another suite's worker.
+      await db.delete(durableJobs)
+        .where(sql`${durableJobs.payload}->>'sourceId' = ${created.source.id}`)
     }
 
     const expectedIds = (keys: readonly string[]) => keys.map((key) => sourceIdByKey.get(key)!)
