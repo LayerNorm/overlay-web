@@ -40,6 +40,7 @@ test('knowledge-base retrieval emits notebook-scoped citations', () => {
       sourceId: 'source_1',
       sourceVersionId: 'version_1',
       title: 'Organic Chemistry',
+      passages: [],
     }],
   })
 
@@ -76,12 +77,14 @@ test('multi-base retrieval labels each passage with its knowledge base', () => {
         knowledgeBaseTitle: 'Policies',
         sourceId: 'source_1',
         title: 'Refund policy',
+        passages: [],
       },
       {
         knowledgeBaseId: 'kb_research',
         knowledgeBaseTitle: 'Research',
         sourceId: 'source_2',
         title: 'Q3 report',
+        passages: [],
       },
     ],
   })

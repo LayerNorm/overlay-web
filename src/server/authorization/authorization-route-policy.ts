@@ -310,6 +310,21 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { GET: resource('knowledge_base', 'view', {}, 'knowledge.read') },
   },
   {
+    // Diagnostics and extraction previews expose source content, so they need the
+    // same read access as retrieval itself.
+    path: '/api/v1/knowledge-bases/:knowledgeBaseId/diagnostics',
+    methods: { GET: resource('knowledge_base', 'view', {}, 'knowledge.read') },
+  },
+  {
+    // Re-embedding rewrites the retrieval index, so it is an edit even though it
+    // does not change source content.
+    path: '/api/v1/knowledge-bases/:knowledgeBaseId/reindex',
+    methods: {
+      GET: resource('knowledge_base', 'view', {}, 'knowledge.read'),
+      POST: resource('knowledge_base', 'edit', {}, 'knowledge.edit'),
+    },
+  },
+  {
     path: '/api/v1/knowledge-bases/:knowledgeBaseId/grants',
     methods: {
       GET: resource('knowledge_base', 'share', {}, 'knowledge.share'),

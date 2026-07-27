@@ -85,7 +85,7 @@ test('scope is limited to enabled ready sources of authorized bases', async () =
   })
 
   assert.deepEqual(spy.canonicalSourceIds, ['source-ready'])
-  assert.deepEqual(result.citations, [{
+  assert.deepEqual(result.citations.map(({ passages: _passages, ...rest }) => rest), [{
     knowledgeBaseId: 'kb-1',
     knowledgeBaseTitle: 'Handbook',
     sourceId: 'source-ready',
@@ -233,6 +233,62 @@ test('a source shared by two bases is attributed to the first requested base', a
   })
 
   assert.deepEqual(result.citations.map(({ knowledgeBaseId }) => knowledgeBaseId), ['kb-first'])
+})
+
+test('citations carry highlighted passages with source offsets', async () => {
+  const service = new KnowledgeBaseRetrievalService({
+    bases: fakeBases([{
+      id: 'kb-1',
+      title: 'Policies',
+      sources: [{ id: 's1', title: 'Refund policy' }],
+    }]),
+    search: fakeSearch(() => [chunk({
+      chunkIndex: 2,
+      knowledgeSourceId: 's1',
+      startOffset: 3600,
+      text: 'The refund window is 30 days from delivery.',
+      title: 'Refund policy',
+    })]),
+  })
+
+  const result = await service.search({
+    knowledgeBaseIds: ['kb-1'],
+    query: 'refund window',
+    userId: 'user-1',
+  })
+
+  const [citation] = result.citations
+  assert.equal(citation?.passages.length, 1)
+  const passage = citation!.passages[0]!
+  assert.equal(passage.chunkIndex, 2)
+  assert.equal(passage.startOffset, 3600)
+  assert.deepEqual(
+    passage.highlights.map(({ start, end }) => passage.text.slice(start, end)),
+    ['refund', 'window'],
+  )
+})
+
+test('several passages from one source collapse into one citation', async () => {
+  const service = new KnowledgeBaseRetrievalService({
+    bases: fakeBases([{
+      id: 'kb-1',
+      title: 'Policies',
+      sources: [{ id: 's1', title: 'Handbook' }],
+    }]),
+    search: fakeSearch(() => [
+      chunk({ chunkIndex: 0, knowledgeSourceId: 's1', score: 0.9, text: 'Refund rules part one.' }),
+      chunk({ chunkIndex: 1, knowledgeSourceId: 's1', score: 0.8, text: 'Refund rules part two.' }),
+    ]),
+  })
+
+  const result = await service.search({
+    knowledgeBaseIds: ['kb-1'],
+    query: 'refund',
+    userId: 'user-1',
+  })
+
+  assert.equal(result.citations.length, 1)
+  assert.deepEqual(result.citations[0]!.passages.map(({ chunkIndex }) => chunkIndex), [0, 1])
 })
 
 test('requested bases are deduped and capped', async () => {

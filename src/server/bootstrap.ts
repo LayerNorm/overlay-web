@@ -51,11 +51,14 @@ import {
   PostgresKnowledgeSearchRepository,
   UnavailableKnowledgeSearchRepository,
   createEmbeddingProvider,
+  type EmbeddingModelIdentity,
 } from '@/server/knowledge'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
 import {
   ConvexCanonicalKnowledgeIndexQueue,
   KnowledgeBaseService,
+  KnowledgeSourceFetcherRegistry,
+  UrlKnowledgeSourceFetcher,
   KnowledgeBaseRetrievalService,
   KnowledgeSourceIngestionService,
   PostgresCanonicalKnowledgeIndexQueue,
@@ -167,6 +170,7 @@ export function createOverlayServerContext(
   const knowledgeBaseService = new KnowledgeBaseService({
     authorization: authorizationService,
     authorizationRepositories: appData.repositories.authorization,
+    embeddingIdentity: resolveEmbeddingIdentity(appData, runtimeConfig),
     repositories: appData.repositories.knowledgeBases,
     users: appData.repositories.users,
   })
@@ -176,6 +180,11 @@ export function createOverlayServerContext(
   const knowledgeSourceIngestionService = new KnowledgeSourceIngestionService({
     authorization: authorizationService,
     bases: knowledgeBaseService,
+    fetchers: new KnowledgeSourceFetcherRegistry([
+      // Connector and drive fetchers are not enabled yet; requesting those kinds
+      // fails with an explicit 501 rather than ingesting nothing.
+      new UrlKnowledgeSourceFetcher(),
+    ]),
     indexQueue: canonicalIndexQueue,
     repositories: appData.repositories.knowledgeBases,
   })
@@ -237,6 +246,26 @@ function createKnowledgeSearchService(
     db: appData.postgres.db,
     embeddings: createEmbeddingProvider(runtimeConfig),
   }))
+}
+
+/**
+ * Current embedding identity, when the runtime actually embeds locally. Convex
+ * manages embeddings centrally and does not expose an identity, so drift
+ * detection is only meaningful on the Postgres path.
+ */
+function resolveEmbeddingIdentity(
+  appData: AppDataContext,
+  runtimeConfig: OverlayRuntimeConfig | null,
+): EmbeddingModelIdentity | undefined {
+  if (appData.capabilities.provider !== 'postgres') return undefined
+  if (!runtimeConfig || !appData.capabilities.supportsVectorSearch) return undefined
+  try {
+    return createEmbeddingProvider(runtimeConfig).identity
+  } catch (_error) {
+    // A misconfigured embeddings provider must not stop the server from booting;
+    // diagnostics simply omit drift information.
+    return undefined
+  }
 }
 
 let defaultServerContext: OverlayServerContext | null = null

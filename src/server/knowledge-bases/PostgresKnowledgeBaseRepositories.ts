@@ -9,6 +9,7 @@ import type {
   KnowledgeBaseRepositories,
   KnowledgeBaseSource,
   KnowledgeSource,
+  KnowledgeSourceIndexStats,
   KnowledgeSourceVersion,
   ProjectKnowledgeBase,
   UpdateKnowledgeBaseInput,
@@ -296,6 +297,89 @@ export function createPostgresKnowledgeBaseRepositories(
           ORDER BY created_at, conversation_id
         `)
         return result.rows.map(conversationFromRow)
+      },
+    },
+    diagnostics: {
+      async statsForSources(sourceIds: string[]) {
+        if (sourceIds.length === 0) return []
+        const idList = sql.join(sourceIds.map((id) => sql`${id}`), sql`, `)
+        const counts = await db.execute<{
+          sourceId: string
+          chunkCount: string
+          indexedChars: string
+          lastIndexedAt: DateValue | null
+          indexedContentHash: string | null
+        }>(sql`
+          SELECT
+            knowledge_source_id AS "sourceId",
+            count(*)::text AS "chunkCount",
+            coalesce(sum(length(text)), 0)::text AS "indexedChars",
+            max(updated_at) AS "lastIndexedAt",
+            (array_agg(content_hash ORDER BY chunk_index))[1] AS "indexedContentHash"
+          FROM knowledge_chunks
+          WHERE knowledge_source_id IN (${idList})
+          GROUP BY knowledge_source_id
+        `)
+        const identities = await db.execute<{
+          sourceId: string
+          provider: string
+          modelId: string
+          modelVersion: string
+          count: string
+        }>(sql`
+          SELECT
+            chunk.knowledge_source_id AS "sourceId",
+            embedding.provider AS "provider",
+            embedding.model_id AS "modelId",
+            embedding.model_version AS "modelVersion",
+            count(*)::text AS "count"
+          FROM knowledge_chunk_embeddings embedding
+          JOIN knowledge_chunks chunk ON chunk.id = embedding.chunk_id
+          WHERE chunk.knowledge_source_id IN (${idList})
+          GROUP BY 1, 2, 3, 4
+        `)
+        const bySource = new Map<string, KnowledgeSourceIndexStats>()
+        for (const row of counts.rows) {
+          bySource.set(row.sourceId, {
+            sourceId: row.sourceId,
+            chunkCount: Number(row.chunkCount),
+            embeddedCount: 0,
+            indexedChars: Number(row.indexedChars),
+            lastIndexedAt: row.lastIndexedAt ? time(row.lastIndexedAt) : undefined,
+            indexedContentHash: row.indexedContentHash ?? undefined,
+            indexedEmbeddingIdentities: [],
+          })
+        }
+        for (const row of identities.rows) {
+          const stats = bySource.get(row.sourceId)
+          if (!stats) continue
+          const count = Number(row.count)
+          stats.embeddedCount += count
+          stats.indexedEmbeddingIdentities.push({
+            provider: row.provider,
+            modelId: row.modelId,
+            modelVersion: row.modelVersion,
+            count,
+          })
+        }
+        return [...bySource.values()]
+      },
+      async extractionPreview({ sourceId, limit }) {
+        const result = await db.execute<{ text: string; totalChars: string }>(sql`
+          SELECT
+            string_agg(text, E'\n\n' ORDER BY chunk_index) AS "text",
+            coalesce(sum(length(text)), 0)::text AS "totalChars"
+          FROM knowledge_chunks
+          WHERE knowledge_source_id = ${sourceId}
+        `)
+        const row = result.rows[0]
+        if (!row?.text) return null
+        const totalChars = Number(row.totalChars)
+        return {
+          text: row.text.slice(0, limit),
+          totalChars,
+          truncated: row.text.length > limit,
+        }
       },
     },
     projects: {

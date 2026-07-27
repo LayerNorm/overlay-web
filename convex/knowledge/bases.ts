@@ -4,7 +4,15 @@ import { internal } from '../_generated/api'
 import { requireServerSecret } from '../lib/auth'
 
 const baseKind = v.union(v.literal('personal'), v.literal('organization'))
-const sourceKind = v.union(v.literal('file'), v.literal('note'), v.literal('memory'), v.literal('text'))
+const sourceKind = v.union(
+  v.literal('file'),
+  v.literal('note'),
+  v.literal('memory'),
+  v.literal('text'),
+  v.literal('url'),
+  v.literal('connector'),
+  v.literal('drive'),
+)
 const sourceStatus = v.union(
   v.literal('pending'),
   v.literal('extracting'),
@@ -579,6 +587,58 @@ export const listConversationsForBaseByServer = query({
     requireServerSecret(args.serverSecret)
     return await ctx.db.query('knowledgeBaseConversations')
       .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId)).collect()
+  },
+})
+
+/**
+ * Index stats per source. Convex stores embeddings without provider/model
+ * identity, so `indexedEmbeddingIdentities` is always empty here and embedding
+ * drift detection stays a Postgres-only capability.
+ */
+export const indexStatsForSourcesByServer = query({
+  args: { serverSecret: v.string(), sourceIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const stats = []
+    for (const sourceId of args.sourceIds) {
+      const chunks = await ctx.db.query('knowledgeChunks')
+        .withIndex('by_knowledgeSourceId', (q) => q.eq('knowledgeSourceId', sourceId)).collect()
+      if (chunks.length === 0) continue
+      let embeddedCount = 0
+      for (const chunk of chunks) {
+        const embedding = await ctx.db.query('knowledgeChunkEmbeddings')
+          .withIndex('by_chunkId', (q) => q.eq('chunkId', chunk._id)).first()
+        if (embedding) embeddedCount += 1
+      }
+      stats.push({
+        sourceId,
+        chunkCount: chunks.length,
+        embeddedCount,
+        indexedChars: chunks.reduce((total, chunk) => total + chunk.text.length, 0),
+        lastIndexedAt: Math.max(...chunks.map((chunk) => chunk._creationTime)),
+        indexedEmbeddingIdentities: [],
+      })
+    }
+    return stats
+  },
+})
+
+export const extractionPreviewByServer = query({
+  args: { serverSecret: v.string(), sourceId: v.string(), limit: v.number() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const chunks = await ctx.db.query('knowledgeChunks')
+      .withIndex('by_knowledgeSourceId', (q) => q.eq('knowledgeSourceId', args.sourceId)).collect()
+    if (chunks.length === 0) return null
+    const text = [...chunks]
+      .sort((a, b) => a.chunkIndex - b.chunkIndex)
+      .map((chunk) => chunk.text)
+      .join('\n\n')
+    return {
+      text: text.slice(0, args.limit),
+      totalChars: chunks.reduce((total, chunk) => total + chunk.text.length, 0),
+      truncated: text.length > args.limit,
+    }
   },
 })
 

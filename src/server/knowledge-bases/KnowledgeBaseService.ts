@@ -24,6 +24,14 @@ import {
   AuthorizationDeniedError,
   AuthorizationService,
 } from '@/server/authorization/AuthorizationService'
+import {
+  evaluateSourceFreshness,
+  inferOriginFromKind,
+  readSourceProvenance,
+  type EmbeddingIdentitySnapshot,
+  type KnowledgeSourceFreshness,
+  type KnowledgeSourceProvenance,
+} from '@/shared/knowledge/source-provenance'
 import type { UserDirectoryEntry, UserRepository } from '@/server/users'
 
 export const KNOWLEDGE_BASE_RESOURCE_TYPE = 'knowledge_base'
@@ -31,6 +39,37 @@ export const KNOWLEDGE_BASE_RESOURCE_TYPE = 'knowledge_base'
 export type KnowledgeBaseSourceDetail = {
   membership: KnowledgeBaseSource
   source: KnowledgeSource
+}
+
+export type KnowledgeSourceDiagnostics = {
+  sourceId: string
+  title: string
+  kind: KnowledgeSourceKind
+  status: string
+  statusMessage?: string
+  enabled: boolean
+  mimeType?: string
+  contentHash?: string
+  chunkCount: number
+  embeddedCount: number
+  indexedChars: number
+  updatedAt: number
+  provenance: KnowledgeSourceProvenance
+  embeddingIdentities: Array<{
+    provider: string
+    modelId: string
+    modelVersion: string
+    count: number
+  }>
+  freshness: KnowledgeSourceFreshness
+}
+
+const MAX_PREVIEW_CHARS = 20_000
+const DEFAULT_PREVIEW_CHARS = 4_000
+
+function clampPreviewLimit(limit: number | undefined): number {
+  if (!Number.isFinite(limit)) return DEFAULT_PREVIEW_CHARS
+  return Math.min(MAX_PREVIEW_CHARS, Math.max(200, Math.floor(limit!)))
 }
 
 export type KnowledgeBaseShareDirectory = {
@@ -55,6 +94,8 @@ export class KnowledgeBaseService {
   constructor(private readonly deps: {
     authorization: AuthorizationService
     authorizationRepositories: AuthorizationRepositories
+    /** Current embedding identity, used to detect index drift. */
+    embeddingIdentity?: EmbeddingIdentitySnapshot
     repositories: KnowledgeBaseRepositories
     users?: UserRepository
   }) {}
@@ -412,6 +453,81 @@ export class KnowledgeBaseService {
       knowledgeBaseId: args.knowledgeBaseId,
       projectId: args.projectId,
     })) throw notFound('Project knowledge base')
+  }
+
+  /**
+   * Per-source indexing health for a base: what is actually indexed, where each
+   * source came from, and whether its index can still be trusted.
+   */
+  async listSourceDiagnostics(args: {
+    knowledgeBaseId: string
+    userId: string
+  }): Promise<KnowledgeSourceDiagnostics[]> {
+    const details = await this.listSources(args)
+    const stats = this.deps.repositories.diagnostics
+      ? await this.deps.repositories.diagnostics.statsForSources(details.map(({ source }) => source.id))
+      : []
+    const statsBySource = new Map(stats.map((entry) => [entry.sourceId, entry]))
+    return details.map(({ membership, source }) => {
+      const entry = statsBySource.get(source.id)
+      return {
+        sourceId: source.id,
+        title: source.title,
+        kind: source.kind,
+        status: source.status,
+        statusMessage: source.statusMessage,
+        enabled: membership.enabled,
+        mimeType: source.mimeType,
+        contentHash: source.contentHash,
+        chunkCount: entry?.chunkCount ?? 0,
+        embeddedCount: entry?.embeddedCount ?? 0,
+        indexedChars: entry?.indexedChars ?? 0,
+        updatedAt: source.updatedAt,
+        provenance: readSourceProvenance(source.metadata) ?? {
+          origin: inferOriginFromKind(source.kind),
+          addedBy: membership.addedBy,
+          ingestedAt: source.createdAt,
+        },
+        embeddingIdentities: entry?.indexedEmbeddingIdentities ?? [],
+        freshness: evaluateSourceFreshness({
+          status: source.status,
+          statusMessage: source.statusMessage,
+          contentHash: source.contentHash,
+          indexedContentHash: entry?.indexedContentHash,
+          lastIndexedAt: entry?.lastIndexedAt,
+          chunkCount: entry?.chunkCount ?? 0,
+          currentEmbeddingIdentity: this.deps.embeddingIdentity,
+          indexedEmbeddingIdentities: entry?.indexedEmbeddingIdentities,
+        }),
+      }
+    })
+  }
+
+  /**
+   * First slice of a source's extracted text, so a user can confirm extraction
+   * actually worked before trusting retrieval against it.
+   */
+  async getExtractionPreview(args: {
+    knowledgeBaseId: string
+    limit?: number
+    sourceId: string
+    userId: string
+  }): Promise<{ sourceId: string; text: string; totalChars: number; truncated: boolean }> {
+    const details = await this.listSources(args)
+    if (!details.some(({ source }) => source.id === args.sourceId)) {
+      throw notFound('Knowledge source')
+    }
+    if (!this.deps.repositories.diagnostics) {
+      throw new KnowledgeBaseServiceError('Extraction previews are unavailable for this backend', 503)
+    }
+    const preview = await this.deps.repositories.diagnostics.extractionPreview({
+      sourceId: args.sourceId,
+      limit: clampPreviewLimit(args.limit),
+    })
+    if (!preview) {
+      throw new KnowledgeBaseServiceError('Knowledge source has no extracted text yet', 409)
+    }
+    return { sourceId: args.sourceId, ...preview }
   }
 
   /** Filters to bases that exist, are active, and are readable by this user. */

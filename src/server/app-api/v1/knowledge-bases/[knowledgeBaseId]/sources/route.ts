@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { isExternalKnowledgeSourceKind } from '@overlay/app-core'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { knowledgeBaseErrorResponse, requiredKnowledgeBaseId } from '../../errors'
@@ -36,14 +37,39 @@ export async function POST(_request: NextRequest, context: AppApiRouteContext) {
   try {
     const knowledgeBaseId = await requiredKnowledgeBaseId(context)
     const body = context.parsedJson as {
-      title: string
-      content: string
+      title?: string
+      content?: string
       mimeType?: string
       sourceRef?: string
+      kind?: string
+      ref?: string
     }
-    const result = await getOverlayServerContext().knowledgeSourceIngestionService.createTextSource({
-      ...body,
+    const server = getOverlayServerContext()
+    // An external kind fetches its own content; the caller supplies only a ref.
+    if (body.kind && isExternalKnowledgeSourceKind(body.kind)) {
+      if (!body.ref?.trim()) {
+        return NextResponse.json({ error: 'ref is required for external sources' }, { status: 400 })
+      }
+      return NextResponse.json(
+        await server.knowledgeSourceIngestionService.createExternalSource({
+          kind: body.kind,
+          knowledgeBaseId,
+          ref: body.ref,
+          title: body.title,
+          userId: context.auth.userId,
+        }),
+        { status: 202 },
+      )
+    }
+    if (!body.title?.trim() || !body.content) {
+      return NextResponse.json({ error: 'title and content are required' }, { status: 400 })
+    }
+    const result = await server.knowledgeSourceIngestionService.createTextSource({
+      content: body.content,
       knowledgeBaseId,
+      mimeType: body.mimeType,
+      sourceRef: body.sourceRef,
+      title: body.title,
       userId: context.auth.userId,
     })
     return NextResponse.json(result, { status: 202 })
@@ -60,6 +86,7 @@ export async function PATCH(_request: NextRequest, context: AppApiRouteContext) 
       content?: string
       enabled?: boolean
       retry?: boolean
+      refresh?: boolean
     }
     const server = getOverlayServerContext()
     if (body.content !== undefined) {
@@ -68,6 +95,15 @@ export async function PATCH(_request: NextRequest, context: AppApiRouteContext) 
         sourceId: body.sourceId,
         userId: context.auth.userId,
       }), { status: 202 })
+    }
+    if (body.refresh) {
+      return NextResponse.json(
+        await server.knowledgeSourceIngestionService.refreshExternalSource({
+          sourceId: body.sourceId,
+          userId: context.auth.userId,
+        }),
+        { status: 202 },
+      )
     }
     if (body.retry) {
       return NextResponse.json({
@@ -86,7 +122,7 @@ export async function PATCH(_request: NextRequest, context: AppApiRouteContext) 
       })
       return NextResponse.json({ updated: true })
     }
-    return NextResponse.json({ error: 'content, retry, or enabled is required' }, { status: 400 })
+    return NextResponse.json({ error: 'content, retry, refresh, or enabled is required' }, { status: 400 })
   } catch (error) {
     return knowledgeBaseErrorResponse('update source for', error)
   }

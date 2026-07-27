@@ -2,8 +2,21 @@ import 'server-only'
 
 import { MAX_KNOWLEDGE_BASES_PER_TURN } from '@overlay/app-core'
 import type { HybridSearchChunk } from '@/shared/knowledge/hybrid-search'
+import {
+  findPassageHighlights,
+  type PassageHighlight,
+} from '@/shared/knowledge/passage-highlight'
 import { KnowledgeSearchService } from '@/server/knowledge/KnowledgeSearchService'
 import { KnowledgeBaseService } from './KnowledgeBaseService'
+
+export type KnowledgeBaseCitationPassage = {
+  chunkIndex: number
+  /** Offset of the passage within the full extracted source text, when known. */
+  startOffset?: number
+  text: string
+  /** Spans inside `text` that matched the query, for UI highlighting. */
+  highlights: PassageHighlight[]
+}
 
 export type KnowledgeBaseCitation = {
   knowledgeBaseId: string
@@ -11,6 +24,8 @@ export type KnowledgeBaseCitation = {
   sourceId: string
   sourceVersionId?: string
   title: string
+  /** Every retrieved passage from this source, in rank order. */
+  passages: KnowledgeBaseCitationPassage[]
 }
 
 export type KnowledgeBaseSearchResult = {
@@ -96,7 +111,7 @@ export class KnowledgeBaseRetrievalService {
     })
     return {
       chunks: selected,
-      citations: buildCitations({ attribution, chunks: selected }),
+      citations: buildCitations({ attribution, chunks: selected, query: args.query }),
       skippedKnowledgeBaseIds,
     }
   }
@@ -172,6 +187,7 @@ function selectFairly(args: {
 function buildCitations(args: {
   attribution: Map<string, { base: ResolvedBase; title: string }>
   chunks: HybridSearchChunk[]
+  query: string
 }): KnowledgeBaseCitation[] {
   const citations = new Map<string, KnowledgeBaseCitation>()
   for (const chunk of args.chunks) {
@@ -180,13 +196,25 @@ function buildCitations(args: {
     const owner = args.attribution.get(canonicalId)
     if (!owner) continue
     const key = `${owner.base.id}:${canonicalId}`
-    if (citations.has(key)) continue
+    const passage: KnowledgeBaseCitationPassage = {
+      chunkIndex: chunk.chunkIndex,
+      startOffset: chunk.startOffset,
+      text: chunk.text,
+      highlights: findPassageHighlights(chunk.text, args.query),
+    }
+    const existing = citations.get(key)
+    if (existing) {
+      // Several passages of one source keep one citation entry.
+      existing.passages.push(passage)
+      continue
+    }
     citations.set(key, {
       knowledgeBaseId: owner.base.id,
       knowledgeBaseTitle: owner.base.title,
       sourceId: canonicalId,
       sourceVersionId: chunk.knowledgeSourceVersionId,
       title: chunk.title?.trim() || owner.title || 'Knowledge source',
+      passages: [passage],
     })
   }
   return [...citations.values()]

@@ -169,6 +169,13 @@
       "when": 1785178800000,
       "tag": "0023_multi_knowledge_base_attachment",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1785265200000,
+      "tag": "0024_external_knowledge_source_kinds",
+      "breakpoints": true
     }
   ]
 }

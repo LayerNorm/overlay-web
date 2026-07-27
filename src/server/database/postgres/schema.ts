@@ -115,6 +115,9 @@ export const canonicalKnowledgeSourceKind = pgEnum('overlay_canonical_knowledge_
   'note',
   'memory',
   'text',
+  'url',
+  'connector',
+  'drive',
 ])
 
 export const canonicalKnowledgeSourceStatus = pgEnum('overlay_knowledge_source_status', [

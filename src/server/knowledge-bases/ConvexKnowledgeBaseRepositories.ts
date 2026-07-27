@@ -6,6 +6,7 @@ import type {
   KnowledgeBaseRepositories,
   KnowledgeBaseSource,
   KnowledgeSource,
+  KnowledgeSourceIndexStats,
   KnowledgeSourceVersion,
   ProjectKnowledgeBase,
 } from '@overlay/app-core'
@@ -150,6 +151,20 @@ export function createConvexKnowledgeBaseRepositories(): KnowledgeBaseRepositori
       async listForBase(knowledgeBaseId) {
         const rows = await query<KnowledgeBaseConversation[]>('listConversationsForBaseByServer', { knowledgeBaseId }) ?? []
         return rows.map(conversation)
+      },
+    },
+    diagnostics: {
+      async statsForSources(sourceIds) {
+        if (sourceIds.length === 0) return []
+        return await query<KnowledgeSourceIndexStats[]>('indexStatsForSourcesByServer', {
+          sourceIds,
+        }) ?? []
+      },
+      async extractionPreview({ sourceId, limit }) {
+        return await query<{ text: string; totalChars: number; truncated: boolean } | null>(
+          'extractionPreviewByServer',
+          { sourceId, limit },
+        )
       },
     },
     projects: {

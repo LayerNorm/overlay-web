@@ -967,7 +967,15 @@ export default defineSchema({
   knowledgeSources: defineTable({
     sourceId: v.string(),
     ownerUserId: v.string(),
-    kind: v.union(v.literal('file'), v.literal('note'), v.literal('memory'), v.literal('text')),
+    kind: v.union(
+      v.literal('file'),
+      v.literal('note'),
+      v.literal('memory'),
+      v.literal('text'),
+      v.literal('url'),
+      v.literal('connector'),
+      v.literal('drive'),
+    ),
     sourceRef: v.optional(v.string()),
     title: v.string(),
     mimeType: v.optional(v.string()),

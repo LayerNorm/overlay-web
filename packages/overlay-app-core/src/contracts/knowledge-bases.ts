@@ -4,8 +4,29 @@ export type KnowledgeBaseKind = (typeof KNOWLEDGE_BASE_KINDS)[number]
 export const KNOWLEDGE_BASE_STATUSES = ['active', 'archived'] as const
 export type KnowledgeBaseStatus = (typeof KNOWLEDGE_BASE_STATUSES)[number]
 
-export const KNOWLEDGE_SOURCE_KINDS = ['file', 'note', 'memory', 'text'] as const
+export const KNOWLEDGE_SOURCE_KINDS = [
+  'file',
+  'note',
+  'memory',
+  'text',
+  /** Fetched from a public web page. */
+  'url',
+  /** Pulled through a configured integration, e.g. Composio. */
+  'connector',
+  /** Pulled from a cloud drive such as Google Drive. */
+  'drive',
+] as const
 export type KnowledgeSourceKind = (typeof KNOWLEDGE_SOURCE_KINDS)[number]
+
+/** Kinds whose content is fetched from outside Overlay rather than uploaded. */
+export const EXTERNAL_KNOWLEDGE_SOURCE_KINDS = ['url', 'connector', 'drive'] as const
+export type ExternalKnowledgeSourceKind = (typeof EXTERNAL_KNOWLEDGE_SOURCE_KINDS)[number]
+
+export function isExternalKnowledgeSourceKind(
+  kind: string,
+): kind is ExternalKnowledgeSourceKind {
+  return (EXTERNAL_KNOWLEDGE_SOURCE_KINDS as readonly string[]).includes(kind)
+}
 
 export const KNOWLEDGE_SOURCE_STATUSES = [
   'pending',
@@ -177,10 +198,42 @@ export interface ProjectKnowledgeBaseRepository {
   listForBase(knowledgeBaseId: string): Promise<ProjectKnowledgeBase[]>
 }
 
+/** Counts and embedding identities of what is actually indexed for a source. */
+export type KnowledgeSourceIndexStats = {
+  sourceId: string
+  chunkCount: number
+  embeddedCount: number
+  indexedChars: number
+  lastIndexedAt?: number
+  indexedContentHash?: string
+  indexedEmbeddingIdentities: Array<{
+    provider: string
+    modelId: string
+    modelVersion: string
+    count: number
+  }>
+}
+
+export interface KnowledgeIndexDiagnosticsRepository {
+  /** Index stats per source. Missing sources are simply absent from the result. */
+  statsForSources(sourceIds: string[]): Promise<KnowledgeSourceIndexStats[]>
+  /**
+   * Ordered extracted text of a source, reassembled from its indexed passages,
+   * clipped to `limit` characters.
+   */
+  extractionPreview(args: { sourceId: string; limit: number }): Promise<{
+    text: string
+    totalChars: number
+    truncated: boolean
+  } | null>
+}
+
 export interface KnowledgeBaseRepositories {
   bases: KnowledgeBaseRepository
   sources: KnowledgeSourceRepository
   memberships: KnowledgeBaseSourceRepository
   conversations: KnowledgeBaseConversationRepository
   projects: ProjectKnowledgeBaseRepository
+  /** Absent when the active backend cannot report index internals. */
+  diagnostics?: KnowledgeIndexDiagnosticsRepository
 }
