@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "runId": "gate-a-YYYYMMDD",
+  "sourceCommit": "40-character-server-source-commit",
+  "targets": [
+    {
+      "name": "convex-ai-gateway",
+      "backend": "convex",
+      "provider": "ai-gateway",
+      "baseUrl": "https://dedicated-security-preview.example.com",
+      "tokenEnv": "HOSTILE_CONVEX_AI_GATEWAY_TOKEN",
+      "idempotencyKind": "stream",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/conversations/act",
+        "json": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Return exactly OVERLAY_HOSTILE_CLIENT_OK. Do not use tools."
+            }
+          ],
+          "modelId": "replace-with-allowed-model",
+          "mode": "chat",
+          "memoryEnabled": false
+        }
+      },
+      "deniedMutation": {
+        "bodyPatch": {
+          "modelId": "replace-with-server-denied-model"
+        },
+        "expectedStatuses": [
+          403
+        ]
+      }
+    },
+    {
+      "name": "postgres-openrouter",
+      "backend": "postgres",
+      "provider": "openrouter",
+      "baseUrl": "https://dedicated-postgres-security-preview.example.com",
+      "tokenEnv": "HOSTILE_POSTGRES_OPENROUTER_TOKEN",
+      "idempotencyKind": "stream",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/conversations/act",
+        "json": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Return exactly OVERLAY_HOSTILE_CLIENT_OK. Do not use tools."
+            }
+          ],
+          "modelId": "replace-with-allowed-model",
+          "mode": "chat",
+          "memoryEnabled": false
+        }
+      },
+      "deniedMutation": {
+        "bodyPatch": {
+          "modelId": "replace-with-server-denied-model"
+        }
+      }
+    }
+  ]
+}

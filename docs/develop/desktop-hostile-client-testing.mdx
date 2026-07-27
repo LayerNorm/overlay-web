@@ -1,0 +1,90 @@
+---
+title: Desktop hostile-client testing
+description: Run and document Gate A server-authority tests from a modified desktop client.
+---
+
+This is a blank evidence procedure, not a completed security review. Store
+filled reports, tokens, provider screenshots, raw logs, and reservation
+identifiers in the private security evidence system. Do not commit completed
+reports.
+
+## Scope
+
+Record the server and desktop source SHAs, test window, operator, independent
+reviewer, dedicated deployment URLs, backends, and enabled providers. Production
+must remain excluded unless the owner explicitly authorizes a production drill.
+
+## Preconditions
+
+- Dedicated, non-production deployments use production-equivalent policy.
+- Test users have the lowest applicable entitlements.
+- Provider credentials are dedicated and have hard spending caps.
+- Provider dashboards and Overlay security/billing logs are observable.
+- The matrix contains every enabled owner-funded provider path.
+- Output paths are private and outside the public repository.
+
+## Run control checks
+
+Control-only checks do not intentionally invoke a provider:
+
+```sh
+npm run test:desktop-security:hostile-matrix -- \
+  --config=scripts/fixtures/desktop-hostile-client-matrix.example.json \
+  --output=/private/evidence/gate-a-hostile-control.json
+```
+
+## Run provider checks
+
+Cost-bearing concurrency, disconnect, and replay checks require two explicit
+acknowledgements:
+
+```sh
+OVERLAY_HOSTILE_CLIENT_EXECUTE_PROVIDER=1 \
+OVERLAY_HOSTILE_CLIENT_ACK=I_UNDERSTAND_THIS_MAY_INCUR_PROVIDER_COSTS \
+npm run test:desktop-security:hostile-matrix -- \
+  --config=/private/evidence/gate-a-hostile-matrix.json \
+  --output=/private/evidence/gate-a-hostile-provider.json
+```
+
+The runner rejects `getoverlay.io` by default. A production drill additionally
+requires `OVERLAY_HOSTILE_CLIENT_ALLOW_PRODUCTION=1` and explicit owner approval.
+
+## Evidence matrix
+
+Complete one row for every backend/provider target in the private report.
+
+| Backend | Provider | Control report | Provider report | Provider calls | Charged operations | Overlay reservations | Result |
+| --- | --- | --- | --- | ---: | ---: | ---: | --- |
+| Convex | unset | unset | unset | unset | unset | unset | PENDING |
+| Postgres | unset | unset | unset | unset | unset | unset | PENDING |
+
+For each target, attach private evidence that:
+
+- Missing, invalid, and identity-substituted authentication was rejected.
+- Missing idempotency keys were rejected before provider work.
+- Server-denied models or capabilities could not be substituted by the client.
+- Concurrent identical requests caused exactly one provider operation.
+- Disconnect and retry did not start a second provider operation.
+- Provider usage, Overlay reservation, finalization/release, and user accounting reconcile.
+- No provider credential, internal service credential, raw token, or another
+  user’s data appeared in responses or logs.
+
+## Required negative cases
+
+- Credential and key retrieval attempts
+- Identity substitution
+- Model and capability substitution
+- Missing and malformed idempotency keys
+- Concurrent identical requests
+- Disconnect followed by retry
+- Same key with a different request body
+- Free or expired entitlement attempting a paid operation
+- Rate-limit and budget exhaustion
+- Kill switch enabled
+- Provider timeout and provider 4xx/5xx
+
+## Reviewer decision
+
+The private result records unresolved Critical and High findings, accepted
+exceptions and expiry dates, reviewer identity, date, and an
+`APPROVED`/`REJECTED` decision.

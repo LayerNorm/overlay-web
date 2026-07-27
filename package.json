@@ -163,6 +163,8 @@
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "check:owner-funded-boundary": "node scripts/check-owner-funded-boundary.mjs",
     "test:desktop-security:backend": "npm run check:desktop-provider-key-boundary && npm run check:owner-funded-boundary && npm run test:auth:native-validation && NODE_OPTIONS=--conditions=react-server tsx --test src/server/auth/session-transfer-crypto.test.ts src/server/billing/billing-runtime.test.ts src/server/billing/owner-funded-operations.test.ts src/server/billing/transcription-billing.test.ts src/server/security/rate-limit-specs.test.ts src/server/security/ssrf.test.ts src/server/shared/providers/convex-rate-limiter.test.ts src/server/outputs/GenerationUsagePolicy.test.ts src/server/releases/desktop-download-policy.test.ts",
+    "test:desktop-security:hostile-matrix": "node scripts/desktop-hostile-client-matrix.mjs",
+    "test:desktop-security:hostile-matrix:unit": "node --test scripts/desktop-hostile-client-matrix.test.mjs",
     "video:studio": "npx remotion studio src/remotion/index.ts",
     "video:render:launch": "mkdir -p renders && npx remotion render src/remotion/index.ts overlay-launch-video renders/overlay-launch-video.mp4",
     "test:auth:env": "node --experimental-strip-types scripts/auth-dev-env-check.ts",
