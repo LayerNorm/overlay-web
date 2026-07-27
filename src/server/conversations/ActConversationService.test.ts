@@ -197,7 +197,7 @@ test('act context service scopes attached knowledge-base conversations and disab
       listMemories: async () => [],
       listSkills: async () => [],
     }),
-    resolveKnowledgeBaseId: async () => 'kb_1',
+    resolveConversationKnowledgeBaseIds: async () => ['kb_1'],
     buildAutoRetrievalBundle: async (args) => {
       retrievalArgs = args
       return {
@@ -221,7 +221,7 @@ test('act context service scopes attached knowledge-base conversations and disab
 
   assert.deepEqual(retrievalArgs, {
     includeMemories: false,
-    knowledgeBaseId: 'kb_1',
+    knowledgeBaseIds: ['kb_1'],
     projectId: 'project_1',
     userId: 'user_1',
     userMessage: 'Explain the reaction mechanism.',
@@ -232,19 +232,17 @@ test('act context service scopes attached knowledge-base conversations and disab
   })
 })
 
-test('act context service gives the active project knowledge base precedence while preserving project instructions', async () => {
+test('act context service combines project and conversation knowledge bases while preserving project instructions', async () => {
   let retrievalArgs: Record<string, unknown> | undefined
   const service = new ActContextService({
     repository: repository({
       getConversation: async () => ({ projectId: 'project_1' }),
-      getProject: async () => ({
-        instructions: 'Write a concise implementation plan.',
-        knowledgeBaseId: 'project_kb',
-      }),
+      getProject: async () => ({ instructions: 'Write a concise implementation plan.' }),
       listMemories: async () => [],
       listSkills: async () => [],
     }),
-    resolveKnowledgeBaseId: async () => 'conversation_kb',
+    resolveConversationKnowledgeBaseIds: async () => ['conversation_kb'],
+    resolveProjectKnowledgeBaseIds: async () => ['project_kb', 'second_project_kb'],
     buildAutoRetrievalBundle: async (args) => {
       retrievalArgs = args
       return {
@@ -273,12 +271,90 @@ test('act context service gives the active project knowledge base precedence whi
   assert.equal(context.projectInstructions, 'Write a concise implementation plan.')
   assert.deepEqual(retrievalArgs, {
     includeMemories: false,
-    knowledgeBaseId: 'project_kb',
+    knowledgeBaseIds: ['conversation_kb', 'project_kb', 'second_project_kb'],
     projectId: 'project_1',
     userId: 'user_1',
     userMessage: 'Revise the working draft using the policy.',
   })
   assert.equal(context.autoRetrieval, '\nPROJECT_KB_CONTEXT')
+})
+
+test('act context service lets an explicit knowledge mention narrow retrieval to that base', async () => {
+  let retrievalArgs: Record<string, unknown> | undefined
+  const service = new ActContextService({
+    repository: repository({
+      getConversation: async () => ({ projectId: 'project_1' }),
+      getProject: async () => ({ instructions: 'Project rules stay in force.' }),
+      listMemories: async () => [],
+      listSkills: async () => [],
+    }),
+    resolveConversationKnowledgeBaseIds: async () => ['conversation_kb'],
+    resolveProjectKnowledgeBaseIds: async () => ['project_kb', 'second_project_kb'],
+    buildAutoRetrievalBundle: async (args) => {
+      retrievalArgs = args
+      return { extension: '\nNARROWED', citations: {} }
+    },
+  })
+
+  const context = await service.loadTurnContext({
+    conversationId: 'conversation_1' as Id<'conversations'>,
+    externalContextEnabled: false,
+    indexedAttachments: [],
+    latestUserText: 'What does the handbook say?',
+    memoryEnabled: true,
+    mentionedKnowledgeBaseIds: ['project_kb'],
+    serverSecret: 'server-secret',
+    userId: 'user_1',
+  })
+
+  // Project instructions still apply; only the retrieval corpus narrows.
+  assert.equal(context.projectInstructions, 'Project rules stay in force.')
+  assert.deepEqual(retrievalArgs, {
+    includeMemories: false,
+    knowledgeBaseIds: ['project_kb'],
+    projectId: 'project_1',
+    userId: 'user_1',
+    userMessage: 'What does the handbook say?',
+  })
+})
+
+test('act context service falls back to the legacy single project attachment', async () => {
+  let retrievalArgs: Record<string, unknown> | undefined
+  const service = new ActContextService({
+    repository: repository({
+      getConversation: async () => ({ projectId: 'project_1' }),
+      getProject: async () => ({
+        instructions: 'Legacy project.',
+        knowledgeBaseId: 'legacy_kb',
+      }),
+      listMemories: async () => [],
+      listSkills: async () => [],
+    }),
+    // A project written before schema 23 has no join-table rows.
+    resolveProjectKnowledgeBaseIds: async () => [],
+    buildAutoRetrievalBundle: async (args) => {
+      retrievalArgs = args
+      return { extension: '', citations: {} }
+    },
+  })
+
+  await service.loadTurnContext({
+    conversationId: 'conversation_1' as Id<'conversations'>,
+    externalContextEnabled: false,
+    indexedAttachments: [],
+    latestUserText: 'Continue the work.',
+    memoryEnabled: true,
+    serverSecret: 'server-secret',
+    userId: 'user_1',
+  })
+
+  assert.deepEqual(retrievalArgs, {
+    includeMemories: false,
+    knowledgeBaseIds: ['legacy_kb'],
+    projectId: 'project_1',
+    userId: 'user_1',
+    userMessage: 'Continue the work.',
+  })
 })
 
 test('act context service ignores archived project instructions and knowledge attachment', async () => {
@@ -294,7 +370,7 @@ test('act context service ignores archived project instructions and knowledge at
       listMemories: async () => [],
       listSkills: async () => [],
     }),
-    resolveKnowledgeBaseId: async () => null,
+    resolveConversationKnowledgeBaseIds: async () => [],
     buildAutoRetrievalBundle: async (args) => {
       retrievalArgs = args
       return { extension: '', citations: {} }

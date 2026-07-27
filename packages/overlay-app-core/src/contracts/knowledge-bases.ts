@@ -73,6 +73,32 @@ export type KnowledgeBaseConversation = {
   createdAt: number
 }
 
+export type ProjectKnowledgeBase = {
+  knowledgeBaseId: string
+  projectId: string
+  attachedBy?: string
+  createdAt: number
+}
+
+/**
+ * How a turn's retrieval corpus is chosen when a project has attached bases and
+ * the user may also name bases explicitly.
+ *
+ * - `project`: use only the project's attached bases.
+ * - `selected`: use only the explicitly named bases, ignoring project defaults.
+ * - `combined`: union of both.
+ *
+ * An explicit `@Knowledge` mention resolves to `selected`, so a mention narrows
+ * scope rather than widening it.
+ */
+export const KNOWLEDGE_RETRIEVAL_MODES = ['project', 'selected', 'combined'] as const
+export type KnowledgeRetrievalMode = (typeof KNOWLEDGE_RETRIEVAL_MODES)[number]
+
+export const DEFAULT_KNOWLEDGE_RETRIEVAL_MODE: KnowledgeRetrievalMode = 'selected'
+
+/** Upper bound on bases fused into a single turn, so retrieval latency stays bounded. */
+export const MAX_KNOWLEDGE_BASES_PER_TURN = 8
+
 export type CreateKnowledgeBaseInput = Pick<
   KnowledgeBase,
   'id' | 'ownerUserId' | 'title'
@@ -130,9 +156,25 @@ export interface KnowledgeBaseSourceRepository {
 
 export interface KnowledgeBaseConversationRepository {
   attach(input: Omit<KnowledgeBaseConversation, 'createdAt'>): Promise<KnowledgeBaseConversation>
+  /** Detaches every base from the conversation. */
   detach(conversationId: string): Promise<boolean>
+  /** Detaches a single base, leaving any other attachments in place. */
+  detachOne(input: Pick<KnowledgeBaseConversation, 'conversationId' | 'knowledgeBaseId'>): Promise<boolean>
+  /**
+   * @deprecated A conversation may have many bases. Prefer {@link listForConversation}.
+   * Retained so callers mid-rollout keep working; returns the oldest attachment.
+   */
   getForConversation(conversationId: string): Promise<KnowledgeBaseConversation | null>
+  listForConversation(conversationId: string): Promise<KnowledgeBaseConversation[]>
   listForBase(knowledgeBaseId: string): Promise<KnowledgeBaseConversation[]>
+}
+
+export interface ProjectKnowledgeBaseRepository {
+  attach(input: Omit<ProjectKnowledgeBase, 'createdAt'>): Promise<ProjectKnowledgeBase>
+  detach(input: Pick<ProjectKnowledgeBase, 'projectId' | 'knowledgeBaseId'>): Promise<boolean>
+  detachAll(projectId: string): Promise<boolean>
+  listForProject(projectId: string): Promise<ProjectKnowledgeBase[]>
+  listForBase(knowledgeBaseId: string): Promise<ProjectKnowledgeBase[]>
 }
 
 export interface KnowledgeBaseRepositories {
@@ -140,4 +182,5 @@ export interface KnowledgeBaseRepositories {
   sources: KnowledgeSourceRepository
   memberships: KnowledgeBaseSourceRepository
   conversations: KnowledgeBaseConversationRepository
+  projects: ProjectKnowledgeBaseRepository
 }

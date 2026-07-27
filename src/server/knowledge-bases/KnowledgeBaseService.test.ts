@@ -7,6 +7,7 @@ import type {
   KnowledgeBaseSource,
   KnowledgeSource,
   KnowledgeSourceVersion,
+  ProjectKnowledgeBase,
 } from '@overlay/app-core'
 import type {
   AuthorizationGroup,
@@ -460,6 +461,7 @@ function inMemoryKnowledgeRepositories(): KnowledgeBaseRepositories {
   const versions = new Map<string, KnowledgeSourceVersion>()
   const memberships = new Map<string, KnowledgeBaseSource>()
   const conversations = new Map<string, KnowledgeBaseConversation>()
+  const projectAttachments = new Map<string, ProjectKnowledgeBase>()
   let now = 1
   return {
     bases: {
@@ -499,6 +501,7 @@ function inMemoryKnowledgeRepositories(): KnowledgeBaseRepositories {
         if (!bases.delete(id)) return false
         for (const [key, value] of memberships) if (value.knowledgeBaseId === id) memberships.delete(key)
         for (const [key, value] of conversations) if (value.knowledgeBaseId === id) conversations.delete(key)
+        for (const [key, value] of projectAttachments) if (value.knowledgeBaseId === id) projectAttachments.delete(key)
         return true
       },
     },
@@ -568,13 +571,58 @@ function inMemoryKnowledgeRepositories(): KnowledgeBaseRepositories {
     },
     conversations: {
       async attach(input) {
-        const value = { ...input, createdAt: conversations.get(input.conversationId)?.createdAt ?? now++ }
-        conversations.set(input.conversationId, value)
+        const key = `${input.conversationId}:${input.knowledgeBaseId}`
+        const value = { ...input, createdAt: conversations.get(key)?.createdAt ?? now++ }
+        conversations.set(key, value)
         return value
       },
-      async detach(id) { return conversations.delete(id) },
-      async getForConversation(id) { return conversations.get(id) ?? null },
+      async detach(id) {
+        const keys = [...conversations.entries()]
+          .filter(([, value]) => value.conversationId === id)
+          .map(([key]) => key)
+        for (const key of keys) conversations.delete(key)
+        return keys.length > 0
+      },
+      async detachOne({ conversationId, knowledgeBaseId }) {
+        return conversations.delete(`${conversationId}:${knowledgeBaseId}`)
+      },
+      async getForConversation(id) {
+        return [...conversations.values()]
+          .filter((value) => value.conversationId === id)
+          .sort((a, b) => a.createdAt - b.createdAt)[0] ?? null
+      },
+      async listForConversation(id) {
+        return [...conversations.values()]
+          .filter((value) => value.conversationId === id)
+          .sort((a, b) => a.createdAt - b.createdAt)
+      },
       async listForBase(id) { return [...conversations.values()].filter((value) => value.knowledgeBaseId === id) },
+    },
+    projects: {
+      async attach(input) {
+        const key = `${input.projectId}:${input.knowledgeBaseId}`
+        const value = { ...input, createdAt: projectAttachments.get(key)?.createdAt ?? now++ }
+        projectAttachments.set(key, value)
+        return value
+      },
+      async detach({ projectId, knowledgeBaseId }) {
+        return projectAttachments.delete(`${projectId}:${knowledgeBaseId}`)
+      },
+      async detachAll(projectId) {
+        const keys = [...projectAttachments.entries()]
+          .filter(([, value]) => value.projectId === projectId)
+          .map(([key]) => key)
+        for (const key of keys) projectAttachments.delete(key)
+        return keys.length > 0
+      },
+      async listForProject(projectId) {
+        return [...projectAttachments.values()]
+          .filter((value) => value.projectId === projectId)
+          .sort((a, b) => a.createdAt - b.createdAt)
+      },
+      async listForBase(id) {
+        return [...projectAttachments.values()].filter((value) => value.knowledgeBaseId === id)
+      },
     },
   }
 }

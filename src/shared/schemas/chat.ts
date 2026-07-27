@@ -77,7 +77,10 @@ export const ActConversationRequest = z.object({
   conversationId: z.string().optional(),
   conversationClientId: z.string().min(1).optional(),
   projectId: z.string().optional(),
+  /** @deprecated Prefer `knowledgeBaseIds`; kept so older clients keep working. */
   knowledgeBaseId: z.string().min(1).optional(),
+  /** Bases named on this turn: attached to the conversation and used to narrow retrieval. */
+  knowledgeBaseIds: z.array(z.string().min(1)).max(8).optional(),
   askModelIds: z.array(z.string()).optional(),
   messages: z.array(z.unknown()).optional(),
   prompt: z.string().optional(),

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
+import { MAX_KNOWLEDGE_BASES_PER_TURN } from '@overlay/app-core'
 import type {
   KnowledgeBase,
   KnowledgeBaseConversation,
@@ -8,6 +9,7 @@ import type {
   KnowledgeBaseSource,
   KnowledgeSource,
   KnowledgeSourceKind,
+  ProjectKnowledgeBase,
 } from '@overlay/app-core'
 import type {
   AuthorizationCapability,
@@ -324,32 +326,104 @@ export class KnowledgeBaseService {
     })
   }
 
+  /**
+   * @deprecated A conversation may ground against several bases.
+   * Prefer {@link listConversationKnowledgeBases}.
+   */
   async getConversationKnowledgeBase(args: {
     conversationId: string
     userId: string
   }): Promise<KnowledgeBase | null> {
-    const attachment = await this.deps.repositories.conversations.getForConversation(args.conversationId)
-    if (!attachment) return null
-    const [base, conversationOwnerUserId] = await Promise.all([
-      this.requiredBase(attachment.knowledgeBaseId),
-      this.deps.authorization.getResourceOwner({
-        resourceId: args.conversationId,
-        resourceType: 'conversation',
-      }),
-    ])
+    const [first] = await this.listConversationKnowledgeBases(args)
+    return first ?? null
+  }
+
+  /**
+   * Bases attached to a conversation that this user may actually read. Bases the
+   * caller cannot see are omitted rather than raising, so a revoked share does
+   * not break an existing chat.
+   */
+  async listConversationKnowledgeBases(args: {
+    conversationId: string
+    userId: string
+  }): Promise<KnowledgeBase[]> {
+    const attachments = await this.deps.repositories.conversations
+      .listForConversation(args.conversationId)
+    if (attachments.length === 0) return []
+    const conversationOwnerUserId = await this.deps.authorization.getResourceOwner({
+      resourceId: args.conversationId,
+      resourceType: 'conversation',
+    })
     if (!conversationOwnerUserId) throw notFound('Conversation')
-    await Promise.all([
-      this.assertBaseAccess('view', 'knowledge.read', base, args.userId),
-      this.deps.authorization.assertResourceAccess({
-        action: 'view',
-        capability: 'conversations.read',
-        ownerUserId: conversationOwnerUserId,
-        resourceId: args.conversationId,
-        resourceType: 'conversation',
-        userId: args.userId,
-      }).catch(mapAuthorizationError),
-    ])
-    return base
+    await this.deps.authorization.assertResourceAccess({
+      action: 'view',
+      capability: 'conversations.read',
+      ownerUserId: conversationOwnerUserId,
+      resourceId: args.conversationId,
+      resourceType: 'conversation',
+      userId: args.userId,
+    }).catch(mapAuthorizationError)
+    return await this.readableBases(attachments.map(({ knowledgeBaseId }) => knowledgeBaseId), args.userId)
+  }
+
+  async listProjectKnowledgeBases(args: {
+    projectId: string
+    userId: string
+  }): Promise<KnowledgeBase[]> {
+    const attachments = await this.deps.repositories.projects.listForProject(args.projectId)
+    if (attachments.length === 0) return []
+    return await this.readableBases(attachments.map(({ knowledgeBaseId }) => knowledgeBaseId), args.userId)
+  }
+
+  /**
+   * Attaches a base to a project. Requires read access to the base, so a user
+   * cannot widen a project's corpus with knowledge they cannot see themselves.
+   * Project ownership is verified by the caller.
+   */
+  async attachProjectKnowledgeBase(args: {
+    knowledgeBaseId: string
+    projectId: string
+    userId: string
+  }): Promise<ProjectKnowledgeBase> {
+    const base = await this.requiredBase(args.knowledgeBaseId)
+    await this.assertBaseAccess('view', 'knowledge.read', base, args.userId)
+    const existing = await this.deps.repositories.projects.listForProject(args.projectId)
+    if (
+      existing.length >= MAX_KNOWLEDGE_BASES_PER_TURN
+      && !existing.some(({ knowledgeBaseId }) => knowledgeBaseId === base.id)
+    ) {
+      throw new KnowledgeBaseServiceError(
+        `A project can attach at most ${MAX_KNOWLEDGE_BASES_PER_TURN} knowledge bases`,
+        400,
+      )
+    }
+    return await this.deps.repositories.projects.attach({
+      knowledgeBaseId: base.id,
+      projectId: args.projectId,
+      attachedBy: args.userId,
+    })
+  }
+
+  async detachProjectKnowledgeBase(args: {
+    knowledgeBaseId: string
+    projectId: string
+  }): Promise<void> {
+    if (!await this.deps.repositories.projects.detach({
+      knowledgeBaseId: args.knowledgeBaseId,
+      projectId: args.projectId,
+    })) throw notFound('Project knowledge base')
+  }
+
+  /** Filters to bases that exist, are active, and are readable by this user. */
+  private async readableBases(ids: string[], userId: string): Promise<KnowledgeBase[]> {
+    const bases = await Promise.all(ids.map(async (knowledgeBaseId) => {
+      try {
+        return await this.getKnowledgeBase({ knowledgeBaseId, userId })
+      } catch (_error) {
+        return null
+      }
+    }))
+    return bases.filter((base): base is KnowledgeBase => Boolean(base))
   }
 
   async listUserConversationAttachments(args: {
@@ -372,32 +446,39 @@ export class KnowledgeBaseService {
       .sort((a, b) => b.createdAt - a.createdAt)
   }
 
+  /** Detaches one base when `knowledgeBaseId` is given, otherwise all of them. */
   async detachConversation(args: {
     conversationId: string
+    knowledgeBaseId?: string
     userId: string
   }): Promise<void> {
-    const attachment = await this.deps.repositories.conversations.getForConversation(args.conversationId)
-    if (!attachment) return
-    const [base, conversationOwnerUserId] = await Promise.all([
-      this.requiredBase(attachment.knowledgeBaseId),
-      this.deps.authorization.getResourceOwner({
-        resourceId: args.conversationId,
-        resourceType: 'conversation',
-      }),
-    ])
+    const attachments = await this.deps.repositories.conversations
+      .listForConversation(args.conversationId)
+    if (attachments.length === 0) return
+    const conversationOwnerUserId = await this.deps.authorization.getResourceOwner({
+      resourceId: args.conversationId,
+      resourceType: 'conversation',
+    })
     if (!conversationOwnerUserId) throw notFound('Conversation')
-    await Promise.all([
-      this.assertBaseAccess('view', 'knowledge.read', base, args.userId),
-      this.deps.authorization.assertResourceAccess({
-        action: 'edit',
-        capability: 'conversations.edit',
-        ownerUserId: conversationOwnerUserId,
-        resourceId: args.conversationId,
-        resourceType: 'conversation',
-        userId: args.userId,
-      }).catch(mapAuthorizationError),
-    ])
-    await this.deps.repositories.conversations.detach(args.conversationId)
+    await this.deps.authorization.assertResourceAccess({
+      action: 'edit',
+      capability: 'conversations.edit',
+      ownerUserId: conversationOwnerUserId,
+      resourceId: args.conversationId,
+      resourceType: 'conversation',
+      userId: args.userId,
+    }).catch(mapAuthorizationError)
+    if (!args.knowledgeBaseId) {
+      await this.deps.repositories.conversations.detach(args.conversationId)
+      return
+    }
+    if (!attachments.some(({ knowledgeBaseId }) => knowledgeBaseId === args.knowledgeBaseId)) {
+      throw notFound('Knowledge base')
+    }
+    await this.deps.repositories.conversations.detachOne({
+      conversationId: args.conversationId,
+      knowledgeBaseId: args.knowledgeBaseId,
+    })
   }
 
   async listShares(args: {

@@ -2,6 +2,8 @@ import type {
   CreateProjectRequest,
   CreateProjectResponse,
   DeleteProjectResponse,
+  KnowledgeBase,
+  ProjectKnowledgeBase,
   ProjectSummary,
   UpdateProjectRequest,
   UpdateProjectResponse,
@@ -57,5 +59,33 @@ export class ProjectsClient {
 
   parseDeleteResponse(response: Response) {
     return this.http.parseJson<DeleteProjectResponse>(response)
+  }
+
+  private knowledgeBasePath(query?: { projectId: string; knowledgeBaseId?: string }): string {
+    return this.http.appendQuery(
+      '/api/v1/projects/knowledge-bases',
+      query as QueryParams | undefined,
+    )
+  }
+
+  listKnowledgeBases(query: { projectId: string }, init?: RequestInit) {
+    return this.http.json<{ knowledgeBases: KnowledgeBase[] }>(
+      this.knowledgeBasePath(query),
+      init,
+    )
+  }
+
+  attachKnowledgeBase(body: { projectId: string; knowledgeBaseId: string }, init?: RequestInit) {
+    return this.http.json<{ success: boolean; attachment: ProjectKnowledgeBase }>(
+      '/api/v1/projects/knowledge-bases',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  detachKnowledgeBase(query: { projectId: string; knowledgeBaseId: string }, init?: RequestInit) {
+    return this.http.json<{ success: boolean }>(
+      this.knowledgeBasePath(query),
+      { ...init, method: 'DELETE' },
+    )
   }
 }

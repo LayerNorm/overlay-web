@@ -162,6 +162,13 @@
       "when": 1785092400000,
       "tag": "0022_project_knowledge_base",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1785178800000,
+      "tag": "0023_multi_knowledge_base_attachment",
+      "breakpoints": true
     }
   ]
 }

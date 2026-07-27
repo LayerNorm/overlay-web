@@ -3,6 +3,7 @@ import 'server-only'
 import { logger } from '@/server/observability/logger'
 import type { AutoRetrievalBundle, SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import type { HybridSearchChunk } from '@/shared/knowledge/hybrid-search'
+import type { KnowledgeBaseCitation } from '@/server/knowledge-bases/KnowledgeBaseRetrievalService'
 import { getOverlayServerContext } from '@/server/bootstrap'
 
 /** Retrieval-only context for the model. Durable facts the user wants remembered are written via save_memory (Ask or Act), not here. */
@@ -18,7 +19,7 @@ export async function buildAutoRetrievalBundle(args: {
   userMessage: string
   userId: string
   accessToken?: string
-  knowledgeBaseId?: string
+  knowledgeBaseIds?: string[]
   projectId?: string
   includeMemories?: boolean
 }): Promise<AutoRetrievalBundle> {
@@ -29,17 +30,15 @@ export async function buildAutoRetrievalBundle(args: {
 
   try {
     const query = q.slice(0, MAX_QUERY_CHARS)
-    if (args.knowledgeBaseId) {
+    if (args.knowledgeBaseIds?.length) {
       const result = await getOverlayServerContext().knowledgeBaseRetrievalService.search({
         accessToken: args.accessToken,
-        knowledgeBaseId: args.knowledgeBaseId,
+        knowledgeBaseIds: args.knowledgeBaseIds,
         limit: 10,
         query,
         userId: args.userId,
       })
-      return formatAutoRetrievalBundle(result.chunks, false, {
-        knowledgeBaseId: args.knowledgeBaseId,
-      })
+      return formatAutoRetrievalBundle(result.chunks, false, { citations: result.citations })
     }
     const result = await getOverlayServerContext().knowledgeSearchService.hybridSearch({
       userId: args.userId,
@@ -62,13 +61,22 @@ export async function buildAutoRetrievalBundle(args: {
 export function formatAutoRetrievalBundle(
   chunks: HybridSearchChunk[],
   includeMemories = true,
-  options?: { knowledgeBaseId?: string },
+  options?: { citations?: KnowledgeBaseCitation[] },
 ): AutoRetrievalBundle {
   if (chunks.length === 0) return { extension: '', citations: {} }
 
+  // Maps a canonical source back to the knowledge base it was attributed to, so
+  // a citation names the base the passage is trusted under.
+  const knowledgeBySourceId = new Map(
+    (options?.citations ?? []).map((citation) => [citation.sourceId, citation]),
+  )
+  const isKnowledgeScoped = knowledgeBySourceId.size > 0
+  const baseTitles = [...new Set((options?.citations ?? []).map(({ knowledgeBaseTitle }) => knowledgeBaseTitle))]
   const citations: SourceCitationMap = {}
-  const sourceLabel = options?.knowledgeBaseId
-    ? 'from the selected knowledge base'
+  const sourceLabel = isKnowledgeScoped
+    ? baseTitles.length === 1
+      ? `from the knowledge base "${baseTitles[0]}"`
+      : `from the selected knowledge bases: ${baseTitles.map((title) => `"${title}"`).join(', ')}`
     : includeMemories
       ? "from the user's indexed files and saved memories"
       : "from the user's indexed files"
@@ -84,16 +92,26 @@ export function formatAutoRetrievalBundle(
 
   let used = 0
   for (const chunk of chunks) {
+    const knowledge = chunk.knowledgeSourceId
+      ? knowledgeBySourceId.get(chunk.knowledgeSourceId)
+      : undefined
     const kind = chunk.sourceKind === 'file' ? 'file' : 'memory'
-    const title = (chunk.title && chunk.title.trim()) || (kind === 'file' ? 'Notebook file' : 'Memory')
+    const title = (chunk.title && chunk.title.trim())
+      || knowledge?.title
+      || (kind === 'file' ? 'Notebook file' : 'Memory')
     const citationNumber = Object.keys(citations).length + 1
-    const block = `[${citationNumber}] (${kind}) ${title}\n${chunk.text}`
+    // When several bases are in scope, name the base so the model and the reader
+    // can tell which corpus a claim is grounded in.
+    const label = knowledge && baseTitles.length > 1
+      ? `${knowledge.knowledgeBaseTitle} › ${title}`
+      : title
+    const block = `[${citationNumber}] (${knowledge ? 'knowledge' : kind}) ${label}\n${chunk.text}`
     if (used + block.length > BLOCK_CHAR_BUDGET) break
-    citations[String(citationNumber)] = options?.knowledgeBaseId && chunk.knowledgeSourceId
+    citations[String(citationNumber)] = knowledge
       ? {
           kind: 'knowledge',
-          knowledgeBaseId: options.knowledgeBaseId,
-          sourceId: chunk.knowledgeSourceId,
+          knowledgeBaseId: knowledge.knowledgeBaseId,
+          sourceId: knowledge.sourceId,
         }
       : { kind: chunk.sourceKind, sourceId: chunk.sourceId }
     lines.push(block, '')

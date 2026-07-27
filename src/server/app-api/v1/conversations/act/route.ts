@@ -127,6 +127,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       conversationClientId,
       projectId,
       knowledgeBaseId,
+      knowledgeBaseIds,
       askModelIds,
       turnId,
       modelId,
@@ -226,12 +227,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       })
       if (_ttftDebug) _tEnsureConversationMs = performance.now() - ensureStartedAt
     }
-    if (cid && knowledgeBaseId) {
-      await overlayContext.knowledgeBaseService.attachConversation({
-        conversationId: cid,
-        knowledgeBaseId,
-        userId: conversationUserId,
-      })
+    // Bases named on this turn become part of the conversation's grounding and
+    // also narrow this turn's retrieval. Access is verified inside the service.
+    const turnKnowledgeBaseIds = [
+      ...new Set([...(knowledgeBaseIds ?? []), ...(knowledgeBaseId ? [knowledgeBaseId] : [])]),
+    ]
+    if (cid && turnKnowledgeBaseIds.length > 0) {
+      for (const id of turnKnowledgeBaseIds) {
+        await overlayContext.knowledgeBaseService.attachConversation({
+          conversationId: cid,
+          knowledgeBaseId: id,
+          userId: conversationUserId,
+        })
+      }
     }
     const tid = resolveActTurnId(turnId)
     actWebhookConversationId = cid
@@ -276,6 +284,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       latestUserText,
       memoryEnabled,
       mentions: rawMentions,
+      mentionedKnowledgeBaseIds: turnKnowledgeBaseIds,
       serverSecret,
       userId: conversationUserId,
       externalContextEnabled: !isPostgresAppData,

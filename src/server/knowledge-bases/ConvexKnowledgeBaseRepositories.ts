@@ -7,6 +7,7 @@ import type {
   KnowledgeBaseSource,
   KnowledgeSource,
   KnowledgeSourceVersion,
+  ProjectKnowledgeBase,
 } from '@overlay/app-core'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -131,13 +132,52 @@ export function createConvexKnowledgeBaseRepositories(): KnowledgeBaseRepositori
       async detach(conversationId) {
         return (await mutation<{ removed: boolean }>('detachConversationByServer', { conversationId }))?.removed === true
       },
+      async detachOne({ conversationId, knowledgeBaseId }) {
+        const result = await mutation<{ removed: boolean }>('detachConversationBaseByServer', {
+          conversationId,
+          knowledgeBaseId,
+        })
+        return result?.removed === true
+      },
       async getForConversation(conversationId) {
         const row = await query<KnowledgeBaseConversation | null>('getConversationBaseByServer', { conversationId })
         return row ? conversation(row) : null
       },
+      async listForConversation(conversationId) {
+        const rows = await query<KnowledgeBaseConversation[]>('listConversationBasesByServer', { conversationId }) ?? []
+        return rows.map(conversation)
+      },
       async listForBase(knowledgeBaseId) {
         const rows = await query<KnowledgeBaseConversation[]>('listConversationsForBaseByServer', { knowledgeBaseId }) ?? []
         return rows.map(conversation)
+      },
+    },
+    projects: {
+      async attach(input) {
+        return projectAttachment(await requiredMutation<ProjectKnowledgeBase>('attachProjectBaseByServer', {
+          knowledgeBaseId: input.knowledgeBaseId,
+          projectId: input.projectId,
+          attachedBy: input.attachedBy,
+        }))
+      },
+      async detach({ projectId, knowledgeBaseId }) {
+        const result = await mutation<{ removed: boolean }>('detachProjectBaseByServer', {
+          projectId,
+          knowledgeBaseId,
+        })
+        return result?.removed === true
+      },
+      async detachAll(projectId) {
+        const result = await mutation<{ removed: boolean }>('detachAllProjectBasesByServer', { projectId })
+        return result?.removed === true
+      },
+      async listForProject(projectId) {
+        const rows = await query<ProjectKnowledgeBase[]>('listProjectBasesByServer', { projectId }) ?? []
+        return rows.map(projectAttachment)
+      },
+      async listForBase(knowledgeBaseId) {
+        const rows = await query<ProjectKnowledgeBase[]>('listProjectsForBaseByServer', { knowledgeBaseId }) ?? []
+        return rows.map(projectAttachment)
       },
     },
   }
@@ -179,6 +219,7 @@ function version(row: ConvexVersion): KnowledgeSourceVersion {
 }
 function membership(row: KnowledgeBaseSource): KnowledgeBaseSource { return clean(row) }
 function conversation(row: KnowledgeBaseConversation): KnowledgeBaseConversation { return clean(row) }
+function projectAttachment(row: ProjectKnowledgeBase): ProjectKnowledgeBase { return clean(row) }
 function clean<T>(row: T): T {
   const { _id: _, _creationTime: __, ...value } = row as T & { _id?: string; _creationTime?: number }
   return value as T

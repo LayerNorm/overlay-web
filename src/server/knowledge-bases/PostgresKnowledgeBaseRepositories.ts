@@ -10,6 +10,7 @@ import type {
   KnowledgeBaseSource,
   KnowledgeSource,
   KnowledgeSourceVersion,
+  ProjectKnowledgeBase,
   UpdateKnowledgeBaseInput,
   UpdateKnowledgeSourceInput,
 } from '@overlay/app-core'
@@ -32,6 +33,7 @@ type VersionRow = Omit<KnowledgeSourceVersion, 'createdAt' | 'updatedAt'> & {
 }
 type MembershipRow = Omit<KnowledgeBaseSource, 'createdAt'> & { createdAt: DateValue }
 type ConversationRow = Omit<KnowledgeBaseConversation, 'createdAt'> & { createdAt: DateValue }
+type ProjectAttachmentRow = Omit<ProjectKnowledgeBase, 'createdAt'> & { createdAt: DateValue }
 
 export function createPostgresKnowledgeBaseRepositories(
   db: OverlayPostgresDb,
@@ -247,11 +249,9 @@ export function createPostgresKnowledgeBaseRepositories(
         const result = await db.execute<ConversationRow>(sql`
           INSERT INTO knowledge_base_conversations (knowledge_base_id, conversation_id, created_by)
           VALUES (${input.knowledgeBaseId}, ${input.conversationId}, ${input.createdBy ?? null})
-          ON CONFLICT (conversation_id) DO UPDATE SET
-            knowledge_base_id = EXCLUDED.knowledge_base_id,
+          ON CONFLICT (conversation_id, knowledge_base_id) DO UPDATE SET
             created_by = EXCLUDED.created_by
-          RETURNING knowledge_base_id AS "knowledgeBaseId", conversation_id AS "conversationId",
-                    created_by AS "createdBy", created_at AS "createdAt"
+          RETURNING ${conversationColumns}
         `)
         return conversationFromRow(required(result.rows[0], 'attach knowledge conversation'))
       },
@@ -259,27 +259,87 @@ export function createPostgresKnowledgeBaseRepositories(
         const result = await db.execute(sql`
           DELETE FROM knowledge_base_conversations WHERE conversation_id = ${conversationId}
         `)
+        return (result.rowCount ?? 0) > 0
+      },
+      async detachOne(input) {
+        const result = await db.execute(sql`
+          DELETE FROM knowledge_base_conversations
+          WHERE conversation_id = ${input.conversationId}
+            AND knowledge_base_id = ${input.knowledgeBaseId}
+        `)
         return result.rowCount === 1
       },
       async getForConversation(conversationId: string) {
         const result = await db.execute<ConversationRow>(sql`
-          SELECT knowledge_base_id AS "knowledgeBaseId", conversation_id AS "conversationId",
-                 created_by AS "createdBy", created_at AS "createdAt"
+          SELECT ${conversationColumns}
           FROM knowledge_base_conversations
           WHERE conversation_id = ${conversationId}
+          ORDER BY created_at, knowledge_base_id
           LIMIT 1
         `)
         return result.rows[0] ? conversationFromRow(result.rows[0]) : null
       },
+      async listForConversation(conversationId: string) {
+        const result = await db.execute<ConversationRow>(sql`
+          SELECT ${conversationColumns}
+          FROM knowledge_base_conversations
+          WHERE conversation_id = ${conversationId}
+          ORDER BY created_at, knowledge_base_id
+        `)
+        return result.rows.map(conversationFromRow)
+      },
       async listForBase(knowledgeBaseId: string) {
         const result = await db.execute<ConversationRow>(sql`
-          SELECT knowledge_base_id AS "knowledgeBaseId", conversation_id AS "conversationId",
-                 created_by AS "createdBy", created_at AS "createdAt"
+          SELECT ${conversationColumns}
           FROM knowledge_base_conversations
           WHERE knowledge_base_id = ${knowledgeBaseId}
           ORDER BY created_at, conversation_id
         `)
         return result.rows.map(conversationFromRow)
+      },
+    },
+    projects: {
+      async attach(input) {
+        const result = await db.execute<ProjectAttachmentRow>(sql`
+          INSERT INTO project_knowledge_bases (project_id, knowledge_base_id, attached_by)
+          VALUES (${input.projectId}, ${input.knowledgeBaseId}, ${input.attachedBy ?? null})
+          ON CONFLICT (project_id, knowledge_base_id) DO UPDATE SET
+            attached_by = EXCLUDED.attached_by
+          RETURNING ${projectAttachmentColumns}
+        `)
+        return projectAttachmentFromRow(required(result.rows[0], 'attach project knowledge base'))
+      },
+      async detach(input) {
+        const result = await db.execute(sql`
+          DELETE FROM project_knowledge_bases
+          WHERE project_id = ${input.projectId}
+            AND knowledge_base_id = ${input.knowledgeBaseId}
+        `)
+        return result.rowCount === 1
+      },
+      async detachAll(projectId: string) {
+        const result = await db.execute(sql`
+          DELETE FROM project_knowledge_bases WHERE project_id = ${projectId}
+        `)
+        return (result.rowCount ?? 0) > 0
+      },
+      async listForProject(projectId: string) {
+        const result = await db.execute<ProjectAttachmentRow>(sql`
+          SELECT ${projectAttachmentColumns}
+          FROM project_knowledge_bases
+          WHERE project_id = ${projectId}
+          ORDER BY created_at, knowledge_base_id
+        `)
+        return result.rows.map(projectAttachmentFromRow)
+      },
+      async listForBase(knowledgeBaseId: string) {
+        const result = await db.execute<ProjectAttachmentRow>(sql`
+          SELECT ${projectAttachmentColumns}
+          FROM project_knowledge_bases
+          WHERE knowledge_base_id = ${knowledgeBaseId}
+          ORDER BY created_at, project_id
+        `)
+        return result.rows.map(projectAttachmentFromRow)
       },
     },
   }
@@ -300,6 +360,14 @@ const versionColumns = sql`
   id, source_id AS "sourceId", version, content_hash AS "contentHash", status, metadata,
   created_at AS "createdAt", updated_at AS "updatedAt"
 `
+const conversationColumns = sql`
+  knowledge_base_id AS "knowledgeBaseId", conversation_id AS "conversationId",
+  created_by AS "createdBy", created_at AS "createdAt"
+`
+const projectAttachmentColumns = sql`
+  knowledge_base_id AS "knowledgeBaseId", project_id AS "projectId",
+  attached_by AS "attachedBy", created_at AS "createdAt"
+`
 
 function baseFromRow(row: BaseRow): KnowledgeBase {
   return cleanOptional({ ...row, createdAt: time(row.createdAt), updatedAt: time(row.updatedAt), archivedAt: optionalTime(row.archivedAt) })
@@ -314,6 +382,9 @@ function membershipFromRow(row: MembershipRow): KnowledgeBaseSource {
   return cleanOptional({ ...row, createdAt: time(row.createdAt) })
 }
 function conversationFromRow(row: ConversationRow): KnowledgeBaseConversation {
+  return cleanOptional({ ...row, createdAt: time(row.createdAt) })
+}
+function projectAttachmentFromRow(row: ProjectAttachmentRow): ProjectKnowledgeBase {
   return cleanOptional({ ...row, createdAt: time(row.createdAt) })
 }
 function time(value: DateValue): number { return new Date(value).getTime() }

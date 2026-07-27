@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { sql } from 'drizzle-orm'
 import { createOverlayPostgresDb, createOverlayPostgresPool } from '@/server/database/postgres/client'
-import { conversations, users } from '@/server/database/postgres/schema'
+import { conversations, projects, users } from '@/server/database/postgres/schema'
 import { createPostgresKnowledgeBaseRepositories } from './PostgresKnowledgeBaseRepositories'
 import { runKnowledgeBaseRepositoryContract } from './knowledge-base-repository-contract'
 import { PostgresUserRepository } from '@/server/users'
@@ -24,6 +24,7 @@ test('real Postgres knowledge-base repository contract', {
   const scope = `kb_${randomUUID().replaceAll('-', '')}`
   const ownerUserId = `${scope}_user`
   const conversationId = `${scope}_conversation`
+  const projectId = `${scope}_project`
 
   try {
     await db.insert(users).values({
@@ -39,11 +40,17 @@ test('real Postgres knowledge-base repository contract', {
       askModelIds: [],
       actModelId: 'openrouter/free',
     })
+    await db.insert(projects).values({
+      id: projectId,
+      userId: ownerUserId,
+      name: 'Knowledge-base contract project',
+    })
     await runKnowledgeBaseRepositoryContract(t, {
       repositories: createPostgresKnowledgeBaseRepositories(db),
       scope,
       ownerUserId,
       conversationId,
+      projectId,
     })
     const directory = await new PostgresUserRepository(db).listDirectory()
     assert.ok(directory.some(({ id, email }) => id === ownerUserId && email === `${ownerUserId}@example.com`))

@@ -30,4 +30,16 @@ export const DeleteProjectRequest = z.object({
   projectId: z.string().min(1).optional(),
 })
 
+export const ProjectKnowledgeBaseListQuery = z.object({
+  projectId: IdQuery,
+})
+
+export const AttachProjectKnowledgeBaseRequest = z.object({
+  ...AuthFields,
+  projectId: z.string().min(1),
+  knowledgeBaseId: z.string().min(1),
+})
+
+export const DetachProjectKnowledgeBaseRequest = AttachProjectKnowledgeBaseRequest
+
 export const ProjectResponse = UnknownResponse

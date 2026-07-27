@@ -201,9 +201,10 @@ function ProjectHubBody({
   const [instructionsSavedAt, setInstructionsSavedAt] = useState<number | null>(null)
   const instructionsSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
-  const [knowledgeBaseId, setKnowledgeBaseId] = useState<string | null>(null)
+  const [attachedKnowledgeBaseIds, setAttachedKnowledgeBaseIds] = useState<string[]>([])
   const [knowledgeBaseSettingsLoaded, setKnowledgeBaseSettingsLoaded] = useState(false)
   const [savingKnowledgeBase, setSavingKnowledgeBase] = useState(false)
+  const [knowledgeBaseError, setKnowledgeBaseError] = useState<string | null>(null)
   const [archivedAt, setArchivedAt] = useState<number | null>(null)
   const [changingLifecycle, setChangingLifecycle] = useState(false)
 
@@ -215,16 +216,22 @@ function ProjectHubBody({
     void Promise.allSettled([
       overlayAppClient.projects.get<ProjectSummary | null>({ projectId }),
       overlayAppClient.knowledgeBases.list(),
-    ]).then(([projectResult, knowledgeResult]) => {
+      overlayAppClient.projects.listKnowledgeBases({ projectId }),
+    ]).then(([projectResult, knowledgeResult, attachedResult]) => {
       if (cancelled) return
       if (projectResult.status === 'fulfilled') {
         const project = projectResult.value
         setInstructions(project?.instructions ?? '')
-        setKnowledgeBaseId(project?.knowledgeBaseId ?? null)
         setArchivedAt(project?.archivedAt ?? null)
       }
       if (knowledgeResult.status === 'fulfilled') {
         setKnowledgeBases(knowledgeResult.value.knowledgeBases)
+      }
+      if (attachedResult.status === 'fulfilled') {
+        setAttachedKnowledgeBaseIds(attachedResult.value.knowledgeBases.map(({ id }) => id))
+      } else if (projectResult.status === 'fulfilled' && projectResult.value?.knowledgeBaseId) {
+        // Projects created before multi-attach still carry a single column.
+        setAttachedKnowledgeBaseIds([projectResult.value.knowledgeBaseId])
       }
       setInstructionsLoaded(true)
       setKnowledgeBaseSettingsLoaded(true)
@@ -435,20 +442,34 @@ function ProjectHubBody({
     }, 700)
   }
 
-  async function updateProjectKnowledgeBase(nextKnowledgeBaseId: string | null) {
-    if (savingKnowledgeBase || nextKnowledgeBaseId === knowledgeBaseId) return
+  async function attachKnowledgeBase(knowledgeBaseId: string) {
+    if (savingKnowledgeBase || !knowledgeBaseId) return
+    if (attachedKnowledgeBaseIds.includes(knowledgeBaseId)) return
     setSavingKnowledgeBase(true)
+    setKnowledgeBaseError(null)
     try {
-      const response = await overlayAppClient.projects.updateResponse({
-        projectId,
-        knowledgeBaseId: nextKnowledgeBaseId,
-      })
-      if (!response.ok) return
-      const body = await response.json().catch(() => null) as {
-        project?: ProjectSummary
-      } | null
-      setKnowledgeBaseId(body?.project?.knowledgeBaseId ?? nextKnowledgeBaseId)
+      await overlayAppClient.projects.attachKnowledgeBase({ projectId, knowledgeBaseId })
+      setAttachedKnowledgeBaseIds((current) => (
+        current.includes(knowledgeBaseId) ? current : [...current, knowledgeBaseId]
+      ))
       window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
+    } catch (error) {
+      setKnowledgeBaseError(error instanceof Error ? error.message : 'Failed to attach knowledge base')
+    } finally {
+      setSavingKnowledgeBase(false)
+    }
+  }
+
+  async function detachKnowledgeBase(knowledgeBaseId: string) {
+    if (savingKnowledgeBase) return
+    setSavingKnowledgeBase(true)
+    setKnowledgeBaseError(null)
+    try {
+      await overlayAppClient.projects.detachKnowledgeBase({ projectId, knowledgeBaseId })
+      setAttachedKnowledgeBaseIds((current) => current.filter((id) => id !== knowledgeBaseId))
+      window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
+    } catch (error) {
+      setKnowledgeBaseError(error instanceof Error ? error.message : 'Failed to detach knowledge base')
     } finally {
       setSavingKnowledgeBase(false)
     }
@@ -494,20 +515,32 @@ function ProjectHubBody({
     router.replace(`${pathname}?${params.toString()}`)
   }, [pathname, router, searchParams])
 
-  const activeKnowledgeBase = knowledgeBases.find(({ id }) => id === knowledgeBaseId) ?? null
+  const attachedKnowledgeBases = useMemo(
+    () => attachedKnowledgeBaseIds
+      .map((id) => knowledgeBases.find((base) => base.id === id))
+      .filter((base): base is KnowledgeBase => Boolean(base)),
+    [attachedKnowledgeBaseIds, knowledgeBases],
+  )
+  const attachableKnowledgeBases = useMemo(
+    () => knowledgeBases.filter(({ id }) => !attachedKnowledgeBaseIds.includes(id)),
+    [attachedKnowledgeBaseIds, knowledgeBases],
+  )
+  const knowledgeScopeLabel = attachedKnowledgeBases.length === 1
+    ? attachedKnowledgeBases[0]!.title
+    : `${attachedKnowledgeBases.length} knowledge bases`
   const modeControl = (
     <ProjectHubModeControl activeTab={activeTab} onTabChange={handleTabChange} />
   )
   const contextControls = (
     <div className="ml-auto flex min-w-0 items-center gap-2">
-      {activeKnowledgeBase ? (
+      {attachedKnowledgeBases.length > 0 ? (
         <span
           className="hidden max-w-52 items-center gap-1.5 truncate text-xs text-[var(--muted)] sm:inline-flex"
-          title={`Trusted knowledge: ${activeKnowledgeBase.title}`}
+          title={`Trusted knowledge: ${attachedKnowledgeBases.map(({ title }) => title).join(', ')}`}
           data-testid="project-active-knowledge-base"
         >
           <BookOpen size={13} className="shrink-0" />
-          <span className="truncate">{activeKnowledgeBase.title}</span>
+          <span className="truncate">{knowledgeScopeLabel}</span>
         </span>
       ) : null}
       {modeControl}
@@ -574,20 +607,53 @@ function ProjectHubBody({
       <div className="mb-4">
         <h2 className="text-sm font-medium text-[var(--foreground)]">Trusted knowledge</h2>
         <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-          Attach one reusable knowledge base. Its enabled sources are automatically available to every chat in this project.
+          Attach reusable knowledge bases. Their enabled sources are available to every chat in this
+          project, and answers cite them. Project working files stay separate as working material.
         </p>
       </div>
+      {attachedKnowledgeBases.length > 0 ? (
+        <ul className="mb-3 space-y-1.5" data-testid="project-knowledge-base-list">
+          {attachedKnowledgeBases.map((base) => (
+            <li
+              key={base.id}
+              className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-2"
+            >
+              <BookOpen size={13} className="shrink-0 text-[var(--muted)]" />
+              <span className="min-w-0 flex-1 truncate text-xs text-[var(--foreground)]">{base.title}</span>
+              <button
+                type="button"
+                disabled={savingKnowledgeBase}
+                onClick={() => void detachKnowledgeBase(base.id)}
+                className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-50"
+                aria-label={`Detach ${base.title}`}
+              >
+                Detach
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <label className="block text-xs font-medium text-[var(--foreground)]">
-        Knowledge base
+        Attach a knowledge base
         <select
-          value={knowledgeBaseId ?? ''}
-          disabled={!knowledgeBaseSettingsLoaded || savingKnowledgeBase}
-          onChange={(event) => void updateProjectKnowledgeBase(event.target.value || null)}
+          value=""
+          disabled={
+            !knowledgeBaseSettingsLoaded
+            || savingKnowledgeBase
+            || attachableKnowledgeBases.length === 0
+          }
+          onChange={(event) => {
+            const next = event.target.value
+            event.currentTarget.value = ''
+            if (next) void attachKnowledgeBase(next)
+          }}
           className="mt-1.5 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] disabled:opacity-60"
           data-testid="project-knowledge-base-select"
         >
-          <option value="">None</option>
-          {knowledgeBases.map((base) => (
+          <option value="">
+            {attachableKnowledgeBases.length === 0 ? 'No more knowledge bases available' : 'Select…'}
+          </option>
+          {attachableKnowledgeBases.map((base) => (
             <option key={base.id} value={base.id}>{base.title}</option>
           ))}
         </select>
@@ -595,9 +661,11 @@ function ProjectHubBody({
       <p className="mt-2 min-h-4 text-[11px] text-[var(--muted-light)]">
         {savingKnowledgeBase
           ? 'Saving…'
-          : activeKnowledgeBase
-            ? `${activeKnowledgeBase.title} is active in Project Chat.`
-            : 'Project working files remain available separately.'}
+          : knowledgeBaseError
+            ? knowledgeBaseError
+            : attachedKnowledgeBases.length > 0
+              ? `${attachedKnowledgeBases.length} attached and active in Project Chat.`
+              : 'Project working files remain available separately.'}
       </p>
     </div>
   )
@@ -658,7 +726,6 @@ function ProjectHubBody({
         hideSidebar
         projectName={projectName}
         contextNavigation={contextControls}
-        knowledgeBaseId={knowledgeBaseId ?? undefined}
         belowEmptyComposer={tabContent}
       />
     )
@@ -920,7 +987,6 @@ export default function ProjectsView({
         firstName={firstName}
         hideSidebar
         projectName={projectName}
-        knowledgeBaseId={initialProject?.knowledgeBaseId ?? undefined}
         contextNavigation={projectId ? (
           <ProjectHubModeControl activeTab="chat" onTabChange={navigateProjectMode} />
         ) : undefined}

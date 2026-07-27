@@ -198,6 +198,17 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   {
+    // Attaching trusted knowledge changes what a project's chats may cite, so it
+    // is gated as a project edit. Read access to each base is checked separately
+    // by KnowledgeBaseService.
+    path: '/api/v1/projects/knowledge-bases',
+    methods: {
+      GET: resource('project', 'view', {}, 'projects.read', 'knowledge.read'),
+      POST: resource('project', 'edit', {}, 'projects.edit', 'knowledge.read'),
+      DELETE: resource('project', 'edit', {}, 'projects.edit'),
+    },
+  },
+  {
     path: '/api/v1/notes',
     methods: {
       GET: resource('note', 'view', { optional: true }, 'notes.read'),
