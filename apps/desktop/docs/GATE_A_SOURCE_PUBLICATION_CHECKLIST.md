@@ -51,6 +51,10 @@ Filled commit identifiers below do **not** authorize public binary release
       sign-off still required from security owner).*
 - [ ] Canonical server hostile-client tests passed for every enabled provider
       and supported Convex/Postgres configuration.
+      *(A fail-closed matrix runner, unit tests, example configuration, and
+      private-evidence procedure now exist in `LayerNorm/overlay-web`;
+      dedicated-deployment provider execution and independent review remain
+      open.)*
 - [ ] Private vulnerability intake was tested end to end
       *(Private Vulnerability Reporting is **enabled** on
       `LayerNorm/overlay-desktop` and `LayerNorm/overlay-web`; synthetic intake
@@ -69,6 +73,25 @@ Filled commit identifiers below do **not** authorize public binary release
 | CODEOWNERS + required `verify` | Present (prior ops) |
 | Every admin/maintainer personally has 2FA | **Owner confirm** |
 | Apple / CSC secrets current in `mac-release` | Owner confirmed 2026-07-25 |
+
+### Native dependency remediation (agent-verified 2026-07-26)
+
+The distributed Parakeet helper was rebuilt on Apple Silicon after updating the
+three Swift packages covered by the open runtime advisories:
+
+| Package | Previous | Rebuilt version |
+| --- | ---: | ---: |
+| `swift-nio` | 2.90.1 | 2.101.3 |
+| `swift-nio-extras` | 1.31.0 | 1.34.3 |
+| `swift-nio-http2` | 1.39.0 | 1.45.0 |
+
+The rebuilt arm64 Mach-O is pinned in `native-artifacts.json` as
+`0243a849fe2db64fd288a446534227c690c29f9b699de29261b0964bb09ec6ac`;
+the corresponding reviewed source-tree digest is
+`ba51414fcbd4635e2534a0400b2f4cc59c1b3caaae609d41d870b57699f953e7`.
+`npm run check:native-artifacts` passes and confirms that no private workstation
+path is embedded. Signed packaging verification must still be repeated during
+Gate B for the final immutable candidate.
 
 ### Ops — kill-switch drill (2026-07-25, Vercel production `overlay-landing`)
 

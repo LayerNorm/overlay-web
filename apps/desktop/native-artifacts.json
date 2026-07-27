@@ -13,10 +13,10 @@
     },
     {
       "path": "parakeet-bundle/parakeet-cli",
-      "sha256": "b251e660abd27609992c0561d7cdd612d11e88f95478e8e9a0a6f12849cccb02",
+      "sha256": "0243a849fe2db64fd288a446534227c690c29f9b699de29261b0964bb09ec6ac",
       "architecture": "arm64",
       "source": "ParakeetServer",
-      "sourceRevision": "3c575bef7354c1c654959d4976c9bf78b2962e4e1913bcdf6e7c5c2309c0c580",
+      "sourceRevision": "ba51414fcbd4635e2534a0400b2f4cc59c1b3caaae609d41d870b57699f953e7",
       "upstreamRevision": "2d18c856aad09b509d07322ae2e811f06c98a2a9",
       "sourceLicense": "Apache-2.0",
       "licenseFile": "third_party/licenses/FluidAudio-LICENSE",

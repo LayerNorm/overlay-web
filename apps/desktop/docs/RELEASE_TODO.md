@@ -72,15 +72,20 @@ Gate A checklist is still **PENDING** (commit fields + partial evidence filled;
 all five signatures blank).
 
 - [ ] Independent Electron/agent (+ backend hostile-client) review
+- [x] Add fail-closed hostile-client matrix runner, unit tests, example config,
+      and private evidence procedure to `LayerNorm/overlay-web`
+- [ ] Execute that matrix on dedicated Convex/Postgres deployments for every
+      enabled provider and reconcile provider calls against Overlay accounting
 - [ ] Explicit accept/reject of unsandboxed **Full access** exception
 - [ ] Legal: AGPL/Apache, notices, trademarks, fonts, icons, models, native helpers
 - [x] Fill [GATE_A_SOURCE_PUBLICATION_CHECKLIST.md](./GATE_A_SOURCE_PUBLICATION_CHECKLIST.md) commit fields + recorded evidence
 - [ ] Sign Gate A checklist (five roles)
 - [ ] Keep detailed security reports private (do not publish remediation reports)
 
-### Optional follow-ups (not Gate A blockers)
+### Dependency follow-ups
 
-- [ ] Rebuild Parakeet after Swift NIO bumps + update `native-artifacts.json` (**Agent + You** for Apple build machine)
+- [x] Rebuild Parakeet after patched Swift NIO bumps and update
+      `native-artifacts.json` (**Agent**, completed 2026-07-26)
 - [ ] Later majors: `ai@7` + `@openrouter/ai-sdk-provider@3`; Vite 8 + `@vitejs/plugin-react@6` (**Agent** when scheduled)
 
 ---
