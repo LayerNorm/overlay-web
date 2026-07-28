@@ -12,6 +12,32 @@ import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { isPaidPlan } from '@/server/billing/billing-runtime'
 import { logger } from '@/server/observability/logger'
 
+type RuntimeConfigLoader = typeof getOverlayRuntimeConfig
+
+export async function resolveRuntimeChatAllowlist(
+  loadRuntimeConfig: RuntimeConfigLoader = getOverlayRuntimeConfig,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Promise<Set<string> | null> {
+  try {
+    const runtimeConfig = await loadRuntimeConfig()
+    return runtimeConfig.llm.modelAllowlist.length
+      ? new Set(runtimeConfig.llm.modelAllowlist)
+      : null
+  } catch (error) {
+    // Chat authorization should not be coupled to validation of unrelated
+    // runtime sections such as Stripe or storage. Preserve any explicit model
+    // restriction directly from the environment and continue fail-soft.
+    logger.warn('[model-policy] Runtime config unavailable; using direct model allowlist fallback', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    const modelIds = (env.LLM_MODEL_ALLOWLIST ?? '')
+      .split(',')
+      .map((modelId) => modelId.trim())
+      .filter(Boolean)
+    return modelIds.length ? new Set(modelIds) : null
+  }
+}
+
 /**
  * Resolve which model IDs the user may use.
  *
@@ -35,11 +61,8 @@ export async function resolveAuthorizedModelIds(args: {
     })
   }
 
-  const runtimeConfig = await getOverlayRuntimeConfig()
   const context = { entitlements: args.entitlements, user: null }
-  const runtimeChatAllowlist = runtimeConfig.llm.modelAllowlist.length
-    ? new Set(runtimeConfig.llm.modelAllowlist)
-    : null
+  const runtimeChatAllowlist = await resolveRuntimeChatAllowlist()
 
   const policyChatModels =
     overlayAppConfig.modelPolicy?.filterChatModels?.(AVAILABLE_MODELS, context) ??
