@@ -23,6 +23,10 @@ import {
 } from '@/server/integrations'
 import { createMcpLazyMetaTools } from '@/server/tools/mcp-tools'
 import {
+  applyProjectToolPolicy,
+  type ProjectSettings,
+} from '@/shared/projects/project-settings'
+import {
   allowedOverlayToolIdsForTurn,
 } from '@/server/tools/tools/exposure-policy'
 import { createFreeTierGatedStubTools } from '@/server/tools/tools/free-tier-gated-stub-tools'
@@ -89,6 +93,8 @@ export async function prepareActTooling(params: {
   conversationProjectId?: string
   /** Knowledge bases in scope this turn; steers tools toward the scoped variants. */
   activeKnowledgeBaseIds?: readonly string[]
+  /** Configuration of the conversation's project, when it has one. */
+  projectSettings?: ProjectSettings
   effectiveModelId: string
   forwardCookie?: string | null
   isMultiModelFollowUpSlot: boolean
@@ -105,18 +111,26 @@ export async function prepareActTooling(params: {
 }): Promise<ActTooling> {
   const capabilities = await getActCapabilities()
   const memoryEnabled = params.memoryEnabled !== false && capabilities.memory && capabilities.vectorSearch
-  const allowedOverlayToolIds = applyRuntimeToolGates(
-    withRequestedOverlayToolIds(
-      allowedOverlayToolIdsForTurn({
-        latestUserText: params.latestUserText ?? '',
-        automationMode: params.automationMode === true || params.mode === 'automate',
-        automationExecution: params.automationExecution === true,
-        mediaToolIntent: params.mediaToolIntent,
-      }),
-      params.requestedToolIds ?? [],
-      memoryEnabled,
+  // Project policy is applied last and only ever narrows, so a project can never
+  // reintroduce a tool the account or deployment already withheld. This gate lives
+  // at the tool layer deliberately: Phase 4 scoped only the retrieval path and left
+  // the agent's tools reachable, which is how a knowledge base answered from
+  // unrelated files.
+  const allowedOverlayToolIds = applyProjectToolPolicy(
+    applyRuntimeToolGates(
+      withRequestedOverlayToolIds(
+        allowedOverlayToolIdsForTurn({
+          latestUserText: params.latestUserText ?? '',
+          automationMode: params.automationMode === true || params.mode === 'automate',
+          automationExecution: params.automationExecution === true,
+          mediaToolIntent: params.mediaToolIntent,
+        }),
+        params.requestedToolIds ?? [],
+        memoryEnabled,
+      ),
+      capabilities,
     ),
-    capabilities,
+    params.projectSettings,
   )
 
   const mcpCatalogStartedAt = performance.now()

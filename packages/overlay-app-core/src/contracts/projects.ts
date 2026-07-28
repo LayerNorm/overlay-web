@@ -10,6 +10,8 @@ export interface ProjectSummary {
   instructions?: string
   knowledgeBaseId?: string | null
   parentId?: string | null
+  /** Per-project configuration; see @/shared/projects/project-settings. */
+  settings?: Record<string, unknown>
   archivedAt?: number
   deletedAt?: number
   updatedAt: number

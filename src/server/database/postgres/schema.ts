@@ -556,6 +556,7 @@ export const projects = pgTable('projects', {
   knowledgeBaseId: text('knowledge_base_id')
     .references((): AnyPgColumn => knowledgeBases.id, { onDelete: 'set null' }),
   parentId: text('parent_id').references((): AnyPgColumn => projects.id, { onDelete: 'set null' }),
+  settings: jsonb('settings').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   archivedAt: timestamp('archived_at', { withTimezone: true }),

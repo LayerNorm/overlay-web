@@ -72,6 +72,7 @@ export class PostgresProjectRepository implements ProjectRepository {
     knowledgeBaseId?: string | null
     name: string
     parentId?: string | null
+    settings?: Record<string, unknown>
     userId: string
   }): Promise<ProjectRecord> {
     return await this.db.transaction(async (tx) => {
@@ -86,6 +87,7 @@ export class PostgresProjectRepository implements ProjectRepository {
         instructions: normalizeOptional(args.instructions),
         knowledgeBaseId: normalizeOptional(args.knowledgeBaseId),
         parentId: normalizeOptional(args.parentId),
+        settings: args.settings ?? {},
         createdAt: now,
         updatedAt: now,
       }
@@ -143,6 +145,7 @@ export class PostgresProjectRepository implements ProjectRepository {
     name?: string
     parentId?: string | null
     projectId: string
+    settings?: Record<string, unknown>
     userId: string
   }): Promise<ProjectRecord | null> {
     return await this.db.transaction(async (tx) => {
@@ -176,6 +179,7 @@ export class PostgresProjectRepository implements ProjectRepository {
             : {}),
           ...(args.name !== undefined ? { name: args.name } : {}),
           ...(args.parentId !== undefined ? { parentId: normalizeOptional(args.parentId) } : {}),
+          ...(args.settings !== undefined ? { settings: args.settings } : {}),
           updatedAt: new Date(),
         })
         .where(and(
@@ -374,6 +378,7 @@ function mapProjectRow(row: ProjectRow): ProjectRecord {
     instructions: row.instructions ?? undefined,
     knowledgeBaseId: row.knowledgeBaseId ?? undefined,
     parentId: row.parentId ?? undefined,
+    settings: row.settings ?? {},
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
     archivedAt: row.archivedAt?.getTime(),

@@ -20,6 +20,10 @@ import {
 } from '@/shared/knowledge/knowledge-agent-types'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import { resolveRetrievalScope } from '@/shared/knowledge/retrieval-scope'
+import {
+  readProjectSettings,
+  type ProjectSettings,
+} from '@/shared/projects/project-settings'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import type {
   ActConversationRepository,
@@ -81,6 +85,8 @@ export type ActTurnContext = {
   memoryContext: string
   mentionsContext: string
   projectInstructions: string
+  /** Parsed configuration of the active project; absent when there is none. */
+  projectSettings?: ProjectSettings
   skillsContext: string
   sourceCitationMap: SourceCitationMap
 }
@@ -229,6 +235,11 @@ export class ActContextService {
     })()
     const activeProject = project?.archivedAt ? null : project
     const projectInstructions = activeProject?.instructions?.trim() || ''
+    // Archived projects contribute no configuration, matching how their
+    // instructions and knowledge attachments are already ignored.
+    const projectSettings = activeProject
+      ? readProjectSettings(activeProject.settings)
+      : undefined
 
     // Bases attached to the active project. Falls back to the legacy single-column
     // attachment so a project written before schema 23 still grounds correctly.
@@ -316,6 +327,7 @@ export class ActContextService {
       memoryContext: memoryEnabled ? buildMemoryContext(effectiveMemories) : '',
       mentionsContext,
       projectInstructions,
+      projectSettings,
       skillsContext: buildSkillsContext(enabledSkills),
       sourceCitationMap: autoRetrievalBundle.citations,
     }

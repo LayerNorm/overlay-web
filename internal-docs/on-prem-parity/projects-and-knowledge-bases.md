@@ -241,7 +241,51 @@ Convex stores embeddings without provider/model identity, so embedding-drift
 detection is a Postgres-only capability. This is explicit in the repository
 contract via an optional `diagnostics` port rather than a silent degradation.
 
-**Exit gate:** met.
+### Post-release defect: the boundary did not cover agent tools
+
+Found by the first real user test, after every automated gate above was green.
+
+A knowledge base named "Notes" holding five IGCSE Biology PDFs was asked "take me
+through what is in @Notes". The answer listed eleven unrelated in-app notes and
+four company documents that were not in the base, while omitting three of the
+five that were.
+
+The hard boundary built in this phase guarded only the **passive retrieval
+injection**. The agent's **tools** were never scoped:
+
+- `search_knowledge` has no `knowledgeBaseId` parameter. It calls
+  `/api/v1/knowledge/search` account-wide over every file and memory the user owns.
+- Its description told the model to "call this when you need facts from their
+  knowledge base", steering it directly at the unscoped tool.
+- `list_notes` and `search_in_files` are likewise account-wide.
+- "What is in X" is a manifest question, not a content question. No tool could
+  answer it, and the mention context supplied only the base's title and
+  description, so the model invented a mapping from "Notes" to the in-app notes.
+
+Fixed in `b20e8be3c` with **preferred** scoping: general tools stay available for
+explicitly different asks, but stop misdirecting.
+
+| Addition | Purpose |
+|---|---|
+| `list_knowledge_bases` | Resolve a referenced name to an id |
+| `list_knowledge_base_sources` | The missing manifest affordance; authoritative contents |
+| `search_knowledge_base` | Hybrid retrieval restricted to one base, with citations |
+| `read_knowledge_source` | Extracted text for walkthroughs, where snippets are the wrong shape |
+
+Plus: `search_knowledge` now describes itself as account-wide and names the active
+base; mention context injects the full source manifest; corpus-wide questions
+select breadth-first across sources.
+
+**Lesson that should shape later phases.** Every Phase 4 test exercised
+`KnowledgeBaseRetrievalService`. The leak was on a path no test touched. Any
+feature that scopes capability to a container must be tested through **what the
+agent can reach**, not only what a repository returns. Tool *descriptions* are
+part of that contract and need review like code. This applies directly to Phase 5,
+which scopes models, tools, skills, MCP servers, connectors, and automations to a
+project — the same class of problem.
+
+**Exit gate:** implementation met. Awaiting user confirmation that the `@Notes`
+walkthrough is now correct in the running app.
 
 ---
 

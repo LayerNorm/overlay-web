@@ -47,6 +47,7 @@ export interface ProjectRepository {
     knowledgeBaseId?: string | null
     name: string
     parentId?: string | null
+    settings?: Record<string, unknown>
     userId: string
   }): Promise<ProjectRecord>
   updateProject(args: {
@@ -56,6 +57,7 @@ export interface ProjectRepository {
     name?: string
     parentId?: string | null
     projectId: string
+    settings?: Record<string, unknown>
     userId: string
   }): Promise<ProjectRecord | null>
   deleteProjectTree(args: {

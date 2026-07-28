@@ -46,6 +46,7 @@ export class ConvexProjectRepository implements ProjectRepository {
     knowledgeBaseId?: string | null
     name: string
     parentId?: string | null
+    settings?: Record<string, unknown>
     userId: string
   }): Promise<ProjectRecord> {
     const id = await convex.mutation<Id<'projects'>>('projects/projects:create', {
@@ -56,6 +57,7 @@ export class ConvexProjectRepository implements ProjectRepository {
       knowledgeBaseId: args.knowledgeBaseId ?? undefined,
       name: args.name,
       parentId: args.parentId ?? undefined,
+      settings: args.settings,
     }, { throwOnError: true })
     if (!id) throw new Error('Failed to create project')
     const project = await this.getProject({ projectId: id, userId: args.userId })
@@ -70,6 +72,7 @@ export class ConvexProjectRepository implements ProjectRepository {
     name?: string
     parentId?: string | null
     projectId: string
+    settings?: Record<string, unknown>
     userId: string
   }): Promise<ProjectRecord | null> {
     const existing = await this.getProject(args)
@@ -83,6 +86,7 @@ export class ConvexProjectRepository implements ProjectRepository {
       knowledgeBaseId: args.knowledgeBaseId,
       name: args.name,
       parentId: args.parentId,
+      settings: args.settings,
     }, { throwOnError: true })
     return await this.getProject(args)
   }

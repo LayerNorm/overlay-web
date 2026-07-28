@@ -6,6 +6,10 @@ import type {
   ProjectRepository,
 } from './ProjectRepository'
 import { ProjectRepositoryError } from './ProjectRepository'
+import {
+  normalizeProjectSettings,
+  type ProjectSettings,
+} from '@/shared/projects/project-settings'
 
 export class ProjectServiceError extends Error {
   constructor(
@@ -50,6 +54,7 @@ export class ProjectService {
     knowledgeBaseId?: string | null
     name?: string
     parentId?: string | null
+    settings?: ProjectSettings
     userId: string
   }): Promise<ProjectRecord> {
     const name = requiredName(args.name)
@@ -61,6 +66,9 @@ export class ProjectService {
       ...(knowledgeBaseId !== undefined ? { knowledgeBaseId } : {}),
       name,
       parentId: normalizeParentId(args.parentId),
+      ...(args.settings !== undefined
+        ? { settings: normalizeProjectSettings(args.settings) as Record<string, unknown> }
+        : {}),
       userId: args.userId,
     }))
   }
@@ -72,6 +80,7 @@ export class ProjectService {
     name?: string
     parentId?: string | null
     projectId: string
+    settings?: ProjectSettings
     userId: string
   }): Promise<ProjectRecord> {
     const knowledgeBaseId = normalizeNullableId(args.knowledgeBaseId)
@@ -85,6 +94,9 @@ export class ProjectService {
       name: args.name === undefined ? undefined : requiredName(args.name),
       parentId: args.parentId === undefined ? undefined : normalizeParentId(args.parentId),
       projectId: args.projectId,
+      ...(args.settings !== undefined
+        ? { settings: normalizeProjectSettings(args.settings) as Record<string, unknown> }
+        : {}),
       userId: args.userId,
     }))
     if (!project) throw new ProjectServiceError('Not found', 404)

@@ -176,6 +176,13 @@
       "when": 1785265200000,
       "tag": "0024_external_knowledge_source_kinds",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1785351600000,
+      "tag": "0025_project_settings",
+      "breakpoints": true
     }
   ]
 }

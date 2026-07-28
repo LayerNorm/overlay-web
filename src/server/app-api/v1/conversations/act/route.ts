@@ -318,6 +318,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       memoryContext,
       mentionsContext,
       projectInstructions,
+      projectSettings,
       skillsContext,
       sourceCitationMap,
     } = turnContext
@@ -375,6 +376,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	        conversationId: cid,
 	        conversationProjectId,
 	        activeKnowledgeBaseIds: turnKnowledgeBaseIds,
+	        projectSettings,
 	        effectiveModelId,
 	        forwardCookie: request.headers.get('cookie'),
 	        isMultiModelFollowUpSlot,

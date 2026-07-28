@@ -1,6 +1,20 @@
 import { z } from 'zod'
 import { AuthFields, BooleanQueryValue, IdQuery, IntegerQueryValue, PaginationQuery, UnknownResponse } from './common'
 
+/** Per-project configuration. Unknown keys are dropped server-side. */
+export const ProjectSettingsInput = z.object({
+  preferredModelId: z.string().min(1).max(200).optional(),
+  toolPolicy: z.object({
+    mode: z.enum(['inherit', 'allowlist', 'denylist']),
+    toolIds: z.array(z.string().min(1)).max(200).optional(),
+  }).optional(),
+  enabledSkillIds: z.array(z.string().min(1)).max(200).optional(),
+  enabledMcpServerIds: z.array(z.string().min(1)).max(200).optional(),
+  enabledConnectorSlugs: z.array(z.string().min(1)).max(200).optional(),
+  automationsEnabled: z.boolean().optional(),
+  isTemplate: z.boolean().optional(),
+})
+
 export const ProjectListQuery = PaginationQuery.extend({
   projectId: IdQuery,
   updatedSince: IntegerQueryValue,
@@ -17,6 +31,7 @@ export const CreateProjectRequest = z.object({
   clientId: z.string().optional(),
   description: z.string().optional(),
   color: z.string().optional(),
+  settings: ProjectSettingsInput.optional(),
 }).passthrough()
 
 export const UpdateProjectRequest = CreateProjectRequest.partial().extend({

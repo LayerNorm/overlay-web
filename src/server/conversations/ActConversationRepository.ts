@@ -36,6 +36,8 @@ export type ActProjectRow = {
   archivedAt?: number
   instructions?: string
   knowledgeBaseId?: string
+  /** Raw per-project configuration; parsed by readProjectSettings at the edge. */
+  settings?: Record<string, unknown>
 }
 
 export type ConversationListRow = {
