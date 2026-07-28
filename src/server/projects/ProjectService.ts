@@ -7,7 +7,9 @@ import type {
 } from './ProjectRepository'
 import { ProjectRepositoryError } from './ProjectRepository'
 import {
+  copyableProjectSettings,
   normalizeProjectSettings,
+  readProjectSettings,
   type ProjectSettings,
 } from '@/shared/projects/project-settings'
 
@@ -112,6 +114,47 @@ export class ProjectService {
       knowledgeBaseId: args.knowledgeBaseId,
       userId: args.userId,
     })
+  }
+
+  /**
+   * Creates a new project from an existing one's configuration.
+   *
+   * Copies only what is configuration: name, instructions, settings, and
+   * knowledge-base attachments. Deliberately copies **no private working data** —
+   * no chats, files, notes, or outputs — because a duplicate is a fresh workspace,
+   * and silently carrying another project's working material across is how private
+   * content leaks between engagements.
+   */
+  async duplicateProject(args: {
+    attachKnowledgeBases?: (target: { projectId: string }) => Promise<void>
+    name?: string
+    sourceProjectId: string
+    userId: string
+  }): Promise<ProjectRecord> {
+    const source = await this.repository.getProject({
+      projectId: args.sourceProjectId,
+      userId: args.userId,
+    })
+    if (!source) throw new ProjectServiceError('Not found', 404)
+
+    const created = await this.createProject({
+      instructions: source.instructions,
+      name: requiredName(args.name ?? `${source.name} copy`),
+      // An instance of a template is not itself a template.
+      settings: copyableProjectSettings(readProjectSettings(source.settings)),
+      userId: args.userId,
+    })
+    // Attachments live in a join table, so the caller supplies the copy step.
+    if (args.attachKnowledgeBases) {
+      await args.attachKnowledgeBases({ projectId: created._id })
+    }
+    return created
+  }
+
+  /** Projects the user has marked as reusable starting points. */
+  async listTemplates(args: { userId: string }): Promise<ProjectRecord[]> {
+    const projects = await this.repository.listProjects({ userId: args.userId })
+    return projects.filter((project) => readProjectSettings(project.settings).isTemplate === true)
   }
 
   async deleteProjectTree(args: {

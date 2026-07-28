@@ -73,4 +73,12 @@ export const ProjectKnowledgeTransferRequest = z.object({
   { message: 'promote requires fileId; copy requires sourceId' },
 )
 
+export const ProjectTemplateListQuery = z.object({})
+
+export const DuplicateProjectRequest = z.object({
+  ...AuthFields,
+  sourceProjectId: z.string().min(1),
+  name: z.string().trim().min(1).max(200).optional(),
+})
+
 export const ProjectResponse = UnknownResponse

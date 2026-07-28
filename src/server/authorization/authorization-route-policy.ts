@@ -198,6 +198,15 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   {
+    // Duplicating reads one project's configuration and creates another, so it
+    // needs view on the source and the ability to create.
+    path: '/api/v1/projects/duplicate',
+    methods: {
+      GET: capability('projects.read'),
+      POST: capability('projects.create', 'projects.read'),
+    },
+  },
+  {
     // Promotion writes into a knowledge base and copying reads from one, so both
     // directions need project edit plus the matching knowledge capability.
     path: '/api/v1/projects/knowledge-transfer',
