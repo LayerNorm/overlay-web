@@ -5,7 +5,7 @@
 Status legend: DONE · PARTIAL · TODO · DEFERRED (deliberately out of scope for now)
 
 - **Branch:** `codex/authorization-system` (also pushed to `staging`)
-- **Last updated:** Phase 5a-c, at commit `16b1fa7eb`
+- **Last updated:** Phase 6, at commit `d0eea2f49`
 - **App-data schema version:** 25
 
 ---
@@ -20,7 +20,7 @@ Status legend: DONE · PARTIAL · TODO · DEFERRED (deliberately out of scope fo
 | 3 | Connect projects and knowledge (one KB) | **DONE** |
 | 4 | Rich knowledge retrieval | **DONE** |
 | 5 | Mature project workflows | PARTIAL — 6 of 9 items |
-| 6 | Personal brain | PARTIAL — foundation only |
+| 6 | Personal brain | **DONE** |
 | 7 | Sharing and access | PARTIAL — KB yes, projects no |
 | 8 | Admin distribution | PARTIAL |
 | 9 | Custom authorization and policies | PARTIAL — authz done, governance not |
@@ -364,25 +364,59 @@ than duplicated.
 
 ---
 
-## Phase 6: Personal Brain — PARTIAL, foundation only
+## Phase 6: Personal Brain — DONE
 
 | Item | Status |
 |---|---|
-| Every user can maintain personal knowledge bases | DONE — `kind: 'personal'` is the default |
-| Personal KBs available through `@` mentions | DONE |
-| Deliberately promote project learnings into a personal brain | TODO |
-| Do not automatically index all chats and files | DONE — upheld, nothing auto-promotes |
-| Explicit capture actions: add source, save answer, promote file, extract memory | TODO |
-| Separate conversational memory from curated knowledge | DONE — memory is excluded when a KB scope is active |
+| Every user can maintain personal knowledge bases | **DONE** — `kind: 'personal'` is the default |
+| Personal KBs available through `@` mentions | **DONE** |
+| Deliberately promote project learnings into a personal brain | **DONE** — P5b promotion targets any base the user can edit |
+| Do **not** automatically index all chats and files | **DONE** — upheld; nothing is captured as a side effect |
+| Explicit capture actions | **DONE** — add source, save answer as knowledge, promote project file; extract memory already existed |
+| Separate conversational memory from curated knowledge | **DONE** — memory is excluded when a KB scope is active |
+
+### Capture is always deliberate
+
+`saveAnswerAsKnowledge` captures a chat answer only when someone asks for it.
+Chats never enter a base on their own, which is what keeps a base curated rather
+than a running log of everything the user touched.
+
+### A defect this phase surfaced in Phase 5's promotion path
+
+`knowledge_sources` carries a unique index on `(owner_user_id, kind, source_ref)`
+for non-deleted rows. P5b set `sourceRef` to the bare file id, so:
+
+- promoting the same file **twice** would violate the index and surface as a
+  database error rather than updating, and
+- promoting one file into **two different bases** would collide as well.
+
+Fixed by namespacing the ref as `promotion:{knowledgeBaseId}:{artifactId}` and
+looking for an existing capture first, which turns a re-promotion into a new
+**version** of the same source. That matches the product intent recorded in
+Phase 3: a promotion is a snapshot, and the user may explicitly publish a newer
+one later. Verified by reverting the fix and observing the failure.
+
+### Personal bases
+
+`ensureDefaultPersonalKnowledgeBase` creates "My knowledge" on first explicit
+request and is idempotent afterwards. `listPersonalKnowledgeBases` returns the
+owned personal subset only — bases shared *with* the user are deliberately
+excluded, because someone else's knowledge is not part of your brain.
 
 ### QA
 
 | Check | Status |
 |---|---|
-| Personal knowledge remains private | DONE — owner-scoped repositories |
-| Deleting the original project does not delete promoted knowledge | TODO — no promotion path yet |
-| Unpromoted working data follows project lifecycle | DONE |
-| Account deletion removes personal KBs, chunks, embeddings, storage | DONE — automated on both backends |
+| Personal knowledge remains private | **DONE** — owner-scoped; another user sees nothing |
+| Deleting the original project does not delete promoted knowledge | **DONE** — asserted against real Postgres |
+| Unpromoted working data disappears according to project lifecycle | **DONE** |
+| Account deletion removes personal KBs, chunks, embeddings, storage | **DONE** — asserted |
+
+The project-deletion guarantee is the one that matters most: `source_ref` is plain
+text with no foreign key to `files`, so a promoted source is not cascade-deleted
+with its origin. That was previously accidental; it is now pinned by a test, and
+the provenance still names the deleted project so a reader can tell where the
+entry came from.
 
 ---
 
@@ -467,7 +501,7 @@ with no explicit-deny rules in v1.
 | 7 | Stabilize both Convex and Postgres contracts | DONE |
 | 8 | Add rich retrieval and multiple KBs | DONE |
 | 9 | Add mature project workflows | PARTIAL — 6 of 9 |
-| 10 | Add personal brains | PARTIAL |
+| 10 | Add personal brains | **DONE** |
 | 11 | Add sharing and organization distribution | PARTIAL |
 | 12 | Add custom roles, ACLs, governance, and versioning | PARTIAL — authz done, governance not |
 

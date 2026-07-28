@@ -64,6 +64,7 @@ import {
   IntegrationConnectRequest,
   IntegrationListQuery,
   KnowledgeSearchRequest,
+  EnsurePersonalKnowledgeBaseRequest,
   KnowledgeBaseDiagnosticsQuery,
   KnowledgeBaseEmptyQuery,
   KnowledgeBaseSourceUploadForm,
@@ -434,6 +435,20 @@ export const webApiBoundaryDefinitions = [
     path: '/api/v1/knowledge-bases',
     schema: { query: KnowledgeBaseListQuery },
     summary: 'List accessible knowledge bases',
+    tag: 'Knowledge Bases',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/knowledge-bases/personal',
+    schema: { query: KnowledgeBaseEmptyQuery },
+    summary: 'List the caller\'s personal knowledge bases',
+    tag: 'Knowledge Bases',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/knowledge-bases/personal',
+    schema: { json: EnsurePersonalKnowledgeBaseRequest },
+    summary: 'Get or create the caller\'s default personal knowledge base',
     tag: 'Knowledge Bases',
   },
   {

@@ -14,17 +14,24 @@ type CreatedSource = Parameters<KnowledgeSourceIngestionService['createTextSourc
 
 function build(overrides: {
   file?: Record<string, unknown> | null
-  sources?: Array<{ id: string; title: string; metadata?: Record<string, unknown> }>
+  sources?: Array<{ id: string; title: string; metadata?: Record<string, unknown>; sourceRef?: string }>
   preview?: { text: string; totalChars: number; truncated: boolean } | Error
 } = {}) {
   const created: CreatedSource[] = []
+  const replaced: Array<{ content: string; sourceId: string; userId?: string }> = []
   const notes: Array<{ title: string; content: string; projectId?: string }> = []
   const service = new ProjectKnowledgeTransferService({
     bases: {
       async listSources() {
         return (overrides.sources ?? []).map((source) => ({
           membership: { enabled: true },
-          source: { id: source.id, title: source.title, status: 'ready', metadata: source.metadata ?? {} },
+          source: {
+            id: source.id,
+            title: source.title,
+            status: 'ready',
+            metadata: source.metadata ?? {},
+            sourceRef: (source as { sourceRef?: string }).sourceRef,
+          },
         }))
       },
       async getExtractionPreview() {
@@ -48,6 +55,15 @@ function build(overrides: {
           jobId: 'job-1',
         }
       },
+      async replaceTextSource(args: { content: string; sourceId: string; userId?: string }) {
+        replaced.push(args)
+        return {
+          source: { id: args.sourceId, contentHash: 'hash2' },
+          version: { id: 'version-2' },
+          jobId: 'job-2',
+          unchanged: false,
+        }
+      },
     } as unknown as KnowledgeSourceIngestionService,
     notes: {
       async createNote(args) {
@@ -56,7 +72,7 @@ function build(overrides: {
       },
     },
   })
-  return { service, created, notes }
+  return { service, created, notes, replaced }
 }
 
 test('promotion records where the file came from', async () => {
@@ -88,7 +104,9 @@ test('promotion copies the text so later project edits cannot rewrite knowledge'
   // The content is passed by value into the knowledge base rather than stored as
   // a pointer back to the file, which is what makes this a snapshot.
   assert.equal(created[0]!.content, 'draft body v1')
-  assert.equal(created[0]!.sourceRef, 'file-1')
+  // The ref is namespaced by knowledge base so the same artifact can be captured
+  // into several bases without colliding on the unique (owner, kind, ref) index.
+  assert.equal(created[0]!.sourceRef, 'promotion:kb-1:file-1')
 })
 
 test('a file with no extracted text is refused rather than promoted empty', async () => {
@@ -166,4 +184,97 @@ test('promoted provenance survives a metadata round trip', () => {
   assert.equal(read?.origin, 'project-promotion')
   assert.equal(read?.promotedFromProjectId, 'project-1')
   assert.equal(read?.promotedFromArtifactId, 'file-1')
+})
+
+test('re-promoting the same file updates it instead of colliding', async () => {
+  // knowledge_sources has a unique index on (owner, kind, source_ref) for
+  // non-deleted rows, so a second create would surface as a database error.
+  const { service, created, replaced } = build({
+    sources: [{
+      id: 'existing-source',
+      title: 'Draft.md',
+      sourceRef: 'promotion:kb-1:file-1',
+    }],
+  })
+  const result = await service.promoteProjectFileToKnowledgeBase({
+    fileId: 'file-1',
+    knowledgeBaseId: 'kb-1',
+    projectId: 'project-1',
+    userId: 'user-1',
+  })
+  assert.equal(result.updatedExisting, true)
+  assert.equal(result.source.id, 'existing-source')
+  assert.equal(created.length, 0, 'must not create a duplicate source')
+  assert.equal(replaced.length, 1)
+  assert.equal(replaced[0]!.content, 'draft body v1')
+  assert.equal(replaced[0]!.sourceId, 'existing-source')
+})
+
+test('the same file can be promoted into two different bases', async () => {
+  // The ref is namespaced by knowledge base, so a promotion into kb-2 does not
+  // match the existing kb-1 capture.
+  const { service, created, replaced } = build({
+    sources: [{ id: 'in-kb-1', title: 'Draft.md', sourceRef: 'promotion:kb-1:file-1' }],
+  })
+  await service.promoteProjectFileToKnowledgeBase({
+    fileId: 'file-1',
+    knowledgeBaseId: 'kb-2',
+    projectId: 'project-1',
+    userId: 'user-1',
+  })
+  assert.equal(replaced.length, 0)
+  assert.equal(created.length, 1)
+  assert.equal(created[0]!.sourceRef, 'promotion:kb-2:file-1')
+})
+
+test('saving a chat answer captures it with conversation provenance', async () => {
+  const { service, created } = build()
+  const result = await service.saveAnswerAsKnowledge({
+    content: 'Refunds take thirty days.',
+    conversationId: 'conv-9',
+    knowledgeBaseId: 'kb-1',
+    messageId: 'msg-3',
+    title: 'Refund timing',
+    userId: 'user-1',
+  })
+  assert.equal(result.updatedExisting, false)
+  assert.equal(created.length, 1)
+  assert.equal(created[0]!.content, 'Refunds take thirty days.')
+  assert.equal(created[0]!.title, 'Refund timing')
+  assert.equal(created[0]!.sourceRef, 'promotion:kb-1:msg-3')
+  assert.equal(created[0]!.provenance?.promotedFromArtifactId, 'msg-3')
+  assert.match(created[0]!.provenance?.label ?? '', /conv-9/)
+})
+
+test('an empty answer is refused rather than captured blank', async () => {
+  const { service, created } = build()
+  await assert.rejects(
+    () => service.saveAnswerAsKnowledge({
+      content: '   ',
+      conversationId: 'conv-9',
+      knowledgeBaseId: 'kb-1',
+      messageId: 'msg-3',
+      title: 'Nothing',
+      userId: 'user-1',
+    }),
+    (error: unknown) => error instanceof KnowledgeBaseServiceError && error.statusCode === 400,
+  )
+  assert.equal(created.length, 0)
+})
+
+test('saving the same answer twice updates rather than duplicating', async () => {
+  const { service, created, replaced } = build({
+    sources: [{ id: 'answer-source', title: 'Refund timing', sourceRef: 'promotion:kb-1:msg-3' }],
+  })
+  const result = await service.saveAnswerAsKnowledge({
+    content: 'Refunds take thirty days, revised.',
+    conversationId: 'conv-9',
+    knowledgeBaseId: 'kb-1',
+    messageId: 'msg-3',
+    title: 'Refund timing',
+    userId: 'user-1',
+  })
+  assert.equal(result.updatedExisting, true)
+  assert.equal(created.length, 0)
+  assert.equal(replaced[0]!.content, 'Refunds take thirty days, revised.')
 })

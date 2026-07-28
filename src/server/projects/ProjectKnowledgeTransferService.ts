@@ -21,6 +21,10 @@ export type PromotionResult = {
   source: KnowledgeSource
   version: KnowledgeSourceVersion
   jobId: string
+  /** True when this replaced an earlier capture of the same artifact. */
+  updatedExisting: boolean
+  /** True when the content matched what was already captured. */
+  unchanged: boolean
 }
 
 export class ProjectKnowledgeTransferService {
@@ -68,22 +72,105 @@ export class ProjectKnowledgeTransferService {
       )
     }
 
-    return await this.deps.ingestion.createTextSource({
+    return await this.captureIntoKnowledgeBase({
+      artifactId: args.fileId,
       content,
       knowledgeBaseId: args.knowledgeBaseId,
       mimeType: typeof file.mimeType === 'string' ? file.mimeType : 'text/plain',
-      // A snapshot, not a pointer: later edits to the project file must not
-      // change what the knowledge base is understood to assert.
-      provenance: {
-        origin: 'project-promotion',
-        promotedFromProjectId: args.projectId,
-        promotedFromArtifactId: args.fileId,
-        label: typeof file.name === 'string' ? file.name : undefined,
-      },
-      sourceRef: args.fileId,
+      projectId: args.projectId,
       title: args.title?.trim() || (typeof file.name === 'string' ? file.name : 'Promoted file'),
       userId: args.userId,
     })
+  }
+
+  /**
+   * Captures a chat answer as durable knowledge.
+   *
+   * Chats never enter a knowledge base on their own: a useful answer becomes
+   * knowledge only when someone deliberately says so.
+   */
+  async saveAnswerAsKnowledge(args: {
+    content: string
+    conversationId: string
+    knowledgeBaseId: string
+    messageId: string
+    projectId?: string
+    title: string
+    userId: string
+  }): Promise<PromotionResult> {
+    const content = args.content?.trim()
+    if (!content) {
+      throw new KnowledgeBaseServiceError('There is no answer text to save', 400)
+    }
+    return await this.captureIntoKnowledgeBase({
+      artifactId: args.messageId,
+      content,
+      knowledgeBaseId: args.knowledgeBaseId,
+      mimeType: 'text/markdown',
+      originLabel: `Chat answer from conversation ${args.conversationId}`,
+      projectId: args.projectId,
+      title: args.title,
+      userId: args.userId,
+    })
+  }
+
+  /**
+   * Shared capture path for every explicit promotion.
+   *
+   * Re-capturing the same artifact into the same base **updates** it, adding a
+   * version rather than failing. `knowledge_sources` carries a unique index on
+   * (owner, kind, source_ref) for non-deleted rows, so a naive second promotion
+   * would surface as a database error; namespacing the ref by knowledge base also
+   * lets the same artifact be promoted into several bases independently.
+   */
+  private async captureIntoKnowledgeBase(args: {
+    artifactId: string
+    content: string
+    knowledgeBaseId: string
+    mimeType: string
+    originLabel?: string
+    projectId?: string
+    title: string
+    userId: string
+  }): Promise<PromotionResult> {
+    const sourceRef = `promotion:${args.knowledgeBaseId}:${args.artifactId}`
+    const existing = (await this.deps.bases.listSources({
+      knowledgeBaseId: args.knowledgeBaseId,
+      userId: args.userId,
+    })).find(({ source }) => source.sourceRef === sourceRef)
+
+    if (existing) {
+      const replaced = await this.deps.ingestion.replaceTextSource({
+        content: args.content,
+        sourceId: existing.source.id,
+        userId: args.userId,
+      })
+      return {
+        source: replaced.source,
+        version: replaced.version,
+        jobId: replaced.jobId ?? '',
+        updatedExisting: true,
+        unchanged: replaced.unchanged,
+      }
+    }
+
+    const created = await this.deps.ingestion.createTextSource({
+      content: args.content,
+      knowledgeBaseId: args.knowledgeBaseId,
+      mimeType: args.mimeType,
+      // A snapshot, not a pointer: later edits to the origin must not change what
+      // the knowledge base is understood to assert.
+      provenance: {
+        origin: 'project-promotion',
+        promotedFromProjectId: args.projectId,
+        promotedFromArtifactId: args.artifactId,
+        label: args.originLabel,
+      },
+      sourceRef,
+      title: args.title,
+      userId: args.userId,
+    })
+    return { ...created, updatedExisting: false, unchanged: false }
   }
 
   /**

@@ -78,6 +78,10 @@ export const ReindexKnowledgeBaseRequest = z.object({
   onlyStale: z.boolean().optional(),
 })
 
+export const EnsurePersonalKnowledgeBaseRequest = z.object({
+  title: z.string().trim().min(1).max(160).optional(),
+})
+
 export const KnowledgeBaseEmptyQuery = z.object({})
 export const KnowledgeBaseSourceUploadForm = FormDataBoundary
 

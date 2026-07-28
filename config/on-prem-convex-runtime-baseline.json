@@ -82,6 +82,7 @@
     "src/app/api/v1/knowledge-bases/[knowledgeBaseId]/search/route.ts",
     "src/app/api/v1/knowledge-bases/[knowledgeBaseId]/sources/route.ts",
     "src/app/api/v1/knowledge-bases/[knowledgeBaseId]/sources/upload/route.ts",
+    "src/app/api/v1/knowledge-bases/personal/route.ts",
     "src/app/api/v1/knowledge-bases/route.ts",
     "src/app/api/v1/knowledge-bases/share-directory/route.ts",
     "src/app/api/v1/knowledge/search/route.ts",

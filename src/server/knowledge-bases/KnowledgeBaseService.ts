@@ -36,6 +36,9 @@ import type { UserDirectoryEntry, UserRepository } from '@/server/users'
 
 export const KNOWLEDGE_BASE_RESOURCE_TYPE = 'knowledge_base'
 
+/** Name of the personal base created on first explicit use. */
+export const DEFAULT_PERSONAL_BASE_TITLE = 'My knowledge'
+
 export type KnowledgeBaseSourceDetail = {
   membership: KnowledgeBaseSource
   source: KnowledgeSource
@@ -117,6 +120,43 @@ export class KnowledgeBaseService {
       .filter((value): value is KnowledgeBase => Boolean(value?.status === 'active'))
     return [...owned, ...shared]
       .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
+  }
+
+  /**
+   * The user's own personal knowledge bases: their "brain".
+   *
+   * Personal bases are private by ownership, not by a separate visibility flag,
+   * so this is simply the owned subset filtered to the personal kind. Bases
+   * shared with the user are deliberately excluded — someone else's knowledge is
+   * not part of your brain.
+   */
+  async listPersonalKnowledgeBases(userId: string): Promise<KnowledgeBase[]> {
+    await this.requireCapability(userId, 'knowledge.read')
+    const owned = await this.deps.repositories.bases.listForOwner(userId)
+    return owned.filter((base) => base.kind === 'personal')
+  }
+
+  /**
+   * Returns the user's default personal knowledge base, creating it on first use.
+   *
+   * Created only when explicitly requested. Nothing is indexed into it
+   * automatically: chats and files enter a brain through deliberate capture, not
+   * as a side effect of ordinary work.
+   */
+  async ensureDefaultPersonalKnowledgeBase(args: {
+    title?: string
+    userId: string
+  }): Promise<KnowledgeBase> {
+    const existing = await this.listPersonalKnowledgeBases(args.userId)
+    const preferred = existing.find(({ title }) => title === DEFAULT_PERSONAL_BASE_TITLE)
+    if (preferred) return preferred
+    if (existing.length > 0) return existing[0]!
+    return await this.createKnowledgeBase({
+      description: 'Things you have deliberately saved as durable knowledge.',
+      kind: 'personal',
+      title: args.title?.trim() || DEFAULT_PERSONAL_BASE_TITLE,
+      userId: args.userId,
+    })
   }
 
   async listAdministrativeKnowledgeBases(userId: string): Promise<AdministrativeKnowledgeBase[]> {

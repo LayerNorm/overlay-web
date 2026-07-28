@@ -7632,6 +7632,140 @@
         }
       }
     },
+    "/api/v1/knowledge-bases/personal": {
+      "get": {
+        "operationId": "getKnowledgeBasesPersonal",
+        "summary": "List the caller's personal knowledge bases",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "postKnowledgeBasesPersonal",
+        "summary": "Get or create the caller's default personal knowledge base",
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/knowledge-bases/share-directory": {
       "get": {
         "operationId": "getKnowledgeBasesShareDirectory",
@@ -11007,7 +11141,8 @@
                     "type": "string",
                     "enum": [
                       "promote",
-                      "copy"
+                      "copy",
+                      "save-answer"
                     ]
                   },
                   "fileId": {
@@ -11018,6 +11153,19 @@
                     "type": "string",
                     "minLength": 1
                   },
+                  "conversationId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "messageId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "content": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2097152
+                  },
                   "title": {
                     "type": "string",
                     "minLength": 1,
@@ -11025,7 +11173,6 @@
                   }
                 },
                 "required": [
-                  "projectId",
                   "knowledgeBaseId",
                   "direction"
                 ],

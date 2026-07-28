@@ -7,8 +7,10 @@ import { KnowledgeBaseServiceError } from '@/server/knowledge-bases'
 import { ProjectKnowledgeTransferRequest } from '@/shared/schemas/projects'
 
 /**
- * Moves material between a project and a knowledge base. Always explicit: nothing
- * here happens as a side effect of ordinary project work.
+ * Moves material between a project and a knowledge base, or captures a chat
+ * answer as knowledge. Always explicit: nothing here happens as a side effect of
+ * ordinary work, which is what keeps a knowledge base curated rather than a
+ * running log of everything the user touched.
  */
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -18,13 +20,33 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const userId = getAuthorizedResourceUserId(context)
     const server = getOverlayServerContext()
 
-    // Repositories are owner-scoped, so a missing project and someone else's
-    // project are indistinguishable here by design.
-    const project = await server.appData.repositories.projects.getProject({
-      projectId: body.projectId,
-      userId,
-    })
-    if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    // Every direction that names a project must prove the caller owns it.
+    // Repositories are owner-scoped, so a missing project and someone else's are
+    // indistinguishable here by design.
+    if (body.projectId) {
+      const project = await server.appData.repositories.projects.getProject({
+        projectId: body.projectId,
+        userId,
+      })
+      if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    if (body.direction === 'save-answer') {
+      const result = await server.projectKnowledgeTransferService.saveAnswerAsKnowledge({
+        content: body.content!,
+        conversationId: body.conversationId ?? '',
+        knowledgeBaseId: body.knowledgeBaseId,
+        messageId: body.messageId!,
+        projectId: body.projectId,
+        title: body.title!,
+        userId,
+      })
+      return NextResponse.json({ success: true, ...result }, { status: 202 })
+    }
+
+    if (!body.projectId) {
+      return NextResponse.json({ error: 'projectId required' }, { status: 400 })
+    }
 
     if (body.direction === 'promote') {
       const result = await server.projectKnowledgeTransferService.promoteProjectFileToKnowledgeBase({

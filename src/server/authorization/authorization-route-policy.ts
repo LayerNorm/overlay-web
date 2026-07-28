@@ -209,9 +209,11 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   {
     // Promotion writes into a knowledge base and copying reads from one, so both
     // directions need project edit plus the matching knowledge capability.
+    // projectId is optional so an answer from a project-less chat can still be
+    // captured; the handler verifies ownership whenever one is supplied.
     path: '/api/v1/projects/knowledge-transfer',
     methods: {
-      POST: resource('project', 'edit', {}, 'projects.edit', 'knowledge.read'),
+      POST: resource('project', 'edit', { optional: true }, 'projects.edit', 'knowledge.read'),
     },
   },
   {
@@ -301,6 +303,15 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
       POST: capability('knowledge.create'),
       PATCH: resource('knowledge_base', 'edit', {}, 'knowledge.edit'),
       DELETE: resource('knowledge_base', 'delete', {}, 'knowledge.delete'),
+    },
+  },
+  {
+    // A personal base is private by ownership; listing and creating your own
+    // needs only the ordinary knowledge capabilities.
+    path: '/api/v1/knowledge-bases/personal',
+    methods: {
+      GET: capability('knowledge.read'),
+      POST: capability('knowledge.create'),
     },
   },
   {
