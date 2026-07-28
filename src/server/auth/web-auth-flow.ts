@@ -7,6 +7,7 @@ import * as workosAuth from '@/server/auth/workos-auth'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
 import type { AuthUiOptions } from '@/shared/auth/auth-ui-options'
 import type { AuthSession, AuthUser } from '@/shared/auth/session-types'
+import type { RefreshSessionResult } from '@/server/auth/refresh-session-result'
 
 type WorkOsSsoProvider = 'GoogleOAuth' | 'AppleOAuth' | 'MicrosoftOAuth'
 export type PublicSsoProvider = string
@@ -54,6 +55,10 @@ interface WebAuthFlowProvider {
   verifyEmail(userId: string, code: string): Promise<{ success: boolean; error?: string }>
   resendVerificationEmail(userId: string): Promise<{ success: boolean; error?: string }>
   refreshSessionFromRefreshToken(refreshToken: string, expectedUserId?: string): Promise<AuthSession | null>
+  refreshSessionFromRefreshTokenResult(
+    refreshToken: string,
+    expectedUserId?: string,
+  ): Promise<RefreshSessionResult>
 }
 
 const WORKOS_SSO_PROVIDERS: Array<{
@@ -125,6 +130,13 @@ class WorkOsWebAuthFlowProvider implements WebAuthFlowProvider {
 
   refreshSessionFromRefreshToken(refreshToken: string, expectedUserId?: string): Promise<AuthSession | null> {
     return workosAuth.refreshSessionFromRefreshToken(refreshToken, expectedUserId)
+  }
+
+  refreshSessionFromRefreshTokenResult(
+    refreshToken: string,
+    expectedUserId?: string,
+  ): Promise<RefreshSessionResult> {
+    return workosAuth.refreshSessionFromRefreshTokenResult(refreshToken, expectedUserId)
   }
 }
 
@@ -257,6 +269,10 @@ class BetterAuthWebAuthFlowProvider implements WebAuthFlowProvider {
 
   async refreshSessionFromRefreshToken(): Promise<AuthSession | null> {
     return null
+  }
+
+  async refreshSessionFromRefreshTokenResult(): Promise<RefreshSessionResult> {
+    return { status: 'unsupported' }
   }
 }
 

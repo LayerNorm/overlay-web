@@ -115,3 +115,13 @@ export async function refreshSessionFromRefreshToken(
 ): Promise<AuthSession | null> {
   return getWebAuthFlowProvider().refreshSessionFromRefreshToken(refreshToken, expectedUserId)
 }
+
+export async function refreshSessionFromRefreshTokenResult(
+  refreshToken: string,
+  expectedUserId?: string,
+) {
+  return getWebAuthFlowProvider().refreshSessionFromRefreshTokenResult(
+    refreshToken,
+    expectedUserId,
+  )
+}

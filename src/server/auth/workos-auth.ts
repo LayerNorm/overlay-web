@@ -27,6 +27,10 @@ import {
   resolveSessionRefreshAction,
   shouldRefreshAccessToken,
 } from './workos-token-claims'
+import {
+  isTerminalRefreshTokenError,
+  type RefreshSessionResult,
+} from './refresh-session-result'
 
 export type { AuthUser, AuthSession } from '@/shared/auth/session-types'
 export { WorkOSAuthProvider } from './providers/workos-auth-provider'
@@ -834,11 +838,19 @@ export async function refreshSessionFromRefreshToken(
   refreshToken: string,
   expectedUserId?: string
 ): Promise<AuthSession | null> {
+  const result = await refreshSessionFromRefreshTokenResult(refreshToken, expectedUserId)
+  return result.status === 'success' ? result.session : null
+}
+
+export async function refreshSessionFromRefreshTokenResult(
+  refreshToken: string,
+  expectedUserId?: string
+): Promise<RefreshSessionResult> {
   if (!refreshToken) {
     logAuthDebug('refreshSessionFromRefreshToken missing refresh token', {
       expectedUserId: expectedUserId ?? null,
     })
-    return null
+    return { status: 'invalid' }
   }
 
   try {
@@ -865,14 +877,17 @@ export async function refreshSessionFromRefreshToken(
         expectedUserId,
         responseUserId: response.user.id,
       })
-      return null
+      return { status: 'invalid' }
     }
 
     return {
-      accessToken: response.accessToken,
-      refreshToken: response.refreshToken,
-      user: toAuthUser(response.user),
-      expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
+      status: 'success',
+      session: {
+        accessToken: response.accessToken,
+        refreshToken: response.refreshToken,
+        user: toAuthUser(response.user),
+        expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
+      },
     }
   } catch (error) {
     logAuthDebug('refreshSessionFromRefreshToken error', {
@@ -880,6 +895,8 @@ export async function refreshSessionFromRefreshToken(
       refreshToken: summarizeOpaqueTokenForLog(refreshToken),
       error: error instanceof Error ? error.message : String(error),
     })
-    return null
+    return isTerminalRefreshTokenError(error)
+      ? { status: 'invalid' }
+      : { status: 'unavailable' }
   }
 }

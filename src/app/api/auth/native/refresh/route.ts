@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import { refreshSessionFromRefreshToken } from '@/server/auth/actions'
+import { refreshSessionFromRefreshTokenResult } from '@/server/auth/actions'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { getNativeRefreshTokenBucketKey } from '@/server/auth/native-refresh-rate-limit'
 import { requireOverlayCapability } from '@/server/capabilities'
@@ -39,18 +39,44 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const session = await refreshSessionFromRefreshToken(refreshToken, expectedUserId)
+    const refreshResult = await refreshSessionFromRefreshTokenResult(
+      refreshToken,
+      expectedUserId,
+    )
 
-    if (!session) {
+    if (refreshResult.status === 'invalid') {
       return NextResponse.json(
-        { error: 'Invalid or expired refresh token' },
+        {
+          error: 'Invalid or expired refresh token',
+          code: 'invalid_refresh_token',
+        },
         { status: 401, headers: NO_STORE_HEADERS }
+      )
+    }
+
+    if (refreshResult.status === 'unavailable') {
+      return NextResponse.json(
+        {
+          error: 'Session refresh is temporarily unavailable',
+          code: 'refresh_temporarily_unavailable',
+        },
+        { status: 503, headers: NO_STORE_HEADERS }
+      )
+    }
+
+    if (refreshResult.status === 'unsupported') {
+      return NextResponse.json(
+        {
+          error: 'Native session refresh is not supported by the configured auth provider',
+          code: 'native_refresh_unsupported',
+        },
+        { status: 501, headers: NO_STORE_HEADERS }
       )
     }
 
     return NextResponse.json({
       success: true,
-      session,
+      session: refreshResult.session,
     }, { headers: NO_STORE_HEADERS })
   } catch (error) {
     logger.error('[Auth] Native refresh error:', error)
