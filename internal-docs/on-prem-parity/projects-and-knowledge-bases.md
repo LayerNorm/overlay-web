@@ -19,7 +19,7 @@ Status legend: DONE · PARTIAL · TODO · DEFERRED (deliberately out of scope fo
 | 2 | Project core | **DONE** |
 | 3 | Connect projects and knowledge (one KB) | **DONE** |
 | 4 | Rich knowledge retrieval | **DONE** |
-| 5 | Mature project workflows | PARTIAL — 6 of 9 items |
+| 5 | Mature project workflows | PARTIAL — 4.5 of 9 items |
 | 6 | Personal brain | **DONE** |
 | 7 | Sharing and access | PARTIAL — KB yes, projects no |
 | 8 | Admin distribution | PARTIAL |
@@ -289,13 +289,13 @@ walkthrough is now correct in the running app.
 
 ---
 
-## Phase 5: Mature Project Workflows — PARTIAL, 6 of 9
+## Phase 5: Mature Project Workflows — PARTIAL, 4.5 of 9
 
 | Item | Status |
 |---|---|
 | Attach multiple KBs | **DONE** — delivered by Phase 4 |
-| Project-specific model and tool selection | **DONE** — schema 25, enforced at the tool layer |
-| Skills, MCP servers, connectors, and automations | PARTIAL — per-project enable lists stored and parsed; only the tool policy is enforced so far |
+| Project-specific model and tool selection | PARTIAL — **tool** selection enforced at the tool layer; `preferredModelId` is stored and parsed but never read, so model selection does nothing yet |
+| Skills, MCP servers, connectors, and automations | TODO — enable lists are stored and parsed, but `isProjectResourceEnabled` and `projectAutomationsEnabled` are never called by runtime code. Currently dead helpers. |
 | Durable generated outputs | TODO |
 | Promote a project file into a KB | **DONE** — explicit command, snapshot with provenance |
 | Copy a KB source into a project as working material | **DONE** — editable note that names its origin |
@@ -353,6 +353,15 @@ source project.
 | Archived projects stop background work | PARTIAL — archived projects contribute no configuration, instructions or knowledge; background job cancellation TODO |
 | Multi-tab and multi-user collaboration behavior | TODO |
 | Worker recovery and idempotency for long-running actions | TODO |
+
+### No user interface yet
+
+Everything in Phase 4d–h, Phase 5, and Phase 6 is **API and service layer only**.
+No UI file has changed since `2b76e8c13` (the P4a–c multi-KB selector). There is
+no surface to set a project tool policy, promote a file, copy a source, duplicate
+a project, mark a template, save an answer as knowledge, view indexing
+diagnostics, trigger a reindex, or add a website source. These are reachable only
+through the HTTP API today.
 
 ### Deliberate deferral
 
@@ -500,7 +509,7 @@ with no explicit-deny rules in v1.
 | 6 | Run comparative distinction QA | DONE |
 | 7 | Stabilize both Convex and Postgres contracts | DONE |
 | 8 | Add rich retrieval and multiple KBs | DONE |
-| 9 | Add mature project workflows | PARTIAL — 6 of 9 |
+| 9 | Add mature project workflows | PARTIAL — 4.5 of 9 |
 | 10 | Add personal brains | **DONE** |
 | 11 | Add sharing and organization distribution | PARTIAL |
 | 12 | Add custom roles, ACLs, governance, and versioning | PARTIAL — authz done, governance not |
