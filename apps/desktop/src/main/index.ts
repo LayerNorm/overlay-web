@@ -11,6 +11,7 @@ import {
   dialog,
   Tray,
   Menu,
+  nativeImage,
   systemPreferences,
   powerMonitor,
   protocol,
@@ -385,8 +386,39 @@ const handlePanelHide = (panel: PanelToggleMode): void => {
 
 let hotkeyRecoveryTimeout: ReturnType<typeof setTimeout> | null = null
 let hotkeyHealthCheckInterval: ReturnType<typeof setInterval> | null = null
+let tray: Tray | null = null
+let shutdownStarted = false
 /** False until initial launch finishes — blocks macOS `activate` from focusing main. */
 let appLaunchSettled = false
+
+function beginShutdown(): void {
+  if (shutdownStarted) return
+  shutdownStarted = true
+
+  if (hotkeyRecoveryTimeout) clearTimeout(hotkeyRecoveryTimeout)
+  if (hotkeyHealthCheckInterval) clearInterval(hotkeyHealthCheckInterval)
+  hotkeyManager.unregisterAll()
+  parakeetService.stopServer()
+  whisperKitService.stopServer()
+
+  // Do not start an unbounded network flush while Electron is already exiting.
+  // Hosted usage is authoritative; local pending events are advisory.
+  void subscriptionService.shutdown({ flushPendingEvents: false })
+
+  // Do not call Tray.destroy() here. Electron 39 can block inside the native
+  // status-item teardown during app termination; process exit removes it.
+  tray = null
+
+  // A hidden native NSAlert can keep macOS inside a nested modal loop after
+  // Electron receives Quit. Cleanup is complete, so terminate this exact
+  // process even when that modal loop refuses to unwind.
+  if (process.platform === 'darwin') {
+    process.kill(process.pid, 'SIGKILL')
+  }
+
+  // Other platforms do not need the macOS modal-loop escape hatch.
+  process.exit(0)
+}
 
 function scheduleHotkeyRecovery(reason: string): void {
   if (hotkeyRecoveryTimeout) clearTimeout(hotkeyRecoveryTimeout)
@@ -970,8 +1002,15 @@ app.whenReady().then(async () => {
     }
   }
 
-  // Setup tray
-  const tray = new Tray(getResourcePath('logos/logo-big-no-bg-menu-tray-icon.png'))
+  // Keep a process-lifetime reference. Electron may garbage-collect a locally
+  // scoped Tray after startup, which makes the macOS menu-bar icon disappear.
+  const trayIcon = nativeImage.createFromPath(
+    getResourcePath('logos/logo-big-no-bg-menu-tray-icon.png')
+  )
+  if (process.platform === 'darwin') {
+    trayIcon.setTemplateImage(true)
+  }
+  tray = new Tray(trayIcon)
 
   // Function to build tray menu with current modes
   const buildTrayMenu = (): void => {
@@ -1037,7 +1076,7 @@ app.whenReady().then(async () => {
       { label: 'Quit Overlay', click: () => app.quit() }
     ])
 
-    tray.setContextMenu(contextMenu)
+    tray?.setContextMenu(contextMenu)
   }
 
   buildTrayMenu()
@@ -1302,14 +1341,9 @@ app.whenReady().then(async () => {
   })
 })
 
-app.on('will-quit', () => {
+app.on('before-quit', () => {
   if (isParityFixtureMode) return
-  if (hotkeyRecoveryTimeout) clearTimeout(hotkeyRecoveryTimeout)
-  if (hotkeyHealthCheckInterval) clearInterval(hotkeyHealthCheckInterval)
-  hotkeyManager.unregisterAll()
-  parakeetService.stopServer()
-  whisperKitService.stopServer()
-  subscriptionService.shutdown()
+  beginShutdown()
 })
 
 app.on('window-all-closed', () => {

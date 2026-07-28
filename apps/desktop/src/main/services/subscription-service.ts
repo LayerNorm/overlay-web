@@ -187,11 +187,14 @@ class SubscriptionService {
   /**
    * Cleanup on app quit
    */
-  async shutdown(): Promise<void> {
+  async shutdown(options: { flushPendingEvents?: boolean } = {}): Promise<void> {
     if (this.syncIntervalId) {
       clearInterval(this.syncIntervalId)
+      this.syncIntervalId = null
     }
-    await this.flushPendingEvents()
+    if (options.flushPendingEvents !== false) {
+      await this.flushPendingEvents()
+    }
     console.log('[SubscriptionService] Shutdown complete')
   }
 

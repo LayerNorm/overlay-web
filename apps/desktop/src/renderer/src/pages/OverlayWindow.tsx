@@ -148,14 +148,36 @@ export function OverlayWindow(): ReactElement {
   const handleWidgetMouseLeave = useCallback((dragging: boolean): void => {
     isMouseOverWidgetRef.current = false
     if (dragging) return
-    if (transcriptionErrorRef.current) return
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
     hoverTimeoutRef.current = setTimeout(() => {
       hoverTimeoutRef.current = null
+      setTranscriptionError(false)
+      transcriptionErrorRef.current = false
       setIsHovered(false)
       setShowButtons(false)
     }, 300)
+    // The overlay BrowserWindow covers the full display. Always restore
+    // click-through on leave, including in retry state, or its transparent
+    // pixels swallow clicks intended for every other app.
     window.bridge.setIgnoreMouseEvents(true)
+  }, [])
+
+  useEffect(() => {
+    const collapseRetryOnBlur = (): void => {
+      if (!transcriptionErrorRef.current) return
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current)
+        hoverTimeoutRef.current = null
+      }
+      setTranscriptionError(false)
+      transcriptionErrorRef.current = false
+      setIsHovered(false)
+      setShowButtons(false)
+      window.bridge.setIgnoreMouseEvents(true)
+    }
+
+    window.addEventListener('blur', collapseRetryOnBlur)
+    return () => window.removeEventListener('blur', collapseRetryOnBlur)
   }, [])
 
   // Start expanded on load — collapse to idle after 5 s if user hasn't interacted

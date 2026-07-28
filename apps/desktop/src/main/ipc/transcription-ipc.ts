@@ -20,12 +20,12 @@ import { windowManager } from '../services/window-manager'
 import { systemUtils } from '../services/system-utils'
 import { keyCacheService } from '../services/key-cache-service'
 import { safeStorageService } from '../services/security/safe-storage-service'
+import { serverProfileService } from '../services/security/server-profile-service'
 import { subscriptionService } from '../services/subscription-service'
-
-const APP_API_BASE_URL = (
-  process.env.APP_SERVER_URL?.trim() ||
-  (app.isPackaged ? 'https://www.getoverlay.io' : 'http://localhost:3000')
-).replace(/\/$$/, '')
+import {
+  createTranscriptionIdempotencyKey,
+  createTranscriptionRequestHeaders
+} from '../services/transcription-request'
 
 const getLocalService = (modelId: string): typeof parakeetService | typeof whisperKitService => {
   if (modelId.startsWith('parakeet_')) {
@@ -297,6 +297,11 @@ export function registerTranscriptionIPC(): void {
             return null
           }
 
+          // Reuse one identity across transport retries so an uncertain response
+          // can never reserve or bill the same recording twice. Clicking the
+          // visible Retry button starts a new IPC call and receives a new key.
+          const idempotencyKey = createTranscriptionIdempotencyKey()
+
           const doTranscribe = async (token: string): Promise<Response> => {
             const formData = new FormData()
             const audioBuffer = fs.readFileSync(file)
@@ -305,7 +310,7 @@ export function registerTranscriptionIPC(): void {
               formData.append('prompt', prompt)
             }
 
-            const url = new URL('/api/v1/transcribe', APP_API_BASE_URL)
+            const url = new URL('/api/v1/transcribe', serverProfileService.getActiveOrigin())
             url.searchParams.set('userId', userId)
 
             const controller = new AbortController()
@@ -314,7 +319,7 @@ export function registerTranscriptionIPC(): void {
             try {
               return await fetch(url.toString(), {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
+                headers: createTranscriptionRequestHeaders(token, idempotencyKey),
                 body: formData,
                 signal: controller.signal
               })
@@ -327,7 +332,10 @@ export function registerTranscriptionIPC(): void {
           while (retries > 0) {
             try {
               let response = await doTranscribe(accessToken!)
-              if (response.status === 401 && (await keyCacheService.refreshAccessTokenIfPossible())) {
+              if (
+                response.status === 401 &&
+                (await keyCacheService.recoverAccessTokenAfterUnauthorized(accessToken!))
+              ) {
                 accessToken =
                   keyCacheService.getAccessToken() ||
                   safeStorageService.getAuthSession()?.accessToken ||
@@ -346,6 +354,7 @@ export function registerTranscriptionIPC(): void {
               if (data.error) {
                 throw new Error(data.error)
               }
+              keyCacheService.markAccessTokenAccepted(accessToken!)
               console.log('[Main] Server-mediated transcription successful')
               return data.text ?? null
             } catch (error) {
