@@ -66,6 +66,8 @@ export const OWNER_FUNDED_OPERATIONS = [
 export type OwnerFundedOperation = (typeof OWNER_FUNDED_OPERATIONS)[number]
 export type OwnerFundedOperationId = OwnerFundedOperation['id']
 
+const IDEMPOTENCY_REQUIRED_METHODS = new Set(['POST', 'PATCH', 'DELETE'])
+
 const OWNER_FUNDED_OPERATION_BY_ROUTE = new Map<string, OwnerFundedOperation>(
   OWNER_FUNDED_OPERATIONS.map((operation) => [
     `${operation.method} ${operation.path}`,
@@ -80,4 +82,10 @@ export function getOwnerFundedOperation(
   return OWNER_FUNDED_OPERATION_BY_ROUTE.get(
     `${method.toUpperCase()} ${pathname}`,
   ) ?? null
+}
+
+export function ownerFundedOperationRequiresIdempotencyKey(
+  operation: OwnerFundedOperation | null,
+): operation is OwnerFundedOperation {
+  return Boolean(operation && IDEMPOTENCY_REQUIRED_METHODS.has(operation.method))
 }

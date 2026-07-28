@@ -22,7 +22,10 @@ for (const [file, reservationMarker, startMarker] of rules) {
 }
 
 const bff = readFileSync('src/app/api/v1/_utils/bff.ts', 'utf8')
-if (!bff.includes('getOwnerFundedOperation') || !bff.includes('idempotency_key_required')) {
+if (
+  !bff.includes('ownerFundedOperationRequiresIdempotencyKey') ||
+  !bff.includes('idempotency_key_required')
+) {
   failures.push('BFF does not fail closed when an owner-funded mutation omits Idempotency-Key')
 }
 
