@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   bootstrapStatus: 200,
-  bootstrapChallenge: ''
+  authStateReads: 0,
+  clearSessionAfterBootstrap: false
 }))
 
 vi.mock('./app-api-client', () => ({
@@ -12,9 +13,7 @@ vi.mock('./app-api-client', () => ({
         async () =>
           new Response(null, {
             status: mocks.bootstrapStatus,
-            headers: mocks.bootstrapChallenge
-              ? { 'WWW-Authenticate': mocks.bootstrapChallenge }
-              : undefined
+            headers: undefined
           })
       )
     }
@@ -27,16 +26,20 @@ describe('renderer auth readiness', () => {
       bridge: {
         security: {
           getAuthState: vi.fn(async () => ({
-            session: {
-              authenticated: true,
-              user: { id: 'user_12345', email: 'user@example.test' }
-            }
+            session:
+              mocks.clearSessionAfterBootstrap && mocks.authStateReads++ > 0
+                ? null
+                : {
+                    authenticated: true,
+                    user: { id: 'user_12345', email: 'user@example.test' }
+                  }
           }))
         }
       }
     })
     mocks.bootstrapStatus = 200
-    mocks.bootstrapChallenge = ''
+    mocks.authStateReads = 0
+    mocks.clearSessionAfterBootstrap = false
   })
 
   it('returns the stored identity only after authenticated bootstrap succeeds', async () => {
@@ -47,16 +50,19 @@ describe('renderer auth readiness', () => {
     })
   })
 
-  it('does not expose auth-ready state when bootstrap rejects the session', async () => {
-    mocks.bootstrapStatus = 401
+  it('preserves the local session when bootstrap is temporarily unavailable', async () => {
+    mocks.bootstrapStatus = 503
     const { getAuthFailureMessage, loadVerifiedAuthSession } = await import('./auth-service')
-    await expect(loadVerifiedAuthSession()).resolves.toBeNull()
+    await expect(loadVerifiedAuthSession()).resolves.toMatchObject({
+      authenticated: true,
+      user: { id: 'user_12345' }
+    })
     expect(getAuthFailureMessage()).toContain('could not be reached')
   })
 
-  it('labels only an explicit invalid-token challenge as an expired session', async () => {
+  it('reports expiry only when the main process clears a terminally invalid session', async () => {
     mocks.bootstrapStatus = 401
-    mocks.bootstrapChallenge = 'Bearer error="invalid_token"'
+    mocks.clearSessionAfterBootstrap = true
     const { getAuthFailureMessage, loadVerifiedAuthSession } = await import('./auth-service')
     await expect(loadVerifiedAuthSession()).resolves.toBeNull()
     expect(getAuthFailureMessage()).toContain('session expired')

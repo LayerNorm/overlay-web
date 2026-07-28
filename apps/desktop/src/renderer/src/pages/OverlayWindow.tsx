@@ -8,6 +8,7 @@ import { applyPhraseReplacements } from '../utils/phrase-replacements'
 const IDLE_WIDTH = 40
 const IDLE_HEIGHT = 8
 const EXPANDED_WIDTH = 176
+const ERROR_WIDTH = 184
 const EXPANDED_HEIGHT = 44
 const RECORDING_WIDTH = 70
 const RECORDING_HEIGHT = 28
@@ -838,8 +839,9 @@ export function OverlayWindow(): ReactElement {
       return { width: RECORDING_WIDTH, height: RECORDING_HEIGHT }
     }
     if (transcriptionError) {
-      // Error state: show expanded bar with retry button
-      return { width: EXPANDED_WIDTH, height: EXPANDED_HEIGHT }
+      // The retry action is a fifth button, so grow instead of removing the
+      // pill's side padding to squeeze it into the normal expanded width.
+      return { width: ERROR_WIDTH, height: EXPANDED_HEIGHT }
     }
     if (isHovered) {
       return { width: EXPANDED_WIDTH, height: EXPANDED_HEIGHT }
@@ -851,7 +853,7 @@ export function OverlayWindow(): ReactElement {
   const isExpanded = isHovered || transcriptionError
   const isMicRecording = recording && recordingSource === 'mic'
   const pillBorderRadius = recording ? (isMicRecording ? 24 : 14) : isExpanded ? 24 : 10
-  const HIT_W = EXPANDED_WIDTH + 32
+  const HIT_W = Math.max(EXPANDED_WIDTH, ERROR_WIDTH) + 32
   const HIT_H = EXPANDED_HEIGHT + 16
 
   return (
@@ -1069,13 +1071,11 @@ export function OverlayWindow(): ReactElement {
                         ? isVertical
                           ? '6px 0'
                           : '0 6px'
-                        : transcriptionError
-                          ? 0
-                          : isExpanded
-                            ? isVertical
-                              ? '8px 0'
-                              : '0 8px'
-                            : 0,
+                        : isExpanded
+                          ? isVertical
+                            ? '8px 0'
+                            : '0 8px'
+                          : 0,
                       transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                       boxShadow: 'none',
                       position: 'relative',

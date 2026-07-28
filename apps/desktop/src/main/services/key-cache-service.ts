@@ -47,8 +47,6 @@ export class KeyCacheService {
   private accessToken: string | null = null
   private refreshBackoffUntil = 0 // timestamp; don't attempt refresh before this
   private pendingRefreshPromise: Promise<boolean> | null = null // dedup concurrent refreshes
-  private consecutiveRefreshFailures = 0
-  private readonly MAX_REFRESH_FAILURES = 3 // after this many non-429 failures, force re-auth
   private unauthorizedRecoveryBlockedUntil = 0
   private readonly UNAUTHORIZED_RECOVERY_COOLDOWN_MS = 60_000
   private forcedSignOutInProgress = false
@@ -97,6 +95,7 @@ export class KeyCacheService {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '')
+      const errorCode = parseRefreshErrorCode(errorText)
 
       // Parse 429 rate-limit backoff and store it so we don't hammer the endpoint
       if (response.status === 429) {
@@ -113,18 +112,16 @@ export class KeyCacheService {
         console.warn(
           `[KeyCacheService] Native refresh rate-limited (429) — backing off for ${retrySeconds}s`
         )
+      } else if (response.status === 401 && errorCode === 'invalid_refresh_token') {
+        // The server reserves this code for a terminal provider response such
+        // as invalid_grant/session revocation. A generic 401 is not enough:
+        // older servers collapsed transient WorkOS failures into 401s.
+        console.warn('[KeyCacheService] Refresh token is definitively invalid — re-auth required')
+        this.forceSignOutForInvalidSession()
       } else {
-        this.consecutiveRefreshFailures += 1
         console.warn(
-          `[KeyCacheService] Native refresh failed (${response.status} ${response.statusText})${errorText ? `: ${errorText.slice(0, 300)}` : ''} (consecutive failures: ${this.consecutiveRefreshFailures})`
+          `[KeyCacheService] Native refresh temporarily unavailable (${response.status} ${response.statusText})${errorText ? `: ${errorText.slice(0, 300)}` : ''}; preserving the stored session`
         )
-        if (this.consecutiveRefreshFailures >= this.MAX_REFRESH_FAILURES) {
-          console.warn(
-            '[KeyCacheService] Max consecutive refresh failures reached — clearing session to force re-auth'
-          )
-          this.consecutiveRefreshFailures = 0
-          this.forceSignOutForInvalidSession()
-        }
       }
       return false
     }
@@ -156,7 +153,6 @@ export class KeyCacheService {
 
     safeStorageService.storeAuthSession(data.session)
     this.accessToken = data.session.accessToken
-    this.consecutiveRefreshFailures = 0
     console.log('[KeyCacheService] Refreshed the main-process access token')
     return true
   }
@@ -214,7 +210,6 @@ export class KeyCacheService {
     this.accessToken = null
     this.refreshBackoffUntil = 0
     this.pendingRefreshPromise = null
-    this.consecutiveRefreshFailures = 0
     this.unauthorizedRecoveryBlockedUntil = 0
     this.clearAllKeys()
     safeStorageService.clearAuthSession()
@@ -242,7 +237,6 @@ export class KeyCacheService {
     this.accessToken = null
     this.refreshBackoffUntil = 0
     this.pendingRefreshPromise = null
-    this.consecutiveRefreshFailures = 0
     this.unauthorizedRecoveryBlockedUntil = 0
     this.forcedSignOutInProgress = false
     this.clearAllKeys()
@@ -330,11 +324,20 @@ export class KeyCacheService {
     this.accessToken = null
     this.refreshBackoffUntil = 0
     this.pendingRefreshPromise = null
-    this.consecutiveRefreshFailures = 0
     this.unauthorizedRecoveryBlockedUntil = 0
     this.forcedSignOutInProgress = false
     this.clearAllKeys()
     console.log('[KeyCacheService] Session invalidated')
+  }
+}
+
+function parseRefreshErrorCode(body: string): string | null {
+  if (!body) return null
+  try {
+    const parsed = JSON.parse(body) as { code?: unknown }
+    return typeof parsed.code === 'string' ? parsed.code : null
+  } catch {
+    return null
   }
 }
 

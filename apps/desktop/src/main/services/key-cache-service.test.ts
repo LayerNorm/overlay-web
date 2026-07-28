@@ -114,4 +114,69 @@ describe('KeyCacheService unauthorized recovery', () => {
       reason: 'session_expired'
     })
   })
+
+  it('preserves the stored session when refresh is temporarily unavailable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            error: 'Session refresh is temporarily unavailable',
+            code: 'refresh_temporarily_unavailable'
+          }),
+          { status: 503, headers: { 'Content-Type': 'application/json' } }
+        )
+      )
+    )
+    const { KeyCacheService } = await import('./key-cache-service')
+    const service = new KeyCacheService()
+    service.setAccessToken('expired-access-token')
+
+    await expect(service.refreshAccessTokenIfPossible()).resolves.toBe(false)
+    expect(service.getAccessToken()).toBe('expired-access-token')
+    expect(mocks.clearAuthSession).not.toHaveBeenCalled()
+    expect(mocks.sendToRenderer).not.toHaveBeenCalled()
+  })
+
+  it('clears the session only for a definitive invalid refresh token response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            error: 'Invalid or expired refresh token',
+            code: 'invalid_refresh_token'
+          }),
+          { status: 401, headers: { 'Content-Type': 'application/json' } }
+        )
+      )
+    )
+    const { KeyCacheService } = await import('./key-cache-service')
+    const service = new KeyCacheService()
+    service.setAccessToken('expired-access-token')
+
+    await expect(service.refreshAccessTokenIfPossible()).resolves.toBe(false)
+    expect(service.getAccessToken()).toBeNull()
+    expect(mocks.clearAuthSession).toHaveBeenCalledTimes(1)
+    expect(mocks.sendToRenderer).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not trust an ambiguous legacy 401 enough to destroy the session', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ error: 'Invalid or expired refresh token' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      )
+    )
+    const { KeyCacheService } = await import('./key-cache-service')
+    const service = new KeyCacheService()
+    service.setAccessToken('expired-access-token')
+
+    await expect(service.refreshAccessTokenIfPossible()).resolves.toBe(false)
+    expect(service.getAccessToken()).toBe('expired-access-token')
+    expect(mocks.clearAuthSession).not.toHaveBeenCalled()
+  })
 })

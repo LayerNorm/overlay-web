@@ -133,9 +133,6 @@ export function registerAppApiIPC(): void {
             )
           }
         }
-        if (shouldRecover && shouldRecoverAppApiAuthentication(response)) {
-          keyCacheService.forceSignOutForInvalidSession()
-        }
         if (response.status !== 401 && accessToken) {
           keyCacheService.markAccessTokenAccepted(accessToken)
         }
@@ -243,9 +240,6 @@ export function registerAppApiIPC(): void {
               legacyBearerUserIdOrigins.has(serverOrigin) ? userId : undefined
             )
           }
-        }
-        if (shouldRecover && shouldRecoverAppApiAuthentication(response)) {
-          keyCacheService.forceSignOutForInvalidSession()
         }
         if (response.status !== 401 && accessToken) {
           keyCacheService.markAccessTokenAccepted(accessToken)

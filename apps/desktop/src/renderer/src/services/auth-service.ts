@@ -52,15 +52,20 @@ export async function loadVerifiedAuthSession(): Promise<AuthSession | null> {
     })
     if (!response.ok) {
       console.warn(`[Auth] Server bootstrap rejected the stored session (${response.status})`)
-      const challenge = response.headers.get('www-authenticate')?.toLowerCase() ?? ''
-      const explicitlyInvalidToken =
-        response.status === 401 &&
-        challenge.includes('bearer') &&
-        challenge.includes('error="invalid_token"')
-      latestAuthFailureReason = explicitlyInvalidToken
-        ? 'session_expired'
-        : 'server_unavailable'
-      return null
+      // The bootstrap request may have attempted an access-token refresh in
+      // the main process. Re-read its OS-protected state: only the main process
+      // can classify a terminal refresh-token rejection and clear the session.
+      const retainedSession = await loadAuthSessionSecure()
+      if (!retainedSession) {
+        latestAuthFailureReason = 'session_expired'
+        return null
+      }
+
+      // Preserve the authenticated desktop shell while the server is
+      // temporarily unavailable. Cloud APIs still enforce the access token;
+      // this only avoids turning an outage into destructive local logout.
+      latestAuthFailureReason = 'server_unavailable'
+      return retainedSession
     }
     latestAuthFailureReason = null
     return session

@@ -114,6 +114,7 @@ const getLocalService = (modelId: string): typeof parakeetService | typeof whisp
 async function activateAuthenticatedSession(session: AuthSession): Promise<void> {
   settingsService.isAuthenticated = true
   keyCacheService.setAccessToken(session.accessToken)
+  scheduleTokenRefresh()
   await keyCacheService.loadUserOwnedKeys()
 
   const { initComposioKey } = await import('./services/agent/composio-service')
@@ -126,12 +127,57 @@ async function activateAuthenticatedSession(session: AuthSession): Promise<void>
 }
 
 function deactivateAuthenticatedSession(): void {
+  cancelTokenRefresh()
   agentApprovalCoordinator.revokeAll()
   settingsService.isAuthenticated = false
   keyCacheService.invalidateSession()
   resetGatewayProvider()
   subscriptionService.clearUserId()
   panelManager.closeAllPanels()
+}
+
+let tokenRefreshTimeout: NodeJS.Timeout | null = null
+const TOKEN_REFRESH_INTERVAL_MS = 55 * 60 * 1000 // Access tokens expire at 60 minutes
+const TOKEN_REFRESH_RETRY_MS = 5 * 60 * 1000
+
+function scheduleTokenRefresh(delayMs = TOKEN_REFRESH_INTERVAL_MS): void {
+  if (tokenRefreshTimeout) clearTimeout(tokenRefreshTimeout)
+
+  const session = safeStorageService.getAuthSession()
+  if (!session?.refreshToken) {
+    tokenRefreshTimeout = null
+    console.log('[Auth] No session to schedule refresh for')
+    return
+  }
+
+  console.log('[Auth] Scheduling token refresh in', Math.round(delayMs / 60000), 'minutes')
+  tokenRefreshTimeout = setTimeout(async () => {
+    tokenRefreshTimeout = null
+    console.log('[Auth] Performing scheduled token refresh...')
+    try {
+      const refreshed = await keyCacheService.refreshAccessTokenIfPossible()
+      if (refreshed) {
+        console.log('[Auth] Scheduled token refresh successful')
+        scheduleTokenRefresh()
+      } else if (safeStorageService.getAuthSession()) {
+        console.warn('[Auth] Scheduled token refresh deferred; preserving session and retrying')
+        scheduleTokenRefresh(TOKEN_REFRESH_RETRY_MS)
+      }
+    } catch (error) {
+      const errorCode = error instanceof Error ? error.name : 'unknown_error'
+      console.error('[Auth] Scheduled token refresh error:', errorCode)
+      if (safeStorageService.getAuthSession()) {
+        scheduleTokenRefresh(TOKEN_REFRESH_RETRY_MS)
+      }
+    }
+  }, delayMs)
+}
+
+function cancelTokenRefresh(): void {
+  if (!tokenRefreshTimeout) return
+  clearTimeout(tokenRefreshTimeout)
+  tokenRefreshTimeout = null
+  console.log('[Auth] Cancelled scheduled token refresh')
 }
 
 // Recording event handlers
@@ -857,8 +903,7 @@ app.whenReady().then(async () => {
       const session = safeStorageService.getAuthSession()
       if (session?.refreshToken) {
         await activateAuthenticatedSession(session)
-        console.log('[Main] Found existing session, scheduling token refresh')
-        scheduleTokenRefresh()
+        console.log('[Main] Restored and scheduled existing session')
       }
     })
     .catch((error) => {
@@ -1209,52 +1254,6 @@ app.whenReady().then(async () => {
       return verified
     }
   )
-
-  // Token refresh scheduling
-  let tokenRefreshTimeout: NodeJS.Timeout | null = null
-  const TOKEN_REFRESH_INTERVAL_MS = 55 * 60 * 1000 // Refresh every 55 minutes (tokens expire at 60)
-
-  function scheduleTokenRefresh(): void {
-    if (tokenRefreshTimeout) {
-      clearTimeout(tokenRefreshTimeout)
-    }
-
-    const session = safeStorageService.getAuthSession()
-    if (!session?.refreshToken) {
-      console.log('[Auth] No session to schedule refresh for')
-      return
-    }
-
-    console.log('[Auth] Scheduling token refresh in', TOKEN_REFRESH_INTERVAL_MS / 60000, 'minutes')
-
-    tokenRefreshTimeout = setTimeout(async () => {
-      console.log('[Auth] Performing scheduled token refresh...')
-      try {
-        const refreshed = await keyCacheService.refreshAccessTokenIfPossible()
-        if (refreshed) {
-          console.log('[Auth] Scheduled token refresh successful')
-          // Schedule next refresh
-          scheduleTokenRefresh()
-        } else {
-          console.warn('[Auth] Scheduled token refresh failed - will retry in 30 minutes')
-          // Retry less frequently to avoid rate limiting (12 refreshes per 10 min limit)
-          setTimeout(scheduleTokenRefresh, 30 * 60 * 1000)
-        }
-      } catch (error) {
-        const errorCode = error instanceof Error ? error.name : 'unknown_error'
-        console.error('[Auth] Scheduled token refresh error:', errorCode)
-        setTimeout(scheduleTokenRefresh, 30 * 60 * 1000)
-      }
-    }, TOKEN_REFRESH_INTERVAL_MS)
-  }
-
-  function cancelTokenRefresh(): void {
-    if (tokenRefreshTimeout) {
-      clearTimeout(tokenRefreshTimeout)
-      tokenRefreshTimeout = null
-      console.log('[Auth] Cancelled scheduled token refresh')
-    }
-  }
 
   // Explicit sign out handler
   ipcMain.handle('auth:sign-out', async () => {
