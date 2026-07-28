@@ -177,3 +177,41 @@ function repository(
     ...overrides,
   }
 }
+
+test('createProject persists settings rather than dropping them', async () => {
+  const calls: Array<Record<string, unknown>> = []
+  const service = new ProjectService({
+    async createProject(args: Record<string, unknown>) {
+      calls.push(args)
+      return { _id: 'p1', name: 'P', userId: 'u1', createdAt: 1, updatedAt: 1 }
+    },
+  } as unknown as ProjectRepository)
+
+  await service.createProject({
+    name: 'P',
+    settings: { toolPolicy: { mode: 'allowlist', toolIds: ['search_knowledge_base'] } },
+    userId: 'u1',
+  })
+  assert.deepEqual(
+    (calls[0]!.settings as Record<string, unknown>)?.toolPolicy,
+    { mode: 'allowlist', toolIds: ['search_knowledge_base'] },
+    'settings supplied at creation must reach the repository',
+  )
+})
+
+test('updateProject persists settings rather than dropping them', async () => {
+  const calls: Array<Record<string, unknown>> = []
+  const service = new ProjectService({
+    async updateProject(args: Record<string, unknown>) {
+      calls.push(args)
+      return { _id: 'p1', name: 'P', userId: 'u1', createdAt: 1, updatedAt: 1 }
+    },
+  } as unknown as ProjectRepository)
+
+  await service.updateProject({
+    projectId: 'p1',
+    settings: { automationsEnabled: false },
+    userId: 'u1',
+  })
+  assert.equal((calls[0]!.settings as Record<string, unknown>)?.automationsEnabled, false)
+})

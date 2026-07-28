@@ -94,6 +94,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       instructions: instructions?.trim() || undefined,
       knowledgeBaseId,
       parentId,
+      settings,
     })
     return NextResponse.json({ id: project._id, project })
   } catch (error) {
