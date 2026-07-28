@@ -45,6 +45,7 @@ import {
   createAuthorizationCapabilityPolicy,
 } from '@/server/authorization'
 import type { NoteRepository } from '@/server/notes'
+import { ProjectKnowledgeTransferService } from '@/server/projects/ProjectKnowledgeTransferService'
 import { MemoryService } from '@/server/memory'
 import {
   KnowledgeSearchService,
@@ -95,6 +96,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   knowledgeBaseService: KnowledgeBaseService
   knowledgeBaseRetrievalService: KnowledgeBaseRetrievalService
   knowledgeSourceIngestionService: KnowledgeSourceIngestionService
+  projectKnowledgeTransferService: ProjectKnowledgeTransferService
   noteRepository: NoteRepository
   apiKeyService: ApiKeyService
   userService: UserService
@@ -188,6 +190,12 @@ export function createOverlayServerContext(
     indexQueue: canonicalIndexQueue,
     repositories: appData.repositories.knowledgeBases,
   })
+  const projectKnowledgeTransferService = new ProjectKnowledgeTransferService({
+    bases: knowledgeBaseService,
+    files: appData.repositories.files,
+    ingestion: knowledgeSourceIngestionService,
+    notes: appData.repositories.notes,
+  })
   const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
   const knowledgeBaseRetrievalService = new KnowledgeBaseRetrievalService({
     bases: knowledgeBaseService,
@@ -219,6 +227,7 @@ export function createOverlayServerContext(
     knowledgeBaseService,
     knowledgeBaseRetrievalService,
     knowledgeSourceIngestionService,
+    projectKnowledgeTransferService,
     knowledgeSearchService,
     noteRepository: appData.repositories.notes,
     apiKeyService: new ApiKeyService(appData.repositories.apiKeys),

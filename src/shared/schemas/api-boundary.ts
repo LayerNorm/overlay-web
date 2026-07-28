@@ -92,6 +92,7 @@ import {
   AttachProjectKnowledgeBaseRequest,
   DetachProjectKnowledgeBaseRequest,
   ProjectKnowledgeBaseListQuery,
+  ProjectKnowledgeTransferRequest,
   ProjectListQuery,
   SearchFileTextRequest,
   BillingSettingsQuery,
@@ -546,6 +547,13 @@ export const webApiBoundaryDefinitions = [
     path: '/api/v1/projects',
     schema: { query: DeleteProjectRequest, json: DeleteProjectRequest },
     summary: 'Delete a project',
+    tag: 'Projects',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/projects/knowledge-transfer',
+    schema: { json: ProjectKnowledgeTransferRequest },
+    summary: 'Promote a project file into a knowledge base, or copy a source back',
     tag: 'Projects',
   },
   {

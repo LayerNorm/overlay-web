@@ -57,4 +57,20 @@ export const AttachProjectKnowledgeBaseRequest = z.object({
 
 export const DetachProjectKnowledgeBaseRequest = AttachProjectKnowledgeBaseRequest
 
+/** Explicit transfer between a project and a knowledge base. */
+export const ProjectKnowledgeTransferRequest = z.object({
+  ...AuthFields,
+  projectId: z.string().min(1),
+  knowledgeBaseId: z.string().min(1),
+  direction: z.enum(['promote', 'copy']),
+  /** Required when promoting a project file into the knowledge base. */
+  fileId: z.string().min(1).optional(),
+  /** Required when copying a knowledge source into the project. */
+  sourceId: z.string().min(1).optional(),
+  title: z.string().trim().min(1).max(240).optional(),
+}).refine(
+  (value) => (value.direction === 'promote' ? Boolean(value.fileId) : Boolean(value.sourceId)),
+  { message: 'promote requires fileId; copy requires sourceId' },
+)
+
 export const ProjectResponse = UnknownResponse

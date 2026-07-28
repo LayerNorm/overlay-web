@@ -198,6 +198,14 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   {
+    // Promotion writes into a knowledge base and copying reads from one, so both
+    // directions need project edit plus the matching knowledge capability.
+    path: '/api/v1/projects/knowledge-transfer',
+    methods: {
+      POST: resource('project', 'edit', {}, 'projects.edit', 'knowledge.read'),
+    },
+  },
+  {
     // Attaching trusted knowledge changes what a project's chats may cite, so it
     // is gated as a project edit. Read access to each base is checked separately
     // by KnowledgeBaseService.

@@ -10231,6 +10231,72 @@
                   "color": {
                     "type": "string"
                   },
+                  "settings": {
+                    "type": "object",
+                    "properties": {
+                      "preferredModelId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "toolPolicy": {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "inherit",
+                              "allowlist",
+                              "denylist"
+                            ]
+                          },
+                          "toolIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "maxItems": 200
+                          }
+                        },
+                        "required": [
+                          "mode"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "enabledSkillIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "maxItems": 200
+                      },
+                      "enabledMcpServerIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "maxItems": 200
+                      },
+                      "enabledConnectorSlugs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "maxItems": 200
+                      },
+                      "automationsEnabled": {
+                        "type": "boolean"
+                      },
+                      "isTemplate": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
                   "projectId": {
                     "type": "string",
                     "minLength": 1
@@ -10345,6 +10411,72 @@
                   },
                   "color": {
                     "type": "string"
+                  },
+                  "settings": {
+                    "type": "object",
+                    "properties": {
+                      "preferredModelId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "toolPolicy": {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "inherit",
+                              "allowlist",
+                              "denylist"
+                            ]
+                          },
+                          "toolIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "maxItems": 200
+                          }
+                        },
+                        "required": [
+                          "mode"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "enabledSkillIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "maxItems": 200
+                      },
+                      "enabledMcpServerIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "maxItems": 200
+                      },
+                      "enabledConnectorSlugs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "maxItems": 200
+                      },
+                      "automationsEnabled": {
+                        "type": "boolean"
+                      },
+                      "isTemplate": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
                   }
                 },
                 "additionalProperties": true
@@ -10634,6 +10766,119 @@
                 "required": [
                   "projectId",
                   "knowledgeBaseId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/knowledge-transfer": {
+      "post": {
+        "operationId": "postProjectsKnowledgeTransfer",
+        "summary": "Promote a project file into a knowledge base, or copy a source back",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accessToken": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "userId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "projectId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "knowledgeBaseId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "direction": {
+                    "type": "string",
+                    "enum": [
+                      "promote",
+                      "copy"
+                    ]
+                  },
+                  "fileId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sourceId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 240
+                  }
+                },
+                "required": [
+                  "projectId",
+                  "knowledgeBaseId",
+                  "direction"
                 ],
                 "additionalProperties": false
               }
