@@ -27,7 +27,10 @@ import {
   appDataRouteUnsupportedResponse,
   getAppDataRouteSupport,
 } from '@/server/app-data/route-support'
-import { getOwnerFundedOperation } from '@/server/billing/owner-funded-operations'
+import {
+  getOwnerFundedOperation,
+  ownerFundedOperationRequiresIdempotencyKey,
+} from '@/server/billing/owner-funded-operations'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import { logSecurityEvent } from '@/server/observability/security-events'
 
@@ -139,7 +142,10 @@ export async function handleBffRoute(
     request.method,
     request.nextUrl.pathname,
   )
-  if (ownerFundedOperation && !request.headers.get('idempotency-key')?.trim()) {
+  if (
+    ownerFundedOperationRequiresIdempotencyKey(ownerFundedOperation) &&
+    !request.headers.get('idempotency-key')?.trim()
+  ) {
     logSecurityEvent('owner_funded_idempotency_missing', {
       authType: auth.authType,
       operation: ownerFundedOperation.id,

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   getOwnerFundedOperation,
+  ownerFundedOperationRequiresIdempotencyKey,
   OWNER_FUNDED_OPERATIONS,
 } from './owner-funded-operations'
 
@@ -27,3 +28,17 @@ test('owner-funded operation registry is exact and has unique routes and ids', (
   )
 })
 
+test('idempotency keys are required for owner-funded mutations but not reads', () => {
+  assert.equal(
+    ownerFundedOperationRequiresIdempotencyKey(
+      getOwnerFundedOperation('POST', '/api/v1/conversations/act'),
+    ),
+    true,
+  )
+  assert.equal(
+    ownerFundedOperationRequiresIdempotencyKey(
+      getOwnerFundedOperation('GET', '/api/v1/chat-suggestions'),
+    ),
+    false,
+  )
+})
