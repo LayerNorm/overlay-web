@@ -161,6 +161,22 @@ export function registerTranscriptionIPC(): void {
         }
       }
 
+      const saveRecoveryRecording = (): void => {
+        // Normal recording storage already preserves every attempt. When it is
+        // disabled, retain only failed audio so an important dictation can be
+        // recovered from the existing "Open recordings folder" control.
+        if (settingsService.recordingStorageEnabled) return
+        try {
+          const recordingsDir = getRecordingsDir()
+          mkdirSync(recordingsDir, { recursive: true })
+          const recoveryPath = join(recordingsDir, `failed-recording-${Date.now()}.${ext}`)
+          copyFileSync(file, recoveryPath)
+          console.warn('[Recording] Preserved failed recording for recovery:', recoveryPath)
+        } catch (err) {
+          console.error('[Recording] Failed to preserve failed recording:', err)
+        }
+      }
+
       // Cleanup function to delete temporary audio files
       const cleanupTempFiles = (): void => {
         try {
@@ -585,6 +601,9 @@ export function registerTranscriptionIPC(): void {
           .filter((word) => word.length > 0).length
         saveTranscriptionToHistory(trimmed, wordsIn, wordsOut, durationInSeconds)
         return { text: trimmed }
+      } catch (error) {
+        saveRecoveryRecording()
+        throw error
       } finally {
         // Save recording copy if enabled, then cleanup temp files
         saveRecording()

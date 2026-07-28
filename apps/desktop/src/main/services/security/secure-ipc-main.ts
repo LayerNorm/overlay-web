@@ -377,10 +377,14 @@ function releaseCallSlot(callKey: string): void {
   else activeCalls.set(callKey, current - 1)
 }
 
-function maxInputBytesForChannel(channel: string): number {
+export function maxInputBytesForChannel(channel: string): number {
   if (channel === 'storage:upload') return 52 * 1024 * 1024
   if (channel === 'app-api:stream' || channel === 'app-api:request') return 16 * 1024 * 1024
-  if (channel === 'transcribe' || channel === 'capture-screenshots') return 64 * 1024 * 1024
+  // The transcription API accepts audio files up to 25 MiB. Leave bounded
+  // headroom for IPC metadata without weakening the default 1 MiB policy for
+  // any other channel.
+  if (channel === 'stt:transcribe') return 26 * 1024 * 1024
+  if (channel === 'capture-screenshots') return 64 * 1024 * 1024
   return DEFAULT_MAX_INPUT_BYTES
 }
 
@@ -389,7 +393,8 @@ function maxOutputBytesForChannel(channel: string): number {
   return DEFAULT_MAX_OUTPUT_BYTES
 }
 
-function timeoutForChannel(channel: string): number {
+export function timeoutForChannel(channel: string): number {
+  if (channel === 'stt:transcribe') return 6 * 60_000
   if (
     channel === 'app-api:stream' ||
     channel.startsWith('agent:') ||

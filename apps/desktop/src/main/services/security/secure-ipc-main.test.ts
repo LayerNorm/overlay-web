@@ -17,7 +17,9 @@ vi.mock('./safe-storage-service', () => ({
 import {
   assertIpcValueWithinLimit,
   isChannelAllowedForRole,
-  isTrustedRendererUrl
+  isTrustedRendererUrl,
+  maxInputBytesForChannel,
+  timeoutForChannel
 } from './secure-ipc-main'
 
 describe('secure IPC main boundary', () => {
@@ -74,5 +76,29 @@ describe('secure IPC main boundary', () => {
     expect(() => assertIpcValueWithinLimit({ fn: () => null }, 1024, 'arguments')).toThrow(
       'ipc_value_not_serializable'
     )
+  })
+
+  it('allows provider-sized audio only on the real transcription channel', () => {
+    const twoMiBAudio = { buf: new ArrayBuffer(2 * 1024 * 1024) }
+
+    expect(maxInputBytesForChannel('stt:transcribe')).toBe(26 * 1024 * 1024)
+    expect(() =>
+      assertIpcValueWithinLimit(
+        twoMiBAudio,
+        maxInputBytesForChannel('stt:transcribe'),
+        'arguments'
+      )
+    ).not.toThrow()
+    expect(() =>
+      assertIpcValueWithinLimit(
+        twoMiBAudio,
+        maxInputBytesForChannel('stt:unknown'),
+        'arguments'
+      )
+    ).toThrow('ipc_arguments_too_large')
+  })
+
+  it('gives long transcription requests enough time to finish', () => {
+    expect(timeoutForChannel('stt:transcribe')).toBe(6 * 60_000)
   })
 })
