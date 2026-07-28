@@ -5,8 +5,8 @@
 Status legend: DONE · PARTIAL · TODO · DEFERRED (deliberately out of scope for now)
 
 - **Branch:** `codex/authorization-system` (also pushed to `staging`)
-- **Last updated:** 2026-07-26, at commit `1852a6051`
-- **App-data schema version:** 24
+- **Last updated:** Phase 5a-c, at commit `16b1fa7eb`
+- **App-data schema version:** 25
 
 ---
 
@@ -19,7 +19,7 @@ Status legend: DONE · PARTIAL · TODO · DEFERRED (deliberately out of scope fo
 | 2 | Project core | **DONE** |
 | 3 | Connect projects and knowledge (one KB) | **DONE** |
 | 4 | Rich knowledge retrieval | **DONE** |
-| 5 | Mature project workflows | PARTIAL — 1 of 9 items |
+| 5 | Mature project workflows | PARTIAL — 6 of 9 items |
 | 6 | Personal brain | PARTIAL — foundation only |
 | 7 | Sharing and access | PARTIAL — KB yes, projects no |
 | 8 | Admin distribution | PARTIAL |
@@ -289,28 +289,78 @@ walkthrough is now correct in the running app.
 
 ---
 
-## Phase 5: Mature Project Workflows — PARTIAL, 1 of 9
+## Phase 5: Mature Project Workflows — PARTIAL, 6 of 9
 
 | Item | Status |
 |---|---|
-| Attach multiple KBs | DONE — delivered by Phase 4 |
-| Project-specific model and tool selection | TODO |
-| Skills, MCP servers, connectors, and automations | TODO — exist globally, not project-scoped |
+| Attach multiple KBs | **DONE** — delivered by Phase 4 |
+| Project-specific model and tool selection | **DONE** — schema 25, enforced at the tool layer |
+| Skills, MCP servers, connectors, and automations | PARTIAL — per-project enable lists stored and parsed; only the tool policy is enforced so far |
 | Durable generated outputs | TODO |
-| Promote a project file into a KB | TODO — provenance fields `promotedFromProjectId` and `promotedFromArtifactId` already reserved |
-| Copy a KB source into a project as working material | TODO |
-| Templates for repeatable projects | TODO |
-| Project export and duplication | TODO |
-| Collaboration and basic project sharing | TODO |
+| Promote a project file into a KB | **DONE** — explicit command, snapshot with provenance |
+| Copy a KB source into a project as working material | **DONE** — editable note that names its origin |
+| Templates for repeatable projects | **DONE** — projects flagged `isTemplate` |
+| Project export and duplication | PARTIAL — duplication done; export TODO |
+| Collaboration and basic project sharing | TODO — belongs with Phase 7, see note |
 
-### QA — TODO, not started
+### Configuration model (schema 25)
 
-- Tool access remains project-scoped.
-- Promotions and copies preserve provenance.
-- Duplicated projects do not accidentally share private working data.
-- Archived projects stop background work.
-- Multi-tab and multi-user collaboration behavior.
-- Worker recovery and idempotency for long-running actions.
+`projects.settings` is one JSON blob on both backends carrying `preferredModelId`,
+a tool policy, enabled skill/MCP/connector ids, an automations switch, and
+template status. Absent or malformed settings read as "inherit the account
+default", so pre-25 projects keep working and a hand-edited row cannot widen
+access.
+
+Two semantics worth remembering:
+
+- An allowlist with **no entries** means "no optional tools", not "all tools".
+  The opposite reading is the dangerous default.
+- `enabledSkillIds` and friends distinguish `undefined` (inherit everything) from
+  an explicit `[]` (allow none).
+
+### Enforcement, carrying the Phase 4 lesson
+
+`applyProjectToolPolicy` runs at the **tool layer**, last in the gate chain, and
+only ever narrows — a project can never reintroduce a tool the account or
+deployment already withheld. This placement is the direct response to the Phase 4
+defect, where a boundary that existed only on the retrieval path let the agent
+reach around it. `project-tool-scope.test.ts` asserts what the agent can reach by
+building the real tool set, not what the policy function returns in isolation.
+
+### Transfers are explicit and directional
+
+- **Promotion** copies a project file's text into a knowledge base *by value*, so
+  editing the file afterwards cannot silently rewrite what the base asserts.
+  Provenance records the originating project and artifact.
+- **Copying back** produces an editable working note that names its origin and
+  states that it does not stay in sync.
+- A file with no extracted text returns 409 rather than promoting an empty source.
+
+### Duplication
+
+Copies configuration only. No chats, files, notes, or outputs, because a duplicate
+is a fresh workspace. Attachments are re-attached through `KnowledgeBaseService`,
+so each is re-authorized against the copying user rather than trusted from the
+source project.
+
+### QA
+
+| Check | Status |
+|---|---|
+| Tool access remains project-scoped | **DONE** — verified through the agent tool surface |
+| Promotions and copies preserve provenance | **DONE** |
+| Duplicated projects do not accidentally share private working data | **DONE** — asserts absence, not just presence |
+| Archived projects stop background work | PARTIAL — archived projects contribute no configuration, instructions or knowledge; background job cancellation TODO |
+| Multi-tab and multi-user collaboration behavior | TODO |
+| Worker recovery and idempotency for long-running actions | TODO |
+
+### Deliberate deferral
+
+**Collaboration and project sharing** is listed under Phase 5 but belongs with
+Phase 7, which already owns sharing. Phase 2 deliberately excluded sharing from
+project settings for the same reason. Building a second sharing model here would
+have to be reconciled with the resource-ACL model later, so it is deferred rather
+than duplicated.
 
 ---
 
@@ -416,7 +466,7 @@ with no explicit-deny rules in v1.
 | 6 | Run comparative distinction QA | DONE |
 | 7 | Stabilize both Convex and Postgres contracts | DONE |
 | 8 | Add rich retrieval and multiple KBs | DONE |
-| 9 | Add mature project workflows | TODO — **next** |
+| 9 | Add mature project workflows | PARTIAL — 6 of 9 |
 | 10 | Add personal brains | PARTIAL |
 | 11 | Add sharing and organization distribution | PARTIAL |
 | 12 | Add custom roles, ACLs, governance, and versioning | PARTIAL — authz done, governance not |
