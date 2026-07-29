@@ -59,11 +59,13 @@ export function KnowledgeBaseWorkspace({
   canEdit,
   canShare,
   initialKnowledgeBase,
+  initialSelectedSourceId,
   initialSources,
 }: {
   canEdit: boolean
   canShare: boolean
   initialKnowledgeBase: KnowledgeBase
+  initialSelectedSourceId?: string
   initialSources: KnowledgeBaseSourceDetail[]
 }) {
   const router = useRouter()
@@ -76,7 +78,12 @@ export function KnowledgeBaseWorkspace({
   const [sourceTab, setSourceTab] = useState<SourceTab>('sources')
   const [searchRevision, setSearchRevision] = useState(0)
   const [mobileSourcesOpen, setMobileSourcesOpen] = useState(false)
-  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(
+    initialSelectedSourceId &&
+      initialSources.some(({ source }) => source.id === initialSelectedSourceId)
+      ? initialSelectedSourceId
+      : null,
+  )
   const [uploading, setUploading] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -915,7 +922,10 @@ function SourceRow({
 }) {
   const busy = ACTIVE_SOURCE_STATUSES.has(detail.source.status)
   return (
-    <div className={`group flex items-center gap-2 rounded-md px-2 py-2 ${selected ? 'bg-[var(--surface-subtle)]' : 'hover:bg-[var(--surface-subtle)]'}`}>
+    <div
+      className={`group flex items-center gap-2 rounded-md px-2 py-2 ${selected ? 'bg-[var(--surface-subtle)]' : 'hover:bg-[var(--surface-subtle)]'}`}
+      data-testid={`knowledge-source-${detail.source.id}`}
+    >
       {canEdit ? (
         <button type="button" aria-label={`${detail.membership.enabled ? 'Exclude' : 'Include'} ${detail.source.title}`} onClick={() => onToggle(!detail.membership.enabled)} className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${detail.membership.enabled ? 'border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]' : 'border-[var(--border)]'}`}>
           {detail.membership.enabled ? <Check size={12} /> : null}
@@ -925,7 +935,10 @@ function SourceRow({
         <FileText size={14} className="shrink-0 text-[var(--muted)]" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-xs font-medium">{detail.source.title}</span>
-          <span className={`mt-0.5 block text-[10px] capitalize ${detail.source.status === 'failed' ? 'text-red-500' : 'text-[var(--muted)]'}`}>
+          <span
+            className={`mt-0.5 block text-[10px] capitalize ${detail.source.status === 'failed' ? 'text-red-500' : 'text-[var(--muted)]'}`}
+            data-testid={`knowledge-source-status-${detail.source.id}`}
+          >
             {busy ? <Loader2 className="mr-1 inline animate-spin" size={9} /> : null}
             {detail.source.status}
           </span>
