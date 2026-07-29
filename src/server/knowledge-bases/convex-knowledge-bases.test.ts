@@ -34,6 +34,8 @@ test('real Convex knowledge-base repository contract', {
       scope,
       ownerUserId,
       conversationId: `${scope}_conversation`,
+      groupId: `${scope}_group`,
+      projectId: `${scope}_project`,
     })
   } finally {
     await convex.mutation('knowledge/bases:purgeOwnerDataByServer', {

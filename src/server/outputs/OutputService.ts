@@ -58,6 +58,7 @@ export class OutputService {
     sizeBytes?: number
     metadata?: Record<string, unknown>
     conversationId?: string
+    projectId?: string
     turnId?: string
   }): Promise<string> {
     if (!isKnownOutputType(args.type)) throw new Error(`Unsupported output type: ${args.type}`)
@@ -73,6 +74,7 @@ export class OutputService {
       mimeType: args.mimeType,
       sizeBytes: args.sizeBytes,
       conversationId: args.conversationId,
+      projectId: args.projectId,
       turnId: args.turnId,
       modelId: args.modelId,
       prompt: args.prompt,

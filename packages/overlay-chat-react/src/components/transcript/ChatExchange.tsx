@@ -76,6 +76,7 @@ export interface ChatExchangeProps {
   onDeleteTurn: () => void
   onReply: () => void
   onBranch?: () => void
+  onSaveToKnowledge?: () => void
   /** User stopped streaming for this exchange; show notice + footer actions. */
   interrupted?: boolean
   actionsLocked: boolean
@@ -106,7 +107,7 @@ export interface ChatExchangeProps {
 export function ChatExchange({
   userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, isTextStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, status, sourceCitations,
-  turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
+  turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, onSaveToKnowledge, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue, getModelDisplayName,
   generatedUiConnectorActions, onGeneratedUiChange, presentation,
 }: ChatExchangeProps) {
@@ -470,6 +471,7 @@ export function ChatExchange({
             onDeleteTurn={onDeleteTurn}
             onReply={onReply}
             onBranch={onBranch}
+            onSaveToKnowledge={onSaveToKnowledge}
             turnIdForActions={turnIdForActions}
             actionsLocked={actionsLocked}
             webSources={webSources}

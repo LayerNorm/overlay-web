@@ -6,6 +6,12 @@ import type {
   ProjectRepository,
 } from './ProjectRepository'
 import { ProjectRepositoryError } from './ProjectRepository'
+import {
+  copyableProjectSettings,
+  normalizeProjectSettings,
+  readProjectSettings,
+  type ProjectSettings,
+} from '@/shared/projects/project-settings'
 
 export class ProjectServiceError extends Error {
   constructor(
@@ -25,6 +31,8 @@ export class ProjectService {
         knowledgeBaseId: string
         userId: string
       }) => Promise<void>
+      assertProjectDeletion?: (projectId: string) => Promise<void>
+      afterProjectDeletion?: (projectIds: string[]) => Promise<void>
     } = {},
   ) {}
 
@@ -50,6 +58,7 @@ export class ProjectService {
     knowledgeBaseId?: string | null
     name?: string
     parentId?: string | null
+    settings?: ProjectSettings
     userId: string
   }): Promise<ProjectRecord> {
     const name = requiredName(args.name)
@@ -61,6 +70,9 @@ export class ProjectService {
       ...(knowledgeBaseId !== undefined ? { knowledgeBaseId } : {}),
       name,
       parentId: normalizeParentId(args.parentId),
+      ...(args.settings !== undefined
+        ? { settings: normalizeProjectSettings(args.settings) as Record<string, unknown> }
+        : {}),
       userId: args.userId,
     }))
   }
@@ -72,6 +84,7 @@ export class ProjectService {
     name?: string
     parentId?: string | null
     projectId: string
+    settings?: ProjectSettings
     userId: string
   }): Promise<ProjectRecord> {
     const knowledgeBaseId = normalizeNullableId(args.knowledgeBaseId)
@@ -85,6 +98,9 @@ export class ProjectService {
       name: args.name === undefined ? undefined : requiredName(args.name),
       parentId: args.parentId === undefined ? undefined : normalizeParentId(args.parentId),
       projectId: args.projectId,
+      ...(args.settings !== undefined
+        ? { settings: normalizeProjectSettings(args.settings) as Record<string, unknown> }
+        : {}),
       userId: args.userId,
     }))
     if (!project) throw new ProjectServiceError('Not found', 404)
@@ -102,12 +118,63 @@ export class ProjectService {
     })
   }
 
+  /**
+   * Creates a new project from an existing one's configuration.
+   *
+   * Copies only what is configuration: name, instructions, settings, and
+   * knowledge-base attachments. Deliberately copies **no private working data** —
+   * no chats, files, notes, or outputs — because a duplicate is a fresh workspace,
+   * and silently carrying another project's working material across is how private
+   * content leaks between engagements.
+   */
+  async duplicateProject(args: {
+    attachKnowledgeBases?: (target: { projectId: string }) => Promise<void>
+    name?: string
+    sourceProjectId: string
+    userId: string
+  }): Promise<ProjectRecord> {
+    const source = await this.repository.getProject({
+      projectId: args.sourceProjectId,
+      userId: args.userId,
+    })
+    if (!source) throw new ProjectServiceError('Not found', 404)
+
+    const created = await this.createProject({
+      instructions: source.instructions,
+      name: requiredName(args.name ?? `${source.name} copy`),
+      // An instance of a template is not itself a template.
+      settings: copyableProjectSettings(readProjectSettings(source.settings)),
+      userId: args.userId,
+    })
+    // Attachments live in a join table, so the caller supplies the copy step.
+    if (args.attachKnowledgeBases) {
+      await args.attachKnowledgeBases({ projectId: created._id })
+    }
+    return created
+  }
+
+  /** Projects the user has marked as reusable starting points. */
+  async listTemplates(args: { userId: string }): Promise<ProjectRecord[]> {
+    const projects = await this.repository.listProjects({ userId: args.userId })
+    return projects.filter((project) => readProjectSettings(project.settings).isTemplate === true)
+  }
+
   async deleteProjectTree(args: {
     projectId: string
     userId: string
   }): Promise<DeleteProjectTreeResult> {
+    if (this.options.assertProjectDeletion || this.options.afterProjectDeletion) {
+      const projects = await this.repository.listProjects({
+        includeArchived: true,
+        userId: args.userId,
+      })
+      for (const projectId of projectSubtreeIds(projects, args.projectId)) {
+        await this.options.assertProjectDeletion?.(projectId)
+      }
+    }
     const result = await this.mapRepositoryErrors(() => this.repository.deleteProjectTree(args))
     if (!result) throw new ProjectServiceError('Not found', 404)
+    await this.options.afterProjectDeletion?.(result.deletedIds)
     return result
   }
 
@@ -121,6 +188,23 @@ export class ProjectService {
       throw error
     }
   }
+}
+
+function projectSubtreeIds(projects: ProjectRecord[], rootId: string): string[] {
+  const children = new Map<string, string[]>()
+  for (const project of projects) {
+    if (!project.parentId) continue
+    children.set(project.parentId, [...(children.get(project.parentId) ?? []), project._id])
+  }
+  const result: string[] = []
+  const pending = [rootId]
+  while (pending.length > 0) {
+    const id = pending.shift()!
+    if (result.includes(id)) continue
+    result.push(id)
+    pending.push(...(children.get(id) ?? []))
+  }
+  return result
 }
 
 function requiredName(value: string | undefined): string {

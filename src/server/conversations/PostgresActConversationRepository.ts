@@ -438,6 +438,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         archivedAt: projects.archivedAt,
         instructions: projects.instructions,
         knowledgeBaseId: projects.knowledgeBaseId,
+        settings: projects.settings,
       })
       .from(projects)
       .where(and(
@@ -450,6 +451,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
       archivedAt: row.archivedAt?.getTime(),
       instructions: row.instructions ?? undefined,
       knowledgeBaseId: row.knowledgeBaseId ?? undefined,
+      settings: row.settings ?? undefined,
     } : null
   }
 

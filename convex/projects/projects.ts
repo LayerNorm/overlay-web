@@ -64,8 +64,9 @@ export const create = mutation({
     instructions: v.optional(v.string()),
     knowledgeBaseId: v.optional(v.string()),
     parentId: v.optional(v.string()),
+    settings: v.optional(v.any()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, clientId, name, instructions, knowledgeBaseId, parentId }) => {
+  handler: async (ctx, { userId, accessToken, serverSecret, clientId, name, instructions, knowledgeBaseId, parentId, settings }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (clientId?.trim()) {
       const existing = await ctx.db
@@ -86,6 +87,7 @@ export const create = mutation({
             knowledgeBaseId,
             name,
             parentId,
+            ...(settings !== undefined ? { settings } : {}),
             updatedAt: Date.now(),
           })
         }
@@ -101,6 +103,7 @@ export const create = mutation({
       instructions: instructions?.trim() || undefined,
       knowledgeBaseId,
       parentId,
+      settings: settings ?? {},
       createdAt: now,
       updatedAt: now,
     })
@@ -118,6 +121,7 @@ export const update = mutation({
     instructions: v.optional(v.union(v.string(), v.null())),
     knowledgeBaseId: v.optional(v.union(v.string(), v.null())),
     parentId: v.optional(v.union(v.string(), v.null())),
+    settings: v.optional(v.any()),
   },
   handler: async (ctx, {
     projectId,
@@ -129,6 +133,7 @@ export const update = mutation({
     instructions,
     knowledgeBaseId,
     parentId,
+    settings,
   }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const project = await ctx.db.get(projectId)
@@ -144,6 +149,7 @@ export const update = mutation({
     if (instructions !== undefined) patch.instructions = instructions?.trim() || undefined
     if (knowledgeBaseId !== undefined) patch.knowledgeBaseId = knowledgeBaseId?.trim() || undefined
     if (parentId !== undefined) patch.parentId = parentId || undefined
+    if (settings !== undefined) patch.settings = settings
     await ctx.db.patch(projectId, patch)
   },
 })

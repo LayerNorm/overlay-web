@@ -16,6 +16,11 @@ import {
   ProjectListQuery,
   UpdateProjectRequest,
 } from '@/shared/schemas/projects'
+import {
+  projectAutomationsEnabled,
+  readProjectSettings,
+} from '@/shared/projects/project-settings'
+import { suspendProjectAutomations } from '@/server/projects/suspendProjectAutomations'
 const projectService = new ProjectService(repositoryProxy<ProjectRepository>(
   () => getOverlayServerContext().appData.repositories.projects,
 ), {
@@ -31,6 +36,29 @@ const projectService = new ProjectService(repositoryProxy<ProjectRepository>(
       }
       throw error
     }
+  },
+  assertProjectDeletion: async (projectId) => {
+    try {
+      await getOverlayServerContext().governanceService.assertDeletionAllowed({
+        resourceType: 'project',
+        resourceId: projectId,
+      })
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error) {
+        throw new ProjectServiceError(
+          error.message,
+          Number((error as { statusCode: number }).statusCode),
+        )
+      }
+      throw error
+    }
+  },
+  afterProjectDeletion: async (projectIds) => {
+    await Promise.all(projectIds.map((resourceId) =>
+      getOverlayServerContext().governanceService.removeForDeletedResource({
+        resourceType: 'project',
+        resourceId,
+      })))
   },
 })
 
@@ -86,7 +114,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const bodyResult = await readValidatedJson(request, context, CreateProjectRequest)
     if (!bodyResult.ok) return bodyResult.response
     const body = bodyResult.data
-    const { name, parentId, instructions, knowledgeBaseId, clientId } = body
+    const { name, parentId, instructions, knowledgeBaseId, clientId, settings } = body
     const project = await projectService.createProject({
       userId: getAuthorizedResourceUserId(context),
       clientId: clientId?.trim() || undefined,
@@ -94,6 +122,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       instructions: instructions?.trim() || undefined,
       knowledgeBaseId,
       parentId,
+      settings,
     })
     return NextResponse.json({ id: project._id, project })
   } catch (error) {
@@ -113,7 +142,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const bodyResult = await readValidatedJson(request, context, UpdateProjectRequest)
     if (!bodyResult.ok) return bodyResult.response
     const body = bodyResult.data
-    const { projectId, name, instructions, knowledgeBaseId, parentId, archived } = body
+    const { projectId, name, instructions, knowledgeBaseId, parentId, archived, settings } = body
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
     const project = await projectService.updateProject({
       projectId,
@@ -123,7 +152,15 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       knowledgeBaseId,
       parentId,
       archived,
+      settings,
     })
+    if (archived === true || !projectAutomationsEnabled(readProjectSettings(project.settings))) {
+      await suspendProjectAutomations({
+        repository: getOverlayServerContext().appData.repositories.automations,
+        projectId,
+        userId: getAuthorizedResourceUserId(context),
+      })
+    }
     return NextResponse.json({ success: true, project })
   } catch (error) {
     if (error instanceof ProjectServiceError) {

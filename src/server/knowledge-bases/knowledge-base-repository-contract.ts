@@ -9,6 +9,9 @@ export async function runKnowledgeBaseRepositoryContract(
     scope: string
     ownerUserId: string
     conversationId: string
+    groupId: string
+    /** Provide to exercise project attachments; the caller owns creating the project row. */
+    projectId?: string
   },
 ): Promise<void> {
   const baseId = `${args.scope}_base`
@@ -111,23 +114,151 @@ export async function runKnowledgeBaseRepositoryContract(
     assert.equal((await args.repositories.memberships.listForBase(baseId))[0]?.enabled, false)
   })
 
-  await t.test('attaches a chat to exactly one knowledge base', async () => {
+  await t.test('grounds one chat against several knowledge bases', async () => {
     const attached = await args.repositories.conversations.attach({
       knowledgeBaseId: baseId,
       conversationId: args.conversationId,
       createdBy: args.ownerUserId,
     })
     assert.equal(attached.knowledgeBaseId, baseId)
-    assert.equal((await args.repositories.conversations.listForBase(baseId)).length, 1)
 
-    const moved = await args.repositories.conversations.attach({
+    const second = await args.repositories.conversations.attach({
       knowledgeBaseId: secondBaseId,
       conversationId: args.conversationId,
       createdBy: args.ownerUserId,
     })
-    assert.equal(moved.knowledgeBaseId, secondBaseId)
-    assert.equal((await args.repositories.conversations.listForBase(baseId)).length, 0)
+    assert.equal(second.knowledgeBaseId, secondBaseId)
+
+    // Attaching a second base must add to the set, not replace the first.
+    assert.equal((await args.repositories.conversations.listForBase(baseId)).length, 1)
     assert.equal((await args.repositories.conversations.listForBase(secondBaseId)).length, 1)
+    assert.deepEqual(
+      (await args.repositories.conversations.listForConversation(args.conversationId))
+        .map(({ knowledgeBaseId }) => knowledgeBaseId)
+        .sort(),
+      [baseId, secondBaseId].sort(),
+    )
+
+    // Re-attaching the same pair is idempotent rather than duplicating a row.
+    await args.repositories.conversations.attach({
+      knowledgeBaseId: baseId,
+      conversationId: args.conversationId,
+      createdBy: args.ownerUserId,
+    })
+    assert.equal((await args.repositories.conversations.listForConversation(args.conversationId)).length, 2)
+
+    // Detaching one base leaves the others grounded.
+    assert.equal(await args.repositories.conversations.detachOne({
+      conversationId: args.conversationId,
+      knowledgeBaseId: baseId,
+    }), true)
+    assert.deepEqual(
+      (await args.repositories.conversations.listForConversation(args.conversationId))
+        .map(({ knowledgeBaseId }) => knowledgeBaseId),
+      [secondBaseId],
+    )
+    assert.equal(await args.repositories.conversations.detachOne({
+      conversationId: args.conversationId,
+      knowledgeBaseId: baseId,
+    }), false)
+
+    // Restore both so the removal test below still exercises cascade cleanup.
+    await args.repositories.conversations.attach({
+      knowledgeBaseId: baseId,
+      conversationId: args.conversationId,
+      createdBy: args.ownerUserId,
+    })
+  })
+
+  if (args.projectId) {
+    const projectId = args.projectId
+    await t.test('attaches several knowledge bases to a project', async () => {
+      const attached = await args.repositories.projects.attach({
+        knowledgeBaseId: baseId,
+        projectId,
+        attachedBy: args.ownerUserId,
+      })
+      assert.equal(attached.knowledgeBaseId, baseId)
+      assert.equal(attached.projectId, projectId)
+
+      await args.repositories.projects.attach({
+        knowledgeBaseId: secondBaseId,
+        projectId,
+        attachedBy: args.ownerUserId,
+      })
+      assert.deepEqual(
+        (await args.repositories.projects.listForProject(projectId))
+          .map(({ knowledgeBaseId }) => knowledgeBaseId)
+          .sort(),
+        [baseId, secondBaseId].sort(),
+      )
+
+      // Idempotent re-attach.
+      await args.repositories.projects.attach({
+        knowledgeBaseId: baseId,
+        projectId,
+        attachedBy: args.ownerUserId,
+      })
+      assert.equal((await args.repositories.projects.listForProject(projectId)).length, 2)
+
+      assert.deepEqual(
+        (await args.repositories.projects.listForBase(baseId)).map(({ projectId: id }) => id),
+        [projectId],
+      )
+
+      assert.equal(await args.repositories.projects.detach({
+        knowledgeBaseId: baseId,
+        projectId,
+      }), true)
+      assert.deepEqual(
+        (await args.repositories.projects.listForProject(projectId))
+          .map(({ knowledgeBaseId }) => knowledgeBaseId),
+        [secondBaseId],
+      )
+      assert.equal(await args.repositories.projects.detach({
+        knowledgeBaseId: baseId,
+        projectId,
+      }), false)
+
+      assert.equal(await args.repositories.projects.detachAll(projectId), true)
+      assert.equal((await args.repositories.projects.listForProject(projectId)).length, 0)
+      assert.equal(await args.repositories.projects.detachAll(projectId), false)
+    })
+  }
+
+  await t.test('persists idempotent group defaults and removes them with the base', async () => {
+    const created = await args.repositories.groupDefaults.set({
+      groupId: args.groupId,
+      knowledgeBaseId: secondBaseId,
+      createdBy: args.ownerUserId,
+    })
+    assert.equal(created.groupId, args.groupId)
+    assert.equal(created.knowledgeBaseId, secondBaseId)
+
+    const repeated = await args.repositories.groupDefaults.set({
+      groupId: args.groupId,
+      knowledgeBaseId: secondBaseId,
+      createdBy: args.ownerUserId,
+    })
+    assert.equal(repeated.createdAt, created.createdAt)
+    assert.equal((await args.repositories.groupDefaults.listForGroup(args.groupId)).length, 1)
+    assert.equal((await args.repositories.groupDefaults.listForGroups([args.groupId])).length, 1)
+    assert.equal((await args.repositories.groupDefaults.listForBase(secondBaseId)).length, 1)
+
+    assert.equal(await args.repositories.groupDefaults.remove({
+      groupId: args.groupId,
+      knowledgeBaseId: secondBaseId,
+    }), true)
+    assert.equal(await args.repositories.groupDefaults.remove({
+      groupId: args.groupId,
+      knowledgeBaseId: secondBaseId,
+    }), false)
+
+    await args.repositories.groupDefaults.set({
+      groupId: args.groupId,
+      knowledgeBaseId: secondBaseId,
+      createdBy: args.ownerUserId,
+    })
   })
 
   await t.test('archives and removes without deleting the canonical source', async () => {
@@ -138,7 +269,13 @@ export async function runKnowledgeBaseRepositoryContract(
       2,
     )
     assert.equal(await args.repositories.bases.remove(secondBaseId), true)
-    assert.equal(await args.repositories.conversations.getForConversation(args.conversationId), null)
+    assert.equal((await args.repositories.groupDefaults.listForGroup(args.groupId)).length, 0)
+    // Removing one base cascades away only its own attachment rows.
+    assert.deepEqual(
+      (await args.repositories.conversations.listForConversation(args.conversationId))
+        .map(({ knowledgeBaseId }) => knowledgeBaseId),
+      [baseId],
+    )
     assert.equal((await args.repositories.memberships.listBasesForSource(sourceId)).length, 1)
     assert.equal((await args.repositories.sources.get(sourceId))?.id, sourceId)
     assert.equal(await args.repositories.sources.markDeleted(sourceId), true)

@@ -15,6 +15,7 @@ import {
   deriveAppDataCapabilities,
 } from '@/server/app-data/capabilities'
 import { isRuntimeConfigSummaryVisible } from '@/shared/config'
+import { getSelectedIntegrationProviderId } from '@/server/integrations'
 
 export async function GET() {
   try {
@@ -29,6 +30,7 @@ export async function GET() {
     return NextResponse.json({
       capabilities,
       appDataCapabilities,
+      integrationProvider: getSelectedIntegrationProviderId(),
       featureFlags: appShell.appFeatureFlags,
       navigation: appShell.navigation,
       settingsSections: appShell.settingsSections,

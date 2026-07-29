@@ -15,9 +15,11 @@ const KnowledgeBaseWorkspace = dynamic(
 
 async function KnowledgeBaseWorkspaceContent({
   knowledgeBaseId,
+  selectedSourceId,
   userId,
 }: {
   knowledgeBaseId: string
+  selectedSourceId?: string
   userId: string
 }) {
   let data: Awaited<ReturnType<typeof loadKnowledgeBaseWorkspace>>
@@ -27,7 +29,7 @@ async function KnowledgeBaseWorkspaceContent({
     if (error instanceof KnowledgeBaseServiceError && error.statusCode === 404) notFound()
     throw error
   }
-  return <KnowledgeBaseWorkspace {...data} />
+  return <KnowledgeBaseWorkspace {...data} initialSelectedSourceId={selectedSourceId} />
 }
 
 async function loadKnowledgeBaseWorkspace({
@@ -82,17 +84,27 @@ function summarizeSourceDetail<T extends { source: { metadata: Record<string, un
 
 export default async function KnowledgeBasePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ knowledgeBaseId: string }>
+  searchParams: Promise<{ source?: string | string[] }>
 }) {
   const capabilities = await getOverlayCapabilities()
   if (!capabilities.knowledge) notFound()
   const session = await getOverlaySession()
   if (!session) redirect('/app/chat?signin=nav')
   const { knowledgeBaseId } = await params
+  const requestedSource = (await searchParams).source
+  const selectedSourceId = Array.isArray(requestedSource)
+    ? requestedSource[0]
+    : requestedSource
   return (
     <Suspense fallback={<KnowledgeRouteSkeleton />}>
-      <KnowledgeBaseWorkspaceContent knowledgeBaseId={knowledgeBaseId} userId={session.user.id} />
+      <KnowledgeBaseWorkspaceContent
+        knowledgeBaseId={knowledgeBaseId}
+        selectedSourceId={selectedSourceId}
+        userId={session.user.id}
+      />
     </Suspense>
   )
 }

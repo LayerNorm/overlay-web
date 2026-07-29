@@ -5,7 +5,9 @@ import { RefreshCw, Search, ShieldCheck, WalletCards } from 'lucide-react'
 import { SegmentedControl } from '@overlay/ui'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { AuthorizationAdminPanel } from '@/features/admin/authorization/AuthorizationAdminPanel'
+import { CatalogPolicyAdminPanel } from '@/features/admin/catalog/CatalogPolicyAdminPanel'
 import { KnowledgeAdminPanel } from '@/features/admin/knowledge/KnowledgeAdminPanel'
+import { GovernanceAdminPanel } from '@/features/admin/governance/GovernanceAdminPanel'
 import { useAuthorization } from '@/components/providers/AuthorizationProvider'
 
 type UsageRow = {
@@ -39,7 +41,12 @@ export default function AdminPage() {
   const canManageGroups = can('groups.manage')
   const canViewKnowledge = can('knowledge.publish') && can('knowledge.share') && can('roles.read')
   const canManageKnowledge = canViewKnowledge && can('roles.manage')
-  const [section, setSection] = useState<'overview' | 'roles' | 'groups' | 'knowledge'>('overview')
+  const canViewCatalog = can('roles.read')
+  const canManageCatalog = can('roles.manage')
+  const canViewGovernance = can('governance.read')
+  const canManageGovernance = can('governance.manage')
+  const canExportGovernance = can('governance.export')
+  const [section, setSection] = useState<'overview' | 'roles' | 'groups' | 'knowledge' | 'catalog' | 'governance'>('overview')
   const [usage, setUsage] = useState<UsageRow[]>([])
   const [events, setEvents] = useState<AuditRow[]>([])
   const [userFilter, setUserFilter] = useState('')
@@ -54,6 +61,8 @@ export default function AdminPage() {
     ...(canViewRoles ? [{ value: 'roles' as const, label: 'Roles' }] : []),
     ...(canViewGroups ? [{ value: 'groups' as const, label: 'Groups' }] : []),
     ...(canViewKnowledge ? [{ value: 'knowledge' as const, label: 'Knowledge' }] : []),
+    ...(canViewCatalog ? [{ value: 'catalog' as const, label: 'Catalog' }] : []),
+    ...(canViewGovernance ? [{ value: 'governance' as const, label: 'Governance' }] : []),
   ]
 
   const load = useCallback(async () => {
@@ -85,11 +94,15 @@ export default function AdminPage() {
     if (section === 'roles' && canViewRoles) return
     if (section === 'groups' && canViewGroups) return
     if (section === 'knowledge' && canViewKnowledge) return
+    if (section === 'catalog' && canViewCatalog) return
+    if (section === 'governance' && canViewGovernance) return
     if (canViewUsage || canViewAudit) setSection('overview')
     else if (canViewRoles) setSection('roles')
     else if (canViewGroups) setSection('groups')
     else if (canViewKnowledge) setSection('knowledge')
-  }, [canViewAudit, canViewGroups, canViewKnowledge, canViewRoles, canViewUsage, section])
+    else if (canViewCatalog) setSection('catalog')
+    else if (canViewGovernance) setSection('governance')
+  }, [canViewAudit, canViewCatalog, canViewGovernance, canViewGroups, canViewKnowledge, canViewRoles, canViewUsage, section])
 
   async function adjustBudget() {
     const amount = Number(amountCents)
@@ -164,6 +177,15 @@ export default function AdminPage() {
         ) : null}
         {section === 'knowledge' && canViewKnowledge ? (
           <KnowledgeAdminPanel canManage={canManageKnowledge} />
+        ) : null}
+        {section === 'catalog' && canViewCatalog ? (
+          <CatalogPolicyAdminPanel canManage={canManageCatalog} />
+        ) : null}
+        {section === 'governance' && canViewGovernance ? (
+          <GovernanceAdminPanel
+            canExport={canExportGovernance}
+            canManage={canManageGovernance}
+          />
         ) : null}
 
         {section === 'overview' && (forbidden || (!canViewUsage && !canViewAudit)) ? (

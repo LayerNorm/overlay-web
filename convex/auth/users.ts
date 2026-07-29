@@ -567,6 +567,41 @@ export const deleteUserAccountByServer = mutation({
     const knowledgeBases = (await ctx.db.query('knowledgeBases').collect())
       .filter((row) => row.ownerUserId === userId)
     const knowledgeBaseIds = new Set(knowledgeBases.map((row) => row.knowledgeBaseId))
+    const ownedProjects = (await ctx.db.query('projects').collect())
+      .filter((row) => row.userId === userId)
+    const ownedProjectIds = new Set(ownedProjects.map((row) => String(row._id)))
+    const governancePolicies = await ctx.db.query('governancePolicies').collect()
+    for (const row of governancePolicies) {
+      const resourceOwned =
+        (row.resourceType === 'knowledge_base' && knowledgeBaseIds.has(row.resourceId)) ||
+        (row.resourceType === 'project' && ownedProjectIds.has(row.resourceId))
+      if (resourceOwned) {
+        await ctx.db.delete(row._id)
+        deletedRowCount += 1
+        continue
+      }
+      const patch: Record<string, undefined> = {}
+      if (row.createdBy === userId) patch.createdBy = undefined
+      if (row.approvedBy === userId) patch.approvedBy = undefined
+      if (row.rejectedBy === userId) patch.rejectedBy = undefined
+      if (Object.keys(patch).length > 0) await ctx.db.patch(row._id, patch)
+    }
+    const governanceAccessReviews = await ctx.db.query('governanceAccessReviews').collect()
+    for (const row of governanceAccessReviews) {
+      const resourceOwned =
+        (row.resourceType === 'knowledge_base' && knowledgeBaseIds.has(row.resourceId)) ||
+        (row.resourceType === 'project' && ownedProjectIds.has(row.resourceId))
+      if (resourceOwned) {
+        await ctx.db.delete(row._id)
+        deletedRowCount += 1
+        continue
+      }
+      const patch: Record<string, undefined> = {}
+      if (row.createdBy === userId) patch.createdBy = undefined
+      if (row.reviewerUserId === userId) patch.reviewerUserId = undefined
+      if (row.ownerUserId === userId) patch.ownerUserId = undefined
+      if (Object.keys(patch).length > 0) await ctx.db.patch(row._id, patch)
+    }
     const knowledgeSources = (await ctx.db.query('knowledgeSources').collect())
       .filter((row) => row.ownerUserId === userId)
     const knowledgeSourceIds = new Set(knowledgeSources.map((row) => row.sourceId))

@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ToolSet } from '@/server/ai/sdk'
-import { buildActTooling } from './tooling'
+import {
+  applyAccountToolPolicy,
+  buildActTooling,
+  intersectConnectorPolicies,
+} from './tooling'
 
 const toolSet = (tools: Record<string, object>): ToolSet => tools as unknown as ToolSet
 
@@ -67,4 +71,52 @@ test('buildActTooling preserves free-tier and compare-slot stripping behavior', 
   assert.equal('call_mcp_tool' in compareSlot.tools, false)
   assert.equal('save_memory' in compareSlot.tools, true)
   assert.equal('perplexity_search' in compareSlot.tools, true)
+})
+
+test('connector policies intersect deployment-account access with project access', () => {
+  assert.equal(intersectConnectorPolicies(undefined, undefined), undefined)
+  assert.deepEqual(intersectConnectorPolicies(['gmail', 'slack'], undefined), ['gmail', 'slack'])
+  assert.deepEqual(intersectConnectorPolicies(undefined, ['gmail']), ['gmail'])
+  assert.deepEqual(
+    intersectConnectorPolicies(['gmail', 'slack'], ['slack', 'github']),
+    ['slack'],
+  )
+  assert.deepEqual(intersectConnectorPolicies([], ['gmail']), [])
+})
+
+test('account tool policy can only narrow deployment-enabled tools', () => {
+  assert.deepEqual(
+    applyAccountToolPolicy(['search_knowledge', 'create_note'], ['create_note', 'delete_note']),
+    ['create_note'],
+  )
+  assert.deepEqual(applyAccountToolPolicy(['search_knowledge'], []), [])
+  assert.deepEqual(applyAccountToolPolicy(['search_knowledge'], undefined), ['search_knowledge'])
+})
+
+test('buildActTooling rejects connector execution withheld by account policy', async () => {
+  const tooling = buildActTooling({
+    allowedOverlayToolIds: [],
+    enabledConnectorSlugs: ['gmail'],
+    integrationRaw: toolSet({
+      execute_connector: {
+        execute: async (input: unknown) => input,
+      },
+    }),
+    isMultiModelFollowUpSlot: false,
+    mcpToolsRaw: toolSet({}),
+    paid: true,
+    parallelTool: null,
+    perplexityTool: null,
+    webToolSet: toolSet({}),
+  })
+
+  const execute = (tooling.tools.execute_connector as {
+    execute?: (input: unknown, options: unknown) => Promise<unknown>
+  }).execute
+  assert.ok(execute)
+  assert.deepEqual(await execute({ connector: 'gmail' }, {}), { connector: 'gmail' })
+  await assert.rejects(
+    () => execute({ connector: 'slack' }, {}),
+    /only permits these connectors: gmail/,
+  )
 })

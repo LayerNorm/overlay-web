@@ -115,6 +115,9 @@ export const canonicalKnowledgeSourceKind = pgEnum('overlay_canonical_knowledge_
   'note',
   'memory',
   'text',
+  'url',
+  'connector',
+  'drive',
 ])
 
 export const canonicalKnowledgeSourceStatus = pgEnum('overlay_knowledge_source_status', [
@@ -553,6 +556,7 @@ export const projects = pgTable('projects', {
   knowledgeBaseId: text('knowledge_base_id')
     .references((): AnyPgColumn => knowledgeBases.id, { onDelete: 'set null' }),
   parentId: text('parent_id').references((): AnyPgColumn => projects.id, { onDelete: 'set null' }),
+  settings: jsonb('settings').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -673,7 +677,7 @@ export const conversations = pgTable('conversations', {
 
 export const knowledgeBaseConversations = pgTable('knowledge_base_conversations', {
   conversationId: text('conversation_id')
-    .primaryKey()
+    .notNull()
     .references(() => conversations.id, { onDelete: 'cascade' }),
   knowledgeBaseId: text('knowledge_base_id')
     .notNull()
@@ -681,7 +685,40 @@ export const knowledgeBaseConversations = pgTable('knowledge_base_conversations'
   createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  primaryKey({ columns: [table.conversationId, table.knowledgeBaseId] }),
   index('knowledge_base_conversations_base_created_idx').on(table.knowledgeBaseId, table.createdAt),
+  index('knowledge_base_conversations_conversation_created_idx')
+    .on(table.conversationId, table.createdAt),
+])
+
+export const projectKnowledgeBases = pgTable('project_knowledge_bases', {
+  projectId: text('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  knowledgeBaseId: text('knowledge_base_id')
+    .notNull()
+    .references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+  attachedBy: text('attached_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.projectId, table.knowledgeBaseId] }),
+  index('project_knowledge_bases_base_created_idx').on(table.knowledgeBaseId, table.createdAt),
+  index('project_knowledge_bases_project_created_idx').on(table.projectId, table.createdAt),
+])
+
+export const knowledgeBaseGroupDefaults = pgTable('knowledge_base_group_defaults', {
+  groupId: text('group_id')
+    .notNull()
+    .references(() => authorizationGroups.id, { onDelete: 'cascade' }),
+  knowledgeBaseId: text('knowledge_base_id')
+    .notNull()
+    .references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.groupId, table.knowledgeBaseId] }),
+  index('knowledge_base_group_defaults_base_idx').on(table.knowledgeBaseId, table.createdAt),
+  index('knowledge_base_group_defaults_group_idx').on(table.groupId, table.createdAt),
 ])
 
 export const conversationMessages = pgTable('conversation_messages', {

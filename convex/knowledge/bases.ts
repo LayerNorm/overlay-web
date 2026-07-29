@@ -4,7 +4,15 @@ import { internal } from '../_generated/api'
 import { requireServerSecret } from '../lib/auth'
 
 const baseKind = v.union(v.literal('personal'), v.literal('organization'))
-const sourceKind = v.union(v.literal('file'), v.literal('note'), v.literal('memory'), v.literal('text'))
+const sourceKind = v.union(
+  v.literal('file'),
+  v.literal('note'),
+  v.literal('memory'),
+  v.literal('text'),
+  v.literal('url'),
+  v.literal('connector'),
+  v.literal('drive'),
+)
 const sourceStatus = v.union(
   v.literal('pending'),
   v.literal('extracting'),
@@ -13,6 +21,13 @@ const sourceStatus = v.union(
   v.literal('failed'),
   v.literal('deleting'),
 )
+
+/** Stable ordering for attachment rows: oldest first, ties broken by base id. */
+function sortedByCreation<T extends { createdAt: number; knowledgeBaseId: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => (
+    a.createdAt - b.createdAt || a.knowledgeBaseId.localeCompare(b.knowledgeBaseId)
+  ))
+}
 
 export const createBaseByServer = mutation({
   args: {
@@ -124,9 +139,11 @@ export const removeBaseByServer = mutation({
       .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId)).collect()
     const conversations = await ctx.db.query('knowledgeBaseConversations')
       .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId)).collect()
+    const groupDefaults = await ctx.db.query('knowledgeBaseGroupDefaults')
+      .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId)).collect()
     const projects = await ctx.db.query('projects')
       .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId)).collect()
-    for (const row of [...memberships, ...conversations]) await ctx.db.delete(row._id)
+    for (const row of [...memberships, ...conversations, ...groupDefaults]) await ctx.db.delete(row._id)
     for (const project of projects) {
       await ctx.db.patch(project._id, {
         knowledgeBaseId: undefined,
@@ -428,10 +445,13 @@ export const attachConversationByServer = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const existing = await ctx.db.query('knowledgeBaseConversations')
-      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId)).unique()
+      .withIndex('by_conversation_base', (q) => q
+        .eq('conversationId', args.conversationId)
+        .eq('knowledgeBaseId', args.knowledgeBaseId))
+      .unique()
     if (existing) {
-      await ctx.db.patch(existing._id, { knowledgeBaseId: args.knowledgeBaseId, createdBy: args.createdBy })
-      return { ...existing, knowledgeBaseId: args.knowledgeBaseId, createdBy: args.createdBy }
+      await ctx.db.patch(existing._id, { createdBy: args.createdBy })
+      return { ...existing, createdBy: args.createdBy }
     }
     const id = await ctx.db.insert('knowledgeBaseConversations', {
       knowledgeBaseId: args.knowledgeBaseId,
@@ -447,8 +467,22 @@ export const detachConversationByServer = mutation({
   args: { serverSecret: v.string(), conversationId: v.string() },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
+    const rows = await ctx.db.query('knowledgeBaseConversations')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId)).collect()
+    for (const row of rows) await ctx.db.delete(row._id)
+    return { removed: rows.length > 0 }
+  },
+})
+
+export const detachConversationBaseByServer = mutation({
+  args: { serverSecret: v.string(), conversationId: v.string(), knowledgeBaseId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
     const existing = await ctx.db.query('knowledgeBaseConversations')
-      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId)).unique()
+      .withIndex('by_conversation_base', (q) => q
+        .eq('conversationId', args.conversationId)
+        .eq('knowledgeBaseId', args.knowledgeBaseId))
+      .unique()
     if (!existing) return { removed: false }
     await ctx.db.delete(existing._id)
     return { removed: true }
@@ -459,8 +493,181 @@ export const getConversationBaseByServer = query({
   args: { serverSecret: v.string(), conversationId: v.string() },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    return await ctx.db.query('knowledgeBaseConversations')
-      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId)).unique()
+    const rows = await ctx.db.query('knowledgeBaseConversations')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId)).collect()
+    return sortedByCreation(rows)[0] ?? null
+  },
+})
+
+export const listConversationBasesByServer = query({
+  args: { serverSecret: v.string(), conversationId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db.query('knowledgeBaseConversations')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId)).collect()
+    return sortedByCreation(rows)
+  },
+})
+
+export const attachProjectBaseByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    knowledgeBaseId: v.string(),
+    projectId: v.string(),
+    attachedBy: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const existing = await ctx.db.query('projectKnowledgeBases')
+      .withIndex('by_project_base', (q) => q
+        .eq('projectId', args.projectId)
+        .eq('knowledgeBaseId', args.knowledgeBaseId))
+      .unique()
+    if (existing) {
+      await ctx.db.patch(existing._id, { attachedBy: args.attachedBy })
+      return { ...existing, attachedBy: args.attachedBy }
+    }
+    const id = await ctx.db.insert('projectKnowledgeBases', {
+      knowledgeBaseId: args.knowledgeBaseId,
+      projectId: args.projectId,
+      attachedBy: args.attachedBy,
+      createdAt: Date.now(),
+    })
+    return await ctx.db.get(id)
+  },
+})
+
+export const detachProjectBaseByServer = mutation({
+  args: { serverSecret: v.string(), projectId: v.string(), knowledgeBaseId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const existing = await ctx.db.query('projectKnowledgeBases')
+      .withIndex('by_project_base', (q) => q
+        .eq('projectId', args.projectId)
+        .eq('knowledgeBaseId', args.knowledgeBaseId))
+      .unique()
+    if (!existing) return { removed: false }
+    await ctx.db.delete(existing._id)
+    return { removed: true }
+  },
+})
+
+export const detachAllProjectBasesByServer = mutation({
+  args: { serverSecret: v.string(), projectId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db.query('projectKnowledgeBases')
+      .withIndex('by_projectId', (q) => q.eq('projectId', args.projectId)).collect()
+    for (const row of rows) await ctx.db.delete(row._id)
+    return { removed: rows.length > 0 }
+  },
+})
+
+export const listProjectBasesByServer = query({
+  args: { serverSecret: v.string(), projectId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db.query('projectKnowledgeBases')
+      .withIndex('by_projectId', (q) => q.eq('projectId', args.projectId)).collect()
+    return sortedByCreation(rows)
+  },
+})
+
+export const listProjectsForBaseByServer = query({
+  args: { serverSecret: v.string(), knowledgeBaseId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db.query('projectKnowledgeBases')
+      .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId)).collect()
+    return sortedByCreation(rows)
+  },
+})
+
+export const setGroupDefaultByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    groupId: v.string(),
+    knowledgeBaseId: v.string(),
+    createdBy: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const existing = await ctx.db.query('knowledgeBaseGroupDefaults')
+      .withIndex('by_group_base', (q) => q
+        .eq('groupId', args.groupId)
+        .eq('knowledgeBaseId', args.knowledgeBaseId))
+      .unique()
+    if (existing) {
+      await ctx.db.patch(existing._id, { createdBy: args.createdBy })
+      return { ...existing, createdBy: args.createdBy }
+    }
+    const id = await ctx.db.insert('knowledgeBaseGroupDefaults', {
+      groupId: args.groupId,
+      knowledgeBaseId: args.knowledgeBaseId,
+      createdBy: args.createdBy,
+      createdAt: Date.now(),
+    })
+    return await ctx.db.get(id)
+  },
+})
+
+export const removeGroupDefaultByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    groupId: v.string(),
+    knowledgeBaseId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const existing = await ctx.db.query('knowledgeBaseGroupDefaults')
+      .withIndex('by_group_base', (q) => q
+        .eq('groupId', args.groupId)
+        .eq('knowledgeBaseId', args.knowledgeBaseId))
+      .unique()
+    if (!existing) return { removed: false }
+    await ctx.db.delete(existing._id)
+    return { removed: true }
+  },
+})
+
+export const listGroupDefaultsByServer = query({
+  args: { serverSecret: v.string(), groupId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db.query('knowledgeBaseGroupDefaults')
+      .withIndex('by_groupId', (q) => q.eq('groupId', args.groupId))
+      .collect()
+    return sortedByCreation(rows)
+  },
+})
+
+export const listGroupsDefaultsByServer = query({
+  args: { serverSecret: v.string(), groupIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await Promise.all(args.groupIds.map(async (groupId) => (
+      await ctx.db.query('knowledgeBaseGroupDefaults')
+        .withIndex('by_groupId', (q) => q.eq('groupId', groupId))
+        .collect()
+    )))
+    return rows.flat().sort((a, b) => (
+      a.createdAt - b.createdAt
+      || a.groupId.localeCompare(b.groupId)
+      || a.knowledgeBaseId.localeCompare(b.knowledgeBaseId)
+    ))
+  },
+})
+
+export const listBaseGroupDefaultsByServer = query({
+  args: { serverSecret: v.string(), knowledgeBaseId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db.query('knowledgeBaseGroupDefaults')
+      .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId))
+      .collect()
+    return [...rows].sort((a, b) => (
+      a.createdAt - b.createdAt || a.groupId.localeCompare(b.groupId)
+    ))
   },
 })
 
@@ -470,6 +677,58 @@ export const listConversationsForBaseByServer = query({
     requireServerSecret(args.serverSecret)
     return await ctx.db.query('knowledgeBaseConversations')
       .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId)).collect()
+  },
+})
+
+/**
+ * Index stats per source. Convex stores embeddings without provider/model
+ * identity, so `indexedEmbeddingIdentities` is always empty here and embedding
+ * drift detection stays a Postgres-only capability.
+ */
+export const indexStatsForSourcesByServer = query({
+  args: { serverSecret: v.string(), sourceIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const stats = []
+    for (const sourceId of args.sourceIds) {
+      const chunks = await ctx.db.query('knowledgeChunks')
+        .withIndex('by_knowledgeSourceId', (q) => q.eq('knowledgeSourceId', sourceId)).collect()
+      if (chunks.length === 0) continue
+      let embeddedCount = 0
+      for (const chunk of chunks) {
+        const embedding = await ctx.db.query('knowledgeChunkEmbeddings')
+          .withIndex('by_chunkId', (q) => q.eq('chunkId', chunk._id)).first()
+        if (embedding) embeddedCount += 1
+      }
+      stats.push({
+        sourceId,
+        chunkCount: chunks.length,
+        embeddedCount,
+        indexedChars: chunks.reduce((total, chunk) => total + chunk.text.length, 0),
+        lastIndexedAt: Math.max(...chunks.map((chunk) => chunk._creationTime)),
+        indexedEmbeddingIdentities: [],
+      })
+    }
+    return stats
+  },
+})
+
+export const extractionPreviewByServer = query({
+  args: { serverSecret: v.string(), sourceId: v.string(), limit: v.number() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const chunks = await ctx.db.query('knowledgeChunks')
+      .withIndex('by_knowledgeSourceId', (q) => q.eq('knowledgeSourceId', args.sourceId)).collect()
+    if (chunks.length === 0) return null
+    const text = [...chunks]
+      .sort((a, b) => a.chunkIndex - b.chunkIndex)
+      .map((chunk) => chunk.text)
+      .join('\n\n')
+    return {
+      text: text.slice(0, args.limit),
+      totalChars: chunks.reduce((total, chunk) => total + chunk.text.length, 0),
+      truncated: text.length > args.limit,
+    }
   },
 })
 
@@ -490,6 +749,14 @@ export const purgeOwnerDataByServer = mutation({
     }
     const conversations = await ctx.db.query('knowledgeBaseConversations').collect()
     for (const row of conversations) {
+      if (baseIds.has(row.knowledgeBaseId)) await ctx.db.delete(row._id)
+    }
+    const projectAttachments = await ctx.db.query('projectKnowledgeBases').collect()
+    for (const row of projectAttachments) {
+      if (baseIds.has(row.knowledgeBaseId)) await ctx.db.delete(row._id)
+    }
+    const groupDefaults = await ctx.db.query('knowledgeBaseGroupDefaults').collect()
+    for (const row of groupDefaults) {
       if (baseIds.has(row.knowledgeBaseId)) await ctx.db.delete(row._id)
     }
     const versions = await ctx.db.query('knowledgeSourceVersions').collect()

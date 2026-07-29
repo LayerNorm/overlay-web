@@ -22,7 +22,12 @@ export type {
 } from './chat/types'
 export type { FileQuery } from './files/types'
 export type { NoteFileQuery, NoteQuery } from './notes/types'
-export type { ProjectQuery } from './projects/types'
+export type {
+  ProjectGrantsResponse,
+  ProjectQuery,
+  ProjectShareDirectoryEntry,
+  ProjectShareDirectoryResponse,
+} from './projects/types'
 export type { AutomationQuery } from './automations/types'
 export type { IntegrationQuery } from './integrations/types'
 export type { SkillQuery } from './skills/types'
@@ -46,6 +51,15 @@ export { OutputsClient } from './outputs/client'
 export { IntegrationsClient } from './integrations/client'
 export { KnowledgeBasesClient } from './knowledge-bases/client'
 export type * from './knowledge-bases/types'
+export type {
+  AdminCatalogResource,
+  AdminCatalogResourceType,
+} from './admin-authorization/client'
+export {
+  AdminGovernanceClient,
+  type GovernanceComplianceEvidence,
+  type GovernanceFilters,
+} from './admin-governance/client'
 export { SkillsClient } from './skills/client'
 export { McpServersClient } from './mcp-servers/client'
 export { SettingsClient } from './settings/client'

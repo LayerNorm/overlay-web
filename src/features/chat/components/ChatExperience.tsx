@@ -1283,6 +1283,44 @@ export default function ChatExperience({
     }
   }
 
+  async function handleSaveAssistantToKnowledge({
+    content,
+    messageId,
+  }: {
+    content: string
+    messageId: string
+    turnId: string | null
+  }) {
+    const conversationId = activeChatIdRef.current ?? activeChatId
+    if (!conversationId || !content.trim() || !messageId) {
+      setComposerNotice('Save this response after the conversation is stored.')
+      window.setTimeout(() => setComposerNotice(null), 4000)
+      return
+    }
+    try {
+      setComposerNotice('Saving to My knowledge…')
+      const { knowledgeBase } = await overlayAppClient.knowledgeBases.ensurePersonal()
+      const firstLine = content
+        .split('\n')
+        .map((line) => line.replace(/^#+\s*/, '').trim())
+        .find(Boolean)
+      await overlayAppClient.projects.transfer({
+        direction: 'save-answer',
+        knowledgeBaseId: knowledgeBase.id,
+        conversationId,
+        messageId,
+        content,
+        title: (firstLine || 'Saved chat answer').slice(0, 160),
+        ...(embedProjectId ? { projectId: embedProjectId } : {}),
+      })
+      setComposerNotice('Saved to My knowledge.')
+      window.setTimeout(() => setComposerNotice(null), 3000)
+    } catch (error) {
+      setComposerNotice(error instanceof Error ? error.message : 'Could not save this response')
+      window.setTimeout(() => setComposerNotice(null), 5000)
+    }
+  }
+
   async function handleDeleteTurnById(turnId: string) {
     const cid = activeChatIdRef.current ?? activeChatId
     if (!cid || !turnId) {
@@ -1913,6 +1951,9 @@ export default function ChatExperience({
                 onReplyToMediaPrompt: beginReplyToMediaPrompt,
                 onReplyToAssistantText: beginReplyToAssistantText,
                 onBranch: isPublicShowcase ? () => requireAuth('history') : handleBranchConversationAtTurn,
+                onSaveAssistantToKnowledge: isPublicShowcase
+                  ? () => requireAuth('history')
+                  : handleSaveAssistantToKnowledge,
                 onOpenDraft: setDraftModalState,
                 onCreateAutomationDraft: isPublicShowcase ? () => requireAuth('nav') : handleCreateAutomationDraftViaChat,
                 onOpenSources: openSourcesPanel,

@@ -125,7 +125,7 @@ test('builds pending-first and normal act bodies without null conversation ids',
   const pendingRecord = pendingBody as Record<string, unknown>
   assert.equal(pendingRecord.conversationClientId, 'client-1')
   assert.equal(pendingRecord.projectId, 'project-1')
-  assert.equal(pendingRecord.knowledgeBaseId, 'knowledge-1')
+  assert.deepEqual(pendingRecord.knowledgeBaseIds, ['knowledge-1'])
   assert.equal(pendingRecord.conversationId, undefined)
   assert.equal(pendingRecord.automationId, 'automation-1')
   assert.deepEqual(pendingRecord.askModelIds, ['model-a'])
@@ -170,9 +170,38 @@ test('builds pending-first and normal act bodies without null conversation ids',
     selectedToolIdsSnapshot: [],
     memoryEnabledSnapshot: false,
   })
-  assert.equal(
-    (mentionedKnowledgeBody as Record<string, unknown>).knowledgeBaseId,
-    'knowledge-mentioned',
+  assert.deepEqual(
+    (mentionedKnowledgeBody as Record<string, unknown>).knowledgeBaseIds,
+    ['knowledge-mentioned'],
+  )
+
+  // An explicit mention narrows the turn: the project's base must not be unioned in.
+  const narrowedBody = buildCommonActBody({
+    chatId: 'chat-3',
+    pendingConversationClientId: null,
+    temporaryChatSnapshot: false,
+    embedProjectId: 'project-1',
+    knowledgeBaseId: 'project-knowledge',
+    textModelsForTurn: ['model-a'],
+    turnId: 'turn-3',
+    requestMode: 'chat',
+    automationIdParam: null,
+    indexedFileNames: [],
+    indexedAttachments: [],
+    replyContext: null,
+    userMeta: {
+      mentions: [
+        { type: 'knowledge', id: 'mentioned-a', name: 'Handbook' },
+        { type: 'knowledge', id: 'mentioned-a', name: 'Handbook' },
+        { type: 'knowledge', id: 'mentioned-b', name: 'Policies' },
+      ],
+    },
+    selectedToolIdsSnapshot: [],
+    memoryEnabledSnapshot: false,
+  })
+  assert.deepEqual(
+    (narrowedBody as Record<string, unknown>).knowledgeBaseIds,
+    ['mentioned-a', 'mentioned-b'],
   )
 })
 

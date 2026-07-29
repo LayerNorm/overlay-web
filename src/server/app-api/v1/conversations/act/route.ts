@@ -19,6 +19,7 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { normalizeChatToolRequestIds } from '@/shared/chat/tool-requests'
 import { MAX_TOOL_STEPS_ACT } from '@/server/tools/tools/policy'
+import { OVERLAY_TOOL_IDS } from '@overlay/tools-core'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildSecondarySystemPromptExtension } from '@/server/agent/operator-system-prompt'
@@ -77,8 +78,11 @@ import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
 import {
   authorizeCapability,
   authorizeCatalogResource,
+  filterCatalogResources,
 } from '@/server/authorization'
 import type { AuthorizationCapability } from '@overlay/authz-contracts'
+import { normalizeIntegrationProviderKey } from '@overlay/app-core'
+import { readProjectSettings } from '@/shared/projects/project-settings'
 
 export const maxDuration = 800
 
@@ -127,6 +131,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       conversationClientId,
       projectId,
       knowledgeBaseId,
+      knowledgeBaseIds,
       askModelIds,
       turnId,
       modelId,
@@ -177,7 +182,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       turnId,
       variantIndex: rawMultiModelSlotIndex,
     })
-    const effectiveModelId = resolveEffectiveActModelId(modelId)
+    const preferredProjectModelId = await resolveProjectPreferredModelId({
+      conversationId: conversationId as Id<'conversations'> | undefined,
+      projectId,
+      userId: conversationUserId,
+    })
+    const effectiveModelId = resolveEffectiveActModelId(modelId ?? preferredProjectModelId)
     const serverSecret = getInternalApiSecret()
     const requestedToolIds = normalizeChatToolRequestIds(rawRequestedToolIds)
     const memoryEnabled = rawMemoryEnabled !== false
@@ -226,12 +236,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       })
       if (_ttftDebug) _tEnsureConversationMs = performance.now() - ensureStartedAt
     }
-    if (cid && knowledgeBaseId) {
-      await overlayContext.knowledgeBaseService.attachConversation({
-        conversationId: cid,
-        knowledgeBaseId,
-        userId: conversationUserId,
-      })
+    // Bases named on this turn become part of the conversation's grounding and
+    // also narrow this turn's retrieval. Access is verified inside the service.
+    const turnKnowledgeBaseIds = [
+      ...new Set([...(knowledgeBaseIds ?? []), ...(knowledgeBaseId ? [knowledgeBaseId] : [])]),
+    ]
+    if (cid && turnKnowledgeBaseIds.length > 0) {
+      for (const id of turnKnowledgeBaseIds) {
+        await overlayContext.knowledgeBaseService.attachConversation({
+          conversationId: cid,
+          knowledgeBaseId: id,
+          userId: conversationUserId,
+        })
+      }
     }
     const tid = resolveActTurnId(turnId)
     actWebhookConversationId = cid
@@ -254,6 +271,23 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       accessToken,
       serverSecret,
     })
+    const accountAllowedToolIdsTask = filterCatalogResources({
+      authorization: overlayContext.authorizationService,
+      capability: 'tools.use',
+      context,
+      getId: (toolId) => toolId,
+      resourceType: 'tool',
+      values: OVERLAY_TOOL_IDS,
+    })
+    const accountAllowedConnectorIdsTask = toolPreloadTasks.connectedConnectorIdsTask
+      .then((connectorIds) => filterCatalogResources({
+        authorization: overlayContext.authorizationService,
+        capability: 'integrations.use',
+        context,
+        getId: (connectorId) => connectorId,
+        resourceType: 'connector',
+        values: connectorIds,
+      }))
 
     // P3.2 Wave 1: user-message save + context fetches stay parallel.
     const saveUserMessageTask = actMessagePersistenceService.persistUserMessage({
@@ -276,6 +310,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       latestUserText,
       memoryEnabled,
       mentions: rawMentions,
+      mentionedKnowledgeBaseIds: turnKnowledgeBaseIds,
       serverSecret,
       userId: conversationUserId,
       externalContextEnabled: !isPostgresAppData,
@@ -295,10 +330,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       })
     })()
 
-    const [, turnContext, resolvedMediaToolIntent] = await Promise.all([
+    const [
+      ,
+      turnContext,
+      resolvedMediaToolIntent,
+      accountAllowedToolIds,
+      accountAllowedConnectorIds,
+    ] = await Promise.all([
       saveUserMessageTask,
       turnContextTask,
       mediaIntentTask,
+      accountAllowedToolIdsTask,
+      accountAllowedConnectorIdsTask,
     ])
     const {
       autoRetrieval,
@@ -309,6 +352,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       memoryContext,
       mentionsContext,
       projectInstructions,
+      projectSettings,
       skillsContext,
       sourceCitationMap,
     } = turnContext
@@ -357,14 +401,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	        multiModelTotal,
 	        multiModelSlotIndex,
 	      }),
-	      prepareActTooling({
-	        accessToken,
+		      prepareActTooling({
+		        accountAllowedConnectorIds,
+		        accountAllowedToolIds,
+		        accessToken,
 	        automationExecution: automationExecution === true,
 	        automationMode: automationMode === true,
 	        automationId,
 	        baseUrl: getInternalApiBaseUrl(request),
 	        conversationId: cid,
 	        conversationProjectId,
+	        activeKnowledgeBaseIds: turnKnowledgeBaseIds,
+	        projectSettings,
 	        effectiveModelId,
 	        forwardCookie: request.headers.get('cookie'),
 	        isMultiModelFollowUpSlot,
@@ -941,6 +989,22 @@ async function authorizeActRequest(args: {
     if (type === 'mcp') capabilityRequirements.add('mcp.use')
     if (type === 'automation') capabilityRequirements.add('automations.use')
   }
+  for (const mention of Array.isArray(args.mentions) ? args.mentions : []) {
+    if (!mention || typeof mention !== 'object') continue
+    const type = 'type' in mention ? mention.type : undefined
+    const id = 'id' in mention && typeof mention.id === 'string'
+      ? normalizeIntegrationProviderKey(mention.id)
+      : ''
+    if (type !== 'connector' || !id) continue
+    const denied = await authorizeCatalogResource({
+      authorization: args.authorization,
+      capability: 'integrations.use',
+      context: args.context,
+      resourceId: id,
+      resourceType: 'connector',
+    })
+    if (denied) return denied
+  }
   for (const capability of capabilityRequirements) {
     const denied = await authorizeCapability({
       authorization: args.authorization,
@@ -973,5 +1037,30 @@ function safeGatewayModelId(modelId: string): string | null {
     return getGatewayModelId(modelId)
   } catch (_error) {
     return null
+  }
+}
+
+async function resolveProjectPreferredModelId(args: {
+  conversationId?: Id<'conversations'>
+  projectId?: string
+  userId: string
+}): Promise<string | undefined> {
+  try {
+    const conversation = args.conversationId
+      ? await actConversationRepository.getConversation({
+          conversationId: args.conversationId,
+          userId: args.userId,
+        })
+      : null
+    const projectId = args.projectId?.trim() || conversation?.projectId
+    if (!projectId) return undefined
+    const project = await actConversationRepository.getProject({
+      projectId: projectId as Id<'projects'>,
+      userId: args.userId,
+    })
+    if (!project || project.archivedAt) return undefined
+    return readProjectSettings(project.settings).preferredModelId
+  } catch (_error) {
+    return undefined
   }
 }

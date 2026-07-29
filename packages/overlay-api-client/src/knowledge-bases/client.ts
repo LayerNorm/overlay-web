@@ -10,13 +10,17 @@ import type {
   CreateKnowledgeBaseInput,
   CreateKnowledgeBaseSourceInput,
   KnowledgeBaseDetailResponse,
+  KnowledgeBaseDiagnosticsResponse,
   KnowledgeBaseGrantsResponse,
   KnowledgeBaseListResponse,
+  KnowledgeSourcePreviewResponse,
   KnowledgeBaseSearchResponse,
   KnowledgeBaseSourcesResponse,
+  ReindexKnowledgeBaseResponse,
   UpdateKnowledgeBaseInput,
   AdministrativeKnowledgeBaseListResponse,
   KnowledgeBaseShareDirectoryResponse,
+  GroupKnowledgeBaseDefaultsResponse,
 } from './types'
 
 export class KnowledgeBasesClient {
@@ -26,10 +30,48 @@ export class KnowledgeBasesClient {
     return this.http.json<KnowledgeBaseListResponse>('/api/v1/knowledge-bases', init)
   }
 
+  listPersonal(init?: RequestInit) {
+    return this.http.json<KnowledgeBaseListResponse>('/api/v1/knowledge-bases/personal', init)
+  }
+
+  ensurePersonal(body: { title?: string } = {}, init?: RequestInit) {
+    return this.http.json<KnowledgeBaseDetailResponse>(
+      '/api/v1/knowledge-bases/personal',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
   listAdministrative(init?: RequestInit) {
     return this.http.json<AdministrativeKnowledgeBaseListResponse>(
       '/api/v1/admin/knowledge-bases',
       init,
+    )
+  }
+
+  listGroupDefaults(groupId?: string, init?: RequestInit) {
+    return this.http.json<GroupKnowledgeBaseDefaultsResponse>(
+      this.http.appendQuery('/api/v1/admin/knowledge-bases/defaults', { groupId }),
+      init,
+    )
+  }
+
+  setGroupDefault(body: {
+    groupId: string
+    knowledgeBaseId: string
+  }, init?: RequestInit) {
+    return this.http.json<GroupKnowledgeBaseDefaultsResponse['defaults'][number]>(
+      '/api/v1/admin/knowledge-bases/defaults',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  removeGroupDefault(body: {
+    groupId: string
+    knowledgeBaseId: string
+  }, init?: RequestInit) {
+    return this.http.json<{ removed: true }>(
+      '/api/v1/admin/knowledge-bases/defaults',
+      this.http.jsonRequest(body, { ...init, method: 'DELETE' }),
     )
   }
 
@@ -68,6 +110,39 @@ export class KnowledgeBasesClient {
   createSource(knowledgeBaseId: string, body: CreateKnowledgeBaseSourceInput, init?: RequestInit) {
     return this.http.json<Record<string, unknown>>(
       this.path(knowledgeBaseId, 'sources'),
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  diagnostics(knowledgeBaseId: string, init?: RequestInit) {
+    return this.http.json<KnowledgeBaseDiagnosticsResponse>(
+      this.path(knowledgeBaseId, 'diagnostics'),
+      init,
+    )
+  }
+
+  extractionPreview(
+    knowledgeBaseId: string,
+    sourceId: string,
+    previewLimit = 8_000,
+    init?: RequestInit,
+  ) {
+    return this.http.json<KnowledgeSourcePreviewResponse>(
+      this.http.appendQuery(this.path(knowledgeBaseId, 'diagnostics'), {
+        sourceId,
+        previewLimit,
+      }),
+      init,
+    )
+  }
+
+  reindex(
+    knowledgeBaseId: string,
+    body: { sourceId?: string; onlyStale?: boolean } = {},
+    init?: RequestInit,
+  ) {
+    return this.http.json<ReindexKnowledgeBaseResponse>(
+      this.path(knowledgeBaseId, 'reindex'),
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
   }

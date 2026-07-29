@@ -14,8 +14,26 @@ import type { HttpContext } from '../shared/http'
 
 type Assignment = UserRoleAssignment | GroupRoleAssignment
 
+export type AdminCatalogResourceType = 'connector' | 'model' | 'tool'
+
+export type AdminCatalogResource = {
+  category?: string
+  description?: string
+  id: string
+  label: string
+  resourceType: AdminCatalogResourceType
+}
+
 export class AdminAuthorizationClient {
   constructor(private readonly http: HttpContext) {}
+
+  async listCatalogResources(init?: RequestInit) {
+    const { resources } = await this.checkedJson<{ resources: AdminCatalogResource[] }>(
+      '/api/v1/admin/catalog',
+      init,
+    )
+    return resources
+  }
 
   async listCapabilities(init?: RequestInit) {
     const { capabilities } = await this.checkedJson<{

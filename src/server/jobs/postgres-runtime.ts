@@ -170,20 +170,23 @@ export function createPostgresRuntime(args: {
           const input = await automationRuns.getExecutionInput(runId)
           if (!input) throw new Error(`Automation run ${runId} is not executable`)
           const result = await automationExecutor(input)
-          await automationRuns.completeAttempt({
+          const completion = await automationRuns.completeAttempt({
             attemptNumber: job.attempts,
             conversationId: result.conversationId,
             result,
             runId,
           })
-          return { ...result, runId, status: 'succeeded' }
+          return { ...result, runId, status: completion }
         } catch (error) {
-          await automationRuns.failAttempt({
+          const failure = await automationRuns.failAttempt({
             attemptNumber: job.attempts,
             error: error instanceof Error ? error.stack ?? error.message : String(error),
             runId,
             terminal: job.attempts >= job.maxAttempts,
           })
+          if (failure === 'cancelled' || failure === 'terminal') {
+            return { runId, status: failure }
+          }
           throw error
         }
       },

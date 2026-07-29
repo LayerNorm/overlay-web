@@ -271,6 +271,7 @@ function ComposerControls(props: ComposerControlsProps) {
           <button
             type="button"
             onClick={() => void props.onStop()}
+            aria-label="Stop generating"
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80"
           >
             <div className="h-3.5 w-3.5 rounded-sm bg-current" />
@@ -282,6 +283,7 @@ function ComposerControls(props: ComposerControlsProps) {
             type="button"
             onClick={() => void props.onSend()}
             disabled={props.disabledSend}
+            aria-label="Send message"
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80 disabled:opacity-40"
           >
             <Send size={17} strokeWidth={1.75} />

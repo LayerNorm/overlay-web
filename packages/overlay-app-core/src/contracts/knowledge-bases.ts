@@ -4,8 +4,29 @@ export type KnowledgeBaseKind = (typeof KNOWLEDGE_BASE_KINDS)[number]
 export const KNOWLEDGE_BASE_STATUSES = ['active', 'archived'] as const
 export type KnowledgeBaseStatus = (typeof KNOWLEDGE_BASE_STATUSES)[number]
 
-export const KNOWLEDGE_SOURCE_KINDS = ['file', 'note', 'memory', 'text'] as const
+export const KNOWLEDGE_SOURCE_KINDS = [
+  'file',
+  'note',
+  'memory',
+  'text',
+  /** Fetched from a public web page. */
+  'url',
+  /** Pulled through a configured integration, e.g. Composio. */
+  'connector',
+  /** Pulled from a cloud drive such as Google Drive. */
+  'drive',
+] as const
 export type KnowledgeSourceKind = (typeof KNOWLEDGE_SOURCE_KINDS)[number]
+
+/** Kinds whose content is fetched from outside Overlay rather than uploaded. */
+export const EXTERNAL_KNOWLEDGE_SOURCE_KINDS = ['url', 'connector', 'drive'] as const
+export type ExternalKnowledgeSourceKind = (typeof EXTERNAL_KNOWLEDGE_SOURCE_KINDS)[number]
+
+export function isExternalKnowledgeSourceKind(
+  kind: string,
+): kind is ExternalKnowledgeSourceKind {
+  return (EXTERNAL_KNOWLEDGE_SOURCE_KINDS as readonly string[]).includes(kind)
+}
 
 export const KNOWLEDGE_SOURCE_STATUSES = [
   'pending',
@@ -73,6 +94,46 @@ export type KnowledgeBaseConversation = {
   createdAt: number
 }
 
+export type ProjectKnowledgeBase = {
+  knowledgeBaseId: string
+  projectId: string
+  attachedBy?: string
+  createdAt: number
+}
+
+/**
+ * An organization-curated base that becomes the fallback retrieval corpus for
+ * current members of an authorization group.
+ *
+ * Access is still governed by the knowledge-base ACL. A default is discovery
+ * and retrieval policy, not an implicit permission grant.
+ */
+export type GroupKnowledgeBaseDefault = {
+  groupId: string
+  knowledgeBaseId: string
+  createdBy?: string
+  createdAt: number
+}
+
+/**
+ * How a turn's retrieval corpus is chosen when a project has attached bases and
+ * the user may also name bases explicitly.
+ *
+ * - `project`: use only the project's attached bases.
+ * - `selected`: use only the explicitly named bases, ignoring project defaults.
+ * - `combined`: union of both.
+ *
+ * An explicit `@Knowledge` mention resolves to `selected`, so a mention narrows
+ * scope rather than widening it.
+ */
+export const KNOWLEDGE_RETRIEVAL_MODES = ['project', 'selected', 'combined'] as const
+export type KnowledgeRetrievalMode = (typeof KNOWLEDGE_RETRIEVAL_MODES)[number]
+
+export const DEFAULT_KNOWLEDGE_RETRIEVAL_MODE: KnowledgeRetrievalMode = 'selected'
+
+/** Upper bound on bases fused into a single turn, so retrieval latency stays bounded. */
+export const MAX_KNOWLEDGE_BASES_PER_TURN = 8
+
 export type CreateKnowledgeBaseInput = Pick<
   KnowledgeBase,
   'id' | 'ownerUserId' | 'title'
@@ -130,9 +191,63 @@ export interface KnowledgeBaseSourceRepository {
 
 export interface KnowledgeBaseConversationRepository {
   attach(input: Omit<KnowledgeBaseConversation, 'createdAt'>): Promise<KnowledgeBaseConversation>
+  /** Detaches every base from the conversation. */
   detach(conversationId: string): Promise<boolean>
+  /** Detaches a single base, leaving any other attachments in place. */
+  detachOne(input: Pick<KnowledgeBaseConversation, 'conversationId' | 'knowledgeBaseId'>): Promise<boolean>
+  /**
+   * @deprecated A conversation may have many bases. Prefer {@link listForConversation}.
+   * Retained so callers mid-rollout keep working; returns the oldest attachment.
+   */
   getForConversation(conversationId: string): Promise<KnowledgeBaseConversation | null>
+  listForConversation(conversationId: string): Promise<KnowledgeBaseConversation[]>
   listForBase(knowledgeBaseId: string): Promise<KnowledgeBaseConversation[]>
+}
+
+export interface ProjectKnowledgeBaseRepository {
+  attach(input: Omit<ProjectKnowledgeBase, 'createdAt'>): Promise<ProjectKnowledgeBase>
+  detach(input: Pick<ProjectKnowledgeBase, 'projectId' | 'knowledgeBaseId'>): Promise<boolean>
+  detachAll(projectId: string): Promise<boolean>
+  listForProject(projectId: string): Promise<ProjectKnowledgeBase[]>
+  listForBase(knowledgeBaseId: string): Promise<ProjectKnowledgeBase[]>
+}
+
+export interface GroupKnowledgeBaseDefaultRepository {
+  set(input: Omit<GroupKnowledgeBaseDefault, 'createdAt'>): Promise<GroupKnowledgeBaseDefault>
+  remove(input: Pick<GroupKnowledgeBaseDefault, 'groupId' | 'knowledgeBaseId'>): Promise<boolean>
+  listForGroup(groupId: string): Promise<GroupKnowledgeBaseDefault[]>
+  listForGroups(groupIds: string[]): Promise<GroupKnowledgeBaseDefault[]>
+  listForBase(knowledgeBaseId: string): Promise<GroupKnowledgeBaseDefault[]>
+}
+
+/** Counts and embedding identities of what is actually indexed for a source. */
+export type KnowledgeSourceIndexStats = {
+  sourceId: string
+  chunkCount: number
+  embeddedCount: number
+  indexedChars: number
+  lastIndexedAt?: number
+  indexedContentHash?: string
+  indexedEmbeddingIdentities: Array<{
+    provider: string
+    modelId: string
+    modelVersion: string
+    count: number
+  }>
+}
+
+export interface KnowledgeIndexDiagnosticsRepository {
+  /** Index stats per source. Missing sources are simply absent from the result. */
+  statsForSources(sourceIds: string[]): Promise<KnowledgeSourceIndexStats[]>
+  /**
+   * Ordered extracted text of a source, reassembled from its indexed passages,
+   * clipped to `limit` characters.
+   */
+  extractionPreview(args: { sourceId: string; limit: number }): Promise<{
+    text: string
+    totalChars: number
+    truncated: boolean
+  } | null>
 }
 
 export interface KnowledgeBaseRepositories {
@@ -140,4 +255,8 @@ export interface KnowledgeBaseRepositories {
   sources: KnowledgeSourceRepository
   memberships: KnowledgeBaseSourceRepository
   conversations: KnowledgeBaseConversationRepository
+  projects: ProjectKnowledgeBaseRepository
+  groupDefaults: GroupKnowledgeBaseDefaultRepository
+  /** Absent when the active backend cannot report index internals. */
+  diagnostics?: KnowledgeIndexDiagnosticsRepository
 }

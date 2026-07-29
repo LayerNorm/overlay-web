@@ -1,7 +1,13 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { normalizeIntegrationProviderKey } from '@overlay/app-core'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import type { AuthorizationService } from '@/server/authorization'
+import {
+  authorizeCatalogResource,
+  filterCatalogResources,
+} from '@/server/authorization'
 import { getBaseUrl } from '@/server/web/app-url'
 import { getIntegrationProvider, IntegrationService } from '@/server/integrations'
 
@@ -37,6 +43,7 @@ function service() {
 }
 
 interface IntegrationsRouteDependencies {
+  authorization?: AuthorizationService
   service?: IntegrationService
 }
 
@@ -47,6 +54,8 @@ export async function GET(
 ) {
   try {
     const integrations = dependencies.service ?? service()
+    const authorization = dependencies.authorization
+      ?? getOverlayServerContext().authorizationService
     const { searchParams } = request.nextUrl
     const action = searchParams.get('action')
 
@@ -68,11 +77,19 @@ export async function GET(
         cursor: searchParams.get('cursor') || undefined,
         limit: Math.min(Math.max(Number.isFinite(parsedLimit) ? parsedLimit : 20, 1), 100),
       })
+      const items = await filterCatalogResources({
+        authorization,
+        capability: 'integrations.use',
+        context,
+        getId: (item) => normalizeIntegrationProviderKey(item.providerKey),
+        resourceType: 'connector',
+        values: page.items,
+      })
       return NextResponse.json({
         provider: integrations.id,
         providerCapabilities: integrations.capabilities,
-        data: page.items,
-        items: page.items,
+        data: items,
+        items,
         nextCursor: page.nextCursor,
         hasMore: page.hasMore,
         syncCursor: page.syncCursor,
@@ -83,12 +100,26 @@ export async function GET(
       userId: context.auth.userId,
       accessToken: context.auth.accessToken,
     })
+    const allowedItems = await filterCatalogResources({
+      authorization,
+      capability: 'integrations.use',
+      context,
+      getId: (item) => normalizeIntegrationProviderKey(item.providerKey),
+      resourceType: 'connector',
+      values: connected.items,
+    })
+    const allowedProviderKeys = new Set(allowedItems
+      .map(({ providerKey }) => normalizeIntegrationProviderKey(providerKey)))
     return NextResponse.json({
       provider: integrations.id,
       providerCapabilities: integrations.capabilities,
-      connected: [...new Set(connected.connections.map((item) => item.providerKey))],
-      data: connected.items,
-      items: connected.items,
+      connected: [...new Set(connected.connections
+        .map((item) => item.providerKey)
+        .filter((providerKey) => allowedProviderKeys.has(
+          normalizeIntegrationProviderKey(providerKey),
+        )))],
+      data: allowedItems,
+      items: allowedItems,
       hasMore: false,
     })
   } catch (error) {
@@ -104,8 +135,18 @@ export async function POST(
 ) {
   try {
     const body = await request.json() as { action?: string; providerKey?: string; toolkit?: string }
-    const providerKey = (body.providerKey ?? body.toolkit)?.trim().toLowerCase()
+    const providerKey = normalizeIntegrationProviderKey(body.providerKey ?? body.toolkit ?? '')
     if (!providerKey) return NextResponse.json({ error: 'providerKey required' }, { status: 400 })
+    const authorization = dependencies.authorization
+      ?? getOverlayServerContext().authorizationService
+    const denied = await authorizeCatalogResource({
+      authorization,
+      capability: 'integrations.use',
+      context,
+      resourceId: providerKey,
+      resourceType: 'connector',
+    })
+    if (denied) return denied
     const integrations = dependencies.service ?? service()
     const connectionContext = {
       userId: context.auth.userId,

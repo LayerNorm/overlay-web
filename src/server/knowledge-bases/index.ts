@@ -12,8 +12,16 @@ export {
   type CanonicalKnowledgeIndexRequest,
 } from './KnowledgeSourceIngestionService'
 export {
+  IntegrationKnowledgeSourceFetcher,
+  KnowledgeSourceFetcherRegistry,
+  UrlKnowledgeSourceFetcher,
+  type FetchedKnowledgeSource,
+  type KnowledgeSourceFetcher,
+} from './KnowledgeSourceFetcher'
+export {
   KnowledgeBaseRetrievalService,
   type KnowledgeBaseCitation,
+  type KnowledgeBaseCitationPassage,
   type KnowledgeBaseSearchResult,
 } from './KnowledgeBaseRetrievalService'
 export {
@@ -23,4 +31,5 @@ export {
   type AdministrativeKnowledgeBase,
   type KnowledgeBaseShareDirectory,
   type KnowledgeBaseSourceDetail,
+  type KnowledgeSourceDiagnostics,
 } from './KnowledgeBaseService'

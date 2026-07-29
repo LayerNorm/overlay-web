@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server'
 import { KnowledgeBaseServiceError } from '@/server/knowledge-bases'
+import { GovernanceServiceError } from '@/server/governance'
 import { logger } from '@/server/observability/logger'
 
 export function knowledgeBaseErrorResponse(operation: string, error: unknown) {
   if (error instanceof KnowledgeBaseServiceError) {
+    return NextResponse.json({ error: error.message }, { status: error.statusCode })
+  }
+  if (error instanceof GovernanceServiceError) {
     return NextResponse.json({ error: error.message }, { status: error.statusCode })
   }
   logger.error(`[knowledge-bases/${operation}]`, error)

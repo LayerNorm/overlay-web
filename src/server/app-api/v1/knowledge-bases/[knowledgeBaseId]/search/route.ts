@@ -6,10 +6,17 @@ import { knowledgeBaseErrorResponse, requiredKnowledgeBaseId } from '../../error
 export async function POST(_request: NextRequest, context: AppApiRouteContext) {
   try {
     const knowledgeBaseId = await requiredKnowledgeBaseId(context)
-    const body = context.parsedJson as { query: string; limit?: number }
+    const body = context.parsedJson as {
+      query: string
+      limit?: number
+      additionalKnowledgeBaseIds?: string[]
+    }
+    // The path base always leads, so searching "inside one KB" stays the default
+    // and callers opt into a cross-base search explicitly.
+    const knowledgeBaseIds = [knowledgeBaseId, ...(body.additionalKnowledgeBaseIds ?? [])]
     return NextResponse.json(await getOverlayServerContext().knowledgeBaseRetrievalService.search({
       accessToken: context.auth.accessToken,
-      knowledgeBaseId,
+      knowledgeBaseIds,
       limit: body.limit,
       query: body.query,
       userId: context.auth.userId,

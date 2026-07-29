@@ -59,10 +59,23 @@ test('Phase 0 records the existing public-link and resource-ACL boundaries', () 
     )
   }
 
-  assert.equal(
-    getAuthorizationRoutePolicy('PATCH', '/api/v1/projects/project_1/share'),
-    null,
+  assert.deepEqual(
+    getAuthorizationRoutePolicy('GET', '/api/v1/projects/share-directory'),
+    {
+      access: 'capability',
+      capabilities: ['projects.share'],
+    },
   )
+  for (const method of ['GET', 'POST', 'DELETE']) {
+    assert.deepEqual(
+      getAuthorizationRoutePolicy(method, '/api/v1/projects/grants'),
+      {
+        access: 'resource',
+        capabilities: ['projects.share'],
+        resource: { action: 'share', type: 'project' },
+      },
+    )
+  }
   assert.deepEqual(
     getAuthorizationRoutePolicy('POST', '/api/v1/automations/run'),
     {

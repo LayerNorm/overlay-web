@@ -13,10 +13,13 @@ import {
 } from 'react'
 import {
   ArrowLeft,
+  Activity,
   BookOpen,
   Check,
   ChevronRight,
+  Cloud,
   FileText,
+  Globe2,
   Loader2,
   Menu,
   MoreHorizontal,
@@ -34,11 +37,19 @@ import type {
   KnowledgeBaseSearchResponse,
   KnowledgeBaseShareDirectoryResponse,
   KnowledgeBaseSourceDetail,
+  KnowledgeSourceDiagnostics,
 } from '@overlay/api-client'
 import { Button, DialogFrame, IconButton, SegmentedControl } from '@overlay/ui'
 import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useAuth } from '@/contexts/AuthContext'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { useAuthorization } from '@/components/providers/AuthorizationProvider'
+import { useVisibleReconciliation } from '@/components/useVisibleReconciliation'
+import {
+  buildConnectedKnowledgeSourceRef,
+  type ConnectedKnowledgeSourceRecipe,
+} from '@/shared/knowledge/external-source-ref'
 
 type SourceTab = 'sources' | 'search'
 
@@ -48,22 +59,31 @@ export function KnowledgeBaseWorkspace({
   canEdit,
   canShare,
   initialKnowledgeBase,
+  initialSelectedSourceId,
   initialSources,
 }: {
   canEdit: boolean
   canShare: boolean
   initialKnowledgeBase: KnowledgeBase
+  initialSelectedSourceId?: string
   initialSources: KnowledgeBaseSourceDetail[]
 }) {
   const router = useRouter()
   const { refreshSession } = useAuth()
+  const { capabilities, integrationProvider } = useOverlayCapabilities()
+  const { can } = useAuthorization()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [knowledgeBase, setKnowledgeBase] = useState(initialKnowledgeBase)
   const [sources, setSources] = useState(initialSources)
   const [sourceTab, setSourceTab] = useState<SourceTab>('sources')
   const [searchRevision, setSearchRevision] = useState(0)
   const [mobileSourcesOpen, setMobileSourcesOpen] = useState(false)
-  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(
+    initialSelectedSourceId &&
+      initialSources.some(({ source }) => source.id === initialSelectedSourceId)
+      ? initialSelectedSourceId
+      : null,
+  )
   const [uploading, setUploading] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -71,6 +91,17 @@ export function KnowledgeBaseWorkspace({
   const [textTitle, setTextTitle] = useState('')
   const [textContent, setTextContent] = useState('')
   const [savingText, setSavingText] = useState(false)
+  const [urlDialogOpen, setUrlDialogOpen] = useState(false)
+  const [urlTitle, setUrlTitle] = useState('')
+  const [urlValue, setUrlValue] = useState('')
+  const [savingUrl, setSavingUrl] = useState(false)
+  const [connectedDialogOpen, setConnectedDialogOpen] = useState(false)
+  const [connectedRecipe, setConnectedRecipe] =
+    useState<ConnectedKnowledgeSourceRecipe>('google-drive-file')
+  const [connectedResourceId, setConnectedResourceId] = useState('')
+  const [connectedTitle, setConnectedTitle] = useState('')
+  const [savingConnected, setSavingConnected] = useState(false)
+  const [reindexing, setReindexing] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editTitle, setEditTitle] = useState(initialKnowledgeBase.title)
   const [editDescription, setEditDescription] = useState(initialKnowledgeBase.description ?? '')
@@ -94,6 +125,10 @@ export function KnowledgeBaseWorkspace({
   )
   const readySourceCount = sources.filter(({ source }) => source.status === 'ready').length
   const hasActiveSources = sources.some(({ source }) => ACTIVE_SOURCE_STATUSES.has(source.status))
+  const canAddConnectedSource =
+    capabilities.integrations &&
+    integrationProvider === 'composio' &&
+    can('integrations.use')
 
   const loadSources = useCallback(async () => {
     const response = await overlayAppClient.knowledgeBases.listSources(knowledgeBase.id)
@@ -102,9 +137,30 @@ export function KnowledgeBaseWorkspace({
 
   useEffect(() => {
     if (!hasActiveSources) return
-    const interval = window.setInterval(() => void loadSources(), 2000)
+    const interval = window.setInterval(() => {
+      void loadSources().catch(() => undefined)
+    }, 2000)
     return () => window.clearInterval(interval)
   }, [hasActiveSources, loadSources])
+
+  const reconcileWorkspace = useCallback(async () => {
+    const [basesResult, sourcesResult] = await Promise.allSettled([
+      overlayAppClient.knowledgeBases.list(),
+      overlayAppClient.knowledgeBases.listSources(knowledgeBase.id),
+    ])
+    if (basesResult.status === 'fulfilled') {
+      const current = basesResult.value.knowledgeBases.find(({ id }) => id === knowledgeBase.id)
+      if (!current) {
+        router.replace('/app/knowledge')
+        return
+      }
+      setKnowledgeBase(current)
+    }
+    if (sourcesResult.status === 'fulfilled') {
+      setSources(sourcesResult.value.sources)
+    }
+  }, [knowledgeBase.id, router])
+  useVisibleReconciliation(reconcileWorkspace)
 
   async function uploadFiles(files: File[]) {
     if (!canEdit || files.length === 0 || uploading) return
@@ -115,6 +171,7 @@ export function KnowledgeBaseWorkspace({
         await overlayAppClient.knowledgeBases.uploadSource(knowledgeBase.id, file)
       }
       await loadSources()
+      setSearchRevision((current) => current + 1)
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not upload source')
     } finally {
@@ -148,10 +205,79 @@ export function KnowledgeBaseWorkspace({
       setTextTitle('')
       setTextContent('')
       await loadSources()
+      setSearchRevision((current) => current + 1)
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not add text source')
     } finally {
       setSavingText(false)
+    }
+  }
+
+  async function addWebsiteSource() {
+    if (!urlValue.trim() || savingUrl) return
+    setSavingUrl(true)
+    setNotice(null)
+    try {
+      await overlayAppClient.knowledgeBases.createSource(knowledgeBase.id, {
+        kind: 'url',
+        ref: urlValue.trim(),
+        title: urlTitle.trim() || undefined,
+      })
+      setUrlDialogOpen(false)
+      setUrlTitle('')
+      setUrlValue('')
+      await loadSources()
+      setSearchRevision((current) => current + 1)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not add website')
+    } finally {
+      setSavingUrl(false)
+    }
+  }
+
+  async function addConnectedSource() {
+    if (!connectedResourceId.trim() || savingConnected) return
+    setSavingConnected(true)
+    setNotice(null)
+    try {
+      const isDrive = connectedRecipe === 'google-drive-file' ||
+        connectedRecipe === 'dropbox-file'
+      await overlayAppClient.knowledgeBases.createSource(knowledgeBase.id, {
+        kind: isDrive ? 'drive' : 'connector',
+        ref: buildConnectedKnowledgeSourceRef({
+          recipe: connectedRecipe,
+          resourceId: connectedResourceId,
+        }),
+        title: connectedTitle.trim() || undefined,
+      })
+      setConnectedDialogOpen(false)
+      setConnectedResourceId('')
+      setConnectedTitle('')
+      await loadSources()
+      setSearchRevision((current) => current + 1)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not add connected source')
+    } finally {
+      setSavingConnected(false)
+    }
+  }
+
+  async function reindexStaleSources() {
+    if (reindexing) return
+    setReindexing(true)
+    setNotice(null)
+    try {
+      const response = await overlayAppClient.knowledgeBases.reindex(knowledgeBase.id, {
+        onlyStale: true,
+      })
+      setNotice(response.queued.length > 0
+        ? `Queued ${response.queued.length} ${response.queued.length === 1 ? 'source' : 'sources'} for reindexing.`
+        : 'All sources are already current.')
+      await loadSources()
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not reindex sources')
+    } finally {
+      setReindexing(false)
     }
   }
 
@@ -170,6 +296,7 @@ export function KnowledgeBaseWorkspace({
   async function retrySource(sourceId: string) {
     await overlayAppClient.knowledgeBases.updateSource(knowledgeBase.id, { sourceId, retry: true })
     await loadSources()
+    setSearchRevision((current) => current + 1)
   }
 
   async function deleteSource(sourceId: string) {
@@ -180,6 +307,7 @@ export function KnowledgeBaseWorkspace({
     })
     setSelectedSourceId(null)
     await loadSources()
+    setSearchRevision((current) => current + 1)
   }
 
   async function updateKnowledgeBase() {
@@ -263,6 +391,8 @@ export function KnowledgeBaseWorkspace({
       sources={sources}
       uploading={uploading}
       onAddText={() => setTextDialogOpen(true)}
+      onAddWebsite={() => setUrlDialogOpen(true)}
+      onAddConnected={canAddConnectedSource ? () => setConnectedDialogOpen(true) : undefined}
       onCloseMobile={() => setMobileSourcesOpen(false)}
       onDrop={handleDrop}
       onDragActive={setDragging}
@@ -315,6 +445,7 @@ export function KnowledgeBaseWorkspace({
         rightPanel={selectedSource ? (
           <SourceInspector
             detail={selectedSource}
+            knowledgeBaseId={knowledgeBase.id}
             canEdit={canEdit}
             onClose={() => setSelectedSourceId(null)}
             onDelete={() => void deleteSource(selectedSource.source.id)}
@@ -383,6 +514,103 @@ export function KnowledgeBaseWorkspace({
       </DialogFrame>
 
       <DialogFrame
+        open={urlDialogOpen}
+        onOpenChange={setUrlDialogOpen}
+        title="Add website"
+        description="Overlay will fetch public page content, index it, and retain its origin for citations."
+        footer={(
+          <>
+            <Button onClick={() => setUrlDialogOpen(false)} disabled={savingUrl}>Cancel</Button>
+            <Button variant="primary" onClick={() => void addWebsiteSource()} disabled={!urlValue.trim() || savingUrl}>
+              {savingUrl ? <Loader2 className="animate-spin" size={14} /> : null}
+              Add source
+            </Button>
+          </>
+        )}
+      >
+        <div className="mt-5 space-y-3">
+          <label className="block text-xs font-medium">
+            URL
+            <input
+              autoFocus
+              value={urlValue}
+              onChange={(event) => setUrlValue(event.target.value)}
+              placeholder="https://example.com/handbook"
+              inputMode="url"
+              className="mt-1.5 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none"
+            />
+          </label>
+          <label className="block text-xs font-medium">
+            Title <span className="font-normal text-[var(--muted)]">(optional)</span>
+            <input
+              value={urlTitle}
+              onChange={(event) => setUrlTitle(event.target.value)}
+              placeholder="Employee handbook"
+              className="mt-1.5 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none"
+            />
+          </label>
+        </div>
+      </DialogFrame>
+
+      <DialogFrame
+        open={connectedDialogOpen}
+        onOpenChange={setConnectedDialogOpen}
+        title="Add connected source"
+        description="Import a read-only source from a connected workspace app."
+        footer={(
+          <>
+            <Button onClick={() => setConnectedDialogOpen(false)} disabled={savingConnected}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void addConnectedSource()}
+              disabled={!connectedResourceId.trim() || savingConnected}
+            >
+              {savingConnected ? <Loader2 className="animate-spin" size={14} /> : null}
+              Add source
+            </Button>
+          </>
+        )}
+      >
+        <div className="mt-5 space-y-3">
+          <label className="block text-xs font-medium">
+            Provider
+            <select
+              value={connectedRecipe}
+              onChange={(event) =>
+                setConnectedRecipe(event.target.value as ConnectedKnowledgeSourceRecipe)}
+              className="mt-1.5 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none"
+            >
+              <option value="google-drive-file">Google Drive file</option>
+              <option value="dropbox-file">Dropbox file</option>
+              <option value="notion-page">Notion page</option>
+              <option value="confluence-page">Confluence page</option>
+            </select>
+          </label>
+          <label className="block text-xs font-medium">
+            {connectedSourceIdentifierLabel(connectedRecipe)}
+            <input
+              autoFocus
+              value={connectedResourceId}
+              onChange={(event) => setConnectedResourceId(event.target.value)}
+              placeholder={connectedSourceIdentifierPlaceholder(connectedRecipe)}
+              className="mt-1.5 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none"
+            />
+          </label>
+          <label className="block text-xs font-medium">
+            Title <span className="font-normal text-[var(--muted)]">(optional)</span>
+            <input
+              value={connectedTitle}
+              onChange={(event) => setConnectedTitle(event.target.value)}
+              placeholder="Source title"
+              className="mt-1.5 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none"
+            />
+          </label>
+        </div>
+      </DialogFrame>
+
+      <DialogFrame
         open={editOpen}
         onOpenChange={setEditOpen}
         title="Knowledge base settings"
@@ -403,6 +631,20 @@ export function KnowledgeBaseWorkspace({
         <div className="mt-5 space-y-3">
           <input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none" />
           <textarea value={editDescription} onChange={(event) => setEditDescription(event.target.value)} rows={4} placeholder="Description" className="w-full resize-none rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none" />
+          <div className="rounded-md border border-[var(--border)] p-3">
+            <div className="flex items-center gap-3">
+              <Activity size={15} className="text-[var(--muted)]" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium">Index health</p>
+                <p className="mt-0.5 text-[11px] text-[var(--muted)]">Reindex sources whose content or embedding identity is stale.</p>
+              </div>
+              <Button size="sm" onClick={() => void reindexStaleSources()} disabled={reindexing}>
+                {reindexing ? <Loader2 className="animate-spin" size={13} /> : <RefreshCw size={13} />}
+                Reindex stale
+              </Button>
+            </div>
+            {notice ? <p role="status" className="mt-2 text-[11px] text-[var(--muted)]">{notice}</p> : null}
+          </div>
         </div>
       </DialogFrame>
 
@@ -491,6 +733,24 @@ function principalLabel(
   return entry ? directoryEntryLabel(entry) : id
 }
 
+function connectedSourceIdentifierLabel(recipe: ConnectedKnowledgeSourceRecipe): string {
+  switch (recipe) {
+    case 'google-drive-file': return 'Google Drive file ID'
+    case 'dropbox-file': return 'Dropbox file path'
+    case 'notion-page': return 'Notion page ID'
+    case 'confluence-page': return 'Confluence page ID'
+  }
+}
+
+function connectedSourceIdentifierPlaceholder(recipe: ConnectedKnowledgeSourceRecipe): string {
+  switch (recipe) {
+    case 'google-drive-file': return '1AbCdefGhijkLmnoP'
+    case 'dropbox-file': return '/Company/Handbook.pdf'
+    case 'notion-page': return '2f22b4dbb7d1801b...'
+    case 'confluence-page': return '123456789'
+  }
+}
+
 function KnowledgeSourcePanel({
   canEdit,
   dragging,
@@ -502,6 +762,8 @@ function KnowledgeSourcePanel({
   sources,
   uploading,
   onAddText,
+  onAddWebsite,
+  onAddConnected,
   onCloseMobile,
   onDragActive,
   onDrop,
@@ -520,6 +782,8 @@ function KnowledgeSourcePanel({
   sources: KnowledgeBaseSourceDetail[]
   uploading: boolean
   onAddText: () => void
+  onAddWebsite: () => void
+  onAddConnected?: () => void
   onCloseMobile: () => void
   onDragActive: (active: boolean) => void
   onDrop: (event: DragEvent<HTMLDivElement>) => void
@@ -585,9 +849,13 @@ function KnowledgeSourcePanel({
                 <p className="mt-2 text-xs font-medium">{uploading ? 'Adding sources…' : 'Drop files here'}</p>
                 <p className="mt-1 text-[11px] text-[var(--muted)]">PDF, Office, text, and code files</p>
               </div>
-              <div className="mt-2 grid grid-cols-2 gap-2">
+              <div className={`mt-2 grid gap-2 ${onAddConnected ? 'grid-cols-2' : 'grid-cols-3'}`}>
                 <Button size="sm" onClick={onOpenFilePicker}><Plus size={13} /> Add files</Button>
                 <Button size="sm" onClick={onAddText}><FileText size={13} /> Paste text</Button>
+                <Button size="sm" onClick={onAddWebsite}><Globe2 size={13} /> Website</Button>
+                {onAddConnected ? (
+                  <Button size="sm" onClick={onAddConnected}><Cloud size={13} /> Connected</Button>
+                ) : null}
               </div>
               {notice ? <p role="alert" className="mt-2 text-xs text-red-500">{notice}</p> : null}
             </div>
@@ -654,7 +922,10 @@ function SourceRow({
 }) {
   const busy = ACTIVE_SOURCE_STATUSES.has(detail.source.status)
   return (
-    <div className={`group flex items-center gap-2 rounded-md px-2 py-2 ${selected ? 'bg-[var(--surface-subtle)]' : 'hover:bg-[var(--surface-subtle)]'}`}>
+    <div
+      className={`group flex items-center gap-2 rounded-md px-2 py-2 ${selected ? 'bg-[var(--surface-subtle)]' : 'hover:bg-[var(--surface-subtle)]'}`}
+      data-testid={`knowledge-source-${detail.source.id}`}
+    >
       {canEdit ? (
         <button type="button" aria-label={`${detail.membership.enabled ? 'Exclude' : 'Include'} ${detail.source.title}`} onClick={() => onToggle(!detail.membership.enabled)} className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${detail.membership.enabled ? 'border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]' : 'border-[var(--border)]'}`}>
           {detail.membership.enabled ? <Check size={12} /> : null}
@@ -664,7 +935,10 @@ function SourceRow({
         <FileText size={14} className="shrink-0 text-[var(--muted)]" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-xs font-medium">{detail.source.title}</span>
-          <span className={`mt-0.5 block text-[10px] capitalize ${detail.source.status === 'failed' ? 'text-red-500' : 'text-[var(--muted)]'}`}>
+          <span
+            className={`mt-0.5 block text-[10px] capitalize ${detail.source.status === 'failed' ? 'text-red-500' : 'text-[var(--muted)]'}`}
+            data-testid={`knowledge-source-status-${detail.source.id}`}
+          >
             {busy ? <Loader2 className="mr-1 inline animate-spin" size={9} /> : null}
             {detail.source.status}
           </span>
@@ -678,19 +952,83 @@ function SourceRow({
 function SourceInspector({
   canEdit,
   detail,
+  knowledgeBaseId,
   onClose,
   onDelete,
   onRetry,
 }: {
   canEdit: boolean
   detail: KnowledgeBaseSourceDetail
+  knowledgeBaseId: string
   onClose: () => void
   onDelete: () => void
   onRetry: () => void
 }) {
+  const [diagnostics, setDiagnostics] = useState<KnowledgeSourceDiagnostics | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+  const [loadingDiagnostics, setLoadingDiagnostics] = useState(true)
+  const [reindexing, setReindexing] = useState(false)
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null)
   const fileId = detail.source.sourceRef?.startsWith('file:')
     ? detail.source.sourceRef.slice('file:'.length)
     : null
+  const external = detail.source.kind === 'url' || detail.source.kind === 'connector' || detail.source.kind === 'drive'
+
+  const loadDiagnostics = useCallback(async () => {
+    setLoadingDiagnostics(true)
+    setDiagnosticsError(null)
+    try {
+      const [health, extraction] = await Promise.all([
+        overlayAppClient.knowledgeBases.diagnostics(knowledgeBaseId),
+        overlayAppClient.knowledgeBases.extractionPreview(knowledgeBaseId, detail.source.id)
+          .catch(() => null),
+      ])
+      setDiagnostics(health.sources.find(({ sourceId }) => sourceId === detail.source.id) ?? null)
+      setPreview(extraction?.preview.text ?? detail.source.contentPreview ?? null)
+    } catch (error) {
+      setDiagnosticsError(error instanceof Error ? error.message : 'Could not load index diagnostics')
+    } finally {
+      setLoadingDiagnostics(false)
+    }
+  }, [detail.source.contentPreview, detail.source.id, knowledgeBaseId])
+
+  useEffect(() => {
+    void loadDiagnostics()
+  }, [loadDiagnostics])
+
+  async function reindexSource() {
+    if (reindexing) return
+    setReindexing(true)
+    setDiagnosticsError(null)
+    try {
+      await overlayAppClient.knowledgeBases.reindex(knowledgeBaseId, {
+        sourceId: detail.source.id,
+      })
+      await loadDiagnostics()
+    } catch (error) {
+      setDiagnosticsError(error instanceof Error ? error.message : 'Could not reindex source')
+    } finally {
+      setReindexing(false)
+    }
+  }
+
+  async function refreshExternalSource() {
+    if (reindexing) return
+    setReindexing(true)
+    setDiagnosticsError(null)
+    try {
+      await overlayAppClient.knowledgeBases.updateSource(knowledgeBaseId, {
+        sourceId: detail.source.id,
+        refresh: true,
+      })
+      await loadDiagnostics()
+    } catch (error) {
+      setDiagnosticsError(error instanceof Error ? error.message : 'Could not refresh source')
+    } finally {
+      setReindexing(false)
+    }
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-14 min-h-14 shrink-0 items-center gap-3 border-b border-[var(--border)] px-4 md:h-16 md:min-h-16">
@@ -703,20 +1041,38 @@ function SourceInspector({
           <dt className="text-[var(--muted)]">Status</dt><dd className="capitalize">{detail.source.status}</dd>
           <dt className="text-[var(--muted)]">Type</dt><dd>{detail.source.mimeType || detail.source.kind}</dd>
           <dt className="text-[var(--muted)]">Included</dt><dd>{detail.membership.enabled ? 'Yes' : 'No'}</dd>
+          <dt className="text-[var(--muted)]">Freshness</dt>
+          <dd className="capitalize">{loadingDiagnostics ? 'Checking…' : diagnostics?.freshness.state.replace('-', ' ') ?? 'Unavailable'}</dd>
+          <dt className="text-[var(--muted)]">Passages</dt><dd>{diagnostics?.chunkCount ?? '—'}</dd>
+          <dt className="text-[var(--muted)]">Embedded</dt><dd>{diagnostics?.embeddedCount ?? '—'}</dd>
+          <dt className="text-[var(--muted)]">Indexed text</dt><dd>{diagnostics ? formatCharacterCount(diagnostics.indexedChars) : '—'}</dd>
         </dl>
+        {diagnostics?.freshness.reason ? (
+          <p className="mt-4 rounded-md border border-amber-500/25 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-600 dark:text-amber-400">
+            {diagnostics.freshness.reason}
+          </p>
+        ) : null}
+        {diagnosticsError ? <p role="alert" className="mt-4 text-xs text-red-500">{diagnosticsError}</p> : null}
         {detail.source.statusMessage ? <p className="mt-5 rounded-md border border-red-500/30 bg-red-500/5 p-3 text-xs leading-relaxed text-red-500">{detail.source.statusMessage}</p> : null}
-        {detail.source.contentPreview ? (
+        {preview ? (
           <div className="mt-6">
             <p className="text-xs font-medium">Extracted text</p>
-            <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-xs leading-6 text-[var(--muted)]">{detail.source.contentPreview}</pre>
+            <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-xs leading-6 text-[var(--muted)]">{preview}</pre>
           </div>
         ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-2 border-t border-[var(--border)] p-3">
         {fileId ? <Button size="sm" onClick={() => window.location.assign(`/app/files?file=${encodeURIComponent(fileId)}`)}>Open file</Button> : null}
+        {canEdit && external ? <Button size="sm" onClick={() => void refreshExternalSource()} disabled={reindexing}><RefreshCw size={13} /> Refresh origin</Button> : null}
         {canEdit && detail.source.status === 'failed' ? <Button size="sm" onClick={onRetry}><RefreshCw size={13} /> Retry</Button> : null}
+        {canEdit && detail.source.status === 'ready' ? <Button size="sm" onClick={() => void reindexSource()} disabled={reindexing}>{reindexing ? <Loader2 className="animate-spin" size={13} /> : <Activity size={13} />} Reindex</Button> : null}
         {canEdit ? <Button size="sm" variant="ghost" className="ml-auto text-red-500" onClick={onDelete}><Trash2 size={13} /> Delete</Button> : null}
       </div>
     </div>
   )
+}
+
+function formatCharacterCount(value: number): string {
+  if (value < 1_000) return `${value} chars`
+  return `${(value / 1_000).toFixed(value < 10_000 ? 1 : 0)}k chars`
 }

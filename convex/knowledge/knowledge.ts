@@ -24,6 +24,8 @@ export type HybridSearchChunk = {
   knowledgeSourceId?: string
   knowledgeSourceVersionId?: string
   chunkIndex: number
+  /** Offset of this chunk within the full extracted source text. */
+  startOffset?: number
   score: number
 }
 
@@ -664,6 +666,9 @@ function packChunksForContext(
       knowledgeSourceId: row.knowledgeSourceId,
       knowledgeSourceVersionId: row.knowledgeSourceVersionId,
       chunkIndex: row.chunkIndex,
+      // Needed so citation passages can point back into the source text on the
+      // Convex path, matching what Postgres hybrid search returns.
+      startOffset: row.startOffset,
       score: scores.get(row._id) ?? 0,
     })
   }

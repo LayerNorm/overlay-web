@@ -2,7 +2,18 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, ExternalLink, Loader2, Plus, Search, Trash2, Users } from 'lucide-react'
+import {
+  Activity,
+  BookOpen,
+  Database,
+  ExternalLink,
+  Loader2,
+  Plus,
+  Search,
+  Trash2,
+  Users,
+} from 'lucide-react'
+import type { GroupKnowledgeBaseDefault } from '@overlay/app-core'
 import type {
   AdministrativeKnowledgeBase,
   KnowledgeBaseShareDirectoryResponse,
@@ -22,16 +33,19 @@ export function KnowledgeAdminPanel({ canManage }: { canManage: boolean }) {
   const [directory, setDirectory] = useState(EMPTY_DIRECTORY)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [grants, setGrants] = useState<ResourceGrant[]>([])
+  const [defaults, setDefaults] = useState<GroupKnowledgeBaseDefault[]>([])
   const [query, setQuery] = useState('')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [principalType, setPrincipalType] = useState<AuthorizationPrincipalType>('group')
   const [principalId, setPrincipalId] = useState('')
   const [accessRole, setAccessRole] = useState<Exclude<ResourceAccessRole, 'owner'>>('viewer')
+  const [defaultGroupId, setDefaultGroupId] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const selected = knowledgeBases.find(({ id }) => id === selectedId) ?? null
+  const selectedDefaults = defaults.filter(({ knowledgeBaseId }) => knowledgeBaseId === selectedId)
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     if (!normalized) return knowledgeBases
@@ -40,12 +54,14 @@ export function KnowledgeAdminPanel({ canManage }: { canManage: boolean }) {
   }, [knowledgeBases, query])
 
   const load = useCallback(async () => {
-    const [basesResponse, directoryResponse] = await Promise.all([
+    const [basesResponse, directoryResponse, defaultsResponse] = await Promise.all([
       overlayAppClient.knowledgeBases.listAdministrative(),
       overlayAppClient.knowledgeBases.listShareDirectory(),
+      overlayAppClient.knowledgeBases.listGroupDefaults(),
     ])
     setKnowledgeBases(basesResponse.knowledgeBases)
     setDirectory(directoryResponse)
+    setDefaults(defaultsResponse.defaults)
     setSelectedId((current) => current && basesResponse.knowledgeBases.some(({ id }) => id === current)
       ? current
       : basesResponse.knowledgeBases[0]?.id ?? null)
@@ -130,6 +146,41 @@ export function KnowledgeAdminPanel({ canManage }: { canManage: boolean }) {
     }
   }
 
+  async function addDefaultGroup() {
+    if (!selected || !defaultGroupId || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await overlayAppClient.knowledgeBases.setGroupDefault({
+        groupId: defaultGroupId,
+        knowledgeBaseId: selected.id,
+      })
+      setDefaultGroupId('')
+      await Promise.all([load(), loadGrants(selected.id)])
+    } catch (defaultError) {
+      setError(message(defaultError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function removeDefaultGroup(groupId: string) {
+    if (!selected || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await overlayAppClient.knowledgeBases.removeGroupDefault({
+        groupId,
+        knowledgeBaseId: selected.id,
+      })
+      await load()
+    } catch (defaultError) {
+      setError(message(defaultError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <section data-testid="admin-knowledge-bases">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -166,7 +217,9 @@ export function KnowledgeAdminPanel({ canManage }: { canManage: boolean }) {
                   <span className="text-[10px] uppercase text-[var(--muted)]">{base.kind}</span>
                 </div>
                 <p className="mt-1 truncate text-xs text-[var(--muted)]">{ownerLabel(directory, base.ownerUserId)}</p>
-                <p className="mt-1 text-[11px] text-[var(--muted)]">{base.sourceCount} sources · {base.grantCount} grants · {base.status}</p>
+                <p className="mt-1 text-[11px] text-[var(--muted)]">
+                  {base.sourceCount} sources · {base.grantCount} grants · {base.defaultGroupCount} defaults
+                </p>
               </button>
             ))}
           </div>
@@ -184,6 +237,34 @@ export function KnowledgeAdminPanel({ canManage }: { canManage: boolean }) {
                 <Link href={`/app/knowledge/${encodeURIComponent(selected.id)}`} className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)]" aria-label="Open knowledge base">
                   <ExternalLink size={14} />
                 </Link>
+              </div>
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <div className="border-y border-[var(--border)] py-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold">
+                    <Activity size={14} /> Index health
+                  </div>
+                  <p className="mt-2 text-sm">
+                    {selected.indexHealth.fresh} fresh
+                    {selected.indexHealth.stale ? ` · ${selected.indexHealth.stale} stale` : ''}
+                    {selected.indexHealth.failed ? ` · ${selected.indexHealth.failed} failed` : ''}
+                    {selected.indexHealth.neverIndexed
+                      ? ` · ${selected.indexHealth.neverIndexed} pending`
+                      : ''}
+                  </p>
+                </div>
+                <div className="border-y border-[var(--border)] py-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold">
+                    <Database size={14} /> Indexed usage
+                  </div>
+                  <p className="mt-2 text-sm">
+                    {selected.indexUsage.chunkCount.toLocaleString()} chunks ·{' '}
+                    {selected.indexUsage.embeddedCount.toLocaleString()} embeddings
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    {selected.indexUsage.indexedChars.toLocaleString()} indexed characters
+                  </p>
+                </div>
               </div>
 
               {canManage ? (
@@ -213,6 +294,65 @@ export function KnowledgeAdminPanel({ canManage }: { canManage: boolean }) {
                   ))}
                 </div>
               </div>
+
+              {selected.kind === 'organization' ? (
+                <div className="mt-6">
+                  <div className="flex items-center gap-2">
+                    <BookOpen size={15} />
+                    <h4 className="text-xs font-semibold">Default for groups</h4>
+                  </div>
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    Members use this base as fallback knowledge in otherwise unscoped chats.
+                  </p>
+                  {canManage ? (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                      <select
+                        aria-label="Default knowledge group"
+                        value={defaultGroupId}
+                        onChange={(event) => setDefaultGroupId(event.target.value)}
+                        className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
+                      >
+                        <option value="">Select group</option>
+                        {directory.groups
+                          .filter(({ id }) => !selectedDefaults.some(({ groupId }) => groupId === id))
+                          .map((group) => (
+                            <option key={group.id} value={group.id}>{entryLabel(group)}</option>
+                          ))}
+                      </select>
+                      <Button
+                        variant="secondary"
+                        onClick={() => void addDefaultGroup()}
+                        disabled={!defaultGroupId || busy}
+                      >
+                        <Plus size={14} /> Add default
+                      </Button>
+                    </div>
+                  ) : null}
+                  <div className="mt-2 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+                    {selectedDefaults.length === 0 ? (
+                      <p className="py-4 text-sm text-[var(--muted)]">No group defaults.</p>
+                    ) : selectedDefaults.map((value) => {
+                      const group = directory.groups.find(({ id }) => id === value.groupId)
+                      return (
+                        <div key={`${value.groupId}:${value.knowledgeBaseId}`} className="flex items-center gap-3 py-3">
+                          <p className="min-w-0 flex-1 truncate text-sm font-medium">
+                            {group ? entryLabel(group) : value.groupId}
+                          </p>
+                          {canManage ? (
+                            <IconButton
+                              aria-label="Remove default knowledge group"
+                              onClick={() => void removeDefaultGroup(value.groupId)}
+                              disabled={busy}
+                            >
+                              <Trash2 size={14} />
+                            </IconButton>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </>
           )}
         </div>

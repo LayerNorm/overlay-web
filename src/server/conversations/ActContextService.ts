@@ -19,6 +19,12 @@ import {
   type IndexedAttachmentRef,
 } from '@/shared/knowledge/knowledge-agent-types'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
+import { resolveRetrievalScope } from '@/shared/knowledge/retrieval-scope'
+import {
+  isProjectResourceEnabled,
+  readProjectSettings,
+  type ProjectSettings,
+} from '@/shared/projects/project-settings'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import type {
   ActConversationRepository,
@@ -80,6 +86,8 @@ export type ActTurnContext = {
   memoryContext: string
   mentionsContext: string
   projectInstructions: string
+  /** Parsed configuration of the active project; absent when there is none. */
+  projectSettings?: ProjectSettings
   skillsContext: string
   sourceCitationMap: SourceCitationMap
 }
@@ -89,7 +97,7 @@ type AutoRetrievalBuilder = (args: {
   userId: string
   accessToken?: string
   projectId?: string
-  knowledgeBaseId?: string
+  knowledgeBaseIds?: string[]
   includeMemories?: boolean
 }) => Promise<{
   extension: string
@@ -101,10 +109,17 @@ export class ActContextService {
     repository: ActConversationRepository
     buildAutoRetrievalBundle?: AutoRetrievalBuilder
     loadDocumentFile?: DocumentContextFileLoader
-    resolveKnowledgeBaseId?: (args: {
+    resolveConversationKnowledgeBaseIds?: (args: {
       conversationId: string
       userId: string
-    }) => Promise<string | null>
+    }) => Promise<string[]>
+    resolveProjectKnowledgeBaseIds?: (args: {
+      projectId: string
+      userId: string
+    }) => Promise<string[]>
+    resolveDefaultKnowledgeBaseIds?: (args: {
+      userId: string
+    }) => Promise<string[]>
   }) {}
 
   async buildMessagesForModel(params: {
@@ -148,6 +163,8 @@ export class ActContextService {
     externalContextEnabled?: boolean
     memoryEnabled?: boolean
     mentions?: IncomingMention[]
+    /** Bases named explicitly on this turn; narrows retrieval to just these. */
+    mentionedKnowledgeBaseIds?: string[]
     serverSecret: string
     userId: string
   }): Promise<ActTurnContext> {
@@ -183,30 +200,30 @@ export class ActContextService {
       }
     })()
 
-    const knowledgeBaseTask = args.conversationId && this.deps.resolveKnowledgeBaseId
-      ? this.deps.resolveKnowledgeBaseId({
+    const knowledgeBaseTask = args.conversationId && this.deps.resolveConversationKnowledgeBaseIds
+      ? this.deps.resolveConversationKnowledgeBaseIds({
           conversationId: args.conversationId,
           userId: args.userId,
-        }).catch((_error) => null)
-      : Promise.resolve(null)
+        }).catch((_error) => [] as string[])
+      : Promise.resolve([] as string[])
+    const defaultKnowledgeBaseTask = this.deps.resolveDefaultKnowledgeBaseIds
+      ? this.deps.resolveDefaultKnowledgeBaseIds({ userId: args.userId })
+        .catch((_error) => [] as string[])
+      : Promise.resolve([] as string[])
 
-    const [effectiveMemories, enabledSkills, conv, conversationKnowledgeBaseId] = await Promise.all([
+    const [
+      effectiveMemories,
+      accountEnabledSkills,
+      conv,
+      conversationKnowledgeBaseIds,
+      defaultKnowledgeBaseIds,
+    ] = await Promise.all([
       memoriesTask,
       skillsTask,
       conversationTask,
       knowledgeBaseTask,
+      defaultKnowledgeBaseTask,
     ])
-
-    const mentionsContextTask = externalContextEnabled
-      ? (async () => {
-          const { resolveMentionsContext } = await import('@/server/knowledge/mention-resolver')
-          return await resolveMentionsContext(args.mentions, {
-            userId: args.userId,
-            serverSecret: args.serverSecret,
-            enabledSkills,
-          })
-        })()
-      : Promise.resolve('')
 
     const conversationProjectId = conv?.projectId
     const project = await (async () => {
@@ -222,7 +239,50 @@ export class ActContextService {
     })()
     const activeProject = project?.archivedAt ? null : project
     const projectInstructions = activeProject?.instructions?.trim() || ''
-    const knowledgeBaseId = activeProject?.knowledgeBaseId ?? conversationKnowledgeBaseId
+    // Archived projects contribute no configuration, matching how their
+    // instructions and knowledge attachments are already ignored.
+    const projectSettings = activeProject
+      ? readProjectSettings(activeProject.settings)
+      : undefined
+    const enabledSkills = accountEnabledSkills.filter((skill) => (
+      isProjectResourceEnabled(projectSettings?.enabledSkillIds, skill._id ?? skill.name)
+    ))
+    const mentionsContextTask = externalContextEnabled
+      ? (async () => {
+          const { resolveMentionsContext } = await import('@/server/knowledge/mention-resolver')
+          return await resolveMentionsContext(args.mentions, {
+            userId: args.userId,
+            serverSecret: args.serverSecret,
+            enabledSkills,
+          })
+        })()
+      : Promise.resolve('')
+
+    // Bases attached to the active project. Falls back to the legacy single-column
+    // attachment so a project written before schema 23 still grounds correctly.
+    const projectKnowledgeBaseIds = activeProject && conversationProjectId
+      ? await (this.deps.resolveProjectKnowledgeBaseIds
+          ? this.deps.resolveProjectKnowledgeBaseIds({
+              projectId: conversationProjectId,
+              userId: args.userId,
+            }).catch((_error) => [] as string[])
+          : Promise.resolve([] as string[]))
+        .then((ids) => (
+          ids.length > 0
+            ? ids
+            : activeProject.knowledgeBaseId
+              ? [activeProject.knowledgeBaseId]
+              : []
+        ))
+      : []
+
+    const scope = resolveRetrievalScope({
+      conversationKnowledgeBaseIds,
+      defaultKnowledgeBaseIds,
+      mentionedKnowledgeBaseIds: args.mentionedKnowledgeBaseIds,
+      projectKnowledgeBaseIds,
+    })
+    const knowledgeBaseIds = scope.knowledgeBaseIds
 
     const autoRetrievalTask: Promise<{
       extension: string
@@ -239,9 +299,9 @@ export class ActContextService {
           userMessage: args.latestUserText ?? '',
           userId: args.userId,
           ...(args.accessToken ? { accessToken: args.accessToken } : {}),
-          ...(knowledgeBaseId ? { knowledgeBaseId } : {}),
+          ...(knowledgeBaseIds.length > 0 ? { knowledgeBaseIds } : {}),
           projectId: conversationProjectId,
-          includeMemories: knowledgeBaseId ? false : memoryEnabled,
+          includeMemories: knowledgeBaseIds.length > 0 ? false : memoryEnabled,
         })
         return { extension: bundle.extension, citations: bundle.citations }
       } catch (_error) {
@@ -285,6 +345,7 @@ export class ActContextService {
       memoryContext: memoryEnabled ? buildMemoryContext(effectiveMemories) : '',
       mentionsContext,
       projectInstructions,
+      projectSettings,
       skillsContext: buildSkillsContext(enabledSkills),
       sourceCitationMap: autoRetrievalBundle.citations,
     }

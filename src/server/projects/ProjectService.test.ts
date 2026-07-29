@@ -177,3 +177,105 @@ function repository(
     ...overrides,
   }
 }
+
+test('createProject persists settings rather than dropping them', async () => {
+  const calls: Array<Record<string, unknown>> = []
+  const service = new ProjectService({
+    async createProject(args: Record<string, unknown>) {
+      calls.push(args)
+      return { _id: 'p1', name: 'P', userId: 'u1', createdAt: 1, updatedAt: 1 }
+    },
+  } as unknown as ProjectRepository)
+
+  await service.createProject({
+    name: 'P',
+    settings: { toolPolicy: { mode: 'allowlist', toolIds: ['search_knowledge_base'] } },
+    userId: 'u1',
+  })
+  assert.deepEqual(
+    (calls[0]!.settings as Record<string, unknown>)?.toolPolicy,
+    { mode: 'allowlist', toolIds: ['search_knowledge_base'] },
+    'settings supplied at creation must reach the repository',
+  )
+})
+
+test('updateProject persists settings rather than dropping them', async () => {
+  const calls: Array<Record<string, unknown>> = []
+  const service = new ProjectService({
+    async updateProject(args: Record<string, unknown>) {
+      calls.push(args)
+      return { _id: 'p1', name: 'P', userId: 'u1', createdAt: 1, updatedAt: 1 }
+    },
+  } as unknown as ProjectRepository)
+
+  await service.updateProject({
+    projectId: 'p1',
+    settings: { automationsEnabled: false },
+    userId: 'u1',
+  })
+  assert.equal((calls[0]!.settings as Record<string, unknown>)?.automationsEnabled, false)
+})
+
+test('duplicating copies configuration but no private working data', async () => {
+  const created: Array<Record<string, unknown>> = []
+  const service = new ProjectService({
+    async getProject() {
+      return {
+        _id: 'source',
+        name: 'Client Alpha',
+        userId: 'u1',
+        instructions: 'Write formally.',
+        settings: {
+          preferredModelId: 'anthropic/claude',
+          toolPolicy: { mode: 'denylist', toolIds: ['generate_image'] },
+          isTemplate: true,
+        },
+        createdAt: 1,
+        updatedAt: 1,
+      }
+    },
+    async createProject(args: Record<string, unknown>) {
+      created.push(args)
+      return { _id: 'copy', name: String(args.name), userId: 'u1', createdAt: 2, updatedAt: 2 }
+    },
+  } as unknown as ProjectRepository)
+
+  const copy = await service.duplicateProject({ sourceProjectId: 'source', userId: 'u1' })
+  assert.equal(copy._id, 'copy')
+
+  const args = created[0]!
+  assert.equal(args.name, 'Client Alpha copy')
+  assert.equal(args.instructions, 'Write formally.')
+  const settings = args.settings as Record<string, unknown>
+  assert.equal(settings.preferredModelId, 'anthropic/claude')
+  assert.deepEqual(settings.toolPolicy, { mode: 'denylist', toolIds: ['generate_image'] })
+  // An instance of a template is not itself a template.
+  assert.equal(settings.isTemplate, undefined)
+  // Nothing that could carry another engagement's private content.
+  for (const forbidden of ['clientId', 'conversations', 'files', 'notes', 'outputs']) {
+    assert.equal(args[forbidden], undefined, `duplicate must not carry ${forbidden}`)
+  }
+})
+
+test('duplicating a project that does not exist is a not-found', async () => {
+  const service = new ProjectService({
+    async getProject() { return null },
+  } as unknown as ProjectRepository)
+  await assert.rejects(
+    () => service.duplicateProject({ sourceProjectId: 'missing', userId: 'u1' }),
+    (error: unknown) => error instanceof ProjectServiceError && error.statusCode === 404,
+  )
+})
+
+test('listTemplates returns only projects flagged as templates', async () => {
+  const service = new ProjectService({
+    async listProjects() {
+      return [
+        { _id: 'a', name: 'A', userId: 'u1', settings: { isTemplate: true }, createdAt: 1, updatedAt: 1 },
+        { _id: 'b', name: 'B', userId: 'u1', settings: {}, createdAt: 1, updatedAt: 1 },
+        { _id: 'c', name: 'C', userId: 'u1', createdAt: 1, updatedAt: 1 },
+      ]
+    },
+  } as unknown as ProjectRepository)
+  assert.deepEqual((await service.listTemplates({ userId: 'u1' })).map((p) => p._id), ['a'])
+})

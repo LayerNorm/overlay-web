@@ -16,6 +16,7 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { getAuthorizationEnforcementMode } from '@/server/authorization'
 import { AppConfigurationErrorState } from './_components/AppConfigurationErrorState'
 import { AppShellLoadingFallback, ChatRouteSkeleton } from './_components/AppRouteSkeletons'
+import { getSelectedIntegrationProviderId } from '@/server/integrations'
 
 function AppMainFallback() {
   return <ChatRouteSkeleton />
@@ -58,6 +59,7 @@ async function AppLayoutContent({ children }: { children: React.ReactNode }) {
             <CapabilitiesProvider
               initialAppDataCapabilities={appDataCapabilities}
               initialCapabilities={capabilities}
+              initialIntegrationProvider={getSelectedIntegrationProviderId()}
             >
               <AuthorizationProvider authorization={authorization}>
                 <BackgroundPollManager />

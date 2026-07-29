@@ -75,7 +75,11 @@ function getMcpRepository(): McpServerRepository {
   return getOverlayServerContext().appData.repositories.mcpServers
 }
 
-async function listRuntimeMcpServers(args: { userId: string; projectId?: string }) {
+async function listRuntimeMcpServers(args: {
+  userId: string
+  projectId?: string
+  enabledServerIds?: readonly string[]
+}) {
   const repository = getMcpRepository()
   const [global, project] = await Promise.all([
     repository.listEnabled({ userId: args.userId }),
@@ -83,7 +87,10 @@ async function listRuntimeMcpServers(args: { userId: string; projectId?: string 
       ? repository.listEnabled({ userId: args.userId, projectId: args.projectId })
       : Promise.resolve([]),
   ])
-  return [...global, ...project]
+  const servers = [...global, ...project]
+  if (args.enabledServerIds === undefined) return servers
+  const enabled = new Set(args.enabledServerIds)
+  return servers.filter((server) => enabled.has(server._id))
 }
 
 async function recordMcpExecution(input: {
@@ -326,10 +333,12 @@ export async function createMcpLazyMetaTools(args: {
   turnId?: string
   modelId?: string
   projectId?: string
+  enabledServerIds?: readonly string[]
 }): Promise<ToolSet> {
   const configs = await listRuntimeMcpServers({
     userId: args.userId,
     projectId: args.projectId,
+    enabledServerIds: args.enabledServerIds,
   })
 
   if (!configs || configs.length === 0) {

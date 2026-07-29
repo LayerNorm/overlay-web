@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import {
   DEFAULT_APP_SETTINGS,
+  normalizeIntegrationProviderKey,
   overlayNavigationToDestinations,
   resolveOverlayAppShellConfig,
   type AppBootstrapResponse,
@@ -158,6 +159,14 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       getOverlayCapabilities(),
     ])
     const appShell = resolveOverlayAppShellConfig(overlayAppConfig, { capabilities })
+    const integrationRegistry = await filterCatalogResources({
+      authorization: serverContext.authorizationService,
+      capability: 'integrations.use',
+      context,
+      getId: (integration) => normalizeIntegrationProviderKey(integration.providerKey),
+      resourceType: 'connector',
+      values: appShell.integrations,
+    })
 
     const response: AppBootstrapResponse & {
       appDataCapabilities: AppDataCapabilities
@@ -177,7 +186,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       sidebarActions: [...appShell.sidebarActions],
       settingsPanels: [...appShell.settingsPanels],
       toolRegistry: [...appShell.tools],
-      integrationRegistry: [...appShell.integrations],
+      integrationRegistry,
       modelProviderRegistry: [...appShell.modelProviders],
       policyGates: [...appShell.policyGates],
       theme: appShell.theme,

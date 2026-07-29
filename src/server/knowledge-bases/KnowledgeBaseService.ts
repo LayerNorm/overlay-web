@@ -1,13 +1,16 @@
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
+import { MAX_KNOWLEDGE_BASES_PER_TURN } from '@overlay/app-core'
 import type {
+  GroupKnowledgeBaseDefault,
   KnowledgeBase,
   KnowledgeBaseConversation,
   KnowledgeBaseRepositories,
   KnowledgeBaseSource,
   KnowledgeSource,
   KnowledgeSourceKind,
+  ProjectKnowledgeBase,
 } from '@overlay/app-core'
 import type {
   AuthorizationCapability,
@@ -22,13 +25,57 @@ import {
   AuthorizationDeniedError,
   AuthorizationService,
 } from '@/server/authorization/AuthorizationService'
+import {
+  evaluateSourceFreshness,
+  inferOriginFromKind,
+  readSourceProvenance,
+  type EmbeddingIdentitySnapshot,
+  type KnowledgeSourceFreshness,
+  type KnowledgeSourceProvenance,
+} from '@/shared/knowledge/source-provenance'
+import type { AuditService } from '@/server/admin/AuditService'
+import type { GovernanceService } from '@/server/governance/GovernanceService'
 import type { UserDirectoryEntry, UserRepository } from '@/server/users'
 
 export const KNOWLEDGE_BASE_RESOURCE_TYPE = 'knowledge_base'
 
+/** Name of the personal base created on first explicit use. */
+export const DEFAULT_PERSONAL_BASE_TITLE = 'My knowledge'
+
 export type KnowledgeBaseSourceDetail = {
   membership: KnowledgeBaseSource
   source: KnowledgeSource
+}
+
+export type KnowledgeSourceDiagnostics = {
+  sourceId: string
+  title: string
+  kind: KnowledgeSourceKind
+  status: string
+  statusMessage?: string
+  enabled: boolean
+  mimeType?: string
+  contentHash?: string
+  chunkCount: number
+  embeddedCount: number
+  indexedChars: number
+  updatedAt: number
+  provenance: KnowledgeSourceProvenance
+  embeddingIdentities: Array<{
+    provider: string
+    modelId: string
+    modelVersion: string
+    count: number
+  }>
+  freshness: KnowledgeSourceFreshness
+}
+
+const MAX_PREVIEW_CHARS = 20_000
+const DEFAULT_PREVIEW_CHARS = 4_000
+
+function clampPreviewLimit(limit: number | undefined): number {
+  if (!Number.isFinite(limit)) return DEFAULT_PREVIEW_CHARS
+  return Math.min(MAX_PREVIEW_CHARS, Math.max(200, Math.floor(limit!)))
 }
 
 export type KnowledgeBaseShareDirectory = {
@@ -38,7 +85,19 @@ export type KnowledgeBaseShareDirectory = {
 }
 
 export type AdministrativeKnowledgeBase = KnowledgeBase & {
+  defaultGroupCount: number
   grantCount: number
+  indexHealth: {
+    failed: number
+    fresh: number
+    neverIndexed: number
+    stale: number
+  }
+  indexUsage: {
+    chunkCount: number
+    embeddedCount: number
+    indexedChars: number
+  }
   sourceCount: number
 }
 
@@ -53,6 +112,10 @@ export class KnowledgeBaseService {
   constructor(private readonly deps: {
     authorization: AuthorizationService
     authorizationRepositories: AuthorizationRepositories
+    audit?: AuditService
+    /** Current embedding identity, used to detect index drift. */
+    embeddingIdentity?: EmbeddingIdentitySnapshot
+    governance?: Pick<GovernanceService, 'assertDeletionAllowed' | 'removeForDeletedResource'>
     repositories: KnowledgeBaseRepositories
     users?: UserRepository
   }) {}
@@ -76,6 +139,43 @@ export class KnowledgeBaseService {
       .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
   }
 
+  /**
+   * The user's own personal knowledge bases: their "brain".
+   *
+   * Personal bases are private by ownership, not by a separate visibility flag,
+   * so this is simply the owned subset filtered to the personal kind. Bases
+   * shared with the user are deliberately excluded — someone else's knowledge is
+   * not part of your brain.
+   */
+  async listPersonalKnowledgeBases(userId: string): Promise<KnowledgeBase[]> {
+    await this.requireCapability(userId, 'knowledge.read')
+    const owned = await this.deps.repositories.bases.listForOwner(userId)
+    return owned.filter((base) => base.kind === 'personal')
+  }
+
+  /**
+   * Returns the user's default personal knowledge base, creating it on first use.
+   *
+   * Created only when explicitly requested. Nothing is indexed into it
+   * automatically: chats and files enter a brain through deliberate capture, not
+   * as a side effect of ordinary work.
+   */
+  async ensureDefaultPersonalKnowledgeBase(args: {
+    title?: string
+    userId: string
+  }): Promise<KnowledgeBase> {
+    const existing = await this.listPersonalKnowledgeBases(args.userId)
+    const preferred = existing.find(({ title }) => title === DEFAULT_PERSONAL_BASE_TITLE)
+    if (preferred) return preferred
+    if (existing.length > 0) return existing[0]!
+    return await this.createKnowledgeBase({
+      description: 'Things you have deliberately saved as durable knowledge.',
+      kind: 'personal',
+      title: args.title?.trim() || DEFAULT_PERSONAL_BASE_TITLE,
+      userId: args.userId,
+    })
+  }
+
   async listAdministrativeKnowledgeBases(userId: string): Promise<AdministrativeKnowledgeBase[]> {
     await Promise.all([
       this.requireCapability(userId, 'administration.access'),
@@ -83,15 +183,144 @@ export class KnowledgeBaseService {
     ])
     const bases = await this.deps.repositories.bases.listAll({ includeArchived: true })
     return await Promise.all(bases.map(async (base) => {
-      const [memberships, grants] = await Promise.all([
+      const [memberships, grants, defaults] = await Promise.all([
         this.deps.repositories.memberships.listForBase(base.id),
         this.deps.authorizationRepositories.resourceGrants.listForResource({
           resourceType: KNOWLEDGE_BASE_RESOURCE_TYPE,
           resourceId: base.id,
         }),
+        this.deps.repositories.groupDefaults.listForBase(base.id),
       ])
-      return { ...base, sourceCount: memberships.length, grantCount: grants.length }
+      const sources = (await Promise.all(memberships.map(({ sourceId }) => (
+        this.deps.repositories.sources.get(sourceId)
+      )))).filter((source): source is KnowledgeSource => Boolean(source))
+      const stats = this.deps.repositories.diagnostics
+        ? await this.deps.repositories.diagnostics.statsForSources(sources.map(({ id }) => id))
+        : []
+      const statsBySource = new Map(stats.map((value) => [value.sourceId, value]))
+      const indexHealth = { failed: 0, fresh: 0, neverIndexed: 0, stale: 0 }
+      const indexUsage = { chunkCount: 0, embeddedCount: 0, indexedChars: 0 }
+      for (const source of sources) {
+        const entry = statsBySource.get(source.id)
+        const freshness = evaluateSourceFreshness({
+          status: source.status,
+          statusMessage: source.statusMessage,
+          contentHash: source.contentHash,
+          indexedContentHash: entry?.indexedContentHash,
+          lastIndexedAt: entry?.lastIndexedAt,
+          chunkCount: entry?.chunkCount ?? 0,
+          currentEmbeddingIdentity: this.deps.embeddingIdentity,
+          indexedEmbeddingIdentities: entry?.indexedEmbeddingIdentities,
+        })
+        indexHealth[freshness.state === 'fresh' ? 'fresh' : freshness.state === 'never-indexed'
+          ? 'neverIndexed'
+          : freshness.state] += 1
+        indexUsage.chunkCount += entry?.chunkCount ?? 0
+        indexUsage.embeddedCount += entry?.embeddedCount ?? 0
+        indexUsage.indexedChars += entry?.indexedChars ?? 0
+      }
+      return {
+        ...base,
+        defaultGroupCount: defaults.length,
+        sourceCount: memberships.length,
+        grantCount: grants.length,
+        indexHealth,
+        indexUsage,
+      }
     }))
+  }
+
+  async listGroupDefaults(args: {
+    groupId?: string
+    userId: string
+  }): Promise<GroupKnowledgeBaseDefault[]> {
+    await Promise.all([
+      this.requireCapability(args.userId, 'administration.access'),
+      this.requireCapability(args.userId, 'groups.read'),
+      this.requireCapability(args.userId, 'knowledge.publish'),
+    ])
+    if (args.groupId) {
+      const group = await this.deps.authorizationRepositories.groups.get(args.groupId)
+      if (!group || group.archivedAt) throw notFound('Authorization group')
+      return await this.deps.repositories.groupDefaults.listForGroup(group.id)
+    }
+    const groups = await this.deps.authorizationRepositories.groups.list()
+    return await this.deps.repositories.groupDefaults.listForGroups(groups.map(({ id }) => id))
+  }
+
+  async setGroupDefault(args: {
+    groupId: string
+    knowledgeBaseId: string
+    userId: string
+  }): Promise<GroupKnowledgeBaseDefault> {
+    await Promise.all([
+      this.requireCapability(args.userId, 'administration.access'),
+      this.requireCapability(args.userId, 'groups.manage'),
+      this.requireCapability(args.userId, 'knowledge.publish'),
+    ])
+    const [base, group] = await Promise.all([
+      this.requiredBase(args.knowledgeBaseId),
+      this.deps.authorizationRepositories.groups.get(args.groupId),
+    ])
+    if (!group || group.archivedAt) throw notFound('Authorization group')
+    if (base.kind !== 'organization') {
+      throw new KnowledgeBaseServiceError(
+        'Only organization knowledge bases can be defaults for groups',
+        400,
+      )
+    }
+    // A default selects context; it never bypasses the ACL. Ensure the group has
+    // at least viewer access so the selected base is usable by current members.
+    await this.deps.authorizationRepositories.resourceGrants.upsert({
+      id: randomUUID(),
+      resourceType: KNOWLEDGE_BASE_RESOURCE_TYPE,
+      resourceId: base.id,
+      principalType: 'group',
+      principalId: group.id,
+      accessRole: 'viewer',
+      grantedBy: args.userId,
+    })
+    const value = await this.deps.repositories.groupDefaults.set({
+      groupId: group.id,
+      knowledgeBaseId: base.id,
+      createdBy: args.userId,
+    })
+    await this.audit('knowledge.group_default.set', args.userId, base.id, {
+      groupId: group.id,
+    })
+    return value
+  }
+
+  async removeGroupDefault(args: {
+    groupId: string
+    knowledgeBaseId: string
+    userId: string
+  }): Promise<void> {
+    await Promise.all([
+      this.requireCapability(args.userId, 'administration.access'),
+      this.requireCapability(args.userId, 'groups.manage'),
+      this.requireCapability(args.userId, 'knowledge.publish'),
+    ])
+    if (!await this.deps.repositories.groupDefaults.remove(args)) {
+      throw notFound('Group knowledge default')
+    }
+    await this.audit('knowledge.group_default.remove', args.userId, args.knowledgeBaseId, {
+      groupId: args.groupId,
+    })
+  }
+
+  /**
+   * Group defaults are a fallback corpus for otherwise unscoped chats. Current
+   * group membership and current KB ACLs are resolved on every call, so removing
+   * either takes effect without rewriting stored defaults.
+   */
+  async listDefaultKnowledgeBasesForUser(userId: string): Promise<KnowledgeBase[]> {
+    const subject = await this.requireCapability(userId, 'knowledge.read')
+    const defaults = await this.deps.repositories.groupDefaults.listForGroups(subject.groupIds)
+    return await this.readableBases(
+      [...new Set(defaults.map(({ knowledgeBaseId }) => knowledgeBaseId))],
+      userId,
+    )
   }
 
   async listShareDirectory(userId: string): Promise<KnowledgeBaseShareDirectory> {
@@ -168,6 +397,10 @@ export class KnowledgeBaseService {
   async deleteKnowledgeBase(args: { knowledgeBaseId: string; userId: string }): Promise<void> {
     const base = await this.requiredBase(args.knowledgeBaseId)
     await this.assertBaseAccess('delete', 'knowledge.delete', base, args.userId)
+    await this.deps.governance?.assertDeletionAllowed({
+      resourceType: KNOWLEDGE_BASE_RESOURCE_TYPE,
+      resourceId: base.id,
+    })
     const grants = await this.deps.authorizationRepositories.resourceGrants.listForResource({
       resourceType: KNOWLEDGE_BASE_RESOURCE_TYPE,
       resourceId: base.id,
@@ -176,6 +409,10 @@ export class KnowledgeBaseService {
       this.deps.authorizationRepositories.resourceGrants.remove(id)
     )))
     if (!await this.deps.repositories.bases.remove(base.id)) throw notFound('Knowledge base')
+    await this.deps.governance?.removeForDeletedResource({
+      resourceType: KNOWLEDGE_BASE_RESOURCE_TYPE,
+      resourceId: base.id,
+    })
   }
 
   async createAndAttachSource(args: {
@@ -324,32 +561,179 @@ export class KnowledgeBaseService {
     })
   }
 
+  /**
+   * @deprecated A conversation may ground against several bases.
+   * Prefer {@link listConversationKnowledgeBases}.
+   */
   async getConversationKnowledgeBase(args: {
     conversationId: string
     userId: string
   }): Promise<KnowledgeBase | null> {
-    const attachment = await this.deps.repositories.conversations.getForConversation(args.conversationId)
-    if (!attachment) return null
-    const [base, conversationOwnerUserId] = await Promise.all([
-      this.requiredBase(attachment.knowledgeBaseId),
-      this.deps.authorization.getResourceOwner({
-        resourceId: args.conversationId,
-        resourceType: 'conversation',
-      }),
-    ])
+    const [first] = await this.listConversationKnowledgeBases(args)
+    return first ?? null
+  }
+
+  /**
+   * Bases attached to a conversation that this user may actually read. Bases the
+   * caller cannot see are omitted rather than raising, so a revoked share does
+   * not break an existing chat.
+   */
+  async listConversationKnowledgeBases(args: {
+    conversationId: string
+    userId: string
+  }): Promise<KnowledgeBase[]> {
+    const attachments = await this.deps.repositories.conversations
+      .listForConversation(args.conversationId)
+    if (attachments.length === 0) return []
+    const conversationOwnerUserId = await this.deps.authorization.getResourceOwner({
+      resourceId: args.conversationId,
+      resourceType: 'conversation',
+    })
     if (!conversationOwnerUserId) throw notFound('Conversation')
-    await Promise.all([
-      this.assertBaseAccess('view', 'knowledge.read', base, args.userId),
-      this.deps.authorization.assertResourceAccess({
-        action: 'view',
-        capability: 'conversations.read',
-        ownerUserId: conversationOwnerUserId,
-        resourceId: args.conversationId,
-        resourceType: 'conversation',
-        userId: args.userId,
-      }).catch(mapAuthorizationError),
-    ])
-    return base
+    await this.deps.authorization.assertResourceAccess({
+      action: 'view',
+      capability: 'conversations.read',
+      ownerUserId: conversationOwnerUserId,
+      resourceId: args.conversationId,
+      resourceType: 'conversation',
+      userId: args.userId,
+    }).catch(mapAuthorizationError)
+    return await this.readableBases(attachments.map(({ knowledgeBaseId }) => knowledgeBaseId), args.userId)
+  }
+
+  async listProjectKnowledgeBases(args: {
+    projectId: string
+    userId: string
+  }): Promise<KnowledgeBase[]> {
+    const attachments = await this.deps.repositories.projects.listForProject(args.projectId)
+    if (attachments.length === 0) return []
+    return await this.readableBases(attachments.map(({ knowledgeBaseId }) => knowledgeBaseId), args.userId)
+  }
+
+  /**
+   * Attaches a base to a project. Requires read access to the base, so a user
+   * cannot widen a project's corpus with knowledge they cannot see themselves.
+   * Project ownership is verified by the caller.
+   */
+  async attachProjectKnowledgeBase(args: {
+    knowledgeBaseId: string
+    projectId: string
+    userId: string
+  }): Promise<ProjectKnowledgeBase> {
+    const base = await this.requiredBase(args.knowledgeBaseId)
+    await this.assertBaseAccess('view', 'knowledge.read', base, args.userId)
+    const existing = await this.deps.repositories.projects.listForProject(args.projectId)
+    if (
+      existing.length >= MAX_KNOWLEDGE_BASES_PER_TURN
+      && !existing.some(({ knowledgeBaseId }) => knowledgeBaseId === base.id)
+    ) {
+      throw new KnowledgeBaseServiceError(
+        `A project can attach at most ${MAX_KNOWLEDGE_BASES_PER_TURN} knowledge bases`,
+        400,
+      )
+    }
+    return await this.deps.repositories.projects.attach({
+      knowledgeBaseId: base.id,
+      projectId: args.projectId,
+      attachedBy: args.userId,
+    })
+  }
+
+  async detachProjectKnowledgeBase(args: {
+    knowledgeBaseId: string
+    projectId: string
+  }): Promise<void> {
+    if (!await this.deps.repositories.projects.detach({
+      knowledgeBaseId: args.knowledgeBaseId,
+      projectId: args.projectId,
+    })) throw notFound('Project knowledge base')
+  }
+
+  /**
+   * Per-source indexing health for a base: what is actually indexed, where each
+   * source came from, and whether its index can still be trusted.
+   */
+  async listSourceDiagnostics(args: {
+    knowledgeBaseId: string
+    userId: string
+  }): Promise<KnowledgeSourceDiagnostics[]> {
+    const details = await this.listSources(args)
+    const stats = this.deps.repositories.diagnostics
+      ? await this.deps.repositories.diagnostics.statsForSources(details.map(({ source }) => source.id))
+      : []
+    const statsBySource = new Map(stats.map((entry) => [entry.sourceId, entry]))
+    return details.map(({ membership, source }) => {
+      const entry = statsBySource.get(source.id)
+      return {
+        sourceId: source.id,
+        title: source.title,
+        kind: source.kind,
+        status: source.status,
+        statusMessage: source.statusMessage,
+        enabled: membership.enabled,
+        mimeType: source.mimeType,
+        contentHash: source.contentHash,
+        chunkCount: entry?.chunkCount ?? 0,
+        embeddedCount: entry?.embeddedCount ?? 0,
+        indexedChars: entry?.indexedChars ?? 0,
+        updatedAt: source.updatedAt,
+        provenance: readSourceProvenance(source.metadata) ?? {
+          origin: inferOriginFromKind(source.kind),
+          addedBy: membership.addedBy,
+          ingestedAt: source.createdAt,
+        },
+        embeddingIdentities: entry?.indexedEmbeddingIdentities ?? [],
+        freshness: evaluateSourceFreshness({
+          status: source.status,
+          statusMessage: source.statusMessage,
+          contentHash: source.contentHash,
+          indexedContentHash: entry?.indexedContentHash,
+          lastIndexedAt: entry?.lastIndexedAt,
+          chunkCount: entry?.chunkCount ?? 0,
+          currentEmbeddingIdentity: this.deps.embeddingIdentity,
+          indexedEmbeddingIdentities: entry?.indexedEmbeddingIdentities,
+        }),
+      }
+    })
+  }
+
+  /**
+   * First slice of a source's extracted text, so a user can confirm extraction
+   * actually worked before trusting retrieval against it.
+   */
+  async getExtractionPreview(args: {
+    knowledgeBaseId: string
+    limit?: number
+    sourceId: string
+    userId: string
+  }): Promise<{ sourceId: string; text: string; totalChars: number; truncated: boolean }> {
+    const details = await this.listSources(args)
+    if (!details.some(({ source }) => source.id === args.sourceId)) {
+      throw notFound('Knowledge source')
+    }
+    if (!this.deps.repositories.diagnostics) {
+      throw new KnowledgeBaseServiceError('Extraction previews are unavailable for this backend', 503)
+    }
+    const preview = await this.deps.repositories.diagnostics.extractionPreview({
+      sourceId: args.sourceId,
+      limit: clampPreviewLimit(args.limit),
+    })
+    if (!preview) {
+      throw new KnowledgeBaseServiceError('Knowledge source has no extracted text yet', 409)
+    }
+    return { sourceId: args.sourceId, ...preview }
+  }
+
+  /** Filters to bases that exist, are active, and are readable by this user. */
+  private async readableBases(ids: string[], userId: string): Promise<KnowledgeBase[]> {
+    const bases = await Promise.all(ids.map(async (knowledgeBaseId) => {
+      try {
+        return await this.getKnowledgeBase({ knowledgeBaseId, userId })
+      } catch (_error) {
+        return null
+      }
+    }))
+    return bases.filter((base): base is KnowledgeBase => Boolean(base))
   }
 
   async listUserConversationAttachments(args: {
@@ -372,32 +756,39 @@ export class KnowledgeBaseService {
       .sort((a, b) => b.createdAt - a.createdAt)
   }
 
+  /** Detaches one base when `knowledgeBaseId` is given, otherwise all of them. */
   async detachConversation(args: {
     conversationId: string
+    knowledgeBaseId?: string
     userId: string
   }): Promise<void> {
-    const attachment = await this.deps.repositories.conversations.getForConversation(args.conversationId)
-    if (!attachment) return
-    const [base, conversationOwnerUserId] = await Promise.all([
-      this.requiredBase(attachment.knowledgeBaseId),
-      this.deps.authorization.getResourceOwner({
-        resourceId: args.conversationId,
-        resourceType: 'conversation',
-      }),
-    ])
+    const attachments = await this.deps.repositories.conversations
+      .listForConversation(args.conversationId)
+    if (attachments.length === 0) return
+    const conversationOwnerUserId = await this.deps.authorization.getResourceOwner({
+      resourceId: args.conversationId,
+      resourceType: 'conversation',
+    })
     if (!conversationOwnerUserId) throw notFound('Conversation')
-    await Promise.all([
-      this.assertBaseAccess('view', 'knowledge.read', base, args.userId),
-      this.deps.authorization.assertResourceAccess({
-        action: 'edit',
-        capability: 'conversations.edit',
-        ownerUserId: conversationOwnerUserId,
-        resourceId: args.conversationId,
-        resourceType: 'conversation',
-        userId: args.userId,
-      }).catch(mapAuthorizationError),
-    ])
-    await this.deps.repositories.conversations.detach(args.conversationId)
+    await this.deps.authorization.assertResourceAccess({
+      action: 'edit',
+      capability: 'conversations.edit',
+      ownerUserId: conversationOwnerUserId,
+      resourceId: args.conversationId,
+      resourceType: 'conversation',
+      userId: args.userId,
+    }).catch(mapAuthorizationError)
+    if (!args.knowledgeBaseId) {
+      await this.deps.repositories.conversations.detach(args.conversationId)
+      return
+    }
+    if (!attachments.some(({ knowledgeBaseId }) => knowledgeBaseId === args.knowledgeBaseId)) {
+      throw notFound('Knowledge base')
+    }
+    await this.deps.repositories.conversations.detachOne({
+      conversationId: args.conversationId,
+      knowledgeBaseId: args.knowledgeBaseId,
+    })
   }
 
   async listShares(args: {
@@ -469,6 +860,23 @@ export class KnowledgeBaseService {
     }
     const role = await this.deps.authorizationRepositories.roles.get(principalId)
     if (!role || role.archivedAt) throw notFound('Authorization role')
+  }
+
+  private async audit(
+    action: string,
+    actorUserId: string,
+    resourceId: string,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    await this.deps.audit?.record({
+      action,
+      actorType: 'user',
+      actorUserId,
+      metadata,
+      outcome: 'success',
+      resourceId,
+      resourceType: KNOWLEDGE_BASE_RESOURCE_TYPE,
+    })
   }
 
   private async requiredBase(id: string): Promise<KnowledgeBase> {

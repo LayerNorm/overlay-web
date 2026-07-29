@@ -13,6 +13,7 @@ const PACK_MAX_PER_SOURCE = 3
 
 type SearchRow = {
   chunk_index: number
+  start_offset: number | null
   id: string
   knowledge_source_id: string | null
   knowledge_source_version_id: string | null
@@ -61,6 +62,7 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
         chunk.source_kind,
         chunk.source_id,
         chunk.chunk_index,
+        chunk.start_offset,
         chunk.text,
         chunk.title,
         1 - (embedding.embedding <=> ${vectorLiteral}::vector) AS similarity
@@ -88,6 +90,7 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
         chunk.source_kind,
         chunk.source_id,
         chunk.chunk_index,
+        chunk.start_offset,
         chunk.text,
         chunk.title,
         ts_rank_cd(
@@ -149,6 +152,7 @@ function packChunks(rows: SearchRow[], scores: Map<string, number>, maxChunks: n
       sourceKind: row.source_kind,
       knowledgeSourceId: row.knowledge_source_id ?? undefined,
       knowledgeSourceVersionId: row.knowledge_source_version_id ?? undefined,
+      startOffset: row.start_offset ?? undefined,
       text: row.text,
       title: row.title ?? undefined,
     })

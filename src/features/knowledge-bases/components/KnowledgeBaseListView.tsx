@@ -1,13 +1,14 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { BookOpen, Loader2, Plus, Search, Users } from 'lucide-react'
+import { BookOpen, Brain, Loader2, Plus, Search, Users } from 'lucide-react'
 import type { KnowledgeBase } from '@overlay/app-core'
 import { Button, DialogFrame, IconButton } from '@overlay/ui'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useVisibleReconciliation } from '@/components/useVisibleReconciliation'
 
 export function KnowledgeBaseListView({
   initialKnowledgeBases,
@@ -24,6 +25,7 @@ export function KnowledgeBaseListView({
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [creating, setCreating] = useState(false)
+  const [openingPersonal, setOpeningPersonal] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const filtered = useMemo(() => {
@@ -33,6 +35,41 @@ export function KnowledgeBaseListView({
       `${base.title} ${base.description ?? ''}`.toLowerCase().includes(needle)
     ))
   }, [knowledgeBases, query])
+  const personalBrain = knowledgeBases.find((base) => (
+    base.kind === 'personal' && base.title === 'My knowledge'
+  ))
+  const regularFiltered = filtered.filter((base) => base.id !== personalBrain?.id)
+  const showPersonalBrain = !query.trim()
+    || 'my knowledge personal brain'.includes(query.trim().toLowerCase())
+
+  const reconcileKnowledgeBases = useCallback(async () => {
+    const response = await overlayAppClient.knowledgeBases.list()
+    setKnowledgeBases(response.knowledgeBases)
+  }, [])
+  useVisibleReconciliation(reconcileKnowledgeBases)
+
+  async function openPersonalBrain() {
+    if (openingPersonal) return
+    if (personalBrain) {
+      router.push(`/app/knowledge/${encodeURIComponent(personalBrain.id)}`)
+      return
+    }
+    setOpeningPersonal(true)
+    setError(null)
+    try {
+      const result = await overlayAppClient.knowledgeBases.ensurePersonal()
+      setKnowledgeBases((current) => (
+        current.some(({ id }) => id === result.knowledgeBase.id)
+          ? current
+          : [result.knowledgeBase, ...current]
+      ))
+      router.push(`/app/knowledge/${encodeURIComponent(result.knowledgeBase.id)}`)
+    } catch (personalError) {
+      setError(personalError instanceof Error ? personalError.message : 'Could not open My knowledge')
+    } finally {
+      setOpeningPersonal(false)
+    }
+  }
 
   async function createKnowledgeBase() {
     if (!title.trim() || creating) return
@@ -104,9 +141,29 @@ export function KnowledgeBaseListView({
       )}
     >
       <AppScreenBody padding="lg" maxWidth="xl" className="min-h-full">
-        {filtered.length > 0 ? (
+        {showPersonalBrain || regularFiltered.length > 0 ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="knowledge-base-list">
-            {filtered.map((base) => {
+            {showPersonalBrain ? (
+              <button
+                type="button"
+                onClick={() => void openPersonalBrain()}
+                disabled={openingPersonal}
+                className="group min-h-40 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-5 text-left transition-colors hover:bg-[var(--surface-subtle)] disabled:opacity-60"
+                data-testid="personal-brain"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[var(--surface-subtle)] text-[var(--muted)] group-hover:text-[var(--foreground)]">
+                    {openingPersonal ? <Loader2 className="animate-spin" size={17} /> : <Brain size={17} />}
+                  </span>
+                  <span className="text-xs text-[var(--muted)]">Private</span>
+                </div>
+                <h2 className="mt-5 text-sm font-medium text-[var(--foreground)]">My knowledge</h2>
+                <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-[var(--muted)]">
+                  Curate reusable facts, answers, and sources that belong to you.
+                </p>
+              </button>
+            ) : null}
+            {regularFiltered.map((base) => {
               const owned = base.ownerUserId === userId
               return (
                 <Link

@@ -84,6 +84,7 @@ function createService(
   entitlementPolicy: AutomationEntitlementPolicy = new PaidPlanAutomationEntitlementPolicy(
     async () => 'paid',
   ),
+  assertProjectAutomationAllowed?: (args: { projectId: string; userId: string }) => Promise<boolean>,
 ) {
   const finishedEvents: Array<Record<string, unknown>> = []
   const failedEvents: Array<Record<string, unknown>> = []
@@ -91,6 +92,7 @@ function createService(
     finishedEvents,
     failedEvents,
     service: new AutomationService({
+      assertProjectAutomationAllowed,
       entitlementPolicy,
       repository,
       clock: { now: () => 1_700_000_000_000 },
@@ -102,6 +104,31 @@ function createService(
     }),
   }
 }
+
+test('AutomationService rejects project execution when project policy disables automations', async () => {
+  const { service } = createService(
+    createRepository(),
+    undefined,
+    async () => false,
+  )
+
+  await assert.rejects(
+    () => service.createAutomation({
+      userId: 'user_1',
+      body: {
+        name: 'A',
+        description: 'D',
+        instructions: 'I',
+        projectId: 'project_1',
+        schedule: { kind: 'daily' },
+      },
+    }),
+    (error) =>
+      error instanceof AutomationServiceError &&
+      error.statusCode === 409 &&
+      error.payload.error === 'Automations are disabled for this project',
+  )
+})
 
 test('AutomationService.createAutomation preserves paid-plan requirement', async () => {
   const repository = createRepository()

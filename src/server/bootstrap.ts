@@ -45,21 +45,31 @@ import {
   createAuthorizationCapabilityPolicy,
 } from '@/server/authorization'
 import type { NoteRepository } from '@/server/notes'
+import { ProjectKnowledgeTransferService } from '@/server/projects/ProjectKnowledgeTransferService'
 import { MemoryService } from '@/server/memory'
 import {
   KnowledgeSearchService,
   PostgresKnowledgeSearchRepository,
   UnavailableKnowledgeSearchRepository,
   createEmbeddingProvider,
+  type EmbeddingModelIdentity,
 } from '@/server/knowledge'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
 import {
   ConvexCanonicalKnowledgeIndexQueue,
+  IntegrationKnowledgeSourceFetcher,
   KnowledgeBaseService,
+  KnowledgeSourceFetcherRegistry,
+  type KnowledgeSourceFetcher,
+  UrlKnowledgeSourceFetcher,
   KnowledgeBaseRetrievalService,
   KnowledgeSourceIngestionService,
   PostgresCanonicalKnowledgeIndexQueue,
 } from '@/server/knowledge-bases'
+import {
+  getIntegrationProvider,
+} from '@/server/integrations'
+import { GovernanceService } from '@/server/governance'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -87,11 +97,13 @@ export interface OverlayServerContext extends OverlayProviderContext {
   auditService: AuditService
   chatUsagePolicy: ActUsagePolicy
   generationUsagePolicy: GenerationUsagePolicy
+  governanceService: GovernanceService
   memoryService: MemoryService
   knowledgeSearchService: KnowledgeSearchService
   knowledgeBaseService: KnowledgeBaseService
   knowledgeBaseRetrievalService: KnowledgeBaseRetrievalService
   knowledgeSourceIngestionService: KnowledgeSourceIngestionService
+  projectKnowledgeTransferService: ProjectKnowledgeTransferService
   noteRepository: NoteRepository
   apiKeyService: ApiKeyService
   userService: UserService
@@ -164,20 +176,48 @@ export function createOverlayServerContext(
     prepareAuthorization: () => fixedRoleAuthorizationBridge.ensureSystemRoles(),
     repositories: appData.repositories.authorization,
   })
+  const governanceService = new GovernanceService({
+    assertCapability: (userId, capability) =>
+      administrativeService.assertCapability(userId, capability),
+    audit: auditService,
+    authorization: appData.repositories.authorization,
+    repository: appData.repositories.governance,
+  })
   const knowledgeBaseService = new KnowledgeBaseService({
     authorization: authorizationService,
     authorizationRepositories: appData.repositories.authorization,
+    audit: auditService,
+    embeddingIdentity: resolveEmbeddingIdentity(appData, runtimeConfig),
     repositories: appData.repositories.knowledgeBases,
     users: appData.repositories.users,
+    governance: governanceService,
   })
   const canonicalIndexQueue = appData.capabilities.provider === 'postgres'
     ? new PostgresCanonicalKnowledgeIndexQueue(requiredPostgres(appData).db)
     : new ConvexCanonicalKnowledgeIndexQueue()
+  const knowledgeSourceFetchers: KnowledgeSourceFetcher[] = [new UrlKnowledgeSourceFetcher()]
+  const integrationProvider = runtimeConfig?.providers.integrations?.provider ??
+    (runtimeConfig?.features.integrations === false ? 'none' : 'composio')
+  if (runtimeConfig && integrationProvider === 'composio') {
+    const execute = (request: Parameters<ReturnType<typeof getIntegrationProvider>['execute']>[0]) =>
+      getIntegrationProvider().execute(request)
+    knowledgeSourceFetchers.push(
+      new IntegrationKnowledgeSourceFetcher('connector', execute),
+      new IntegrationKnowledgeSourceFetcher('drive', execute),
+    )
+  }
   const knowledgeSourceIngestionService = new KnowledgeSourceIngestionService({
     authorization: authorizationService,
     bases: knowledgeBaseService,
+    fetchers: new KnowledgeSourceFetcherRegistry(knowledgeSourceFetchers),
     indexQueue: canonicalIndexQueue,
     repositories: appData.repositories.knowledgeBases,
+  })
+  const projectKnowledgeTransferService = new ProjectKnowledgeTransferService({
+    bases: knowledgeBaseService,
+    files: appData.repositories.files,
+    ingestion: knowledgeSourceIngestionService,
+    notes: appData.repositories.notes,
   })
   const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
   const knowledgeBaseRetrievalService = new KnowledgeBaseRetrievalService({
@@ -206,10 +246,12 @@ export function createOverlayServerContext(
     auditService,
     chatUsagePolicy,
     generationUsagePolicy,
+    governanceService,
     memoryService,
     knowledgeBaseService,
     knowledgeBaseRetrievalService,
     knowledgeSourceIngestionService,
+    projectKnowledgeTransferService,
     knowledgeSearchService,
     noteRepository: appData.repositories.notes,
     apiKeyService: new ApiKeyService(appData.repositories.apiKeys),
@@ -237,6 +279,26 @@ function createKnowledgeSearchService(
     db: appData.postgres.db,
     embeddings: createEmbeddingProvider(runtimeConfig),
   }))
+}
+
+/**
+ * Current embedding identity, when the runtime actually embeds locally. Convex
+ * manages embeddings centrally and does not expose an identity, so drift
+ * detection is only meaningful on the Postgres path.
+ */
+function resolveEmbeddingIdentity(
+  appData: AppDataContext,
+  runtimeConfig: OverlayRuntimeConfig | null,
+): EmbeddingModelIdentity | undefined {
+  if (appData.capabilities.provider !== 'postgres') return undefined
+  if (!runtimeConfig || !appData.capabilities.supportsVectorSearch) return undefined
+  try {
+    return createEmbeddingProvider(runtimeConfig).identity
+  } catch (_error) {
+    // A misconfigured embeddings provider must not stop the server from booting;
+    // diagnostics simply omit drift information.
+    return undefined
+  }
 }
 
 let defaultServerContext: OverlayServerContext | null = null

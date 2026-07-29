@@ -536,6 +536,36 @@ export const requestRunCancellationByServer = mutation({
   },
 })
 
+export const requestActiveRunCancellationByServer = mutation({
+  args: {
+    automationId: v.id('automations'),
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  returns: v.object({ cancelled: v.number() }),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const automation = await ctx.db.get(args.automationId)
+    if (!automation || automation.userId !== args.userId || automation.deletedAt) {
+      return { cancelled: 0 }
+    }
+    const runs = await ctx.db
+      .query('automationRuns')
+      .withIndex('by_automationId_createdAt', (q) => q.eq('automationId', args.automationId))
+      .collect()
+    const now = Date.now()
+    const activeRuns = runs.filter((run) => ['queued', 'running'].includes(run.status))
+    await Promise.all(activeRuns.map(async (run) => {
+      await ctx.db.patch(run._id, {
+        completedAt: run.status === 'queued' ? now : undefined,
+        status: run.status === 'queued' ? 'cancelled' : 'cancel_requested',
+        updatedAt: now,
+      })
+    }))
+    return { cancelled: activeRuns.length }
+  },
+})
+
 export const retryRunByServer = mutation({
   args: {
     runId: v.id('automationRuns'),
