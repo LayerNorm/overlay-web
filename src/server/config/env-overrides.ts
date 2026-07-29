@@ -283,9 +283,9 @@ function databaseConfigFromEnv(
   deploymentEnvironment?: OverlayDeploymentEnvironment,
 ): OverlayRuntimeConfigLayer | null {
   const provider = readEnv(env, 'OVERLAY_PROVIDER_DATABASE')
-  const convexUrl = deploymentEnvironment === 'development'
-    ? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'NEXT_PUBLIC_CONVEX_URL')
-    : readEnv(env, 'NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL')
+  const convexUrl = deploymentEnvironment === 'production'
+    ? readEnv(env, 'NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL')
+    : readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'NEXT_PUBLIC_CONVEX_URL')
   const postgresConnectionString = readEnv(env, 'OVERLAY_DATABASE_URL')
   const postgresSslMode = readEnv(env, 'OVERLAY_DATABASE_SSL_MODE')
 
