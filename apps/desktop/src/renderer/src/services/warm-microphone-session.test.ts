@@ -31,13 +31,13 @@ function createFakeStream(): {
 }
 
 describe('WarmMicrophoneSession', () => {
-  it('warms once with capture disabled, then activates without reacquiring', async () => {
+  it('keeps the audio pipeline live, then activates without reacquiring', async () => {
     const { stream, track } = createFakeStream()
     const getUserMedia = vi.fn(async () => stream)
     const session = new WarmMicrophoneSession(getUserMedia)
 
     await session.warm('default')
-    expect(track.enabled).toBe(false)
+    expect(track.enabled).toBe(true)
 
     await expect(session.activate('default')).resolves.toBe(stream)
     expect(track.enabled).toBe(true)
@@ -46,6 +46,10 @@ describe('WarmMicrophoneSession', () => {
     session.deactivate()
     expect(track.enabled).toBe(false)
     expect(track.stop).not.toHaveBeenCalled()
+
+    await session.warm('default')
+    expect(track.enabled).toBe(true)
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
   })
 
   it('shares an in-flight warmup with an immediate activation', async () => {
@@ -81,7 +85,7 @@ describe('WarmMicrophoneSession', () => {
     await session.warm('second-device')
 
     expect(first.track.stop).toHaveBeenCalledTimes(1)
-    expect(second.track.enabled).toBe(false)
+    expect(second.track.enabled).toBe(true)
     expect(getUserMedia).toHaveBeenNthCalledWith(1, {
       audio: { deviceId: { exact: 'first-device' } }
     })
@@ -137,7 +141,7 @@ describe('WarmMicrophoneSession', () => {
 
     await vi.waitFor(() => {
       expect(getUserMedia).toHaveBeenCalledTimes(2)
-      expect(replacement.track.enabled).toBe(false)
+      expect(replacement.track.enabled).toBe(true)
     })
   })
 })

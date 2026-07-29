@@ -27,9 +27,10 @@ function constraintsForDevice(deviceId: string): MediaStreamConstraints {
 }
 
 /**
- * Keeps a permission-granted microphone stream warm but disabled between
- * recordings. No MediaRecorder exists while idle, and enabling the live track
- * on hotkey press avoids a new CoreAudio/getUserMedia startup round trip.
+ * Keeps a permission-granted microphone stream actively flowing between
+ * recordings. No MediaRecorder or audio reader exists while idle, so Overlay
+ * does not retain audio; the live track avoids a CoreAudio/getUserMedia startup
+ * round trip when the hotkey is pressed.
  */
 export class WarmMicrophoneSession {
   private stream: MediaStream | null = null
@@ -43,10 +44,12 @@ export class WarmMicrophoneSession {
 
   async warm(deviceId: string): Promise<void> {
     this.desiredDeviceId = deviceId
+    this.captureActive = false
     const stream = await this.ensureStream(deviceId)
-    if (!this.captureActive) {
-      setAudioTracksEnabled(stream, false)
-    }
+    // A disabled MediaStreamTrack can allow the OS audio pipeline to power
+    // down even though the permission-granted stream still exists. Keep it
+    // flowing; without a recorder or reader, the frames are simply discarded.
+    setAudioTracksEnabled(stream, true)
   }
 
   async activate(deviceId: string): Promise<MediaStream> {

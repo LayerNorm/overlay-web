@@ -324,12 +324,12 @@ export function OverlayWindow(): ReactElement {
 
   const parkOrReleaseMicrophone = useCallback((context: string): void => {
     const microphoneSession = microphoneSessionRef.current
-    microphoneSession?.deactivate()
     if (keepMicrophoneWarmRef.current) {
       void microphoneSession?.warm(inputDeviceRef.current).catch((error) => {
         console.warn(`[OverlayWindow] Failed to keep microphone warm after ${context}:`, error)
       })
     } else {
+      microphoneSession?.deactivate()
       microphoneSession?.dispose()
     }
     streamRef.current = null
