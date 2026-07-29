@@ -96,7 +96,7 @@ authorization foundation exists while their product surface does not.
 | # | Check | Status |
 |---|---|---|
 | 1 | Two KBs with clearly different content | DONE — automated, fixed corpus over two bases |
-| 2 | Upload PDF, text, Office documents | PARTIAL — text/paste automated; PDF and Office manual only |
+| 2 | Upload PDF, text, Office documents | DONE — real PDF and DOCX fixtures exercise extraction, object storage, multipart persistence, and project scoping |
 | 3 | Processing states update without refresh | PARTIAL — manual |
 | 4 | Exact phrases and semantic paraphrases | DONE — keyword, semantic, and mixed query set |
 | 5 | Disabled and deleted sources not retrievable | DONE — automated |

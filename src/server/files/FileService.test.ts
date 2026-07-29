@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { FileService, FileServiceError, type FileServiceStorage } from './FileService'
 import type {
@@ -53,15 +54,18 @@ function createStorage(overrides: Partial<FileServiceStorage> = {}): FileService
 function createRepository(overrides: Partial<FileRepository> = {}): FileRepository & {
   createdFiles: Array<Record<string, unknown>>
   createdUploadIntents: Array<Record<string, unknown>>
+  extractedDocuments: Array<Record<string, unknown>>
   removedFiles: Array<Record<string, unknown>>
 } {
   const createdFiles: Array<Record<string, unknown>> = []
   const createdUploadIntents: Array<Record<string, unknown>> = []
+  const extractedDocuments: Array<Record<string, unknown>> = []
   const removedFiles: Array<Record<string, unknown>> = []
   const repository = {
     storageCleanupMode: 'immediate' as const,
     createdFiles,
     createdUploadIntents,
+    extractedDocuments,
     removedFiles,
     async getFile({ fileId, userId }: { fileId: string; userId: string }) {
       return {
@@ -86,6 +90,7 @@ function createRepository(overrides: Partial<FileRepository> = {}): FileReposito
       return `file_${createdFiles.length}`
     },
     async createExtractedDocument(args) {
+      extractedDocuments.push(args)
       args.parts.forEach((part) => createdFiles.push({ ...part, userId: args.userId }))
       return args.parts.map((_, index) => `file_${index + 1}`)
     },
@@ -130,9 +135,41 @@ function createRepository(overrides: Partial<FileRepository> = {}): FileReposito
   } satisfies FileRepository & {
     createdFiles: Array<Record<string, unknown>>
     createdUploadIntents: Array<Record<string, unknown>>
+    extractedDocuments: Array<Record<string, unknown>>
     removedFiles: Array<Record<string, unknown>>
   }
   return repository
+}
+
+function createPdfFixture(text: string): Buffer {
+  const content = `BT /F1 18 Tf 72 720 Td (${text.replace(/[()\\]/g, '\\$&')}) Tj ET`
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ]
+  let pdf = '%PDF-1.4\n'
+  const offsets = [0]
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(pdf))
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`
+  })
+  const xrefOffset = Buffer.byteLength(pdf)
+  pdf += `xref\n0 ${objects.length + 1}\n`
+  pdf += '0000000000 65535 f \n'
+  for (const offset of offsets.slice(1)) {
+    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
+  return Buffer.from(pdf)
+}
+
+function copyToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buffer).set(bytes)
+  return buffer
 }
 
 function createService(repository = createRepository(), storage = createStorage()) {
@@ -187,6 +224,42 @@ test('FileService.createFile splits large text into Convex-safe parts', async ()
   assert.equal(repository.createdFiles[0]?.name, 'large (part 1 of 2).txt')
   assert.equal(repository.createdFiles[1]?.name, 'large (part 2 of 2).txt')
 })
+
+for (const fixture of [
+  {
+    mimeType: 'application/pdf',
+    name: 'private-ai-report.pdf',
+    expectedText: /private ai/i,
+    read: async () => createPdfFixture('Private AI ingestion fixture'),
+  },
+  {
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    name: 'customer-research.docx',
+    expectedText: /customer research/i,
+    read: async () => readFile(new URL('../../../public/showcase/customer-research.docx', import.meta.url)),
+  },
+] as const) {
+  test(`FileService.ingestDocument extracts and persists ${fixture.name}`, async () => {
+    const repository = createRepository()
+    const storage = createStorage()
+    const service = createService(repository, storage)
+    const bytes = await fixture.read()
+    const file = new File([copyToArrayBuffer(bytes)], fixture.name, { type: fixture.mimeType })
+
+    const result = await service.ingestDocument({
+      file,
+      projectId: 'project0123456789',
+      userId: 'user_1',
+    })
+
+    assert.equal(result.id, 'file_1')
+    assert.ok(result.parts >= 1)
+    assert.deepEqual(storage.uploadedKeys, [`users/user_1/files/uuid_1/${fixture.name}`])
+    assert.equal(repository.createdFiles.length, result.parts)
+    assert.match(String(repository.createdFiles[0]?.content), fixture.expectedText)
+    assert.equal(repository.extractedDocuments[0]?.projectId, 'project0123456789')
+  })
+}
 
 test('FileService.createUploadUrl returns current upload-url DTO and records intent', async () => {
   const repository = createRepository()
