@@ -27,6 +27,7 @@ import {
   getUserMessageDocNames,
   getUserReplyThreadMeta,
   getUserTurnId,
+  hasPersistedInterruptionMarker,
   persistedGenerationErrorMessage,
   resolveActAssistant,
   splitUserDisplayText,
@@ -215,8 +216,10 @@ function TextChatMessage(props: TextChatMessageProps) {
   const turnId = getUserTurnId(message)
   const isExiting = !!turnId && exitingTurnIds.includes(turnId)
   const assistantPlainForReply = assistantBlocksToPlainText(assistantVisualBlocks)
-  const errLabelForTurn = errorLabel(instError)
-  const interruptedHere = interruptedExchangeIdx === exchangeIndex && !errLabelForTurn
+  const persistedInterruption = hasPersistedInterruptionMarker(assistantPlainForReply)
+  const errLabelForTurn = persistedInterruption ? null : errorLabel(instError)
+  const interruptedHere =
+    persistedInterruption || (interruptedExchangeIdx === exchangeIndex && !errLabelForTurn)
   const replyPlain = interruptedHere && assistantPlainForReply.trim()
     ? `${assistantPlainForReply}\n\nResponse was interrupted.`
     : interruptedHere ? 'Response was interrupted.' : assistantPlainForReply
@@ -270,7 +273,7 @@ function TextChatMessage(props: TextChatMessageProps) {
       onOpenFilePreview={props.onOpenFilePreview}
       onOpenAttachmentPreview={props.onOpenAttachmentPreview}
       userMentions={(message as { metadata?: { mentions?: Array<{ type: string; id: string; name: string }> } }).metadata?.mentions}
-      onContinue={(['[Request timed out after 300s. Continue?]', '[Interrupted by user. Continue?]'] as const).some((s) => assistantPlainForReply.includes(s)) ? props.onContinue : undefined}
+      onContinue={persistedInterruption ? props.onContinue : undefined}
       getModelDisplayName={getChatModelDisplayName}
       onGeneratedUiChange={responseMessageId ? (partId, data) => props.onGeneratedUiChange(responseMessageId, partId, data) : undefined}
       generatedUiConnectorActions={props.generatedUiConnectorActions}
