@@ -148,6 +148,46 @@ test('knowledge-base source operations preserve diagnostics and reindex contract
   assert.deepEqual(await jsonBody(calls[4]!), { onlyStale: true })
 })
 
+test('personal knowledge capture remains an explicit API operation', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.knowledgeBases.listPersonal()
+  await client.knowledgeBases.ensurePersonal()
+  await client.projects.transfer({
+    direction: 'save-answer',
+    knowledgeBaseId: 'kb_personal',
+    conversationId: 'conversation_1',
+    messageId: 'message_1',
+    content: 'A durable answer.',
+    title: 'Durable answer',
+  })
+
+  assert.equal(
+    String(calls[0]!.input),
+    'https://example.test/api/v1/knowledge-bases/personal',
+  )
+  assert.equal(calls[0]!.init?.method, undefined)
+  assert.equal(
+    String(calls[1]!.input),
+    'https://example.test/api/v1/knowledge-bases/personal',
+  )
+  assert.equal(calls[1]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[1]!), {})
+  assert.equal(
+    String(calls[2]!.input),
+    'https://example.test/api/v1/projects/knowledge-transfer',
+  )
+  assert.equal(calls[2]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[2]!), {
+    direction: 'save-answer',
+    knowledgeBaseId: 'kb_personal',
+    conversationId: 'conversation_1',
+    messageId: 'message_1',
+    content: 'A durable answer.',
+    title: 'Durable answer',
+  })
+})
+
 test('file mutations accept null parent and project IDs', async () => {
   const { calls, client } = createRecordedClient()
 

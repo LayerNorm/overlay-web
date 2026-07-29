@@ -29,6 +29,17 @@ export class KnowledgeBasesClient {
     return this.http.json<KnowledgeBaseListResponse>('/api/v1/knowledge-bases', init)
   }
 
+  listPersonal(init?: RequestInit) {
+    return this.http.json<KnowledgeBaseListResponse>('/api/v1/knowledge-bases/personal', init)
+  }
+
+  ensurePersonal(body: { title?: string } = {}, init?: RequestInit) {
+    return this.http.json<KnowledgeBaseDetailResponse>(
+      '/api/v1/knowledge-bases/personal',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
   listAdministrative(init?: RequestInit) {
     return this.http.json<AdministrativeKnowledgeBaseListResponse>(
       '/api/v1/admin/knowledge-bases',

@@ -385,6 +385,7 @@ than duplicated.
 | Do **not** automatically index all chats and files | **DONE** — upheld; nothing is captured as a side effect |
 | Explicit capture actions | **DONE** — add source, save answer as knowledge, promote project file; extract memory already existed |
 | Separate conversational memory from curated knowledge | **DONE** — memory is excluded when a KB scope is active |
+| Personal-brain product surface | **DONE** — first-class My knowledge card plus assistant-response capture action |
 
 ### Capture is always deliberate
 

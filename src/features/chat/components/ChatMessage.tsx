@@ -64,6 +64,11 @@ type TextChatMessageProps = CommonMessageProps & {
   onTabSelect: (exchangeIndex: number, tabIndex: number) => void
   onReplyToAssistantText: (assistantText: string, turnId: string | null) => void
   onBranch: (turnId: string | null) => void | Promise<void>
+  onSaveAssistantToKnowledge?: (args: {
+    content: string
+    messageId: string
+    turnId: string | null
+  }) => void | Promise<void>
   onOpenDraft: (state: DraftModalState) => void
   onCreateAutomationDraft: (state: Extract<DraftModalState, { kind: 'automation' }>) => void | Promise<void>
   onOpenSources: Parameters<typeof ChatToolSurface>[0]['onOpenSources']
@@ -244,6 +249,13 @@ function TextChatMessage(props: TextChatMessageProps) {
       onDeleteTurn={() => turnId && props.onDeleteTurn(turnId)}
       onReply={() => props.onReplyToAssistantText(replyPlain, turnId)}
       onBranch={() => props.onBranch(turnId)}
+      onSaveToKnowledge={responseMessageId && assistantPlainForReply.trim()
+        ? () => props.onSaveAssistantToKnowledge?.({
+            content: assistantPlainForReply,
+            messageId: responseMessageId,
+            turnId,
+          })
+        : undefined}
       interrupted={interruptedHere}
       actionsLocked={isLatest && isActiveLoading}
       isExiting={isExiting}
