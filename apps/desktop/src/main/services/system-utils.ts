@@ -1,11 +1,62 @@
-import { clipboard, desktopCapturer, screen } from 'electron'
+import { clipboard, desktopCapturer, screen, systemPreferences } from 'electron'
 import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { join } from 'path'
 import { getResourcePath } from '../utils/resources'
 import { tmpdir } from 'node:os'
 import { ScreenshotResult } from '../types'
+import { sendGlobalKey, type GlobalKeyCommand } from './global-keyboard'
+
+const execFileAsync = promisify(execFile)
 
 class SystemUtils {
+  private async sendNativeGlobalKey(command: GlobalKeyCommand): Promise<void> {
+    if (process.platform === 'darwin' && !systemPreferences.isTrustedAccessibilityClient(false)) {
+      throw new Error('accessibility_permission_required')
+    }
+
+    const { uIOhook, UiohookKey } = await import('uiohook-napi')
+    if (command === 'paste') {
+      const modifier = process.platform === 'darwin' ? UiohookKey.Meta : UiohookKey.Ctrl
+      uIOhook.keyTap(UiohookKey.V, [modifier])
+    } else {
+      uIOhook.keyTap(UiohookKey.Enter)
+    }
+  }
+
+  private async sendSystemEventsGlobalKey(command: GlobalKeyCommand): Promise<void> {
+    if (process.platform !== 'darwin') {
+      throw new Error('system_events_global_keyboard_unsupported')
+    }
+
+    const script =
+      command === 'paste'
+        ? 'tell application "System Events" to keystroke "v" using {command down}'
+        : 'tell application "System Events" to keystroke return'
+
+    try {
+      await execFileAsync('osascript', ['-e', script])
+    } catch (firstError) {
+      // Error -600 commonly appears after sleep/unlock when System Events was
+      // terminated. Relaunch it once before surfacing a delivery failure.
+      await execFileAsync('open', ['-gj', '-a', 'System Events']).catch(() => undefined)
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      try {
+        await execFileAsync('osascript', ['-e', script])
+      } catch (retryError) {
+        throw new AggregateError([firstError, retryError], `global_${command}_injection_failed`)
+      }
+    }
+  }
+
+  private async sendGlobalKey(command: GlobalKeyCommand): Promise<void> {
+    const driver = await sendGlobalKey(command, {
+      sendNative: (requestedCommand) => this.sendNativeGlobalKey(requestedCommand),
+      sendWithSystemEvents: (requestedCommand) => this.sendSystemEventsGlobalKey(requestedCommand)
+    })
+    console.log(`[GlobalKeyboard] Sent ${command} via ${driver}`)
+  }
+
   playSound(soundFile: string, volume: number = 0.1, soundEffectsEnabled: boolean): void {
     if (soundEffectsEnabled && process.platform === 'darwin') {
       execFile('afplay', ['-v', volume.toString(), getResourcePath(soundFile)], () => {})
@@ -228,25 +279,13 @@ class SystemUtils {
     const textWithSpace = text + ' '
     clipboard.writeText(textWithSpace)
 
-    await new Promise<void>((resolve, reject) => {
-      execFile(
-        'osascript',
-        ['-e', 'tell application "System Events" to keystroke "v" using {command down}'],
-        (err) => (err ? reject(err) : resolve())
-      )
-    })
+    await this.sendGlobalKey('paste')
 
     if (pressEnterAfterEnabled) {
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 100)
       })
-      await new Promise<void>((resolve, reject) => {
-        execFile(
-          'osascript',
-          ['-e', 'tell application "System Events" to keystroke return'],
-          (err) => (err ? reject(err) : resolve())
-        )
-      })
+      await this.sendGlobalKey('enter')
     }
 
     if (!autoCopyEnabled) {

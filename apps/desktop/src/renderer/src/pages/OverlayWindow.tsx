@@ -109,6 +109,13 @@ interface OverlayDockContextBridgeProps {
   onDraggingChange: (isDragging: boolean) => void
 }
 
+interface PendingTranscriptionDelivery {
+  text: string
+  source: 'hotkey' | 'mic' | null
+  pasteInNewChatWhenHidden: boolean
+  pasteInNewNoteWhenHidden: boolean
+}
+
 function OverlayDockContextBridge({
   children,
   onDraggingChange
@@ -143,6 +150,7 @@ export function OverlayWindow(): ReactElement {
   const transcriptionErrorRef = useRef(false)
   const recordingSourceRef = useRef<'hotkey' | 'mic' | null>(null)
   const lastRecordingRef = useRef<{ blob: Blob; source: 'hotkey' | 'mic' | null; duration: number } | null>(null)
+  const pendingDeliveryRef = useRef<PendingTranscriptionDelivery | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const recorderChunksRef = useRef<Blob[]>([])
   const onStopResolveRef = useRef<((blob: Blob | null) => void) | null>(null)
@@ -744,6 +752,47 @@ export function OverlayWindow(): ReactElement {
     console.log('[OverlayWindow] Recording canceled and microphone lifecycle restored')
   }
 
+  async function deliverTranscription(delivery: PendingTranscriptionDelivery): Promise<void> {
+    const panelDestination = await window.bridge.getPanelTranscriptionDestination()
+
+    if (panelDestination) {
+      const { panel, wasVisible } = panelDestination
+      const createNew =
+        !wasVisible &&
+        (panel === 'chat'
+          ? delivery.pasteInNewChatWhenHidden
+          : delivery.pasteInNewNoteWhenHidden)
+
+      console.log(
+        `[OverlayWindow] Routing to ${panel} panel, wasVisible: ${wasVisible}, createNew: ${createNew}`
+      )
+
+      if (panel === 'chat') {
+        if (createNew) {
+          await window.bridge.sendTextToNewChat(delivery.text)
+        } else {
+          await window.bridge.sendTextToChatInput(delivery.text)
+        }
+      } else if (createNew) {
+        await window.bridge.sendTextToNewNote(delivery.text)
+      } else {
+        await window.bridge.sendTextToNoteInput(delivery.text)
+      }
+
+      await window.bridge.clearPanelTranscriptionDestination()
+      return
+    }
+
+    if (delivery.source === 'mic') {
+      console.log('[OverlayWindow] Opening TranscriptionPanel with text')
+      await window.bridge.sendTranscriptionToPanel(delivery.text)
+      return
+    }
+
+    const pasted = await window.bridge.pasteText(delivery.text)
+    if (!pasted) throw new Error('transcription_paste_rejected')
+  }
+
   async function processTranscription(
     currentRecordingSource: 'hotkey' | 'mic' | null,
     blob: Blob,
@@ -752,6 +801,7 @@ export function OverlayWindow(): ReactElement {
     setTranscriptionError(false)
     transcriptionErrorRef.current = false
     setIsProcessing(true)
+    pendingDeliveryRef.current = null
 
     try {
       const buf = await blob.arrayBuffer()
@@ -785,49 +835,25 @@ export function OverlayWindow(): ReactElement {
         phraseReplacements: currentPhraseReplacements
       })
 
-      // Check for panel transcription destination (hold-to-transcribe feature)
-      const panelDestination = await window.bridge.getPanelTranscriptionDestination()
+      const delivery: PendingTranscriptionDelivery = {
+        text: processedText,
+        source: currentRecordingSource,
+        pasteInNewChatWhenHidden: currentSettings.pasteTranscriptionInNewChat !== false,
+        pasteInNewNoteWhenHidden: currentSettings.pasteTranscriptionInNewNote !== false
+      }
+      pendingDeliveryRef.current = delivery
 
-      if (panelDestination) {
-        // Route transcription to panel instead of pasting
-        const { panel, wasVisible } = panelDestination
-
-        // Check settings to determine if we should create new chat/note
-        const settingKey =
-          panel === 'chat' ? 'pasteTranscriptionInNewChat' : 'pasteTranscriptionInNewNote'
-        const createNew = !wasVisible && (currentSettings[settingKey] ?? true)
-
-        console.log(
-          `[OverlayWindow] Routing to ${panel} panel, wasVisible: ${wasVisible}, createNew: ${createNew}`
-        )
-
-        if (panel === 'chat') {
-          if (createNew) {
-            await window.bridge.sendTextToNewChat(processedText)
-          } else {
-            await window.bridge.sendTextToChatInput(processedText)
-          }
-        } else {
-          // notebook
-          if (createNew) {
-            await window.bridge.sendTextToNewNote(processedText)
-          } else {
-            await window.bridge.sendTextToNoteInput(processedText)
-          }
-        }
-
-        // Clear the destination after sending
-        await window.bridge.clearPanelTranscriptionDestination()
-      } else if (currentRecordingSource === 'mic') {
-        // If recording was triggered by mic button, open TranscriptionPanel
-        console.log('[OverlayWindow] Opening TranscriptionPanel with text')
-        await window.bridge.sendTranscriptionToPanel(processedText)
-      } else {
-        // Otherwise, paste the text directly
-        await window.bridge.pasteText(processedText)
+      try {
+        await deliverTranscription(delivery)
+        pendingDeliveryRef.current = null
+      } catch (deliveryError) {
+        console.error('[renderer] transcription succeeded but delivery failed', deliveryError)
+        setTranscriptionError(true)
+        transcriptionErrorRef.current = true
+        setShowButtons(true)
       }
     } catch (err) {
-      console.error('[renderer] transcription/paste failed', err)
+      console.error('[renderer] transcription failed', err)
       setTranscriptionError(true)
       transcriptionErrorRef.current = true
       setShowButtons(true)
@@ -837,6 +863,25 @@ export function OverlayWindow(): ReactElement {
   }
 
   async function retryTranscription(): Promise<void> {
+    const pendingDelivery = pendingDeliveryRef.current
+    if (pendingDelivery) {
+      setTranscriptionError(false)
+      transcriptionErrorRef.current = false
+      setShowButtons(true)
+      setIsProcessing(true)
+      try {
+        await deliverTranscription(pendingDelivery)
+        pendingDeliveryRef.current = null
+      } catch (deliveryError) {
+        console.error('[renderer] transcription redelivery failed', deliveryError)
+        setTranscriptionError(true)
+        transcriptionErrorRef.current = true
+      } finally {
+        setIsProcessing(false)
+      }
+      return
+    }
+
     const last = lastRecordingRef.current
     if (!last?.blob) return
 
@@ -1366,7 +1411,7 @@ export function OverlayWindow(): ReactElement {
                             e.stopPropagation()
                             retryTranscription()
                           }}
-                          title="Retry transcription"
+                          title="Retry"
                           style={
                             {
                               width: 32,
