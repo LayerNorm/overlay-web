@@ -31,6 +31,8 @@ export class ProjectService {
         knowledgeBaseId: string
         userId: string
       }) => Promise<void>
+      assertProjectDeletion?: (projectId: string) => Promise<void>
+      afterProjectDeletion?: (projectIds: string[]) => Promise<void>
     } = {},
   ) {}
 
@@ -161,8 +163,18 @@ export class ProjectService {
     projectId: string
     userId: string
   }): Promise<DeleteProjectTreeResult> {
+    if (this.options.assertProjectDeletion || this.options.afterProjectDeletion) {
+      const projects = await this.repository.listProjects({
+        includeArchived: true,
+        userId: args.userId,
+      })
+      for (const projectId of projectSubtreeIds(projects, args.projectId)) {
+        await this.options.assertProjectDeletion?.(projectId)
+      }
+    }
     const result = await this.mapRepositoryErrors(() => this.repository.deleteProjectTree(args))
     if (!result) throw new ProjectServiceError('Not found', 404)
+    await this.options.afterProjectDeletion?.(result.deletedIds)
     return result
   }
 
@@ -176,6 +188,23 @@ export class ProjectService {
       throw error
     }
   }
+}
+
+function projectSubtreeIds(projects: ProjectRecord[], rootId: string): string[] {
+  const children = new Map<string, string[]>()
+  for (const project of projects) {
+    if (!project.parentId) continue
+    children.set(project.parentId, [...(children.get(project.parentId) ?? []), project._id])
+  }
+  const result: string[] = []
+  const pending = [rootId]
+  while (pending.length > 0) {
+    const id = pending.shift()!
+    if (result.includes(id)) continue
+    result.push(id)
+    pending.push(...(children.get(id) ?? []))
+  }
+  return result
 }
 
 function requiredName(value: string | undefined): string {

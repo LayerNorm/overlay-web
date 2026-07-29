@@ -354,6 +354,51 @@ export default defineSchema({
     .index('by_resource', ['resourceType', 'resourceId'])
     .index('by_principal', ['principalType', 'principalId', 'resourceType']),
 
+  governancePolicies: defineTable({
+    policyId: v.string(),
+    resourceType: v.union(v.literal('project'), v.literal('knowledge_base')),
+    resourceId: v.string(),
+    version: v.number(),
+    status: v.union(
+      v.literal('draft'),
+      v.literal('active'),
+      v.literal('superseded'),
+      v.literal('rejected'),
+    ),
+    retentionUntil: v.optional(v.number()),
+    legalHold: v.boolean(),
+    notes: v.optional(v.string()),
+    createdBy: v.string(),
+    approvedBy: v.optional(v.string()),
+    approvedAt: v.optional(v.number()),
+    rejectedBy: v.optional(v.string()),
+    rejectedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_policyId', ['policyId'])
+    .index('by_resource_version', ['resourceType', 'resourceId', 'version'])
+    .index('by_resource_status', ['resourceType', 'resourceId', 'status'])
+    .index('by_status_updatedAt', ['status', 'updatedAt']),
+
+  governanceAccessReviews: defineTable({
+    reviewId: v.string(),
+    resourceType: v.union(v.literal('project'), v.literal('knowledge_base')),
+    resourceId: v.string(),
+    status: v.union(v.literal('open'), v.literal('completed')),
+    ownerUserId: v.optional(v.string()),
+    grants: v.any(),
+    createdBy: v.string(),
+    reviewerUserId: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    dueAt: v.optional(v.number()),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index('by_reviewId', ['reviewId'])
+    .index('by_resource_createdAt', ['resourceType', 'resourceId', 'createdAt'])
+    .index('by_status_dueAt', ['status', 'dueAt']),
+
   auditEvents: defineTable({
     eventId: v.string(),
     actorType: v.union(

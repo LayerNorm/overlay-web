@@ -77,6 +77,8 @@ export const FIXED_AUTHORIZATION_ROLE_DEFINITIONS: Record<AdministrativeRole, {
       'groups.read',
       'roles.read',
       'audit.read',
+      'governance.read',
+      'governance.export',
     ],
   },
   billing_admin: {

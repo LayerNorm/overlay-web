@@ -64,6 +64,7 @@ import {
   KnowledgeSourceIngestionService,
   PostgresCanonicalKnowledgeIndexQueue,
 } from '@/server/knowledge-bases'
+import { GovernanceService } from '@/server/governance'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -91,6 +92,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   auditService: AuditService
   chatUsagePolicy: ActUsagePolicy
   generationUsagePolicy: GenerationUsagePolicy
+  governanceService: GovernanceService
   memoryService: MemoryService
   knowledgeSearchService: KnowledgeSearchService
   knowledgeBaseService: KnowledgeBaseService
@@ -169,6 +171,13 @@ export function createOverlayServerContext(
     prepareAuthorization: () => fixedRoleAuthorizationBridge.ensureSystemRoles(),
     repositories: appData.repositories.authorization,
   })
+  const governanceService = new GovernanceService({
+    assertCapability: (userId, capability) =>
+      administrativeService.assertCapability(userId, capability),
+    audit: auditService,
+    authorization: appData.repositories.authorization,
+    repository: appData.repositories.governance,
+  })
   const knowledgeBaseService = new KnowledgeBaseService({
     authorization: authorizationService,
     authorizationRepositories: appData.repositories.authorization,
@@ -176,6 +185,7 @@ export function createOverlayServerContext(
     embeddingIdentity: resolveEmbeddingIdentity(appData, runtimeConfig),
     repositories: appData.repositories.knowledgeBases,
     users: appData.repositories.users,
+    governance: governanceService,
   })
   const canonicalIndexQueue = appData.capabilities.provider === 'postgres'
     ? new PostgresCanonicalKnowledgeIndexQueue(requiredPostgres(appData).db)
@@ -224,6 +234,7 @@ export function createOverlayServerContext(
     auditService,
     chatUsagePolicy,
     generationUsagePolicy,
+    governanceService,
     memoryService,
     knowledgeBaseService,
     knowledgeBaseRetrievalService,

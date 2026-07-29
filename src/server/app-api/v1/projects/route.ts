@@ -36,6 +36,29 @@ const projectService = new ProjectService(repositoryProxy<ProjectRepository>(
       throw error
     }
   },
+  assertProjectDeletion: async (projectId) => {
+    try {
+      await getOverlayServerContext().governanceService.assertDeletionAllowed({
+        resourceType: 'project',
+        resourceId: projectId,
+      })
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error) {
+        throw new ProjectServiceError(
+          error.message,
+          Number((error as { statusCode: number }).statusCode),
+        )
+      }
+      throw error
+    }
+  },
+  afterProjectDeletion: async (projectIds) => {
+    await Promise.all(projectIds.map((resourceId) =>
+      getOverlayServerContext().governanceService.removeForDeletedResource({
+        resourceType: 'project',
+        resourceId,
+      })))
+  },
 })
 
 function readBooleanParam(value: string | null): boolean | undefined {

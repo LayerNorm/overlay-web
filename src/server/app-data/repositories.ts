@@ -107,6 +107,11 @@ import {
   createConvexKnowledgeBaseRepositories,
   createPostgresKnowledgeBaseRepositories,
 } from '@/server/knowledge-bases'
+import type { GovernanceRepository } from '@overlay/app-core'
+import {
+  ConvexGovernanceRepository,
+  PostgresGovernanceRepository,
+} from '@/server/governance'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -123,6 +128,7 @@ export interface AppDataRepositories {
   durableJobs: DurableJobRepository
   daytonaWorkspaces: DaytonaWorkspaceRepository
   files: FileRepository
+  governance: GovernanceRepository
   idempotency: IdempotencyRepository
   knowledgeBases: KnowledgeBaseRepositories
   modelCatalog: ModelCatalogRepository
@@ -182,6 +188,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         durableJobs: new PostgresDurableJobRepository(db),
         daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),
         files: new PostgresFileRepository(db),
+        governance: new PostgresGovernanceRepository(db),
         idempotency: new PostgresIdempotencyRepository(db),
         knowledgeBases: createPostgresKnowledgeBaseRepositories(db),
         modelCatalog: new PostgresModelCatalogRepository(db),
@@ -218,6 +225,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       durableJobs: unsupportedRepository<DurableJobRepository>('DurableJobRepository'),
       daytonaWorkspaces: new ConvexDaytonaWorkspaceRepository(),
       files: new ConvexFileRepository(),
+      governance: new ConvexGovernanceRepository(),
       idempotency: new ConvexIdempotencyRepository(),
       knowledgeBases: createConvexKnowledgeBaseRepositories(),
       modelCatalog: new ConvexModelCatalogRepository(),

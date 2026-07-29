@@ -34,6 +34,7 @@ import {
   type KnowledgeSourceProvenance,
 } from '@/shared/knowledge/source-provenance'
 import type { AuditService } from '@/server/admin/AuditService'
+import type { GovernanceService } from '@/server/governance/GovernanceService'
 import type { UserDirectoryEntry, UserRepository } from '@/server/users'
 
 export const KNOWLEDGE_BASE_RESOURCE_TYPE = 'knowledge_base'
@@ -114,6 +115,7 @@ export class KnowledgeBaseService {
     audit?: AuditService
     /** Current embedding identity, used to detect index drift. */
     embeddingIdentity?: EmbeddingIdentitySnapshot
+    governance?: Pick<GovernanceService, 'assertDeletionAllowed' | 'removeForDeletedResource'>
     repositories: KnowledgeBaseRepositories
     users?: UserRepository
   }) {}
@@ -395,6 +397,10 @@ export class KnowledgeBaseService {
   async deleteKnowledgeBase(args: { knowledgeBaseId: string; userId: string }): Promise<void> {
     const base = await this.requiredBase(args.knowledgeBaseId)
     await this.assertBaseAccess('delete', 'knowledge.delete', base, args.userId)
+    await this.deps.governance?.assertDeletionAllowed({
+      resourceType: KNOWLEDGE_BASE_RESOURCE_TYPE,
+      resourceId: base.id,
+    })
     const grants = await this.deps.authorizationRepositories.resourceGrants.listForResource({
       resourceType: KNOWLEDGE_BASE_RESOURCE_TYPE,
       resourceId: base.id,
@@ -403,6 +409,10 @@ export class KnowledgeBaseService {
       this.deps.authorizationRepositories.resourceGrants.remove(id)
     )))
     if (!await this.deps.repositories.bases.remove(base.id)) throw notFound('Knowledge base')
+    await this.deps.governance?.removeForDeletedResource({
+      resourceType: KNOWLEDGE_BASE_RESOURCE_TYPE,
+      resourceId: base.id,
+    })
   }
 
   async createAndAttachSource(args: {

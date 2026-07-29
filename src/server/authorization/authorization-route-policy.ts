@@ -136,6 +136,26 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
       DELETE: capability('administration.access', 'groups.manage', 'knowledge.publish'),
     },
   },
+  {
+    path: '/api/v1/admin/governance/policies',
+    methods: {
+      GET: capability('governance.read'),
+      POST: capability('governance.manage'),
+      PATCH: capability('governance.manage'),
+    },
+  },
+  {
+    path: '/api/v1/admin/governance/reviews',
+    methods: {
+      GET: capability('governance.read'),
+      POST: capability('governance.manage'),
+      PATCH: capability('governance.manage'),
+    },
+  },
+  {
+    path: '/api/v1/admin/governance/export',
+    methods: { GET: capability('governance.export') },
+  },
 
   {
     path: '/api/v1/conversations',
