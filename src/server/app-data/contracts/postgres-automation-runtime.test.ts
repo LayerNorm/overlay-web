@@ -10,7 +10,6 @@ import {
   automationRuns,
   automations,
   automationTriggers,
-  conversations,
   durableJobs,
   users,
 } from '@/server/database/postgres/schema'
@@ -36,7 +35,7 @@ test(
     })
     const db = createOverlayPostgresDb(pool)
     const userId = `p6_runtime_${randomUUID()}`
-    const conversationId = `p6_runtime_conversation_${randomUUID()}`
+    let conversationId = ''
     const repository = new PostgresAutomationRepository(db, new PostgresActConversationRepository(db))
     const executions: string[] = []
     let shouldFail = false
@@ -66,12 +65,10 @@ test(
         AUTOMATION_SCHEDULE_DUE_JOB,
       ]))
       await db.insert(users).values({ email: `${userId}@example.test`, id: userId })
-      await db.insert(conversations).values({
+      conversationId = await new PostgresActConversationRepository(db).createConversation({
         actModelId: 'openai/gpt-4.1',
         askModelIds: ['openai/gpt-4.1'],
-        id: conversationId,
         lastMode: 'act',
-        lastModified: new Date(),
         title: 'P6 runtime output',
         userId,
       })

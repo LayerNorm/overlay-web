@@ -59,6 +59,19 @@ export const shareVisibility = pgEnum('overlay_share_visibility', [
   'public',
 ])
 
+export const conversationType = pgEnum('overlay_conversation_type', [
+  'personal',
+  'dm',
+  'channel',
+])
+
+export const messageAuthorKind = pgEnum('overlay_message_author_kind', [
+  'human',
+  'agent',
+  'model',
+  'system',
+])
+
 export const fileType = pgEnum('overlay_file_type', [
   'file',
   'folder',
@@ -936,6 +949,13 @@ export const mcpToolExecutions = pgTable('mcp_tool_executions', {
 
 export const conversations = pgTable('conversations', {
   id: text('id').primaryKey(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  conversationType: conversationType('conversation_type').default('personal').notNull(),
+  createdByPrincipalId: text('created_by_principal_id')
+    .notNull()
+    .references(() => workspacePrincipals.id, { onDelete: 'restrict' }),
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
@@ -955,7 +975,12 @@ export const conversations = pgTable('conversations', {
   isAutomation: boolean('is_automation'),
 }, (table) => [
   index('conversations_user_id_idx').on(table.userId),
-  uniqueIndex('conversations_user_id_client_id_idx').on(table.userId, table.clientId),
+  uniqueIndex('conversations_workspace_id_client_id_idx').on(table.workspaceId, table.clientId),
+  index('conversations_workspace_type_last_modified_idx').on(
+    table.workspaceId,
+    table.conversationType,
+    table.lastModified,
+  ),
   index('conversations_user_id_last_modified_idx').on(table.userId, table.lastModified),
   index('conversations_user_id_updated_at_idx').on(table.userId, table.updatedAt),
   index('conversations_deleted_at_created_at_idx').on(table.deletedAt, table.createdAt),
@@ -1017,6 +1042,9 @@ export const conversationMessages = pgTable('conversation_messages', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  authorKind: messageAuthorKind('author_kind').notNull(),
+  authorPrincipalId: text('author_principal_id')
+    .references(() => workspacePrincipals.id, { onDelete: 'cascade' }),
   turnId: text('turn_id').notNull(),
   role: messageRole('role').notNull(),
   mode: chatMode('mode').notNull(),
@@ -1039,6 +1067,11 @@ export const conversationMessages = pgTable('conversation_messages', {
   index('conversation_messages_conversation_status_updated_at_idx').on(table.conversationId, table.status, table.updatedAt),
   index('conversation_messages_status_updated_at_idx').on(table.status, table.updatedAt),
   index('conversation_messages_turn_id_idx').on(table.turnId),
+  check(
+    'conversation_messages_author_identity_check',
+    sql`(${table.authorKind} IN ('human', 'agent') AND ${table.authorPrincipalId} IS NOT NULL)
+      OR (${table.authorKind} IN ('model', 'system'))`,
+  ),
 ])
 
 export const conversationMessageDeltas = pgTable('conversation_message_deltas', {

@@ -44,6 +44,9 @@ export type ActProjectRow = {
 export type ConversationListRow = {
   _id: string
   userId: string
+  workspaceId: string
+  conversationType: 'personal' | 'dm' | 'channel'
+  createdByPrincipalId: string
   clientId?: string
   title: string
   lastModified: number
@@ -62,6 +65,8 @@ export type ConversationMessageRow = {
   _id: string
   turnId: string
   role: 'user' | 'assistant'
+  authorKind: 'human' | 'agent' | 'model' | 'system'
+  authorPrincipalId?: string
   mode: 'ask' | 'act'
   content: string
   contentType: 'text' | 'image' | 'video'
@@ -124,21 +129,28 @@ export interface ActConversationRepository {
     projectId?: string
     title: string
     userId: string
+    workspaceId?: string
+    conversationType?: 'personal' | 'dm' | 'channel'
+    createdByPrincipalId?: string
   }): Promise<Id<'conversations'>>
   getConversationById(args: {
     conversationId: Id<'conversations'>
     userId: string
+    workspaceId?: string
   }): Promise<ConversationListRow | null>
   listConversations(args: {
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
+    workspaceId?: string
+    conversationType?: 'personal' | 'dm' | 'channel'
   }): Promise<ConversationListRow[]>
   listConversationsByProject(args: {
     includeDeleted?: boolean
     projectId: string
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<ConversationListRow[]>
   getRecentMessages(args: {
     beforeCreatedAt?: number
@@ -146,10 +158,12 @@ export interface ActConversationRepository {
     conversationId: Id<'conversations'>
     limit: number
     userId: string
+    workspaceId?: string
   }): Promise<ConversationMessageRow[]>
   getConversationMessages(args: {
     conversationId: Id<'conversations'>
     userId: string
+    workspaceId?: string
   }): Promise<ConversationMessageRow[]>
   updateConversation(args: {
     actModelId?: string
@@ -159,10 +173,12 @@ export interface ActConversationRepository {
     projectId?: string | null
     title?: string
     userId: string
+    workspaceId?: string
   }): Promise<void>
   deleteConversation(args: {
     conversationId: Id<'conversations'>
     userId: string
+    workspaceId?: string
   }): Promise<void>
   getEntitlements(args: {
     userId: string
@@ -189,6 +205,9 @@ export interface ActConversationRepository {
     tokens?: { input: number; output: number }
     turnId: string
     userId: string
+    workspaceId?: string
+    authorKind?: 'human' | 'agent' | 'model' | 'system'
+    authorPrincipalId?: string
     variantIndex?: number
   }): Promise<Id<'conversationMessages'> | null>
   listMemories(args: {
@@ -284,11 +303,13 @@ export interface ActConversationRepository {
   }): Promise<SharedConversationRow | null>
   getConversationEventCursor(args: {
     userId: string
+    workspaceId?: string
   }): Promise<number>
   listConversationEvents(args: {
     afterSequence: number
     limit: number
     userId: string
+    workspaceId?: string
   }): Promise<ConversationEventRow[]>
   waitForConversationEvents(args: {
     afterSequence: number
@@ -296,6 +317,7 @@ export interface ActConversationRepository {
     signal?: AbortSignal
     timeoutMs: number
     userId: string
+    workspaceId?: string
   }): Promise<ConversationEventRow[]>
   recordUsageBatch(args: {
     events: ActUsageEvent[]

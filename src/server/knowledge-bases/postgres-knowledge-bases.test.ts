@@ -5,10 +5,11 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { sql } from 'drizzle-orm'
 import { createOverlayPostgresDb, createOverlayPostgresPool } from '@/server/database/postgres/client'
-import { authorizationGroups, conversations, projects, users } from '@/server/database/postgres/schema'
+import { authorizationGroups, projects, users } from '@/server/database/postgres/schema'
 import { createPostgresKnowledgeBaseRepositories } from './PostgresKnowledgeBaseRepositories'
 import { runKnowledgeBaseRepositoryContract } from './knowledge-base-repository-contract'
 import { PostgresUserRepository } from '@/server/users'
+import { PostgresActConversationRepository } from '@/server/conversations/PostgresActConversationRepository'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
 
@@ -23,7 +24,7 @@ test('real Postgres knowledge-base repository contract', {
   const db = createOverlayPostgresDb(pool)
   const scope = `kb_${randomUUID().replaceAll('-', '')}`
   const ownerUserId = `${scope}_user`
-  const conversationId = `${scope}_conversation`
+  let conversationId = ''
   const projectId = `${scope}_project`
   const groupId = `${scope}_group`
 
@@ -33,8 +34,7 @@ test('real Postgres knowledge-base repository contract', {
       email: `${ownerUserId}@example.com`,
       emailVerified: true,
     })
-    await db.insert(conversations).values({
-      id: conversationId,
+    conversationId = await new PostgresActConversationRepository(db).createConversation({
       userId: ownerUserId,
       title: 'Knowledge-base contract chat',
       lastMode: 'ask',

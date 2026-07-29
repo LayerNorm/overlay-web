@@ -245,6 +245,27 @@ export async function handleBffRoute(
       }, { status: 404 })
     }
   }
+  if (
+    resourceAuthorization.resourceId
+    && resourceAuthorization.decision?.resourceType === 'conversation'
+  ) {
+    try {
+      await serverContext.workspaceService.assertResourceWorkspace({
+        actorUserId: auth.userId,
+        workspaceId: workspace.workspace.id,
+        resourceType: 'conversation',
+        resourceId: resourceAuthorization.resourceId,
+      })
+    } catch (error) {
+      if (error instanceof WorkspaceServiceError && error.code === 'not_found') {
+        return NextResponse.json({
+          error: 'Not found',
+          code: 'resource_not_found',
+        }, { status: 404 })
+      }
+      throw error
+    }
+  }
 
   const rateLimits = getEndpointRateLimitSpecs({
     ip: clientIp,

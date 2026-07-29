@@ -11,6 +11,9 @@ export type CachedConversation = {
   askModelIds?: string[]
   modelIds?: string[]
   actModelId?: string
+  workspaceId?: string
+  conversationType?: 'personal' | 'dm' | 'channel'
+  createdByPrincipalId?: string
 }
 
 const CACHE_TTL_MS = 15_000
@@ -46,6 +49,11 @@ type WorkspaceChatListCache = {
 const LEGACY_WORKSPACE_KEY = '__legacy_personal_workspace__'
 const workspaceCaches = new Map<string, WorkspaceChatListCache>()
 let activeWorkspaceKey = LEGACY_WORKSPACE_KEY
+let activeChatView: 'personal' | 'dms' | 'channels' | 'unread' | 'all' = 'personal'
+
+function activeCacheKey() {
+  return `${activeWorkspaceKey}:${activeChatView}`
+}
 
 function createWorkspaceCache(): WorkspaceChatListCache {
   return {
@@ -58,7 +66,7 @@ function createWorkspaceCache(): WorkspaceChatListCache {
   }
 }
 
-function getWorkspaceCache(workspaceKey = activeWorkspaceKey): WorkspaceChatListCache {
+function getWorkspaceCache(workspaceKey = activeCacheKey()): WorkspaceChatListCache {
   const existing = workspaceCaches.get(workspaceKey)
   if (existing) return existing
   const created = createWorkspaceCache()
@@ -68,6 +76,11 @@ function getWorkspaceCache(workspaceKey = activeWorkspaceKey): WorkspaceChatList
 
 export function setActiveChatListWorkspace(workspaceId: string | null | undefined) {
   activeWorkspaceKey = workspaceId || LEGACY_WORKSPACE_KEY
+  getWorkspaceCache()
+}
+
+export function setActiveChatListView(view: typeof activeChatView) {
+  activeChatView = view
   getWorkspaceCache()
 }
 
@@ -94,7 +107,7 @@ export function getCachedChatListPageInfo(): ChatListPageInfo {
 export function primeChatList(
   chats: CachedConversation[],
   pageInfo: ChatListPageInfo = { hasMore: false },
-  workspaceKey = activeWorkspaceKey,
+  workspaceKey = activeCacheKey(),
 ) {
   const cache = getWorkspaceCache(workspaceKey)
   cache.cachedChats = sortByLastModified(chats)
@@ -134,7 +147,7 @@ export function removeCachedChat(chatId: string) {
 }
 
 export function clearChatListCache() {
-  workspaceCaches.delete(activeWorkspaceKey)
+  workspaceCaches.delete(activeCacheKey())
 }
 
 export function clearAllChatListCaches() {
@@ -142,7 +155,8 @@ export function clearAllChatListCaches() {
 }
 
 export async function fetchChatListResult(options: { force?: boolean } = {}): Promise<ChatListFetchOutcome> {
-  const requestWorkspaceKey = activeWorkspaceKey
+  const requestWorkspaceKey = activeCacheKey()
+  const requestView = activeChatView
   const cache = getWorkspaceCache(requestWorkspaceKey)
   const now = Date.now()
   if (!options.force && cache.cachedChats && now - cache.cachedAt < CACHE_TTL_MS) {
@@ -150,7 +164,10 @@ export async function fetchChatListResult(options: { force?: boolean } = {}): Pr
   }
   if (!options.force && cache.inFlight) return cache.inFlight
 
-  cache.inFlight = overlayAppClient.conversations.getResponse({ limit: INITIAL_CHAT_LIST_LIMIT })
+  cache.inFlight = overlayAppClient.conversations.getResponse({
+    limit: INITIAL_CHAT_LIST_LIMIT,
+    view: requestView,
+  })
     .then(async (res): Promise<ChatListFetchOutcome> => {
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) return { status: 'unauthenticated' }
@@ -185,7 +202,8 @@ export async function fetchChatList(options: { force?: boolean } = {}): Promise<
 }
 
 export async function fetchNextChatListPage(): Promise<CachedConversation[]> {
-  const requestWorkspaceKey = activeWorkspaceKey
+  const requestWorkspaceKey = activeCacheKey()
+  const requestView = activeChatView
   const cache = getWorkspaceCache(requestWorkspaceKey)
   if (!cache.cachedPageInfo.hasMore || !cache.cachedPageInfo.nextCursor) return cache.cachedChats ?? []
   if (cache.nextPageInFlight) return cache.nextPageInFlight
@@ -193,6 +211,7 @@ export async function fetchNextChatListPage(): Promise<CachedConversation[]> {
   cache.nextPageInFlight = overlayAppClient.conversations.getResponse({
     cursor: cache.cachedPageInfo.nextCursor,
     limit: INITIAL_CHAT_LIST_LIMIT,
+    view: requestView,
   })
     .then(async (res) => {
       const requestCache = getWorkspaceCache(requestWorkspaceKey)

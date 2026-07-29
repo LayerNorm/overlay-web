@@ -233,6 +233,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         projectId,
         askModelIds,
         actModelId: effectiveModelId,
+        workspaceId: context.workspace.workspace.id,
+        createdByPrincipalId: context.workspace.principal.id,
       })
       if (_ttftDebug) _tEnsureConversationMs = performance.now() - ensureStartedAt
     }

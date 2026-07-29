@@ -52,6 +52,13 @@ function readPositiveIntParam(value: string | null, max: number): number | undef
   return Math.min(max, int)
 }
 
+function conversationTypeForView(value: string | null): 'personal' | 'dm' | 'channel' | undefined {
+  if (value === 'personal') return 'personal'
+  if (value === 'dms') return 'dm'
+  if (value === 'channels') return 'channel'
+  return undefined
+}
+
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
@@ -70,11 +77,14 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const beforeCreatedAtParam = searchParams.get('beforeCreatedAt')
     const beforeCreatedAt = beforeCreatedAtParam ? Number(beforeCreatedAtParam) : undefined
     const compactToolPayloads = readBooleanParam(searchParams.get('compactToolPayloads')) === true
+    const workspaceId = context.workspace.workspace.id
+    const conversationType = conversationTypeForView(searchParams.get('view'))
 
     if (conversationId && !includeMessages) {
       const conv = await repository.getConversationById({
         conversationId: conversationId as Id<'conversations'>,
         userId: resourceUserId,
+        workspaceId,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
       return NextResponse.json({
@@ -88,6 +98,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       const conv = await repository.getConversationById({
         conversationId: conversationId as Id<'conversations'>,
         userId: resourceUserId,
+        workspaceId,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -97,6 +108,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
           messages = await repository.getRecentMessages({
             conversationId: conversationId as Id<'conversations'>,
             userId: resourceUserId,
+            workspaceId,
             limit: messageLimit,
             ...(Number.isFinite(beforeCreatedAt) ? { beforeCreatedAt } : {}),
             compactToolPayloads,
@@ -109,12 +121,14 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
           messages = await repository.getConversationMessages({
             conversationId: conversationId as Id<'conversations'>,
             userId: resourceUserId,
+            workspaceId,
           })
         }
       } else {
         messages = await repository.getConversationMessages({
           conversationId: conversationId as Id<'conversations'>,
           userId: resourceUserId,
+          workspaceId,
         })
       }
 
@@ -136,10 +150,11 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       const list = await repository.listConversationsByProject({
         projectId,
         userId: auth.userId,
+        workspaceId,
         ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
         ...(includeDeleted !== undefined ? { includeDeleted } : {}),
       })
-      const granted = await loadGrantedConversations(context, repository)
+      const granted = await loadGrantedConversations(context, repository, workspaceId)
       return NextResponse.json([...list, ...granted].filter((conversation) => (
         conversation.projectId === projectId &&
         (!Number.isFinite(updatedSince) || (conversation.updatedAt ?? conversation.lastModified) >= updatedSince!) &&
@@ -149,11 +164,16 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     const list = await repository.listConversations({
       userId: auth.userId,
+      workspaceId,
+      conversationType,
       ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
       ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })
 
-    return NextResponse.json([...list, ...await loadGrantedConversations(context, repository)])
+    return NextResponse.json([
+      ...list,
+      ...await loadGrantedConversations(context, repository, workspaceId),
+    ])
   } catch (error) {
     logger.error('[conversations GET]', error)
     return NextResponse.json({ error: 'Failed to fetch conversations' }, { status: 500 })
@@ -163,11 +183,13 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 async function loadGrantedConversations(
   context: AppApiRouteContext,
   repository: ReturnType<typeof getOverlayServerContext>['appData']['repositories']['conversations'],
+  workspaceId: string,
 ) {
   const values = await Promise.all(getGrantedResources(context).map(({ ownerUserId, resourceId }) => (
     repository.getConversationById({
       conversationId: resourceId as Id<'conversations'>,
       userId: ownerUserId,
+      workspaceId,
     })
   )))
   return values.filter((value): value is NonNullable<typeof value> => Boolean(value))
@@ -185,6 +207,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       knowledgeBaseId?: string
       accessToken?: string
       userId?: string
+      conversationType?: 'personal' | 'dm' | 'channel'
     }
     const { auth } = context
     const resourceUserId = getAuthorizedResourceUserId(context)
@@ -200,6 +223,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const paidModels = normalizePaidChatModels(body.askModelIds, body.actModelId)
     const id = await repository.createConversation({
       userId: resourceUserId,
+      workspaceId: context.workspace.workspace.id,
+      conversationType: body.conversationType ?? 'personal',
+      createdByPrincipalId: context.workspace.principal.id,
       clientId: body.clientId?.trim() || undefined,
       title: body.title || 'New Chat',
       projectId: body.projectId ?? undefined,
@@ -215,13 +241,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           userId: resourceUserId,
         })
       } catch (error) {
-        await repository.deleteConversation({ conversationId: id, userId: resourceUserId }).catch((_error) => {})
+        await repository.deleteConversation({
+          conversationId: id,
+          userId: resourceUserId,
+          workspaceId: context.workspace.workspace.id,
+        }).catch((_error) => {})
         throw error
       }
     }
     const conversation = await repository.getConversationById({
       conversationId: id,
       userId: resourceUserId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json({
       id,
@@ -282,6 +313,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     await repository.updateConversation({
       conversationId: body.conversationId as Id<'conversations'>,
       userId: resourceUserId,
+      workspaceId: context.workspace.workspace.id,
       title: body.title,
       projectId: body.projectId,
       askModelIds,
@@ -303,6 +335,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const conversation = await repository.getConversationById({
       conversationId: body.conversationId as Id<'conversations'>,
       userId: resourceUserId,
+      workspaceId: context.workspace.workspace.id,
     })
     const knowledgeBase = await getOverlayServerContext().knowledgeBaseService
       .getConversationKnowledgeBase({
@@ -338,6 +371,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     await repository.deleteConversation({
       conversationId: conversationId as Id<'conversations'>,
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json({ success: true, conversationId, deletedAt: Date.now() })
   } catch (error) {
@@ -355,6 +389,8 @@ function serializeConversationMessage(message: ConversationMessageRow) {
     variantIndex: message.variantIndex,
     createdAt: message.createdAt,
     role: message.role,
+    authorKind: message.authorKind,
+    ...(message.authorPrincipalId ? { authorPrincipalId: message.authorPrincipalId } : {}),
     parts: message.parts?.length
       ? message.parts.map(serializeConversationMessagePart)
       : [{ type: 'text' as const, text: message.content }],

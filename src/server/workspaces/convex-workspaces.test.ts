@@ -6,6 +6,8 @@ import test from 'node:test'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { ConvexWorkspaceRepository } from './ConvexWorkspaceRepository'
+import { ConvexActConversationRepository } from '@/server/conversations/ConvexActConversationRepository'
+import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
 
 const enabled = process.env.WORKSPACE_CONTRACT_CONVEX === '1'
 const hasConvexUrl = Boolean(
@@ -156,6 +158,65 @@ test('Convex workspace repository matches the Phase 1 lifecycle contract', {
         }),
         /WORKSPACE_RESOURCE_SCOPE_CONFLICT/,
       )
+    })
+
+    await t.test('conversations and authorship are isolated by workspace', async () => {
+      const conversations: ActConversationRepository = new ConvexActConversationRepository()
+      const personalId = await conversations.createConversation({
+        workspaceId: personalWorkspaceId,
+        createdByPrincipalId: `${scope}_personal_principal`,
+        conversationType: 'personal',
+        userId: ownerUserId,
+        title: 'Personal chat',
+        askModelIds: ['openrouter/free'],
+        actModelId: 'openrouter/free',
+      })
+      const organizationId = await conversations.createConversation({
+        workspaceId: orgWorkspaceId,
+        createdByPrincipalId: ownerPrincipalId,
+        conversationType: 'personal',
+        userId: ownerUserId,
+        title: 'Organization chat',
+        askModelIds: ['openrouter/free'],
+        actModelId: 'openrouter/free',
+      })
+      assert.deepEqual(
+        (await conversations.listConversations({
+          workspaceId: personalWorkspaceId,
+          conversationType: 'personal',
+          userId: ownerUserId,
+        })).map((conversation) => conversation._id),
+        [personalId],
+      )
+      assert.deepEqual(
+        (await conversations.listConversations({
+          workspaceId: orgWorkspaceId,
+          conversationType: 'personal',
+          userId: ownerUserId,
+        })).map((conversation) => conversation._id),
+        [organizationId],
+      )
+      await conversations.addMessage({
+        workspaceId: personalWorkspaceId,
+        conversationId: personalId,
+        userId: ownerUserId,
+        turnId: `${scope}_turn`,
+        role: 'user',
+        mode: 'act',
+        content: 'Scoped message',
+        contentType: 'text',
+      })
+      const [message] = await conversations.getConversationMessages({
+        workspaceId: personalWorkspaceId,
+        conversationId: personalId,
+        userId: ownerUserId,
+      })
+      assert.equal(message?.authorKind, 'human')
+      assert.equal(message?.authorPrincipalId, `${scope}_personal_principal`)
+      assert.equal((await repository.getResourceWorkspace({
+        resourceType: 'conversation',
+        resourceId: personalId,
+      }))?.workspaceId, personalWorkspaceId)
     })
 
     await t.test('account deletion erases Personal data and scrubs organization identity', async () => {

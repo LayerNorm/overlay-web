@@ -905,6 +905,15 @@ export default defineSchema({
 
   conversations: defineTable({
     userId: v.string(),
+    // Optional during the Phase 2 compatibility window. The migration mutation
+    // backfills every legacy document before workspace chat views are enabled.
+    workspaceId: v.optional(v.string()),
+    conversationType: v.optional(v.union(
+      v.literal('personal'),
+      v.literal('dm'),
+      v.literal('channel'),
+    )),
+    createdByPrincipalId: v.optional(v.string()),
     clientId: v.optional(v.string()),
     title: v.string(),
     projectId: v.optional(v.string()),
@@ -920,6 +929,12 @@ export default defineSchema({
     sharedAt: v.optional(v.number()),
     isAutomation: v.optional(v.boolean()),
   }).index('by_userId', ['userId'])
+    .index('by_workspaceId_clientId', ['workspaceId', 'clientId'])
+    .index('by_workspaceId_conversationType_lastModified', [
+      'workspaceId',
+      'conversationType',
+      'lastModified',
+    ])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_lastModified', ['userId', 'lastModified'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
@@ -929,6 +944,13 @@ export default defineSchema({
   conversationMessages: defineTable({
     conversationId: v.id('conversations'),
     userId: v.string(),
+    authorKind: v.optional(v.union(
+      v.literal('human'),
+      v.literal('agent'),
+      v.literal('model'),
+      v.literal('system'),
+    )),
+    authorPrincipalId: v.optional(v.string()),
     turnId: v.string(),
     role: v.union(v.literal('user'), v.literal('assistant')),
     mode: v.union(v.literal('ask'), v.literal('act')),

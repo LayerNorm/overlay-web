@@ -5,7 +5,7 @@ import { DEFAULT_OVERLAY_FEATURE_FLAGS } from '@overlay/app-core'
 import type { WorkspaceResourceScope } from '@overlay/workspace-contracts'
 import { getAuthorizationRoutePolicy } from '@/server/authorization/authorization-route-policy'
 
-test('Phase 1 enables only the workspace foundation in the Overlay app', () => {
+test('workspace foundation remains enabled as collaborative chats roll forward', () => {
   const defaultFlags = new Map(
     DEFAULT_OVERLAY_FEATURE_FLAGS.map((flag) => [flag.id, flag.enabled]),
   )
@@ -14,7 +14,7 @@ test('Phase 1 enables only the workspace foundation in the Overlay app', () => {
   )
   assert.equal(defaultFlags.get('workspaces'), false)
   assert.equal(appFlags.get('workspaces'), true)
-  assert.equal(appFlags.get('collaborativeChats'), false)
+  assert.equal(appFlags.get('collaborativeChats'), true)
   assert.equal(appFlags.get('channels'), false)
   assert.equal(appFlags.get('agents'), false)
   assert.equal(appFlags.get('resourceSharing'), false)

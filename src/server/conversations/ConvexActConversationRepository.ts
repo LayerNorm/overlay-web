@@ -363,7 +363,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     return await convex.query<SharedConversationRow | null>('chat/conversations:getPublicByToken', args)
   }
 
-  async getConversationEventCursor(_args: { userId: string }): Promise<number> {
+  async getConversationEventCursor(_args: { userId: string; workspaceId?: string }): Promise<number> {
     return 0
   }
 
@@ -371,6 +371,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     afterSequence: number
     limit: number
     userId: string
+    workspaceId?: string
   }): Promise<ConversationEventRow[]> {
     return []
   }
@@ -381,6 +382,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     signal?: AbortSignal
     timeoutMs: number
     userId: string
+    workspaceId?: string
   }): Promise<ConversationEventRow[]> {
     return []
   }

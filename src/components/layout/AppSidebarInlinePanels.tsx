@@ -388,6 +388,14 @@ export const toolsInlineItems = [
   { id: 'apps', label: 'Apps', locked: true },
 ] as const
 
+export const chatsInlineItems = [
+  { id: 'personal', label: 'Personal' },
+  { id: 'dms', label: 'Direct Messages' },
+  { id: 'channels', label: 'Channels' },
+  { id: 'unread', label: 'Unread' },
+  { id: 'all', label: 'All' },
+] as const
+
 export function InlineNavChildren({
   items,
   activeId,

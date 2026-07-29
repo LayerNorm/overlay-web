@@ -14,6 +14,10 @@ import {
   projects,
   skills,
   userSettings,
+  workspaces,
+  workspaceMemberships,
+  workspacePrincipals,
+  workspaceResourceScopes,
 } from '@/server/database/postgres/schema'
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
@@ -54,24 +58,92 @@ export class PostgresActConversationRepository implements ActConversationReposit
     projectId?: string
     title: string
     userId: string
+    workspaceId?: string
+    conversationType?: 'personal' | 'dm' | 'channel'
+    createdByPrincipalId?: string
   }): Promise<ConversationId> {
     const now = new Date()
     const id = conversationId()
-    const values = {
-      id,
-      userId: args.userId,
-      clientId: normalizeOptional(args.clientId),
-      title: args.title,
-      projectId: normalizeOptional(args.projectId),
-      askModelIds: args.askModelIds,
-      actModelId: args.actModelId,
-      lastMode: args.lastMode ?? 'act',
-      lastModified: now,
-      createdAt: now,
-      updatedAt: now,
-    }
-
     const [row] = await this.db.transaction(async (tx) => {
+      let [workspace] = args.workspaceId
+        ? await tx.select().from(workspaces).where(and(
+            eq(workspaces.id, args.workspaceId),
+            eq(workspaces.status, 'active'),
+          )).limit(1)
+        : await tx.select().from(workspaces).where(and(
+            eq(workspaces.kind, 'personal'),
+            eq(workspaces.personalOwnerUserId, args.userId),
+            eq(workspaces.status, 'active'),
+          )).limit(1)
+      let principal
+      if (!workspace && !args.workspaceId) {
+        const workspaceId = `workspace_${randomUUID()}`
+        const principalId = `principal_${randomUUID()}`
+        ;[workspace] = await tx.insert(workspaces).values({
+          id: workspaceId,
+          kind: 'personal',
+          name: 'Personal',
+          slug: `personal-${randomUUID()}`,
+          status: 'active',
+          personalOwnerUserId: args.userId,
+          createdAt: now,
+          updatedAt: now,
+        }).returning()
+        ;[principal] = await tx.insert(workspacePrincipals).values({
+          id: principalId,
+          workspaceId,
+          type: 'human',
+          userId: args.userId,
+          displayName: 'Member',
+          createdAt: now,
+          updatedAt: now,
+        }).returning()
+        await tx.insert(workspaceMemberships).values({
+          workspaceId,
+          principalId,
+          role: 'owner',
+          status: 'active',
+          joinedAt: now,
+          updatedAt: now,
+        })
+        await tx.update(workspaces)
+          .set({ createdByPrincipalId: principalId, updatedAt: now })
+          .where(eq(workspaces.id, workspaceId))
+      }
+      if (!workspace) throw new Error('WORKSPACE_ACCESS_DENIED')
+      if (!principal) {
+        ;[principal] = await tx.select().from(workspacePrincipals).where(and(
+          eq(workspacePrincipals.workspaceId, workspace.id),
+          eq(workspacePrincipals.userId, args.userId),
+          eq(workspacePrincipals.type, 'human'),
+          isNull(workspacePrincipals.archivedAt),
+        )).limit(1)
+      }
+      if (!principal || (args.createdByPrincipalId && args.createdByPrincipalId !== principal.id)) {
+        throw new Error('WORKSPACE_ACCESS_DENIED')
+      }
+      const [membership] = await tx.select().from(workspaceMemberships).where(and(
+        eq(workspaceMemberships.workspaceId, workspace.id),
+        eq(workspaceMemberships.principalId, principal.id),
+        eq(workspaceMemberships.status, 'active'),
+      )).limit(1)
+      if (!membership) throw new Error('WORKSPACE_ACCESS_DENIED')
+      const values = {
+        id,
+        workspaceId: workspace.id,
+        conversationType: args.conversationType ?? 'personal' as const,
+        createdByPrincipalId: principal.id,
+        userId: args.userId,
+        clientId: normalizeOptional(args.clientId),
+        title: args.title,
+        projectId: normalizeOptional(args.projectId),
+        askModelIds: args.askModelIds,
+        actModelId: args.actModelId,
+        lastMode: args.lastMode ?? 'act' as const,
+        lastModified: now,
+        createdAt: now,
+        updatedAt: now,
+      }
       await assertActivePostgresProject(tx, {
         projectId: values.projectId,
         userId: args.userId,
@@ -81,7 +153,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
             .insert(conversations)
             .values(values)
             .onConflictDoUpdate({
-              target: [conversations.userId, conversations.clientId],
+              target: [conversations.workspaceId, conversations.clientId],
               set: {
                 actModelId: values.actModelId,
                 askModelIds: values.askModelIds,
@@ -99,6 +171,16 @@ export class PostgresActConversationRepository implements ActConversationReposit
             .returning({ id: conversations.id })
       const created = inserted[0]
       if (created?.id) {
+        await tx.insert(workspaceResourceScopes).values({
+          workspaceId: workspace.id,
+          resourceType: 'conversation',
+          resourceId: created.id,
+          createdAt: now,
+          updatedAt: now,
+        }).onConflictDoUpdate({
+          target: [workspaceResourceScopes.resourceType, workspaceResourceScopes.resourceId],
+          set: { workspaceId: workspace.id, updatedAt: now },
+        })
         await emitConversationEvent(tx, {
           conversationId: created.id,
           type: 'conversation.created',
@@ -115,6 +197,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
   async getConversationById(args: {
     conversationId: ConversationId
     userId: string
+    workspaceId?: string
   }): Promise<ConversationListRow | null> {
     const [row] = await this.db
       .select()
@@ -122,6 +205,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
       .where(and(
         eq(conversations.id, args.conversationId),
         eq(conversations.userId, args.userId),
+        args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
       ))
       .limit(1)
     return row ? mapConversationRow(row) : null
@@ -131,6 +215,8 @@ export class PostgresActConversationRepository implements ActConversationReposit
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
+    workspaceId?: string
+    conversationType?: 'personal' | 'dm' | 'channel'
   }): Promise<ConversationListRow[]> {
     const rows = await this.db
       .select()
@@ -139,6 +225,8 @@ export class PostgresActConversationRepository implements ActConversationReposit
         includeDeleted: args.includeDeleted,
         updatedSince: args.updatedSince,
         userId: args.userId,
+        workspaceId: args.workspaceId,
+        conversationType: args.conversationType,
       }))
       .orderBy(desc(conversations.lastModified))
     return rows.map(mapConversationRow)
@@ -149,6 +237,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     projectId: string
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<ConversationListRow[]> {
     const rows = await this.db
       .select()
@@ -158,6 +247,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
           includeDeleted: args.includeDeleted,
           updatedSince: args.updatedSince,
           userId: args.userId,
+          workspaceId: args.workspaceId,
         }),
         eq(conversations.projectId, args.projectId),
       ))
@@ -171,7 +261,9 @@ export class PostgresActConversationRepository implements ActConversationReposit
     conversationId: ConversationId
     limit: number
     userId: string
+    workspaceId?: string
   }): Promise<ConversationMessageRow[]> {
+    if (args.workspaceId && !await this.getConversationById(args)) return []
     const limit = Math.max(1, Math.min(100, Math.floor(args.limit)))
     const beforeCreatedAt = finiteDate(args.beforeCreatedAt)
     const filters = [
@@ -193,7 +285,9 @@ export class PostgresActConversationRepository implements ActConversationReposit
   async getConversationMessages(args: {
     conversationId: ConversationId
     userId: string
+    workspaceId?: string
   }): Promise<ConversationMessageRow[]> {
+    if (args.workspaceId && !await this.getConversationById(args)) return []
     const rows = await this.db
       .select()
       .from(conversationMessages)
@@ -213,6 +307,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     projectId?: string | null
     title?: string
     userId: string
+    workspaceId?: string
   }): Promise<void> {
     const now = new Date()
     await this.db.transaction(async (tx) => {
@@ -236,6 +331,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         .where(and(
           eq(conversations.id, args.conversationId),
           eq(conversations.userId, args.userId),
+          args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
         ))
         .returning({ id: conversations.id })
       if (updated.length > 0) {
@@ -251,6 +347,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
   async deleteConversation(args: {
     conversationId: ConversationId
     userId: string
+    workspaceId?: string
   }): Promise<void> {
     const now = new Date()
     await this.db.transaction(async (tx) => {
@@ -264,6 +361,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         .where(and(
           eq(conversations.id, args.conversationId),
           eq(conversations.userId, args.userId),
+          args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
         ))
         .returning({ id: conversations.id })
       if (updated.length > 0) {
@@ -352,15 +450,30 @@ export class PostgresActConversationRepository implements ActConversationReposit
     tokens?: { input: number; output: number }
     turnId: string
     userId: string
+    workspaceId?: string
+    authorKind?: 'human' | 'agent' | 'model' | 'system'
+    authorPrincipalId?: string
     variantIndex?: number
   }): Promise<ConversationMessageId | null> {
     const now = new Date()
     const id = messageId()
     await this.db.transaction(async (tx) => {
+      const [conversation] = await tx.select().from(conversations).where(and(
+        eq(conversations.id, args.conversationId),
+        eq(conversations.userId, args.userId),
+        args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
+        isNull(conversations.deletedAt),
+      )).limit(1)
+      if (!conversation) throw new Error('WORKSPACE_ACCESS_DENIED')
+      const authorKind = args.authorKind ?? (args.role === 'user' ? 'human' : 'model')
       await tx.insert(conversationMessages).values({
         id,
         conversationId: args.conversationId,
         userId: args.userId,
+        authorKind,
+        authorPrincipalId: authorKind === 'human' || authorKind === 'agent'
+          ? args.authorPrincipalId ?? conversation.createdByPrincipalId
+          : undefined,
         turnId: args.turnId,
         role: args.role,
         mode: args.mode,
@@ -545,6 +658,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         id,
         conversationId: args.conversationId,
         userId: args.userId,
+        authorKind: 'model',
         turnId: args.turnId,
         role: 'assistant',
         mode: args.mode,
@@ -952,12 +1066,16 @@ export class PostgresActConversationRepository implements ActConversationReposit
     }
   }
 
-  async getConversationEventCursor(args: { userId: string }): Promise<number> {
+  async getConversationEventCursor(args: { userId: string; workspaceId?: string }): Promise<number> {
     return await withTransientPostgresReadRetry(async () => {
       const [event] = await this.db
         .select({ sequence: conversationEvents.sequence })
         .from(conversationEvents)
-        .where(eq(conversationEvents.userId, args.userId))
+        .innerJoin(conversations, eq(conversations.id, conversationEvents.conversationId))
+        .where(and(
+          eq(conversationEvents.userId, args.userId),
+          args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
+        ))
         .orderBy(desc(conversationEvents.sequence))
         .limit(1)
       return event?.sequence ?? 0
@@ -968,18 +1086,21 @@ export class PostgresActConversationRepository implements ActConversationReposit
     afterSequence: number
     limit: number
     userId: string
+    workspaceId?: string
   }): Promise<ConversationEventRow[]> {
     return await withTransientPostgresReadRetry(async () => {
       const rows = await this.db
-        .select()
+        .select({ event: conversationEvents })
         .from(conversationEvents)
+        .innerJoin(conversations, eq(conversations.id, conversationEvents.conversationId))
         .where(and(
           eq(conversationEvents.userId, args.userId),
           gt(conversationEvents.sequence, args.afterSequence),
+          args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
         ))
         .orderBy(asc(conversationEvents.sequence))
         .limit(Math.max(1, Math.min(200, Math.floor(args.limit))))
-      return rows.map((row) => ({
+      return rows.map(({ event: row }) => ({
         sequence: row.sequence,
         conversationId: row.conversationId,
         type: row.type as ConversationEventRow['type'],
@@ -996,6 +1117,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     signal?: AbortSignal
     timeoutMs: number
     userId: string
+    workspaceId?: string
   }): Promise<ConversationEventRow[]> {
     const deadline = Date.now() + Math.max(1, args.timeoutMs)
     while (!args.signal?.aborted) {
@@ -1032,12 +1154,18 @@ export class PostgresActConversationRepository implements ActConversationReposit
 }
 
 function conversationListWhere(args: {
+  conversationType?: 'personal' | 'dm' | 'channel'
   includeDeleted?: boolean
   updatedSince?: number
   userId: string
+  workspaceId?: string
 }) {
   return and(
     eq(conversations.userId, args.userId),
+    args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
+    args.conversationType
+      ? eq(conversations.conversationType, args.conversationType)
+      : undefined,
     args.includeDeleted ? undefined : isNull(conversations.deletedAt),
     finiteDate(args.updatedSince)
       ? or(
@@ -1052,6 +1180,9 @@ function mapConversationRow(row: typeof conversations.$inferSelect): Conversatio
   return {
     _id: row.id,
     userId: row.userId,
+    workspaceId: row.workspaceId,
+    conversationType: row.conversationType,
+    createdByPrincipalId: row.createdByPrincipalId,
     clientId: row.clientId ?? undefined,
     title: row.title,
     lastModified: toMillis(row.lastModified),
@@ -1072,6 +1203,8 @@ function mapConversationMessageRow(row: typeof conversationMessages.$inferSelect
     _id: row.id,
     turnId: row.turnId,
     role: row.role,
+    authorKind: row.authorKind,
+    authorPrincipalId: row.authorPrincipalId ?? undefined,
     mode: row.mode,
     content: row.content,
     contentType: row.contentType,

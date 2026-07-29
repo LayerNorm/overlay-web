@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, type MouseEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { MessageSquare, Check, Pencil, Trash2 } from 'lucide-react'
+import { MessageSquare, Check, Hash, Pencil, Trash2, UsersRound } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import {
@@ -24,6 +24,7 @@ import {
   getCachedChatList,
   getCachedChatListPageInfo,
   removeCachedChat,
+  setActiveChatListView,
   upsertCachedChat,
 } from '@/shared/chat/chat-list-cache'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -35,17 +36,26 @@ const panelItemClass =
 const inlineConfirmDeleteButtonClass =
   'ml-1 inline-flex h-5 shrink-0 items-center rounded-full bg-red-500/15 px-2 text-[11px] font-medium leading-none text-red-500 transition-colors hover:bg-red-500/25'
 
-type Conversation = { _id: string; title: string; lastModified: number }
+type Conversation = {
+  _id: string
+  title: string
+  lastModified: number
+  conversationType?: 'personal' | 'dm' | 'channel'
+}
 
 export function ChatInlinePanel({
   refreshKey,
   searchQuery = '',
   onNavigate,
+  baseHref = '/app/chat',
+  workspaceId,
   seededChats,
 }: {
   refreshKey: number
   searchQuery?: string
   onNavigate?: () => void
+  baseHref?: string
+  workspaceId?: string | null
   seededChats?: Conversation[]
 }) {
   const router = useRouter()
@@ -63,6 +73,12 @@ export function ChatInlinePanel({
   const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
   const [pendingDeleteChatId, setPendingDeleteChatId] = useState<string | null>(null)
   const activeId = searchParams?.get('id') ?? null
+  const chatView = (() => {
+    const value = searchParams?.get('view')
+    if (value === 'dms' || value === 'channels' || value === 'unread' || value === 'all') return value
+    return 'personal'
+  })()
+  setActiveChatListView(chatView)
 
   const loadChats = useCallback(async (signal?: { cancelled: boolean }) => {
     if (seededChats) {
@@ -150,7 +166,7 @@ export function ChatInlinePanel({
       signal.cancelled = true
       window.clearTimeout(timeoutId)
     }
-  }, [authLoading, loadChats, refreshKey, seededChats, user])
+  }, [authLoading, chatView, loadChats, refreshKey, seededChats, user, workspaceId])
 
   useEffect(() => {
     if (isPublicShowcase) return
@@ -263,20 +279,38 @@ export function ChatInlinePanel({
     dispatchChatDeleted({ chatId })
     await overlayAppClient.conversations.deleteResponse({ conversationId: chatId })
     if (activeId === chatId) {
-      router.push('/app/chat')
+      router.push(`${baseHref}?${new URLSearchParams({ view: chatView }).toString()}`)
     }
   }
 
+  const viewChats = chatView === 'personal'
+    ? chats.filter((chat) => (chat.conversationType ?? 'personal') === 'personal')
+    : chatView === 'dms'
+      ? chats.filter((chat) => chat.conversationType === 'dm')
+      : chatView === 'channels'
+        ? chats.filter((chat) => chat.conversationType === 'channel')
+        : chatView === 'unread'
+          ? chats.filter((chat) => getUnread(chat._id) > 0)
+          : chats
   const filteredChats = searchQuery.trim()
-    ? chats.filter((c) => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
-    : chats
+    ? viewChats.filter((c) => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    : viewChats
+  const emptyLabel = {
+    personal: 'No personal chats yet',
+    dms: 'No direct messages yet',
+    channels: 'No channels yet',
+    unread: 'You are all caught up',
+    all: 'No chats yet',
+  }[chatView]
 
   return (
     <SidebarResourceList>
       {loading ? (
         <SidebarListSkeleton rows={6} />
       ) : filteredChats.length === 0 ? (
-        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">{chats.length === 0 ? 'No chats yet' : 'No results'}</p>
+        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">
+          {viewChats.length === 0 ? emptyLabel : 'No results'}
+        </p>
       ) : (
         <>
           {filteredChats.map((chat) => {
@@ -295,11 +329,12 @@ export function ChatInlinePanel({
                 onClick={() => {
                   if (isDeleting) return
                   if (isEditing) return
-                  const href = `/app/chat?${new URLSearchParams({
+                  const href = `${baseHref}?${new URLSearchParams({
                     ...(isPublicShowcase ? { showcase: '1' } : {}),
+                    view: chatView,
                     id: chat._id,
                   }).toString()}`
-                  if (pathname === '/app/chat') {
+                  if (pathname === baseHref) {
                     window.history.pushState(null, '', href)
                     window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
                       detail: { chatId: chat._id },
@@ -313,7 +348,13 @@ export function ChatInlinePanel({
                   isDeleting ? 'max-h-0 -translate-y-1 opacity-0' : 'max-h-7 opacity-100'
                 } ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
               >
-                <MessageSquare size={12} className="shrink-0" />
+                {chat.conversationType === 'channel' ? (
+                  <Hash size={12} className="shrink-0" />
+                ) : chat.conversationType === 'dm' ? (
+                  <UsersRound size={12} className="shrink-0" />
+                ) : (
+                  <MessageSquare size={12} className="shrink-0" />
+                )}
                 {!isPublicShowcase && isEditing ? (
                   <input
                     autoFocus

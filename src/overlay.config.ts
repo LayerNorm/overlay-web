@@ -29,7 +29,9 @@ const baseOverlayAppConfig = defineOverlayAppConfig({
     ...DEFAULT_OVERLAY_SETTINGS_SECTIONS.slice(1),
   ],
   featureFlags: DEFAULT_OVERLAY_FEATURE_FLAGS.map((flag) => (
-    flag.id === 'workspaces' ? { ...flag, enabled: true } : flag
+    flag.id === 'workspaces' || flag.id === 'collaborativeChats'
+      ? { ...flag, enabled: true }
+      : flag
   )),
   featureModules: [...DEFAULT_OVERLAY_FEATURE_MODULES],
   sidebarActions: [...DEFAULT_OVERLAY_SIDEBAR_ACTIONS],

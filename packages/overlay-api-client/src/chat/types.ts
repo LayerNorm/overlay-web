@@ -2,6 +2,7 @@ import type { ConversationMessage, ConversationSummary } from '@overlay/app-core
 import type { PaginationQuery } from '../shared/types'
 
 export interface ConversationQuery extends PaginationQuery {
+  view?: 'personal' | 'dms' | 'channels' | 'unread' | 'all'
   conversationId?: string
   messages?: boolean
   projectId?: string
@@ -23,6 +24,7 @@ export type ConversationGetResponse =
     }
 
 export interface CreateConversationRequest {
+  conversationType?: 'personal' | 'dm' | 'channel'
   title?: string
   projectId?: string
   askModelIds?: string[]

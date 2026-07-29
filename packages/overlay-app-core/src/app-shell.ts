@@ -99,7 +99,14 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
 ] as const
 
 export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
-  { id: 'chat', href: '/app/chat', label: 'Chat', icon: 'message-square', requiredCapabilities: ['chat'] },
+  {
+    id: 'chat',
+    href: '/app/chat',
+    label: 'Chats',
+    icon: 'message-square',
+    requiredCapabilities: ['chat'],
+    subviews: ['personal', 'dms', 'channels', 'unread', 'all'],
+  },
   { id: 'files', href: '/app/files', label: 'Files', icon: 'file-text', requiredCapabilities: ['files', 'knowledge'] },
   {
     id: 'extensions',

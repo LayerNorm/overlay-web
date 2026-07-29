@@ -7,7 +7,6 @@ import { eq, sql } from 'drizzle-orm'
 import { createOverlayPostgresDb, createOverlayPostgresPool } from '@/server/database/postgres/client'
 import {
   durableJobs,
-  conversations,
   knowledgeChunks,
   knowledgeSources,
   knowledgeSourceVersions,
@@ -28,6 +27,7 @@ import {
   PostgresCanonicalKnowledgeIndexService,
 } from './PostgresCanonicalKnowledgeIndex'
 import { createPostgresKnowledgeBaseRepositories } from './PostgresKnowledgeBaseRepositories'
+import { PostgresActConversationRepository } from '@/server/conversations/PostgresActConversationRepository'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
 
@@ -58,12 +58,11 @@ test('Postgres canonical knowledge source lifecycle', {
       repositories,
     })
     const base = await bases.createKnowledgeBase({ title: 'Organic Chemistry', userId })
-    const conversationId = `kb_conversation_${randomUUID()}`
-    await db.insert(conversations).values({
-      id: conversationId,
+    const conversationId = await new PostgresActConversationRepository(db).createConversation({
       userId,
       title: 'Grounded chemistry chat',
       lastMode: 'act',
+      askModelIds: [],
       actModelId: 'openrouter/free',
     })
     await bases.attachConversation({ conversationId, knowledgeBaseId: base.id, userId })

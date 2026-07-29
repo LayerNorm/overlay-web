@@ -21,6 +21,9 @@ export function AppShellSidebar() {
   const searchParams = useSearchParams()
   const publicShowcase = searchParams?.get('showcase') === '1'
   const { activeWorkspaceId } = useWorkspace()
+  const chatBaseHref = activeWorkspaceId
+    ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
+    : '/app/chat'
 
   return (
     <AppSidebar
@@ -42,6 +45,8 @@ export function AppShellSidebar() {
           refreshKey={refreshKey}
           searchQuery=""
           onNavigate={onNavigate}
+          baseHref={chatBaseHref}
+          workspaceId={activeWorkspaceId}
           seededChats={publicShowcase ? SHOWCASE_CHAT_SUMMARIES : undefined}
         />
       )}

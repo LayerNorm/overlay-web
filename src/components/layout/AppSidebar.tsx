@@ -27,6 +27,7 @@ import {
   FilesInlinePanel,
   InlineNavChildren,
   ProjectsInlinePanel,
+  chatsInlineItems,
   toolsInlineItems,
 } from '@/components/layout/AppSidebarInlinePanels'
 import { useAppSidebarActions } from './sidebar/useAppSidebarActions'
@@ -235,6 +236,14 @@ export default function AppSidebar({
     if (current === 'apps') return 'apps'
     if (current === 'installed') return 'installed'
     return 'connectors'
+  })()
+  const chatsView = (() => {
+    const current = currentSearchParams.get('view')
+    if (current === 'dms') return 'dms'
+    if (current === 'channels') return 'channels'
+    if (current === 'unread') return 'unread'
+    if (current === 'all') return 'all'
+    return 'personal'
   })()
   const loadEntitlements = useCallback(async () => {
     if (!billingEnabled || authLoading || !authUserId) {
@@ -454,7 +463,7 @@ export default function AppSidebar({
   )
   const contextualSearchCategory = toMentionCategory(contextualAction?.searchCategory)
   const hasInlineChildren = (href?: string) =>
-    href === '/app/tools'
+    href === '/app/tools' || href === '/app/chat'
 
   const sidebarContent = (
     <>
@@ -639,6 +648,22 @@ export default function AppSidebar({
                     onSelect={(next) => {
                       setMobileMenuOpen(false)
                       router.push(`/app/tools?${new URLSearchParams({
+                        ...(publicShowcase ? { showcase: '1' } : {}),
+                        view: next,
+                      }).toString()}`)
+                    }}
+                  />
+                ) : null}
+                {!sidebarCollapsed && href === '/app/chat' && active ? (
+                  <InlineNavChildren
+                    items={chatsInlineItems}
+                    activeId={chatsView}
+                    onSelect={(next) => {
+                      setMobileMenuOpen(false)
+                      const baseHref = activeWorkspaceId
+                        ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
+                        : '/app/chat'
+                      router.push(`${baseHref}?${new URLSearchParams({
                         ...(publicShowcase ? { showcase: '1' } : {}),
                         view: next,
                       }).toString()}`)

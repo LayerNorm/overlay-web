@@ -5,7 +5,7 @@ description: "Accepted Phase 0 decisions for workspace isolation, collaborative 
 
 ## Status
 
-Accepted on July 26, 2026. Phase 1 shipped the workspace foundation on July 29, 2026. Only the `workspaces` app feature is enabled; collaborative chats, Channels, named agents, universal sharing, and shared multi-tenant deployment remain disabled until their individual release gates pass.
+Accepted on July 26, 2026. Phase 1 shipped the workspace foundation and Phase 2 shipped the workspace-aware Chats information architecture on July 29, 2026. The `workspaces` and `collaborativeChats` app features are enabled; Direct Message creation, Channels, named agents, universal sharing, and shared multi-tenant deployment remain disabled until their individual release gates pass.
 
 Phase 1 includes:
 
@@ -19,6 +19,25 @@ Phase 1 includes:
 - Workspace switching, creation, people, guest, team, ownership-transfer, and archive UI.
 
 The initial organization does not receive `#general` yet. That invariant is created atomically when Phase 4 enables Channels, so Phase 1 does not persist a fake room before room authorization exists.
+
+Phase 2 includes:
+
+- A top-level **Chats** navigation item with Personal, Direct Messages, Channels, Unread, and All views above the constrained conversation list.
+- Canonical workspace-aware chat URLs and cache partitions by both workspace and view.
+- Explicit `personal`, `dm`, and `channel` conversation types, plus human, agent, model, and system message-author kinds.
+- Workspace and creator-principal bindings on every conversation, and author-principal attribution for human and agent messages.
+- Provider-neutral workspace filtering on conversation list, lookup, mutation, deletion, and message history boundaries.
+- A stable public-token path that remains independent of the active workspace while authenticated reads fail closed across workspace boundaries.
+- Cursor-paginated Convex migration and audit functions plus an idempotent Postgres migration.
+
+The Phase 2 provider migration preserved row counts and reached zero missing bindings:
+
+| Provider | Conversations | Messages | Missing conversation scope | Missing author | Missing resource scope |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Convex production | 1,197 | 4,585 | 0 | 0 | 0 |
+| Convex development | 851 | 1,961 | 0 | 0 | 0 |
+
+The Postgres migration was also rehearsed from an empty database through schema version 32, and its principal-attribution foreign key was verified to cascade Personal-workspace erasure without breaking the message identity invariant.
 
 ## Workspace Is The Isolation Boundary
 
@@ -93,4 +112,4 @@ Phase 0 intentionally preserves the current behavior before multiplayer schemas 
 | Agents | No durable reusable agent directory or principal |
 | Multi-tenancy | Disabled by runtime validation |
 
-`npm run test:workspaces:phase0` preserves the pre-multiplayer characterization. `npm run test:workspaces:phase1` validates the implemented workspace lifecycle against unit, Postgres, and live development Convex contracts. Later phases must update the characterization test in the same commit that deliberately changes a boundary.
+`npm run test:workspaces:phase0` preserves the pre-multiplayer characterization. `npm run test:workspaces:phase1` validates the workspace lifecycle, and `npm run test:workspaces:phase2` adds Chats IA, migration, isolation, and authorship gates across unit, Postgres, and live development Convex contracts. Later phases must update the characterization test in the same commit that deliberately changes a boundary.
