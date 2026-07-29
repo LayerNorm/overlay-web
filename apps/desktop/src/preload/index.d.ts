@@ -1,4 +1,10 @@
 import { Transcription } from '../types/transcription'
+import type {
+  NativeRecordingCancelEvent,
+  NativeRecordingPayload,
+  NativeRecordingStartEvent,
+  NativeRecordingStopEvent
+} from '../types/native-audio'
 import type { KnowledgeMigrationJournal } from '@overlay/app-core'
 import type {
   LegacyKnowledgeAsset,
@@ -51,9 +57,20 @@ interface Bridge {
   openRecordingsFolder(): Promise<void>
   onForceSignOut(cb: (data?: { reason?: 'session_expired' }) => void): () => void
   onWindowZoomCommand(cb: (command: { action?: 'in' | 'out' | 'reset' }) => void): () => void
-  onRecordStart(cb: () => void): () => void
-  onRecordStop(cb: () => void): () => void
-  onRecordCancel(cb: () => void): () => void
+  onRecordStart(cb: (data?: NativeRecordingStartEvent) => void): () => void
+  onRecordStop(cb: (data?: NativeRecordingStopEvent) => void): () => void
+  onRecordCancel(cb: (data?: NativeRecordingCancelEvent) => void): () => void
+  startNativeRecording(useDefaultDevice: boolean, deviceLabel?: string): Promise<{
+    started: boolean
+    nativeCapture: boolean
+    error?: string
+  }>
+  configureNativeRecording(useDefaultDevice: boolean, deviceLabel?: string): Promise<void>
+  stopNativeRecording(): Promise<NativeRecordingPayload>
+  cancelNativeRecording(): Promise<void>
+  pauseNativeRecording(): Promise<void>
+  resumeNativeRecording(): Promise<void>
+  onNativeRecordingLevel(cb: (level: number) => void): () => void
   onTranscriptionAdd(cb: (transcription: Transcription) => void): () => void
   transcribe(
     mime: string,

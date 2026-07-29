@@ -66,6 +66,7 @@ const ROLE_CHANNEL_PREFIXES: Record<TrustedIpcWindowRole, readonly string[]> = {
     'capture-',
     'chat:',
     'models:',
+    'native-audio:',
     'onboarding:',
     'panel:',
     'permissions:',
@@ -390,6 +391,7 @@ export function maxInputBytesForChannel(channel: string): number {
 
 function maxOutputBytesForChannel(channel: string): number {
   if (channel === 'app-api:request') return 32 * 1024 * 1024
+  if (channel === 'native-audio:stop') return 26 * 1024 * 1024
   return DEFAULT_MAX_OUTPUT_BYTES
 }
 

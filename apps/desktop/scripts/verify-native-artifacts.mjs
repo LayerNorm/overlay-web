@@ -62,6 +62,18 @@ if (axHelper?.sourceRevision !== axSourceDigest) {
   )
 }
 
+const nativeAudioHelper = manifest.artifacts.find(
+  (entry) => entry.path === 'resources/native-audio-helper'
+)
+const nativeAudioSourceDigest = hashFile(
+  path.join(root, 'native-audio-helper/native-audio-helper.swift')
+)
+if (nativeAudioHelper?.sourceRevision !== nativeAudioSourceDigest) {
+  failures.push(
+    `Native audio helper source digest changed: expected ${nativeAudioHelper?.sourceRevision}, got ${nativeAudioSourceDigest}`
+  )
+}
+
 if (failures.length) {
   console.error(`Native artifact verification failed:\n${failures.map((item) => `- ${item}`).join('\n')}`)
   process.exit(1)
