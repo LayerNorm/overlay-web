@@ -79,6 +79,7 @@ import {
   authorizeCatalogResource,
 } from '@/server/authorization'
 import type { AuthorizationCapability } from '@overlay/authz-contracts'
+import { readProjectSettings } from '@/shared/projects/project-settings'
 
 export const maxDuration = 800
 
@@ -178,7 +179,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       turnId,
       variantIndex: rawMultiModelSlotIndex,
     })
-    const effectiveModelId = resolveEffectiveActModelId(modelId)
+    const preferredProjectModelId = await resolveProjectPreferredModelId({
+      conversationId: conversationId as Id<'conversations'> | undefined,
+      projectId,
+      userId: conversationUserId,
+    })
+    const effectiveModelId = resolveEffectiveActModelId(modelId ?? preferredProjectModelId)
     const serverSecret = getInternalApiSecret()
     const requestedToolIds = normalizeChatToolRequestIds(rawRequestedToolIds)
     const memoryEnabled = rawMemoryEnabled !== false
@@ -985,5 +991,30 @@ function safeGatewayModelId(modelId: string): string | null {
     return getGatewayModelId(modelId)
   } catch (_error) {
     return null
+  }
+}
+
+async function resolveProjectPreferredModelId(args: {
+  conversationId?: Id<'conversations'>
+  projectId?: string
+  userId: string
+}): Promise<string | undefined> {
+  try {
+    const conversation = args.conversationId
+      ? await actConversationRepository.getConversation({
+          conversationId: args.conversationId,
+          userId: args.userId,
+        })
+      : null
+    const projectId = args.projectId?.trim() || conversation?.projectId
+    if (!projectId) return undefined
+    const project = await actConversationRepository.getProject({
+      projectId: projectId as Id<'projects'>,
+      userId: args.userId,
+    })
+    if (!project || project.archivedAt) return undefined
+    return readProjectSettings(project.settings).preferredModelId
+  } catch (_error) {
+    return undefined
   }
 }

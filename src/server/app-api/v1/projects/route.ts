@@ -16,6 +16,10 @@ import {
   ProjectListQuery,
   UpdateProjectRequest,
 } from '@/shared/schemas/projects'
+import {
+  projectAutomationsEnabled,
+  readProjectSettings,
+} from '@/shared/projects/project-settings'
 const projectService = new ProjectService(repositoryProxy<ProjectRepository>(
   () => getOverlayServerContext().appData.repositories.projects,
 ), {
@@ -126,6 +130,19 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       archived,
       settings,
     })
+    if (archived === true || !projectAutomationsEnabled(readProjectSettings(project.settings))) {
+      const automationRepository = getOverlayServerContext().appData.repositories.automations
+      const automations = await automationRepository.listAutomations({
+        projectId,
+        userId: getAuthorizedResourceUserId(context),
+      })
+      await Promise.all(automations
+        .filter((automation) => automation.enabled !== false)
+        .map((automation) => automationRepository.pauseAutomation({
+          automationId: automation._id,
+          userId: getAuthorizedResourceUserId(context),
+        })))
+    }
     return NextResponse.json({ success: true, project })
   } catch (error) {
     if (error instanceof ProjectServiceError) {

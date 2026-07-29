@@ -28,7 +28,7 @@ function sseChunk(data: Record<string, unknown>): string {
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   const bodyResult = await readValidatedJson(request, context, GenerateVideoRequest)
   if (!bodyResult.ok) return bodyResult.response
-  const { prompt, modelId, aspectRatio, duration, conversationId, turnId, videoSubMode, imageUrl, temporaryChat } = bodyResult.data
+  const { prompt, modelId, aspectRatio, duration, conversationId, projectId, turnId, videoSubMode, imageUrl, temporaryChat } = bodyResult.data
 
   const { auth } = context
 
@@ -196,6 +196,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
                 fileName: `overlay-video-${Date.now()}.mp4`,
                 mimeType: 'video/mp4',
                 ...(conversationId ? { conversationId } : {}),
+                ...(projectId ? { projectId } : {}),
                 ...(turnId ? { turnId } : {}),
             })
           } catch (err) {

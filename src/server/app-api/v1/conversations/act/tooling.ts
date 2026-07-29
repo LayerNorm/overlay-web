@@ -144,6 +144,7 @@ export async function prepareActTooling(params: {
         turnId: params.turnId,
         modelId: params.effectiveModelId,
         projectId: params.conversationProjectId,
+        enabledServerIds: params.projectSettings?.enabledMcpServerIds,
       })
   const [integrationRaw, mcpToolsRaw, webToolSet, perplexityTool, parallelTool] = await Promise.all([
     capabilities.integrations ? params.preloadTasks.integrationToolsTask : Promise.resolve({} as ToolSet),
@@ -187,6 +188,7 @@ export async function prepareActTooling(params: {
     parallelTool,
     perplexityTool,
     webToolSet,
+    enabledConnectorSlugs: params.projectSettings?.enabledConnectorSlugs,
   })
 
   tooling.ttft = { mcpCatalogMs: +mcpCatalogMs.toFixed(1) }
@@ -220,11 +222,13 @@ export function buildActTooling(params: {
   parallelTool: ToolDefinition | null
   perplexityTool: ToolDefinition | null
   webToolSet: ToolSet
+  enabledConnectorSlugs?: readonly string[]
 }): ActTooling {
   const integrationTools = filterIntegrationToolSet(
     params.integrationRaw,
     params.paid,
     params.integrationProvider,
+    params.enabledConnectorSlugs,
   )
   const integrationsForAgent: ToolSet = params.isMultiModelFollowUpSlot ? {} : integrationTools
   const freeTierStubsActive = !params.paid && !params.isMultiModelFollowUpSlot

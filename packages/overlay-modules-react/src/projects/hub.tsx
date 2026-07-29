@@ -233,6 +233,8 @@ export interface ProjectHubTabsProps {
   savingInstructions?: boolean
   instructionsSavedAt?: number | null
   fileActions?: ReactNode
+  renderFileAction?: (file: ProjectFileSummary) => ReactNode
+  agentSettings?: ReactNode
   knowledgeBaseSettings?: ReactNode
   lifecycleSettings?: ReactNode
   onOpenChat: (id: string) => void
@@ -250,6 +252,8 @@ export function ProjectHubTabs({
   savingInstructions,
   instructionsSavedAt,
   fileActions,
+  renderFileAction,
+  agentSettings,
   knowledgeBaseSettings,
   lifecycleSettings,
   onOpenChat,
@@ -301,18 +305,21 @@ export function ProjectHubTabs({
             <ul className="divide-y divide-[var(--border)]">
               {files.map((file) => (
                 <li key={file._id}>
-                  <button
-                    type="button"
-                    onClick={() => onOpenFile(file)}
-                    className="flex w-full items-center gap-2 py-2 text-left text-sm text-[var(--foreground)] transition-colors hover:opacity-80"
-                  >
-                    {projectRouteViewForFile(file) === 'note' ? (
-                      <BookOpen size={13} className="shrink-0 text-[var(--muted-light)]" />
-                    ) : (
-                      <FileTypeIcon file={file} size={13} className="text-[var(--muted-light)]" />
-                    )}
-                    <span className="min-w-0 flex-1 truncate">{file.name || 'Untitled'}</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onOpenFile(file)}
+                      className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left text-sm text-[var(--foreground)] transition-colors hover:opacity-80"
+                    >
+                      {projectRouteViewForFile(file) === 'note' ? (
+                        <BookOpen size={13} className="shrink-0 text-[var(--muted-light)]" />
+                      ) : (
+                        <FileTypeIcon file={file} size={13} className="text-[var(--muted-light)]" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate">{file.name || 'Untitled'}</span>
+                    </button>
+                    {renderFileAction?.(file)}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -341,6 +348,11 @@ export function ProjectHubTabs({
               {savingInstructions ? 'Saving…' : instructionsSavedAt ? 'Saved' : ''}
             </div>
           </section>
+          {agentSettings ? (
+            <section className="border-t border-[var(--border)] py-6">
+              {agentSettings}
+            </section>
+          ) : null}
           {knowledgeBaseSettings ? (
             <section className="border-t border-[var(--border)] py-6">
               {knowledgeBaseSettings}

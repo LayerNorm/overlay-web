@@ -19,7 +19,7 @@ Status legend: DONE · PARTIAL · TODO · DEFERRED (deliberately out of scope fo
 | 2 | Project core | **DONE** |
 | 3 | Connect projects and knowledge (one KB) | **DONE** |
 | 4 | Rich knowledge retrieval | **DONE** |
-| 5 | Mature project workflows | PARTIAL — 4.5 of 9 items |
+| 5 | Mature project workflows | **DONE** — sharing remains in Phase 7 |
 | 6 | Personal brain | **DONE** |
 | 7 | Sharing and access | PARTIAL — KB yes, projects no |
 | 8 | Admin distribution | PARTIAL |
@@ -290,19 +290,19 @@ walkthrough is now correct in the running app.
 
 ---
 
-## Phase 5: Mature Project Workflows — PARTIAL, 4.5 of 9
+## Phase 5: Mature Project Workflows — DONE
 
 | Item | Status |
 |---|---|
 | Attach multiple KBs | **DONE** — delivered by Phase 4 |
-| Project-specific model and tool selection | PARTIAL — **tool** selection enforced at the tool layer; `preferredModelId` is stored and parsed but never read, so model selection does nothing yet |
-| Skills, MCP servers, connectors, and automations | TODO — enable lists are stored and parsed, but `isProjectResourceEnabled` and `projectAutomationsEnabled` are never called by runtime code. Currently dead helpers. |
-| Durable generated outputs | TODO |
+| Project-specific model and tool selection | **DONE** — preferred model applies when a request does not explicitly choose one; native tool policy narrows the final agent surface |
+| Skills, MCP servers, connectors, and automations | **DONE** — each runtime reads the project allowlist; an explicit empty list disables the resource |
+| Durable generated outputs | **DONE** — generated image/video files retain `projectId` and appear with project working files |
 | Promote a project file into a KB | **DONE** — explicit command, snapshot with provenance |
 | Copy a KB source into a project as working material | **DONE** — editable note that names its origin |
 | Templates for repeatable projects | **DONE** — projects flagged `isTemplate` |
-| Project export and duplication | PARTIAL — duplication done; export TODO |
-| Collaboration and basic project sharing | TODO — belongs with Phase 7, see note |
+| Project export and duplication | **DONE** — configuration-only duplication; portable JSON export strips object-store keys and credentials |
+| Collaboration and basic project sharing | DEFERRED — belongs with Phase 7, see note |
 
 ### Configuration model (schema 25)
 
@@ -323,10 +323,11 @@ Two semantics worth remembering:
 
 `applyProjectToolPolicy` runs at the **tool layer**, last in the gate chain, and
 only ever narrows — a project can never reintroduce a tool the account or
-deployment already withheld. This placement is the direct response to the Phase 4
-defect, where a boundary that existed only on the retrieval path let the agent
-reach around it. `project-tool-scope.test.ts` asserts what the agent can reach by
-building the real tool set, not what the policy function returns in isolation.
+deployment already withheld. Skills are filtered before prompt construction,
+MCP servers before lazy-tool registration, connector meta-tools at execution,
+and project automations at create/resume/manual-run boundaries. This placement
+is the direct response to the Phase 4 defect, where a boundary that existed only
+on the retrieval path let the agent reach around it.
 
 ### Transfers are explicit and directional
 
@@ -349,19 +350,20 @@ source project.
 | Check | Status |
 |---|---|
 | Tool access remains project-scoped | **DONE** — verified through the agent tool surface |
+| Skill, MCP, connector, and automation policy | **DONE** — fail-closed tests cover explicit-empty and disallowed execution |
 | Promotions and copies preserve provenance | **DONE** |
 | Duplicated projects do not accidentally share private working data | **DONE** — asserts absence, not just presence |
-| Archived projects stop background work | PARTIAL — archived projects contribute no configuration, instructions or knowledge; background job cancellation TODO |
+| Archived projects stop background work | **DONE** — archived projects contribute no runtime context and enabled automations are paused |
 | Multi-tab and multi-user collaboration behavior | TODO |
 | Worker recovery and idempotency for long-running actions | TODO |
 
 ### Product surface status
 
-Phase 4 retrieval operations now have a product surface: editors can add a
-public website, inspect extracted text and index counts, see freshness and
-embedding drift, refresh an external source, and reindex either one source or
-the stale subset of a base. Phase 5 and Phase 6 workflow controls remain to be
-wired in their own phase commits.
+Project settings now expose model, native-tool, skill, MCP, connector, automation,
+template, transfer, duplication, export, and lifecycle controls. The export is
+deliberately a JSON workspace manifest: it includes project conversations,
+messages, notes, text and file metadata, but never storage keys, provider
+credentials, or pre-signed URLs.
 
 ### Deliberate deferral
 

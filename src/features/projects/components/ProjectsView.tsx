@@ -7,6 +7,9 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import {
   Archive,
   BookOpen,
+  Check,
+  Copy,
+  Download,
   FilePlus2,
   Folder,
   Loader2,
@@ -48,6 +51,10 @@ import {
   type ProjectSummary,
   type NoteDoc,
   type KnowledgeBase,
+  type ConnectedIntegrationsResponse,
+  type IntegrationSummary,
+  type McpServerSummary,
+  type SkillSummary,
 } from '@overlay/app-core'
 import {
   ProjectHubHeader,
@@ -63,6 +70,14 @@ import { FileShareMenu } from '@/features/files/components/FileShareMenu'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { buildSharePageUrl } from '@/shared/share/share-page-url'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import type { KnowledgeBaseSourceDetail } from '@overlay/api-client'
+import {
+  normalizeProjectSettings,
+  readProjectSettings,
+  type ProjectSettings,
+} from '@/shared/projects/project-settings'
+import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
+import { OVERLAY_TOOL_IDS } from '@overlay/tools-core'
 
 type HubChat = ProjectChatSummary
 type ProjectFileRecord = ProjectFileSummary
@@ -207,6 +222,16 @@ function ProjectHubBody({
   const [knowledgeBaseError, setKnowledgeBaseError] = useState<string | null>(null)
   const [archivedAt, setArchivedAt] = useState<number | null>(null)
   const [changingLifecycle, setChangingLifecycle] = useState(false)
+  const [projectSettings, setProjectSettings] = useState<ProjectSettings>({})
+  const [savingProjectSettings, setSavingProjectSettings] = useState(false)
+  const [skills, setSkills] = useState<SkillSummary[]>([])
+  const [mcpServers, setMcpServers] = useState<McpServerSummary[]>([])
+  const [connectors, setConnectors] = useState<IntegrationSummary[]>([])
+  const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeBaseSourceDetail[]>([])
+  const [promotionTargetId, setPromotionTargetId] = useState('')
+  const [copySourceId, setCopySourceId] = useState('')
+  const [transferStatus, setTransferStatus] = useState<string | null>(null)
+  const [duplicatingProject, setDuplicatingProject] = useState(false)
 
   // Load project instructions
   useEffect(() => {
@@ -217,21 +242,46 @@ function ProjectHubBody({
       overlayAppClient.projects.get<ProjectSummary | null>({ projectId }),
       overlayAppClient.knowledgeBases.list(),
       overlayAppClient.projects.listKnowledgeBases({ projectId }),
-    ]).then(([projectResult, knowledgeResult, attachedResult]) => {
+      overlayAppClient.skills.get<SkillSummary[]>({ limit: 100 }),
+      overlayAppClient.mcpServers.get<McpServerSummary[]>({ limit: 100 }),
+      overlayAppClient.integrations.get<ConnectedIntegrationsResponse>({ limit: 100 }),
+    ]).then(([
+      projectResult,
+      knowledgeResult,
+      attachedResult,
+      skillsResult,
+      mcpResult,
+      integrationsResult,
+    ]) => {
       if (cancelled) return
       if (projectResult.status === 'fulfilled') {
         const project = projectResult.value
         setInstructions(project?.instructions ?? '')
         setArchivedAt(project?.archivedAt ?? null)
+        setProjectSettings(readProjectSettings(project?.settings))
       }
       if (knowledgeResult.status === 'fulfilled') {
         setKnowledgeBases(knowledgeResult.value.knowledgeBases)
       }
       if (attachedResult.status === 'fulfilled') {
-        setAttachedKnowledgeBaseIds(attachedResult.value.knowledgeBases.map(({ id }) => id))
+        const ids = attachedResult.value.knowledgeBases.map(({ id }) => id)
+        setAttachedKnowledgeBaseIds(ids)
+        setPromotionTargetId((current) => current || ids[0] || '')
       } else if (projectResult.status === 'fulfilled' && projectResult.value?.knowledgeBaseId) {
         // Projects created before multi-attach still carry a single column.
         setAttachedKnowledgeBaseIds([projectResult.value.knowledgeBaseId])
+      }
+      if (skillsResult.status === 'fulfilled') {
+        setSkills(skillsResult.value.filter((skill) => skill.enabled !== false))
+      }
+      if (mcpResult.status === 'fulfilled') {
+        setMcpServers(mcpResult.value.filter((server) => server.enabled))
+      }
+      if (integrationsResult.status === 'fulfilled') {
+        const response = integrationsResult.value
+        const rows = response.items ?? response.data ?? []
+        const connected = new Set(response.connected ?? [])
+        setConnectors(rows.filter((item) => item.isConnected || connected.has(item.slug)))
       }
       setInstructionsLoaded(true)
       setKnowledgeBaseSettingsLoaded(true)
@@ -240,6 +290,24 @@ function ProjectHubBody({
       cancelled = true
     }
   }, [projectId])
+
+  useEffect(() => {
+    let cancelled = false
+    if (attachedKnowledgeBaseIds.length === 0) {
+      setKnowledgeSources([])
+      return
+    }
+    void Promise.all(attachedKnowledgeBaseIds.map((knowledgeBaseId) => (
+      overlayAppClient.knowledgeBases.listSources(knowledgeBaseId)
+    ))).then((responses) => {
+      if (!cancelled) setKnowledgeSources(responses.flatMap((response) => response.sources))
+    }).catch(() => {
+      if (!cancelled) setKnowledgeSources([])
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [attachedKnowledgeBaseIds])
 
   const loadHubItems = useCallback(async () => {
     setListsLoading(true)
@@ -492,6 +560,93 @@ function ProjectHubBody({
     }
   }
 
+  async function saveProjectSettings(next: ProjectSettings) {
+    const normalized = normalizeProjectSettings(next)
+    setProjectSettings(normalized)
+    setSavingProjectSettings(true)
+    try {
+      const response = await overlayAppClient.projects.updateResponse({
+        projectId,
+        settings: normalized,
+      })
+      if (!response.ok) {
+        const current = await overlayAppClient.projects.get<ProjectSummary>({ projectId })
+        setProjectSettings(readProjectSettings(current.settings))
+      }
+    } finally {
+      setSavingProjectSettings(false)
+    }
+  }
+
+  async function promoteFile(file: ProjectFileRecord) {
+    if (!promotionTargetId) return
+    setTransferStatus(`Promoting ${file.name}…`)
+    try {
+      await overlayAppClient.projects.transfer({
+        direction: 'promote',
+        fileId: file._id,
+        knowledgeBaseId: promotionTargetId,
+        projectId,
+        title: file.name,
+      })
+      setTransferStatus(`${file.name} was promoted as a versioned knowledge source.`)
+    } catch (error) {
+      setTransferStatus(error instanceof Error ? error.message : 'Promotion failed')
+    }
+  }
+
+  async function copyKnowledgeSource() {
+    if (!copySourceId) return
+    const source = knowledgeSources.find((item) => item.source.id === copySourceId)
+    if (!source) return
+    setTransferStatus(`Copying ${source.source.title}…`)
+    try {
+      await overlayAppClient.projects.transfer({
+        direction: 'copy',
+        knowledgeBaseId: source.membership.knowledgeBaseId,
+        projectId,
+        sourceId: source.source.id,
+      })
+      setCopySourceId('')
+      setTransferStatus(`${source.source.title} was copied into project working files.`)
+      await loadHubItems()
+    } catch (error) {
+      setTransferStatus(error instanceof Error ? error.message : 'Copy failed')
+    }
+  }
+
+  async function duplicateProject() {
+    if (duplicatingProject) return
+    setDuplicatingProject(true)
+    try {
+      const result = await overlayAppClient.projects.duplicate({ sourceProjectId: projectId })
+      window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
+      router.push(projectHubHref(result.project))
+    } finally {
+      setDuplicatingProject(false)
+    }
+  }
+
+  async function exportProject() {
+    try {
+      const payload = await overlayAppClient.projects.exportProject({ projectId })
+      const filename = `${(projectName || 'project')
+        .replace(/[^a-zA-Z0-9._-]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'project'}.overlay.json`
+      const href = URL.createObjectURL(new Blob(
+        [JSON.stringify(payload, null, 2)],
+        { type: 'application/json' },
+      ))
+      const anchor = document.createElement('a')
+      anchor.href = href
+      anchor.download = filename
+      anchor.click()
+      URL.revokeObjectURL(href)
+    } catch (error) {
+      setTransferStatus(error instanceof Error ? error.message : 'Export failed')
+    }
+  }
+
   async function deleteProject() {
     if (changingLifecycle || !window.confirm('Delete this project and its chats and working files?')) return
     setChangingLifecycle(true)
@@ -572,6 +727,18 @@ function ProjectHubBody({
 
   const fileActions = (
     <div className="flex items-center gap-1.5">
+      {attachedKnowledgeBases.length > 0 ? (
+        <select
+          value={promotionTargetId}
+          onChange={(event) => setPromotionTargetId(event.target.value)}
+          className="h-8 max-w-44 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)]"
+          aria-label="Knowledge base promotion target"
+        >
+          {attachedKnowledgeBases.map((base) => (
+            <option key={base.id} value={base.id}>Promote to {base.title}</option>
+          ))}
+        </select>
+      ) : null}
       <button
         type="button"
         onClick={() => void createNote()}
@@ -599,6 +766,206 @@ function ProjectHubBody({
           event.currentTarget.value = ''
         }}
       />
+    </div>
+  )
+
+  const renderResourcePolicy = (
+    title: string,
+    description: string,
+    selectedIds: string[] | undefined,
+    options: Array<{ id: string; label: string }>,
+    onChange: (ids: string[] | undefined) => void,
+  ) => {
+    const inherited = selectedIds === undefined
+    const selected = new Set(selectedIds ?? [])
+    return (
+      <div className="border-t border-[var(--border)] py-4 first:border-t-0 first:pt-0">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-xs font-medium text-[var(--foreground)]">{title}</h3>
+            <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">{description}</p>
+          </div>
+          <label className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--muted)]">
+            <input
+              type="checkbox"
+              checked={inherited}
+              onChange={(event) => onChange(
+                event.target.checked ? undefined : options.map(({ id }) => id),
+              )}
+            />
+            Inherit
+          </label>
+        </div>
+        {!inherited ? (
+          options.length > 0 ? (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {options.map((option) => (
+                <label
+                  key={option.id}
+                  className="flex items-center gap-2 rounded-md border border-[var(--border)] px-2.5 py-2 text-xs text-[var(--foreground)]"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(option.id)}
+                    onChange={(event) => {
+                      const next = new Set(selected)
+                      if (event.target.checked) next.add(option.id)
+                      else next.delete(option.id)
+                      onChange([...next])
+                    }}
+                  />
+                  <span className="truncate">{option.label}</span>
+                </label>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 text-[11px] text-[var(--muted-light)]">No enabled resources are available.</p>
+          )
+        ) : null}
+      </div>
+    )
+  }
+
+  const agentSettings = (
+    <div data-testid="project-agent-settings">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-medium text-[var(--foreground)]">Agent and workflow policy</h2>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+            Project policy can narrow account access, but never grant a model, tool, or connection
+            that the account or deployment does not allow.
+          </p>
+        </div>
+        <span className="min-w-12 text-right text-[11px] text-[var(--muted-light)]">
+          {savingProjectSettings ? 'Saving…' : ''}
+        </span>
+      </div>
+
+      <label className="block text-xs font-medium text-[var(--foreground)]">
+        Default model
+        <select
+          value={projectSettings.preferredModelId ?? ''}
+          onChange={(event) => void saveProjectSettings({
+            ...projectSettings,
+            preferredModelId: event.target.value || undefined,
+          })}
+          className="mt-1.5 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)]"
+        >
+          <option value="">Inherit account default</option>
+          {getModelsByIntelligence(false).map((model) => (
+            <option key={model.id} value={model.id}>{model.name}</option>
+          ))}
+        </select>
+      </label>
+
+      <div className="mt-4">
+        <label className="block text-xs font-medium text-[var(--foreground)]">
+          Overlay tool policy
+          <select
+            value={projectSettings.toolPolicy?.mode ?? 'inherit'}
+            onChange={(event) => void saveProjectSettings({
+              ...projectSettings,
+              toolPolicy: {
+                mode: event.target.value as 'inherit' | 'allowlist' | 'denylist',
+                ...(event.target.value === 'inherit'
+                  ? {}
+                  : { toolIds: projectSettings.toolPolicy?.toolIds ?? [] }),
+              },
+            })}
+            className="mt-1.5 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)]"
+          >
+            <option value="inherit">Inherit account tools</option>
+            <option value="allowlist">Allow only selected tools</option>
+            <option value="denylist">Allow all except selected tools</option>
+          </select>
+        </label>
+        {projectSettings.toolPolicy && projectSettings.toolPolicy.mode !== 'inherit' ? (
+          <div className="mt-3 grid max-h-56 gap-2 overflow-y-auto sm:grid-cols-2">
+            {OVERLAY_TOOL_IDS.map((toolId) => {
+              const checked = projectSettings.toolPolicy?.toolIds?.includes(toolId) === true
+              return (
+                <label
+                  key={toolId}
+                  className="flex items-center gap-2 rounded-md border border-[var(--border)] px-2.5 py-2 text-xs text-[var(--foreground)]"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(event) => {
+                      const next = new Set(projectSettings.toolPolicy?.toolIds ?? [])
+                      if (event.target.checked) next.add(toolId)
+                      else next.delete(toolId)
+                      void saveProjectSettings({
+                        ...projectSettings,
+                        toolPolicy: {
+                          mode: projectSettings.toolPolicy?.mode ?? 'allowlist',
+                          toolIds: [...next],
+                        },
+                      })
+                    }}
+                  />
+                  <span className="truncate">{toolId.replaceAll('_', ' ')}</span>
+                </label>
+              )
+            })}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-5">
+        {renderResourcePolicy(
+          'Skills',
+          'Choose which enabled account skills can influence this project.',
+          projectSettings.enabledSkillIds,
+          skills.map((skill) => ({ id: skill._id, label: skill.name })),
+          (enabledSkillIds) => void saveProjectSettings({ ...projectSettings, enabledSkillIds }),
+        )}
+        {renderResourcePolicy(
+          'MCP servers',
+          'Restrict tool discovery and execution to selected MCP servers.',
+          projectSettings.enabledMcpServerIds,
+          mcpServers.map((server) => ({ id: server._id, label: server.name })),
+          (enabledMcpServerIds) => void saveProjectSettings({
+            ...projectSettings,
+            enabledMcpServerIds,
+          }),
+        )}
+        {renderResourcePolicy(
+          'Connectors',
+          'Restrict connector search and execution to selected connected services.',
+          projectSettings.enabledConnectorSlugs,
+          connectors.map((connector) => ({ id: connector.slug, label: connector.name })),
+          (enabledConnectorSlugs) => void saveProjectSettings({
+            ...projectSettings,
+            enabledConnectorSlugs,
+          }),
+        )}
+      </div>
+
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <label className="flex items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2.5 text-xs text-[var(--foreground)]">
+          <input
+            type="checkbox"
+            checked={projectSettings.automationsEnabled !== false}
+            onChange={(event) => void saveProjectSettings({
+              ...projectSettings,
+              automationsEnabled: event.target.checked,
+            })}
+          />
+          Automations enabled
+        </label>
+        <label className="flex items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2.5 text-xs text-[var(--foreground)]">
+          <input
+            type="checkbox"
+            checked={projectSettings.isTemplate === true}
+            onChange={(event) => void saveProjectSettings({
+              ...projectSettings,
+              isTemplate: event.target.checked,
+            })}
+          />
+          Reusable template
+        </label>
+      </div>
     </div>
   )
 
@@ -667,6 +1034,37 @@ function ProjectHubBody({
               ? `${attachedKnowledgeBases.length} attached and active in Project Chat.`
               : 'Project working files remain available separately.'}
       </p>
+      {knowledgeSources.length > 0 ? (
+        <div className="mt-4 border-t border-[var(--border)] pt-4">
+          <label className="block text-xs font-medium text-[var(--foreground)]">
+            Copy trusted knowledge into working files
+            <div className="mt-1.5 flex gap-2">
+              <select
+                value={copySourceId}
+                onChange={(event) => setCopySourceId(event.target.value)}
+                className="h-10 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)]"
+              >
+                <option value="">Select a source…</option>
+                {knowledgeSources.map(({ source }) => (
+                  <option key={source.id} value={source.id}>{source.title}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={!copySourceId}
+                onClick={() => void copyKnowledgeSource()}
+                className="inline-flex h-10 items-center gap-1.5 rounded-md bg-[var(--surface-subtle)] px-3 text-xs text-[var(--foreground)] disabled:opacity-50"
+              >
+                <Copy size={13} />
+                Copy
+              </button>
+            </div>
+          </label>
+        </div>
+      ) : null}
+      {transferStatus ? (
+        <p className="mt-2 text-[11px] text-[var(--muted)]">{transferStatus}</p>
+      ) : null}
     </div>
   )
 
@@ -677,6 +1075,23 @@ function ProjectHubBody({
         Archive preserves the workspace for later. Delete removes the project and its linked working data.
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={duplicatingProject}
+          onClick={() => void duplicateProject()}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] px-3 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)] disabled:opacity-50"
+        >
+          {duplicatingProject ? <Loader2 size={13} className="animate-spin" /> : <Copy size={13} />}
+          Duplicate
+        </button>
+        <button
+          type="button"
+          onClick={() => void exportProject()}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] px-3 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+        >
+          <Download size={13} />
+          Export
+        </button>
         <button
           type="button"
           disabled={changingLifecycle}
@@ -710,6 +1125,17 @@ function ProjectHubBody({
       savingInstructions={savingInstructions}
       instructionsSavedAt={instructionsSavedAt}
       fileActions={fileActions}
+      renderFileAction={(file) => attachedKnowledgeBases.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => void promoteFile(file)}
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded px-2 text-[11px] text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+        >
+          <Check size={12} />
+          Promote
+        </button>
+      ) : null}
+      agentSettings={agentSettings}
       knowledgeBaseSettings={knowledgeBaseSettings}
       lifecycleSettings={lifecycleSettings}
       onOpenChat={openChat}

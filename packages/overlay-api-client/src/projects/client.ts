@@ -3,7 +3,9 @@ import type {
   CreateProjectResponse,
   DeleteProjectResponse,
   KnowledgeBase,
+  ProjectExport,
   ProjectKnowledgeBase,
+  ProjectKnowledgeTransferRequest,
   ProjectSummary,
   UpdateProjectRequest,
   UpdateProjectResponse,
@@ -86,6 +88,34 @@ export class ProjectsClient {
     return this.http.json<{ success: boolean }>(
       this.knowledgeBasePath(query),
       { ...init, method: 'DELETE' },
+    )
+  }
+
+  listTemplates(init?: RequestInit) {
+    return this.http.json<{ templates: ProjectSummary[] }>('/api/v1/projects/duplicate', init)
+  }
+
+  duplicate(
+    body: { sourceProjectId: string; name?: string },
+    init?: RequestInit,
+  ) {
+    return this.http.json<{ id: string; project: ProjectSummary }>(
+      '/api/v1/projects/duplicate',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  transfer(body: ProjectKnowledgeTransferRequest, init?: RequestInit) {
+    return this.http.json<{ success: true; sourceId?: string; noteId?: string; jobId?: string }>(
+      '/api/v1/projects/knowledge-transfer',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  exportProject(query: { projectId: string }, init?: RequestInit) {
+    return this.http.json<ProjectExport>(
+      this.http.appendQuery('/api/v1/projects/export', query),
+      init,
     )
   }
 }

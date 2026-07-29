@@ -50,6 +50,10 @@ export type AutomationExecutor = (input: ScheduledAutomationTurn) => Promise<{
 }>
 
 export type AutomationServiceDeps = {
+  assertProjectAutomationAllowed?: (args: {
+    projectId: string
+    userId: string
+  }) => Promise<boolean>
   clock?: AutomationServiceClock
   events?: AutomationServiceEvents
   entitlementPolicy: AutomationEntitlementPolicy
@@ -275,6 +279,7 @@ export class AutomationService {
       serviceError({ error: 'name, description, instructions, and schedule are required' }, 400)
     }
     this.assertScheduleAllowed(body.schedule)
+    await this.assertProjectAllowsAutomation(body.projectId, args.userId)
     if (body.enabled !== false) {
       await this.assertCanEnable(args.userId)
     }
@@ -330,12 +335,23 @@ export class AutomationService {
 
     const automationId = body.automationId
     const idArgs = { automationId, userId: args.userId }
+    const existingAutomation = await this.deps.repository.getAutomation(idArgs)
+    if (
+      body.action === 'resume'
+      || body.enabled === true
+      || (body.projectId !== undefined && body.enabled !== false)
+    ) {
+      await this.assertProjectAllowsAutomation(
+        body.projectId ?? existingAutomation?.projectId,
+        args.userId,
+      )
+    }
     if (body.action === 'pause') {
       await this.deps.repository.pauseAutomation(idArgs)
     } else if (body.action === 'resume') {
       await this.deps.repository.resumeAutomation(idArgs)
     } else {
-      const before = await this.deps.repository.getAutomation(idArgs)
+      const before = existingAutomation
       await this.deps.repository.updateAutomation({
         ...idArgs,
         name: body.name,
@@ -421,6 +437,7 @@ export class AutomationService {
         userId: args.userId,
       })
       if (!automation) serviceError({ error: 'Automation not found' }, 404)
+      await this.assertProjectAllowsAutomation(automation.projectId, args.userId)
 
       const name = (automation.name || automation.title || 'Untitled automation').trim()
       const instructions = (automation.instructions || automation.instructionsMarkdown || '').trim()
@@ -509,6 +526,7 @@ export class AutomationService {
       if (automation.userId !== args.serviceUserId) {
         serviceError({ error: 'Unauthorized' }, 401)
       }
+      await this.assertProjectAllowsAutomation(automation.projectId, automation.userId)
       const turnId = run.turnId || `automation-${args.runId}-${this.clock.now()}`
       const conversationId = run.conversationId || automation.sourceConversationId || automation.conversationId
 
@@ -551,6 +569,16 @@ export class AutomationService {
   private assertScheduleAllowed(schedule: AutomationSchedule | undefined): void {
     if (scheduleTooFrequent(schedule)) {
       serviceError({ error: `Interval automations must run at least ${MIN_INTERVAL_MINUTES} minutes apart.` }, 400)
+    }
+  }
+
+  private async assertProjectAllowsAutomation(
+    projectId: string | undefined,
+    userId: string,
+  ): Promise<void> {
+    if (!projectId || !this.deps.assertProjectAutomationAllowed) return
+    if (!await this.deps.assertProjectAutomationAllowed({ projectId, userId })) {
+      serviceError({ error: 'Automations are disabled for this project' }, 409)
     }
   }
 

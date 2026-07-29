@@ -21,6 +21,7 @@ import {
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import { resolveRetrievalScope } from '@/shared/knowledge/retrieval-scope'
 import {
+  isProjectResourceEnabled,
   readProjectSettings,
   type ProjectSettings,
 } from '@/shared/projects/project-settings'
@@ -203,23 +204,12 @@ export class ActContextService {
         }).catch((_error) => [] as string[])
       : Promise.resolve([] as string[])
 
-    const [effectiveMemories, enabledSkills, conv, conversationKnowledgeBaseIds] = await Promise.all([
+    const [effectiveMemories, accountEnabledSkills, conv, conversationKnowledgeBaseIds] = await Promise.all([
       memoriesTask,
       skillsTask,
       conversationTask,
       knowledgeBaseTask,
     ])
-
-    const mentionsContextTask = externalContextEnabled
-      ? (async () => {
-          const { resolveMentionsContext } = await import('@/server/knowledge/mention-resolver')
-          return await resolveMentionsContext(args.mentions, {
-            userId: args.userId,
-            serverSecret: args.serverSecret,
-            enabledSkills,
-          })
-        })()
-      : Promise.resolve('')
 
     const conversationProjectId = conv?.projectId
     const project = await (async () => {
@@ -240,6 +230,19 @@ export class ActContextService {
     const projectSettings = activeProject
       ? readProjectSettings(activeProject.settings)
       : undefined
+    const enabledSkills = accountEnabledSkills.filter((skill) => (
+      isProjectResourceEnabled(projectSettings?.enabledSkillIds, skill._id ?? skill.name)
+    ))
+    const mentionsContextTask = externalContextEnabled
+      ? (async () => {
+          const { resolveMentionsContext } = await import('@/server/knowledge/mention-resolver')
+          return await resolveMentionsContext(args.mentions, {
+            userId: args.userId,
+            serverSecret: args.serverSecret,
+            enabledSkills,
+          })
+        })()
+      : Promise.resolve('')
 
     // Bases attached to the active project. Falls back to the legacy single-column
     // attachment so a project written before schema 23 still grounds correctly.

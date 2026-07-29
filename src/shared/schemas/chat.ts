@@ -126,6 +126,7 @@ export const GenerateImageRequest = z.object({
   modelId: z.string().min(1).optional(),
   aspectRatio: z.string().min(1).max(20).optional(),
   conversationId: z.string().min(1).optional(),
+  projectId: z.string().min(1).optional(),
   turnId: z.string().min(1).optional(),
   imageUrl: z.string().min(1).optional(),
   temporaryChat: z.boolean().optional(),

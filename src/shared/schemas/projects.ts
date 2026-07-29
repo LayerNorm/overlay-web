@@ -93,4 +93,8 @@ export const DuplicateProjectRequest = z.object({
   name: z.string().trim().min(1).max(200).optional(),
 })
 
+export const ProjectExportQuery = z.object({
+  projectId: z.string().min(1),
+})
+
 export const ProjectResponse = UnknownResponse

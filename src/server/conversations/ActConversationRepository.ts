@@ -22,6 +22,7 @@ export type ActMemoryRow = {
 }
 
 export type ActSkillRow = {
+  _id?: string
   name: string
   instructions: string
   enabled?: boolean
