@@ -43,6 +43,13 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'app-shell',
   },
   {
+    id: 'workspaces',
+    methods: '*',
+    prefixes: ['/api/v1/workspaces', '/api/v1/workspace-invitations'],
+    status: 'supported',
+    feature: 'workspaces',
+  },
+  {
     id: 'model-catalog',
     methods: ['GET'],
     paths: ['/api/v1/model-catalog'],
@@ -82,6 +89,9 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     methods: '*',
     prefixes: [
       '/api/v1/conversations/events',
+      '/api/v1/conversations/direct-messages',
+      '/api/v1/conversations/notifications',
+      '/api/v1/conversations',
       '/api/v1/conversations/message',
       '/api/v1/conversations/share',
       '/api/v1/conversations/stop',

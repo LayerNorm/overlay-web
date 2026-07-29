@@ -928,6 +928,7 @@ export default defineSchema({
     shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
     sharedAt: v.optional(v.number()),
     isAutomation: v.optional(v.boolean()),
+    dmIdentityKey: v.optional(v.string()),
   }).index('by_userId', ['userId'])
     .index('by_workspaceId_clientId', ['workspaceId', 'clientId'])
     .index('by_workspaceId_conversationType_lastModified', [
@@ -939,6 +940,7 @@ export default defineSchema({
     .index('by_userId_lastModified', ['userId', 'lastModified'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_projectId', ['projectId'])
+    .index('by_workspaceId_dmIdentityKey', ['workspaceId', 'dmIdentityKey'])
     .index('by_shareToken', ['shareToken']),
 
   conversationMessages: defineTable({
@@ -1034,12 +1036,73 @@ export default defineSchema({
       v.literal('error'),
     )),
     updatedAt: v.optional(v.number()),
+    clientNonce: v.optional(v.string()),
+    editedAt: v.optional(v.number()),
+    deletedAt: v.optional(v.number()),
     createdAt: v.number(),
   }).index('by_conversationId', ['conversationId'])
     .index('by_userId', ['userId'])
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
+    .index('by_conversationId_clientNonce', ['conversationId', 'clientNonce'])
     .index('by_status_updatedAt', ['status', 'updatedAt']),
+
+  conversationParticipants: defineTable({
+    conversationId: v.id('conversations'),
+    workspaceId: v.string(),
+    principalId: v.string(),
+    principalType: v.union(v.literal('human'), v.literal('agent')),
+    role: v.union(v.literal('member'), v.literal('moderator')),
+    status: v.union(v.literal('active'), v.literal('removed')),
+    notificationLevel: v.union(v.literal('all'), v.literal('mentions'), v.literal('muted')),
+    joinedAt: v.number(),
+    updatedAt: v.number(),
+    removedAt: v.optional(v.number()),
+    lastReadAt: v.optional(v.number()),
+    markedUnreadAt: v.optional(v.number()),
+    archivedAt: v.optional(v.number()),
+  })
+    .index('by_conversationId_principalId', ['conversationId', 'principalId'])
+    .index('by_conversationId_status', ['conversationId', 'status'])
+    .index('by_workspaceId_principalId_status', ['workspaceId', 'principalId', 'status']),
+
+  workspacePresence: defineTable({
+    workspaceId: v.string(),
+    principalId: v.string(),
+    conversationId: v.optional(v.id('conversations')),
+    status: v.union(v.literal('online'), v.literal('away'), v.literal('offline')),
+    lastSeenAt: v.number(),
+    typingExpiresAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index('by_workspaceId_principalId', ['workspaceId', 'principalId'])
+    .index('by_conversationId_updatedAt', ['conversationId', 'updatedAt']),
+
+  workspaceNotifications: defineTable({
+    notificationId: v.string(),
+    workspaceId: v.string(),
+    recipientPrincipalId: v.string(),
+    type: v.union(
+      v.literal('message'),
+      v.literal('mention'),
+      v.literal('invitation'),
+      v.literal('participant'),
+    ),
+    conversationId: v.optional(v.id('conversations')),
+    messageId: v.optional(v.id('conversationMessages')),
+    actorPrincipalId: v.optional(v.string()),
+    title: v.string(),
+    body: v.optional(v.string()),
+    createdAt: v.number(),
+    readAt: v.optional(v.number()),
+  })
+    .index('by_notificationId', ['notificationId'])
+    .index('by_workspaceId_recipientPrincipalId_createdAt', [
+      'workspaceId',
+      'recipientPrincipalId',
+      'createdAt',
+    ])
+    .index('by_conversationId_createdAt', ['conversationId', 'createdAt']),
 
   conversationMessageDeltas: defineTable({
     conversationId: v.id('conversations'),

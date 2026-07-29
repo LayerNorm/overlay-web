@@ -18,6 +18,9 @@ import { ConvexActConversationRepository } from '@/server/conversations/ConvexAc
 import { PostgresActConversationRepository } from '@/server/conversations/PostgresActConversationRepository'
 import { PostgresConversationEventNotifier } from '@/server/conversations/PostgresConversationEventNotifier'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
+import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
+import { ConvexConversationCollaborationRepository } from '@/server/conversations/ConvexConversationCollaborationRepository'
+import { PostgresConversationCollaborationRepository } from '@/server/conversations/PostgresConversationCollaborationRepository'
 import { ConvexFileRepository } from '@/server/files/ConvexFileRepository'
 import type { FileRepository } from '@/server/files/FileRepository'
 import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
@@ -128,6 +131,7 @@ export interface AppDataRepositories {
   billingWebhooks: BillingWebhookRepository
   chatSuggestions: ChatSuggestionRepository
   conversations: ActConversationRepository
+  conversationCollaboration: ConversationCollaborationRepository
   durableJobs: DurableJobRepository
   daytonaWorkspaces: DaytonaWorkspaceRepository
   files: FileRepository
@@ -189,6 +193,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         billingWebhooks: billing,
         chatSuggestions: new PostgresChatSuggestionRepository(db),
         conversations,
+        conversationCollaboration: new PostgresConversationCollaborationRepository(db),
         durableJobs: new PostgresDurableJobRepository(db),
         daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),
         files: new PostgresFileRepository(db),
@@ -227,6 +232,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       billingWebhooks: new ConvexBillingRepository(),
       chatSuggestions: new ConvexChatSuggestionRepository(),
       conversations: new ConvexActConversationRepository(),
+      conversationCollaboration: new ConvexConversationCollaborationRepository(),
       durableJobs: unsupportedRepository<DurableJobRepository>('DurableJobRepository'),
       daytonaWorkspaces: new ConvexDaytonaWorkspaceRepository(),
       files: new ConvexFileRepository(),

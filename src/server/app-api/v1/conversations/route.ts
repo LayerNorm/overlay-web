@@ -79,6 +79,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const compactToolPayloads = readBooleanParam(searchParams.get('compactToolPayloads')) === true
     const workspaceId = context.workspace.workspace.id
     const conversationType = conversationTypeForView(searchParams.get('view'))
+    const collaboration = appData.repositories.conversationCollaboration
 
     if (conversationId && !includeMessages) {
       const conv = await repository.getConversationById({
@@ -155,7 +156,12 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         ...(includeDeleted !== undefined ? { includeDeleted } : {}),
       })
       const granted = await loadGrantedConversations(context, repository, workspaceId)
+      const accessibleIds = new Set(await collaboration.listAccessibleConversationIds({
+        actorUserId: auth.userId,
+        workspaceId,
+      }))
       return NextResponse.json([...list, ...granted].filter((conversation) => (
+        accessibleIds.has(conversation._id) &&
         conversation.projectId === projectId &&
         (!Number.isFinite(updatedSince) || (conversation.updatedAt ?? conversation.lastModified) >= updatedSince!) &&
         (includeDeleted === true || !conversation.deletedAt)
@@ -169,11 +175,15 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
       ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })
+    const accessibleIds = new Set(await collaboration.listAccessibleConversationIds({
+      actorUserId: auth.userId,
+      workspaceId,
+    }))
 
     return NextResponse.json([
       ...list,
       ...await loadGrantedConversations(context, repository, workspaceId),
-    ])
+    ].filter((conversation) => accessibleIds.has(conversation._id)))
   } catch (error) {
     logger.error('[conversations GET]', error)
     return NextResponse.json({ error: 'Failed to fetch conversations' }, { status: 500 })
@@ -399,6 +409,9 @@ function serializeConversationMessage(message: ConversationMessageRow) {
     ...(message.replySnippet ? { replySnippet: message.replySnippet } : {}),
     ...(message.routedModelId ? { routedModelId: message.routedModelId } : {}),
     ...(message.status ? { status: message.status } : {}),
+    ...(message.clientNonce ? { clientNonce: message.clientNonce } : {}),
+    ...(message.editedAt ? { editedAt: message.editedAt } : {}),
+    ...(message.deletedAt ? { deletedAt: message.deletedAt } : {}),
   }
 }
 

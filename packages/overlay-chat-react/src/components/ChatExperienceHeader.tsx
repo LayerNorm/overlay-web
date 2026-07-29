@@ -124,6 +124,7 @@ export interface ChatExperienceHeaderProps {
   onGenerationModeChange: (mode: GenerationMode) => void
   generationMode: GenerationMode
   renderExportMenu: () => ReactNode
+  collaborationAction?: ReactNode
   modelPickerRef: RefObject<HTMLDivElement | null>
   videoSubModePickerRef: RefObject<HTMLDivElement | null>
   modelPickerListScrollRef: RefObject<HTMLDivElement | null>
@@ -191,6 +192,7 @@ export function ChatExperienceHeader({
   onGenerationModeChange,
   generationMode,
   renderExportMenu,
+  collaborationAction,
   modelPickerRef,
   videoSubModePickerRef,
   modelPickerListScrollRef,
@@ -662,6 +664,7 @@ export function ChatExperienceHeader({
                 onClick={onTemporaryChatToggle}
               />
             ) : null}
+            {collaborationAction}
             {renderExportMenu()}
           </div>
         </div>
@@ -678,6 +681,7 @@ export function ChatExperienceHeader({
               onClick={onTemporaryChatToggle}
             />
           ) : null}
+          {collaborationAction}
           {renderExportMenu()}
         </div>
       </div>

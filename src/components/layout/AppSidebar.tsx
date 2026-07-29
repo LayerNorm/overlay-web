@@ -44,6 +44,7 @@ import dynamic from 'next/dynamic'
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 import type { MentionType } from '@/shared/knowledge/mention-types'
 import { TEMPORARY_CHAT_UI_EVENT, type TemporaryChatUiEventDetail } from '@/shared/chat/temporary-chat-ui'
+import { NEW_DIRECT_MESSAGE_EVENT } from '@/shared/chat/collaboration-events'
 import {
   getSidebarCollapsedSnapshot,
   setStoredSidebarCollapsed,
@@ -461,6 +462,19 @@ export default function AppSidebar({
     canonicalWorkspaceRoute ? `/app/${workspaceSurface}` : pathname,
     sidebarActions,
   )
+  const resourceAction = chatOpen && chatsView === 'dms'
+    ? {
+      label: 'New message',
+      onClick: () => publicShowcase
+        ? requireAuth('nav')
+        : window.dispatchEvent(new CustomEvent(NEW_DIRECT_MESSAGE_EVENT)),
+    }
+    : contextualAction
+      ? {
+        label: contextualAction.label,
+        onClick: () => publicShowcase ? requireAuth('nav') : void runSidebarAction(contextualAction),
+      }
+      : null
   const contextualSearchCategory = toMentionCategory(contextualAction?.searchCategory)
   const hasInlineChildren = (href?: string) =>
     href === '/app/tools' || href === '/app/chat'
@@ -767,10 +781,7 @@ export default function AppSidebar({
 
         {!sidebarCollapsed && (chatOpen || filesSectionOpen || projectsOpen || automationsSectionOpen) ? (
           <SidebarResourceSection
-            action={contextualAction ? {
-              label: contextualAction.label,
-              onClick: () => publicShowcase ? requireAuth('nav') : void runSidebarAction(contextualAction),
-            } : null}
+            action={resourceAction}
             search={contextualSearchCategory ? {
               title: contextualSearchCategory === 'chat' ? 'Search chats (\u2318K)' : 'Search files (\u2318K)',
               onClick: () => publicShowcase ? requireAuth('history') : openGlobalSearch(contextualSearchCategory),

@@ -10,6 +10,7 @@ import {
   createOverlayPostgresPool,
 } from '@/server/database/postgres/client'
 import { users } from '@/server/database/postgres/schema'
+import { PostgresConversationCollaborationRepository } from '@/server/conversations/PostgresConversationCollaborationRepository'
 import { PostgresWorkspaceRepository } from './PostgresWorkspaceRepository'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
@@ -24,6 +25,7 @@ test('Postgres account deletion preserves organization history without orphaning
   })
   const db = createOverlayPostgresDb(pool)
   const workspaces = new PostgresWorkspaceRepository(db)
+  const collaboration = new PostgresConversationCollaborationRepository(db)
   const deletion = new PostgresAccountDataDeletionRepository(db)
   const scope = `workspace_delete_${randomUUID().replaceAll('-', '')}`
   const deletingUserId = `${scope}_deleting`
@@ -91,6 +93,27 @@ test('Postgres account deletion preserves organization history without orphaning
       createdByPrincipalId: deletingPrincipalId,
       now: 240,
     })
+    const retainedDirectMessage = await collaboration.createDirectMessage({
+      actorUserId: deletingUserId,
+      workspaceId: organizationId,
+      principalIds: [retainedPrincipalId],
+    })
+    await collaboration.upsertPresence({
+      actorUserId: deletingUserId,
+      workspaceId: organizationId,
+      conversationId: retainedDirectMessage.conversationId,
+      status: 'online',
+      typing: true,
+    })
+    await db.execute(sql`
+      INSERT INTO workspace_notifications (
+        id, workspace_id, recipient_principal_id, type,
+        conversation_id, actor_principal_id, title
+      ) VALUES (
+        ${`${scope}_notification`}, ${organizationId}, ${deletingPrincipalId}, 'mention',
+        ${retainedDirectMessage.conversationId}, ${retainedPrincipalId}, 'Retained history'
+      )
+    `)
 
     await t.test('Personal workspace is erased and organization principal is scrubbed', async () => {
       const result = await deletion.deleteUserAccount({ userId: deletingUserId })
@@ -106,6 +129,34 @@ test('Postgres account deletion preserves organization history without orphaning
       assert.equal(scrubbed?.email, undefined)
       assert.equal(scrubbed?.displayName, 'Deleted member')
       assert.ok(scrubbed?.archivedAt)
+      const collaborationRows = await db.execute<{
+        participant_status: string
+        presence_count: string
+        notification_count: string
+      }>(sql`
+        SELECT
+          participant.status AS participant_status,
+          (SELECT count(*)::text FROM workspace_presence
+            WHERE workspace_id = ${organizationId}
+              AND principal_id = ${deletingPrincipalId}) AS presence_count,
+          (SELECT count(*)::text FROM workspace_notifications
+            WHERE workspace_id = ${organizationId}
+              AND recipient_principal_id = ${deletingPrincipalId}) AS notification_count
+        FROM conversation_participants participant
+        WHERE participant.conversation_id = ${retainedDirectMessage.conversationId}
+          AND participant.principal_id = ${deletingPrincipalId}
+      `)
+      assert.equal(collaborationRows.rows[0]?.participant_status, 'removed')
+      assert.equal(collaborationRows.rows[0]?.presence_count, '0')
+      assert.equal(collaborationRows.rows[0]?.notification_count, '0')
+      assert.deepEqual(
+        (await collaboration.listParticipants({
+          actorUserId: retainedOwnerId,
+          workspaceId: organizationId,
+          conversationId: retainedDirectMessage.conversationId,
+        })).map((participant) => participant.principalId),
+        [retainedPrincipalId],
+      )
       assert.equal((await workspaces.getMembership({
         workspaceId: organizationId,
         principalId: retainedPrincipalId,

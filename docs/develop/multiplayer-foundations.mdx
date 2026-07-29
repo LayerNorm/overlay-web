@@ -5,7 +5,7 @@ description: "Accepted Phase 0 decisions for workspace isolation, collaborative 
 
 ## Status
 
-Accepted on July 26, 2026. Phase 1 shipped the workspace foundation and Phase 2 shipped the workspace-aware Chats information architecture on July 29, 2026. The `workspaces` and `collaborativeChats` app features are enabled; Direct Message creation, Channels, named agents, universal sharing, and shared multi-tenant deployment remain disabled until their individual release gates pass.
+Accepted on July 26, 2026. Phase 1 shipped the workspace foundation, Phase 2 shipped the workspace-aware Chats information architecture, and Phase 3 shipped participant-scoped Direct Messages on July 29, 2026. The `workspaces` and `collaborativeChats` app features are enabled; Channels, named agents, universal sharing, and shared multi-tenant deployment remain disabled until their individual release gates pass.
 
 Phase 1 includes:
 
@@ -38,6 +38,17 @@ The Phase 2 provider migration preserved row counts and reached zero missing bin
 | Convex development | 851 | 1,961 | 0 | 0 | 0 |
 
 The Postgres migration was also rehearsed from an empty database through schema version 32, and its principal-attribution foreign key was verified to cascade Personal-workspace erasure without breaking the message identity invariant.
+
+Phase 3 includes:
+
+- Reused one-to-one and group DMs addressed by their canonical participant set.
+- A unified human-and-agent participant picker, workspace invitation path, and Personal-chat-to-DM fork.
+- Participant-scoped reads and writes that override legacy creator ownership only after canonical workspace and active-membership checks pass.
+- Optimistic messages with retry-safe client nonces, author-only editing, deletion tombstones, mentions, unread state, notification preferences, archive state, and presence.
+- A dedicated collaborative conversation surface with people management, typing state, near-real-time synchronization, and responsive desktop/mobile layouts.
+- Matching Postgres and Convex collaboration repositories, account-deletion cleanup, and provider contract tests.
+
+The Postgres migration was rehearsed from an empty database through schema version 33. Production and development Convex deployments both received the participant, presence, notification, retry, and tombstone indexes before the feature gate was accepted.
 
 ## Workspace Is The Isolation Boundary
 
@@ -112,4 +123,4 @@ Phase 0 intentionally preserves the current behavior before multiplayer schemas 
 | Agents | No durable reusable agent directory or principal |
 | Multi-tenancy | Disabled by runtime validation |
 
-`npm run test:workspaces:phase0` preserves the pre-multiplayer characterization. `npm run test:workspaces:phase1` validates the workspace lifecycle, and `npm run test:workspaces:phase2` adds Chats IA, migration, isolation, and authorship gates across unit, Postgres, and live development Convex contracts. Later phases must update the characterization test in the same commit that deliberately changes a boundary.
+`npm run test:workspaces:phase0` preserves the pre-multiplayer characterization. `npm run test:workspaces:phase1` validates the workspace lifecycle, `npm run test:workspaces:phase2` adds Chats IA, migration, isolation, and authorship gates, and `npm run test:workspaces:phase3` validates DMs, participant authorization, retries, presence, notifications, editing, deletion, and account cleanup across unit, Postgres, and live development Convex contracts. Later phases must update the characterization test in the same commit that deliberately changes a boundary.

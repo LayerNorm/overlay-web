@@ -11,12 +11,14 @@ import {
   CHAT_MODIFIED_EVENT,
   CHAT_TITLE_UPDATED_EVENT,
   dispatchChatDeleted,
+  dispatchChatCreated,
   dispatchChatTitleUpdated,
   sanitizeChatTitle,
   type ChatCreatedDetail,
   type ChatDeletedDetail,
   type ChatTitleUpdatedDetail,
 } from '@/shared/chat/chat-title'
+import { NEW_DIRECT_MESSAGE_EVENT } from '@/shared/chat/collaboration-events'
 import {
   fetchChatListResult,
   fetchNextChatListPage,
@@ -30,6 +32,7 @@ import {
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { SidebarResourceList } from '@overlay/ui/primitives'
 import { useAuth } from '@/contexts/AuthContext'
+import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 
 const panelItemClass =
   'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
@@ -72,6 +75,8 @@ export function ChatInlinePanel({
   const [editingTitle, setEditingTitle] = useState('')
   const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
   const [pendingDeleteChatId, setPendingDeleteChatId] = useState<string | null>(null)
+  const [newDirectMessageOpen, setNewDirectMessageOpen] = useState(false)
+  const [collaborationUnread, setCollaborationUnread] = useState<Record<string, number>>({})
   const activeId = searchParams?.get('id') ?? null
   const chatView = (() => {
     const value = searchParams?.get('view')
@@ -79,6 +84,45 @@ export function ChatInlinePanel({
     return 'personal'
   })()
   setActiveChatListView(chatView)
+
+  useEffect(() => {
+    const openDialog = () => {
+      if (chatView === 'dms' && workspaceId) setNewDirectMessageOpen(true)
+    }
+    window.addEventListener(NEW_DIRECT_MESSAGE_EVENT, openDialog)
+    return () => window.removeEventListener(NEW_DIRECT_MESSAGE_EVENT, openDialog)
+  }, [chatView, workspaceId])
+
+  useEffect(() => {
+    if (!workspaceId || isPublicShowcase || !user) {
+      setCollaborationUnread({})
+      return
+    }
+    let cancelled = false
+    const loadUnread = async () => {
+      try {
+        const { notifications } = await overlayAppClient.conversations.notifications({
+          unreadOnly: true,
+          limit: 100,
+        })
+        if (cancelled) return
+        const counts: Record<string, number> = {}
+        for (const notification of notifications) {
+          if (!notification.conversationId) continue
+          counts[notification.conversationId] = (counts[notification.conversationId] ?? 0) + 1
+        }
+        setCollaborationUnread(counts)
+      } catch {
+        // Realtime badges are best effort; the conversation remains accessible.
+      }
+    }
+    void loadUnread()
+    const timer = window.setInterval(() => void loadUnread(), 15_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [isPublicShowcase, user, workspaceId])
 
   const loadChats = useCallback(async (signal?: { cancelled: boolean }) => {
     if (seededChats) {
@@ -290,7 +334,7 @@ export function ChatInlinePanel({
       : chatView === 'channels'
         ? chats.filter((chat) => chat.conversationType === 'channel')
         : chatView === 'unread'
-          ? chats.filter((chat) => getUnread(chat._id) > 0)
+          ? chats.filter((chat) => Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0) > 0)
           : chats
   const filteredChats = searchQuery.trim()
     ? viewChats.filter((c) => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -304,6 +348,7 @@ export function ChatInlinePanel({
   }[chatView]
 
   return (
+    <>
     <SidebarResourceList>
       {loading ? (
         <SidebarListSkeleton rows={6} />
@@ -315,7 +360,7 @@ export function ChatInlinePanel({
         <>
           {filteredChats.map((chat) => {
             const isStreaming = sessions[chat._id]?.status === 'streaming'
-            const unread = getUnread(chat._id)
+            const unread = Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0)
             const active = activeId === chat._id
             const isEditing = editingChatId === chat._id
             const isDeleting = deletingChatIds.includes(chat._id)
@@ -446,5 +491,25 @@ export function ChatInlinePanel({
         </>
       )}
     </SidebarResourceList>
+    {workspaceId ? (
+      <NewDirectMessageDialog
+        open={newDirectMessageOpen}
+        workspaceId={workspaceId}
+        onOpenChange={setNewDirectMessageOpen}
+        onCreated={({ id, title }) => {
+          dispatchChatCreated({
+            chat: {
+              _id: id,
+              title,
+              lastModified: Date.now(),
+              conversationType: 'dm',
+            },
+          })
+          router.push(`${baseHref}?${new URLSearchParams({ view: 'dms', id }).toString()}`)
+          onNavigate?.()
+        }}
+      />
+    ) : null}
+    </>
   )
 }

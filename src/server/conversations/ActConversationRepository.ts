@@ -78,6 +78,9 @@ export type ConversationMessageRow = {
   replySnippet?: string
   routedModelId?: string
   status?: 'generating' | 'completed' | 'error'
+  clientNonce?: string
+  editedAt?: number
+  deletedAt?: number
 }
 
 export type ActUsageEvent = {
@@ -101,6 +104,7 @@ export type ConversationEventType =
   | 'message.failed'
   | 'message.stopped'
   | 'message.deleted'
+  | 'message.updated'
   | 'message.ui-updated'
 
 export type ConversationEventRow = {
@@ -208,6 +212,7 @@ export interface ActConversationRepository {
     workspaceId?: string
     authorKind?: 'human' | 'agent' | 'model' | 'system'
     authorPrincipalId?: string
+    clientNonce?: string
     variantIndex?: number
   }): Promise<Id<'conversationMessages'> | null>
   listMemories(args: {

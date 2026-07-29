@@ -193,6 +193,12 @@ async function prepareWorkspaceAccountDeletion(tx: Transaction, userId: string):
     WHERE kind = 'personal' AND personal_owner_user_id = ${userId}
   `)
 
+  // The legacy chat tables still require a user_id even though organization
+  // DMs are now owned by their workspace and participants. Move that
+  // compatibility key to an active owner before the account row is deleted;
+  // author_principal_id continues to preserve the actual historical author.
+  await reassignOrganizationConversationCompatibilityOwner(tx, userId)
+
   const organizationPrincipals = sql`
     SELECT id
     FROM workspace_principals
@@ -208,6 +214,26 @@ async function prepareWorkspaceAccountDeletion(tx: Transaction, userId: string):
     WHERE principal_id IN (${organizationPrincipals})
       AND status IN ('pending', 'active')
   `)
+  // Organization conversation history is retained, but a deleted identity must
+  // immediately stop appearing as an active participant or presence target.
+  await tx.execute(sql`
+    UPDATE conversation_participants
+    SET
+      status = 'removed',
+      removed_at = COALESCE(removed_at, now()),
+      archived_at = COALESCE(archived_at, now()),
+      updated_at = now()
+    WHERE principal_id IN (${organizationPrincipals})
+      AND status = 'active'
+  `)
+  await tx.execute(sql`
+    DELETE FROM workspace_presence
+    WHERE principal_id IN (${organizationPrincipals})
+  `)
+  await tx.execute(sql`
+    DELETE FROM workspace_notifications
+    WHERE recipient_principal_id IN (${organizationPrincipals})
+  `)
   await tx.execute(sql`
     DELETE FROM workspace_memberships
     WHERE principal_id IN (${organizationPrincipals})
@@ -220,6 +246,65 @@ async function prepareWorkspaceAccountDeletion(tx: Transaction, userId: string):
       email = NULL,
       updated_at = now()
     WHERE user_id = ${userId}
+  `)
+}
+
+async function reassignOrganizationConversationCompatibilityOwner(
+  tx: Transaction,
+  userId: string,
+): Promise<void> {
+  await tx.execute(sql`
+    WITH replacement AS (
+      SELECT DISTINCT ON (membership.workspace_id)
+        membership.workspace_id,
+        principal.user_id
+      FROM workspace_memberships membership
+      INNER JOIN workspace_principals principal
+        ON principal.workspace_id = membership.workspace_id
+        AND principal.id = membership.principal_id
+      INNER JOIN workspaces workspace ON workspace.id = membership.workspace_id
+      WHERE workspace.kind = 'organization'
+        AND workspace.status = 'active'
+        AND membership.status = 'active'
+        AND membership.role = 'owner'
+        AND principal.type = 'human'
+        AND principal.archived_at IS NULL
+        AND principal.user_id IS NOT NULL
+        AND principal.user_id <> ${userId}
+      ORDER BY membership.workspace_id, membership.joined_at, principal.id
+    )
+    UPDATE conversation_messages message
+    SET user_id = replacement.user_id
+    FROM conversations conversation
+    INNER JOIN replacement ON replacement.workspace_id = conversation.workspace_id
+    WHERE message.conversation_id = conversation.id
+      AND message.user_id = ${userId}
+  `)
+  await tx.execute(sql`
+    WITH replacement AS (
+      SELECT DISTINCT ON (membership.workspace_id)
+        membership.workspace_id,
+        principal.user_id
+      FROM workspace_memberships membership
+      INNER JOIN workspace_principals principal
+        ON principal.workspace_id = membership.workspace_id
+        AND principal.id = membership.principal_id
+      INNER JOIN workspaces workspace ON workspace.id = membership.workspace_id
+      WHERE workspace.kind = 'organization'
+        AND workspace.status = 'active'
+        AND membership.status = 'active'
+        AND membership.role = 'owner'
+        AND principal.type = 'human'
+        AND principal.archived_at IS NULL
+        AND principal.user_id IS NOT NULL
+        AND principal.user_id <> ${userId}
+      ORDER BY membership.workspace_id, membership.joined_at, principal.id
+    )
+    UPDATE conversations conversation
+    SET user_id = replacement.user_id, updated_at = now()
+    FROM replacement
+    WHERE conversation.workspace_id = replacement.workspace_id
+      AND conversation.user_id = ${userId}
   `)
 }
 

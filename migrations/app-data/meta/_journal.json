@@ -232,6 +232,13 @@
       "when": 1785956400000,
       "tag": "0032_workspace_conversations",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1786042800000,
+      "tag": "0033_direct_messages",
+      "breakpoints": true
     }
   ]
 }

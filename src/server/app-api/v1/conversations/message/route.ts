@@ -27,6 +27,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       replySnippet?: string
       accessToken?: string
       userId?: string
+      clientNonce?: string
+      mentionedPrincipalIds?: string[]
     }
 
 
@@ -48,9 +50,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const mode = body.mode ?? 'act'
     const contentType = body.contentType ?? 'text'
     const modelId = body.modelId ?? body.model
-    await getOverlayServerContext().appData.repositories.conversations.addMessage({
+    const server = getOverlayServerContext()
+    const messageId = await server.appData.repositories.conversations.addMessage({
       conversationId: body.conversationId as Id<'conversations'>,
-      userId: getAuthorizedResourceUserId(context),
+      userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+      authorKind: body.role === 'user' ? 'human' : 'model',
+      authorPrincipalId: body.role === 'user' ? context.workspace.principal.id : undefined,
+      clientNonce: body.clientNonce?.trim() || undefined,
       turnId,
       role: body.role,
       mode,
@@ -63,6 +70,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         ? { replyToTurnId: body.replyToTurnId.trim(), replySnippet: body.replySnippet?.trim() }
         : {}),
     })
+    if (messageId && body.role === 'user') {
+      await server.appData.repositories.conversationCollaboration.recordMessageActivity({
+        actorUserId: context.auth.userId,
+        workspaceId: context.workspace.workspace.id,
+        conversationId: body.conversationId,
+        messageId,
+        body: normalizedContent,
+        mentionedPrincipalIds: body.mentionedPrincipalIds,
+      })
+    }
 
     return NextResponse.json({ success: true, conversationId: body.conversationId, turnId })
   } catch (e) {

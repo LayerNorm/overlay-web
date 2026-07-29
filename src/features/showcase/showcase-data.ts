@@ -128,7 +128,8 @@ export const SHOWCASE_CONVERSATIONS: ShowcaseConversation[] = [
   },
 ]
 
-export const SHOWCASE_CHAT_SUMMARIES = SHOWCASE_CONVERSATIONS.map((conversation, index) => ({
+export const SHOWCASE_CHAT_SUMMARIES = [
+  ...SHOWCASE_CONVERSATIONS.map((conversation, index) => ({
   _id: `showcase-${conversation.id}`,
   title: conversation.title,
   lastModified: Date.parse('2026-07-22T18:00:00.000Z') - index * 60_000,
@@ -137,7 +138,20 @@ export const SHOWCASE_CHAT_SUMMARIES = SHOWCASE_CONVERSATIONS.map((conversation,
   lastMode: 'act' as const,
   askModelIds: ['openrouter/free'],
   actModelId: 'openrouter/free',
-}))
+  conversationType: 'personal' as const,
+  })),
+  {
+    _id: 'showcase-dm',
+    title: 'Maya Chen, Rahul Shah',
+    lastModified: Date.parse('2026-07-29T18:08:00.000Z'),
+    createdAt: Date.parse('2026-07-29T17:00:00.000Z'),
+    updatedAt: Date.parse('2026-07-29T18:08:00.000Z'),
+    lastMode: 'act' as const,
+    askModelIds: ['openrouter/free'],
+    actModelId: 'openrouter/free',
+    conversationType: 'dm' as const,
+  },
+]
 
 export const SHOWCASE_CHAT_SNAPSHOTS = Object.fromEntries(
   SHOWCASE_CONVERSATIONS.map((conversation) => [

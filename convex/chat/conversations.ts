@@ -458,7 +458,9 @@ export const list = query({
           .take(500)
         : ctx.db
           .query('conversations')
-          .withIndex('by_userId_lastModified', (q) => q.eq('userId', userId))
+          .withIndex('by_workspaceId_conversationType_lastModified', (q) => (
+            q.eq('workspaceId', scope.workspaceId)
+          ))
           .order('desc')
           .take(500),
       getLinkedAutomationConversationIds(ctx, userId),
@@ -511,7 +513,6 @@ export const listByProject = query({
         workspace?.personalOwnerUserId,
       ))
       .map((conversation) => normalizeConversationDoc(conversation, scope))
-      .filter((conversation) => conversation.userId === userId)
       .filter((conversation) => !conversation.isAutomation)
       .filter((conversation) => !automationConversationIds.has(conversation._id))
       .filter((conversation) => (updatedSince !== undefined ? conversation.updatedAt > updatedSince : true))
@@ -535,7 +536,7 @@ export const get = query({
       return null
     }
     const conversation = await ctx.db.get(conversationId)
-    if (!conversation || conversation.userId !== userId || conversation.deletedAt) return null
+    if (!conversation || conversation.deletedAt) return null
     const scope = await resolveHumanWorkspaceScope(
       ctx,
       userId,
@@ -544,9 +545,17 @@ export const get = query({
     const workspace = await ctx.db.query('workspaces')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', scope.workspaceId))
       .unique()
-    return conversation?.userId === userId
+    const participant = (conversation.conversationType ?? 'personal') === 'personal'
+      ? null
+      : await ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', (q) => (
+          q.eq('conversationId', conversationId).eq('principalId', scope.principalId)
+        )).unique()
+    const allowed = (conversation.conversationType ?? 'personal') === 'personal'
+      ? conversation.userId === userId
+      : participant?.status === 'active'
+    return allowed
       && belongsToWorkspace(conversation, scope.workspaceId, workspace?.personalOwnerUserId)
-      && !conversation.deletedAt
       ? normalizeConversationDoc(conversation, scope)
       : null
   },
@@ -660,7 +669,17 @@ export const update = mutation({
       userId,
       workspaceId ?? conversation?.workspaceId,
     )
-    if (!conversation || conversation.userId !== userId || conversation.deletedAt
+    const participant = conversation && (conversation.conversationType ?? 'personal') !== 'personal'
+      ? await ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', (q) => (
+          q.eq('conversationId', conversationId).eq('principalId', scope.principalId)
+        )).unique()
+      : null
+    if (!conversation
+      || ((conversation.conversationType ?? 'personal') === 'personal'
+        ? conversation.userId !== userId
+        : participant?.status !== 'active')
+      || conversation.deletedAt
       || (conversation.workspaceId && conversation.workspaceId !== scope.workspaceId)) {
       throw new Error('Unauthorized')
     }
@@ -697,7 +716,17 @@ export const remove = mutation({
       userId,
       workspaceId ?? conversation?.workspaceId,
     )
-    if (!conversation || conversation.userId !== userId || conversation.deletedAt
+    const participant = conversation && (conversation.conversationType ?? 'personal') !== 'personal'
+      ? await ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', (q) => (
+          q.eq('conversationId', conversationId).eq('principalId', scope.principalId)
+        )).unique()
+      : null
+    if (!conversation
+      || ((conversation.conversationType ?? 'personal') === 'personal'
+        ? conversation.userId !== userId
+        : participant?.status !== 'active')
+      || conversation.deletedAt
       || (conversation.workspaceId && conversation.workspaceId !== scope.workspaceId)) {
       throw new Error('Unauthorized')
     }
@@ -936,6 +965,7 @@ export const addMessage = mutation({
       v.literal('system'),
     )),
     authorPrincipalId: v.optional(v.string()),
+    clientNonce: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess({
@@ -944,7 +974,7 @@ export const addMessage = mutation({
       serverSecret: args.serverSecret,
     })
     const conversation = await ctx.db.get(args.conversationId)
-    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
+    if (!conversation || (!args.workspaceId && conversation.userId !== args.userId) || conversation.deletedAt) {
       throw new Error('Unauthorized')
     }
     const scope = await resolveHumanWorkspaceScope(
@@ -955,6 +985,14 @@ export const addMessage = mutation({
     if (conversation.workspaceId && conversation.workspaceId !== scope.workspaceId) {
       throw new Error('Unauthorized')
     }
+    if ((conversation.conversationType ?? 'personal') !== 'personal') {
+      const participant = await ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', (q) => (
+          q.eq('conversationId', args.conversationId).eq('principalId', scope.principalId)
+        ))
+        .unique()
+      if (!participant || participant.status !== 'active') throw new Error('Unauthorized')
+    }
     const authorKind = args.authorKind ?? (args.role === 'user' ? 'human' : 'model')
     const authorPrincipalId = authorKind === 'human' || authorKind === 'agent'
       ? args.authorPrincipalId ?? scope.principalId
@@ -963,14 +1001,16 @@ export const addMessage = mutation({
       .query('conversationMessages')
       .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
       .collect()
-    const match = existing.find(
-      (message) => sameMessageVariant(message, {
-        turnId: args.turnId,
-        role: args.role,
-        variantIndex: args.variantIndex,
-        modelId: args.modelId,
-      }),
-    )
+    const match = existing.find((message) => (
+      args.clientNonce
+        ? message.clientNonce === args.clientNonce
+        : sameMessageVariant(message, {
+          turnId: args.turnId,
+          role: args.role,
+          variantIndex: args.variantIndex,
+          modelId: args.modelId,
+        })
+    ))
     const now = Date.now()
     const payload = {
       conversationId: args.conversationId,
@@ -990,6 +1030,7 @@ export const addMessage = mutation({
       replySnippet: args.replySnippet,
       routedModelId: args.routedModelId,
       status: 'completed' as const,
+      clientNonce: args.clientNonce,
       updatedAt: now,
       createdAt: match?.createdAt ?? now,
     }

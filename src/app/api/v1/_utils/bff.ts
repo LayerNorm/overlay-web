@@ -216,7 +216,19 @@ export async function handleBffRoute(
     parsedQuery: parsedInput.parsedQuery,
     policy: authorizationPolicy,
   })
-  if (resourceAuthorization.decision && !resourceAuthorization.decision.allowed) {
+  const conversationParticipantAccess = resourceAuthorization.resourceId
+    && resourceAuthorization.decision?.resourceType === 'conversation'
+    ? await serverContext.appData.repositories.conversationCollaboration.canAccessConversation({
+      actorUserId: auth.userId,
+      workspaceId: workspace.workspace.id,
+      conversationId: resourceAuthorization.resourceId,
+    })
+    : false
+  if (
+    resourceAuthorization.decision
+    && !resourceAuthorization.decision.allowed
+    && !conversationParticipantAccess
+  ) {
     logger.warn('[Authorization] Resource access denied', {
       action: resourceAuthorization.decision.requiredAction,
       method: request.method,
@@ -256,6 +268,12 @@ export async function handleBffRoute(
         resourceType: 'conversation',
         resourceId: resourceAuthorization.resourceId,
       })
+      if (!conversationParticipantAccess && resourceAuthorization.decision.allowed === false) {
+        return NextResponse.json({
+          error: 'Not found',
+          code: 'resource_not_found',
+        }, { status: 404 })
+      }
     } catch (error) {
       if (error instanceof WorkspaceServiceError && error.code === 'not_found') {
         return NextResponse.json({

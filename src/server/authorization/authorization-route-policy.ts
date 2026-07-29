@@ -211,6 +211,43 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { GET: capability('conversations.read') },
   },
   {
+    path: '/api/v1/conversations/direct-messages',
+    methods: { POST: capability('conversations.create') },
+  },
+  {
+    path: '/api/v1/conversations/notifications',
+    methods: {
+      GET: capability('conversations.read'),
+      PATCH: capability('conversations.edit'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/participants',
+    methods: {
+      GET: resource('conversation', 'view', {}, 'conversations.read'),
+      POST: resource('conversation', 'edit', {}, 'conversations.edit'),
+      DELETE: resource('conversation', 'edit', {}, 'conversations.edit'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/state',
+    methods: { PATCH: resource('conversation', 'view', {}, 'conversations.read') },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/presence',
+    methods: {
+      GET: resource('conversation', 'view', {}, 'conversations.read'),
+      PATCH: resource('conversation', 'view', {}, 'conversations.read'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/messages/:messageId',
+    methods: {
+      PATCH: resource('conversation', 'edit', {}, 'conversations.edit'),
+      DELETE: resource('conversation', 'edit', {}, 'conversations.edit'),
+    },
+  },
+  {
     path: '/api/v1/conversations/act',
     methods: { POST: resource('conversation', 'edit', { optional: true }, 'conversations.edit', 'models.use') },
   },

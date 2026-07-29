@@ -67,6 +67,8 @@ export interface ConversationMessageRequest {
   replySnippet?: string
   accessToken?: string
   userId?: string
+  clientNonce?: string
+  mentionedPrincipalIds?: string[]
 }
 
 export type ActConversationRequest = Record<string, unknown>

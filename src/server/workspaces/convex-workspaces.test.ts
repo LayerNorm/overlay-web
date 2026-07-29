@@ -8,6 +8,7 @@ import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { ConvexWorkspaceRepository } from './ConvexWorkspaceRepository'
 import { ConvexActConversationRepository } from '@/server/conversations/ConvexActConversationRepository'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
+import { ConvexConversationCollaborationRepository } from '@/server/conversations/ConvexConversationCollaborationRepository'
 
 const enabled = process.env.WORKSPACE_CONTRACT_CONVEX === '1'
 const hasConvexUrl = Boolean(
@@ -217,6 +218,85 @@ test('Convex workspace repository matches the Phase 1 lifecycle contract', {
         resourceType: 'conversation',
         resourceId: personalId,
       }))?.workspaceId, personalWorkspaceId)
+    })
+
+    await t.test('direct messages enforce participants, retries, presence, and notifications', async () => {
+      const conversations: ActConversationRepository = new ConvexActConversationRepository()
+      const collaboration = new ConvexConversationCollaborationRepository()
+      const directMessage = await collaboration.createDirectMessage({
+        actorUserId: ownerUserId,
+        workspaceId: orgWorkspaceId,
+        principalIds: [invitedPrincipalId],
+      })
+      assert.equal(directMessage.participants.length, 2)
+      assert.equal((await collaboration.createDirectMessage({
+        actorUserId: ownerUserId,
+        workspaceId: orgWorkspaceId,
+        principalIds: [invitedPrincipalId],
+      })).conversationId, directMessage.conversationId)
+      const messageId = await conversations.addMessage({
+        workspaceId: orgWorkspaceId,
+        conversationId: directMessage.conversationId as never,
+        userId: invitedUserId,
+        authorPrincipalId: invitedPrincipalId,
+        clientNonce: `${scope}_dm_nonce`,
+        turnId: `${scope}_dm_turn`,
+        role: 'user',
+        mode: 'act',
+        content: 'Hello from Convex',
+        contentType: 'text',
+      })
+      assert.ok(messageId)
+      assert.equal(await conversations.addMessage({
+        workspaceId: orgWorkspaceId,
+        conversationId: directMessage.conversationId as never,
+        userId: invitedUserId,
+        authorPrincipalId: invitedPrincipalId,
+        clientNonce: `${scope}_dm_nonce`,
+        turnId: `${scope}_dm_turn_retry`,
+        role: 'user',
+        mode: 'act',
+        content: 'Duplicate',
+        contentType: 'text',
+      }), messageId)
+      await collaboration.recordMessageActivity({
+        actorUserId: invitedUserId,
+        workspaceId: orgWorkspaceId,
+        conversationId: directMessage.conversationId,
+        messageId: String(messageId),
+        body: 'Hello from Convex',
+        mentionedPrincipalIds: [ownerPrincipalId],
+      })
+      assert.equal((await collaboration.listNotifications({
+        actorUserId: ownerUserId,
+        workspaceId: orgWorkspaceId,
+        unreadOnly: true,
+      })).some((notification) => notification.messageId === String(messageId)), true)
+      await collaboration.upsertPresence({
+        actorUserId: invitedUserId,
+        workspaceId: orgWorkspaceId,
+        conversationId: directMessage.conversationId,
+        status: 'online',
+        typing: true,
+      })
+      assert.equal((await collaboration.listPresence({
+        actorUserId: ownerUserId,
+        workspaceId: orgWorkspaceId,
+        conversationId: directMessage.conversationId,
+      })).find((row) => row.principalId === invitedPrincipalId)?.typing, true)
+      assert.equal(await collaboration.editMessage({
+        actorUserId: invitedUserId,
+        workspaceId: orgWorkspaceId,
+        conversationId: directMessage.conversationId,
+        messageId: String(messageId),
+        content: 'Edited',
+      }), true)
+      assert.equal(await collaboration.deleteMessage({
+        actorUserId: invitedUserId,
+        workspaceId: orgWorkspaceId,
+        conversationId: directMessage.conversationId,
+        messageId: String(messageId),
+      }), true)
     })
 
     await t.test('account deletion erases Personal data and scrubs organization identity', async () => {

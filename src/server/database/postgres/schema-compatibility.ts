@@ -3,8 +3,8 @@ import 'server-only'
 import type { Pool } from 'pg'
 import { createOverlayPostgresPool } from './client'
 
-export const APP_DATA_SCHEMA_VERSION = 32
-export const APP_DATA_MINIMUM_SCHEMA_VERSION = 32
+export const APP_DATA_SCHEMA_VERSION = 33
+export const APP_DATA_MINIMUM_SCHEMA_VERSION = 33
 export const APP_DATA_MIGRATION_LOCK_ID = 6_849_331_027
 
 export type AppDataSchemaCompatibility = {

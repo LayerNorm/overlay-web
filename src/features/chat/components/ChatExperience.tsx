@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import {
   ArrowUp,
   ChevronDown,
+  UsersRound,
 } from 'lucide-react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
@@ -99,6 +100,8 @@ import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import type { ConversationLoadSnapshot } from './chat/chatTransport'
+import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 
 // Heavy, conditionally-rendered surfaces are code-split out of the initial chat
 // bundle. They only mount on specific interactions (billing top-up, export,
@@ -154,6 +157,8 @@ export default function ChatExperience({
   initialChatPageInfo?: ChatListPageInfo
   publicShowcaseSnapshots?: Readonly<Record<string, ConversationLoadSnapshot>>
 }) {
+  const { activeWorkspaceId } = useWorkspace()
+  const [continueInDirectMessageOpen, setContinueInDirectMessageOpen] = useState(false)
   recordRender('ChatExperience')
   const router = useRouter()
   const pathname = usePathname()
@@ -1873,6 +1878,18 @@ export default function ChatExperience({
         onGenerationModeChange: handleModeChange,
         generationMode,
         renderExportMenu,
+        collaborationAction: activeChatId && !isTemporaryChat && !isPublicShowcase && activeWorkspaceId ? (
+          <DelayedTooltip label="Continue with people" side="bottom">
+            <button
+              type="button"
+              onClick={() => setContinueInDirectMessageOpen(true)}
+              className="flex h-8 min-h-8 items-center gap-1.5 rounded-md bg-[var(--surface-subtle)] px-2.5 text-xs text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]"
+            >
+              <UsersRound size={13} />
+              <span className="hidden lg:inline">People</span>
+            </button>
+          </DelayedTooltip>
+        ) : null,
         ...headerModelProps,
         automationHeaderModelId,
         automationHeaderModels,
@@ -2107,6 +2124,20 @@ export default function ChatExperience({
         renderViewer: renderAttachmentViewer,
       }}
       />
+      {activeWorkspaceId && activeChatId ? (
+        <NewDirectMessageDialog
+          open={continueInDirectMessageOpen}
+          workspaceId={activeWorkspaceId}
+          sourceConversationId={activeChatId}
+          onOpenChange={setContinueInDirectMessageOpen}
+          onCreated={({ id }) => {
+            const params = new URLSearchParams(searchParams?.toString() ?? '')
+            params.set('view', 'dms')
+            params.set('id', id)
+            router.push(`${pathname ?? '/app/chat'}?${params.toString()}`)
+          }}
+        />
+      ) : null}
     </>
   )
 }

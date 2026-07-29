@@ -204,7 +204,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
       .from(conversations)
       .where(and(
         eq(conversations.id, args.conversationId),
-        eq(conversations.userId, args.userId),
+        args.workspaceId ? undefined : eq(conversations.userId, args.userId),
         args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
       ))
       .limit(1)
@@ -268,7 +268,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     const beforeCreatedAt = finiteDate(args.beforeCreatedAt)
     const filters = [
       eq(conversationMessages.conversationId, args.conversationId),
-      eq(conversationMessages.userId, args.userId),
+      args.workspaceId ? undefined : eq(conversationMessages.userId, args.userId),
       beforeCreatedAt ? lt(conversationMessages.createdAt, beforeCreatedAt) : undefined,
     ].filter(Boolean)
 
@@ -293,7 +293,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
       .from(conversationMessages)
       .where(and(
         eq(conversationMessages.conversationId, args.conversationId),
-        eq(conversationMessages.userId, args.userId),
+        args.workspaceId ? undefined : eq(conversationMessages.userId, args.userId),
       ))
       .orderBy(conversationMessages.createdAt)
     return rows.map(mapConversationMessageRow)
@@ -330,7 +330,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         })
         .where(and(
           eq(conversations.id, args.conversationId),
-          eq(conversations.userId, args.userId),
+          args.workspaceId ? undefined : eq(conversations.userId, args.userId),
           args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
         ))
         .returning({ id: conversations.id })
@@ -360,7 +360,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         })
         .where(and(
           eq(conversations.id, args.conversationId),
-          eq(conversations.userId, args.userId),
+          args.workspaceId ? undefined : eq(conversations.userId, args.userId),
           args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
         ))
         .returning({ id: conversations.id })
@@ -453,14 +453,25 @@ export class PostgresActConversationRepository implements ActConversationReposit
     workspaceId?: string
     authorKind?: 'human' | 'agent' | 'model' | 'system'
     authorPrincipalId?: string
+    clientNonce?: string
     variantIndex?: number
   }): Promise<ConversationMessageId | null> {
+    if (args.clientNonce) {
+      const [existing] = await this.db.select({ id: conversationMessages.id })
+        .from(conversationMessages)
+        .where(and(
+          eq(conversationMessages.conversationId, args.conversationId),
+          eq(conversationMessages.clientNonce, args.clientNonce),
+        ))
+        .limit(1)
+      if (existing) return existing.id as ConversationMessageId
+    }
     const now = new Date()
     const id = messageId()
     await this.db.transaction(async (tx) => {
       const [conversation] = await tx.select().from(conversations).where(and(
         eq(conversations.id, args.conversationId),
-        eq(conversations.userId, args.userId),
+        args.workspaceId ? undefined : eq(conversations.userId, args.userId),
         args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
         isNull(conversations.deletedAt),
       )).limit(1)
@@ -487,10 +498,11 @@ export class PostgresActConversationRepository implements ActConversationReposit
         tokens: args.tokens,
         routedModelId: args.routedModelId,
         status: 'completed',
+        clientNonce: args.clientNonce,
         createdAt: now,
         updatedAt: now,
       })
-      await touchConversation(tx, args.conversationId, args.userId, now, args.mode)
+      await touchConversation(tx, args.conversationId, now, args.mode)
       await emitConversationEvent(tx, {
         conversationId: args.conversationId,
         messageId: id,
@@ -670,7 +682,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         createdAt: now,
         updatedAt: now,
       })
-      await touchConversation(tx, args.conversationId, args.userId, now, args.mode)
+      await touchConversation(tx, args.conversationId, now, args.mode)
       await emitConversationEvent(tx, {
         conversationId: args.conversationId,
         messageId: id,
@@ -726,7 +738,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
           eq(conversationMessages.id, args.messageId),
           eq(conversationMessages.status, 'generating'),
         ))
-      await touchConversation(tx, row.conversationId as ConversationId, row.userId, now, 'act')
+      await touchConversation(tx, row.conversationId as ConversationId, now, 'act')
       await emitConversationEvent(tx, {
         conversationId: row.conversationId,
         messageId: args.messageId,
@@ -767,7 +779,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
           userId: conversationMessages.userId,
         })
       if (row) {
-        await touchConversation(tx, row.conversationId as ConversationId, row.userId, now, row.mode)
+        await touchConversation(tx, row.conversationId as ConversationId, now, row.mode)
         await emitConversationEvent(tx, {
           conversationId: row.conversationId,
           messageId: args.messageId,
@@ -802,7 +814,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
           userId: conversationMessages.userId,
         })
       if (row) {
-        await touchConversation(tx, row.conversationId as ConversationId, row.userId, now, row.mode)
+        await touchConversation(tx, row.conversationId as ConversationId, now, row.mode)
         await emitConversationEvent(tx, {
           conversationId: row.conversationId,
           messageId: args.messageId,
@@ -846,7 +858,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         })
       }
       if (rows.length > 0) {
-        await touchConversation(tx, args.conversationId, args.userId, now, 'act')
+        await touchConversation(tx, args.conversationId, now, 'act')
       }
     })
   }
@@ -909,7 +921,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
           userId: args.userId,
         })
       }
-      await touchConversation(tx, args.conversationId, args.userId, now, rows[0]?.mode ?? 'act')
+      await touchConversation(tx, args.conversationId, now, rows[0]?.mode ?? 'act')
       return { stoppedCount: rows.length }
     })
   }
@@ -945,7 +957,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
           .where(inArray(conversationMessages.id, messages.map((message) => message.id)))
       }
       const now = new Date()
-      await touchConversation(tx, args.conversationId, args.userId, now, 'act')
+      await touchConversation(tx, args.conversationId, now, 'act')
       await emitConversationEvent(tx, {
         conversationId: args.conversationId,
         payload: { deletedMessages: messages.length, turnId: args.turnId },
@@ -986,7 +998,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         .update(conversationMessages)
         .set({ parts, updatedAt: now })
         .where(eq(conversationMessages.id, args.messageId))
-      await touchConversation(tx, args.conversationId, args.userId, now, 'act')
+      await touchConversation(tx, args.conversationId, now, 'act')
       await emitConversationEvent(tx, {
         conversationId: args.conversationId,
         messageId: args.messageId,
@@ -1161,7 +1173,7 @@ function conversationListWhere(args: {
   workspaceId?: string
 }) {
   return and(
-    eq(conversations.userId, args.userId),
+    args.workspaceId ? undefined : eq(conversations.userId, args.userId),
     args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
     args.conversationType
       ? eq(conversations.conversationType, args.conversationType)
@@ -1216,6 +1228,9 @@ function mapConversationMessageRow(row: typeof conversationMessages.$inferSelect
     replySnippet: row.replySnippet ?? undefined,
     routedModelId: row.routedModelId ?? undefined,
     status: row.status ?? undefined,
+    clientNonce: row.clientNonce ?? undefined,
+    editedAt: row.editedAt?.getTime(),
+    deletedAt: row.deletedAt?.getTime(),
   }
 }
 
@@ -1260,7 +1275,6 @@ function generateShareToken(): string {
 async function touchConversation(
   db: Pick<OverlayPostgresDb, 'update'>,
   conversationId: ConversationId,
-  userId: string,
   now: Date,
   lastMode: 'ask' | 'act',
 ): Promise<void> {
@@ -1271,8 +1285,5 @@ async function touchConversation(
       lastModified: now,
       updatedAt: now,
     })
-    .where(and(
-      eq(conversations.id, conversationId),
-      eq(conversations.userId, userId),
-    ))
+    .where(eq(conversations.id, conversationId))
 }

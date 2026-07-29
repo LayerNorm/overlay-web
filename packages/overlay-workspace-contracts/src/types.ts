@@ -265,6 +265,75 @@ export type WorkspaceArchiveResponse = {
   workspace: Workspace
 }
 
+export const CONVERSATION_PARTICIPANT_ROLES = ['member', 'moderator'] as const
+export type ConversationParticipantRole = (typeof CONVERSATION_PARTICIPANT_ROLES)[number]
+
+export const CONVERSATION_NOTIFICATION_LEVELS = ['all', 'mentions', 'muted'] as const
+export type ConversationNotificationLevel = (typeof CONVERSATION_NOTIFICATION_LEVELS)[number]
+
+export type ConversationParticipant = {
+  conversationId: string
+  workspaceId: string
+  principalId: string
+  principalType: Extract<WorkspacePrincipalType, 'human' | 'agent'>
+  displayName: string
+  email?: string
+  role: ConversationParticipantRole
+  status: 'active' | 'removed'
+  notificationLevel: ConversationNotificationLevel
+  joinedAt: number
+  updatedAt: number
+  removedAt?: number
+  lastReadAt?: number
+  markedUnreadAt?: number
+  archivedAt?: number
+}
+
+export type DirectMessageSummary = {
+  conversationId: string
+  workspaceId: string
+  title: string
+  participants: ConversationParticipant[]
+  created: boolean
+}
+
+export type DirectMessageCreateInput = {
+  principalIds: string[]
+  title?: string
+  sourceConversationId?: string
+}
+
+export type ConversationParticipantStateInput = {
+  notificationLevel?: ConversationNotificationLevel
+  archived?: boolean
+  markUnread?: boolean
+  markRead?: boolean
+}
+
+export type ConversationPresence = {
+  workspaceId: string
+  principalId: string
+  conversationId?: string
+  status: 'online' | 'away' | 'offline'
+  typing: boolean
+  lastSeenAt: number
+  typingExpiresAt?: number
+}
+
+export type WorkspaceNotification = {
+  id: string
+  workspaceId: string
+  recipientPrincipalId: string
+  type: 'message' | 'mention' | 'invitation' | 'participant'
+  conversationId?: string
+  messageId?: string
+  actorPrincipalId?: string
+  title: string
+  body?: string
+  createdAt: number
+  readAt?: number
+}
+
 export function isWorkspacePrincipalType(value: unknown): value is WorkspacePrincipalType {
   return typeof value === 'string'
     && WORKSPACE_PRINCIPAL_TYPES.includes(value as WorkspacePrincipalType)
