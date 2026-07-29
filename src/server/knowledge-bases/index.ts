@@ -12,6 +12,7 @@ export {
   type CanonicalKnowledgeIndexRequest,
 } from './KnowledgeSourceIngestionService'
 export {
+  IntegrationKnowledgeSourceFetcher,
   KnowledgeSourceFetcherRegistry,
   UrlKnowledgeSourceFetcher,
   type FetchedKnowledgeSource,

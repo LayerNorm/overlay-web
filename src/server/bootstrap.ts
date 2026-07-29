@@ -57,13 +57,18 @@ import {
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
 import {
   ConvexCanonicalKnowledgeIndexQueue,
+  IntegrationKnowledgeSourceFetcher,
   KnowledgeBaseService,
   KnowledgeSourceFetcherRegistry,
+  type KnowledgeSourceFetcher,
   UrlKnowledgeSourceFetcher,
   KnowledgeBaseRetrievalService,
   KnowledgeSourceIngestionService,
   PostgresCanonicalKnowledgeIndexQueue,
 } from '@/server/knowledge-bases'
+import {
+  getIntegrationProvider,
+} from '@/server/integrations'
 import { GovernanceService } from '@/server/governance'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
@@ -190,14 +195,21 @@ export function createOverlayServerContext(
   const canonicalIndexQueue = appData.capabilities.provider === 'postgres'
     ? new PostgresCanonicalKnowledgeIndexQueue(requiredPostgres(appData).db)
     : new ConvexCanonicalKnowledgeIndexQueue()
+  const knowledgeSourceFetchers: KnowledgeSourceFetcher[] = [new UrlKnowledgeSourceFetcher()]
+  const integrationProvider = runtimeConfig?.providers.integrations?.provider ??
+    (runtimeConfig?.features.integrations === false ? 'none' : 'composio')
+  if (runtimeConfig && integrationProvider === 'composio') {
+    const execute = (request: Parameters<ReturnType<typeof getIntegrationProvider>['execute']>[0]) =>
+      getIntegrationProvider().execute(request)
+    knowledgeSourceFetchers.push(
+      new IntegrationKnowledgeSourceFetcher('connector', execute),
+      new IntegrationKnowledgeSourceFetcher('drive', execute),
+    )
+  }
   const knowledgeSourceIngestionService = new KnowledgeSourceIngestionService({
     authorization: authorizationService,
     bases: knowledgeBaseService,
-    fetchers: new KnowledgeSourceFetcherRegistry([
-      // Connector and drive fetchers are not enabled yet; requesting those kinds
-      // fails with an explicit 501 rather than ingesting nothing.
-      new UrlKnowledgeSourceFetcher(),
-    ]),
+    fetchers: new KnowledgeSourceFetcherRegistry(knowledgeSourceFetchers),
     indexQueue: canonicalIndexQueue,
     repositories: appData.repositories.knowledgeBases,
   })

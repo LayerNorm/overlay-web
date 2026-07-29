@@ -17,6 +17,7 @@ import {
   BookOpen,
   Check,
   ChevronRight,
+  Cloud,
   FileText,
   Globe2,
   Loader2,
@@ -42,6 +43,12 @@ import { Button, DialogFrame, IconButton, SegmentedControl } from '@overlay/ui'
 import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useAuth } from '@/contexts/AuthContext'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { useAuthorization } from '@/components/providers/AuthorizationProvider'
+import {
+  buildConnectedKnowledgeSourceRef,
+  type ConnectedKnowledgeSourceRecipe,
+} from '@/shared/knowledge/external-source-ref'
 
 type SourceTab = 'sources' | 'search'
 
@@ -60,6 +67,8 @@ export function KnowledgeBaseWorkspace({
 }) {
   const router = useRouter()
   const { refreshSession } = useAuth()
+  const { capabilities, integrationProvider } = useOverlayCapabilities()
+  const { can } = useAuthorization()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [knowledgeBase, setKnowledgeBase] = useState(initialKnowledgeBase)
   const [sources, setSources] = useState(initialSources)
@@ -78,6 +87,12 @@ export function KnowledgeBaseWorkspace({
   const [urlTitle, setUrlTitle] = useState('')
   const [urlValue, setUrlValue] = useState('')
   const [savingUrl, setSavingUrl] = useState(false)
+  const [connectedDialogOpen, setConnectedDialogOpen] = useState(false)
+  const [connectedRecipe, setConnectedRecipe] =
+    useState<ConnectedKnowledgeSourceRecipe>('google-drive-file')
+  const [connectedResourceId, setConnectedResourceId] = useState('')
+  const [connectedTitle, setConnectedTitle] = useState('')
+  const [savingConnected, setSavingConnected] = useState(false)
   const [reindexing, setReindexing] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editTitle, setEditTitle] = useState(initialKnowledgeBase.title)
@@ -102,6 +117,10 @@ export function KnowledgeBaseWorkspace({
   )
   const readySourceCount = sources.filter(({ source }) => source.status === 'ready').length
   const hasActiveSources = sources.some(({ source }) => ACTIVE_SOURCE_STATUSES.has(source.status))
+  const canAddConnectedSource =
+    capabilities.integrations &&
+    integrationProvider === 'composio' &&
+    can('integrations.use')
 
   const loadSources = useCallback(async () => {
     const response = await overlayAppClient.knowledgeBases.listSources(knowledgeBase.id)
@@ -184,6 +203,33 @@ export function KnowledgeBaseWorkspace({
       setNotice(error instanceof Error ? error.message : 'Could not add website')
     } finally {
       setSavingUrl(false)
+    }
+  }
+
+  async function addConnectedSource() {
+    if (!connectedResourceId.trim() || savingConnected) return
+    setSavingConnected(true)
+    setNotice(null)
+    try {
+      const isDrive = connectedRecipe === 'google-drive-file' ||
+        connectedRecipe === 'dropbox-file'
+      await overlayAppClient.knowledgeBases.createSource(knowledgeBase.id, {
+        kind: isDrive ? 'drive' : 'connector',
+        ref: buildConnectedKnowledgeSourceRef({
+          recipe: connectedRecipe,
+          resourceId: connectedResourceId,
+        }),
+        title: connectedTitle.trim() || undefined,
+      })
+      setConnectedDialogOpen(false)
+      setConnectedResourceId('')
+      setConnectedTitle('')
+      await loadSources()
+      setSearchRevision((current) => current + 1)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not add connected source')
+    } finally {
+      setSavingConnected(false)
     }
   }
 
@@ -317,6 +363,7 @@ export function KnowledgeBaseWorkspace({
       uploading={uploading}
       onAddText={() => setTextDialogOpen(true)}
       onAddWebsite={() => setUrlDialogOpen(true)}
+      onAddConnected={canAddConnectedSource ? () => setConnectedDialogOpen(true) : undefined}
       onCloseMobile={() => setMobileSourcesOpen(false)}
       onDrop={handleDrop}
       onDragActive={setDragging}
@@ -477,6 +524,64 @@ export function KnowledgeBaseWorkspace({
       </DialogFrame>
 
       <DialogFrame
+        open={connectedDialogOpen}
+        onOpenChange={setConnectedDialogOpen}
+        title="Add connected source"
+        description="Import a read-only source from a connected workspace app."
+        footer={(
+          <>
+            <Button onClick={() => setConnectedDialogOpen(false)} disabled={savingConnected}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void addConnectedSource()}
+              disabled={!connectedResourceId.trim() || savingConnected}
+            >
+              {savingConnected ? <Loader2 className="animate-spin" size={14} /> : null}
+              Add source
+            </Button>
+          </>
+        )}
+      >
+        <div className="mt-5 space-y-3">
+          <label className="block text-xs font-medium">
+            Provider
+            <select
+              value={connectedRecipe}
+              onChange={(event) =>
+                setConnectedRecipe(event.target.value as ConnectedKnowledgeSourceRecipe)}
+              className="mt-1.5 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none"
+            >
+              <option value="google-drive-file">Google Drive file</option>
+              <option value="dropbox-file">Dropbox file</option>
+              <option value="notion-page">Notion page</option>
+              <option value="confluence-page">Confluence page</option>
+            </select>
+          </label>
+          <label className="block text-xs font-medium">
+            {connectedSourceIdentifierLabel(connectedRecipe)}
+            <input
+              autoFocus
+              value={connectedResourceId}
+              onChange={(event) => setConnectedResourceId(event.target.value)}
+              placeholder={connectedSourceIdentifierPlaceholder(connectedRecipe)}
+              className="mt-1.5 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none"
+            />
+          </label>
+          <label className="block text-xs font-medium">
+            Title <span className="font-normal text-[var(--muted)]">(optional)</span>
+            <input
+              value={connectedTitle}
+              onChange={(event) => setConnectedTitle(event.target.value)}
+              placeholder="Source title"
+              className="mt-1.5 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none"
+            />
+          </label>
+        </div>
+      </DialogFrame>
+
+      <DialogFrame
         open={editOpen}
         onOpenChange={setEditOpen}
         title="Knowledge base settings"
@@ -599,6 +704,24 @@ function principalLabel(
   return entry ? directoryEntryLabel(entry) : id
 }
 
+function connectedSourceIdentifierLabel(recipe: ConnectedKnowledgeSourceRecipe): string {
+  switch (recipe) {
+    case 'google-drive-file': return 'Google Drive file ID'
+    case 'dropbox-file': return 'Dropbox file path'
+    case 'notion-page': return 'Notion page ID'
+    case 'confluence-page': return 'Confluence page ID'
+  }
+}
+
+function connectedSourceIdentifierPlaceholder(recipe: ConnectedKnowledgeSourceRecipe): string {
+  switch (recipe) {
+    case 'google-drive-file': return '1AbCdefGhijkLmnoP'
+    case 'dropbox-file': return '/Company/Handbook.pdf'
+    case 'notion-page': return '2f22b4dbb7d1801b...'
+    case 'confluence-page': return '123456789'
+  }
+}
+
 function KnowledgeSourcePanel({
   canEdit,
   dragging,
@@ -611,6 +734,7 @@ function KnowledgeSourcePanel({
   uploading,
   onAddText,
   onAddWebsite,
+  onAddConnected,
   onCloseMobile,
   onDragActive,
   onDrop,
@@ -630,6 +754,7 @@ function KnowledgeSourcePanel({
   uploading: boolean
   onAddText: () => void
   onAddWebsite: () => void
+  onAddConnected?: () => void
   onCloseMobile: () => void
   onDragActive: (active: boolean) => void
   onDrop: (event: DragEvent<HTMLDivElement>) => void
@@ -695,10 +820,13 @@ function KnowledgeSourcePanel({
                 <p className="mt-2 text-xs font-medium">{uploading ? 'Adding sources…' : 'Drop files here'}</p>
                 <p className="mt-1 text-[11px] text-[var(--muted)]">PDF, Office, text, and code files</p>
               </div>
-              <div className="mt-2 grid grid-cols-3 gap-2">
+              <div className={`mt-2 grid gap-2 ${onAddConnected ? 'grid-cols-2' : 'grid-cols-3'}`}>
                 <Button size="sm" onClick={onOpenFilePicker}><Plus size={13} /> Add files</Button>
                 <Button size="sm" onClick={onAddText}><FileText size={13} /> Paste text</Button>
                 <Button size="sm" onClick={onAddWebsite}><Globe2 size={13} /> Website</Button>
+                {onAddConnected ? (
+                  <Button size="sm" onClick={onAddConnected}><Cloud size={13} /> Connected</Button>
+                ) : null}
               </div>
               {notice ? <p role="alert" className="mt-2 text-xs text-red-500">{notice}</p> : null}
             </div>

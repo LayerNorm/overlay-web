@@ -203,7 +203,7 @@ refresh, hiding archived projects.
 | Reindexing and embedding-model migrations | DONE | `/reindex` route plus `knowledge:embedding-drift` and `knowledge:embedding-migrate` |
 | Source provenance and freshness metadata | DONE | provenance in source metadata; freshness derived, never stored |
 | Website sources | DONE | `UrlKnowledgeSourceFetcher` with SSRF protection |
-| Connector and cloud-drive sources | PARTIAL | kinds and registry exist; fetchers return 501 until implemented |
+| Connector and cloud-drive sources | DONE | audited read-only Composio recipes for Google Drive, Dropbox, Notion, and Confluence; capability-gated UI; other providers fail closed |
 | Image, audio, and video ingestion | DEFERRED | explicitly deferred by this plan |
 | Retrieval operations UI | DONE | website capture, extraction preview, per-source diagnostics, refresh, retry, and stale/source reindex controls |
 
@@ -628,7 +628,10 @@ destructive: never point them at pilot or production data.
 3. **Convex and Vercel deploy coupling.** Vercel does not deploy `convex/`, so
    any change touching it must run `npm run convex:push:all` or staging will 404
    on new functions. Not yet a CI step.
-4. **Connector and drive fetchers return 501.** Deliberate, but the source kinds
-   are visible in the API surface.
+4. **Connected-source recipes are currently Composio-specific.** Deployments
+   using Executor do not advertise the connected-source action and continue to
+   reject connector/drive ingestion with an explicit 501 until an Executor
+   source-recipe adapter is configured. Callers can never supply arbitrary tool
+   IDs; the server owns the fixed read-only recipe registry.
 5. **Visual-state QA** for empty, loading, error, mobile, light, and dark states
    has not been run for the knowledge surfaces.

@@ -1,7 +1,15 @@
 import 'server-only'
 
 import type { ExternalKnowledgeSourceKind } from '@overlay/app-core'
+import type {
+  IntegrationExecutionRequest,
+  IntegrationExecutionResult,
+} from '@/server/integrations/contracts'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
+import {
+  parseConnectedKnowledgeSourceRef,
+  type ConnectedKnowledgeSourceRecipe,
+} from '@/shared/knowledge/external-source-ref'
 import { extractReadableText } from '@/shared/knowledge/html-text'
 import { KnowledgeBaseServiceError } from './KnowledgeBaseService'
 
@@ -29,6 +37,111 @@ const ALLOWED_CONTENT_TYPES = [
   'application/xhtml+xml',
   'application/json',
 ]
+
+type ConnectedSourceRecipe = {
+  kind: 'connector' | 'drive'
+  label: string
+  mimeType: string
+  toolId: string
+  args(resourceId: string): Record<string, unknown>
+}
+
+const CONNECTED_SOURCE_RECIPES: Record<ConnectedKnowledgeSourceRecipe, ConnectedSourceRecipe> = {
+  'google-drive-file': {
+    kind: 'drive',
+    label: 'Google Drive',
+    mimeType: 'text/plain',
+    toolId: 'GOOGLEDRIVE_PARSE_FILE',
+    args: (fileId) => ({ file_id: fileId }),
+  },
+  'dropbox-file': {
+    kind: 'drive',
+    label: 'Dropbox',
+    mimeType: 'text/plain',
+    toolId: 'DROPBOX_READ_FILE',
+    args: (path) => ({ path }),
+  },
+  'notion-page': {
+    kind: 'connector',
+    label: 'Notion',
+    mimeType: 'text/markdown',
+    toolId: 'NOTION_GET_PAGE_MARKDOWN',
+    args: (pageId) => ({ page_id: pageId }),
+  },
+  'confluence-page': {
+    kind: 'connector',
+    label: 'Confluence',
+    mimeType: 'text/plain',
+    toolId: 'CONFLUENCE_GET_PAGE_BY_ID',
+    args: (id) => ({ id }),
+  },
+}
+
+/**
+ * Fetches an explicitly supported read-only source through the configured
+ * integration provider. The reference selects a recipe, never an arbitrary
+ * tool ID, so this path cannot be turned into a general connector executor.
+ */
+export class IntegrationKnowledgeSourceFetcher implements KnowledgeSourceFetcher {
+  constructor(
+    readonly kind: 'connector' | 'drive',
+    private readonly execute: (
+      request: IntegrationExecutionRequest,
+    ) => Promise<IntegrationExecutionResult>,
+  ) {}
+
+  async fetch({ ref, userId }: { ref: string; userId: string }): Promise<FetchedKnowledgeSource> {
+    const parsed = parseConnectedKnowledgeSourceRef(ref)
+    if (!parsed) throw new KnowledgeBaseServiceError('Invalid connected source reference', 400)
+    const recipe = CONNECTED_SOURCE_RECIPES[parsed.recipe]
+    if (recipe.kind !== this.kind) {
+      throw new KnowledgeBaseServiceError(
+        `Connected source recipe "${parsed.recipe}" does not match kind "${this.kind}"`,
+        400,
+      )
+    }
+    const result = await this.execute({
+      args: recipe.args(parsed.resourceId),
+      toolId: recipe.toolId,
+      userId,
+    })
+    if (result.status !== 'completed') {
+      throw new KnowledgeBaseServiceError(
+        result.error || `Could not read the ${recipe.label} source`,
+        502,
+      )
+    }
+    const content = extractIntegrationText(result.output)
+    if (!content) {
+      throw new KnowledgeBaseServiceError(
+        `No readable text was returned by ${recipe.label}`,
+        422,
+      )
+    }
+    if (new TextEncoder().encode(content).byteLength > MAX_FETCH_BYTES) {
+      throw new KnowledgeBaseServiceError('Connected source exceeds the 8 MB fetch limit', 413)
+    }
+    return {
+      content,
+      label: recipe.label,
+      mimeType: recipe.mimeType,
+      ref,
+    }
+  }
+}
+
+function extractIntegrationText(output: unknown): string {
+  if (typeof output === 'string') return output.trim()
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return ''
+  const record = output as Record<string, unknown>
+  for (const key of ['markdown', 'text', 'content', 'body', 'plain_text', 'plainText']) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  const data = record.data
+  if (data !== undefined && data !== output) return extractIntegrationText(data)
+  return ''
+}
 
 /**
  * Fetches a public web page and reduces it to readable text.
