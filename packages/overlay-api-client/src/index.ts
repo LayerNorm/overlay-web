@@ -51,6 +51,10 @@ export { OutputsClient } from './outputs/client'
 export { IntegrationsClient } from './integrations/client'
 export { KnowledgeBasesClient } from './knowledge-bases/client'
 export type * from './knowledge-bases/types'
+export type {
+  AdminCatalogResource,
+  AdminCatalogResourceType,
+} from './admin-authorization/client'
 export { SkillsClient } from './skills/client'
 export { McpServersClient } from './mcp-servers/client'
 export { SettingsClient } from './settings/client'

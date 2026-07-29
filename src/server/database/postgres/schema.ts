@@ -706,6 +706,21 @@ export const projectKnowledgeBases = pgTable('project_knowledge_bases', {
   index('project_knowledge_bases_project_created_idx').on(table.projectId, table.createdAt),
 ])
 
+export const knowledgeBaseGroupDefaults = pgTable('knowledge_base_group_defaults', {
+  groupId: text('group_id')
+    .notNull()
+    .references(() => authorizationGroups.id, { onDelete: 'cascade' }),
+  knowledgeBaseId: text('knowledge_base_id')
+    .notNull()
+    .references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.groupId, table.knowledgeBaseId] }),
+  index('knowledge_base_group_defaults_base_idx').on(table.knowledgeBaseId, table.createdAt),
+  index('knowledge_base_group_defaults_group_idx').on(table.groupId, table.createdAt),
+])
+
 export const conversationMessages = pgTable('conversation_messages', {
   id: text('id').primaryKey(),
   conversationId: text('conversation_id')

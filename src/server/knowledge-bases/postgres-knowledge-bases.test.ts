@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { sql } from 'drizzle-orm'
 import { createOverlayPostgresDb, createOverlayPostgresPool } from '@/server/database/postgres/client'
-import { conversations, projects, users } from '@/server/database/postgres/schema'
+import { authorizationGroups, conversations, projects, users } from '@/server/database/postgres/schema'
 import { createPostgresKnowledgeBaseRepositories } from './PostgresKnowledgeBaseRepositories'
 import { runKnowledgeBaseRepositoryContract } from './knowledge-base-repository-contract'
 import { PostgresUserRepository } from '@/server/users'
@@ -25,6 +25,7 @@ test('real Postgres knowledge-base repository contract', {
   const ownerUserId = `${scope}_user`
   const conversationId = `${scope}_conversation`
   const projectId = `${scope}_project`
+  const groupId = `${scope}_group`
 
   try {
     await db.insert(users).values({
@@ -45,11 +46,16 @@ test('real Postgres knowledge-base repository contract', {
       userId: ownerUserId,
       name: 'Knowledge-base contract project',
     })
+    await db.insert(authorizationGroups).values({
+      id: groupId,
+      name: `Knowledge-base contract group ${scope}`,
+    })
     await runKnowledgeBaseRepositoryContract(t, {
       repositories: createPostgresKnowledgeBaseRepositories(db),
       scope,
       ownerUserId,
       conversationId,
+      groupId,
       projectId,
     })
     const directory = await new PostgresUserRepository(db).listDirectory()
@@ -62,6 +68,7 @@ test('real Postgres knowledge-base repository contract', {
     `)
     assert.equal(residue.rows[0]?.count, '0')
   } finally {
+    await db.execute(sql`DELETE FROM authorization_groups WHERE id = ${groupId}`)
     await db.execute(sql`DELETE FROM users WHERE id = ${ownerUserId}`)
     await pool.end()
   }

@@ -53,6 +53,32 @@ test('no attachments anywhere yields an empty scope', () => {
   assert.deepEqual(resolveRetrievalScope({}).knowledgeBaseIds, [])
 })
 
+test('group defaults apply only when the turn has no explicit or attached scope', () => {
+  assert.deepEqual(resolveRetrievalScope({
+    defaultKnowledgeBaseIds: ['kb-default'],
+  }).knowledgeBaseIds, ['kb-default'])
+
+  assert.deepEqual(resolveRetrievalScope({
+    defaultKnowledgeBaseIds: ['kb-default'],
+    projectKnowledgeBaseIds: ['kb-project'],
+  }).knowledgeBaseIds, ['kb-project'])
+
+  assert.deepEqual(resolveRetrievalScope({
+    defaultKnowledgeBaseIds: ['kb-default'],
+    mentionedKnowledgeBaseIds: ['kb-mentioned'],
+  }).knowledgeBaseIds, ['kb-mentioned'])
+})
+
+test('combined mode does not widen attached context with group defaults', () => {
+  const scope = resolveRetrievalScope({
+    defaultKnowledgeBaseIds: ['kb-default'],
+    projectKnowledgeBaseIds: ['kb-project'],
+    mentionedKnowledgeBaseIds: ['kb-mentioned'],
+    mode: 'combined',
+  })
+  assert.deepEqual(scope.knowledgeBaseIds, ['kb-mentioned', 'kb-project'])
+})
+
 test('blank and duplicate ids are discarded', () => {
   const scope = resolveRetrievalScope({
     projectKnowledgeBaseIds: [' kb-a ', 'kb-a', '', '   ', 'kb-b'],

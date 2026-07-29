@@ -1052,6 +1052,16 @@ export default defineSchema({
     .index('by_project_base', ['projectId', 'knowledgeBaseId'])
     .index('by_knowledgeBaseId', ['knowledgeBaseId']),
 
+  knowledgeBaseGroupDefaults: defineTable({
+    groupId: v.string(),
+    knowledgeBaseId: v.string(),
+    createdBy: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index('by_groupId', ['groupId'])
+    .index('by_group_base', ['groupId', 'knowledgeBaseId'])
+    .index('by_knowledgeBaseId', ['knowledgeBaseId']),
+
   // Searchable chunks for hybrid vector + full-text retrieval (files + memories).
   knowledgeChunks: defineTable({
     userId: v.string(),

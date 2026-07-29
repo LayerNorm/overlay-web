@@ -19,6 +19,7 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { normalizeChatToolRequestIds } from '@/shared/chat/tool-requests'
 import { MAX_TOOL_STEPS_ACT } from '@/server/tools/tools/policy'
+import { OVERLAY_TOOL_IDS } from '@overlay/tools-core'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildSecondarySystemPromptExtension } from '@/server/agent/operator-system-prompt'
@@ -77,8 +78,10 @@ import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
 import {
   authorizeCapability,
   authorizeCatalogResource,
+  filterCatalogResources,
 } from '@/server/authorization'
 import type { AuthorizationCapability } from '@overlay/authz-contracts'
+import { normalizeIntegrationProviderKey } from '@overlay/app-core'
 import { readProjectSettings } from '@/shared/projects/project-settings'
 
 export const maxDuration = 800
@@ -268,6 +271,23 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       accessToken,
       serverSecret,
     })
+    const accountAllowedToolIdsTask = filterCatalogResources({
+      authorization: overlayContext.authorizationService,
+      capability: 'tools.use',
+      context,
+      getId: (toolId) => toolId,
+      resourceType: 'tool',
+      values: OVERLAY_TOOL_IDS,
+    })
+    const accountAllowedConnectorIdsTask = toolPreloadTasks.connectedConnectorIdsTask
+      .then((connectorIds) => filterCatalogResources({
+        authorization: overlayContext.authorizationService,
+        capability: 'integrations.use',
+        context,
+        getId: (connectorId) => connectorId,
+        resourceType: 'connector',
+        values: connectorIds,
+      }))
 
     // P3.2 Wave 1: user-message save + context fetches stay parallel.
     const saveUserMessageTask = actMessagePersistenceService.persistUserMessage({
@@ -310,10 +330,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       })
     })()
 
-    const [, turnContext, resolvedMediaToolIntent] = await Promise.all([
+    const [
+      ,
+      turnContext,
+      resolvedMediaToolIntent,
+      accountAllowedToolIds,
+      accountAllowedConnectorIds,
+    ] = await Promise.all([
       saveUserMessageTask,
       turnContextTask,
       mediaIntentTask,
+      accountAllowedToolIdsTask,
+      accountAllowedConnectorIdsTask,
     ])
     const {
       autoRetrieval,
@@ -373,8 +401,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	        multiModelTotal,
 	        multiModelSlotIndex,
 	      }),
-	      prepareActTooling({
-	        accessToken,
+		      prepareActTooling({
+		        accountAllowedConnectorIds,
+		        accountAllowedToolIds,
+		        accessToken,
 	        automationExecution: automationExecution === true,
 	        automationMode: automationMode === true,
 	        automationId,
@@ -958,6 +988,22 @@ async function authorizeActRequest(args: {
     if (type === 'skill') capabilityRequirements.add('skills.use')
     if (type === 'mcp') capabilityRequirements.add('mcp.use')
     if (type === 'automation') capabilityRequirements.add('automations.use')
+  }
+  for (const mention of Array.isArray(args.mentions) ? args.mentions : []) {
+    if (!mention || typeof mention !== 'object') continue
+    const type = 'type' in mention ? mention.type : undefined
+    const id = 'id' in mention && typeof mention.id === 'string'
+      ? normalizeIntegrationProviderKey(mention.id)
+      : ''
+    if (type !== 'connector' || !id) continue
+    const denied = await authorizeCatalogResource({
+      authorization: args.authorization,
+      capability: 'integrations.use',
+      context: args.context,
+      resourceId: id,
+      resourceType: 'connector',
+    })
+    if (denied) return denied
   }
   for (const capability of capabilityRequirements) {
     const denied = await authorizeCapability({

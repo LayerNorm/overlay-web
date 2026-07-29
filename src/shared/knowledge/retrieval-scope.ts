@@ -11,6 +11,8 @@ export type RetrievalScopeInput = {
   conversationKnowledgeBaseIds?: readonly string[]
   /** Bases named explicitly on this turn, e.g. via `@Knowledge`. */
   mentionedKnowledgeBaseIds?: readonly string[]
+  /** Group-distributed fallback bases for an otherwise unscoped conversation. */
+  defaultKnowledgeBaseIds?: readonly string[]
   /** Explicit override; defaults to mention-narrows behavior. */
   mode?: KnowledgeRetrievalMode
 }
@@ -34,6 +36,9 @@ export function resolveRetrievalScope(input: RetrievalScopeInput): RetrievalScop
   const mentioned = normalize(input.mentionedKnowledgeBaseIds)
   const conversation = normalize(input.conversationKnowledgeBaseIds)
   const project = normalize(input.projectKnowledgeBaseIds)
+  const defaults = normalize(input.defaultKnowledgeBaseIds)
+  const attached = union(conversation, project)
+  const fallback = attached.length > 0 ? attached : defaults
 
   const mode: KnowledgeRetrievalMode = input.mode
     ?? (mentioned.length > 0 ? DEFAULT_KNOWLEDGE_RETRIEVAL_MODE : 'project')
@@ -41,13 +46,19 @@ export function resolveRetrievalScope(input: RetrievalScopeInput): RetrievalScop
   if (mode === 'selected') {
     // A caller may ask for `selected` with nothing mentioned; fall back to the
     // attached sets rather than silently retrieving from nothing.
-    const selected = mentioned.length > 0 ? mentioned : union(conversation, project)
-    return finalize(selected, mode, mentioned.length > 0 && project.length > 0)
+    const selected = mentioned.length > 0 ? mentioned : fallback
+    return finalize(selected, mode, mentioned.length > 0 && fallback.length > 0)
   }
   if (mode === 'combined') {
-    return finalize(union(mentioned, conversation, project), mode, false)
+    return finalize(
+      mentioned.length > 0 || attached.length > 0
+        ? union(mentioned, attached)
+        : defaults,
+      mode,
+      false,
+    )
   }
-  return finalize(union(conversation, project), 'project', false)
+  return finalize(fallback, 'project', false)
 }
 
 function finalize(

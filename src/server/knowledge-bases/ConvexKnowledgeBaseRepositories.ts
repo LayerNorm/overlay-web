@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type {
+  GroupKnowledgeBaseDefault,
   KnowledgeBase,
   KnowledgeBaseConversation,
   KnowledgeBaseRepositories,
@@ -195,6 +196,37 @@ export function createConvexKnowledgeBaseRepositories(): KnowledgeBaseRepositori
         return rows.map(projectAttachment)
       },
     },
+    groupDefaults: {
+      async set(input) {
+        return groupDefault(await requiredMutation<GroupKnowledgeBaseDefault>(
+          'setGroupDefaultByServer',
+          input,
+        ))
+      },
+      async remove(input) {
+        const result = await mutation<{ removed: boolean }>('removeGroupDefaultByServer', input)
+        return result?.removed === true
+      },
+      async listForGroup(groupId) {
+        const rows = await query<GroupKnowledgeBaseDefault[]>('listGroupDefaultsByServer', {
+          groupId,
+        }) ?? []
+        return rows.map(groupDefault)
+      },
+      async listForGroups(groupIds) {
+        if (groupIds.length === 0) return []
+        const rows = await query<GroupKnowledgeBaseDefault[]>('listGroupsDefaultsByServer', {
+          groupIds,
+        }) ?? []
+        return rows.map(groupDefault)
+      },
+      async listForBase(knowledgeBaseId) {
+        const rows = await query<GroupKnowledgeBaseDefault[]>('listBaseGroupDefaultsByServer', {
+          knowledgeBaseId,
+        }) ?? []
+        return rows.map(groupDefault)
+      },
+    },
   }
 }
 
@@ -235,6 +267,7 @@ function version(row: ConvexVersion): KnowledgeSourceVersion {
 function membership(row: KnowledgeBaseSource): KnowledgeBaseSource { return clean(row) }
 function conversation(row: KnowledgeBaseConversation): KnowledgeBaseConversation { return clean(row) }
 function projectAttachment(row: ProjectKnowledgeBase): ProjectKnowledgeBase { return clean(row) }
+function groupDefault(row: GroupKnowledgeBaseDefault): GroupKnowledgeBaseDefault { return clean(row) }
 function clean<T>(row: T): T {
   const { _id: _, _creationTime: __, ...value } = row as T & { _id?: string; _creationTime?: number }
   return value as T

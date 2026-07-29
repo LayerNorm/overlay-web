@@ -20,6 +20,7 @@ import type {
   UpdateKnowledgeBaseInput,
   AdministrativeKnowledgeBaseListResponse,
   KnowledgeBaseShareDirectoryResponse,
+  GroupKnowledgeBaseDefaultsResponse,
 } from './types'
 
 export class KnowledgeBasesClient {
@@ -44,6 +45,33 @@ export class KnowledgeBasesClient {
     return this.http.json<AdministrativeKnowledgeBaseListResponse>(
       '/api/v1/admin/knowledge-bases',
       init,
+    )
+  }
+
+  listGroupDefaults(groupId?: string, init?: RequestInit) {
+    return this.http.json<GroupKnowledgeBaseDefaultsResponse>(
+      this.http.appendQuery('/api/v1/admin/knowledge-bases/defaults', { groupId }),
+      init,
+    )
+  }
+
+  setGroupDefault(body: {
+    groupId: string
+    knowledgeBaseId: string
+  }, init?: RequestInit) {
+    return this.http.json<GroupKnowledgeBaseDefaultsResponse['defaults'][number]>(
+      '/api/v1/admin/knowledge-bases/defaults',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  removeGroupDefault(body: {
+    groupId: string
+    knowledgeBaseId: string
+  }, init?: RequestInit) {
+    return this.http.json<{ removed: true }>(
+      '/api/v1/admin/knowledge-bases/defaults',
+      this.http.jsonRequest(body, { ...init, method: 'DELETE' }),
     )
   }
 

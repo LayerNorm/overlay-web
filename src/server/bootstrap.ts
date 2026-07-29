@@ -172,6 +172,7 @@ export function createOverlayServerContext(
   const knowledgeBaseService = new KnowledgeBaseService({
     authorization: authorizationService,
     authorizationRepositories: appData.repositories.authorization,
+    audit: auditService,
     embeddingIdentity: resolveEmbeddingIdentity(appData, runtimeConfig),
     repositories: appData.repositories.knowledgeBases,
     users: appData.repositories.users,

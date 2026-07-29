@@ -28,6 +28,10 @@ export const actContextService = new ActContextService({
     (await getOverlayServerContext().knowledgeBaseService.listProjectKnowledgeBases(args))
       .map(({ id }) => id)
   ),
+  resolveDefaultKnowledgeBaseIds: async ({ userId }) => (
+    (await getOverlayServerContext().knowledgeBaseService.listDefaultKnowledgeBasesForUser(userId))
+      .map(({ id }) => id)
+  ),
   loadDocumentFile: async (args) => (
     await getOverlayServerContext().appData.repositories.files.getFile(args)
   ),

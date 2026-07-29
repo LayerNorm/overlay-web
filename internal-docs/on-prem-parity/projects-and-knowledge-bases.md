@@ -5,8 +5,8 @@
 Status legend: DONE · PARTIAL · TODO · DEFERRED (deliberately out of scope for now)
 
 - **Branch:** `codex/authorization-system` (also pushed to `staging`)
-- **Last updated:** Phase 7
-- **App-data schema version:** 25
+- **Last updated:** Phase 8
+- **App-data schema version:** 26
 
 ---
 
@@ -22,7 +22,7 @@ Status legend: DONE · PARTIAL · TODO · DEFERRED (deliberately out of scope fo
 | 5 | Mature project workflows | **DONE** — sharing remains in Phase 7 |
 | 6 | Personal brain | **DONE** |
 | 7 | Sharing and access | **DONE** |
-| 8 | Admin distribution | PARTIAL |
+| 8 | Admin distribution | **DONE** |
 | 9 | Custom authorization and policies | PARTIAL — authz done, governance not |
 
 ### Note on execution order
@@ -461,15 +461,15 @@ resolved from durable ACL state rather than cached into the project record.
 
 ---
 
-## Phase 8: Admin Distribution — PARTIAL
+## Phase 8: Admin Distribution — DONE
 
 | Item | Status |
 |---|---|
 | Admin creates organizational KBs | DONE — `kind: 'organization'`, gated on `knowledge.publish` |
 | Admin assigns KB access to users and groups | DONE |
-| Admin controls available models, tools, and connectors | PARTIAL — capability gates exist; no admin UI |
-| Admin can inspect indexing health and usage | PARTIAL — per-KB diagnostics exist; no org-wide admin view |
-| Admin can set default KBs for groups | TODO |
+| Admin controls available models, tools, and connectors | DONE — catalog policies are enforced in bootstrap, integration routes, connector execution, and the agent tool surface |
+| Admin can inspect indexing health and usage | DONE — organization-wide view reports source, chunk, embedding, freshness, stale, failed, and pending counts |
+| Admin can set default KBs for groups | DONE — schema 26; current group membership is rechecked at fallback resolution |
 | Core schema stays horizontal, no education-specific concepts | DONE — upheld |
 
 ### QA
@@ -482,7 +482,22 @@ resolved from durable ACL state rather than cached into the project record.
 | Capability gates match actual deployment support | DONE |
 | Audit every administrative mutation | DONE |
 
-Admin panel views today: overview, roles, groups, knowledge.
+Admin panel views today: overview, roles, groups, knowledge, catalog.
+
+### Distribution semantics
+
+- A group default is fallback knowledge only. It applies when a chat has no
+  explicit mention, conversation attachment, or project attachment.
+- Explicit and project scopes always win, so a default cannot silently widen a
+  hard retrieval boundary.
+- Removing a user from a group takes effect on the next request because defaults
+  are resolved against current membership rather than copied onto the user.
+- Catalog resources remain open to capability-bearing users until the first
+  exact or wildcard grant is configured. Once restricted, only matching users,
+  groups, or roles can see or execute the resource.
+- Deployment capabilities remain the outer hard limit. Administrative catalog
+  policy can only narrow models, tools, and connectors; it cannot enable a
+  disabled provider.
 
 ---
 

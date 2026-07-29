@@ -183,6 +183,13 @@
       "when": 1785351600000,
       "tag": "0025_project_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1785438000000,
+      "tag": "0026_knowledge_group_defaults",
+      "breakpoints": true
     }
   ]
 }

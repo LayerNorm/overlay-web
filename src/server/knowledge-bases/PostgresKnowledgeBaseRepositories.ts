@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm'
 import type {
   CreateKnowledgeBaseInput,
   CreateKnowledgeSourceInput,
+  GroupKnowledgeBaseDefault,
   KnowledgeBase,
   KnowledgeBaseConversation,
   KnowledgeBaseRepositories,
@@ -35,6 +36,7 @@ type VersionRow = Omit<KnowledgeSourceVersion, 'createdAt' | 'updatedAt'> & {
 type MembershipRow = Omit<KnowledgeBaseSource, 'createdAt'> & { createdAt: DateValue }
 type ConversationRow = Omit<KnowledgeBaseConversation, 'createdAt'> & { createdAt: DateValue }
 type ProjectAttachmentRow = Omit<ProjectKnowledgeBase, 'createdAt'> & { createdAt: DateValue }
+type GroupDefaultRow = Omit<GroupKnowledgeBaseDefault, 'createdAt'> & { createdAt: DateValue }
 
 export function createPostgresKnowledgeBaseRepositories(
   db: OverlayPostgresDb,
@@ -426,6 +428,58 @@ export function createPostgresKnowledgeBaseRepositories(
         return result.rows.map(projectAttachmentFromRow)
       },
     },
+    groupDefaults: {
+      async set(input) {
+        const result = await db.execute<GroupDefaultRow>(sql`
+          INSERT INTO knowledge_base_group_defaults (
+            group_id, knowledge_base_id, created_by
+          ) VALUES (
+            ${input.groupId}, ${input.knowledgeBaseId}, ${input.createdBy ?? null}
+          )
+          ON CONFLICT (group_id, knowledge_base_id) DO UPDATE SET
+            created_by = EXCLUDED.created_by
+          RETURNING ${groupDefaultColumns}
+        `)
+        return groupDefaultFromRow(required(result.rows[0], 'set group knowledge default'))
+      },
+      async remove(input) {
+        const result = await db.execute(sql`
+          DELETE FROM knowledge_base_group_defaults
+          WHERE group_id = ${input.groupId}
+            AND knowledge_base_id = ${input.knowledgeBaseId}
+        `)
+        return result.rowCount === 1
+      },
+      async listForGroup(groupId) {
+        const result = await db.execute<GroupDefaultRow>(sql`
+          SELECT ${groupDefaultColumns}
+          FROM knowledge_base_group_defaults
+          WHERE group_id = ${groupId}
+          ORDER BY created_at, knowledge_base_id
+        `)
+        return result.rows.map(groupDefaultFromRow)
+      },
+      async listForGroups(groupIds) {
+        if (groupIds.length === 0) return []
+        const idList = sql.join(groupIds.map((id) => sql`${id}`), sql`, `)
+        const result = await db.execute<GroupDefaultRow>(sql`
+          SELECT ${groupDefaultColumns}
+          FROM knowledge_base_group_defaults
+          WHERE group_id IN (${idList})
+          ORDER BY created_at, group_id, knowledge_base_id
+        `)
+        return result.rows.map(groupDefaultFromRow)
+      },
+      async listForBase(knowledgeBaseId) {
+        const result = await db.execute<GroupDefaultRow>(sql`
+          SELECT ${groupDefaultColumns}
+          FROM knowledge_base_group_defaults
+          WHERE knowledge_base_id = ${knowledgeBaseId}
+          ORDER BY created_at, group_id
+        `)
+        return result.rows.map(groupDefaultFromRow)
+      },
+    },
   }
 }
 
@@ -452,6 +506,10 @@ const projectAttachmentColumns = sql`
   knowledge_base_id AS "knowledgeBaseId", project_id AS "projectId",
   attached_by AS "attachedBy", created_at AS "createdAt"
 `
+const groupDefaultColumns = sql`
+  group_id AS "groupId", knowledge_base_id AS "knowledgeBaseId",
+  created_by AS "createdBy", created_at AS "createdAt"
+`
 
 function baseFromRow(row: BaseRow): KnowledgeBase {
   return cleanOptional({ ...row, createdAt: time(row.createdAt), updatedAt: time(row.updatedAt), archivedAt: optionalTime(row.archivedAt) })
@@ -469,6 +527,9 @@ function conversationFromRow(row: ConversationRow): KnowledgeBaseConversation {
   return cleanOptional({ ...row, createdAt: time(row.createdAt) })
 }
 function projectAttachmentFromRow(row: ProjectAttachmentRow): ProjectKnowledgeBase {
+  return cleanOptional({ ...row, createdAt: time(row.createdAt) })
+}
+function groupDefaultFromRow(row: GroupDefaultRow): GroupKnowledgeBaseDefault {
   return cleanOptional({ ...row, createdAt: time(row.createdAt) })
 }
 function time(value: DateValue): number { return new Date(value).getTime() }

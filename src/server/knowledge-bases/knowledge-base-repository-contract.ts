@@ -9,6 +9,7 @@ export async function runKnowledgeBaseRepositoryContract(
     scope: string
     ownerUserId: string
     conversationId: string
+    groupId: string
     /** Provide to exercise project attachments; the caller owns creating the project row. */
     projectId?: string
   },
@@ -225,6 +226,41 @@ export async function runKnowledgeBaseRepositoryContract(
     })
   }
 
+  await t.test('persists idempotent group defaults and removes them with the base', async () => {
+    const created = await args.repositories.groupDefaults.set({
+      groupId: args.groupId,
+      knowledgeBaseId: secondBaseId,
+      createdBy: args.ownerUserId,
+    })
+    assert.equal(created.groupId, args.groupId)
+    assert.equal(created.knowledgeBaseId, secondBaseId)
+
+    const repeated = await args.repositories.groupDefaults.set({
+      groupId: args.groupId,
+      knowledgeBaseId: secondBaseId,
+      createdBy: args.ownerUserId,
+    })
+    assert.equal(repeated.createdAt, created.createdAt)
+    assert.equal((await args.repositories.groupDefaults.listForGroup(args.groupId)).length, 1)
+    assert.equal((await args.repositories.groupDefaults.listForGroups([args.groupId])).length, 1)
+    assert.equal((await args.repositories.groupDefaults.listForBase(secondBaseId)).length, 1)
+
+    assert.equal(await args.repositories.groupDefaults.remove({
+      groupId: args.groupId,
+      knowledgeBaseId: secondBaseId,
+    }), true)
+    assert.equal(await args.repositories.groupDefaults.remove({
+      groupId: args.groupId,
+      knowledgeBaseId: secondBaseId,
+    }), false)
+
+    await args.repositories.groupDefaults.set({
+      groupId: args.groupId,
+      knowledgeBaseId: secondBaseId,
+      createdBy: args.ownerUserId,
+    })
+  })
+
   await t.test('archives and removes without deleting the canonical source', async () => {
     assert.equal(await args.repositories.bases.archive(baseId), true)
     assert.equal((await args.repositories.bases.listForOwner(args.ownerUserId)).length, 1)
@@ -233,6 +269,7 @@ export async function runKnowledgeBaseRepositoryContract(
       2,
     )
     assert.equal(await args.repositories.bases.remove(secondBaseId), true)
+    assert.equal((await args.repositories.groupDefaults.listForGroup(args.groupId)).length, 0)
     // Removing one base cascades away only its own attachment rows.
     assert.deepEqual(
       (await args.repositories.conversations.listForConversation(args.conversationId))

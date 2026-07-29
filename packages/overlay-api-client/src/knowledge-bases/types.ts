@@ -1,4 +1,5 @@
 import type {
+  GroupKnowledgeBaseDefault,
   KnowledgeBase,
   KnowledgeBaseSource,
   KnowledgeSource,
@@ -44,11 +45,26 @@ export type KnowledgeBaseShareDirectoryResponse = {
   roles: KnowledgeBaseShareDirectoryEntry[]
 }
 export type AdministrativeKnowledgeBase = KnowledgeBase & {
+  defaultGroupCount: number
   grantCount: number
+  indexHealth: {
+    failed: number
+    fresh: number
+    neverIndexed: number
+    stale: number
+  }
+  indexUsage: {
+    chunkCount: number
+    embeddedCount: number
+    indexedChars: number
+  }
   sourceCount: number
 }
 export type AdministrativeKnowledgeBaseListResponse = {
   knowledgeBases: AdministrativeKnowledgeBase[]
+}
+export type GroupKnowledgeBaseDefaultsResponse = {
+  defaults: GroupKnowledgeBaseDefault[]
 }
 export type KnowledgeBaseSearchResponse = {
   chunks: KnowledgeBaseSearchChunk[]

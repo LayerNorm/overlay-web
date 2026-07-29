@@ -117,6 +117,9 @@ export class ActContextService {
       projectId: string
       userId: string
     }) => Promise<string[]>
+    resolveDefaultKnowledgeBaseIds?: (args: {
+      userId: string
+    }) => Promise<string[]>
   }) {}
 
   async buildMessagesForModel(params: {
@@ -203,12 +206,23 @@ export class ActContextService {
           userId: args.userId,
         }).catch((_error) => [] as string[])
       : Promise.resolve([] as string[])
+    const defaultKnowledgeBaseTask = this.deps.resolveDefaultKnowledgeBaseIds
+      ? this.deps.resolveDefaultKnowledgeBaseIds({ userId: args.userId })
+        .catch((_error) => [] as string[])
+      : Promise.resolve([] as string[])
 
-    const [effectiveMemories, accountEnabledSkills, conv, conversationKnowledgeBaseIds] = await Promise.all([
+    const [
+      effectiveMemories,
+      accountEnabledSkills,
+      conv,
+      conversationKnowledgeBaseIds,
+      defaultKnowledgeBaseIds,
+    ] = await Promise.all([
       memoriesTask,
       skillsTask,
       conversationTask,
       knowledgeBaseTask,
+      defaultKnowledgeBaseTask,
     ])
 
     const conversationProjectId = conv?.projectId
@@ -264,6 +278,7 @@ export class ActContextService {
 
     const scope = resolveRetrievalScope({
       conversationKnowledgeBaseIds,
+      defaultKnowledgeBaseIds,
       mentionedKnowledgeBaseIds: args.mentionedKnowledgeBaseIds,
       projectKnowledgeBaseIds,
     })

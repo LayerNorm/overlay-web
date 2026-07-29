@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type {
+  GroupKnowledgeBaseDefault,
   KnowledgeBase,
   KnowledgeBaseConversation,
   KnowledgeBaseRepositories,
@@ -19,6 +20,8 @@ import type {
   UserRoleAssignment,
 } from '@overlay/authz-contracts'
 import { AuthorizationService } from '@/server/authorization/AuthorizationService'
+import { AuditService } from '@/server/admin/AuditService'
+import type { AuditEventRecord } from '@/server/admin/AuditRepository'
 import {
   KnowledgeBaseService,
   KnowledgeBaseServiceError,
@@ -336,6 +339,78 @@ test('organization knowledge bases require publishing capability', async () => {
   assert.equal(organization.kind, 'organization')
 })
 
+test('administrators distribute default organization knowledge through current group membership', async () => {
+  const fixture = createFixture()
+  fixture.groups.push({
+    id: 'teachers',
+    name: 'Teachers',
+    source: 'local',
+    createdAt: 1,
+    updatedAt: 1,
+  })
+  fixture.memberships.push({
+    groupId: 'teachers',
+    userId: 'group-viewer',
+    source: 'local',
+    createdAt: 1,
+  })
+  const organization = await fixture.service.createKnowledgeBase({
+    kind: 'organization',
+    title: 'Teaching handbook',
+    userId: 'admin',
+  })
+  const value = await fixture.service.setGroupDefault({
+    groupId: 'teachers',
+    knowledgeBaseId: organization.id,
+    userId: 'admin',
+  })
+  assert.equal(value.groupId, 'teachers')
+  assert.ok(fixture.grants.some((grant) => (
+    grant.resourceId === organization.id
+      && grant.principalType === 'group'
+      && grant.principalId === 'teachers'
+      && grant.accessRole === 'viewer'
+  )))
+  assert.deepEqual(
+    (await fixture.service.listDefaultKnowledgeBasesForUser('group-viewer')).map(({ id }) => id),
+    [organization.id],
+  )
+  assert.equal((await fixture.service.listGroupDefaults({
+    groupId: 'teachers',
+    userId: 'admin',
+  })).length, 1)
+
+  fixture.memberships.splice(0, fixture.memberships.length)
+  assert.deepEqual(await fixture.service.listDefaultKnowledgeBasesForUser('group-viewer'), [])
+
+  await fixture.service.removeGroupDefault({
+    groupId: 'teachers',
+    knowledgeBaseId: organization.id,
+    userId: 'admin',
+  })
+  assert.deepEqual(await fixture.service.listGroupDefaults({
+    groupId: 'teachers',
+    userId: 'admin',
+  }), [])
+  assert.deepEqual(
+    fixture.auditEvents.map(({ action }) => action),
+    ['knowledge.group_default.set', 'knowledge.group_default.remove'],
+  )
+
+  const personal = await fixture.service.createKnowledgeBase({
+    title: 'Private notes',
+    userId: 'admin',
+  })
+  await assert.rejects(
+    fixture.service.setGroupDefault({
+      groupId: 'teachers',
+      knowledgeBaseId: personal.id,
+      userId: 'admin',
+    }),
+    (error: unknown) => error instanceof KnowledgeBaseServiceError && error.statusCode === 400,
+  )
+})
+
 function createFixture() {
   const roles: AuthorizationRole[] = [
     role('member', [
@@ -346,7 +421,7 @@ function createFixture() {
     role('viewer-role', ['knowledge.read', 'conversations.read', 'conversations.edit']),
     role('admin-role', [
       'administration.access', 'knowledge.create', 'knowledge.read', 'knowledge.edit',
-      'knowledge.share', 'knowledge.delete', 'knowledge.publish',
+      'knowledge.share', 'knowledge.delete', 'knowledge.publish', 'groups.read', 'groups.manage',
     ]),
   ]
   const groups: AuthorizationGroup[] = []
@@ -363,6 +438,7 @@ function createFixture() {
   const groupRoles: GroupRoleAssignment[] = []
   const grants: ResourceGrant[] = []
   const owners = new Map<string, string>()
+  const auditEvents: AuditEventRecord[] = []
   const authorizationRepositories: AuthorizationRepositories = {
     roles: {
       async create() { throw new Error('not used') },
@@ -434,13 +510,29 @@ function createFixture() {
   }
   const repositories = inMemoryKnowledgeRepositories()
   const authorization = new AuthorizationService({ repositories: authorizationRepositories })
+  const audit = new AuditService({
+    async append(input) {
+      const value: AuditEventRecord = {
+        ...input,
+        id: input.id ?? `audit-${auditEvents.length + 1}`,
+        createdAt: input.createdAt ?? Date.now(),
+      }
+      auditEvents.push(value)
+      return value
+    },
+    async list() {
+      return [...auditEvents]
+    },
+  })
   return {
+    auditEvents,
     grants,
     groups,
     memberships,
     owners,
     repositories,
     service: new KnowledgeBaseService({
+      audit,
       authorization,
       authorizationRepositories,
       repositories,
@@ -462,6 +554,7 @@ function inMemoryKnowledgeRepositories(): KnowledgeBaseRepositories {
   const memberships = new Map<string, KnowledgeBaseSource>()
   const conversations = new Map<string, KnowledgeBaseConversation>()
   const projectAttachments = new Map<string, ProjectKnowledgeBase>()
+  const groupDefaults = new Map<string, GroupKnowledgeBaseDefault>()
   let now = 1
   return {
     bases: {
@@ -502,6 +595,7 @@ function inMemoryKnowledgeRepositories(): KnowledgeBaseRepositories {
         for (const [key, value] of memberships) if (value.knowledgeBaseId === id) memberships.delete(key)
         for (const [key, value] of conversations) if (value.knowledgeBaseId === id) conversations.delete(key)
         for (const [key, value] of projectAttachments) if (value.knowledgeBaseId === id) projectAttachments.delete(key)
+        for (const [key, value] of groupDefaults) if (value.knowledgeBaseId === id) groupDefaults.delete(key)
         return true
       },
     },
@@ -622,6 +716,36 @@ function inMemoryKnowledgeRepositories(): KnowledgeBaseRepositories {
       },
       async listForBase(id) {
         return [...projectAttachments.values()].filter((value) => value.knowledgeBaseId === id)
+      },
+    },
+    groupDefaults: {
+      async set(input) {
+        const key = `${input.groupId}:${input.knowledgeBaseId}`
+        const value = {
+          ...input,
+          createdAt: groupDefaults.get(key)?.createdAt ?? now++,
+        }
+        groupDefaults.set(key, value)
+        return value
+      },
+      async remove(input) {
+        return groupDefaults.delete(`${input.groupId}:${input.knowledgeBaseId}`)
+      },
+      async listForGroup(groupId) {
+        return [...groupDefaults.values()]
+          .filter((value) => value.groupId === groupId)
+          .sort((a, b) => a.createdAt - b.createdAt)
+      },
+      async listForGroups(groupIds) {
+        const groups = new Set(groupIds)
+        return [...groupDefaults.values()]
+          .filter((value) => groups.has(value.groupId))
+          .sort((a, b) => a.createdAt - b.createdAt)
+      },
+      async listForBase(knowledgeBaseId) {
+        return [...groupDefaults.values()]
+          .filter((value) => value.knowledgeBaseId === knowledgeBaseId)
+          .sort((a, b) => a.createdAt - b.createdAt)
       },
     },
   }

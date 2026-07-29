@@ -139,9 +139,11 @@ export const removeBaseByServer = mutation({
       .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId)).collect()
     const conversations = await ctx.db.query('knowledgeBaseConversations')
       .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId)).collect()
+    const groupDefaults = await ctx.db.query('knowledgeBaseGroupDefaults')
+      .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId)).collect()
     const projects = await ctx.db.query('projects')
       .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId)).collect()
-    for (const row of [...memberships, ...conversations]) await ctx.db.delete(row._id)
+    for (const row of [...memberships, ...conversations, ...groupDefaults]) await ctx.db.delete(row._id)
     for (const project of projects) {
       await ctx.db.patch(project._id, {
         knowledgeBaseId: undefined,
@@ -581,6 +583,94 @@ export const listProjectsForBaseByServer = query({
   },
 })
 
+export const setGroupDefaultByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    groupId: v.string(),
+    knowledgeBaseId: v.string(),
+    createdBy: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const existing = await ctx.db.query('knowledgeBaseGroupDefaults')
+      .withIndex('by_group_base', (q) => q
+        .eq('groupId', args.groupId)
+        .eq('knowledgeBaseId', args.knowledgeBaseId))
+      .unique()
+    if (existing) {
+      await ctx.db.patch(existing._id, { createdBy: args.createdBy })
+      return { ...existing, createdBy: args.createdBy }
+    }
+    const id = await ctx.db.insert('knowledgeBaseGroupDefaults', {
+      groupId: args.groupId,
+      knowledgeBaseId: args.knowledgeBaseId,
+      createdBy: args.createdBy,
+      createdAt: Date.now(),
+    })
+    return await ctx.db.get(id)
+  },
+})
+
+export const removeGroupDefaultByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    groupId: v.string(),
+    knowledgeBaseId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const existing = await ctx.db.query('knowledgeBaseGroupDefaults')
+      .withIndex('by_group_base', (q) => q
+        .eq('groupId', args.groupId)
+        .eq('knowledgeBaseId', args.knowledgeBaseId))
+      .unique()
+    if (!existing) return { removed: false }
+    await ctx.db.delete(existing._id)
+    return { removed: true }
+  },
+})
+
+export const listGroupDefaultsByServer = query({
+  args: { serverSecret: v.string(), groupId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db.query('knowledgeBaseGroupDefaults')
+      .withIndex('by_groupId', (q) => q.eq('groupId', args.groupId))
+      .collect()
+    return sortedByCreation(rows)
+  },
+})
+
+export const listGroupsDefaultsByServer = query({
+  args: { serverSecret: v.string(), groupIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await Promise.all(args.groupIds.map(async (groupId) => (
+      await ctx.db.query('knowledgeBaseGroupDefaults')
+        .withIndex('by_groupId', (q) => q.eq('groupId', groupId))
+        .collect()
+    )))
+    return rows.flat().sort((a, b) => (
+      a.createdAt - b.createdAt
+      || a.groupId.localeCompare(b.groupId)
+      || a.knowledgeBaseId.localeCompare(b.knowledgeBaseId)
+    ))
+  },
+})
+
+export const listBaseGroupDefaultsByServer = query({
+  args: { serverSecret: v.string(), knowledgeBaseId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db.query('knowledgeBaseGroupDefaults')
+      .withIndex('by_knowledgeBaseId', (q) => q.eq('knowledgeBaseId', args.knowledgeBaseId))
+      .collect()
+    return [...rows].sort((a, b) => (
+      a.createdAt - b.createdAt || a.groupId.localeCompare(b.groupId)
+    ))
+  },
+})
+
 export const listConversationsForBaseByServer = query({
   args: { serverSecret: v.string(), knowledgeBaseId: v.string() },
   handler: async (ctx, args) => {
@@ -663,6 +753,10 @@ export const purgeOwnerDataByServer = mutation({
     }
     const projectAttachments = await ctx.db.query('projectKnowledgeBases').collect()
     for (const row of projectAttachments) {
+      if (baseIds.has(row.knowledgeBaseId)) await ctx.db.delete(row._id)
+    }
+    const groupDefaults = await ctx.db.query('knowledgeBaseGroupDefaults').collect()
+    for (const row of groupDefaults) {
       if (baseIds.has(row.knowledgeBaseId)) await ctx.db.delete(row._id)
     }
     const versions = await ctx.db.query('knowledgeSourceVersions').collect()

@@ -121,8 +121,20 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   {
+    path: '/api/v1/admin/catalog',
+    methods: { GET: capability('roles.read') },
+  },
+  {
     path: '/api/v1/admin/knowledge-bases',
     methods: { GET: capability('administration.access', 'knowledge.publish') },
+  },
+  {
+    path: '/api/v1/admin/knowledge-bases/defaults',
+    methods: {
+      GET: capability('administration.access', 'groups.read', 'knowledge.publish'),
+      POST: capability('administration.access', 'groups.manage', 'knowledge.publish'),
+      DELETE: capability('administration.access', 'groups.manage', 'knowledge.publish'),
+    },
   },
 
   {

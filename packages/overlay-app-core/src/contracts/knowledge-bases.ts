@@ -102,6 +102,20 @@ export type ProjectKnowledgeBase = {
 }
 
 /**
+ * An organization-curated base that becomes the fallback retrieval corpus for
+ * current members of an authorization group.
+ *
+ * Access is still governed by the knowledge-base ACL. A default is discovery
+ * and retrieval policy, not an implicit permission grant.
+ */
+export type GroupKnowledgeBaseDefault = {
+  groupId: string
+  knowledgeBaseId: string
+  createdBy?: string
+  createdAt: number
+}
+
+/**
  * How a turn's retrieval corpus is chosen when a project has attached bases and
  * the user may also name bases explicitly.
  *
@@ -198,6 +212,14 @@ export interface ProjectKnowledgeBaseRepository {
   listForBase(knowledgeBaseId: string): Promise<ProjectKnowledgeBase[]>
 }
 
+export interface GroupKnowledgeBaseDefaultRepository {
+  set(input: Omit<GroupKnowledgeBaseDefault, 'createdAt'>): Promise<GroupKnowledgeBaseDefault>
+  remove(input: Pick<GroupKnowledgeBaseDefault, 'groupId' | 'knowledgeBaseId'>): Promise<boolean>
+  listForGroup(groupId: string): Promise<GroupKnowledgeBaseDefault[]>
+  listForGroups(groupIds: string[]): Promise<GroupKnowledgeBaseDefault[]>
+  listForBase(knowledgeBaseId: string): Promise<GroupKnowledgeBaseDefault[]>
+}
+
 /** Counts and embedding identities of what is actually indexed for a source. */
 export type KnowledgeSourceIndexStats = {
   sourceId: string
@@ -234,6 +256,7 @@ export interface KnowledgeBaseRepositories {
   memberships: KnowledgeBaseSourceRepository
   conversations: KnowledgeBaseConversationRepository
   projects: ProjectKnowledgeBaseRepository
+  groupDefaults: GroupKnowledgeBaseDefaultRepository
   /** Absent when the active backend cannot report index internals. */
   diagnostics?: KnowledgeIndexDiagnosticsRepository
 }
