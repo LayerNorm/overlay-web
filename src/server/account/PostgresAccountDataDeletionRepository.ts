@@ -34,6 +34,8 @@ const ZERO_COUNTS: AccountDataDeletionCounts = {
   conversations: 0,
   daytonaWorkspaces: 0,
   files: 0,
+  governanceAccessReviews: 0,
+  governancePolicies: 0,
   knowledgeChunkEmbeddings: 0,
   knowledgeChunks: 0,
   memoryExtractionRuns: 0,
@@ -74,6 +76,7 @@ export class PostgresAccountDataDeletionRepository implements AccountDataDeletio
       })
 
       await deleteUserOwnedDurableJobs(tx, args.userId)
+      await deleteUserOwnedGovernance(tx, args.userId)
 
       await tx.execute(sql`
         DELETE FROM authorization_resource_grants
@@ -101,6 +104,33 @@ export class PostgresAccountDataDeletionRepository implements AccountDataDeletio
       }
     })
   }
+}
+
+async function deleteUserOwnedGovernance(tx: Transaction, userId: string): Promise<void> {
+  await tx.execute(sql`
+    DELETE FROM governance_access_reviews
+    WHERE (
+      resource_type = 'project'
+      AND resource_id IN (SELECT id FROM projects WHERE user_id = ${userId})
+    ) OR (
+      resource_type = 'knowledge_base'
+      AND resource_id IN (
+        SELECT id FROM knowledge_bases WHERE owner_user_id = ${userId}
+      )
+    )
+  `)
+  await tx.execute(sql`
+    DELETE FROM governance_policies
+    WHERE (
+      resource_type = 'project'
+      AND resource_id IN (SELECT id FROM projects WHERE user_id = ${userId})
+    ) OR (
+      resource_type = 'knowledge_base'
+      AND resource_id IN (
+        SELECT id FROM knowledge_bases WHERE owner_user_id = ${userId}
+      )
+    )
+  `)
 }
 
 async function deleteUserOwnedDurableJobs(tx: Transaction, userId: string): Promise<void> {
@@ -184,6 +214,8 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     conversations: number
     daytona_workspaces: number
     files: number
+    governance_access_reviews: number
+    governance_policies: number
     knowledge_chunk_embeddings: number
     knowledge_chunks: number
     memory_extraction_runs: number
@@ -226,6 +258,38 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
       (SELECT count(*)::int FROM conversations WHERE user_id = ${userId}) AS conversations,
       (SELECT count(*)::int FROM daytona_workspaces WHERE user_id = ${userId}) AS daytona_workspaces,
       (SELECT count(*)::int FROM files WHERE user_id = ${userId}) AS files,
+      (SELECT count(*)::int
+        FROM governance_access_reviews review
+        WHERE review.created_by = ${userId}
+          OR review.reviewer_user_id = ${userId}
+          OR review.owner_user_id = ${userId}
+          OR (
+            review.resource_type = 'project'
+            AND review.resource_id IN (SELECT id FROM projects WHERE user_id = ${userId})
+          )
+          OR (
+            review.resource_type = 'knowledge_base'
+            AND review.resource_id IN (
+              SELECT id FROM knowledge_bases WHERE owner_user_id = ${userId}
+            )
+          )
+      ) AS governance_access_reviews,
+      (SELECT count(*)::int
+        FROM governance_policies policy
+        WHERE policy.created_by = ${userId}
+          OR policy.approved_by = ${userId}
+          OR policy.rejected_by = ${userId}
+          OR (
+            policy.resource_type = 'project'
+            AND policy.resource_id IN (SELECT id FROM projects WHERE user_id = ${userId})
+          )
+          OR (
+            policy.resource_type = 'knowledge_base'
+            AND policy.resource_id IN (
+              SELECT id FROM knowledge_bases WHERE owner_user_id = ${userId}
+            )
+          )
+      ) AS governance_policies,
       (SELECT count(*)::int FROM knowledge_chunk_embeddings WHERE user_id = ${userId}) AS knowledge_chunk_embeddings,
       (SELECT count(*)::int FROM knowledge_chunks WHERE user_id = ${userId}) AS knowledge_chunks,
       (SELECT count(*)::int FROM memory_extraction_runs WHERE user_id = ${userId}) AS memory_extraction_runs,
@@ -271,6 +335,8 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     conversations: Number(row.conversations ?? 0),
     daytonaWorkspaces: Number(row.daytona_workspaces ?? 0),
     files: Number(row.files ?? 0),
+    governanceAccessReviews: Number(row.governance_access_reviews ?? 0),
+    governancePolicies: Number(row.governance_policies ?? 0),
     knowledgeChunkEmbeddings: Number(row.knowledge_chunk_embeddings ?? 0),
     knowledgeChunks: Number(row.knowledge_chunks ?? 0),
     memoryExtractionRuns: Number(row.memory_extraction_runs ?? 0),

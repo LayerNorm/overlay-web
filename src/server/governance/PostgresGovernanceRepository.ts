@@ -25,7 +25,7 @@ type PolicyRow = {
   retentionUntil: DateValue | null
   legalHold: boolean
   notes: string | null
-  createdBy: string
+  createdBy: string | null
   approvedBy: string | null
   approvedAt: DateValue | null
   rejectedBy: string | null
@@ -41,7 +41,7 @@ type ReviewRow = {
   status: GovernanceAccessReviewStatus
   ownerUserId: string | null
   grants: unknown
-  createdBy: string
+  createdBy: string | null
   reviewerUserId: string | null
   notes: string | null
   dueAt: DateValue | null
@@ -293,7 +293,7 @@ function policyFromRow(row: PolicyRow): GovernancePolicy {
     retentionUntil: millis(row.retentionUntil),
     legalHold: row.legalHold,
     notes: row.notes ?? undefined,
-    createdBy: row.createdBy,
+    createdBy: row.createdBy ?? undefined,
     approvedBy: row.approvedBy ?? undefined,
     approvedAt: millis(row.approvedAt),
     rejectedBy: row.rejectedBy ?? undefined,
@@ -311,7 +311,7 @@ function reviewFromRow(row: ReviewRow): GovernanceAccessReview {
     status: row.status,
     ownerUserId: row.ownerUserId ?? undefined,
     grants: grantsFromJson(row.grants),
-    createdBy: row.createdBy,
+    createdBy: row.createdBy ?? undefined,
     reviewerUserId: row.reviewerUserId ?? undefined,
     notes: row.notes ?? undefined,
     dueAt: millis(row.dueAt),

@@ -197,6 +197,13 @@
       "when": 1785524400000,
       "tag": "0027_governance_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1785610800000,
+      "tag": "0028_governance_actor_retention",
+      "breakpoints": true
     }
   ]
 }

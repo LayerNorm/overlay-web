@@ -55,6 +55,11 @@ export type {
   AdminCatalogResource,
   AdminCatalogResourceType,
 } from './admin-authorization/client'
+export {
+  AdminGovernanceClient,
+  type GovernanceComplianceEvidence,
+  type GovernanceFilters,
+} from './admin-governance/client'
 export { SkillsClient } from './skills/client'
 export { McpServersClient } from './mcp-servers/client'
 export { SettingsClient } from './settings/client'

@@ -57,7 +57,7 @@ function toCsv(evidence: Awaited<ReturnType<ReturnType<typeof governanceService>
       policy.resourceType,
       policy.resourceId,
       policy.status,
-      policy.approvedBy ?? policy.rejectedBy ?? policy.createdBy,
+      policy.approvedBy ?? policy.rejectedBy ?? policy.createdBy ?? '',
       new Date(policy.createdAt).toISOString(),
       JSON.stringify(policy),
     ])
@@ -69,7 +69,7 @@ function toCsv(evidence: Awaited<ReturnType<ReturnType<typeof governanceService>
       review.resourceType,
       review.resourceId,
       review.status,
-      review.reviewerUserId ?? review.createdBy,
+      review.reviewerUserId ?? review.createdBy ?? '',
       new Date(review.createdAt).toISOString(),
       JSON.stringify(review),
     ])

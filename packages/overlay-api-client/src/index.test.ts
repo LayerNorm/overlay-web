@@ -118,6 +118,48 @@ test('authorization administration list methods preserve forbidden status', asyn
   )
 })
 
+test('governance administration preserves policy, review, and export contracts', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.adminGovernance.createPolicy({
+    resourceType: 'knowledge_base',
+    resourceId: 'kb_1',
+    legalHold: true,
+    retentionUntil: 1_900_000_000_000,
+  })
+  await client.adminGovernance.decidePolicy({ policyId: 'policy_1', action: 'approve' })
+  await client.adminGovernance.createAccessReview({
+    resourceType: 'project',
+    resourceId: 'project_1',
+  })
+  await client.adminGovernance.completeAccessReview({ reviewId: 'review_1' })
+
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/admin/governance/policies')
+  assert.equal(calls[0]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[0]!), {
+    resourceType: 'knowledge_base',
+    resourceId: 'kb_1',
+    legalHold: true,
+    retentionUntil: 1_900_000_000_000,
+  })
+  assert.equal(calls[1]!.init?.method, 'PATCH')
+  assert.deepEqual(await jsonBody(calls[1]!), {
+    policyId: 'policy_1',
+    action: 'approve',
+  })
+  assert.equal(String(calls[2]!.input), 'https://example.test/api/v1/admin/governance/reviews')
+  assert.equal(calls[2]!.init?.method, 'POST')
+  assert.equal(calls[3]!.init?.method, 'PATCH')
+  assert.equal(
+    client.adminGovernance.exportUrl({
+      resourceType: 'project',
+      resourceId: 'project_1',
+      format: 'csv',
+    }),
+    '/api/v1/admin/governance/export?resourceType=project&resourceId=project_1&format=csv',
+  )
+})
+
 test('knowledge-base source operations preserve diagnostics and reindex contracts', async () => {
   const { calls, client } = createRecordedClient()
 

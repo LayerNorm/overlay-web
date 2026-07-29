@@ -5,8 +5,8 @@
 Status legend: DONE · PARTIAL · TODO · DEFERRED (deliberately out of scope for now)
 
 - **Branch:** `codex/authorization-system` (also pushed to `staging`)
-- **Last updated:** Phase 8
-- **App-data schema version:** 26
+- **Last updated:** Phase 9
+- **App-data schema version:** 28
 
 ---
 
@@ -23,7 +23,7 @@ Status legend: DONE · PARTIAL · TODO · DEFERRED (deliberately out of scope fo
 | 6 | Personal brain | **DONE** |
 | 7 | Sharing and access | **DONE** |
 | 8 | Admin distribution | **DONE** |
-| 9 | Custom authorization and policies | PARTIAL — authz done, governance not |
+| 9 | Custom authorization and policies | **DONE** |
 
 ### Note on execution order
 
@@ -501,7 +501,7 @@ Admin panel views today: overview, roles, groups, knowledge, catalog.
 
 ---
 
-## Phase 9: Custom Authorization And Policies — PARTIAL
+## Phase 9: Custom Authorization And Policies — DONE
 
 | Item | Status |
 |---|---|
@@ -509,14 +509,45 @@ Admin panel views today: overview, roles, groups, knowledge, catalog.
 | Capabilities assembled into roles | DONE — versioned, code-defined catalog |
 | User and group role assignments | DONE |
 | Resource ACLs | DONE — `resource_grants` with viewer, editor, owner |
-| Project and KB policy rules | PARTIAL — route-level policies exist; no admin-authored policy objects |
+| Project and KB policy rules | DONE — versioned retention and legal-hold policies |
 | Audit logs | DONE |
-| Access reviews and compliance exports | TODO |
-| Versioning, retention, legal hold, approval workflows | TODO |
+| Access reviews and compliance exports | DONE — immutable grant snapshots plus JSON/CSV evidence |
+| Versioning, retention, legal hold, approval workflows | DONE — maker-checker approval and deletion enforcement |
 
 Evaluation order is `deployment hard limits` intersected with
 `role/group/user capabilities` intersected with `resource ACL`, deny-by-default,
 with no explicit-deny rules in v1.
+
+### Governance semantics
+
+- Policies are immutable versions. Approving a draft supersedes the previously
+  active version for the same project or knowledge base.
+- The administrator who creates a policy cannot approve it. Approval requires a
+  second user with `governance.manage`.
+- Active legal holds and future retention dates block project and knowledge-base
+  deletion at the service boundary, not only in the administration UI.
+- Access reviews capture the exact resource grants present when the review is
+  created. Completing the review records the reviewer and notes without
+  rewriting that evidence.
+- Compliance exports combine policies, access reviews, and matching audit
+  events in JSON or CSV form.
+- Deleting the governed project or knowledge base removes its governance rows.
+  Deleting an administrator preserves evidence for surviving resources while
+  anonymizing actor references.
+- The built-in auditor role can read policies and export evidence but cannot
+  create, approve, reject, or complete governance records.
+
+### QA
+
+| Check | Status |
+|---|---|
+| Maker-checker approval and version supersession | DONE — service and repository contracts |
+| Retention and legal hold block deletion | DONE |
+| Access-review ACL snapshot is immutable | DONE |
+| JSON and CSV evidence exports | DONE |
+| Account deletion and actor anonymization | DONE |
+| Same contracts on real Postgres and Convex | DONE — 6/6 both |
+| Capability-gated administration UI | DONE |
 
 ---
 
@@ -532,10 +563,10 @@ with no explicit-deny rules in v1.
 | 6 | Run comparative distinction QA | DONE |
 | 7 | Stabilize both Convex and Postgres contracts | DONE |
 | 8 | Add rich retrieval and multiple KBs | DONE |
-| 9 | Add mature project workflows | PARTIAL — 4.5 of 9 |
+| 9 | Add mature project workflows | DONE |
 | 10 | Add personal brains | **DONE** |
-| 11 | Add sharing and organization distribution | PARTIAL |
-| 12 | Add custom roles, ACLs, governance, and versioning | PARTIAL — authz done, governance not |
+| 11 | Add sharing and organization distribution | DONE |
+| 12 | Add custom roles, ACLs, governance, and versioning | DONE |
 
 The critical milestone at the end of Phase 3 has been met:
 
@@ -562,6 +593,9 @@ npm run test:knowledge-bases:postgres:remote
 npm run test:knowledge-bases:convex
 npm run test:authorization:persistence:postgres:remote
 npm run test:authorization:persistence:convex
+npm run test:governance:unit
+npm run test:governance:postgres:remote
+npm run test:governance:convex
 
 # Embedding-identity drift (Postgres only; needs database credentials only)
 npm run knowledge:embedding-drift

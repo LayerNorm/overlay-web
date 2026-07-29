@@ -24,7 +24,7 @@ export type GovernancePolicy = {
   retentionUntil?: number
   legalHold: boolean
   notes?: string
-  createdBy: string
+  createdBy?: string
   approvedBy?: string
   approvedAt?: number
   rejectedBy?: string
@@ -40,7 +40,7 @@ export type GovernanceAccessReview = {
   status: GovernanceAccessReviewStatus
   ownerUserId?: string
   grants: ResourceGrant[]
-  createdBy: string
+  createdBy?: string
   reviewerUserId?: string
   notes?: string
   dueAt?: number
@@ -50,13 +50,14 @@ export type GovernanceAccessReview = {
 
 export type CreateGovernancePolicyVersionInput = Pick<
   GovernancePolicy,
-  'id' | 'resourceType' | 'resourceId' | 'legalHold' | 'createdBy'
-> & Partial<Pick<GovernancePolicy, 'retentionUntil' | 'notes'>>
+  'id' | 'resourceType' | 'resourceId' | 'legalHold'
+> & Required<Pick<GovernancePolicy, 'createdBy'>> &
+  Partial<Pick<GovernancePolicy, 'retentionUntil' | 'notes'>>
 
 export type CreateGovernanceAccessReviewInput = Pick<
   GovernanceAccessReview,
-  'id' | 'resourceType' | 'resourceId' | 'grants' | 'createdBy'
-> & Partial<Pick<
+  'id' | 'resourceType' | 'resourceId' | 'grants'
+> & Required<Pick<GovernanceAccessReview, 'createdBy'>> & Partial<Pick<
   GovernanceAccessReview,
   'ownerUserId' | 'notes' | 'dueAt'
 >>

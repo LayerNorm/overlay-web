@@ -52,6 +52,27 @@ test('route policies are exact and expose typed resource requirements', () => {
       resource: { action: 'edit', type: 'knowledge_base' },
     },
   )
+  assert.deepEqual(
+    getAuthorizationRoutePolicy('GET', '/api/v1/admin/governance/policies'),
+    {
+      access: 'capability',
+      capabilities: ['governance.read'],
+    },
+  )
+  assert.deepEqual(
+    getAuthorizationRoutePolicy('PATCH', '/api/v1/admin/governance/reviews'),
+    {
+      access: 'capability',
+      capabilities: ['governance.manage'],
+    },
+  )
+  assert.deepEqual(
+    getAuthorizationRoutePolicy('GET', '/api/v1/admin/governance/export'),
+    {
+      access: 'capability',
+      capabilities: ['governance.export'],
+    },
+  )
 })
 
 test('policy registry does not contain duplicate path rules', () => {
