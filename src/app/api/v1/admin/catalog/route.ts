@@ -1,5 +1,5 @@
+import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import type {
   AdminCatalogResource,
   AdminCatalogResourceType,
@@ -17,8 +17,9 @@ import {
   normalizeIntegrationProviderKey,
   resolveOverlayAppShellConfig,
 } from '@overlay/app-core'
+import { handleBffRoute, type BffDomainService } from '../../_utils/bff'
 
-export async function GET(_request: Request, context: AppApiRouteContext) {
+const listCatalog: BffDomainService = async (_request, context) => {
   const capabilities = await getOverlayCapabilities()
   const appShell = resolveOverlayAppShellConfig(overlayAppConfig, { capabilities })
   const providerCatalog = capabilities.integrations
@@ -70,6 +71,10 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
   ])
 
   return NextResponse.json({ resources })
+}
+
+export async function GET(request: NextRequest) {
+  return handleBffRoute(request, {}, listCatalog)
 }
 
 function dedupeResources(values: AdminCatalogResource[]): AdminCatalogResource[] {

@@ -4,6 +4,13 @@ import { FormDataBoundary } from './common'
 export const KnowledgeBaseListQuery = z.object({})
 export const KnowledgeBaseShareDirectoryQuery = z.object({})
 export const AdminKnowledgeBaseListQuery = z.object({})
+export const GroupKnowledgeBaseDefaultsQuery = z.object({
+  groupId: z.string().min(1).optional(),
+})
+export const GroupKnowledgeBaseDefaultRequest = z.object({
+  groupId: z.string().min(1),
+  knowledgeBaseId: z.string().min(1),
+})
 
 export const CreateKnowledgeBaseRequest = z.object({
   title: z.string().trim().min(1).max(160),
