@@ -43,6 +43,8 @@ export interface AccountDataDeletionCounts {
   webhookDeliveries: number
   webhookDeliveryAttempts: number
   webhookSubscriptions: number
+  workspacePersonalWorkspaces: number
+  workspacePrincipals: number
 }
 
 export interface AccountDataDeletionVerification {

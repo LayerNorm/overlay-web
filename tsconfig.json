@@ -121,6 +121,12 @@
       ],
       "@overlay/ui/*": [
         "./packages/overlay-ui/src/*"
+      ],
+      "@overlay/workspace-contracts": [
+        "./packages/overlay-workspace-contracts/src/index.ts"
+      ],
+      "@overlay/workspace-contracts/*": [
+        "./packages/overlay-workspace-contracts/src/*"
       ]
     }
   },

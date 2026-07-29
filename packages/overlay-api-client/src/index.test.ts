@@ -230,6 +230,66 @@ test('personal knowledge capture remains an explicit API operation', async () =>
   })
 })
 
+test('workspace methods preserve canonical routes, selector headers, and mutation bodies', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.workspaces.management('workspace_1', 'people')
+  await client.workspaces.invite('workspace_1', {
+    email: 'member@example.com',
+    role: 'member',
+  })
+  await client.workspaces.updateMember('workspace_1', {
+    action: 'set-role',
+    principalId: 'principal_1',
+    role: 'admin',
+  })
+  await client.workspaces.createTeam('workspace_1', {
+    name: 'Research',
+    description: 'Research people and agents',
+  })
+  await client.workspaces.addTeamMember('workspace_1', 'team_1', {
+    principalId: 'principal_1',
+  })
+  await client.workspaces.acceptInvitation('invitation_1')
+
+  assert.equal(
+    String(calls[0]!.input),
+    'https://example.test/api/v1/workspaces/workspace_1/management?view=people',
+  )
+  assert.equal(new Headers(calls[0]!.init?.headers).get('x-overlay-workspace-id'), 'workspace_1')
+  assert.equal(
+    String(calls[1]!.input),
+    'https://example.test/api/v1/workspaces/workspace_1/invitations',
+  )
+  assert.equal(calls[1]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[1]!), {
+    email: 'member@example.com',
+    role: 'member',
+  })
+  assert.equal(calls[2]!.init?.method, 'PATCH')
+  assert.deepEqual(await jsonBody(calls[2]!), {
+    action: 'set-role',
+    principalId: 'principal_1',
+    role: 'admin',
+  })
+  assert.equal(
+    String(calls[3]!.input),
+    'https://example.test/api/v1/workspaces/workspace_1/teams',
+  )
+  assert.deepEqual(await jsonBody(calls[3]!), {
+    name: 'Research',
+    description: 'Research people and agents',
+  })
+  assert.equal(
+    String(calls[4]!.input),
+    'https://example.test/api/v1/workspaces/workspace_1/teams/team_1/members',
+  )
+  assert.equal(
+    String(calls[5]!.input),
+    'https://example.test/api/v1/workspace-invitations/invitation_1/accept',
+  )
+})
+
 test('file mutations accept null parent and project IDs', async () => {
   const { calls, client } = createRecordedClient()
 

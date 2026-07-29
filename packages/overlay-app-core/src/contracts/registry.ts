@@ -3,6 +3,7 @@ import type { AuthProvider, AuthUser } from '@overlay/auth-contracts'
 import type { AuthorizationSubject } from '@overlay/authz-contracts'
 import type { ObjectStore, VectorStore } from '@overlay/storage-contracts'
 import type { BillingProvider, Entitlements } from '@overlay/billing'
+import type { WorkspaceSummary } from '@overlay/workspace-contracts'
 import type { CapabilityCheck, OverlayCapability } from '../capabilities'
 import type { AppSettings, ChatModel, ImageModel, VideoModel, ThemePreference, ThemePresetId } from './settings'
 import type { AppDestinationConfig, AppDestinationId, AppFeatureFlags, SettingsSubview } from './navigation'
@@ -317,6 +318,9 @@ export interface AppBootstrapResponse {
   authorization: AppAuthorizationState
   destinations: AppDestinationConfig[]
   defaults?: AppBootstrapDefaults
+  /** Workspace summaries are included so app chrome can hydrate without a second list request. */
+  workspaces?: WorkspaceSummary[]
+  activeWorkspaceId?: string
 }
 
 export type AppBootstrap = AppBootstrapResponse

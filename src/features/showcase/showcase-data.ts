@@ -8,8 +8,39 @@ import {
   FILE_PARITY_IMAGE_DATA_URL,
   FILE_PARITY_VIDEO_DATA_URL,
 } from '@overlay/app-core/file-parity-fixtures'
+import type { WorkspaceSummary } from '@overlay/workspace-contracts'
 
 export type ShowcaseSurface = 'chat' | 'files' | 'projects' | 'automations' | 'extensions'
+
+export const SHOWCASE_WORKSPACES: WorkspaceSummary[] = [
+  {
+    id: 'showcase-personal',
+    name: 'Divyansh',
+    slug: 'divyansh',
+    kind: 'personal',
+    status: 'active',
+    role: 'owner',
+    memberCount: 1,
+  },
+  {
+    id: 'showcase-acme',
+    name: 'Acme',
+    slug: 'acme',
+    kind: 'organization',
+    status: 'active',
+    role: 'owner',
+    memberCount: 8,
+  },
+  {
+    id: 'showcase-design',
+    name: 'Design partners',
+    slug: 'design-partners',
+    kind: 'organization',
+    status: 'active',
+    role: 'member',
+    memberCount: 14,
+  },
+]
 
 export interface ShowcaseMessage {
   id: string

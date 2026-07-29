@@ -57,6 +57,7 @@ export type {
   AppSidebarChatPanelContext,
   AppSidebarNavigateContext,
   AppSidebarProps,
+  AppSidebarWorkspaceAdapter,
 } from './appSidebarTypes'
 
 export default function AppSidebar({
@@ -65,6 +66,7 @@ export default function AppSidebar({
   renderAutomationsPanel,
   renderFilesPanel,
   renderProjectsPanel,
+  workspace,
 }: AppSidebarProps) {
   const pathname = usePathname() ?? ''
   const router = useRouter()
@@ -111,6 +113,17 @@ export default function AppSidebar({
   const isGuestConfirmed = !authLoading && !user
   const displayName = user ? (user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email) : 'Guest'
   const { totalUnread } = useAsyncSessions()
+  const activeWorkspaceId = workspace?.activeWorkspaceId ?? null
+  const resolveSurfaceAdapter = workspace?.resolveSurface
+  const buildHrefAdapter = workspace?.buildHref
+  const resolveWorkspaceSurface = useCallback(
+    (path: string) => resolveSurfaceAdapter?.(path) ?? null,
+    [resolveSurfaceAdapter],
+  )
+  const buildWorkspaceHref = useCallback(
+    (workspaceId: string, href: string) => buildHrefAdapter?.(workspaceId, href) ?? href,
+    [buildHrefAdapter],
+  )
 
   const [pendingNav, setPendingNav] = useState<{ href: string; fromPath: string } | null>(null)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
@@ -198,17 +211,22 @@ export default function AppSidebar({
 
   const effectivePendingHref =
     pendingNav && pathname === pendingNav.fromPath ? pendingNav.href : null
-  const hideTemporaryChatChrome = temporaryChatUiHidden && pathname.startsWith('/app/chat')
-  const projectsOpen = pathname.startsWith('/app/projects')
-  const notesOpen = pathname.startsWith('/app/notes')
-  const filesOpen = pathname.startsWith('/app/files')
+  const hideTemporaryChatChrome = temporaryChatUiHidden && (
+    pathname.startsWith('/app/chat') ||
+    (pathname.startsWith('/app/w/') && resolveWorkspaceSurface(pathname) === 'chat')
+  )
+  const workspaceSurface = resolveWorkspaceSurface(pathname)
+  const canonicalWorkspaceRoute = pathname.startsWith('/app/w/')
+  const projectsOpen = pathname.startsWith('/app/projects') || (canonicalWorkspaceRoute && workspaceSurface === 'projects')
+  const notesOpen = pathname.startsWith('/app/notes') || (canonicalWorkspaceRoute && workspaceSurface === 'notes')
+  const filesOpen = pathname.startsWith('/app/files') || (canonicalWorkspaceRoute && workspaceSurface === 'files')
   const filesSectionOpen = filesOpen || notesOpen
-  const chatOpen = pathname.startsWith('/app/chat')
-  const adminOpen = pathname.startsWith('/app/admin')
+  const chatOpen = pathname.startsWith('/app/chat') || (canonicalWorkspaceRoute && workspaceSurface === 'chat')
+  const adminOpen = pathname.startsWith('/app/admin') || (canonicalWorkspaceRoute && workspaceSurface === 'admin')
   const showAdminNavigation = can('administration.access') && !publicShowcase && Boolean(user)
-  const automationsOpen = pathname.startsWith('/app/automations')
+  const automationsOpen = pathname.startsWith('/app/automations') || (canonicalWorkspaceRoute && workspaceSurface === 'automations')
   const automationsSectionOpen = automationsOpen && capabilities.automations
-  const settingsPathActive = pathname.startsWith('/app/settings')
+  const settingsPathActive = pathname.startsWith('/app/settings') || (canonicalWorkspaceRoute && workspaceSurface === 'settings')
   const settingsSection = currentSearchParams.get('section') ?? 'general'
   const toolsView = (() => {
     const current = currentSearchParams.get('view')
@@ -270,7 +288,7 @@ export default function AppSidebar({
       }
       if (e.code === 'Digit7') {
         e.preventDefault()
-        if (pathname.startsWith('/app/settings')) return
+        if (settingsPathActive) return
         if (isGuestConfirmed) { requireAuth('settings'); return }
         setMobileMenuOpen(false)
         setPendingNav({ href: '/app/settings', fromPath: pathname })
@@ -283,19 +301,38 @@ export default function AppSidebar({
       const item = navItems[idx]
       if (!item || item.disabled || !item.href) return
       e.preventDefault()
-      if (pathname.startsWith(item.href)) return
+      if (
+        pathname.startsWith(item.href) ||
+        (canonicalWorkspaceRoute && workspaceSurface === resolveWorkspaceSurface(item.href))
+      ) return
       if (isGuestConfirmed && !publicShowcase && item.href !== '/app/chat') { requireAuth('nav'); return }
-      setPendingNav({ href: item.href, fromPath: pathname })
+      const workspaceHref = activeWorkspaceId
+        ? buildWorkspaceHref(activeWorkspaceId, item.href)
+        : item.href
+      setPendingNav({ href: workspaceHref, fromPath: pathname })
       router.push(publicShowcase
         ? `${item.href}?${new URLSearchParams({
             showcase: '1',
             ...(item.href === '/app/chat' ? { id: 'showcase-welcome' } : {}),
           }).toString()}`
-        : item.href)
+        : workspaceHref)
     }
     window.addEventListener('keydown', onNavShortcut, true)
     return () => window.removeEventListener('keydown', onNavShortcut, true)
-  }, [pathname, router, navItems, isGuestConfirmed, publicShowcase, requireAuth])
+  }, [
+    activeWorkspaceId,
+    buildWorkspaceHref,
+    canonicalWorkspaceRoute,
+    isGuestConfirmed,
+    navItems,
+    pathname,
+    publicShowcase,
+    requireAuth,
+    router,
+    settingsPathActive,
+    workspaceSurface,
+    resolveWorkspaceSurface,
+  ])
 
   /** Sub-items only while the settings route is open (avoids orphan dropdown state off-route). */
   const settingsNavExpanded = settingsPathActive
@@ -363,12 +400,12 @@ export default function AppSidebar({
       <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0 group-hover:hidden" />
       <ChevronRight size={16} className="hidden text-[var(--foreground)] group-hover:block" />
     </button>
-  ) : (
-    brandLink
+  ) : !user && !publicShowcase ? brandLink : (
+    workspace?.renderSwitcher({ onNavigate: () => setMobileMenuOpen(false) }) ?? brandLink
   )
 
   /** Compact brand for the fixed mobile top bar (matches sidebar identity). */
-  const mobileBrandLink = (
+  const mobileBrandLink = !user && !publicShowcase ? (
     <Link
       href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
       className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-2"
@@ -382,6 +419,11 @@ export default function AppSidebar({
         {brandConfig.shortName ?? brandConfig.name}
       </span>
     </Link>
+  ) : (
+    workspace?.renderSwitcher({
+      compact: true,
+      onNavigate: () => setMobileMenuOpen(false),
+    }) ?? brandLink
   )
 
   // Global Cmd/Ctrl+K command palette. The same dialog is reused by the per-section
@@ -406,7 +448,10 @@ export default function AppSidebar({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  const contextualAction = resolveSidebarActionForPath(pathname, sidebarActions)
+  const contextualAction = resolveSidebarActionForPath(
+    canonicalWorkspaceRoute ? `/app/${workspaceSurface}` : pathname,
+    sidebarActions,
+  )
   const contextualSearchCategory = toMentionCategory(contextualAction?.searchCategory)
   const hasInlineChildren = (href?: string) =>
     href === '/app/tools'
@@ -465,13 +510,19 @@ export default function AppSidebar({
           ) : null}
           {navItems.map((item, navIdx) => {
             const { href, label, icon: Icon, disabled } = item
+            const hrefSurface = href ? resolveWorkspaceSurface(href) : null
+            const pendingSurface = effectivePendingHref
+              ? resolveWorkspaceSurface(effectivePendingHref)
+              : null
             const active =
               href &&
               (effectivePendingHref
-                ? effectivePendingHref === href
+                ? effectivePendingHref === href || pendingSurface === hrefSurface
                 : href === '/app/files'
                   ? filesSectionOpen
-                  : pathname.startsWith(href))
+                  : canonicalWorkspaceRoute
+                    ? workspaceSurface === hrefSurface
+                    : pathname.startsWith(href))
             const isPending = href && effectivePendingHref === href
             const unreadCount = href === '/app/chat' ? totalUnread : 0
             const shortcut = navIdx < 9 ? navIdx + 1 : null
@@ -514,14 +565,16 @@ export default function AppSidebar({
                       void runSidebarAction(primaryNavAction)
                       return
                     }
-                    if (pathname.startsWith(href)) return
+                    if (active) return
                     setMobileMenuOpen(false)
                     const destination = publicShowcase
                       ? `${href}?${new URLSearchParams({
                           showcase: '1',
                           ...(href === '/app/chat' ? { id: 'showcase-welcome' } : {}),
                         }).toString()}`
-                      : href
+                      : activeWorkspaceId
+                        ? buildWorkspaceHref(activeWorkspaceId, href)
+                        : href
                     setPendingNav({ href: destination, fromPath: pathname })
                     router.push(destination)
                   }}
@@ -857,7 +910,16 @@ export default function AppSidebar({
           }`}
         >
           <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
-            <div className="min-w-0 flex-1">{brandLink}</div>
+            <div className="min-w-0 flex-1">
+              {!user && !publicShowcase
+                ? brandLink
+                : (
+                  workspace?.renderSwitcher({
+                    compact: true,
+                    onNavigate: () => setMobileMenuOpen(false),
+                  }) ?? brandLink
+                )}
+            </div>
             <button
               type="button"
               onClick={() => setMobileMenuOpen(false)}

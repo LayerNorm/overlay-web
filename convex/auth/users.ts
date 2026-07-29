@@ -457,6 +457,139 @@ export const deleteUserAccountByServer = mutation({
       }
     }
 
+    // Workspace preflight happens before any mutation. Active organization
+    // workspaces must never be stranded without a human owner.
+    const workspacePrincipals = await ctx.db
+      .query('workspacePrincipals')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .collect()
+    for (const principal of workspacePrincipals) {
+      const workspace = await ctx.db
+        .query('workspaces')
+        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', principal.workspaceId))
+        .first()
+      if (!workspace || workspace.kind !== 'organization' || workspace.status !== 'active') {
+        continue
+      }
+      const membership = await ctx.db
+        .query('workspaceMemberships')
+        .withIndex('by_workspaceId_principalId', (q) =>
+          q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId),
+        )
+        .first()
+      if (membership?.role !== 'owner' || membership.status !== 'active') continue
+      const owners = await ctx.db
+        .query('workspaceMemberships')
+        .withIndex('by_workspaceId_role_status', (q) =>
+          q.eq('workspaceId', principal.workspaceId).eq('role', 'owner').eq('status', 'active'),
+        )
+        .collect()
+      if (!owners.some((owner) => owner.principalId !== principal.principalId)) {
+        throw new Error(`Transfer ownership of ${workspace.name} before deleting your account`)
+      }
+    }
+
+    async function deletePersonalWorkspace(workspaceId: string): Promise<void> {
+      const workspace = await ctx.db
+        .query('workspaces')
+        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
+        .first()
+      if (!workspace || workspace.kind !== 'personal') return
+      await deleteIndexed(() =>
+        ctx.db.query('workspaceResourceGuests')
+          .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
+          .collect(),
+      )
+      await deleteIndexed(() =>
+        ctx.db.query('workspaceResourceScopes')
+          .withIndex('by_workspaceId_resource', (q) => q.eq('workspaceId', workspaceId))
+          .collect(),
+      )
+      await deleteIndexed(() =>
+        ctx.db.query('workspaceTeamMemberships')
+          .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
+          .collect(),
+      )
+      await deleteIndexed(() =>
+        ctx.db.query('workspaceTeams')
+          .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
+          .collect(),
+      )
+      await deleteIndexed(() =>
+        ctx.db.query('workspaceInvitations')
+          .withIndex('by_workspaceId_createdAt', (q) => q.eq('workspaceId', workspaceId))
+          .collect(),
+      )
+      await deleteIndexed(() =>
+        ctx.db.query('workspaceMemberships')
+          .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
+          .collect(),
+      )
+      await deleteIndexed(() =>
+        ctx.db.query('workspacePrincipals')
+          .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
+          .collect(),
+      )
+      await ctx.db.delete(workspace._id)
+      deletedRowCount += 1
+    }
+
+    const personalWorkspaces = await ctx.db
+      .query('workspaces')
+      .withIndex('by_personalOwnerUserId', (q) => q.eq('personalOwnerUserId', userId))
+      .collect()
+    for (const workspace of personalWorkspaces) {
+      await deletePersonalWorkspace(workspace.workspaceId)
+    }
+
+    for (const principal of workspacePrincipals) {
+      const workspace = await ctx.db
+        .query('workspaces')
+        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', principal.workspaceId))
+        .first()
+      if (!workspace || workspace.kind === 'personal') continue
+      await deleteIndexed(() =>
+        ctx.db.query('workspaceTeamMemberships')
+          .withIndex('by_principalId', (q) => q.eq('principalId', principal.principalId))
+          .collect(),
+      )
+      const resourceGuests = await ctx.db
+        .query('workspaceResourceGuests')
+        .withIndex('by_workspaceId_principalId', (q) =>
+          q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId),
+        )
+        .collect()
+      for (const guest of resourceGuests) {
+        if (guest.status === 'pending' || guest.status === 'active') {
+          await ctx.db.patch(guest._id, {
+            status: 'revoked',
+            revokedAt: Date.now(),
+            updatedAt: Date.now(),
+          })
+        }
+      }
+      await deleteIndexed(() =>
+        ctx.db.query('workspaceMemberships')
+          .withIndex('by_workspaceId_principalId', (q) =>
+            q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId),
+          )
+          .collect(),
+      )
+      await ctx.db.patch(principal._id, {
+        userId: undefined,
+        email: undefined,
+        displayName: 'Deleted member',
+        archivedAt: principal.archivedAt ?? Date.now(),
+        updatedAt: Date.now(),
+      })
+    }
+    await deleteIndexed(() =>
+      ctx.db
+        .query('workspaceUserPreferences')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+
     // 1. Tables with a `by_userId` (or compound) index — single-key lookup.
     await deleteIndexed(() =>
       ctx.db

@@ -87,6 +87,34 @@ function context(): AppApiRouteContext {
     parsedJson: {},
     parsedQuery: {},
     appDataCapabilities: TEST_CONVEX_APP_DATA_CAPABILITIES,
+    workspace: {
+      workspace: {
+        id: 'workspace_1',
+        kind: 'personal',
+        name: 'Personal',
+        slug: 'personal-user-1',
+        status: 'active',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      principal: {
+        id: 'principal_1',
+        workspaceId: 'workspace_1',
+        type: 'human',
+        userId: 'user_1',
+        displayName: 'Test User',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      membership: {
+        workspaceId: 'workspace_1',
+        principalId: 'principal_1',
+        role: 'owner',
+        status: 'active',
+        joinedAt: 1,
+        updatedAt: 1,
+      },
+    },
   }
 }
 

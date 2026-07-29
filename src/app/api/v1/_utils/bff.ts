@@ -33,6 +33,11 @@ import {
   appDataRouteUnsupportedResponse,
   getAppDataRouteSupport,
 } from '@/server/app-data/route-support'
+import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
+import {
+  ACTIVE_WORKSPACE_COOKIE,
+  ACTIVE_WORKSPACE_HEADER,
+} from '@/shared/workspaces/constants'
 
 const API_KEY_CANDIDATE_RATE_LIMITS = [
   { bucket: 'api-key-auth:candidate:ip', limit: 60, windowMs: 60_000 },
@@ -125,6 +130,28 @@ export async function handleBffRoute(
     throw error
   }
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  let workspace
+  const requestedByHeader = request.headers.get(ACTIVE_WORKSPACE_HEADER)?.trim() || undefined
+  const requestedByCookie = request.cookies.get(ACTIVE_WORKSPACE_COOKIE)?.value.trim() || undefined
+  try {
+    workspace = await serverContext.workspaceService.resolveActiveWorkspace(
+      auth.userId,
+      requestedByHeader ?? requestedByCookie,
+    )
+  } catch (error) {
+    if (requestedByHeader && error instanceof WorkspaceServiceError && error.code === 'not_found') {
+      return NextResponse.json(
+        { error: 'Not found', code: 'workspace_not_found' },
+        { status: 404 },
+      )
+    }
+    if (requestedByCookie && error instanceof WorkspaceServiceError && error.code === 'not_found') {
+      workspace = await serverContext.workspaceService.resolveActiveWorkspace(auth.userId)
+    } else {
+      throw error
+    }
+  }
 
   const authorizationPolicy = getAuthorizationRoutePolicy(
     request.method,
@@ -249,6 +276,7 @@ export async function handleBffRoute(
     parsedFormData: parsedInput.parsedFormData,
     capabilities,
     appDataCapabilities,
+    workspace,
     authorization: {
       evaluation: authorizationEvaluation,
       policy: authorizationPolicy,

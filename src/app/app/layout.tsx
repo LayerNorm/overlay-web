@@ -17,6 +17,7 @@ import { getAuthorizationEnforcementMode } from '@/server/authorization'
 import { AppConfigurationErrorState } from './_components/AppConfigurationErrorState'
 import { AppShellLoadingFallback, ChatRouteSkeleton } from './_components/AppRouteSkeletons'
 import { getSelectedIntegrationProviderId } from '@/server/integrations'
+import { WorkspaceAppBoundary } from '@/features/workspaces/components/WorkspaceAppBoundary'
 
 function AppMainFallback() {
   return <ChatRouteSkeleton />
@@ -52,7 +53,8 @@ async function AppLayoutContent({ children }: { children: React.ReactNode }) {
       initialUser={user}
       requiresConvexClient={appDataCapabilities.requiresConvexClient}
     >
-      <div className="flex h-screen overflow-hidden bg-background text-foreground">
+      <WorkspaceAppBoundary hasAuthenticatedUser={Boolean(user)}>
+        <div className="flex h-screen overflow-hidden bg-background text-foreground">
         <AsyncSessionsProvider>
           <NavigationProgressProvider>
             <NavigationProgressBar />
@@ -77,7 +79,8 @@ async function AppLayoutContent({ children }: { children: React.ReactNode }) {
             </CapabilitiesProvider>
           </NavigationProgressProvider>
         </AsyncSessionsProvider>
-      </div>
+        </div>
+      </WorkspaceAppBoundary>
     </AppClientProviders>
   )
 }

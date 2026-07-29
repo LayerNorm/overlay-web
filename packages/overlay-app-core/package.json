@@ -30,7 +30,8 @@
     "@overlay/authz-contracts": "file:../overlay-authz-contracts",
     "@overlay/billing": "file:../overlay-billing",
     "@overlay/llm-gateway": "file:../overlay-llm-gateway",
-    "@overlay/storage-contracts": "file:../overlay-storage-contracts"
+    "@overlay/storage-contracts": "file:../overlay-storage-contracts",
+    "@overlay/workspace-contracts": "file:../overlay-workspace-contracts"
   },
   "scripts": {
     "test": "tsx --test src/*.test.ts",

@@ -180,6 +180,25 @@ function applyBrowserSecurityHeaders(
   return response
 }
 
+function getCanonicalWorkspaceRewrite(request: NextRequest): URL | null {
+  const match = request.nextUrl.pathname.match(/^\/app\/w\/([^/]+)(?:\/(.*))?$/)
+  if (!match) return null
+
+  let workspaceId = ''
+  try {
+    workspaceId = decodeURIComponent(match[1] ?? '').trim()
+  } catch {
+    return null
+  }
+  if (!workspaceId) return null
+
+  const surface = match[2]?.trim().replace(/^\/+|\/+$/g, '') || 'chat'
+  const rewriteUrl = request.nextUrl.clone()
+  rewriteUrl.pathname = `/app/${surface}`
+  rewriteUrl.searchParams.set('workspaceId', workspaceId)
+  return rewriteUrl
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
@@ -210,6 +229,23 @@ export async function middleware(request: NextRequest) {
       cspHeaderName,
       cspPolicy,
     )
+
+  const workspaceRewrite = getCanonicalWorkspaceRewrite(request)
+  if (workspaceRewrite) {
+    requestHeaders.set(
+      'x-overlay-workspace-id',
+      workspaceRewrite.searchParams.get('workspaceId') ?? '',
+    )
+    return applyBrowserSecurityHeaders(
+      NextResponse.rewrite(workspaceRewrite, {
+        request: {
+          headers: requestHeaders,
+        },
+      }),
+      cspHeaderName,
+      cspPolicy,
+    )
+  }
 
   if (isPublicRoute(pathname)) {
     return nextResponse()

@@ -278,6 +278,170 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_createdAt', ['createdAt']),
 
+  workspaces: defineTable({
+    workspaceId: v.string(),
+    kind: v.union(v.literal('personal'), v.literal('organization')),
+    name: v.string(),
+    slug: v.string(),
+    status: v.union(v.literal('active'), v.literal('archived')),
+    createdByPrincipalId: v.optional(v.string()),
+    personalOwnerUserId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
+  })
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_slug', ['slug'])
+    .index('by_personalOwnerUserId', ['personalOwnerUserId'])
+    .index('by_status_updatedAt', ['status', 'updatedAt']),
+
+  workspacePrincipals: defineTable({
+    principalId: v.string(),
+    workspaceId: v.string(),
+    type: v.union(v.literal('human'), v.literal('agent'), v.literal('service')),
+    userId: v.optional(v.string()),
+    agentId: v.optional(v.string()),
+    serviceId: v.optional(v.string()),
+    displayName: v.string(),
+    email: v.optional(v.string()),
+    createdByPrincipalId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
+  })
+    .index('by_principalId', ['principalId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
+    .index('by_workspaceId_agentId', ['workspaceId', 'agentId'])
+    .index('by_workspaceId_serviceId', ['workspaceId', 'serviceId'])
+    .index('by_workspaceId_email', ['workspaceId', 'email'])
+    .index('by_userId', ['userId']),
+
+  workspaceMemberships: defineTable({
+    membershipId: v.string(),
+    workspaceId: v.string(),
+    principalId: v.string(),
+    role: v.union(
+      v.literal('owner'),
+      v.literal('admin'),
+      v.literal('member'),
+      v.literal('guest'),
+    ),
+    status: v.union(v.literal('active'), v.literal('suspended')),
+    invitedByPrincipalId: v.optional(v.string()),
+    joinedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_membershipId', ['membershipId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_principalId', ['workspaceId', 'principalId'])
+    .index('by_workspaceId_role_status', ['workspaceId', 'role', 'status'])
+    .index('by_principalId_status', ['principalId', 'status']),
+
+  workspaceInvitations: defineTable({
+    invitationId: v.string(),
+    workspaceId: v.string(),
+    email: v.string(),
+    role: v.union(
+      v.literal('admin'),
+      v.literal('member'),
+      v.literal('guest'),
+    ),
+    status: v.union(
+      v.literal('pending'),
+      v.literal('accepted'),
+      v.literal('expired'),
+      v.literal('cancelled'),
+      v.literal('replaced'),
+    ),
+    invitedByPrincipalId: v.string(),
+    expiresAt: v.number(),
+    acceptedByPrincipalId: v.optional(v.string()),
+    acceptedAt: v.optional(v.number()),
+    cancelledAt: v.optional(v.number()),
+    replacedByInvitationId: v.optional(v.string()),
+    replacedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_invitationId', ['invitationId'])
+    .index('by_workspaceId_createdAt', ['workspaceId', 'createdAt'])
+    .index('by_workspaceId_email_status', ['workspaceId', 'email', 'status'])
+    .index('by_email_status', ['email', 'status'])
+    .index('by_status_expiresAt', ['status', 'expiresAt'])
+    .index('by_workspaceId_status_expiresAt', ['workspaceId', 'status', 'expiresAt']),
+
+  workspaceTeams: defineTable({
+    teamId: v.string(),
+    workspaceId: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    createdByPrincipalId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
+  })
+    .index('by_teamId', ['teamId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_name', ['workspaceId', 'name']),
+
+  workspaceTeamMemberships: defineTable({
+    teamMembershipId: v.string(),
+    workspaceId: v.string(),
+    teamId: v.string(),
+    principalId: v.string(),
+    principalType: v.union(v.literal('human'), v.literal('agent')),
+    addedByPrincipalId: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index('by_teamMembershipId', ['teamMembershipId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_teamId', ['teamId'])
+    .index('by_teamId_principalId', ['teamId', 'principalId'])
+    .index('by_principalId', ['principalId']),
+
+  workspaceResourceGuests: defineTable({
+    resourceGuestId: v.string(),
+    workspaceId: v.string(),
+    resourceType: v.string(),
+    resourceId: v.string(),
+    principalId: v.string(),
+    accessRole: v.union(v.literal('viewer'), v.literal('editor')),
+    status: v.union(
+      v.literal('pending'),
+      v.literal('active'),
+      v.literal('expired'),
+      v.literal('revoked'),
+    ),
+    grantedByPrincipalId: v.string(),
+    expiresAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_resourceGuestId', ['resourceGuestId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_resource', ['workspaceId', 'resourceType', 'resourceId'])
+    .index('by_workspaceId_principalId', ['workspaceId', 'principalId']),
+
+  workspaceResourceScopes: defineTable({
+    workspaceId: v.string(),
+    resourceType: v.string(),
+    resourceId: v.string(),
+    createdAt: v.number(),
+    // Optional only for compatibility with the pre-Phase-1 development
+    // prototype. Mutations normalize legacy rows on first write.
+    updatedAt: v.optional(v.number()),
+  })
+    .index('by_resource', ['resourceType', 'resourceId'])
+    .index('by_workspaceId_resource', ['workspaceId', 'resourceType', 'resourceId']),
+
+  workspaceUserPreferences: defineTable({
+    userId: v.string(),
+    activeWorkspaceId: v.string(),
+    updatedAt: v.number(),
+  }).index('by_userId', ['userId']),
+
   authorizationRoles: defineTable({
     roleId: v.string(),
     name: v.string(),

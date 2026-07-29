@@ -112,6 +112,9 @@ import {
   ConvexGovernanceRepository,
   PostgresGovernanceRepository,
 } from '@/server/governance'
+import type { WorkspaceRepository } from '@/server/workspaces/WorkspaceRepository'
+import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
+import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspaceRepository'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -143,6 +146,7 @@ export interface AppDataRepositories {
   serviceAuthReplay: ServiceAuthReplayRepository
   users: UserRepository
   webhooks: WebhookRepository
+  workspaces: WorkspaceRepository
   usage: UsageRepository
 }
 
@@ -203,6 +207,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         serviceAuthReplay: new PostgresServiceAuthReplayRepository(db),
         users: new PostgresUserRepository(db),
         webhooks: new PostgresWebhookRepository(db),
+        workspaces: new PostgresWorkspaceRepository(db),
         usage: new PostgresUsageRepository(db),
       },
     }
@@ -240,6 +245,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       serviceAuthReplay: new ConvexServiceAuthReplayRepository(),
       users: new ConvexUserRepository(),
       webhooks: new ConvexWebhookRepository(),
+      workspaces: new ConvexWorkspaceRepository(),
       usage: new ConvexUsageRepository(),
     },
   }

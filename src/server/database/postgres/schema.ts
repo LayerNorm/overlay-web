@@ -4,6 +4,7 @@ import {
   bigint,
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -13,6 +14,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  unique,
   vector,
 } from 'drizzle-orm/pg-core'
 import type { AutomationSchedule } from '@overlay/app-core'
@@ -269,6 +271,54 @@ export const auditOutcome = pgEnum('overlay_audit_outcome', [
   'failure',
 ])
 
+export const workspaceKind = pgEnum('overlay_workspace_kind', [
+  'personal',
+  'organization',
+])
+
+export const workspaceStatus = pgEnum('overlay_workspace_status', [
+  'active',
+  'archived',
+])
+
+export const workspacePrincipalType = pgEnum('overlay_workspace_principal_type', [
+  'human',
+  'agent',
+  'service',
+])
+
+export const workspaceMembershipRole = pgEnum('overlay_workspace_membership_role', [
+  'owner',
+  'admin',
+  'member',
+  'guest',
+])
+
+export const workspaceMembershipStatus = pgEnum('overlay_workspace_membership_status', [
+  'active',
+  'suspended',
+])
+
+export const workspaceInvitationStatus = pgEnum('overlay_workspace_invitation_status', [
+  'pending',
+  'accepted',
+  'expired',
+  'cancelled',
+  'replaced',
+])
+
+export const workspaceResourceGuestStatus = pgEnum('overlay_workspace_resource_guest_status', [
+  'pending',
+  'active',
+  'expired',
+  'revoked',
+])
+
+export const workspaceResourceGuestAccessRole = pgEnum(
+  'overlay_workspace_resource_guest_access_role',
+  ['viewer', 'editor'],
+)
+
 export const mcpTransport = pgEnum('overlay_mcp_transport', [
   'sse',
   'streamable-http',
@@ -321,6 +371,244 @@ export const authIdentities = pgTable('auth_identities', {
   primaryKey({ columns: [table.provider, table.subject] }),
   index('auth_identities_user_id_idx').on(table.userId),
   index('auth_identities_email_idx').on(table.email),
+])
+
+export const workspaces = pgTable('workspaces', {
+  id: text('id').primaryKey(),
+  kind: workspaceKind('kind').notNull(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull(),
+  status: workspaceStatus('status').default('active').notNull(),
+  personalOwnerUserId: text('personal_owner_user_id')
+    .references(() => users.id, { onDelete: 'restrict' }),
+  createdByPrincipalId: text('created_by_principal_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+}, (table) => [
+  uniqueIndex('workspaces_slug_idx').on(sql`lower(${table.slug})`),
+  uniqueIndex('workspaces_personal_owner_idx')
+    .on(table.personalOwnerUserId)
+    .where(sql`${table.kind} = 'personal'`),
+  index('workspaces_status_updated_idx').on(table.status, table.updatedAt),
+  check(
+    'workspaces_personal_owner_check',
+    sql`(${table.kind} = 'personal' AND ${table.personalOwnerUserId} IS NOT NULL)
+      OR (${table.kind} = 'organization' AND ${table.personalOwnerUserId} IS NULL)`,
+  ),
+  check(
+    'workspaces_archive_state_check',
+    sql`(${table.status} = 'archived') = (${table.archivedAt} IS NOT NULL)`,
+  ),
+])
+
+export const workspacePrincipals = pgTable('workspace_principals', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  type: workspacePrincipalType('type').notNull(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  agentId: text('agent_id'),
+  serviceId: text('service_id'),
+  displayName: text('display_name').notNull(),
+  email: text('email'),
+  createdByPrincipalId: text('created_by_principal_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+}, (table) => [
+  unique('workspace_principals_workspace_id_id_unique').on(table.workspaceId, table.id),
+  uniqueIndex('workspace_principals_human_idx')
+    .on(table.workspaceId, table.userId)
+    .where(sql`${table.type} = 'human'`),
+  uniqueIndex('workspace_principals_agent_idx')
+    .on(table.workspaceId, table.agentId)
+    .where(sql`${table.type} = 'agent'`),
+  uniqueIndex('workspace_principals_service_idx')
+    .on(table.workspaceId, table.serviceId)
+    .where(sql`${table.type} = 'service'`),
+  index('workspace_principals_workspace_type_idx').on(table.workspaceId, table.type, table.archivedAt),
+  check(
+    'workspace_principals_identity_check',
+    sql`(${table.type} = 'human'
+          AND ${table.agentId} IS NULL AND ${table.serviceId} IS NULL
+          AND (${table.userId} IS NOT NULL OR ${table.archivedAt} IS NOT NULL))
+      OR (${table.type} = 'agent' AND ${table.userId} IS NULL
+          AND ${table.agentId} IS NOT NULL AND ${table.serviceId} IS NULL)
+      OR (${table.type} = 'service' AND ${table.userId} IS NULL
+          AND ${table.agentId} IS NULL AND ${table.serviceId} IS NOT NULL)`,
+  ),
+])
+
+export const workspaceMemberships = pgTable('workspace_memberships', {
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  principalId: text('principal_id').notNull(),
+  role: workspaceMembershipRole('role').notNull(),
+  status: workspaceMembershipStatus('status').default('active').notNull(),
+  invitedByPrincipalId: text('invited_by_principal_id'),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.workspaceId, table.principalId] }),
+  foreignKey({
+    columns: [table.workspaceId, table.principalId],
+    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
+    name: 'workspace_memberships_principal_fk',
+  }).onDelete('cascade'),
+  index('workspace_memberships_principal_idx').on(table.principalId),
+  index('workspace_memberships_workspace_role_status_idx').on(
+    table.workspaceId,
+    table.role,
+    table.status,
+  ),
+])
+
+export const userWorkspacePreferences = pgTable('user_workspace_preferences', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  activeWorkspaceId: text('active_workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('user_workspace_preferences_workspace_idx').on(table.activeWorkspaceId),
+])
+
+export const workspaceTeams = pgTable('workspace_teams', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description'),
+  createdByPrincipalId: text('created_by_principal_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+}, (table) => [
+  unique('workspace_teams_workspace_id_id_unique').on(table.workspaceId, table.id),
+  uniqueIndex('workspace_teams_active_name_idx')
+    .on(table.workspaceId, sql`lower(${table.name})`)
+    .where(sql`${table.archivedAt} IS NULL`),
+  index('workspace_teams_workspace_updated_idx').on(table.workspaceId, table.updatedAt),
+])
+
+export const workspaceTeamMembers = pgTable('workspace_team_members', {
+  teamId: text('team_id').notNull(),
+  workspaceId: text('workspace_id').notNull(),
+  principalId: text('principal_id').notNull(),
+  principalType: workspacePrincipalType('principal_type').notNull(),
+  addedByPrincipalId: text('added_by_principal_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.teamId, table.principalId] }),
+  foreignKey({
+    columns: [table.workspaceId, table.teamId],
+    foreignColumns: [workspaceTeams.workspaceId, workspaceTeams.id],
+    name: 'workspace_team_members_team_fk',
+  }).onDelete('cascade'),
+  foreignKey({
+    columns: [table.workspaceId, table.principalId],
+    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
+    name: 'workspace_team_members_principal_fk',
+  }).onDelete('cascade'),
+  index('workspace_team_members_principal_idx').on(table.workspaceId, table.principalId),
+  check(
+    'workspace_team_members_principal_type_check',
+    sql`${table.principalType} IN ('human', 'agent')`,
+  ),
+])
+
+export const workspaceInvitations = pgTable('workspace_invitations', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  role: workspaceMembershipRole('role').notNull(),
+  status: workspaceInvitationStatus('status').default('pending').notNull(),
+  invitedByPrincipalId: text('invited_by_principal_id').notNull(),
+  acceptedByPrincipalId: text('accepted_by_principal_id'),
+  replacedByInvitationId: text('replaced_by_invitation_id')
+    .references((): AnyPgColumn => workspaceInvitations.id, { onDelete: 'set null' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  replacedAt: timestamp('replaced_at', { withTimezone: true }),
+}, (table) => [
+  uniqueIndex('workspace_invitations_pending_email_idx')
+    .on(table.workspaceId, sql`lower(${table.email})`)
+    .where(sql`${table.status} = 'pending'`),
+  index('workspace_invitations_workspace_status_idx').on(
+    table.workspaceId,
+    table.status,
+    table.createdAt,
+  ),
+  index('workspace_invitations_expiry_idx').on(table.status, table.expiresAt),
+  check('workspace_invitations_role_check', sql`${table.role} <> 'owner'`),
+])
+
+export const workspaceResourceGuests = pgTable('workspace_resource_guests', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  resourceType: text('resource_type').notNull(),
+  resourceId: text('resource_id').notNull(),
+  principalId: text('principal_id').notNull(),
+  accessRole: workspaceResourceGuestAccessRole('access_role').notNull(),
+  status: workspaceResourceGuestStatus('status').default('pending').notNull(),
+  grantedByPrincipalId: text('granted_by_principal_id').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => [
+  foreignKey({
+    columns: [table.workspaceId, table.principalId],
+    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
+    name: 'workspace_resource_guests_principal_fk',
+  }).onDelete('cascade'),
+  uniqueIndex('workspace_resource_guests_active_idx')
+    .on(table.workspaceId, table.resourceType, table.resourceId, table.principalId)
+    .where(sql`${table.status} IN ('pending', 'active')`),
+  index('workspace_resource_guests_resource_idx').on(
+    table.workspaceId,
+    table.resourceType,
+    table.resourceId,
+    table.status,
+  ),
+  index('workspace_resource_guests_principal_idx').on(
+    table.workspaceId,
+    table.principalId,
+    table.status,
+  ),
+])
+
+export const workspaceResourceScopes = pgTable('workspace_resource_scopes', {
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  resourceType: text('resource_type').notNull(),
+  resourceId: text('resource_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({
+    columns: [table.resourceType, table.resourceId],
+    name: 'workspace_resource_scopes_pk',
+  }),
+  index('workspace_resource_scopes_workspace_idx').on(
+    table.workspaceId,
+    table.resourceType,
+    table.resourceId,
+  ),
 ])
 
 export const knowledgeBases = pgTable('knowledge_bases', {

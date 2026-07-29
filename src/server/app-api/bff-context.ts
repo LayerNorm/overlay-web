@@ -8,6 +8,7 @@ import type {
   AuthorizationRouteEvaluation,
   AuthorizationRoutePolicy,
 } from '@/server/authorization'
+import type { WorkspaceAccess } from '@overlay/workspace-contracts'
 
 export type AppApiRouteContext = {
   params: Promise<Record<string, string | string[]>>
@@ -17,6 +18,7 @@ export type AppApiRouteContext = {
   parsedFormData: FormData | null
   capabilities: CapabilityCheck
   appDataCapabilities: AppDataCapabilities
+  workspace: WorkspaceAccess
   authorization?: {
     evaluation: AuthorizationRouteEvaluation
     policy: AuthorizationRoutePolicy

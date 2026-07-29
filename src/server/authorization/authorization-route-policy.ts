@@ -50,6 +50,46 @@ const resource = (
 export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule[] = [
   { path: '/api/v1/capabilities', methods: { GET: publicPolicy() } },
   { path: '/api/v1/bootstrap', methods: { GET: authenticated() } },
+  {
+    path: '/api/v1/workspaces',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/active',
+    methods: { POST: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/management',
+    methods: { GET: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/invitations',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/invitations/:invitationId',
+    methods: { POST: authenticated(), DELETE: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/members',
+    methods: { PATCH: authenticated(), DELETE: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/teams',
+    methods: { POST: authenticated(), DELETE: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/teams/:teamId/members',
+    methods: { POST: authenticated(), DELETE: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/lifecycle',
+    methods: { DELETE: authenticated() },
+  },
+  {
+    path: '/api/v1/workspace-invitations/:invitationId/accept',
+    methods: { POST: authenticated() },
+  },
   { path: '/api/v1/chat-suggestions', methods: { GET: capability('conversations.create') } },
   { path: '/api/v1/settings', methods: { GET: authenticated(), PATCH: authenticated() } },
   { path: '/api/v1/onboarding/status', methods: { GET: authenticated() } },

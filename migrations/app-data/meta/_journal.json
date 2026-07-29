@@ -204,6 +204,27 @@
       "when": 1785610800000,
       "tag": "0028_governance_actor_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1785697200000,
+      "tag": "0029_workspace_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1785783600000,
+      "tag": "0030_workspace_account_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1785870000000,
+      "tag": "0031_workspace_resource_scopes",
+      "breakpoints": true
     }
   ]
 }

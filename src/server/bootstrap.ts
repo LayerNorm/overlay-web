@@ -70,6 +70,7 @@ import {
   getIntegrationProvider,
 } from '@/server/integrations'
 import { GovernanceService } from '@/server/governance'
+import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -107,6 +108,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   noteRepository: NoteRepository
   apiKeyService: ApiKeyService
   userService: UserService
+  workspaceService: WorkspaceService
 }
 
 export interface CreateOverlayServerContextOptions {
@@ -158,9 +160,15 @@ export function createOverlayServerContext(
   const fixedRoleAuthorizationBridge = new FixedRoleAuthorizationBridge(
     appData.repositories.authorization,
   )
+  const workspaceService = new WorkspaceService(appData.repositories.workspaces)
   const userService = new UserService({
     authProvider: selectedAuthProviderForUserService(runtimeConfig),
-    afterUpsert: ({ userId }) => fixedRoleAuthorizationBridge.ensureDefaultUserRole(userId),
+    afterUpsert: async ({ userId }) => {
+      await Promise.all([
+        fixedRoleAuthorizationBridge.ensureDefaultUserRole(userId),
+        workspaceService.ensurePersonalWorkspace({ userId }),
+      ])
+    },
     repository: appData.repositories.users,
   })
   const administrativeService = new AdministrativeService({
@@ -256,6 +264,7 @@ export function createOverlayServerContext(
     noteRepository: appData.repositories.notes,
     apiKeyService: new ApiKeyService(appData.repositories.apiKeys),
     userService,
+    workspaceService,
   }
 }
 

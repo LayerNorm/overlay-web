@@ -56,6 +56,8 @@ const ZERO_COUNTS: AccountDataDeletionCounts = {
   webhookDeliveries: 0,
   webhookDeliveryAttempts: 0,
   webhookSubscriptions: 0,
+  workspacePersonalWorkspaces: 0,
+  workspacePrincipals: 0,
 }
 
 export class PostgresAccountDataDeletionRepository implements AccountDataDeletionRepository {
@@ -77,6 +79,7 @@ export class PostgresAccountDataDeletionRepository implements AccountDataDeletio
 
       await deleteUserOwnedDurableJobs(tx, args.userId)
       await deleteUserOwnedGovernance(tx, args.userId)
+      await prepareWorkspaceAccountDeletion(tx, args.userId)
 
       await tx.execute(sql`
         DELETE FROM authorization_resource_grants
@@ -150,6 +153,73 @@ async function deleteUserOwnedDurableJobs(tx: Transaction, userId: string): Prom
         WHERE delivery.user_id = ${userId}
       )
     )
+  `)
+}
+
+async function prepareWorkspaceAccountDeletion(tx: Transaction, userId: string): Promise<void> {
+  const finalOwner = await tx.execute<{ name: string }>(sql`
+    SELECT workspace.name
+    FROM workspace_memberships membership
+    INNER JOIN workspace_principals principal
+      ON principal.workspace_id = membership.workspace_id
+      AND principal.id = membership.principal_id
+    INNER JOIN workspaces workspace ON workspace.id = membership.workspace_id
+    WHERE principal.user_id = ${userId}
+      AND workspace.kind = 'organization'
+      AND workspace.status = 'active'
+      AND membership.role = 'owner'
+      AND membership.status = 'active'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM workspace_memberships another_owner
+        WHERE another_owner.workspace_id = membership.workspace_id
+          AND another_owner.principal_id <> membership.principal_id
+          AND another_owner.role = 'owner'
+          AND another_owner.status = 'active'
+      )
+    LIMIT 1
+    FOR UPDATE OF membership
+  `)
+  if (finalOwner.rows[0]) {
+    throw new Error(
+      `Transfer ownership of ${finalOwner.rows[0].name} before deleting your account`,
+    )
+  }
+
+  // A Personal workspace belongs to the account and is permanently erased with
+  // it. Organization data remains under workspace retention policy.
+  await tx.execute(sql`
+    DELETE FROM workspaces
+    WHERE kind = 'personal' AND personal_owner_user_id = ${userId}
+  `)
+
+  const organizationPrincipals = sql`
+    SELECT id
+    FROM workspace_principals
+    WHERE user_id = ${userId}
+  `
+  await tx.execute(sql`
+    DELETE FROM workspace_team_members
+    WHERE principal_id IN (${organizationPrincipals})
+  `)
+  await tx.execute(sql`
+    UPDATE workspace_resource_guests
+    SET status = 'revoked', revoked_at = now(), updated_at = now()
+    WHERE principal_id IN (${organizationPrincipals})
+      AND status IN ('pending', 'active')
+  `)
+  await tx.execute(sql`
+    DELETE FROM workspace_memberships
+    WHERE principal_id IN (${organizationPrincipals})
+  `)
+  await tx.execute(sql`
+    UPDATE workspace_principals
+    SET
+      archived_at = COALESCE(archived_at, now()),
+      display_name = 'Deleted member',
+      email = NULL,
+      updated_at = now()
+    WHERE user_id = ${userId}
   `)
 }
 
@@ -236,6 +306,8 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     webhook_deliveries: number
     webhook_delivery_attempts: number
     webhook_subscriptions: number
+    workspace_personal_workspaces: number
+    workspace_principals: number
   }>(sql`
     SELECT
       (SELECT count(*)::int FROM api_idempotency_keys WHERE user_id = ${userId}) AS api_idempotency_keys,
@@ -310,6 +382,8 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
       ,(SELECT count(*)::int FROM webhook_subscriptions WHERE user_id = ${userId}) AS webhook_subscriptions
       ,(SELECT count(*)::int FROM webhook_deliveries WHERE user_id = ${userId}) AS webhook_deliveries
       ,(SELECT count(*)::int FROM webhook_delivery_attempts attempt JOIN webhook_deliveries delivery ON delivery.id = attempt.delivery_id WHERE delivery.user_id = ${userId}) AS webhook_delivery_attempts
+      ,(SELECT count(*)::int FROM workspaces WHERE kind = 'personal' AND personal_owner_user_id = ${userId}) AS workspace_personal_workspaces
+      ,(SELECT count(*)::int FROM workspace_principals WHERE user_id = ${userId}) AS workspace_principals
   `)
   const row = result.rows[0]
   if (!row) return { ...ZERO_COUNTS }
@@ -357,6 +431,8 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     webhookDeliveries: Number(row.webhook_deliveries ?? 0),
     webhookDeliveryAttempts: Number(row.webhook_delivery_attempts ?? 0),
     webhookSubscriptions: Number(row.webhook_subscriptions ?? 0),
+    workspacePersonalWorkspaces: Number(row.workspace_personal_workspaces ?? 0),
+    workspacePrincipals: Number(row.workspace_principals ?? 0),
   }
 }
 
