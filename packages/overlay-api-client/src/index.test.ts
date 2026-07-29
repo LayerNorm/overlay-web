@@ -118,6 +118,36 @@ test('authorization administration list methods preserve forbidden status', asyn
   )
 })
 
+test('knowledge-base source operations preserve diagnostics and reindex contracts', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.knowledgeBases.createSource('kb_1', {
+    kind: 'url',
+    ref: 'https://example.test/handbook',
+    title: 'Handbook',
+  })
+  await client.knowledgeBases.diagnostics('kb_1')
+  await client.knowledgeBases.extractionPreview('kb_1', 'source_1', 5000)
+  await client.knowledgeBases.reindex('kb_1', { sourceId: 'source_1' })
+  await client.knowledgeBases.reindex('kb_1', { onlyStale: true })
+
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/knowledge-bases/kb_1/sources')
+  assert.equal(calls[0]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[0]!), {
+    kind: 'url',
+    ref: 'https://example.test/handbook',
+    title: 'Handbook',
+  })
+  assert.equal(String(calls[1]!.input), 'https://example.test/api/v1/knowledge-bases/kb_1/diagnostics')
+  assert.equal(
+    String(calls[2]!.input),
+    'https://example.test/api/v1/knowledge-bases/kb_1/diagnostics?sourceId=source_1&previewLimit=5000',
+  )
+  assert.equal(String(calls[3]!.input), 'https://example.test/api/v1/knowledge-bases/kb_1/reindex')
+  assert.deepEqual(await jsonBody(calls[3]!), { sourceId: 'source_1' })
+  assert.deepEqual(await jsonBody(calls[4]!), { onlyStale: true })
+})
+
 test('file mutations accept null parent and project IDs', async () => {
   const { calls, client } = createRecordedClient()
 

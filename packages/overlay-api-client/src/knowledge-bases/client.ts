@@ -10,10 +10,13 @@ import type {
   CreateKnowledgeBaseInput,
   CreateKnowledgeBaseSourceInput,
   KnowledgeBaseDetailResponse,
+  KnowledgeBaseDiagnosticsResponse,
   KnowledgeBaseGrantsResponse,
   KnowledgeBaseListResponse,
+  KnowledgeSourcePreviewResponse,
   KnowledgeBaseSearchResponse,
   KnowledgeBaseSourcesResponse,
+  ReindexKnowledgeBaseResponse,
   UpdateKnowledgeBaseInput,
   AdministrativeKnowledgeBaseListResponse,
   KnowledgeBaseShareDirectoryResponse,
@@ -68,6 +71,39 @@ export class KnowledgeBasesClient {
   createSource(knowledgeBaseId: string, body: CreateKnowledgeBaseSourceInput, init?: RequestInit) {
     return this.http.json<Record<string, unknown>>(
       this.path(knowledgeBaseId, 'sources'),
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  diagnostics(knowledgeBaseId: string, init?: RequestInit) {
+    return this.http.json<KnowledgeBaseDiagnosticsResponse>(
+      this.path(knowledgeBaseId, 'diagnostics'),
+      init,
+    )
+  }
+
+  extractionPreview(
+    knowledgeBaseId: string,
+    sourceId: string,
+    previewLimit = 8_000,
+    init?: RequestInit,
+  ) {
+    return this.http.json<KnowledgeSourcePreviewResponse>(
+      this.http.appendQuery(this.path(knowledgeBaseId, 'diagnostics'), {
+        sourceId,
+        previewLimit,
+      }),
+      init,
+    )
+  }
+
+  reindex(
+    knowledgeBaseId: string,
+    body: { sourceId?: string; onlyStale?: boolean } = {},
+    init?: RequestInit,
+  ) {
+    return this.http.json<ReindexKnowledgeBaseResponse>(
+      this.path(knowledgeBaseId, 'reindex'),
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
   }

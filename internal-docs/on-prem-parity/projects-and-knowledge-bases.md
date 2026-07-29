@@ -205,6 +205,7 @@ refresh, hiding archived projects.
 | Website sources | DONE | `UrlKnowledgeSourceFetcher` with SSRF protection |
 | Connector and cloud-drive sources | PARTIAL | kinds and registry exist; fetchers return 501 until implemented |
 | Image, audio, and video ingestion | DEFERRED | explicitly deferred by this plan |
+| Retrieval operations UI | DONE | website capture, extraction preview, per-source diagnostics, refresh, retry, and stale/source reindex controls |
 
 ### Retrieval scope rule
 
@@ -354,14 +355,13 @@ source project.
 | Multi-tab and multi-user collaboration behavior | TODO |
 | Worker recovery and idempotency for long-running actions | TODO |
 
-### No user interface yet
+### Product surface status
 
-Everything in Phase 4d–h, Phase 5, and Phase 6 is **API and service layer only**.
-No UI file has changed since `2b76e8c13` (the P4a–c multi-KB selector). There is
-no surface to set a project tool policy, promote a file, copy a source, duplicate
-a project, mark a template, save an answer as knowledge, view indexing
-diagnostics, trigger a reindex, or add a website source. These are reachable only
-through the HTTP API today.
+Phase 4 retrieval operations now have a product surface: editors can add a
+public website, inspect extracted text and index counts, see freshness and
+embedding drift, refresh an external source, and reindex either one source or
+the stale subset of a base. Phase 5 and Phase 6 workflow controls remain to be
+wired in their own phase commits.
 
 ### Deliberate deferral
 
