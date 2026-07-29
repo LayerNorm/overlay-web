@@ -22,7 +22,12 @@ export type {
 } from './chat/types'
 export type { FileQuery } from './files/types'
 export type { NoteFileQuery, NoteQuery } from './notes/types'
-export type { ProjectQuery } from './projects/types'
+export type {
+  ProjectGrantsResponse,
+  ProjectQuery,
+  ProjectShareDirectoryEntry,
+  ProjectShareDirectoryResponse,
+} from './projects/types'
 export type { AutomationQuery } from './automations/types'
 export type { IntegrationQuery } from './integrations/types'
 export type { SkillQuery } from './skills/types'

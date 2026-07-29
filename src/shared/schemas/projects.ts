@@ -97,4 +97,22 @@ export const ProjectExportQuery = z.object({
   projectId: z.string().min(1),
 })
 
+export const ProjectShareDirectoryQuery = z.object({})
+
+export const ProjectGrantListQuery = z.object({
+  projectId: z.string().min(1),
+})
+
+export const CreateProjectGrantRequest = z.object({
+  projectId: z.string().min(1),
+  principalType: z.enum(['user', 'group', 'role']),
+  principalId: z.string().trim().min(1),
+  accessRole: z.enum(['viewer', 'editor']),
+})
+
+export const DeleteProjectGrantRequest = z.object({
+  projectId: z.string().min(1),
+  grantId: z.string().min(1),
+})
+
 export const ProjectResponse = UnknownResponse

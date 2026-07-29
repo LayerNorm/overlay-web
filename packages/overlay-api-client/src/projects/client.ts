@@ -12,7 +12,11 @@ import type {
 } from '@overlay/app-core'
 import type { HttpContext } from '../shared/http'
 import type { PaginatedEnvelope, QueryParams } from '../shared/types'
-import type { ProjectQuery } from './types'
+import type {
+  ProjectGrantsResponse,
+  ProjectQuery,
+  ProjectShareDirectoryResponse,
+} from './types'
 
 export class ProjectsClient {
   constructor(private readonly http: HttpContext) {}
@@ -116,6 +120,42 @@ export class ProjectsClient {
     return this.http.json<ProjectExport>(
       this.http.appendQuery('/api/v1/projects/export', query),
       init,
+    )
+  }
+
+  listShareDirectory(init?: RequestInit) {
+    return this.http.json<ProjectShareDirectoryResponse>(
+      '/api/v1/projects/share-directory',
+      init,
+    )
+  }
+
+  listGrants(projectId: string, init?: RequestInit) {
+    return this.http.json<ProjectGrantsResponse>(
+      this.http.appendQuery('/api/v1/projects/grants', { projectId }),
+      init,
+    )
+  }
+
+  share(
+    body: {
+      projectId: string
+      principalType: 'user' | 'group' | 'role'
+      principalId: string
+      accessRole: 'viewer' | 'editor'
+    },
+    init?: RequestInit,
+  ) {
+    return this.http.json<{ grant: ProjectGrantsResponse['grants'][number] }>(
+      '/api/v1/projects/grants',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  revokeShare(body: { projectId: string; grantId: string }, init?: RequestInit) {
+    return this.http.json<{ removed: boolean; grantId: string }>(
+      '/api/v1/projects/grants',
+      this.http.jsonRequest(body, { ...init, method: 'DELETE' }),
     )
   }
 }

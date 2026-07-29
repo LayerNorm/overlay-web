@@ -198,6 +198,18 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   {
+    path: '/api/v1/projects/share-directory',
+    methods: { GET: capability('projects.share') },
+  },
+  {
+    path: '/api/v1/projects/grants',
+    methods: {
+      GET: resource('project', 'share', {}, 'projects.share'),
+      POST: resource('project', 'share', {}, 'projects.share'),
+      DELETE: resource('project', 'share', {}, 'projects.share'),
+    },
+  },
+  {
     // Duplicating reads one project's configuration and creates another, so it
     // needs view on the source and the ability to create.
     path: '/api/v1/projects/duplicate',
@@ -205,6 +217,10 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
       GET: capability('projects.read'),
       POST: capability('projects.create', 'projects.read'),
     },
+  },
+  {
+    path: '/api/v1/projects/export',
+    methods: { GET: resource('project', 'view', {}, 'projects.read') },
   },
   {
     // Promotion writes into a knowledge base and copying reads from one, so both

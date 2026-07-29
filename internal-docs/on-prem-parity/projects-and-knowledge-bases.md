@@ -5,7 +5,7 @@
 Status legend: DONE · PARTIAL · TODO · DEFERRED (deliberately out of scope for now)
 
 - **Branch:** `codex/authorization-system` (also pushed to `staging`)
-- **Last updated:** Phase 6, at commit `d0eea2f49`
+- **Last updated:** Phase 7
 - **App-data schema version:** 25
 
 ---
@@ -21,7 +21,7 @@ Status legend: DONE · PARTIAL · TODO · DEFERRED (deliberately out of scope fo
 | 4 | Rich knowledge retrieval | **DONE** |
 | 5 | Mature project workflows | **DONE** — sharing remains in Phase 7 |
 | 6 | Personal brain | **DONE** |
-| 7 | Sharing and access | PARTIAL — KB yes, projects no |
+| 7 | Sharing and access | **DONE** |
 | 8 | Admin distribution | PARTIAL |
 | 9 | Custom authorization and policies | PARTIAL — authz done, governance not |
 
@@ -302,7 +302,7 @@ walkthrough is now correct in the running app.
 | Copy a KB source into a project as working material | **DONE** — editable note that names its origin |
 | Templates for repeatable projects | **DONE** — projects flagged `isTemplate` |
 | Project export and duplication | **DONE** — configuration-only duplication; portable JSON export strips object-store keys and credentials |
-| Collaboration and basic project sharing | DEFERRED — belongs with Phase 7, see note |
+| Collaboration and basic project sharing | **DONE** — owner-managed user/group/role ACLs in Phase 7 |
 
 ### Configuration model (schema 25)
 
@@ -367,11 +367,9 @@ credentials, or pre-signed URLs.
 
 ### Deliberate deferral
 
-**Collaboration and project sharing** is listed under Phase 5 but belongs with
-Phase 7, which already owns sharing. Phase 2 deliberately excluded sharing from
-project settings for the same reason. Building a second sharing model here would
-have to be reconciled with the resource-ACL model later, so it is deferred rather
-than duplicated.
+**Collaboration and project sharing** is implemented by Phase 7 through the same
+resource-ACL model used by knowledge bases. It is surfaced in Project Settings
+rather than duplicated in the project configuration blob.
 
 ---
 
@@ -434,13 +432,13 @@ entry came from.
 
 # Administration And Governance
 
-## Phase 7: Sharing And Access — PARTIAL
+## Phase 7: Sharing And Access — DONE
 
 | Item | Status |
 |---|---|
 | Share KBs with users and groups | DONE — `/grants`, viewer and editor |
 | Viewer and editor access | DONE |
-| Share projects independently from KBs | TODO |
+| Share projects independently from KBs | DONE — owner-managed user, group, and role grants |
 | Project access does not grant KB administration | DONE — attaching requires the actor's own `knowledge.read` |
 | Enforce authorization at repository and retrieval boundaries, not only UI | DONE |
 
@@ -451,8 +449,15 @@ entry came from.
 | Direct-ID and cross-user denial matrix | DONE |
 | Retrieval cannot return inaccessible chunks | DONE |
 | Revoked access stops working immediately | DONE |
-| Sharing a project does not leak unrelated KBs | PARTIAL — project sharing not built |
+| Sharing a project does not leak unrelated KBs | DONE — project grants are a separate resource type; attached bases are re-authorized independently |
 | Convex and Postgres authorization contracts behave identically | DONE — 7/7 both |
+
+Project owners manage viewer and editor grants in Project Settings. Editors can
+change project working content but cannot reshare, revoke access, delete, or
+administer attached knowledge bases. The sharing service validates every
+principal against the active directory and records grant/revocation audit
+events. Removing a grant takes effect on the next request because access is
+resolved from durable ACL state rather than cached into the project record.
 
 ---
 

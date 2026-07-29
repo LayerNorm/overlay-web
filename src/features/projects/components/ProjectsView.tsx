@@ -17,6 +17,8 @@ import {
   RotateCcw,
   Trash2,
   Upload,
+  Users,
+  X,
 } from 'lucide-react'
 import {
   CHAT_CREATED_EVENT,
@@ -63,14 +65,18 @@ import {
 } from '@overlay/modules-react/projects'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { FileViewerSkeleton } from '@overlay/ui/feedback'
-import { SegmentedControl } from '@overlay/ui'
+import { Button, DialogFrame, IconButton, SegmentedControl } from '@overlay/ui'
 import dynamic from 'next/dynamic'
 import { FileViewerPanel, isEditableType } from '@overlay/modules-react/knowledge'
 import { FileShareMenu } from '@/features/files/components/FileShareMenu'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { buildSharePageUrl } from '@/shared/share/share-page-url'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import type { KnowledgeBaseSourceDetail } from '@overlay/api-client'
+import type {
+  KnowledgeBaseSourceDetail,
+  ProjectGrantsResponse,
+  ProjectShareDirectoryResponse,
+} from '@overlay/api-client'
 import {
   normalizeProjectSettings,
   readProjectSettings,
@@ -232,6 +238,19 @@ function ProjectHubBody({
   const [copySourceId, setCopySourceId] = useState('')
   const [transferStatus, setTransferStatus] = useState<string | null>(null)
   const [duplicatingProject, setDuplicatingProject] = useState(false)
+  const [canShareProject, setCanShareProject] = useState(false)
+  const [projectShareOpen, setProjectShareOpen] = useState(false)
+  const [projectShareLoading, setProjectShareLoading] = useState(false)
+  const [projectSharing, setProjectSharing] = useState(false)
+  const [projectShareNotice, setProjectShareNotice] = useState<string | null>(null)
+  const [projectGrants, setProjectGrants] = useState<ProjectGrantsResponse['grants']>([])
+  const [projectShareDirectory, setProjectShareDirectory] =
+    useState<ProjectShareDirectoryResponse>({ users: [], groups: [], roles: [] })
+  const [projectSharePrincipalType, setProjectSharePrincipalType] =
+    useState<'user' | 'group' | 'role'>('user')
+  const [projectSharePrincipalId, setProjectSharePrincipalId] = useState('')
+  const [projectShareAccessRole, setProjectShareAccessRole] =
+    useState<'viewer' | 'editor'>('viewer')
 
   // Load project instructions
   useEffect(() => {
@@ -245,6 +264,7 @@ function ProjectHubBody({
       overlayAppClient.skills.get<SkillSummary[]>({ limit: 100 }),
       overlayAppClient.mcpServers.get<McpServerSummary[]>({ limit: 100 }),
       overlayAppClient.integrations.get<ConnectedIntegrationsResponse>({ limit: 100 }),
+      overlayAppClient.projects.listGrants(projectId),
     ]).then(([
       projectResult,
       knowledgeResult,
@@ -252,6 +272,7 @@ function ProjectHubBody({
       skillsResult,
       mcpResult,
       integrationsResult,
+      grantsResult,
     ]) => {
       if (cancelled) return
       if (projectResult.status === 'fulfilled') {
@@ -283,6 +304,8 @@ function ProjectHubBody({
         const connected = new Set(response.connected ?? [])
         setConnectors(rows.filter((item) => item.isConnected || connected.has(item.slug)))
       }
+      setCanShareProject(grantsResult.status === 'fulfilled')
+      if (grantsResult.status === 'fulfilled') setProjectGrants(grantsResult.value.grants)
       setInstructionsLoaded(true)
       setKnowledgeBaseSettingsLoaded(true)
     })
@@ -644,6 +667,57 @@ function ProjectHubBody({
       URL.revokeObjectURL(href)
     } catch (error) {
       setTransferStatus(error instanceof Error ? error.message : 'Export failed')
+    }
+  }
+
+  async function openProjectShareDialog() {
+    setProjectShareOpen(true)
+    setProjectShareLoading(true)
+    setProjectShareNotice(null)
+    try {
+      const [directory, grants] = await Promise.all([
+        overlayAppClient.projects.listShareDirectory(),
+        overlayAppClient.projects.listGrants(projectId),
+      ])
+      setProjectShareDirectory(directory)
+      setProjectGrants(grants.grants)
+    } catch (error) {
+      setProjectShareNotice(error instanceof Error ? error.message : 'Could not load sharing')
+    } finally {
+      setProjectShareLoading(false)
+    }
+  }
+
+  async function shareProject() {
+    if (!projectSharePrincipalId || projectSharing) return
+    setProjectSharing(true)
+    setProjectShareNotice(null)
+    try {
+      const response = await overlayAppClient.projects.share({
+        projectId,
+        principalType: projectSharePrincipalType,
+        principalId: projectSharePrincipalId,
+        accessRole: projectShareAccessRole,
+      })
+      setProjectGrants((current) => [
+        response.grant,
+        ...current.filter(({ id }) => id !== response.grant.id),
+      ])
+      setProjectSharePrincipalId('')
+    } catch (error) {
+      setProjectShareNotice(error instanceof Error ? error.message : 'Could not share project')
+    } finally {
+      setProjectSharing(false)
+    }
+  }
+
+  async function revokeProjectShare(grantId: string) {
+    setProjectShareNotice(null)
+    try {
+      await overlayAppClient.projects.revokeShare({ projectId, grantId })
+      setProjectGrants((current) => current.filter(({ id }) => id !== grantId))
+    } catch (error) {
+      setProjectShareNotice(error instanceof Error ? error.message : 'Could not remove access')
     }
   }
 
@@ -1070,6 +1144,27 @@ function ProjectHubBody({
 
   const lifecycleSettings = (
     <div>
+      {canShareProject ? (
+        <div className="mb-6 border-b border-[var(--border)] pb-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-medium text-[var(--foreground)]">Collaboration</h2>
+              <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+                Share this workspace independently. Attached knowledge bases retain their own access rules.
+              </p>
+            </div>
+            <Button size="sm" onClick={() => void openProjectShareDialog()}>
+              <Users size={13} />
+              Manage access
+            </Button>
+          </div>
+          <p className="mt-3 text-[11px] text-[var(--muted-light)]">
+            {projectGrants.length === 0
+              ? 'Only you can access this project.'
+              : `${projectGrants.length} additional access ${projectGrants.length === 1 ? 'grant' : 'grants'}.`}
+          </p>
+        </div>
+      ) : null}
       <h2 className="text-sm font-medium text-[var(--foreground)]">Project lifecycle</h2>
       <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
         Archive preserves the workspace for later. Delete removes the project and its linked working data.
@@ -1144,26 +1239,162 @@ function ProjectHubBody({
     />
   )
 
+  const projectShareDialog = (
+    <DialogFrame
+      open={projectShareOpen}
+      onOpenChange={setProjectShareOpen}
+      title="Share project"
+      description="Grant workspace access without granting access to attached knowledge bases."
+      className="w-[min(540px,94vw)]"
+    >
+      <div className="mt-5 grid gap-2 sm:grid-cols-[110px_minmax(0,1fr)_100px]">
+        <select
+          aria-label="Principal type"
+          value={projectSharePrincipalType}
+          onChange={(event) => {
+            setProjectSharePrincipalType(event.target.value as typeof projectSharePrincipalType)
+            setProjectSharePrincipalId('')
+          }}
+          className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs"
+        >
+          <option value="user">User</option>
+          <option value="group">Group</option>
+          <option value="role">Role</option>
+        </select>
+        <select
+          aria-label={`Select ${projectSharePrincipalType}`}
+          value={projectSharePrincipalId}
+          onChange={(event) => setProjectSharePrincipalId(event.target.value)}
+          disabled={projectShareLoading}
+          className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-xs outline-none disabled:opacity-60"
+        >
+          <option value="">
+            {projectShareLoading ? 'Loading directory…' : `Select ${projectSharePrincipalType}`}
+          </option>
+          {projectShareDirectoryEntries(
+            projectShareDirectory,
+            projectSharePrincipalType,
+          ).map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {projectShareDirectoryLabel(entry)}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Access role"
+          value={projectShareAccessRole}
+          onChange={(event) => setProjectShareAccessRole(
+            event.target.value as typeof projectShareAccessRole,
+          )}
+          className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs"
+        >
+          <option value="viewer">Viewer</option>
+          <option value="editor">Editor</option>
+        </select>
+      </div>
+      <Button
+        variant="primary"
+        size="sm"
+        className="mt-3"
+        onClick={() => void shareProject()}
+        disabled={!projectSharePrincipalId || projectSharing}
+      >
+        {projectSharing ? <Loader2 className="animate-spin" size={13} /> : <Plus size={13} />}
+        Add access
+      </Button>
+      <div className="mt-5 border-t border-[var(--border)] pt-3">
+        <p className="text-xs font-medium">People and groups with access</p>
+        {projectGrants.length === 0 ? (
+          <p className="mt-3 text-xs text-[var(--muted)]">No additional access grants.</p>
+        ) : (
+          <div className="mt-2 max-h-56 overflow-y-auto">
+            {projectGrants.map((grant) => (
+              <div
+                key={grant.id}
+                className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-0"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium">
+                    {projectSharePrincipalLabel(
+                      projectShareDirectory,
+                      grant.principalType,
+                      grant.principalId,
+                    )}
+                  </p>
+                  <p className="text-[11px] text-[var(--muted)]">
+                    {grant.principalType} · {grant.accessRole}
+                  </p>
+                </div>
+                <IconButton
+                  aria-label="Remove access"
+                  onClick={() => void revokeProjectShare(grant.id)}
+                >
+                  <X size={14} />
+                </IconButton>
+              </div>
+            ))}
+          </div>
+        )}
+        {projectShareNotice ? (
+          <p role="status" className="mt-3 text-[11px] text-[var(--muted)]">
+            {projectShareNotice}
+          </p>
+        ) : null}
+      </div>
+    </DialogFrame>
+  )
+
   if (activeTab === 'chat') {
     return (
-      <ChatSuspenseBoundary
-        userId={userId}
-        firstName={firstName}
-        hideSidebar
-        projectName={projectName}
-        contextNavigation={contextControls}
-        belowEmptyComposer={tabContent}
-      />
+      <>
+        <ChatSuspenseBoundary
+          userId={userId}
+          firstName={firstName}
+          hideSidebar
+          projectName={projectName}
+          contextNavigation={contextControls}
+          belowEmptyComposer={tabContent}
+        />
+        {projectShareDialog}
+      </>
     )
   }
 
   return (
-    <AppScreenShell header={projectHeaderTitle}>
-      <AppScreenBody padding="md" maxWidth="xl">
-        {tabContent}
-      </AppScreenBody>
-    </AppScreenShell>
+    <>
+      <AppScreenShell header={projectHeaderTitle}>
+        <AppScreenBody padding="md" maxWidth="xl">
+          {tabContent}
+        </AppScreenBody>
+      </AppScreenShell>
+      {projectShareDialog}
+    </>
   )
+}
+
+function projectShareDirectoryEntries(
+  directory: ProjectShareDirectoryResponse,
+  principalType: 'user' | 'group' | 'role',
+) {
+  if (principalType === 'user') return directory.users
+  if (principalType === 'group') return directory.groups
+  return directory.roles
+}
+
+function projectShareDirectoryLabel(
+  entry: ProjectShareDirectoryResponse['users'][number],
+): string {
+  return entry.name && entry.email ? `${entry.name} · ${entry.email}` : entry.name || entry.email || entry.id
+}
+
+function projectSharePrincipalLabel(
+  directory: ProjectShareDirectoryResponse,
+  principalType: 'user' | 'group' | 'role',
+  principalId: string,
+): string {
+  const entry = projectShareDirectoryEntries(directory, principalType)
+    .find(({ id }) => id === principalId)
+  return entry ? projectShareDirectoryLabel(entry) : principalId
 }
 
 // ─── Projects landing (no projectId) ─────────────────────────────────────────
