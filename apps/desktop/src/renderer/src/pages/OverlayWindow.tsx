@@ -3,6 +3,7 @@ import { Notebook, Mic, MessageCircle, Square, Pause, Play, Globe, RefreshCw } f
 import DockablePanel from '../components/DockablePanel'
 import { useDockableDrag } from '../components/DockablePanelContext'
 import { analytics } from '../services/analytics'
+import { WarmMicrophoneSession } from '../services/warm-microphone-session'
 import { applyPhraseReplacements } from '../utils/phrase-replacements'
 
 const IDLE_WIDTH = 40
@@ -78,6 +79,17 @@ function getSupportedMimeType(): string | undefined {
     if (MediaRecorder.isTypeSupported(type)) return type
   }
   return undefined
+}
+
+function getConfiguredInputDevice(): string {
+  try {
+    const savedSettings = localStorage.getItem('overlay-settings')
+    if (!savedSettings) return 'default'
+    const inputDevice = (JSON.parse(savedSettings) as { inputDevice?: unknown }).inputDevice
+    return typeof inputDevice === 'string' && inputDevice ? inputDevice : 'default'
+  } catch {
+    return 'default'
+  }
 }
 
 interface OverlayDockContextBridgeProps {
@@ -289,6 +301,56 @@ export function OverlayWindow(): ReactElement {
   const recordingStartTimeRef = useRef<number | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const isSettingUpRef = useRef(false) // Track if we're in the middle of setup
+  const inputDeviceRef = useRef(getConfiguredInputDevice())
+  const microphoneSessionRef = useRef<WarmMicrophoneSession | null>(null)
+  if (!microphoneSessionRef.current) {
+    microphoneSessionRef.current = new WarmMicrophoneSession((constraints) =>
+      navigator.mediaDevices.getUserMedia(constraints)
+    )
+  }
+
+  useEffect(() => {
+    const microphoneSession = microphoneSessionRef.current
+    if (!microphoneSession) return
+
+    let disposed = false
+    let permissionPoll: ReturnType<typeof setInterval> | null = null
+
+    const warmWhenPermitted = async (): Promise<void> => {
+      try {
+        const permission = await window.bridge.checkMicrophonePermission()
+        if (disposed || permission !== 'granted') return
+        await microphoneSession.warm(inputDeviceRef.current)
+        if (permissionPoll) {
+          clearInterval(permissionPoll)
+          permissionPoll = null
+        }
+        console.log('[OverlayWindow] Microphone prewarmed for immediate recording')
+      } catch (error) {
+        if (!disposed) {
+          console.warn('[OverlayWindow] Microphone prewarm deferred:', error)
+        }
+      }
+    }
+
+    void warmWhenPermitted()
+    permissionPoll = setInterval(() => void warmWhenPermitted(), 1000)
+    const offSettingsChanged = window.bridge.onSettingsChanged(({ key, value }) => {
+      if (key !== 'inputDevice' || typeof value !== 'string') return
+      inputDeviceRef.current = value
+      if (recordingRef.current) return
+      void microphoneSession.warm(value).catch((error) => {
+        console.warn('[OverlayWindow] Failed to prewarm updated input device:', error)
+      })
+    })
+
+    return () => {
+      disposed = true
+      if (permissionPoll) clearInterval(permissionPoll)
+      offSettingsChanged?.()
+      microphoneSession.dispose()
+    }
+  }, [])
 
   const startRecording = useCallback(async (triggerSource: 'hotkey' | 'mic' = 'hotkey') => {
     console.log('startRecording called with source:', triggerSource)
@@ -301,99 +363,44 @@ export function OverlayWindow(): ReactElement {
 
     recordingRef.current = true
     isSettingUpRef.current = true
-    recordingStartTimeRef.current = Date.now()
+    recordingStartTimeRef.current = null
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current)
+      animationRef.current = null
+    }
+    analyserRef.current = null
+    setAudioLevels(Array(WAVEFORM_BAR_COUNT).fill(0))
     setRecording(true)
 
     try {
-      // Always read the latest settings directly from localStorage
-      const savedSettings = localStorage.getItem('overlay-settings')
-      const currentSettings = savedSettings ? JSON.parse(savedSettings) : {}
-      const currentDevice = currentSettings.inputDevice || 'default'
-
-      console.log('Using device from localStorage:', currentDevice)
-
-      // Use the selected input device from settings
-      const audioConstraints: MediaStreamConstraints = {
-        audio: currentDevice === 'default' ? true : { deviceId: { exact: currentDevice } }
-      }
-
-      streamRef.current = await navigator.mediaDevices.getUserMedia(audioConstraints)
-
-      // Check if recording was canceled during async getUserMedia
-      if (!recordingRef.current) {
-        console.log('[OverlayWindow] Recording canceled during getUserMedia, cleaning up')
-        streamRef.current?.getTracks().forEach((t) => t.stop())
-        streamRef.current = null
-        isSettingUpRef.current = false
-        return
-      }
-    } catch (error) {
-      console.error(
-        'Failed to get audio stream with selected device, falling back to default:',
-        error
+      const currentDevice = inputDeviceRef.current
+      const activationStartedAt = performance.now()
+      console.log('Using configured input device:', currentDevice)
+      streamRef.current = await microphoneSessionRef.current!.activate(currentDevice)
+      console.log(
+        '[OverlayWindow] Microphone activation latency:',
+        `${Math.round(performance.now() - activationStartedAt)}ms`
       )
-
-      // Fallback to default device if the selected device is not available
-      try {
-        streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true })
-
-        // Check again if recording was canceled during fallback
-        if (!recordingRef.current) {
-          console.log('[OverlayWindow] Recording canceled during fallback, cleaning up')
-          streamRef.current?.getTracks().forEach((t) => t.stop())
-          streamRef.current = null
-          isSettingUpRef.current = false
-          return
-        }
-      } catch (fallbackError) {
-        console.error('Failed to get any audio stream:', fallbackError)
-        recordingRef.current = false
-        isSettingUpRef.current = false
-        setRecording(false)
-        return
-      }
+    } catch (error) {
+      console.error('Failed to activate microphone stream:', error)
+      recordingRef.current = false
+      isSettingUpRef.current = false
+      setRecording(false)
+      return
     }
 
-    // Final check before setting up audio processing
+    // The user may have released/cancelled while a cold first-time warmup was
+    // still resolving. Keep the stream warm, but do not start a recorder.
     if (!recordingRef.current) {
       console.log('[OverlayWindow] Recording canceled before audio setup, cleaning up')
-      streamRef.current?.getTracks().forEach((t) => t.stop())
+      microphoneSessionRef.current?.deactivate()
       streamRef.current = null
       isSettingUpRef.current = false
       return
     }
 
-    const audioContext = new AudioContext()
-    audioContextRef.current = audioContext
-    const source = audioContext.createMediaStreamSource(streamRef.current)
-    const analyser = audioContext.createAnalyser()
-
-    analyser.fftSize = 64
-    source.connect(analyser)
-    analyserRef.current = analyser
-
-    // Check once more if recording was canceled during audio setup
-    if (!recordingRef.current) {
-      console.log('[OverlayWindow] Recording canceled during audio setup, cleaning up')
-      streamRef.current?.getTracks().forEach((t) => t.stop())
-      streamRef.current = null
-      audioContext.close()
-      audioContextRef.current = null
-      isSettingUpRef.current = false
-      return
-    }
-
-    const dataArray = new Uint8Array(analyser.frequencyBinCount)
-
-    const updateWaveform = (): void => {
-      analyser.getByteFrequencyData(dataArray)
-      const levels = Array.from(dataArray.slice(0, WAVEFORM_BAR_COUNT)).map((v) => v / 255)
-      setAudioLevels(levels)
-      animationRef.current = requestAnimationFrame(updateWaveform)
-    }
-    updateWaveform()
-
-    // Initialize MediaRecorder with a compressed format for fast transcription
+    // Start the recorder before constructing the visual analyser. Audio capture
+    // must never wait for waveform setup.
     const supportedMimeType = getSupportedMimeType()
     let mediaRecorder: MediaRecorder
     try {
@@ -402,10 +409,8 @@ export function OverlayWindow(): ReactElement {
         : new MediaRecorder(streamRef.current)
     } catch (recorderError) {
       console.error('[OverlayWindow] Failed to create MediaRecorder:', recorderError)
-      streamRef.current?.getTracks().forEach((t) => t.stop())
+      microphoneSessionRef.current?.deactivate()
       streamRef.current = null
-      audioContext.close()
-      audioContextRef.current = null
       isSettingUpRef.current = false
       recordingRef.current = false
       setRecording(false)
@@ -440,26 +445,52 @@ export function OverlayWindow(): ReactElement {
       if (resolve) resolve(blob)
     }
 
-    // Store source for pause/resume
-    sourceRef.current = source
-
-    // Connect audio pipeline: source -> analyser
-    source.connect(analyser)
-
     try {
+      recordingStartTimeRef.current = Date.now()
       mediaRecorder.start()
+      console.log('[OverlayWindow] MediaRecorder capturing')
     } catch (startError) {
       console.error('[OverlayWindow] Failed to start MediaRecorder:', startError)
-      streamRef.current?.getTracks().forEach((t) => t.stop())
+      microphoneSessionRef.current?.deactivate()
       streamRef.current = null
-      audioContext.close()
-      audioContextRef.current = null
       mediaRecorderRef.current = null
       recorderChunksRef.current = []
       isSettingUpRef.current = false
       recordingRef.current = false
       setRecording(false)
       return
+    }
+
+    if (!recordingRef.current) {
+      isSettingUpRef.current = false
+      return
+    }
+
+    try {
+      const audioContext = new AudioContext()
+      audioContextRef.current = audioContext
+      if (audioContext.state === 'suspended') {
+        void audioContext.resume().catch((error) => {
+          console.warn('[OverlayWindow] Audio analyser resume deferred:', error)
+        })
+      }
+      const source = audioContext.createMediaStreamSource(streamRef.current)
+      const analyser = audioContext.createAnalyser()
+      analyser.fftSize = 64
+      source.connect(analyser)
+      sourceRef.current = source
+      analyserRef.current = analyser
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount)
+      const updateWaveform = (): void => {
+        analyser.getByteFrequencyData(dataArray)
+        const levels = Array.from(dataArray.slice(0, WAVEFORM_BAR_COUNT)).map((v) => v / 255)
+        setAudioLevels(levels)
+        animationRef.current = requestAnimationFrame(updateWaveform)
+      }
+      updateWaveform()
+    } catch (waveformError) {
+      console.warn('[OverlayWindow] Waveform unavailable; audio recording continues:', waveformError)
     }
 
     isSettingUpRef.current = false
@@ -477,6 +508,7 @@ export function OverlayWindow(): ReactElement {
       }
       try {
         mediaRecorderRef.current?.resume()
+        microphoneSessionRef.current?.setCaptureEnabled(true)
       } catch (e) {
         console.error('[OverlayWindow] Failed to resume MediaRecorder:', e)
       }
@@ -489,6 +521,7 @@ export function OverlayWindow(): ReactElement {
       }
       try {
         mediaRecorderRef.current?.pause()
+        microphoneSessionRef.current?.setCaptureEnabled(false)
       } catch (e) {
         console.error('[OverlayWindow] Failed to pause MediaRecorder:', e)
       }
@@ -520,6 +553,8 @@ export function OverlayWindow(): ReactElement {
       cancelAnimationFrame(animationRef.current)
       animationRef.current = null
     }
+    analyserRef.current = null
+    setAudioLevels(Array(WAVEFORM_BAR_COUNT).fill(0))
 
     if (sourceRef.current) {
       sourceRef.current.disconnect()
@@ -543,14 +578,14 @@ export function OverlayWindow(): ReactElement {
       ? (Date.now() - recordingStartTimeRef.current) / 1000
       : 0
 
-    // Stop microphone immediately to prevent it from staying active
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => {
-        track.stop()
-        console.log('[OverlayWindow] Stopped track:', track.kind, track.label)
-      })
-      streamRef.current = null
-    }
+    // Disable capture immediately while retaining the permission-granted
+    // stream for the next hotkey press.
+    const microphoneSession = microphoneSessionRef.current
+    microphoneSession?.deactivate()
+    void microphoneSession?.warm(inputDeviceRef.current).catch((error) => {
+      console.warn('[OverlayWindow] Failed to restore warm microphone after recording:', error)
+    })
+    streamRef.current = null
 
     try {
       if (!blob) {
@@ -622,6 +657,8 @@ export function OverlayWindow(): ReactElement {
       cancelAnimationFrame(animationRef.current)
       animationRef.current = null
     }
+    analyserRef.current = null
+    setAudioLevels(Array(WAVEFORM_BAR_COUNT).fill(0))
 
     if (sourceRef.current) {
       sourceRef.current.disconnect()
@@ -640,14 +677,12 @@ export function OverlayWindow(): ReactElement {
       })
     }
 
-    // Stop microphone immediately and aggressively for quick releases
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => {
-        track.stop()
-        console.log('[OverlayWindow] Force stopped track:', track.kind, track.label)
-      })
-      streamRef.current = null
-    }
+    const microphoneSession = microphoneSessionRef.current
+    microphoneSession?.deactivate()
+    void microphoneSession?.warm(inputDeviceRef.current).catch((error) => {
+      console.warn('[OverlayWindow] Failed to restore warm microphone after cancellation:', error)
+    })
+    streamRef.current = null
 
     // Close AudioContext immediately to release audio resources
     if (audioContextRef.current) {
@@ -670,7 +705,7 @@ export function OverlayWindow(): ReactElement {
     // Safety clear any panel transcription destination (in case of quick release)
     await window.bridge.clearPanelTranscriptionDestination()
 
-    console.log('[OverlayWindow] Recording canceled and cleaned up (microphone released)')
+    console.log('[OverlayWindow] Recording canceled and cleaned up (warm microphone disabled)')
   }
 
   async function processTranscription(
