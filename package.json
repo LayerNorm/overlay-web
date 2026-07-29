@@ -134,6 +134,7 @@
     "test:knowledge-bases:phase9": "npm run test:knowledge-bases:phase8 && NODE_OPTIONS=--require=./scripts/register-server-only.cjs tsx --test src/shared/knowledge/passage-highlight.test.ts src/shared/knowledge/source-provenance.test.ts src/shared/knowledge/html-text.test.ts src/shared/knowledge/retrieval-scope.test.ts src/server/knowledge-bases/KnowledgeSourceFetcher.test.ts src/server/knowledge-bases/corpus-wide-question.test.ts && npm run test:knowledge-bases:retrieval-quality && npm run test:knowledge-bases:scope-leak && npm run test:knowledge-bases:personal-brain",
     "test:knowledge-bases:visual": "tsx --test src/app/app/_components/AppRouteSkeletons.test.tsx src/app/app/_components/AppRouteErrorState.test.tsx",
     "test:knowledge-bases:ui": "tsx scripts/knowledge-project-ui-qa.ts",
+    "test:projects:ui": "tsx scripts/project-chat-ui-qa.ts",
     "test:governance:unit": "NODE_OPTIONS=--conditions=react-server tsx --test src/server/governance/GovernanceService.test.ts packages/overlay-api-client/src/index.test.ts",
     "test:governance:postgres:remote": "npm run app-db:contract:migrate && NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.on-prem-contract-tests.local --test src/server/governance/postgres-governance.test.ts",
     "test:governance:convex": "NODE_ENV=development GOVERNANCE_CONTRACT_CONVEX=1 NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.development.local --test src/server/governance/convex-governance.test.ts",
