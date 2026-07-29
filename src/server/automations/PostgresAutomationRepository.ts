@@ -245,6 +245,39 @@ export class PostgresAutomationRepository implements AutomationRepository {
     return rows.length > 0
   }
 
+  async requestActiveRunCancellation(args: {
+    automationId: string
+    userId: string
+  }): Promise<number> {
+    const now = new Date()
+    return await this.db.transaction(async (tx) => {
+      const queued = await tx
+        .update(automationRuns)
+        .set({
+          cancellationRequestedAt: now,
+          completedAt: now,
+          status: 'cancelled',
+          updatedAt: now,
+        })
+        .where(and(
+          eq(automationRuns.automationId, args.automationId),
+          eq(automationRuns.userId, args.userId),
+          eq(automationRuns.status, 'queued'),
+        ))
+        .returning({ id: automationRuns.id })
+      const running = await tx
+        .update(automationRuns)
+        .set({ cancellationRequestedAt: now, status: 'cancel_requested', updatedAt: now })
+        .where(and(
+          eq(automationRuns.automationId, args.automationId),
+          eq(automationRuns.userId, args.userId),
+          eq(automationRuns.status, 'running'),
+        ))
+        .returning({ id: automationRuns.id })
+      return queued.length + running.length
+    })
+  }
+
   async retryRun(args: { runId: string; userId: string }): Promise<string | null> {
     return await this.db.transaction(async (tx) => {
       const [previous] = await tx

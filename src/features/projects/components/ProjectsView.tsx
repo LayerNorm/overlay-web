@@ -72,6 +72,7 @@ import { FileShareMenu } from '@/features/files/components/FileShareMenu'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { buildSharePageUrl } from '@/shared/share/share-page-url'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useVisibleReconciliation } from '@/components/useVisibleReconciliation'
 import type {
   KnowledgeBaseSourceDetail,
   ProjectGrantsResponse,
@@ -332,8 +333,8 @@ function ProjectHubBody({
     }
   }, [attachedKnowledgeBaseIds])
 
-  const loadHubItems = useCallback(async () => {
-    setListsLoading(true)
+  const loadHubItems = useCallback(async (showLoading = true) => {
+    if (showLoading) setListsLoading(true)
     try {
       const [chatsJson, filesJson] = await Promise.all([
         overlayAppClient.conversations.get<ProjectChatSummary[]>({ projectId, limit: 100 }),
@@ -342,13 +343,69 @@ function ProjectHubBody({
       setChats(Array.isArray(chatsJson) ? chatsJson : [])
       setFiles(Array.isArray(filesJson) ? filesJson : [])
     } finally {
-      setListsLoading(false)
+      if (showLoading) setListsLoading(false)
     }
   }, [projectId])
 
   useEffect(() => {
     void loadHubItems()
   }, [loadHubItems])
+
+  const reconcileProjectConfiguration = useCallback(async () => {
+    const [projectResult, knowledgeResult, attachedResult, grantsResult] =
+      await Promise.allSettled([
+        overlayAppClient.projects.get<ProjectSummary | null>({ projectId }),
+        overlayAppClient.knowledgeBases.list(),
+        overlayAppClient.projects.listKnowledgeBases({ projectId }),
+        overlayAppClient.projects.listGrants(projectId),
+      ])
+    if (projectResult.status === 'fulfilled') {
+      const project = projectResult.value
+      if (!project) {
+        router.replace('/app/projects')
+        return
+      }
+      if (!editingName && !savingName && project.name && project.name !== draftName) {
+        const params = new URLSearchParams(searchParams?.toString() ?? '')
+        params.set('projectName', project.name)
+        router.replace(`${pathname}?${params.toString()}`)
+        setDraftName(project.name)
+      }
+      if (!savingInstructions && !instructionsSaveTimer.current) {
+        setInstructions(project.instructions ?? '')
+      }
+      if (!savingProjectSettings) {
+        setProjectSettings(readProjectSettings(project.settings))
+      }
+      setArchivedAt(project.archivedAt ?? null)
+    }
+    if (knowledgeResult.status === 'fulfilled') {
+      setKnowledgeBases(knowledgeResult.value.knowledgeBases)
+    }
+    if (attachedResult.status === 'fulfilled') {
+      setAttachedKnowledgeBaseIds(attachedResult.value.knowledgeBases.map(({ id }) => id))
+    }
+    if (grantsResult.status === 'fulfilled') {
+      setCanShareProject(true)
+      setProjectGrants(grantsResult.value.grants)
+    }
+  }, [
+    draftName,
+    editingName,
+    pathname,
+    projectId,
+    router,
+    savingInstructions,
+    savingName,
+    savingProjectSettings,
+    searchParams,
+  ])
+  useVisibleReconciliation(async () => {
+    await Promise.all([
+      loadHubItems(false),
+      reconcileProjectConfiguration(),
+    ])
+  })
 
   useEffect(() => {
     function onChatCreated(e: Event) {
@@ -1572,27 +1629,32 @@ export default function ProjectsView({
     router.push(`/app/projects?${params.toString()}`)
   }, [projectId, router, searchParams])
 
-  const loadProjects = useCallback(async () => {
-    setProjectsLoading(true)
+  const loadProjects = useCallback(async (showLoading = true) => {
+    if (showLoading) setProjectsLoading(true)
     try {
       const data = await overlayAppClient.projects.get<ProjectSummary[]>({
         includeArchived: true,
         limit: 100,
       })
-      setProjects(Array.isArray(data) ? data : [])
+      const rows = Array.isArray(data) ? data : []
+      setProjects(rows)
+      if (projectId && !rows.some((project) => project._id === projectId)) {
+        router.replace('/app/projects')
+      }
     } finally {
-      setProjectsLoading(false)
+      if (showLoading) setProjectsLoading(false)
     }
-  }, [])
+  }, [projectId, router])
 
   useEffect(() => {
-    void loadProjects()
+    void loadProjects(initialProjects.length === 0)
     function onProjectsChanged() {
-      void loadProjects()
+      void loadProjects(false)
     }
     window.addEventListener(PROJECTS_CHANGED_EVENT, onProjectsChanged)
     return () => window.removeEventListener(PROJECTS_CHANGED_EVENT, onProjectsChanged)
-  }, [loadProjects])
+  }, [initialProjects.length, loadProjects])
+  useVisibleReconciliation(async () => await loadProjects(false))
 
   const createProject = useCallback(async () => {
     if (creatingProject) return

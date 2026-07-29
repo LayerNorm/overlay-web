@@ -50,10 +50,11 @@ test('Postgres canonical knowledge source lifecycle', {
       authorizationRepositories: emptyAuthorizationRepositories(),
       repositories,
     })
+    const indexQueue = new PostgresCanonicalKnowledgeIndexQueue(db)
     const ingestion = new KnowledgeSourceIngestionService({
       authorization,
       bases,
-      indexQueue: new PostgresCanonicalKnowledgeIndexQueue(db),
+      indexQueue,
       repositories,
     })
     const base = await bases.createKnowledgeBase({ title: 'Organic Chemistry', userId })
@@ -76,8 +77,23 @@ test('Postgres canonical knowledge source lifecycle', {
     assert.equal(created.source.status, 'indexing')
     assert.equal(created.version.version, 1)
     assert.equal((await db.select().from(durableJobs).where(eq(durableJobs.id, created.jobId)))[0]?.status, 'queued')
+    assert.equal(await indexQueue.enqueue({
+      contentHash: created.source.contentHash!,
+      sourceId: created.source.id,
+      sourceVersionId: created.version.id,
+      userId,
+    }), created.jobId)
 
     const indexer = new PostgresCanonicalKnowledgeIndexService({ db, embeddings: fakeEmbeddings() })
+    const jobs = new PostgresDurableJobRepository(db)
+    const crashAt = Date.now() + 1_000
+    const abandoned = await jobs.claim({
+      leaseMs: 1_000,
+      now: crashAt,
+      supportedTypes: [CANONICAL_KNOWLEDGE_INDEX_JOB],
+      workerId: 'crashed-kb-worker',
+    })
+    assert.equal(abandoned?.id, created.jobId)
     const worker = new PostgresJobWorker({
       handlers: {
         [CANONICAL_KNOWLEDGE_INDEX_JOB]: async (job) => await indexer.index({
@@ -88,10 +104,14 @@ test('Postgres canonical knowledge source lifecycle', {
         }),
       },
       leaseMs: 5_000,
-      repository: new PostgresDurableJobRepository(db),
+      repository: jobs,
       workerId: `kb-worker-${randomUUID()}`,
     })
-    assert.equal(await worker.runOnce(Date.now() + 1_000), 'succeeded')
+    assert.equal(await worker.runOnce(crashAt + 1_001), 'succeeded')
+    const [recoveredJob] = await db.select().from(durableJobs)
+      .where(eq(durableJobs.id, created.jobId))
+    assert.equal(recoveredJob?.attempts, 2)
+    assert.equal(recoveredJob?.status, 'succeeded')
     assert.equal((await db.select().from(knowledgeSources).where(eq(knowledgeSources.id, created.source.id)))[0]?.status, 'ready')
     let chunks = await db.select().from(knowledgeChunks)
       .where(eq(knowledgeChunks.knowledgeSourceId, created.source.id))

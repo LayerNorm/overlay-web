@@ -8,6 +8,7 @@ import { AuthProvider, type AuthUser } from '@/contexts/AuthContext'
 import ObservabilityClient from '@/components/providers/ObservabilityClient'
 import { AppSettingsProvider } from '@/components/providers/AppSettingsProvider'
 import { ConvexAuthProvider } from '@/components/providers/ConvexAuthProvider'
+import { CrossTabAppEventBridge } from '@/components/providers/CrossTabAppEventBridge'
 import { prefetchGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 
 function GatewayModelCatalogPrefetch() {
@@ -33,6 +34,7 @@ export function AppClientProviders({
       <AppSettingsProvider>
         <ConvexAuthProvider requiresConvexClient={requiresConvexClient}>
           <GatewayModelCatalogPrefetch />
+          <CrossTabAppEventBridge />
           <Suspense fallback={null}>
             <ObservabilityClient />
           </Suspense>

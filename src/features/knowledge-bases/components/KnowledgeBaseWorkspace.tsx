@@ -45,6 +45,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useAuthorization } from '@/components/providers/AuthorizationProvider'
+import { useVisibleReconciliation } from '@/components/useVisibleReconciliation'
 import {
   buildConnectedKnowledgeSourceRef,
   type ConnectedKnowledgeSourceRecipe,
@@ -129,9 +130,30 @@ export function KnowledgeBaseWorkspace({
 
   useEffect(() => {
     if (!hasActiveSources) return
-    const interval = window.setInterval(() => void loadSources(), 2000)
+    const interval = window.setInterval(() => {
+      void loadSources().catch(() => undefined)
+    }, 2000)
     return () => window.clearInterval(interval)
   }, [hasActiveSources, loadSources])
+
+  const reconcileWorkspace = useCallback(async () => {
+    const [basesResult, sourcesResult] = await Promise.allSettled([
+      overlayAppClient.knowledgeBases.list(),
+      overlayAppClient.knowledgeBases.listSources(knowledgeBase.id),
+    ])
+    if (basesResult.status === 'fulfilled') {
+      const current = basesResult.value.knowledgeBases.find(({ id }) => id === knowledgeBase.id)
+      if (!current) {
+        router.replace('/app/knowledge')
+        return
+      }
+      setKnowledgeBase(current)
+    }
+    if (sourcesResult.status === 'fulfilled') {
+      setSources(sourcesResult.value.sources)
+    }
+  }, [knowledgeBase.id, router])
+  useVisibleReconciliation(reconcileWorkspace)
 
   async function uploadFiles(files: File[]) {
     if (!canEdit || files.length === 0 || uploading) return

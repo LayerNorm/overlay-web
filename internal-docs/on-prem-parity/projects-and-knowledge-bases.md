@@ -5,7 +5,7 @@
 Status legend: DONE · PARTIAL · TODO · DEFERRED (deliberately out of scope for now)
 
 - **Branch:** `codex/authorization-system` (also pushed to `staging`)
-- **Last updated:** Phase 9
+- **Last updated:** Phase 9, with Phase 5 collaboration and recovery closure
 - **App-data schema version:** 28
 
 ---
@@ -353,9 +353,16 @@ source project.
 | Skill, MCP, connector, and automation policy | **DONE** — fail-closed tests cover explicit-empty and disallowed execution |
 | Promotions and copies preserve provenance | **DONE** |
 | Duplicated projects do not accidentally share private working data | **DONE** — asserts absence, not just presence |
-| Archived projects stop background work | **DONE** — archived projects contribute no runtime context and enabled automations are paused |
-| Multi-tab and multi-user collaboration behavior | TODO |
-| Worker recovery and idempotency for long-running actions | TODO |
+| Archived projects stop background work | **DONE** — runtime context is withheld, schedules are paused, queued runs are cancelled, running attempts cannot overwrite cancellation with a late result |
+| Multi-tab and multi-user collaboration behavior | **DONE** — same-origin tabs exchange compact mutation events; visible project and knowledge surfaces reconcile server-authoritative state every 15 seconds and on focus |
+| Worker recovery and idempotency for long-running actions | **DONE** — real Postgres contracts prove canonical-index dedupe, expired-lease recovery, automation retries, cancellation races, and dead-letter recovery |
+
+The collaboration path deliberately has two layers. `BroadcastChannel` provides
+instant same-browser convergence without adding a backend dependency. A
+single-flight server reconciliation loop covers other users, devices, missed
+events, and access revocation while avoiding full-page loading transitions.
+Postgres durable jobs remain authoritative for long-running indexing and
+automation work; browser events are never treated as persistence.
 
 ### Product surface status
 

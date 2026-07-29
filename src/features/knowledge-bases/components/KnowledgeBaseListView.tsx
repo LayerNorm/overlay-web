@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { BookOpen, Brain, Loader2, Plus, Search, Users } from 'lucide-react'
@@ -8,6 +8,7 @@ import type { KnowledgeBase } from '@overlay/app-core'
 import { Button, DialogFrame, IconButton } from '@overlay/ui'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useVisibleReconciliation } from '@/components/useVisibleReconciliation'
 
 export function KnowledgeBaseListView({
   initialKnowledgeBases,
@@ -40,6 +41,12 @@ export function KnowledgeBaseListView({
   const regularFiltered = filtered.filter((base) => base.id !== personalBrain?.id)
   const showPersonalBrain = !query.trim()
     || 'my knowledge personal brain'.includes(query.trim().toLowerCase())
+
+  const reconcileKnowledgeBases = useCallback(async () => {
+    const response = await overlayAppClient.knowledgeBases.list()
+    setKnowledgeBases(response.knowledgeBases)
+  }, [])
+  useVisibleReconciliation(reconcileKnowledgeBases)
 
   async function openPersonalBrain() {
     if (openingPersonal) return
