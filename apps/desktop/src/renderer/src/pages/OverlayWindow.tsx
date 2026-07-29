@@ -92,6 +92,18 @@ function getConfiguredInputDevice(): string {
   }
 }
 
+function getKeepMicrophoneWarm(): boolean {
+  try {
+    const savedSettings = localStorage.getItem('overlay-settings')
+    if (!savedSettings) return false
+    return (
+      (JSON.parse(savedSettings) as { keepMicrophoneWarm?: unknown }).keepMicrophoneWarm === true
+    )
+  } catch {
+    return false
+  }
+}
+
 interface OverlayDockContextBridgeProps {
   children: (ctx: ReturnType<typeof useDockableDrag>) => ReactElement
   onDraggingChange: (isDragging: boolean) => void
@@ -302,12 +314,26 @@ export function OverlayWindow(): ReactElement {
   const audioContextRef = useRef<AudioContext | null>(null)
   const isSettingUpRef = useRef(false) // Track if we're in the middle of setup
   const inputDeviceRef = useRef(getConfiguredInputDevice())
+  const keepMicrophoneWarmRef = useRef(getKeepMicrophoneWarm())
   const microphoneSessionRef = useRef<WarmMicrophoneSession | null>(null)
   if (!microphoneSessionRef.current) {
     microphoneSessionRef.current = new WarmMicrophoneSession((constraints) =>
       navigator.mediaDevices.getUserMedia(constraints)
     )
   }
+
+  const parkOrReleaseMicrophone = useCallback((context: string): void => {
+    const microphoneSession = microphoneSessionRef.current
+    microphoneSession?.deactivate()
+    if (keepMicrophoneWarmRef.current) {
+      void microphoneSession?.warm(inputDeviceRef.current).catch((error) => {
+        console.warn(`[OverlayWindow] Failed to keep microphone warm after ${context}:`, error)
+      })
+    } else {
+      microphoneSession?.dispose()
+    }
+    streamRef.current = null
+  }, [])
 
   useEffect(() => {
     const microphoneSession = microphoneSessionRef.current
@@ -316,15 +342,19 @@ export function OverlayWindow(): ReactElement {
     let disposed = false
     let permissionPoll: ReturnType<typeof setInterval> | null = null
 
+    const stopPermissionPoll = (): void => {
+      if (!permissionPoll) return
+      clearInterval(permissionPoll)
+      permissionPoll = null
+    }
+
     const warmWhenPermitted = async (): Promise<void> => {
+      if (disposed || !keepMicrophoneWarmRef.current) return
       try {
         const permission = await window.bridge.checkMicrophonePermission()
-        if (disposed || permission !== 'granted') return
+        if (disposed || !keepMicrophoneWarmRef.current || permission !== 'granted') return
         await microphoneSession.warm(inputDeviceRef.current)
-        if (permissionPoll) {
-          clearInterval(permissionPoll)
-          permissionPoll = null
-        }
+        stopPermissionPoll()
         console.log('[OverlayWindow] Microphone prewarmed for immediate recording')
       } catch (error) {
         if (!disposed) {
@@ -333,20 +363,41 @@ export function OverlayWindow(): ReactElement {
       }
     }
 
-    void warmWhenPermitted()
-    permissionPoll = setInterval(() => void warmWhenPermitted(), 1000)
+    const ensureMicrophoneWarm = (): void => {
+      if (disposed || !keepMicrophoneWarmRef.current) return
+      void warmWhenPermitted()
+      if (!permissionPoll) {
+        permissionPoll = setInterval(() => void warmWhenPermitted(), 1000)
+      }
+    }
+
+    ensureMicrophoneWarm()
     const offSettingsChanged = window.bridge.onSettingsChanged(({ key, value }) => {
-      if (key !== 'inputDevice' || typeof value !== 'string') return
-      inputDeviceRef.current = value
+      if (key === 'inputDevice' && typeof value === 'string') {
+        inputDeviceRef.current = value
+        if (recordingRef.current) return
+        if (keepMicrophoneWarmRef.current) {
+          ensureMicrophoneWarm()
+        } else {
+          microphoneSession.dispose()
+        }
+        return
+      }
+      if (key !== 'keepMicrophoneWarm' || typeof value !== 'boolean') return
+      keepMicrophoneWarmRef.current = value
       if (recordingRef.current) return
-      void microphoneSession.warm(value).catch((error) => {
-        console.warn('[OverlayWindow] Failed to prewarm updated input device:', error)
-      })
+      if (value) {
+        ensureMicrophoneWarm()
+      } else {
+        stopPermissionPoll()
+        microphoneSession.dispose()
+        console.log('[OverlayWindow] Warm microphone disabled; input stream released')
+      }
     })
 
     return () => {
       disposed = true
-      if (permissionPoll) clearInterval(permissionPoll)
+      stopPermissionPoll()
       offSettingsChanged?.()
       microphoneSession.dispose()
     }
@@ -393,8 +444,7 @@ export function OverlayWindow(): ReactElement {
     // still resolving. Keep the stream warm, but do not start a recorder.
     if (!recordingRef.current) {
       console.log('[OverlayWindow] Recording canceled before audio setup, cleaning up')
-      microphoneSessionRef.current?.deactivate()
-      streamRef.current = null
+      parkOrReleaseMicrophone('canceled setup')
       isSettingUpRef.current = false
       return
     }
@@ -409,8 +459,7 @@ export function OverlayWindow(): ReactElement {
         : new MediaRecorder(streamRef.current)
     } catch (recorderError) {
       console.error('[OverlayWindow] Failed to create MediaRecorder:', recorderError)
-      microphoneSessionRef.current?.deactivate()
-      streamRef.current = null
+      parkOrReleaseMicrophone('recorder creation failure')
       isSettingUpRef.current = false
       recordingRef.current = false
       setRecording(false)
@@ -451,8 +500,7 @@ export function OverlayWindow(): ReactElement {
       console.log('[OverlayWindow] MediaRecorder capturing')
     } catch (startError) {
       console.error('[OverlayWindow] Failed to start MediaRecorder:', startError)
-      microphoneSessionRef.current?.deactivate()
-      streamRef.current = null
+      parkOrReleaseMicrophone('recorder start failure')
       mediaRecorderRef.current = null
       recorderChunksRef.current = []
       isSettingUpRef.current = false
@@ -496,7 +544,7 @@ export function OverlayWindow(): ReactElement {
     isSettingUpRef.current = false
     setIsPaused(false)
     console.log('[OverlayWindow] Recording setup complete (MediaRecorder format:', mediaRecorder.mimeType, ')')
-  }, []) // No dependencies needed since we read from localStorage
+  }, [parkOrReleaseMicrophone])
 
   const togglePause = useCallback(() => {
     if (!recording) return
@@ -578,14 +626,7 @@ export function OverlayWindow(): ReactElement {
       ? (Date.now() - recordingStartTimeRef.current) / 1000
       : 0
 
-    // Disable capture immediately while retaining the permission-granted
-    // stream for the next hotkey press.
-    const microphoneSession = microphoneSessionRef.current
-    microphoneSession?.deactivate()
-    void microphoneSession?.warm(inputDeviceRef.current).catch((error) => {
-      console.warn('[OverlayWindow] Failed to restore warm microphone after recording:', error)
-    })
-    streamRef.current = null
+    parkOrReleaseMicrophone('recording')
 
     try {
       if (!blob) {
@@ -677,12 +718,7 @@ export function OverlayWindow(): ReactElement {
       })
     }
 
-    const microphoneSession = microphoneSessionRef.current
-    microphoneSession?.deactivate()
-    void microphoneSession?.warm(inputDeviceRef.current).catch((error) => {
-      console.warn('[OverlayWindow] Failed to restore warm microphone after cancellation:', error)
-    })
-    streamRef.current = null
+    parkOrReleaseMicrophone('cancellation')
 
     // Close AudioContext immediately to release audio resources
     if (audioContextRef.current) {
@@ -705,7 +741,7 @@ export function OverlayWindow(): ReactElement {
     // Safety clear any panel transcription destination (in case of quick release)
     await window.bridge.clearPanelTranscriptionDestination()
 
-    console.log('[OverlayWindow] Recording canceled and cleaned up (warm microphone disabled)')
+    console.log('[OverlayWindow] Recording canceled and microphone lifecycle restored')
   }
 
   async function processTranscription(

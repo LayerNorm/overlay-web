@@ -24,7 +24,8 @@ import { serverProfileService } from '../services/security/server-profile-servic
 import { subscriptionService } from '../services/subscription-service'
 import {
   createTranscriptionIdempotencyKey,
-  createTranscriptionRequestHeaders
+  createTranscriptionRequestHeaders,
+  encodeTranscriptionMultipart
 } from '../services/transcription-request'
 
 const getLocalService = (modelId: string): typeof parakeetService | typeof whisperKitService => {
@@ -317,15 +318,14 @@ export function registerTranscriptionIPC(): void {
           // can never reserve or bill the same recording twice. Clicking the
           // visible Retry button starts a new IPC call and receives a new key.
           const idempotencyKey = createTranscriptionIdempotencyKey()
+          const multipart = await encodeTranscriptionMultipart(
+            fs.readFileSync(file),
+            mime,
+            ext,
+            prompt
+          )
 
           const doTranscribe = async (token: string): Promise<Response> => {
-            const formData = new FormData()
-            const audioBuffer = fs.readFileSync(file)
-            formData.append('audio', new Blob([audioBuffer], { type: mime }), `audio.${ext}`)
-            if (prompt) {
-              formData.append('prompt', prompt)
-            }
-
             const url = new URL('/api/v1/transcribe', serverProfileService.getActiveOrigin())
             url.searchParams.set('userId', userId)
 
@@ -335,8 +335,12 @@ export function registerTranscriptionIPC(): void {
             try {
               return await fetch(url.toString(), {
                 method: 'POST',
-                headers: createTranscriptionRequestHeaders(token, idempotencyKey),
-                body: formData,
+                headers: createTranscriptionRequestHeaders(
+                  token,
+                  idempotencyKey,
+                  multipart.contentType
+                ),
+                body: multipart.body,
                 signal: controller.signal
               })
             } finally {

@@ -327,6 +327,18 @@ export function GeneralSettings({
         </SettingsRow>
 
         <SettingsRow
+          title="Keep Microphone Warm"
+          description="Keep the microphone ready for faster recording starts. Overlay does not record or store audio until you trigger recording; macOS will show its microphone indicator while this is enabled."
+          theme={theme}
+        >
+          <Toggle
+            checked={settings.keepMicrophoneWarm}
+            onChange={(val) => onUpdateSetting('keepMicrophoneWarm', val)}
+            theme={theme}
+          />
+        </SettingsRow>
+
+        <SettingsRow
           title="Input Device"
           description="Select microphone for recording"
           theme={theme}

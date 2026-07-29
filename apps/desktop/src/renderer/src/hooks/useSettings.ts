@@ -160,6 +160,7 @@ export interface Settings {
   autoCopy: boolean
   pressEnterAfter: boolean
   inputDevice: string
+  keepMicrophoneWarm: boolean
   phraseReplacements: PhrasePair[]
   dictionaryWords: string[]
   chatPanelHotkey: string
@@ -222,6 +223,7 @@ const DEFAULT_SETTINGS: Settings = {
   autoCopy: true,
   pressEnterAfter: false,
   inputDevice: 'default',
+  keepMicrophoneWarm: false,
   phraseReplacements: [],
   dictionaryWords: [],
   chatPanelHotkey: 'Cmd ⌘ + .',

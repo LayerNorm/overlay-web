@@ -105,6 +105,24 @@ describe('WarmMicrophoneSession', () => {
     expect(fallback.track.stop).toHaveBeenCalledTimes(1)
   })
 
+  it('can record again after an opt-out releases the warm stream', async () => {
+    const warm = createFakeStream()
+    const cold = createFakeStream()
+    const getUserMedia = vi
+      .fn()
+      .mockResolvedValueOnce(warm.stream)
+      .mockResolvedValueOnce(cold.stream)
+    const session = new WarmMicrophoneSession(getUserMedia)
+
+    await session.warm('default')
+    session.dispose()
+
+    expect(warm.track.stop).toHaveBeenCalledTimes(1)
+    await expect(session.activate('default')).resolves.toBe(cold.stream)
+    expect(cold.track.enabled).toBe(true)
+    expect(getUserMedia).toHaveBeenCalledTimes(2)
+  })
+
   it('restores an idle warm stream if the operating system ends it', async () => {
     const first = createFakeStream()
     const replacement = createFakeStream()
