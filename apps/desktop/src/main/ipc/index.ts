@@ -24,7 +24,6 @@ import { registerAppApiIPC } from './app-api-ipc'
 import { registerChatMediaIPC } from './chat-media-ipc'
 import { registerKnowledgeMigrationIPC } from './knowledge-migration-ipc'
 import { registerKnowledgeFilesIPC } from './knowledge-files-ipc'
-import { registerNativeAudioIPC } from './native-audio-ipc'
 import { areUnsafeLocalCapabilitiesEnabled } from '../services/security/containment-capability-profile'
 
 export {
@@ -53,7 +52,6 @@ export {
   registerChatMediaIPC,
   registerKnowledgeMigrationIPC,
   registerKnowledgeFilesIPC,
-  registerNativeAudioIPC,
   invalidateChatModelsCache
 }
 
@@ -93,5 +91,4 @@ export function registerAllIPC(): void {
   registerChatMediaIPC()
   registerKnowledgeMigrationIPC()
   registerKnowledgeFilesIPC()
-  registerNativeAudioIPC()
 }

@@ -75,7 +75,6 @@ import type { PanelToggleMode } from './services/hotkey-manager'
 import { registerBrowserIPC } from './services/browser-manager'
 import { whisperKitService } from './services/whisperkit-service'
 import { parakeetService } from './services/parakeet-service'
-import { nativeAudioCaptureService } from './services/native-audio-capture-service'
 import { subscriptionService } from './services/subscription-service'
 import { keyCacheService } from './services/key-cache-service'
 import { resetProviders as resetGatewayProvider } from './services/ai/gateway-provider'
@@ -182,15 +181,10 @@ function cancelTokenRefresh(): void {
   console.log('[Auth] Cancelled scheduled token refresh')
 }
 
-let nativeHotkeyStart: Promise<Awaited<ReturnType<typeof nativeAudioCaptureService.start>>> | null =
-  null
-let nativeHotkeyCaptureActive = false
-
 // Recording event handlers
 const handleRecordingStart = async (mode: HotkeyMode): Promise<void> => {
   console.log(`[Main] Recording started: ${mode}`)
   settingsService.lastRecordingMode = mode
-  nativeHotkeyStart = nativeAudioCaptureService.start()
 
   // Handle assistant mode context capture
   if (mode === 'assistant') {
@@ -207,15 +201,8 @@ const handleRecordingStart = async (mode: HotkeyMode): Promise<void> => {
     }
   }
 
-  const nativeStart = await nativeHotkeyStart
-  nativeHotkeyCaptureActive = nativeStart.started
-
-  // The native recorder starts before the renderer is notified, so audio
-  // capture is already underway while the pill paints.
-  windowManager.broadcastToAllWindows('record:start', {
-    nativeCapture: nativeStart.started,
-    error: nativeStart.error
-  })
+  // Notify all windows to start recording
+  windowManager.broadcastToAllWindows('record:start')
 
   systemUtils.playSound('bong.mp3', 0.1, settingsService.soundEffectsEnabled)
 
@@ -236,26 +223,8 @@ const handleRecordingStart = async (mode: HotkeyMode): Promise<void> => {
 const handleRecordingStop = async (_mode: HotkeyMode): Promise<void> => {
   console.log(`[Main] Recording stopped: ${_mode}`)
 
-  const nativeStart = nativeHotkeyStart ? await nativeHotkeyStart : null
-  nativeHotkeyStart = null
-  let nativeRecording: Awaited<ReturnType<typeof nativeAudioCaptureService.stop>> | undefined
-  let nativeError: string | undefined
-  if (nativeHotkeyCaptureActive || nativeStart?.started) {
-    try {
-      nativeRecording = await nativeAudioCaptureService.stop()
-    } catch (error) {
-      nativeError = error instanceof Error ? error.message : 'native_stop_failed'
-      console.error('[NativeAudio] Failed to finish hotkey recording:', nativeError)
-    }
-  }
-  nativeHotkeyCaptureActive = false
-
-  // Notify all windows only after the native file has closed and is ready for
-  // the existing transcription pipeline.
-  windowManager.broadcastToAllWindows('record:stop', {
-    nativeRecording,
-    error: nativeError
-  })
+  // Notify all windows to stop recording
+  windowManager.broadcastToAllWindows('record:stop')
 
   systemUtils.playSound('bing.mp3', 0.1, settingsService.soundEffectsEnabled)
 
@@ -270,19 +239,8 @@ const handleRecordingStop = async (_mode: HotkeyMode): Promise<void> => {
 const handleRecordingCancel = async (_mode: HotkeyMode): Promise<void> => {
   console.log(`[Main] Recording canceled (quick release): ${_mode}`)
 
-  const nativeStart = nativeHotkeyStart ? await nativeHotkeyStart : null
-  nativeHotkeyStart = null
-  if (nativeHotkeyCaptureActive || nativeStart?.started) {
-    await nativeAudioCaptureService.cancel().catch((error) => {
-      console.warn('[NativeAudio] Failed to cancel hotkey recording:', error)
-    })
-  }
-  nativeHotkeyCaptureActive = false
-
   // Notify all windows to cancel recording (won't send to API)
-  windowManager.broadcastToAllWindows('record:cancel', {
-    nativeCapture: nativeStart?.started === true
-  })
+  windowManager.broadcastToAllWindows('record:cancel')
 
   // Don't play the stop sound for canceled recordings
   // Just restore system volume if needed
@@ -440,7 +398,6 @@ function beginShutdown(): void {
   if (hotkeyRecoveryTimeout) clearTimeout(hotkeyRecoveryTimeout)
   if (hotkeyHealthCheckInterval) clearInterval(hotkeyHealthCheckInterval)
   hotkeyManager.unregisterAll()
-  nativeAudioCaptureService.terminate()
   parakeetService.stopServer()
   whisperKitService.stopServer()
 
@@ -930,11 +887,6 @@ app.whenReady().then(async () => {
 
   registerBrowserIPC()
   registerAllIPC()
-
-  nativeAudioCaptureService.on('level', (level: number) => {
-    windowManager.broadcastToAllWindows('native-audio:level', level)
-  })
-  void nativeAudioCaptureService.initialize()
 
   // Authentication is restored from OS-protected storage by the main process.
   // Renderers never supply tokens or decide whether the process is authenticated.

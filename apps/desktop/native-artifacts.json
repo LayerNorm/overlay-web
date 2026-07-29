@@ -31,16 +31,6 @@
       "sourceLicense": "AGPL-3.0-or-later",
       "licenseFile": "LICENSE",
       "buildScript": "scripts/build-ax-helper.sh"
-    },
-    {
-      "path": "resources/native-audio-helper",
-      "sha256": "426becb05230b3b75f633f1c62e74bcdf94d80f1fe77d93896e7403ffdd0a239",
-      "architecture": "arm64",
-      "source": "native-audio-helper/native-audio-helper.swift",
-      "sourceRevision": "92cbcf0a148c60a38d3505d4df32c26a336b58cd1c5a1770f388d7ab678e3ac9",
-      "sourceLicense": "AGPL-3.0-or-later",
-      "licenseFile": "LICENSE",
-      "buildScript": "scripts/build-native-audio-helper.sh"
     }
   ]
 }

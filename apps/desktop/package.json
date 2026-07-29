@@ -53,7 +53,6 @@
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:ax-helper": "bash scripts/build-ax-helper.sh",
-    "build:native-audio-helper": "bash scripts/build-native-audio-helper.sh",
     "build:whisperkit": "bash scripts/build-whisperkit-bundle.sh",
     "build:parakeet": "bash scripts/build-parakeet-bundle.sh",
     "build:unpack": "npm run build && electron-builder --dir",

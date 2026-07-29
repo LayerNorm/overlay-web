@@ -114,7 +114,6 @@ if (appBundle) {
   )
   const packagedNativePaths = new Map([
     ['resources/ax-helper', 'resources/ax-helper'],
-    ['resources/native-audio-helper', 'resources/native-audio-helper'],
     ['whisperkit-bundle/whisperkit-cli', 'whisperkit/whisperkit-cli'],
     ['parakeet-bundle/parakeet-cli', 'parakeet/parakeet-cli']
   ])

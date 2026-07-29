@@ -1,11 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { Transcription } from '../types/transcription'
-import type {
-  NativeRecordingCancelEvent,
-  NativeRecordingPayload,
-  NativeRecordingStartEvent,
-  NativeRecordingStopEvent
-} from '../types/native-audio'
 import type { KnowledgeMigrationJournal } from '@overlay/app-core'
 
 const bridge = {
@@ -76,52 +70,20 @@ const bridge = {
     ipcRenderer.on('window:zoom-command', handler)
     return () => ipcRenderer.removeListener('window:zoom-command', handler)
   },
-  onRecordStart(cb: (data?: NativeRecordingStartEvent) => void) {
-    const handler = (_event: Electron.IpcRendererEvent, data?: NativeRecordingStartEvent) =>
-      cb(data)
+  onRecordStart(cb: () => void) {
+    const handler = () => cb()
     ipcRenderer.on('record:start', handler)
     return () => ipcRenderer.removeListener('record:start', handler)
   },
-  onRecordStop(cb: (data?: NativeRecordingStopEvent) => void) {
-    const handler = (_event: Electron.IpcRendererEvent, data?: NativeRecordingStopEvent) => cb(data)
+  onRecordStop(cb: () => void) {
+    const handler = () => cb()
     ipcRenderer.on('record:stop', handler)
     return () => ipcRenderer.removeListener('record:stop', handler)
   },
-  onRecordCancel(cb: (data?: NativeRecordingCancelEvent) => void) {
-    const handler = (_event: Electron.IpcRendererEvent, data?: NativeRecordingCancelEvent) =>
-      cb(data)
+  onRecordCancel(cb: () => void) {
+    const handler = () => cb()
     ipcRenderer.on('record:cancel', handler)
     return () => ipcRenderer.removeListener('record:cancel', handler)
-  },
-  startNativeRecording(useDefaultDevice: boolean, deviceLabel?: string) {
-    return ipcRenderer.invoke('native-audio:start', { useDefaultDevice, deviceLabel }) as Promise<{
-      started: boolean
-      nativeCapture: boolean
-      error?: string
-    }>
-  },
-  configureNativeRecording(useDefaultDevice: boolean, deviceLabel?: string) {
-    return ipcRenderer.invoke('native-audio:configure', {
-      useDefaultDevice,
-      deviceLabel
-    }) as Promise<void>
-  },
-  stopNativeRecording() {
-    return ipcRenderer.invoke('native-audio:stop') as Promise<NativeRecordingPayload>
-  },
-  cancelNativeRecording() {
-    return ipcRenderer.invoke('native-audio:cancel') as Promise<void>
-  },
-  pauseNativeRecording() {
-    return ipcRenderer.invoke('native-audio:pause') as Promise<void>
-  },
-  resumeNativeRecording() {
-    return ipcRenderer.invoke('native-audio:resume') as Promise<void>
-  },
-  onNativeRecordingLevel(cb: (level: number) => void) {
-    const handler = (_event: Electron.IpcRendererEvent, level: number) => cb(level)
-    ipcRenderer.on('native-audio:level', handler)
-    return () => ipcRenderer.removeListener('native-audio:level', handler)
   },
   onTranscriptionAdd(cb: (transcription: Transcription) => void) {
     const handler = (_event: any, transcription: Transcription) => cb(transcription)
