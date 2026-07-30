@@ -490,14 +490,92 @@ export type WorkspaceResourceShareResponse = {
  * Workspace-level sharing policy. Phase 6 governs public links; later phases
  * extend this record with guest expiry, retention, and agent budget policy.
  */
+export const WORKSPACE_ROLLOUT_STAGES = ['dogfood', 'invited', 'general'] as const
+export type WorkspaceRolloutStage = (typeof WORKSPACE_ROLLOUT_STAGES)[number]
+
 export type WorkspaceSharingPolicy = {
   workspaceId: string
   publicLinksEnabled: boolean
+  /** Members may create channels; owners and admins always may. */
+  memberCanCreateChannels: boolean
+  /** Members may create named agents; owners and admins always may. */
+  memberCanCreateAgents: boolean
+  /** Members may invite people; owners and admins always may. */
+  memberCanInvite: boolean
+  /** Resource guests expire after this many days when set. */
+  guestExpirationDays?: number
+  /** When set, only these agent harnesses may run in this workspace. */
+  allowedAgentHarnesses?: WorkspaceAgentHarness[]
+  /** Per-agent spend ceiling in cents; absent means the deployment default. */
+  agentRunBudgetCents?: number
+  /** Channel messages older than this are swept unless legal hold is on. */
+  channelRetentionDays?: number
+  /** Legal hold suspends retention deletion for the whole workspace. */
+  legalHold: boolean
+  /** Recorded residency requirement, surfaced to operators. */
+  dataResidency?: string
+  rolloutStage: WorkspaceRolloutStage
   updatedAt: number
   updatedByPrincipalId?: string
 }
 
+export type WorkspaceSharingPolicyPatch = Partial<Omit<
+  WorkspaceSharingPolicy,
+  'workspaceId' | 'updatedAt' | 'updatedByPrincipalId'
+>>
+
 export const DEFAULT_WORKSPACE_PUBLIC_LINKS_ENABLED = true
+
+export const DEFAULT_WORKSPACE_POLICY: Omit<
+  WorkspaceSharingPolicy,
+  'workspaceId' | 'updatedAt' | 'updatedByPrincipalId'
+> = {
+  publicLinksEnabled: DEFAULT_WORKSPACE_PUBLIC_LINKS_ENABLED,
+  memberCanCreateChannels: true,
+  memberCanCreateAgents: true,
+  memberCanInvite: false,
+  legalHold: false,
+  rolloutStage: 'general',
+}
+
+/** SSO/SCIM identity mapped to a workspace principal, never to authorization. */
+export type WorkspaceIdentityMapping = {
+  id: string
+  workspaceId: string
+  principalId: string
+  directory: string
+  externalId: string
+  externalGroupIds: string[]
+  status: 'active' | 'deprovisioned'
+  createdAt: number
+  updatedAt: number
+  deprovisionedAt?: number
+}
+
+export type WorkspaceAuditExportRecord = {
+  id: string
+  workspaceId: string
+  requestedByPrincipalId: string
+  fromRecordedAt?: number
+  toRecordedAt: number
+  eventCount: number
+  createdAt: number
+}
+
+/** Operational signals for the workspace collaboration dashboard. */
+export type WorkspaceOperationalMetrics = {
+  workspaceId: string
+  collectedAt: number
+  outboxPendingEvents: number
+  outboxOldestPendingAgeMs: number
+  failedDeliveries: number
+  agentRunsQueued: number
+  agentRunsFailed: number
+  authorizationDenials: number
+  invitationFailures: number
+  unreadDriftConversations: number
+  providerParity: { provider: string; requiresConvexClient: boolean }
+}
 
 export type WorkspaceSharingPolicyResponse = {
   policy: WorkspaceSharingPolicy

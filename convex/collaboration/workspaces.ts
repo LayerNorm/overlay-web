@@ -1494,12 +1494,79 @@ export const getResourceWorkspaceByServer = query({
   },
 })
 
+const rolloutStage = v.union(v.literal('dogfood'), v.literal('invited'), v.literal('general'))
 const sharingPolicyValidator = v.object({
   workspaceId: v.string(),
   publicLinksEnabled: v.boolean(),
+  memberCanCreateChannels: v.boolean(),
+  memberCanCreateAgents: v.boolean(),
+  memberCanInvite: v.boolean(),
+  guestExpirationDays: v.optional(v.number()),
+  allowedAgentHarnesses: v.optional(v.array(v.string())),
+  agentRunBudgetCents: v.optional(v.number()),
+  channelRetentionDays: v.optional(v.number()),
+  legalHold: v.boolean(),
+  dataResidency: v.optional(v.string()),
+  rolloutStage,
   updatedByPrincipalId: v.optional(v.string()),
   updatedAt: v.number(),
 })
+const identityMappingValidator = v.object({
+  id: v.string(),
+  workspaceId: v.string(),
+  principalId: v.string(),
+  directory: v.string(),
+  externalId: v.string(),
+  externalGroupIds: v.array(v.string()),
+  status: v.union(v.literal('active'), v.literal('deprovisioned')),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+  deprovisionedAt: v.optional(v.number()),
+})
+const auditExportValidator = v.object({
+  id: v.string(),
+  workspaceId: v.string(),
+  requestedByPrincipalId: v.string(),
+  fromRecordedAt: v.optional(v.number()),
+  toRecordedAt: v.number(),
+  eventCount: v.number(),
+  createdAt: v.number(),
+})
+
+/** Older rows predate the Phase 8 columns; defaults keep both providers equal. */
+function sharingPolicyValue(row: {
+  workspaceId: string
+  publicLinksEnabled: boolean
+  memberCanCreateChannels?: boolean
+  memberCanCreateAgents?: boolean
+  memberCanInvite?: boolean
+  guestExpirationDays?: number
+  allowedAgentHarnesses?: string[]
+  agentRunBudgetCents?: number
+  channelRetentionDays?: number
+  legalHold?: boolean
+  dataResidency?: string
+  rolloutStage?: 'dogfood' | 'invited' | 'general'
+  updatedByPrincipalId?: string
+  updatedAt: number
+}) {
+  return {
+    workspaceId: row.workspaceId,
+    publicLinksEnabled: row.publicLinksEnabled,
+    memberCanCreateChannels: row.memberCanCreateChannels ?? true,
+    memberCanCreateAgents: row.memberCanCreateAgents ?? true,
+    memberCanInvite: row.memberCanInvite ?? false,
+    guestExpirationDays: row.guestExpirationDays,
+    allowedAgentHarnesses: row.allowedAgentHarnesses?.length ? row.allowedAgentHarnesses : undefined,
+    agentRunBudgetCents: row.agentRunBudgetCents,
+    channelRetentionDays: row.channelRetentionDays,
+    legalHold: row.legalHold ?? false,
+    dataResidency: row.dataResidency,
+    rolloutStage: row.rolloutStage ?? 'general',
+    updatedByPrincipalId: row.updatedByPrincipalId,
+    updatedAt: row.updatedAt,
+  }
+}
 
 export const getSharingPolicyByServer = query({
   args: { serverSecret: v.string(), workspaceId: v.string() },
@@ -1510,12 +1577,7 @@ export const getSharingPolicyByServer = query({
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .unique()
     if (!row) return null
-    return {
-      workspaceId: row.workspaceId,
-      publicLinksEnabled: row.publicLinksEnabled,
-      updatedByPrincipalId: row.updatedByPrincipalId,
-      updatedAt: row.updatedAt,
-    }
+    return sharingPolicyValue(row)
   },
 })
 
@@ -1523,7 +1585,19 @@ export const setSharingPolicyByServer = mutation({
   args: {
     serverSecret: v.string(),
     workspaceId: v.string(),
-    publicLinksEnabled: v.boolean(),
+    patch: v.object({
+      publicLinksEnabled: v.optional(v.boolean()),
+      memberCanCreateChannels: v.optional(v.boolean()),
+      memberCanCreateAgents: v.optional(v.boolean()),
+      memberCanInvite: v.optional(v.boolean()),
+      guestExpirationDays: v.optional(v.union(v.number(), v.null())),
+      allowedAgentHarnesses: v.optional(v.union(v.array(v.string()), v.null())),
+      agentRunBudgetCents: v.optional(v.union(v.number(), v.null())),
+      channelRetentionDays: v.optional(v.union(v.number(), v.null())),
+      legalHold: v.optional(v.boolean()),
+      dataResidency: v.optional(v.union(v.string(), v.null())),
+      rolloutStage: v.optional(rolloutStage),
+    }),
     updatedByPrincipalId: v.string(),
     now: v.number(),
   },
@@ -1540,29 +1614,265 @@ export const setSharingPolicyByServer = mutation({
     const existing = await ctx.db.query('workspaceSharingPolicies')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .unique()
+    // Only supplied fields change; null clears an optional field, undefined
+    // leaves it alone, exactly like the Postgres upsert.
+    const patch: Record<string, unknown> = { updatedByPrincipalId: args.updatedByPrincipalId, updatedAt: args.now }
+    for (const [key, value] of Object.entries(args.patch)) {
+      if (value === undefined) continue
+      patch[key] = value === null ? undefined : value
+    }
+    if (existing) {
+      await ctx.db.patch(existing._id, patch)
+      return sharingPolicyValue({ ...existing, ...patch } as never)
+    }
+    const seeded = {
+      workspaceId: args.workspaceId,
+      publicLinksEnabled: args.patch.publicLinksEnabled ?? true,
+      memberCanCreateChannels: args.patch.memberCanCreateChannels ?? true,
+      memberCanCreateAgents: args.patch.memberCanCreateAgents ?? true,
+      memberCanInvite: args.patch.memberCanInvite ?? false,
+      guestExpirationDays: args.patch.guestExpirationDays ?? undefined,
+      allowedAgentHarnesses: args.patch.allowedAgentHarnesses ?? undefined,
+      agentRunBudgetCents: args.patch.agentRunBudgetCents ?? undefined,
+      channelRetentionDays: args.patch.channelRetentionDays ?? undefined,
+      legalHold: args.patch.legalHold ?? false,
+      dataResidency: args.patch.dataResidency ?? undefined,
+      rolloutStage: args.patch.rolloutStage ?? ('general' as const),
+      updatedByPrincipalId: args.updatedByPrincipalId,
+      createdAt: args.now,
+      updatedAt: args.now,
+    }
+    await ctx.db.insert('workspaceSharingPolicies', seeded)
+    return sharingPolicyValue(seeded)
+  },
+})
+
+export const upsertIdentityMappingByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    id: v.string(),
+    workspaceId: v.string(),
+    principalId: v.string(),
+    directory: v.string(),
+    externalId: v.string(),
+    externalGroupIds: v.optional(v.array(v.string())),
+    now: v.number(),
+  },
+  returns: identityMappingValidator,
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    await requireActiveWorkspace(ctx, args.workspaceId)
+    const principal = await ctx.db.query('workspacePrincipals')
+      .withIndex('by_principalId', (q) => q.eq('principalId', args.principalId))
+      .unique()
+    if (!principal || principal.workspaceId !== args.workspaceId || principal.archivedAt) {
+      throw new Error('WORKSPACE_PRINCIPAL_NOT_FOUND')
+    }
+    const existing = await ctx.db.query('workspaceIdentityMappings')
+      .withIndex('by_workspaceId_external', (q) => q
+        .eq('workspaceId', args.workspaceId)
+        .eq('directory', args.directory)
+        .eq('externalId', args.externalId))
+      .unique()
+    const groups = args.externalGroupIds ?? []
     if (existing) {
       await ctx.db.patch(existing._id, {
-        publicLinksEnabled: args.publicLinksEnabled,
-        updatedByPrincipalId: args.updatedByPrincipalId,
+        principalId: args.principalId,
+        externalGroupIds: groups,
+        status: 'active',
+        deprovisionedAt: undefined,
         updatedAt: args.now,
       })
-    } else {
-      await ctx.db.insert('workspaceSharingPolicies', {
-        workspaceId: args.workspaceId,
-        publicLinksEnabled: args.publicLinksEnabled,
-        updatedByPrincipalId: args.updatedByPrincipalId,
-        createdAt: args.now,
+      return {
+        id: existing.mappingId,
+        workspaceId: existing.workspaceId,
+        principalId: args.principalId,
+        directory: existing.directory,
+        externalId: existing.externalId,
+        externalGroupIds: groups,
+        status: 'active' as const,
+        createdAt: existing.createdAt,
         updatedAt: args.now,
-      })
+      }
     }
-    return {
+    await ctx.db.insert('workspaceIdentityMappings', {
+      mappingId: args.id,
       workspaceId: args.workspaceId,
-      publicLinksEnabled: args.publicLinksEnabled,
-      updatedByPrincipalId: args.updatedByPrincipalId,
+      principalId: args.principalId,
+      directory: args.directory,
+      externalId: args.externalId,
+      externalGroupIds: groups,
+      status: 'active',
+      createdAt: args.now,
+      updatedAt: args.now,
+    })
+    return {
+      id: args.id,
+      workspaceId: args.workspaceId,
+      principalId: args.principalId,
+      directory: args.directory,
+      externalId: args.externalId,
+      externalGroupIds: groups,
+      status: 'active' as const,
+      createdAt: args.now,
       updatedAt: args.now,
     }
   },
 })
+
+export const getIdentityMappingByServer = query({
+  args: {
+    serverSecret: v.string(),
+    workspaceId: v.string(),
+    directory: v.string(),
+    externalId: v.string(),
+  },
+  returns: v.union(identityMappingValidator, v.null()),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const row = await ctx.db.query('workspaceIdentityMappings')
+      .withIndex('by_workspaceId_external', (q) => q
+        .eq('workspaceId', args.workspaceId)
+        .eq('directory', args.directory)
+        .eq('externalId', args.externalId))
+      .unique()
+    return row ? identityMappingValue(row) : null
+  },
+})
+
+export const listIdentityMappingsByServer = query({
+  args: {
+    serverSecret: v.string(),
+    workspaceId: v.string(),
+    includeDeprovisioned: v.optional(v.boolean()),
+  },
+  returns: v.array(identityMappingValidator),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db.query('workspaceIdentityMappings')
+      .withIndex('by_workspaceId_principal', (q) => q.eq('workspaceId', args.workspaceId))
+      .collect()
+    return rows
+      .filter((row) => args.includeDeprovisioned || row.status === 'active')
+      .map(identityMappingValue)
+      .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
+  },
+})
+
+export const deprovisionIdentityMappingByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    workspaceId: v.string(),
+    directory: v.string(),
+    externalId: v.string(),
+    now: v.number(),
+  },
+  returns: v.union(identityMappingValidator, v.null()),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const row = await ctx.db.query('workspaceIdentityMappings')
+      .withIndex('by_workspaceId_external', (q) => q
+        .eq('workspaceId', args.workspaceId)
+        .eq('directory', args.directory)
+        .eq('externalId', args.externalId))
+      .unique()
+    if (!row || row.status !== 'active') return null
+    await ctx.db.patch(row._id, {
+      status: 'deprovisioned',
+      deprovisionedAt: args.now,
+      updatedAt: args.now,
+    })
+    return identityMappingValue({
+      ...row,
+      status: 'deprovisioned',
+      deprovisionedAt: args.now,
+      updatedAt: args.now,
+    })
+  },
+})
+
+export const recordAuditExportByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    id: v.string(),
+    workspaceId: v.string(),
+    requestedByPrincipalId: v.string(),
+    fromRecordedAt: v.optional(v.number()),
+    toRecordedAt: v.number(),
+    eventCount: v.number(),
+    now: v.number(),
+  },
+  returns: auditExportValidator,
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    await requireActiveWorkspace(ctx, args.workspaceId)
+    await ctx.db.insert('workspaceAuditExports', {
+      exportId: args.id,
+      workspaceId: args.workspaceId,
+      requestedByPrincipalId: args.requestedByPrincipalId,
+      fromRecordedAt: args.fromRecordedAt,
+      toRecordedAt: args.toRecordedAt,
+      eventCount: args.eventCount,
+      createdAt: args.now,
+    })
+    return {
+      id: args.id,
+      workspaceId: args.workspaceId,
+      requestedByPrincipalId: args.requestedByPrincipalId,
+      fromRecordedAt: args.fromRecordedAt,
+      toRecordedAt: args.toRecordedAt,
+      eventCount: args.eventCount,
+      createdAt: args.now,
+    }
+  },
+})
+
+export const listAuditExportsByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string(), limit: v.optional(v.number()) },
+  returns: v.array(auditExportValidator),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db.query('workspaceAuditExports')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+      .order('desc')
+      .take(args.limit ?? 50)
+    return rows.map((row) => ({
+      id: row.exportId,
+      workspaceId: row.workspaceId,
+      requestedByPrincipalId: row.requestedByPrincipalId,
+      fromRecordedAt: row.fromRecordedAt,
+      toRecordedAt: row.toRecordedAt,
+      eventCount: row.eventCount,
+      createdAt: row.createdAt,
+    }))
+  },
+})
+
+function identityMappingValue(row: {
+  mappingId: string
+  workspaceId: string
+  principalId: string
+  directory: string
+  externalId: string
+  externalGroupIds: string[]
+  status: 'active' | 'deprovisioned'
+  createdAt: number
+  updatedAt: number
+  deprovisionedAt?: number
+}) {
+  return {
+    id: row.mappingId,
+    workspaceId: row.workspaceId,
+    principalId: row.principalId,
+    directory: row.directory,
+    externalId: row.externalId,
+    externalGroupIds: row.externalGroupIds,
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    deprovisionedAt: row.deprovisionedAt,
+  }
+}
 
 export const revokeResourceGuestByServer = mutation({
   args: {

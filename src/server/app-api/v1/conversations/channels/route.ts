@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { ChannelCreateInput } from '@overlay/workspace-contracts'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
 
 export async function GET(_request: Request, context: AppApiRouteContext) {
   const channels = await getOverlayServerContext().appData.repositories
@@ -20,7 +21,15 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
     return NextResponse.json({ error: 'Channel visibility is required' }, { status: 400 })
   }
   try {
-    const channel = await getOverlayServerContext().appData.repositories
+    // Workspace policy decides whether members, or only owners and admins, may
+    // create channels. It is checked before the room exists.
+    const serverContext = getOverlayServerContext()
+    await serverContext.workspaceService.assertMemberMayCreate({
+      actorUserId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+      capability: 'channel',
+    })
+    const channel = await serverContext.appData.repositories
       .conversationCollaboration.createChannel({
         actorUserId: context.auth.userId,
         workspaceId: context.workspace.workspace.id,
@@ -33,6 +42,10 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
       })
     return NextResponse.json({ channel }, { status: 201 })
   } catch (error) {
+    // A policy refusal is a 403 with its own message, not a generic 400.
+    if (error instanceof WorkspaceServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode })
+    }
     const message = error instanceof Error ? error.message : 'Could not create channel'
     return NextResponse.json({ error: message }, {
       status: message.includes('ACCESS_DENIED') ? 403 : message.includes('ALREADY') ? 409 : 400,

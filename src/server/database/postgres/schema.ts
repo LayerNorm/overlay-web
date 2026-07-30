@@ -731,15 +731,73 @@ export const workspaceSharingPolicies = pgTable('workspace_sharing_policies', {
     .primaryKey()
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   publicLinksEnabled: boolean('public_links_enabled').default(true).notNull(),
+  memberCanCreateChannels: boolean('member_can_create_channels').default(true).notNull(),
+  memberCanCreateAgents: boolean('member_can_create_agents').default(true).notNull(),
+  memberCanInvite: boolean('member_can_invite').default(false).notNull(),
+  guestExpirationDays: integer('guest_expiration_days'),
+  allowedAgentHarnesses: text('allowed_agent_harnesses').array(),
+  agentRunBudgetCents: integer('agent_run_budget_cents'),
+  channelRetentionDays: integer('channel_retention_days'),
+  legalHold: boolean('legal_hold').default(false).notNull(),
+  dataResidency: text('data_residency'),
+  rolloutStage: text('rollout_stage').default('general').notNull(),
   updatedByPrincipalId: text('updated_by_principal_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  check(
+    'workspace_sharing_policies_rollout_stage_check',
+    sql`${table.rolloutStage} IN ('dogfood', 'invited', 'general')`,
+  ),
   foreignKey({
     columns: [table.workspaceId, table.updatedByPrincipalId],
     foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
     name: 'workspace_sharing_policies_principal_fk',
   }).onDelete('set null'),
+])
+
+export const workspaceIdentityMappings = pgTable('workspace_identity_mappings', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  principalId: text('principal_id').notNull(),
+  directory: text('directory').notNull(),
+  externalId: text('external_id').notNull(),
+  externalGroupIds: text('external_group_ids').array().default(sql`'{}'::text[]`).notNull(),
+  status: text('status').default('active').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deprovisionedAt: timestamp('deprovisioned_at', { withTimezone: true }),
+}, (table) => [
+  foreignKey({
+    columns: [table.workspaceId, table.principalId],
+    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
+    name: 'workspace_identity_mappings_principal_fk',
+  }).onDelete('cascade'),
+  uniqueIndex('workspace_identity_mappings_external_idx')
+    .on(table.workspaceId, table.directory, table.externalId),
+  index('workspace_identity_mappings_principal_idx').on(table.workspaceId, table.principalId),
+  check('workspace_identity_mappings_status_check', sql`${table.status} IN ('active', 'deprovisioned')`),
+])
+
+export const workspaceAuditExports = pgTable('workspace_audit_exports', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  requestedByPrincipalId: text('requested_by_principal_id').notNull(),
+  fromRecordedAt: timestamp('from_recorded_at', { withTimezone: true }),
+  toRecordedAt: timestamp('to_recorded_at', { withTimezone: true }).notNull(),
+  eventCount: integer('event_count').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  foreignKey({
+    columns: [table.workspaceId, table.requestedByPrincipalId],
+    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
+    name: 'workspace_audit_exports_principal_fk',
+  }).onDelete('cascade'),
+  index('workspace_audit_exports_workspace_idx').on(table.workspaceId, table.createdAt),
 ])
 
 export const knowledgeBases = pgTable('knowledge_bases', {

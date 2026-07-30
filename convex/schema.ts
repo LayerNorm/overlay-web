@@ -480,10 +480,52 @@ export default defineSchema({
   workspaceSharingPolicies: defineTable({
     workspaceId: v.string(),
     publicLinksEnabled: v.boolean(),
+    memberCanCreateChannels: v.optional(v.boolean()),
+    memberCanCreateAgents: v.optional(v.boolean()),
+    memberCanInvite: v.optional(v.boolean()),
+    guestExpirationDays: v.optional(v.number()),
+    allowedAgentHarnesses: v.optional(v.array(v.string())),
+    agentRunBudgetCents: v.optional(v.number()),
+    channelRetentionDays: v.optional(v.number()),
+    legalHold: v.optional(v.boolean()),
+    dataResidency: v.optional(v.string()),
+    rolloutStage: v.optional(v.union(
+      v.literal('dogfood'),
+      v.literal('invited'),
+      v.literal('general'),
+    )),
     updatedByPrincipalId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_workspaceId', ['workspaceId']),
+
+  workspaceIdentityMappings: defineTable({
+    mappingId: v.string(),
+    workspaceId: v.string(),
+    principalId: v.string(),
+    directory: v.string(),
+    externalId: v.string(),
+    externalGroupIds: v.array(v.string()),
+    status: v.union(v.literal('active'), v.literal('deprovisioned')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    deprovisionedAt: v.optional(v.number()),
+  })
+    .index('by_mappingId', ['mappingId'])
+    .index('by_workspaceId_external', ['workspaceId', 'directory', 'externalId'])
+    .index('by_workspaceId_principal', ['workspaceId', 'principalId']),
+
+  workspaceAuditExports: defineTable({
+    exportId: v.string(),
+    workspaceId: v.string(),
+    requestedByPrincipalId: v.string(),
+    fromRecordedAt: v.optional(v.number()),
+    toRecordedAt: v.number(),
+    eventCount: v.number(),
+    createdAt: v.number(),
+  })
+    .index('by_exportId', ['exportId'])
+    .index('by_workspaceId', ['workspaceId', 'createdAt']),
 
   workspaceUserPreferences: defineTable({
     userId: v.string(),

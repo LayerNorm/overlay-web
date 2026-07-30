@@ -52,6 +52,13 @@ export class WorkspaceAgentService {
     if (!canCreateAgent(access.membership.role)) {
       throw new WorkspaceAgentServiceError('forbidden', 'Guests cannot create agents')
     }
+    // Workspace policy can restrict agent creation to owners and admins, and can
+    // restrict which runtimes are allowed to exist at all.
+    await this.workspaces.assertMemberMayCreate({
+      actorUserId: args.actorUserId,
+      workspaceId: access.workspace.id,
+      capability: 'agent',
+    })
     const name = required(args.input.name, 'Agent name', 80)
     const instructions = required(args.input.instructions, 'Agent instructions', 20_000)
     const modelId = required(args.input.modelId, 'Model', 200)
@@ -59,6 +66,11 @@ export class WorkspaceAgentService {
     if (harness !== 'overlay' && harness !== 'claude-code') {
       throw new WorkspaceAgentServiceError('validation', 'Unsupported agent harness')
     }
+    await this.workspaces.assertAgentHarnessAllowed({
+      actorUserId: args.actorUserId,
+      workspaceId: access.workspace.id,
+      harness,
+    })
     const teams = await this.workspaces.listTeams({
       actorUserId: args.actorUserId,
       workspaceId: access.workspace.id,

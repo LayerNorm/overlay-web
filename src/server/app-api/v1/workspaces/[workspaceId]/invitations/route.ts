@@ -29,7 +29,17 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
 export async function POST(_request: Request, context: AppApiRouteContext) {
   try {
     const workspaceId = requiredWorkspaceParam(await context.params, 'workspaceId')
-    const invitation = await getOverlayServerContext().workspaceService.invite({
+    const serverContext = getOverlayServerContext()
+    // Invitation floods are the classic abuse path into a workspace.
+    await serverContext.workspaceGovernanceService.assertWithinLimits({
+      action: 'invitation.create',
+      scope: {
+        workspaceId: context.workspace.workspace.id,
+        principalId: context.workspace.principal.id,
+        guest: context.workspace.membership.role === 'guest',
+      },
+    })
+    const invitation = await serverContext.workspaceService.invite({
       actorUserId: context.auth.userId,
       workspaceId,
       email: requiredString(context.parsedJson, 'email', { maxLength: 320 }),

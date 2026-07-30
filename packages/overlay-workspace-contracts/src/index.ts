@@ -88,4 +88,11 @@ export {
   type WorkspaceShareImpact,
   type WorkspaceShareImpactPrincipal,
   DEFAULT_WORKSPACE_PUBLIC_LINKS_ENABLED,
+  DEFAULT_WORKSPACE_POLICY,
+  WORKSPACE_ROLLOUT_STAGES,
+  type WorkspaceRolloutStage,
+  type WorkspaceSharingPolicyPatch,
+  type WorkspaceIdentityMapping,
+  type WorkspaceAuditExportRecord,
+  type WorkspaceOperationalMetrics,
 } from './types'

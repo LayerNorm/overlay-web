@@ -115,6 +115,14 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { GET: authenticated(), PATCH: authenticated() },
   },
   {
+    path: '/api/v1/workspaces/:workspaceId/governance',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/audit-export',
+    methods: { GET: authenticated() },
+  },
+  {
     path: '/api/v1/workspace-invitations/:invitationId/accept',
     methods: { POST: authenticated() },
   },

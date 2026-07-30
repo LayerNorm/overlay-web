@@ -9,6 +9,8 @@ import type {
   WorkspacePrincipal,
   WorkspaceResourceGuest,
   WorkspaceResourceScope,
+  WorkspaceAuditExportRecord,
+  WorkspaceIdentityMapping,
   WorkspaceSharingPolicy,
   WorkspaceTeam,
   WorkspaceTeamMember,
@@ -16,6 +18,7 @@ import type {
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import type {
   AcceptWorkspaceInvitationInput,
+  SetWorkspaceSharingPolicyInput,
   CreateOrganizationWorkspaceInput,
   CreateWorkspaceInvitationInput,
   CreateWorkspacePrincipalInput,
@@ -78,9 +81,42 @@ type ResourceScopeRow = Omit<WorkspaceResourceScope, 'createdAt' | 'updatedAt'> 
   updatedAt: DateValue
 }
 
-type SharingPolicyRow = Omit<WorkspaceSharingPolicy, 'updatedAt' | 'updatedByPrincipalId'> & {
+type IdentityMappingRow = Omit<
+  WorkspaceIdentityMapping,
+  'createdAt' | 'updatedAt' | 'deprovisionedAt' | 'externalGroupIds'
+> & {
+  createdAt: DateValue
+  updatedAt: DateValue
+  deprovisionedAt: DateValue | null
+  externalGroupIds: string[] | null
+}
+
+type AuditExportRow = Omit<
+  WorkspaceAuditExportRecord,
+  'createdAt' | 'toRecordedAt' | 'fromRecordedAt'
+> & {
+  createdAt: DateValue
+  toRecordedAt: DateValue
+  fromRecordedAt: DateValue | null
+}
+
+type SharingPolicyRow = Omit<
+  WorkspaceSharingPolicy,
+  | 'updatedAt'
+  | 'updatedByPrincipalId'
+  | 'guestExpirationDays'
+  | 'allowedAgentHarnesses'
+  | 'agentRunBudgetCents'
+  | 'channelRetentionDays'
+  | 'dataResidency'
+> & {
   updatedAt: DateValue
   updatedByPrincipalId: string | null
+  guestExpirationDays: number | null
+  allowedAgentHarnesses: string[] | null
+  agentRunBudgetCents: number | null
+  channelRetentionDays: number | null
+  dataResidency: string | null
 }
 
 export class PostgresWorkspaceRepository implements WorkspaceRepository {
@@ -857,21 +893,45 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
     return result.rows[0] ? sharingPolicyFromRow(result.rows[0]) : null
   }
 
-  async setSharingPolicy(input: {
-    workspaceId: string
-    publicLinksEnabled: boolean
-    updatedByPrincipalId: string
-    now: number
-  }): Promise<WorkspaceSharingPolicy> {
+  async setSharingPolicy(input: SetWorkspaceSharingPolicyInput): Promise<WorkspaceSharingPolicy> {
+    // COALESCE keeps every unspecified field at its stored value, so a patch of
+    // one policy field never silently resets the others.
     const result = await this.db.execute<SharingPolicyRow>(sql`
       INSERT INTO workspace_sharing_policies (
-        workspace_id, public_links_enabled, updated_by_principal_id, created_at, updated_at
+        workspace_id, public_links_enabled, member_can_create_channels,
+        member_can_create_agents, member_can_invite, guest_expiration_days,
+        allowed_agent_harnesses, agent_run_budget_cents, channel_retention_days,
+        legal_hold, data_residency, rollout_stage,
+        updated_by_principal_id, created_at, updated_at
       ) VALUES (
-        ${input.workspaceId}, ${input.publicLinksEnabled}, ${input.updatedByPrincipalId},
-        ${new Date(input.now)}, ${new Date(input.now)}
+        ${input.workspaceId},
+        ${input.patch.publicLinksEnabled ?? true},
+        ${input.patch.memberCanCreateChannels ?? true},
+        ${input.patch.memberCanCreateAgents ?? true},
+        ${input.patch.memberCanInvite ?? false},
+        ${input.patch.guestExpirationDays ?? null},
+        ${input.patch.allowedAgentHarnesses ? textArray(input.patch.allowedAgentHarnesses) : sql`NULL`},
+        ${input.patch.agentRunBudgetCents ?? null},
+        ${input.patch.channelRetentionDays ?? null},
+        ${input.patch.legalHold ?? false},
+        ${input.patch.dataResidency ?? null},
+        ${input.patch.rolloutStage ?? 'general'},
+        ${input.updatedByPrincipalId}, ${new Date(input.now)}, ${new Date(input.now)}
       )
       ON CONFLICT (workspace_id) DO UPDATE SET
-        public_links_enabled = excluded.public_links_enabled,
+        public_links_enabled = COALESCE(${input.patch.publicLinksEnabled ?? null}, workspace_sharing_policies.public_links_enabled),
+        member_can_create_channels = COALESCE(${input.patch.memberCanCreateChannels ?? null}, workspace_sharing_policies.member_can_create_channels),
+        member_can_create_agents = COALESCE(${input.patch.memberCanCreateAgents ?? null}, workspace_sharing_policies.member_can_create_agents),
+        member_can_invite = COALESCE(${input.patch.memberCanInvite ?? null}, workspace_sharing_policies.member_can_invite),
+        guest_expiration_days = ${'guestExpirationDays' in input.patch ? sql`${input.patch.guestExpirationDays ?? null}` : sql`workspace_sharing_policies.guest_expiration_days`},
+        allowed_agent_harnesses = ${'allowedAgentHarnesses' in input.patch
+          ? (input.patch.allowedAgentHarnesses ? textArray(input.patch.allowedAgentHarnesses) : sql`NULL`)
+          : sql`workspace_sharing_policies.allowed_agent_harnesses`},
+        agent_run_budget_cents = ${'agentRunBudgetCents' in input.patch ? sql`${input.patch.agentRunBudgetCents ?? null}` : sql`workspace_sharing_policies.agent_run_budget_cents`},
+        channel_retention_days = ${'channelRetentionDays' in input.patch ? sql`${input.patch.channelRetentionDays ?? null}` : sql`workspace_sharing_policies.channel_retention_days`},
+        legal_hold = COALESCE(${input.patch.legalHold ?? null}, workspace_sharing_policies.legal_hold),
+        data_residency = ${'dataResidency' in input.patch ? sql`${input.patch.dataResidency ?? null}` : sql`workspace_sharing_policies.data_residency`},
+        rollout_stage = COALESCE(${input.patch.rolloutStage ?? null}, workspace_sharing_policies.rollout_stage),
         updated_by_principal_id = excluded.updated_by_principal_id,
         updated_at = excluded.updated_at
       RETURNING ${sharingPolicyColumns}
@@ -879,6 +939,106 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
     const row = result.rows[0]
     if (!row) throw new Error('WORKSPACE_SHARING_POLICY_UPSERT_FAILED')
     return sharingPolicyFromRow(row)
+  }
+
+  async upsertIdentityMapping(
+    input: Parameters<WorkspaceRepository['upsertIdentityMapping']>[0],
+  ): Promise<WorkspaceIdentityMapping> {
+    const result = await this.db.execute<IdentityMappingRow>(sql`
+      INSERT INTO workspace_identity_mappings (
+        id, workspace_id, principal_id, directory, external_id, external_group_ids,
+        status, created_at, updated_at
+      ) VALUES (
+        ${input.id}, ${input.workspaceId}, ${input.principalId}, ${input.directory},
+        ${input.externalId}, ${textArray(input.externalGroupIds)}, 'active',
+        ${new Date(input.now)}, ${new Date(input.now)}
+      )
+      ON CONFLICT (workspace_id, directory, external_id) DO UPDATE SET
+        principal_id = excluded.principal_id,
+        external_group_ids = excluded.external_group_ids,
+        status = 'active',
+        deprovisioned_at = NULL,
+        updated_at = excluded.updated_at
+      RETURNING ${identityMappingColumns}
+    `)
+    const row = result.rows[0]
+    if (!row) throw new Error('WORKSPACE_IDENTITY_MAPPING_UPSERT_FAILED')
+    return identityMappingFromRow(row)
+  }
+
+  async getIdentityMapping(
+    args: Parameters<WorkspaceRepository['getIdentityMapping']>[0],
+  ): Promise<WorkspaceIdentityMapping | null> {
+    const result = await this.db.execute<IdentityMappingRow>(sql`
+      SELECT ${identityMappingColumns}
+      FROM workspace_identity_mappings
+      WHERE workspace_id = ${args.workspaceId}
+        AND directory = ${args.directory}
+        AND external_id = ${args.externalId}
+      LIMIT 1
+    `)
+    return result.rows[0] ? identityMappingFromRow(result.rows[0]) : null
+  }
+
+  async listIdentityMappings(
+    args: Parameters<WorkspaceRepository['listIdentityMappings']>[0],
+  ): Promise<WorkspaceIdentityMapping[]> {
+    const result = await this.db.execute<IdentityMappingRow>(sql`
+      SELECT ${identityMappingColumns}
+      FROM workspace_identity_mappings
+      WHERE workspace_id = ${args.workspaceId}
+        ${args.includeDeprovisioned ? sql`` : sql`AND status = 'active'`}
+      ORDER BY created_at, id
+    `)
+    return result.rows.map(identityMappingFromRow)
+  }
+
+  async deprovisionIdentityMapping(
+    args: Parameters<WorkspaceRepository['deprovisionIdentityMapping']>[0],
+  ): Promise<WorkspaceIdentityMapping | null> {
+    const result = await this.db.execute<IdentityMappingRow>(sql`
+      UPDATE workspace_identity_mappings
+      SET status = 'deprovisioned', deprovisioned_at = ${new Date(args.now)},
+          updated_at = ${new Date(args.now)}
+      WHERE workspace_id = ${args.workspaceId}
+        AND directory = ${args.directory}
+        AND external_id = ${args.externalId}
+        AND status = 'active'
+      RETURNING ${identityMappingColumns}
+    `)
+    return result.rows[0] ? identityMappingFromRow(result.rows[0]) : null
+  }
+
+  async recordAuditExport(
+    input: Parameters<WorkspaceRepository['recordAuditExport']>[0],
+  ): Promise<WorkspaceAuditExportRecord> {
+    const result = await this.db.execute<AuditExportRow>(sql`
+      INSERT INTO workspace_audit_exports (
+        id, workspace_id, requested_by_principal_id, from_recorded_at, to_recorded_at,
+        event_count, created_at
+      ) VALUES (
+        ${input.id}, ${input.workspaceId}, ${input.requestedByPrincipalId},
+        ${dateOrNull(input.fromRecordedAt)}, ${new Date(input.toRecordedAt)},
+        ${input.eventCount}, ${new Date(input.now)}
+      )
+      RETURNING ${auditExportColumns}
+    `)
+    const row = result.rows[0]
+    if (!row) throw new Error('WORKSPACE_AUDIT_EXPORT_RECORD_FAILED')
+    return auditExportFromRow(row)
+  }
+
+  async listAuditExports(
+    args: Parameters<WorkspaceRepository['listAuditExports']>[0],
+  ): Promise<WorkspaceAuditExportRecord[]> {
+    const result = await this.db.execute<AuditExportRow>(sql`
+      SELECT ${auditExportColumns}
+      FROM workspace_audit_exports
+      WHERE workspace_id = ${args.workspaceId}
+      ORDER BY created_at DESC, id DESC
+      LIMIT ${args.limit ?? 50}
+    `)
+    return result.rows.map(auditExportFromRow)
   }
 
   async createResourceGuest(input: {
@@ -980,7 +1140,28 @@ const resourceScopeColumns = sql.raw(`
 `)
 const sharingPolicyColumns = sql.raw(`
   workspace_id AS "workspaceId", public_links_enabled AS "publicLinksEnabled",
+  member_can_create_channels AS "memberCanCreateChannels",
+  member_can_create_agents AS "memberCanCreateAgents",
+  member_can_invite AS "memberCanInvite",
+  guest_expiration_days AS "guestExpirationDays",
+  allowed_agent_harnesses AS "allowedAgentHarnesses",
+  agent_run_budget_cents AS "agentRunBudgetCents",
+  channel_retention_days AS "channelRetentionDays",
+  legal_hold AS "legalHold", data_residency AS "dataResidency",
+  rollout_stage AS "rolloutStage",
   updated_by_principal_id AS "updatedByPrincipalId", updated_at AS "updatedAt"
+`)
+const identityMappingColumns = sql.raw(`
+  id, workspace_id AS "workspaceId", principal_id AS "principalId", directory,
+  external_id AS "externalId", external_group_ids AS "externalGroupIds", status,
+  created_at AS "createdAt", updated_at AS "updatedAt",
+  deprovisioned_at AS "deprovisionedAt"
+`)
+const auditExportColumns = sql.raw(`
+  id, workspace_id AS "workspaceId",
+  requested_by_principal_id AS "requestedByPrincipalId",
+  from_recorded_at AS "fromRecordedAt", to_recorded_at AS "toRecordedAt",
+  event_count AS "eventCount", created_at AS "createdAt"
 `)
 const principalColumns = sql.raw(`
   id, workspace_id AS "workspaceId", type,
@@ -1220,10 +1401,55 @@ function resourceScopeFromRow(row: ResourceScopeRow): WorkspaceResourceScope {
   }
 }
 
+/** Postgres text[] literals: an empty list must still be typed. */
+function textArray(values: readonly string[] | undefined) {
+  if (!values?.length) return sql`'{}'::text[]`
+  return sql`ARRAY[${sql.join(values.map((value) => sql`${value}`), sql`, `)}]::text[]`
+}
+
+function identityMappingFromRow(row: IdentityMappingRow): WorkspaceIdentityMapping {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    principalId: row.principalId,
+    directory: row.directory,
+    externalId: row.externalId,
+    externalGroupIds: row.externalGroupIds ?? [],
+    status: row.status,
+    createdAt: millisRequired(row.createdAt),
+    updatedAt: millisRequired(row.updatedAt),
+    deprovisionedAt: millis(row.deprovisionedAt),
+  }
+}
+
+function auditExportFromRow(row: AuditExportRow): WorkspaceAuditExportRecord {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    requestedByPrincipalId: row.requestedByPrincipalId,
+    fromRecordedAt: millis(row.fromRecordedAt),
+    toRecordedAt: millisRequired(row.toRecordedAt),
+    eventCount: row.eventCount,
+    createdAt: millisRequired(row.createdAt),
+  }
+}
+
 function sharingPolicyFromRow(row: SharingPolicyRow): WorkspaceSharingPolicy {
   return {
     workspaceId: row.workspaceId,
     publicLinksEnabled: row.publicLinksEnabled,
+    memberCanCreateChannels: row.memberCanCreateChannels,
+    memberCanCreateAgents: row.memberCanCreateAgents,
+    memberCanInvite: row.memberCanInvite,
+    guestExpirationDays: row.guestExpirationDays ?? undefined,
+    allowedAgentHarnesses: row.allowedAgentHarnesses?.length
+      ? row.allowedAgentHarnesses as WorkspaceSharingPolicy['allowedAgentHarnesses']
+      : undefined,
+    agentRunBudgetCents: row.agentRunBudgetCents ?? undefined,
+    channelRetentionDays: row.channelRetentionDays ?? undefined,
+    legalHold: row.legalHold,
+    dataResidency: row.dataResidency ?? undefined,
+    rolloutStage: row.rolloutStage,
     updatedByPrincipalId: row.updatedByPrincipalId ?? undefined,
     updatedAt: millisRequired(row.updatedAt),
   }

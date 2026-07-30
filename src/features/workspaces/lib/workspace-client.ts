@@ -1,4 +1,5 @@
 import type {
+  WorkspaceOperationalMetrics,
   WorkspaceActivateResponse,
   WorkspaceClient,
   WorkspaceCreateInput,
@@ -109,6 +110,21 @@ export const workspaceManagementClient: WorkspaceManagementClient = {
       'PATCH',
       input,
     )
+  },
+
+  async operationalMetrics(workspaceId, signal) {
+    const response = await readJson<{ metrics: WorkspaceOperationalMetrics }>(
+      await fetch(
+        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/governance?view=metrics`,
+        {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId },
+          signal,
+        },
+      ),
+    )
+    return response.metrics
   },
 
   async invite(workspaceId, input) {

@@ -10,6 +10,7 @@ import {
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { WorkspaceSharingServiceError } from '@/server/sharing'
+import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
 
 export async function GET(_request: Request, context: AppApiRouteContext) {
   try {
@@ -26,7 +27,16 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
 
 export async function POST(_request: Request, context: AppApiRouteContext) {
   try {
-    const grant = await getOverlayServerContext().workspaceSharingService.upsertGrant({
+    const serverContext = getOverlayServerContext()
+    await serverContext.workspaceGovernanceService.assertWithinLimits({
+      action: 'share.grant',
+      scope: {
+        workspaceId: context.workspace.workspace.id,
+        principalId: context.workspace.principal.id,
+        guest: context.workspace.membership.role === 'guest',
+      },
+    })
+    const grant = await serverContext.workspaceSharingService.upsertGrant({
       actorUserId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
       resourceType: resourceType(context.parsedJson.resourceType),
@@ -88,6 +98,9 @@ function validation(message: string) {
 }
 
 function sharingError(error: unknown) {
+  if (error instanceof WorkspaceServiceError) {
+    return NextResponse.json({ error: error.message }, { status: error.statusCode })
+  }
   if (!(error instanceof WorkspaceSharingServiceError)) throw error
   const status = error.code === 'not_found' ? 404
     : error.code === 'forbidden' ? 403

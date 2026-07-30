@@ -69,7 +69,7 @@ import {
 import {
   getIntegrationProvider,
 } from '@/server/integrations'
-import { GovernanceService } from '@/server/governance'
+import { GovernanceService, WorkspaceGovernanceService } from '@/server/governance'
 import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { WorkspaceAgentService } from '@/server/agents'
 import { WorkspaceSharingService } from '@/server/sharing'
@@ -115,6 +115,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   workspaceAgentService: WorkspaceAgentService
   workspaceSharingService: WorkspaceSharingService
   workspaceSearchService: WorkspaceSearchService
+  workspaceGovernanceService: WorkspaceGovernanceService
 }
 
 export interface CreateOverlayServerContextOptions {
@@ -228,6 +229,15 @@ export function createOverlayServerContext(
       },
     },
   })
+  const collaborationRateLimiter = appConfig.rateLimiter ?? createRateLimiter(runtimeConfig)
+  const workspaceGovernanceService = new WorkspaceGovernanceService({
+    audit: appData.repositories.audit,
+    rateLimiter: collaborationRateLimiter,
+    repository: appData.repositories.workspaces,
+    workspaces: workspaceService,
+    appDataProvider: appData.capabilities.provider,
+    requiresConvexClient: appData.capabilities.requiresConvexClient,
+  })
   const userService = new UserService({
     authProvider: selectedAuthProviderForUserService(runtimeConfig),
     afterUpsert: async ({ userId }) => {
@@ -310,7 +320,7 @@ export function createOverlayServerContext(
     objectStore: appConfig.objectStore ?? createObjectStoreForRuntime(runtimeConfig),
     vectorStore: appConfig.vectorStore ?? createVectorStore(runtimeConfig),
     llmGateway: appConfig.llmGateway ?? createLlmGateway(runtimeConfig),
-    rateLimiter: appConfig.rateLimiter ?? createRateLimiter(runtimeConfig),
+    rateLimiter: collaborationRateLimiter,
     eventBus: appConfig.eventBus ?? new InMemoryEventBus(),
     appData,
     appDataCapabilities: appData.capabilities,
@@ -335,6 +345,7 @@ export function createOverlayServerContext(
     workspaceAgentService,
     workspaceSharingService,
     workspaceSearchService,
+    workspaceGovernanceService,
   }
 }
 

@@ -1,3 +1,4 @@
+import { DEFAULT_WORKSPACE_POLICY } from '@overlay/workspace-contracts'
 import type {
   WorkspaceInvitation,
   WorkspaceManagementItem,
@@ -168,6 +169,7 @@ export function createShowcaseWorkspaceManagementClient(
       if (!workspace) throw new Error('Workspace not found or you no longer have access.')
       return {
         policy: {
+          ...DEFAULT_WORKSPACE_POLICY,
           workspaceId,
           publicLinksEnabled: showcasePublicLinksEnabled,
           updatedAt: 0,
@@ -181,9 +183,14 @@ export function createShowcaseWorkspaceManagementClient(
       if (workspace.role !== 'owner' && workspace.role !== 'admin') {
         throw new Error('Only owners and admins can change workspace policy.')
       }
-      showcasePublicLinksEnabled = input.publicLinksEnabled
+      showcasePublicLinksEnabled = input.publicLinksEnabled ?? showcasePublicLinksEnabled
       return {
-        policy: { workspaceId, publicLinksEnabled: showcasePublicLinksEnabled, updatedAt: 0 },
+        policy: {
+          ...DEFAULT_WORKSPACE_POLICY,
+          workspaceId,
+          publicLinksEnabled: showcasePublicLinksEnabled,
+          updatedAt: 0,
+        },
         canManage: true,
       }
     },

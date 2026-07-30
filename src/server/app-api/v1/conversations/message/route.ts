@@ -9,6 +9,7 @@ import {
 import { normalizeGeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { invokeWorkspaceAgentsForHumanMessage } from '@/server/agents/workspace-agent-invocation'
+import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -53,6 +54,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const contentType = body.contentType ?? 'text'
     const modelId = body.modelId ?? body.model
     const server = getOverlayServerContext()
+    // Abuse limits are keyed by workspace, then by the sending principal (guests
+    // harder than members), then by the room.
+    if (body.role === 'user') {
+      await server.workspaceGovernanceService.assertWithinLimits({
+        action: 'message.send',
+        scope: {
+          workspaceId: context.workspace.workspace.id,
+          principalId: context.workspace.principal.id,
+          conversationId: body.conversationId,
+          guest: context.workspace.membership.role === 'guest',
+        },
+      })
+    }
     const messageId = await server.appData.repositories.conversations.addMessage({
       conversationId: body.conversationId as Id<'conversations'>,
       userId: context.auth.userId,
@@ -95,6 +109,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     return NextResponse.json({ success: true, conversationId: body.conversationId, turnId })
   } catch (e) {
+    if (e instanceof WorkspaceServiceError) {
+      return NextResponse.json({ error: e.message }, { status: e.statusCode })
+    }
     logger.error('[conversations/message POST]', e)
     const msg = e instanceof Error ? e.message : 'Failed to save message'
     return NextResponse.json({ error: msg }, { status: 500 })

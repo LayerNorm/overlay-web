@@ -196,7 +196,7 @@ test('Convex sharing repository matches the Postgres sharing contract', {
       assert.equal(await workspaces.getSharingPolicy(orgWorkspaceId), null)
       const disabled = await workspaces.setSharingPolicy({
         workspaceId: orgWorkspaceId,
-        publicLinksEnabled: false,
+        patch: { publicLinksEnabled: false },
         updatedByPrincipalId: ownerPrincipalId,
         now: 6_000,
       })
@@ -204,7 +204,7 @@ test('Convex sharing repository matches the Postgres sharing contract', {
       assert.equal(disabled.updatedByPrincipalId, ownerPrincipalId)
       const reEnabled = await workspaces.setSharingPolicy({
         workspaceId: orgWorkspaceId,
-        publicLinksEnabled: true,
+        patch: { publicLinksEnabled: true },
         updatedByPrincipalId: ownerPrincipalId,
         now: 7_000,
       })
@@ -213,7 +213,7 @@ test('Convex sharing repository matches the Postgres sharing contract', {
       assert.equal(await workspaces.getSharingPolicy(otherWorkspaceId), null)
       await assert.rejects(() => workspaces.setSharingPolicy({
         workspaceId: orgWorkspaceId,
-        publicLinksEnabled: false,
+        patch: { publicLinksEnabled: false },
         updatedByPrincipalId: otherPrincipalId,
         now: 8_000,
       }))

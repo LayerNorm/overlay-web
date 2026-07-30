@@ -77,10 +77,22 @@ test('sharing & links renders policy lifecycle states', () => {
   assert.match(error, /Try again/)
 })
 
+const READY_POLICY = {
+  status: 'ready' as const,
+  canManage: true,
+  updatedAt: 0,
+  publicLinksEnabled: true,
+  memberCanCreateChannels: true,
+  memberCanCreateAgents: true,
+  memberCanInvite: false,
+  legalHold: false,
+  rolloutStage: 'general' as const,
+}
+
 test('public links can be turned off by managers and are read-only for members', () => {
   const managerEnabled = renderToStaticMarkup(
     <WorkspaceSharingPolicySection
-      state={{ status: 'ready', publicLinksEnabled: true, canManage: true, updatedAt: 0 }}
+      state={READY_POLICY}
       onToggle={() => undefined}
     />,
   )
@@ -91,7 +103,7 @@ test('public links can be turned off by managers and are read-only for members',
 
   const managerDisabled = renderToStaticMarkup(
     <WorkspaceSharingPolicySection
-      state={{ status: 'ready', publicLinksEnabled: false, canManage: true, updatedAt: 0 }}
+      state={{ ...READY_POLICY, publicLinksEnabled: false }}
       onToggle={() => undefined}
     />,
   )
@@ -100,10 +112,71 @@ test('public links can be turned off by managers and are read-only for members',
 
   const member = renderToStaticMarkup(
     <WorkspaceSharingPolicySection
-      state={{ status: 'ready', publicLinksEnabled: true, canManage: false, updatedAt: 0 }}
+      state={{ ...READY_POLICY, canManage: false }}
       onToggle={() => undefined}
     />,
   )
   assert.match(member, /disabled/)
   assert.match(member, /Only owners and admins can change workspace policy/)
+})
+
+test('governance panel exposes every workspace policy and its rollout state', () => {
+  const html = renderToStaticMarkup(
+    <WorkspaceSharingPolicySection
+      state={{
+        ...READY_POLICY,
+        memberCanCreateChannels: false,
+        memberCanInvite: true,
+        legalHold: true,
+        rolloutStage: 'invited',
+        guestExpirationDays: 30,
+        channelRetentionDays: 180,
+      }}
+      onToggle={() => undefined}
+    />,
+  )
+  assert.match(html, /Members can create channels/)
+  assert.match(html, /Owners and admins only/)
+  assert.match(html, /Members can create agents/)
+  assert.match(html, /Members may invite/)
+  assert.match(html, /Legal hold/)
+  assert.match(html, /Hold active — nothing is swept/)
+  assert.match(html, /Invited workspaces/)
+  assert.match(html, /30 days/)
+  assert.match(html, /180 days/)
+})
+
+test('operational signals appear for managers and reveal provider parity', () => {
+  const html = renderToStaticMarkup(
+    <WorkspaceSharingPolicySection
+      state={{
+        ...READY_POLICY,
+        metrics: {
+          workspaceId: 'workspace_acme',
+          collectedAt: 0,
+          outboxPendingEvents: 4,
+          outboxOldestPendingAgeMs: 1_500,
+          failedDeliveries: 1,
+          agentRunsQueued: 2,
+          agentRunsFailed: 3,
+          authorizationDenials: 5,
+          invitationFailures: 6,
+          unreadDriftConversations: 7,
+          providerParity: { provider: 'postgres', requiresConvexClient: false },
+        },
+      }}
+      onToggle={() => undefined}
+    />,
+  )
+  assert.match(html, /workspace-operational-metrics/)
+  assert.match(html, /Authorization denials/)
+  assert.match(html, /Invitation failures/)
+  assert.match(html, /Unread drift/)
+  assert.match(html, /postgres/)
+  assert.match(html, /Convex required/)
+
+  const withoutMetrics = renderToStaticMarkup(
+    <WorkspaceSharingPolicySection state={READY_POLICY} onToggle={() => undefined} />,
+  )
+  assert.doesNotMatch(withoutMetrics, /workspace-operational-metrics/)
 })

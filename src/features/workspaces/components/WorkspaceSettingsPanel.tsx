@@ -29,7 +29,10 @@ import type {
   WorkspaceManagementItem,
   WorkspaceManagementResponse,
   WorkspaceMembershipRole,
+  WorkspaceOperationalMetrics,
+  WorkspaceRolloutStage,
 } from '@overlay/workspace-contracts'
+import { describeRolloutStage } from '@/shared/workspaces/collaboration-rollout'
 import { useWorkspace } from './WorkspaceProvider'
 import { workspaceManagementClient } from '../lib/workspace-client'
 import type {
@@ -286,7 +289,71 @@ export function WorkspaceManagementContent({
 export type WorkspaceSharingPolicyState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; publicLinksEnabled: boolean; canManage: boolean; updatedAt: number }
+  | {
+    status: 'ready'
+    canManage: boolean
+    updatedAt: number
+    publicLinksEnabled: boolean
+    memberCanCreateChannels: boolean
+    memberCanCreateAgents: boolean
+    memberCanInvite: boolean
+    legalHold: boolean
+    rolloutStage: WorkspaceRolloutStage
+    guestExpirationDays?: number
+    channelRetentionDays?: number
+    metrics?: WorkspaceOperationalMetrics
+  }
+
+type PolicyToggleKey =
+  | 'publicLinksEnabled'
+  | 'memberCanCreateChannels'
+  | 'memberCanCreateAgents'
+  | 'memberCanInvite'
+  | 'legalHold'
+
+const POLICY_TOGGLES: ReadonlyArray<{
+  key: PolicyToggleKey
+  label: string
+  description: string
+  onLabel: string
+  offLabel: string
+}> = [
+  {
+    key: 'publicLinksEnabled',
+    label: 'Public links',
+    description: 'Anyone-with-the-link sharing for chats and files. Public views stay read-only and redact attachments that are not public themselves. Turning this off does not remove access granted to people, agents, teams, or rooms.',
+    onLabel: 'Allowed for this workspace',
+    offLabel: 'Blocked for this workspace',
+  },
+  {
+    key: 'memberCanCreateChannels',
+    label: 'Members can create channels',
+    description: 'When off, only owners and admins create channels. Existing channels are unaffected.',
+    onLabel: 'Members may create channels',
+    offLabel: 'Owners and admins only',
+  },
+  {
+    key: 'memberCanCreateAgents',
+    label: 'Members can create agents',
+    description: 'When off, only owners and admins add named agents to this workspace.',
+    onLabel: 'Members may create agents',
+    offLabel: 'Owners and admins only',
+  },
+  {
+    key: 'memberCanInvite',
+    label: 'Members can invite people',
+    description: 'When on, members may send workspace invitations. Owners and admins always may.',
+    onLabel: 'Members may invite',
+    offLabel: 'Owners and admins only',
+  },
+  {
+    key: 'legalHold',
+    label: 'Legal hold',
+    description: 'While a hold is active, retention never deletes channel history, even when a retention window is set.',
+    onLabel: 'Hold active — nothing is swept',
+    offLabel: 'No hold',
+  },
+]
 
 /**
  * Workspace policy for General access. Public links are not collaborator
@@ -300,7 +367,7 @@ export function WorkspaceSharingPolicySection({
 }: {
   state: WorkspaceSharingPolicyState
   busy?: boolean
-  onToggle?(publicLinksEnabled: boolean): void
+  onToggle?(key: PolicyToggleKey, value: boolean): void
   onRetry?(): void
 }) {
   if (state.status === 'loading') {
@@ -325,35 +392,86 @@ export function WorkspaceSharingPolicySection({
   }
 
   return (
-    <div data-testid="workspace-sharing-policy" className="p-5">
-      <div className="flex items-start gap-3 rounded-xl border border-[var(--border)] p-4">
-        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--muted)]">
-          <Link2 size={15} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-[var(--foreground)]">Public links</p>
-          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-            Anyone-with-the-link sharing for chats and files. Public views stay read-only and
-            redact attachments that are not public themselves. Turning this off does not remove
-            access that people, agents, teams, or rooms were granted directly.
-          </p>
-          <p className="mt-2 text-[11px] text-[var(--muted-light)]">
-            {state.publicLinksEnabled ? 'Allowed for this workspace' : 'Blocked for this workspace'}
-          </p>
+    <div data-testid="workspace-sharing-policy" className="space-y-3 p-5">
+      {POLICY_TOGGLES.map((toggle) => (
+        <div key={toggle.key} className="flex items-start gap-3 rounded-xl border border-[var(--border)] p-4">
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--muted)]">
+            <Link2 size={15} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-[var(--foreground)]">{toggle.label}</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{toggle.description}</p>
+            <p className="mt-2 text-[11px] text-[var(--muted-light)]">
+              {state[toggle.key] ? toggle.onLabel : toggle.offLabel}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant={state[toggle.key] ? 'ghost' : 'primary'}
+            disabled={!state.canManage || busy}
+            title={state.canManage ? undefined : 'Only owners and admins can change workspace policy'}
+            onClick={state.canManage && onToggle
+              ? () => onToggle(toggle.key, !state[toggle.key])
+              : undefined}
+          >
+            {busy ? <Loader2 size={13} className="animate-spin" /> : null}
+            {state[toggle.key] ? 'Turn off' : 'Turn on'}
+          </Button>
         </div>
-        <Button
-          size="sm"
-          variant={state.publicLinksEnabled ? 'ghost' : 'primary'}
-          disabled={!state.canManage || busy}
-          title={state.canManage ? undefined : 'Only owners and admins can change workspace policy'}
-          onClick={state.canManage && onToggle
-            ? () => onToggle(!state.publicLinksEnabled)
-            : undefined}
-        >
-          {busy ? <Loader2 size={13} className="animate-spin" /> : null}
-          {state.publicLinksEnabled ? 'Turn off' : 'Turn on'}
-        </Button>
+      ))}
+
+      <div className="rounded-xl border border-[var(--border)] p-4">
+        <p className="text-sm font-medium text-[var(--foreground)]">Rollout and retention</p>
+        <dl className="mt-2 grid gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
+          <div>
+            <dt className="text-[var(--muted-light)]">Rollout stage</dt>
+            <dd className="text-[var(--foreground)]">{describeRolloutStage(state.rolloutStage)}</dd>
+          </div>
+          <div>
+            <dt className="text-[var(--muted-light)]">Guest expiry</dt>
+            <dd className="text-[var(--foreground)]">
+              {state.guestExpirationDays ? `${state.guestExpirationDays} days` : 'No automatic expiry'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[var(--muted-light)]">Channel retention</dt>
+            <dd className="text-[var(--foreground)]">
+              {state.channelRetentionDays ? `${state.channelRetentionDays} days` : 'Keep everything'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[var(--muted-light)]">Audit export</dt>
+            <dd className="text-[var(--foreground)]">Owners and admins, newline-delimited JSON</dd>
+          </div>
+        </dl>
       </div>
+
+      {state.metrics ? (
+        <div data-testid="workspace-operational-metrics" className="rounded-xl border border-[var(--border)] p-4">
+          <p className="text-sm font-medium text-[var(--foreground)]">Operational signals</p>
+          <dl className="mt-2 grid gap-2 text-xs text-[var(--muted)] sm:grid-cols-3">
+            {[
+              ['Event backlog', String(state.metrics.outboxPendingEvents)],
+              ['Failed deliveries', String(state.metrics.failedDeliveries)],
+              ['Agent runs queued', String(state.metrics.agentRunsQueued)],
+              ['Agent runs failed', String(state.metrics.agentRunsFailed)],
+              ['Authorization denials', String(state.metrics.authorizationDenials)],
+              ['Invitation failures', String(state.metrics.invitationFailures)],
+              ['Unread drift', String(state.metrics.unreadDriftConversations)],
+              ['Provider', state.metrics.providerParity.provider],
+              [
+                'Convex required',
+                state.metrics.providerParity.requiresConvexClient ? 'yes' : 'no',
+              ],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <dt className="text-[var(--muted-light)]">{label}</dt>
+                <dd className="text-[var(--foreground)]">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -508,13 +626,27 @@ export function WorkspaceSettingsPanel({
     const controller = new AbortController()
     setPolicyState({ status: 'loading' })
     void client.sharingPolicy(activeWorkspace.id, controller.signal)
-      .then((result) => {
+      .then(async (result) => {
+        if (controller.signal.aborted) return
+        // Metrics are owner/admin only; a member simply sees policy without them.
+        const metrics = result.canManage
+          ? await client.operationalMetrics?.(activeWorkspace.id, controller.signal)
+            .catch(() => undefined)
+          : undefined
         if (controller.signal.aborted) return
         setPolicyState({
           status: 'ready',
-          publicLinksEnabled: result.policy.publicLinksEnabled,
           canManage: result.canManage,
           updatedAt: result.policy.updatedAt,
+          publicLinksEnabled: result.policy.publicLinksEnabled,
+          memberCanCreateChannels: result.policy.memberCanCreateChannels,
+          memberCanCreateAgents: result.policy.memberCanCreateAgents,
+          memberCanInvite: result.policy.memberCanInvite,
+          legalHold: result.policy.legalHold,
+          rolloutStage: result.policy.rolloutStage,
+          guestExpirationDays: result.policy.guestExpirationDays,
+          channelRetentionDays: result.policy.channelRetentionDays,
+          metrics,
         })
       })
       .catch((loadError) => {
@@ -670,17 +802,26 @@ export function WorkspaceSettingsPanel({
             state={policyState}
             busy={policyBusy}
             onRetry={() => setRefreshKey((current) => current + 1)}
-            onToggle={(publicLinksEnabled) => {
+            onToggle={(key, value) => {
               if (!activeWorkspace) return
               setPolicyBusy(true)
               setActionError(null)
-              void client.setSharingPolicy(activeWorkspace.id, { publicLinksEnabled })
-                .then((result) => setPolicyState({
+              void client.setSharingPolicy(activeWorkspace.id, { [key]: value })
+                .then((result) => setPolicyState((current) => ({
+                  ...(current.status === 'ready' ? current : {}),
                   status: 'ready',
-                  publicLinksEnabled: result.policy.publicLinksEnabled,
                   canManage: result.canManage,
                   updatedAt: result.policy.updatedAt,
-                }))
+                  publicLinksEnabled: result.policy.publicLinksEnabled,
+                  memberCanCreateChannels: result.policy.memberCanCreateChannels,
+                  memberCanCreateAgents: result.policy.memberCanCreateAgents,
+                  memberCanInvite: result.policy.memberCanInvite,
+                  legalHold: result.policy.legalHold,
+                  rolloutStage: result.policy.rolloutStage,
+                  guestExpirationDays: result.policy.guestExpirationDays,
+                  channelRetentionDays: result.policy.channelRetentionDays,
+                  metrics: current.status === 'ready' ? current.metrics : undefined,
+                })))
                 .catch((error) => setActionError(
                   error instanceof Error ? error.message : 'Could not update workspace policy.',
                 ))

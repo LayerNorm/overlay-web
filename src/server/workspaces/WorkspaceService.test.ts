@@ -49,7 +49,13 @@ function access(overrides: {
 function repository(
   methods: Partial<WorkspaceRepository>,
 ): WorkspaceRepository {
-  return new Proxy(methods as WorkspaceRepository, {
+  // Policy reads are ambient: every workspace has one, and an absent row means
+  // the documented defaults, so the fake answers unless a test overrides it.
+  const withPolicy: Partial<WorkspaceRepository> = {
+    getSharingPolicy: async () => null,
+    ...methods,
+  }
+  return new Proxy(withPolicy as WorkspaceRepository, {
     get(target, property, receiver) {
       const value = Reflect.get(target, property, receiver)
       if (value !== undefined) return value

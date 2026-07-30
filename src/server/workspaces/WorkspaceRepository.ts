@@ -10,10 +10,20 @@ import type {
   WorkspacePrincipalType,
   WorkspaceResourceGuest,
   WorkspaceResourceScope,
+  WorkspaceAuditExportRecord,
+  WorkspaceIdentityMapping,
   WorkspaceSharingPolicy,
+  WorkspaceSharingPolicyPatch,
   WorkspaceTeam,
   WorkspaceTeamMember,
 } from '@overlay/workspace-contracts'
+
+export type SetWorkspaceSharingPolicyInput = {
+  workspaceId: string
+  patch: WorkspaceSharingPolicyPatch
+  updatedByPrincipalId: string
+  now: number
+}
 
 export type EnsurePersonalWorkspaceInput = {
   workspaceId: string
@@ -193,12 +203,43 @@ export interface WorkspaceRepository {
   }): Promise<WorkspaceResourceScope | null>
 
   getSharingPolicy(workspaceId: string): Promise<WorkspaceSharingPolicy | null>
-  setSharingPolicy(input: {
+  setSharingPolicy(input: SetWorkspaceSharingPolicyInput): Promise<WorkspaceSharingPolicy>
+
+  upsertIdentityMapping(input: {
+    id: string
     workspaceId: string
-    publicLinksEnabled: boolean
-    updatedByPrincipalId: string
+    principalId: string
+    directory: string
+    externalId: string
+    externalGroupIds?: string[]
     now: number
-  }): Promise<WorkspaceSharingPolicy>
+  }): Promise<WorkspaceIdentityMapping>
+  getIdentityMapping(args: {
+    workspaceId: string
+    directory: string
+    externalId: string
+  }): Promise<WorkspaceIdentityMapping | null>
+  listIdentityMappings(args: {
+    workspaceId: string
+    includeDeprovisioned?: boolean
+  }): Promise<WorkspaceIdentityMapping[]>
+  deprovisionIdentityMapping(args: {
+    workspaceId: string
+    directory: string
+    externalId: string
+    now: number
+  }): Promise<WorkspaceIdentityMapping | null>
+
+  recordAuditExport(input: {
+    id: string
+    workspaceId: string
+    requestedByPrincipalId: string
+    fromRecordedAt?: number
+    toRecordedAt: number
+    eventCount: number
+    now: number
+  }): Promise<WorkspaceAuditExportRecord>
+  listAuditExports(args: { workspaceId: string; limit?: number }): Promise<WorkspaceAuditExportRecord[]>
 
   createResourceGuest(input: {
     id: string

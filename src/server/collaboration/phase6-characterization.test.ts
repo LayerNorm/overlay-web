@@ -73,11 +73,16 @@ test('Phase 6 stores public-link policy per workspace and bumps the schema versi
   assert.match(migration, /workspace_sharing_policies/)
   assert.match(migration, /public_links_enabled/)
   assert.match(migration, /'schema_version', '37'/)
-  assert.equal(APP_DATA_SCHEMA_VERSION, 37)
+  // Later phases keep migrating; Phase 6's contract is that its migration is
+  // present and applied, not that it stays the newest one.
+  assert.ok(APP_DATA_SCHEMA_VERSION >= 37)
   const journal = JSON.parse(
     await readFile(`${root}/migrations/app-data/meta/_journal.json`, 'utf8'),
   ) as { entries: Array<{ tag: string }> }
-  assert.equal(journal.entries.at(-1)?.tag, '0037_workspace_sharing_policy')
+  assert.equal(
+    journal.entries.some((entry) => entry.tag === '0037_workspace_sharing_policy'),
+    true,
+  )
 })
 
 test('Phase 6 replaces resource-specific sharing menus with the universal dialog', async () => {

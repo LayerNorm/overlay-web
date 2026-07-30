@@ -213,7 +213,7 @@ test('Postgres sharing repository keeps grants inside one workspace', {
       assert.equal(await workspaces.getSharingPolicy(orgWorkspaceId), null)
       const disabled = await workspaces.setSharingPolicy({
         workspaceId: orgWorkspaceId,
-        publicLinksEnabled: false,
+        patch: { publicLinksEnabled: false },
         updatedByPrincipalId: ownerPrincipalId,
         now: 5_000,
       })
@@ -221,7 +221,7 @@ test('Postgres sharing repository keeps grants inside one workspace', {
       assert.equal(disabled.updatedByPrincipalId, ownerPrincipalId)
       const reEnabled = await workspaces.setSharingPolicy({
         workspaceId: orgWorkspaceId,
-        publicLinksEnabled: true,
+        patch: { publicLinksEnabled: true },
         updatedByPrincipalId: ownerPrincipalId,
         now: 6_000,
       })

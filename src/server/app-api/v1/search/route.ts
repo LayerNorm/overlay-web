@@ -11,7 +11,16 @@ import {
  * string never widens what the actor may see.
  */
 export async function GET(_request: Request, context: AppApiRouteContext) {
-  const response = await getOverlayServerContext().workspaceSearchService.search({
+  const serverContext = getOverlayServerContext()
+  await serverContext.workspaceGovernanceService.assertWithinLimits({
+    action: 'search.query',
+    scope: {
+      workspaceId: context.workspace.workspace.id,
+      principalId: context.workspace.principal.id,
+      guest: context.workspace.membership.role === 'guest',
+    },
+  })
+  const response = await serverContext.workspaceSearchService.search({
     actorUserId: context.auth.userId,
     workspaceId: context.workspace.workspace.id,
     query: typeof context.parsedQuery.q === 'string' ? context.parsedQuery.q : '',

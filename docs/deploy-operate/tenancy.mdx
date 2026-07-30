@@ -99,6 +99,13 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `files` | `userId` | Deployment boundary | Add `tenantId`; file/folder/share indexes must define cross-tenant behavior. |
 | `webhookSubscriptions` | `userId` | Deployment boundary | Add `tenantId`; subscriptions, signing secrets, and event ownership must be tenant-scoped. |
 | `webhookDeliveries` | `userId` | Deployment boundary | Add `tenantId`; delivery runner claims and retries must enforce tenant ownership. |
+| `workspacePrincipals` | `userId` | Workspace boundary inside the deployment | Principals are already workspace-scoped; a shared deployment adds `tenantId` above `workspaceId` and must keep the human-principal uniqueness index tenant-aware. |
+| `workspaceUserPreferences` | `userId` | Workspace boundary inside the deployment | Active-workspace selection is per user; a shared deployment must reject an active workspace from another tenant before it reaches session state. |
+| `administrativePrincipals` | `userId` | Deployment boundary | Administrative principals grant deployment-wide authority today; a shared deployment must scope them per tenant and forbid cross-tenant administration. |
+| `authorizationUserRoles` | `userId` | Deployment boundary | Role assignments are deployment-wide; a shared deployment must add `tenantId` and evaluate roles only within the caller's tenant. |
+| `authorizationGroupMemberships` | `userId` | Deployment boundary | Groups back workspace teams; a shared deployment must scope group membership per tenant so a team grant cannot expand across tenants. |
+| `usageOperations` | `userId` | Deployment boundary | Usage ledger entries are per user and per workspace; a shared deployment must add `tenantId` to rollups, budgets, and reconciliation. |
+| `mcpToolExecutions` | `userId` | Deployment boundary | Tool execution audit rows are per user; a shared deployment must add `tenantId` so execution history and cost views cannot cross tenants. |
 
 The following tables are not user-owned tenant data today. They still need review before shared multi-tenant deployments, but the static check only requires explicit documentation for `userId`-owned tables:
 
@@ -106,6 +113,21 @@ The following tables are not user-owned tenant data today. They still need revie
 - `rateLimitWindows`
 - `serviceAuthReplayNonces`
 - `sessionTransferTokens`
+
+## Workspaces Are The In-Deployment Boundary
+
+Since the collaboration phases, a deployment contains many workspaces, and the
+workspace is the isolation boundary for every collaboration resource: chats,
+files, projects, knowledge bases, automations, agents, grants, teams, guests,
+audit records, and search. Cross-workspace reads and writes fail closed in both
+persistence providers, and the tenant-isolation and confused-deputy suites in
+`src/server/collaboration/tenant-isolation.test.ts` assert it.
+
+This does not make the deployment shared-multi-tenant safe. Workspace isolation
+is enforced by application-layer authorization plus provider constraints, while
+a shared multi-tenant deployment additionally requires tenant-aware identity,
+sessions, API keys, storage namespaces, and indexes. The checklist below is
+still the gate.
 
 ## Shared Multi-Tenant Checklist
 

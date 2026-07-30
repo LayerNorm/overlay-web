@@ -1,4 +1,9 @@
 export type {
+  WorkspaceOperationalMetrics,
+  WorkspaceSharingPolicy,
+  WorkspaceSharingPolicyPatch,
+  WorkspaceSharingPolicyResponse,
+  WorkspaceRolloutStage,
   WorkspaceActivateResponse,
   WorkspaceCreateInput,
   WorkspaceCreateResponse,
@@ -23,6 +28,8 @@ import type {
   WorkspaceManagementView,
   WorkspaceMemberMutationInput,
   WorkspaceMemberMutationResponse,
+  WorkspaceOperationalMetrics,
+  WorkspaceSharingPolicyPatch,
   WorkspaceSharingPolicyResponse,
   WorkspaceTeamCreateInput,
   WorkspaceTeamCreateResponse,
@@ -54,8 +61,13 @@ export interface WorkspaceManagementClient extends WorkspaceManagementLoader {
   ): Promise<WorkspaceSharingPolicyResponse>
   setSharingPolicy(
     workspaceId: string,
-    input: { publicLinksEnabled: boolean },
+    input: WorkspaceSharingPolicyPatch,
   ): Promise<WorkspaceSharingPolicyResponse>
+  /** Owner/admin only; absent on clients that do not surface governance. */
+  operationalMetrics?(
+    workspaceId: string,
+    signal?: AbortSignal,
+  ): Promise<WorkspaceOperationalMetrics>
   invite(workspaceId: string, input: WorkspaceInviteInput): Promise<WorkspaceInviteResponse>
   resendInvitation(workspaceId: string, invitationId: string): Promise<WorkspaceInviteResponse>
   cancelInvitation(workspaceId: string, invitationId: string): Promise<void>

@@ -5,7 +5,7 @@ description: "Accepted Phase 0 decisions for workspace isolation, collaborative 
 
 ## Status
 
-Accepted on July 26, 2026. Phase 1 shipped the workspace foundation, Phase 2 shipped the workspace-aware Chats information architecture, Phase 3 shipped participant-scoped Direct Messages, Phase 4 shipped Channels and threads, Phase 5 shipped named workspace agents, Phase 6 shipped universal resource sharing, and Phase 7 shipped collaboration polish and cross-surface parity on July 29, 2026. The `workspaces`, `collaborativeChats`, `channels`, `agents`, and `resourceSharing` app features are enabled; shared multi-tenant deployment remains disabled until its release gate passes.
+Accepted on July 26, 2026. Phase 1 shipped the workspace foundation, Phase 2 shipped the workspace-aware Chats information architecture, Phase 3 shipped participant-scoped Direct Messages, Phase 4 shipped Channels and threads, Phase 5 shipped named workspace agents, Phase 6 shipped universal resource sharing, Phase 7 shipped collaboration polish and cross-surface parity, and Phase 8 shipped enterprise hardening and staged rollout on July 29, 2026. The `workspaces`, `collaborativeChats`, `channels`, `agents`, and `resourceSharing` app features are enabled; shared multi-tenant deployment remains disabled until its release gate passes.
 
 Phase 1 includes:
 
@@ -105,6 +105,26 @@ Phase 7 includes:
 - One isomorphic search contract shared by web, desktop, and mobile adapters, with no server-only or DOM dependency.
 
 The stale on-prem Convex runtime baseline was refreshed after review: the additions are the workspace, agent, sharing, and search provider repositories plus their BFF routes. The browser touchpoint list is unchanged, so the Postgres deployment still reaches no Convex code from the browser.
+
+Phase 8 includes:
+
+- Workspace policy covering public links, whether members may create channels, agents, or invitations, guest expiry, allowed agent runtimes, agent budgets, channel retention, legal hold, data residency, and rollout stage. Every field defaults to today's behavior, and inviting is the one member right that starts closed because it reaches outsiders.
+- Policy enforced on the creation paths themselves — channel creation, agent creation, invitations, guest expiry, and agent runtime selection — not only in the settings UI.
+- Abuse limits keyed by workspace first, then principal, room, or agent, with guests on their own buckets. A zero limit is a policy refusal (403), not a throttle (429), and no limit key is ever shared between workspaces.
+- Immutable audit export as newline-delimited JSON for owners and admins, filtered to the workspace, resumable from a watermark, and recorded so an operator can prove which window an export covered.
+- Provider-neutral SSO/SCIM identity mapping. A directory supplies identity, never authorization: group claims are stored for reference while roles and teams stay explicit. Deprovisioning retires the mapping and suspends the membership, and still retires the mapping when the principal is the last owner.
+- Retention with legal hold, swept by a script that is dry-run by default and skips held workspaces entirely.
+- Operational signals per workspace: event backlog, failed deliveries, agent queue depth and failures, authorization denials, invitation failures, unread drift, and provider parity.
+- Staged rollout by tenant allowlist: a deployment declares how far the rollout has reached and each workspace declares its stage, so internal dogfood comes first, then invited workspaces, then everybody.
+
+Gate evidence:
+
+- The tenant-isolation and confused-deputy suite covers cross-workspace reads, grants recorded under another workspace, moved resource bindings, forged workspace ids in search, agent-to-agent invocation, guest escalation, and per-workspace limit keys.
+- The migration rollback rehearsal seeds a scratch workspace with a channel message, a grant, and a guest, rolls the Phase 8 schema back inside an aborting transaction, and verifies every count is unchanged and restored.
+- Audit exports reconcile with membership, grant, and agent-run history, and every exported event carries its workspace.
+- `check:tenant-boundaries` passes again: the seven previously undocumented user-owned Convex tables now carry explicit tenant decisions, and the workspace tables are documented as a workspace boundary inside the deployment.
+
+The Postgres migration was rehearsed from an empty database through schema version 38. Convex schema and functions were deployed only to the development deployment and validated against that live development provider.
 
 ## Workspace Is The Isolation Boundary
 

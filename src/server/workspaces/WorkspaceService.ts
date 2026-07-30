@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto'
 import {
   canJoinTeam,
   canManageWorkspace,
-  DEFAULT_WORKSPACE_PUBLIC_LINKS_ENABLED,
+  DEFAULT_WORKSPACE_POLICY,
+  WORKSPACE_ROLLOUT_STAGES,
   type WorkspaceAccess,
   type WorkspaceInvitation,
   type WorkspaceMembership,
@@ -15,10 +16,16 @@ import {
   type WorkspaceResourceGuest,
   type WorkspaceResourceScope,
   type WorkspaceSharingPolicy,
+  type WorkspaceRolloutStage,
+  type WorkspaceSharingPolicyPatch,
   type WorkspaceTeam,
   type WorkspaceTeamMember,
   type WorkspaceTeamWithMembers,
 } from '@overlay/workspace-contracts'
+import {
+  isWorkspaceInRollout,
+  parseDeploymentRolloutStage,
+} from '@/shared/workspaces/collaboration-rollout'
 import type { WorkspaceRepository } from './WorkspaceRepository'
 
 export class WorkspaceServiceError extends Error {
@@ -46,6 +53,8 @@ export class WorkspaceService {
       createId?: () => string
       now?: () => number
       invitationTtlMs?: number
+      /** Overrides OVERLAY_COLLABORATION_ROLLOUT, mostly for tests. */
+      deploymentRolloutStage?: WorkspaceRolloutStage
     } = {},
   ) {}
 
@@ -425,7 +434,9 @@ export class WorkspaceService {
     role: Exclude<WorkspaceMembershipRole, 'owner'>
     expiresAt?: number
   }): Promise<WorkspaceInvitation> {
-    const actor = await this.requireManager(args)
+    // Policy may extend invitations to members; owners and admins always may.
+    await this.assertMemberMayCreate({ ...args, capability: 'invitation' })
+    const actor = await this.requireActiveMember(args)
     const now = this.now()
     const email = normalizeEmail(args.email)
     const principals = await this.repository.listPrincipals({
@@ -586,7 +597,11 @@ export class WorkspaceService {
       accessRole: args.accessRole,
       status: 'active',
       grantedByPrincipalId: actor.principal.id,
-      expiresAt: args.expiresAt,
+      // An explicit expiry wins; otherwise workspace policy decides.
+      expiresAt: args.expiresAt ?? await this.resolveGuestExpiry({
+        actorUserId: args.actorUserId,
+        workspaceId: actor.workspace.id,
+      }),
       now: this.now(),
     })
   }
@@ -637,18 +652,95 @@ export class WorkspaceService {
   async setSharingPolicy(args: {
     actorUserId: string
     workspaceId: string
-    publicLinksEnabled: boolean
+    patch: WorkspaceSharingPolicyPatch
   }): Promise<WorkspaceSharingPolicy> {
     const actor = await this.requireManager(args)
-    if (typeof args.publicLinksEnabled !== 'boolean') {
-      throw new WorkspaceServiceError('publicLinksEnabled must be a boolean', 400, 'validation')
-    }
     return await this.repository.setSharingPolicy({
       workspaceId: actor.workspace.id,
-      publicLinksEnabled: args.publicLinksEnabled,
+      patch: validatePolicyPatch(args.patch),
       updatedByPrincipalId: actor.principal.id,
       now: this.now(),
     })
+  }
+
+  /**
+   * Policy checks used by creation paths. Owners and admins are never blocked by
+   * a member-creation policy; the policy only widens or narrows what members do.
+   */
+  async assertMemberMayCreate(args: {
+    actorUserId: string
+    workspaceId: string
+    capability: 'channel' | 'agent' | 'invitation'
+  }): Promise<void> {
+    const access = await this.requireActiveMember(args)
+    if (canManageWorkspace(access.membership.role)) return
+    if (access.membership.role === 'guest') throw forbidden()
+    const policy = await this.resolveSharingPolicy(access.workspace.id)
+    const allowed = args.capability === 'channel'
+      ? policy.memberCanCreateChannels
+      : args.capability === 'agent'
+        ? policy.memberCanCreateAgents
+        : policy.memberCanInvite
+    if (!allowed) {
+      throw new WorkspaceServiceError(
+        args.capability === 'channel'
+          ? 'Only owners and admins can create channels in this workspace'
+          : args.capability === 'agent'
+            ? 'Only owners and admins can create agents in this workspace'
+            : 'Only owners and admins can invite people to this workspace',
+        403,
+        'forbidden',
+      )
+    }
+  }
+
+  /** Rejects an agent runtime the workspace policy does not allow. */
+  async assertAgentHarnessAllowed(args: {
+    actorUserId: string
+    workspaceId: string
+    harness: string
+  }): Promise<void> {
+    const access = await this.requireActiveMember(args)
+    const policy = await this.resolveSharingPolicy(access.workspace.id)
+    if (!policy.allowedAgentHarnesses?.length) return
+    if (!policy.allowedAgentHarnesses.includes(args.harness as never)) {
+      throw new WorkspaceServiceError(
+        `This workspace does not allow the ${args.harness} agent runtime`,
+        403,
+        'forbidden',
+      )
+    }
+  }
+
+  /**
+   * Whether this workspace has been reached by the collaboration rollout. The
+   * deployment stage comes from configuration; the workspace stage from policy.
+   */
+  async isCollaborationEnabled(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<{ enabled: boolean; deploymentStage: WorkspaceRolloutStage; workspaceStage: WorkspaceRolloutStage }> {
+    const access = await this.requireActiveMember(args)
+    const policy = await this.resolveSharingPolicy(access.workspace.id)
+    const deploymentStage = parseDeploymentRolloutStage(
+      this.options.deploymentRolloutStage ?? process.env.OVERLAY_COLLABORATION_ROLLOUT,
+    )
+    return {
+      enabled: isWorkspaceInRollout({ deploymentStage, workspaceStage: policy.rolloutStage }),
+      deploymentStage,
+      workspaceStage: policy.rolloutStage,
+    }
+  }
+
+  /** Guest expiry from policy, so every guest path uses one rule. */
+  async resolveGuestExpiry(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<number | undefined> {
+    const access = await this.requireActiveMember(args)
+    const policy = await this.resolveSharingPolicy(access.workspace.id)
+    if (!policy.guestExpirationDays) return undefined
+    return this.now() + policy.guestExpirationDays * 24 * 60 * 60 * 1_000
   }
 
   /**
@@ -676,11 +768,7 @@ export class WorkspaceService {
 
   private async resolveSharingPolicy(workspaceId: string): Promise<WorkspaceSharingPolicy> {
     const stored = await this.repository.getSharingPolicy(workspaceId)
-    return stored ?? {
-      workspaceId,
-      publicLinksEnabled: DEFAULT_WORKSPACE_PUBLIC_LINKS_ENABLED,
-      updatedAt: 0,
-    }
+    return stored ?? { ...DEFAULT_WORKSPACE_POLICY, workspaceId, updatedAt: 0 }
   }
 
   async listResourceGuests(args: {
@@ -794,6 +882,45 @@ function required(value: string, field: string): string {
 function optional(value: string | undefined): string | undefined {
   const normalized = value?.trim()
   return normalized || undefined
+}
+
+/** Policy values are operator input, so ranges are enforced before persistence. */
+function validatePolicyPatch(patch: WorkspaceSharingPolicyPatch): WorkspaceSharingPolicyPatch {
+  const validated: WorkspaceSharingPolicyPatch = { ...patch }
+  for (const key of [
+    'publicLinksEnabled',
+    'memberCanCreateChannels',
+    'memberCanCreateAgents',
+    'memberCanInvite',
+    'legalHold',
+  ] as const) {
+    if (validated[key] !== undefined && typeof validated[key] !== 'boolean') {
+      throw new WorkspaceServiceError(`${key} must be a boolean`, 400, 'validation')
+    }
+  }
+  assertRange(validated.guestExpirationDays, 'guestExpirationDays', 1, 365)
+  assertRange(validated.channelRetentionDays, 'channelRetentionDays', 1, 3_650)
+  assertRange(validated.agentRunBudgetCents, 'agentRunBudgetCents', 0, 100_000_000)
+  if (
+    validated.rolloutStage !== undefined
+    && !WORKSPACE_ROLLOUT_STAGES.includes(validated.rolloutStage)
+  ) {
+    throw new WorkspaceServiceError('rolloutStage is invalid', 400, 'validation')
+  }
+  if (validated.allowedAgentHarnesses !== undefined) {
+    if (!Array.isArray(validated.allowedAgentHarnesses)) {
+      throw new WorkspaceServiceError('allowedAgentHarnesses must be a list', 400, 'validation')
+    }
+    validated.allowedAgentHarnesses = [...new Set(validated.allowedAgentHarnesses)]
+  }
+  return validated
+}
+
+function assertRange(value: number | undefined, field: string, min: number, max: number): void {
+  if (value === undefined) return
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new WorkspaceServiceError(`${field} must be between ${min} and ${max}`, 400, 'validation')
+  }
 }
 
 function normalizeEmail(value: string): string {

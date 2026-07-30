@@ -9,6 +9,8 @@ import type {
   WorkspacePrincipal,
   WorkspaceResourceGuest,
   WorkspaceResourceScope,
+  WorkspaceAuditExportRecord,
+  WorkspaceIdentityMapping,
   WorkspaceSharingPolicy,
   WorkspaceTeam,
   WorkspaceTeamMember,
@@ -446,7 +448,47 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
   }
 
   async setSharingPolicy(input: Parameters<WorkspaceRepository['setSharingPolicy']>[0]) {
-    return clean(await requiredMutation<WorkspaceSharingPolicy>('setSharingPolicyByServer', input))
+    // Convex distinguishes "leave alone" (absent) from "clear" (null), so only
+    // keys present in the patch are forwarded.
+    const patch = Object.fromEntries(
+      Object.entries(input.patch).map(([key, value]) => [key, value === undefined ? null : value]),
+    )
+    return clean(await requiredMutation<WorkspaceSharingPolicy>('setSharingPolicyByServer', {
+      workspaceId: input.workspaceId,
+      patch,
+      updatedByPrincipalId: input.updatedByPrincipalId,
+      now: input.now,
+    }))
+  }
+
+  async upsertIdentityMapping(input: Parameters<WorkspaceRepository['upsertIdentityMapping']>[0]) {
+    return clean(await requiredMutation<WorkspaceIdentityMapping>('upsertIdentityMappingByServer', input))
+  }
+
+  async getIdentityMapping(args: Parameters<WorkspaceRepository['getIdentityMapping']>[0]) {
+    const row = await query<WorkspaceIdentityMapping | null>('getIdentityMappingByServer', args)
+    return row ? clean(row) : null
+  }
+
+  async listIdentityMappings(args: Parameters<WorkspaceRepository['listIdentityMappings']>[0]) {
+    const rows = await query<WorkspaceIdentityMapping[]>('listIdentityMappingsByServer', args) ?? []
+    return rows.map(clean)
+  }
+
+  async deprovisionIdentityMapping(
+    args: Parameters<WorkspaceRepository['deprovisionIdentityMapping']>[0],
+  ) {
+    const row = await mutation<WorkspaceIdentityMapping | null>('deprovisionIdentityMappingByServer', args)
+    return row ? clean(row) : null
+  }
+
+  async recordAuditExport(input: Parameters<WorkspaceRepository['recordAuditExport']>[0]) {
+    return clean(await requiredMutation<WorkspaceAuditExportRecord>('recordAuditExportByServer', input))
+  }
+
+  async listAuditExports(args: Parameters<WorkspaceRepository['listAuditExports']>[0]) {
+    const rows = await query<WorkspaceAuditExportRecord[]>('listAuditExportsByServer', args) ?? []
+    return rows.map(clean)
   }
 
   async listResourceGuests(args: Parameters<WorkspaceRepository['listResourceGuests']>[0]) {
