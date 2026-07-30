@@ -66,4 +66,11 @@ export {
   type ConversationPin,
   type ConversationSavedMessage,
   type WorkspaceChatSearchResult,
+  WORKSPACE_AGENT_HARNESSES,
+  type WorkspaceAgentHarness,
+  type WorkspaceAgentDefinition,
+  type WorkspaceAgentCreateInput,
+  type WorkspaceAgentUpdateInput,
+  type WorkspaceAgentDirectoryItem,
+  type WorkspaceAgentListResponse,
 } from './types'

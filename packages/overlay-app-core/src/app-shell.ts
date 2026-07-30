@@ -107,6 +107,13 @@ export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
     requiredCapabilities: ['chat'],
     subviews: ['personal', 'dms', 'channels', 'unread', 'all'],
   },
+  {
+    id: 'agents',
+    href: '/app/agents',
+    label: 'Agents',
+    icon: 'bot',
+    featureFlagId: 'agents',
+  },
   { id: 'files', href: '/app/files', label: 'Files', icon: 'file-text', requiredCapabilities: ['files', 'knowledge'] },
   {
     id: 'extensions',

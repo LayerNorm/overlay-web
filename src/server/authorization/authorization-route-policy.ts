@@ -51,6 +51,14 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/capabilities', methods: { GET: publicPolicy() } },
   { path: '/api/v1/bootstrap', methods: { GET: authenticated() } },
   {
+    path: '/api/v1/agents',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  {
+    path: '/api/v1/agents/:agentId',
+    methods: { GET: authenticated(), PATCH: authenticated(), DELETE: authenticated() },
+  },
+  {
     path: '/api/v1/workspaces',
     methods: { GET: authenticated(), POST: authenticated() },
   },

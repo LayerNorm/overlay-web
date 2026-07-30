@@ -12,6 +12,7 @@ import type { EventBus, RateLimiter } from './server-runtime'
 export type OverlayIconName =
   | 'arrow-up'
   | 'book-open'
+  | 'bot'
   | 'chrome'
   | 'file-text'
   | 'folder-open'

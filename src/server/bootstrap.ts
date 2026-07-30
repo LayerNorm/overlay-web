@@ -71,6 +71,7 @@ import {
 } from '@/server/integrations'
 import { GovernanceService } from '@/server/governance'
 import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
+import { WorkspaceAgentService } from '@/server/agents'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -109,6 +110,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   apiKeyService: ApiKeyService
   userService: UserService
   workspaceService: WorkspaceService
+  workspaceAgentService: WorkspaceAgentService
 }
 
 export interface CreateOverlayServerContextOptions {
@@ -161,6 +163,10 @@ export function createOverlayServerContext(
     appData.repositories.authorization,
   )
   const workspaceService = new WorkspaceService(appData.repositories.workspaces)
+  const workspaceAgentService = new WorkspaceAgentService(
+    appData.repositories.workspaceAgents,
+    workspaceService,
+  )
   const userService = new UserService({
     authProvider: selectedAuthProviderForUserService(runtimeConfig),
     afterUpsert: async ({ userId }) => {
@@ -265,6 +271,7 @@ export function createOverlayServerContext(
     apiKeyService: new ApiKeyService(appData.repositories.apiKeys),
     userService,
     workspaceService,
+    workspaceAgentService,
   }
 }
 

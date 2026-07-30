@@ -50,6 +50,13 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'workspaces',
   },
   {
+    id: 'workspace-agents',
+    methods: '*',
+    prefixes: ['/api/v1/agents'],
+    status: 'supported',
+    feature: 'workspace-agents',
+  },
+  {
     id: 'model-catalog',
     methods: ['GET'],
     paths: ['/api/v1/model-catalog'],

@@ -6,12 +6,12 @@ import { AUTHORIZATION_ROUTE_POLICIES } from '@/server/authorization/authorizati
 
 const root = process.cwd()
 
-test('Phase 4 enables channels while Agents remains gated for Phase 5', () => {
+test('Phase 4 channel guarantees remain enabled after Agents rolls forward', () => {
   const flags = new Map(overlayAppConfig.featureFlags?.map((feature) => [feature.id, feature.enabled]))
   assert.equal(flags.get('workspaces'), true)
   assert.equal(flags.get('collaborativeChats'), true)
   assert.equal(flags.get('channels'), true)
-  assert.equal(flags.get('agents'), false)
+  assert.equal(flags.get('agents'), true)
 })
 
 test('Phase 4 protects channel search, reactions, pins, and saved-message routes', () => {

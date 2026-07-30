@@ -22,6 +22,7 @@ import { SettingsClient } from './settings/client'
 import { SkillsClient } from './skills/client'
 import { WebhooksClient } from './webhooks/client'
 import { WorkspacesClient } from './workspaces/client'
+import { AgentsClient } from './agents/client'
 import { createHttpContext } from './shared/http'
 import type { CreateOverlayAppClientOptions } from './shared/types'
 
@@ -55,6 +56,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     automationRuns: new AutomationRunsClient(http),
     webhooks: new WebhooksClient(http),
     workspaces: new WorkspacesClient(http),
+    agents: new AgentsClient(http),
   }
 }
 

@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   ArrowUp,
   BookOpen,
+  Bot,
   Chrome,
   FileText,
   FolderOpen,
@@ -28,6 +29,7 @@ import type { MentionType } from '@/shared/knowledge/mention-types'
 export const ICON_COMPONENTS: Partial<Record<OverlayIconName, LucideIcon>> = {
   'arrow-up': ArrowUp,
   'book-open': BookOpen,
+  bot: Bot,
   chrome: Chrome,
   'file-text': FileText,
   'folder-open': FolderOpen,

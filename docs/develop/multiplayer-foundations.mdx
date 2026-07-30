@@ -5,7 +5,7 @@ description: "Accepted Phase 0 decisions for workspace isolation, collaborative 
 
 ## Status
 
-Accepted on July 26, 2026. Phase 1 shipped the workspace foundation, Phase 2 shipped the workspace-aware Chats information architecture, Phase 3 shipped participant-scoped Direct Messages, and Phase 4 shipped Channels and threads on July 29, 2026. The `workspaces`, `collaborativeChats`, and `channels` app features are enabled; named agents, universal sharing, and shared multi-tenant deployment remain disabled until their individual release gates pass.
+Accepted on July 26, 2026. Phase 1 shipped the workspace foundation, Phase 2 shipped the workspace-aware Chats information architecture, Phase 3 shipped participant-scoped Direct Messages, Phase 4 shipped Channels and threads, and Phase 5 shipped named workspace agents on July 29, 2026. The `workspaces`, `collaborativeChats`, `channels`, and `agents` app features are enabled; universal sharing and shared multi-tenant deployment remain disabled until their individual release gates pass.
 
 Phase 1 includes:
 
@@ -61,6 +61,18 @@ Phase 4 includes:
 - Matching Postgres and Convex repositories, authorization policies, account/workspace deletion cleanup, BFF routes, API-client methods, and provider contract tests.
 
 The Postgres migration was rehearsed from an empty database through schema version 34. Convex schema and functions were deployed only to the development deployment for Phase 4, then validated with the live development provider contract.
+
+Phase 5 includes:
+
+- Workspace-owned reusable agent definitions linked one-to-one with agent principals.
+- A top-level Agents directory, Buzz-inspired create/edit flow, reusable Agent teams, and one-click agent DMs.
+- Atomic principal, membership, selected-team, public-channel, and resource-scope creation.
+- Explicit model, harness, instructions, avatar, and tool-allowlist configuration.
+- Mention-first invocation: implicit only in one-human/one-agent DMs, explicit human mentions in groups and Channels, and human replies in agent threads.
+- Agent-authored messages with durable agent-principal attribution, retry-safe invocation nonces, no agent-to-agent triggering, and no inherited human resource/tool context.
+- Matching Postgres and Convex repositories, lifecycle cleanup, BFF routes, API-client methods, and provider contracts.
+
+The Postgres migration was rehearsed through schema version 35. The matching Convex schema and functions were deployed only to the development deployment and validated against that live development provider.
 
 ## Workspace Is The Isolation Boundary
 
@@ -135,4 +147,4 @@ Phase 0 intentionally preserves the current behavior before multiplayer schemas 
 | Agents | No durable reusable agent directory or principal |
 | Multi-tenancy | Disabled by runtime validation |
 
-`npm run test:workspaces:phase0` preserves the pre-multiplayer characterization. `npm run test:workspaces:phase1` validates the workspace lifecycle, `npm run test:workspaces:phase2` adds Chats IA, migration, isolation, and authorship gates, `npm run test:workspaces:phase3` validates DMs and realtime collaboration, and `npm run test:workspaces:phase4` validates Channels, threads, reactions, pins, saved messages, search, deletion, and provider parity. Later phases must update the characterization test in the same commit that deliberately changes a boundary.
+`npm run test:workspaces:phase0` preserves the pre-multiplayer characterization. `npm run test:workspaces:phase1` validates the workspace lifecycle, `npm run test:workspaces:phase2` adds Chats IA, migration, isolation, and authorship gates, `npm run test:workspaces:phase3` validates DMs and realtime collaboration, `npm run test:workspaces:phase4` validates Channels and threads, and `npm run test:workspaces:phase5` validates named agents, mention-first invocation, lifecycle cleanup, and provider parity. Later phases must update the characterization test in the same commit that deliberately changes a boundary.

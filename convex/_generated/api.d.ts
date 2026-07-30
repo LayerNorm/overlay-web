@@ -25,6 +25,7 @@ import type * as billing_stripe from "../billing/stripe.js";
 import type * as billing_stripeSync from "../billing/stripeSync.js";
 import type * as billing_subscriptions from "../billing/subscriptions.js";
 import type * as chat_conversations from "../chat/conversations.js";
+import type * as collaboration_agents from "../collaboration/agents.js";
 import type * as collaboration_channels from "../collaboration/channels.js";
 import type * as collaboration_conversationMigration from "../collaboration/conversationMigration.js";
 import type * as collaboration_directMessages from "../collaboration/directMessages.js";
@@ -83,6 +84,7 @@ declare const fullApi: ApiFromModules<{
   "billing/stripeSync": typeof billing_stripeSync;
   "billing/subscriptions": typeof billing_subscriptions;
   "chat/conversations": typeof chat_conversations;
+  "collaboration/agents": typeof collaboration_agents;
   "collaboration/channels": typeof collaboration_channels;
   "collaboration/conversationMigration": typeof collaboration_conversationMigration;
   "collaboration/directMessages": typeof collaboration_directMessages;

@@ -400,6 +400,28 @@ export default defineSchema({
     .index('by_teamId_principalId', ['teamId', 'principalId'])
     .index('by_principalId', ['principalId']),
 
+  workspaceAgentDefinitions: defineTable({
+    agentId: v.string(),
+    workspaceId: v.string(),
+    principalId: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    instructions: v.string(),
+    harness: v.union(v.literal('overlay'), v.literal('claude-code')),
+    modelId: v.string(),
+    avatarColor: v.optional(v.string()),
+    allowedToolIds: v.array(v.string()),
+    invocationPolicy: v.literal('mention'),
+    createdByPrincipalId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
+  })
+    .index('by_agentId', ['agentId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_name', ['workspaceId', 'name'])
+    .index('by_principalId', ['principalId']),
+
   workspaceResourceGuests: defineTable({
     resourceGuestId: v.string(),
     workspaceId: v.string(),

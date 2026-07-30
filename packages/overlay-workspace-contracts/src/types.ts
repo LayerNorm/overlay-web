@@ -389,6 +389,50 @@ export type WorkspaceChatSearchResult = {
   createdAt: number
 }
 
+export const WORKSPACE_AGENT_HARNESSES = ['overlay', 'claude-code'] as const
+export type WorkspaceAgentHarness = (typeof WORKSPACE_AGENT_HARNESSES)[number]
+
+export type WorkspaceAgentDefinition = {
+  id: string
+  workspaceId: string
+  principalId: string
+  name: string
+  description?: string
+  instructions: string
+  harness: WorkspaceAgentHarness
+  modelId: string
+  avatarColor?: string
+  allowedToolIds: string[]
+  invocationPolicy: 'mention'
+  createdByPrincipalId: string
+  createdAt: number
+  updatedAt: number
+  archivedAt?: number
+}
+
+export type WorkspaceAgentCreateInput = {
+  name: string
+  description?: string
+  instructions: string
+  harness?: WorkspaceAgentHarness
+  modelId: string
+  avatarColor?: string
+  allowedToolIds?: string[]
+  teamIds?: string[]
+}
+
+export type WorkspaceAgentUpdateInput = Partial<WorkspaceAgentCreateInput>
+
+export type WorkspaceAgentDirectoryItem = WorkspaceAgentDefinition & {
+  teamIds: string[]
+  roomCount: number
+}
+
+export type WorkspaceAgentListResponse = {
+  agents: WorkspaceAgentDirectoryItem[]
+  canCreate: boolean
+}
+
 export function isWorkspacePrincipalType(value: unknown): value is WorkspacePrincipalType {
   return typeof value === 'string'
     && WORKSPACE_PRINCIPAL_TYPES.includes(value as WorkspacePrincipalType)

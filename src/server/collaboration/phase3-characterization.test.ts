@@ -11,7 +11,7 @@ test('Phase 3 participant-scoped DMs remain enabled after Channels rolls forward
   assert.equal(flags.get('workspaces'), true)
   assert.equal(flags.get('collaborativeChats'), true)
   assert.equal(flags.get('channels'), true)
-  assert.equal(flags.get('agents'), false)
+  assert.equal(flags.get('agents'), true)
 })
 
 test('Phase 3 route policies protect every DM resource boundary', () => {

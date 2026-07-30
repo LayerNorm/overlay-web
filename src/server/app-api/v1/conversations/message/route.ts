@@ -8,6 +8,7 @@ import {
 } from '@/server/chat/chat-message-persistence'
 import { normalizeGeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { invokeWorkspaceAgentsForHumanMessage } from '@/server/agents/workspace-agent-invocation'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -80,6 +81,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         messageId,
         body: normalizedContent,
         mentionedPrincipalIds: body.mentionedPrincipalIds,
+      })
+      await invokeWorkspaceAgentsForHumanMessage({
+        accessToken: context.auth.accessToken,
+        actorUserId: context.auth.userId,
+        workspaceId: context.workspace.workspace.id,
+        conversationId: body.conversationId,
+        messageId,
+        mentionedPrincipalIds: body.mentionedPrincipalIds,
+        threadRootMessageId: body.threadRootMessageId?.trim(),
       })
     }
 

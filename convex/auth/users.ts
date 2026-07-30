@@ -557,6 +557,11 @@ export const deleteUserAccountByServer = mutation({
           .collect(),
       )
       await deleteIndexed(() =>
+        ctx.db.query('workspaceAgentDefinitions')
+          .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
+          .collect(),
+      )
+      await deleteIndexed(() =>
         ctx.db.query('workspacePrincipals')
           .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
           .collect(),

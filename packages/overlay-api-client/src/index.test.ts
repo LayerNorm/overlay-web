@@ -63,6 +63,27 @@ test('file methods preserve route paths, methods, queries, and JSON bodies', asy
   assert.equal(calls[4]!.init?.method, undefined)
 })
 
+test('agent methods preserve workspace selection and lifecycle payloads', async () => {
+  const { calls, client } = createRecordedClient()
+  await client.agents.list('workspace_1')
+  await client.agents.create('workspace_1', {
+    name: 'Scout', instructions: 'Find primary evidence.', modelId: 'openrouter/free',
+    teamIds: ['team_1'],
+  })
+  await client.agents.update('workspace_1', 'agent/1', { name: 'Scout Prime' })
+  await client.agents.archive('workspace_1', 'agent/1')
+
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/agents')
+  assert.equal(new Headers(calls[0]!.init?.headers).get('x-overlay-workspace-id'), 'workspace_1')
+  assert.equal(calls[1]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[1]!), {
+    name: 'Scout', instructions: 'Find primary evidence.', modelId: 'openrouter/free', teamIds: ['team_1'],
+  })
+  assert.equal(String(calls[2]!.input), 'https://example.test/api/v1/agents/agent%2F1')
+  assert.equal(calls[2]!.init?.method, 'PATCH')
+  assert.equal(calls[3]!.init?.method, 'DELETE')
+})
+
 test('authorization administration methods preserve resource routes and payloads', async () => {
   const { calls, client } = createRecordedClient()
 

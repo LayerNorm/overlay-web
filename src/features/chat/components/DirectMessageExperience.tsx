@@ -170,6 +170,7 @@ export function DirectMessageExperience({
   const [savedMessages, setSavedMessages] = useState<ConversationSavedMessage[]>([])
   const [threadRootId, setThreadRootId] = useState<string | null>(showcase && conversationType === 'channel' ? 'showcase-dm-message-1' : null)
   const [threadInput, setThreadInput] = useState('')
+  const [agentResponding, setAgentResponding] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const lastTypingSentAt = useRef(0)
   const lastNotificationReadAt = useRef(0)
@@ -335,6 +336,19 @@ export function DirectMessageExperience({
       const mentionedPrincipalIds = participants
         .filter((participant) => text.toLowerCase().includes(`@${participant.displayName.toLowerCase()}`))
         .map((participant) => participant.principalId)
+      const agentParticipants = participants.filter((participant) => participant.principalType === 'agent')
+      const humanParticipants = participants.filter((participant) => participant.principalType === 'human')
+      const threadAgentId = threadRootMessageId
+        ? messages.find((message) => message.id === threadRootMessageId && message.authorKind === 'agent')?.authorPrincipalId
+        : undefined
+      const invokedAgents = agentParticipants.filter((participant) => (
+        (conversationType === 'dm' && agentParticipants.length === 1 && humanParticipants.length === 1)
+        || mentionedPrincipalIds.includes(participant.principalId)
+        || threadAgentId === participant.principalId
+      ))
+      if (invokedAgents.length) {
+        setAgentResponding(invokedAgents.length === 1 ? invokedAgents[0]!.displayName : 'Agents')
+      }
       await overlayAppClient.conversations.addMessage({
         conversationId,
         turnId,
@@ -351,6 +365,8 @@ export function DirectMessageExperience({
       setMessages((current) => current.map((message) => (
         message.clientNonce === clientNonce ? { ...message, delivery: 'failed' } : message
       )))
+    } finally {
+      setAgentResponding(null)
     }
   }
 
@@ -643,6 +659,19 @@ export function DirectMessageExperience({
                         </div>
                       )
                     })}
+                    {agentResponding ? (
+                      <div className="flex gap-3" aria-label={`${agentResponding} is responding`}>
+                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[11px] font-medium text-[var(--muted)]">
+                          {agentResponding.slice(0, 1).toUpperCase()}
+                        </span>
+                        <div>
+                          <span className="text-xs font-medium">{agentResponding}</span>
+                          <span className="mt-2 flex items-center gap-1">
+                            {[0, 1, 2].map((dot) => <span key={dot} className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--muted-light)]" style={{ animationDelay: `${dot * 120}ms` }} />)}
+                          </span>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>

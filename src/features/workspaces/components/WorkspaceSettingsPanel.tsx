@@ -382,7 +382,7 @@ function WorkspaceItemActions({
 
 function unavailableActionTitle(tab: WorkspaceSettingsTab): string {
   if (tab === 'roles') return 'Custom roles are deferred; built-in roles are enforced now.'
-  if (tab === 'chats-agents') return 'Named agents arrive in the Agents phase.'
+  if (tab === 'chats-agents') return 'Named agents are created and configured from Agents in the app sidebar.'
   return 'Only workspace owners and administrators can perform this action.'
 }
 
