@@ -1,0 +1,25 @@
+---
+title: "Chat operation permissions"
+description: "Ask for approval vs Full access on desktop chat."
+---
+
+Desktop chat host tools use a main-process permission mode:
+
+## Ask for approval (default)
+
+Every eligible direct host operation requires a fresh native approval bound to
+the exact action. Cancel is always available.
+
+## Full access
+
+After an explicit native warning from Settings, eligible desktop chat tools may
+run without per-action prompts. This is **unsandboxed** access to the user’s Mac.
+
+Full access:
+
+- Does **not** bypass server auth, billing, model policy, or usage accounting.
+- Applies only to the desktop chat surface (not browser/voice/notebook agents).
+- Should remain visibly marked as unsandboxed in product UI.
+
+See the repository threat model and Phase 3 exception notes in the desktop repo
+for residual risk and review expiry.

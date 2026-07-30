@@ -19,6 +19,11 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
     const result = await getOverlayServerContext().knowledgeSearchService.hybridSearch({
       accessToken: context.auth.accessToken,
+      billing: {
+        idempotencyKey: context.requestIdempotencyKey!,
+        operationId: 'knowledge.hybrid-search',
+        requestFingerprint: context.requestFingerprint,
+      },
       kLex: body.kLex,
       kVec: body.kVec,
       m: body.m,

@@ -5,6 +5,7 @@ import type { Id } from '../../../convex/_generated/dataModel'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
+import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import { ActEntitlementService } from '@/server/conversations/ActEntitlementService'
 import { resolveMentionFirstInvocations } from './mention-policy'
 
@@ -68,9 +69,18 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       const reservation = await server.chatUsagePolicy.reserveForAttempt({
         entitlements: runtimeEntitlements,
         estimatedInputTokens,
+        // The invocation nonce is already the idempotent trigger key for this
+        // (message, agent) pair, so a duplicate mention or a reconnect reserves
+        // budget once rather than charging twice.
+        idempotencyKey: invocationNonce,
         maxOutputTokens: 2_000,
         modelId: agent.modelId,
+        operationId: 'workspace.agent.invoke',
         paid,
+        requestFingerprint: hashOperationalIdentifier(
+          'workspace-agent-invocation',
+          invocationNonce,
+        ),
         userId: args.actorUserId,
       })
       if (!reservation.ok) {

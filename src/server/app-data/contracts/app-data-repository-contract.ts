@@ -813,7 +813,9 @@ export async function runAppDataRepositoryContractSuite(
         estimatedInputTokens: 100,
         maxOutputTokens: 100,
         modelId: 'openrouter/free',
+        operationId: 'contract.free-model',
         paid: false,
+        requestFingerprint: `${backend.name}:free-model`,
         userId,
       })
       assert.deepEqual(reservation, { ok: true, reservationId: null })

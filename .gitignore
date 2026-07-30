@@ -69,13 +69,19 @@ src/remotion/*
 renders/*
 .env.local
 
+# agents
 .cursor/*
 .claude/*
 .windsurf/*
 .devin/*
 .deepsec/*
+.agents/*
+.agent/skills/*
+.agent/memory/*
+agents/*
+agent/skills/*
+agent/memory/*
 
-# surface folders
 
 # codealmanac
 .almanac/index.db

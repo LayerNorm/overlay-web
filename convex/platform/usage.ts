@@ -33,6 +33,7 @@ export type UsageEvent = {
   outputTokens?: number
   cachedTokens?: number
   cost: number
+  durationSeconds?: number
   timestamp: number
 }
 
@@ -232,7 +233,7 @@ export async function applyUsageEvents(
       else if (event.type === 'write') writeDelta++
       else if (event.type === 'agent') agentDelta++
     } else if (event.type === 'transcription') {
-      transcriptionSecondsDelta += Math.max(0, Math.round(event.cost))
+      transcriptionSecondsDelta += Math.max(0, Math.round(event.durationSeconds ?? 0))
     }
   }
 
@@ -432,7 +433,7 @@ async function enforceFreeTierUsageLimits(
   let batchTranscriptionSeconds = 0
   for (const event of events) {
     if (event.type === 'transcription') {
-      batchTranscriptionSeconds += Math.max(0, Math.round(event.cost))
+      batchTranscriptionSeconds += Math.max(0, Math.round(event.durationSeconds ?? 0))
     } else if (countsTowardFreeTierMessageLimit(event)) {
       if (event.type === 'ask') batchAsk++
       else if (event.type === 'write') batchWrite++
@@ -454,13 +455,13 @@ async function enforceFreeTierUsageLimits(
   }
 }
 
-// Record a batch of usage events — requires valid access token.
+// Record a batch of usage events — server-only. Clients may read entitlements
+// for display but can never mutate authoritative usage or cost.
 // Accumulates totals from all events and does a single patch to both
 // subscriptions.creditsUsed (enforcement) and tokenUsage (audit log).
 export const recordBatch = mutation({
   args: {
-    accessToken: v.optional(v.string()),
-    serverSecret: v.optional(v.string()),
+    serverSecret: v.string(),
     userId: v.string(),
     operationId: v.optional(v.string()),
     forceFreeTierLimits: v.optional(v.boolean()),
@@ -480,12 +481,13 @@ export const recordBatch = mutation({
         outputTokens: v.optional(v.number()),
         cachedTokens: v.optional(v.number()),
         cost: v.number(),
+        durationSeconds: v.optional(v.number()),
         timestamp: v.number()
       })
     )
   },
-  handler: async (ctx, { accessToken, serverSecret, userId, operationId: rawOperationId, forceFreeTierLimits, events }) => {
-    await authorizeUserAccess({ userId, accessToken, serverSecret })
+  handler: async (ctx, { serverSecret, userId, operationId: rawOperationId, forceFreeTierLimits, events }) => {
+    requireServerSecret(serverSecret)
     const operationId = rawOperationId?.trim()
     if (operationId) {
       const existing = await ctx.db
@@ -634,10 +636,22 @@ export const reserveBudgetByServer = mutation({
       v.literal('sandbox'),
     ),
     modelId: v.optional(v.string()),
+    operationId: v.string(),
+    requestFingerprint: v.string(),
     reservedCents: v.number(),
     expiresAt: v.optional(v.number()),
   },
-  handler: async (ctx, { serverSecret, userId, reservationId, kind, modelId, reservedCents, expiresAt }) => {
+  handler: async (ctx, {
+    serverSecret,
+    userId,
+    reservationId,
+    kind,
+    modelId,
+    operationId,
+    requestFingerprint,
+    reservedCents,
+    expiresAt,
+  }) => {
     requireServerSecret(serverSecret)
     const normalizedReservationId = reservationId.trim()
     if (!normalizedReservationId) throw new Error('invalid_reservation_id')
@@ -648,7 +662,13 @@ export const reserveBudgetByServer = mutation({
       .first()
     if (existing) {
       if (existing.userId !== userId) throw new Error('reservation_user_mismatch')
-      if (existing.reservedCents !== roundCreditAmount(Math.max(0, reservedCents))) {
+      if (
+        existing.reservedCents !== roundCreditAmount(Math.max(0, reservedCents)) ||
+        existing.kind !== kind ||
+        existing.modelId !== modelId ||
+        existing.operationId !== operationId ||
+        existing.requestFingerprint !== requestFingerprint
+      ) {
         throw new Error('reservation_parameter_mismatch')
       }
       return {
@@ -679,6 +699,8 @@ export const reserveBudgetByServer = mutation({
       status: 'reserved',
       kind,
       modelId,
+      operationId,
+      requestFingerprint,
       reservedCents: safeReservedCents,
       providerWorkStarted: false,
       providerWorkCompleted: false,
@@ -705,44 +727,62 @@ export const reconcileExpiredBudgetReservationsByServer = mutation({
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const now = args.now ?? Date.now()
-    const limit = Math.min(Math.max(args.limit ?? 100, 1), 1000)
-    const rows = await ctx.db
-      .query('budgetReservations')
-      .withIndex('by_status_createdAt', (q) => q.eq('status', 'reserved'))
-      .take(limit)
-    let reconcileRequired = 0
-    let released = 0
-    for (const reservation of rows) {
-      if ((reservation.expiresAt ?? reservation.createdAt + 30 * 60_000) > now) continue
-      if (reservation.providerWorkStarted) {
-        await ctx.db.patch(reservation._id, {
-          status: 'reconcile_required',
-          errorMessage: 'reservation_expired_after_provider_work',
-          updatedAt: now,
-        })
-        reconcileRequired += 1
-        continue
-      }
-      const subscription = await ctx.db
-        .query('subscriptions')
-        .withIndex('by_userId', (q) => q.eq('userId', reservation.userId))
-        .first()
-      if (subscription && reservation.reservedCents > 0) {
-        await ctx.db.patch(subscription._id, {
-          creditsUsed: Math.max(0, roundCreditAmount((subscription.creditsUsed ?? 0) - reservation.reservedCents)),
-        })
-      }
-      await ctx.db.patch(reservation._id, {
-        status: 'released',
-        errorMessage: 'reservation_expired_before_provider_work',
-        updatedAt: now,
-      })
-      released += 1
-    }
-    return { reconcileRequired, released }
+    return await reconcileExpiredBudgetReservations(ctx, args)
   },
 })
+
+export const reconcileExpiredBudgetReservationsInternal = internalMutation({
+  args: {
+    limit: v.optional(v.number()),
+    now: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => await reconcileExpiredBudgetReservations(ctx, args),
+})
+
+async function reconcileExpiredBudgetReservations(
+  ctx: MutationCtx,
+  args: { limit?: number; now?: number },
+): Promise<{ reconcileRequired: number; released: number }> {
+  const now = args.now ?? Date.now()
+  const limit = Math.min(Math.max(args.limit ?? 100, 1), 1000)
+  const rows = await ctx.db
+    .query('budgetReservations')
+    .withIndex('by_status_createdAt', (q) => q.eq('status', 'reserved'))
+    .take(limit)
+  let reconcileRequired = 0
+  let released = 0
+  for (const reservation of rows) {
+    if ((reservation.expiresAt ?? reservation.createdAt + 30 * 60_000) > now) continue
+    if (reservation.providerWorkStarted) {
+      await ctx.db.patch(reservation._id, {
+        status: 'reconcile_required',
+        errorMessage: 'reservation_expired_after_provider_work',
+        updatedAt: now,
+      })
+      reconcileRequired += 1
+      continue
+    }
+    const subscription = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', reservation.userId))
+      .first()
+    if (subscription && reservation.reservedCents > 0) {
+      await ctx.db.patch(subscription._id, {
+        creditsUsed: Math.max(
+          0,
+          roundCreditAmount((subscription.creditsUsed ?? 0) - reservation.reservedCents),
+        ),
+      })
+    }
+    await ctx.db.patch(reservation._id, {
+      status: 'released',
+      errorMessage: 'reservation_expired_before_provider_work',
+      updatedAt: now,
+    })
+    released += 1
+  }
+  return { reconcileRequired, released }
+}
 
 export const finalizeBudgetReservationByServer = mutation({
   args: {
@@ -766,6 +806,7 @@ export const finalizeBudgetReservationByServer = mutation({
         outputTokens: v.optional(v.number()),
         cachedTokens: v.optional(v.number()),
         cost: v.number(),
+        durationSeconds: v.optional(v.number()),
         timestamp: v.number(),
       }),
     )),
@@ -786,6 +827,20 @@ export const finalizeBudgetReservationByServer = mutation({
     }
 
     const safeActualCents = roundCreditAmount(Math.max(0, actualCents))
+    if (safeActualCents > reservation.reservedCents + 0.000001) {
+      await ctx.db.patch(reservation._id, {
+        status: 'reconcile_required',
+        providerWorkStarted: true,
+        providerWorkCompleted: true,
+        errorMessage: 'actual_cost_exceeds_reservation',
+        updatedAt: Date.now(),
+      })
+      return {
+        success: false,
+        status: 'reconcile_required' as const,
+        error: 'actual_cost_exceeds_reservation',
+      }
+    }
     const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
@@ -813,6 +868,33 @@ export const finalizeBudgetReservationByServer = mutation({
     })
 
     return { success: true, status: 'finalized', finalizedCents: safeActualCents }
+  },
+})
+
+export const markBudgetReservationStartedByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    reservationId: v.string(),
+  },
+  handler: async (ctx, { serverSecret, userId, reservationId }) => {
+    requireServerSecret(serverSecret)
+    const reservation = await ctx.db
+      .query('budgetReservations')
+      .withIndex('by_reservationId', (q) => q.eq('reservationId', reservationId.trim()))
+      .first()
+    if (!reservation) return { success: true, status: 'missing' as const }
+    if (reservation.userId !== userId) throw new Error('reservation_user_mismatch')
+    if (reservation.status !== 'reserved') {
+      return { success: true, status: reservation.status }
+    }
+    if (!reservation.providerWorkStarted) {
+      await ctx.db.patch(reservation._id, {
+        providerWorkStarted: true,
+        updatedAt: Date.now(),
+      })
+    }
+    return { success: true, status: 'reserved' as const }
   },
 })
 
@@ -919,41 +1001,6 @@ export const tryReserveBackgroundWorkInternal = internalMutation({
     })
     return { allowed: true, reason: 'ok' }
   },
-})
-
-// Record a single usage event — requires valid access token
-export const recordUsage = mutation({
-  args: {
-    accessToken: v.string(),
-    userId: v.string(),
-    type: v.union(
-      v.literal('ask'),
-      v.literal('write'),
-      v.literal('agent'),
-      v.literal('embedding'),
-      v.literal('transcription'),
-      v.literal('generation'),
-      v.literal('sandbox'),
-    ),
-    modelId: v.optional(v.string()),
-    inputTokens: v.optional(v.number()),
-    outputTokens: v.optional(v.number()),
-    cachedTokens: v.optional(v.number()),
-    cost: v.number()
-  },
-  handler: async (ctx, args) => {
-    await requireAccessToken(args.accessToken, args.userId)
-    await applyUsageEvents(ctx, args.userId, [{
-      type: args.type,
-      modelId: args.modelId,
-      inputTokens: args.inputTokens,
-      outputTokens: args.outputTokens,
-      cachedTokens: args.cachedTokens,
-      cost: args.cost,
-      timestamp: Date.now(),
-    }])
-    return { success: true }
-  }
 })
 
 // Reset token usage for new billing period — internal only (audit log housekeeping)

@@ -30,6 +30,7 @@ export const UpdateSettingsRequest = z.object({
 export const UpdateBillingSettingsRequest = z.object({
   ...AuthFields,
   autoTopUpEnabled: z.boolean(),
+  confirmation: z.literal('UPDATE_BILLING_SETTINGS'),
   grantOffSessionConsent: z.boolean().optional(),
   topUpAmountCents: z.number().optional(),
   autoTopUpAmountCents: z.number().optional(),

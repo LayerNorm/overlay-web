@@ -37,7 +37,7 @@ export function resolveConvexUrl(
     let parsed: URL
     try {
       parsed = new URL(normalized)
-    } catch {
+    } catch (_error) {
       return {
         source,
         invalid: `${source} is not a valid absolute URL (received ${JSON.stringify(raw)})`,
@@ -83,7 +83,7 @@ export function convexNetworkFailure(args: {
 export function convexHostLabel(endpoint: string): string {
   try {
     return new URL(endpoint).host
-  } catch {
+  } catch (_error) {
     return 'the configured Convex deployment'
   }
 }

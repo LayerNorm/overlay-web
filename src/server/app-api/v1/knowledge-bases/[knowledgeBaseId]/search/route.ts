@@ -16,6 +16,11 @@ export async function POST(_request: NextRequest, context: AppApiRouteContext) {
     const knowledgeBaseIds = [knowledgeBaseId, ...(body.additionalKnowledgeBaseIds ?? [])]
     return NextResponse.json(await getOverlayServerContext().knowledgeBaseRetrievalService.search({
       accessToken: context.auth.accessToken,
+      billing: {
+        idempotencyKey: context.requestIdempotencyKey!,
+        operationId: 'knowledge-base.search',
+        requestFingerprint: context.requestFingerprint,
+      },
       knowledgeBaseIds,
       limit: body.limit,
       query: body.query,

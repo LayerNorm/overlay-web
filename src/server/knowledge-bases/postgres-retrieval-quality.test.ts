@@ -147,6 +147,11 @@ test('Postgres retrieval quality, isolation, and index plan', {
       const misranked: string[] = []
       for (const spec of QUERIES) {
         const result = await retrieval.search({
+          billing: {
+            idempotencyKey: 'fixture-idempotency-key',
+            operationId: 'knowledge-base.search',
+            requestFingerprint: 'fixture-request-fingerprint',
+          },
           knowledgeBaseIds: [handbook.id, research.id],
           limit: 5,
           query: spec.query,
@@ -189,6 +194,11 @@ test('Postgres retrieval quality, isolation, and index plan', {
 
     await t.test('citations highlight the matched terms of each passage', async () => {
       const result = await retrieval.search({
+        billing: {
+          idempotencyKey: 'fixture-idempotency-key',
+          operationId: 'knowledge-base.search',
+          requestFingerprint: 'fixture-request-fingerprint',
+        },
         knowledgeBaseIds: [handbook.id],
         limit: 5,
         query: 'refund',
@@ -210,6 +220,11 @@ test('Postgres retrieval quality, isolation, and index plan', {
       const researchIds = new Set(expectedIds(['market', 'competitors']))
       for (const query of ['market growth', 'competitor pricing per seat', 'dollars']) {
         const result = await retrieval.search({
+          billing: {
+            idempotencyKey: 'fixture-idempotency-key',
+            operationId: 'knowledge-base.search',
+            requestFingerprint: 'fixture-request-fingerprint',
+          },
           knowledgeBaseIds: [handbook.id],
           limit: 10,
           query,
@@ -236,6 +251,11 @@ test('Postgres retrieval quality, isolation, and index plan', {
         userId,
       })
       const result = await retrieval.search({
+        billing: {
+          idempotencyKey: 'fixture-idempotency-key',
+          operationId: 'knowledge-base.search',
+          requestFingerprint: 'fixture-request-fingerprint',
+        },
         knowledgeBaseIds: [handbook.id],
         limit: 10,
         query: 'receipts required expense',
@@ -254,6 +274,11 @@ test('Postgres retrieval quality, isolation, and index plan', {
       const sourceId = sourceIdByKey.get('competitors')!
       await ingestion.delete({ sourceId, userId })
       const result = await retrieval.search({
+        billing: {
+          idempotencyKey: 'fixture-idempotency-key',
+          operationId: 'knowledge-base.search',
+          requestFingerprint: 'fixture-request-fingerprint',
+        },
         knowledgeBaseIds: [research.id],
         limit: 10,
         query: 'competitor pricing per seat',
@@ -370,6 +395,11 @@ test('Postgres retrieval quality, isolation, and index plan', {
 
       const startedAt = Date.now()
       await retrieval.search({
+        billing: {
+          idempotencyKey: 'fixture-idempotency-key',
+          operationId: 'knowledge-base.search',
+          requestFingerprint: 'fixture-request-fingerprint',
+        },
         knowledgeBaseIds: [handbook.id, research.id],
         limit: 10,
         query: 'refund policy and leave approval',
@@ -434,6 +464,11 @@ test('Postgres retrieval quality, isolation, and index plan', {
 
       const startedAt = Date.now()
       await retrieval.search({
+        billing: {
+          idempotencyKey: 'fixture-idempotency-key',
+          operationId: 'knowledge-base.search',
+          requestFingerprint: 'fixture-request-fingerprint',
+        },
         knowledgeBaseIds: [research.id],
         limit: 10,
         query: 'market growth enterprise buyers',

@@ -11,6 +11,7 @@ import {
   finalizeProviderBudgetReservation,
   isPaidPlan,
   markProviderBudgetReconcile,
+  markProviderBudgetStarted,
   releaseProviderBudgetReservation,
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
@@ -63,15 +64,22 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const reservation = await reserveProviderBudget({
       userId: auth.userId,
       entitlements,
+      idempotencyKey: context.requestIdempotencyKey,
       providerCostUsd: estimatedCostUsd,
       kind: 'generation',
       modelId: TAB_GROUP_MODEL,
+      operationId: 'chat.generate-tab-group-label',
+      requestFingerprint: context.requestFingerprint,
     })
     if (!reservation.ok) return NextResponse.json({ title: fallback })
 
     let label = ''
     try {
       const model = await getLanguageModel(TAB_GROUP_MODEL, auth.accessToken)
+      await markProviderBudgetStarted({
+        userId: auth.userId,
+        reservationId: reservation.reservationId,
+      })
       const result = await generateObject({
         model,
         schema: tabGroupLabelSchema,

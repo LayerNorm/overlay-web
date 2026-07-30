@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { getLanguageModel } from '@/server/ai/model-runtime'
+import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import {
   billableBudgetCentsFromProviderUsd,
   buildInsufficientCreditsPayload,
@@ -14,6 +15,7 @@ import {
   getBudgetTotals,
   isPaidPlan,
   markProviderBudgetReconcile,
+  markProviderBudgetStarted,
   releaseProviderBudgetReservation,
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
@@ -245,6 +247,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       { status: 401, headers: { 'Content-Type': 'application/json' } },
     )
   }
+  const authorizedModelIds = await resolveAuthorizedModelIds({ entitlements: refreshedEntitlements })
+  if (!authorizedModelIds.chat.has(effectiveModelId)) {
+    return new Response(
+      JSON.stringify({
+        error: 'model_not_allowed',
+        message: `Model ${effectiveModelId} is not allowed by the server model policy.`,
+      }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
 
   if (isPaidPlan(refreshedEntitlements) && isPremiumModel(effectiveModelId)) {
     const refreshedBudget = getBudgetTotals(refreshedEntitlements)
@@ -282,9 +294,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const reservation = await reserveProviderBudget({
       userId,
       entitlements: refreshedEntitlements,
+      idempotencyKey: context.requestIdempotencyKey,
       providerCostUsd: estimatedProviderCostUsd,
       kind: 'agent',
       modelId: effectiveModelId,
+      operationId: 'agent.notebook',
+      requestFingerprint: context.requestFingerprint,
     })
     if (!reservation.ok) {
       return new Response(
@@ -346,6 +361,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         const prompt =
           `Note content:\n\n${frozenNoteLines || '(empty note)'}\n\n---\n\nUser request: ${message}`
 
+        await markProviderBudgetStarted({
+          userId,
+          reservationId: budgetReservationId,
+        })
         const result = await agent.generate({ prompt })
 
         emitText(result.text)

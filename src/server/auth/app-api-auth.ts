@@ -13,7 +13,18 @@ export type AuthenticatedAppUser = {
   accessToken: string
   authType: 'session' | 'api-key' | 'service' | 'access-token'
   apiKeyId?: string
+  organizationId?: string
   scopes?: ApiKeyScope[]
+}
+
+export function resolveVerifiedBearerUserId(
+  claims: Record<string, unknown> | null,
+  claimedUserId: string,
+): string | null {
+  const verifiedUserId = typeof claims?.sub === 'string' ? claims.sub.trim() : ''
+  if (!verifiedUserId) return null
+  if (claimedUserId && claimedUserId !== verifiedUserId) return null
+  return verifiedUserId
 }
 
 type ResolveAuthenticatedAppUserOptions = {
@@ -39,10 +50,13 @@ export async function resolveAuthenticatedAppUser(
   const ctx = getOverlayServerContext()
   const session = await ctx.auth.getSession(request)
   if (session) {
+    const claims = await ctx.auth.verifyAccessToken(session.accessToken).catch((_error) => null)
+    const organizationId = organizationIdFromClaims(claims)
     return cacheAuthenticatedAppUser(request, {
       userId: session.user.id,
       accessToken: session.accessToken,
       authType: 'session',
+      ...(organizationId ? { organizationId } : {}),
     })
   }
 
@@ -93,16 +107,34 @@ export async function resolveAuthenticatedAppUser(
   const token =
     (typeof body.accessToken === 'string' && body.accessToken.trim()) || bearer
   const queryUserId = request.nextUrl.searchParams.get('userId')?.trim() || ''
-  const uid =
+  const claimedUserId =
     typeof body.userId === 'string' && body.userId.trim()
       ? body.userId.trim()
       : queryUserId
-  if (!token || !uid) return null
+  if (!token) return null
 
-  const claims = await ctx.auth.verifyAccessToken(token)
-  if (!claims || claims.sub !== uid) return null
+  const claims = await ctx.auth.verifyAccessToken(token).catch((_error) => null)
+  const verifiedUserId = resolveVerifiedBearerUserId(claims, claimedUserId)
+  if (!claims || !verifiedUserId) return null
 
-  return cacheAuthenticatedAppUser(request, { userId: uid, accessToken: token, authType: 'access-token' })
+  const organizationId = organizationIdFromClaims(claims)
+  return cacheAuthenticatedAppUser(request, {
+    userId: verifiedUserId,
+    accessToken: token,
+    authType: 'access-token',
+    ...(organizationId ? { organizationId } : {}),
+  })
+}
+
+function organizationIdFromClaims(
+  claims: Record<string, unknown> | null,
+): string | null {
+  if (!claims) return null
+  for (const key of ['organization_id', 'org_id', 'organizationId']) {
+    const value = claims[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return null
 }
 
 function shouldAttemptApiKeyAuth(

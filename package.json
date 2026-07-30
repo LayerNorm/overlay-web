@@ -189,8 +189,9 @@
     "check:knowledge-surface-contract": "node scripts/check-knowledge-surface-contract.mjs && TSX_TSCONFIG_PATH=tsconfig.json node --import tsx --test src/features/knowledge/adapters/webKnowledgeSurfaceAdapters.test.ts && TSX_TSCONFIG_PATH=packages/overlay-modules-react/tsconfig.json node --import tsx --test packages/overlay-modules-react/src/knowledge/surface.test.tsx packages/overlay-modules-react/src/knowledge/file-viewer.test.tsx packages/overlay-modules-react/src/projects/native-file-tree.test.tsx",
     "chat-parity:manifest": "node scripts/chat-parity-baseline-manifest.mjs",
     "file-parity:manifest": "node scripts/file-parity-baseline-manifest.mjs",
-    "check:public-showcase": "node --import tsx --test src/features/showcase/showcase-data.test.ts && node scripts/check-public-showcase-boundaries.mjs",
-    "typecheck": "npm run check:chat-transcript-boundaries && npm run check:file-parity-boundaries && npm run check:knowledge-surface-contract && npm run check:public-showcase && tsc --noEmit",
+    "check:public-showcase": "node --import tsx --test src/features/showcase/showcase-data.test.ts src/shared/auth/root-entry.test.ts src/shared/marketing/marketing-seo.test.ts && node scripts/check-public-showcase-boundaries.mjs",
+    "check:desktop-provider-key-boundary": "NODE_OPTIONS=--require=./scripts/register-server-only.cjs tsx --test src/server/ai/gateway/hosted-provider-kill-switch.test.ts && node scripts/check-desktop-provider-key-boundary.mjs",
+    "typecheck": "npm run check:desktop-provider-key-boundary && npm run check:chat-transcript-boundaries && npm run check:file-parity-boundaries && npm run check:knowledge-surface-contract && npm run check:public-showcase && tsc --noEmit",
     "ui:typecheck": "npm --prefix packages/overlay-ui run typecheck",
     "ui:test": "npm --prefix packages/overlay-ui run test",
     "ui:storybook": "npm --prefix packages/overlay-ui run storybook",
@@ -226,6 +227,8 @@
     "docs:check": "npm run docs:generate:api && npm run docs:health && cd docs && node ../scripts/run-mint.mjs validate && node ../scripts/run-mint.mjs broken-links --check-anchors",
     "docs:check:self-hosting": "npm run docs:health",
     "security:audit": "npm audit --omit=dev --audit-level=high",
+    "check:owner-funded-boundary": "node scripts/check-owner-funded-boundary.mjs",
+    "test:desktop-security:backend": "npm run check:desktop-provider-key-boundary && npm run check:owner-funded-boundary && npm run test:auth:native-validation && NODE_OPTIONS=--conditions=react-server tsx --test src/server/auth/session-transfer-crypto.test.ts src/server/billing/billing-runtime.test.ts src/server/billing/owner-funded-operations.test.ts src/server/billing/transcription-billing.test.ts src/server/security/rate-limit-specs.test.ts src/server/security/ssrf.test.ts src/server/shared/providers/convex-rate-limiter.test.ts src/server/outputs/GenerationUsagePolicy.test.ts src/server/releases/desktop-download-policy.test.ts",
     "video:studio": "npx remotion studio src/remotion/index.ts",
     "video:render:launch": "mkdir -p renders && npx remotion render src/remotion/index.ts overlay-launch-video renders/overlay-launch-video.mp4",
     "test:auth:env": "node --experimental-strip-types scripts/auth-dev-env-check.ts",
@@ -277,8 +280,8 @@
     "@composio/core": "^0.6.7",
     "@composio/vercel": "^0.6.7",
     "@convex-dev/stripe": "^0.1.3",
-    "@daytonaio/sdk": "^0.175.0",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@daytona/sdk": "0.200.1",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@openrouter/ai-sdk-provider": "^2.3.3",
     "@opentelemetry/context-async-hooks": "^2.2.0",
     "@overlay/agent-runtime": "file:./packages/overlay-agent-runtime",
@@ -381,15 +384,27 @@
     "eslint-config-next": "16.1.1",
     "mintlify": "^4.2.626",
     "playwright": "^1.61.1",
-    "postcss": "8.5.12",
+    "postcss": "8.5.23",
     "remotion": "^4.0.441",
     "tailwindcss": "^3.4.19",
     "typescript": "^5",
     "zod-to-json-schema": "^3.25.2"
   },
   "overrides": {
+    "axios": "1.18.1",
     "follow-redirects": "1.16.0",
-    "postcss": "8.5.12",
-    "protobufjs": "8.6.6"
+    "postcss": "8.5.23",
+    "protobufjs": "8.6.6",
+    "sharp": "0.35.3",
+    "tar": "7.5.22",
+    "@daytona/sdk@0.200.1": {
+      "@opentelemetry/sdk-node": "0.221.0"
+    },
+    "@modelcontextprotocol/sdk@1.29.0": {
+      "@hono/node-server": "2.0.11"
+    },
+    "glob@13.0.6": {
+      "brace-expansion": "5.0.8"
+    }
   }
 }

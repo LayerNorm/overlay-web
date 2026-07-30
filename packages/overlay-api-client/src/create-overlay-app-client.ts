@@ -9,6 +9,7 @@ import { AutomationsClient } from './automations/client'
 import { BootstrapClient } from './bootstrap/client'
 import { ChatAuxClient } from './chat/chat-aux-client'
 import { ConversationsClient } from './chat/conversations-client'
+import { DiscoveryClient } from './discovery/client'
 import { FilesClient } from './files/client'
 import { IntegrationsClient } from './integrations/client'
 import { KnowledgeBasesClient } from './knowledge-bases/client'
@@ -37,6 +38,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     adminAuthorization: new AdminAuthorizationClient(http),
     adminGovernance: new AdminGovernanceClient(http),
     bootstrap: new BootstrapClient(http),
+    discovery: new DiscoveryClient(http),
     conversations: new ConversationsClient(http),
     files: new FilesClient(http),
     memory: new MemoryClient(http),

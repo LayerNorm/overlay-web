@@ -220,7 +220,15 @@ test('Postgres P5 scale and resilience gates', {
       const samples: number[] = []
       for (let index = 0; index < 20; index += 1) {
         const startedAt = performance.now()
-        const result = await search.hybridSearch({ query: 'resilience marker', userId })
+        const result = await search.hybridSearch({
+          billing: {
+            idempotencyKey: `${scope}-${index}`,
+            operationId: 'knowledge.resilience',
+            requestFingerprint: `${scope}-${index}`,
+          },
+          query: 'resilience marker',
+          userId,
+        })
         samples.push(performance.now() - startedAt)
         assert.equal(result.chunks[0]?.sourceId, sourceId)
       }

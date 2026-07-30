@@ -116,6 +116,7 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        'Idempotency-Key': `automation:${input.runId}:${input.turnId}`,
         [getServiceAuthHeaderName()]: serviceToken,
       },
       body: JSON.stringify({

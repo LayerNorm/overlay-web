@@ -193,6 +193,7 @@ test('Postgres app-data repository contracts', {
         assert.equal(indexedMemory?.embeddingModelVersion, 'contract-v1')
 
         const search = await new PostgresKnowledgeSearchRepository({ db, embeddings }).hybridSearch({
+          billing: testSearchBilling('owner'),
           projectId: undefined,
           query: 'private AWS account',
           userId,
@@ -200,11 +201,13 @@ test('Postgres app-data repository contracts', {
         assert.ok(search.chunks.some((chunk) => chunk.sourceId === memory._id))
         assert.ok(search.chunks.every((chunk) => chunk.sourceKind === 'memory'))
         const foreignSearch = await new PostgresKnowledgeSearchRepository({ db, embeddings }).hybridSearch({
+          billing: testSearchBilling('foreign'),
           query: 'private AWS account',
           userId: `not_${userId}`,
         })
         assert.deepEqual(foreignSearch.chunks, [])
         const scopedSearch = await new PostgresKnowledgeSearchRepository({ db, embeddings }).hybridSearch({
+          billing: testSearchBilling('scoped'),
           projectId,
           query: 'AWS knowledge pilot',
           userId,
@@ -223,7 +226,15 @@ test('Postgres app-data repository contracts', {
       } finally {
         await db.delete(users).where(eq(users.id, userId))
         await db.delete(durableJobs)
-      }
+}
+
+function testSearchBilling(label: string) {
+  return {
+    idempotencyKey: `test-${label}`,
+    operationId: `knowledge.postgres-contract.${label}`,
+    requestFingerprint: `fingerprint-${label}`,
+  }
+}
     })
     await runAppDataRepositoryContractSuite(t, {
       name: 'postgres',

@@ -216,6 +216,7 @@ export function useChatBillingControls({
     try {
       const response = await overlayAppClient.subscription.updateSettingsResponse({
         autoTopUpEnabled: autoTopUpEnabledDraft,
+        confirmation: 'UPDATE_BILLING_SETTINGS',
         topUpAmountCents: topUpAmountDraftCents,
         grantOffSessionConsent: autoTopUpEnabledDraft,
       })

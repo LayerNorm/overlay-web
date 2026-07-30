@@ -49,6 +49,9 @@ const resource = (
 
 export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule[] = [
   { path: '/api/v1/capabilities', methods: { GET: publicPolicy() } },
+  // Deployment discovery is intentionally anonymous: it advertises API versions
+  // and capabilities to clients that have not authenticated yet.
+  { path: '/api/v1/discovery', methods: { GET: publicPolicy() } },
   { path: '/api/v1/bootstrap', methods: { GET: authenticated() } },
   {
     path: '/api/v1/agents',

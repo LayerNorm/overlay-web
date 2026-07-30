@@ -93,6 +93,11 @@ export type ActTurnContext = {
 }
 
 type AutoRetrievalBuilder = (args: {
+  billing: {
+    idempotencyKey: string
+    operationId: string
+    requestFingerprint: string
+  }
   userMessage: string
   userId: string
   accessToken?: string
@@ -165,6 +170,8 @@ export class ActContextService {
     mentions?: IncomingMention[]
     /** Bases named explicitly on this turn; narrows retrieval to just these. */
     mentionedKnowledgeBaseIds?: string[]
+    requestIdempotencyKey: string
+    requestFingerprint: string
     serverSecret: string
     userId: string
   }): Promise<ActTurnContext> {
@@ -296,6 +303,11 @@ export class ActContextService {
           return await knowledge.buildAutoRetrievalBundle(params)
         })
         const bundle = await buildAutoRetrievalBundle({
+          billing: {
+            idempotencyKey: args.requestIdempotencyKey,
+            operationId: 'conversation.act.auto-retrieval',
+            requestFingerprint: args.requestFingerprint,
+          },
           userMessage: args.latestUserText ?? '',
           userId: args.userId,
           ...(args.accessToken ? { accessToken: args.accessToken } : {}),
@@ -385,6 +397,10 @@ export class ActContextService {
   async prepareExistingMessagesForModel(args: {
     accessToken?: string
     conversationId?: Id<'conversations'>
+    generateSummaryText?: (args: {
+      prompt: string
+      targetSummaryTokens: number
+    }) => Promise<string>
     historyBaseModelId?: string
     messages: UIMessage[]
     replyContextForModel?: string
@@ -419,6 +435,7 @@ export class ActContextService {
       targetModelId: args.targetModelId,
       accessToken: args.accessToken,
       previousSummary: previousContextSummary,
+      ...(args.generateSummaryText ? { generateSummaryText: args.generateSummaryText } : {}),
     })
     messagesForModel = compaction.messages
 

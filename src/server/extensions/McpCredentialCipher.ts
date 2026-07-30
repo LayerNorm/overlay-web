@@ -7,6 +7,14 @@ const PREFIX = 'mcpv1'
 const MIN_SECRET_LENGTH = 32
 const GCM_AUTH_TAG_LENGTH_BYTES = 16
 
+/** Raised when the deployment cannot store MCP credentials because no encryption key is configured. */
+export class McpCredentialConfigurationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'McpCredentialConfigurationError'
+  }
+}
+
 export class McpCredentialCipher {
   private readonly keys: Buffer[]
 
@@ -37,7 +45,7 @@ export class McpCredentialCipher {
     if (!hasCredentials(value)) return undefined
     const key = this.keys[0]
     if (!key) {
-      throw new Error(
+      throw new McpCredentialConfigurationError(
         'MCP_CREDENTIAL_ENCRYPTION_KEY is required before storing authenticated MCP servers',
       )
     }

@@ -1,0 +1,17 @@
+---
+title: "Release verification"
+description: "How to verify a signed Overlay Desktop release."
+---
+
+For each official release, verify:
+
+| Check | What to confirm |
+| --- | --- |
+| Signature | Developer ID Application signature on the app / DMG |
+| Notarization | Stapled ticket; Gatekeeper accepts on a clean Mac |
+| Checksum | SHA-256 matches the published checksums / manifest |
+| Provenance | GitHub attestations bind the artifact to the source SHA |
+| SBOM | Published SBOM matches the release set |
+| Updater | Website latest version equals updater metadata version |
+
+See Gate B and `guides/RELEASE_PROCESS.md` in the desktop repository.

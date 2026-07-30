@@ -108,8 +108,8 @@ async function loadComposioSdk(apiKey: string): Promise<ComposioSdkFacade> {
 }
 
 async function resolveApiKey(accessToken?: string): Promise<string | null> {
-  if (!accessToken) return process.env.COMPOSIO_API_KEY ?? null
-  return await getServerProviderKey('composio') ?? process.env.COMPOSIO_API_KEY ?? null
+  void accessToken
+  return await getServerProviderKey('composio')
 }
 
 function mapToolkit(record: ComposioToolkitRecord): Omit<IntegrationSummary, 'isConnected' | 'connectedAccountId'> {

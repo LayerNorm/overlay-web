@@ -18,20 +18,13 @@ const GATEWAY_MODEL_ID_ALIASES: Record<string, string> = {
 }
 
 export async function resolveGatewayApiKey(accessToken?: string): Promise<string | null> {
-  if (accessToken) {
-    const serverKey = await getServerProviderKey('ai_gateway')
-    if (serverKey) return serverKey
-  }
-
-  return process.env.AI_GATEWAY_API_KEY ?? null
+  void accessToken
+  return await getServerProviderKey('ai_gateway')
 }
 
 export async function resolveOpenRouterApiKey(accessToken?: string): Promise<string | null> {
-  if (accessToken) {
-    const serverKey = await getServerProviderKey('openrouter')
-    if (serverKey) return serverKey
-  }
-  return process.env.OPENROUTER_API_KEY ?? null
+  void accessToken
+  return await getServerProviderKey('openrouter')
 }
 
 export function getGatewayModelId(modelId: string): string {

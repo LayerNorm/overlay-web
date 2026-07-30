@@ -1,0 +1,22 @@
+---
+title: "Self-hosted Overlay Server"
+description: "Point Overlay Desktop at your own Overlay Server."
+---
+
+Set the server origin before launch:
+
+```bash
+APP_SERVER_URL=https://your-overlay-server.example.com
+```
+
+Rules:
+
+- Use **HTTPS** in production.
+- `http://localhost:3000` is acceptable for local development only.
+- The server must implement Overlay discovery and `/api/v1` contracts compatible
+  with this desktop version.
+- Never place owner-funded provider keys or signing secrets in the desktop app
+  environment.
+
+Self-hosting the **server** is separate from installing the desktop client.
+Docker/Compose applies to Overlay Server — not to the Electron GUI.

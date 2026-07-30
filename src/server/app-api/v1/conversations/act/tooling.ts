@@ -39,6 +39,7 @@ import {
   summarizeToolSetForLog,
 } from '@/shared/security/safe-log'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
+import type { Entitlements } from '@/shared/app/app-contracts'
 
 type ActMode = 'chat' | 'automate'
 type MediaToolIntent = 'image' | 'video' | null
@@ -120,6 +121,7 @@ export async function prepareActTooling(params: {
   activeKnowledgeBaseIds?: readonly string[]
   /** Configuration of the conversation's project, when it has one. */
   projectSettings?: ProjectSettings
+  entitlements: Entitlements
   effectiveModelId: string
   forwardCookie?: string | null
   isMultiModelFollowUpSlot: boolean
@@ -129,6 +131,7 @@ export async function prepareActTooling(params: {
   mode?: ActMode
   paid: boolean
   preloadTasks: ActToolPreloadTasks
+  requestFingerprint: string
   requestedToolIds?: readonly ChatToolRequestId[]
   serverSecret: string
   turnId: string
@@ -196,10 +199,18 @@ export async function prepareActTooling(params: {
       }),
     ),
     params.paid && capabilities.webSearch
-      ? getGatewayPerplexitySearchTool(params.accessToken, params.effectiveModelId)
+      ? getGatewayPerplexitySearchTool(params.accessToken, params.effectiveModelId, {
+          entitlements: params.entitlements,
+          requestFingerprint: params.requestFingerprint,
+          userId: params.userId,
+        })
       : Promise.resolve(null),
     params.paid && capabilities.webSearch
-      ? getGatewayParallelSearchTool(params.accessToken, params.effectiveModelId)
+      ? getGatewayParallelSearchTool(params.accessToken, params.effectiveModelId, {
+          entitlements: params.entitlements,
+          requestFingerprint: params.requestFingerprint,
+          userId: params.userId,
+        })
       : Promise.resolve(null),
   ])
 

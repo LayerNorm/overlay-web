@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { RateLimitSpec } from '@overlay/app-core'
+import { getOwnerFundedOperation } from '@/server/billing/owner-funded-operations'
 
 const TEN_MINUTES = 10 * 60_000
 const ONE_HOUR = 60 * 60_000
@@ -118,12 +119,15 @@ const DYNAMIC_ENDPOINT_RATE_LIMITS: DynamicEndpointRateLimit[] = [
 function keyForBucket(bucket: string, userId: string, ip: string): string {
   if (bucket.endsWith(':ip')) return ip
   if (bucket.endsWith(':user')) return userId
+  if (bucket.endsWith(':global')) return 'global'
   return userId
 }
 
 export function getEndpointRateLimitSpecs(args: {
+  deviceRiskKey?: string
   ip: string
   method: string
+  organizationId?: string
   pathname: string
   userId: string
 }): RateLimitSpec[] {
@@ -134,7 +138,29 @@ export function getEndpointRateLimitSpecs(args: {
     return entry.method === method && entry.pattern.test(pathname)
   })?.limits
 
-  return (templates ?? []).map((template: RateLimitSpec) => ({
+  const ownerFundedLimits: RateLimitSpec[] = getOwnerFundedOperation(method, pathname)
+    ? [
+        { bucket: 'owner-funded:global', key: 'global', limit: 1_000, windowMs: TEN_MINUTES },
+        { bucket: 'owner-funded:user', key: args.userId, limit: 120, windowMs: TEN_MINUTES },
+        ...(args.organizationId
+          ? [{
+              bucket: 'owner-funded:organization',
+              key: args.organizationId,
+              limit: 400,
+              windowMs: TEN_MINUTES,
+            }]
+          : []),
+        ...(args.deviceRiskKey
+          ? [{
+              bucket: 'owner-funded:device-risk',
+              key: args.deviceRiskKey,
+              limit: 90,
+              windowMs: TEN_MINUTES,
+            }]
+          : []),
+      ]
+    : []
+  return [...(templates ?? []), ...ownerFundedLimits].map((template: RateLimitSpec) => ({
     ...template,
     key: template.key ?? keyForBucket(template.bucket, args.userId, args.ip),
   }))

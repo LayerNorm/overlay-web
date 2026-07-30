@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { randomUUID } from 'node:crypto'
 import type { OverlayToolsOptions } from './types'
 import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/server/auth/service-auth'
 
@@ -46,6 +47,7 @@ export async function callInternalApi(
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...(serviceAuthHeader ? { [getServiceAuthHeaderName()]: serviceAuthHeader } : {}),
       ...(forwardCookie ? { Cookie: forwardCookie } : {}),
+      'Idempotency-Key': randomUUID(),
     },
     body: JSON.stringify(serializedBody),
   })

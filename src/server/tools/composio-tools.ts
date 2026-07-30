@@ -14,12 +14,8 @@ const REMOVED_COMPOSIO_TOOLS = new Set([
 ])
 
 async function getComposioApiKey(accessToken?: string): Promise<string | null> {
-  if (!accessToken) {
-    return process.env.COMPOSIO_API_KEY ?? null
-  }
-
-  const serverKey = await getServerProviderKey('composio')
-  return serverKey ?? process.env.COMPOSIO_API_KEY ?? null
+  void accessToken
+  return await getServerProviderKey('composio')
 }
 
 function resolveComposioSessionIdFactory() {

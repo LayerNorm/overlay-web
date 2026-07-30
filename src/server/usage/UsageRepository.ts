@@ -21,6 +21,7 @@ export type UsageReservationStatus =
 export type UsageEvent = {
   cachedTokens?: number
   costCents: number
+  durationSeconds?: number
   eventId?: string
   inputTokens?: number
   kind: UsageSpendKind
@@ -35,8 +36,10 @@ export type UsageReservationResult =
   | {
       ok: true
       entitlements: Entitlements
+      replayed: boolean
       reservationId: string | null
       reservedCents: number
+      status: UsageReservationStatus
     }
   | {
       ok: false
@@ -54,6 +57,8 @@ export interface UsageRepository {
     kind: UsageSpendKind
     metadata?: Record<string, unknown>
     modelId?: string
+    operationId: string
+    requestFingerprint: string
     reservationId: string
     reservedCents: number
     userId: string
@@ -61,6 +66,10 @@ export interface UsageRepository {
   finalize(args: {
     actualCostCents: number
     events?: UsageEvent[]
+    reservationId: string
+    userId: string
+  }): Promise<{ status: UsageReservationStatus }>
+  markStarted(args: {
     reservationId: string
     userId: string
   }): Promise<{ status: UsageReservationStatus }>

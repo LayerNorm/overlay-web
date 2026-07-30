@@ -150,7 +150,10 @@ export default function SettingsPage() {
     if (!capabilities.billing) return
     setBillingBusy(true)
     try {
-      const response = await overlayAppClient.subscription.updateSettingsResponse(next)
+      const response = await overlayAppClient.subscription.updateSettingsResponse({
+        ...next,
+        confirmation: 'UPDATE_BILLING_SETTINGS',
+      })
       if (!response.ok) return
       const refreshed = await overlayAppClient.subscription.getSettingsResponse()
       if (refreshed.ok) {

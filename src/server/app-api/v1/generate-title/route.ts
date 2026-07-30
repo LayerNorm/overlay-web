@@ -40,9 +40,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const reservation = await chatUsagePolicy.reserveForAttempt({
       entitlements,
       estimatedInputTokens,
+      idempotencyKey: context.requestIdempotencyKey,
       maxOutputTokens: estimatedOutputTokens,
       modelId: TITLE_MODEL,
+      operationId: 'chat.generate-title',
       paid: true,
+      requestFingerprint: context.requestFingerprint,
       userId: auth.userId,
     })
     if (!reservation.ok) {
@@ -52,6 +55,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const model = await getLanguageModel(TITLE_MODEL, auth.accessToken)
     let result: { object: z.infer<typeof titleSchema>; usage?: { inputTokens?: number; outputTokens?: number } }
     try {
+      await chatUsagePolicy.markReservationStarted({
+        userId: auth.userId,
+        reservationId: reservation.reservationId,
+      })
       result = await generateObject({
         model,
         schema: titleSchema,

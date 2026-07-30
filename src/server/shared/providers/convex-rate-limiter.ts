@@ -85,6 +85,18 @@ export class ConvexRateLimiter implements RateLimiter {
         },
         'warning',
       )
+      if (limits.some((limit) => limit.bucket.startsWith('owner-funded:'))) {
+        return {
+          allowed: false,
+          retryAfterSeconds: 60,
+          decisions: limits.map((limit) => ({
+            bucket: limit.bucket,
+            allowed: !limit.bucket.startsWith('owner-funded:'),
+            remaining: 0,
+            retryAfterSeconds: limit.bucket.startsWith('owner-funded:') ? 60 : 0,
+          })),
+        }
+      }
     }
 
     return this.fallback.check(scope, limits)

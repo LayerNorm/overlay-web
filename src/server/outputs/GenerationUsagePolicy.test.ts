@@ -10,7 +10,9 @@ test('unlimited generation usage policy explicitly permits provider work without
     entitlements,
     kind: 'generation',
     modelId: 'image/model',
+    operationId: 'media.generate-image',
     providerCostUsd: 1,
+    requestFingerprint: 'generation-policy-test',
     userId: 'user_1',
   })
   assert.equal(policy.mode, 'unlimited')

@@ -65,6 +65,12 @@ export class KnowledgeBaseRetrievalService {
    */
   async search(args: {
     accessToken?: string
+    /** Metered search: the caller's billing context is passed through. */
+    billing: {
+      idempotencyKey: string
+      operationId: string
+      requestFingerprint: string
+    }
     /** Force coverage across sources; inferred from the query when omitted. */
     breadthFirst?: boolean
     knowledgeBaseIds: string[]
@@ -100,6 +106,7 @@ export class KnowledgeBaseRetrievalService {
     const limit = clamp(args.limit ?? 12, 1, 50)
     const result = await this.deps.search.hybridSearch({
       accessToken: args.accessToken,
+      billing: args.billing,
       canonicalSourceIds,
       m: Math.min(MAX_CANDIDATES, limit * CANDIDATE_MULTIPLIER),
       query: args.query,

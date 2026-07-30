@@ -33,6 +33,10 @@ export class ActUsageBudgetService {
     return this.policy.recordFinishedUsage(...args)
   }
 
+  markReservationStarted(...args: Parameters<ActUsagePolicy['markReservationStarted']>) {
+    return this.policy.markReservationStarted(...args)
+  }
+
   releaseReservation(...args: Parameters<ActUsagePolicy['releaseReservation']>) {
     return this.policy.releaseReservation(...args)
   }

@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { Sandbox } from '@daytonaio/sdk'
+import type { Sandbox } from '@daytona/sdk'
 import { getDaytonaClient } from './daytona'
 import { detectDaytonaResourceProfileId, type DaytonaWorkspaceState, type DaytonaWorkspaceTier } from './daytona-pricing'
 import type { DaytonaWorkspaceRecord, DaytonaWorkspaceRepository } from './DaytonaWorkspaceRepository'
@@ -150,12 +150,11 @@ export class PostgresDaytonaReconciliationService {
 export class DaytonaSdkReconciliationControlPlane implements DaytonaReconciliationControlPlane {
   async listOverlayWorkspaces(): Promise<DaytonaReconcileSandbox[]> {
     const rows: Sandbox[] = []
-    let page = 1
-    while (true) {
-      const result = await getDaytonaClient().list(WORKSPACE_LABELS, page, 100)
-      rows.push(...result.items)
-      if (page >= (result.totalPages ?? page)) break
-      page += 1
+    for await (const sandbox of getDaytonaClient().list({
+      labels: WORKSPACE_LABELS,
+      limit: 100,
+    })) {
+      rows.push(sandbox)
     }
     await Promise.all(rows.map(async (sandbox) => await sandbox.refreshData()))
     return rows as unknown as DaytonaReconcileSandbox[]

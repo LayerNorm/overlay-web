@@ -1,7 +1,7 @@
 import { validateApiClientBoundary } from '../../../../src/shared/schemas/api-boundary'
 import { isPaginatedEnvelope } from '../../../../src/shared/api/pagination'
 import type { MutationRequestInit } from './mutation'
-import { toRequestInit } from './mutation'
+import { createIdempotencyKey, toRequestInit } from './mutation'
 import type { CreateOverlayAppClientOptions, QueryParams } from './types'
 
 export function appendQuery(path: string, query?: QueryParams): string {
@@ -81,6 +81,13 @@ export function createHttpContext(options: CreateOverlayAppClientOptions): HttpC
 
   async function request(path: string, init: RequestInit = {}): Promise<Response> {
     const headers = await mergeHeaders(options.getAuthHeaders, init.headers)
+    const method = (init.method ?? 'GET').toUpperCase()
+    if (
+      (method === 'POST' || method === 'PATCH' || method === 'DELETE') &&
+      !headers.has('Idempotency-Key')
+    ) {
+      headers.set('Idempotency-Key', createIdempotencyKey())
+    }
     const requestInit: RequestInit = {
       ...init,
       headers,

@@ -2,7 +2,7 @@ import { logger } from '@/server/observability/logger'
 import { after, NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { readValidatedJson } from '@/server/app-api/validated-input'
-import { convertToModelMessages, stepCountIs, ToolLoopAgent, type UIMessage } from '@/server/ai/sdk'
+import { convertToModelMessages, generateText, stepCountIs, ToolLoopAgent, type UIMessage } from '@/server/ai/sdk'
 import type { LanguageModelV3 } from '@/server/ai/provider-types'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import {
@@ -15,6 +15,7 @@ import { getChatModelFallbackCandidates } from '@/shared/ai/gateway/model-fallba
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import {
   FREE_TIER_AUTO_MODEL_ID,
+  FREE_TIER_DEFAULT_MODEL_ID,
   isNvidiaNimChatModelId,
 } from '@/shared/ai/gateway/model-types'
 import { normalizeChatToolRequestIds } from '@/shared/chat/tool-requests'
@@ -51,6 +52,7 @@ import {
   normalizeStructuredMediaToolIntent,
   type MediaToolIntent,
 } from '@/server/tools/media-tool-intent'
+import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import { ensureActConversationId } from '@/server/conversations/ensure-act-conversation'
 import { createPersistedTextDeltaTransform } from '@/server/conversations/chat-stream-persistence'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
@@ -208,6 +210,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       effectiveModelId,
       userId,
     })
+    const authorizedModelIds = await resolveAuthorizedModelIds({
+      entitlements: runtimeEntitlements,
+    })
+    if (!authorizedModelIds.chat.has(effectiveModelId)) {
+      return NextResponse.json(
+        {
+          error: 'model_not_allowed',
+          message: `Model ${effectiveModelId} is not allowed by the server model policy.`,
+        },
+        { status: 403 },
+      )
+    }
     if (_ttftDebug) _tAuth = performance.now()
 
     const {
@@ -313,7 +327,11 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       memoryEnabled,
       mentions: rawMentions,
       mentionedKnowledgeBaseIds: turnKnowledgeBaseIds,
+      requestIdempotencyKey: context.requestIdempotencyKey!,
+      requestFingerprint: context.requestFingerprint,
       serverSecret,
+      // The resource owner, not the caller: a shared conversation loads its
+      // owner's context while billing still follows the authenticated caller.
       userId: conversationUserId,
       externalContextEnabled: !isPostgresAppData,
     })
@@ -329,6 +347,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         userId,
         accessToken,
         entitlements: runtimeEntitlements,
+        idempotencyKey: context.requestIdempotencyKey,
+        operationId: 'conversation.act.media-intent',
+        requestFingerprint: context.requestFingerprint,
       })
     })()
 
@@ -375,6 +396,64 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     messagesForModel = await actContextService.prepareExistingMessagesForModel({
       accessToken,
       conversationId: cid,
+      generateSummaryText: async ({ prompt, targetSummaryTokens }) => {
+        const estimatedInputTokens = Math.ceil(prompt.length / 4) + 64
+        const summaryReservation = await actUsageBudgetService.reserveForAttempt({
+          entitlements: runtimeEntitlements,
+          estimatedInputTokens,
+          idempotencyKey: context.requestIdempotencyKey,
+          maxOutputTokens: targetSummaryTokens,
+          modelId: FREE_TIER_DEFAULT_MODEL_ID,
+          operationId: 'conversation.act.context-summary',
+          paid,
+          requestFingerprint: context.requestFingerprint,
+          userId,
+        })
+        if (!summaryReservation.ok) {
+          throw new Error(String(summaryReservation.failure.payload.error ?? 'context_summary_budget_denied'))
+        }
+        let providerWorkStarted = false
+        try {
+          await actUsageBudgetService.markReservationStarted({
+            reservationId: summaryReservation.reservationId,
+            userId,
+          })
+          providerWorkStarted = true
+          const summaryModel = await getLanguageModel(FREE_TIER_DEFAULT_MODEL_ID, accessToken)
+          const summaryResult = await generateText({
+            model: summaryModel,
+            temperature: 0.1,
+            maxOutputTokens: targetSummaryTokens,
+            prompt,
+          })
+          const summaryUsage = (summaryResult as unknown as {
+            usage?: { inputTokens?: number; outputTokens?: number }
+          }).usage
+          await actUsageBudgetService.recordFinishedUsage({
+            forceFreeTierLimits: false,
+            inputTokens: summaryUsage?.inputTokens ?? estimatedInputTokens,
+            modelId: FREE_TIER_DEFAULT_MODEL_ID,
+            outputTokens: summaryUsage?.outputTokens ?? targetSummaryTokens,
+            reservationId: summaryReservation.reservationId,
+            userId,
+          })
+          return summaryResult.text.trim()
+        } catch (error) {
+          await actUsageBudgetService.releaseReservation({
+            reason: error instanceof Error ? error.message : 'context_summary_provider_failed',
+            reservationId: summaryReservation.reservationId,
+            userId,
+          }).catch((_releaseError) => undefined)
+          if (providerWorkStarted && summaryReservation.reservationId) {
+            await actUsageBudgetService.markReservationForReconcile({
+              errorMessage: error instanceof Error ? error.message : 'context_summary_provider_failed',
+              reservationId: summaryReservation.reservationId,
+              userId,
+            }).catch((_reconcileError) => undefined)
+          }
+          throw error
+        }
+      },
       historyBaseModelId,
       messages: messagesForModel,
       replyContextForModel,
@@ -413,8 +492,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	        baseUrl: getInternalApiBaseUrl(request),
 	        conversationId: cid,
 	        conversationProjectId,
-	        activeKnowledgeBaseIds: turnKnowledgeBaseIds,
-	        projectSettings,
+        activeKnowledgeBaseIds: turnKnowledgeBaseIds,
+        projectSettings,
+        entitlements: runtimeEntitlements,
 	        effectiveModelId,
 	        forwardCookie: request.headers.get('cookie'),
 	        isMultiModelFollowUpSlot,
@@ -424,6 +504,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	        mode,
 	        paid,
 	        preloadTasks: toolPreloadTasks,
+	        requestFingerprint: context.requestFingerprint,
 	        requestedToolIds,
 	        serverSecret,
 	        turnId: tid,
@@ -816,10 +897,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       const reservation = await actUsageBudgetService.reserveForAttempt({
         userId,
         entitlements: runtimeEntitlements,
+        idempotencyKey: context.requestIdempotencyKey,
         modelId: attemptModelId,
         paid,
         estimatedInputTokens,
         maxOutputTokens,
+        operationId: 'conversation.act',
+        requestFingerprint: context.requestFingerprint,
       })
       if (!reservation.ok) {
         const errorCode = typeof reservation.failure.payload.error === 'string'
@@ -869,7 +953,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       onlyAllowZdrModels: paid && appSettings?.onlyAllowZdrModels === true,
       requiresVision: messagesRequireVision(uiMessages),
       maxCandidates: MAX_ACT_MODEL_ATTEMPTS - 1,
-    })
+    }).filter((candidateId) => authorizedModelIds.chat.has(candidateId))
     const attemptModelIds = [...new Set([effectiveModelId, ...fallbackModelIds])].slice(0, MAX_ACT_MODEL_ATTEMPTS)
     logger.info('[conversations/act] model attempts planned', {
       requestId,
@@ -916,6 +1000,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           fallbackNotice: fallbackNotice ?? null,
         })
         const languageModel = await languageModelForAttempt(attemptModelId)
+        await actUsageBudgetService.markReservationStarted({
+          userId,
+          reservationId: budgetReservationId,
+        })
         return await runActStream({
           languageModel,
           modelId: attemptModelId,

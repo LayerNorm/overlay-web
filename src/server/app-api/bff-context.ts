@@ -27,6 +27,8 @@ export type AppApiRouteContext = {
     resourceOwnerUserId?: string
     grantedResources?: Array<{ ownerUserId: string; resourceId: string }>
   }
+  requestFingerprint: string
+  requestIdempotencyKey: string | null
 }
 
 export function getAuthorizedResourceUserId(context: AppApiRouteContext): string {

@@ -8,6 +8,7 @@ import type { UsageRepository } from '@/server/usage'
 import {
   ensureBudgetAvailable,
   finalizeProviderBudgetReservation,
+  markProviderBudgetStarted,
   markProviderBudgetReconcile,
   releaseProviderBudgetReservation,
   reserveProviderBudget,
@@ -22,14 +23,18 @@ export interface GenerationUsagePolicy {
   getEntitlements(args: { userId: string }): Promise<Entitlements | null>
   ensureBudgetAvailable(args: {
     entitlements: Entitlements
+    idempotencyKey?: string | null
     minimumRequiredCents: number
     userId: string
   }): Promise<{ entitlements: Entitlements; remainingCents: number }>
   reserve(args: {
     entitlements: Entitlements
+    idempotencyKey?: string | null
     kind: ProviderSpendKind
     modelId?: string
+    operationId: string
     providerCostUsd: number
+    requestFingerprint: string
     userId: string
   }): Promise<ReservationResult>
   finalize(args: {
@@ -38,6 +43,10 @@ export interface GenerationUsagePolicy {
     reservationId: string | null | undefined
     userId: string
   }): ReturnType<typeof finalizeProviderBudgetReservation>
+  markStarted(args: {
+    reservationId: string | null | undefined
+    userId: string
+  }): ReturnType<typeof markProviderBudgetStarted>
   release(args: {
     providerWorkStarted?: boolean
     reason?: string
@@ -72,9 +81,12 @@ export class UnlimitedGenerationUsagePolicy implements GenerationUsagePolicy {
 
   async reserve(args: {
     entitlements: Entitlements
+    idempotencyKey?: string | null
     kind: ProviderSpendKind
     modelId?: string
+    operationId: string
     providerCostUsd: number
+    requestFingerprint: string
     userId: string
   }): Promise<ReservationResult> {
     return {
@@ -86,6 +98,9 @@ export class UnlimitedGenerationUsagePolicy implements GenerationUsagePolicy {
   }
 
   async finalize(): Promise<{ success: true; skipped: true }> {
+    return { success: true, skipped: true }
+  }
+  async markStarted(): ReturnType<typeof markProviderBudgetStarted> {
     return { success: true, skipped: true }
   }
 
@@ -108,6 +123,7 @@ export class BillingGenerationUsagePolicy implements GenerationUsagePolicy {
 
   async ensureBudgetAvailable(args: {
     entitlements: Entitlements
+    idempotencyKey?: string | null
     minimumRequiredCents: number
     userId: string
   }) {
@@ -116,9 +132,12 @@ export class BillingGenerationUsagePolicy implements GenerationUsagePolicy {
 
   async reserve(args: {
     entitlements: Entitlements
+    idempotencyKey?: string | null
     kind: ProviderSpendKind
     modelId?: string
+    operationId: string
     providerCostUsd: number
+    requestFingerprint: string
     userId: string
   }): Promise<ReservationResult> {
     return await reserveProviderBudget(args)
@@ -132,6 +151,14 @@ export class BillingGenerationUsagePolicy implements GenerationUsagePolicy {
   }): ReturnType<typeof finalizeProviderBudgetReservation> {
     if (args.reservationId) return await finalizeProviderBudgetReservation(args)
     return { success: true, skipped: true }
+  }
+
+  async markStarted(args: {
+    reservationId: string | null | undefined
+    userId: string
+  }): ReturnType<typeof markProviderBudgetStarted> {
+    if (!args.reservationId) return { success: true, skipped: true }
+    return await markProviderBudgetStarted(args)
   }
 
   async release(args: {

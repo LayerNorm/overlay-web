@@ -47,6 +47,7 @@ const PRIMARY_LINKS_AFTER: Array<{
     label: "Open Source",
     match: (p) => p === "/home",
   },
+  { href: "/download", label: "Download", match: (p) => p === "/download" },
   { href: "/pricing", label: "Pricing", match: (p) => p === "/pricing" },
 ];
 

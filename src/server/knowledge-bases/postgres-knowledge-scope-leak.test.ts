@@ -150,6 +150,11 @@ test('a knowledge base never answers with material outside it', {
         'notes',
       ]) {
         const result = await retrieval.search({
+          billing: {
+            idempotencyKey: 'fixture-idempotency-key',
+            operationId: 'knowledge-base.search',
+            requestFingerprint: 'fixture-request-fingerprint',
+          },
           knowledgeBaseIds: [notes.id],
           limit: 10,
           query,
@@ -170,6 +175,11 @@ test('a knowledge base never answers with material outside it', {
 
     await t.test('a corpus-wide question covers every source rather than one', async () => {
       const result = await retrieval.search({
+        billing: {
+          idempotencyKey: 'fixture-idempotency-key',
+          operationId: 'knowledge-base.search',
+          requestFingerprint: 'fixture-request-fingerprint',
+        },
         knowledgeBaseIds: [notes.id],
         limit: 10,
         query: 'can you take me through what is in Notes',
@@ -187,6 +197,11 @@ test('a knowledge base never answers with material outside it', {
 
     await t.test('a narrow factual question still answers from the right source', async () => {
       const result = await retrieval.search({
+        billing: {
+          idempotencyKey: 'fixture-idempotency-key',
+          operationId: 'knowledge-base.search',
+          requestFingerprint: 'fixture-request-fingerprint',
+        },
         knowledgeBaseIds: [notes.id],
         limit: 5,
         query: 'which deficiency causes rickets',
@@ -201,6 +216,11 @@ test('a knowledge base never answers with material outside it', {
 
     await t.test('an unrelated question returns nothing rather than something wrong', async () => {
       const result = await retrieval.search({
+        billing: {
+          idempotencyKey: 'fixture-idempotency-key',
+          operationId: 'knowledge-base.search',
+          requestFingerprint: 'fixture-request-fingerprint',
+        },
         knowledgeBaseIds: [notes.id],
         limit: 10,
         query: 'kubernetes ingress controller TLS termination',

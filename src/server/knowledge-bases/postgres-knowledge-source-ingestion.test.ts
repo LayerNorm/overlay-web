@@ -155,6 +155,11 @@ test('Postgres canonical knowledge source lifecycle', {
       })),
     })
     const chemistrySearch = await retrieval.search({
+      billing: {
+        idempotencyKey: 'fixture-idempotency-key',
+        operationId: 'knowledge-base.search',
+        requestFingerprint: 'fixture-request-fingerprint',
+      },
       knowledgeBaseIds: [base.id],
       query: 'electron pair mechanism',
       userId,
@@ -163,6 +168,11 @@ test('Postgres canonical knowledge source lifecycle', {
     assert.equal(chemistrySearch.chunks.some((chunk) => chunk.text.includes('mitochondrial')), false)
     assert.deepEqual(chemistrySearch.citations.map(({ sourceId }) => sourceId), [created.source.id])
     const biologySearch = await retrieval.search({
+      billing: {
+        idempotencyKey: 'fixture-idempotency-key',
+        operationId: 'knowledge-base.search',
+        requestFingerprint: 'fixture-request-fingerprint',
+      },
       knowledgeBaseIds: [otherBase.id],
       query: 'maternal mitochondrial inheritance',
       userId,

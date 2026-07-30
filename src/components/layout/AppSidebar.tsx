@@ -54,6 +54,8 @@ import { SidebarAccountMenu } from './sidebar/SidebarAccountMenu'
 import { ICON_COMPONENTS, toMentionCategory } from './sidebar/sidebarNavigation'
 import type { SidebarEntitlements } from './sidebar/SidebarUsageMeters'
 import type { AppSidebarProps } from './appSidebarTypes'
+import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
+import { ROOT_APP_DESTINATION, ROOT_SHOWCASE_DESTINATION } from '@/shared/auth/root-entry'
 
 export type {
   AppSidebarChatPanelContext,
@@ -824,10 +826,11 @@ export default function AppSidebar({
       <SidebarSection className={`space-y-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
         {publicShowcase && !sidebarCollapsed ? (
           <nav aria-label="Overlay information" className="grid grid-cols-2 gap-x-3 gap-y-1 px-2 text-[11px] text-[var(--muted)]">
+            {user ? <Link href={ROOT_APP_DESTINATION} className="hover:text-[var(--foreground)]">App</Link> : null}
             <Link href="/app/home?showcase=1" className="hover:text-[var(--foreground)]">Home</Link>
             <Link href="/app/manifesto?showcase=1" className="hover:text-[var(--foreground)]">Manifesto</Link>
             <Link href="/app/pricing?showcase=1" className="hover:text-[var(--foreground)]">Pricing</Link>
-            <Link href="https://github.com/DevelopedByDev/overlay-web#readme" className="hover:text-[var(--foreground)]">Docs</Link>
+            <Link href={MARKETING_DOCS_URL} className="hover:text-[var(--foreground)]">Docs</Link>
           </nav>
         ) : null}
         <div ref={menuRef} className="relative">
@@ -841,6 +844,7 @@ export default function AppSidebar({
               <SidebarAccountMenu
                 billingEnabled={billingEnabled}
                 entitlements={entitlements}
+                demoHref={!publicShowcase && user ? ROOT_SHOWCASE_DESTINATION : undefined}
                 onAccountClick={() => {
                   setAccountMenuOpen(false)
                   setMobileMenuOpen(false)
@@ -918,6 +922,7 @@ export default function AppSidebar({
                   billingEnabled={billingEnabled}
                   entitlements={entitlements}
                   itemPaddingClass="py-2.5"
+                  demoHref={!publicShowcase && user ? ROOT_SHOWCASE_DESTINATION : undefined}
                   onAccountClick={() => setMobileAccountOpen(false)}
                   onSignOut={() => {
                     setMobileAccountOpen(false)

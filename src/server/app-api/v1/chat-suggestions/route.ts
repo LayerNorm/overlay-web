@@ -9,6 +9,12 @@ import { getOverlaySession } from '@/server/auth/session'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { ChatSuggestionRepository } from '@/server/chat-suggestions/ChatSuggestionRepository'
+import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
+import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
+import {
+  billableBudgetCentsFromProviderUsd,
+} from '@/server/billing/billing-runtime'
+import { providerRequestFingerprint } from '@/server/billing/ServerProviderUsageMeter'
 
 function utcDateKey(): string {
   return new Date().toISOString().slice(0, 10)
@@ -61,13 +67,19 @@ function normalizeFourPrompts(raw: string[], firstName?: string): string[] {
 
 const DEFAULT_PROMPTS_NORMALIZED = normalizeFourPrompts([...DEFAULT_CHAT_SUGGESTIONS])
 
-async function generateStartersWithLLM(accessToken: string, firstName: string): Promise<string[] | null> {
-  const model = await getLanguageModel(FREE_TIER_AUTO_MODEL_ID, accessToken)
-  const result = await generateText({
-    model,
-    temperature: 0.88,
-    maxOutputTokens: 700,
-    prompt: `Generate exactly 4 conversation starter prompts for an AI chat app. Each prompt:
+async function generateStartersWithLLM(args: {
+  accessToken: string
+  day: string
+  firstName: string
+  userId: string
+}): Promise<string[] | null> {
+  const server = getOverlayServerContext()
+  const entitlements = await server.generationUsagePolicy.getEntitlements({ userId: args.userId })
+  if (!entitlements) return null
+  const authorized = await resolveAuthorizedModelIds({ entitlements })
+  if (!authorized.chat.has(FREE_TIER_AUTO_MODEL_ID)) return null
+  const model = await getLanguageModel(FREE_TIER_AUTO_MODEL_ID, args.accessToken)
+  const prompt = `Generate exactly 4 conversation starter prompts for an AI chat app. Each prompt:
 - One clear sentence, 8–22 words
 - Specific, actionable, and phrased as a task the assistant can help complete
 - Cover a mix: coding/tools, research/learning, writing/communication, and a practical work or life task
@@ -77,8 +89,118 @@ async function generateStartersWithLLM(accessToken: string, firstName: string): 
 - Prefer concrete verbs like draft, plan, summarize, analyze, organize, compare, or create
 
 Reply with ONLY valid JSON (no markdown fences) in this exact shape:
-{"prompts":["...","...","...","..."]}`,
+{"prompts":["...","...","...","..."]}`
+  const estimatedInputTokens = Math.ceil(prompt.length / 4) + 32
+  const maxOutputTokens = 700
+  const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
+    FREE_TIER_AUTO_MODEL_ID,
+    estimatedInputTokens,
+    0,
+    maxOutputTokens,
+  )
+  if (estimatedProviderCostUsd === null) return null
+  const operationId = `chat.suggestions:${args.day}`
+  const requestFingerprint = providerRequestFingerprint({
+    day: args.day,
+    operationId: 'chat.suggestions',
+    userId: args.userId,
   })
+  const reservation = await server.generationUsagePolicy.reserve({
+    entitlements,
+    idempotencyKey: operationId,
+    kind: 'generation',
+    modelId: FREE_TIER_AUTO_MODEL_ID,
+    operationId: 'chat.suggestions',
+    providerCostUsd: estimatedProviderCostUsd,
+    requestFingerprint,
+    userId: args.userId,
+  })
+  if (!reservation.ok) return null
+
+  let providerWorkStarted = false
+  let result: Awaited<ReturnType<typeof generateText>>
+  try {
+    await server.generationUsagePolicy.markStarted({
+      reservationId: reservation.reservationId,
+      userId: args.userId,
+    })
+    providerWorkStarted = true
+    result = await generateText({
+      model,
+      temperature: 0.88,
+      maxOutputTokens,
+      prompt,
+    })
+  } catch (error) {
+    await server.generationUsagePolicy.release({
+      providerWorkStarted,
+      reason: error instanceof Error ? error.message : 'chat_suggestions_provider_failed',
+      reservationId: reservation.reservationId,
+      userId: args.userId,
+    }).catch((_releaseError) => undefined)
+    throw error
+  }
+
+  const usage = (result as unknown as {
+    usage?: { inputTokens?: number; outputTokens?: number }
+  }).usage
+  const inputTokens = usage?.inputTokens ?? estimatedInputTokens
+  const outputTokens = usage?.outputTokens ?? maxOutputTokens
+  const actualProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
+    FREE_TIER_AUTO_MODEL_ID,
+    inputTokens,
+    0,
+    outputTokens,
+  )
+  if (actualProviderCostUsd === null) {
+    await server.generationUsagePolicy.markForReconcile({
+      errorMessage: `pricing_missing:${FREE_TIER_AUTO_MODEL_ID}`,
+      reservationId: reservation.reservationId,
+      userId: args.userId,
+    }).catch((_reconcileError) => undefined)
+    return null
+  }
+  const costCents = billableBudgetCentsFromProviderUsd(actualProviderCostUsd)
+  if (reservation.reservationId) {
+    try {
+      await server.generationUsagePolicy.finalize({
+        actualProviderCostUsd,
+        events: [{
+          type: 'generation',
+          modelId: FREE_TIER_AUTO_MODEL_ID,
+          inputTokens,
+          outputTokens,
+          cachedTokens: 0,
+          cost: costCents,
+          timestamp: Date.now(),
+        }],
+        reservationId: reservation.reservationId,
+        userId: args.userId,
+      })
+    } catch (error) {
+      await server.generationUsagePolicy.markForReconcile({
+        errorMessage: error instanceof Error ? error.message : 'chat_suggestions_finalize_failed',
+        reservationId: reservation.reservationId,
+        userId: args.userId,
+      }).catch((_reconcileError) => undefined)
+      throw error
+    }
+  } else {
+    await server.appData.repositories.usage.recordBatch({
+      events: [{
+        cachedTokens: 0,
+        costCents,
+        inputTokens,
+        kind: 'generation',
+        modelId: FREE_TIER_AUTO_MODEL_ID,
+        occurredAt: Date.now(),
+        outputTokens,
+        providerCostUsd: actualProviderCostUsd,
+      }],
+      operationId,
+      userId: args.userId,
+    })
+  }
 
   const raw = result.text.trim()
   const jsonStr = raw
@@ -91,9 +213,9 @@ Reply with ONLY valid JSON (no markdown fences) in this exact shape:
   if (!Array.isArray(promptsUnknown)) return null
   const strings = promptsUnknown
     .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
-    .map((p) => sanitizePrompt(p, firstName) ?? '')
+    .map((p) => sanitizePrompt(p, args.firstName) ?? '')
     .filter((p) => p.length > 0)
-  return normalizeFourPrompts(strings, firstName)
+  return normalizeFourPrompts(strings, args.firstName)
 }
 
 type PersistArgs = {
@@ -136,7 +258,12 @@ function scheduleRefreshForNewDay(args: {
         })
         return
       }
-      const generated = await generateStartersWithLLM(accessToken, trimmed)
+      const generated = await generateStartersWithLLM({
+        accessToken,
+        day: today,
+        firstName: trimmed,
+        userId,
+      })
       if (generated && generated.length === 4) {
         await persistStarters({ repository, userId, prompts: generated, day: today })
       }
@@ -187,7 +314,12 @@ export async function GET(request: Request, context: AppApiRouteContext) {
 
     let generated: string[] | null = null
     try {
-      generated = await generateStartersWithLLM(session.accessToken, firstName)
+      generated = await generateStartersWithLLM({
+        accessToken: context.auth.accessToken || session.accessToken,
+        day: today,
+        firstName,
+        userId,
+      })
     } catch (err) {
       logger.warn('[chat-suggestions] generation failed', err)
     }

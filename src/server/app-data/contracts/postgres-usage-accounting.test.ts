@@ -13,6 +13,13 @@ import { PostgresUsageRepository } from '@/server/usage'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
 
+function reservationSecurityContext(reservationId: string) {
+  return {
+    operationId: 'contract.postgres-usage',
+    requestFingerprint: reservationId,
+  }
+}
+
 test('Postgres usage accounting is atomic, idempotent, and recoverable', {
   skip: connectionString ? false : 'OVERLAY_DATABASE_URL is required for Postgres usage contracts',
 }, async (t) => {
@@ -51,6 +58,7 @@ test('Postgres usage accounting is atomic, idempotent, and recoverable', {
         repository.reserve({
           entitlements: entitlements!,
           kind: 'agent',
+          ...reservationSecurityContext(`${scope}_concurrent_1`),
           reservationId: `${scope}_concurrent_1`,
           reservedCents: 75,
           userId,
@@ -58,6 +66,7 @@ test('Postgres usage accounting is atomic, idempotent, and recoverable', {
         repository.reserve({
           entitlements: entitlements!,
           kind: 'agent',
+          ...reservationSecurityContext(`${scope}_concurrent_2`),
           reservationId: `${scope}_concurrent_2`,
           reservedCents: 75,
           userId,
@@ -78,6 +87,7 @@ test('Postgres usage accounting is atomic, idempotent, and recoverable', {
       const reserveArgs = {
         entitlements: entitlements!,
         kind: 'agent' as const,
+        ...reservationSecurityContext(reservationId),
         reservationId,
         reservedCents: 40,
         userId,
@@ -131,6 +141,7 @@ test('Postgres usage accounting is atomic, idempotent, and recoverable', {
         entitlements: (await repository.getEntitlements({ userId }))!,
         expiresAt: now - 1,
         kind: 'sandbox',
+        ...reservationSecurityContext(`${scope}_expired_release`),
         reservationId: `${scope}_expired_release`,
         reservedCents: 10,
         userId,
@@ -139,6 +150,7 @@ test('Postgres usage accounting is atomic, idempotent, and recoverable', {
         entitlements: (await repository.getEntitlements({ userId }))!,
         expiresAt: now - 1,
         kind: 'sandbox',
+        ...reservationSecurityContext(`${scope}_expired_reconcile`),
         reservationId: `${scope}_expired_reconcile`,
         reservedCents: 10,
         userId,
@@ -162,4 +174,3 @@ test('Postgres usage accounting is atomic, idempotent, and recoverable', {
     await pool.end()
   }
 })
-

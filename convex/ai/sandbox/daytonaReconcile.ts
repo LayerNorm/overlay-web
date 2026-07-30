@@ -1,6 +1,6 @@
 'use node'
 
-import { Daytona, type Sandbox } from '@daytonaio/sdk'
+import { Daytona, type Sandbox } from '@daytona/sdk'
 import { v } from 'convex/values'
 import { internalAction, type ActionCtx } from '../../_generated/server'
 import { internal } from '../../_generated/api'
@@ -187,31 +187,11 @@ function getMountedVolumeMetadata(
 
 async function listOverlayWorkspaces(): Promise<Sandbox[]> {
   const out: Sandbox[] = []
-  let page = 1
-
-  while (true) {
-    const result = await getDaytonaClient().list(
-      OVERLAY_WORKSPACE_LABELS,
-      page,
-      LIST_PAGE_LIMIT,
-    )
-
-    if (!Array.isArray(result.items) || result.items.length === 0) {
-      break
-    }
-
-    out.push(...result.items)
-
-    const totalPages =
-      typeof result.totalPages === 'number' && Number.isFinite(result.totalPages)
-        ? result.totalPages
-        : page
-
-    if (page >= totalPages) {
-      break
-    }
-
-    page += 1
+  for await (const sandbox of getDaytonaClient().list({
+    labels: OVERLAY_WORKSPACE_LABELS,
+    limit: LIST_PAGE_LIMIT,
+  })) {
+    out.push(sandbox)
   }
 
   return out

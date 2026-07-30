@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { posix as pathPosix } from 'node:path'
-import type { Sandbox } from '@daytonaio/sdk'
+import type { Sandbox } from '@daytona/sdk'
 import { classifyOutputType } from '@/shared/tools/output-types'
 import { keyForOutput } from '@/server/storage/storage-keys'
 import {

@@ -105,10 +105,12 @@ export async function runKnowledgeCharacterizationContract(
     await backend.memories.remove({ memoryId: sourceIds.globalMemory, userId })
     await backend.files.removeFile({ fileId: sourceIds.globalFile, userId })
     const removedMemorySearch = await backend.search.hybridSearch({
+      billing: contractSearchBilling('removed-memory'),
       query: 'Silver Orchard pilot updates',
       userId,
     })
     const removedFileSearch = await backend.search.hybridSearch({
+      billing: contractSearchBilling('removed-file'),
       query: 'Cedar Lantern deployment',
       userId,
     })
@@ -126,6 +128,15 @@ export async function runKnowledgeCharacterizationContract(
   } finally {
     await backend.cleanupUser(userId).catch((error) => t.diagnostic(`owner cleanup failed: ${String(error)}`))
     await backend.cleanupUser(foreignUserId).catch((error) => t.diagnostic(`foreign cleanup failed: ${String(error)}`))
+  }
+}
+
+function contractSearchBilling(label: string) {
+  const nonce = globalThis.crypto.randomUUID()
+  return {
+    idempotencyKey: nonce,
+    operationId: `knowledge.contract.${label}`,
+    requestFingerprint: nonce,
   }
 }
 

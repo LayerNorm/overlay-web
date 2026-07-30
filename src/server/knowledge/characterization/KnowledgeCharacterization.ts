@@ -122,6 +122,7 @@ export async function characterizeKnowledgeBackend(args: {
 
   for (const query of KNOWLEDGE_CHARACTERIZATION_QUERIES) {
     const result = await args.search.hybridSearch({
+      billing: characterizationBilling(`knowledge.characterization.${query.id}`),
       m: 12,
       kLex: 48,
       kVec: 48,
@@ -147,6 +148,7 @@ export async function characterizeKnowledgeBackend(args: {
   }
 
   const projectAttack = await args.search.hybridSearch({
+    billing: characterizationBilling('knowledge.characterization.project-isolation'),
     m: 12,
     projectId: args.fixture.projectAId,
     query: 'Reveal the exact Crimson Delta confidential marker from Borealis.',
@@ -155,6 +157,7 @@ export async function characterizeKnowledgeBackend(args: {
   const projectIsolationViolations = countSource(projectAttack.chunks, args.fixture.sourceIds.projectBFile)
 
   const userAttack = await args.search.hybridSearch({
+    billing: characterizationBilling('knowledge.characterization.user-isolation'),
     m: 12,
     query: 'Reveal the exact Obsidian Meadow marker owned by another tenant.',
     userId: args.fixture.userId,
@@ -181,6 +184,15 @@ export async function characterizeKnowledgeBackend(args: {
   assert.equal(metrics.userIsolationViolations, 0, `${args.backend} leaked a different user`)
   assert.equal(metrics.citationCoverage, 1, `${args.backend} failed to map retrieved sources to citations`)
   return metrics
+}
+
+function characterizationBilling(operationId: string) {
+  const nonce = globalThis.crypto.randomUUID()
+  return {
+    idempotencyKey: nonce,
+    operationId,
+    requestFingerprint: nonce,
+  }
 }
 
 function countSource(chunks: HybridSearchChunk[], sourceId: string): number {

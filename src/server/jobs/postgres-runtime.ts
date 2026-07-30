@@ -64,6 +64,7 @@ import {
   CANONICAL_KNOWLEDGE_INDEX_JOB,
   PostgresCanonicalKnowledgeIndexService,
 } from '@/server/knowledge-bases/PostgresCanonicalKnowledgeIndex'
+import { ServerProviderUsageMeter } from '@/server/billing/ServerProviderUsageMeter'
 
 export function createPostgresRuntime(args: {
   db: OverlayPostgresDb
@@ -109,6 +110,7 @@ export function createPostgresRuntime(args: {
     knowledgeIndex ??= new KnowledgeIndexService({
       embeddings: args.embeddingProvider ?? createEmbeddingProvider(runtimeConfig()),
       repository: new PostgresKnowledgeIndexRepository(args.db),
+      usageMeter: new ServerProviderUsageMeter(usage),
     })
     return knowledgeIndex
   }
@@ -126,6 +128,7 @@ export function createPostgresRuntime(args: {
       extractor: args.memoryExtractionProvider ?? createMemoryExtractionProvider(runtimeConfig()),
       memories: new PostgresMemoryRepository(args.db),
       runs: new PostgresMemoryExtractionRepository(args.db),
+      usageMeter: new ServerProviderUsageMeter(usage),
     })
     return memoryExtraction
   }

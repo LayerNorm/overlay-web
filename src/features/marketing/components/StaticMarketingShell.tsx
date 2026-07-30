@@ -44,8 +44,13 @@ export function useStaticMarketingTheme() {
 export function StaticMarketingShell({ children }: { children: ReactNode }) {
   const theme = useStaticMarketingTheme();
   const pathname = usePathname() ?? "";
+  const embeddedInAppShell =
+    pathname.startsWith("/app/") ||
+    pathname === "/home" ||
+    pathname === "/manifesto" ||
+    pathname === "/pricing";
 
-  if (pathname.startsWith("/app/")) {
+  if (embeddedInAppShell) {
     return <>{children}</>;
   }
 

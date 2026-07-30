@@ -8,7 +8,10 @@ import {
   markRateLimitsSatisfied,
 } from '@/server/security/rate-limit'
 import { getEndpointRateLimitSpecs } from '@/server/security/rate-limit-specs'
-import { handleIdempotentMutation } from '@/server/app-api/idempotency'
+import {
+  fingerprintApiRequest,
+  handleIdempotentMutation,
+} from '@/server/app-api/idempotency'
 import { standardizePaginatedListResponse } from '@/server/app-api/pagination'
 import { getRequiredApiKeyScopesForRoute, isApiKeyCandidate } from '@/server/auth/api-keys'
 import {
@@ -42,6 +45,12 @@ import {
   WORKSPACE_SHARE_RESOURCE_TYPES,
   type WorkspaceShareResourceType,
 } from '@overlay/workspace-contracts'
+import {
+  getOwnerFundedOperation,
+  ownerFundedOperationRequiresIdempotencyKey,
+} from '@/server/billing/owner-funded-operations'
+import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
+import { logSecurityEvent } from '@/server/observability/security-events'
 
 const API_KEY_CANDIDATE_RATE_LIMITS = [
   { bucket: 'api-key-auth:candidate:ip', limit: 60, windowMs: 60_000 },
@@ -133,7 +142,43 @@ export async function handleBffRoute(
     if (isOverlayConfigError(error)) return runtimeConfigErrorResponse(error)
     throw error
   }
-  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!auth) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      {
+        status: 401,
+        headers: {
+          'Cache-Control': 'no-store',
+          'WWW-Authenticate': bearer
+            ? 'Bearer error="invalid_token"'
+            : 'Bearer',
+        },
+      },
+    )
+  }
+
+  const ownerFundedOperation = getOwnerFundedOperation(
+    request.method,
+    request.nextUrl.pathname,
+  )
+  if (
+    ownerFundedOperationRequiresIdempotencyKey(ownerFundedOperation) &&
+    !request.headers.get('idempotency-key')?.trim()
+  ) {
+    logSecurityEvent('owner_funded_idempotency_missing', {
+      authType: auth.authType,
+      operation: ownerFundedOperation.id,
+      userHash: hashOperationalIdentifier('security-user:v1', auth.userId),
+    })
+    return NextResponse.json(
+      {
+        error: 'Idempotency-Key header is required for owner-funded operations',
+        code: 'idempotency_key_required',
+        operation: ownerFundedOperation.id,
+      },
+      { status: 428 },
+    )
+  }
 
   let workspace
   const requestedByHeader = request.headers.get(ACTIVE_WORKSPACE_HEADER)?.trim() || undefined
@@ -329,8 +374,21 @@ export async function handleBffRoute(
   }
 
   const rateLimits = getEndpointRateLimitSpecs({
+    ...(clientIp !== 'unknown'
+      ? {
+          deviceRiskKey: hashOperationalIdentifier(
+            'owner-funded-device-risk:v1',
+            [
+              clientIp,
+              request.headers.get('user-agent')?.slice(0, 256) ?? '',
+              auth.authType,
+            ].join('\n'),
+          ),
+        }
+      : {}),
     ip: clientIp,
     method: request.method,
+    organizationId: auth.organizationId,
     pathname: request.nextUrl.pathname,
     userId: auth.userId,
   })
@@ -367,6 +425,8 @@ export async function handleBffRoute(
       resourceOwnerUserId: resourceAuthorization.ownerUserId,
       grantedResources: resourceAuthorization.grantedResources,
     },
+    requestFingerprint: await fingerprintApiRequest(request),
+    requestIdempotencyKey: request.headers.get('idempotency-key')?.trim() || null,
   } as AppApiRouteContext
 
   const response = await handleIdempotentMutation(

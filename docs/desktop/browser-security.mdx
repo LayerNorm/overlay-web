@@ -1,0 +1,13 @@
+---
+title: "Browser-agent security"
+description: "How agent browsing is isolated from the interactive browser."
+---
+
+Overlay separates:
+
+- **Interactive browser** — the user’s browsing panel / profile.
+- **Agent browser** — tool-driven sessions used by chat agents.
+
+Agent browser traffic is subject to destination policy that blocks private,
+loopback, link-local, metadata, and other restricted targets. This is defense
+in depth. It does not make arbitrary host execution safe under Full access.

@@ -6,6 +6,13 @@ import type { KnowledgeSearchRepository } from '@/server/knowledge/KnowledgeSear
 import { KnowledgeBaseRetrievalService } from './KnowledgeBaseRetrievalService'
 import { KnowledgeBaseServiceError, type KnowledgeBaseService } from './KnowledgeBaseService'
 
+const FIXTURE_BILLING = {
+  idempotencyKey: 'fixture-idempotency-key',
+  operationId: 'knowledge-base.search',
+  requestFingerprint: 'fixture-request-fingerprint',
+} as const
+
+
 type FakeBase = {
   id: string
   title: string
@@ -79,6 +86,7 @@ test('scope is limited to enabled ready sources of authorized bases', async () =
   })
 
   const result = await service.search({
+    billing: FIXTURE_BILLING,
     knowledgeBaseIds: ['kb-1'],
     query: 'grounded',
     userId: 'user-1',
@@ -103,6 +111,7 @@ test('never falls back to unscoped user knowledge when no source qualifies', asy
   })
 
   const result = await service.search({
+    billing: FIXTURE_BILLING,
     knowledgeBaseIds: ['kb-empty'],
     query: 'anything',
     userId: 'user-1',
@@ -127,6 +136,7 @@ test('searches across several bases and attributes each citation to its base', a
   })
 
   const result = await service.search({
+    billing: FIXTURE_BILLING,
     knowledgeBaseIds: ['kb-a', 'kb-b'],
     query: 'policy',
     userId: 'user-1',
@@ -146,6 +156,7 @@ test('inaccessible bases are skipped without failing the turn or leaking existen
   })
 
   const result = await service.search({
+    billing: FIXTURE_BILLING,
     knowledgeBaseIds: ['kb-ok', 'kb-forbidden', 'kb-missing'],
     query: 'anything',
     userId: 'user-1',
@@ -182,6 +193,7 @@ test('a large base cannot crowd out a small one', async () => {
   })
 
   const result = await service.search({
+    billing: FIXTURE_BILLING,
     knowledgeBaseIds: ['kb-large', 'kb-small'],
     limit: 4,
     query: 'anything',
@@ -208,6 +220,7 @@ test('identical passages living in two bases are returned once', async () => {
   })
 
   const result = await service.search({
+    billing: FIXTURE_BILLING,
     knowledgeBaseIds: ['kb-a', 'kb-b'],
     query: 'refund',
     userId: 'user-1',
@@ -227,6 +240,7 @@ test('a source shared by two bases is attributed to the first requested base', a
   })
 
   const result = await service.search({
+    billing: FIXTURE_BILLING,
     knowledgeBaseIds: ['kb-first', 'kb-second'],
     query: 'shared',
     userId: 'user-1',
@@ -252,6 +266,7 @@ test('citations carry highlighted passages with source offsets', async () => {
   })
 
   const result = await service.search({
+    billing: FIXTURE_BILLING,
     knowledgeBaseIds: ['kb-1'],
     query: 'refund window',
     userId: 'user-1',
@@ -282,6 +297,7 @@ test('several passages from one source collapse into one citation', async () => 
   })
 
   const result = await service.search({
+    billing: FIXTURE_BILLING,
     knowledgeBaseIds: ['kb-1'],
     query: 'refund',
     userId: 'user-1',
@@ -316,6 +332,7 @@ test('a corpus-wide question spreads across sources instead of one document', as
   })
 
   const narrow = await build().search({
+    billing: FIXTURE_BILLING,
     knowledgeBaseIds: ['kb-1'],
     limit: 5,
     query: 'which deficiency causes rickets',
@@ -328,6 +345,7 @@ test('a corpus-wide question spreads across sources instead of one document', as
   )
 
   const broad = await build().search({
+    billing: FIXTURE_BILLING,
     knowledgeBaseIds: ['kb-1'],
     limit: 5,
     query: 'take me through what is in Notes',
@@ -356,6 +374,7 @@ test('breadthFirst can be forced independently of the query wording', async () =
     search: fakeSearch(() => candidates),
   })
   const result = await service.search({
+    billing: FIXTURE_BILLING,
     breadthFirst: true,
     knowledgeBaseIds: ['kb-1'],
     limit: 2,
@@ -381,6 +400,11 @@ test('requested bases are deduped and capped', async () => {
   })
 
   await service.search({
+    billing: {
+      idempotencyKey: 'fixture-idempotency-key',
+      operationId: 'knowledge-base.search',
+      requestFingerprint: 'fixture-request-fingerprint',
+    },
     knowledgeBaseIds: ['kb-0', 'kb-0', ...bases.map(({ id }) => id)],
     query: 'anything',
     userId: 'user-1',

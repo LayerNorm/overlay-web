@@ -60,7 +60,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
       { key: 'supportsSettings', expectedAtParity: true },
       { key: 'supportsOnboarding', expectedAtParity: true },
     ],
-    routeRuleIds: ['bootstrap', 'capabilities', 'settings', 'onboarding'],
+    routeRuleIds: ['bootstrap', 'capabilities', 'settings', 'onboarding', 'discovery'],
     exitGate: 'Bootstrap is no longer degraded and settings/onboarding pass shared route and browser tests.',
   },
   {

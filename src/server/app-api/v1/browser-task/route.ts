@@ -51,6 +51,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     if (!task?.trim()) {
       return NextResponse.json({ error: 'Task is required' }, { status: 400 })
     }
+    if (model !== undefined && model !== 'bu-mini' && model !== 'bu-max') {
+      return NextResponse.json(
+        { error: 'model_not_allowed', message: 'Unsupported Browser Use model.' },
+        { status: 400 },
+      )
+    }
     const MAX_TASK_LENGTH = 4096
     const sanitizedTask = task.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').slice(0, MAX_TASK_LENGTH)
     if (!sanitizedTask) {
@@ -113,9 +119,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const reservation = await generationUsagePolicy.reserve({
       userId: auth.userId,
       entitlements: currentEntitlements,
+      idempotencyKey: context.requestIdempotencyKey,
       providerCostUsd: BROWSER_USE_TASK_INIT_USD + remainingVariableBudgetUsd,
       kind: 'generation',
       modelId: `browser-use/${model ?? 'auto'}`,
+      operationId: 'agent.browser-task',
+      requestFingerprint: context.requestFingerprint,
     })
     if (!reservation.ok) {
       return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })
@@ -128,6 +137,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         : undefined
     let result: Awaited<ReturnType<typeof client.run>>
     try {
+      await generationUsagePolicy.markStarted({
+        userId: auth.userId,
+        reservationId: reservation.reservationId,
+      })
       result = await client.run(sanitizedTask, {
         ...(typeof keepAlive === 'boolean' ? { keepAlive } : {}),
         ...(model ? { model } : {}),

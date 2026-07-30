@@ -65,6 +65,7 @@ export interface BillingSettings {
 
 export interface UpdateBillingSettingsRequest {
   autoTopUpEnabled: boolean
+  confirmation: 'UPDATE_BILLING_SETTINGS'
   topUpAmountCents: number
   grantOffSessionConsent?: boolean
 }
@@ -84,6 +85,7 @@ export interface TopUpHistoryResponse {
 }
 
 export interface BillingPortalRequest {
+  confirmation: 'OPEN_BILLING_PORTAL'
   sessionId?: string | null
 }
 
