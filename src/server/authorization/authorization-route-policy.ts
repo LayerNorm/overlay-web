@@ -67,6 +67,14 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { GET: authenticated() },
   },
   {
+    path: '/api/v1/shares/shared-with-me',
+    methods: { GET: authenticated() },
+  },
+  {
+    path: '/api/v1/search',
+    methods: { GET: authenticated() },
+  },
+  {
     path: '/api/v1/workspaces',
     methods: { GET: authenticated(), POST: authenticated() },
   },
@@ -291,6 +299,10 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
       GET: resource('conversation', 'view', {}, 'conversations.read'),
       PATCH: resource('conversation', 'edit', {}, 'conversations.edit'),
     },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/reports',
+    methods: { POST: authenticated() },
   },
   {
     path: '/api/v1/conversations/:conversationId/messages/:messageId',

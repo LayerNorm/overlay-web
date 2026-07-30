@@ -231,6 +231,21 @@ export class ConversationsClient {
     )
   }
 
+  /**
+   * Moderation intake. Recording a report is audit-only: nothing about the
+   * reported message changes for anybody in the room.
+   */
+  reportMessage(
+    conversationId: string,
+    body: { messageId?: string; reason?: 'abuse' | 'spam' | 'sensitive_data' | 'other'; note?: string },
+    init?: MutationRequestInit,
+  ) {
+    return this.http.json<{ recorded: true }>(
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}/reports`,
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
   setSaved(
     body: { conversationId: string; messageId: string; saved: boolean },
     init?: MutationRequestInit,

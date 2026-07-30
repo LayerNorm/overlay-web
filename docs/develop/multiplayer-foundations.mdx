@@ -5,7 +5,7 @@ description: "Accepted Phase 0 decisions for workspace isolation, collaborative 
 
 ## Status
 
-Accepted on July 26, 2026. Phase 1 shipped the workspace foundation, Phase 2 shipped the workspace-aware Chats information architecture, Phase 3 shipped participant-scoped Direct Messages, Phase 4 shipped Channels and threads, Phase 5 shipped named workspace agents, and Phase 6 shipped universal resource sharing on July 29, 2026. The `workspaces`, `collaborativeChats`, `channels`, `agents`, and `resourceSharing` app features are enabled; shared multi-tenant deployment remains disabled until its release gate passes.
+Accepted on July 26, 2026. Phase 1 shipped the workspace foundation, Phase 2 shipped the workspace-aware Chats information architecture, Phase 3 shipped participant-scoped Direct Messages, Phase 4 shipped Channels and threads, Phase 5 shipped named workspace agents, Phase 6 shipped universal resource sharing, and Phase 7 shipped collaboration polish and cross-surface parity on July 29, 2026. The `workspaces`, `collaborativeChats`, `channels`, `agents`, and `resourceSharing` app features are enabled; shared multi-tenant deployment remains disabled until its release gate passes.
 
 Phase 1 includes:
 
@@ -91,6 +91,20 @@ Two provider-parity defects were found by the Phase 6 contract tests and fixed r
 - The Convex grant upsert returned the request payload instead of the persisted row, reporting a stale `updatedAt` where Postgres reported the new one.
 
 The Postgres migration was rehearsed from an empty database through schema version 37. Convex schema and functions were deployed only to the development deployment and validated against that live development provider.
+
+Phase 7 includes:
+
+- One permission-filtered workspace search across chats, files, projects, knowledge bases, automations, and agents, served by `/api/v1/search` and scoped to the caller's active workspace.
+- A command palette that renders authorized server results first and only falls back to client-side lists for kinds the workspace endpoint does not own (skills, MCP servers, connectors).
+- **Shared with me**, listing everything reachable through a person, team, or room grant, and explaining which of the three carries the access. For a guest this is their whole workspace.
+- Mention autocomplete for humans and agents with recent-activity ordering, keyboard selection, and an `aria-activedescendant` listbox so focus stays in the composer.
+- Deterministic mention resolution: longest display name wins, matches must sit on word boundaries, and the client sends explicit principal ids. `sam@scout.example` no longer mentions Scout, and "@Sam" no longer mentions Samantha.
+- Per-conversation, per-thread composer drafts that survive reopening and cannot crash private browsing — every storage failure loses the draft instead of propagating.
+- A polite live region announcing typing and agent-response activity.
+- A moderation intake hook: reporting a message records an audit event and changes nothing visible in the room, deliberately leaving review, appeal, and enforcement policy to enterprise hardening.
+- One isomorphic search contract shared by web, desktop, and mobile adapters, with no server-only or DOM dependency.
+
+The stale on-prem Convex runtime baseline was refreshed after review: the additions are the workspace, agent, sharing, and search provider repositories plus their BFF routes. The browser touchpoint list is unchanged, so the Postgres deployment still reaches no Convex code from the browser.
 
 ## Workspace Is The Isolation Boundary
 

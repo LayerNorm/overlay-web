@@ -23,6 +23,7 @@ import { SkillsClient } from './skills/client'
 import { WebhooksClient } from './webhooks/client'
 import { WorkspacesClient } from './workspaces/client'
 import { AgentsClient } from './agents/client'
+import { SearchClient } from './search/client'
 import { SharingClient } from './sharing/client'
 import { createHttpContext } from './shared/http'
 import type { CreateOverlayAppClientOptions } from './shared/types'
@@ -58,6 +59,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     webhooks: new WebhooksClient(http),
     workspaces: new WorkspacesClient(http),
     agents: new AgentsClient(http),
+    search: new SearchClient(http),
     sharing: new SharingClient(http),
   }
 }

@@ -73,6 +73,11 @@ export {
 export { createHttpContext, type HttpContext } from './shared/http'
 export { createIdempotencyKey, toRequestInit, type MutationRequestInit } from './shared/mutation'
 export { WorkspacesClient } from './workspaces/client'
-export { SharingClient, type WorkspaceShareResource } from './sharing/client'
+export { SearchClient, type WorkspaceSearchQuery } from './search/client'
+export {
+  SharingClient,
+  type WorkspaceShareResource,
+  type WorkspaceSharedResource,
+} from './sharing/client'
 export type * from '@overlay/workspace-contracts'
 export * from '../../../src/shared/schemas'

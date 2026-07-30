@@ -31,6 +31,7 @@ export type OverlayIconName =
   | 'smartphone'
   | 'sparkles'
   | 'user'
+  | 'users'
   | 'workflow'
 
 export type OverlayFeatureFlagId =

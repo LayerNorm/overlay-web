@@ -116,6 +116,13 @@ export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
   },
   { id: 'files', href: '/app/files', label: 'Files', icon: 'file-text', requiredCapabilities: ['files', 'knowledge'] },
   {
+    id: 'shared',
+    href: '/app/shared',
+    label: 'Shared with me',
+    icon: 'users',
+    featureFlagId: 'resourceSharing',
+  },
+  {
     id: 'extensions',
     href: '/app/tools',
     label: 'Extensions',

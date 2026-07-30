@@ -24,6 +24,14 @@ import type { WorkspaceRepository } from '@/server/workspaces/WorkspaceRepositor
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { WorkspaceSharingRepository } from './WorkspaceSharingRepository'
 
+/** A resource the actor reaches through sharing, plus how it reaches them. */
+export type AccessibleResource = {
+  ownerUserId: string
+  resourceId: string
+  accessRole: WorkspaceShareAccessRole
+  targetType: WorkspaceShareTargetType
+}
+
 export class WorkspaceSharingServiceError extends Error {
   constructor(
     public readonly code: 'forbidden' | 'not_found' | 'confirmation_required' | 'validation',
@@ -233,7 +241,7 @@ export class WorkspaceSharingService {
     actorUserId: string
     workspaceId: string
     resourceType: WorkspaceShareResourceType
-  }): Promise<Array<{ ownerUserId: string; resourceId: string; accessRole: WorkspaceShareAccessRole }>> {
+  }): Promise<AccessibleResource[]> {
     const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     const targets = await this.effectiveTargets(args.actorUserId, access.workspace.id, access.principal.id)
     const grants = await this.deps.repository.listForTargets({
@@ -241,26 +249,23 @@ export class WorkspaceSharingService {
       resourceType: args.resourceType,
       ...targets,
     })
-    const rolesByResource = new Map<string, WorkspaceShareAccessRole[]>()
+    const grantsByResource = new Map<string, WorkspaceResourceGrant[]>()
     for (const grant of grants) {
-      rolesByResource.set(grant.resourceId, [
-        ...(rolesByResource.get(grant.resourceId) ?? []),
-        grant.accessRole,
+      grantsByResource.set(grant.resourceId, [
+        ...(grantsByResource.get(grant.resourceId) ?? []),
+        grant,
       ])
     }
-    const values = await Promise.all([...rolesByResource].map(async ([resourceId, roles]) => {
-      const accessRole = strongestRole(roles)!
+    const values = await Promise.all([...grantsByResource].map(async ([resourceId, resourceGrants]) => {
+      const accessRole = strongestRole(resourceGrants.map((grant) => grant.accessRole))!
+      const strongest = resourceGrants.find((grant) => grant.accessRole === accessRole)!
       const ownerUserId = await this.deps.resourceOwners.getOwner({
         resourceType: args.resourceType,
         resourceId,
       })
-      return { resourceId, accessRole, ownerUserId }
+      return { resourceId, accessRole, ownerUserId, targetType: strongest.targetType }
     }))
-    return values.filter((value): value is {
-      ownerUserId: string
-      resourceId: string
-      accessRole: WorkspaceShareAccessRole
-    } => Boolean(
+    return values.filter((value): value is AccessibleResource => Boolean(
       value.ownerUserId
       && value.ownerUserId !== args.actorUserId
       && roleAllows(value.accessRole, args.action),

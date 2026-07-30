@@ -20,10 +20,18 @@ import {
 } from 'lucide-react'
 import { invalidateMentionCache, searchMentions } from '@/components/mentions/mention-search'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
-import type { WorkspaceChatSearchResult } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import {
+  WORKSPACE_SEARCH_KIND_LABELS,
+  workspaceSearchHref,
+  type WorkspaceSearchKind,
+  type WorkspaceSearchResult,
+} from '@/shared/search/workspace-search'
+import { Bot, FolderOpen } from 'lucide-react'
 
 const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; strokeWidth?: number }>> = {
+  Bot,
+  FolderOpen,
   BookOpen,
   FileText,
   Plug,
@@ -48,6 +56,15 @@ function CategoryIcon({ icon, className, size = 16 }: { icon: string; className?
   const Icon = ICON_MAP[icon]
   if (!Icon) return null
   return <Icon size={size} strokeWidth={1.75} className={className} />
+}
+
+function workspaceRowId(result: WorkspaceSearchResult): string {
+  return `ws-${result.kind}-${result.id}`
+}
+
+/** Kinds the workspace endpoint owns once it has returned anything. */
+function coveredByWorkspaceSearch(type: MentionType, hasWorkspaceResults: boolean): boolean {
+  return hasWorkspaceResults && CATEGORY_TO_WORKSPACE_KIND[type] !== undefined
 }
 
 function hrefForItem(item: MentionItem): string {
@@ -82,6 +99,25 @@ interface GlobalSearchDialogProps {
 type RowSource =
   | { kind: 'category'; type: MentionType; label: string; icon: string }
   | { kind: 'item'; item: MentionItem; categoryType: MentionType }
+  /** Permission-filtered result from the workspace search endpoint. */
+  | { kind: 'workspace'; result: WorkspaceSearchResult }
+
+const WORKSPACE_KIND_ICONS: Record<WorkspaceSearchKind, string> = {
+  conversation: 'MessageSquare',
+  file: 'FileText',
+  project: 'FolderOpen',
+  knowledge_base: 'BookOpen',
+  automation: 'Zap',
+  agent: 'Bot',
+}
+
+/** Maps a palette category to the workspace kind it corresponds to, if any. */
+const CATEGORY_TO_WORKSPACE_KIND: Partial<Record<MentionType, WorkspaceSearchKind>> = {
+  chat: 'conversation',
+  file: 'file',
+  knowledge: 'knowledge_base',
+  automation: 'automation',
+}
 
 export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNewChat }: GlobalSearchDialogProps) {
   const router = useRouter()
@@ -89,7 +125,7 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
   const [selectedCategory, setSelectedCategory] = useState<MentionType | null>(initialCategory)
   const [categories, setCategories] = useState<MentionCategory[]>([])
   const [loading, setLoading] = useState(false)
-  const [workspaceChatResults, setWorkspaceChatResults] = useState<WorkspaceChatSearchResult[]>([])
+  const [workspaceResults, setWorkspaceResults] = useState<WorkspaceSearchResult[]>([])
 
   useEffect(() => {
     if (!open) return
@@ -125,24 +161,28 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
     }
   }, [open, query])
 
+  // Workspace-wide results come from the server so they are permission
+  // filtered: the palette never renders a snippet the person cannot open.
   useEffect(() => {
-    if (!open || selectedCategory !== 'chat' || query.trim().length < 2) {
-      queueMicrotask(() => setWorkspaceChatResults([]))
+    if (!open || query.trim().length < 2) {
+      queueMicrotask(() => setWorkspaceResults([]))
       return
     }
     let cancelled = false
     const timer = window.setTimeout(() => {
-      void overlayAppClient.conversations.searchWorkspaceChats(query.trim()).then(({ results }) => {
-        if (!cancelled) setWorkspaceChatResults(results)
-      }).catch(() => {
-        if (!cancelled) setWorkspaceChatResults([])
-      })
+      void overlayAppClient.search.workspace(null, { q: query.trim() })
+        .then(({ results }) => {
+          if (!cancelled) setWorkspaceResults(results as WorkspaceSearchResult[])
+        })
+        .catch(() => {
+          if (!cancelled) setWorkspaceResults([])
+        })
     }, 180)
     return () => {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [open, query, selectedCategory])
+  }, [open, query])
 
   const rowSources: RowSource[] = useMemo(() => {
     const list: RowSource[] = []
@@ -156,7 +196,13 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
         }
         return list
       }
+      // Authorized workspace results lead, and the client-side lists only fill
+      // in kinds the workspace endpoint does not cover (skills, MCP, connectors).
+      for (const result of workspaceResults) {
+        list.push({ kind: 'workspace', result })
+      }
       for (const cat of categories) {
+        if (coveredByWorkspaceSearch(cat.type, workspaceResults.length > 0)) continue
         for (const item of cat.items) {
           list.push({ kind: 'item', item, categoryType: cat.type })
         }
@@ -164,22 +210,12 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
       return list
     }
 
-    if (selectedCategory === 'chat' && workspaceChatResults.length > 0) {
-      for (const result of workspaceChatResults) {
-        list.push({
-          kind: 'item',
-          categoryType: 'chat',
-          item: {
-            id: result.conversationId,
-            type: 'chat',
-            name: `${result.conversationType === 'channel' ? '#' : ''}${result.title}`,
-            description: result.snippet ?? result.authorDisplayName,
-            icon: result.conversationType === 'channel' ? 'Hash' : 'MessageSquare',
-          },
-        })
-      }
-      return list
-    }
+    const workspaceKind = CATEGORY_TO_WORKSPACE_KIND[selectedCategory]
+    const scoped = workspaceKind
+      ? workspaceResults.filter((result) => result.kind === workspaceKind)
+      : []
+    for (const result of scoped) list.push({ kind: 'workspace', result })
+    if (scoped.length > 0) return list
     const cat = categories.find((c) => c.type === selectedCategory)
     if (cat) {
       for (const item of cat.items) {
@@ -187,7 +223,7 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
       }
     }
     return list
-  }, [categories, query, selectedCategory, workspaceChatResults])
+  }, [categories, query, selectedCategory, workspaceResults])
 
   const rows: CommandPaletteRow[] = useMemo(() => {
     return rowSources.map((row) => {
@@ -197,6 +233,17 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
           id: `cat-${row.type}`,
           label: row.label,
           icon: <CategoryIcon icon={row.icon} className="shrink-0 opacity-70" />,
+        }
+      }
+      if (row.kind === 'workspace') {
+        return {
+          kind: 'item' as const,
+          id: workspaceRowId(row.result),
+          label: row.result.title,
+          description: row.result.snippet
+            ?? row.result.subtitle
+            ?? `${WORKSPACE_SEARCH_KIND_LABELS[row.result.kind]}${row.result.sharedVia ? ' · shared with you' : ''}`,
+          icon: <CategoryIcon icon={WORKSPACE_KIND_ICONS[row.result.kind]} className="shrink-0 opacity-70" />,
         }
       }
       const fallbackIcon = CATEGORY_ORDER.find((c) => c.type === row.categoryType)?.icon || 'FileText'
@@ -242,25 +289,25 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
         setSelectedCategory(type)
         return
       }
+      const workspaceSource = rowSources.find(
+        (candidate) => candidate.kind === 'workspace' && workspaceRowId(candidate.result) === row.id,
+      )
+      if (workspaceSource?.kind === 'workspace') {
+        // Hrefs stay workspace-relative: the server already scoped the result to
+        // the active workspace, and the app router resolves the canonical path.
+        router.push(workspaceSearchHref(workspaceSource.result, null))
+        onClose()
+        return
+      }
       const source = rowSources.find(
         (candidate) => candidate.kind === 'item' && `${candidate.categoryType}-${candidate.item.id}` === row.id,
       )
       if (source?.kind === 'item') {
-        const workspaceResult = source.categoryType === 'chat'
-          ? workspaceChatResults.find((result) => result.conversationId === source.item.id)
-          : undefined
-        router.push(workspaceResult
-          ? `/app/chat?${new URLSearchParams({
-            view: workspaceResult.conversationType === 'channel'
-              ? 'channels'
-              : workspaceResult.conversationType === 'dm' ? 'dms' : 'personal',
-            id: workspaceResult.conversationId,
-          }).toString()}`
-          : hrefForItem(source.item))
+        router.push(hrefForItem(source.item))
         onClose()
       }
     },
-    [onClose, onNewChat, router, rowSources, workspaceChatResults],
+    [onClose, onNewChat, router, rowSources],
   )
 
   const handleBreadcrumbBack = useCallback(() => {

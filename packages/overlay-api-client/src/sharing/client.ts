@@ -10,6 +10,21 @@ import type { HttpContext } from '../shared/http'
 
 const WORKSPACE_HEADER = 'x-overlay-workspace-id'
 
+/**
+ * Mirrors the server's workspace search result. Declared here so the API client
+ * stays free of app-internal imports.
+ */
+export type WorkspaceSharedResource = {
+  kind: 'conversation' | 'file' | 'project' | 'knowledge_base' | 'automation' | 'agent'
+  id: string
+  title: string
+  snippet?: string
+  subtitle?: string
+  sharedVia?: 'direct' | 'team' | 'room'
+  accessRole?: WorkspaceShareAccessRole
+  updatedAt?: number
+}
+
 export type WorkspaceShareResource = {
   workspaceId: string
   resourceType: WorkspaceShareResourceType
@@ -57,6 +72,14 @@ export class SharingClient {
           : { targetType: target.targetType, targetId: target.targetId }),
       }),
       workspaceInit(resource.workspaceId, init),
+    )
+  }
+
+  /** Resources in this workspace the caller reaches only through a grant. */
+  sharedWithMe(workspaceId: string, init?: RequestInit) {
+    return this.http.json<{ results: WorkspaceSharedResource[] }>(
+      '/api/v1/shares/shared-with-me',
+      workspaceInit(workspaceId, init),
     )
   }
 

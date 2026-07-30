@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  type KeyboardEvent,
   useCallback,
   useEffect,
   useRef,
@@ -12,6 +13,7 @@ import {
   Bell,
   BellOff,
   Bookmark,
+  Flag,
   Hash,
   Check,
   MessageSquareReply,
@@ -41,6 +43,19 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { AttachResourceDialog } from '@/components/share/AttachResourceDialog'
+import {
+  MENTION_LISTBOX_ID,
+  MentionSuggestionList,
+  mentionOptionId,
+} from '@/components/mentions/MentionSuggestionList'
+import {
+  applyMentionSelection,
+  readMentionQuery,
+  resolveMentionedPrincipalIds,
+  suggestMentionPrincipals,
+  type MentionablePrincipal,
+} from '@/shared/mentions/principal-mentions'
+import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 
 type DirectMessage = {
@@ -179,6 +194,8 @@ export function DirectMessageExperience({
   const [agentResponding, setAgentResponding] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
   const [attachOpen, setAttachOpen] = useState(false)
+  const [mention, setMention] = useState<{ query: string; index: number } | null>(null)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const lastTypingSentAt = useRef(0)
   const lastNotificationReadAt = useRef(0)
@@ -287,6 +304,14 @@ export function DirectMessageExperience({
     if (node) node.scrollTop = node.scrollHeight
   }, [messages.length])
 
+  // Restore a half-written message when the room reopens. Storage failures are
+  // absorbed by the draft module, so private browsing simply starts empty.
+  useEffect(() => {
+    if (showcase) return
+    setInput(readDraft({ workspaceId: activeWorkspaceId, conversationId }))
+    setMention(null)
+  }, [activeWorkspaceId, conversationId, showcase])
+
   const otherParticipants = participants.filter((participant) => participant.principalId !== currentPrincipalId)
   const title = conversationType === 'channel'
     ? channel?.name ?? 'Channel'
@@ -341,9 +366,11 @@ export function DirectMessageExperience({
       } satisfies OptimisticMessage,
     ].sort((a, b) => a.createdAt - b.createdAt))
     try {
-      const mentionedPrincipalIds = participants
-        .filter((participant) => text.toLowerCase().includes(`@${participant.displayName.toLowerCase()}`))
-        .map((participant) => participant.principalId)
+      const mentionedPrincipalIds = resolveMentionedPrincipalIds(text, participants.map((participant) => ({
+        principalId: participant.principalId,
+        displayName: participant.displayName,
+        principalType: participant.principalType,
+      })))
       const agentParticipants = participants.filter((participant) => participant.principalType === 'agent')
       const humanParticipants = participants.filter((participant) => participant.principalType === 'human')
       const threadAgentId = threadRootMessageId
@@ -405,6 +432,24 @@ export function DirectMessageExperience({
     setPins(result.pins)
   }
 
+  /**
+   * Reporting records an audit event and tells the reporter it was received.
+   * Nothing in the room changes; review policy arrives with enterprise
+   * moderation.
+   */
+  async function reportMessage(messageId: string) {
+    if (showcase) return
+    try {
+      await overlayAppClient.conversations.reportMessage(conversationId, {
+        messageId,
+        reason: 'other',
+      })
+      setNotice('Report sent to the workspace owners.')
+    } catch {
+      setNotice('Could not send the report.')
+    }
+  }
+
   async function toggleSaved(messageId: string) {
     const saved = savedMessages.some((row) => row.conversationId === conversationId && row.messageId === messageId)
     if (showcase) {
@@ -416,16 +461,78 @@ export function DirectMessageExperience({
     setSavedMessages(result.savedMessages)
   }
 
+  const mentionablePrincipals: MentionablePrincipal[] = participants
+    .filter((participant) => participant.status === 'active')
+    .map((participant) => ({
+      principalId: participant.principalId,
+      displayName: participant.displayName,
+      principalType: participant.principalType,
+      lastActiveAt: participant.updatedAt,
+    }))
+  const mentionSuggestions = mention
+    ? suggestMentionPrincipals({
+      principals: mentionablePrincipals,
+      query: mention.query,
+      excludePrincipalId: currentPrincipalId ?? undefined,
+    })
+    : []
+
+  function selectMention(principal: MentionablePrincipal) {
+    const textarea = composerRef.current
+    const caret = textarea?.selectionStart ?? input.length
+    const next = applyMentionSelection({ text: input, caret, principal })
+    setInput(next.text)
+    setMention(null)
+    queueMicrotask(() => {
+      textarea?.focus()
+      textarea?.setSelectionRange(next.caret, next.caret)
+    })
+  }
+
+  function onComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (mention && mentionSuggestions.length > 0) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        const delta = event.key === 'ArrowDown' ? 1 : -1
+        setMention({
+          ...mention,
+          index: (mention.index + delta + mentionSuggestions.length) % mentionSuggestions.length,
+        })
+        return
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault()
+        selectMention(mentionSuggestions[mention.index] ?? mentionSuggestions[0]!)
+        return
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setMention(null)
+        return
+      }
+    }
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      event.currentTarget.form?.requestSubmit()
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault()
     const text = input
     setInput('')
+    setMention(null)
+    clearDraft({ workspaceId: activeWorkspaceId, conversationId })
     await sendMessage(text)
   }
 
-  function onInput(value: string) {
+  function onInput(value: string, caret?: number) {
     setInput(value)
+    const position = caret ?? value.length
+    const active = readMentionQuery(value, position)
+    setMention(active ? { query: active.query, index: 0 } : null)
     if (showcase) return
+    writeDraft({ workspaceId: activeWorkspaceId, conversationId }, value)
     const now = Date.now()
     if (now - lastTypingSentAt.current > 2_500) {
       lastTypingSentAt.current = now
@@ -660,6 +767,9 @@ export function DirectMessageExperience({
                               <button type="button" aria-label="Reply in thread" onClick={() => setThreadRootId(message.id)} className="flex h-7 w-7 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)]"><MessageSquareReply size={12} /></button>
                               <button type="button" aria-label={pins.some((pin) => pin.messageId === message.id) ? 'Unpin message' : 'Pin message'} onClick={() => void togglePinned(message.id)} className="flex h-7 w-7 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)]"><Pin size={12} /></button>
                               <button type="button" aria-label={savedMessages.some((row) => row.messageId === message.id) ? 'Remove from saved' : 'Save message'} onClick={() => void toggleSaved(message.id)} className="flex h-7 w-7 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)]"><Bookmark size={12} /></button>
+                              {!mine ? (
+                                <button type="button" aria-label="Report message" onClick={() => void reportMessage(message.id)} className="flex h-7 w-7 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)]"><Flag size={12} /></button>
+                              ) : null}
                               {mine ? (
                                 <>
                               <button
@@ -707,24 +817,39 @@ export function DirectMessageExperience({
             </div>
             <div className="shrink-0 px-4 pb-4 sm:px-8 sm:pb-6">
               <div className="mx-auto max-w-3xl">
-                {typingNames.length > 0 ? (
-                  <p className="mb-1.5 h-4 text-[11px] text-[var(--muted-light)]">
-                    {typingNames.join(', ')} {typingNames.length === 1 ? 'is' : 'are'} typing
-                  </p>
-                ) : <div className="mb-1.5 h-4" />}
+                <p
+                  role="status"
+                  aria-live="polite"
+                  data-testid="conversation-activity-status"
+                  className="mb-1.5 h-4 text-[11px] text-[var(--muted-light)]"
+                >
+                  {typingNames.length > 0
+                    ? `${typingNames.join(', ')} ${typingNames.length === 1 ? 'is' : 'are'} typing`
+                    : agentResponding ? `${agentResponding} is responding` : ''}
+                </p>
                 <form
                   onSubmit={(event) => void submit(event)}
-                  className="flex items-end gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-2 shadow-sm focus-within:border-[var(--muted-light)]"
+                  className="relative flex items-end gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-2 shadow-sm focus-within:border-[var(--muted-light)]"
                 >
+                  <MentionSuggestionList
+                    suggestions={mentionSuggestions}
+                    activeIndex={mention?.index ?? 0}
+                    onSelect={selectMention}
+                    onHover={(index) => setMention((current) => current ? { ...current, index } : current)}
+                  />
                   <textarea
+                    ref={composerRef}
                     value={input}
-                    onChange={(event) => onInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && !event.shiftKey) {
-                        event.preventDefault()
-                        event.currentTarget.form?.requestSubmit()
-                      }
-                    }}
+                    onChange={(event) => onInput(event.target.value, event.target.selectionStart ?? undefined)}
+                    onKeyDown={onComposerKeyDown}
+                    role="combobox"
+                    aria-expanded={mentionSuggestions.length > 0}
+                    aria-controls={MENTION_LISTBOX_ID}
+                    aria-autocomplete="list"
+                    aria-activedescendant={mentionSuggestions.length > 0 && mention
+                      ? mentionOptionId((mentionSuggestions[mention.index] ?? mentionSuggestions[0]!).principalId)
+                      : undefined}
+                    aria-label={`Message ${title}`}
                     rows={1}
                     placeholder={`Message ${title}`}
                     className="max-h-36 min-h-9 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"

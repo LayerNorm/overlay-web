@@ -73,6 +73,7 @@ import { GovernanceService } from '@/server/governance'
 import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { WorkspaceAgentService } from '@/server/agents'
 import { WorkspaceSharingService } from '@/server/sharing'
+import { WorkspaceSearchService } from '@/server/search'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -113,6 +114,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   workspaceService: WorkspaceService
   workspaceAgentService: WorkspaceAgentService
   workspaceSharingService: WorkspaceSharingService
+  workspaceSearchService: WorkspaceSearchService
 }
 
 export interface CreateOverlayServerContextOptions {
@@ -177,6 +179,54 @@ export function createOverlayServerContext(
     resourceOwners: appData.repositories.authorization.resourceOwners,
     workspaceRepository: appData.repositories.workspaces,
     workspaces: workspaceService,
+  })
+  const workspaceSearchService = new WorkspaceSearchService({
+    agents: appData.repositories.workspaceAgents,
+    collaboration: appData.repositories.conversationCollaboration,
+    conversations: appData.repositories.conversations,
+    sharing: workspaceSharingService,
+    workspaces: workspaceService,
+    sources: {
+      files: async ({ userId }) => await appData.repositories.files.listFiles({
+        userId,
+        limit: 200,
+        summary: true,
+      }) as Array<{ _id?: string; name?: string; updatedAt?: number }>,
+      projects: async ({ userId }) => await appData.repositories.projects.listProjects({ userId }),
+      knowledgeBases: async ({ userId }) => await appData.repositories.knowledgeBases.bases
+        .listForOwner(userId),
+      automations: async ({ userId }) => await appData.repositories.automations
+        .listAutomations({ userId }),
+    },
+    // Titles for shared resources are read with the owner's identity only after
+    // the sharing service has already authorized the actor.
+    loaders: {
+      file: async ({ resourceId, ownerUserId }) => {
+        const file = await appData.repositories.files.getFile({
+          fileId: resourceId,
+          userId: ownerUserId,
+        }) as { name?: string; updatedAt?: number } | null
+        return file ? { title: file.name ?? 'Untitled', updatedAt: file.updatedAt } : null
+      },
+      project: async ({ resourceId, ownerUserId }) => {
+        const project = await appData.repositories.projects.getProject({
+          projectId: resourceId,
+          userId: ownerUserId,
+        })
+        return project ? { title: project.name, updatedAt: project.updatedAt } : null
+      },
+      knowledge_base: async ({ resourceId }) => {
+        const base = await appData.repositories.knowledgeBases.bases.get(resourceId)
+        return base ? { title: base.title, updatedAt: base.updatedAt } : null
+      },
+      automation: async ({ resourceId, ownerUserId }) => {
+        const automation = await appData.repositories.automations.getAutomation({
+          automationId: resourceId,
+          userId: ownerUserId,
+        })
+        return automation ? { title: automation.name ?? 'Untitled automation' } : null
+      },
+    },
   })
   const userService = new UserService({
     authProvider: selectedAuthProviderForUserService(runtimeConfig),
@@ -284,6 +334,7 @@ export function createOverlayServerContext(
     workspaceService,
     workspaceAgentService,
     workspaceSharingService,
+    workspaceSearchService,
   }
 }
 

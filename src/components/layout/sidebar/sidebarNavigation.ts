@@ -21,6 +21,7 @@ import {
   Smartphone,
   Sparkles,
   User,
+  Users,
   Workflow,
 } from 'lucide-react'
 import type { OverlayIconName, OverlaySidebarSearchCategory } from '@overlay/app-core'
@@ -48,6 +49,7 @@ export const ICON_COMPONENTS: Partial<Record<OverlayIconName, LucideIcon>> = {
   smartphone: Smartphone,
   sparkles: Sparkles,
   user: User,
+  users: Users,
   workflow: Workflow,
 }
 

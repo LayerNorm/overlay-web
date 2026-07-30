@@ -64,6 +64,13 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'workspace-sharing',
   },
   {
+    id: 'workspace-search',
+    methods: ['GET'],
+    prefixes: ['/api/v1/search'],
+    status: 'supported',
+    feature: 'workspace-search',
+  },
+  {
     id: 'model-catalog',
     methods: ['GET'],
     paths: ['/api/v1/model-catalog'],

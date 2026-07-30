@@ -215,7 +215,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     name: 'Universal resource sharing',
     targetPhase: 'P8',
     capabilities: [],
-    routeRuleIds: ['workspace-sharing'],
+    routeRuleIds: ['workspace-sharing', 'workspace-search'],
     exitGate: 'Grants, dynamic team and room expansion, revocation, and public-link policy pass identical Convex/Postgres contract tests.',
   },
   {
