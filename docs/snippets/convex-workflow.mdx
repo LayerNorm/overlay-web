@@ -1,7 +1,11 @@
-When a change touches `convex/`, push both deployments before considering the web app verified:
+Treat each web deployment and its Convex deployment as one release unit. Push the development deployment from the dedicated `staging` worktree for staging QA, then push production from the clean `main` worktree after the matching web deployment is live:
 
 ```bash
-npm run convex:push:all
+# staging worktree only
+npm run convex:push:dev
+
+# clean main worktree only
+npm run convex:push:prod
 ```
 
-Do not pass `.env.local` to production Convex deploys. Use the dedicated scripts so production and development deployments receive the right environment.
+Do not use `convex:push:all` in a worktree workflow. Never pass `.env.local` to a production Convex deploy; use the dedicated production script instead.

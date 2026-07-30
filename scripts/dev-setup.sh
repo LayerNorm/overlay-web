@@ -19,10 +19,12 @@ if [[ ! -d "$SOURCE_REPO/node_modules" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$SOURCE_REPO/.env.local" ]]; then
-  echo "❌  .env.local not found at $SOURCE_REPO"
-  exit 1
-fi
+for env_file in .env.local .env.development.local; do
+  if [[ ! -f "$SOURCE_REPO/$env_file" ]]; then
+    echo "❌  $env_file not found at $SOURCE_REPO"
+    exit 1
+  fi
+done
 
 # ── Symlink node_modules ──────────────────────────────────────────────────────
 if [[ -d "$WORKSPACE/node_modules" && ! -L "$WORKSPACE/node_modules" ]]; then
@@ -38,12 +40,14 @@ else
 fi
 
 # ── Symlink .env.local ────────────────────────────────────────────────────────
-if [[ ! -L "$WORKSPACE/.env.local" ]]; then
-  ln -sf "$SOURCE_REPO/.env.local" "$WORKSPACE/.env.local"
-  echo "✅  Linked .env.local"
-else
-  echo "✅  .env.local already linked"
-fi
+for env_file in .env.local .env.development.local; do
+  if [[ ! -L "$WORKSPACE/$env_file" ]]; then
+    ln -sf "$SOURCE_REPO/$env_file" "$WORKSPACE/$env_file"
+    echo "✅  Linked $env_file"
+  else
+    echo "✅  $env_file already linked"
+  fi
+done
 
 # ── Start dev server ──────────────────────────────────────────────────────────
 echo ""

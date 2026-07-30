@@ -1,0 +1,121 @@
+---
+title: "Worktree Staging QA"
+description: "Safely create feature worktrees, test a staging release candidate, and promote it to production."
+---
+
+## Deployment lanes
+
+Overlay has two backend lanes that must stay paired with their matching web deployment:
+
+| Lane | Git branch | Web URL | Convex deployment |
+| --- | --- | --- | --- |
+| Production | `main` | `www.getoverlay.io` | production |
+| Shared staging | `staging` | `staging.getoverlay.io` | development |
+
+A feature worktree must never change production Convex. The `main` app and production Convex are a single release unit: deploy them only from an up-to-date, clean `main` worktree.
+
+The development Convex deployment is shared by local development and `staging.getoverlay.io`. A Convex change from one branch changes that backend for every user of this lane. Do not run concurrent staging QA sessions that make incompatible changes under `convex/`.
+
+## Create a feature worktree
+
+Keep the canonical checkout at `~/Downloads/overlay-mono/overlay-landing` on `main`. Create feature worktrees beside it; do not check `staging` out inside a feature worktree.
+
+```bash
+cd ~/Downloads/overlay-mono/overlay-landing
+git fetch origin
+git worktree add ../overlay-landing-my-feature -b agent/my-feature origin/main
+cd ../overlay-landing-my-feature
+./scripts/dev-setup.sh 3001
+```
+
+`dev-setup.sh` links `node_modules`, `.env.local`, and `.env.development.local` from the canonical checkout, then starts Next.js on the supplied port. Run `npm install` once in the canonical checkout before creating worktrees.
+
+The linked environment files are for local development only. Never edit secrets through a worktree link, commit an environment file, or pass `.env.local` to a production Convex deploy.
+
+## Develop locally
+
+For changes outside `convex/`, use the dev server started by `dev-setup.sh` and run the smallest relevant tests or lint checks.
+
+For a change under `convex/`, do not use `npm run dev:with-convex` from the feature worktree: it pushes that branch into the shared development backend. First integrate the branch into the staging release candidate described below. Then push development Convex only from the dedicated `staging` worktree.
+
+Never run these from a feature worktree:
+
+```bash
+npm run convex:push:prod
+npm run convex:push:all
+npm run convex:deploy
+npm run convex:deploy:all
+```
+
+## Prepare the staging release candidate
+
+Use one dedicated worktree for the shared `staging` branch. This prevents a feature worktree from accidentally becoming the staging or production deployment source.
+
+```bash
+cd ~/Downloads/overlay-mono/overlay-landing
+git fetch origin
+git worktree add ../overlay-landing-staging staging
+cd ../overlay-landing-staging
+git pull --ff-only origin staging
+```
+
+When a feature is ready for QA, merge its branch into this staging worktree:
+
+```bash
+cd ~/Downloads/overlay-mono/overlay-landing-staging
+git merge --no-ff agent/my-feature
+git push origin staging
+```
+
+Do not force-push `staging`. If a release candidate must be removed, create a revert commit so staging history stays auditable.
+
+## Push Convex for staging QA
+
+If and only if the staged change includes `convex/` changes, deploy the exact staging revision to the shared development deployment before testing the staging website:
+
+```bash
+cd ~/Downloads/overlay-mono/overlay-landing-staging
+npm run convex:push:dev
+```
+
+Then wait for the `staging` Vercel build to finish and open `https://staging.getoverlay.io`.
+
+For every staging QA run, verify the changed flow plus these basics where applicable:
+
+- Authentication/session loading succeeds.
+- The affected API route or UI flow returns the expected result.
+- A chat change streams, completes, and persists after a refresh.
+- A billing or entitlement change creates and finalizes its expected usage state.
+- Browser console and staging runtime logs have no new errors.
+
+If staging is broken after a Convex schema or function change, first restore the shared development deployment by checking out the last known-good `staging` commit in the dedicated staging worktree and running `npm run convex:push:dev`. Never use a feature worktree or production deployment as the rollback source.
+
+## Promote a verified release
+
+After staging passes, promote the same reviewed changes to `main` through the normal pull request process. Before any production Convex deploy, use the canonical `main` worktree and verify it is clean and matches `origin/main`:
+
+```bash
+cd ~/Downloads/overlay-mono/overlay-landing
+git fetch origin
+git status --short
+git log --oneline -1 HEAD
+git log --oneline -1 origin/main
+```
+
+After `main` is deployed to Vercel, and only when that main revision contains `convex/` changes, sync production Convex from this `main` checkout:
+
+```bash
+npm run convex:push:prod
+```
+
+Then run an authenticated smoke test on `https://www.getoverlay.io`. For chat, send a message, confirm the streamed answer completes, refresh the page, and confirm the message remains in the conversation.
+
+## Agent checklist
+
+Before an agent runs a Convex command, it must state:
+
+1. its current branch and worktree path;
+2. whether it is targeting the shared development or production deployment;
+3. why that deployment is the correct lane for the revision being tested.
+
+An agent may run `npm run convex:push:dev` only from the dedicated `staging` worktree for a staging release candidate. An agent may run `npm run convex:push:prod` only from the clean canonical `main` worktree after main's web deployment is live. `convex:push:all` is not part of the worktree workflow.
