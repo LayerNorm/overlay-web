@@ -157,9 +157,35 @@ export function createShowcaseWorkspaceManagementClient(
     }
   }
 
+  let showcasePublicLinksEnabled = true
+
   return {
     async load(workspaceId, tab) {
       return response(workspaceId, tab)
+    },
+    async sharingPolicy(workspaceId) {
+      const workspace = workspaceById.get(workspaceId)
+      if (!workspace) throw new Error('Workspace not found or you no longer have access.')
+      return {
+        policy: {
+          workspaceId,
+          publicLinksEnabled: showcasePublicLinksEnabled,
+          updatedAt: 0,
+        },
+        canManage: workspace.role === 'owner' || workspace.role === 'admin',
+      }
+    },
+    async setSharingPolicy(workspaceId, input) {
+      const workspace = workspaceById.get(workspaceId)
+      if (!workspace) throw new Error('Workspace not found or you no longer have access.')
+      if (workspace.role !== 'owner' && workspace.role !== 'admin') {
+        throw new Error('Only owners and admins can change workspace policy.')
+      }
+      showcasePublicLinksEnabled = input.publicLinksEnabled
+      return {
+        policy: { workspaceId, publicLinksEnabled: showcasePublicLinksEnabled, updatedAt: 0 },
+        canManage: true,
+      }
     },
     async invite(workspaceId, input) {
       sequence += 1

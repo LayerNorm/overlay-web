@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Bot, MessageSquare, MoreHorizontal, Plus, Users } from 'lucide-react'
+import { Bot, MessageSquare, MoreHorizontal, Plus, Share2, Users } from 'lucide-react'
 import type { WorkspaceAgentCreateInput, WorkspaceAgentDirectoryItem, WorkspaceManagementItem } from '@overlay/workspace-contracts'
 import { Button } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -9,6 +9,7 @@ import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider
 import { buildWorkspaceHref } from '@/features/workspaces/lib/workspace-routing'
 import { useRouter } from 'next/navigation'
 import { AgentEditorDialog } from './AgentEditorDialog'
+import { ShareDialog } from '@/components/share/ShareDialog'
 
 const SHOWCASE_AGENTS: WorkspaceAgentDirectoryItem[] = [
   ['showcase-research', 'Research partner', 'Finds primary evidence and challenges assumptions.', '#2563eb'],
@@ -35,6 +36,7 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
   const [loading, setLoading] = useState(!showcase)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<WorkspaceAgentDirectoryItem | null>(null)
+  const [sharingAgent, setSharingAgent] = useState<WorkspaceAgentDirectoryItem | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -165,7 +167,10 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
                 <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--muted)]">{agent.description ?? agent.instructions}</p>
                 <div className="mt-auto flex items-end justify-between gap-3 pt-5">
                   <div className="text-[10px] text-[var(--muted-light)]"><span className="block">{agent.harness === 'overlay' ? 'Overlay harness' : 'Claude Code'}</span><span>{agent.roomCount} {agent.roomCount === 1 ? 'room' : 'rooms'}</span></div>
-                  <Button variant="ghost" size="sm" onClick={() => void startChat(agent)}><MessageSquare size={13} /> Chat</Button>
+                  <div className="flex items-center gap-1">
+                    {!showcase ? <Button variant="ghost" size="sm" onClick={() => setSharingAgent(agent)}><Share2 size={13} /> Share</Button> : null}
+                    <Button variant="ghost" size="sm" onClick={() => void startChat(agent)}><MessageSquare size={13} /> Chat</Button>
+                  </div>
                 </div>
               </article>
             ))}
@@ -193,6 +198,16 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
         ) : null}
       </div>
       {dialogOpen ? <AgentEditorDialog key={editing?.id ?? 'new'} open agent={editing} teams={teams} busy={busy} error={error} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }} onSave={(input) => void save(input)} onArchive={editing ? () => void archiveAgent() : undefined} /> : null}
+      <ShareDialog
+        workspaceId={activeWorkspaceId}
+        isOpen={Boolean(sharingAgent)}
+        onClose={() => setSharingAgent(null)}
+        resource={sharingAgent ? {
+          id: sharingAgent.id,
+          type: 'agent',
+          title: sharingAgent.name,
+        } : null}
+      />
     </div>
   )
 }

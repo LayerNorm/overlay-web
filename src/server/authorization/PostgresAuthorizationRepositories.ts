@@ -436,6 +436,7 @@ function resourceTable(resourceType: string): SQL | null {
     case 'conversation': return sql.raw('conversations')
     case 'file': return sql.raw('files')
     case 'project': return sql.raw('projects')
+    case 'automation': return sql.raw('automations')
     default: return null
   }
 }

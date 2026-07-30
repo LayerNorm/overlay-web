@@ -90,6 +90,27 @@ async function workspaceMutation<T>(
 export const workspaceManagementClient: WorkspaceManagementClient = {
   ...workspaceManagementLoader,
 
+  async sharingPolicy(workspaceId, signal) {
+    return await readJson(await fetch(
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/policies`,
+      {
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId },
+        signal,
+      },
+    ))
+  },
+
+  async setSharingPolicy(workspaceId, input) {
+    return await workspaceMutation(
+      workspaceId,
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/policies`,
+      'PATCH',
+      input,
+    )
+  },
+
   async invite(workspaceId, input) {
     return await workspaceMutation(
       workspaceId,

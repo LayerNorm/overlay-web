@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import {
   canJoinTeam,
   canManageWorkspace,
+  DEFAULT_WORKSPACE_PUBLIC_LINKS_ENABLED,
   type WorkspaceAccess,
   type WorkspaceInvitation,
   type WorkspaceMembership,
@@ -13,6 +14,7 @@ import {
   type WorkspacePrincipalType,
   type WorkspaceResourceGuest,
   type WorkspaceResourceScope,
+  type WorkspaceSharingPolicy,
   type WorkspaceTeam,
   type WorkspaceTeamMember,
   type WorkspaceTeamWithMembers,
@@ -618,6 +620,67 @@ export class WorkspaceService {
     if (!scope) throw notFound('Resource scope not found')
     if (scope.workspaceId !== actor.workspace.id) throw notFound('Resource not found')
     return scope
+  }
+
+  /**
+   * Sharing policy is readable by every active member so the Share dialog can
+   * present General access honestly, and writable only by owners and admins.
+   */
+  async getSharingPolicy(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<WorkspaceSharingPolicy> {
+    const actor = await this.requireActiveMember(args)
+    return await this.resolveSharingPolicy(actor.workspace.id)
+  }
+
+  async setSharingPolicy(args: {
+    actorUserId: string
+    workspaceId: string
+    publicLinksEnabled: boolean
+  }): Promise<WorkspaceSharingPolicy> {
+    const actor = await this.requireManager(args)
+    if (typeof args.publicLinksEnabled !== 'boolean') {
+      throw new WorkspaceServiceError('publicLinksEnabled must be a boolean', 400, 'validation')
+    }
+    return await this.repository.setSharingPolicy({
+      workspaceId: actor.workspace.id,
+      publicLinksEnabled: args.publicLinksEnabled,
+      updatedByPrincipalId: actor.principal.id,
+      now: this.now(),
+    })
+  }
+
+  /**
+   * Called before a resource is made publicly linkable. Public links are
+   * General access, never a collaborator grant, so they follow workspace policy
+   * instead of resource permissions.
+   */
+  async assertPublicLinksAllowed(args: {
+    actorUserId: string
+    workspaceId?: string
+  }): Promise<void> {
+    const access = args.workspaceId
+      ? await this.requireActiveMember({ actorUserId: args.actorUserId, workspaceId: args.workspaceId })
+      : await this.repository.getActiveWorkspace(required(args.actorUserId, 'actorUserId'))
+    if (!access) return
+    const policy = await this.resolveSharingPolicy(access.workspace.id)
+    if (!policy.publicLinksEnabled) {
+      throw new WorkspaceServiceError(
+        'Public links are turned off for this workspace',
+        403,
+        'forbidden',
+      )
+    }
+  }
+
+  private async resolveSharingPolicy(workspaceId: string): Promise<WorkspaceSharingPolicy> {
+    const stored = await this.repository.getSharingPolicy(workspaceId)
+    return stored ?? {
+      workspaceId,
+      publicLinksEnabled: DEFAULT_WORKSPACE_PUBLIC_LINKS_ENABLED,
+      updatedAt: 0,
+    }
   }
 
   async listResourceGuests(args: {

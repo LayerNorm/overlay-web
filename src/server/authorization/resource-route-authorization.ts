@@ -15,6 +15,7 @@ const RESOURCE_ID_KEYS: Record<string, readonly string[]> = {
   output: ['outputId'],
   project: ['projectId'],
   knowledge_base: ['knowledgeBaseId'],
+  automation: ['automationId'],
 }
 
 export type ResourceRouteAuthorization = {
@@ -112,6 +113,7 @@ function resourceCapability(resourceType: string) {
     case 'output': return 'outputs.read' as const
     case 'project': return 'projects.read' as const
     case 'knowledge_base': return 'knowledge.read' as const
+    case 'automation': return 'automations.use' as const
     default: throw new Error(`No authorization capability for resource type ${resourceType}`)
   }
 }

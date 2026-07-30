@@ -181,6 +181,7 @@ export type WorkspaceManagementView =
   | 'guests'
   | 'roles'
   | 'chats-agents'
+  | 'sharing'
 
 export type WorkspaceManagementItem = {
   id: string
@@ -431,6 +432,97 @@ export type WorkspaceAgentDirectoryItem = WorkspaceAgentDefinition & {
 export type WorkspaceAgentListResponse = {
   agents: WorkspaceAgentDirectoryItem[]
   canCreate: boolean
+}
+
+export const WORKSPACE_SHARE_RESOURCE_TYPES = [
+  'conversation',
+  'file',
+  'project',
+  'knowledge_base',
+  'automation',
+  'agent',
+] as const
+export type WorkspaceShareResourceType = (typeof WORKSPACE_SHARE_RESOURCE_TYPES)[number]
+
+export const WORKSPACE_SHARE_TARGET_TYPES = ['principal', 'team', 'room'] as const
+export type WorkspaceShareTargetType = (typeof WORKSPACE_SHARE_TARGET_TYPES)[number]
+
+export const WORKSPACE_SHARE_ACCESS_ROLES = ['viewer', 'operator', 'editor'] as const
+export type WorkspaceShareAccessRole = (typeof WORKSPACE_SHARE_ACCESS_ROLES)[number]
+
+export type WorkspaceResourceGrant = {
+  id: string
+  workspaceId: string
+  resourceType: WorkspaceShareResourceType
+  resourceId: string
+  targetType: WorkspaceShareTargetType
+  targetId: string
+  accessRole: WorkspaceShareAccessRole
+  grantedByPrincipalId: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type WorkspaceShareDirectoryEntry = {
+  id: string
+  name: string
+  description?: string
+  kind: 'human' | 'agent' | 'team' | 'dm' | 'channel'
+  targetType: WorkspaceShareTargetType
+}
+
+export type WorkspaceShareDirectory = {
+  principals: WorkspaceShareDirectoryEntry[]
+  teams: WorkspaceShareDirectoryEntry[]
+  rooms: WorkspaceShareDirectoryEntry[]
+  canInvite: boolean
+}
+
+export type WorkspaceResourceShareResponse = {
+  grants: WorkspaceResourceGrant[]
+  directory: WorkspaceShareDirectory
+  canManage: boolean
+  /** Workspace policy for General access. Public links are separate from grants. */
+  publicLinksEnabled: boolean
+}
+
+/**
+ * Workspace-level sharing policy. Phase 6 governs public links; later phases
+ * extend this record with guest expiry, retention, and agent budget policy.
+ */
+export type WorkspaceSharingPolicy = {
+  workspaceId: string
+  publicLinksEnabled: boolean
+  updatedAt: number
+  updatedByPrincipalId?: string
+}
+
+export const DEFAULT_WORKSPACE_PUBLIC_LINKS_ENABLED = true
+
+export type WorkspaceSharingPolicyResponse = {
+  policy: WorkspaceSharingPolicy
+  canManage: boolean
+}
+
+/**
+ * Who is affected before a room grant is created, and who loses access when a
+ * grant is revoked. Both are disclosures, never authorization decisions.
+ */
+export type WorkspaceShareImpactPrincipal = {
+  principalId: string
+  name: string
+  kind: 'human' | 'agent'
+  /** Populated when access arrives through a team or room rather than directly. */
+  via?: string
+}
+
+export type WorkspaceShareImpact = {
+  targetName: string
+  targetType: WorkspaceShareTargetType
+  dynamic: boolean
+  gaining: WorkspaceShareImpactPrincipal[]
+  losing: WorkspaceShareImpactPrincipal[]
+  retaining: WorkspaceShareImpactPrincipal[]
 }
 
 export function isWorkspacePrincipalType(value: unknown): value is WorkspacePrincipalType {

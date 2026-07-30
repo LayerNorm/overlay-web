@@ -1126,6 +1126,9 @@ export const purgeArchivedWorkspaceByServer = mutation({
     await deleteRows(await ctx.db.query('workspaceResourceGuests')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .collect())
+    await deleteRows(await ctx.db.query('workspaceResourceGrants')
+      .withIndex('by_workspaceId_resource', (q) => q.eq('workspaceId', args.workspaceId))
+      .collect())
     await deleteRows(await ctx.db.query('workspaceResourceScopes')
       .withIndex('by_workspaceId_resource', (q) => q.eq('workspaceId', args.workspaceId))
       .collect())
@@ -1487,6 +1490,76 @@ export const getResourceWorkspaceByServer = query({
       resourceId: row.resourceId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt ?? row.createdAt,
+    }
+  },
+})
+
+const sharingPolicyValidator = v.object({
+  workspaceId: v.string(),
+  publicLinksEnabled: v.boolean(),
+  updatedByPrincipalId: v.optional(v.string()),
+  updatedAt: v.number(),
+})
+
+export const getSharingPolicyByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string() },
+  returns: v.union(sharingPolicyValidator, v.null()),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const row = await ctx.db.query('workspaceSharingPolicies')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+      .unique()
+    if (!row) return null
+    return {
+      workspaceId: row.workspaceId,
+      publicLinksEnabled: row.publicLinksEnabled,
+      updatedByPrincipalId: row.updatedByPrincipalId,
+      updatedAt: row.updatedAt,
+    }
+  },
+})
+
+export const setSharingPolicyByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    workspaceId: v.string(),
+    publicLinksEnabled: v.boolean(),
+    updatedByPrincipalId: v.string(),
+    now: v.number(),
+  },
+  returns: sharingPolicyValidator,
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    await requireActiveWorkspace(ctx, args.workspaceId)
+    const principal = await ctx.db.query('workspacePrincipals')
+      .withIndex('by_principalId', (q) => q.eq('principalId', args.updatedByPrincipalId))
+      .unique()
+    if (!principal || principal.workspaceId !== args.workspaceId || principal.archivedAt) {
+      throw new Error('WORKSPACE_PRINCIPAL_NOT_FOUND')
+    }
+    const existing = await ctx.db.query('workspaceSharingPolicies')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+      .unique()
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        publicLinksEnabled: args.publicLinksEnabled,
+        updatedByPrincipalId: args.updatedByPrincipalId,
+        updatedAt: args.now,
+      })
+    } else {
+      await ctx.db.insert('workspaceSharingPolicies', {
+        workspaceId: args.workspaceId,
+        publicLinksEnabled: args.publicLinksEnabled,
+        updatedByPrincipalId: args.updatedByPrincipalId,
+        createdAt: args.now,
+        updatedAt: args.now,
+      })
+    }
+    return {
+      workspaceId: args.workspaceId,
+      publicLinksEnabled: args.publicLinksEnabled,
+      updatedByPrincipalId: args.updatedByPrincipalId,
+      updatedAt: args.now,
     }
   },
 })

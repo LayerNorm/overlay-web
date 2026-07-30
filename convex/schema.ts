@@ -458,6 +458,33 @@ export default defineSchema({
     .index('by_resource', ['resourceType', 'resourceId'])
     .index('by_workspaceId_resource', ['workspaceId', 'resourceType', 'resourceId']),
 
+  workspaceResourceGrants: defineTable({
+    grantId: v.string(),
+    workspaceId: v.string(),
+    resourceType: v.union(
+      v.literal('conversation'), v.literal('file'), v.literal('project'),
+      v.literal('knowledge_base'), v.literal('automation'), v.literal('agent'),
+    ),
+    resourceId: v.string(),
+    targetType: v.union(v.literal('principal'), v.literal('team'), v.literal('room')),
+    targetId: v.string(),
+    accessRole: v.union(v.literal('viewer'), v.literal('operator'), v.literal('editor')),
+    grantedByPrincipalId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_grantId', ['grantId'])
+    .index('by_workspaceId_resource', ['workspaceId', 'resourceType', 'resourceId'])
+    .index('by_workspaceId_target', ['workspaceId', 'targetType', 'targetId', 'resourceType']),
+
+  workspaceSharingPolicies: defineTable({
+    workspaceId: v.string(),
+    publicLinksEnabled: v.boolean(),
+    updatedByPrincipalId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_workspaceId', ['workspaceId']),
+
   workspaceUserPreferences: defineTable({
     userId: v.string(),
     activeWorkspaceId: v.string(),

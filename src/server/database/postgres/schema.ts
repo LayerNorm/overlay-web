@@ -332,6 +332,18 @@ export const workspaceResourceGuestAccessRole = pgEnum(
   ['viewer', 'editor'],
 )
 
+export const workspaceShareTargetType = pgEnum('overlay_workspace_share_target_type', [
+  'principal',
+  'team',
+  'room',
+])
+
+export const workspaceShareAccessRole = pgEnum('overlay_workspace_share_access_role', [
+  'viewer',
+  'operator',
+  'editor',
+])
+
 export const conversationParticipantRole = pgEnum('overlay_conversation_participant_role', [
   'member',
   'moderator',
@@ -656,6 +668,78 @@ export const workspaceResourceScopes = pgTable('workspace_resource_scopes', {
     table.resourceType,
     table.resourceId,
   ),
+  // Referenced by workspace_resource_grants so a grant can never claim a
+  // different workspace than the resource is bound to.
+  unique('workspace_resource_scopes_workspace_resource_unique').on(
+    table.workspaceId,
+    table.resourceType,
+    table.resourceId,
+  ),
+])
+
+export const workspaceResourceGrants = pgTable('workspace_resource_grants', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  resourceType: text('resource_type').notNull(),
+  resourceId: text('resource_id').notNull(),
+  targetType: workspaceShareTargetType('target_type').notNull(),
+  targetId: text('target_id').notNull(),
+  accessRole: workspaceShareAccessRole('access_role').notNull(),
+  grantedByPrincipalId: text('granted_by_principal_id')
+    .notNull()
+    .references(() => workspacePrincipals.id, { onDelete: 'restrict' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  foreignKey({
+    columns: [table.workspaceId, table.resourceType, table.resourceId],
+    foreignColumns: [
+      workspaceResourceScopes.workspaceId,
+      workspaceResourceScopes.resourceType,
+      workspaceResourceScopes.resourceId,
+    ],
+    name: 'workspace_resource_grants_scope_fk',
+  }).onDelete('cascade'),
+  unique('workspace_resource_grants_target_unique').on(
+    table.workspaceId,
+    table.resourceType,
+    table.resourceId,
+    table.targetType,
+    table.targetId,
+  ),
+  index('workspace_resource_grants_resource_idx').on(
+    table.workspaceId,
+    table.resourceType,
+    table.resourceId,
+  ),
+  index('workspace_resource_grants_target_idx').on(
+    table.workspaceId,
+    table.targetType,
+    table.targetId,
+    table.resourceType,
+  ),
+  check(
+    'workspace_resource_grants_type_check',
+    sql`${table.resourceType} IN ('conversation', 'file', 'project', 'knowledge_base', 'automation', 'agent')`,
+  ),
+])
+
+export const workspaceSharingPolicies = pgTable('workspace_sharing_policies', {
+  workspaceId: text('workspace_id')
+    .primaryKey()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  publicLinksEnabled: boolean('public_links_enabled').default(true).notNull(),
+  updatedByPrincipalId: text('updated_by_principal_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  foreignKey({
+    columns: [table.workspaceId, table.updatedByPrincipalId],
+    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
+    name: 'workspace_sharing_policies_principal_fk',
+  }).onDelete('set null'),
 ])
 
 export const knowledgeBases = pgTable('knowledge_bases', {

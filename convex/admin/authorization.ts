@@ -477,6 +477,7 @@ function resourceTable(resourceType: string) {
     case 'conversation': return 'conversations' as const
     case 'file': return 'files' as const
     case 'project': return 'projects' as const
+    case 'automation': return 'automations' as const
     default: return null
   }
 }

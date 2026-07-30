@@ -17,7 +17,8 @@ import {
   type NotebookEditorRepository,
 } from '@overlay/modules-react/notes'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
-import { ShareDialog } from '@/features/share/components/ShareDialog'
+import { ShareDialog } from '@/components/share/ShareDialog'
+import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 import { MentionInput } from '@/features/chat/components/chat-interface/MentionInput'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { ACT_MODEL_KEY, readStoredActModelId } from '@/shared/chat/chat-model-prefs'
@@ -50,6 +51,7 @@ export default function NotebookEditor({
   projectName?: string
 }) {
   void _userId
+  const { activeWorkspaceId } = useWorkspace()
   const router = useRouter()
   const searchParams = useSearchParams()
   const models = useMemo(
@@ -125,7 +127,7 @@ export default function NotebookEditor({
           title={title}
           content={content}
           metadata={{ createdAt: note.createdAt, updatedAt: note.updatedAt }}
-          renderShareDialog={(props) => <ShareDialog {...props} />}
+          renderShareDialog={(props) => <ShareDialog {...props} workspaceId={activeWorkspaceId} />}
         />
       )}
       renderAgentInput={(input) => (

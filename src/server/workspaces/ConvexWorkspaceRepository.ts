@@ -9,6 +9,7 @@ import type {
   WorkspacePrincipal,
   WorkspaceResourceGuest,
   WorkspaceResourceScope,
+  WorkspaceSharingPolicy,
   WorkspaceTeam,
   WorkspaceTeamMember,
 } from '@overlay/workspace-contracts'
@@ -437,6 +438,15 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
   ) {
     const row = await query<ConvexResourceScope | null>('getResourceWorkspaceByServer', args)
     return row ? clean(row) : null
+  }
+
+  async getSharingPolicy(workspaceId: string): Promise<WorkspaceSharingPolicy | null> {
+    const row = await query<WorkspaceSharingPolicy | null>('getSharingPolicyByServer', { workspaceId })
+    return row ? clean(row) : null
+  }
+
+  async setSharingPolicy(input: Parameters<WorkspaceRepository['setSharingPolicy']>[0]) {
+    return clean(await requiredMutation<WorkspaceSharingPolicy>('setSharingPolicyByServer', input))
   }
 
   async listResourceGuests(args: Parameters<WorkspaceRepository['listResourceGuests']>[0]) {

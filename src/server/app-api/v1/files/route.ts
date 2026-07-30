@@ -2,6 +2,7 @@ import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthorizedResourceUserId, getGrantedResources, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { fileErrorResponse, fileService } from '@/server/files/http'
+import { getOverlayServerContext } from '@/server/bootstrap'
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -50,6 +51,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId: getAuthorizedResourceUserId(context),
       body: body as Record<string, unknown>,
     })
+    const resourceIds = [...new Set([
+      ...(typeof result.id === 'string' ? [result.id] : []),
+      ...(result.ids ?? []),
+    ])]
+    await Promise.all(resourceIds.map((resourceId) => (
+      getOverlayServerContext().workspaceService.bindResource({
+        actorUserId: context.auth.userId,
+        workspaceId: context.workspace.workspace.id,
+        resourceType: 'file',
+        resourceId,
+      })
+    )))
     return NextResponse.json(result)
   } catch (error) {
     return fileErrorResponse(error, 'Failed to create file')

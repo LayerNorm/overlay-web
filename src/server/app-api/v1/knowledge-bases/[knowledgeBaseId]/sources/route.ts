@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { isExternalKnowledgeSourceKind } from '@overlay/app-core'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { knowledgeBaseErrorResponse, requiredKnowledgeBaseId } from '../../errors'
 
 export async function GET(_request: NextRequest, context: AppApiRouteContext) {
@@ -9,7 +9,7 @@ export async function GET(_request: NextRequest, context: AppApiRouteContext) {
     const knowledgeBaseId = await requiredKnowledgeBaseId(context)
     const sources = await getOverlayServerContext().knowledgeBaseService.listSources({
       knowledgeBaseId,
-      userId: context.auth.userId,
+      userId: getAuthorizedResourceUserId(context),
     })
     return NextResponse.json({ sources: sources.map(summarizeSourceDetail) })
   } catch (error) {
@@ -56,7 +56,7 @@ export async function POST(_request: NextRequest, context: AppApiRouteContext) {
           knowledgeBaseId,
           ref: body.ref,
           title: body.title,
-          userId: context.auth.userId,
+          userId: getAuthorizedResourceUserId(context),
         }),
         { status: 202 },
       )
@@ -70,7 +70,7 @@ export async function POST(_request: NextRequest, context: AppApiRouteContext) {
       mimeType: body.mimeType,
       sourceRef: body.sourceRef,
       title: body.title,
-      userId: context.auth.userId,
+      userId: getAuthorizedResourceUserId(context),
     })
     return NextResponse.json(result, { status: 202 })
   } catch (error) {
@@ -93,14 +93,14 @@ export async function PATCH(_request: NextRequest, context: AppApiRouteContext) 
       return NextResponse.json(await server.knowledgeSourceIngestionService.replaceTextSource({
         content: body.content,
         sourceId: body.sourceId,
-        userId: context.auth.userId,
+        userId: getAuthorizedResourceUserId(context),
       }), { status: 202 })
     }
     if (body.refresh) {
       return NextResponse.json(
         await server.knowledgeSourceIngestionService.refreshExternalSource({
           sourceId: body.sourceId,
-          userId: context.auth.userId,
+          userId: getAuthorizedResourceUserId(context),
         }),
         { status: 202 },
       )
@@ -109,7 +109,7 @@ export async function PATCH(_request: NextRequest, context: AppApiRouteContext) 
       return NextResponse.json({
         jobId: await server.knowledgeSourceIngestionService.retry({
           sourceId: body.sourceId,
-          userId: context.auth.userId,
+          userId: getAuthorizedResourceUserId(context),
         }),
       }, { status: 202 })
     }
@@ -118,7 +118,7 @@ export async function PATCH(_request: NextRequest, context: AppApiRouteContext) 
         enabled: body.enabled,
         knowledgeBaseId,
         sourceId: body.sourceId,
-        userId: context.auth.userId,
+        userId: getAuthorizedResourceUserId(context),
       })
       return NextResponse.json({ updated: true })
     }
@@ -136,13 +136,13 @@ export async function DELETE(_request: NextRequest, context: AppApiRouteContext)
     if (body.deleteCanonical) {
       await server.knowledgeSourceIngestionService.delete({
         sourceId: body.sourceId,
-        userId: context.auth.userId,
+        userId: getAuthorizedResourceUserId(context),
       })
     } else {
       await server.knowledgeBaseService.removeSource({
         knowledgeBaseId,
         sourceId: body.sourceId,
-        userId: context.auth.userId,
+        userId: getAuthorizedResourceUserId(context),
       })
     }
     return NextResponse.json({ deleted: true, sourceId: body.sourceId })

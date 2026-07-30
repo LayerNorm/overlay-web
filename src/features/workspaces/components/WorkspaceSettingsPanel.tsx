@@ -7,6 +7,7 @@ import {
   Bot,
   CircleAlert,
   KeyRound,
+  Link2,
   Loader2,
   MessageSquareText,
   RefreshCw,
@@ -95,6 +96,14 @@ const TABS: ReadonlyArray<{
     emptyTitle: 'No shared chats or agents',
     emptyDescription: 'Channels, direct messages, and named agents will be managed here.',
     action: 'Add agent',
+  },
+  {
+    id: 'sharing',
+    label: 'Sharing & links',
+    icon: Link2,
+    emptyTitle: 'Sharing policy',
+    emptyDescription: 'Control how resources leave this workspace.',
+    action: 'Update policy',
   },
 ]
 
@@ -274,6 +283,81 @@ export function WorkspaceManagementContent({
   )
 }
 
+export type WorkspaceSharingPolicyState =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; publicLinksEnabled: boolean; canManage: boolean; updatedAt: number }
+
+/**
+ * Workspace policy for General access. Public links are not collaborator
+ * grants, so they are governed here rather than per resource.
+ */
+export function WorkspaceSharingPolicySection({
+  state,
+  busy = false,
+  onToggle,
+  onRetry,
+}: {
+  state: WorkspaceSharingPolicyState
+  busy?: boolean
+  onToggle?(publicLinksEnabled: boolean): void
+  onRetry?(): void
+}) {
+  if (state.status === 'loading') {
+    return (
+      <div className="space-y-3 p-5" aria-label="Loading sharing & links">
+        <div className="h-16 animate-pulse rounded-xl bg-[var(--surface-subtle)]" />
+      </div>
+    )
+  }
+
+  if (state.status === 'error') {
+    return (
+      <EmptyState
+        data-testid="workspace-sharing-policy-error"
+        className="min-h-72 px-6 py-12"
+        icon={<CircleAlert size={28} />}
+        title="Could not load sharing & links"
+        description={state.message}
+        action={<Button size="sm" onClick={onRetry}><RefreshCw size={12} />Try again</Button>}
+      />
+    )
+  }
+
+  return (
+    <div data-testid="workspace-sharing-policy" className="p-5">
+      <div className="flex items-start gap-3 rounded-xl border border-[var(--border)] p-4">
+        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--muted)]">
+          <Link2 size={15} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-[var(--foreground)]">Public links</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+            Anyone-with-the-link sharing for chats and files. Public views stay read-only and
+            redact attachments that are not public themselves. Turning this off does not remove
+            access that people, agents, teams, or rooms were granted directly.
+          </p>
+          <p className="mt-2 text-[11px] text-[var(--muted-light)]">
+            {state.publicLinksEnabled ? 'Allowed for this workspace' : 'Blocked for this workspace'}
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant={state.publicLinksEnabled ? 'ghost' : 'primary'}
+          disabled={!state.canManage || busy}
+          title={state.canManage ? undefined : 'Only owners and admins can change workspace policy'}
+          onClick={state.canManage && onToggle
+            ? () => onToggle(!state.publicLinksEnabled)
+            : undefined}
+        >
+          {busy ? <Loader2 size={13} className="animate-spin" /> : null}
+          {state.publicLinksEnabled ? 'Turn off' : 'Turn on'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function WorkspaceItemActions({
   item,
   state,
@@ -399,6 +483,8 @@ export function WorkspaceSettingsPanel({
   } = useWorkspace()
   const [activeTab, setActiveTab] = useState<WorkspaceSettingsTab>('people')
   const [state, setState] = useState<WorkspaceManagementState>({ status: 'loading' })
+  const [policyState, setPolicyState] = useState<WorkspaceSharingPolicyState>({ status: 'loading' })
+  const [policyBusy, setPolicyBusy] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [action, setAction] = useState<
     | { type: 'invite'; guest: boolean }
@@ -418,7 +504,31 @@ export function WorkspaceSettingsPanel({
   const [teamCandidateBusyId, setTeamCandidateBusyId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!activeWorkspace) return
+    if (!activeWorkspace || activeTab !== 'sharing') return
+    const controller = new AbortController()
+    setPolicyState({ status: 'loading' })
+    void client.sharingPolicy(activeWorkspace.id, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return
+        setPolicyState({
+          status: 'ready',
+          publicLinksEnabled: result.policy.publicLinksEnabled,
+          canManage: result.canManage,
+          updatedAt: result.policy.updatedAt,
+        })
+      })
+      .catch((loadError) => {
+        if (controller.signal.aborted) return
+        setPolicyState({
+          status: 'error',
+          message: loadError instanceof Error ? loadError.message : 'Try again in a moment.',
+        })
+      })
+    return () => controller.abort()
+  }, [activeTab, activeWorkspace, client, refreshKey])
+
+  useEffect(() => {
+    if (!activeWorkspace || activeTab === 'sharing') return
     const controller = new AbortController()
     setState({ status: 'loading' })
     void client.load(activeWorkspace.id, activeTab, controller.signal)
@@ -555,6 +665,29 @@ export function WorkspaceSettingsPanel({
             {actionError}
           </div>
         ) : null}
+        {activeTab === 'sharing' ? (
+          <WorkspaceSharingPolicySection
+            state={policyState}
+            busy={policyBusy}
+            onRetry={() => setRefreshKey((current) => current + 1)}
+            onToggle={(publicLinksEnabled) => {
+              if (!activeWorkspace) return
+              setPolicyBusy(true)
+              setActionError(null)
+              void client.setSharingPolicy(activeWorkspace.id, { publicLinksEnabled })
+                .then((result) => setPolicyState({
+                  status: 'ready',
+                  publicLinksEnabled: result.policy.publicLinksEnabled,
+                  canManage: result.canManage,
+                  updatedAt: result.policy.updatedAt,
+                }))
+                .catch((error) => setActionError(
+                  error instanceof Error ? error.message : 'Could not update workspace policy.',
+                ))
+                .finally(() => setPolicyBusy(false))
+            }}
+          />
+        ) : (
         <WorkspaceManagementContent
           tab={activeTab}
           state={state}
@@ -608,6 +741,7 @@ export function WorkspaceSettingsPanel({
             setAction({ type: 'archive-team', item })
           }}
         />
+        )}
         {activeTab === 'chats-agents' ? (
           <footer className="flex items-center gap-2 border-t border-[var(--border)] px-5 py-3 text-[11px] text-[var(--muted-light)]">
             <MessageSquareText size={12} />

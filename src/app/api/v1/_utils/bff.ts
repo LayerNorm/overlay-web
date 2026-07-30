@@ -38,6 +38,10 @@ import {
   ACTIVE_WORKSPACE_COOKIE,
   ACTIVE_WORKSPACE_HEADER,
 } from '@/shared/workspaces/constants'
+import {
+  WORKSPACE_SHARE_RESOURCE_TYPES,
+  type WorkspaceShareResourceType,
+} from '@overlay/workspace-contracts'
 
 const API_KEY_CANDIDATE_RATE_LIMITS = [
   { bucket: 'api-key-auth:candidate:ip', limit: 60, windowMs: 60_000 },
@@ -207,7 +211,7 @@ export async function handleBffRoute(
   }
 
   const routeParams = await resolveRouteParams(context)
-  const resourceAuthorization = await evaluateResourceRoute({
+  let resourceAuthorization = await evaluateResourceRoute({
     authorization: serverContext.authorizationService,
     evaluation: authorizationEvaluation,
     mode: authorizationEvaluation.mode,
@@ -216,6 +220,45 @@ export async function handleBffRoute(
     parsedQuery: parsedInput.parsedQuery,
     policy: authorizationPolicy,
   })
+  const workspaceShareResourceType = workspaceResourceType(authorizationPolicy.resource?.type)
+  if (authorizationPolicy.access === 'resource' && workspaceShareResourceType) {
+    const action = authorizationPolicy.resource!.action
+    if (resourceAuthorization.resourceId && resourceAuthorization.decision?.allowed === false) {
+      const shared = await serverContext.workspaceSharingService.checkAccess({
+        action,
+        actorUserId: auth.userId,
+        workspaceId: workspace.workspace.id,
+        resourceType: workspaceShareResourceType,
+        resourceId: resourceAuthorization.resourceId,
+      })
+      if (shared.allowed && shared.ownerUserId) {
+        resourceAuthorization = {
+          ...resourceAuthorization,
+          ownerUserId: shared.ownerUserId,
+          decision: {
+            ...resourceAuthorization.decision,
+            allowed: true,
+            effectiveAccessRole: shared.accessRole === 'viewer' ? 'viewer' : 'editor',
+            reason: 'resource_access_granted',
+          },
+        }
+      }
+    } else if (!resourceAuthorization.resourceId && authorizationPolicy.resource?.optional) {
+      const shared = await serverContext.workspaceSharingService.listAccessibleResources({
+        action,
+        actorUserId: auth.userId,
+        workspaceId: workspace.workspace.id,
+        resourceType: workspaceShareResourceType,
+      })
+      const merged = new Map((resourceAuthorization.grantedResources ?? [])
+        .map((item) => [item.resourceId, item]))
+      for (const item of shared) merged.set(item.resourceId, item)
+      resourceAuthorization = {
+        ...resourceAuthorization,
+        grantedResources: [...merged.values()],
+      }
+    }
+  }
   const conversationParticipantAccess = resourceAuthorization.resourceId
     && resourceAuthorization.decision?.resourceType === 'conversation'
     ? await serverContext.appData.repositories.conversationCollaboration.canAccessConversation({
@@ -344,4 +387,8 @@ async function resolveRouteParams(context: unknown): Promise<Record<string, stri
 function getBearerToken(request: NextRequest): string | undefined {
   const authHeader = request.headers.get('authorization')
   return authHeader?.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : undefined
+}
+
+function workspaceResourceType(value: string | undefined): WorkspaceShareResourceType | undefined {
+  return WORKSPACE_SHARE_RESOURCE_TYPES.find((type) => type === value)
 }

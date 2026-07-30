@@ -10,6 +10,7 @@ import type {
   WorkspacePrincipalType,
   WorkspaceResourceGuest,
   WorkspaceResourceScope,
+  WorkspaceSharingPolicy,
   WorkspaceTeam,
   WorkspaceTeamMember,
 } from '@overlay/workspace-contracts'
@@ -190,6 +191,14 @@ export interface WorkspaceRepository {
     resourceType: string
     resourceId: string
   }): Promise<WorkspaceResourceScope | null>
+
+  getSharingPolicy(workspaceId: string): Promise<WorkspaceSharingPolicy | null>
+  setSharingPolicy(input: {
+    workspaceId: string
+    publicLinksEnabled: boolean
+    updatedByPrincipalId: string
+    now: number
+  }): Promise<WorkspaceSharingPolicy>
 
   createResourceGuest(input: {
     id: string

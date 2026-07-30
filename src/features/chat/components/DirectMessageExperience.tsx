@@ -16,9 +16,11 @@ import {
   Check,
   MessageSquareReply,
   MoreHorizontal,
+  Paperclip,
   Pencil,
   Pin,
   Send,
+  Share2,
   SmilePlus,
   Trash2,
   UserPlus,
@@ -37,6 +39,9 @@ import type {
 } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
+import { ShareDialog } from '@/components/share/ShareDialog'
+import { AttachResourceDialog } from '@/components/share/AttachResourceDialog'
+import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 
 type DirectMessage = {
   id: string
@@ -127,6 +132,7 @@ export function DirectMessageExperience({
   showcase?: boolean
   conversationType?: 'dm' | 'channel'
 }) {
+  const { activeWorkspaceId } = useWorkspace()
   const [participants, setParticipants] = useState<ConversationParticipant[]>(
     showcase ? SHOWCASE_PARTICIPANTS : [],
   )
@@ -171,6 +177,8 @@ export function DirectMessageExperience({
   const [threadRootId, setThreadRootId] = useState<string | null>(showcase && conversationType === 'channel' ? 'showcase-dm-message-1' : null)
   const [threadInput, setThreadInput] = useState('')
   const [agentResponding, setAgentResponding] = useState<string | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [attachOpen, setAttachOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const lastTypingSentAt = useRef(0)
   const lastNotificationReadAt = useRef(0)
@@ -488,6 +496,27 @@ export function DirectMessageExperience({
                     <Pin size={13} />{pins.length}
                   </span>
                 ) : null}
+                {!showcase ? (
+                  <button
+                    type="button"
+                    onClick={() => setAttachOpen(true)}
+                    title="Attach a file, project, knowledge base, automation, or agent"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  >
+                    <Paperclip size={14} />
+                    <span className="hidden sm:inline">Attach</span>
+                  </button>
+                ) : null}
+                {!showcase && currentParticipant?.role === 'moderator' ? (
+                  <button
+                    type="button"
+                    onClick={() => setShareOpen(true)}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  >
+                    <Share2 size={14} />
+                    <span className="hidden sm:inline">Share</span>
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setPeopleOpen((open) => !open)}
@@ -717,6 +746,28 @@ export function DirectMessageExperience({
           </AppScreenBody>
         </div>
       </AppScreenShell>
+
+      <ShareDialog
+        workspaceId={activeWorkspaceId}
+        isOpen={shareOpen}
+        onClose={() => setShareOpen(false)}
+        resource={{
+          id: conversationId,
+          type: 'chat',
+          title,
+        }}
+      />
+
+      {attachOpen ? (
+        <AttachResourceDialog
+          workspaceId={activeWorkspaceId}
+          isOpen
+          conversationId={conversationId}
+          conversationTitle={title}
+          onClose={() => setAttachOpen(false)}
+          onPost={(message) => sendMessage(message)}
+        />
+      ) : null}
 
       {peopleOpen ? (
         <div className="fixed inset-y-0 right-0 z-40 w-[min(340px,calc(100vw-2rem))] border-l border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl">

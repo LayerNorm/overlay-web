@@ -72,6 +72,7 @@ import {
 import { GovernanceService } from '@/server/governance'
 import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { WorkspaceAgentService } from '@/server/agents'
+import { WorkspaceSharingService } from '@/server/sharing'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -111,6 +112,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   userService: UserService
   workspaceService: WorkspaceService
   workspaceAgentService: WorkspaceAgentService
+  workspaceSharingService: WorkspaceSharingService
 }
 
 export interface CreateOverlayServerContextOptions {
@@ -167,6 +169,15 @@ export function createOverlayServerContext(
     appData.repositories.workspaceAgents,
     workspaceService,
   )
+  const workspaceSharingService = new WorkspaceSharingService({
+    agents: appData.repositories.workspaceAgents,
+    collaboration: appData.repositories.conversationCollaboration,
+    conversations: appData.repositories.conversations,
+    repository: appData.repositories.workspaceSharing,
+    resourceOwners: appData.repositories.authorization.resourceOwners,
+    workspaceRepository: appData.repositories.workspaces,
+    workspaces: workspaceService,
+  })
   const userService = new UserService({
     authProvider: selectedAuthProviderForUserService(runtimeConfig),
     afterUpsert: async ({ userId }) => {
@@ -272,6 +283,7 @@ export function createOverlayServerContext(
     userService,
     workspaceService,
     workspaceAgentService,
+    workspaceSharingService,
   }
 }
 

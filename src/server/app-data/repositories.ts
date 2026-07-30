@@ -120,6 +120,8 @@ import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRe
 import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspaceRepository'
 import type { WorkspaceAgentRepository } from '@/server/agents'
 import { ConvexWorkspaceAgentRepository, PostgresWorkspaceAgentRepository } from '@/server/agents'
+import type { WorkspaceSharingRepository } from '@/server/sharing'
+import { ConvexWorkspaceSharingRepository, PostgresWorkspaceSharingRepository } from '@/server/sharing'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -154,6 +156,7 @@ export interface AppDataRepositories {
   webhooks: WebhookRepository
   workspaces: WorkspaceRepository
   workspaceAgents: WorkspaceAgentRepository
+  workspaceSharing: WorkspaceSharingRepository
   usage: UsageRepository
 }
 
@@ -217,6 +220,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         webhooks: new PostgresWebhookRepository(db),
         workspaces: new PostgresWorkspaceRepository(db),
         workspaceAgents: new PostgresWorkspaceAgentRepository(db),
+        workspaceSharing: new PostgresWorkspaceSharingRepository(db),
         usage: new PostgresUsageRepository(db),
       },
     }
@@ -257,6 +261,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       webhooks: new ConvexWebhookRepository(),
       workspaces: new ConvexWorkspaceRepository(),
       workspaceAgents: new ConvexWorkspaceAgentRepository(),
+      workspaceSharing: new ConvexWorkspaceSharingRepository(),
       usage: new ConvexUsageRepository(),
     },
   }

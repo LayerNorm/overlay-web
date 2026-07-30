@@ -6,7 +6,7 @@ export type AuthorizationPrincipalType = (typeof AUTHORIZATION_PRINCIPAL_TYPES)[
 export const RESOURCE_ACCESS_ROLES = ['viewer', 'editor', 'owner'] as const
 export type ResourceAccessRole = (typeof RESOURCE_ACCESS_ROLES)[number]
 
-export const RESOURCE_ACTIONS = ['view', 'edit', 'delete', 'share'] as const
+export const RESOURCE_ACTIONS = ['view', 'execute', 'edit', 'delete', 'share'] as const
 export type ResourceAction = (typeof RESOURCE_ACTIONS)[number]
 
 export type AuthorizationRole = {
@@ -99,6 +99,7 @@ const ACCESS_ROLE_RANK: Record<ResourceAccessRole, number> = {
 
 const ACTION_MINIMUM_ROLE: Record<ResourceAction, ResourceAccessRole> = {
   view: 'viewer',
+  execute: 'editor',
   edit: 'editor',
   delete: 'owner',
   share: 'owner',

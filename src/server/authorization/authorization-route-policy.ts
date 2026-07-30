@@ -59,6 +59,14 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { GET: authenticated(), PATCH: authenticated(), DELETE: authenticated() },
   },
   {
+    path: '/api/v1/shares',
+    methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() },
+  },
+  {
+    path: '/api/v1/shares/impact',
+    methods: { GET: authenticated() },
+  },
+  {
     path: '/api/v1/workspaces',
     methods: { GET: authenticated(), POST: authenticated() },
   },
@@ -93,6 +101,10 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   {
     path: '/api/v1/workspaces/:workspaceId/lifecycle',
     methods: { DELETE: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/policies',
+    methods: { GET: authenticated(), PATCH: authenticated() },
   },
   {
     path: '/api/v1/workspace-invitations/:invitationId/accept',
@@ -464,7 +476,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   {
     path: '/api/v1/knowledge-bases',
     methods: {
-      GET: capability('knowledge.read'),
+      GET: resource('knowledge_base', 'view', { optional: true }, 'knowledge.read'),
       POST: capability('knowledge.create'),
       PATCH: resource('knowledge_base', 'edit', {}, 'knowledge.edit'),
       DELETE: resource('knowledge_base', 'delete', {}, 'knowledge.delete'),
@@ -528,14 +540,16 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   {
     path: '/api/v1/automations',
     methods: {
-      GET: capability('automations.use'),
+      GET: resource('automation', 'view', { optional: true }, 'automations.use'),
       POST: capability('automations.use'),
-      PATCH: capability('automations.use'),
-      DELETE: capability('automations.use'),
+      PATCH: resource('automation', 'edit', {}, 'automations.use'),
+      DELETE: resource('automation', 'delete', {}, 'automations.use'),
     },
   },
   { path: '/api/v1/automations/run', methods: { POST: capability('automations.use') } },
-  { path: '/api/v1/automations/test', methods: { POST: capability('automations.use') } },
+  { path: '/api/v1/automations/test', methods: {
+    POST: resource('automation', 'execute', {}, 'automations.use'),
+  } },
   {
     path: '/api/v1/api-keys',
     methods: {

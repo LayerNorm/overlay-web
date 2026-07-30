@@ -5,7 +5,7 @@ description: "Accepted Phase 0 decisions for workspace isolation, collaborative 
 
 ## Status
 
-Accepted on July 26, 2026. Phase 1 shipped the workspace foundation, Phase 2 shipped the workspace-aware Chats information architecture, Phase 3 shipped participant-scoped Direct Messages, Phase 4 shipped Channels and threads, and Phase 5 shipped named workspace agents on July 29, 2026. The `workspaces`, `collaborativeChats`, `channels`, and `agents` app features are enabled; universal sharing and shared multi-tenant deployment remain disabled until their individual release gates pass.
+Accepted on July 26, 2026. Phase 1 shipped the workspace foundation, Phase 2 shipped the workspace-aware Chats information architecture, Phase 3 shipped participant-scoped Direct Messages, Phase 4 shipped Channels and threads, Phase 5 shipped named workspace agents, and Phase 6 shipped universal resource sharing on July 29, 2026. The `workspaces`, `collaborativeChats`, `channels`, `agents`, and `resourceSharing` app features are enabled; shared multi-tenant deployment remains disabled until its release gate passes.
 
 Phase 1 includes:
 
@@ -73,6 +73,24 @@ Phase 5 includes:
 - Matching Postgres and Convex repositories, lifecycle cleanup, BFF routes, API-client methods, and provider contracts.
 
 The Postgres migration was rehearsed through schema version 35. The matching Convex schema and functions were deployed only to the development deployment and validated against that live development provider.
+
+Phase 6 includes:
+
+- One Share dialog for chats, files, projects, knowledge bases, automations, and agents, lifted to shared UI so every feature opens the same experience.
+- Grants addressed to a person or agent principal, a team, or a room, with team and room grants following membership as it changes.
+- Resource-appropriate permissions from a single policy module: view everywhere, run for automations and agents only, edit where editing exists, and view-only for conversations. A grant never confers delete or reshare.
+- Disclosure before the fact: adding a dynamic target lists who would gain access and who already has it another way; removing a grant lists who loses access outright and who keeps it.
+- Attach-time room grant prompts — attaching a restricted resource to a DM or Channel names the participants who cannot open it, then either creates the room grant or posts a request-access link.
+- Public links kept as General access under a per-workspace policy, editable by owners and admins in Workspace settings → Sharing & links and enforced server-side on both the file and conversation share routes.
+- Resource reads, automation runs, and knowledge-base listings routed through resource authorization so shared resources appear for the people they were shared with.
+- Matching Postgres and Convex repositories, BFF routes, API-client methods, and provider contract tests.
+
+Two provider-parity defects were found by the Phase 6 contract tests and fixed rather than documented as differences:
+
+- The Postgres scope foreign key omitted `workspace_id`, so Postgres accepted a grant whose workspace disagreed with the resource binding while Convex rejected it. Schema version 37 widens the key and deletes any disagreeing rows first.
+- The Convex grant upsert returned the request payload instead of the persisted row, reporting a stale `updatedAt` where Postgres reported the new one.
+
+The Postgres migration was rehearsed from an empty database through schema version 37. Convex schema and functions were deployed only to the development deployment and validated against that live development provider.
 
 ## Workspace Is The Isolation Boundary
 

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { knowledgeBaseErrorResponse, requiredKnowledgeBaseId } from '../../errors'
 
 /** Lists sources whose index is no longer trustworthy. */
@@ -9,7 +9,7 @@ export async function GET(_request: NextRequest, context: AppApiRouteContext) {
     const knowledgeBaseId = await requiredKnowledgeBaseId(context)
     const stale = await getOverlayServerContext().knowledgeSourceIngestionService.listStaleSources({
       knowledgeBaseId,
-      userId: context.auth.userId,
+      userId: getAuthorizedResourceUserId(context),
     })
     return NextResponse.json({ stale })
   } catch (error) {
@@ -31,21 +31,21 @@ export async function POST(_request: NextRequest, context: AppApiRouteContext) {
       // Confirms the source really belongs to this base before re-embedding.
       const sources = await server.knowledgeBaseService.listSources({
         knowledgeBaseId,
-        userId: context.auth.userId,
+        userId: getAuthorizedResourceUserId(context),
       })
       if (!sources.some(({ source }) => source.id === body.sourceId)) {
         return NextResponse.json({ error: 'Knowledge source not found' }, { status: 404 })
       }
       const result = await server.knowledgeSourceIngestionService.reindexSource({
         sourceId: body.sourceId,
-        userId: context.auth.userId,
+        userId: getAuthorizedResourceUserId(context),
       })
       return NextResponse.json({ success: true, queued: [{ sourceId: body.sourceId, ...result }] })
     }
     const result = await server.knowledgeSourceIngestionService.reindexKnowledgeBase({
       knowledgeBaseId,
       onlyStale: body?.onlyStale ?? false,
-      userId: context.auth.userId,
+      userId: getAuthorizedResourceUserId(context),
     })
     return NextResponse.json({ success: true, ...result })
   } catch (error) {

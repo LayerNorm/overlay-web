@@ -74,7 +74,7 @@ import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCa
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useAuthorization } from '@/components/providers/AuthorizationProvider'
 import { buildSharePageUrl } from '@/features/share/lib/share-url'
-import { ShareDialog } from '@/features/share/components/ShareDialog'
+import { ShareDialog } from '@/components/share/ShareDialog'
 import { createIdempotencyKey } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
@@ -1762,7 +1762,7 @@ export default function ChatExperience({
             ? buildSharePageUrl('chat', activeChat.shareToken)
             : null
         }
-        renderShareDialog={(props) => <ShareDialog {...props} />}
+        renderShareDialog={(props) => <ShareDialog {...props} workspaceId={activeWorkspaceId} />}
       />
     )
   }, [

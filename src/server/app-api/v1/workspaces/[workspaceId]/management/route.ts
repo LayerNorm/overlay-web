@@ -16,6 +16,9 @@ const MANAGEMENT_VIEWS = [
   'guests',
   'roles',
   'chats-agents',
+  // Sharing policy is served by /policies; the view exists so a stale client
+  // asking for it receives an empty list instead of somebody else's people.
+  'sharing',
 ] as const
 
 export async function GET(_request: Request, context: AppApiRouteContext) {
@@ -32,6 +35,8 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
       items,
       workspaceKind: access.workspace.kind,
     })
+
+    if (view === 'sharing') return NextResponse.json(response([]))
 
     if (view === 'teams') {
       const teams = await service.listTeams({

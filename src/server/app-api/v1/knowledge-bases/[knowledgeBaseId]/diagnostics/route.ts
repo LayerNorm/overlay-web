@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { knowledgeBaseErrorResponse, requiredKnowledgeBaseId } from '../../errors'
 
 /**
@@ -17,13 +17,13 @@ export async function GET(_request: NextRequest, context: AppApiRouteContext) {
         knowledgeBaseId,
         limit: query.previewLimit,
         sourceId: query.sourceId,
-        userId: context.auth.userId,
+        userId: getAuthorizedResourceUserId(context),
       })
       return NextResponse.json({ preview })
     }
     const sources = await server.knowledgeBaseService.listSourceDiagnostics({
       knowledgeBaseId,
-      userId: context.auth.userId,
+      userId: getAuthorizedResourceUserId(context),
     })
     return NextResponse.json({ sources })
   } catch (error) {

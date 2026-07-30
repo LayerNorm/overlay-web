@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { knowledgeBaseErrorResponse, requiredKnowledgeBaseId } from '../../errors'
 
 export async function POST(_request: NextRequest, context: AppApiRouteContext) {
@@ -19,7 +19,7 @@ export async function POST(_request: NextRequest, context: AppApiRouteContext) {
       knowledgeBaseIds,
       limit: body.limit,
       query: body.query,
-      userId: context.auth.userId,
+      userId: getAuthorizedResourceUserId(context),
     }))
   } catch (error) {
     return knowledgeBaseErrorResponse('search', error)

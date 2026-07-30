@@ -9,6 +9,7 @@ import type {
   WorkspacePrincipal,
   WorkspaceResourceGuest,
   WorkspaceResourceScope,
+  WorkspaceSharingPolicy,
   WorkspaceTeam,
   WorkspaceTeamMember,
 } from '@overlay/workspace-contracts'
@@ -75,6 +76,11 @@ type GuestRow = Omit<
 type ResourceScopeRow = Omit<WorkspaceResourceScope, 'createdAt' | 'updatedAt'> & {
   createdAt: DateValue
   updatedAt: DateValue
+}
+
+type SharingPolicyRow = Omit<WorkspaceSharingPolicy, 'updatedAt' | 'updatedByPrincipalId'> & {
+  updatedAt: DateValue
+  updatedByPrincipalId: string | null
 }
 
 export class PostgresWorkspaceRepository implements WorkspaceRepository {
@@ -841,6 +847,40 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
     return result.rows[0] ? resourceScopeFromRow(result.rows[0]) : null
   }
 
+  async getSharingPolicy(workspaceId: string): Promise<WorkspaceSharingPolicy | null> {
+    const result = await this.db.execute<SharingPolicyRow>(sql`
+      SELECT ${sharingPolicyColumns}
+      FROM workspace_sharing_policies
+      WHERE workspace_id = ${workspaceId}
+      LIMIT 1
+    `)
+    return result.rows[0] ? sharingPolicyFromRow(result.rows[0]) : null
+  }
+
+  async setSharingPolicy(input: {
+    workspaceId: string
+    publicLinksEnabled: boolean
+    updatedByPrincipalId: string
+    now: number
+  }): Promise<WorkspaceSharingPolicy> {
+    const result = await this.db.execute<SharingPolicyRow>(sql`
+      INSERT INTO workspace_sharing_policies (
+        workspace_id, public_links_enabled, updated_by_principal_id, created_at, updated_at
+      ) VALUES (
+        ${input.workspaceId}, ${input.publicLinksEnabled}, ${input.updatedByPrincipalId},
+        ${new Date(input.now)}, ${new Date(input.now)}
+      )
+      ON CONFLICT (workspace_id) DO UPDATE SET
+        public_links_enabled = excluded.public_links_enabled,
+        updated_by_principal_id = excluded.updated_by_principal_id,
+        updated_at = excluded.updated_at
+      RETURNING ${sharingPolicyColumns}
+    `)
+    const row = result.rows[0]
+    if (!row) throw new Error('WORKSPACE_SHARING_POLICY_UPSERT_FAILED')
+    return sharingPolicyFromRow(row)
+  }
+
   async createResourceGuest(input: {
     id: string
     workspaceId: string
@@ -937,6 +977,10 @@ const workspaceColumns = sql.raw(`
 const resourceScopeColumns = sql.raw(`
   workspace_id AS "workspaceId", resource_type AS "resourceType",
   resource_id AS "resourceId", created_at AS "createdAt", updated_at AS "updatedAt"
+`)
+const sharingPolicyColumns = sql.raw(`
+  workspace_id AS "workspaceId", public_links_enabled AS "publicLinksEnabled",
+  updated_by_principal_id AS "updatedByPrincipalId", updated_at AS "updatedAt"
 `)
 const principalColumns = sql.raw(`
   id, workspace_id AS "workspaceId", type,
@@ -1172,6 +1216,15 @@ function resourceScopeFromRow(row: ResourceScopeRow): WorkspaceResourceScope {
   return {
     ...row,
     createdAt: millisRequired(row.createdAt),
+    updatedAt: millisRequired(row.updatedAt),
+  }
+}
+
+function sharingPolicyFromRow(row: SharingPolicyRow): WorkspaceSharingPolicy {
+  return {
+    workspaceId: row.workspaceId,
+    publicLinksEnabled: row.publicLinksEnabled,
+    updatedByPrincipalId: row.updatedByPrincipalId ?? undefined,
     updatedAt: millisRequired(row.updatedAt),
   }
 }

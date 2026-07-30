@@ -12,6 +12,7 @@ import type {
   WorkspaceManagementView,
   WorkspaceMemberMutationInput,
   WorkspaceMemberMutationResponse,
+  WorkspaceSharingPolicyResponse,
   WorkspaceTeamCreateInput,
   WorkspaceTeamCreateResponse,
   WorkspaceTeamMemberMutationInput,
@@ -59,6 +60,27 @@ export class WorkspacesClient {
         { view },
       ),
       workspaceInit(workspaceId, init),
+    )
+  }
+
+  sharingPolicy(workspaceId: string, init?: RequestInit) {
+    return this.http.json<WorkspaceSharingPolicyResponse>(
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/policies`,
+      workspaceInit(workspaceId, init),
+    )
+  }
+
+  setSharingPolicy(
+    workspaceId: string,
+    body: { publicLinksEnabled: boolean },
+    init?: RequestInit,
+  ) {
+    return this.http.json<WorkspaceSharingPolicyResponse>(
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/policies`,
+      this.http.jsonRequest(body, {
+        ...workspaceInit(workspaceId, init),
+        method: 'PATCH',
+      }),
     )
   }
 

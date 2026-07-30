@@ -23,6 +23,7 @@ import type {
   WorkspaceManagementView,
   WorkspaceMemberMutationInput,
   WorkspaceMemberMutationResponse,
+  WorkspaceSharingPolicyResponse,
   WorkspaceTeamCreateInput,
   WorkspaceTeamCreateResponse,
 } from '@overlay/workspace-contracts'
@@ -47,6 +48,14 @@ export interface WorkspaceManagementLoader {
 }
 
 export interface WorkspaceManagementClient extends WorkspaceManagementLoader {
+  sharingPolicy(
+    workspaceId: string,
+    signal?: AbortSignal,
+  ): Promise<WorkspaceSharingPolicyResponse>
+  setSharingPolicy(
+    workspaceId: string,
+    input: { publicLinksEnabled: boolean },
+  ): Promise<WorkspaceSharingPolicyResponse>
   invite(workspaceId: string, input: WorkspaceInviteInput): Promise<WorkspaceInviteResponse>
   resendInvitation(workspaceId: string, invitationId: string): Promise<WorkspaceInviteResponse>
   cancelInvitation(workspaceId: string, invitationId: string): Promise<void>
