@@ -28,6 +28,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       accessToken?: string
       userId?: string
       clientNonce?: string
+      threadRootMessageId?: string
       mentionedPrincipalIds?: string[]
     }
 
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       authorKind: body.role === 'user' ? 'human' : 'model',
       authorPrincipalId: body.role === 'user' ? context.workspace.principal.id : undefined,
       clientNonce: body.clientNonce?.trim() || undefined,
+      threadRootMessageId: body.threadRootMessageId?.trim(),
       turnId,
       role: body.role,
       mode,

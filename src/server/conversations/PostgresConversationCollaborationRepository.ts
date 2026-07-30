@@ -1,24 +1,33 @@
 import 'server-only'
 
 import { createHash, randomUUID } from 'node:crypto'
-import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm'
+import { and, desc, eq, ilike, inArray, isNull, ne, or } from 'drizzle-orm'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
   conversationEvents,
+  conversationMessageReactions,
   conversationMessages,
   conversationParticipants,
+  conversationPins,
+  conversationSavedMessages,
   conversations,
   workspaceMemberships,
   workspaceNotifications,
   workspacePresence,
   workspacePrincipals,
   workspaceResourceScopes,
+  workspaces,
 } from '@/server/database/postgres/schema'
 import type {
+  ChannelSummary,
+  ConversationPin,
   ConversationParticipant,
   ConversationPresence,
+  ConversationSavedMessage,
   DirectMessageSummary,
+  MessageReaction,
+  WorkspaceChatSearchResult,
   WorkspaceNotification,
 } from '@overlay/workspace-contracts'
 import type { ConversationCollaborationRepository } from './ConversationCollaborationRepository'
@@ -26,6 +35,143 @@ import type { ConversationCollaborationRepository } from './ConversationCollabor
 export class PostgresConversationCollaborationRepository
 implements ConversationCollaborationRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
+
+  async createChannel(args: {
+    actorUserId: string
+    name: string
+    principalIds?: string[]
+    topic?: string
+    visibility: 'public' | 'private'
+    workspaceId: string
+  }): Promise<ChannelSummary> {
+    const actor = await this.requireActor(args)
+    const name = cleanTitle(args.name)
+    const slug = channelSlug(name)
+    if (!name || !slug) throw new Error('Channel name is required')
+    const [workspace] = await this.db.select({ kind: workspaces.kind }).from(workspaces).where(and(
+      eq(workspaces.id, args.workspaceId),
+      eq(workspaces.status, 'active'),
+    )).limit(1)
+    if (workspace?.kind !== 'organization') throw new Error('Channels require an organization workspace')
+
+    const requestedIds = new Set([actor.id, ...(args.principalIds ?? [])])
+    const eligible = await this.db
+      .select({ principal: workspacePrincipals, membership: workspaceMemberships })
+      .from(workspacePrincipals)
+      .innerJoin(workspaceMemberships, and(
+        eq(workspaceMemberships.workspaceId, workspacePrincipals.workspaceId),
+        eq(workspaceMemberships.principalId, workspacePrincipals.id),
+        eq(workspaceMemberships.status, 'active'),
+      ))
+      .where(and(
+        eq(workspacePrincipals.workspaceId, args.workspaceId),
+        inArray(workspacePrincipals.type, ['human', 'agent']),
+        isNull(workspacePrincipals.archivedAt),
+        args.visibility === 'private'
+          ? inArray(workspacePrincipals.id, [...requestedIds])
+          : undefined,
+      ))
+    if (!eligible.some(({ principal }) => principal.id === actor.id)) {
+      throw new Error('WORKSPACE_ACCESS_DENIED')
+    }
+    if (args.visibility === 'private' && eligible.length !== requestedIds.size) {
+      throw new Error('Every participant must be active in this workspace')
+    }
+
+    const conversationId = `conversation_${randomUUID()}`
+    const now = new Date()
+    await this.db.transaction(async (tx) => {
+      await tx.insert(conversations).values({
+        id: conversationId,
+        workspaceId: args.workspaceId,
+        conversationType: 'channel',
+        createdByPrincipalId: actor.id,
+        userId: args.actorUserId,
+        title: name,
+        lastMode: 'act',
+        askModelIds: [DEFAULT_MODEL_ID],
+        actModelId: DEFAULT_MODEL_ID,
+        channelSlug: slug,
+        channelVisibility: args.visibility,
+        channelTopic: cleanTopic(args.topic),
+        lastModified: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await tx.insert(conversationParticipants).values(eligible.map(({ principal, membership }) => ({
+        conversationId,
+        workspaceId: args.workspaceId,
+        principalId: principal.id,
+        principalType: principal.type as 'human' | 'agent',
+        role: principal.id === actor.id || membership.role === 'owner' || membership.role === 'admin'
+          ? 'moderator' as const
+          : 'member' as const,
+        status: 'active' as const,
+        notificationLevel: 'all' as const,
+        joinedAt: now,
+        updatedAt: now,
+        lastReadAt: principal.id === actor.id ? now : undefined,
+      })))
+      await tx.insert(workspaceResourceScopes).values({
+        workspaceId: args.workspaceId,
+        resourceType: 'conversation',
+        resourceId: conversationId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await tx.insert(conversationEvents).values({
+        userId: args.actorUserId,
+        conversationId,
+        type: 'conversation.created',
+        payload: { conversationType: 'channel', slug, visibility: args.visibility },
+        createdAt: now,
+      })
+    })
+    return {
+      conversationId,
+      workspaceId: args.workspaceId,
+      name,
+      slug,
+      topic: cleanTopic(args.topic),
+      visibility: args.visibility,
+      participantCount: eligible.length,
+      createdAt: now.getTime(),
+      updatedAt: now.getTime(),
+    }
+  }
+
+  async listChannels(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<ChannelSummary[]> {
+    const actor = await this.requireActor(args)
+    const rows = await this.db
+      .select({ conversation: conversations, participant: conversationParticipants })
+      .from(conversationParticipants)
+      .innerJoin(conversations, eq(conversations.id, conversationParticipants.conversationId))
+      .where(and(
+        eq(conversationParticipants.workspaceId, args.workspaceId),
+        eq(conversationParticipants.principalId, actor.id),
+        eq(conversationParticipants.status, 'active'),
+        eq(conversations.conversationType, 'channel'),
+        isNull(conversations.deletedAt),
+      ))
+      .orderBy(conversations.title)
+    const counts = rows.length > 0
+      ? await this.db.select({ conversationId: conversationParticipants.conversationId })
+        .from(conversationParticipants)
+        .where(and(
+          inArray(conversationParticipants.conversationId, rows.map(({ conversation }) => conversation.id)),
+          eq(conversationParticipants.status, 'active'),
+        ))
+      : []
+    const countById = new Map<string, number>()
+    for (const row of counts) countById.set(row.conversationId, (countById.get(row.conversationId) ?? 0) + 1)
+    return rows.map(({ conversation }) => mapChannel(
+      conversation,
+      countById.get(conversation.id) ?? 0,
+    ))
+  }
 
   async createDirectMessage(args: {
     actorUserId: string
@@ -510,6 +656,192 @@ implements ConversationCollaborationRepository {
     return rows.length > 0
   }
 
+  async listReactions(args: {
+    actorUserId: string
+    conversationId: string
+    workspaceId: string
+  }): Promise<MessageReaction[]> {
+    const actor = await this.requireActor(args)
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    const rows = await this.db.select().from(conversationMessageReactions).where(and(
+      eq(conversationMessageReactions.conversationId, args.conversationId),
+      eq(conversationMessageReactions.workspaceId, args.workspaceId),
+    )).orderBy(conversationMessageReactions.createdAt)
+    return groupReactions(rows, actor.id)
+  }
+
+  async setReaction(args: {
+    actorUserId: string
+    conversationId: string
+    emoji: string
+    enabled: boolean
+    messageId: string
+    workspaceId: string
+  }): Promise<MessageReaction[]> {
+    const actor = await this.requireActor(args)
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    const emoji = args.emoji.trim()
+    if (!emoji || emoji.length > 32) throw new Error('A valid reaction is required')
+    await this.requireConversationMessage(args)
+    if (args.enabled) {
+      await this.db.insert(conversationMessageReactions).values({
+        conversationId: args.conversationId,
+        messageId: args.messageId,
+        workspaceId: args.workspaceId,
+        principalId: actor.id,
+        emoji,
+        createdAt: new Date(),
+      }).onConflictDoNothing()
+    } else {
+      await this.db.delete(conversationMessageReactions).where(and(
+        eq(conversationMessageReactions.messageId, args.messageId),
+        eq(conversationMessageReactions.principalId, actor.id),
+        eq(conversationMessageReactions.emoji, emoji),
+      ))
+    }
+    return await this.listReactions(args)
+  }
+
+  async listPins(args: {
+    actorUserId: string
+    conversationId: string
+    workspaceId: string
+  }): Promise<ConversationPin[]> {
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    const rows = await this.db.select().from(conversationPins).where(and(
+      eq(conversationPins.conversationId, args.conversationId),
+      eq(conversationPins.workspaceId, args.workspaceId),
+    )).orderBy(desc(conversationPins.createdAt))
+    return rows.map((row) => ({
+      conversationId: row.conversationId,
+      messageId: row.messageId,
+      pinnedByPrincipalId: row.pinnedByPrincipalId,
+      createdAt: row.createdAt.getTime(),
+    }))
+  }
+
+  async setPinned(args: {
+    actorUserId: string
+    conversationId: string
+    messageId: string
+    pinned: boolean
+    workspaceId: string
+  }): Promise<boolean> {
+    const actor = await this.requireActor(args)
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    await this.requireConversationMessage(args)
+    if (args.pinned) {
+      const rows = await this.db.insert(conversationPins).values({
+        conversationId: args.conversationId,
+        messageId: args.messageId,
+        workspaceId: args.workspaceId,
+        pinnedByPrincipalId: actor.id,
+        createdAt: new Date(),
+      }).onConflictDoNothing().returning({ messageId: conversationPins.messageId })
+      return rows.length > 0
+    }
+    const rows = await this.db.delete(conversationPins).where(and(
+      eq(conversationPins.conversationId, args.conversationId),
+      eq(conversationPins.messageId, args.messageId),
+    )).returning({ messageId: conversationPins.messageId })
+    return rows.length > 0
+  }
+
+  async listSavedMessages(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<ConversationSavedMessage[]> {
+    const actor = await this.requireActor(args)
+    const rows = await this.db.select().from(conversationSavedMessages).where(and(
+      eq(conversationSavedMessages.workspaceId, args.workspaceId),
+      eq(conversationSavedMessages.principalId, actor.id),
+    )).orderBy(desc(conversationSavedMessages.createdAt))
+    return rows.map((row) => ({
+      conversationId: row.conversationId,
+      messageId: row.messageId,
+      principalId: row.principalId,
+      createdAt: row.createdAt.getTime(),
+    }))
+  }
+
+  async setSaved(args: {
+    actorUserId: string
+    conversationId: string
+    messageId: string
+    saved: boolean
+    workspaceId: string
+  }): Promise<boolean> {
+    const actor = await this.requireActor(args)
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    await this.requireConversationMessage(args)
+    if (args.saved) {
+      const rows = await this.db.insert(conversationSavedMessages).values({
+        conversationId: args.conversationId,
+        messageId: args.messageId,
+        workspaceId: args.workspaceId,
+        principalId: actor.id,
+        createdAt: new Date(),
+      }).onConflictDoNothing().returning({ messageId: conversationSavedMessages.messageId })
+      return rows.length > 0
+    }
+    const rows = await this.db.delete(conversationSavedMessages).where(and(
+      eq(conversationSavedMessages.messageId, args.messageId),
+      eq(conversationSavedMessages.principalId, actor.id),
+    )).returning({ messageId: conversationSavedMessages.messageId })
+    return rows.length > 0
+  }
+
+  async searchWorkspaceChats(args: {
+    actorUserId: string
+    limit?: number
+    query: string
+    workspaceId: string
+  }): Promise<WorkspaceChatSearchResult[]> {
+    const query = args.query.trim()
+    if (!query) return []
+    const accessibleIds = await this.listAccessibleConversationIds(args)
+    if (accessibleIds.length === 0) return []
+    const limit = Math.max(1, Math.min(100, args.limit ?? 30))
+    const [conversationRows, messageRows] = await Promise.all([
+      this.db.select().from(conversations).where(and(
+        inArray(conversations.id, accessibleIds),
+        ilike(conversations.title, `%${query}%`),
+        isNull(conversations.deletedAt),
+      )).orderBy(desc(conversations.lastModified)).limit(limit),
+      this.db.select({ message: conversationMessages, conversation: conversations })
+        .from(conversationMessages)
+        .innerJoin(conversations, eq(conversations.id, conversationMessages.conversationId))
+        .where(and(
+          inArray(conversationMessages.conversationId, accessibleIds),
+          or(
+            ilike(conversationMessages.content, `%${query}%`),
+            ilike(conversations.title, `%${query}%`),
+          ),
+          isNull(conversationMessages.deletedAt),
+          isNull(conversations.deletedAt),
+        )).orderBy(desc(conversationMessages.createdAt)).limit(limit),
+    ])
+    const results: WorkspaceChatSearchResult[] = [
+      ...conversationRows.map((conversation) => ({
+        conversationId: conversation.id,
+        conversationType: conversation.conversationType,
+        title: conversation.title,
+        createdAt: conversation.createdAt.getTime(),
+      })),
+      ...messageRows.map(({ message, conversation }) => ({
+        conversationId: conversation.id,
+        conversationType: conversation.conversationType,
+        title: conversation.title,
+        messageId: message.id,
+        snippet: message.content.slice(0, 240),
+        createdAt: message.createdAt.getTime(),
+      })),
+    ]
+    return results
+      .sort((left, right) => right.createdAt - left.createdAt)
+      .slice(0, limit)
+  }
+
   async listNotifications(args: {
     actorUserId: string
     limit?: number
@@ -576,6 +908,20 @@ implements ConversationCollaborationRepository {
     if (!row) throw new Error('CONVERSATION_MODERATOR_REQUIRED')
     return actor
   }
+
+  private async requireConversationMessage(args: {
+    conversationId: string
+    messageId: string
+  }): Promise<void> {
+    const [message] = await this.db.select({ id: conversationMessages.id })
+      .from(conversationMessages)
+      .where(and(
+        eq(conversationMessages.id, args.messageId),
+        eq(conversationMessages.conversationId, args.conversationId),
+        isNull(conversationMessages.deletedAt),
+      )).limit(1)
+    if (!message) throw new Error('Message not found')
+  }
 }
 
 function mapParticipant(
@@ -633,8 +979,62 @@ function mapNotification(row: typeof workspaceNotifications.$inferSelect): Works
   }
 }
 
+function mapChannel(
+  row: typeof conversations.$inferSelect,
+  participantCount: number,
+): ChannelSummary {
+  if (!row.channelSlug || !row.channelVisibility) throw new Error('Invalid channel record')
+  return {
+    conversationId: row.id,
+    workspaceId: row.workspaceId,
+    name: row.title,
+    slug: row.channelSlug,
+    topic: row.channelTopic ?? undefined,
+    visibility: row.channelVisibility,
+    participantCount,
+    createdAt: row.createdAt.getTime(),
+    updatedAt: (row.updatedAt ?? row.lastModified).getTime(),
+  }
+}
+
+function groupReactions(
+  rows: Array<typeof conversationMessageReactions.$inferSelect>,
+  currentPrincipalId: string,
+): MessageReaction[] {
+  const grouped = new Map<string, MessageReaction>()
+  for (const row of rows) {
+    const key = `${row.messageId}\0${row.emoji}`
+    const existing = grouped.get(key) ?? {
+      conversationId: row.conversationId,
+      messageId: row.messageId,
+      emoji: row.emoji,
+      principalIds: [],
+      count: 0,
+      reactedByCurrentPrincipal: false,
+    }
+    existing.principalIds.push(row.principalId)
+    existing.count += 1
+    existing.reactedByCurrentPrincipal ||= row.principalId === currentPrincipalId
+    grouped.set(key, existing)
+  }
+  return [...grouped.values()]
+}
+
 function cleanTitle(value?: string) {
   return value?.trim().replace(/\s+/g, ' ').slice(0, 120) ?? ''
+}
+
+function cleanTopic(value?: string) {
+  return value?.trim().replace(/\s+/g, ' ').slice(0, 240) || undefined
+}
+
+function channelSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64)
 }
 
 function required<T>(value: T | undefined): T {

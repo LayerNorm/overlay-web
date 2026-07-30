@@ -151,6 +151,17 @@ export const SHOWCASE_CHAT_SUMMARIES = [
     actModelId: 'openrouter/free',
     conversationType: 'dm' as const,
   },
+  {
+    _id: 'showcase-channel-product',
+    title: 'product-launch',
+    lastModified: Date.parse('2026-07-29T18:09:00.000Z'),
+    createdAt: Date.parse('2026-07-29T17:00:00.000Z'),
+    updatedAt: Date.parse('2026-07-29T18:09:00.000Z'),
+    lastMode: 'act' as const,
+    askModelIds: ['openrouter/free'],
+    actModelId: 'openrouter/free',
+    conversationType: 'channel' as const,
+  },
 ]
 
 export const SHOWCASE_CHAT_SNAPSHOTS = Object.fromEntries(

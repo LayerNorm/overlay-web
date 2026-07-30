@@ -4,13 +4,27 @@ import type {
   ConversationNotificationLevel,
   ConversationParticipant,
   ConversationParticipantStateInput,
+  ConversationPin,
   ConversationPresence,
+  ConversationSavedMessage,
+  ChannelCreateInput,
+  ChannelSummary,
   DirectMessageCreateInput,
   DirectMessageSummary,
+  MessageReaction,
+  WorkspaceChatSearchResult,
   WorkspaceNotification,
 } from '@overlay/workspace-contracts'
 
 export interface ConversationCollaborationRepository {
+  createChannel(args: ChannelCreateInput & {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<ChannelSummary>
+  listChannels(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<ChannelSummary[]>
   createDirectMessage(args: DirectMessageCreateInput & {
     actorUserId: string
     workspaceId: string
@@ -79,6 +93,48 @@ export interface ConversationCollaborationRepository {
     messageId: string
     workspaceId: string
   }): Promise<boolean>
+  listReactions(args: {
+    actorUserId: string
+    conversationId: string
+    workspaceId: string
+  }): Promise<MessageReaction[]>
+  setReaction(args: {
+    actorUserId: string
+    conversationId: string
+    emoji: string
+    enabled: boolean
+    messageId: string
+    workspaceId: string
+  }): Promise<MessageReaction[]>
+  listPins(args: {
+    actorUserId: string
+    conversationId: string
+    workspaceId: string
+  }): Promise<ConversationPin[]>
+  setPinned(args: {
+    actorUserId: string
+    conversationId: string
+    messageId: string
+    pinned: boolean
+    workspaceId: string
+  }): Promise<boolean>
+  listSavedMessages(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<ConversationSavedMessage[]>
+  setSaved(args: {
+    actorUserId: string
+    conversationId: string
+    messageId: string
+    saved: boolean
+    workspaceId: string
+  }): Promise<boolean>
+  searchWorkspaceChats(args: {
+    actorUserId: string
+    limit?: number
+    query: string
+    workspaceId: string
+  }): Promise<WorkspaceChatSearchResult[]>
   listNotifications(args: {
     actorUserId: string
     limit?: number

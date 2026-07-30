@@ -11,6 +11,7 @@ import { CommandPalette, type CommandPaletteRow } from '@overlay/ui/overlays'
 import {
   BookOpen,
   FileText,
+  Hash,
   MessageSquare,
   Plug,
   Server,
@@ -19,6 +20,8 @@ import {
 } from 'lucide-react'
 import { invalidateMentionCache, searchMentions } from '@/components/mentions/mention-search'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
+import type { WorkspaceChatSearchResult } from '@overlay/workspace-contracts'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; strokeWidth?: number }>> = {
   BookOpen,
@@ -28,6 +31,7 @@ const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; str
   Sparkles,
   Server,
   MessageSquare,
+  Hash,
 }
 
 const CATEGORY_ORDER: Array<{ type: MentionType; label: string; icon: string }> = [
@@ -85,6 +89,7 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
   const [selectedCategory, setSelectedCategory] = useState<MentionType | null>(initialCategory)
   const [categories, setCategories] = useState<MentionCategory[]>([])
   const [loading, setLoading] = useState(false)
+  const [workspaceChatResults, setWorkspaceChatResults] = useState<WorkspaceChatSearchResult[]>([])
 
   useEffect(() => {
     if (!open) return
@@ -120,6 +125,25 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
     }
   }, [open, query])
 
+  useEffect(() => {
+    if (!open || selectedCategory !== 'chat' || query.trim().length < 2) {
+      queueMicrotask(() => setWorkspaceChatResults([]))
+      return
+    }
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      void overlayAppClient.conversations.searchWorkspaceChats(query.trim()).then(({ results }) => {
+        if (!cancelled) setWorkspaceChatResults(results)
+      }).catch(() => {
+        if (!cancelled) setWorkspaceChatResults([])
+      })
+    }, 180)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [open, query, selectedCategory])
+
   const rowSources: RowSource[] = useMemo(() => {
     const list: RowSource[] = []
     const trimmed = query.trim()
@@ -140,6 +164,22 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
       return list
     }
 
+    if (selectedCategory === 'chat' && workspaceChatResults.length > 0) {
+      for (const result of workspaceChatResults) {
+        list.push({
+          kind: 'item',
+          categoryType: 'chat',
+          item: {
+            id: result.conversationId,
+            type: 'chat',
+            name: `${result.conversationType === 'channel' ? '#' : ''}${result.title}`,
+            description: result.snippet ?? result.authorDisplayName,
+            icon: result.conversationType === 'channel' ? 'Hash' : 'MessageSquare',
+          },
+        })
+      }
+      return list
+    }
     const cat = categories.find((c) => c.type === selectedCategory)
     if (cat) {
       for (const item of cat.items) {
@@ -147,7 +187,7 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
       }
     }
     return list
-  }, [categories, query, selectedCategory])
+  }, [categories, query, selectedCategory, workspaceChatResults])
 
   const rows: CommandPaletteRow[] = useMemo(() => {
     return rowSources.map((row) => {
@@ -206,11 +246,21 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
         (candidate) => candidate.kind === 'item' && `${candidate.categoryType}-${candidate.item.id}` === row.id,
       )
       if (source?.kind === 'item') {
-        router.push(hrefForItem(source.item))
+        const workspaceResult = source.categoryType === 'chat'
+          ? workspaceChatResults.find((result) => result.conversationId === source.item.id)
+          : undefined
+        router.push(workspaceResult
+          ? `/app/chat?${new URLSearchParams({
+            view: workspaceResult.conversationType === 'channel'
+              ? 'channels'
+              : workspaceResult.conversationType === 'dm' ? 'dms' : 'personal',
+            id: workspaceResult.conversationId,
+          }).toString()}`
+          : hrefForItem(source.item))
         onClose()
       }
     },
-    [onClose, onNewChat, router, rowSources],
+    [onClose, onNewChat, router, rowSources, workspaceChatResults],
   )
 
   const handleBreadcrumbBack = useCallback(() => {

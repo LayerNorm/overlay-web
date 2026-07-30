@@ -495,6 +495,22 @@ export const deleteUserAccountByServer = mutation({
         .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
         .first()
       if (!workspace || workspace.kind !== 'personal') return
+      const conversations = await ctx.db.query('conversations')
+        .withIndex('by_workspaceId_conversationType_lastModified', (q) => q.eq('workspaceId', workspaceId))
+        .collect()
+      for (const conversation of conversations) {
+        await deleteIndexed(() => ctx.db.query('conversationMessageReactions')
+          .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversation._id))
+          .collect())
+        await deleteIndexed(() => ctx.db.query('conversationPins')
+          .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversation._id))
+          .collect())
+        const savedMessages = await ctx.db.query('conversationSavedMessages').collect()
+        for (const saved of savedMessages.filter((row) => row.conversationId === conversation._id)) {
+          await ctx.db.delete(saved._id)
+          deletedRowCount += 1
+        }
+      }
       await deleteIndexed(() =>
         ctx.db.query('workspaceResourceGuests')
           .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
@@ -563,6 +579,16 @@ export const deleteUserAccountByServer = mutation({
         .withIndex('by_workspaceId', (q) => q.eq('workspaceId', principal.workspaceId))
         .first()
       if (!workspace || workspace.kind === 'personal') continue
+      await deleteIndexed(() => ctx.db.query('conversationMessageReactions')
+        .withIndex('by_workspaceId_principalId', (q) => (
+          q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId)
+        ))
+        .collect())
+      await deleteIndexed(() => ctx.db.query('conversationSavedMessages')
+        .withIndex('by_workspaceId_principalId_createdAt', (q) => (
+          q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId)
+        ))
+        .collect())
       await deleteIndexed(() =>
         ctx.db.query('conversationParticipants')
           .withIndex('by_workspaceId_principalId_status', (q) => (

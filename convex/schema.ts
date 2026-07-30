@@ -929,6 +929,9 @@ export default defineSchema({
     sharedAt: v.optional(v.number()),
     isAutomation: v.optional(v.boolean()),
     dmIdentityKey: v.optional(v.string()),
+    channelSlug: v.optional(v.string()),
+    channelVisibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
+    channelTopic: v.optional(v.string()),
   }).index('by_userId', ['userId'])
     .index('by_workspaceId_clientId', ['workspaceId', 'clientId'])
     .index('by_workspaceId_conversationType_lastModified', [
@@ -941,6 +944,7 @@ export default defineSchema({
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_projectId', ['projectId'])
     .index('by_workspaceId_dmIdentityKey', ['workspaceId', 'dmIdentityKey'])
+    .index('by_workspaceId_channelSlug', ['workspaceId', 'channelSlug'])
     .index('by_shareToken', ['shareToken']),
 
   conversationMessages: defineTable({
@@ -1039,13 +1043,48 @@ export default defineSchema({
     clientNonce: v.optional(v.string()),
     editedAt: v.optional(v.number()),
     deletedAt: v.optional(v.number()),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
     createdAt: v.number(),
   }).index('by_conversationId', ['conversationId'])
     .index('by_userId', ['userId'])
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
     .index('by_conversationId_clientNonce', ['conversationId', 'clientNonce'])
+    .index('by_threadRootMessageId_createdAt', ['threadRootMessageId', 'createdAt'])
     .index('by_status_updatedAt', ['status', 'updatedAt']),
+
+  conversationMessageReactions: defineTable({
+    conversationId: v.id('conversations'),
+    messageId: v.id('conversationMessages'),
+    workspaceId: v.string(),
+    principalId: v.string(),
+    emoji: v.string(),
+    createdAt: v.number(),
+  })
+    .index('by_messageId_principalId_emoji', ['messageId', 'principalId', 'emoji'])
+    .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
+    .index('by_workspaceId_principalId', ['workspaceId', 'principalId']),
+
+  conversationPins: defineTable({
+    conversationId: v.id('conversations'),
+    messageId: v.id('conversationMessages'),
+    workspaceId: v.string(),
+    pinnedByPrincipalId: v.string(),
+    createdAt: v.number(),
+  })
+    .index('by_conversationId_messageId', ['conversationId', 'messageId'])
+    .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
+    .index('by_workspaceId_pinnedByPrincipalId', ['workspaceId', 'pinnedByPrincipalId']),
+
+  conversationSavedMessages: defineTable({
+    conversationId: v.id('conversations'),
+    messageId: v.id('conversationMessages'),
+    workspaceId: v.string(),
+    principalId: v.string(),
+    createdAt: v.number(),
+  })
+    .index('by_messageId_principalId', ['messageId', 'principalId'])
+    .index('by_workspaceId_principalId_createdAt', ['workspaceId', 'principalId', 'createdAt']),
 
   conversationParticipants: defineTable({
     conversationId: v.id('conversations'),

@@ -164,6 +164,23 @@ function belongsToWorkspace(
   return conversation.userId === personalOwnerUserId
 }
 
+async function canReadConversation(
+  ctx: Pick<QueryCtx, 'db'>,
+  conversation: Doc<'conversations'>,
+  userId: string,
+  principalId: string,
+) {
+  if ((conversation.conversationType ?? 'personal') === 'personal') {
+    return conversation.userId === userId
+  }
+  const participant = await ctx.db.query('conversationParticipants')
+    .withIndex('by_conversationId_principalId', (q) => (
+      q.eq('conversationId', conversation._id).eq('principalId', principalId)
+    ))
+    .unique()
+  return participant?.status === 'active'
+}
+
 async function getLinkedAutomationConversationIds(
   ctx: Pick<QueryCtx, 'db'>,
   userId: string,
@@ -759,7 +776,7 @@ export const getMessages = query({
       userId,
       workspaceId ?? conversation?.workspaceId,
     )
-    if (!conversation || conversation.userId !== userId || conversation.deletedAt
+    if (!conversation || !await canReadConversation(ctx, conversation, userId, scope.principalId) || conversation.deletedAt
       || (conversation.workspaceId && conversation.workspaceId !== scope.workspaceId)) {
       return []
     }
@@ -812,7 +829,7 @@ export const getRecentMessages = query({
       userId,
       workspaceId ?? conversation?.workspaceId,
     )
-    if (!conversation || conversation.userId !== userId || conversation.deletedAt
+    if (!conversation || !await canReadConversation(ctx, conversation, userId, scope.principalId) || conversation.deletedAt
       || (conversation.workspaceId && conversation.workspaceId !== scope.workspaceId)) {
       return []
     }
@@ -966,6 +983,7 @@ export const addMessage = mutation({
     )),
     authorPrincipalId: v.optional(v.string()),
     clientNonce: v.optional(v.string()),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess({
@@ -992,6 +1010,15 @@ export const addMessage = mutation({
         ))
         .unique()
       if (!participant || participant.status !== 'active') throw new Error('Unauthorized')
+    }
+    if (args.threadRootMessageId) {
+      const root = await ctx.db.get(args.threadRootMessageId)
+      if (
+        !root
+        || root.conversationId !== args.conversationId
+        || root.threadRootMessageId
+        || root.deletedAt
+      ) throw new Error('Thread root is unavailable')
     }
     const authorKind = args.authorKind ?? (args.role === 'user' ? 'human' : 'model')
     const authorPrincipalId = authorKind === 'human' || authorKind === 'agent'
@@ -1031,6 +1058,7 @@ export const addMessage = mutation({
       routedModelId: args.routedModelId,
       status: 'completed' as const,
       clientNonce: args.clientNonce,
+      threadRootMessageId: args.threadRootMessageId,
       updatedAt: now,
       createdAt: match?.createdAt ?? now,
     }

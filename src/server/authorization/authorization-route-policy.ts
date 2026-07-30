@@ -215,6 +215,24 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { POST: capability('conversations.create') },
   },
   {
+    path: '/api/v1/conversations/channels',
+    methods: {
+      GET: capability('conversations.read'),
+      POST: capability('conversations.create'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/search',
+    methods: { GET: capability('conversations.read') },
+  },
+  {
+    path: '/api/v1/conversations/saved-messages',
+    methods: {
+      GET: capability('conversations.read'),
+      PATCH: capability('conversations.edit'),
+    },
+  },
+  {
     path: '/api/v1/conversations/notifications',
     methods: {
       GET: capability('conversations.read'),
@@ -238,6 +256,20 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: {
       GET: resource('conversation', 'view', {}, 'conversations.read'),
       PATCH: resource('conversation', 'view', {}, 'conversations.read'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/reactions',
+    methods: {
+      GET: resource('conversation', 'view', {}, 'conversations.read'),
+      PATCH: resource('conversation', 'edit', {}, 'conversations.edit'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/pins',
+    methods: {
+      GET: resource('conversation', 'view', {}, 'conversations.read'),
+      PATCH: resource('conversation', 'edit', {}, 'conversations.edit'),
     },
   },
   {

@@ -1,10 +1,16 @@
 import type { ConversationSummary } from '@overlay/app-core'
 import type {
+  ChannelCreateInput,
+  ChannelSummary,
+  ConversationPin,
   ConversationParticipant,
   ConversationParticipantStateInput,
   ConversationPresence,
+  ConversationSavedMessage,
   DirectMessageCreateInput,
   DirectMessageSummary,
+  MessageReaction,
+  WorkspaceChatSearchResult,
   WorkspaceNotification,
 } from '@overlay/workspace-contracts'
 import type { HttpContext } from '../shared/http'
@@ -162,6 +168,76 @@ export class ConversationsClient {
     return this.http.json<{ directMessage: DirectMessageSummary }>(
       '/api/v1/conversations/direct-messages',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  channels(init?: RequestInit) {
+    return this.http.json<{ channels: ChannelSummary[] }>('/api/v1/conversations/channels', init)
+  }
+
+  createChannel(body: ChannelCreateInput, init?: MutationRequestInit) {
+    return this.http.json<{ channel: ChannelSummary }>(
+      '/api/v1/conversations/channels',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  searchWorkspaceChats(query: string, limit = 25, init?: RequestInit) {
+    return this.http.json<{ results: WorkspaceChatSearchResult[] }>(
+      this.http.appendQuery('/api/v1/conversations/search', { q: query, limit }),
+      init,
+    )
+  }
+
+  reactions(conversationId: string, init?: RequestInit) {
+    return this.http.json<{ reactions: MessageReaction[] }>(
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}/reactions`,
+      init,
+    )
+  }
+
+  setReaction(
+    conversationId: string,
+    body: { messageId: string; emoji: string; enabled: boolean },
+    init?: MutationRequestInit,
+  ) {
+    return this.http.json<{ reactions: MessageReaction[] }>(
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}/reactions`,
+      this.http.jsonRequest(body, { ...init, method: 'PATCH' }),
+    )
+  }
+
+  pins(conversationId: string, init?: RequestInit) {
+    return this.http.json<{ pins: ConversationPin[] }>(
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}/pins`,
+      init,
+    )
+  }
+
+  setPinned(
+    conversationId: string,
+    body: { messageId: string; pinned: boolean },
+    init?: MutationRequestInit,
+  ) {
+    return this.http.json<{ pinned: boolean }>(
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}/pins`,
+      this.http.jsonRequest(body, { ...init, method: 'PATCH' }),
+    )
+  }
+
+  savedMessages(init?: RequestInit) {
+    return this.http.json<{ savedMessages: ConversationSavedMessage[] }>(
+      '/api/v1/conversations/saved-messages', init,
+    )
+  }
+
+  setSaved(
+    body: { conversationId: string; messageId: string; saved: boolean },
+    init?: MutationRequestInit,
+  ) {
+    return this.http.json<{ saved: boolean }>(
+      '/api/v1/conversations/saved-messages',
+      this.http.jsonRequest(body, { ...init, method: 'PATCH' }),
     )
   }
 

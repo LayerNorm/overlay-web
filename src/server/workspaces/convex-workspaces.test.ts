@@ -299,6 +299,76 @@ test('Convex workspace repository matches the Phase 1 lifecycle contract', {
       }), true)
     })
 
+    await t.test('channels support general membership, threads, reactions, pins, saves, and search', async () => {
+      const conversations: ActConversationRepository = new ConvexActConversationRepository()
+      const collaboration = new ConvexConversationCollaborationRepository()
+      const general = (await collaboration.listChannels({ actorUserId: invitedUserId, workspaceId: orgWorkspaceId }))
+        .find((channel) => channel.slug === 'general')
+      assert.ok(general, 'organization creation must atomically create #general')
+      const channel = await collaboration.createChannel({
+        actorUserId: invitedUserId,
+        workspaceId: orgWorkspaceId,
+        name: `Product ${scope.slice(-8)}`,
+        topic: 'Launch decisions',
+        visibility: 'public',
+      })
+      const rootMessageId = await conversations.addMessage({
+        workspaceId: orgWorkspaceId,
+        conversationId: channel.conversationId as never,
+        userId: invitedUserId,
+        authorPrincipalId: invitedPrincipalId,
+        turnId: `${scope}_channel_root`,
+        role: 'user',
+        mode: 'act',
+        content: 'Launch checklist',
+        contentType: 'text',
+      })
+      const replyMessageId = await conversations.addMessage({
+        workspaceId: orgWorkspaceId,
+        conversationId: channel.conversationId as never,
+        userId: ownerUserId,
+        authorPrincipalId: ownerPrincipalId,
+        turnId: `${scope}_channel_reply`,
+        role: 'user',
+        mode: 'act',
+        content: 'Checklist reply',
+        contentType: 'text',
+        threadRootMessageId: rootMessageId!,
+      })
+      assert.equal((await conversations.getConversationMessages({
+        workspaceId: orgWorkspaceId,
+        conversationId: channel.conversationId as never,
+        userId: ownerUserId,
+      })).find((message) => message._id === replyMessageId)?.threadRootMessageId, rootMessageId)
+      assert.equal((await collaboration.setReaction({
+        actorUserId: ownerUserId,
+        workspaceId: orgWorkspaceId,
+        conversationId: channel.conversationId,
+        messageId: String(rootMessageId),
+        emoji: 'thumbs_up',
+        enabled: true,
+      }))[0]?.count, 1)
+      assert.equal(await collaboration.setPinned({
+        actorUserId: invitedUserId,
+        workspaceId: orgWorkspaceId,
+        conversationId: channel.conversationId,
+        messageId: String(rootMessageId),
+        pinned: true,
+      }), true)
+      assert.equal(await collaboration.setSaved({
+        actorUserId: ownerUserId,
+        workspaceId: orgWorkspaceId,
+        conversationId: channel.conversationId,
+        messageId: String(rootMessageId),
+        saved: true,
+      }), true)
+      assert.equal((await collaboration.searchWorkspaceChats({
+        actorUserId: ownerUserId,
+        workspaceId: orgWorkspaceId,
+        query: 'checklist',
+      })).some((result) => result.conversationId === channel.conversationId), true)
+    })
+
     await t.test('account deletion erases Personal data and scrubs organization identity', async () => {
       await assert.rejects(
         () => convex.mutation(

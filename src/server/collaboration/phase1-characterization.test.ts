@@ -15,7 +15,7 @@ test('workspace foundation remains enabled as collaborative chats roll forward',
   assert.equal(defaultFlags.get('workspaces'), false)
   assert.equal(appFlags.get('workspaces'), true)
   assert.equal(appFlags.get('collaborativeChats'), true)
-  assert.equal(appFlags.get('channels'), false)
+  assert.equal(appFlags.get('channels'), true)
   assert.equal(appFlags.get('agents'), false)
   assert.equal(appFlags.get('resourceSharing'), false)
   assert.equal(overlayRuntimeConfigDefaults.capabilities.multiTenant, false)

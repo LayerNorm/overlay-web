@@ -44,7 +44,7 @@ import dynamic from 'next/dynamic'
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 import type { MentionType } from '@/shared/knowledge/mention-types'
 import { TEMPORARY_CHAT_UI_EVENT, type TemporaryChatUiEventDetail } from '@/shared/chat/temporary-chat-ui'
-import { NEW_DIRECT_MESSAGE_EVENT } from '@/shared/chat/collaboration-events'
+import { NEW_CHANNEL_EVENT, NEW_DIRECT_MESSAGE_EVENT } from '@/shared/chat/collaboration-events'
 import {
   getSidebarCollapsedSnapshot,
   setStoredSidebarCollapsed,
@@ -469,6 +469,13 @@ export default function AppSidebar({
         ? requireAuth('nav')
         : window.dispatchEvent(new CustomEvent(NEW_DIRECT_MESSAGE_EVENT)),
     }
+    : chatOpen && chatsView === 'channels'
+      ? {
+        label: 'New channel',
+        onClick: () => publicShowcase
+          ? requireAuth('nav')
+          : window.dispatchEvent(new CustomEvent(NEW_CHANNEL_EVENT)),
+      }
     : contextualAction
       ? {
         label: contextualAction.label,

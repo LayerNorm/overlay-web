@@ -454,6 +454,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     authorKind?: 'human' | 'agent' | 'model' | 'system'
     authorPrincipalId?: string
     clientNonce?: string
+    threadRootMessageId?: string
     variantIndex?: number
   }): Promise<ConversationMessageId | null> {
     if (args.clientNonce) {
@@ -476,6 +477,17 @@ export class PostgresActConversationRepository implements ActConversationReposit
         isNull(conversations.deletedAt),
       )).limit(1)
       if (!conversation) throw new Error('WORKSPACE_ACCESS_DENIED')
+      if (args.threadRootMessageId) {
+        const [root] = await tx.select({ id: conversationMessages.id })
+          .from(conversationMessages)
+          .where(and(
+            eq(conversationMessages.id, args.threadRootMessageId),
+            eq(conversationMessages.conversationId, args.conversationId),
+            isNull(conversationMessages.threadRootMessageId),
+            isNull(conversationMessages.deletedAt),
+          )).limit(1)
+        if (!root) throw new Error('Thread root is unavailable')
+      }
       const authorKind = args.authorKind ?? (args.role === 'user' ? 'human' : 'model')
       await tx.insert(conversationMessages).values({
         id,
@@ -499,6 +511,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         routedModelId: args.routedModelId,
         status: 'completed',
         clientNonce: args.clientNonce,
+        threadRootMessageId: args.threadRootMessageId,
         createdAt: now,
         updatedAt: now,
       })
@@ -1231,6 +1244,7 @@ function mapConversationMessageRow(row: typeof conversationMessages.$inferSelect
     clientNonce: row.clientNonce ?? undefined,
     editedAt: row.editedAt?.getTime(),
     deletedAt: row.deletedAt?.getTime(),
+    threadRootMessageId: row.threadRootMessageId ?? undefined,
   }
 }
 

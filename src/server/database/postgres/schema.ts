@@ -361,6 +361,11 @@ export const workspaceNotificationType = pgEnum('overlay_workspace_notification_
   'participant',
 ])
 
+export const channelVisibility = pgEnum('overlay_channel_visibility', [
+  'public',
+  'private',
+])
+
 export const mcpTransport = pgEnum('overlay_mcp_transport', [
   'sse',
   'streamable-http',
@@ -1003,6 +1008,9 @@ export const conversations = pgTable('conversations', {
   sharedAt: timestamp('shared_at', { withTimezone: true }),
   isAutomation: boolean('is_automation'),
   dmIdentityKey: text('dm_identity_key'),
+  channelSlug: text('channel_slug'),
+  channelVisibility: channelVisibility('channel_visibility'),
+  channelTopic: text('channel_topic'),
 }, (table) => [
   index('conversations_user_id_idx').on(table.userId),
   uniqueIndex('conversations_workspace_id_client_id_idx').on(table.workspaceId, table.clientId),
@@ -1019,6 +1027,14 @@ export const conversations = pgTable('conversations', {
   uniqueIndex('conversations_workspace_dm_identity_idx')
     .on(table.workspaceId, table.dmIdentityKey)
     .where(sql`${table.dmIdentityKey} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+  uniqueIndex('conversations_workspace_channel_slug_idx')
+    .on(table.workspaceId, table.channelSlug)
+    .where(sql`${table.conversationType} = 'channel' AND ${table.deletedAt} IS NULL`),
+  check(
+    'conversations_channel_shape_check',
+    sql`(${table.conversationType} <> 'channel' AND ${table.channelSlug} IS NULL AND ${table.channelVisibility} IS NULL)
+      OR (${table.conversationType} = 'channel' AND ${table.channelSlug} IS NOT NULL AND ${table.channelVisibility} IS NOT NULL)`,
+  ),
 ])
 
 export const knowledgeBaseConversations = pgTable('knowledge_base_conversations', {
@@ -1095,6 +1111,8 @@ export const conversationMessages = pgTable('conversation_messages', {
   clientNonce: text('client_nonce'),
   editedAt: timestamp('edited_at', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  threadRootMessageId: text('thread_root_message_id')
+    .references((): AnyPgColumn => conversationMessages.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('conversation_messages_conversation_id_idx').on(table.conversationId),
@@ -1103,6 +1121,7 @@ export const conversationMessages = pgTable('conversation_messages', {
   index('conversation_messages_conversation_status_updated_at_idx').on(table.conversationId, table.status, table.updatedAt),
   index('conversation_messages_status_updated_at_idx').on(table.status, table.updatedAt),
   index('conversation_messages_turn_id_idx').on(table.turnId),
+  index('conversation_messages_thread_root_created_idx').on(table.threadRootMessageId, table.createdAt),
   uniqueIndex('conversation_messages_conversation_client_nonce_idx')
     .on(table.conversationId, table.clientNonce)
     .where(sql`${table.clientNonce} IS NOT NULL`),
@@ -1110,6 +1129,77 @@ export const conversationMessages = pgTable('conversation_messages', {
     'conversation_messages_author_identity_check',
     sql`(${table.authorKind} IN ('human', 'agent') AND ${table.authorPrincipalId} IS NOT NULL)
       OR (${table.authorKind} IN ('model', 'system'))`,
+  ),
+])
+
+export const conversationMessageReactions = pgTable('conversation_message_reactions', {
+  conversationId: text('conversation_id')
+    .notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  messageId: text('message_id')
+    .notNull()
+    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  principalId: text('principal_id').notNull(),
+  emoji: text('emoji').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.messageId, table.principalId, table.emoji] }),
+  foreignKey({
+    columns: [table.workspaceId, table.principalId],
+    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
+    name: 'conversation_message_reactions_principal_fk',
+  }).onDelete('cascade'),
+  index('conversation_message_reactions_conversation_idx').on(table.conversationId, table.createdAt),
+  check('conversation_message_reactions_emoji_check', sql`char_length(${table.emoji}) BETWEEN 1 AND 32`),
+])
+
+export const conversationPins = pgTable('conversation_pins', {
+  conversationId: text('conversation_id')
+    .notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  messageId: text('message_id')
+    .notNull()
+    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  pinnedByPrincipalId: text('pinned_by_principal_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.conversationId, table.messageId] }),
+  foreignKey({
+    columns: [table.workspaceId, table.pinnedByPrincipalId],
+    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
+    name: 'conversation_pins_principal_fk',
+  }).onDelete('cascade'),
+])
+
+export const conversationSavedMessages = pgTable('conversation_saved_messages', {
+  conversationId: text('conversation_id')
+    .notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  messageId: text('message_id')
+    .notNull()
+    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  principalId: text('principal_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.messageId, table.principalId] }),
+  foreignKey({
+    columns: [table.workspaceId, table.principalId],
+    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
+    name: 'conversation_saved_messages_principal_fk',
+  }).onDelete('cascade'),
+  index('conversation_saved_messages_principal_idx').on(
+    table.workspaceId,
+    table.principalId,
+    table.createdAt,
   ),
 ])
 

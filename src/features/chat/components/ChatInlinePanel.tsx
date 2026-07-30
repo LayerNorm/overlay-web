@@ -18,7 +18,7 @@ import {
   type ChatDeletedDetail,
   type ChatTitleUpdatedDetail,
 } from '@/shared/chat/chat-title'
-import { NEW_DIRECT_MESSAGE_EVENT } from '@/shared/chat/collaboration-events'
+import { NEW_CHANNEL_EVENT, NEW_DIRECT_MESSAGE_EVENT } from '@/shared/chat/collaboration-events'
 import {
   fetchChatListResult,
   fetchNextChatListPage,
@@ -33,6 +33,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { SidebarResourceList } from '@overlay/ui/primitives'
 import { useAuth } from '@/contexts/AuthContext'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
+import { NewChannelDialog } from './NewChannelDialog'
 
 const panelItemClass =
   'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
@@ -76,6 +77,7 @@ export function ChatInlinePanel({
   const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
   const [pendingDeleteChatId, setPendingDeleteChatId] = useState<string | null>(null)
   const [newDirectMessageOpen, setNewDirectMessageOpen] = useState(false)
+  const [newChannelOpen, setNewChannelOpen] = useState(false)
   const [collaborationUnread, setCollaborationUnread] = useState<Record<string, number>>({})
   const activeId = searchParams?.get('id') ?? null
   const chatView = (() => {
@@ -89,8 +91,15 @@ export function ChatInlinePanel({
     const openDialog = () => {
       if (chatView === 'dms' && workspaceId) setNewDirectMessageOpen(true)
     }
+    const openChannelDialog = () => {
+      if (chatView === 'channels' && workspaceId) setNewChannelOpen(true)
+    }
     window.addEventListener(NEW_DIRECT_MESSAGE_EVENT, openDialog)
-    return () => window.removeEventListener(NEW_DIRECT_MESSAGE_EVENT, openDialog)
+    window.addEventListener(NEW_CHANNEL_EVENT, openChannelDialog)
+    return () => {
+      window.removeEventListener(NEW_DIRECT_MESSAGE_EVENT, openDialog)
+      window.removeEventListener(NEW_CHANNEL_EVENT, openChannelDialog)
+    }
   }, [chatView, workspaceId])
 
   useEffect(() => {
@@ -506,6 +515,19 @@ export function ChatInlinePanel({
             },
           })
           router.push(`${baseHref}?${new URLSearchParams({ view: 'dms', id }).toString()}`)
+          onNavigate?.()
+        }}
+      />
+    ) : null}
+    {workspaceId ? (
+      <NewChannelDialog
+        open={newChannelOpen}
+        workspaceId={workspaceId}
+        showcase={isPublicShowcase}
+        onOpenChange={setNewChannelOpen}
+        onCreated={({ id, title }) => {
+          dispatchChatCreated({ chat: { _id: id, title, lastModified: Date.now(), conversationType: 'channel' } })
+          router.push(`${baseHref}?${new URLSearchParams({ view: 'channels', id }).toString()}`)
           onNavigate?.()
         }}
       />

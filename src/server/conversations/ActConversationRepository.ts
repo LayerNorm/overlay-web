@@ -81,6 +81,7 @@ export type ConversationMessageRow = {
   clientNonce?: string
   editedAt?: number
   deletedAt?: number
+  threadRootMessageId?: string
 }
 
 export type ActUsageEvent = {
@@ -213,6 +214,7 @@ export interface ActConversationRepository {
     authorKind?: 'human' | 'agent' | 'model' | 'system'
     authorPrincipalId?: string
     clientNonce?: string
+    threadRootMessageId?: string
     variantIndex?: number
   }): Promise<Id<'conversationMessages'> | null>
   listMemories(args: {

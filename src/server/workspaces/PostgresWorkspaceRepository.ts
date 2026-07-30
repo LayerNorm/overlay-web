@@ -163,6 +163,38 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
         SET created_by_principal_id = ${input.ownerPrincipalId}
         WHERE id = ${input.workspaceId}
       `)
+      const generalChannelId = `channel_general_${input.workspaceId}`
+      await tx.execute(sql`
+        INSERT INTO conversations (
+          id, workspace_id, conversation_type, created_by_principal_id, user_id,
+          title, last_modified, updated_at, created_at, last_mode,
+          ask_model_ids, act_model_id, channel_slug, channel_visibility, channel_topic
+        ) VALUES (
+          ${generalChannelId}, ${input.workspaceId}, 'channel', ${input.ownerPrincipalId},
+          ${input.actorUserId}, 'general', ${new Date(input.now)}, ${new Date(input.now)},
+          ${new Date(input.now)}, 'act', '["moonshotai/kimi-k2.6"]'::jsonb,
+          'moonshotai/kimi-k2.6', 'general', 'public',
+          'Company-wide announcements and conversation'
+        )
+      `)
+      await tx.execute(sql`
+        INSERT INTO conversation_participants (
+          conversation_id, workspace_id, principal_id, principal_type,
+          role, status, notification_level, joined_at, updated_at, last_read_at
+        ) VALUES (
+          ${generalChannelId}, ${input.workspaceId}, ${input.ownerPrincipalId}, 'human',
+          'moderator', 'active', 'all', ${new Date(input.now)}, ${new Date(input.now)},
+          ${new Date(input.now)}
+        )
+      `)
+      await tx.execute(sql`
+        INSERT INTO workspace_resource_scopes (
+          workspace_id, resource_type, resource_id, created_at, updated_at
+        ) VALUES (
+          ${input.workspaceId}, 'conversation', ${generalChannelId},
+          ${new Date(input.now)}, ${new Date(input.now)}
+        )
+      `)
       return requiredAccess(await selectAccess(tx, {
         workspaceId: input.workspaceId,
         userId: input.actorUserId,
@@ -703,6 +735,24 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
           status = 'active',
           invited_by_principal_id = EXCLUDED.invited_by_principal_id,
           updated_at = EXCLUDED.updated_at
+      `)
+      await tx.execute(sql`
+        INSERT INTO conversation_participants (
+          conversation_id, workspace_id, principal_id, principal_type,
+          role, status, notification_level, joined_at, updated_at
+        )
+        SELECT
+          channel.id, channel.workspace_id, ${principal.id}, 'human',
+          (CASE WHEN ${row.role} IN ('owner', 'admin') THEN 'moderator'
+               ELSE 'member' END)::overlay_conversation_participant_role,
+          'active', 'all', ${new Date(input.now)}, ${new Date(input.now)}
+        FROM conversations channel
+        WHERE channel.workspace_id = ${row.workspaceId}
+          AND channel.conversation_type = 'channel'
+          AND channel.channel_visibility = 'public'
+          AND channel.deleted_at IS NULL
+        ON CONFLICT (conversation_id, principal_id) DO UPDATE SET
+          status = 'active', removed_at = NULL, archived_at = NULL, updated_at = EXCLUDED.updated_at
       `)
       const accepted = await tx.execute<InvitationRow>(sql`
         UPDATE workspace_invitations

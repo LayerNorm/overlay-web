@@ -68,6 +68,7 @@ export interface ConversationMessageRequest {
   accessToken?: string
   userId?: string
   clientNonce?: string
+  threadRootMessageId?: string
   mentionedPrincipalIds?: string[]
 }
 

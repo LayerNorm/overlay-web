@@ -20,7 +20,7 @@ test('Phase 2 exposes Chats as five workspace-scoped views', () => {
   )
   assert.equal(
     overlayAppShell.featureFlags.find((flag) => flag.id === 'channels')?.enabled,
-    false,
+    true,
   )
 })
 

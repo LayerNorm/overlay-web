@@ -16,5 +16,14 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
       />
     )
   }
+  if (searchParams?.get('view') === 'channels' && conversationId) {
+    return (
+      <DirectMessageExperience
+        conversationId={conversationId}
+        conversationType="channel"
+        showcase={Boolean(props.publicShowcaseSnapshots)}
+      />
+    )
+  }
   return <ChatExperience {...props} />
 }

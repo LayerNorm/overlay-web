@@ -6,11 +6,11 @@ import { AUTHORIZATION_ROUTE_POLICIES } from '@/server/authorization/authorizati
 
 const root = process.cwd()
 
-test('Phase 3 enables participant-scoped DMs without enabling Channels or Agents', () => {
+test('Phase 3 participant-scoped DMs remain enabled after Channels rolls forward', () => {
   const flags = new Map(overlayAppConfig.featureFlags?.map((feature) => [feature.id, feature.enabled]))
   assert.equal(flags.get('workspaces'), true)
   assert.equal(flags.get('collaborativeChats'), true)
-  assert.equal(flags.get('channels'), false)
+  assert.equal(flags.get('channels'), true)
   assert.equal(flags.get('agents'), false)
 })
 

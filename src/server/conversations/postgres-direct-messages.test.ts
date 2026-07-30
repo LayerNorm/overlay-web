@@ -76,6 +76,82 @@ test('Postgres direct messages are participant-scoped and realtime-ready', {
       now: Date.now(),
     })).status, 'accepted')
 
+    const general = (await collaboration.listChannels({ actorUserId: memberUserId, workspaceId }))
+      .find((channel) => channel.slug === 'general')
+    assert.ok(general, 'organization creation must atomically create #general')
+    assert.equal(general.visibility, 'public')
+
+    const channel = await collaboration.createChannel({
+      actorUserId: ownerUserId,
+      workspaceId,
+      name: 'Product Launch',
+      topic: 'Launch decisions',
+      visibility: 'public',
+    })
+    assert.equal(channel.slug, 'product-launch')
+    assert.equal(channel.participantCount, 2)
+    const rootMessageId = await conversations.addMessage({
+      workspaceId,
+      conversationId: channel.conversationId as never,
+      userId: ownerUserId,
+      authorPrincipalId: ownerPrincipalId,
+      turnId: `${scope}_channel_root`,
+      role: 'user',
+      mode: 'act',
+      content: 'Launch checklist',
+      contentType: 'text',
+    })
+    const replyMessageId = await conversations.addMessage({
+      workspaceId,
+      conversationId: channel.conversationId as never,
+      userId: memberUserId,
+      authorPrincipalId: memberPrincipalId,
+      turnId: `${scope}_thread_reply`,
+      role: 'user',
+      mode: 'act',
+      content: 'Checklist reply',
+      contentType: 'text',
+      threadRootMessageId: rootMessageId!,
+    })
+    assert.equal((await conversations.getConversationMessages({
+      workspaceId,
+      conversationId: channel.conversationId as never,
+      userId: memberUserId,
+    })).find((message) => message._id === replyMessageId)?.threadRootMessageId, rootMessageId)
+    assert.equal((await collaboration.setReaction({
+      actorUserId: memberUserId,
+      workspaceId,
+      conversationId: channel.conversationId,
+      messageId: rootMessageId!,
+      emoji: 'thumbs_up',
+      enabled: true,
+    }))[0]?.count, 1)
+    assert.equal(await collaboration.setPinned({
+      actorUserId: ownerUserId,
+      workspaceId,
+      conversationId: channel.conversationId,
+      messageId: rootMessageId!,
+      pinned: true,
+    }), true)
+    assert.equal((await collaboration.listPins({
+      actorUserId: memberUserId,
+      workspaceId,
+      conversationId: channel.conversationId,
+    }))[0]?.messageId, rootMessageId)
+    assert.equal(await collaboration.setSaved({
+      actorUserId: memberUserId,
+      workspaceId,
+      conversationId: channel.conversationId,
+      messageId: rootMessageId!,
+      saved: true,
+    }), true)
+    assert.equal((await collaboration.listSavedMessages({ actorUserId: memberUserId, workspaceId }))[0]?.messageId, rootMessageId)
+    assert.equal((await collaboration.searchWorkspaceChats({
+      actorUserId: memberUserId,
+      workspaceId,
+      query: 'checklist',
+    })).some((result) => result.conversationId === channel.conversationId), true)
+
     const sourceConversationId = await conversations.createConversation({
       workspaceId,
       createdByPrincipalId: ownerPrincipalId,

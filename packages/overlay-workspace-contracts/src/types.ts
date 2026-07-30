@@ -334,6 +334,61 @@ export type WorkspaceNotification = {
   readAt?: number
 }
 
+export const CHANNEL_VISIBILITIES = ['public', 'private'] as const
+export type ChannelVisibility = (typeof CHANNEL_VISIBILITIES)[number]
+
+export type ChannelSummary = {
+  conversationId: string
+  workspaceId: string
+  name: string
+  slug: string
+  topic?: string
+  visibility: ChannelVisibility
+  participantCount: number
+  createdAt: number
+  updatedAt: number
+}
+
+export type ChannelCreateInput = {
+  name: string
+  topic?: string
+  visibility: ChannelVisibility
+  principalIds?: string[]
+}
+
+export type MessageReaction = {
+  conversationId: string
+  messageId: string
+  emoji: string
+  principalIds: string[]
+  count: number
+  reactedByCurrentPrincipal: boolean
+}
+
+export type ConversationPin = {
+  conversationId: string
+  messageId: string
+  pinnedByPrincipalId: string
+  createdAt: number
+}
+
+export type ConversationSavedMessage = {
+  conversationId: string
+  messageId: string
+  principalId: string
+  createdAt: number
+}
+
+export type WorkspaceChatSearchResult = {
+  conversationId: string
+  conversationType: 'personal' | 'dm' | 'channel'
+  title: string
+  messageId?: string
+  snippet?: string
+  authorDisplayName?: string
+  createdAt: number
+}
+
 export function isWorkspacePrincipalType(value: unknown): value is WorkspacePrincipalType {
   return typeof value === 'string'
     && WORKSPACE_PRINCIPAL_TYPES.includes(value as WorkspacePrincipalType)

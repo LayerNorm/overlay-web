@@ -1,9 +1,14 @@
 import 'server-only'
 
 import type {
+  ChannelSummary,
+  ConversationPin,
   ConversationParticipant,
   ConversationPresence,
+  ConversationSavedMessage,
   DirectMessageSummary,
+  MessageReaction,
+  WorkspaceChatSearchResult,
   WorkspaceNotification,
 } from '@overlay/workspace-contracts'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
@@ -15,6 +20,27 @@ export class ConvexConversationCollaborationRepository
 implements ConversationCollaborationRepository {
   private get serverSecret() {
     return getInternalApiSecret()
+  }
+
+  async createChannel(args: {
+    actorUserId: string
+    name: string
+    principalIds?: string[]
+    topic?: string
+    visibility: 'public' | 'private'
+    workspaceId: string
+  }) {
+    return await convex.mutation<ChannelSummary>('collaboration/channels:createChannel', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) as ChannelSummary
+  }
+
+  async listChannels(args: { actorUserId: string; workspaceId: string }) {
+    return await convex.query<ChannelSummary[]>('collaboration/channels:listChannels', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? []
   }
 
   async createDirectMessage(args: {
@@ -173,6 +199,95 @@ implements ConversationCollaborationRepository {
       messageId: args.messageId as Id<'conversationMessages'>,
       serverSecret: this.serverSecret,
     }, { throwOnError: true }) ?? false
+  }
+
+  async listReactions(args: {
+    actorUserId: string
+    conversationId: string
+    workspaceId: string
+  }) {
+    return await convex.query<MessageReaction[]>('collaboration/channels:listReactions', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? []
+  }
+
+  async setReaction(args: {
+    actorUserId: string
+    conversationId: string
+    emoji: string
+    enabled: boolean
+    messageId: string
+    workspaceId: string
+  }) {
+    return await convex.mutation<MessageReaction[]>('collaboration/channels:setReaction', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      messageId: args.messageId as Id<'conversationMessages'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? []
+  }
+
+  async listPins(args: {
+    actorUserId: string
+    conversationId: string
+    workspaceId: string
+  }) {
+    return await convex.query<ConversationPin[]>('collaboration/channels:listPins', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? []
+  }
+
+  async setPinned(args: {
+    actorUserId: string
+    conversationId: string
+    messageId: string
+    pinned: boolean
+    workspaceId: string
+  }) {
+    return await convex.mutation<boolean>('collaboration/channels:setPinned', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      messageId: args.messageId as Id<'conversationMessages'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? false
+  }
+
+  async listSavedMessages(args: { actorUserId: string; workspaceId: string }) {
+    return await convex.query<ConversationSavedMessage[]>('collaboration/channels:listSavedMessages', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? []
+  }
+
+  async setSaved(args: {
+    actorUserId: string
+    conversationId: string
+    messageId: string
+    saved: boolean
+    workspaceId: string
+  }) {
+    return await convex.mutation<boolean>('collaboration/channels:setSaved', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      messageId: args.messageId as Id<'conversationMessages'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? false
+  }
+
+  async searchWorkspaceChats(args: {
+    actorUserId: string
+    limit?: number
+    query: string
+    workspaceId: string
+  }) {
+    return await convex.query<WorkspaceChatSearchResult[]>('collaboration/channels:searchWorkspaceChats', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? []
   }
 
   async listNotifications(args: {

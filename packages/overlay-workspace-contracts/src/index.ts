@@ -58,4 +58,12 @@ export {
   type WorkspaceTeamMemberMutationResponse,
   type WorkspaceTeamWithMembers,
   type WorkspaceNotification,
+  CHANNEL_VISIBILITIES,
+  type ChannelVisibility,
+  type ChannelSummary,
+  type ChannelCreateInput,
+  type MessageReaction,
+  type ConversationPin,
+  type ConversationSavedMessage,
+  type WorkspaceChatSearchResult,
 } from './types'

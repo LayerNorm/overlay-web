@@ -259,6 +259,41 @@ export const createOrganizationByServer = mutation({
       joinedAt: now,
       updatedAt: now,
     })
+    const generalChannelId = await ctx.db.insert('conversations', {
+      userId: args.creatorUserId,
+      workspaceId: args.workspaceId,
+      conversationType: 'channel',
+      createdByPrincipalId: args.principalId,
+      title: 'general',
+      lastModified: now,
+      updatedAt: now,
+      createdAt: now,
+      lastMode: 'act',
+      askModelIds: ['moonshotai/kimi-k2.6'],
+      actModelId: 'moonshotai/kimi-k2.6',
+      channelSlug: 'general',
+      channelVisibility: 'public',
+      channelTopic: 'Company-wide announcements and conversation',
+    })
+    await ctx.db.insert('conversationParticipants', {
+      conversationId: generalChannelId,
+      workspaceId: args.workspaceId,
+      principalId: args.principalId,
+      principalType: 'human',
+      role: 'moderator',
+      status: 'active',
+      notificationLevel: 'all',
+      joinedAt: now,
+      updatedAt: now,
+      lastReadAt: now,
+    })
+    await ctx.db.insert('workspaceResourceScopes', {
+      workspaceId: args.workspaceId,
+      resourceType: 'conversation',
+      resourceId: generalChannelId,
+      createdAt: now,
+      updatedAt: now,
+    })
     return {
       workspace: workspaceValue(workspace),
       principal: principalValue(principal),
@@ -644,6 +679,41 @@ export const acceptInvitationByServer = mutation({
         joinedAt: now,
         updatedAt: now,
       })
+    }
+    const publicChannels = await ctx.db.query('conversations')
+      .withIndex('by_workspaceId_conversationType_lastModified', (q) => (
+        q.eq('workspaceId', workspace.workspaceId).eq('conversationType', 'channel')
+      )).filter((q) => q.and(
+        q.eq(q.field('channelVisibility'), 'public'),
+        q.eq(q.field('deletedAt'), undefined),
+      )).collect()
+    for (const channel of publicChannels) {
+      const existingParticipant = await ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', (q) => (
+          q.eq('conversationId', channel._id).eq('principalId', principal.principalId)
+        )).unique()
+      const role = invitation.role === 'admin' ? 'moderator' : 'member'
+      if (existingParticipant) {
+        await ctx.db.patch(existingParticipant._id, {
+          role,
+          status: 'active',
+          removedAt: undefined,
+          archivedAt: undefined,
+          updatedAt: now,
+        })
+      } else {
+        await ctx.db.insert('conversationParticipants', {
+          conversationId: channel._id,
+          workspaceId: workspace.workspaceId,
+          principalId: principal.principalId,
+          principalType: 'human',
+          role,
+          status: 'active',
+          notificationLevel: 'all',
+          joinedAt: now,
+          updatedAt: now,
+        })
+      }
     }
     await ctx.db.patch(invitation._id, {
       status: 'accepted',
@@ -1034,6 +1104,24 @@ export const purgeArchivedWorkspaceByServer = mutation({
       await deleteRows(await ctx.db.query('workspaceTeamMemberships')
         .withIndex('by_teamId', (q) => q.eq('teamId', team.teamId))
         .collect())
+    }
+    const workspaceConversations = await ctx.db.query('conversations')
+      .withIndex('by_workspaceId_conversationType_lastModified', (q) => q.eq('workspaceId', args.workspaceId))
+      .collect()
+    for (const conversation of workspaceConversations) {
+      await deleteRows(await ctx.db.query('conversationMessageReactions')
+        .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversation._id))
+        .collect())
+      await deleteRows(await ctx.db.query('conversationPins')
+        .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversation._id))
+        .collect())
+      const savedMessages = await ctx.db.query('conversationSavedMessages').collect()
+      await deleteRows(savedMessages.filter((row) => row.conversationId === conversation._id))
+      await deleteRows(await ctx.db.query('conversationMessages')
+        .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation._id))
+        .collect())
+      await ctx.db.delete(conversation._id)
+      deletedRows += 1
     }
     await deleteRows(await ctx.db.query('workspaceResourceGuests')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
