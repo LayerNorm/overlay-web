@@ -246,6 +246,22 @@ export async function discoverToolsCatalogForServer(
   }
 }
 
+/**
+ * Convex rejects any field name starting with `$`, so a tool whose JSON Schema declares
+ * `$schema`/`$ref`/`$defs` would fail the whole catalog write and leave the server with no
+ * cached tools. Those keys are metadata that jsonSchemaToZod ignores, so drop them.
+ */
+export function stripReservedSchemaKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((entry) => stripReservedSchemaKeys(entry))
+  if (!value || typeof value !== 'object') return value
+  const result: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (key.startsWith('$')) continue
+    result[key] = stripReservedSchemaKeys(entry)
+  }
+  return result
+}
+
 export async function persistMcpServerToolCatalog(args: {
   mcpServerId: string
   userId: string
@@ -257,7 +273,12 @@ export async function persistMcpServerToolCatalog(args: {
   await getMcpRepository().updateToolCatalog({
     mcpServerId: args.mcpServerId,
     userId: args.userId,
-    tools: args.tools,
+    tools: args.tools.map((entry) => ({
+      ...entry,
+      ...(entry.inputSchema === undefined
+        ? {}
+        : { inputSchema: stripReservedSchemaKeys(entry.inputSchema) }),
+    })),
     catalogError: args.catalogError,
   })
 }
@@ -367,8 +388,13 @@ export async function createMcpLazyMetaTools(args: {
       if (catalogEntries.length === 0) {
         return JSON.stringify({
           results: [],
+          servers: scoped.map((config) => ({
+            serverId: config._id,
+            serverName: config.name,
+            catalogError: config.toolCatalogError,
+          })),
           message:
-            'No cached MCP tool catalog for the selected server(s). Ask the user to test the connection in MCP settings to refresh the catalog.',
+            'No cached MCP tool catalog for the selected server(s). You can still call call_mcp_tool with one of the serverId values above if you know the exact tool name; otherwise ask the user to test the connection in MCP settings to refresh the catalog.',
         })
       }
 
@@ -401,7 +427,10 @@ export async function createMcpLazyMetaTools(args: {
     execute: async ({ serverId, toolName, arguments: toolArgs }) => {
       const config = configById.get(serverId)
       if (!config) {
-        throw new Error('MCP server not found or not enabled')
+        const available = configs.map((entry) => `${entry.name}=${entry._id}`).join(', ')
+        throw new Error(
+          `No enabled MCP server with id "${serverId}". serverId must be the id from search_mcp_tools, not a name or URL. Enabled servers: ${available || 'none'}`,
+        )
       }
       const catalog = config.toolCatalog ?? []
       const catalogHit = catalog.some((entry) => entry.name === toolName)

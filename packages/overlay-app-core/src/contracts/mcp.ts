@@ -12,6 +12,9 @@ export interface McpServerSummary {
   defaultToolPolicy?: McpToolPolicyMode
   toolPolicies?: Record<string, McpToolPolicyMode>
   toolCatalogCount?: number
+  toolCatalogUpdatedAt?: number
+  /** Why the last tool-catalog refresh failed; the server is reachable but exposes no tools to chat. */
+  toolCatalogError?: string
   createdAt: number
   updatedAt: number
 }

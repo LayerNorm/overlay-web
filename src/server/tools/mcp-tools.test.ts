@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { rankMcpCatalogEntries } from './mcp-tools'
+import { rankMcpCatalogEntries, stripReservedSchemaKeys } from './mcp-tools'
 
 const entries = [
   {
@@ -39,4 +39,38 @@ test('rankMcpCatalogEntries prefers exact and name matches', () => {
 test('rankMcpCatalogEntries matches descriptions and server names', () => {
   const ranked = rankMcpCatalogEntries(entries, 'weather forecast', 5)
   assert.equal(ranked[0]?.name, 'get_forecast')
+})
+
+test('stripReservedSchemaKeys removes $-prefixed keys Convex refuses to store', () => {
+  const schema = {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'Search text' },
+      filters: {
+        type: 'array',
+        items: { $ref: '#/$defs/filter', type: 'object' },
+      },
+    },
+    $defs: { filter: { type: 'object' } },
+    required: ['query'],
+  }
+
+  const cleaned = stripReservedSchemaKeys(schema) as Record<string, unknown>
+
+  assert.equal(JSON.stringify(cleaned).includes('"$'), false)
+  assert.deepEqual(cleaned, {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'Search text' },
+      filters: { type: 'array', items: { type: 'object' } },
+    },
+    required: ['query'],
+  })
+})
+
+test('stripReservedSchemaKeys leaves primitives and plain schemas untouched', () => {
+  assert.equal(stripReservedSchemaKeys(undefined), undefined)
+  assert.equal(stripReservedSchemaKeys('text'), 'text')
+  assert.deepEqual(stripReservedSchemaKeys({ type: 'object' }), { type: 'object' })
 })

@@ -272,7 +272,14 @@ function McpServerCard({
       <div className="flex items-center gap-2">
         <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] uppercase text-[var(--muted)]">{server.transport}</span>
         {server.hasAuth ? <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">Auth</span> : null}
+        {server.toolCatalogCount ? <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">{server.toolCatalogCount} tools</span> : null}
       </div>
+      {server.toolCatalogError ? (
+        <p title={server.toolCatalogError} className="mt-2 flex items-start gap-1 text-[10px] text-red-400">
+          <AlertCircle size={10} className="mt-0.5 shrink-0" />
+          <span className="line-clamp-2">Tools unavailable: {server.toolCatalogError}</span>
+        </p>
+      ) : null}
       <div className="absolute bottom-3 right-3 hidden items-center gap-1 group-hover:flex">
         <button type="button" onClick={(event) => onToggle(server, event)} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]" title={server.enabled ? 'Disable' : 'Enable'}>{server.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}</button>
         <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(server) }} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]" title="Edit"><Pencil size={13} /></button>
