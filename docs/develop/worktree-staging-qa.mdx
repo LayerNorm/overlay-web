@@ -57,6 +57,48 @@ projects, so it cannot enable `staging` for one project while disabling it for
 the other. The per-project variable above is what makes the two lanes
 independent.
 
+## Pair staging web with development Convex
+
+`overlay-web-staging` deploys `staging.getoverlay.io` as that project's
+**Production** deployment (`VERCEL_ENV=production`, `NODE_ENV=production`). The
+shared staging lane still must use the **development** Convex deployment, not
+production.
+
+Set these on **`overlay-web-staging`** (Production for the staging domain; Preview
+only if you intentionally keep previews):
+
+| Variable | Staging value | Notes |
+| --- | --- | --- |
+| `NEXT_PUBLIC_APP_URL` | `https://staging.getoverlay.io` | Names the staging lane for config resolution |
+| `NEXT_PUBLIC_CONVEX_URL` | `https://different-caiman-77.convex.cloud` | **Required for the browser client.** Must be a single scheme, no quotes, no trailing slash |
+| `DEV_NEXT_PUBLIC_CONVEX_URL` | same as above | Preferred by the server when the app is on the staging lane |
+| `NEXT_PUBLIC_CONVEX_SITE_URL` | `https://different-caiman-77.convex.site` | Only if the app reads the Convex site URL |
+| `INTERNAL_API_SECRET` | same secret as on the development Convex deployment | Server↔Convex auth; mismatch breaks chat and BFF routes |
+| `OVERLAY_DEPLOYMENT_ENV` | `staging` | Optional explicit lane; host-based detection also treats `staging.getoverlay.io` as staging |
+
+On **`overlay-landing`** (production), keep:
+
+| Variable | Production value |
+| --- | --- |
+| `NEXT_PUBLIC_APP_URL` | `https://www.getoverlay.io` |
+| `NEXT_PUBLIC_CONVEX_URL` | production Convex URL (`colorful-chickadee-419`) |
+| `INTERNAL_API_SECRET` | production Convex secret |
+
+Common failure modes:
+
+1. **Doubled scheme** — pasting `https://…` into a field that already prefixes
+   `https://` produces host `https` and a bare `fetch failed`. Use exactly
+   `https://different-caiman-77.convex.cloud`.
+2. **Only `DEV_NEXT_PUBLIC_CONVEX_URL` set** — the browser only reliably sees
+   `NEXT_PUBLIC_*` vars at build time. Always set `NEXT_PUBLIC_CONVEX_URL` on the
+   staging project to the development deployment.
+3. **Env changed without redeploy** — `NEXT_PUBLIC_*` values are baked into the
+   client bundle. After changing Convex URLs, trigger a new Vercel deploy.
+4. **Secret mismatch** — `INTERNAL_API_SECRET` on Vercel must match the value on
+   the development Convex deployment dashboard.
+5. **Stale Convex functions** — after merging `convex/` into `staging`, push from
+   the dedicated staging worktree: `npm run convex:push:dev`.
+
 ## Create a feature worktree
 
 Keep the canonical checkout at `~/Downloads/overlay-mono/overlay-landing` on `main`. Create feature worktrees beside it; do not check `staging` out inside a feature worktree.

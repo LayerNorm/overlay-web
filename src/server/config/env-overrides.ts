@@ -553,11 +553,20 @@ function resolveDeploymentEnvironment(env: EnvSource): OverlayDeploymentEnvironm
   if (isDeploymentEnvironment(explicit)) return explicit
 
   const vercelEnv = readEnv(env, 'VERCEL_ENV')
-  if (vercelEnv === 'production') return 'production'
+  // Preview/dev Vercel envs win first; they already prefer non-production secrets.
   if (vercelEnv === 'preview') return 'preview'
   if (vercelEnv === 'development') return 'development'
 
+  // Dual Vercel projects: staging.getoverlay.io is the Production deployment of
+  // overlay-web-staging (VERCEL_ENV=production), but it is the shared staging lane
+  // and must prefer development Convex / Stripe / WorkOS values.
   const appUrl = resolveAppBaseUrl(env)
+  if (appUrl && /(?:^https?:\/\/)?(?:www\.)?staging\.getoverlay\.io\b/i.test(appUrl)) {
+    return 'staging'
+  }
+
+  if (vercelEnv === 'production') return 'production'
+
   if (appUrl && /staging|preview|vercel\.app/i.test(appUrl)) return 'staging'
 
   const nodeEnv = readEnv(env, 'NODE_ENV')

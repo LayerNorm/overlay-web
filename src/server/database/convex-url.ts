@@ -20,11 +20,40 @@ export const CONVEX_URL_ENV_KEYS = {
   default: 'NEXT_PUBLIC_CONVEX_URL',
 } as const
 
+/**
+ * Whether this process should prefer the shared development Convex deployment.
+ *
+ * Dual-project staging is the hard case: `overlay-web-staging` deploys
+ * `staging.getoverlay.io` with `VERCEL_ENV=production` and `NODE_ENV=production`,
+ * but that lane must talk to the development Convex deployment, not production.
+ */
+export function prefersDevConvexUrl(
+  env: Record<string, string | undefined>,
+): boolean {
+  if (env.NODE_ENV === 'development') return true
+
+  const explicit = env.OVERLAY_DEPLOYMENT_ENV?.trim().toLowerCase()
+  if (explicit) {
+    return explicit !== 'production' && explicit !== 'onprem'
+  }
+
+  const appUrl = (
+    env.NEXT_PUBLIC_APP_URL
+    || env.DEV_NEXT_PUBLIC_APP_URL
+    || ''
+  ).trim()
+  if (/staging\.getoverlay\.io/i.test(appUrl)) return true
+
+  const vercelEnv = env.VERCEL_ENV?.trim().toLowerCase()
+  return vercelEnv === 'preview' || vercelEnv === 'development'
+}
+
 export function resolveConvexUrl(
   env: Record<string, string | undefined>,
   options: { isDev?: boolean } = {},
 ): ConvexUrlResolution {
-  const candidates: Array<[string, string | undefined]> = options.isDev
+  const preferDev = options.isDev ?? prefersDevConvexUrl(env)
+  const candidates: Array<[string, string | undefined]> = preferDev
     ? [
       [CONVEX_URL_ENV_KEYS.dev, env[CONVEX_URL_ENV_KEYS.dev]],
       [CONVEX_URL_ENV_KEYS.default, env[CONVEX_URL_ENV_KEYS.default]],

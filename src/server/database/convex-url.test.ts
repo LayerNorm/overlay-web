@@ -4,6 +4,7 @@ import {
   convexHostLabel,
   convexNetworkFailure,
   normalizeConvexUrl,
+  prefersDevConvexUrl,
   resolveConvexUrl,
 } from './convex-url'
 
@@ -88,8 +89,51 @@ test('development prefers the dev deployment and falls back to the shared one', 
   // Production never reads the dev override.
   const production = resolveConvexUrl({
     DEV_NEXT_PUBLIC_CONVEX_URL: 'https://dev-deployment.convex.cloud',
-  })
+  }, { isDev: false })
   assert.deepEqual(production, { source: 'unset' })
+})
+
+test('dual-project staging prefers the development Convex deployment', () => {
+  // overlay-web-staging deploys staging.getoverlay.io with VERCEL_ENV=production.
+  assert.equal(
+    prefersDevConvexUrl({
+      NODE_ENV: 'production',
+      VERCEL_ENV: 'production',
+      NEXT_PUBLIC_APP_URL: 'https://staging.getoverlay.io',
+    }),
+    true,
+  )
+
+  const resolved = resolveConvexUrl({
+    NODE_ENV: 'production',
+    VERCEL_ENV: 'production',
+    NEXT_PUBLIC_APP_URL: 'https://staging.getoverlay.io',
+    DEV_NEXT_PUBLIC_CONVEX_URL: DEPLOYMENT,
+    NEXT_PUBLIC_CONVEX_URL: 'https://colorful-chickadee-419.convex.cloud',
+  })
+  assert.equal(resolved.url, DEPLOYMENT)
+  assert.equal(resolved.source, 'DEV_NEXT_PUBLIC_CONVEX_URL')
+})
+
+test('www production still prefers the production Convex deployment', () => {
+  assert.equal(
+    prefersDevConvexUrl({
+      NODE_ENV: 'production',
+      VERCEL_ENV: 'production',
+      NEXT_PUBLIC_APP_URL: 'https://www.getoverlay.io',
+    }),
+    false,
+  )
+
+  const resolved = resolveConvexUrl({
+    NODE_ENV: 'production',
+    VERCEL_ENV: 'production',
+    NEXT_PUBLIC_APP_URL: 'https://www.getoverlay.io',
+    DEV_NEXT_PUBLIC_CONVEX_URL: DEPLOYMENT,
+    NEXT_PUBLIC_CONVEX_URL: 'https://colorful-chickadee-419.convex.cloud',
+  })
+  assert.equal(resolved.url, 'https://colorful-chickadee-419.convex.cloud')
+  assert.equal(resolved.source, 'NEXT_PUBLIC_CONVEX_URL')
 })
 
 test('a transport failure names the host, the variable, and the call', () => {

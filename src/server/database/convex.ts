@@ -1,18 +1,23 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
-import { convexNetworkFailure, resolveConvexUrl } from './convex-url'
+import {
+  convexNetworkFailure,
+  prefersDevConvexUrl,
+  resolveConvexUrl,
+} from './convex-url'
 // Simple server-side Convex HTTP client for the landing page.
 // Browser code must use ConvexReactClient or typed Next API routes.
 
-// Use dev Convex URL in development, production URL in production
-const IS_DEV = process.env.NODE_ENV === 'development'
+// Prefer the shared development Convex deployment for local, preview, and the
+// dual-project staging lane — not only when NODE_ENV === 'development'.
+const PREFER_DEV_CONVEX = prefersDevConvexUrl(process.env)
 
 const {
   url: CONVEX_URL,
   source: CONVEX_URL_SOURCE,
   invalid: CONVEX_URL_INVALID,
-} = resolveConvexUrl(process.env, { isDev: IS_DEV })
+} = resolveConvexUrl(process.env, { isDev: PREFER_DEV_CONVEX })
 const IS_BROWSER = typeof window !== 'undefined'
 const POSTGRES_APP_DATA = process.env.OVERLAY_PROVIDER_DATABASE === 'postgres'
 
@@ -22,7 +27,7 @@ if (CONVEX_URL_INVALID && !IS_BROWSER) {
   logger.warn('CONVEX_URL is not set')
 } else if (CONVEX_URL) {
   logger.info(
-    `[Convex] Using ${IS_DEV ? 'DEV' : 'PROD'} environment: ${CONVEX_URL} (source: ${CONVEX_URL_SOURCE})`
+    `[Convex] Using ${PREFER_DEV_CONVEX ? 'DEV' : 'PROD'} environment: ${CONVEX_URL} (source: ${CONVEX_URL_SOURCE})`
   )
 }
 

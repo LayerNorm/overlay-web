@@ -8,4 +8,14 @@ npm run convex:push:dev
 npm run convex:push:prod
 ```
 
+| Lane | Web | Convex deploy command | Convex URL env on that web project |
+| --- | --- | --- | --- |
+| Shared staging | `staging.getoverlay.io` | `npm run convex:push:dev` from `overlay-landing-staging` | `NEXT_PUBLIC_CONVEX_URL` → development deployment |
+| Production | `www.getoverlay.io` | `npm run convex:push:prod` from clean `main` | `NEXT_PUBLIC_CONVEX_URL` → production deployment |
+
+Staging chat failures after a branch merge are usually env pairing, not missing
+git history: wrong or doubled Convex URL, `INTERNAL_API_SECRET` mismatch, or a
+missing `convex:push:dev` after `convex/` changed. See
+[Worktree Staging QA](/develop/worktree-staging-qa#pair-staging-web-with-development-convex).
+
 Do not use `convex:push:all` in a worktree workflow. Never pass `.env.local` to a production Convex deploy; use the dedicated production script instead.
