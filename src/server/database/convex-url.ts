@@ -49,10 +49,34 @@ export function resolveConvexUrl(
         invalid: `${source} must be an http or https URL, received ${parsed.protocol}`,
       }
     }
+    if (SCHEME_WORDS.has(parsed.hostname.toLowerCase())) {
+      const suggestion = doubledSchemeSuggestion(normalized)
+      return {
+        source,
+        invalid: suggestion
+          ? `${source} contains two schemes (received ${JSON.stringify(raw)}); use ${suggestion}`
+          : `${source} resolves to the host "${parsed.hostname}", which is a URL scheme rather than a `
+            + `deployment (received ${JSON.stringify(raw)})`,
+      }
+    }
     return { url: parsed.origin, source }
   }
 
   return { source: 'unset' }
+}
+
+/** Scheme words that can never be a real deployment hostname. */
+const SCHEME_WORDS = new Set(['http', 'https', 'ws', 'wss'])
+
+/**
+ * A doubled scheme parses successfully but points nowhere: the host becomes
+ * "https" and the intended host is demoted to the path. Dashboard fields that
+ * pre-fill a scheme make this a common paste error, so it is named rather than
+ * left to fail later as an unexplained DNS error.
+ */
+function doubledSchemeSuggestion(value: string): string | undefined {
+  const match = /^(?:https?|wss?):\/\/((?:https?|wss?):\/\/.+)$/i.exec(value)
+  return match?.[1]
 }
 
 export function normalizeConvexUrl(raw: string | undefined): string | undefined {

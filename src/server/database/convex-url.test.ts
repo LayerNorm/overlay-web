@@ -41,6 +41,32 @@ test('a non-http protocol is rejected with the protocol named', () => {
   assert.match(String(resolved.invalid), /wss:/)
 })
 
+test('a doubled scheme is named, with the corrected value', () => {
+  // This is what a dashboard field that pre-fills https:// produces, and it
+  // parses successfully: host becomes "https" and the real host becomes a path.
+  const resolved = resolveConvexUrl({ NEXT_PUBLIC_CONVEX_URL: `https://${DEPLOYMENT}` })
+  assert.equal(resolved.url, undefined)
+  assert.match(String(resolved.invalid), /contains two schemes/)
+  assert.match(String(resolved.invalid), /use https:\/\/different-caiman-77\.convex\.cloud/)
+})
+
+test('a host that is only a scheme word is rejected', () => {
+  for (const raw of ['https://https', 'http://https', 'https://wss']) {
+    const resolved = resolveConvexUrl({ NEXT_PUBLIC_CONVEX_URL: raw })
+    assert.equal(resolved.url, undefined, raw)
+    assert.match(String(resolved.invalid), /scheme rather than a deployment/)
+  }
+})
+
+test('self-hosted hosts without a dot still resolve', () => {
+  // Docker service names and localhost are legitimate on-prem deployments.
+  for (const raw of ['http://convex-backend:3210', 'http://localhost:3210']) {
+    const resolved = resolveConvexUrl({ NEXT_PUBLIC_CONVEX_URL: raw })
+    assert.equal(resolved.url, raw, raw)
+    assert.equal(resolved.invalid, undefined)
+  }
+})
+
 test('an unset or blank value is not treated as a misconfiguration', () => {
   assert.deepEqual(resolveConvexUrl({}), { source: 'unset' })
   assert.deepEqual(resolveConvexUrl({ NEXT_PUBLIC_CONVEX_URL: '   ' }), { source: 'unset' })
