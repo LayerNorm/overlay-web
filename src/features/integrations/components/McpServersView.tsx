@@ -12,11 +12,13 @@ import {
   createMcpTestRequest,
   createMcpUpdateRequest,
   filterMcpServers,
+  formatMcpMutationError,
   formatMcpTestResult,
   removeMcpServerSummary,
   setMcpServerEnabled,
   updateMcpSummaryFromForm,
   upsertMcpServerSummary,
+  type McpMutationResult,
   type McpServerFormValues,
   type McpServerSummary,
   type McpTestResultState,
@@ -63,29 +65,34 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
     [servers, searchQuery],
   )
 
-  async function handleSaveServer(values: McpServerFormValues): Promise<boolean> {
+  async function failure(response: Response, fallback: string): Promise<McpMutationResult> {
+    const payload = await response.json().catch(() => null) as { error?: unknown } | null
+    return { ok: false, error: formatMcpMutationError(payload, fallback) }
+  }
+
+  async function handleSaveServer(values: McpServerFormValues): Promise<McpMutationResult> {
     if (dialog?.mode === 'edit' && dialog.server) {
       const res = await overlayAppClient.mcpServers.updateResponse(createMcpUpdateRequest(dialog.server._id, values))
-      if (!res.ok) return false
+      if (!res.ok) return failure(res, 'Could not save this MCP server.')
       setServers((prev) => upsertMcpServerSummary(prev, updateMcpSummaryFromForm(dialog.server!, values)))
       dispatchMcpsChanged()
-      return true
+      return { ok: true }
     }
 
     const res = await overlayAppClient.mcpServers.createResponse(createMcpCreateRequest(values))
-    if (!res.ok) return false
+    if (!res.ok) return failure(res, 'Could not add this MCP server.')
     const { id } = (await res.json()) as { id: string }
     setServers((prev) => upsertMcpServerSummary(prev, createMcpSummaryFromForm(id, values)))
     dispatchMcpsChanged()
-    return true
+    return { ok: true }
   }
 
-  async function handleDeleteServer(server: McpServerSummary): Promise<boolean> {
+  async function handleDeleteServer(server: McpServerSummary): Promise<McpMutationResult> {
     const res = await overlayAppClient.mcpServers.deleteResponse({ mcpServerId: server._id })
-    if (!res.ok) return false
+    if (!res.ok) return failure(res, 'Could not delete this MCP server.')
     setServers((prev) => removeMcpServerSummary(prev, server._id))
     dispatchMcpsChanged()
-    return true
+    return { ok: true }
   }
 
   async function handleTestServer(values: McpServerFormValues): Promise<McpTestResultState> {

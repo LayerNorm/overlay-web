@@ -7,11 +7,28 @@ import type {
   McpToolPolicyMode,
   McpTransport,
 } from '@/server/extensions'
+import { McpCredentialConfigurationError } from '@/server/extensions'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
 import { refreshMcpServerToolCatalog } from '@/server/tools/mcp-tools'
 
 function repository() {
   return getOverlayServerContext().appData.repositories.mcpServers
+}
+
+function mutationErrorResponse(error: unknown, fallback: string) {
+  if (error instanceof McpCredentialConfigurationError) {
+    return NextResponse.json(
+      {
+        error:
+          'This deployment cannot store MCP credentials yet: MCP_CREDENTIAL_ENCRYPTION_KEY is not configured. Set it (32+ characters) and restart the server, or use an MCP server without authentication.',
+      },
+      { status: 503 },
+    )
+  }
+  return NextResponse.json(
+    { error: error instanceof Error ? error.message : fallback },
+    { status: 500 },
+  )
 }
 
 async function validateMcpUrl(url: unknown): Promise<string | null> {
@@ -67,10 +84,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
     return NextResponse.json({ id })
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to create MCP server' },
-      { status: 500 },
-    )
+    return mutationErrorResponse(error, 'Failed to create MCP server')
   }
 }
 
@@ -112,10 +126,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     }
     return NextResponse.json({ success: true })
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to update MCP server' },
-      { status: 500 },
-    )
+    return mutationErrorResponse(error, 'Failed to update MCP server')
   }
 }
 

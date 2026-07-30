@@ -2,6 +2,7 @@
 
 import type {
 McpAuthType,
+McpMutationResult,
 McpServerFormValues,
 McpServerSummary,
 McpTestResultState,
@@ -28,12 +29,19 @@ import { useState,type MouseEvent } from 'react'
 import { Field } from './shared'
 import { AppScreenBody } from '../shell'
 
+export type McpDialogMutationOutcome = boolean | void | McpMutationResult
+
 export interface McpServerDialogProps {
   state: { mode: 'create' | 'edit'; server?: McpServerSummary }
   onClose: () => void
-  onSave: (values: McpServerFormValues) => Promise<boolean | void>
-  onDelete: (server: McpServerSummary) => Promise<boolean | void>
+  onSave: (values: McpServerFormValues) => Promise<McpDialogMutationOutcome>
+  onDelete: (server: McpServerSummary) => Promise<McpDialogMutationOutcome>
   onTest: (values: McpServerFormValues) => Promise<McpTestResultState>
+}
+
+function readMutationOutcome(outcome: McpDialogMutationOutcome): { ok: boolean; error?: string } {
+  if (outcome && typeof outcome === 'object') return { ok: outcome.ok, error: outcome.error }
+  return { ok: outcome !== false }
 }
 
 export function McpServerDialog({ state, onClose, onSave, onDelete, onTest }: McpServerDialogProps) {
@@ -45,23 +53,31 @@ export function McpServerDialog({ state, onClose, onSave, onDelete, onTest }: Mc
   const [saved, setSaved] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<McpTestResultState | null>(null)
+  const [mutationError, setMutationError] = useState<string | null>(null)
 
   const update = <Key extends keyof McpServerFormValues>(key: Key, value: McpServerFormValues[Key]) => {
     setValues((current) => ({ ...current, [key]: value }))
+    setMutationError(null)
   }
 
   async function handleSave() {
     if (saving) return
     if (!values.name.trim() || !values.url.trim()) return
     setSaving(true)
+    setMutationError(null)
     try {
-      const ok = await onSave(values)
-      if (ok === false) return
+      const outcome = readMutationOutcome(await onSave(values))
+      if (!outcome.ok) {
+        setMutationError(outcome.error || (isEdit ? 'Could not save this MCP server.' : 'Could not add this MCP server.'))
+        return
+      }
       setSaved(true)
       window.setTimeout(() => {
         setSaved(false)
         onClose()
       }, 800)
+    } catch {
+      setMutationError(isEdit ? 'Could not save this MCP server.' : 'Could not add this MCP server.')
     } finally {
       setSaving(false)
     }
@@ -70,9 +86,13 @@ export function McpServerDialog({ state, onClose, onSave, onDelete, onTest }: Mc
   async function handleDelete() {
     if (!isEdit || !initial || deleting) return
     setDeleting(true)
+    setMutationError(null)
     try {
-      const ok = await onDelete(initial)
-      if (ok !== false) onClose()
+      const outcome = readMutationOutcome(await onDelete(initial))
+      if (outcome.ok) onClose()
+      else setMutationError(outcome.error || 'Could not delete this MCP server.')
+    } catch {
+      setMutationError('Could not delete this MCP server.')
     } finally {
       setDeleting(false)
     }
@@ -82,6 +102,7 @@ export function McpServerDialog({ state, onClose, onSave, onDelete, onTest }: Mc
     if (testing || !values.url.trim()) return
     setTesting(true)
     setTestResult(null)
+    setMutationError(null)
     try {
       setTestResult(await onTest(values))
     } finally {
@@ -144,6 +165,12 @@ export function McpServerDialog({ state, onClose, onSave, onDelete, onTest }: Mc
             <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs ${testResult.ok ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400' : 'border border-red-500/20 bg-red-500/10 text-red-400'}`}>
               {testResult.ok ? <Check size={12} /> : <AlertCircle size={12} />}
               <span>{testResult.message}</span>
+            </div>
+          ) : null}
+          {mutationError ? (
+            <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+              <AlertCircle size={12} className="mt-0.5 shrink-0" />
+              <span>{mutationError}</span>
             </div>
           ) : null}
         </div>

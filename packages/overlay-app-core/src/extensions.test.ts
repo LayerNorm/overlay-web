@@ -10,6 +10,7 @@ import {
   filterExtensionCatalog,
   filterMcpServers,
   filterSkillSummaries,
+  formatMcpMutationError,
   formatMcpTestResult,
   getAvailableConnectorRows,
   getConnectedConnectorRows,
@@ -140,6 +141,16 @@ test('mcp helpers preserve request bodies, filtering, test messages, and local s
     ok: true,
     message: 'Connected — 3 tools available',
   })
+})
+
+test('mcp mutation failures surface the server error instead of failing silently', () => {
+  assert.equal(
+    formatMcpMutationError({ error: '  MCP_CREDENTIAL_ENCRYPTION_KEY is not configured  ' }, 'fallback'),
+    'MCP_CREDENTIAL_ENCRYPTION_KEY is not configured',
+  )
+  assert.equal(formatMcpMutationError({ error: '' }, 'fallback'), 'fallback')
+  assert.equal(formatMcpMutationError({ error: { nested: true } }, 'fallback'), 'fallback')
+  assert.equal(formatMcpMutationError(null, 'fallback'), 'fallback')
 })
 
 test('extension registry catalog filtering and policy gates cover custom enterprise entries', () => {
