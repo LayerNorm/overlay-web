@@ -11,27 +11,23 @@ Convex owns durable app state, domain mutations, scheduled work, and some webhoo
 
 ## Development backend
 
-For local web work against the development Convex backend:
+For ordinary local web work against the development Convex backend, run Next.js without deploying Convex from a feature worktree:
 
 ```bash
-npm run dev:with-convex
+npm run dev
 ```
 
-This runs the development push first, then starts Next.js.
+`npm run dev:with-convex` pushes development Convex before starting Next.js. Use it only from the dedicated `staging` worktree, where the current revision is the shared staging release candidate.
 
 ## Production backend
 
-Use the production script when intentionally deploying production Convex changes:
+Use the production script only from the clean canonical `main` worktree after the matching main web deployment is live:
 
 ```bash
 npm run convex:push:prod
 ```
 
-Use the development script for dev-only backend updates:
-
-```bash
-npm run convex:push:dev
-```
+For the full worktree, staging QA, and promotion process, see [Worktree Staging QA](/develop/worktree-staging-qa).
 
 ## Import boundary
 

@@ -13,7 +13,12 @@
     "library": "lucide"
   },
   "contextual": {
-    "options": ["copy", "download-spec", "chatgpt", "claude"]
+    "options": [
+      "copy",
+      "download-spec",
+      "chatgpt",
+      "claude"
+    ]
   },
   "api": {
     "playground": {
@@ -21,7 +26,11 @@
       "proxy": false
     },
     "examples": {
-      "languages": ["typescript", "javascript", "curl"],
+      "languages": [
+        "typescript",
+        "javascript",
+        "curl"
+      ],
       "defaults": "required"
     }
   },
@@ -29,7 +38,11 @@
     "groups": [
       {
         "group": "Start",
-        "pages": ["introduction", "start/quickstart", "start/repository-map"]
+        "pages": [
+          "introduction",
+          "start/quickstart",
+          "start/repository-map"
+        ]
       },
       {
         "group": "Desktop",
@@ -67,11 +80,15 @@
               "configure/authentication/index",
               {
                 "group": "Backends",
-                "pages": ["configure/authentication/backends"]
+                "pages": [
+                  "configure/authentication/backends"
+                ]
               },
               {
                 "group": "Protocol",
-                "pages": ["configure/authentication/oidc"]
+                "pages": [
+                  "configure/authentication/oidc"
+                ]
               },
               {
                 "group": "Provider recipes",
@@ -87,11 +104,35 @@
       },
       {
         "group": "Develop",
-        "pages": ["develop/architecture", "develop/multiplayer-foundations", "develop/convex-workflow", "develop/local-integrations", "develop/customization", "develop/feature-modules", "develop/api-source-of-truth"]
+        "pages": [
+          "develop/architecture",
+          "develop/worktree-staging-qa",
+          "develop/convex-workflow",
+          "develop/local-integrations",
+          "develop/customization",
+          "develop/feature-modules",
+          "develop/api-source-of-truth"
+        ]
       },
       {
         "group": "Deploy & Operate",
-        "pages": ["deploy-operate/self-hosting", "deploy-operate/docker-ec2", "deploy-operate/aws", "deploy-operate/cloud-managed", "deploy-operate/enterprise-source-install", "deploy-operate/one-command-install", "deploy-operate/better-auth-onprem-runbook", "deploy-operate/executor-integrations", "deploy-operate/enterprise-admin-onboarding", "deploy-operate/compliance", "deploy-operate/security", "deploy-operate/enterprise-security-launch-checklist", "deploy-operate/release-gates", "deploy-operate/tenancy", "deploy-operate/docs-hosting"]
+        "pages": [
+          "deploy-operate/self-hosting",
+          "deploy-operate/docker-ec2",
+          "deploy-operate/aws",
+          "deploy-operate/cloud-managed",
+          "deploy-operate/enterprise-source-install",
+          "deploy-operate/one-command-install",
+          "deploy-operate/better-auth-onprem-runbook",
+          "deploy-operate/executor-integrations",
+          "deploy-operate/enterprise-admin-onboarding",
+          "deploy-operate/compliance",
+          "deploy-operate/security",
+          "deploy-operate/enterprise-security-launch-checklist",
+          "deploy-operate/release-gates",
+          "deploy-operate/tenancy",
+          "deploy-operate/docs-hosting"
+        ]
       },
       {
         "group": "API Reference",
@@ -120,15 +161,30 @@
       },
       {
         "group": "Legal",
-        "pages": ["legal/licensing", "legal/self-hosting-obligations", "legal/security-reporting"]
+        "pages": [
+          "legal/licensing",
+          "legal/self-hosting-obligations",
+          "legal/security-reporting"
+        ]
       },
       {
         "group": "Changelog",
-        "pages": ["changelog"]
+        "pages": [
+          "changelog"
+        ]
       },
       {
         "group": "Help",
-        "pages": ["help/index", "help/chat", "help/memory", "help/files", "help/projects", "help/automations", "help/settings", "help/faq"]
+        "pages": [
+          "help/index",
+          "help/chat",
+          "help/memory",
+          "help/files",
+          "help/projects",
+          "help/automations",
+          "help/settings",
+          "help/faq"
+        ]
       }
     ]
   }
