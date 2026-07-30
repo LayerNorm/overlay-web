@@ -1,29 +1,24 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
+import { convexNetworkFailure, resolveConvexUrl } from './convex-url'
 // Simple server-side Convex HTTP client for the landing page.
 // Browser code must use ConvexReactClient or typed Next API routes.
 
 // Use dev Convex URL in development, production URL in production
 const IS_DEV = process.env.NODE_ENV === 'development'
 
-function resolveConvexUrl(): { url: string | undefined; source: string } {
-  if (IS_DEV && process.env.DEV_NEXT_PUBLIC_CONVEX_URL) {
-    return { url: process.env.DEV_NEXT_PUBLIC_CONVEX_URL, source: 'DEV_NEXT_PUBLIC_CONVEX_URL' }
-  }
-
-  if (process.env.NEXT_PUBLIC_CONVEX_URL) {
-    return { url: process.env.NEXT_PUBLIC_CONVEX_URL, source: 'NEXT_PUBLIC_CONVEX_URL' }
-  }
-
-  return { url: undefined, source: 'unset' }
-}
-
-const { url: CONVEX_URL, source: CONVEX_URL_SOURCE } = resolveConvexUrl()
+const {
+  url: CONVEX_URL,
+  source: CONVEX_URL_SOURCE,
+  invalid: CONVEX_URL_INVALID,
+} = resolveConvexUrl(process.env, { isDev: IS_DEV })
 const IS_BROWSER = typeof window !== 'undefined'
 const POSTGRES_APP_DATA = process.env.OVERLAY_PROVIDER_DATABASE === 'postgres'
 
-if (!CONVEX_URL && !IS_BROWSER && !POSTGRES_APP_DATA) {
+if (CONVEX_URL_INVALID && !IS_BROWSER) {
+  logger.error(`[Convex] ${CONVEX_URL_INVALID}`)
+} else if (!CONVEX_URL && !IS_BROWSER && !POSTGRES_APP_DATA) {
   logger.warn('CONVEX_URL is not set')
 } else if (CONVEX_URL) {
   logger.info(
@@ -81,6 +76,15 @@ async function callConvex<T>(
   args: Record<string, unknown>,
   options: CallConvexOptions = {}
 ): Promise<T | null> {
+  if (!IS_BROWSER && CONVEX_URL_INVALID) {
+    // A misconfigured URL is a configuration fault, not a transient network
+    // failure, so it is reported as such even when throwOnError is off.
+    const message = `Convex is misconfigured: ${CONVEX_URL_INVALID}`
+    if (options.throwOnError) throw new Error(message)
+    if (!shouldSuppressConvexError(options, message)) logger.error(message)
+    return null
+  }
+
   if (!IS_BROWSER && !CONVEX_URL) {
     if (!POSTGRES_APP_DATA) logger.error('CONVEX_URL not configured')
     return null
@@ -106,7 +110,7 @@ async function callConvex<T>(
     const timeoutId = setTimeout(() => controller.abort(timeoutError), timeoutMs)
     let response: Response
     try {
-      response = await fetch(endpoint, {
+      response = await fetchConvex(endpoint, type, path, {
         method: 'POST',
         cache: 'no-store',
         headers: {
@@ -172,6 +176,21 @@ async function callConvex<T>(
       logger.error(`Convex ${type} failed:`, error)
     }
     return null
+  }
+}
+
+async function fetchConvex(
+  endpoint: string,
+  type: string,
+  path: string,
+  init: RequestInit,
+): Promise<Response> {
+  try {
+    return await fetch(endpoint, init)
+  } catch (cause) {
+    // An abort carries the timeout reason and is handled by the caller.
+    if (cause instanceof Error && cause.name === 'AbortError') throw cause
+    throw convexNetworkFailure({ cause, endpoint, path, source: CONVEX_URL_SOURCE, type })
   }
 }
 
