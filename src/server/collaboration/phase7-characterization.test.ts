@@ -40,11 +40,11 @@ test('Phase 7 search works on the Postgres provider', () => {
   assert.equal(rule.status, 'supported')
 })
 
-test('Phase 7 exposes Shared with me only when resource sharing is enabled', () => {
-  const nav = overlayAppConfig.navigation?.find((item) => item.id === 'shared')
-  assert.ok(nav)
-  assert.equal(nav.href, '/app/shared')
-  assert.equal(nav.featureFlagId, 'resourceSharing')
+test('shared resources surface in place rather than in a second destination', () => {
+  // Files and projects already merge granted resources into their lists, so a
+  // dedicated "Shared with me" nav item was a redundant second home for items
+  // the person can already see where they expect them.
+  assert.equal(overlayAppConfig.navigation?.some((item) => item.id === 'shared'), false)
   const flags = new Map(overlayAppConfig.featureFlags?.map((flag) => [flag.id, flag.enabled]))
   assert.equal(flags.get('resourceSharing'), true)
 })

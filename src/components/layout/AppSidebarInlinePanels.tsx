@@ -397,16 +397,20 @@ export const chatsInlineItems = [
 ] as const
 
 export function InlineNavChildren({
+  id,
   items,
   activeId,
   onSelect,
 }: {
+  id?: string
   items: ReadonlyArray<{ id: string; label: string; locked?: boolean }>
+  /** Empty when the section is open but not the current route, so an expanded
+   * dropdown never implies a selection the person did not make. */
   activeId: string
   onSelect: (id: string) => void
 }) {
   return (
-    <div className="mt-1 space-y-0.5 pl-7">
+    <div id={id} className="mt-1 space-y-0.5 pl-7">
       {items.map((item) => (
         <button
           key={item.id}

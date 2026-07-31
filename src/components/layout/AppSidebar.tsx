@@ -130,6 +130,11 @@ export default function AppSidebar({
   )
 
   const [pendingNav, setPendingNav] = useState<{ href: string; fromPath: string } | null>(null)
+  // Section disclosure is independent of navigation: a person on Files can open
+  // the Chats dropdown, read its subviews, and pick one deliberately. Only
+  // explicit toggles are stored; everything else falls back to "the section I am
+  // currently in is open", so state is derived rather than synchronised.
+  const [sectionOverrides, setSectionOverrides] = useState<Record<string, boolean>>({})
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [entitlements, setEntitlements] = useState<SidebarEntitlements | null>(null)
@@ -248,6 +253,12 @@ export default function AppSidebar({
     if (current === 'all') return 'all'
     return 'personal'
   })()
+  const activeSectionHref = pathname.startsWith('/app/tools')
+    ? '/app/tools'
+    : pathname.startsWith('/app/chat')
+      ? '/app/chat'
+      : null
+
   const loadEntitlements = useCallback(async () => {
     if (!billingEnabled || authLoading || !authUserId) {
       setEntitlements(null)
@@ -487,6 +498,15 @@ export default function AppSidebar({
   const contextualSearchCategory = toMentionCategory(contextualAction?.searchCategory)
   const hasInlineChildren = (href?: string) =>
     href === '/app/tools' || href === '/app/chat'
+  const isSectionExpanded = (href?: string) => {
+    if (!href) return false
+    return sectionOverrides[href] ?? href === activeSectionHref
+  }
+  const toggleSection = (href: string) => {
+    const next = !isSectionExpanded(href)
+    setSectionOverrides((current) => ({ ...current, [href]: next }))
+  }
+  const sectionListId = (href: string) => `sidebar-section-${href.replace(/\W+/g, '-')}`
 
   const sidebarContent = (
     <>
@@ -597,6 +617,13 @@ export default function AppSidebar({
                       void runSidebarAction(primaryNavAction)
                       return
                     }
+                    // A section row is a disclosure, not a destination: it opens
+                    // its subviews and leaves the current page alone, so nothing
+                    // is selected on the person's behalf.
+                    if (hasInlineChildren(href) && !sidebarCollapsed) {
+                      toggleSection(href)
+                      return
+                    }
                     if (active) return
                     setMobileMenuOpen(false)
                     const destination = publicShowcase
@@ -612,6 +639,12 @@ export default function AppSidebar({
                   }}
                   title={shortcut ? `${label} · ⌥${shortcut}` : label}
                   aria-label={label}
+                  {...(showChevron && !sidebarCollapsed
+                    ? {
+                      'aria-expanded': isSectionExpanded(href),
+                      'aria-controls': href ? sectionListId(href) : undefined,
+                    }
+                    : {})}
                   data-tour={href === '/app/chat' ? 'nav-chat' : href === '/app/files' ? 'nav-knowledge' : href === '/app/tools' ? 'nav-extensions' : undefined}
                   className={commonClass}
                 >
@@ -648,7 +681,7 @@ export default function AppSidebar({
                     >
                       <ChevronDown
                         size={13}
-                        className={`transition-transform ${active ? '' : '-rotate-90'}`}
+                        className={`transition-transform ${isSectionExpanded(href) ? '' : '-rotate-90'}`}
                       />
                     </span>
                   ) : null}
@@ -664,10 +697,11 @@ export default function AppSidebar({
                     </span>
                   ) : null}
                 </button>
-                {!sidebarCollapsed && href === '/app/tools' && active ? (
+                {!sidebarCollapsed && href === '/app/tools' && isSectionExpanded(href) ? (
                   <InlineNavChildren
+                    id={sectionListId('/app/tools')}
                     items={availableToolsInlineItems}
-                    activeId={toolsView}
+                    activeId={active ? toolsView : ''}
                     onSelect={(next) => {
                       setMobileMenuOpen(false)
                       router.push(`/app/tools?${new URLSearchParams({
@@ -677,10 +711,11 @@ export default function AppSidebar({
                     }}
                   />
                 ) : null}
-                {!sidebarCollapsed && href === '/app/chat' && active ? (
+                {!sidebarCollapsed && href === '/app/chat' && isSectionExpanded(href) ? (
                   <InlineNavChildren
+                    id={sectionListId('/app/chat')}
                     items={chatsInlineItems}
-                    activeId={chatsView}
+                    activeId={active ? chatsView : ''}
                     onSelect={(next) => {
                       setMobileMenuOpen(false)
                       const baseHref = activeWorkspaceId
