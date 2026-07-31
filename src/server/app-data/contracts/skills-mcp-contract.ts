@@ -115,6 +115,41 @@ export async function runSkillsMcpContract(
       assert.equal(await backend.mcpServers.get({ mcpServerId: serverId, userId }), null)
     })
 
+    await t.test(`${backend.provider} MCP update accepts a full form payload without losing credentials`, async () => {
+      const serverId = await backend.mcpServers.create({
+        authConfig: { bearerToken: 'original-token' },
+        authType: 'bearer',
+        name: 'Editable MCP',
+        transport: 'streamable-http',
+        url: 'https://editable.example.test/api',
+        userId,
+      })
+
+      // The dialog sends every field on save, including ones the backend may not accept verbatim.
+      // This is the shape that previously failed with a spurious "Unauthorized".
+      await backend.mcpServers.update({
+        defaultToolPolicy: 'allow',
+        description: 'Edited description',
+        enabled: true,
+        mcpServerId: serverId,
+        name: 'Editable MCP',
+        authType: 'bearer',
+        timeoutMs: 30_000,
+        toolPolicies: {},
+        transport: 'streamable-http',
+        url: 'https://editable.example.test/api',
+        userId,
+      })
+
+      const edited = await backend.mcpServers.get({ mcpServerId: serverId, userId })
+      assert.equal(edited?.description, 'Edited description')
+      // A save that carries no new credentials must not wipe the stored one.
+      assert.equal(edited?.authConfig?.bearerToken, 'original-token')
+      assert.equal(edited?.hasAuth, true)
+
+      await backend.mcpServers.remove({ mcpServerId: serverId, userId })
+    })
+
     await t.test(`${backend.provider} MCP OAuth state stays sealed, single-use, and race-safe`, async () => {
       const serverId = await backend.mcpServers.create({
         authType: 'oauth',

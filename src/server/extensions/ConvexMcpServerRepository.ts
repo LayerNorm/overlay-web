@@ -68,11 +68,16 @@ export class ConvexMcpServerRepository implements McpServerRepository {
     return rows.map((row) => this.normalizeRecord(row))
   }
 
+  /**
+   * Only the four fields the Convex validator declares are forwarded. Callers such as `update()`
+   * pass a much wider object, and spreading it here made Convex reject the query outright with
+   * "extra field", which surfaced to the user as a bogus "Unauthorized" on every save.
+   */
   async get(args: { mcpServerId: string; userId: string }): Promise<McpServerRecord | null> {
     const row = await convex.query<ConvexMcpRecord | null>('integrations/mcpServers:get', {
-      ...args,
       mcpServerId: args.mcpServerId as Id<'mcpServers'>,
       serverSecret: this.serverSecret,
+      userId: args.userId,
     })
     return row ? this.normalizeRecord(row) : null
   }
@@ -101,12 +106,24 @@ export class ConvexMcpServerRepository implements McpServerRepository {
     const encryptedAuthConfig = shouldReplaceCredentials
       ? this.cipher.encrypt(authType === 'none' ? undefined : args.authConfig)
       : undefined
+    // Forward only what the Convex validator declares. `UpdateMcpServerInput` also carries
+    // `projectId`, which the update mutation does not accept — spreading it would fail the same
+    // way the `get` query did.
     await convex.mutation('integrations/mcpServers:update', {
-      ...args,
-      encryptedAuthConfig,
       clearAuthConfig: shouldReplaceCredentials && !encryptedAuthConfig,
+      encryptedAuthConfig,
       mcpServerId: args.mcpServerId as Id<'mcpServers'>,
       serverSecret: this.serverSecret,
+      userId: args.userId,
+      ...(args.name !== undefined ? { name: args.name } : {}),
+      ...(args.description !== undefined ? { description: args.description } : {}),
+      ...(args.transport !== undefined ? { transport: args.transport } : {}),
+      ...(args.url !== undefined ? { url: args.url } : {}),
+      ...(args.enabled !== undefined ? { enabled: args.enabled } : {}),
+      ...(args.authType !== undefined ? { authType: args.authType } : {}),
+      ...(args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {}),
+      ...(args.defaultToolPolicy !== undefined ? { defaultToolPolicy: args.defaultToolPolicy } : {}),
+      ...(args.toolPolicies !== undefined ? { toolPolicies: args.toolPolicies } : {}),
     }, { throwOnError: true })
   }
 
