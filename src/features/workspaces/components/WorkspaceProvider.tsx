@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -50,8 +51,14 @@ export function WorkspaceProvider({
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [switchingWorkspaceId, setSwitchingWorkspaceId] = useState<string | null>(null)
+  const statusRef = useRef(status)
+  const workspacesRef = useRef(workspaces)
+  const activeWorkspaceIdRef = useRef(activeWorkspaceId)
+  statusRef.current = status
+  workspacesRef.current = workspaces
+  activeWorkspaceIdRef.current = activeWorkspaceId
 
-  const load = useCallback(async (signal?: AbortSignal) => {
+  const load = useCallback(async (signal?: AbortSignal, options?: { force?: boolean }) => {
     if (!enabled) {
       setStatus('idle')
       setWorkspaces([])
@@ -60,16 +67,58 @@ export function WorkspaceProvider({
       return
     }
 
-    setStatus('loading')
+    // Soft path changes (chat ↔ files within the same workspace, or query-only
+    // chat switches that still change Next's pathname) must not unmount the
+    // entire app shell with the "Opening workspace…" gate.
+    const softReload = !options?.force
+      && statusRef.current === 'ready'
+      && workspacesRef.current.length > 0
+    if (!softReload) {
+      setStatus('loading')
+    }
     setError(null)
     try {
-      const response = await client.list(signal)
+      const response = softReload
+        ? {
+            workspaces: workspacesRef.current,
+            activeWorkspaceId: activeWorkspaceIdRef.current,
+          }
+        : await client.list(signal)
       if (signal?.aborted) return
       const desiredWorkspaceId = readWorkspaceIdFromPath(pathname)
       const desiredWorkspace = desiredWorkspaceId
         ? response.workspaces.find((workspace) => workspace.id === desiredWorkspaceId)
         : null
       if (desiredWorkspaceId && !desiredWorkspace) {
+        // Path named a workspace we do not have — re-list hard before failing.
+        if (softReload) {
+          const fresh = await client.list(signal)
+          if (signal?.aborted) return
+          const found = fresh.workspaces.find((workspace) => workspace.id === desiredWorkspaceId)
+          if (!found) {
+            setWorkspaces([])
+            setActiveWorkspaceId(null)
+            setActiveChatListWorkspace(null)
+            setError('Workspace not found or you no longer have access.')
+            setStatus('error')
+            return
+          }
+          setWorkspaces(fresh.workspaces)
+          if (found.id !== fresh.activeWorkspaceId) {
+            const activated = await client.activate(found.id)
+            if (signal?.aborted) return
+            setActiveWorkspaceId(activated.activeWorkspaceId)
+            setActiveChatListWorkspace(activated.activeWorkspaceId)
+            setWorkspaces((current) => current.map((workspace) => (
+              workspace.id === activated.workspace.id ? activated.workspace : workspace
+            )))
+          } else {
+            setActiveWorkspaceId(found.id)
+            setActiveChatListWorkspace(found.id)
+          }
+          setStatus('ready')
+          return
+        }
         setWorkspaces([])
         setActiveWorkspaceId(null)
         setActiveChatListWorkspace(null)
@@ -78,7 +127,7 @@ export function WorkspaceProvider({
         return
       }
 
-      let nextWorkspaces = response.workspaces
+      let nextWorkspaces = [...response.workspaces]
       let nextActiveWorkspaceId = response.activeWorkspaceId ?? response.workspaces[0]?.id ?? null
       if (desiredWorkspace && desiredWorkspace.id !== nextActiveWorkspaceId) {
         const activated = await client.activate(desiredWorkspace.id)
@@ -107,7 +156,7 @@ export function WorkspaceProvider({
   }, [load])
 
   const refresh = useCallback(async () => {
-    await load()
+    await load(undefined, { force: true })
   }, [load])
 
   const createWorkspace = useCallback(async (input: WorkspaceCreateInput) => {

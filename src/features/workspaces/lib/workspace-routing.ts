@@ -34,3 +34,27 @@ export function resolveWorkspaceSurface(pathname: string): string {
 export function buildWorkspaceHref(workspaceId: string, pathname: string): string {
   return `/app/w/${encodeURIComponent(workspaceId)}/${resolveWorkspaceSurface(pathname)}`
 }
+
+/**
+ * Base path for chat query updates (`?id=`).
+ * Prefer the browser/workspace path so soft navigations stay on
+ * `/app/w/:workspaceId/chat` instead of rewriting to bare `/app/chat`.
+ */
+export function resolveChatBasePath(pathname: string | null | undefined): string {
+  if (!pathname) return '/app/chat'
+  const workspaceId = readWorkspaceIdFromPath(pathname)
+  if (workspaceId) return buildWorkspaceHref(workspaceId, '/app/chat')
+  if (pathname === '/app/chat' || pathname.startsWith('/app/chat/')) return '/app/chat'
+  if (pathname === '/app/automations' || pathname.startsWith('/app/automations/')) {
+    return '/app/automations'
+  }
+  return '/app/chat'
+}
+
+/** True when both paths are the same chat surface (workspace-aware). */
+export function isSameChatSurface(
+  pathname: string | null | undefined,
+  chatBaseHref: string,
+): boolean {
+  return resolveChatBasePath(pathname) === resolveChatBasePath(chatBaseHref)
+}

@@ -34,6 +34,7 @@ import { SidebarResourceList } from '@overlay/ui/primitives'
 import { useAuth } from '@/contexts/AuthContext'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { NewChannelDialog } from './NewChannelDialog'
+import { isSameChatSurface } from '@/features/workspaces/lib/workspace-routing'
 
 const panelItemClass =
   'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
@@ -388,7 +389,9 @@ export function ChatInlinePanel({
                     view: chatView,
                     id: chat._id,
                   }).toString()}`
-                  if (pathname === baseHref) {
+                  // Soft-navigate on the same chat surface so Next does not
+                  // remount the app shell (and WorkspaceProvider) on every switch.
+                  if (isSameChatSurface(pathname, baseHref)) {
                     window.history.pushState(null, '', href)
                     window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
                       detail: { chatId: chat._id },
