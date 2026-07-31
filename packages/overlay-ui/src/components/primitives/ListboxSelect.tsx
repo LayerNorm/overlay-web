@@ -63,15 +63,15 @@ export function ListboxSelect<T extends string>({
         aria-haspopup="listbox"
         onClick={() => !disabled && setOpen((current) => !current)}
         className={cn(
-          'flex w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-xs',
+          'flex w-full min-w-0 items-center justify-between gap-2.5 rounded-md bg-[var(--surface-subtle)] py-1.5 pl-3 pr-3 text-left text-xs',
           disabled
             ? 'cursor-not-allowed text-[var(--muted-light)]'
             : 'text-[var(--muted)] hover:bg-[var(--border)]',
           buttonClassName,
         )}
       >
-        <span className="min-w-0 truncate">{selected}</span>
-        <ChevronDown size={11} className={cn('shrink-0 transition-transform', open ? 'rotate-180' : '')} />
+        <span className="min-w-0 flex-1 truncate">{selected}</span>
+        <ChevronDown size={12} className={cn('ml-1 shrink-0 opacity-70 transition-transform', open ? 'rotate-180' : '')} />
       </button>
       {open ? (
         <div

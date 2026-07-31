@@ -412,6 +412,7 @@ export default function AppSidebar({
     </Link>
   )
 
+  // Header is always Overlay brand — workspace lives in the footer account menu.
   const desktopBrandControl = sidebarCollapsed ? (
     <button
       type="button"
@@ -423,12 +424,10 @@ export default function AppSidebar({
       <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0 group-hover:hidden" />
       <ChevronRight size={16} className="hidden text-[var(--foreground)] group-hover:block" />
     </button>
-  ) : !user && !publicShowcase ? brandLink : (
-    workspace?.renderSwitcher({ onNavigate: () => setMobileMenuOpen(false) }) ?? brandLink
-  )
+  ) : brandLink
 
   /** Compact brand for the fixed mobile top bar (matches sidebar identity). */
-  const mobileBrandLink = !user && !publicShowcase ? (
+  const mobileBrandLink = (
     <Link
       href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
       className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-2"
@@ -442,11 +441,22 @@ export default function AppSidebar({
         {brandConfig.shortName ?? brandConfig.name}
       </span>
     </Link>
-  ) : (
-    workspace?.renderSwitcher({
-      compact: true,
-      onNavigate: () => setMobileMenuOpen(false),
-    }) ?? brandLink
+  )
+
+  const accountMenuContent = (
+    <SidebarAccountMenu
+      billingEnabled={billingEnabled}
+      entitlements={entitlements}
+      demoHref={!publicShowcase && user ? ROOT_SHOWCASE_DESTINATION : undefined}
+      onAccountClick={() => {
+        setAccountMenuOpen(false)
+        setMobileMenuOpen(false)
+      }}
+      onSignOut={() => {
+        setAccountMenuOpen(false)
+        void handleSignOut()
+      }}
+    />
   )
 
   // Global Cmd/Ctrl+K command palette. The same dialog is reused by the per-section
@@ -869,42 +879,42 @@ export default function AppSidebar({
           </nav>
         ) : null}
         <div ref={menuRef} className="relative">
-          {accountMenuOpen && (
-            <div
-              className={`overlay-fade-in absolute bottom-full z-50 mb-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg ${
-                sidebarCollapsed ? 'left-0 w-64' : 'left-0 right-0'
-              }`}
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <SidebarAccountMenu
-                billingEnabled={billingEnabled}
-                entitlements={entitlements}
-                demoHref={!publicShowcase && user ? ROOT_SHOWCASE_DESTINATION : undefined}
-                onAccountClick={() => {
-                  setAccountMenuOpen(false)
-                  setMobileMenuOpen(false)
-                }}
-                onSignOut={() => {
-                  setAccountMenuOpen(false)
-                  void handleSignOut()
-                }}
-              />
-            </div>
-          )}
-
-          {!isGuestConfirmed ? (
-            <button
-              type="button"
-              onClick={() => setAccountMenuOpen((value) => !value)}
-              className={`flex w-full items-center rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-                sidebarCollapsed ? 'justify-center' : 'gap-2'
-              }`}
-              aria-label="Account menu"
-            >
-              <User size={13} />
-              {!sidebarCollapsed ? <span className="flex-1 truncate text-left">{displayName}</span> : null}
-              {!sidebarCollapsed ? <ChevronUp size={11} className={`shrink-0 transition-transform ${accountMenuOpen ? '' : 'rotate-180'}`} /> : null}
-            </button>
+          {!isGuestConfirmed && workspace ? (
+            workspace.renderSwitcher({
+              compact: sidebarCollapsed,
+              onNavigate: () => {
+                setAccountMenuOpen(false)
+                setMobileMenuOpen(false)
+              },
+              placement: 'footer',
+              userLabel: displayName,
+              accountMenu: accountMenuContent,
+            })
+          ) : !isGuestConfirmed ? (
+            <>
+              {accountMenuOpen && (
+                <div
+                  className={`overlay-fade-in absolute bottom-full z-50 mb-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg ${
+                    sidebarCollapsed ? 'left-0 w-64' : 'left-0 right-0'
+                  }`}
+                  onMouseDown={(event) => event.stopPropagation()}
+                >
+                  {accountMenuContent}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setAccountMenuOpen((value) => !value)}
+                className={`flex w-full items-center rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+                  sidebarCollapsed ? 'justify-center' : 'gap-2'
+                }`}
+                aria-label="Account menu"
+              >
+                <User size={13} />
+                {!sidebarCollapsed ? <span className="flex-1 truncate text-left">{displayName}</span> : null}
+                {!sidebarCollapsed ? <ChevronUp size={11} className={`shrink-0 transition-transform ${accountMenuOpen ? '' : 'rotate-180'}`} /> : null}
+              </button>
+            </>
           ) : (
             <button
               type="button"
@@ -939,32 +949,61 @@ export default function AppSidebar({
           </button>
           <div className="flex min-w-0 flex-1 justify-center px-1">{mobileBrandLink}</div>
           <div className="relative shrink-0" ref={mobileAccountRef}>
-            <button
-              type="button"
-              onClick={() => setMobileAccountOpen((o) => !o)}
-              aria-label="Account menu"
-              aria-expanded={mobileAccountOpen}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-            >
-              <User size={16} />
-            </button>
-            {mobileAccountOpen && (
-              <div
-                className="overlay-pop-in absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <SidebarAccountMenu
-                  billingEnabled={billingEnabled}
-                  entitlements={entitlements}
-                  itemPaddingClass="py-2.5"
-                  demoHref={!publicShowcase && user ? ROOT_SHOWCASE_DESTINATION : undefined}
-                  onAccountClick={() => setMobileAccountOpen(false)}
-                  onSignOut={() => {
+            {!isGuestConfirmed && workspace ? (
+              <div className="max-w-[min(14rem,calc(100vw-7rem))]">
+                {workspace.renderSwitcher({
+                  compact: true,
+                  placement: 'header',
+                  userLabel: displayName,
+                  onNavigate: () => {
                     setMobileAccountOpen(false)
-                    void handleSignOut()
-                  }}
-                />
+                    setMobileMenuOpen(false)
+                  },
+                  accountMenu: (
+                    <SidebarAccountMenu
+                      billingEnabled={billingEnabled}
+                      entitlements={entitlements}
+                      itemPaddingClass="py-2.5"
+                      demoHref={!publicShowcase && user ? ROOT_SHOWCASE_DESTINATION : undefined}
+                      onAccountClick={() => setMobileAccountOpen(false)}
+                      onSignOut={() => {
+                        setMobileAccountOpen(false)
+                        void handleSignOut()
+                      }}
+                    />
+                  ),
+                })}
               </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setMobileAccountOpen((o) => !o)}
+                  aria-label="Account menu"
+                  aria-expanded={mobileAccountOpen}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                >
+                  <User size={16} />
+                </button>
+                {mobileAccountOpen && (
+                  <div
+                    className="overlay-pop-in absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <SidebarAccountMenu
+                      billingEnabled={billingEnabled}
+                      entitlements={entitlements}
+                      itemPaddingClass="py-2.5"
+                      demoHref={!publicShowcase && user ? ROOT_SHOWCASE_DESTINATION : undefined}
+                      onAccountClick={() => setMobileAccountOpen(false)}
+                      onSignOut={() => {
+                        setMobileAccountOpen(false)
+                        void handleSignOut()
+                      }}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -994,14 +1033,7 @@ export default function AppSidebar({
         >
           <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
             <div className="min-w-0 flex-1">
-              {!user && !publicShowcase
-                ? brandLink
-                : (
-                  workspace?.renderSwitcher({
-                    compact: true,
-                    onNavigate: () => setMobileMenuOpen(false),
-                  }) ?? brandLink
-                )}
+              {brandLink}
             </div>
             <button
               type="button"

@@ -586,8 +586,8 @@ export function DirectMessageExperience({
 
   return (
     <>
-      <AppScreenShell>
-        <div className={`flex min-h-0 flex-1 flex-col ${threadRoot ? 'md:pr-[420px]' : ''}`}>
+      <AppScreenShell contentClassName="flex min-h-0">
+        <div className={`flex min-h-0 w-full min-w-0 flex-1 flex-col ${threadRoot ? 'md:pr-[420px]' : ''}`}>
           <AppScreenHeader
             title={title}
             subtitle={participants.length > 2 ? `${participants.length} people` : online > 0 ? 'Online' : undefined}
@@ -815,8 +815,8 @@ export function DirectMessageExperience({
                 )}
               </div>
             </div>
-            <div className="shrink-0 px-4 pb-4 sm:px-8 sm:pb-6">
-              <div className="mx-auto max-w-3xl">
+            <div className="shrink-0 px-3 pb-3 sm:px-4 sm:pb-4">
+              <div className="mx-auto w-full max-w-[56rem]">
                 <p
                   role="status"
                   aria-live="polite"
@@ -829,39 +829,41 @@ export function DirectMessageExperience({
                 </p>
                 <form
                   onSubmit={(event) => void submit(event)}
-                  className="relative flex items-end gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-2 shadow-sm focus-within:border-[var(--muted-light)]"
+                  className="relative overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,color] duration-300 focus-within:border-[var(--muted-light)]"
                 >
-                  <MentionSuggestionList
-                    suggestions={mentionSuggestions}
-                    activeIndex={mention?.index ?? 0}
-                    onSelect={selectMention}
-                    onHover={(index) => setMention((current) => current ? { ...current, index } : current)}
-                  />
-                  <textarea
-                    ref={composerRef}
-                    value={input}
-                    onChange={(event) => onInput(event.target.value, event.target.selectionStart ?? undefined)}
-                    onKeyDown={onComposerKeyDown}
-                    role="combobox"
-                    aria-expanded={mentionSuggestions.length > 0}
-                    aria-controls={MENTION_LISTBOX_ID}
-                    aria-autocomplete="list"
-                    aria-activedescendant={mentionSuggestions.length > 0 && mention
-                      ? mentionOptionId((mentionSuggestions[mention.index] ?? mentionSuggestions[0]!).principalId)
-                      : undefined}
-                    aria-label={`Message ${title}`}
-                    rows={1}
-                    placeholder={`Message ${title}`}
-                    className="max-h-36 min-h-9 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!input.trim()}
-                    aria-label="Send message"
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-opacity disabled:opacity-30"
-                  >
-                    <Send size={14} />
-                  </button>
+                  <div className="flex items-end gap-2 p-2.5 sm:p-3">
+                    <MentionSuggestionList
+                      suggestions={mentionSuggestions}
+                      activeIndex={mention?.index ?? 0}
+                      onSelect={selectMention}
+                      onHover={(index) => setMention((current) => current ? { ...current, index } : current)}
+                    />
+                    <textarea
+                      ref={composerRef}
+                      value={input}
+                      onChange={(event) => onInput(event.target.value, event.target.selectionStart ?? undefined)}
+                      onKeyDown={onComposerKeyDown}
+                      role="combobox"
+                      aria-expanded={mentionSuggestions.length > 0}
+                      aria-controls={MENTION_LISTBOX_ID}
+                      aria-autocomplete="list"
+                      aria-activedescendant={mentionSuggestions.length > 0 && mention
+                        ? mentionOptionId((mentionSuggestions[mention.index] ?? mentionSuggestions[0]!).principalId)
+                        : undefined}
+                      aria-label={`Message ${title}`}
+                      rows={1}
+                      placeholder={`Message ${title}`}
+                      className="max-h-36 min-h-9 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!input.trim()}
+                      aria-label="Send message"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--foreground)] text-[var(--background)] transition-opacity disabled:opacity-30"
+                    >
+                      <Send size={14} />
+                    </button>
+                  </div>
                 </form>
                 <p className="mt-1.5 px-1 text-[10px] text-[var(--muted-light)]">
                   Enter to send · Shift Enter for a new line · Use @name to notify someone

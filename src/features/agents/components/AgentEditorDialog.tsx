@@ -1,14 +1,19 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Bot, Check, ChevronDown } from 'lucide-react'
-import { Button, DialogFrame, Input } from '@overlay/ui/primitives'
+import { Button, DialogFrame, Input, ListboxSelect } from '@overlay/ui/primitives'
 import type {
   WorkspaceAgentCreateInput,
   WorkspaceAgentDirectoryItem,
   WorkspaceManagementItem,
 } from '@overlay/workspace-contracts'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import {
+  getEnabledChatModels,
+  getGatewayCatalogRevision,
+} from '@/shared/ai/gateway/model-data'
+import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 
 const AVATAR_COLORS = ['#64748b', '#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626']
 
@@ -31,14 +36,22 @@ export function AgentEditorDialog({
   onSave(input: WorkspaceAgentCreateInput): void
   onArchive?(): void
 }) {
+  const { revision } = useGatewayModelCatalog({ enabled: open })
   const [name, setName] = useState(agent?.name ?? '')
   const [description, setDescription] = useState(agent?.description ?? '')
   const [instructions, setInstructions] = useState(agent?.instructions ?? '')
-  const [harness, setHarness] = useState<'overlay' | 'claude-code'>(agent?.harness ?? 'overlay')
   const [modelId, setModelId] = useState<string>(agent?.modelId ?? DEFAULT_MODEL_ID)
   const [avatarColor, setAvatarColor] = useState(agent?.avatarColor ?? AVATAR_COLORS[0]!)
   const [teamIds, setTeamIds] = useState<string[]>(agent?.teamIds ?? [])
   const [advanced, setAdvanced] = useState(false)
+
+  const modelOptions = useMemo(() => {
+    void revision
+    void getGatewayCatalogRevision()
+    return getEnabledChatModels([], false)
+      .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
+      .map((model) => ({ value: model.id, label: model.name }))
+  }, [revision])
 
   const valid = name.trim() && instructions.trim() && modelId.trim()
   return (
@@ -57,8 +70,12 @@ export function AgentEditorDialog({
             variant="secondary"
             disabled={busy || !valid}
             onClick={() => onSave({
-              name: name.trim(), description: description.trim() || undefined,
-              instructions: instructions.trim(), harness, modelId: modelId.trim(), avatarColor,
+              name: name.trim(),
+              description: description.trim() || undefined,
+              instructions: instructions.trim(),
+              harness: 'overlay',
+              modelId: modelId.trim(),
+              avatarColor,
               teamIds,
             })}
           >
@@ -108,6 +125,17 @@ export function AgentEditorDialog({
               className="mt-1.5 min-h-36 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2.5 text-sm leading-5 outline-none focus:border-[var(--muted)]"
             />
           </label>
+          <label className="block text-xs font-medium">
+            Model
+            <ListboxSelect
+              className="mt-1.5"
+              aria-label="Agent model"
+              value={modelOptions.some((option) => option.value === modelId) ? modelId : (modelOptions[0]?.value ?? modelId)}
+              options={modelOptions.length > 0 ? modelOptions : [{ value: modelId, label: modelId }]}
+              onChange={setModelId}
+              buttonClassName="h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]"
+            />
+          </label>
           {teams.length ? (
             <div>
               <p className="text-xs font-medium">Agent teams</p>
@@ -132,19 +160,8 @@ export function AgentEditorDialog({
             Advanced <ChevronDown size={13} className={advanced ? 'rotate-180' : ''} />
           </button>
           {advanced ? (
-            <div className="grid gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3 sm:grid-cols-2">
-              <label className="text-xs font-medium">
-                Harness
-                <select value={harness} onChange={(event) => setHarness(event.target.value as typeof harness)} className="mt-1.5 h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs">
-                  <option value="overlay">Overlay</option>
-                  <option value="claude-code">Claude Code</option>
-                </select>
-              </label>
-              <label className="text-xs font-medium">
-                Model ID
-                <Input className="mt-1.5" value={modelId} onChange={(event) => setModelId(event.target.value)} />
-              </label>
-              <p className="sm:col-span-2 text-[11px] leading-4 text-[var(--muted)]">
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+              <p className="text-[11px] leading-4 text-[var(--muted)]">
                 Mention-first is enforced. One-to-one agent DMs invoke implicitly; channels and group DMs require a human mention or reply in the agent’s thread.
               </p>
             </div>
