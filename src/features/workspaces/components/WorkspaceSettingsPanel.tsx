@@ -235,14 +235,6 @@ export function WorkspaceManagementContent({
 
   return (
     <div data-testid="workspace-management-list">
-      {onPrimaryAction && (
-        (tab === 'teams' && state.currentRole !== 'guest')
-        || ((tab === 'people' || tab === 'guests') && state.canManage)
-      ) ? (
-        <div className="flex justify-end border-b border-[var(--border)] px-5 py-3">
-          <Button size="sm" onClick={onPrimaryAction}>{config.action}</Button>
-        </div>
-      ) : null}
       <div className="divide-y divide-[var(--border)]">
         {state.items.map((item) => {
           const busy = busyItemId === item.id
@@ -758,6 +750,14 @@ export function WorkspaceSettingsPanel({
     )
   }
 
+  const showHeaderPrimaryAction = activeTab !== 'sharing'
+    && state.status === 'ready'
+    && (
+      (activeTab === 'teams' && state.currentRole !== 'guest')
+      || ((activeTab === 'people' || activeTab === 'guests') && state.canManage)
+    )
+  const headerPrimaryLabel = TABS.find((tab) => tab.id === activeTab)?.action
+
   return (
     <>
       <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]">
@@ -767,6 +767,22 @@ export function WorkspaceSettingsPanel({
             <h2 className="truncate text-sm font-semibold text-[var(--foreground)]">{activeWorkspace.name}</h2>
             <p className="mt-0.5 truncate text-xs text-[var(--muted)]">{workspaceLabel}</p>
           </div>
+          {showHeaderPrimaryAction ? (
+            <Button
+              size="sm"
+              onClick={() => {
+                setActionError(null)
+                setInvitePath(null)
+                setAction(
+                  activeTab === 'teams'
+                    ? { type: 'create-team' }
+                    : { type: 'invite', guest: activeTab === 'guests' },
+                )
+              }}
+            >
+              {headerPrimaryLabel}
+            </Button>
+          ) : null}
           {activeWorkspace.kind === 'organization' && activeWorkspace.role === 'owner' ? (
             <Button
               size="sm"

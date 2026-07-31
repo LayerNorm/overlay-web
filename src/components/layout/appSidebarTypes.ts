@@ -12,7 +12,12 @@ export interface AppSidebarWorkspaceAdapter {
   activeWorkspaceId: string | null
   buildHref(workspaceId: string, href: string): string
   resolveSurface(pathname: string): string | null
-  renderSwitcher(context: AppSidebarNavigateContext & { compact?: boolean }): ReactNode
+  renderSwitcher(context: AppSidebarNavigateContext & {
+    compact?: boolean
+    placement?: 'header' | 'footer'
+    userLabel?: string
+    accountMenu?: ReactNode
+  }): ReactNode
 }
 
 export interface AppSidebarProps {

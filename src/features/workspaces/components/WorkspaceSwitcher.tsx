@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   Check,
   ChevronDown,
+  ChevronUp,
   Loader2,
   Plus,
   RefreshCw,
@@ -21,10 +22,17 @@ export function WorkspaceSwitcher({
   onNavigate,
   compact = false,
   showcase = false,
+  placement = 'header',
+  accountMenu,
+  userLabel,
 }: {
   onNavigate?: () => void
   compact?: boolean
   showcase?: boolean
+  /** Footer placement opens upward and can host the account menu. */
+  placement?: 'header' | 'footer'
+  accountMenu?: ReactNode
+  userLabel?: string
 }) {
   const pathname = usePathname() ?? '/app/chat'
   const router = useRouter()
@@ -45,6 +53,7 @@ export function WorkspaceSwitcher({
   const [createBusy, setCreateBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  const isFooter = placement === 'footer'
 
   useEffect(() => {
     if (!open) return
@@ -103,48 +112,64 @@ export function WorkspaceSwitcher({
 
   if (status === 'idle') return null
 
+  const Chevron = isFooter ? ChevronUp : ChevronDown
+
   return (
     <>
       <div ref={rootRef} className="relative min-w-0">
         <button
           type="button"
           onClick={() => setOpen((current) => !current)}
-          aria-label="Switch workspace"
+          aria-label={isFooter ? 'Workspace and account menu' : 'Switch workspace'}
           aria-haspopup="menu"
           aria-expanded={open}
           className={`group flex min-w-0 items-center rounded-lg text-left transition-colors hover:bg-[var(--surface-subtle)] ${
-            compact ? 'h-9 max-w-[calc(100vw-8rem)] gap-2 px-2' : 'h-10 w-full gap-2.5 px-1.5'
+            isFooter
+              ? `w-full gap-2 px-2 py-1.5 ${compact ? 'justify-center' : ''}`
+              : compact
+                ? 'h-9 max-w-full gap-2 px-2'
+                : 'h-10 w-full gap-2.5 px-1.5'
           }`}
         >
           {activeWorkspace ? (
-            <WorkspaceAvatar workspace={activeWorkspace} size={compact ? 'sm' : 'md'} />
+            <WorkspaceAvatar workspace={activeWorkspace} size={compact || isFooter ? 'sm' : 'md'} />
           ) : (
-            <span className={`${compact ? 'h-6 w-6' : 'h-8 w-8'} shrink-0 animate-pulse rounded-lg bg-[var(--surface-subtle)]`} />
+            <span className={`${compact || isFooter ? 'h-6 w-6' : 'h-8 w-8'} shrink-0 animate-pulse rounded-lg bg-[var(--surface-subtle)]`} />
           )}
-          <span className="min-w-0 flex-1">
-            <span className={`block truncate font-medium text-[var(--foreground)] ${compact ? 'text-sm' : 'text-[13px]'}`}>
-              {status === 'loading'
-                ? 'Loading workspace…'
-                : activeWorkspace?.name ?? 'Choose a workspace'}
-            </span>
-            {!compact && activeWorkspace ? (
-              <span className="block truncate text-[10px] capitalize text-[var(--muted-light)]">
-                {activeWorkspace.role}
+          {!compact || accountMenu ? (
+            <span className={`min-w-0 flex-1 ${compact && isFooter ? 'sr-only' : ''}`}>
+              <span className={`block truncate font-medium text-[var(--foreground)] ${isFooter || compact ? 'text-xs' : 'text-[13px]'}`}>
+                {status === 'loading'
+                  ? 'Loading workspace…'
+                  : activeWorkspace?.name ?? 'Choose a workspace'}
               </span>
-            ) : null}
-          </span>
-          <ChevronDown
-            size={13}
-            className={`shrink-0 text-[var(--muted-light)] transition-transform ${open ? 'rotate-180' : ''}`}
-          />
+              {(userLabel || activeWorkspace) && !compact ? (
+                <span className="block truncate text-[10px] text-[var(--muted-light)]">
+                  {userLabel ?? activeWorkspace?.role}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+          {!compact || accountMenu ? (
+            <Chevron
+              size={13}
+              className={`shrink-0 text-[var(--muted-light)] transition-transform ${
+                open ? (isFooter ? '' : 'rotate-180') : isFooter ? 'rotate-180' : ''
+              }`}
+            />
+          ) : null}
         </button>
 
         {open ? (
           <MenuSurface
             role="menu"
-            aria-label="Workspaces"
-            className={`overlay-pop-in absolute left-0 top-full z-[80] mt-1.5 w-[min(280px,calc(100vw-2rem))] overflow-hidden p-1 ${
-              compact ? '' : '-translate-x-1'
+            aria-label={isFooter ? 'Workspace and account' : 'Workspaces'}
+            className={`overlay-pop-in absolute z-[80] w-[min(280px,calc(100vw-2rem))] overflow-hidden p-1 ${
+              isFooter
+                ? 'bottom-full left-0 right-0 mb-1.5 w-auto'
+                : compact
+                  ? 'right-0 top-full mt-1.5'
+                  : 'left-0 top-full mt-1.5 -translate-x-1'
             }`}
           >
             <div className="px-2 pb-1.5 pt-1 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
@@ -251,6 +276,12 @@ export function WorkspaceSwitcher({
               <p role="alert" className="px-3 pb-2 pt-1 text-[11px] text-red-500">
                 {actionError}
               </p>
+            ) : null}
+
+            {accountMenu ? (
+              <div className="mt-1 border-t border-[var(--border)] pt-1">
+                {accountMenu}
+              </div>
             ) : null}
           </MenuSurface>
         ) : null}

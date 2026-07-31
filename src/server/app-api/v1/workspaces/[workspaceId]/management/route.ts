@@ -92,12 +92,12 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
             }
           }),
         ...invitations
-          .filter((invitation) => invitation.role === 'guest')
+          .filter((invitation) => invitation.role === 'guest' && invitation.status === 'pending')
           .map((invitation) => ({
             id: invitation.id,
             kind: 'invitation' as const,
             name: invitation.email,
-            description: 'Workspace guest invitation',
+            description: 'Pending workspace invitation',
             detail: invitation.status,
             badge: invitation.status,
             invitationId: invitation.id,
@@ -175,7 +175,7 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
           status: membership.status,
         })),
       ...invitations
-        .filter((invitation) => invitation.role !== 'guest')
+        .filter((invitation) => invitation.role !== 'guest' && invitation.status === 'pending')
         .map((invitation) => ({
           id: invitation.id,
           kind: 'invitation' as const,

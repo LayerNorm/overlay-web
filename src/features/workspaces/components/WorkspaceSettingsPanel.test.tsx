@@ -58,6 +58,32 @@ test('workspace settings renders populated rows with role detail', () => {
   assert.match(html, /Full workspace control/)
   assert.match(html, /1 person/)
   assert.match(html, /built-in/)
+  // Primary actions live in the panel header, not a dedicated list toolbar row.
+  assert.doesNotMatch(html, /Invite people/)
+})
+
+test('people list does not render a standalone invite toolbar row', () => {
+  const html = renderToStaticMarkup(
+    <WorkspaceManagementContent
+      tab="people"
+      state={{
+        ...READY_STATE,
+        items: [{
+          id: 'role_member',
+          kind: 'role',
+          name: 'Members',
+          description: 'Workspace collaborators',
+          detail: '2 principals',
+          badge: 'built-in',
+        }],
+      }}
+      onPrimaryAction={() => undefined}
+    />,
+  )
+
+  assert.match(html, /data-testid="workspace-management-list"/)
+  assert.match(html, /Members/)
+  assert.doesNotMatch(html, /Invite people/)
 })
 
 test('sharing & links renders policy lifecycle states', () => {
