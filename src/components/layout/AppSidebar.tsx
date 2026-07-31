@@ -464,10 +464,13 @@ export default function AppSidebar({
   // pre-filtered to the current section (chats, files, …).
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
   const [globalSearchInitialCategory, setGlobalSearchInitialCategory] = useState<MentionType | null>(null)
-  const openGlobalSearch = useCallback((category: MentionType | null) => {
+  // Not wrapped in useCallback: this is only ever an inline JSX handler, never a
+  // hook dependency, and hand-memoizing it makes React Compiler bail out of the
+  // whole component ("existing memoization could not be preserved").
+  const openGlobalSearch = (category: MentionType | null) => {
     setGlobalSearchInitialCategory(category)
     setGlobalSearchOpen(true)
-  }, [])
+  }
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const isMeta = e.metaKey || e.ctrlKey
