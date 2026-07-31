@@ -8,20 +8,31 @@ import type {
   CreateMcpServerInput,
   McpAuthConfig,
   McpExecutionRecord,
+  McpOAuthClient,
+  McpOAuthSession,
+  McpOAuthStatus,
+  McpOAuthTokens,
   McpServerRecord,
   McpServerRepository,
   McpServerSummary,
   UpdateMcpServerInput,
 } from './McpServerRepository'
 
-type ConvexMcpRecord = Omit<McpServerRecord, '_id' | 'defaultToolPolicy' | 'toolPolicies' | 'toolCatalog' | 'hasAuth'> & {
-  _id: Id<'mcpServers'>
-  authConfig?: McpAuthConfig
-  encryptedAuthConfig?: string
-  defaultToolPolicy?: McpServerRecord['defaultToolPolicy']
-  toolPolicies?: McpServerRecord['toolPolicies']
-  toolCatalog?: McpServerRecord['toolCatalog']
-}
+type ConvexMcpRecord =
+  & Omit<
+    McpServerRecord,
+    '_id' | 'defaultToolPolicy' | 'toolPolicies' | 'toolCatalog' | 'hasAuth' | 'oauthTokens' | 'oauthClient'
+  >
+  & {
+    _id: Id<'mcpServers'>
+    authConfig?: McpAuthConfig
+    encryptedAuthConfig?: string
+    encryptedOAuthTokens?: string
+    encryptedOAuthClient?: string
+    defaultToolPolicy?: McpServerRecord['defaultToolPolicy']
+    toolPolicies?: McpServerRecord['toolPolicies']
+    toolCatalog?: McpServerRecord['toolCatalog']
+  }
 
 type ConvexMcpSummary = Omit<McpServerSummary, '_id' | 'defaultToolPolicy' | 'toolPolicies'> & {
   _id: Id<'mcpServers'>
@@ -149,6 +160,114 @@ export class ConvexMcpServerRepository implements McpServerRepository {
     return rows.map(({ _id, ...row }) => ({ id: String(_id), ...row }))
   }
 
+  async updateOAuthState(args: {
+    mcpServerId: string
+    userId: string
+    tokens?: McpOAuthTokens | null
+    client?: McpOAuthClient | null
+    status?: McpOAuthStatus
+    issuer?: string
+    scope?: string
+    resource?: string
+    error?: string | null
+    expectedTokenVersion?: number
+  }): Promise<boolean> {
+    const applied = await convex.mutation<boolean>('integrations/mcpServers:updateOAuthState', {
+      mcpServerId: args.mcpServerId as Id<'mcpServers'>,
+      userId: args.userId,
+      ...(args.tokens === undefined
+        ? {}
+        : { encryptedOAuthTokens: args.tokens === null ? null : this.sealJson(args.tokens) }),
+      ...(args.client === undefined
+        ? {}
+        : {
+          encryptedOAuthClient: args.client === null ? null : this.sealJson(args.client),
+          oauthClientId: args.client === null ? null : args.client.clientId,
+        }),
+      ...(args.status !== undefined ? { oauthStatus: args.status } : {}),
+      ...(args.issuer !== undefined ? { oauthIssuer: args.issuer } : {}),
+      ...(args.scope !== undefined ? { oauthScope: args.scope } : {}),
+      ...(args.resource !== undefined ? { oauthResource: args.resource } : {}),
+      ...(args.error !== undefined ? { oauthError: args.error } : {}),
+      ...(args.expectedTokenVersion !== undefined
+        ? { expectedTokenVersion: args.expectedTokenVersion }
+        : {}),
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    return applied !== false
+  }
+
+  async createOAuthSession(
+    args: Omit<McpOAuthSession, 'createdAt'> & { createdAt?: number },
+  ): Promise<void> {
+    await convex.mutation('integrations/mcpServers:createOAuthSession', {
+      sessionId: args.id,
+      userId: args.userId,
+      mcpServerId: args.mcpServerId as Id<'mcpServers'>,
+      encryptedCodeVerifier: this.sealJson({ codeVerifier: args.codeVerifier }),
+      surface: args.surface,
+      returnTo: args.returnTo,
+      sessionBindingHash: args.sessionBindingHash,
+      expiresAt: args.expiresAt,
+      createdAt: args.createdAt,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
+  async consumeOAuthSession(args: { sessionId: string }): Promise<McpOAuthSession | null> {
+    const row = await convex.mutation<{
+      sessionId: string
+      userId: string
+      mcpServerId: Id<'mcpServers'>
+      encryptedCodeVerifier: string
+      surface: McpOAuthSession['surface']
+      returnTo?: string
+      sessionBindingHash?: string
+      expiresAt: number
+      createdAt: number
+    } | null>('integrations/mcpServers:consumeOAuthSession', {
+      sessionId: args.sessionId,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!row) return null
+    return {
+      id: row.sessionId,
+      userId: row.userId,
+      mcpServerId: String(row.mcpServerId),
+      codeVerifier: this.openJson<{ codeVerifier: string }>(row.encryptedCodeVerifier).codeVerifier,
+      surface: row.surface,
+      returnTo: row.returnTo,
+      sessionBindingHash: row.sessionBindingHash,
+      expiresAt: row.expiresAt,
+      createdAt: row.createdAt,
+    }
+  }
+
+  async deleteExpiredOAuthSessions(args: { now?: number } = {}): Promise<number> {
+    const deleted = await convex.mutation<number>(
+      'integrations/mcpServers:deleteExpiredOAuthSessions',
+      { now: args.now, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+    return deleted ?? 0
+  }
+
+  /**
+   * The cipher seals McpAuthConfig shapes, so arbitrary OAuth payloads ride inside the
+   * `bearerToken` slot as JSON. That keeps one audited crypto path for every MCP secret.
+   */
+  private sealJson(value: unknown): string {
+    const sealed = this.cipher.encrypt({ bearerToken: JSON.stringify(value) })
+    if (!sealed) throw new Error('Failed to seal MCP OAuth payload')
+    return sealed
+  }
+
+  private openJson<T>(payload: string): T {
+    const opened = this.cipher.decrypt(payload)
+    if (!opened?.bearerToken) throw new Error('Failed to open MCP OAuth payload')
+    return JSON.parse(opened.bearerToken) as T
+  }
+
   private normalizeRecord(row: ConvexMcpRecord): McpServerRecord {
     const authConfig = row.encryptedAuthConfig
       ? this.cipher.decrypt(row.encryptedAuthConfig)
@@ -157,10 +276,16 @@ export class ConvexMcpServerRepository implements McpServerRepository {
       ...row,
       _id: String(row._id),
       authConfig,
-      hasAuth: Boolean(authConfig),
+      hasAuth: Boolean(authConfig) || row.oauthStatus === 'connected',
       defaultToolPolicy: row.defaultToolPolicy ?? 'allow',
       toolPolicies: row.toolPolicies ?? {},
       toolCatalog: row.toolCatalog ?? [],
+      oauthTokens: row.encryptedOAuthTokens
+        ? this.openJson<McpOAuthTokens>(row.encryptedOAuthTokens)
+        : undefined,
+      oauthClient: row.encryptedOAuthClient
+        ? this.openJson<McpOAuthClient>(row.encryptedOAuthClient)
+        : undefined,
     }
   }
 }

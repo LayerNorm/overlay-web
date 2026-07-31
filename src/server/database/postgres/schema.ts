@@ -249,6 +249,18 @@ export const mcpAuthType = pgEnum('overlay_mcp_auth_type', [
   'none',
   'bearer',
   'header',
+  'oauth',
+])
+
+export const mcpOAuthStatus = pgEnum('overlay_mcp_oauth_status', [
+  'pending',
+  'connected',
+  'needs_reauth',
+])
+
+export const mcpOAuthSurface = pgEnum('overlay_mcp_oauth_surface', [
+  'web',
+  'desktop',
 ])
 
 export const mcpToolPolicy = pgEnum('overlay_mcp_tool_policy', [
@@ -386,6 +398,19 @@ export const mcpServers = pgTable('mcp_servers', {
   enabled: boolean('enabled').default(true).notNull(),
   authType: mcpAuthType('auth_type').default('none').notNull(),
   encryptedAuthConfig: text('encrypted_auth_config'),
+  // OAuth: only non-secret columns are surfaced by list APIs. Tokens and the client secret
+  // stay sealed with McpCredentialCipher and never leave the server.
+  oauthStatus: mcpOAuthStatus('oauth_status'),
+  encryptedOauthTokens: text('encrypted_oauth_tokens'),
+  encryptedOauthClient: text('encrypted_oauth_client'),
+  oauthClientId: text('oauth_client_id'),
+  oauthIssuer: text('oauth_issuer'),
+  oauthScope: text('oauth_scope'),
+  oauthResource: text('oauth_resource'),
+  oauthConnectedAt: timestamp('oauth_connected_at', { withTimezone: true }),
+  oauthError: text('oauth_error'),
+  /** Bumped on every token write so concurrent refreshes can compare-and-set. */
+  oauthTokenVersion: integer('oauth_token_version').default(0).notNull(),
   timeoutMs: integer('timeout_ms'),
   defaultToolPolicy: mcpToolPolicy('default_tool_policy').default('allow').notNull(),
   toolPolicies: jsonb('tool_policies')
@@ -404,6 +429,32 @@ export const mcpServers = pgTable('mcp_servers', {
   index('mcp_servers_user_updated_idx').on(table.userId, table.updatedAt),
   index('mcp_servers_user_enabled_idx').on(table.userId, table.enabled),
   index('mcp_servers_project_updated_idx').on(table.projectId, table.updatedAt),
+])
+
+/**
+ * Pending MCP OAuth authorizations. One row per in-flight Connect, consumed exactly once by the
+ * callback and bound to (user_id, mcp_server_id) so a stolen `state` cannot land tokens in another
+ * account. The PKCE verifier is encrypted at rest like every other MCP secret.
+ */
+export const mcpOAuthSessions = pgTable('mcp_oauth_sessions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  mcpServerId: text('mcp_server_id')
+    .notNull()
+    .references(() => mcpServers.id, { onDelete: 'cascade' }),
+  encryptedCodeVerifier: text('encrypted_code_verifier').notNull(),
+  surface: mcpOAuthSurface('surface').default('web').notNull(),
+  returnTo: text('return_to'),
+  /** Hash of the web session cookie, when the flow started from an authenticated browser. */
+  sessionBindingHash: text('session_binding_hash'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('mcp_oauth_sessions_user_idx').on(table.userId),
+  index('mcp_oauth_sessions_server_idx').on(table.mcpServerId),
+  index('mcp_oauth_sessions_expires_idx').on(table.expiresAt),
 ])
 
 export const mcpToolExecutions = pgTable('mcp_tool_executions', {

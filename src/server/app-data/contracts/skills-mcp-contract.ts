@@ -115,6 +115,110 @@ export async function runSkillsMcpContract(
       assert.equal(await backend.mcpServers.get({ mcpServerId: serverId, userId }), null)
     })
 
+    await t.test(`${backend.provider} MCP OAuth state stays sealed, single-use, and race-safe`, async () => {
+      const serverId = await backend.mcpServers.create({
+        authType: 'oauth',
+        name: 'Contract OAuth MCP',
+        transport: 'streamable-http',
+        url: 'https://oauth-mcp.example.test/api',
+        userId,
+      })
+
+      await backend.mcpServers.updateOAuthState({
+        client: { clientId: 'client-abc', clientSecret: 'super-secret', registered: true },
+        issuer: 'https://auth.example.test',
+        mcpServerId: serverId,
+        scope: 'tools:read',
+        status: 'pending',
+        userId,
+      })
+      await backend.mcpServers.updateOAuthState({
+        mcpServerId: serverId,
+        status: 'connected',
+        tokens: { accessToken: 'access-1', expiresAt: 4_102_444_800_000, refreshToken: 'refresh-1' },
+        userId,
+      })
+
+      const connected = await backend.mcpServers.get({ mcpServerId: serverId, userId })
+      assert.equal(connected?.oauthTokens?.accessToken, 'access-1')
+      assert.equal(connected?.oauthClient?.clientSecret, 'super-secret')
+      assert.equal(connected?.oauthStatus, 'connected')
+      assert.equal(connected?.oauthClientId, 'client-abc')
+
+      // Secrets must never ride along on the list projection, only the non-secret status fields.
+      const [summary] = await backend.mcpServers.list({ userId })
+      assert.equal('oauthTokens' in summary!, false)
+      assert.equal('oauthClient' in summary!, false)
+      assert.equal(summary?.oauthStatus, 'connected')
+      assert.equal(summary?.hasAuth, true)
+
+      // Compare-and-set: a stale version loses, and the winner's tokens survive.
+      const version = connected?.oauthTokenVersion ?? 0
+      assert.equal(
+        await backend.mcpServers.updateOAuthState({
+          expectedTokenVersion: version,
+          mcpServerId: serverId,
+          tokens: { accessToken: 'access-2', refreshToken: 'refresh-2' },
+          userId,
+        }),
+        true,
+      )
+      assert.equal(
+        await backend.mcpServers.updateOAuthState({
+          expectedTokenVersion: version,
+          mcpServerId: serverId,
+          tokens: { accessToken: 'access-loser' },
+          userId,
+        }),
+        false,
+      )
+      assert.equal(
+        (await backend.mcpServers.get({ mcpServerId: serverId, userId }))?.oauthTokens?.accessToken,
+        'access-2',
+      )
+
+      const sessionId = `contract-oauth-session-${backend.provider}`
+      await backend.mcpServers.createOAuthSession({
+        codeVerifier: 'verifier-0123456789012345678901234567890123456789',
+        expiresAt: Date.now() + 600_000,
+        id: sessionId,
+        mcpServerId: serverId,
+        surface: 'desktop',
+        userId,
+      })
+      const consumed = await backend.mcpServers.consumeOAuthSession({ sessionId })
+      assert.equal(consumed?.codeVerifier, 'verifier-0123456789012345678901234567890123456789')
+      assert.equal(consumed?.userId, userId)
+      assert.equal(consumed?.surface, 'desktop')
+      // Replaying the same `state` must find nothing.
+      assert.equal(await backend.mcpServers.consumeOAuthSession({ sessionId }), null)
+
+      const expiredId = `contract-oauth-expired-${backend.provider}`
+      await backend.mcpServers.createOAuthSession({
+        codeVerifier: 'verifier-9876543210987654321098765432109876543210',
+        expiresAt: Date.now() - 1_000,
+        id: expiredId,
+        mcpServerId: serverId,
+        surface: 'web',
+        userId,
+      })
+      assert.equal(await backend.mcpServers.consumeOAuthSession({ sessionId: expiredId }), null)
+
+      await backend.mcpServers.updateOAuthState({
+        client: null,
+        mcpServerId: serverId,
+        status: 'needs_reauth',
+        tokens: null,
+        userId,
+      })
+      const cleared = await backend.mcpServers.get({ mcpServerId: serverId, userId })
+      assert.equal(cleared?.oauthTokens, undefined)
+      assert.equal(cleared?.oauthClient, undefined)
+      assert.equal(cleared?.oauthStatus, 'needs_reauth')
+
+      await backend.mcpServers.remove({ mcpServerId: serverId, userId })
+    })
+
     await t.test(`${backend.provider} project deletion removes scoped skills and MCP records`, async () => {
       const skillId = await backend.skills.create({
         description: 'Project deletion proof',

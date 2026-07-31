@@ -1,14 +1,18 @@
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
-import { mcpServers, mcpToolExecutions } from '@/server/database/postgres/schema'
+import { mcpOAuthSessions, mcpServers, mcpToolExecutions } from '@/server/database/postgres/schema'
 import { assertActivePostgresProject } from '@/server/projects/PostgresProjectAccess'
 import { McpCredentialCipher } from './McpCredentialCipher'
 import type {
   CreateMcpServerInput,
   McpExecutionRecord,
+  McpOAuthClient,
+  McpOAuthSession,
+  McpOAuthStatus,
+  McpOAuthTokens,
   McpServerRecord,
   McpServerRepository,
   McpServerSummary,
@@ -163,6 +167,113 @@ export class PostgresMcpServerRepository implements McpServerRepository {
     return rows.map(mapExecution)
   }
 
+  async updateOAuthState(args: {
+    mcpServerId: string
+    userId: string
+    tokens?: McpOAuthTokens | null
+    client?: McpOAuthClient | null
+    status?: McpOAuthStatus
+    issuer?: string
+    scope?: string
+    resource?: string
+    error?: string | null
+    expectedTokenVersion?: number
+  }): Promise<boolean> {
+    const patch: Partial<typeof mcpServers.$inferInsert> = { updatedAt: new Date() }
+    if (args.tokens !== undefined) {
+      patch.encryptedOauthTokens = args.tokens === null ? null : this.sealJson(args.tokens)
+      patch.oauthTokenVersion = sql`${mcpServers.oauthTokenVersion} + 1` as unknown as number
+      if (args.tokens !== null) patch.oauthConnectedAt = new Date()
+    }
+    if (args.client !== undefined) {
+      patch.encryptedOauthClient = args.client === null ? null : this.sealJson(args.client)
+      patch.oauthClientId = args.client === null ? null : args.client.clientId
+    }
+    if (args.status !== undefined) patch.oauthStatus = args.status
+    if (args.issuer !== undefined) patch.oauthIssuer = args.issuer
+    if (args.scope !== undefined) patch.oauthScope = args.scope
+    if (args.resource !== undefined) patch.oauthResource = args.resource
+    if (args.error !== undefined) patch.oauthError = args.error
+
+    const rows = await this.db
+      .update(mcpServers)
+      .set(patch)
+      .where(and(
+        eq(mcpServers.id, args.mcpServerId),
+        eq(mcpServers.userId, args.userId),
+        args.expectedTokenVersion !== undefined
+          ? eq(mcpServers.oauthTokenVersion, args.expectedTokenVersion)
+          : undefined,
+      ))
+      .returning({ id: mcpServers.id })
+
+    if (rows.length > 0) return true
+    // A compare-and-set miss is an expected lost race, not an authorization failure.
+    if (args.expectedTokenVersion !== undefined) return false
+    throw new Error('Unauthorized')
+  }
+
+  async createOAuthSession(
+    args: Omit<McpOAuthSession, 'createdAt'> & { createdAt?: number },
+  ): Promise<void> {
+    await this.db.insert(mcpOAuthSessions).values({
+      id: args.id,
+      userId: args.userId,
+      mcpServerId: args.mcpServerId,
+      encryptedCodeVerifier: this.sealJson({ codeVerifier: args.codeVerifier }),
+      surface: args.surface,
+      returnTo: args.returnTo,
+      sessionBindingHash: args.sessionBindingHash,
+      expiresAt: new Date(args.expiresAt),
+      createdAt: new Date(args.createdAt ?? Date.now()),
+    })
+  }
+
+  async consumeOAuthSession(args: { sessionId: string }): Promise<McpOAuthSession | null> {
+    // Delete-and-return makes consumption atomic: a replayed `state` deletes nothing and gets null.
+    const [row] = await this.db
+      .delete(mcpOAuthSessions)
+      .where(eq(mcpOAuthSessions.id, args.sessionId))
+      .returning()
+    if (!row) return null
+    if (row.expiresAt.getTime() < Date.now()) return null
+    return {
+      id: row.id,
+      userId: row.userId,
+      mcpServerId: row.mcpServerId,
+      codeVerifier: this.openJson<{ codeVerifier: string }>(row.encryptedCodeVerifier).codeVerifier,
+      surface: row.surface,
+      returnTo: row.returnTo ?? undefined,
+      sessionBindingHash: row.sessionBindingHash ?? undefined,
+      expiresAt: row.expiresAt.getTime(),
+      createdAt: row.createdAt.getTime(),
+    }
+  }
+
+  async deleteExpiredOAuthSessions(args: { now?: number } = {}): Promise<number> {
+    const rows = await this.db
+      .delete(mcpOAuthSessions)
+      .where(lt(mcpOAuthSessions.expiresAt, new Date(args.now ?? Date.now())))
+      .returning({ id: mcpOAuthSessions.id })
+    return rows.length
+  }
+
+  /**
+   * The cipher seals McpAuthConfig shapes, so arbitrary OAuth payloads ride inside the
+   * `bearerToken` slot as JSON. That keeps one audited crypto path for every MCP secret.
+   */
+  private sealJson(value: unknown): string {
+    const sealed = this.cipher.encrypt({ bearerToken: JSON.stringify(value) })
+    if (!sealed) throw new Error('Failed to seal MCP OAuth payload')
+    return sealed
+  }
+
+  private openJson<T>(payload: string): T {
+    const opened = this.cipher.decrypt(payload)
+    if (!opened?.bearerToken) throw new Error('Failed to open MCP OAuth payload')
+    return JSON.parse(opened.bearerToken) as T
+  }
+
   private async selectServers(
     args: { userId: string; projectId?: string },
     enabledOnly = false,
@@ -183,8 +294,14 @@ export class PostgresMcpServerRepository implements McpServerRepository {
     return {
       ...mapCommon(row),
       authConfig: this.cipher.decrypt(row.encryptedAuthConfig ?? undefined),
-      hasAuth: Boolean(row.encryptedAuthConfig),
+      hasAuth: hasAuthFor(row),
       toolCatalog: row.toolCatalog,
+      oauthTokens: row.encryptedOauthTokens
+        ? this.openJson<McpOAuthTokens>(row.encryptedOauthTokens)
+        : undefined,
+      oauthClient: row.encryptedOauthClient
+        ? this.openJson<McpOAuthClient>(row.encryptedOauthClient)
+        : undefined,
     }
   }
 }
@@ -192,9 +309,13 @@ export class PostgresMcpServerRepository implements McpServerRepository {
 function mapSummary(row: McpServerRow): McpServerSummary {
   return {
     ...mapCommon(row),
-    hasAuth: Boolean(row.encryptedAuthConfig),
+    hasAuth: hasAuthFor(row),
     toolCatalogCount: row.toolCatalog.length,
   }
+}
+
+function hasAuthFor(row: McpServerRow): boolean {
+  return Boolean(row.encryptedAuthConfig) || row.oauthStatus === 'connected'
 }
 
 function mapCommon(row: McpServerRow) {
@@ -213,6 +334,14 @@ function mapCommon(row: McpServerRow) {
     toolPolicies: row.toolPolicies,
     toolCatalogUpdatedAt: row.toolCatalogUpdatedAt?.getTime(),
     toolCatalogError: row.toolCatalogError ?? undefined,
+    oauthStatus: row.oauthStatus ?? undefined,
+    oauthClientId: row.oauthClientId ?? undefined,
+    oauthIssuer: row.oauthIssuer ?? undefined,
+    oauthScope: row.oauthScope ?? undefined,
+    oauthResource: row.oauthResource ?? undefined,
+    oauthConnectedAt: row.oauthConnectedAt?.getTime(),
+    oauthError: row.oauthError ?? undefined,
+    oauthTokenVersion: row.oauthTokenVersion,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
   }

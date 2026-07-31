@@ -134,6 +134,13 @@
       "when": 1784746800000,
       "tag": "0018_p7_stripe_event_ordering",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784833200000,
+      "tag": "0019_p7i_mcp_oauth",
+      "breakpoints": true
     }
   ]
 }

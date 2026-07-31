@@ -8,7 +8,14 @@ import { jsonSchemaToZod } from './mcp-schema-to-zod'
 import { fireAndForgetRecordToolInvocation } from './tools/record-tool-invocation'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import type { McpServerRepository, McpToolPolicyMode } from '@/server/extensions'
+import type {
+  McpAuthType,
+  McpOAuthClient,
+  McpOAuthStatus,
+  McpOAuthTokens,
+  McpServerRepository,
+  McpToolPolicyMode,
+} from '@/server/extensions'
 import { resolveMcpToolPolicy } from '@/server/extensions'
 
 // Dynamic import of MCP SDK (ESM)
@@ -58,7 +65,7 @@ export interface McpServerConfig {
   transport: 'sse' | 'streamable-http'
   url: string
   enabled: boolean
-  authType: 'none' | 'bearer' | 'header'
+  authType: McpAuthType
   authConfig?: {
     bearerToken?: string
     headerName?: string
@@ -69,6 +76,15 @@ export interface McpServerConfig {
   defaultToolPolicy: McpToolPolicyMode
   toolPolicies: Record<string, McpToolPolicyMode>
   toolCatalog?: McpToolCatalogEntry[]
+  toolCatalogError?: string
+  /** Present only for authType 'oauth'; supplied by the repository, never by the client. */
+  oauthTokens?: McpOAuthTokens
+  oauthClient?: McpOAuthClient
+  oauthStatus?: McpOAuthStatus
+  oauthIssuer?: string
+  oauthScope?: string
+  oauthResource?: string
+  oauthTokenVersion?: number
 }
 
 function getMcpRepository(): McpServerRepository {
@@ -149,6 +165,39 @@ function buildAuthHeaders(config: McpServerConfig): Record<string, string> {
   return headers
 }
 
+/**
+ * Builds the SDK auth provider for an OAuth-backed server. It is deliberately non-interactive:
+ * there is no browser during a chat turn, so a flow that needs consent throws
+ * McpOAuthInteractionRequiredError instead of hanging, and the server is flagged for reconnection.
+ */
+async function createRuntimeAuthProvider(config: McpServerConfig) {
+  if (config.authType !== 'oauth') return undefined
+  const { McpOAuthProvider } = await import('@/server/extensions/McpOAuthProvider')
+  const { ensureFreshMcpOAuthTokens, mcpOAuthRedirectUri } = await import('./mcp-oauth')
+  const { getBaseUrl } = await import('@/server/web/app-url')
+  const baseUrl = getBaseUrl()
+
+  // Refresh ahead of expiry so a long tool call does not die mid-flight; the transport still
+  // handles a surprise 401 through the same provider.
+  const tokens = await ensureFreshMcpOAuthTokens({
+    baseUrl,
+    server: config as unknown as Parameters<typeof ensureFreshMcpOAuthTokens>[0]['server'],
+  }).catch((_error) => config.oauthTokens)
+
+  return new McpOAuthProvider({
+    clientUri: baseUrl,
+    initialClient: config.oauthClient,
+    initialTokens: tokens ?? config.oauthTokens,
+    initialTokenVersion: config.oauthTokenVersion,
+    mcpServerId: config._id,
+    redirectUri: mcpOAuthRedirectUri(baseUrl),
+    repository: getMcpRepository(),
+    scope: config.oauthScope,
+    serverName: config.name,
+    userId: config.userId,
+  })
+}
+
 async function createMcpTransportAndClient(config: McpServerConfig) {
   const {
     Client,
@@ -161,18 +210,21 @@ async function createMcpTransportAndClient(config: McpServerConfig) {
   const url = validation.url
   const headers = buildAuthHeaders(config)
   const timeoutMs = config.timeoutMs ?? 30_000
+  const authProvider = await createRuntimeAuthProvider(config)
 
   let transport: { start(): Promise<void>; close(): Promise<void>; send(message: unknown): Promise<void> } | undefined
 
   if (config.transport === 'sse') {
     transport = new SSEClientTransport(url, {
+      authProvider,
       requestInit: { headers },
       eventSourceInit: { headers } as EventSourceInit,
-    } as import('@modelcontextprotocol/sdk/client/sse.js').SSEClientTransportOptions)
+    } as unknown as import('@modelcontextprotocol/sdk/client/sse.js').SSEClientTransportOptions)
   } else {
     transport = new StreamableHTTPClientTransport(url, {
+      authProvider,
       requestInit: { headers },
-    } as import('@modelcontextprotocol/sdk/client/streamableHttp.js').StreamableHTTPClientTransportOptions)
+    } as unknown as import('@modelcontextprotocol/sdk/client/streamableHttp.js').StreamableHTTPClientTransportOptions)
   }
 
   const client = new Client(
@@ -510,6 +562,31 @@ export async function createMcpLazyMetaTools(args: {
   }
 }
 
+/**
+ * Turns an authorization failure into something the agent can relay and the user can act on.
+ * Without this the model sees a bare transport error and — as happened before OAuth existed —
+ * invents explanations like "the server is not enabled" for a server that is plainly connected.
+ */
+async function describeMcpAuthFailure(config: McpServerConfig, error: unknown): Promise<unknown> {
+  if (config.authType !== 'oauth') return error
+  const { McpOAuthInteractionRequiredError } = await import('@/server/extensions/McpOAuthProvider')
+  if (error instanceof McpOAuthInteractionRequiredError) return error
+
+  const message = error instanceof Error ? error.message : String(error)
+  if (!/\b401\b|unauthor|invalid_token|invalid_grant/i.test(message)) return error
+
+  await getMcpRepository().updateOAuthState({
+    error: 'The stored OAuth session was rejected by the server',
+    mcpServerId: config._id,
+    status: 'needs_reauth',
+    userId: config.userId,
+  }).catch((_error) => undefined)
+
+  return new Error(
+    `${config.name} rejected the stored OAuth session. Ask the user to reconnect ${config.name} in MCP settings, then retry.`,
+  )
+}
+
 async function callMcpTool(
   config: McpServerConfig,
   toolName: string,
@@ -527,7 +604,7 @@ async function callMcpTool(
     return result as { isError?: boolean; content: unknown }
   } catch (err) {
     logger.error(`[MCP] Tool ${toolName} on server ${config.name} failed: ${err instanceof Error ? err.message : String(err)}`)
-    throw err
+    throw await describeMcpAuthFailure(config, err)
   } finally {
     try {
       await client.close()

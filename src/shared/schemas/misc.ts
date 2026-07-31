@@ -43,6 +43,18 @@ export const McpTestRequest = z.object({
   mcpServerId: z.string().optional(),
 }).passthrough()
 
+export const McpOAuthStartRequest = z.object({
+  mcpServerId: z.string().min(1),
+  /** Same-origin relative path; the route re-validates before using it as a redirect target. */
+  returnTo: z.string().optional(),
+  scope: z.string().optional(),
+  surface: z.enum(['web', 'desktop']).optional(),
+}).passthrough()
+
+export const McpOAuthDisconnectRequest = z.object({
+  mcpServerId: z.string().min(1),
+})
+
 export const TranscribeRequest = FormDataBoundary
 export const EmptyJsonRequest = EmptyRequest
 export const MiscResponse = UnknownResponse

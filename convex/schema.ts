@@ -554,7 +554,7 @@ export default defineSchema({
     transport: v.union(v.literal('sse'), v.literal('streamable-http')),
     url: v.string(),
     enabled: v.boolean(),
-    authType: v.union(v.literal('none'), v.literal('bearer'), v.literal('header')),
+    authType: v.union(v.literal('none'), v.literal('bearer'), v.literal('header'), v.literal('oauth')),
     authConfig: v.optional(
       v.object({
         bearerToken: v.optional(v.string()),
@@ -563,6 +563,23 @@ export default defineSchema({
       })
     ),
     encryptedAuthConfig: v.optional(v.string()),
+    // OAuth: only non-secret fields are readable by list APIs. Tokens and the client
+    // secret stay sealed with McpCredentialCipher and never leave the server.
+    oauthStatus: v.optional(v.union(
+      v.literal('pending'),
+      v.literal('connected'),
+      v.literal('needs_reauth'),
+    )),
+    encryptedOAuthTokens: v.optional(v.string()),
+    encryptedOAuthClient: v.optional(v.string()),
+    oauthClientId: v.optional(v.string()),
+    oauthIssuer: v.optional(v.string()),
+    oauthScope: v.optional(v.string()),
+    oauthResource: v.optional(v.string()),
+    oauthConnectedAt: v.optional(v.number()),
+    oauthError: v.optional(v.string()),
+    /** Bumped on every token write so concurrent refreshes can compare-and-set. */
+    oauthTokenVersion: v.optional(v.number()),
     timeoutMs: v.optional(v.number()),
     defaultToolPolicy: v.optional(v.union(
       v.literal('allow'),
@@ -590,6 +607,29 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_userId_enabled', ['userId', 'enabled'])
     .index('by_projectId', ['projectId']),
+
+  /**
+   * Pending MCP OAuth authorizations. One row per in-flight Connect, consumed exactly once by the
+   * callback and bound to (userId, mcpServerId) so a stolen `state` cannot land tokens in another
+   * account. The PKCE verifier is encrypted at rest like every other MCP secret.
+   */
+  mcpOAuthSessions: defineTable({
+    /** Our own 32-byte random handle — this is the OAuth `state` value, not the Convex doc id. */
+    sessionId: v.string(),
+    userId: v.string(),
+    mcpServerId: v.id('mcpServers'),
+    encryptedCodeVerifier: v.string(),
+    surface: v.union(v.literal('web'), v.literal('desktop')),
+    returnTo: v.optional(v.string()),
+    /** Hash of the web session cookie, when the flow started from an authenticated browser. */
+    sessionBindingHash: v.optional(v.string()),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index('by_sessionId', ['sessionId'])
+    .index('by_userId', ['userId'])
+    .index('by_mcpServerId', ['mcpServerId'])
+    .index('by_expiresAt', ['expiresAt']),
 
   mcpToolExecutions: defineTable({
     userId: v.string(),
