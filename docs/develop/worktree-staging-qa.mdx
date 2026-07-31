@@ -130,6 +130,48 @@ npm run convex:deploy
 npm run convex:deploy:all
 ```
 
+## Lint before you push
+
+`next build` runs ESLint, so a lint error does not surface locally — it fails the
+Vercel build minutes later, in a remote log. Some of these rules cannot be caught
+by `npm run typecheck`: React Compiler's `react-hooks/preserve-manual-memoization`
+fails the build when a component's manual `useCallback` or `useMemo` dependencies
+stop matching the dependencies the compiler infers, and editing one part of a
+component can change that inference elsewhere in the same file.
+
+Lint only what the change touched:
+
+```bash
+npm run lint:changed
+```
+
+That covers the staged changes, or the working tree when nothing is staged. It
+takes a few seconds against a handful of files, where a full `npm run lint` takes
+about half a minute against the repository. Linting the changed files is
+sufficient for these rules because ESLint evaluates every rule per file.
+
+A tracked `pre-push` hook runs the same check over the commits being pushed.
+Install it once per clone:
+
+```bash
+npm run hooks:install
+```
+
+`npm install` also installs it, via the `prepare` lifecycle script. The hooks live
+in `.githooks` and are wired up with `core.hooksPath`, so they are reviewed like
+any other file in the repository and apply to every worktree. The hook falls back
+to a full lint whenever the pushed range cannot be resolved or is very large, so
+an unverified push never reports a pass.
+
+To push anyway — a revert or a hotfix, for example:
+
+```bash
+git push --no-verify
+```
+
+Warnings do not block a push. This repository carries documented cross-feature
+import warnings; only errors fail the build.
+
 ## Prepare the staging release candidate
 
 Use one dedicated worktree for the shared `staging` branch. This prevents a feature worktree from accidentally becoming the staging or production deployment source.

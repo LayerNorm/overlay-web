@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+#
+# Lint what is being pushed, before it becomes a Vercel build failure.
+#
+# `next build` runs ESLint, so an error such as React Compiler's
+# `react-hooks/preserve-manual-memoization` fails the deploy several minutes
+# after the push, in a remote log. This runs the same rules over the commits
+# being pushed, in seconds.
+#
+# Installed by `npm run hooks:install` (also run automatically by `npm install`),
+# which points core.hooksPath at .githooks so the hook is shared and reviewed
+# rather than living untracked in each clone's .git/hooks.
+#
+# Escape hatches, for when a push must go out regardless:
+#   git push --no-verify
+#   OVERLAY_SKIP_PRE_PUSH_LINT=1 git push
+set -uo pipefail
+
+if [ -n "${OVERLAY_SKIP_PRE_PUSH_LINT:-}" ]; then
+  echo "pre-push: lint skipped via OVERLAY_SKIP_PRE_PUSH_LINT"
+  exit 0
+fi
+
+zero="0000000000000000000000000000000000000000"
+status=0
+
+# Git feeds one line per ref being pushed: <local ref> <local sha> <remote ref> <remote sha>
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  # Deleting a remote branch pushes no content to lint.
+  [ "$local_sha" = "$zero" ] && continue
+
+  if [ "$remote_sha" = "$zero" ]; then
+    # New remote branch: there is no previous remote state to diff against, so
+    # fall back to where this branch left the trunk.
+    base="$(git merge-base origin/main "$local_sha" 2>/dev/null)" \
+      || base="$(git rev-parse "${local_sha}^" 2>/dev/null)" \
+      || continue
+  else
+    base="$remote_sha"
+  fi
+
+  node scripts/lint-changed.mjs --range "${base}..${local_sha}" || status=1
+done
+
+if [ "$status" -ne 0 ]; then
+  echo ""
+  echo "pre-push: ESLint failed — this would fail the Vercel build too."
+  echo "pre-push: fix the errors, or push with --no-verify if that is deliberate."
+fi
+
+exit "$status"
