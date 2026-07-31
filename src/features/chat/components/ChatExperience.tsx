@@ -48,6 +48,10 @@ import { useChatModelSelectionController } from './chat/useChatModelSelectionCon
 import { useChatRetryController } from './chat/useChatRetryController'
 import { useChatRouteController } from './chat/useChatRouteController'
 import {
+  buildWorkspaceHref,
+  resolveChatBasePath,
+} from '@/features/workspaces/lib/workspace-routing'
+import {
   TEMPORARY_CHAT_ID,
   useChatSendController,
 } from './chat/useChatSendController'
@@ -539,8 +543,10 @@ export default function ChatExperience({
   const wasStreamingRef = useRef(false)
 
   const replaceActiveChatRoute = useCallback(() => {
-    if (!hideSidebar) router.replace('/app/chat')
-  }, [hideSidebar, router])
+    if (hideSidebar) return
+    const livePathname = typeof window !== 'undefined' ? window.location.pathname : pathname
+    router.replace(resolveChatBasePath(livePathname))
+  }, [hideSidebar, pathname, router])
 
   const {
     activeChatTitle,
@@ -2094,7 +2100,12 @@ export default function ChatExperience({
                 setShowModeMenu,
                 modeMenuRef,
                 onNavigateMode: (nextMode) => {
-                  router.push(nextMode === 'chat' ? '/app/chat' : '/app/automations')
+                  const livePathname = typeof window !== 'undefined' ? window.location.pathname : pathname
+                  const workspaceId = activeWorkspaceId
+                  const nextHref = nextMode === 'chat'
+                    ? (workspaceId ? buildWorkspaceHref(workspaceId, '/app/chat') : resolveChatBasePath(livePathname))
+                    : (workspaceId ? buildWorkspaceHref(workspaceId, '/app/automations') : '/app/automations')
+                  router.push(nextHref)
                   setShowModeMenu(false)
                 },
               },

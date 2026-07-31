@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   buildWorkspaceHref,
+  isSameChatSurface,
   readWorkspaceIdFromPath,
+  resolveChatBasePath,
   resolveWorkspaceSurface,
 } from './workspace-routing'
 
@@ -22,4 +24,12 @@ test('workspace routing reads and safely decodes canonical workspace ids', () =>
   assert.equal(readWorkspaceIdFromPath('/app/w/acme%20labs/chat'), 'acme labs')
   assert.equal(readWorkspaceIdFromPath('/app/chat'), null)
   assert.equal(readWorkspaceIdFromPath('/app/w/%E0%A4%A/chat'), null)
+})
+
+test('chat base path preserves the canonical workspace route', () => {
+  assert.equal(resolveChatBasePath('/app/w/ws_1/chat'), '/app/w/ws_1/chat')
+  assert.equal(resolveChatBasePath('/app/chat'), '/app/chat')
+  assert.equal(resolveChatBasePath('/app/automations'), '/app/automations')
+  assert.equal(isSameChatSurface('/app/w/ws_1/chat', '/app/w/ws_1/chat'), true)
+  assert.equal(isSameChatSurface('/app/w/ws_1/chat', '/app/chat'), false)
 })
