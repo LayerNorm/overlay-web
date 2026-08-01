@@ -108,6 +108,25 @@ export class ConversationsClient {
     return this.http.request('/api/v1/conversations/message', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
+  /**
+   * Server-sent stream of a room agent's reply. Returns the raw response so the
+   * caller can read deltas as they arrive.
+   */
+  agentReplyStreamResponse(
+    body: {
+      conversationId: string
+      messageId: string
+      mentionedPrincipalIds?: string[]
+      threadRootMessageId?: string
+    },
+    init?: MutationRequestInit,
+  ) {
+    return this.http.request(
+      '/api/v1/conversations/agent-reply',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
   actResponse(body: ActConversationRequest, init?: MutationRequestInit) {
     return this.http.request('/api/v1/conversations/act', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }

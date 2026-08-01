@@ -55,28 +55,45 @@ function imageAttachments(parts: RoomMessagePart[] | undefined): RoomMessageAtta
 }
 
 /**
- * Maps a stored room message onto the shared transcript view model. Own
- * messages carry the plain body (attachment summaries are lifted into document
- * chips); everyone else's — people and agents alike — render through the
- * assistant block sequence so tool calls and markdown survive.
+ * A message belongs to the reader only when the stored author principal matches
+ * theirs exactly. Anything unattributed stays someone else's: rendering an
+ * unknown author as "You" is the worse failure in a shared room.
+ */
+export function isOwnRoomMessage(
+  message: Pick<RoomMessageRecord, 'authorKind' | 'authorPrincipalId'>,
+  currentPrincipalId: string,
+): boolean {
+  if (message.authorKind !== 'human') return false
+  const author = message.authorPrincipalId?.trim()
+  const reader = currentPrincipalId.trim()
+  return Boolean(author) && Boolean(reader) && author === reader
+}
+
+/**
+ * Maps a stored room message onto the shared transcript view model. People
+ * render as attributed bubbles; agents render through the assistant block
+ * sequence so tool calls and markdown survive.
  */
 export function toRoomMessageView({
   message,
   currentPrincipalId,
   authorName,
   authorColor,
+  mentions = [],
   streaming = false,
 }: {
   message: RoomMessageRecord
   currentPrincipalId: string
   authorName: string
   authorColor?: string
+  mentions?: Array<{ type: string; id: string; name: string }>
   streaming?: boolean
 }): RoomMessageView {
-  const mine = Boolean(message.authorPrincipalId) && message.authorPrincipalId === currentPrincipalId
+  const mine = isOwnRoomMessage(message, currentPrincipalId)
+  const isAgent = message.authorKind === 'agent' || message.authorKind === 'model'
   const { bodyText, docNames } = splitUserDisplayText(stripAttachmentSummary(message.content ?? ''))
   const blocks: AssistantVisualBlock[] = (() => {
-    if (mine) return []
+    if (!isAgent) return []
     const sequence = buildAssistantVisualSequence(displayParts(message.parts))
     if (sequence.length > 0) return sequence
     return bodyText ? [{ kind: 'text', text: bodyText }] : []
@@ -96,6 +113,7 @@ export function toRoomMessageView({
     blocks,
     images: imageAttachments(message.parts),
     documentNames: docNames,
+    mentions,
     streaming: streaming || message.status === 'generating',
   }
 }

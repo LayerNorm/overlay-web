@@ -70,6 +70,8 @@ export interface ConversationMessageRequest {
   clientNonce?: string
   threadRootMessageId?: string
   mentionedPrincipalIds?: string[]
+  /** Caller streams the agent reply itself via `agentReplyStream`. */
+  deferAgentReply?: boolean
 }
 
 export type ActConversationRequest = Record<string, unknown>

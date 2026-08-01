@@ -32,6 +32,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       clientNonce?: string
       threadRootMessageId?: string
       mentionedPrincipalIds?: string[]
+      /**
+       * The caller is watching the agent reply stream, so it triggers the
+       * invocation itself. Skipping it here keeps a mentioned agent from
+       * running twice for one message.
+       */
+      deferAgentReply?: boolean
     }
 
 
@@ -96,7 +102,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         body: normalizedContent,
         mentionedPrincipalIds: body.mentionedPrincipalIds,
       })
-      await invokeWorkspaceAgentsForHumanMessage({
+      if (body.deferAgentReply !== true) await invokeWorkspaceAgentsForHumanMessage({
         accessToken: context.auth.accessToken,
         actorUserId: context.auth.userId,
         workspaceId: context.workspace.workspace.id,

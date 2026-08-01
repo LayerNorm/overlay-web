@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { generateText } from 'ai'
+import { streamText } from 'ai'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -8,6 +8,12 @@ import { logger } from '@/server/observability/logger'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import { ActEntitlementService } from '@/server/conversations/ActEntitlementService'
 import { resolveMentionFirstInvocations } from './mention-policy'
+
+export type WorkspaceAgentDelta = {
+  agentPrincipalId: string
+  agentName: string
+  delta: string
+}
 
 export async function invokeWorkspaceAgentsForHumanMessage(args: {
   accessToken?: string
@@ -17,6 +23,14 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
   mentionedPrincipalIds?: string[]
   threadRootMessageId?: string
   workspaceId: string
+  /**
+   * Called for every token as the agent writes. The reply is persisted the same
+   * way with or without a listener; streaming only decides whether the caller
+   * watches it arrive.
+   */
+  onDelta?: (event: WorkspaceAgentDelta) => void
+  /** Aborts generation when the watching client disconnects. */
+  signal?: AbortSignal
 }): Promise<void> {
   const server = getOverlayServerContext()
   const conversationId = args.conversationId as Id<'conversations'>
@@ -102,11 +116,13 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
           return `${author}: ${message.content}`
         })
         .join('\n')
-      const result = await generateText({
+      const result = streamText({
         model,
         maxOutputTokens: 2_000,
         temperature: 0.4,
-        abortSignal: AbortSignal.timeout(120_000),
+        abortSignal: args.signal
+          ? AbortSignal.any([args.signal, AbortSignal.timeout(120_000)])
+          : AbortSignal.timeout(120_000),
         prompt: [
           `You are ${agent.name}, a named AI teammate in an Overlay workspace.`,
           agent.instructions,
@@ -118,7 +134,22 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
           transcript,
         ].join('\n'),
       })
-      const content = result.text.trim()
+      let streamed = ''
+      try {
+        for await (const delta of result.textStream) {
+          streamed += delta
+          args.onDelta?.({ agentPrincipalId: agent.principalId, agentName: agent.name, delta })
+        }
+      } catch (streamError) {
+        // A disconnect or timeout still leaves partial text worth keeping; an
+        // empty result falls through to the release path below.
+        logger.warn('[workspace-agent] stream ended early', {
+          agentId: agent.id,
+          error: streamError instanceof Error ? streamError.message : String(streamError),
+        })
+      }
+      const usage = await Promise.resolve(result.usage).catch((_error) => undefined)
+      const content = streamed.trim()
       if (!content) {
         await server.chatUsagePolicy.releaseReservation({
           reason: 'workspace_agent_empty_response',
@@ -142,12 +173,12 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         content,
         contentType: 'text',
         modelId: agent.modelId,
-        tokens: usageTokens(result.usage),
+        tokens: usageTokens(usage),
         skipMemoryExtraction: true,
       })
       if (!responseId) logger.warn('[workspace-agent] response was not persisted', { agentId: agent.id })
-      const tokens = usageTokens(result.usage) ?? { input: 0, output: 0 }
-      const usage = await server.chatUsagePolicy.recordFinishedUsage({
+      const tokens = usageTokens(usage) ?? { input: 0, output: 0 }
+      const recorded = await server.chatUsagePolicy.recordFinishedUsage({
         forceFreeTierLimits: !paid,
         inputTokens: tokens.input,
         modelId: agent.modelId,
@@ -155,7 +186,7 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         reservationId,
         userId: args.actorUserId,
       })
-      reservationId = usage.reservationId
+      reservationId = recorded.reservationId
     } catch (error) {
       await server.chatUsagePolicy.releaseReservation({
         reason: 'workspace_agent_invocation_failed',

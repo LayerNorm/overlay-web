@@ -31,7 +31,7 @@ const SHOWCASE_TEAMS: WorkspaceManagementItem[] = [{
 
 export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
   const router = useRouter()
-  const { activeWorkspace, activeWorkspaceId } = useWorkspace()
+  const { activeWorkspaceId } = useWorkspace()
   const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>(showcase ? SHOWCASE_AGENTS : [])
   const [teams, setTeams] = useState<WorkspaceManagementItem[]>(showcase ? SHOWCASE_TEAMS : [])
   const [canCreate, setCanCreate] = useState(showcase)
@@ -161,7 +161,6 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
       header={
         <AppScreenHeader
           title="Agents"
-          description={`Create and manage named AI teammates for ${showcase ? 'Acme' : activeWorkspace?.name ?? 'this workspace'}.`}
           actions={canCreate ? <Button variant="secondary" onClick={() => { setEditing(null); setError(null); setDialogOpen(true) }}><Plus size={14} /> New agent</Button> : null}
           className="px-6"
         />

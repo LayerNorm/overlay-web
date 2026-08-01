@@ -3,7 +3,7 @@ import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { RoomMessageItem } from './RoomMessageItem'
-import { toRoomMessageView, type RoomMessageRecord } from './room-message-view'
+import { isOwnRoomMessage, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -24,7 +24,12 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
 function render(message: RoomMessageRecord, authorName = 'Maya Chen') {
   return renderToStaticMarkup(
     <RoomMessageItem
-      message={toRoomMessageView({ message, currentPrincipalId: ME, authorName })}
+      message={toRoomMessageView({
+        message,
+        currentPrincipalId: ME,
+        authorName,
+        mentions: [{ type: 'person', id: 'principal_maya', name: 'Maya Chen' }],
+      })}
       reactions={[{ emoji: '👍', count: 2, reactedByCurrentPrincipal: true }]}
       replyCount={1}
       pinned={false}
@@ -48,41 +53,58 @@ function render(message: RoomMessageRecord, authorName = 'Maya Chen') {
   )
 }
 
-test('a member’s own message reuses the personal chat user bubble', () => {
+test('a member’s own message reuses the personal chat user bubble, attributed to You', () => {
   const html = render(record())
   assert.match(html, /Ship the onboarding fix/)
   // Right-aligned bubble column, same as the chat transcript's user side.
   assert.match(html, /justify-end/)
+  // Even your own message says who wrote it: an anonymous bubble in a shared
+  // room reads as first person no matter who sent it.
+  assert.match(html, />You</)
   // Own messages can be edited and deleted, never reported.
   assert.match(html, /aria-label="Edit message"/)
   assert.match(html, /aria-label="Delete message"/)
   assert.doesNotMatch(html, /aria-label="Report message"/)
 })
 
-test('another member’s message renders markdown through the shared block renderer', () => {
+test('another member’s message is attributed to them and never rendered as yours', () => {
   const html = render(record({
     id: 'message_2',
     authorPrincipalId: 'principal_maya',
-    content: '**Bold** finding',
+    content: 'Onboarding is still the gap',
   }))
-  assert.match(html, /<strong>Bold<\/strong>/)
   assert.match(html, /Maya Chen/)
+  assert.doesNotMatch(html, />You</)
+  assert.match(html, /justify-start/)
   assert.match(html, /aria-label="Report message"/)
   assert.doesNotMatch(html, /aria-label="Edit message"/)
 })
 
-test('agent tool calls survive into the room transcript', () => {
+test('an unattributed message is never claimed as yours', () => {
+  assert.equal(isOwnRoomMessage({ authorKind: 'human' }, ME), false)
+  assert.equal(isOwnRoomMessage({ authorKind: 'human', authorPrincipalId: '' }, ME), false)
+  assert.equal(isOwnRoomMessage({ authorKind: 'human', authorPrincipalId: ME }, ''), false)
+  assert.equal(isOwnRoomMessage({ authorKind: 'agent', authorPrincipalId: ME }, ME), false)
+  assert.equal(isOwnRoomMessage({ authorKind: 'human', authorPrincipalId: ME }, ME), true)
+})
+
+test('agent replies render markdown and tool output through the shared block renderer', () => {
   const html = render(record({
     id: 'message_3',
     authorKind: 'agent',
     authorPrincipalId: 'principal_agent',
-    content: 'Searched the web',
+    content: '**Bold** finding',
     parts: [
-      { type: 'text', text: 'Here is what I found' },
+      { type: 'text', text: '**Bold** finding' },
     ],
   }), 'Bagel - GTM')
-  assert.match(html, /Here is what I found/)
+  assert.match(html, /<strong>Bold<\/strong>/)
   assert.match(html, /Bagel - GTM/)
+})
+
+test('room members named in a message render as mention chips', () => {
+  const html = render(record({ id: 'message_6', content: '@Maya Chen can you take this?' }))
+  assert.match(html, /class="mx-0\.5 inline-flex[^"]*"[^>]*>@Maya Chen</)
 })
 
 test('collaboration operations sit in the hover action row', () => {
