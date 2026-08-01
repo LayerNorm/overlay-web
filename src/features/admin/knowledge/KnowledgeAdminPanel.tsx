@@ -25,6 +25,7 @@ import type {
 } from '@overlay/authz-contracts'
 import { Button, IconButton } from '@overlay/ui'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { Select } from '@overlay/ui/primitives'
 
 const EMPTY_DIRECTORY: KnowledgeBaseShareDirectoryResponse = { users: [], groups: [], roles: [] }
 
@@ -269,16 +270,16 @@ export function KnowledgeAdminPanel({ canManage }: { canManage: boolean }) {
 
               {canManage ? (
                 <div className="mt-6 grid gap-2 sm:grid-cols-[100px_minmax(0,1fr)_100px_auto]">
-                  <select aria-label="Principal type" value={principalType} onChange={(event) => { setPrincipalType(event.target.value as AuthorizationPrincipalType); setPrincipalId('') }} className="h-9 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs">
+                  <Select aria-label="Principal type" value={principalType} onChange={(event) => { setPrincipalType(event.target.value as AuthorizationPrincipalType); setPrincipalId('') }} className="h-9 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs">
                     <option value="user">User</option><option value="group">Group</option><option value="role">Role</option>
-                  </select>
-                  <select aria-label="Knowledge access principal" value={principalId} onChange={(event) => setPrincipalId(event.target.value)} className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs">
+                  </Select>
+                  <Select aria-label="Knowledge access principal" value={principalId} onChange={(event) => setPrincipalId(event.target.value)} className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs">
                     <option value="">Select {principalType}</option>
                     {directoryEntries(directory, principalType).map((entry) => <option key={entry.id} value={entry.id}>{entryLabel(entry)}</option>)}
-                  </select>
-                  <select aria-label="Access role" value={accessRole} onChange={(event) => setAccessRole(event.target.value as typeof accessRole)} className="h-9 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs">
+                  </Select>
+                  <Select aria-label="Access role" value={accessRole} onChange={(event) => setAccessRole(event.target.value as typeof accessRole)} className="h-9 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs">
                     <option value="viewer">Viewer</option><option value="editor">Editor</option>
-                  </select>
+                  </Select>
                   <IconButton aria-label="Add knowledge access" onClick={() => void addGrant()} disabled={!principalId || busy}><Plus size={14} /></IconButton>
                 </div>
               ) : null}
@@ -306,7 +307,7 @@ export function KnowledgeAdminPanel({ canManage }: { canManage: boolean }) {
                   </p>
                   {canManage ? (
                     <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                      <select
+                      <Select
                         aria-label="Default knowledge group"
                         value={defaultGroupId}
                         onChange={(event) => setDefaultGroupId(event.target.value)}
@@ -318,7 +319,7 @@ export function KnowledgeAdminPanel({ canManage }: { canManage: boolean }) {
                           .map((group) => (
                             <option key={group.id} value={group.id}>{entryLabel(group)}</option>
                           ))}
-                      </select>
+                      </Select>
                       <Button
                         variant="secondary"
                         onClick={() => void addDefaultGroup()}

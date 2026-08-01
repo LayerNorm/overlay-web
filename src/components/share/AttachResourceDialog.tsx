@@ -10,6 +10,7 @@ import type {
 } from '@overlay/workspace-contracts'
 import { shareRoleOptions, SHARE_RESOURCE_LABELS } from '@/shared/share/share-access-policy'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { Select } from '@overlay/ui/primitives'
 
 export type AttachableResource = {
   resourceType: WorkspaceShareResourceType
@@ -167,7 +168,7 @@ export function AttachResourceDialog({
           ) : (
             <>
               <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_110px]">
-                <select
+                <Select
                   value={selected}
                   aria-label="Resource"
                   onChange={(event) => { setSelected(event.target.value); setImpact(null) }}
@@ -179,8 +180,8 @@ export function AttachResourceDialog({
                       {item.title} · {SHARE_RESOURCE_LABELS[item.resourceType]}
                     </option>
                   ))}
-                </select>
-                <select
+                </Select>
+                <Select
                   value={role}
                   aria-label="Permission"
                   onChange={(event) => setRole(event.target.value as WorkspaceShareAccessRole)}
@@ -189,7 +190,7 @@ export function AttachResourceDialog({
                   {shareRoleOptions(resource?.resourceType ?? 'file').map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               {resource && !impact ? (

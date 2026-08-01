@@ -84,6 +84,7 @@ import {
 } from '@/shared/projects/project-settings'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 import { OVERLAY_TOOL_IDS } from '@overlay/tools-core'
+import { Select } from '@overlay/ui/primitives'
 
 type HubChat = ProjectChatSummary
 type ProjectFileRecord = ProjectFileSummary
@@ -800,7 +801,7 @@ function ProjectHubBody({
   const fileActions = (
     <div className="flex items-center gap-1.5">
       {attachedKnowledgeBases.length > 0 ? (
-        <select
+        <Select
           value={promotionTargetId}
           onChange={(event) => setPromotionTargetId(event.target.value)}
           className="h-8 max-w-44 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)]"
@@ -809,7 +810,7 @@ function ProjectHubBody({
           {attachedKnowledgeBases.map((base) => (
             <option key={base.id} value={base.id}>Promote to {base.title}</option>
           ))}
-        </select>
+        </Select>
       ) : null}
       <button
         type="button"
@@ -915,7 +916,7 @@ function ProjectHubBody({
 
       <label className="block text-xs font-medium text-[var(--foreground)]">
         Default model
-        <select
+        <Select
           value={projectSettings.preferredModelId ?? ''}
           onChange={(event) => void saveProjectSettings({
             ...projectSettings,
@@ -927,13 +928,13 @@ function ProjectHubBody({
           {getModelsByIntelligence(false).map((model) => (
             <option key={model.id} value={model.id}>{model.name}</option>
           ))}
-        </select>
+        </Select>
       </label>
 
       <div className="mt-4">
         <label className="block text-xs font-medium text-[var(--foreground)]">
           Overlay tool policy
-          <select
+          <Select
             value={projectSettings.toolPolicy?.mode ?? 'inherit'}
             onChange={(event) => void saveProjectSettings({
               ...projectSettings,
@@ -949,7 +950,7 @@ function ProjectHubBody({
             <option value="inherit">Inherit account tools</option>
             <option value="allowlist">Allow only selected tools</option>
             <option value="denylist">Allow all except selected tools</option>
-          </select>
+          </Select>
         </label>
         {projectSettings.toolPolicy && projectSettings.toolPolicy.mode !== 'inherit' ? (
           <div className="mt-3 grid max-h-56 gap-2 overflow-y-auto sm:grid-cols-2">
@@ -1074,7 +1075,7 @@ function ProjectHubBody({
       ) : null}
       <label className="block text-xs font-medium text-[var(--foreground)]">
         Attach a knowledge base
-        <select
+        <Select
           value=""
           disabled={
             !knowledgeBaseSettingsLoaded
@@ -1095,7 +1096,7 @@ function ProjectHubBody({
           {attachableKnowledgeBases.map((base) => (
             <option key={base.id} value={base.id}>{base.title}</option>
           ))}
-        </select>
+        </Select>
       </label>
       <p className="mt-2 min-h-4 text-[11px] text-[var(--muted-light)]">
         {savingKnowledgeBase
@@ -1111,7 +1112,7 @@ function ProjectHubBody({
           <label className="block text-xs font-medium text-[var(--foreground)]">
             Copy trusted knowledge into working files
             <div className="mt-1.5 flex gap-2">
-              <select
+              <Select
                 value={copySourceId}
                 onChange={(event) => setCopySourceId(event.target.value)}
                 className="h-10 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)]"
@@ -1120,7 +1121,7 @@ function ProjectHubBody({
                 {knowledgeSources.map(({ source }) => (
                   <option key={source.id} value={source.id}>{source.title}</option>
                 ))}
-              </select>
+              </Select>
               <button
                 type="button"
                 disabled={!copySourceId}

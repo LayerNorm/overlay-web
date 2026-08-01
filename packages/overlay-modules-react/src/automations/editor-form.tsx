@@ -10,6 +10,7 @@ import type {
 import { MIN_AUTOMATION_INTERVAL_MINUTES, WEEKDAY_LABELS } from '@overlay/app-core/automations'
 import { SettingsCard, SettingsToggle } from '@overlay/modules-react/settings'
 import { AutomationGraphCanvas } from './graph-canvas'
+import { Select } from '@overlay/ui/primitives'
 
 export interface AutomationModelOption {
   id: string
@@ -150,7 +151,7 @@ export function AutomationEditorForm({
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <label className="block text-sm font-medium text-[var(--foreground)]">
               Frequency
-              <select
+              <Select
                 value={scheduleKind}
                 onChange={(event) => onScheduleKindChange(event.target.value as AutomationSchedule['kind'])}
                 className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
@@ -158,7 +159,7 @@ export function AutomationEditorForm({
                 {scheduleKindOptions.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
-              </select>
+              </Select>
             </label>
             {scheduleKind === 'interval' ? (
               <label className="block text-sm font-medium text-[var(--foreground)]">
@@ -185,7 +186,7 @@ export function AutomationEditorForm({
             {scheduleKind === 'weekly' && (
               <label className="block text-sm font-medium text-[var(--foreground)]">
                 Day of week
-                <select
+                <Select
                   value={dayOfWeek}
                   onChange={(event) => onDayOfWeekChange(Number(event.target.value))}
                   className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none"
@@ -193,7 +194,7 @@ export function AutomationEditorForm({
                   {WEEKDAY_LABELS.map((day, index) => (
                     <option key={day} value={index}>{day}</option>
                   ))}
-                </select>
+                </Select>
               </label>
             )}
             {scheduleKind === 'monthly' && (
@@ -211,7 +212,7 @@ export function AutomationEditorForm({
             )}
             <label className="block text-sm font-medium text-[var(--foreground)]">
               Time zone
-              <select
+              <Select
                 value={timezone}
                 onChange={(event) => onTimezoneChange(event.target.value)}
                 className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none"
@@ -219,11 +220,11 @@ export function AutomationEditorForm({
                 {timeZoneOptions.map((zone) => (
                   <option key={zone.value} value={zone.value}>{zone.label}</option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="block text-sm font-medium text-[var(--foreground)]">
               Model
-              <select
+              <Select
                 value={modelId}
                 onChange={(event) => onModelIdChange(event.target.value)}
                 className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none"
@@ -231,7 +232,7 @@ export function AutomationEditorForm({
                 {modelOptions.map((model) => (
                   <option key={model.id} value={model.id}>{model.name}</option>
                 ))}
-              </select>
+              </Select>
             </label>
           </div>
         </SettingsCard>

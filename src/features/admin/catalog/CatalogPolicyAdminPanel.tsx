@@ -13,6 +13,7 @@ import type {
 } from '@overlay/authz-contracts'
 import { IconButton, SegmentedControl } from '@overlay/ui'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { Select } from '@overlay/ui/primitives'
 
 const EMPTY_DIRECTORY: KnowledgeBaseShareDirectoryResponse = { users: [], groups: [], roles: [] }
 
@@ -205,7 +206,7 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
 
               {canManage ? (
                 <div className="mt-6 grid gap-2 sm:grid-cols-[100px_minmax(0,1fr)_auto]">
-                  <select
+                  <Select
                     aria-label="Catalog principal type"
                     value={principalType}
                     onChange={(event) => {
@@ -217,8 +218,8 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
                     <option value="user">User</option>
                     <option value="group">Group</option>
                     <option value="role">Role</option>
-                  </select>
-                  <select
+                  </Select>
+                  <Select
                     aria-label="Catalog policy principal"
                     value={principalId}
                     onChange={(event) => setPrincipalId(event.target.value)}
@@ -228,7 +229,7 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
                     {directoryEntries(directory, principalType).map((entry) => (
                       <option key={entry.id} value={entry.id}>{entryLabel(entry)}</option>
                     ))}
-                  </select>
+                  </Select>
                   <IconButton
                     aria-label="Restrict catalog resource to principal"
                     onClick={() => void addGrant()}

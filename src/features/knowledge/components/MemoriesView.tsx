@@ -7,6 +7,7 @@ import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, X } from 'luci
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { MemoriesLoadingState } from './MemoriesLoadingState'
+import { Select } from '@overlay/ui/primitives'
 
 interface MemoryListItem {
   key: string
@@ -292,7 +293,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
             <div className="mt-3 grid grid-cols-2 gap-3">
               <label className="text-xs text-[var(--muted)]">
                 Type
-                <select
+                <Select
                   value={addType ?? 'fact'}
                   onChange={(event) => setAddType(event.target.value as Memory['type'])}
                   className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
@@ -302,11 +303,11 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
                   <option value="project">Project</option>
                   <option value="decision">Decision</option>
                   <option value="agent">Agent</option>
-                </select>
+                </Select>
               </label>
               <label className="text-xs text-[var(--muted)]">
                 Importance
-                <select
+                <Select
                   value={addImportance}
                   onChange={(event) => setAddImportance(event.target.value)}
                   className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
@@ -316,7 +317,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
                   <option value="3">3</option>
                   <option value="4">4</option>
                   <option value="5">5</option>
-                </select>
+                </Select>
               </label>
             </div>
             <p className="mt-3 text-[11px] leading-relaxed text-[var(--muted)]">

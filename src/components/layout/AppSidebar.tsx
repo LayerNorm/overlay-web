@@ -790,26 +790,22 @@ export default function AppSidebar({
 
   const railExpanded = !sidebarCollapsed
   const railBrand = sidebarCollapsed ? (
+    // Collapsed, the rail is icon-only: the mark alone stands for the brand and
+    // the wordmark returns with the expanded sidebar.
     <button
       type="button"
       onClick={() => setSidebarCollapsed(false)}
-      className="group inline-flex h-10 w-full items-center justify-start gap-1 rounded-md px-1 transition-colors hover:justify-center hover:bg-[var(--surface-subtle)]"
+      className="group inline-flex h-10 w-full items-center justify-center rounded-md transition-colors hover:bg-[var(--surface-subtle)]"
       aria-label="Expand sidebar"
       title="Expand sidebar"
     >
       <Image
         src={brandConfig.logoSrc}
         alt={brandConfig.logoAlt ?? ''}
-        width={8}
-        height={8}
+        width={10}
+        height={10}
         className="shrink-0 group-hover:hidden"
       />
-      <span
-        className="truncate text-[11px] font-medium tracking-tight text-[var(--foreground)] group-hover:hidden"
-        style={{ fontFamily: 'var(--font-serif)' }}
-      >
-        {brandConfig.shortName ?? brandConfig.name}
-      </span>
       <ChevronRight size={16} className="hidden text-[var(--foreground)] group-hover:block" />
     </button>
   ) : (
