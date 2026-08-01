@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  BookOpen, CreditCard, House, LayoutDashboard, MessageSquare, ScrollText, User,
+  CreditCard, FileText, House, LayoutDashboard, MessageSquare, ScrollText, User,
   ChevronUp, Loader2, Menu, X, Settings, ChevronLeft, ChevronRight, ShieldCheck,
   Bot, Brain, Mail, Palette, UsersRound, Webhook,
 } from 'lucide-react'
@@ -507,9 +507,7 @@ export default function AppSidebar({
                       ? 'settings'
                       : null
   const hasResourcePanel = panelKind != null && RESOURCE_PANEL_KINDS.has(panelKind)
-  // Showcase marketing pages (home/manifesto/pricing) have no contextual panel
-  // of their own; they get a minimal panel so the showcase links stay visible.
-  const showSecondaryPanel = panelKind != null || publicShowcase
+  const showSecondaryPanel = panelKind != null
   const panelTitle = panelKind
     ? PANEL_KIND_TITLES[panelKind]
     : brandConfig.shortName ?? brandConfig.name
@@ -719,13 +717,13 @@ export default function AppSidebar({
     }
     : null
 
-  const showcasePrimaryLinks = publicShowcase || user
+  const showcasePrimaryLinks = publicShowcase
     ? [
       { id: 'app', label: 'App', icon: LayoutDashboard, href: ROOT_APP_DESTINATION },
       { id: 'home', label: 'Home', icon: House, href: '/app/home?showcase=1' },
       { id: 'manifesto', label: 'Manifesto', icon: ScrollText, href: '/app/manifesto?showcase=1' },
       { id: 'pricing', label: 'Pricing', icon: CreditCard, href: '/app/pricing?showcase=1' },
-      { id: 'docs', label: 'Docs', icon: BookOpen, href: MARKETING_DOCS_URL },
+      { id: 'docs', label: 'Docs', icon: FileText, href: MARKETING_DOCS_URL },
     ]
     : []
 

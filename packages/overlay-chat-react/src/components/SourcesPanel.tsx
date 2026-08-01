@@ -108,7 +108,6 @@ export function SourcesPanel({
         closeLabel="Close sources"
         aria-label="Sources"
         aria-hidden={!open}
-        compactHeader
         className="bg-[var(--sidebar-surface)]"
         bodyClassName="overflow-y-auto px-3 py-3"
       >
@@ -132,7 +131,6 @@ export function SourcesPanel({
           title="Sources"
           onClose={onClose}
           closeLabel="Close sources"
-          compactHeader
           className="bg-[var(--sidebar-surface)]"
           bodyClassName="overflow-y-auto px-3 py-3"
         >
