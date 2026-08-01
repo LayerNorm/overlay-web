@@ -133,6 +133,7 @@ export function AgentEditorDialog({
               value={modelOptions.some((option) => option.value === modelId) ? modelId : (modelOptions[0]?.value ?? modelId)}
               options={modelOptions.length > 0 ? modelOptions : [{ value: modelId, label: modelId }]}
               onChange={setModelId}
+              portal
               buttonClassName="h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]"
             />
           </label>

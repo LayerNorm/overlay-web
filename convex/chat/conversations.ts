@@ -1,5 +1,6 @@
 import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
+import { selectRecentConversationMessages } from '@/shared/chat/recent-conversation-messages'
 import { internalMutation, mutation, query } from '../_generated/server'
 import { internal } from '../_generated/api'
 import type { Doc, Id } from '../_generated/dataModel'
@@ -850,18 +851,7 @@ export const getRecentMessages = query({
       })
       .order('desc')
       .take(scanLimit)
-    const selectedTurnIds: string[] = []
-    for (const message of recentScan) {
-      if (message.role !== 'user') continue
-      const turnId = message.turnId?.trim() || message._id
-      if (selectedTurnIds.includes(turnId)) continue
-      selectedTurnIds.push(turnId)
-      if (selectedTurnIds.length >= safeLimit) break
-    }
-    const selectedTurnIdSet = new Set(selectedTurnIds)
-    const messages = recentScan
-      .filter((message) => selectedTurnIdSet.has(message.turnId?.trim() || message._id))
-      .sort((a, b) => a.createdAt - b.createdAt)
+    const messages = selectRecentConversationMessages(recentScan, safeLimit)
     const generating = messages.filter((message) => message.status === 'generating')
     if (generating.length === 0) {
       return messages.map((message) => compactMessageForHistory(message, compactToolPayloads))
