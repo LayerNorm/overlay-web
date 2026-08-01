@@ -29,6 +29,8 @@ export interface AppSidebarProps {
   renderAutomationsPanel?: (context: AppSidebarNavigateContext) => ReactNode
   renderFilesPanel?: (context: AppSidebarNavigateContext) => ReactNode
   renderProjectsPanel?: (context: AppSidebarNavigateContext) => ReactNode
+  renderAgentsPanel?: (context: AppSidebarNavigateContext) => ReactNode
+  renderKnowledgePanel?: (context: AppSidebarNavigateContext) => ReactNode
   /** Injected from the app composition root to keep workspace feature UI out of shared chrome. */
   workspace?: AppSidebarWorkspaceAdapter
 }

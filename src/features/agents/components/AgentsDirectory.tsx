@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation'
 import { AgentEditorDialog } from './AgentEditorDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
+import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
 
 const SHOWCASE_AGENTS: WorkspaceAgentDirectoryItem[] = [
   ['showcase-research', 'Research partner', 'Finds primary evidence and challenges assumptions.', '#2563eb'],
@@ -61,6 +62,16 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
   }, [activeWorkspaceId, showcase])
 
   useEffect(() => { void load() }, [load])
+
+  useEffect(() => {
+    const openCreateDialog = () => {
+      setEditing(null)
+      setError(null)
+      setDialogOpen(true)
+    }
+    window.addEventListener(NEW_AGENT_EVENT, openCreateDialog)
+    return () => window.removeEventListener(NEW_AGENT_EVENT, openCreateDialog)
+  }, [])
 
   const teamsWithAgents = useMemo(() => teams.map((team) => ({
     team,

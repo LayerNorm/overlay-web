@@ -6,8 +6,12 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
 import {
   Bell,
+  BookOpen,
+  Bot,
+  Brain,
   Hash,
   Inbox,
+  Loader2,
   Mail,
   MessageSquare,
   Package,
@@ -15,6 +19,8 @@ import {
   Server,
   Sparkles,
 } from 'lucide-react'
+import type { KnowledgeBase } from '@overlay/app-core'
+import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
   KNOWLEDGE_ENTITY_MUTATION_EVENT,
@@ -390,6 +396,122 @@ export function ProjectsInlinePanel({
           {loadingMore ? 'Loading...' : 'Load more'}
         </button>
       ) : null}
+    </SidebarResourceList>
+  )
+}
+
+const resourceRowClass =
+  'flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+
+export function AgentsInlinePanel({
+  workspaceId,
+  baseHref = '/app/agents',
+  onNavigate,
+}: {
+  workspaceId: string | null
+  baseHref?: string
+  onNavigate?: () => void
+}) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const activeAgentId = searchParams?.get('agent') ?? null
+
+  const loadAgents = useCallback(async () => {
+    if (!workspaceId) {
+      setAgents([])
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    try {
+      const response = await overlayAppClient.agents.list(workspaceId)
+      setAgents(arrayOrEmpty<WorkspaceAgentDirectoryItem>(response.agents))
+    } catch {
+      setAgents([])
+    } finally {
+      setLoading(false)
+    }
+  }, [workspaceId])
+
+  useEffect(() => { void loadAgents() }, [loadAgents])
+
+  return (
+    <SidebarResourceList>
+      {loading ? (
+        <div className="flex items-center gap-2 px-2.5 py-2 text-xs text-[var(--muted-light)]">
+          <Loader2 size={13} className="animate-spin" /> Loading agents...
+        </div>
+      ) : agents.length ? (
+        agents.map((agent) => (
+          <button
+            key={agent.id}
+            type="button"
+            className={`${resourceRowClass} ${activeAgentId === agent.id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+            onClick={() => {
+              router.push(`${baseHref}?agent=${encodeURIComponent(agent.id)}`)
+              onNavigate?.()
+            }}
+          >
+            <Bot size={13} className="shrink-0" />
+            <span className="truncate">{agent.name}</span>
+          </button>
+        ))
+      ) : (
+        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No agents yet</p>
+      )}
+    </SidebarResourceList>
+  )
+}
+
+export function KnowledgeInlinePanel({
+  baseHref = '/app/knowledge',
+  onNavigate,
+}: {
+  baseHref?: string
+  onNavigate?: () => void
+}) {
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
+  const [loading, setLoading] = useState(true)
+  const searchParams = useSearchParams()
+  const activeKnowledgeBaseId = searchParams?.get('knowledgeBase') ?? null
+
+  const loadKnowledgeBases = useCallback(async () => {
+    setLoading(true)
+    try {
+      const response = await overlayAppClient.knowledgeBases.list()
+      setKnowledgeBases(arrayOrEmpty<KnowledgeBase>(response.knowledgeBases))
+    } catch {
+      setKnowledgeBases([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { void loadKnowledgeBases() }, [loadKnowledgeBases])
+
+  return (
+    <SidebarResourceList>
+      {loading ? (
+        <div className="flex items-center gap-2 px-2.5 py-2 text-xs text-[var(--muted-light)]">
+          <Loader2 size={13} className="animate-spin" /> Loading knowledge...
+        </div>
+      ) : knowledgeBases.length ? (
+        knowledgeBases.map((knowledgeBase) => (
+          <Link
+            key={knowledgeBase.id}
+            href={`${baseHref}/${encodeURIComponent(knowledgeBase.id)}`}
+            onClick={onNavigate}
+            className={`${resourceRowClass} ${activeKnowledgeBaseId === knowledgeBase.id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+          >
+            {knowledgeBase.kind === 'personal' ? <Brain size={13} className="shrink-0" /> : <BookOpen size={13} className="shrink-0" />}
+            <span className="truncate">{knowledgeBase.title}</span>
+          </Link>
+        ))
+      ) : (
+        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No knowledge bases yet</p>
+      )}
     </SidebarResourceList>
   )
 }

@@ -5,6 +5,7 @@ import { getOverlaySession } from '@/server/auth/session'
 import { getOverlayCapabilities } from '@/server/capabilities'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { KnowledgeRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { PublicShowcaseKnowledgeBasesView } from '@/features/showcase/PublicShowcaseKnowledgeBasesView'
 
 const KnowledgeBaseListView = dynamic(
   () => import('@/features/knowledge-bases/components/KnowledgeBaseListView')
@@ -17,7 +18,15 @@ async function KnowledgeBaseListContent({ userId }: { userId: string }) {
   return <KnowledgeBaseListView initialKnowledgeBases={knowledgeBases} userId={userId} />
 }
 
-export default async function KnowledgePage() {
+export default async function KnowledgePage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ showcase?: string | string[] }>
+}) {
+  const params = await searchParams
+  const publicShowcase = Array.isArray(params?.showcase) ? params.showcase[0] === '1' : params?.showcase === '1'
+  if (publicShowcase) return <PublicShowcaseKnowledgeBasesView />
+
   const capabilities = await getOverlayCapabilities()
   if (!capabilities.knowledge) notFound()
 

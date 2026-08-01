@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { BookOpen, Brain, Loader2, Plus, Search, Users } from 'lucide-react'
@@ -9,6 +9,7 @@ import { Button, DialogFrame, IconButton } from '@overlay/ui'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useVisibleReconciliation } from '@/components/useVisibleReconciliation'
+import { NEW_KNOWLEDGE_BASE_EVENT } from '@/shared/workspace/sidebar-events'
 
 export function KnowledgeBaseListView({
   initialKnowledgeBases,
@@ -27,6 +28,12 @@ export function KnowledgeBaseListView({
   const [creating, setCreating] = useState(false)
   const [openingPersonal, setOpeningPersonal] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const openCreateDialog = () => setCreateOpen(true)
+    window.addEventListener(NEW_KNOWLEDGE_BASE_EVENT, openCreateDialog)
+    return () => window.removeEventListener(NEW_KNOWLEDGE_BASE_EVENT, openCreateDialog)
+  }, [])
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()

@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  MessageSquare, User,
+  BookOpen, CreditCard, House, LayoutDashboard, MessageSquare, ScrollText, User,
   ChevronUp, Loader2, Menu, X, Settings, ChevronLeft, ChevronRight, ShieldCheck,
   Bot, Brain, Mail, Palette, UsersRound, Webhook,
 } from 'lucide-react'
@@ -24,7 +24,9 @@ import {
   SidebarSection,
 } from '@overlay/ui/primitives'
 import {
+  AgentsInlinePanel,
   FilesInlinePanel,
+  KnowledgeInlinePanel,
   ProjectsInlinePanel,
   chatsInlineItems,
   toolsInlineItems,
@@ -64,6 +66,7 @@ import {
 import type { AppSidebarProps } from './appSidebarTypes'
 import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
 import { ROOT_APP_DESTINATION, ROOT_SHOWCASE_DESTINATION } from '@/shared/auth/root-entry'
+import { NEW_AGENT_EVENT, NEW_KNOWLEDGE_BASE_EVENT } from '@/shared/workspace/sidebar-events'
 
 export type {
   AppSidebarChatPanelContext,
@@ -72,13 +75,15 @@ export type {
   AppSidebarWorkspaceAdapter,
 } from './appSidebarTypes'
 
-type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'projects' | 'automations' | 'tools' | 'settings'
+type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'projects' | 'agents' | 'knowledge' | 'automations' | 'tools' | 'settings'
 
 const PANEL_KIND_TITLES: Record<SecondaryPanelKind, string> = {
   chat: 'Chats',
   files: 'Files',
   notes: 'Notes',
   projects: 'Projects',
+  agents: 'Agents',
+  knowledge: 'Knowledge',
   automations: 'Automations',
   tools: 'Extensions',
   settings: 'Settings',
@@ -100,6 +105,8 @@ const RESOURCE_PANEL_KINDS: ReadonlySet<SecondaryPanelKind> = new Set([
   'files',
   'notes',
   'projects',
+  'agents',
+  'knowledge',
   'automations',
 ])
 
@@ -109,6 +116,8 @@ export default function AppSidebar({
   renderAutomationsPanel,
   renderFilesPanel,
   renderProjectsPanel,
+  renderAgentsPanel,
+  renderKnowledgePanel,
   workspace,
 }: AppSidebarProps) {
   const pathname = usePathname() ?? ''
@@ -277,6 +286,8 @@ export default function AppSidebar({
   const notesOpen = pathname.startsWith('/app/notes') || (canonicalWorkspaceRoute && workspaceSurface === 'notes')
   const filesOpen = pathname.startsWith('/app/files') || (canonicalWorkspaceRoute && workspaceSurface === 'files')
   const filesSectionOpen = filesOpen || notesOpen
+  const agentsOpen = pathname.startsWith('/app/agents') || (canonicalWorkspaceRoute && workspaceSurface === 'agents')
+  const knowledgeOpen = pathname.startsWith('/app/knowledge') || (canonicalWorkspaceRoute && workspaceSurface === 'knowledge')
   const chatOpen = pathname.startsWith('/app/chat') || (canonicalWorkspaceRoute && workspaceSurface === 'chat')
   const adminOpen = pathname.startsWith('/app/admin') || (canonicalWorkspaceRoute && workspaceSurface === 'admin')
   const showAdminNavigation = can('administration.access') && !publicShowcase && Boolean(user)
@@ -484,13 +495,17 @@ export default function AppSidebar({
         ? 'notes'
         : projectsOpen
           ? 'projects'
-          : automationsSectionOpen
-            ? 'automations'
-            : toolsOpen
-              ? 'tools'
-              : settingsPathActive
-                ? 'settings'
-                : null
+            : agentsOpen
+              ? 'agents'
+              : knowledgeOpen
+                ? 'knowledge'
+                : automationsSectionOpen
+                  ? 'automations'
+                  : toolsOpen
+                    ? 'tools'
+                    : settingsPathActive
+                      ? 'settings'
+                      : null
   const hasResourcePanel = panelKind != null && RESOURCE_PANEL_KINDS.has(panelKind)
   // Showcase marketing pages (home/manifesto/pricing) have no contextual panel
   // of their own; they get a minimal panel so the showcase links stay visible.
@@ -531,6 +546,10 @@ export default function AppSidebar({
         return 'files'
       case '/app/projects':
         return 'projects'
+      case '/app/agents':
+        return 'agents'
+      case '/app/knowledge':
+        return 'knowledge'
       case '/app/automations':
         return capabilities.automations ? 'automations' : null
       case '/app/tools':
@@ -604,12 +623,22 @@ export default function AppSidebar({
           ? requireAuth('nav')
           : window.dispatchEvent(new CustomEvent(NEW_CHANNEL_EVENT)),
       }
-    : contextualAction
-      ? {
-        label: contextualAction.label,
-        onClick: () => publicShowcase ? requireAuth('nav') : void runSidebarAction(contextualAction),
-      }
-      : null
+      : contextualAction
+        ? {
+          label: contextualAction.label,
+          onClick: () => publicShowcase ? requireAuth('nav') : void runSidebarAction(contextualAction),
+        }
+        : panelKind === 'agents'
+          ? {
+            label: 'New agent',
+            onClick: () => window.dispatchEvent(new CustomEvent(NEW_AGENT_EVENT)),
+          }
+          : panelKind === 'knowledge'
+            ? {
+              label: 'New Knowledge Base',
+              onClick: () => window.dispatchEvent(new CustomEvent(NEW_KNOWLEDGE_BASE_EVENT)),
+            }
+            : null
   const contextualSearchCategory = toMentionCategory(contextualAction?.searchCategory)
 
   // Global Cmd/Ctrl+K command palette. The same dialog is reused by the per-section
@@ -690,15 +719,15 @@ export default function AppSidebar({
     }
     : null
 
-  const showcaseInfoLinks = (
-    <nav aria-label="Overlay information" className="grid grid-cols-2 gap-x-3 gap-y-1 px-2 text-[11px] text-[var(--muted)]">
-      {user ? <Link href={ROOT_APP_DESTINATION} className="hover:text-[var(--foreground)]">App</Link> : null}
-      <Link href="/app/home?showcase=1" className="hover:text-[var(--foreground)]">Home</Link>
-      <Link href="/app/manifesto?showcase=1" className="hover:text-[var(--foreground)]">Manifesto</Link>
-      <Link href="/app/pricing?showcase=1" className="hover:text-[var(--foreground)]">Pricing</Link>
-      <Link href={MARKETING_DOCS_URL} className="hover:text-[var(--foreground)]">Docs</Link>
-    </nav>
-  )
+  const showcasePrimaryLinks = publicShowcase || user
+    ? [
+      { id: 'app', label: 'App', icon: LayoutDashboard, href: ROOT_APP_DESTINATION },
+      { id: 'home', label: 'Home', icon: House, href: '/app/home?showcase=1' },
+      { id: 'manifesto', label: 'Manifesto', icon: ScrollText, href: '/app/manifesto?showcase=1' },
+      { id: 'pricing', label: 'Pricing', icon: CreditCard, href: '/app/pricing?showcase=1' },
+      { id: 'docs', label: 'Docs', icon: BookOpen, href: MARKETING_DOCS_URL },
+    ]
+    : []
 
   const panelResourceList = hasResourcePanel ? (
     <Suspense fallback={<SidebarListSkeleton />}>
@@ -718,6 +747,23 @@ export default function AppSidebar({
           ? renderProjectsPanel({ onNavigate: closeMobileDrawer })
           : <ProjectsInlinePanel refreshKey={projectsPanelRefreshKey} onNavigate={closeMobileDrawer} />
       ) : null}
+      {panelKind === 'agents' ? (
+        renderAgentsPanel
+          ? renderAgentsPanel({ onNavigate: closeMobileDrawer })
+          : <AgentsInlinePanel
+            workspaceId={activeWorkspaceId}
+            baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents') : undefined}
+            onNavigate={closeMobileDrawer}
+          />
+      ) : null}
+      {panelKind === 'knowledge' ? (
+        renderKnowledgePanel
+          ? renderKnowledgePanel({ onNavigate: closeMobileDrawer })
+          : <KnowledgeInlinePanel
+            baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/knowledge') : undefined}
+            onNavigate={closeMobileDrawer}
+          />
+      ) : null}
       {panelKind === 'automations' && renderAutomationsPanel
         ? renderAutomationsPanel({ onNavigate: closeMobileDrawer })
         : null}
@@ -726,10 +772,7 @@ export default function AppSidebar({
 
   const panelChildren = panelKind
     ? panelResourceList
-    : publicShowcase
-      ? <div className="px-2 py-3">{showcaseInfoLinks}</div>
-      : null
-  const panelFooter = publicShowcase && panelKind ? showcaseInfoLinks : undefined
+    : null
 
   const brandLink = (
     <Link
@@ -872,7 +915,19 @@ export default function AppSidebar({
     })
   })
 
+  const showcaseRailFooterItems: PrimaryRailItem[] = showcasePrimaryLinks.map((link) => ({
+    id: link.id,
+    label: link.label,
+    icon: link.icon,
+    title: link.label,
+    onSelect: () => {
+      if (/^https?:\/\//.test(link.href)) window.location.assign(link.href)
+      else router.push(link.href)
+    },
+  }))
+
   const railFooterItems: PrimaryRailItem[] = [
+    ...showcaseRailFooterItems,
     {
       id: 'settings',
       label: 'Settings',
@@ -1035,6 +1090,29 @@ export default function AppSidebar({
               </button>
             )
           })}
+          {showcasePrimaryLinks.length ? (
+            <div className="mt-0.5 border-t border-[var(--border)] pt-1">
+              {showcasePrimaryLinks.map((link) => {
+                const Icon = link.icon
+                return (
+                  <button
+                    key={link.id}
+                    type="button"
+                    onClick={() => {
+                      if (/^https?:\/\//.test(link.href)) window.location.assign(link.href)
+                      else router.push(link.href)
+                      closeMobileDrawer()
+                    }}
+                    aria-label={link.label}
+                    className="group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  >
+                    <Icon size={15} />
+                    <div className="min-w-0 flex-1 text-left">{link.label}</div>
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
           <div className="mt-0.5">
             <button
               type="button"
@@ -1055,7 +1133,6 @@ export default function AppSidebar({
         </SidebarNav>
 
         <SidebarSection className="space-y-3 px-3">
-          {publicShowcase ? showcaseInfoLinks : null}
           <div ref={mobileMenuRef} className="relative">
             {!isGuestConfirmed && workspace ? (
               workspace.renderSwitcher({
@@ -1136,7 +1213,6 @@ export default function AppSidebar({
         nav={panelNav}
         action={panelAction}
         search={panelSearch}
-        footer={publicShowcase ? showcaseInfoLinks : undefined}
       >
         {panelChildren}
       </SecondaryPanelContent>
@@ -1233,7 +1309,6 @@ export default function AppSidebar({
           nav={panelNav}
           action={panelAction}
           search={panelSearch}
-          footer={panelFooter}
           className={`hidden h-full transition-[width,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
             sidebarCollapsed || hideTemporaryChatChrome
               ? 'w-0 border-transparent opacity-0 pointer-events-none invisible'
