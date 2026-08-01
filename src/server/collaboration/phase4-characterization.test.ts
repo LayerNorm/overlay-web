@@ -39,15 +39,17 @@ test('Phase 4 migration carries channel shape, threads, reactions, pins, saves, 
 })
 
 test('Phase 4 ships create-channel, thread, reaction, pin, save, and workspace search UX', async () => {
-  const [dialog, conversation, search] = await Promise.all([
+  const [dialog, conversation, message, search] = await Promise.all([
     readFile(`${root}/src/features/chat/components/NewChannelDialog.tsx`, 'utf8'),
     readFile(`${root}/src/features/chat/components/DirectMessageExperience.tsx`, 'utf8'),
+    readFile(`${root}/src/features/chat/components/collaboration/RoomMessageItem.tsx`, 'utf8'),
     readFile(`${root}/src/components/layout/GlobalSearchDialog.tsx`, 'utf8'),
   ])
   assert.match(dialog, /Create a channel/)
   assert.match(dialog, /Only invited members can open it/)
-  assert.match(conversation, /Reply in thread/)
-  assert.match(conversation, /Pin message/)
-  assert.match(conversation, /Save message/)
+  assert.match(conversation, /threadRootMessageId/)
+  assert.match(message, /Reply in thread/)
+  assert.match(message, /Pin message/)
+  assert.match(message, /Save message/)
   assert.match(search, /searchWorkspaceChats/)
 })

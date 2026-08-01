@@ -75,13 +75,16 @@ test('Phase 7 composer mentions are explicit principal ids, not name substrings'
 })
 
 test('Phase 7 composer is keyboard navigable and announces activity politely', async () => {
-  const [dm, suggestions] = await Promise.all([
+  // Rooms share the personal chat composer, so mention navigation is asserted
+  // where that composer implements it.
+  const [dm, composer, suggestions] = await Promise.all([
     readFile(`${root}/src/features/chat/components/DirectMessageExperience.tsx`, 'utf8'),
-    readFile(`${root}/src/components/mentions/MentionSuggestionList.tsx`, 'utf8'),
+    readFile(`${root}/src/features/chat/components/chat-interface/MentionInput.tsx`, 'utf8'),
+    readFile(`${root}/src/components/mentions/MentionPopup.tsx`, 'utf8'),
   ])
-  assert.match(dm, /role="combobox"/)
-  assert.match(dm, /aria-activedescendant/)
-  assert.match(dm, /ArrowDown/)
+  assert.match(composer, /role="combobox"/)
+  assert.match(composer, /aria-activedescendant/)
+  assert.match(suggestions, /ArrowDown/)
   assert.match(dm, /aria-live="polite"/)
   assert.match(suggestions, /role="listbox"/)
   assert.match(suggestions, /role="option"/)

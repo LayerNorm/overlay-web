@@ -180,6 +180,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
         />
         <MentionInput
           ref={props.textareaRef}
+          extraCategories={props.surface.mentionCategories}
           value={props.input}
           valueRevision={props.inputRevision}
           onChange={props.onInputChange}
@@ -227,11 +228,12 @@ function ComposerControls(props: ComposerControlsProps) {
   const can = (capability: Parameters<ReturnType<typeof useAuthorization>['can']>[0]) =>
     allows({ all: [capability] })
   const mentionTooltip = mentionReferenceLabel(props.capabilities)
+  const showModeMenu = !props.isTemporaryChat && !props.surface.hideModeMenu
   return (
     <div className={`mt-2 grid min-h-9 items-center gap-2 ${
-      props.isTemporaryChat
-        ? 'grid-cols-[auto_auto_minmax(0,1fr)_auto]'
-        : 'grid-cols-[auto_auto_minmax(0,1fr)_auto_auto]'
+      showModeMenu
+        ? 'grid-cols-[auto_auto_minmax(0,1fr)_auto_auto]'
+        : 'grid-cols-[auto_auto_minmax(0,1fr)_auto]'
     }`}>
       <AttachMenu {...props} />
       <DelayedTooltip label={mentionTooltip} side="top">
@@ -240,7 +242,7 @@ function ComposerControls(props: ComposerControlsProps) {
         </button>
       </DelayedTooltip>
       <div className="flex min-w-0 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {can('memory.use') && props.capabilities.memory && props.capabilities.vectorSearch && !props.memoryEnabled && (
+        {!props.surface.hideGenerationModes && can('memory.use') && props.capabilities.memory && props.capabilities.vectorSearch && !props.memoryEnabled && (
           <DelayedTooltip label="Memory is off for this message." side="top">
             <div className="shrink-0">
               <ToolRequestChip
@@ -251,7 +253,7 @@ function ComposerControls(props: ComposerControlsProps) {
             </div>
           </DelayedTooltip>
         )}
-        {props.selectedToolIds.filter((toolId) => isToolRequestEnabled(toolId, props, can)).map((toolId) => {
+        {(props.surface.hideGenerationModes ? [] : props.selectedToolIds).filter((toolId) => isToolRequestEnabled(toolId, props, can)).map((toolId) => {
           const tool = TOOL_REQUEST_BY_ID.get(toolId)
           if (!tool) return null
           return (
@@ -263,9 +265,9 @@ function ComposerControls(props: ComposerControlsProps) {
             />
           )
         })}
-        {props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
+        {!props.surface.hideGenerationModes && props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
       </div>
-      {props.isTemporaryChat ? null : <ModeMenu {...props} />}
+      {showModeMenu ? <ModeMenu {...props} /> : null}
       {props.isActiveLoading ? (
         <DelayedTooltip label="Stop generating" side="top">
           <button
@@ -307,6 +309,7 @@ function mentionReferenceLabel(capabilities: ComposerViewProps['capabilities']):
 }
 
 function composerPlaceholder(props: ComposerViewProps): string {
+  if (props.surface.placeholder) return props.surface.placeholder
   if (props.mode === 'automate') {
     return 'Describe an automation, use @ to reference available context...'
   }
@@ -347,7 +350,7 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
               suffix="Images, docs"
             />
           )}
-          {TOOL_REQUEST_OPTIONS.filter((tool) => isToolRequestEnabled(tool.id, props, can)).map((tool) => {
+          {(props.surface.hideGenerationModes ? [] : TOOL_REQUEST_OPTIONS).filter((tool) => isToolRequestEnabled(tool.id, props, can)).map((tool) => {
             const active = props.selectedToolIds.includes(tool.id)
             const Icon = tool.Icon
             return (
@@ -365,9 +368,13 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
               />
             )
           })}
-          <AttachMenuButton onClick={() => { props.onModeChange('image'); props.setShowAttachMenu(false) }} icon={<ImageIcon size={13} className="text-[var(--foreground)]" />} label="Generate images" />
-          <AttachMenuButton onClick={() => { props.onModeChange('video'); props.setShowAttachMenu(false) }} icon={<Video size={13} className="text-[var(--foreground)]" />} label="Generate videos" />
-          {can('memory.use') && props.capabilities.memory && props.capabilities.vectorSearch && (
+          {!props.surface.hideGenerationModes && (
+            <>
+              <AttachMenuButton onClick={() => { props.onModeChange('image'); props.setShowAttachMenu(false) }} icon={<ImageIcon size={13} className="text-[var(--foreground)]" />} label="Generate images" />
+              <AttachMenuButton onClick={() => { props.onModeChange('video'); props.setShowAttachMenu(false) }} icon={<Video size={13} className="text-[var(--foreground)]" />} label="Generate videos" />
+            </>
+          )}
+          {!props.surface.hideGenerationModes && can('memory.use') && props.capabilities.memory && props.capabilities.vectorSearch && (
             <>
               <div className="my-1 border-t border-[var(--border)]" />
               <AttachMenuButton

@@ -1,5 +1,6 @@
 export * from './components/primitives/Badge'
 export * from './components/primitives/Button'
+export * from './components/primitives/CollapsibleSection'
 export * from './components/primitives/Dialog'
 export * from './components/primitives/EmptyState'
 export * from './components/primitives/IconButton'
