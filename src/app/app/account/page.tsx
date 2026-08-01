@@ -24,7 +24,6 @@ import {
 import {
   minimalBody,
   minimalDisplaySm,
-  minimalLabel,
   minimalPanel,
   minimalSectionSm,
   minimalSerif,
@@ -35,6 +34,7 @@ import {
   AccountProfileCard,
   AccountSignInPrompt,
 } from '@overlay/modules-react/settings'
+import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 
 // Always use overlay:// for deep links (registered in WorkOS for both environments)
 const APP_PROTOCOL = 'overlay'
@@ -313,28 +313,31 @@ function AccountPageContent() {
   }, [performDesktopHandoff])
 
   return (
-    <main className={minimalSectionSm()}>
-      <div className="mx-auto max-w-3xl">
-        {message ? (
+    <AppScreenShell
+      header={<AppScreenHeader title="Account" className="px-6" />}
+    >
+      <AppScreenBody padding="none" maxWidth="none" className="min-h-full">
+        <div className={minimalSectionSm()}>
+          <div className="mx-auto max-w-3xl">
+            {message ? (
           <AccountMessageBanner
             message={message}
             onOpenDesktop={handleOpenInApp}
             onOpenWeb={() => router.push('/app/chat')}
             onDismiss={() => setMessage(null)}
           />
-        ) : null}
+            ) : null}
 
-        <div className="mb-12">
-          <p className={minimalLabel()}>Account</p>
-          <h1 className={`mt-4 ${minimalDisplaySm()}`} style={minimalSerif()}>
+            <div className="mb-12">
+              <h1 className={minimalDisplaySm()} style={minimalSerif()}>
             Your Overlay control center.
-          </h1>
-          <p className={`mt-5 max-w-xl ${minimalBody()}`}>
+              </h1>
+              <p className={`mt-5 max-w-xl ${minimalBody()}`}>
             Manage plan status, usage, top-ups, desktop handoff, and account access.
-          </p>
-        </div>
+              </p>
+            </div>
 
-        {loading || authLoading || !sessionCheckComplete || !capabilitiesLoaded ? (
+            {loading || authLoading || !sessionCheckComplete || !capabilitiesLoaded ? (
           <AccountLoadingState mutedClass={t.muted} dark={isLandingDark} />
         ) : !isAuthenticated ? (
           <AccountSignInPrompt
@@ -432,9 +435,11 @@ function AccountPageContent() {
               topUpHistory={topUpHistory}
             />
           </div>
-        )}
-      </div>
-    </main>
+            )}
+          </div>
+        </div>
+      </AppScreenBody>
+    </AppScreenShell>
   )
 }
 
