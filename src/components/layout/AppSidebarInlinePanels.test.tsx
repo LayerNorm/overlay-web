@@ -57,3 +57,32 @@ test('a locked subview is inert rather than a dead link', () => {
   assert.match(html, /Soon/)
   assert.match(html, /cursor-default/)
 })
+
+test('items with an href render as links so they support open-in-new-tab', () => {
+  const html = renderToStaticMarkup(
+    <InlineNavChildren
+      items={[
+        { id: 'general', label: 'General', href: '/app/settings?section=general' },
+        { id: 'models', label: 'Models', href: '/app/settings?section=models' },
+      ]}
+      activeId="models"
+      onSelect={() => undefined}
+    />,
+  )
+  assert.match(html, /href="\/app\/settings\?section=general"/)
+  assert.match(html, /href="\/app\/settings\?section=models"/)
+  assert.doesNotMatch(html, /<button/)
+})
+
+test('the container class can be overridden for flat panel layouts', () => {
+  const html = renderToStaticMarkup(
+    <InlineNavChildren
+      items={[{ id: 'personal', label: 'Personal' }]}
+      activeId=""
+      onSelect={() => undefined}
+      className="shrink-0 space-y-0.5 px-2 py-3"
+    />,
+  )
+  assert.match(html, /shrink-0 space-y-0\.5 px-2 py-3/)
+  assert.doesNotMatch(html, /pl-7/)
+})

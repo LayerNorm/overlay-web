@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
@@ -396,40 +397,67 @@ export const chatsInlineItems = [
   { id: 'all', label: 'All' },
 ] as const
 
+export interface InlineNavItem {
+  id: string
+  label: string
+  locked?: boolean
+  /** Items with an href render as links so they support open-in-new-tab. */
+  href?: string
+}
+
 export function InlineNavChildren({
   id,
   items,
   activeId,
   onSelect,
+  className = 'mt-1 space-y-0.5 pl-7',
 }: {
   id?: string
-  items: ReadonlyArray<{ id: string; label: string; locked?: boolean }>
+  items: ReadonlyArray<InlineNavItem>
   /** Empty when the section is open but not the current route, so an expanded
    * dropdown never implies a selection the person did not make. */
   activeId: string
+  /** Also fires for href items on link click, so callers can close chrome. */
   onSelect: (id: string) => void
+  /** Container override — the default indents children under a nav row. */
+  className?: string
 }) {
   return (
-    <div id={id} className="mt-1 space-y-0.5 pl-7">
-      {items.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          onClick={() => {
-            if (!item.locked) onSelect(item.id)
-          }}
-          className={`flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs transition-colors ${
-            item.locked
-              ? 'cursor-default text-[var(--muted-light)]'
-              : activeId === item.id
-                ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-          }`}
-        >
-          <span className="flex-1 text-left">{item.label}</span>
-          {item.locked ? <span className="text-[10px] text-[var(--muted-light)]">Soon</span> : null}
-        </button>
-      ))}
+    <div id={id} className={className}>
+      {items.map((item) => {
+        const itemClass = `flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs transition-colors ${
+          item.locked
+            ? 'cursor-default text-[var(--muted-light)]'
+            : activeId === item.id
+              ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+              : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+        }`
+        const content = (
+          <>
+            <span className="flex-1 text-left">{item.label}</span>
+            {item.locked ? <span className="text-[10px] text-[var(--muted-light)]">Soon</span> : null}
+          </>
+        )
+        if (item.href && !item.locked) {
+          return (
+            <Link key={item.id} href={item.href} onClick={() => onSelect(item.id)} className={itemClass}>
+              {content}
+            </Link>
+          )
+        }
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => {
+              if (!item.locked) onSelect(item.id)
+            }}
+            className={itemClass}
+          >
+            {content}
+          </button>
+        )
+      })}
     </div>
   )
 }
