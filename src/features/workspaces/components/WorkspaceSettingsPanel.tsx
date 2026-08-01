@@ -519,7 +519,7 @@ function WorkspaceItemActions({
         {state.canManage && item.role ? (
           <Select
             aria-label={`Role for ${item.name}`}
-            className="h-8 w-24 py-0 text-xs capitalize"
+            className="h-8 w-28 py-0 text-xs capitalize"
             value={item.role}
             disabled={isSelf}
             onChange={(event) => onMemberRoleChange?.(

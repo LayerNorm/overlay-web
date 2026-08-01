@@ -13,6 +13,7 @@ import { Archive, Check, Plus, RefreshCw, Shield, Trash2, UserPlus, Users } from
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { authorizationDescription, groupCapabilityDefinitions, groupIsEditable, roleIsEditable } from './authorization-ui'
+import { Select } from '@overlay/ui/primitives'
 
 type AuthorizationView = 'roles' | 'groups'
 type AuthorizationUserSummary = { userId: string; email?: string }
@@ -707,7 +708,7 @@ function GroupAccess({ canManageGroup, canManageRoleAssignments, canReadRoles, g
         <h3 className="text-sm font-semibold">Assigned roles</h3>
         {canManageRoleAssignments && canReadRoles ? (
           <div className="mt-3 flex gap-2">
-            <select
+            <Select
               aria-label="Role to assign to group"
               className={`${inputClass} min-w-0 flex-1`}
               value={roleId}
@@ -718,7 +719,7 @@ function GroupAccess({ canManageGroup, canManageRoleAssignments, canReadRoles, g
                   {role.name}
                 </option>
               ))}
-            </select>
+            </Select>
             <button
               type="button"
               aria-label="Assign role to group"

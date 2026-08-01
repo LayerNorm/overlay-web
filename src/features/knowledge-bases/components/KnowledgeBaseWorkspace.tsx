@@ -49,6 +49,7 @@ import {
 } from '@/shared/knowledge/external-source-ref'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { Select } from '@overlay/ui/primitives'
 
 type SourceTab = 'sources' | 'search'
 
@@ -517,7 +518,7 @@ export function KnowledgeBaseWorkspace({
         <div className="mt-5 space-y-3">
           <label className="block text-xs font-medium">
             Provider
-            <select
+            <Select
               value={connectedRecipe}
               onChange={(event) =>
                 setConnectedRecipe(event.target.value as ConnectedKnowledgeSourceRecipe)}
@@ -527,7 +528,7 @@ export function KnowledgeBaseWorkspace({
               <option value="dropbox-file">Dropbox file</option>
               <option value="notion-page">Notion page</option>
               <option value="confluence-page">Confluence page</option>
-            </select>
+            </Select>
           </label>
           <label className="block text-xs font-medium">
             {connectedSourceIdentifierLabel(connectedRecipe)}

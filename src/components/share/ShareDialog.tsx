@@ -31,6 +31,7 @@ import {
   SHARE_RESOURCE_LABELS,
 } from '@/shared/share/share-access-policy'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { Select } from '@overlay/ui/primitives'
 
 /** A grant or revocation waiting on explicit confirmation of its disclosure. */
 type PendingShareChange =
@@ -365,7 +366,7 @@ export function ShareDialogContent({
       {hasResourceId ? (
         <>
           <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_110px_auto]">
-            <select
+            <Select
               value={target}
               aria-label="Add a person, agent, team, or room"
               onChange={(event) => onTargetChange(event.target.value)}
@@ -379,15 +380,15 @@ export function ShareDialogContent({
                   ))}
                 </optgroup>
               ) : null)}
-            </select>
-            <select
+            </Select>
+            <Select
               value={role}
               aria-label="Permission"
               onChange={(event) => onRoleChange(event.target.value as WorkspaceShareAccessRole)}
               className="h-10 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)]"
             >
               {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
+            </Select>
             <button
               type="button"
               disabled={!target || busy}
@@ -479,7 +480,7 @@ export function ShareDialogContent({
                         {describeTargetInheritance(grant.targetType)}
                       </p>
                     </div>
-                    <select
+                    <Select
                       value={grant.accessRole}
                       aria-label={`Permission for ${entry?.name ?? targetLabel(grant.targetType)}`}
                       disabled={busy}
@@ -487,7 +488,7 @@ export function ShareDialogContent({
                       className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs"
                     >
                       {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
+                    </Select>
                     <button
                       type="button"
                       disabled={busy}

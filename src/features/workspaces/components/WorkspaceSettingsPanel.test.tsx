@@ -4,6 +4,10 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { WorkspaceManagementContent, WorkspaceSharingPolicySection } from './WorkspaceSettingsPanel'
 
+// Package components compile with the classic JSX runtime under the app's
+// tsconfig, so they resolve React from the global.
+;(globalThis as typeof globalThis & { React: typeof React }).React = React
+
 const READY_STATE = {
   status: 'ready' as const,
   canManage: true,

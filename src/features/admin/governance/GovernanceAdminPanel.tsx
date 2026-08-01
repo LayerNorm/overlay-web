@@ -19,6 +19,7 @@ import type {
 } from '@overlay/app-core'
 import { Button, IconButton, SegmentedControl } from '@overlay/ui'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { Select } from '@overlay/ui/primitives'
 
 type GovernanceView = 'policies' | 'reviews'
 
@@ -189,7 +190,7 @@ export function GovernanceAdminPanel({
           ]}
         />
         <div className="flex min-w-0 flex-1 flex-wrap justify-end gap-2">
-          <select
+          <Select
             aria-label="Governed resource type"
             className="h-8 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
             value={resourceType}
@@ -197,7 +198,7 @@ export function GovernanceAdminPanel({
           >
             <option value="knowledge_base">Knowledge base</option>
             <option value="project">Project</option>
-          </select>
+          </Select>
           <input
             aria-label="Governed resource ID"
             className="h-8 min-w-[220px] flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-xs md:max-w-sm"

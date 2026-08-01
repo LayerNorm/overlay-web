@@ -9,6 +9,10 @@ import type {
 } from '@overlay/workspace-contracts'
 import { ShareDialogContent } from './ShareDialog'
 
+// Package components compile with the classic JSX runtime under the app's
+// tsconfig, so they resolve React from the global.
+;(globalThis as typeof globalThis & { React: typeof React }).React = React
+
 const DIRECTORY: WorkspaceShareDirectoryEntry[] = [
   { id: 'principal_maya', name: 'Maya', kind: 'human', targetType: 'principal', description: 'maya@acme.test' },
   { id: 'principal_scout', name: 'Scout', kind: 'agent', targetType: 'principal' },
