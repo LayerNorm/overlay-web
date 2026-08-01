@@ -3,11 +3,12 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore, Suspense } from 'react'
+import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore, Suspense } from 'react'
+import { createPortal } from 'react-dom'
 import {
-  MessageSquare, User,
+  BookOpen, CreditCard, House, LayoutDashboard, MessageSquare, ScrollText, User,
   ChevronUp, Loader2, Menu, X, Settings, ChevronLeft, ChevronRight, ShieldCheck,
-  PanelLeftClose, PanelLeftOpen,
+  Bot, Brain, Mail, Palette, UsersRound, Webhook,
 } from 'lucide-react'
 import {
   resolveOverlayAppShellConfig,
@@ -23,7 +24,9 @@ import {
   SidebarSection,
 } from '@overlay/ui/primitives'
 import {
+  AgentsInlinePanel,
   FilesInlinePanel,
+  KnowledgeInlinePanel,
   ProjectsInlinePanel,
   chatsInlineItems,
   toolsInlineItems,
@@ -63,6 +66,7 @@ import {
 import type { AppSidebarProps } from './appSidebarTypes'
 import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
 import { ROOT_APP_DESTINATION, ROOT_SHOWCASE_DESTINATION } from '@/shared/auth/root-entry'
+import { NEW_AGENT_EVENT, NEW_KNOWLEDGE_BASE_EVENT } from '@/shared/workspace/sidebar-events'
 
 export type {
   AppSidebarChatPanelContext,
@@ -71,16 +75,29 @@ export type {
   AppSidebarWorkspaceAdapter,
 } from './appSidebarTypes'
 
-type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'projects' | 'automations' | 'tools' | 'settings'
+type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'projects' | 'agents' | 'knowledge' | 'automations' | 'tools' | 'settings'
 
 const PANEL_KIND_TITLES: Record<SecondaryPanelKind, string> = {
   chat: 'Chats',
   files: 'Files',
   notes: 'Notes',
   projects: 'Projects',
+  agents: 'Agents',
+  knowledge: 'Knowledge',
   automations: 'Automations',
   tools: 'Extensions',
   settings: 'Settings',
+}
+
+const SETTINGS_SECTION_ICONS: Record<string, typeof Settings> = {
+  general: Settings,
+  account: User,
+  customization: Palette,
+  memories: Brain,
+  models: Bot,
+  webhooks: Webhook,
+  contact: Mail,
+  workspace: UsersRound,
 }
 
 const RESOURCE_PANEL_KINDS: ReadonlySet<SecondaryPanelKind> = new Set([
@@ -88,6 +105,8 @@ const RESOURCE_PANEL_KINDS: ReadonlySet<SecondaryPanelKind> = new Set([
   'files',
   'notes',
   'projects',
+  'agents',
+  'knowledge',
   'automations',
 ])
 
@@ -97,6 +116,8 @@ export default function AppSidebar({
   renderAutomationsPanel,
   renderFilesPanel,
   renderProjectsPanel,
+  renderAgentsPanel,
+  renderKnowledgePanel,
   workspace,
 }: AppSidebarProps) {
   const pathname = usePathname() ?? ''
@@ -179,8 +200,13 @@ export default function AppSidebar({
   const [chatPanelRefreshKey, setChatPanelRefreshKey] = useState(0)
   const [projectsPanelRefreshKey, setProjectsPanelRefreshKey] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
+  const accountMenuPortalRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
+  const [accountMenuPosition, setAccountMenuPosition] = useState<{
+    left: number
+    bottom: number
+  } | null>(null)
   const sidebarActions = useMemo(
     () => appShell.sidebarActions.filter((action) => (
       publicShowcase || !user || allows(getSidebarActionAuthorizationRequirement(action.actionKey))
@@ -260,6 +286,8 @@ export default function AppSidebar({
   const notesOpen = pathname.startsWith('/app/notes') || (canonicalWorkspaceRoute && workspaceSurface === 'notes')
   const filesOpen = pathname.startsWith('/app/files') || (canonicalWorkspaceRoute && workspaceSurface === 'files')
   const filesSectionOpen = filesOpen || notesOpen
+  const agentsOpen = pathname.startsWith('/app/agents') || (canonicalWorkspaceRoute && workspaceSurface === 'agents')
+  const knowledgeOpen = pathname.startsWith('/app/knowledge') || (canonicalWorkspaceRoute && workspaceSurface === 'knowledge')
   const chatOpen = pathname.startsWith('/app/chat') || (canonicalWorkspaceRoute && workspaceSurface === 'chat')
   const adminOpen = pathname.startsWith('/app/admin') || (canonicalWorkspaceRoute && workspaceSurface === 'admin')
   const showAdminNavigation = can('administration.access') && !publicShowcase && Boolean(user)
@@ -389,14 +417,40 @@ export default function AppSidebar({
     function handleClick(e: MouseEvent) {
       const target = e.target as Node
       const insideDesktop = menuRef.current?.contains(target) ?? false
+      const insidePortal = accountMenuPortalRef.current?.contains(target) ?? false
       const insideMobile = mobileMenuRef.current?.contains(target) ?? false
-      if (!insideDesktop && !insideMobile) {
+      if (!insideDesktop && !insidePortal && !insideMobile) {
         setAccountMenuOpen(false)
       }
     }
     document.addEventListener('click', handleClick)
     return () => document.removeEventListener('click', handleClick)
   }, [accountMenuOpen])
+
+  useLayoutEffect(() => {
+    if (!accountMenuOpen || workspace) return
+    function updatePosition() {
+      const root = menuRef.current
+      if (!root) return
+      const rect = root.getBoundingClientRect()
+      const width = 256
+      const left = Math.min(
+        Math.max(8, rect.left),
+        Math.max(8, window.innerWidth - width - 8),
+      )
+      setAccountMenuPosition({
+        left,
+        bottom: Math.max(8, window.innerHeight - rect.top + 6),
+      })
+    }
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [accountMenuOpen, workspace])
 
   useEffect(() => {
     if (!mobileAccountOpen) return
@@ -441,13 +495,17 @@ export default function AppSidebar({
         ? 'notes'
         : projectsOpen
           ? 'projects'
-          : automationsSectionOpen
-            ? 'automations'
-            : toolsOpen
-              ? 'tools'
-              : settingsPathActive
-                ? 'settings'
-                : null
+            : agentsOpen
+              ? 'agents'
+              : knowledgeOpen
+                ? 'knowledge'
+                : automationsSectionOpen
+                  ? 'automations'
+                  : toolsOpen
+                    ? 'tools'
+                    : settingsPathActive
+                      ? 'settings'
+                      : null
   const hasResourcePanel = panelKind != null && RESOURCE_PANEL_KINDS.has(panelKind)
   // Showcase marketing pages (home/manifesto/pricing) have no contextual panel
   // of their own; they get a minimal panel so the showcase links stay visible.
@@ -488,6 +546,10 @@ export default function AppSidebar({
         return 'files'
       case '/app/projects':
         return 'projects'
+      case '/app/agents':
+        return 'agents'
+      case '/app/knowledge':
+        return 'knowledge'
       case '/app/automations':
         return capabilities.automations ? 'automations' : null
       case '/app/tools':
@@ -561,12 +623,22 @@ export default function AppSidebar({
           ? requireAuth('nav')
           : window.dispatchEvent(new CustomEvent(NEW_CHANNEL_EVENT)),
       }
-    : contextualAction
-      ? {
-        label: contextualAction.label,
-        onClick: () => publicShowcase ? requireAuth('nav') : void runSidebarAction(contextualAction),
-      }
-      : null
+      : contextualAction
+        ? {
+          label: contextualAction.label,
+          onClick: () => publicShowcase ? requireAuth('nav') : void runSidebarAction(contextualAction),
+        }
+        : panelKind === 'agents'
+          ? {
+            label: 'New agent',
+            onClick: () => window.dispatchEvent(new CustomEvent(NEW_AGENT_EVENT)),
+          }
+          : panelKind === 'knowledge'
+            ? {
+              label: 'New Knowledge Base',
+              onClick: () => window.dispatchEvent(new CustomEvent(NEW_KNOWLEDGE_BASE_EVENT)),
+            }
+            : null
   const contextualSearchCategory = toMentionCategory(contextualAction?.searchCategory)
 
   // Global Cmd/Ctrl+K command palette. The same dialog is reused by the per-section
@@ -629,6 +701,7 @@ export default function AppSidebar({
         items: settingsSections.map(({ id, label, href: sectionHref }) => ({
           id,
           label,
+          icon: SETTINGS_SECTION_ICONS[id] ?? Settings,
           href: sectionHref ?? `/app/settings?section=${id}`,
         })),
         activeId: settingsSection,
@@ -646,15 +719,15 @@ export default function AppSidebar({
     }
     : null
 
-  const showcaseInfoLinks = (
-    <nav aria-label="Overlay information" className="grid grid-cols-2 gap-x-3 gap-y-1 px-2 text-[11px] text-[var(--muted)]">
-      {user ? <Link href={ROOT_APP_DESTINATION} className="hover:text-[var(--foreground)]">App</Link> : null}
-      <Link href="/app/home?showcase=1" className="hover:text-[var(--foreground)]">Home</Link>
-      <Link href="/app/manifesto?showcase=1" className="hover:text-[var(--foreground)]">Manifesto</Link>
-      <Link href="/app/pricing?showcase=1" className="hover:text-[var(--foreground)]">Pricing</Link>
-      <Link href={MARKETING_DOCS_URL} className="hover:text-[var(--foreground)]">Docs</Link>
-    </nav>
-  )
+  const showcasePrimaryLinks = publicShowcase || user
+    ? [
+      { id: 'app', label: 'App', icon: LayoutDashboard, href: ROOT_APP_DESTINATION },
+      { id: 'home', label: 'Home', icon: House, href: '/app/home?showcase=1' },
+      { id: 'manifesto', label: 'Manifesto', icon: ScrollText, href: '/app/manifesto?showcase=1' },
+      { id: 'pricing', label: 'Pricing', icon: CreditCard, href: '/app/pricing?showcase=1' },
+      { id: 'docs', label: 'Docs', icon: BookOpen, href: MARKETING_DOCS_URL },
+    ]
+    : []
 
   const panelResourceList = hasResourcePanel ? (
     <Suspense fallback={<SidebarListSkeleton />}>
@@ -674,6 +747,23 @@ export default function AppSidebar({
           ? renderProjectsPanel({ onNavigate: closeMobileDrawer })
           : <ProjectsInlinePanel refreshKey={projectsPanelRefreshKey} onNavigate={closeMobileDrawer} />
       ) : null}
+      {panelKind === 'agents' ? (
+        renderAgentsPanel
+          ? renderAgentsPanel({ onNavigate: closeMobileDrawer })
+          : <AgentsInlinePanel
+            workspaceId={activeWorkspaceId}
+            baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents') : undefined}
+            onNavigate={closeMobileDrawer}
+          />
+      ) : null}
+      {panelKind === 'knowledge' ? (
+        renderKnowledgePanel
+          ? renderKnowledgePanel({ onNavigate: closeMobileDrawer })
+          : <KnowledgeInlinePanel
+            baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/knowledge') : undefined}
+            onNavigate={closeMobileDrawer}
+          />
+      ) : null}
       {panelKind === 'automations' && renderAutomationsPanel
         ? renderAutomationsPanel({ onNavigate: closeMobileDrawer })
         : null}
@@ -682,10 +772,7 @@ export default function AppSidebar({
 
   const panelChildren = panelKind
     ? panelResourceList
-    : publicShowcase
-      ? <div className="px-2 py-3">{showcaseInfoLinks}</div>
-      : null
-  const panelFooter = publicShowcase && panelKind ? showcaseInfoLinks : undefined
+    : null
 
   const brandLink = (
     <Link
@@ -703,15 +790,59 @@ export default function AppSidebar({
     </Link>
   )
 
-  const railBrand = (
-    <Link
-      href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
-      className="inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors hover:bg-[var(--surface-subtle)]"
-      aria-label="Home"
-      title="Home"
+  const railExpanded = !sidebarCollapsed
+  const railBrand = sidebarCollapsed ? (
+    <button
+      type="button"
+      onClick={() => setSidebarCollapsed(false)}
+      className="group inline-flex h-10 w-full items-center justify-start gap-1 rounded-md px-1 transition-colors hover:justify-center hover:bg-[var(--surface-subtle)]"
+      aria-label="Expand sidebar"
+      title="Expand sidebar"
     >
-      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
-    </Link>
+      <Image
+        src={brandConfig.logoSrc}
+        alt={brandConfig.logoAlt ?? ''}
+        width={8}
+        height={8}
+        className="shrink-0 group-hover:hidden"
+      />
+      <span
+        className="truncate text-[11px] font-medium tracking-tight text-[var(--foreground)] group-hover:hidden"
+        style={{ fontFamily: 'var(--font-serif)' }}
+      >
+        {brandConfig.shortName ?? brandConfig.name}
+      </span>
+      <ChevronRight size={16} className="hidden text-[var(--foreground)] group-hover:block" />
+    </button>
+  ) : (
+    <>
+      <Link
+        href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 transition-colors hover:bg-[var(--surface-subtle)]"
+        aria-label="Home"
+        title="Home"
+      >
+        <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
+        <span
+          className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
+          style={{ fontFamily: 'var(--font-serif)' }}
+        >
+          {brandConfig.shortName ?? brandConfig.name}
+        </span>
+      </Link>
+      <button
+        type="button"
+        onClick={() => {
+          setAccountMenuOpen(false)
+          setSidebarCollapsed(true)
+        }}
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+        aria-label="Collapse sidebar"
+        title="Collapse sidebar"
+      >
+        <ChevronLeft size={16} />
+      </button>
+    </>
   )
 
   /** Compact brand for the fixed mobile top bar (matches sidebar identity). */
@@ -784,7 +915,19 @@ export default function AppSidebar({
     })
   })
 
+  const showcaseRailFooterItems: PrimaryRailItem[] = showcasePrimaryLinks.map((link) => ({
+    id: link.id,
+    label: link.label,
+    icon: link.icon,
+    title: link.label,
+    onSelect: () => {
+      if (/^https?:\/\//.test(link.href)) window.location.assign(link.href)
+      else router.push(link.href)
+    },
+  }))
+
   const railFooterItems: PrimaryRailItem[] = [
+    ...showcaseRailFooterItems,
     {
       id: 'settings',
       label: 'Settings',
@@ -803,23 +946,30 @@ export default function AppSidebar({
       },
     },
   ]
-  if (showSecondaryPanel) {
-    railFooterItems.push({
-      id: 'panel-toggle',
-      label: sidebarCollapsed ? 'Show panel' : 'Hide panel',
-      icon: sidebarCollapsed ? PanelLeftOpen : PanelLeftClose,
-      onSelect: () => {
-        setAccountMenuOpen(false)
-        setSidebarCollapsed(!sidebarCollapsed)
-      },
-    })
-  }
+
+  const desktopAccountMenu = accountMenuOpen && !workspace && typeof document !== 'undefined'
+    ? createPortal(
+      <div
+        ref={accountMenuPortalRef}
+        className="overlay-fade-in fixed z-[10080] w-64 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
+        style={{
+          left: accountMenuPosition?.left ?? 8,
+          bottom: accountMenuPosition?.bottom ?? 8,
+          visibility: accountMenuPosition ? 'visible' : 'hidden',
+        }}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        {accountMenuContent}
+      </div>,
+      document.body,
+    )
+    : null
 
   const desktopAccountSlot = (
     <div ref={menuRef} className="relative">
       {!isGuestConfirmed && workspace ? (
         workspace.renderSwitcher({
-          compact: true,
+          compact: !railExpanded,
           onNavigate: () => {
             setAccountMenuOpen(false)
           },
@@ -829,34 +979,33 @@ export default function AppSidebar({
         })
       ) : !isGuestConfirmed ? (
         <>
-          {accountMenuOpen ? (
-            <div
-              className="overlay-fade-in absolute bottom-full left-0 z-50 mb-1 w-64 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              {accountMenuContent}
-            </div>
-          ) : null}
+          {desktopAccountMenu}
           <button
             type="button"
             onClick={() => setAccountMenuOpen((value) => !value)}
-            className="flex h-10 w-full items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            className={`flex h-9 w-full items-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+              railExpanded ? 'gap-2.5 px-3' : 'justify-center'
+            }`}
             aria-label="Account menu"
             aria-expanded={accountMenuOpen}
             title={displayName}
           >
-            <User size={15} />
+            <User size={15} className="shrink-0" />
+            {railExpanded ? <span className="min-w-0 flex-1 truncate text-left text-sm">{displayName}</span> : null}
           </button>
         </>
       ) : (
         <button
           type="button"
           onClick={() => requireAuth('send')}
-          className="flex h-10 w-full items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          className={`flex h-9 w-full items-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+            railExpanded ? 'gap-2.5 px-3' : 'justify-center'
+          }`}
           aria-label="Sign in"
           title="Sign in"
         >
-          <User size={15} />
+          <User size={15} className="shrink-0" />
+          {railExpanded ? <span className="min-w-0 flex-1 text-left text-sm">Sign in</span> : null}
         </button>
       )}
     </div>
@@ -941,6 +1090,29 @@ export default function AppSidebar({
               </button>
             )
           })}
+          {showcasePrimaryLinks.length ? (
+            <div className="mt-0.5 border-t border-[var(--border)] pt-1">
+              {showcasePrimaryLinks.map((link) => {
+                const Icon = link.icon
+                return (
+                  <button
+                    key={link.id}
+                    type="button"
+                    onClick={() => {
+                      if (/^https?:\/\//.test(link.href)) window.location.assign(link.href)
+                      else router.push(link.href)
+                      closeMobileDrawer()
+                    }}
+                    aria-label={link.label}
+                    className="group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  >
+                    <Icon size={15} />
+                    <div className="min-w-0 flex-1 text-left">{link.label}</div>
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
           <div className="mt-0.5">
             <button
               type="button"
@@ -961,7 +1133,6 @@ export default function AppSidebar({
         </SidebarNav>
 
         <SidebarSection className="space-y-3 px-3">
-          {publicShowcase ? showcaseInfoLinks : null}
           <div ref={mobileMenuRef} className="relative">
             {!isGuestConfirmed && workspace ? (
               workspace.renderSwitcher({
@@ -1042,7 +1213,6 @@ export default function AppSidebar({
         nav={panelNav}
         action={panelAction}
         search={panelSearch}
-        footer={publicShowcase ? showcaseInfoLinks : undefined}
       >
         {panelChildren}
       </SecondaryPanelContent>
@@ -1125,10 +1295,11 @@ export default function AppSidebar({
         items={railItems}
         footerItems={railFooterItems}
         account={desktopAccountSlot}
+        expanded={railExpanded}
         className={`hidden h-full transition-[width,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
           hideTemporaryChatChrome
             ? 'w-0 border-transparent opacity-0 pointer-events-none'
-            : 'w-14 opacity-100'
+            : `${railExpanded ? 'w-56' : 'w-[72px]'} opacity-100`
         }`}
       />
 
@@ -1138,7 +1309,6 @@ export default function AppSidebar({
           nav={panelNav}
           action={panelAction}
           search={panelSearch}
-          footer={panelFooter}
           className={`hidden h-full transition-[width,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
             sidebarCollapsed || hideTemporaryChatChrome
               ? 'w-0 border-transparent opacity-0 pointer-events-none invisible'

@@ -10,6 +10,8 @@ import { buildWorkspaceHref } from '@/features/workspaces/lib/workspace-routing'
 import { useRouter } from 'next/navigation'
 import { AgentEditorDialog } from './AgentEditorDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
+import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
+import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
 
 const SHOWCASE_AGENTS: WorkspaceAgentDirectoryItem[] = [
   ['showcase-research', 'Research partner', 'Finds primary evidence and challenges assumptions.', '#2563eb'],
@@ -60,6 +62,16 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
   }, [activeWorkspaceId, showcase])
 
   useEffect(() => { void load() }, [load])
+
+  useEffect(() => {
+    const openCreateDialog = () => {
+      setEditing(null)
+      setError(null)
+      setDialogOpen(true)
+    }
+    window.addEventListener(NEW_AGENT_EVENT, openCreateDialog)
+    return () => window.removeEventListener(NEW_AGENT_EVENT, openCreateDialog)
+  }, [])
 
   const teamsWithAgents = useMemo(() => teams.map((team) => ({
     team,
@@ -144,21 +156,23 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
   }
 
   return (
-    <div className="min-h-full bg-[var(--background)] px-5 py-8 sm:px-8 lg:px-12">
-      <div className="mx-auto max-w-6xl">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Agents</h1>
-            <p className="mt-1 text-sm text-[var(--muted)]">Create and manage named AI teammates for {showcase ? 'Acme' : activeWorkspace?.name ?? 'this workspace'}.</p>
-          </div>
-          {canCreate ? <Button variant="secondary" onClick={() => { setEditing(null); setError(null); setDialogOpen(true) }}><Plus size={14} /> New agent</Button> : null}
-        </div>
-
-        {error && !dialogOpen ? <div className="mt-5 rounded-lg border border-red-500/25 bg-red-500/5 px-4 py-3 text-xs text-red-500">{error}</div> : null}
+    <>
+      <AppScreenShell
+      header={
+        <AppScreenHeader
+          title="Agents"
+          description={`Create and manage named AI teammates for ${showcase ? 'Acme' : activeWorkspace?.name ?? 'this workspace'}.`}
+          actions={canCreate ? <Button variant="secondary" onClick={() => { setEditing(null); setError(null); setDialogOpen(true) }}><Plus size={14} /> New agent</Button> : null}
+          className="px-6"
+        />
+      }
+    >
+      <AppScreenBody padding="lg" maxWidth="xl" className="min-h-full">
+        {error && !dialogOpen ? <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/5 px-4 py-3 text-xs text-red-500">{error}</div> : null}
         {loading ? (
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((value) => <div key={value} className="h-52 animate-pulse rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)]" />)}</div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((value) => <div key={value} className="h-52 animate-pulse rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)]" />)}</div>
         ) : (
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {agents.map((agent) => (
               <article key={agent.id} className="group relative flex min-h-52 flex-col rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 transition-shadow hover:shadow-sm">
                 <button type="button" onClick={() => { setEditing(agent); setError(null); setDialogOpen(true) }} className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted-light)] opacity-0 hover:bg-[var(--surface-subtle)] group-hover:opacity-100" aria-label={`Edit ${agent.name}`}><MoreHorizontal size={15} /></button>
@@ -196,7 +210,8 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
             </div>
           </section>
         ) : null}
-      </div>
+      </AppScreenBody>
+      </AppScreenShell>
       {dialogOpen ? <AgentEditorDialog key={editing?.id ?? 'new'} open agent={editing} teams={teams} busy={busy} error={error} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }} onSave={(input) => void save(input)} onArchive={editing ? () => void archiveAgent() : undefined} /> : null}
       <ShareDialog
         workspaceId={activeWorkspaceId}
@@ -208,6 +223,6 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
           title: sharingAgent.name,
         } : null}
       />
-    </div>
+    </>
   )
 }
