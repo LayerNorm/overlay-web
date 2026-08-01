@@ -49,6 +49,9 @@ function supportedMentionTypes(
           return capabilities.mcpServers && can('mcp.use')
         case 'chat':
           return capabilities.chat && can('conversations.read')
+        case 'person':
+          // Room members are supplied per-conversation, not from the global catalog.
+          return false
       }
     })
     .map((cat) => cat.type)

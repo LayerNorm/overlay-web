@@ -99,6 +99,7 @@ export type MentionType =
   | 'skill'
   | 'mcp'
   | 'chat'
+  | 'person'
 
 export interface ChatMessageMention {
   type: MentionType

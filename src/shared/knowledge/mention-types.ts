@@ -8,6 +8,8 @@ export type MentionType =
   | 'skill'
   | 'mcp'
   | 'chat'
+  /** Room members — people and agents that can be notified in a shared conversation. */
+  | 'person'
 
 export interface MentionItem {
   type: MentionType

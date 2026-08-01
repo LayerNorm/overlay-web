@@ -1,36 +1,29 @@
 'use client'
 
 import {
-  type KeyboardEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
-  type FormEvent,
 } from 'react'
 import {
   Archive,
   Bell,
   BellOff,
-  Bookmark,
-  Flag,
   Hash,
-  Check,
-  MessageSquareReply,
   MoreHorizontal,
   Paperclip,
-  Pencil,
   Pin,
   Send,
   Share2,
-  SmilePlus,
-  Trash2,
   UserPlus,
   UsersRound,
   X,
 } from 'lucide-react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
-import { Button, Input } from '@overlay/ui/primitives'
+import dynamic from 'next/dynamic'
+import { AttachmentPreviewDialog } from '@overlay/chat-react'
 import type {
   ChannelSummary,
   ConversationPin,
@@ -39,41 +32,32 @@ import type {
   ConversationSavedMessage,
   MessageReaction,
 } from '@overlay/workspace-contracts'
+import type { AttachmentPreview } from '@overlay/chat-react'
+import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-types'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { AttachResourceDialog } from '@/components/share/AttachResourceDialog'
-import {
-  MENTION_LISTBOX_ID,
-  MentionSuggestionList,
-  mentionOptionId,
-} from '@/components/mentions/MentionSuggestionList'
-import {
-  applyMentionSelection,
-  readMentionQuery,
-  resolveMentionedPrincipalIds,
-  suggestMentionPrincipals,
-  type MentionablePrincipal,
-} from '@/shared/mentions/principal-mentions'
+import { resolveMentionedPrincipalIds } from '@/shared/mentions/principal-mentions'
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { ChatComposer } from './ChatComposer'
+import { ChatDropOverlay } from './ChatDropOverlay'
+import { useChatAttachments } from './useChatAttachments'
+import { useComposerTextState } from './chat/useComposerTextState'
+import { useChatPanels } from './chat/useChatPanels'
+import { useChatShellPanels } from './chat/useChatShellPanels'
+import { buildTextTurnPayload } from './chat/chat-send-body-builders'
+import { RoomMessageItem } from './collaboration/RoomMessageItem'
+import { toRoomMessageView, type RoomMessageRecord } from './collaboration/room-message-view'
 
-type DirectMessage = {
-  id: string
-  authorKind: 'human' | 'agent' | 'model' | 'system'
-  authorPrincipalId?: string
-  content: string
-  createdAt: number
-  editedAt?: number
-  deletedAt?: number
-  clientNonce?: string
-  threadRootMessageId?: string
-}
+const FileViewerPanel = dynamic(
+  () => import('@overlay/modules-react/knowledge').then((mod) => ({ default: mod.FileViewerPanel })),
+  { loading: () => null },
+)
 
-type OptimisticMessage = DirectMessage & {
-  delivery?: 'sending' | 'failed'
-  turnId: string
-}
+type OptimisticMessage = RoomMessageRecord
 
 const SHOWCASE_CONVERSATION_ID = 'showcase-dm'
 const SHOWCASE_WORKSPACE_ID = 'showcase-acme'
@@ -148,6 +132,7 @@ export function DirectMessageExperience({
   conversationType?: 'dm' | 'channel'
 }) {
   const { activeWorkspaceId } = useWorkspace()
+  const { capabilities } = useOverlayCapabilities()
   const [participants, setParticipants] = useState<ConversationParticipant[]>(
     showcase ? SHOWCASE_PARTICIPANTS : [],
   )
@@ -161,7 +146,6 @@ export function DirectMessageExperience({
     showcase ? SHOWCASE_MESSAGES : [],
   )
   const [loading, setLoading] = useState(!showcase)
-  const [input, setInput] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [peopleOpen, setPeopleOpen] = useState(false)
   const [addPeopleOpen, setAddPeopleOpen] = useState(false)
@@ -194,11 +178,56 @@ export function DirectMessageExperience({
   const [agentResponding, setAgentResponding] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
   const [attachOpen, setAttachOpen] = useState(false)
-  const [mention, setMention] = useState<{ query: string; index: number } | null>(null)
-  const composerRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const lastTypingSentAt = useRef(0)
   const lastNotificationReadAt = useRef(0)
+
+  // ── composer state (identical wiring to the personal chat composer) ─────────
+  const [composerNotice, setComposerNotice] = useState<string | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [showModeMenu, setShowModeMenu] = useState(false)
+  const [mentions, setMentions] = useState<MentionItem[]>([])
+  const [replyContext, setReplyContext] = useState<
+    { snippet: string; bodyForModel: string; replyToTurnId?: string } | null
+  >(null)
+  const attachMenuRef = useRef<HTMLDivElement>(null)
+  const modeMenuRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<import('./chat-interface/MentionInput').MentionInputHandle>(null)
+  const {
+    handleComposerInputChange,
+    hasComposerText,
+    input,
+    inputRef,
+    inputRevision,
+    setInput,
+  } = useComposerTextState()
+  const {
+    attachedImages,
+    setAttachedImages,
+    pendingChatDocuments,
+    setPendingChatDocuments,
+    attachmentError,
+    setAttachmentError,
+    fileInputRef,
+    docInputRef,
+    dragCounterRef,
+    removePendingDocument,
+    queueDocumentUpload,
+    addDocumentsFromPicker,
+    addImages,
+    handlePaste,
+  } = useChatAttachments({ setComposerNotice })
+  const {
+    attachmentPreview,
+    attachmentPreviewMode,
+    closeAttachmentPreview,
+    closeSourcesPanel,
+    openAttachmentPreview,
+    openFilePreview,
+    setAttachmentPreviewMode,
+    sourcesPanel,
+  } = useChatPanels()
 
   const loadParticipants = useCallback(async () => {
     const result = await overlayAppClient.conversations.participants(conversationId)
@@ -210,15 +239,16 @@ export function DirectMessageExperience({
     const result = await overlayAppClient.conversations.get<{
       messages: Array<{
         id: string
-        authorKind: DirectMessage['authorKind']
+        authorKind: RoomMessageRecord['authorKind']
         authorPrincipalId?: string
         content?: string
-        parts?: Array<{ type?: string; text?: string }>
+        parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
         createdAt: number
         editedAt?: number
         deletedAt?: number
         clientNonce?: string
         threadRootMessageId?: string
+        status?: 'generating' | 'completed' | 'error'
       }>
     }>({ conversationId, messages: true, limit: 100 })
     const persisted = (result.messages ?? []).map((message) => ({
@@ -309,8 +339,18 @@ export function DirectMessageExperience({
   useEffect(() => {
     if (showcase) return
     setInput(readDraft({ workspaceId: activeWorkspaceId, conversationId }))
-    setMention(null)
-  }, [activeWorkspaceId, conversationId, showcase])
+  }, [activeWorkspaceId, conversationId, setInput, showcase])
+
+  useEffect(() => {
+    if (!showAttachMenu) return
+    function handleOutside(event: MouseEvent) {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(event.target as Node)) {
+        setShowAttachMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [showAttachMenu])
 
   const otherParticipants = participants.filter((participant) => participant.principalId !== currentPrincipalId)
   const title = conversationType === 'channel'
@@ -328,16 +368,48 @@ export function DirectMessageExperience({
   const threadRoot = messages.find((message) => message.id === threadRootId)
   const threadReplies = messages.filter((message) => message.threadRootMessageId === threadRootId)
 
+  const mentionCategories: MentionCategory[] = useMemo(() => {
+    const items = participants
+      .filter((participant) => participant.status === 'active' && participant.principalId !== currentPrincipalId)
+      .map((participant) => ({
+        type: 'person' as const,
+        id: participant.principalId,
+        name: participant.displayName,
+        description: participant.principalType === 'agent' ? 'Agent' : 'Member',
+        icon: 'Users',
+      }))
+    return items.length ? [{ type: 'person', label: 'People', icon: 'Users', items }] : []
+  }, [currentPrincipalId, participants])
+
+  function resolveMentionTargets(text: string): string[] {
+    const fromChips = mentions
+      .filter((mention) => mention.type === 'person')
+      .map((mention) => mention.id)
+    const fromText = resolveMentionedPrincipalIds(text, participants.map((participant) => ({
+      principalId: participant.principalId,
+      displayName: participant.displayName,
+      principalType: participant.principalType,
+    })))
+    return Array.from(new Set([...fromChips, ...fromText]))
+  }
+
   async function sendMessage(
     content: string,
-    existing?: Pick<OptimisticMessage, 'clientNonce' | 'turnId' | 'createdAt'>,
-    threadRootMessageId?: string,
+    options?: {
+      existing?: Pick<OptimisticMessage, 'clientNonce' | 'turnId' | 'createdAt' | 'parts'>
+      threadRootMessageId?: string
+      parts?: RoomMessageRecord['parts']
+      attachmentNames?: string[]
+      reply?: { replyToTurnId?: string; snippet: string } | null
+    },
   ) {
     const text = content.trim()
-    if (!text) return
-    const clientNonce = existing?.clientNonce ?? crypto.randomUUID()
-    const turnId = existing?.turnId ?? `human_${crypto.randomUUID()}`
+    const parts = options?.parts ?? options?.existing?.parts
+    if (!text && !parts?.length) return
+    const clientNonce = options?.existing?.clientNonce ?? crypto.randomUUID()
+    const turnId = options?.existing?.turnId ?? `human_${crypto.randomUUID()}`
     const optimisticId = `optimistic_${clientNonce}`
+    const threadRootMessageId = options?.threadRootMessageId
     if (showcase) {
       setMessages((current) => [...current, {
         id: optimisticId,
@@ -345,7 +417,8 @@ export function DirectMessageExperience({
         authorKind: 'human',
         authorPrincipalId: currentPrincipalId,
         content: text,
-        createdAt: existing?.createdAt ?? Date.now(),
+        parts,
+        createdAt: options?.existing?.createdAt ?? Date.now(),
         clientNonce,
         threadRootMessageId,
       } satisfies OptimisticMessage].sort((a, b) => a.createdAt - b.createdAt))
@@ -359,18 +432,15 @@ export function DirectMessageExperience({
         authorKind: 'human',
         authorPrincipalId: currentPrincipalId,
         content: text,
-        createdAt: existing?.createdAt ?? Date.now(),
+        parts,
+        createdAt: options?.existing?.createdAt ?? Date.now(),
         clientNonce,
         delivery: 'sending',
         threadRootMessageId,
       } satisfies OptimisticMessage,
     ].sort((a, b) => a.createdAt - b.createdAt))
     try {
-      const mentionedPrincipalIds = resolveMentionedPrincipalIds(text, participants.map((participant) => ({
-        principalId: participant.principalId,
-        displayName: participant.displayName,
-        principalType: participant.principalType,
-      })))
+      const mentionedPrincipalIds = resolveMentionTargets(text)
       const agentParticipants = participants.filter((participant) => participant.principalType === 'agent')
       const humanParticipants = participants.filter((participant) => participant.principalType === 'human')
       const threadAgentId = threadRootMessageId
@@ -394,6 +464,11 @@ export function DirectMessageExperience({
         clientNonce,
         mentionedPrincipalIds,
         threadRootMessageId,
+        ...(parts?.length ? { parts: parts as Array<Record<string, unknown>> } : {}),
+        ...(options?.attachmentNames?.length ? { attachmentNames: options.attachmentNames } : {}),
+        ...(options?.reply?.replyToTurnId
+          ? { replyToTurnId: options.reply.replyToTurnId, replySnippet: options.reply.snippet }
+          : {}),
       })
       await loadMessages()
     } catch {
@@ -403,6 +478,74 @@ export function DirectMessageExperience({
     } finally {
       setAgentResponding(null)
     }
+  }
+
+  async function handleSend() {
+    const text = (inputRef.current ?? input).trim()
+    const readyDocuments = pendingChatDocuments.filter((document) => document.status === 'ready')
+    if (pendingChatDocuments.some((document) => document.status === 'uploading')) {
+      setComposerNotice('Attachments are still uploading.')
+      return
+    }
+    if (!text && attachedImages.length === 0 && readyDocuments.length === 0) return
+
+    const turnId = `human_${crypto.randomUUID()}`
+    const payload = buildTextTurnPayload({
+      text,
+      attachedImages,
+      pendingChatDocuments,
+      mentions,
+      replyContext,
+      turnId,
+    })
+    // Document names ride along in the body using the same marker the chat
+    // transcript already understands, so the room renders them as file chips.
+    const documentMarker = payload.indexedFileNames.length
+      ? `${text ? '\n\n' : ''}[Indexed documents: ${payload.indexedFileNames.join(', ')}]`
+      : ''
+    const replySnippet = replyContext?.snippet
+
+    setInput('')
+    composerRef.current?.clear()
+    setMentions([])
+    setAttachedImages([])
+    setPendingChatDocuments([])
+    setAttachmentError(null)
+    setComposerNotice(null)
+    setReplyContext(null)
+    clearDraft({ workspaceId: activeWorkspaceId, conversationId })
+
+    await sendMessage(`${text}${documentMarker}`, {
+      existing: { turnId, clientNonce: crypto.randomUUID(), createdAt: Date.now(), parts: payload.partsForModel },
+      parts: payload.partsForModel,
+      attachmentNames: payload.indexedFileNames,
+      ...(replyContext ? { reply: { replyToTurnId: replyContext.replyToTurnId, snippet: replySnippet ?? '' } } : {}),
+    })
+  }
+
+  function onComposerInput(text: string) {
+    handleComposerInputChange(text)
+    if (showcase) return
+    writeDraft({ workspaceId: activeWorkspaceId, conversationId }, text)
+    const now = Date.now()
+    if (now - lastTypingSentAt.current > 2_500) {
+      lastTypingSentAt.current = now
+      void overlayAppClient.conversations.updatePresence(conversationId, {
+        status: 'online',
+        typing: Boolean(text.trim()),
+      })
+    }
+  }
+
+  function beginQuoteReply(message: OptimisticMessage) {
+    const snippet = message.content.trim()
+    if (!snippet) return
+    setReplyContext({
+      snippet: snippet.length > 160 ? `${snippet.slice(0, 160)}…` : snippet,
+      bodyForModel: snippet.slice(0, 16000),
+      replyToTurnId: message.turnId,
+    })
+    composerRef.current?.focus()
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
@@ -461,88 +604,6 @@ export function DirectMessageExperience({
     setSavedMessages(result.savedMessages)
   }
 
-  const mentionablePrincipals: MentionablePrincipal[] = participants
-    .filter((participant) => participant.status === 'active')
-    .map((participant) => ({
-      principalId: participant.principalId,
-      displayName: participant.displayName,
-      principalType: participant.principalType,
-      lastActiveAt: participant.updatedAt,
-    }))
-  const mentionSuggestions = mention
-    ? suggestMentionPrincipals({
-      principals: mentionablePrincipals,
-      query: mention.query,
-      excludePrincipalId: currentPrincipalId ?? undefined,
-    })
-    : []
-
-  function selectMention(principal: MentionablePrincipal) {
-    const textarea = composerRef.current
-    const caret = textarea?.selectionStart ?? input.length
-    const next = applyMentionSelection({ text: input, caret, principal })
-    setInput(next.text)
-    setMention(null)
-    queueMicrotask(() => {
-      textarea?.focus()
-      textarea?.setSelectionRange(next.caret, next.caret)
-    })
-  }
-
-  function onComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (mention && mentionSuggestions.length > 0) {
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        event.preventDefault()
-        const delta = event.key === 'ArrowDown' ? 1 : -1
-        setMention({
-          ...mention,
-          index: (mention.index + delta + mentionSuggestions.length) % mentionSuggestions.length,
-        })
-        return
-      }
-      if (event.key === 'Enter' || event.key === 'Tab') {
-        event.preventDefault()
-        selectMention(mentionSuggestions[mention.index] ?? mentionSuggestions[0]!)
-        return
-      }
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        setMention(null)
-        return
-      }
-    }
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      event.currentTarget.form?.requestSubmit()
-    }
-  }
-
-  async function submit(event: FormEvent) {
-    event.preventDefault()
-    const text = input
-    setInput('')
-    setMention(null)
-    clearDraft({ workspaceId: activeWorkspaceId, conversationId })
-    await sendMessage(text)
-  }
-
-  function onInput(value: string, caret?: number) {
-    setInput(value)
-    const position = caret ?? value.length
-    const active = readMentionQuery(value, position)
-    setMention(active ? { query: active.query, index: 0 } : null)
-    if (showcase) return
-    writeDraft({ workspaceId: activeWorkspaceId, conversationId }, value)
-    const now = Date.now()
-    if (now - lastTypingSentAt.current > 2_500) {
-      lastTypingSentAt.current = now
-      void overlayAppClient.conversations.updatePresence(conversationId, {
-        status: 'online',
-        typing: Boolean(value.trim()),
-      })
-    }
-  }
-
   async function saveEdit(messageId: string) {
     const content = editingContent.trim()
     if (!content) return
@@ -584,10 +645,118 @@ export function DirectMessageExperience({
     await loadParticipants()
   }
 
+  const renderAttachmentViewer = useCallback(
+    ({ preview, headerRight }: { preview: AttachmentPreview; headerRight: React.ReactNode }) => (
+      <FileViewerPanel
+        name={preview.name}
+        content={preview.content}
+        url={preview.url}
+        headerRight={headerRight}
+      />
+    ),
+    [],
+  )
+
+  const {
+    shellRightPanel,
+    shellRightPanelClose,
+    shellRightPanelMode,
+    shellRightPanelWidth,
+  } = useChatShellPanels({
+    attachmentPreview,
+    attachmentPreviewMode,
+    closeAttachmentPreview,
+    closeSourcesPanel,
+    setAttachmentPreviewMode,
+    sourcesPanel,
+    renderAttachmentViewer,
+  })
+
+  function renderMessage(message: OptimisticMessage, options?: { inThread?: boolean }) {
+    const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
+    const view = toRoomMessageView({
+      message,
+      currentPrincipalId,
+      authorName: author?.displayName
+        ?? (message.authorKind === 'agent' || message.authorKind === 'model' ? 'Agent' : 'Overlay'),
+      streaming: false,
+    })
+    return (
+      <RoomMessageItem
+        key={message.id}
+        message={view}
+        reactions={reactions
+          .filter((reaction) => reaction.messageId === message.id && reaction.count > 0)
+          .map((reaction) => ({
+            emoji: reaction.emoji,
+            count: reaction.count,
+            reactedByCurrentPrincipal: reaction.reactedByCurrentPrincipal,
+          }))}
+        replyCount={options?.inThread
+          ? 0
+          : messages.filter((reply) => reply.threadRootMessageId === message.id).length}
+        pinned={pins.some((pin) => pin.messageId === message.id)}
+        saved={savedMessages.some((row) => row.messageId === message.id)}
+        editing={editingId === message.id}
+        editingContent={editingContent}
+        onEditingContentChange={setEditingContent}
+        onSaveEdit={() => void saveEdit(message.id)}
+        onCancelEdit={() => setEditingId(null)}
+        onStartEdit={() => {
+          setEditingId(message.id)
+          setEditingContent(message.content)
+        }}
+        onDelete={() => void deleteMessage(message.id)}
+        onReport={() => void reportMessage(message.id)}
+        onToggleReaction={(emoji) => void toggleReaction(message.id, emoji)}
+        onTogglePinned={() => void togglePinned(message.id)}
+        onToggleSaved={() => void toggleSaved(message.id)}
+        onOpenThread={() => setThreadRootId(options?.inThread ? threadRootId : message.id)}
+        onQuoteReply={() => beginQuoteReply(message)}
+        onRetrySend={() => void sendMessage(message.content, { existing: message, threadRootMessageId: message.threadRootMessageId })}
+        onOpenAttachmentPreview={openAttachmentPreview}
+      />
+    )
+  }
+
   return (
     <>
-      <AppScreenShell contentClassName="flex min-h-0">
-        <div className={`flex min-h-0 w-full min-w-0 flex-1 flex-col ${threadRoot ? 'md:pr-[420px]' : ''}`}>
+      <AppScreenShell
+        contentClassName="flex min-h-0"
+        rightPanel={shellRightPanel}
+        rightPanelOpen={Boolean(shellRightPanel)}
+        rightPanelWidth={shellRightPanelWidth}
+        rightPanelMode={shellRightPanelMode}
+        onRightPanelClose={shellRightPanelClose}
+      >
+        <div
+          className={`relative flex min-h-0 w-full min-w-0 flex-1 flex-col ${threadRoot ? 'md:pr-[420px]' : ''}`}
+          onDragEnter={(event) => {
+            event.preventDefault()
+            dragCounterRef.current++
+            if (event.dataTransfer.types.includes('Files')) setIsDragging(true)
+          }}
+          onDragOver={(event) => event.preventDefault()}
+          onDragLeave={(event) => {
+            event.preventDefault()
+            dragCounterRef.current--
+            if (dragCounterRef.current <= 0) {
+              dragCounterRef.current = 0
+              setIsDragging(false)
+            }
+          }}
+          onDrop={(event) => {
+            event.preventDefault()
+            dragCounterRef.current = 0
+            setIsDragging(false)
+            const files = Array.from(event.dataTransfer.files ?? [])
+            const images = files.filter((file) => file.type.startsWith('image/'))
+            const documents = files.filter((file) => !file.type.startsWith('image/'))
+            if (images.length) addImages(images)
+            documents.forEach((file) => queueDocumentUpload(file))
+          }}
+        >
+          {isDragging && <ChatDropOverlay />}
           <AppScreenHeader
             title={title}
             subtitle={participants.length > 2 ? `${participants.length} people` : online > 0 ? 'Online' : undefined}
@@ -671,208 +840,136 @@ export function DirectMessageExperience({
                 <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss"><X size={13} /></button>
               </div>
             ) : null}
-            <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8">
-              <div className="mx-auto w-full max-w-3xl">
-                {loading ? (
-                  <div className="space-y-5" aria-label="Loading messages">
-                    {[0, 1, 2].map((row) => (
-                      <div key={row} className="h-16 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
-                    ))}
-                  </div>
-                ) : mainMessages.length === 0 ? (
-                  <div className="flex min-h-[45vh] flex-col items-center justify-center text-center">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
-                      {conversationType === 'channel' ? <Hash size={20} /> : <UsersRound size={20} />}
-                    </span>
-                    <h2 className="mt-4 text-base font-medium text-[var(--foreground)]">{title}</h2>
-                    <p className="mt-1 max-w-sm text-sm text-[var(--muted)]">
-                      {conversationType === 'channel'
-                        ? channel?.topic ?? 'This is the beginning of this channel.'
-                        : 'This is the beginning of your conversation. Messages are visible only to its participants.'}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-5">
-                    {mainMessages.map((message) => {
-                      const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
-                      const mine = message.authorPrincipalId === currentPrincipalId
-                      return (
-                        <div key={message.id} className="group flex gap-3">
-                          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[11px] font-medium text-[var(--muted)]">
-                            {(author?.displayName ?? 'AI').slice(0, 1).toUpperCase()}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-baseline gap-2">
-                              <span className="text-xs font-medium text-[var(--foreground)]">
-                                {mine ? 'You' : author?.displayName ?? (message.authorKind === 'agent' ? 'Agent' : 'Overlay')}
-                              </span>
-                              <time className="text-[10px] text-[var(--muted-light)]">
-                                {new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                              </time>
-                              {message.editedAt ? <span className="text-[10px] text-[var(--muted-light)]">edited</span> : null}
-                              {message.delivery === 'sending' ? <span className="text-[10px] text-[var(--muted-light)]">sending</span> : null}
-                            </div>
-                            {message.deletedAt ? (
-                              <p className="mt-1 text-sm italic text-[var(--muted-light)]">Message deleted</p>
-                            ) : editingId === message.id ? (
-                              <div className="mt-1 flex gap-2">
-                                <Input
-                                  autoFocus
-                                  value={editingContent}
-                                  onChange={(event) => setEditingContent(event.target.value)}
-                                  onKeyDown={(event) => {
-                                    if (event.key === 'Enter') void saveEdit(message.id)
-                                    if (event.key === 'Escape') setEditingId(null)
-                                  }}
-                                />
-                                <Button size="sm" variant="primary" onClick={() => void saveEdit(message.id)}><Check size={13} /></Button>
-                              </div>
-                            ) : (
-                              <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-[var(--foreground)]">
-                                {message.content}
-                              </p>
-                            )}
-                            {message.delivery === 'failed' ? (
-                              <button
-                                type="button"
-                                className="mt-1 text-[11px] font-medium text-red-500 hover:underline"
-                                onClick={() => void sendMessage(message.content, message)}
-                              >
-                                Failed to send · Retry
-                              </button>
-                            ) : null}
-                            {!message.deletedAt ? (
-                              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                                {reactions.filter((reaction) => reaction.messageId === message.id && reaction.count > 0).map((reaction) => (
-                                  <button
-                                    key={reaction.emoji}
-                                    type="button"
-                                    onClick={() => void toggleReaction(message.id, reaction.emoji)}
-                                    className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[11px] ${reaction.reactedByCurrentPrincipal ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]' : 'border-[var(--border)]'}`}
-                                  >
-                                    <span>{reaction.emoji}</span><span>{reaction.count}</span>
-                                  </button>
-                                ))}
-                                {messages.some((reply) => reply.threadRootMessageId === message.id) ? (
-                                  <button type="button" onClick={() => setThreadRootId(message.id)} className="text-[11px] font-medium text-[var(--muted)] hover:text-[var(--foreground)]">
-                                    {messages.filter((reply) => reply.threadRootMessageId === message.id).length} replies
-                                  </button>
-                                ) : null}
-                              </div>
-                            ) : null}
-                          </div>
-                          {!message.deletedAt && !message.delivery ? (
-                            <div className="flex h-7 shrink-0 items-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
-                              <button type="button" aria-label="Add reaction" onClick={() => void toggleReaction(message.id, '👍')} className="flex h-7 w-7 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)]"><SmilePlus size={12} /></button>
-                              <button type="button" aria-label="Reply in thread" onClick={() => setThreadRootId(message.id)} className="flex h-7 w-7 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)]"><MessageSquareReply size={12} /></button>
-                              <button type="button" aria-label={pins.some((pin) => pin.messageId === message.id) ? 'Unpin message' : 'Pin message'} onClick={() => void togglePinned(message.id)} className="flex h-7 w-7 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)]"><Pin size={12} /></button>
-                              <button type="button" aria-label={savedMessages.some((row) => row.messageId === message.id) ? 'Remove from saved' : 'Save message'} onClick={() => void toggleSaved(message.id)} className="flex h-7 w-7 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)]"><Bookmark size={12} /></button>
-                              {!mine ? (
-                                <button type="button" aria-label="Report message" onClick={() => void reportMessage(message.id)} className="flex h-7 w-7 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)]"><Flag size={12} /></button>
-                              ) : null}
-                              {mine ? (
-                                <>
-                              <button
-                                type="button"
-                                aria-label="Edit message"
-                                onClick={() => {
-                                  setEditingId(message.id)
-                                  setEditingContent(message.content)
-                                }}
-                                className="flex h-7 w-7 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)]"
-                              >
-                                <Pencil size={12} />
-                              </button>
-                              <button
-                                type="button"
-                                aria-label="Delete message"
-                                onClick={() => void deleteMessage(message.id)}
-                                className="flex h-7 w-7 items-center justify-center text-[var(--muted)] hover:text-red-500"
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                                </>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-                      )
-                    })}
-                    {agentResponding ? (
-                      <div className="flex gap-3" aria-label={`${agentResponding} is responding`}>
-                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[11px] font-medium text-[var(--muted)]">
-                          {agentResponding.slice(0, 1).toUpperCase()}
-                        </span>
-                        <div>
-                          <span className="text-xs font-medium">{agentResponding}</span>
-                          <span className="mt-2 flex items-center gap-1">
-                            {[0, 1, 2].map((dot) => <span key={dot} className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--muted-light)]" style={{ animationDelay: `${dot * 120}ms` }} />)}
-                          </span>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                )}
+            <div className="overlay-chat-surface relative min-h-0 flex-1">
+              <div
+                ref={listRef}
+                className="h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4"
+              >
+                <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-5 sm:gap-6">
+                  {loading ? (
+                    <div className="space-y-5" aria-label="Loading messages">
+                      {[0, 1, 2].map((row) => (
+                        <div key={row} className="h-16 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
+                      ))}
+                    </div>
+                  ) : mainMessages.length === 0 ? (
+                    <div className="flex min-h-[45vh] flex-col items-center justify-center text-center">
+                      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
+                        {conversationType === 'channel' ? <Hash size={20} /> : <UsersRound size={20} />}
+                      </span>
+                      <h2 className="mt-4 text-base font-medium text-[var(--foreground)]">{title}</h2>
+                      <p className="mt-1 max-w-sm text-sm text-[var(--muted)]">
+                        {conversationType === 'channel'
+                          ? channel?.topic ?? 'This is the beginning of this channel.'
+                          : 'This is the beginning of your conversation. Messages are visible only to its participants.'}
+                      </p>
+                    </div>
+                  ) : (
+                    mainMessages.map((message) => renderMessage(message))
+                  )}
+                  {agentResponding ? (
+                    <div className="flex items-center gap-2 px-1" aria-label={`${agentResponding} is responding`}>
+                      <span className="text-xs font-medium text-[var(--foreground)]">{agentResponding}</span>
+                      <span className="flex items-center gap-1">
+                        {[0, 1, 2].map((dot) => (
+                          <span
+                            key={dot}
+                            className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--muted-light)]"
+                            style={{ animationDelay: `${dot * 120}ms` }}
+                          />
+                        ))}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
-            <div className="shrink-0 px-3 pb-3 sm:px-4 sm:pb-4">
-              <div className="mx-auto w-full max-w-[56rem]">
-                <p
-                  role="status"
-                  aria-live="polite"
-                  data-testid="conversation-activity-status"
-                  className="mb-1.5 h-4 text-[11px] text-[var(--muted-light)]"
-                >
-                  {typingNames.length > 0
-                    ? `${typingNames.join(', ')} ${typingNames.length === 1 ? 'is' : 'are'} typing`
-                    : agentResponding ? `${agentResponding} is responding` : ''}
-                </p>
-                <form
-                  onSubmit={(event) => void submit(event)}
-                  className="relative overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,color] duration-300 focus-within:border-[var(--muted-light)]"
-                >
-                  <div className="flex items-end gap-2 p-2.5 sm:p-3">
-                    <MentionSuggestionList
-                      suggestions={mentionSuggestions}
-                      activeIndex={mention?.index ?? 0}
-                      onSelect={selectMention}
-                      onHover={(index) => setMention((current) => current ? { ...current, index } : current)}
-                    />
-                    <textarea
-                      ref={composerRef}
-                      value={input}
-                      onChange={(event) => onInput(event.target.value, event.target.selectionStart ?? undefined)}
-                      onKeyDown={onComposerKeyDown}
-                      role="combobox"
-                      aria-expanded={mentionSuggestions.length > 0}
-                      aria-controls={MENTION_LISTBOX_ID}
-                      aria-autocomplete="list"
-                      aria-activedescendant={mentionSuggestions.length > 0 && mention
-                        ? mentionOptionId((mentionSuggestions[mention.index] ?? mentionSuggestions[0]!).principalId)
-                        : undefined}
-                      aria-label={`Message ${title}`}
-                      rows={1}
-                      placeholder={`Message ${title}`}
-                      className="max-h-36 min-h-9 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
-                    />
-                    <button
-                      type="submit"
-                      disabled={!input.trim()}
-                      aria-label="Send message"
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--foreground)] text-[var(--background)] transition-opacity disabled:opacity-30"
-                    >
-                      <Send size={14} />
-                    </button>
-                  </div>
-                </form>
-                <p className="mt-1.5 px-1 text-[10px] text-[var(--muted-light)]">
-                  Enter to send · Shift Enter for a new line · Use @name to notify someone
-                </p>
-              </div>
-            </div>
+            <p
+              role="status"
+              aria-live="polite"
+              data-testid="conversation-activity-status"
+              className="mx-auto h-4 w-full max-w-[56rem] px-4 text-[11px] text-[var(--muted-light)]"
+            >
+              {typingNames.length > 0
+                ? `${typingNames.join(', ')} ${typingNames.length === 1 ? 'is' : 'are'} typing`
+                : agentResponding ? `${agentResponding} is responding` : ''}
+            </p>
+            <ChatComposer
+              mode="chat"
+              surface={{
+                hideModeMenu: true,
+                hideGenerationModes: true,
+                placeholder: `Message ${title}, use @ to notify someone…`,
+                mentionCategories,
+              }}
+              emptyState={{ showCenteredEmptyChat: false, greetingLine: '' }}
+              attachments={{
+                attachedImages,
+                setAttachedImages,
+                pendingChatDocuments,
+                removePendingDocument,
+                attachmentError,
+                fileInputRef,
+                docInputRef,
+                onAddImages: addImages,
+                onAddDocumentsFromPicker: addDocumentsFromPicker,
+                onOpenAttachmentPreview: openAttachmentPreview,
+                onOpenFilePreview: openFilePreview,
+              }}
+              runtime={{
+                composerNotice,
+                isSendBlocked: false,
+                isActiveLoading: false,
+                isTemporaryChat: false,
+                blockedComposerContent: null,
+              }}
+              inputState={{
+                replyContext,
+                setReplyContext,
+                textareaRef: composerRef,
+                input,
+                inputRevision,
+                onInputChange: onComposerInput,
+                onMentionsChange: setMentions,
+                onPaste: handlePaste,
+                hasComposerText,
+              }}
+              toolState={{
+                showAttachMenu,
+                setShowAttachMenu,
+                attachMenuRef,
+                selectedToolIds: [],
+                memoryEnabled: false,
+                capabilities,
+                onToggleTool: () => {},
+                onToggleMemory: () => {},
+                onRemoveTool: () => {},
+              }}
+              modeState={{
+                onModeChange: () => {},
+                generationChip: null,
+                setGenerationChip: () => {},
+                showModeMenu,
+                setShowModeMenu,
+                modeMenuRef,
+                onNavigateMode: () => {},
+              }}
+              actions={{
+                onStop: () => {},
+                onSend: () => void handleSend(),
+              }}
+            />
           </AppScreenBody>
         </div>
       </AppScreenShell>
+
+      <AttachmentPreviewDialog
+        open={Boolean(attachmentPreview && attachmentPreviewMode === 'dialog')}
+        preview={attachmentPreview}
+        onClose={closeAttachmentPreview}
+        onModeChange={setAttachmentPreviewMode}
+        renderViewer={renderAttachmentViewer}
+      />
 
       <ShareDialog
         workspaceId={activeWorkspaceId}
@@ -940,22 +1037,10 @@ export function DirectMessageExperience({
             </div>
             <button type="button" onClick={() => setThreadRootId(null)} aria-label="Close thread" className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)]"><X size={15} /></button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-5">
-            {[threadRoot, ...threadReplies].map((message, index) => {
-              const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
-              return (
-                <div key={message.id} className={`${index > 0 ? 'mt-5 border-t border-[var(--border)] pt-5' : ''} flex gap-3`}>
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[11px] font-medium text-[var(--muted)]">{(author?.displayName ?? 'AI').slice(0, 1).toUpperCase()}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-xs font-medium">{message.authorPrincipalId === currentPrincipalId ? 'You' : author?.displayName ?? 'Overlay'}</span>
-                      <time className="text-[10px] text-[var(--muted-light)]">{new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>
-                    </div>
-                    <p className="mt-1 whitespace-pre-wrap text-sm leading-6">{message.deletedAt ? 'Message deleted' : message.content}</p>
-                  </div>
-                </div>
-              )
-            })}
+          <div className="overlay-chat-surface min-h-0 flex-1 overflow-y-auto p-5">
+            <div className="flex flex-col gap-5">
+              {[threadRoot, ...threadReplies].map((message) => renderMessage(message, { inThread: true }))}
+            </div>
           </div>
           <form
             className="m-4 flex shrink-0 items-end gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-2 focus-within:border-[var(--muted-light)]"
@@ -963,7 +1048,7 @@ export function DirectMessageExperience({
               event.preventDefault()
               const text = threadInput
               setThreadInput('')
-              void sendMessage(text, undefined, threadRoot.id)
+              void sendMessage(text, { threadRootMessageId: threadRoot.id })
             }}
           >
             <textarea

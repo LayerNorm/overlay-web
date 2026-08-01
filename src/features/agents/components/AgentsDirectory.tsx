@@ -179,9 +179,9 @@ export function AgentsDirectory({ showcase = false }: { showcase?: boolean }) {
                 <div className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ backgroundColor: agent.avatarColor ?? '#64748b' }}><Bot size={24} strokeWidth={1.5} /></div>
                 <h2 className="mt-5 font-medium">{agent.name}</h2>
                 <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--muted)]">{agent.description ?? agent.instructions}</p>
-                <div className="mt-auto flex items-end justify-between gap-3 pt-5">
-                  <div className="text-[10px] text-[var(--muted-light)]"><span className="block truncate">{agent.modelId}</span><span>{agent.roomCount} {agent.roomCount === 1 ? 'room' : 'rooms'}</span></div>
-                  <div className="flex items-center gap-1">
+                <div className="mt-auto flex flex-wrap items-end justify-between gap-x-3 gap-y-2 pt-5">
+                  <div className="min-w-0 flex-1 text-[10px] text-[var(--muted-light)]"><span className="block truncate" title={agent.modelId}>{agent.modelId}</span><span>{agent.roomCount} {agent.roomCount === 1 ? 'room' : 'rooms'}</span></div>
+                  <div className="flex shrink-0 items-center gap-1">
                     {!showcase ? <Button variant="ghost" size="sm" onClick={() => setSharingAgent(agent)}><Share2 size={13} /> Share</Button> : null}
                     <Button variant="ghost" size="sm" onClick={() => void startChat(agent)}><MessageSquare size={13} /> Chat</Button>
                   </div>

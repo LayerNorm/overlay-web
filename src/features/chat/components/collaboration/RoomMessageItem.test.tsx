@@ -1,0 +1,117 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { RoomMessageItem } from './RoomMessageItem'
+import { toRoomMessageView, type RoomMessageRecord } from './room-message-view'
+
+;(globalThis as typeof globalThis & { React: typeof React }).React = React
+
+const ME = 'principal_me'
+
+function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
+  return {
+    id: 'message_1',
+    turnId: 'turn_1',
+    authorKind: 'human',
+    authorPrincipalId: ME,
+    content: 'Ship the onboarding fix',
+    createdAt: Date.parse('2026-07-29T18:02:00.000Z'),
+    ...overrides,
+  }
+}
+
+function render(message: RoomMessageRecord, authorName = 'Maya Chen') {
+  return renderToStaticMarkup(
+    <RoomMessageItem
+      message={toRoomMessageView({ message, currentPrincipalId: ME, authorName })}
+      reactions={[{ emoji: '👍', count: 2, reactedByCurrentPrincipal: true }]}
+      replyCount={1}
+      pinned={false}
+      saved={false}
+      editing={false}
+      editingContent=""
+      onEditingContentChange={() => undefined}
+      onSaveEdit={() => undefined}
+      onCancelEdit={() => undefined}
+      onStartEdit={() => undefined}
+      onDelete={() => undefined}
+      onReport={() => undefined}
+      onToggleReaction={() => undefined}
+      onTogglePinned={() => undefined}
+      onToggleSaved={() => undefined}
+      onOpenThread={() => undefined}
+      onQuoteReply={() => undefined}
+      onRetrySend={() => undefined}
+      onOpenAttachmentPreview={() => undefined}
+    />,
+  )
+}
+
+test('a member’s own message reuses the personal chat user bubble', () => {
+  const html = render(record())
+  assert.match(html, /Ship the onboarding fix/)
+  // Right-aligned bubble column, same as the chat transcript's user side.
+  assert.match(html, /justify-end/)
+  // Own messages can be edited and deleted, never reported.
+  assert.match(html, /aria-label="Edit message"/)
+  assert.match(html, /aria-label="Delete message"/)
+  assert.doesNotMatch(html, /aria-label="Report message"/)
+})
+
+test('another member’s message renders markdown through the shared block renderer', () => {
+  const html = render(record({
+    id: 'message_2',
+    authorPrincipalId: 'principal_maya',
+    content: '**Bold** finding',
+  }))
+  assert.match(html, /<strong>Bold<\/strong>/)
+  assert.match(html, /Maya Chen/)
+  assert.match(html, /aria-label="Report message"/)
+  assert.doesNotMatch(html, /aria-label="Edit message"/)
+})
+
+test('agent tool calls survive into the room transcript', () => {
+  const html = render(record({
+    id: 'message_3',
+    authorKind: 'agent',
+    authorPrincipalId: 'principal_agent',
+    content: 'Searched the web',
+    parts: [
+      { type: 'text', text: 'Here is what I found' },
+    ],
+  }), 'Bagel - GTM')
+  assert.match(html, /Here is what I found/)
+  assert.match(html, /Bagel - GTM/)
+})
+
+test('collaboration operations sit in the hover action row', () => {
+  const html = render(record({ id: 'message_4', authorPrincipalId: 'principal_maya' }))
+  for (const label of ['Add reaction', 'Reply in thread', 'Pin message', 'Save message']) {
+    assert.match(html, new RegExp(`aria-label="${label}"`))
+  }
+  assert.match(html, /group-hover\/exchange:opacity-100/)
+  assert.match(html, /1 reply/)
+})
+
+test('deleted messages leave a tombstone instead of content', () => {
+  const html = render(record({ id: 'message_5', deletedAt: Date.now(), content: '' }))
+  assert.match(html, /Message deleted/)
+})
+
+test('attachment summaries become chips, not body text', () => {
+  const view = toRoomMessageView({
+    message: record({
+      content: 'Latest numbers\n\n[Indexed documents: q3.csv]\n\n[Attached 1 image: chart.png]',
+      parts: [
+        { type: 'text', text: 'Latest numbers' },
+        { type: 'file', url: 'https://example.test/chart.png', mediaType: 'image/png', fileName: 'chart.png' },
+      ],
+    }),
+    currentPrincipalId: ME,
+    authorName: 'Me',
+  })
+  assert.equal(view.text, 'Latest numbers')
+  assert.deepEqual(view.documentNames, ['q3.csv'])
+  assert.equal(view.images.length, 1)
+})

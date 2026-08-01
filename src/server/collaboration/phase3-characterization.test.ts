@@ -43,12 +43,15 @@ test('Phase 3 persists participant state, retries, tombstones, presence, and not
 })
 
 test('Phase 3 exposes Personal-to-DM forking and a dedicated collaborative surface', async () => {
-  const [personal, direct] = await Promise.all([
+  // Rooms render through the shared chat transcript components, so the message
+  // affordances live in the room message renderer rather than the screen.
+  const [personal, direct, message] = await Promise.all([
     readFile(`${root}/src/features/chat/components/ChatExperience.tsx`, 'utf8'),
     readFile(`${root}/src/features/chat/components/DirectMessageExperience.tsx`, 'utf8'),
+    readFile(`${root}/src/features/chat/components/collaboration/RoomMessageItem.tsx`, 'utf8'),
   ])
   assert.match(personal, /Continue with people/)
-  assert.match(direct, /Use @name to notify someone/)
-  assert.match(direct, /Failed to send · Retry/)
-  assert.match(direct, /Message deleted/)
+  assert.match(direct, /use @ to notify someone/)
+  assert.match(message, /Failed to send · Retry/)
+  assert.match(message, /Message deleted/)
 })

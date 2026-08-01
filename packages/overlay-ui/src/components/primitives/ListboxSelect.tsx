@@ -158,7 +158,7 @@ export function ListboxSelect<T extends string>({
         aria-haspopup="listbox"
         onClick={() => !disabled && setOpen((current) => !current)}
         className={cn(
-          'flex w-full min-w-0 items-center justify-between gap-2.5 rounded-md bg-[var(--surface-subtle)] py-1.5 pl-3 pr-3 text-left text-xs',
+          'flex w-full min-w-0 items-center justify-between gap-2.5 rounded-md bg-[var(--surface-subtle)] py-1.5 pl-3 pr-3.5 text-left text-xs',
           disabled
             ? 'cursor-not-allowed text-[var(--muted-light)]'
             : 'text-[var(--muted)] hover:bg-[var(--border)]',

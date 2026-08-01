@@ -12,7 +12,7 @@ import {
   Settings,
   UsersRound,
 } from 'lucide-react'
-import { MenuItem, MenuSurface } from '@overlay/ui/primitives'
+import { CollapsibleSection, MenuItem, MenuSurface } from '@overlay/ui/primitives'
 import { useWorkspace } from './WorkspaceProvider'
 import { buildWorkspaceHref } from '../lib/workspace-routing'
 import { CreateWorkspaceDialog } from './CreateWorkspaceDialog'
@@ -158,12 +158,8 @@ export function WorkspaceSwitcher({
 
   const Chevron = ChevronDown
 
-  const menuBody = (
+  const workspaceListBody = (
     <>
-      <div className="px-2 pb-1.5 pt-1 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
-        Workspaces
-      </div>
-
       {status === 'loading' ? (
         <div className="space-y-1 px-2 py-2" aria-label="Loading workspaces">
           {[0, 1].map((item) => (
@@ -226,6 +222,20 @@ export function WorkspaceSwitcher({
           </MenuItem>
         )
       }) : null}
+    </>
+  )
+
+  const menuBody = (
+    <>
+      <CollapsibleSection
+        label="Workspaces"
+        defaultOpen
+        headerClassName="px-2 py-1.5 tracking-[0.08em]"
+        contentClassName="pb-0"
+        collapsedSummary={activeWorkspace?.name}
+      >
+        {workspaceListBody}
+      </CollapsibleSection>
 
       <div className="my-1 h-px bg-[var(--border)]" />
       <MenuItem
