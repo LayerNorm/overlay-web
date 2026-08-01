@@ -401,6 +401,10 @@ function serializeConversationMessage(message: ConversationMessageRow) {
     role: message.role,
     authorKind: message.authorKind,
     ...(message.authorPrincipalId ? { authorPrincipalId: message.authorPrincipalId } : {}),
+    // Rooms need the raw body and the thread anchor: without them a reply
+    // cannot be filtered out of the main transcript.
+    content: message.content,
+    ...(message.threadRootMessageId ? { threadRootMessageId: message.threadRootMessageId } : {}),
     parts: message.parts?.length
       ? message.parts.map(serializeConversationMessagePart)
       : [{ type: 'text' as const, text: message.content }],

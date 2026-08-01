@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- room attachments mirror the chat transcript renderer */
 
+import { useEffect, useRef, useState } from 'react'
 import {
   Bookmark,
   Bot,
@@ -20,6 +21,7 @@ import { FlashCopyIconButton, UserMessageBubble } from '@overlay/chat-react'
 import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview } from '@overlay/chat-react'
 import { Input } from '@overlay/ui/primitives'
+import { RoomMessageMentions } from './RoomMessageMentions'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -50,6 +52,8 @@ export type RoomMessageView = {
   blocks: AssistantVisualBlock[]
   images: RoomMessageAttachment[]
   documentNames: string[]
+  /** Room members named in the body, so `@name` renders as a chip. */
+  mentions: Array<{ type: string; id: string; name: string }>
   streaming?: boolean
 }
 
@@ -74,17 +78,25 @@ export type RoomMessageItemProps = {
   onQuoteReply: () => void
   onRetrySend: () => void
   onOpenAttachmentPreview: (preview: AttachmentPreview) => void
+  /** Briefly outlines the message after a jump from the pinned or thread list. */
+  highlighted?: boolean
 }
 
 /** Rooms do not surface draft review; agent drafts are handled in personal chat. */
 const NOOP_DRAFT = () => {}
 
+/** The scroll target for pin and thread jumps. */
+export function roomMessageDomId(messageId: string): string {
+  return `room-message-${messageId}`
+}
+
 /**
- * One message in a shared room. Own messages use the same right-aligned bubble
- * as personal chat; everyone else's (people and agents) render through the
- * shared assistant block renderer so markdown, tool calls, and attachments look
- * identical across surfaces. Collaboration-only operations (thread, react, pin,
- * save, report) sit in the same hover row as the chat transcript's actions.
+ * One message in a shared room. People render as attributed chat bubbles (yours
+ * on the right, everyone else's on the left) and agents render through the
+ * shared assistant block renderer, so markdown, tool calls, and attachments look
+ * the same as they do in personal chat. Collaboration-only operations (thread,
+ * react, pin, save, report) sit in the same hover row as the transcript's
+ * actions.
  */
 export function RoomMessageItem({
   message,
@@ -107,13 +119,22 @@ export function RoomMessageItem({
   onQuoteReply,
   onRetrySend,
   onOpenAttachmentPreview,
+  highlighted = false,
 }: RoomMessageItemProps) {
   const { mine } = message
+  const isAgent = message.authorKind === 'agent' || message.authorKind === 'model'
   const timeLabel = new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const rootProps = {
+    id: roomMessageDomId(message.id),
+    'data-room-message': message.id,
+  }
+  const highlightClass = highlighted
+    ? 'rounded-xl ring-2 ring-[var(--foreground)] ring-offset-4 ring-offset-[var(--background)]'
+    : ''
 
   if (message.deletedAt) {
     return (
-      <div className={`flex flex-col gap-1 ${mine ? 'items-end' : 'items-start'}`} data-room-message={message.id}>
+      <div {...rootProps} className={`flex flex-col gap-1 ${mine ? 'items-end' : 'items-start'}`}>
         <p className="px-1 text-sm italic text-[var(--muted-light)]">Message deleted</p>
       </div>
     )
@@ -202,7 +223,7 @@ export function RoomMessageItem({
       onStartEdit={onStartEdit}
       onDelete={onDelete}
       onReport={onReport}
-      onQuickReaction={() => onToggleReaction('👍')}
+      onSelectReaction={onToggleReaction}
       onOpenThread={onOpenThread}
       onQuoteReply={onQuoteReply}
       onTogglePinned={onTogglePinned}
@@ -210,28 +231,32 @@ export function RoomMessageItem({
     />
   )
 
+  /**
+   * Every room message names its author. Anonymous bubbles read as first person
+   * even when a teammate wrote them, which is exactly the confusion a shared
+   * room cannot afford.
+   */
   const meta = (
-    <div className={`flex items-baseline gap-2 px-1 ${mine ? 'justify-end' : ''}`}>
-      {!mine ? (
-        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--foreground)]">
-          {message.authorKind === 'agent' || message.authorKind === 'model' ? (
-            <span
-              className="flex h-5 w-5 items-center justify-center rounded-full text-white"
-              style={{ backgroundColor: message.authorColor ?? '#64748b' }}
-            >
-              <Bot size={11} strokeWidth={1.75} />
-            </span>
-          ) : (
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[10px] text-[var(--muted)]">
-              {message.authorName.slice(0, 1).toUpperCase()}
-            </span>
-          )}
-          {message.authorName}
-        </span>
-      ) : null}
-      <time className="text-[10px] text-[var(--muted-light)]">{timeLabel}</time>
+    <div className={`flex items-center gap-2 px-1 ${mine ? 'justify-end' : ''}`}>
+      <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-[var(--foreground)]">
+        {isAgent ? (
+          <span
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white"
+            style={{ backgroundColor: message.authorColor ?? '#64748b' }}
+          >
+            <Bot size={11} strokeWidth={1.75} />
+          </span>
+        ) : (
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[10px] text-[var(--muted)]">
+            {message.authorName.slice(0, 1).toUpperCase()}
+          </span>
+        )}
+        <span className="truncate">{mine ? 'You' : message.authorName}</span>
+      </span>
+      <time className="shrink-0 text-[10px] text-[var(--muted-light)]">{timeLabel}</time>
       {message.editedAt ? <span className="text-[10px] text-[var(--muted-light)]">edited</span> : null}
       {message.delivery === 'sending' ? <span className="text-[10px] text-[var(--muted-light)]">sending</span> : null}
+      {pinned ? <Pin size={11} className="shrink-0 text-[var(--muted-light)]" /> : null}
     </div>
   )
 
@@ -256,33 +281,36 @@ export function RoomMessageItem({
         <button
           type="button"
           onClick={onOpenThread}
-          className="text-[11px] font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
         >
+          <MessageSquareReply size={12} strokeWidth={1.75} />
           {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
         </button>
       ) : null}
     </div>
   ) : null
 
-  if (mine) {
+  if (!isAgent) {
     return (
       <div
-        className="group/exchange relative flex flex-col gap-2 message-appear"
-        data-room-message={message.id}
+        {...rootProps}
+        className={`group/exchange relative flex scroll-mt-6 flex-col gap-2 message-appear ${highlightClass}`}
       >
         {meta}
-        <div className="flex min-w-0 justify-end">
-          <div className="flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-2 sm:max-w-[75%]">
+        <div className={`flex min-w-0 ${mine ? 'justify-end' : 'justify-start'}`}>
+          <div className={`flex min-w-0 max-w-[min(92%,36rem)] flex-col gap-2 sm:max-w-[75%] ${mine ? 'items-end' : 'items-start'}`}>
             {attachments}
             {editing ? editor : message.text ? (
-              <UserMessageBubble className="ml-auto max-w-full">{message.text}</UserMessageBubble>
+              <UserMessageBubble className={`max-w-full ${mine ? 'ml-auto' : 'mr-auto'}`}>
+                <RoomMessageMentions text={message.text} mentions={message.mentions} />
+              </UserMessageBubble>
             ) : null}
           </div>
         </div>
         {message.delivery === 'failed' ? (
           <button
             type="button"
-            className="px-1 text-right text-[11px] font-medium text-red-500 hover:underline"
+            className={`px-1 text-[11px] font-medium text-red-500 hover:underline ${mine ? 'text-right' : 'text-left'}`}
             onClick={onRetrySend}
           >
             Failed to send · Retry
@@ -296,8 +324,8 @@ export function RoomMessageItem({
 
   return (
     <div
-      className="group/exchange relative flex flex-col gap-2 message-appear"
-      data-room-message={message.id}
+      {...rootProps}
+      className={`group/exchange relative flex scroll-mt-6 flex-col gap-2 message-appear ${highlightClass}`}
     >
       {meta}
       {attachments}
@@ -313,11 +341,28 @@ export function RoomMessageItem({
           onOpenAttachmentPreview={onOpenAttachmentPreview}
         />
       )}
+      {message.streaming && message.blocks.length === 0 ? (
+        <div className="flex items-center gap-1 px-1" aria-label={`${message.authorName} is responding`}>
+          {[0, 1, 2].map((dot) => (
+            <span
+              key={dot}
+              className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--muted-light)]"
+              style={{ animationDelay: `${dot * 120}ms` }}
+            />
+          ))}
+        </div>
+      ) : null}
       {reactionRow}
-      {footer}
+      {message.streaming ? null : footer}
     </div>
   )
 }
+
+const QUICK_REACTIONS = [
+  '👍', '🎉', '❤️', '😄', '🙌', '👀', '🔥', '✅',
+  '🙏', '😮', '😢', '🤔', '🚀', '💡', '👏', '⚠️',
+  '💯', '🤝', '📌', '☕', '🐛', '✨', '❓', '❌',
+]
 
 function RoomMessageToolbar({
   alignEnd,
@@ -330,7 +375,7 @@ function RoomMessageToolbar({
   onStartEdit,
   onDelete,
   onReport,
-  onQuickReaction,
+  onSelectReaction,
   onOpenThread,
   onQuoteReply,
   onTogglePinned,
@@ -346,25 +391,33 @@ function RoomMessageToolbar({
   onStartEdit: () => void
   onDelete: () => void
   onReport: () => void
-  onQuickReaction: () => void
+  onSelectReaction: (emoji: string) => void
   onOpenThread: () => void
   onQuoteReply: () => void
   onTogglePinned: () => void
   onToggleSaved: () => void
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false)
   const buttonClass =
     'rounded-md p-1.5 text-[var(--muted)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30'
 
   return (
     <div
-      className={`chat-exchange-actions--hover flex items-center gap-1 px-1 pt-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
-        alignEnd ? 'justify-end' : ''
-      }`}
+      className={`chat-exchange-actions--hover flex items-center gap-1 px-1 pt-0.5 transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
+        // The row stays put while the picker is open, or choosing an emoji
+        // would mean chasing a control that fades out from under the cursor.
+        pickerOpen ? 'opacity-100' : 'opacity-0'
+      } ${alignEnd ? 'justify-end' : ''}`}
     >
       <FlashCopyIconButton copyText={copyText} disabled={disabled || copyText.length === 0} ariaLabel="Copy message" />
-      <button type="button" onClick={onQuickReaction} disabled={disabled} className={buttonClass} aria-label="Add reaction">
-        <SmilePlus size={14} strokeWidth={1.75} />
-      </button>
+      <EmojiPickerButton
+        alignEnd={alignEnd}
+        disabled={disabled}
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        onSelect={onSelectReaction}
+        buttonClass={buttonClass}
+      />
       <button type="button" onClick={onOpenThread} disabled={disabled} className={buttonClass} aria-label="Reply in thread">
         <MessageSquareReply size={14} strokeWidth={1.75} />
       </button>
@@ -375,21 +428,21 @@ function RoomMessageToolbar({
         type="button"
         onClick={onTogglePinned}
         disabled={disabled}
-        className={`${buttonClass} ${pinned ? 'text-[var(--foreground)]' : ''}`}
+        className={`${buttonClass} ${pinned ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
         aria-label={pinned ? 'Unpin message' : 'Pin message'}
         aria-pressed={pinned}
       >
-        <Pin size={14} strokeWidth={1.75} />
+        <Pin size={14} strokeWidth={1.75} className={pinned ? 'fill-current' : undefined} />
       </button>
       <button
         type="button"
         onClick={onToggleSaved}
         disabled={disabled}
-        className={`${buttonClass} ${saved ? 'text-[var(--foreground)]' : ''}`}
+        className={`${buttonClass} ${saved ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
         aria-label={saved ? 'Remove from saved' : 'Save message'}
         aria-pressed={saved}
       >
-        <Bookmark size={14} strokeWidth={1.75} />
+        <Bookmark size={14} strokeWidth={1.75} className={saved ? 'fill-current' : undefined} />
       </button>
       {canReport ? (
         <button type="button" onClick={onReport} disabled={disabled} className={buttonClass} aria-label="Report message">
@@ -411,6 +464,83 @@ function RoomMessageToolbar({
             <Trash2 size={14} strokeWidth={1.75} />
           </button>
         </>
+      ) : null}
+    </div>
+  )
+}
+
+function EmojiPickerButton({
+  alignEnd,
+  disabled,
+  open,
+  onOpenChange,
+  onSelect,
+  buttonClass,
+}: {
+  alignEnd: boolean
+  disabled: boolean
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSelect: (emoji: string) => void
+  buttonClass: string
+}) {
+  const rootRef = useRef<HTMLDivElement>(null)
+  const setOpen = onOpenChange
+
+  useEffect(() => {
+    if (!open) return
+    function onPointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) onOpenChange(false)
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') onOpenChange(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [onOpenChange, open])
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        disabled={disabled}
+        className={`${buttonClass} ${open ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+        aria-label="Add reaction"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+      >
+        <SmilePlus size={14} strokeWidth={1.75} />
+      </button>
+      {open ? (
+        <div
+          role="dialog"
+          aria-label="Pick a reaction"
+          className={`overlay-pop-in absolute bottom-full z-30 mb-1.5 w-64 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-2 shadow-lg ${
+            alignEnd ? 'right-0' : 'left-0'
+          }`}
+        >
+          <div className="grid grid-cols-8 gap-0.5">
+            {QUICK_REACTIONS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => {
+                  onSelect(emoji)
+                  setOpen(false)
+                }}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-base transition-colors hover:bg-[var(--surface-muted)]"
+                aria-label={`React with ${emoji}`}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </div>
       ) : null}
     </div>
   )

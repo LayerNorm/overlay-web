@@ -15,9 +15,7 @@ import {
   MoreHorizontal,
   Paperclip,
   Pin,
-  Send,
   Share2,
-  UserPlus,
   UsersRound,
   X,
 } from 'lucide-react'
@@ -49,8 +47,14 @@ import { useComposerTextState } from './chat/useComposerTextState'
 import { useChatPanels } from './chat/useChatPanels'
 import { useChatShellPanels } from './chat/useChatShellPanels'
 import { buildTextTurnPayload } from './chat/chat-send-body-builders'
-import { RoomMessageItem } from './collaboration/RoomMessageItem'
+import { RoomMessageItem, roomMessageDomId } from './collaboration/RoomMessageItem'
 import { toRoomMessageView, type RoomMessageRecord } from './collaboration/room-message-view'
+import {
+  RoomPeoplePanel,
+  RoomPinnedPanel,
+  RoomThreadPanel,
+  type RoomPanelKind,
+} from './collaboration/RoomSidePanels'
 
 const FileViewerPanel = dynamic(
   () => import('@overlay/modules-react/knowledge').then((mod) => ({ default: mod.FileViewerPanel })),
@@ -147,8 +151,9 @@ export function DirectMessageExperience({
   )
   const [loading, setLoading] = useState(!showcase)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [peopleOpen, setPeopleOpen] = useState(false)
+  const [roomPanel, setRoomPanel] = useState<RoomPanelKind | null>(null)
   const [addPeopleOpen, setAddPeopleOpen] = useState(false)
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
@@ -173,12 +178,22 @@ export function DirectMessageExperience({
   }] : [])
   const [pins, setPins] = useState<ConversationPin[]>([])
   const [savedMessages, setSavedMessages] = useState<ConversationSavedMessage[]>([])
-  const [threadRootId, setThreadRootId] = useState<string | null>(showcase && conversationType === 'channel' ? 'showcase-dm-message-1' : null)
+  const [threadRootId, setThreadRootId] = useState<string | null>(null)
   const [threadInput, setThreadInput] = useState('')
   const [agentResponding, setAgentResponding] = useState<string | null>(null)
+  /** Live agent text keyed by principal, replaced by the stored row once saved. */
+  const [streamingAgentReplies, setStreamingAgentReplies] = useState<Record<string, {
+    principalId: string
+    name: string
+    text: string
+    threadRootMessageId?: string
+  }>>({})
   const [shareOpen, setShareOpen] = useState(false)
   const [attachOpen, setAttachOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  /** Latest messages for callbacks that must not close over a stale render. */
+  const messagesRef = useRef<OptimisticMessage[]>(messages)
+  messagesRef.current = messages
   const lastTypingSentAt = useRef(0)
   const lastNotificationReadAt = useRef(0)
 
@@ -366,7 +381,61 @@ export function DirectMessageExperience({
   const currentParticipant = participants.find((participant) => participant.principalId === currentPrincipalId)
   const mainMessages = messages.filter((message) => !message.threadRootMessageId)
   const threadRoot = messages.find((message) => message.id === threadRootId)
-  const threadReplies = messages.filter((message) => message.threadRootMessageId === threadRootId)
+  const threadReplies = messages.filter((message) => (
+    Boolean(threadRootId) && message.threadRootMessageId === threadRootId
+  ))
+  const replyCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const message of messages) {
+      const root = message.threadRootMessageId
+      if (!root) continue
+      counts.set(root, (counts.get(root) ?? 0) + 1)
+    }
+    return counts
+  }, [messages])
+
+  const participantMentions = useMemo(() => participants.map((participant) => ({
+    type: participant.principalType === 'agent' ? 'person' : 'person',
+    id: participant.principalId,
+    name: participant.displayName,
+  })), [participants])
+
+  /**
+   * Scrolls a pinned message back into view and flashes it. A reply only exists
+   * inside its thread, so the thread panel opens first and the scroll happens
+   * there instead of in the main transcript.
+   */
+  const jumpToMessage = useCallback((messageId: string) => {
+    const target = messagesRef.current.find((message) => message.id === messageId)
+    const root = target?.threadRootMessageId
+    if (root) {
+      setThreadRootId(root)
+      setRoomPanel('thread')
+    } else {
+      setThreadRootId(null)
+      setRoomPanel(null)
+    }
+    setHighlightedMessageId(messageId)
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        document.getElementById(roomMessageDomId(messageId))?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        })
+      })
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!highlightedMessageId) return
+    const timer = window.setTimeout(() => setHighlightedMessageId(null), 2_000)
+    return () => window.clearTimeout(timer)
+  }, [highlightedMessageId])
+
+  const openThread = useCallback((messageId: string) => {
+    setThreadRootId(messageId)
+    setRoomPanel('thread')
+  }, [])
 
   const mentionCategories: MentionCategory[] = useMemo(() => {
     const items = participants
@@ -454,7 +523,7 @@ export function DirectMessageExperience({
       if (invokedAgents.length) {
         setAgentResponding(invokedAgents.length === 1 ? invokedAgents[0]!.displayName : 'Agents')
       }
-      await overlayAppClient.conversations.addMessage({
+      const saved = await overlayAppClient.conversations.addMessage({
         conversationId,
         turnId,
         role: 'user',
@@ -464,6 +533,9 @@ export function DirectMessageExperience({
         clientNonce,
         mentionedPrincipalIds,
         threadRootMessageId,
+        // When an agent is going to answer, this client watches the reply
+        // stream, so the server must not also run the invocation.
+        ...(invokedAgents.length ? { deferAgentReply: true } : {}),
         ...(parts?.length ? { parts: parts as Array<Record<string, unknown>> } : {}),
         ...(options?.attachmentNames?.length ? { attachmentNames: options.attachmentNames } : {}),
         ...(options?.reply?.replyToTurnId
@@ -471,12 +543,96 @@ export function DirectMessageExperience({
           : {}),
       })
       await loadMessages()
+      if (invokedAgents.length) {
+        const humanMessageId = messagesRef.current.find((message) => (
+          message.clientNonce === clientNonce
+        ))?.id
+        if (humanMessageId) {
+          await streamAgentReply({
+            humanMessageId,
+            mentionedPrincipalIds,
+            threadRootMessageId,
+            agents: invokedAgents.map((participant) => ({
+              principalId: participant.principalId,
+              displayName: participant.displayName,
+            })),
+          })
+        }
+      }
+      void saved
     } catch {
       setMessages((current) => current.map((message) => (
         message.clientNonce === clientNonce ? { ...message, delivery: 'failed' } : message
       )))
     } finally {
       setAgentResponding(null)
+    }
+  }
+
+  /**
+   * Reads the agent's reply as it is written. The server persists the finished
+   * message itself, so the streamed text is a live preview that the next load
+   * replaces with the stored row.
+   */
+  async function streamAgentReply({
+    humanMessageId,
+    mentionedPrincipalIds,
+    threadRootMessageId,
+    agents,
+  }: {
+    humanMessageId: string
+    mentionedPrincipalIds: string[]
+    threadRootMessageId?: string
+    agents: Array<{ principalId: string; displayName: string }>
+  }) {
+    const fallbackAgent = agents[0]
+    try {
+      const response = await overlayAppClient.conversations.agentReplyStreamResponse({
+        conversationId,
+        messageId: humanMessageId,
+        mentionedPrincipalIds,
+        ...(threadRootMessageId ? { threadRootMessageId } : {}),
+      })
+      const reader = response.body?.getReader()
+      if (!reader) return
+      const decoder = new TextDecoder()
+      let buffer = ''
+      const accumulated = new Map<string, string>()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const frames = buffer.split('\n\n')
+        buffer = frames.pop() ?? ''
+        for (const frame of frames) {
+          const line = frame.split('\n').find((row) => row.startsWith('data: '))
+          if (!line) continue
+          let event: { type?: string; agentPrincipalId?: string; agentName?: string; delta?: string }
+          try {
+            event = JSON.parse(line.slice(6))
+          } catch {
+            continue
+          }
+          if (event.type !== 'delta' || !event.delta) continue
+          const principalId = event.agentPrincipalId ?? fallbackAgent?.principalId ?? 'agent'
+          const next = (accumulated.get(principalId) ?? '') + event.delta
+          accumulated.set(principalId, next)
+          setStreamingAgentReplies((current) => ({
+            ...current,
+            [principalId]: {
+              principalId,
+              name: event.agentName ?? fallbackAgent?.displayName ?? 'Agent',
+              text: next,
+              threadRootMessageId,
+            },
+          }))
+        }
+      }
+    } catch {
+      // The reply is still persisted server-side; the next poll picks it up.
+    } finally {
+      setStreamingAgentReplies({})
+      await loadMessages().catch(() => undefined)
     }
   }
 
@@ -678,8 +834,9 @@ export function DirectMessageExperience({
       message,
       currentPrincipalId,
       authorName: author?.displayName
-        ?? (message.authorKind === 'agent' || message.authorKind === 'model' ? 'Agent' : 'Overlay'),
-      streaming: false,
+        ?? (message.authorKind === 'agent' || message.authorKind === 'model' ? 'Agent' : 'Someone'),
+      mentions: participantMentions,
+      streaming: message.status === 'generating',
     })
     return (
       <RoomMessageItem
@@ -692,11 +849,11 @@ export function DirectMessageExperience({
             count: reaction.count,
             reactedByCurrentPrincipal: reaction.reactedByCurrentPrincipal,
           }))}
-        replyCount={options?.inThread
-          ? 0
-          : messages.filter((reply) => reply.threadRootMessageId === message.id).length}
+        replyCount={options?.inThread ? 0 : replyCounts.get(message.id) ?? 0}
         pinned={pins.some((pin) => pin.messageId === message.id)}
-        saved={savedMessages.some((row) => row.messageId === message.id)}
+        saved={savedMessages.some((row) => (
+          row.conversationId === conversationId && row.messageId === message.id
+        ))}
         editing={editingId === message.id}
         editingContent={editingContent}
         onEditingContentChange={setEditingContent}
@@ -711,26 +868,139 @@ export function DirectMessageExperience({
         onToggleReaction={(emoji) => void toggleReaction(message.id, emoji)}
         onTogglePinned={() => void togglePinned(message.id)}
         onToggleSaved={() => void toggleSaved(message.id)}
-        onOpenThread={() => setThreadRootId(options?.inThread ? threadRootId : message.id)}
+        onOpenThread={() => openThread(options?.inThread ? threadRootId ?? message.id : message.id)}
         onQuoteReply={() => beginQuoteReply(message)}
         onRetrySend={() => void sendMessage(message.content, { existing: message, threadRootMessageId: message.threadRootMessageId })}
+        onOpenAttachmentPreview={openAttachmentPreview}
+        highlighted={highlightedMessageId === message.id}
+      />
+    )
+  }
+
+  const streamingReplies = Object.values(streamingAgentReplies)
+  const mainStreamingReplies = streamingReplies.filter((reply) => !reply.threadRootMessageId)
+  const threadStreamingReplies = streamingReplies.filter((reply) => (
+    Boolean(threadRootId) && reply.threadRootMessageId === threadRootId
+  ))
+
+  /** A live agent reply renders through the same message body as a stored one. */
+  function renderStreamingAgentReply(reply: { principalId: string; name: string; text: string }) {
+    return (
+      <RoomMessageItem
+        key={`streaming-${reply.principalId}`}
+        message={{
+          id: `streaming-${reply.principalId}`,
+          mine: false,
+          authorName: reply.name,
+          authorKind: 'agent',
+          createdAt: Date.now(),
+          text: reply.text,
+          blocks: reply.text ? [{ kind: 'text', text: reply.text }] : [],
+          images: [],
+          documentNames: [],
+          mentions: participantMentions,
+          streaming: true,
+        }}
+        reactions={[]}
+        replyCount={0}
+        pinned={false}
+        saved={false}
+        editing={false}
+        editingContent=""
+        onEditingContentChange={() => undefined}
+        onSaveEdit={() => undefined}
+        onCancelEdit={() => undefined}
+        onStartEdit={() => undefined}
+        onDelete={() => undefined}
+        onReport={() => undefined}
+        onToggleReaction={() => undefined}
+        onTogglePinned={() => undefined}
+        onToggleSaved={() => undefined}
+        onOpenThread={() => undefined}
+        onQuoteReply={() => undefined}
+        onRetrySend={() => undefined}
         onOpenAttachmentPreview={openAttachmentPreview}
       />
     )
   }
 
+  const pinnedSummaries = pins
+    .map((pin) => {
+      const message = messages.find((row) => row.id === pin.messageId)
+      if (!message) return null
+      const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
+      return {
+        messageId: pin.messageId,
+        authorName: message.authorPrincipalId === currentPrincipalId
+          ? 'You'
+          : author?.displayName ?? 'Someone',
+        preview: message.content.trim() || 'Attachment',
+        createdAt: message.createdAt,
+      }
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+
+  const roomPanelContent = roomPanel === 'people' ? (
+    <RoomPeoplePanel
+      participants={participants}
+      presence={presence}
+      currentPrincipalId={currentPrincipalId}
+      onAddPeople={showcase ? undefined : () => setAddPeopleOpen(true)}
+      onClose={() => setRoomPanel(null)}
+    />
+  ) : roomPanel === 'pinned' ? (
+    <RoomPinnedPanel
+      pinned={pinnedSummaries}
+      onJump={jumpToMessage}
+      onUnpin={(messageId) => void togglePinned(messageId)}
+      onClose={() => setRoomPanel(null)}
+    />
+  ) : roomPanel === 'thread' && threadRoot ? (
+    <RoomThreadPanel
+      roomLabel={conversationType === 'channel' ? `#${title}` : title}
+      replyCount={threadReplies.length}
+      input={threadInput}
+      onInputChange={setThreadInput}
+      onSubmit={() => {
+        const text = threadInput
+        setThreadInput('')
+        void sendMessage(text, { threadRootMessageId: threadRoot.id })
+      }}
+      onClose={() => {
+        setRoomPanel(null)
+        setThreadRootId(null)
+      }}
+      messages={[
+        ...[threadRoot, ...threadReplies].map((message) => renderMessage(message, { inThread: true })),
+        ...threadStreamingReplies.map((reply) => renderStreamingAgentReply(reply)),
+      ]}
+    />
+  ) : null
+
+  // The attachment preview wins the slot while it is open; otherwise the room's
+  // own panels share the shell surface the sources sidebar already uses.
+  const rightPanel = shellRightPanel ?? roomPanelContent
+  const rightPanelClose = shellRightPanel
+    ? shellRightPanelClose
+    : roomPanelContent
+      ? () => {
+        setRoomPanel(null)
+        setThreadRootId(null)
+      }
+      : undefined
+
   return (
     <>
       <AppScreenShell
         contentClassName="flex min-h-0"
-        rightPanel={shellRightPanel}
-        rightPanelOpen={Boolean(shellRightPanel)}
-        rightPanelWidth={shellRightPanelWidth}
+        rightPanel={rightPanel}
+        rightPanelOpen={Boolean(rightPanel)}
+        rightPanelWidth={shellRightPanel ? shellRightPanelWidth : 380}
         rightPanelMode={shellRightPanelMode}
-        onRightPanelClose={shellRightPanelClose}
+        onRightPanelClose={rightPanelClose}
       >
         <div
-          className={`relative flex min-h-0 w-full min-w-0 flex-1 flex-col ${threadRoot ? 'md:pr-[420px]' : ''}`}
+          className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col"
           onDragEnter={(event) => {
             event.preventDefault()
             dragCounterRef.current++
@@ -768,9 +1038,17 @@ export function DirectMessageExperience({
             actions={(
               <div className="relative flex items-center gap-1">
                 {pins.length > 0 ? (
-                  <span className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs text-[var(--muted)]">
+                  <button
+                    type="button"
+                    onClick={() => setRoomPanel((current) => (current === 'pinned' ? null : 'pinned'))}
+                    aria-pressed={roomPanel === 'pinned'}
+                    title="Pinned messages"
+                    className={`inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+                      roomPanel === 'pinned' ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'text-[var(--muted)]'
+                    }`}
+                  >
                     <Pin size={13} />{pins.length}
-                  </span>
+                  </button>
                 ) : null}
                 {!showcase ? (
                   <button
@@ -795,8 +1073,12 @@ export function DirectMessageExperience({
                 ) : null}
                 <button
                   type="button"
-                  onClick={() => setPeopleOpen((open) => !open)}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  onClick={() => setRoomPanel((current) => (current === 'people' ? null : 'people'))}
+                  aria-pressed={roomPanel === 'people'}
+                  title="People in this room"
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+                    roomPanel === 'people' ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'text-[var(--muted)]'
+                  }`}
                 >
                   <UsersRound size={14} />
                   {participants.length}
@@ -867,7 +1149,8 @@ export function DirectMessageExperience({
                   ) : (
                     mainMessages.map((message) => renderMessage(message))
                   )}
-                  {agentResponding ? (
+                  {mainStreamingReplies.map((reply) => renderStreamingAgentReply(reply))}
+                  {agentResponding && mainStreamingReplies.length === 0 ? (
                     <div className="flex items-center gap-2 px-1" aria-label={`${agentResponding} is responding`}>
                       <span className="text-xs font-medium text-[var(--foreground)]">{agentResponding}</span>
                       <span className="flex items-center gap-1">
@@ -991,82 +1274,6 @@ export function DirectMessageExperience({
           onClose={() => setAttachOpen(false)}
           onPost={(message) => sendMessage(message)}
         />
-      ) : null}
-
-      {peopleOpen ? (
-        <div className="fixed inset-y-0 right-0 z-40 w-[min(340px,calc(100vw-2rem))] border-l border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl">
-          <div className="flex h-16 items-center justify-between border-b border-[var(--border)] px-5">
-            <h2 className="text-sm font-medium">People</h2>
-            <button type="button" onClick={() => setPeopleOpen(false)} aria-label="Close people"><X size={15} /></button>
-          </div>
-          <div className="space-y-1 p-3">
-            {participants.map((participant) => (
-              <div key={participant.principalId} className="flex items-center gap-3 rounded-lg px-3 py-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-muted)] text-xs">
-                  {participant.displayName.slice(0, 1).toUpperCase()}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm">{participant.principalId === currentPrincipalId ? 'You' : participant.displayName}</span>
-                  <span className="block text-[11px] capitalize text-[var(--muted-light)]">{participant.role}</span>
-                </span>
-                <span className={`h-2 w-2 rounded-full ${
-                  presence.find((row) => row.principalId === participant.principalId)?.status === 'online'
-                    ? 'bg-emerald-500'
-                    : 'bg-[var(--border)]'
-                }`} />
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={() => setAddPeopleOpen(true)}
-              className="mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-            >
-              <span className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-[var(--border)]"><UserPlus size={14} /></span>
-              Add people
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {threadRoot ? (
-        <aside className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl md:w-[420px]" aria-label="Message thread">
-          <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--border)] px-5">
-            <div>
-              <h2 className="text-sm font-medium">Thread</h2>
-              <p className="text-[10px] text-[var(--muted-light)]">{conversationType === 'channel' ? `#${title}` : title}</p>
-            </div>
-            <button type="button" onClick={() => setThreadRootId(null)} aria-label="Close thread" className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)]"><X size={15} /></button>
-          </div>
-          <div className="overlay-chat-surface min-h-0 flex-1 overflow-y-auto p-5">
-            <div className="flex flex-col gap-5">
-              {[threadRoot, ...threadReplies].map((message) => renderMessage(message, { inThread: true }))}
-            </div>
-          </div>
-          <form
-            className="m-4 flex shrink-0 items-end gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-2 focus-within:border-[var(--muted-light)]"
-            onSubmit={(event) => {
-              event.preventDefault()
-              const text = threadInput
-              setThreadInput('')
-              void sendMessage(text, { threadRootMessageId: threadRoot.id })
-            }}
-          >
-            <textarea
-              value={threadInput}
-              onChange={(event) => setThreadInput(event.target.value)}
-              rows={1}
-              placeholder="Reply…"
-              className="min-h-9 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-[var(--muted-light)]"
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault()
-                  event.currentTarget.form?.requestSubmit()
-                }
-              }}
-            />
-            <button type="submit" disabled={!threadInput.trim()} aria-label="Send thread reply" className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] disabled:opacity-30"><Send size={14} /></button>
-          </form>
-        </aside>
       ) : null}
 
       {addPeopleOpen ? (
