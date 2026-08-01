@@ -3,6 +3,18 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+import type { LucideIcon } from 'lucide-react'
+import {
+  Bell,
+  Hash,
+  Inbox,
+  Mail,
+  MessageSquare,
+  Package,
+  Plug,
+  Server,
+  Sparkles,
+} from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
   KNOWLEDGE_ENTITY_MUTATION_EVENT,
@@ -383,23 +395,24 @@ export function ProjectsInlinePanel({
 }
 
 export const toolsInlineItems = [
-  { id: 'connectors', label: 'Connectors' },
-  { id: 'skills', label: 'Skills' },
-  { id: 'mcps', label: 'MCPs' },
-  { id: 'apps', label: 'Apps', locked: true },
+  { id: 'connectors', label: 'Connectors', icon: Plug },
+  { id: 'skills', label: 'Skills', icon: Sparkles },
+  { id: 'mcps', label: 'MCPs', icon: Server },
+  { id: 'apps', label: 'Apps', icon: Package, locked: true },
 ] as const
 
 export const chatsInlineItems = [
-  { id: 'personal', label: 'Personal' },
-  { id: 'dms', label: 'Direct Messages' },
-  { id: 'channels', label: 'Channels' },
-  { id: 'unread', label: 'Unread' },
-  { id: 'all', label: 'All' },
+  { id: 'personal', label: 'Personal', icon: MessageSquare },
+  { id: 'dms', label: 'Direct Messages', icon: Mail },
+  { id: 'channels', label: 'Channels', icon: Hash },
+  { id: 'unread', label: 'Unread', icon: Bell },
+  { id: 'all', label: 'All', icon: Inbox },
 ] as const
 
 export interface InlineNavItem {
   id: string
   label: string
+  icon?: LucideIcon
   locked?: boolean
   /** Items with an href render as links so they support open-in-new-tab. */
   href?: string
@@ -425,7 +438,7 @@ export function InlineNavChildren({
   return (
     <div id={id} className={className}>
       {items.map((item) => {
-        const itemClass = `flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs transition-colors ${
+        const itemClass = `flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors ${
           item.locked
             ? 'cursor-default text-[var(--muted-light)]'
             : activeId === item.id
@@ -434,6 +447,7 @@ export function InlineNavChildren({
         }`
         const content = (
           <>
+            {item.icon ? <item.icon size={15} className="shrink-0" aria-hidden /> : null}
             <span className="flex-1 text-left">{item.label}</span>
             {item.locked ? <span className="text-[10px] text-[var(--muted-light)]">Soon</span> : null}
           </>

@@ -27,15 +27,22 @@ export interface SecondaryPanelContentProps {
   children?: ReactNode
 }
 
-export function SecondaryPanelHeader({ title }: { title: string }) {
+export function SecondaryPanelHeader({
+  title,
+  action,
+}: {
+  title: string
+  action?: ReactNode
+}) {
   return (
-    <div className="flex h-16 min-h-16 shrink-0 items-center border-b border-[var(--border)] px-4">
+    <div className="flex h-16 min-h-16 shrink-0 items-center gap-2 border-b border-[var(--border)] px-4">
       <span
-        className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
+        className="min-w-0 flex-1 truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
         style={{ fontFamily: 'var(--font-serif)' }}
       >
         {title}
       </span>
+      {action}
     </div>
   )
 }
@@ -64,7 +71,7 @@ export function SecondaryPanelContent({
         />
       ) : null}
       {action || search || children ? (
-        <SidebarResourceSection action={action} search={search}>
+        <SidebarResourceSection action={action} search={search} className={nav ? undefined : 'border-t-0'}>
           {children}
         </SidebarResourceSection>
       ) : null}
@@ -81,15 +88,17 @@ export function SecondaryPanelContent({
  */
 export function AppSidebarSecondaryPanel({
   title,
+  headerAction,
   className,
   ...content
 }: {
   title: string
+  headerAction?: ReactNode
   className?: string
 } & SecondaryPanelContentProps) {
   return (
     <SidebarShell className={className}>
-      <SecondaryPanelHeader title={title} />
+      <SecondaryPanelHeader title={title} action={headerAction} />
       <SecondaryPanelContent {...content} />
     </SidebarShell>
   )
