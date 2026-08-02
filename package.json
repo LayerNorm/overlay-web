@@ -360,7 +360,7 @@
     "lucide-react": "^0.575.0",
     "mammoth": "^1.12.0",
     "next": "^15.5.15",
-    "pdf-parse": "^1.1.1",
+    "pdf-parse": "^2.4.5",
     "pg": "^8.22.0",
     "picomatch": "^2.3.2",
     "posthog-js": "^1.369.0",
