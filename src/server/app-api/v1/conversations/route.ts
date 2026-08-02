@@ -78,6 +78,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const beforeCreatedAt = beforeCreatedAtParam ? Number(beforeCreatedAtParam) : undefined
     const mainOnly = readBooleanParam(searchParams.get('mainOnly'))
     const threadRootMessageId = searchParams.get('threadRootMessageId')?.trim() || undefined
+    const targetMessageId = searchParams.get('messageId')?.trim() || undefined
     const compactToolPayloads = readBooleanParam(searchParams.get('compactToolPayloads')) === true
     const workspaceId = context.workspace.workspace.id
     const conversationType = conversationTypeForView(searchParams.get('view'))
@@ -106,7 +107,21 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
       let messages: ConversationMessageRow[]
-      if (messageLimit) {
+      if (targetMessageId) {
+        const allMessages = await repository.getConversationMessages({
+          conversationId: conversationId as Id<'conversations'>,
+          userId: resourceUserId,
+          workspaceId,
+        })
+        const targetIndex = allMessages.findIndex((message) => message._id === targetMessageId)
+        if (targetIndex < 0) {
+          messages = []
+        } else {
+          const start = Math.max(0, targetIndex - Math.max(1, Math.floor((messageLimit ?? 100) / 2)))
+          const end = Math.min(allMessages.length, start + (messageLimit ?? 100))
+          messages = allMessages.slice(start, end)
+        }
+      } else if (messageLimit) {
         try {
           messages = await repository.getRecentMessages({
             conversationId: conversationId as Id<'conversations'>,
@@ -144,7 +159,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({
         ...(messageLimit ? {
           limit: messageLimit,
-          hasMore: messages.length >= messageLimit,
+          hasMore: messages.length >= messageLimit || Boolean(targetMessageId && messages.length > 0 && messages[0]?._id !== targetMessageId),
           earliestCreatedAt,
         } : {}),
         messages: messages.map(serializeConversationMessage),
@@ -402,6 +417,7 @@ function serializeConversationMessage(message: ConversationMessageRow) {
     contentType: message.contentType,
     variantIndex: message.variantIndex,
     createdAt: message.createdAt,
+    ...(message.eventSequence !== undefined ? { eventSequence: message.eventSequence } : {}),
     role: message.role,
     authorKind: message.authorKind,
     ...(message.authorPrincipalId ? { authorPrincipalId: message.authorPrincipalId } : {}),

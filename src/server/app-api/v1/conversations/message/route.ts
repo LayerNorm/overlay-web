@@ -60,6 +60,25 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const contentType = body.contentType ?? 'text'
     const modelId = body.modelId ?? body.model
     const server = getOverlayServerContext()
+    const hasChannelBroadcast = /(^|\s)@channel(?=\s|$)/i.test(normalizedContent)
+    const hasHereBroadcast = /(^|\s)@here(?=\s|$)/i.test(normalizedContent)
+    if (body.role === 'user' && (hasChannelBroadcast || hasHereBroadcast)) {
+      const conversation = await server.appData.repositories.conversations.getConversationById({
+        conversationId: body.conversationId as Id<'conversations'>,
+        userId: getAuthorizedResourceUserId(context),
+        workspaceId: context.workspace.workspace.id,
+      })
+      if (conversation?.conversationType === 'channel' && hasChannelBroadcast) {
+        const participants = await server.appData.repositories.conversationCollaboration.listParticipants({
+          actorUserId: context.auth.userId,
+          conversationId: body.conversationId,
+          workspaceId: context.workspace.workspace.id,
+        })
+        if (participants.find((participant) => participant.principalId === context.workspace.principal.id)?.role !== 'moderator') {
+          return NextResponse.json({ error: '@channel requires channel moderator access' }, { status: 403 })
+        }
+      }
+    }
     // Abuse limits are keyed by workspace, then by the sending principal (guests
     // harder than members), then by the room.
     if (body.role === 'user') {
@@ -101,6 +120,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         messageId,
         body: normalizedContent,
         mentionedPrincipalIds: body.mentionedPrincipalIds,
+        threadRootMessageId: body.threadRootMessageId?.trim(),
       })
       if (body.deferAgentReply !== true) await invokeWorkspaceAgentsForHumanMessage({
         accessToken: context.auth.accessToken,

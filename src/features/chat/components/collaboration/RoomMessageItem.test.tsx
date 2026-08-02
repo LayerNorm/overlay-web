@@ -55,6 +55,7 @@ function render(message: RoomMessageRecord, authorName = 'Maya Chen') {
       onQuoteReply={() => undefined}
       onRetrySend={() => undefined}
       onOpenAttachmentPreview={() => undefined}
+      onCopyPermalink={() => undefined}
     />,
   )
 }

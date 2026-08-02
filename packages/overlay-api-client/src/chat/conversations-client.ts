@@ -12,6 +12,8 @@ import type {
   MessageReaction,
   WorkspaceChatSearchResult,
   WorkspaceNotification,
+  WorkspaceNotificationFilter,
+  WorkspaceNotificationPreferences,
 } from '@overlay/workspace-contracts'
 import type { HttpContext } from '../shared/http'
 import type { MutationRequestInit } from '../shared/mutation'
@@ -348,7 +350,7 @@ export class ConversationsClient {
     )
   }
 
-  notifications(query?: { unreadOnly?: boolean; limit?: number }, init?: RequestInit) {
+  notifications(query?: { filter?: WorkspaceNotificationFilter; unreadOnly?: boolean; limit?: number }, init?: RequestInit) {
     return this.http.json<{ notifications: WorkspaceNotification[] }>(
       this.http.appendQuery('/api/v1/conversations/notifications', query),
       init,
@@ -359,6 +361,46 @@ export class ConversationsClient {
     return this.http.json<{ updated: number }>(
       '/api/v1/conversations/notifications',
       this.http.jsonRequest({ notificationIds }, { ...init, method: 'PATCH' }),
+    )
+  }
+
+  threadFollow(
+    conversationId: string,
+    threadRootMessageId: string,
+    init?: RequestInit,
+  ) {
+    return this.http.json<{ following: boolean }>(
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}/threads/${encodeURIComponent(threadRootMessageId)}/follow`,
+      init,
+    )
+  }
+
+  setThreadFollow(
+    conversationId: string,
+    threadRootMessageId: string,
+    followed: boolean,
+    init?: MutationRequestInit,
+  ) {
+    return this.http.json<{ followed: boolean }>(
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}/threads/${encodeURIComponent(threadRootMessageId)}/follow`,
+      this.http.jsonRequest({ followed }, { ...init, method: 'PATCH' }),
+    )
+  }
+
+  notificationPreferences(init?: RequestInit) {
+    return this.http.json<{ preferences: WorkspaceNotificationPreferences }>(
+      '/api/v1/conversations/notification-preferences',
+      init,
+    )
+  }
+
+  updateNotificationPreferences(
+    preferences: Partial<WorkspaceNotificationPreferences>,
+    init?: MutationRequestInit,
+  ) {
+    return this.http.json<{ preferences: WorkspaceNotificationPreferences }>(
+      '/api/v1/conversations/notification-preferences',
+      this.http.jsonRequest(preferences, { ...init, method: 'PATCH' }),
     )
   }
 }

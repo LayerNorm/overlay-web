@@ -73,6 +73,18 @@ async function requireConversationAccess(
   return access
 }
 
+async function getMessageForThread(
+  ctx: CollaborationCtx,
+  conversationId: Id<'conversations'>,
+  messageId: Id<'conversationMessages'>,
+) {
+  const message = await ctx.db.get(messageId)
+  if (!message || message.conversationId !== conversationId || message.deletedAt) {
+    throw new Error('Message not found')
+  }
+  return message
+}
+
 async function participantView(
   ctx: CollaborationCtx,
   participant: Doc<'conversationParticipants'>,
@@ -533,6 +545,7 @@ export const recordMessageActivity = mutation({
     conversationId: v.id('conversations'),
     mentionedPrincipalIds: v.optional(v.array(v.string())),
     messageId: v.id('conversationMessages'),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
   },
@@ -540,25 +553,68 @@ export const recordMessageActivity = mutation({
     const access = await requireConversationAccess(ctx, args)
     const now = Date.now()
     const mentions = new Set(args.mentionedPrincipalIds ?? [])
+    const conversation = await ctx.db.get(args.conversationId)
+    const hasChannelMention = conversation?.conversationType === 'channel' && /(^|\s)@channel(?=\s|$)/i.test(args.body ?? '')
+    const hasHereMention = conversation?.conversationType === 'channel' && /(^|\s)@here(?=\s|$)/i.test(args.body ?? '')
+    const activeHere = new Set<string>()
+    if (hasHereMention) {
+      const presence = await ctx.db.query('workspacePresence')
+        .withIndex('by_workspaceId_principalId_updatedAt', (q) => q.eq('workspaceId', args.workspaceId))
+        .collect()
+      for (const row of presence) {
+        if (row.status === 'online' && now - row.lastSeenAt <= 120_000) activeHere.add(row.principalId)
+      }
+    }
+    const followers = args.threadRootMessageId
+      ? await ctx.db.query('conversationThreadFollows')
+        .withIndex('by_conversationId_threadRootMessageId_principalId', (q) => (
+          q.eq('conversationId', args.conversationId).eq('threadRootMessageId', args.threadRootMessageId!)
+        )).collect()
+      : []
+    const followerIds = new Set(followers.map((row) => row.principalId))
+    const messageEvents = await ctx.db.query('conversationEvents')
+      .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
+      .collect()
+    const eventSequence = messageEvents.find((event) => event.messageId === args.messageId && event.type === 'message.created')?._creationTime
     const participants = await ctx.db.query('conversationParticipants')
       .withIndex('by_conversationId_status', (q) => (
         q.eq('conversationId', args.conversationId).eq('status', 'active')
       )).collect()
     for (const participant of participants) {
-      if (participant.principalId === access.actor.principalId || participant.notificationLevel === 'muted') continue
       const mentioned = mentions.has(participant.principalId)
-      if (participant.notificationLevel === 'mentions' && !mentioned) continue
+      if (participant.principalId === access.actor.principalId) continue
+      const broadcast = hasChannelMention || (hasHereMention && activeHere.has(participant.principalId))
+      const followedThread = Boolean(args.threadRootMessageId && followerIds.has(participant.principalId))
+      const preferences = await ctx.db.query('workspaceNotificationPreferences')
+        .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', participant.principalId))
+        .unique()
+      if (mentioned || broadcast) {
+        if (preferences?.mentions === 'off') continue
+      } else if (followedThread) {
+        if (preferences?.threadReplies === 'off' || participant.notificationLevel === 'muted') continue
+      } else {
+        if (participant.notificationLevel === 'muted' || participant.notificationLevel === 'mentions') continue
+        const mode = conversation?.conversationType === 'dm' ? preferences?.dmMessages : preferences?.channelMessages
+        if (mode === 'off') continue
+      }
+      const type = mentioned || broadcast ? 'mention' as const : followedThread ? 'thread' as const : 'message' as const
+      const mentionScope = mentioned ? 'direct' as const : hasChannelMention ? 'channel' as const : hasHereMention ? 'here' as const : undefined
       await ctx.db.insert('workspaceNotifications', {
         notificationId: crypto.randomUUID(),
         workspaceId: args.workspaceId,
         recipientPrincipalId: participant.principalId,
-        type: mentioned ? 'mention' : 'message',
+        type,
         conversationId: args.conversationId,
         messageId: args.messageId,
         actorPrincipalId: access.actor.principalId,
+        threadRootMessageId: args.threadRootMessageId,
+        eventSequence,
+        mentionScope,
         title: mentioned
           ? `${access.actor.displayName} mentioned you`
-          : `New message from ${access.actor.displayName}`,
+          : type === 'thread'
+            ? `${access.actor.displayName} replied in a thread`
+            : `New message from ${access.actor.displayName}`,
         body: args.body?.slice(0, 240),
         createdAt: now,
       })
@@ -692,6 +748,7 @@ export const deleteMessage = mutation({
 export const listNotifications = query({
   args: {
     actorUserId: v.string(),
+    filter: v.optional(v.union(v.literal('all'), v.literal('unread'), v.literal('mentions'), v.literal('threads'), v.literal('reactions'))),
     limit: v.optional(v.number()),
     unreadOnly: v.optional(v.boolean()),
     workspaceId: v.string(),
@@ -703,7 +760,13 @@ export const listNotifications = query({
       .withIndex('by_workspaceId_recipientPrincipalId_createdAt', (q) => (
         q.eq('workspaceId', args.workspaceId).eq('recipientPrincipalId', actor.principalId)
       )).order('desc').take(Math.max(1, Math.min(100, args.limit ?? 50)))
-    return rows.filter((row) => !args.unreadOnly || !row.readAt).map((row) => ({
+    return rows.filter((row) => {
+      if ((args.unreadOnly || args.filter === 'unread') && row.readAt) return false
+      if (args.filter === 'mentions' && row.type !== 'mention') return false
+      if (args.filter === 'threads' && row.type !== 'thread') return false
+      if (args.filter === 'reactions' && row.type !== 'reaction') return false
+      return true
+    }).map((row) => ({
       id: row.notificationId,
       workspaceId: row.workspaceId,
       recipientPrincipalId: row.recipientPrincipalId,
@@ -711,11 +774,136 @@ export const listNotifications = query({
       conversationId: row.conversationId,
       messageId: row.messageId,
       actorPrincipalId: row.actorPrincipalId,
+      threadRootMessageId: row.threadRootMessageId,
+      eventSequence: row.eventSequence,
+      mentionScope: row.mentionScope,
       title: row.title,
       body: row.body,
       createdAt: row.createdAt,
       readAt: row.readAt,
     }))
+  },
+})
+
+export const setThreadFollow = mutation({
+  args: {
+    actorUserId: v.string(),
+    conversationId: v.id('conversations'),
+    threadRootMessageId: v.id('conversationMessages'),
+    followed: v.boolean(),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const access = await requireConversationAccess(ctx, args)
+    await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
+    const existing = await ctx.db.query('conversationThreadFollows')
+      .withIndex('by_conversationId_threadRootMessageId_principalId', (q) => (
+        q.eq('conversationId', args.conversationId)
+          .eq('threadRootMessageId', args.threadRootMessageId)
+          .eq('principalId', access.actor.principalId)
+      )).unique()
+    if (args.followed && !existing) {
+      await ctx.db.insert('conversationThreadFollows', {
+        workspaceId: args.workspaceId,
+        conversationId: args.conversationId,
+        threadRootMessageId: args.threadRootMessageId,
+        principalId: access.actor.principalId,
+        followedAt: Date.now(),
+      })
+      return true
+    }
+    if (!args.followed && existing) {
+      await ctx.db.delete(existing._id)
+      return true
+    }
+    return false
+  },
+})
+
+export const listThreadFollows = query({
+  args: {
+    actorUserId: v.string(),
+    conversationId: v.id('conversations'),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const access = await requireConversationAccess(ctx, args)
+    const rows = await ctx.db.query('conversationThreadFollows')
+      .withIndex('by_conversationId_threadRootMessageId_principalId', (q) => {
+        const scoped = q.eq('conversationId', args.conversationId)
+        return args.threadRootMessageId ? scoped.eq('threadRootMessageId', args.threadRootMessageId) : scoped
+      }).collect()
+    return rows
+      .filter((row) => args.threadRootMessageId || row.principalId === access.actor.principalId)
+      .map((row) => ({
+        conversationId: row.conversationId,
+        threadRootMessageId: row.threadRootMessageId,
+        principalId: row.principalId,
+        followedAt: row.followedAt,
+      }))
+  },
+})
+
+const defaultNotificationPreferences = {
+  dmMessages: 'activity' as const,
+  mentions: 'banner' as const,
+  threadReplies: 'activity' as const,
+  reactions: 'activity' as const,
+  channelMessages: 'activity' as const,
+}
+
+export const getNotificationPreferences = query({
+  args: { actorUserId: v.string(), workspaceId: v.string(), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const access = await requireActor(ctx, args)
+    const row = await ctx.db.query('workspaceNotificationPreferences')
+      .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', access.principalId))
+      .unique()
+    return row ? {
+      dmMessages: row.dmMessages,
+      mentions: row.mentions,
+      threadReplies: row.threadReplies,
+      reactions: row.reactions,
+      channelMessages: row.channelMessages,
+    } : defaultNotificationPreferences
+  },
+})
+
+export const updateNotificationPreferences = mutation({
+  args: {
+    actorUserId: v.string(), workspaceId: v.string(), serverSecret: v.optional(v.string()),
+    dmMessages: v.optional(v.union(v.literal('activity'), v.literal('banner'), v.literal('off'))),
+    mentions: v.optional(v.union(v.literal('activity'), v.literal('banner'), v.literal('off'))),
+    threadReplies: v.optional(v.union(v.literal('activity'), v.literal('banner'), v.literal('off'))),
+    reactions: v.optional(v.union(v.literal('activity'), v.literal('banner'), v.literal('off'))),
+    channelMessages: v.optional(v.union(v.literal('activity'), v.literal('banner'), v.literal('off'))),
+  },
+  handler: async (ctx, args) => {
+    const access = await requireActor(ctx, args)
+    const existing = await ctx.db.query('workspaceNotificationPreferences')
+      .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', access.principalId))
+      .unique()
+    const next = {
+      dmMessages: args.dmMessages ?? existing?.dmMessages ?? defaultNotificationPreferences.dmMessages,
+      mentions: args.mentions ?? existing?.mentions ?? defaultNotificationPreferences.mentions,
+      threadReplies: args.threadReplies ?? existing?.threadReplies ?? defaultNotificationPreferences.threadReplies,
+      reactions: args.reactions ?? existing?.reactions ?? defaultNotificationPreferences.reactions,
+      channelMessages: args.channelMessages ?? existing?.channelMessages ?? defaultNotificationPreferences.channelMessages,
+    }
+    if (existing) {
+      await ctx.db.patch(existing._id, { ...next, updatedAt: Date.now() })
+    } else {
+      await ctx.db.insert('workspaceNotificationPreferences', {
+        workspaceId: args.workspaceId,
+        principalId: access.principalId,
+        ...next,
+        updatedAt: Date.now(),
+      })
+    }
+    return next
   },
 })
 

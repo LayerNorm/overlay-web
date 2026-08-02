@@ -12,6 +12,7 @@ export interface ConversationQuery extends PaginationQuery {
   beforeCreatedAt?: number
   mainOnly?: boolean
   threadRootMessageId?: string
+  messageId?: string
   compactToolPayloads?: boolean
 }
 

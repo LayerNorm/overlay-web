@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -181,6 +182,8 @@ export function DirectMessageExperience({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
+  const [unreadBoundarySequence, setUnreadBoundarySequence] = useState<number | null>(null)
+  const [newMessageCount, setNewMessageCount] = useState(0)
   const [channel, setChannel] = useState<ChannelSummary | null>(showcase && conversationType === 'channel' ? {
     conversationId,
     workspaceId: SHOWCASE_WORKSPACE_ID,
@@ -203,6 +206,7 @@ export function DirectMessageExperience({
   const [pins, setPins] = useState<ConversationPin[]>([])
   const [savedMessages, setSavedMessages] = useState<ConversationSavedMessage[]>([])
   const [threadRootId, setThreadRootId] = useState<string | null>(null)
+  const [threadFollowing, setThreadFollowing] = useState(false)
   const [threadInput, setThreadInput] = useState('')
   const [agentResponding, setAgentResponding] = useState<string | null>(null)
   /** Live agent text keyed by principal, replaced by the stored row once saved. */
@@ -221,6 +225,12 @@ export function DirectMessageExperience({
   const sessionIdRef = useRef<string | null>(null)
   const activeConversationRef = useRef<string | null>(conversationId)
   const stickToBottomRef = useRef(true)
+  const unreadBoundaryInitializedRef = useRef(false)
+  const previousMessageCountRef = useRef(messages.length)
+  const prependScrollRef = useRef<{ height: number; top: number } | null>(null)
+  const skipNextMessageGrowthRef = useRef(false)
+  const permalinkJumpedRef = useRef<string | null>(null)
+  const readMarkInFlightRef = useRef(false)
   activeConversationRef.current = conversationId
   const lastTypingSentAt = useRef(0)
 
@@ -275,9 +285,17 @@ export function DirectMessageExperience({
     const result = await overlayAppClient.conversations.participants(conversationId)
     setParticipants(result.participants)
     setCurrentPrincipalId(result.currentPrincipalId)
+    if (!unreadBoundaryInitializedRef.current) {
+      unreadBoundaryInitializedRef.current = true
+      const current = result.participants.find((participant) => participant.principalId === result.currentPrincipalId)
+      setUnreadBoundarySequence(current?.lastReadSequence ?? null)
+    }
   }, [conversationId])
 
   const loadMessages = useCallback(async () => {
+    const permalinkMessageId = typeof window === 'undefined'
+      ? undefined
+      : new URLSearchParams(window.location.search).get('message')?.trim() || undefined
     const result = await overlayAppClient.conversations.get<{
       messages: Array<{
         id: string
@@ -286,6 +304,7 @@ export function DirectMessageExperience({
         content?: string
         parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
         createdAt: number
+        eventSequence?: number
         editedAt?: number
         deletedAt?: number
         clientNonce?: string
@@ -293,7 +312,12 @@ export function DirectMessageExperience({
         status?: 'generating' | 'completed' | 'error'
       }>
       hasMore?: boolean
-    }>({ conversationId, messages: true, limit: 100, mainOnly: true })
+    }>({
+      conversationId,
+      messages: true,
+      limit: 100,
+      ...(permalinkMessageId ? { messageId: permalinkMessageId } : { mainOnly: true }),
+    })
     const threadResult = threadRootId
       ? await overlayAppClient.conversations.get<{
           messages: Array<{
@@ -303,6 +327,7 @@ export function DirectMessageExperience({
             content?: string
             parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
             createdAt: number
+            eventSequence?: number
             editedAt?: number
             deletedAt?: number
             clientNonce?: string
@@ -328,6 +353,11 @@ export function DirectMessageExperience({
       .filter((message) => !message.threadRootMessageId)
       .reduce<number | undefined>((value, message) => value === undefined ? message.createdAt : Math.min(value, message.createdAt), undefined)
     if (earliest === undefined) return
+    const node = listRef.current
+    if (node) {
+      prependScrollRef.current = { height: node.scrollHeight, top: node.scrollTop }
+      skipNextMessageGrowthRef.current = true
+    }
     setLoadingOlderMessages(true)
     try {
       const result = await overlayAppClient.conversations.get<{
@@ -338,6 +368,7 @@ export function DirectMessageExperience({
           content?: string
           parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
           createdAt: number
+          eventSequence?: number
           editedAt?: number
           deletedAt?: number
           clientNonce?: string
@@ -357,6 +388,8 @@ export function DirectMessageExperience({
       setMessages((current) => mergeRoomMessages(older, current))
     } catch {
       setNotice('Older messages could not be loaded.')
+      prependScrollRef.current = null
+      skipNextMessageGrowthRef.current = false
     } finally {
       setLoadingOlderMessages(false)
     }
@@ -366,17 +399,16 @@ export function DirectMessageExperience({
     if (showcase || document.visibilityState !== 'visible') return
     const node = listRef.current
     if (!node || node.scrollHeight - node.scrollTop - node.clientHeight > 96) return
-    await overlayAppClient.conversations.updateParticipantState(conversationId, { markRead: true })
+    if (readMarkInFlightRef.current) return
+    readMarkInFlightRef.current = true
+    try {
+      await overlayAppClient.conversations.updateParticipantState(conversationId, { markRead: true })
+      setUnreadBoundarySequence(null)
+      setNewMessageCount(0)
+    } finally {
+      readMarkInFlightRef.current = false
+    }
   }, [conversationId, showcase])
-
-  usePostgresConversationEvents({
-    activeChatIdRef: activeConversationRef,
-    enabled: !showcase,
-    hasActiveLocalStream: () => Object.keys(streamingAgentReplies).length > 0,
-    loadChats: async () => {},
-    onRemoteStop: () => {},
-    reloadActiveConversation: loadMessages,
-  })
 
   const loadPresence = useCallback(async () => {
     const result = await overlayAppClient.conversations.presence(conversationId)
@@ -397,6 +429,22 @@ export function DirectMessageExperience({
       setChannel(channelResult.channels.find((item) => item.conversationId === conversationId) ?? null)
     }
   }, [conversationId, conversationType])
+
+  usePostgresConversationEvents({
+    activeChatIdRef: activeConversationRef,
+    enabled: !showcase,
+    hasActiveLocalStream: () => Object.keys(streamingAgentReplies).length > 0,
+    loadChats: async () => {},
+    onRemoteStop: () => {},
+    onEvents: (events) => {
+      if (events.some((event) => event.conversationId === conversationId && (
+        event.type === 'reaction.changed' || event.type === 'pin.changed'
+      ))) {
+        void loadCollaboration()
+      }
+    },
+    reloadActiveConversation: loadMessages,
+  })
 
   useEffect(() => {
     if (showcase) return
@@ -430,6 +478,26 @@ export function DirectMessageExperience({
     if (loading) return
     void markVisibleRead()
   }, [loading, markVisibleRead, messages.length])
+
+  useEffect(() => {
+    const previousCount = previousMessageCountRef.current
+    if (messages.length > previousCount) {
+      if (skipNextMessageGrowthRef.current) {
+        skipNextMessageGrowthRef.current = false
+      } else if (!stickToBottomRef.current && !loading) {
+        setNewMessageCount((count) => count + (messages.length - previousCount))
+      }
+    }
+    previousMessageCountRef.current = messages.length
+  }, [loading, messages.length])
+
+  useLayoutEffect(() => {
+    const node = listRef.current
+    const anchor = prependScrollRef.current
+    if (!node || !anchor) return
+    node.scrollTop = anchor.top + (node.scrollHeight - anchor.height)
+    prependScrollRef.current = null
+  }, [messages.length])
 
   useEffect(() => {
     const node = listRef.current
@@ -471,6 +539,11 @@ export function DirectMessageExperience({
   const threadReplies = messages.filter((message) => (
     Boolean(threadRootId) && message.threadRootMessageId === threadRootId
   ))
+  const unreadBoundaryMessageId = unreadBoundarySequence === null
+    ? null
+    : mainMessages.find((message) => (
+      message.eventSequence !== undefined && message.eventSequence > unreadBoundarySequence
+    ))?.id ?? null
   const replyCounts = useMemo(() => {
     const counts = new Map<string, number>()
     for (const message of messages) {
@@ -513,11 +586,56 @@ export function DirectMessageExperience({
     })
   }, [])
 
+  const jumpToLatest = useCallback(() => {
+    const node = listRef.current
+    if (!node) return
+    stickToBottomRef.current = true
+    node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' })
+    setNewMessageCount(0)
+    void markVisibleRead()
+  }, [markVisibleRead])
+
+  useEffect(() => {
+    const target = typeof window === 'undefined'
+      ? null
+      : new URLSearchParams(window.location.search).get('message')?.trim() || null
+    if (!target || permalinkJumpedRef.current === target || !messagesRef.current.some((message) => message.id === target)) return
+    permalinkJumpedRef.current = target
+    jumpToMessage(target)
+  }, [jumpToMessage, messages.length])
+
   useEffect(() => {
     if (!highlightedMessageId) return
     const timer = window.setTimeout(() => setHighlightedMessageId(null), 2_000)
     return () => window.clearTimeout(timer)
   }, [highlightedMessageId])
+
+  useEffect(() => {
+    if (!threadRootId || showcase) {
+      setThreadFollowing(false)
+      return
+    }
+    let cancelled = false
+    void overlayAppClient.conversations.threadFollow(conversationId, threadRootId)
+      .then((result) => {
+        if (!cancelled) setThreadFollowing(result.following)
+      })
+      .catch(() => {
+        if (!cancelled) setThreadFollowing(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [conversationId, showcase, threadRootId])
+
+  const toggleThreadFollow = useCallback(() => {
+    if (!threadRootId || showcase) return
+    const next = !threadFollowing
+    setThreadFollowing(next)
+    void overlayAppClient.conversations.setThreadFollow(conversationId, threadRootId, next)
+      .then((result) => setThreadFollowing(result.followed))
+      .catch(() => setThreadFollowing(!next))
+  }, [conversationId, showcase, threadFollowing, threadRootId])
 
   const openThread = useCallback((messageId: string) => {
     setThreadRootId(messageId)
@@ -792,6 +910,17 @@ export function DirectMessageExperience({
     composerRef.current?.focus()
   }
 
+  async function copyMessagePermalink(messageId: string) {
+    const url = new URL(window.location.href)
+    url.searchParams.set('message', messageId)
+    try {
+      await navigator.clipboard.writeText(url.toString())
+      setNotice('Message link copied.')
+    } catch {
+      setNotice('Could not copy the message link.')
+    }
+  }
+
   async function toggleReaction(messageId: string, emoji: string) {
     const current = reactions.find((reaction) => reaction.messageId === messageId && reaction.emoji === emoji)
     if (showcase) {
@@ -960,6 +1089,7 @@ export function DirectMessageExperience({
         onQuoteReply={() => beginQuoteReply(message)}
         onRetrySend={() => void sendMessage(message.content, { existing: message, threadRootMessageId: message.threadRootMessageId })}
         onOpenAttachmentPreview={openAttachmentPreview}
+        onCopyPermalink={() => void copyMessagePermalink(message.id)}
         highlighted={highlightedMessageId === message.id}
         grouped={options?.grouped}
       />
@@ -1009,6 +1139,7 @@ export function DirectMessageExperience({
         onQuoteReply={() => undefined}
         onRetrySend={() => undefined}
         onOpenAttachmentPreview={openAttachmentPreview}
+        onCopyPermalink={() => undefined}
       />
     )
   }
@@ -1048,6 +1179,8 @@ export function DirectMessageExperience({
     <RoomThreadPanel
       roomLabel={conversationType === 'channel' ? `#${title}` : title}
       replyCount={threadReplies.length}
+      following={threadFollowing}
+      onToggleFollow={toggleThreadFollow}
       input={threadInput}
       onInputChange={setThreadInput}
       onSubmit={() => {
@@ -1212,6 +1345,16 @@ export function DirectMessageExperience({
               </div>
             ) : null}
             <div className="overlay-chat-surface relative min-h-0 flex-1">
+              {newMessageCount > 0 && !stickToBottomRef.current ? (
+                <button
+                  type="button"
+                  onClick={jumpToLatest}
+                  data-testid="jump-to-latest"
+                  className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-lg transition-colors hover:bg-[var(--surface-subtle)]"
+                >
+                  {newMessageCount} new {newMessageCount === 1 ? 'message' : 'messages'} ↓
+                </button>
+              ) : null}
               <div
                 ref={listRef}
                 onScroll={() => {
@@ -1257,13 +1400,16 @@ export function DirectMessageExperience({
                   ) : (
                     mainMessages.map((message, index) => {
                       const previous = mainMessages[index - 1]
+                      const isUnreadBoundary = message.id === unreadBoundaryMessageId
                       const grouped = Boolean(
                         previous
                         && Boolean(message.authorPrincipalId)
                         && Boolean(previous.authorPrincipalId)
                         && previous.authorPrincipalId === message.authorPrincipalId
                         && previous.authorKind === message.authorKind
-                        && message.createdAt - previous.createdAt <= 5 * 60_000,
+                        && message.createdAt - previous.createdAt <= 5 * 60_000
+                        && !isUnreadBoundary
+                        && previous.id !== unreadBoundaryMessageId,
                       )
                       const showDayDivider = !previous
                         || roomDayKey(previous.createdAt) !== roomDayKey(message.createdAt)
@@ -1274,6 +1420,13 @@ export function DirectMessageExperience({
                               <span className="h-px flex-1 bg-[var(--border)]" />
                               <span>{roomDayLabel(message.createdAt)}</span>
                               <span className="h-px flex-1 bg-[var(--border)]" />
+                            </div>
+                          ) : null}
+                          {isUnreadBoundary ? (
+                            <div className="flex items-center gap-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-500" data-testid="unread-boundary">
+                              <span className="h-px flex-1 bg-rose-200 dark:bg-rose-900" />
+                              <span>New messages</span>
+                              <span className="h-px flex-1 bg-rose-200 dark:bg-rose-900" />
                             </div>
                           ) : null}
                           {renderMessage(message, { grouped })}

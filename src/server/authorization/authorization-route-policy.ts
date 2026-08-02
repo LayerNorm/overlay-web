@@ -279,6 +279,13 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   {
+    path: '/api/v1/conversations/notification-preferences',
+    methods: {
+      GET: capability('conversations.read'),
+      PATCH: capability('conversations.edit'),
+    },
+  },
+  {
     path: '/api/v1/conversations/:conversationId/participants',
     methods: {
       GET: resource('conversation', 'view', {}, 'conversations.read'),
@@ -295,6 +302,13 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: {
       GET: resource('conversation', 'view', {}, 'conversations.read'),
       PATCH: resource('conversation', 'view', {}, 'conversations.read'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/threads/:threadRootMessageId/follow',
+    methods: {
+      GET: resource('conversation', 'view', {}, 'conversations.read'),
+      PATCH: resource('conversation', 'edit', {}, 'conversations.edit'),
     },
   },
   {

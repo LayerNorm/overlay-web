@@ -308,6 +308,7 @@ export default function AppSidebar({
     const current = currentSearchParams.get('view')
     if (current === 'dms') return 'dms'
     if (current === 'channels') return 'channels'
+    if (current === 'activity') return 'activity'
     if (current === 'unread') return 'unread'
     if (current === 'all') return 'all'
     return 'personal'
@@ -666,8 +667,11 @@ export default function AppSidebar({
 
   const panelNav: SecondaryPanelNav | undefined = (() => {
     if (panelKind === 'chat') {
+      const chatItems = publicShowcase
+        ? chatsInlineItems.filter((item) => item.id !== 'activity')
+        : chatsInlineItems
       return {
-        items: chatsInlineItems,
+        items: chatItems,
         activeId: chatsView,
         onSelect: (next) => {
           closeMobileDrawer()

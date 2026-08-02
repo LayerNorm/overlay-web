@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { Pin, Send, UserPlus } from 'lucide-react'
+import { Bell, BellOff, Pin, Send, UserPlus } from 'lucide-react'
 import { AppScreenSidePanel } from '@overlay/modules-react/shell'
 import type { ConversationParticipant, ConversationPresence } from '@overlay/workspace-contracts'
 
@@ -70,6 +70,8 @@ export function RoomThreadPanel({
   replyCount,
   messages,
   input,
+  following,
+  onToggleFollow,
   onInputChange,
   onSubmit,
   onClose,
@@ -78,6 +80,8 @@ export function RoomThreadPanel({
   replyCount: number
   messages: ReactNode
   input: string
+  following: boolean
+  onToggleFollow: () => void
   onInputChange: (value: string) => void
   onSubmit: () => void
   onClose: () => void
@@ -89,6 +93,17 @@ export function RoomThreadPanel({
       onClose={onClose}
       bodyClassName="flex flex-col"
     >
+      <div className="flex items-center justify-end border-b border-[var(--border)] px-3 py-2">
+        <button
+          type="button"
+          onClick={onToggleFollow}
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          aria-pressed={following}
+        >
+          {following ? <BellOff size={12} /> : <Bell size={12} />}
+          {following ? 'Following' : 'Follow thread'}
+        </button>
+      </div>
       <div className="overlay-chat-surface min-h-0 flex-1 overflow-y-auto p-4">
         <div className="flex flex-col gap-5">{messages}</div>
       </div>

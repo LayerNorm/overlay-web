@@ -73,6 +73,71 @@ const mdSanitizeSchema = {
   },
 }
 
+const humanMarkdownSchema = {
+  ...defaultSchema,
+  tagNames: [
+    'a', 'blockquote', 'br', 'code', 'del', 'em', 'h1', 'h2', 'h3',
+    'h4', 'h5', 'h6', 'hr', 'li', 'ol', 'p', 'pre', 'strong', 'ul',
+  ],
+  attributes: {
+    ...defaultSchema.attributes,
+    a: [['href', /^https?:\/\//i], 'title', 'target', 'rel'],
+  },
+  protocols: {
+    ...defaultSchema.protocols,
+    href: ['http', 'https', 'mailto'],
+  },
+}
+
+/** Restricted renderer for human room messages. Agent-only blocks and raw HTML stay disabled. */
+export function HumanMarkdownMessage({ text }: { text: string }) {
+  return (
+    <div className="room-human-markdown min-w-0 whitespace-normal break-words text-sm leading-6">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[[rehypeSanitize, humanMarkdownSchema]]}
+        components={{
+          a: (props) => {
+            const { node, ...anchorProps } = props
+            void node
+            return (
+              <a
+                {...anchorProps}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="underline decoration-[var(--muted-light)] underline-offset-2 hover:decoration-[var(--foreground)]"
+              />
+            )
+          },
+          code: ({ className, children, ...props }) => (
+            <code
+              {...props}
+              className={`${className ?? ''} rounded bg-[var(--surface-subtle)] px-1 py-0.5 font-mono text-[0.9em]`}
+            >
+              {children}
+            </code>
+          ),
+          pre: ({ children }) => (
+            <pre className="my-2 max-w-full overflow-x-auto rounded-lg bg-[var(--surface-subtle)] p-3 font-mono text-xs leading-5">
+              {children}
+            </pre>
+          ),
+          p: ({ children }) => <p className="my-1 first:mt-0 last:mb-0">{children}</p>,
+          ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
+          ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
+          blockquote: ({ children }) => (
+            <blockquote className="my-2 border-l-2 border-[var(--border)] pl-3 text-[var(--muted)]">
+              {children}
+            </blockquote>
+          ),
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  )
+}
+
 function stripHtmlishToMarkdown(text: string): string {
   return text
     .replace(/<span\s+class=["']overlay-stream-marker["']\s+aria-hidden=["']true["']\s*><\/span>/gi, '')

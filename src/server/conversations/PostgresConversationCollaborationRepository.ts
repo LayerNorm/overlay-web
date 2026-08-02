@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createHash, randomUUID } from 'node:crypto'
-import { and, desc, eq, ilike, inArray, isNull, ne, or } from 'drizzle-orm'
+import { and, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
@@ -11,9 +11,11 @@ import {
   conversationParticipants,
   conversationPins,
   conversationSavedMessages,
+  conversationThreadFollows,
   conversations,
   workspaceMemberships,
   workspaceNotifications,
+  workspaceNotificationPreferences,
   workspacePresence,
   workspacePrincipals,
   workspaceResourceScopes,
@@ -29,8 +31,12 @@ import type {
   MessageReaction,
   WorkspaceChatSearchResult,
   WorkspaceNotification,
+  WorkspaceNotificationFilter,
+  WorkspaceNotificationPreferences,
+  ConversationThreadFollow,
 } from '@overlay/workspace-contracts'
 import type { ConversationCollaborationRepository } from './ConversationCollaborationRepository'
+import { emitPostgresConversationEvent as emitConversationEvent } from './PostgresConversationEvents'
 
 export class PostgresConversationCollaborationRepository
 implements ConversationCollaborationRepository {
@@ -602,34 +608,91 @@ implements ConversationCollaborationRepository {
     conversationId: string
     mentionedPrincipalIds?: string[]
     messageId: string
+    threadRootMessageId?: string
     workspaceId: string
   }): Promise<void> {
     const actor = await this.requireActor(args)
     if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
     const now = new Date()
+    const [conversation] = await this.db.select({ conversationType: conversations.conversationType }).from(conversations).where(
+      and(eq(conversations.id, args.conversationId), eq(conversations.workspaceId, args.workspaceId)),
+    ).limit(1)
     const participants = await this.db.select().from(conversationParticipants).where(and(
       eq(conversationParticipants.conversationId, args.conversationId),
       eq(conversationParticipants.status, 'active'),
-      ne(conversationParticipants.principalId, actor.id),
     ))
     const mentions = new Set(args.mentionedPrincipalIds ?? [])
-    const recipients = participants.filter((participant) => (
-      participant.notificationLevel !== 'muted'
-      && (participant.notificationLevel !== 'mentions' || mentions.has(participant.principalId))
-    ))
+    const hasChannelMention = conversation?.conversationType === 'channel' && /(^|\s)@channel(?=\s|$)/i.test(args.body ?? '')
+    const hasHereMention = conversation?.conversationType === 'channel' && /(^|\s)@here(?=\s|$)/i.test(args.body ?? '')
+    const presenceRows = hasHereMention
+      ? await this.db.select({ principalId: workspacePresence.principalId, lastSeenAt: workspacePresence.lastSeenAt, status: workspacePresence.status })
+        .from(workspacePresence)
+        .where(and(eq(workspacePresence.workspaceId, args.workspaceId), eq(workspacePresence.status, 'online')))
+      : []
+    const activeHere = new Set(presenceRows
+      .filter((row) => now.getTime() - row.lastSeenAt.getTime() <= 120_000)
+      .map((row) => row.principalId))
+    const followers = args.threadRootMessageId
+      ? await this.db.select({ principalId: conversationThreadFollows.principalId }).from(conversationThreadFollows).where(and(
+        eq(conversationThreadFollows.workspaceId, args.workspaceId),
+        eq(conversationThreadFollows.threadRootMessageId, args.threadRootMessageId),
+      ))
+      : []
+    const followerIds = new Set(followers.map((row) => row.principalId))
+    const preferences = await this.db.select().from(workspaceNotificationPreferences).where(
+      eq(workspaceNotificationPreferences.workspaceId, args.workspaceId),
+    )
+    const preferenceByPrincipal = new Map(preferences.map((row) => [row.principalId, row]))
+    const [messageEvent] = await this.db.select({ sequence: conversationEvents.sequence }).from(conversationEvents).where(and(
+      eq(conversationEvents.conversationId, args.conversationId),
+      eq(conversationEvents.messageId, args.messageId),
+      eq(conversationEvents.type, 'message.created'),
+    )).orderBy(desc(conversationEvents.sequence)).limit(1)
+    type NotificationRecipient = {
+      participant: typeof participants[number]
+      type: 'message' | 'mention' | 'thread'
+      mentionScope?: 'direct' | 'channel' | 'here'
+    }
+    const recipients = participants.filter((participant) => participant.principalId !== actor.id).map((participant): NotificationRecipient | null => {
+      const directMention = mentions.has(participant.principalId)
+      const broadcastMention = hasChannelMention || (hasHereMention && activeHere.has(participant.principalId))
+      const followedThread = Boolean(args.threadRootMessageId && followerIds.has(participant.principalId))
+      const mentionScope = directMention ? 'direct' as const : hasChannelMention ? 'channel' as const : hasHereMention ? 'here' as const : undefined
+      const preference = preferenceByPrincipal.get(participant.principalId)
+      if (directMention || broadcastMention) {
+        if (preference?.mentions === 'off') return null
+        return { participant, type: 'mention' as const, mentionScope }
+      }
+      if (followedThread) {
+        if (preference?.threadReplies === 'off' || participant.notificationLevel === 'muted') return null
+        return { participant, type: 'thread' as const, mentionScope: undefined }
+      }
+      if (participant.notificationLevel === 'muted') return null
+      if (participant.notificationLevel === 'mentions') return null
+      const mode = conversation?.conversationType === 'dm'
+        ? preference?.dmMessages
+        : preference?.channelMessages
+      if (mode === 'off') return null
+      return { participant, type: 'message' as const, mentionScope: undefined }
+    }).filter((value): value is NotificationRecipient => value !== null)
     await this.db.transaction(async (tx) => {
       if (recipients.length > 0) {
         await tx.insert(workspaceNotifications).values(recipients.map((recipient) => ({
           id: `notification_${randomUUID()}`,
           workspaceId: args.workspaceId,
-          recipientPrincipalId: recipient.principalId,
-          type: mentions.has(recipient.principalId) ? 'mention' as const : 'message' as const,
+          recipientPrincipalId: recipient.participant.principalId,
+          type: recipient.type,
           conversationId: args.conversationId,
           messageId: args.messageId,
           actorPrincipalId: actor.id,
-          title: mentions.has(recipient.principalId)
+          threadRootMessageId: args.threadRootMessageId,
+          eventSequence: messageEvent?.sequence,
+          mentionScope: recipient.mentionScope,
+          title: recipient.type === 'mention'
             ? `${actor.displayName} mentioned you`
-            : `New message from ${actor.displayName}`,
+            : recipient.type === 'thread'
+              ? `${actor.displayName} replied in a thread`
+              : `New message from ${actor.displayName}`,
           body: args.body?.slice(0, 240),
           createdAt: now,
         })))
@@ -714,21 +777,56 @@ implements ConversationCollaborationRepository {
     const emoji = args.emoji.trim()
     if (!emoji || emoji.length > 32) throw new Error('A valid reaction is required')
     await this.requireConversationMessage(args)
+    let reactionChanged = false
     if (args.enabled) {
-      await this.db.insert(conversationMessageReactions).values({
+      const inserted = await this.db.insert(conversationMessageReactions).values({
         conversationId: args.conversationId,
         messageId: args.messageId,
         workspaceId: args.workspaceId,
         principalId: actor.id,
         emoji,
         createdAt: new Date(),
-      }).onConflictDoNothing()
+      }).onConflictDoNothing().returning({ messageId: conversationMessageReactions.messageId })
+      reactionChanged = inserted.length > 0
     } else {
-      await this.db.delete(conversationMessageReactions).where(and(
+      const deleted = await this.db.delete(conversationMessageReactions).where(and(
         eq(conversationMessageReactions.messageId, args.messageId),
         eq(conversationMessageReactions.principalId, actor.id),
         eq(conversationMessageReactions.emoji, emoji),
-      ))
+      )).returning({ messageId: conversationMessageReactions.messageId })
+      reactionChanged = deleted.length > 0
+    }
+    const [message] = await this.db.select({ authorPrincipalId: conversationMessages.authorPrincipalId }).from(conversationMessages).where(
+      and(eq(conversationMessages.id, args.messageId), eq(conversationMessages.conversationId, args.conversationId)),
+    ).limit(1)
+    if (message?.authorPrincipalId && message.authorPrincipalId !== actor.id && args.enabled && reactionChanged) {
+      const [preference] = await this.db.select({ mode: workspaceNotificationPreferences.reactions }).from(workspaceNotificationPreferences).where(and(
+        eq(workspaceNotificationPreferences.workspaceId, args.workspaceId),
+        eq(workspaceNotificationPreferences.principalId, message.authorPrincipalId),
+      )).limit(1)
+      if (preference?.mode !== 'off') {
+        await this.db.insert(workspaceNotifications).values({
+          id: `notification_${randomUUID()}`,
+          workspaceId: args.workspaceId,
+          recipientPrincipalId: message.authorPrincipalId,
+          type: 'reaction',
+          conversationId: args.conversationId,
+          messageId: args.messageId,
+          actorPrincipalId: actor.id,
+          title: `${actor.displayName} reacted ${emoji}`,
+          body: undefined,
+          createdAt: new Date(),
+        })
+      }
+    }
+    if (reactionChanged) {
+      await emitConversationEvent(this.db, {
+        conversationId: args.conversationId,
+        messageId: args.messageId,
+        payload: { enabled: args.enabled, emoji },
+        type: 'reaction.changed',
+        userId: actor.userId ?? args.actorUserId,
+      })
     }
     return await this.listReactions(args)
   }
@@ -769,12 +867,30 @@ implements ConversationCollaborationRepository {
         pinnedByPrincipalId: actor.id,
         createdAt: new Date(),
       }).onConflictDoNothing().returning({ messageId: conversationPins.messageId })
+      if (rows.length > 0) {
+        await emitConversationEvent(this.db, {
+          conversationId: args.conversationId,
+          messageId: args.messageId,
+          payload: { pinned: true },
+          type: 'pin.changed',
+          userId: actor.userId ?? args.actorUserId,
+        })
+      }
       return rows.length > 0
     }
     const rows = await this.db.delete(conversationPins).where(and(
       eq(conversationPins.conversationId, args.conversationId),
       eq(conversationPins.messageId, args.messageId),
     )).returning({ messageId: conversationPins.messageId })
+    if (rows.length > 0) {
+      await emitConversationEvent(this.db, {
+        conversationId: args.conversationId,
+        messageId: args.messageId,
+        payload: { pinned: false },
+        type: 'pin.changed',
+        userId: actor.userId ?? args.actorUserId,
+      })
+    }
     return rows.length > 0
   }
 
@@ -875,6 +991,7 @@ implements ConversationCollaborationRepository {
 
   async listNotifications(args: {
     actorUserId: string
+    filter?: WorkspaceNotificationFilter
     limit?: number
     unreadOnly?: boolean
     workspaceId: string
@@ -883,7 +1000,10 @@ implements ConversationCollaborationRepository {
     const rows = await this.db.select().from(workspaceNotifications).where(and(
       eq(workspaceNotifications.workspaceId, args.workspaceId),
       eq(workspaceNotifications.recipientPrincipalId, actor.id),
-      args.unreadOnly ? isNull(workspaceNotifications.readAt) : undefined,
+      args.unreadOnly || args.filter === 'unread' ? isNull(workspaceNotifications.readAt) : undefined,
+      args.filter === 'mentions' ? eq(workspaceNotifications.type, 'mention') : undefined,
+      args.filter === 'threads' ? eq(workspaceNotifications.type, 'thread') : undefined,
+      args.filter === 'reactions' ? eq(workspaceNotifications.type, 'reaction') : undefined,
     )).orderBy(desc(workspaceNotifications.createdAt))
       .limit(Math.max(1, Math.min(100, args.limit ?? 50)))
     return rows.map(mapNotification)
@@ -904,6 +1024,99 @@ implements ConversationCollaborationRepository {
         : undefined,
     )).returning({ id: workspaceNotifications.id })
     return rows.length
+  }
+
+  async setThreadFollow(args: {
+    actorUserId: string
+    conversationId: string
+    threadRootMessageId: string
+    followed: boolean
+    workspaceId: string
+  }): Promise<boolean> {
+    const actor = await this.requireActor(args)
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    await this.requireConversationMessage({ conversationId: args.conversationId, messageId: args.threadRootMessageId })
+    if (args.followed) {
+      const rows = await this.db.insert(conversationThreadFollows).values({
+        workspaceId: args.workspaceId,
+        conversationId: args.conversationId,
+        threadRootMessageId: args.threadRootMessageId,
+        principalId: actor.id,
+        followedAt: new Date(),
+      }).onConflictDoNothing().returning({ threadRootMessageId: conversationThreadFollows.threadRootMessageId })
+      return rows.length > 0
+    }
+    const rows = await this.db.delete(conversationThreadFollows).where(and(
+      eq(conversationThreadFollows.workspaceId, args.workspaceId),
+      eq(conversationThreadFollows.threadRootMessageId, args.threadRootMessageId),
+      eq(conversationThreadFollows.principalId, actor.id),
+    )).returning({ threadRootMessageId: conversationThreadFollows.threadRootMessageId })
+    return rows.length > 0
+  }
+
+  async listThreadFollows(args: {
+    actorUserId: string
+    conversationId: string
+    threadRootMessageId?: string
+    workspaceId: string
+  }): Promise<ConversationThreadFollow[]> {
+    const actor = await this.requireActor(args)
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    const rows = await this.db.select().from(conversationThreadFollows).where(and(
+      eq(conversationThreadFollows.workspaceId, args.workspaceId),
+      eq(conversationThreadFollows.conversationId, args.conversationId),
+      args.threadRootMessageId ? eq(conversationThreadFollows.threadRootMessageId, args.threadRootMessageId) : undefined,
+      args.threadRootMessageId ? undefined : eq(conversationThreadFollows.principalId, actor.id),
+    )).orderBy(desc(conversationThreadFollows.followedAt))
+    return rows.map((row) => ({
+      conversationId: row.conversationId,
+      threadRootMessageId: row.threadRootMessageId,
+      principalId: row.principalId,
+      followedAt: row.followedAt.getTime(),
+    }))
+  }
+
+  async getNotificationPreferences(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<WorkspaceNotificationPreferences> {
+    const actor = await this.requireActor(args)
+    const [row] = await this.db.select().from(workspaceNotificationPreferences).where(and(
+      eq(workspaceNotificationPreferences.workspaceId, args.workspaceId),
+      eq(workspaceNotificationPreferences.principalId, actor.id),
+    )).limit(1)
+    return mapNotificationPreferences(row)
+  }
+
+  async updateNotificationPreferences(args: {
+    actorUserId: string
+    workspaceId: string
+    preferences: Partial<WorkspaceNotificationPreferences>
+  }): Promise<WorkspaceNotificationPreferences> {
+    const actor = await this.requireActor(args)
+    const current = await this.getNotificationPreferences(args)
+    const next = { ...current, ...args.preferences }
+    const [row] = await this.db.insert(workspaceNotificationPreferences).values({
+      workspaceId: args.workspaceId,
+      principalId: actor.id,
+      dmMessages: next.dmMessages,
+      mentions: next.mentions,
+      threadReplies: next.threadReplies,
+      reactions: next.reactions,
+      channelMessages: next.channelMessages,
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: [workspaceNotificationPreferences.workspaceId, workspaceNotificationPreferences.principalId],
+      set: {
+        dmMessages: next.dmMessages,
+        mentions: next.mentions,
+        threadReplies: next.threadReplies,
+        reactions: next.reactions,
+        channelMessages: next.channelMessages,
+        updatedAt: new Date(),
+      },
+    }).returning()
+    return mapNotificationPreferences(row)
   }
 
   private async requireActor(args: { actorUserId: string; workspaceId: string }) {
@@ -1006,10 +1219,25 @@ function mapNotification(row: typeof workspaceNotifications.$inferSelect): Works
     conversationId: row.conversationId ?? undefined,
     messageId: row.messageId ?? undefined,
     actorPrincipalId: row.actorPrincipalId ?? undefined,
+    threadRootMessageId: row.threadRootMessageId ?? undefined,
+    eventSequence: row.eventSequence ?? undefined,
+    mentionScope: row.mentionScope as WorkspaceNotification['mentionScope'],
     title: row.title,
     body: row.body ?? undefined,
     createdAt: row.createdAt.getTime(),
     readAt: row.readAt?.getTime(),
+  }
+}
+
+function mapNotificationPreferences(
+  row?: typeof workspaceNotificationPreferences.$inferSelect,
+): WorkspaceNotificationPreferences {
+  return {
+    dmMessages: row?.dmMessages ?? 'activity',
+    mentions: row?.mentions ?? 'banner',
+    threadReplies: row?.threadReplies ?? 'activity',
+    reactions: row?.reactions ?? 'activity',
+    channelMessages: row?.channelMessages ?? 'activity',
   }
 }
 

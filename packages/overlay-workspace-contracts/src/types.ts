@@ -331,14 +331,36 @@ export type WorkspaceNotification = {
   id: string
   workspaceId: string
   recipientPrincipalId: string
-  type: 'message' | 'mention' | 'invitation' | 'participant'
+  type: 'message' | 'mention' | 'thread' | 'reaction' | 'invitation' | 'participant'
   conversationId?: string
   messageId?: string
   actorPrincipalId?: string
+  threadRootMessageId?: string
+  eventSequence?: number
+  mentionScope?: 'direct' | 'channel' | 'here'
   title: string
   body?: string
   createdAt: number
   readAt?: number
+}
+
+export type WorkspaceNotificationFilter = 'all' | 'unread' | 'mentions' | 'threads' | 'reactions'
+
+export type WorkspaceNotificationPreferenceMode = 'activity' | 'banner' | 'off'
+
+export type WorkspaceNotificationPreferences = {
+  dmMessages: WorkspaceNotificationPreferenceMode
+  mentions: WorkspaceNotificationPreferenceMode
+  threadReplies: WorkspaceNotificationPreferenceMode
+  reactions: WorkspaceNotificationPreferenceMode
+  channelMessages: WorkspaceNotificationPreferenceMode
+}
+
+export type ConversationThreadFollow = {
+  conversationId: string
+  threadRootMessageId: string
+  principalId: string
+  followedAt: number
 }
 
 export const CHANNEL_VISIBILITIES = ['public', 'private'] as const
