@@ -137,6 +137,7 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     OVERLAY_FEATURE_API_DEFAULT_RATE_LIMIT: 'false',
     OVERLAY_FEATURE_API_MUTATION_AUDIT: 'false',
     OVERLAY_FEATURE_API_MUTATION_ORIGIN_GUARD: 'false',
+    OVERLAY_FEATURE_LIFECYCLE_EVENTS: 'false',
     OVERLAY_PROVIDER_SANDBOX: 'none',
     OVERLAY_PROVIDER_BROWSER: 'none',
     OVERLAY_PROVIDER_WEB_SEARCH: 'none',
@@ -155,6 +156,7 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     apiDefaultRateLimit: false,
     apiMutationAudit: false,
     apiMutationOriginGuard: false,
+    lifecycleEvents: false,
   })
   assert.deepEqual(overrides.providers, {
     database: { provider: 'convex' },

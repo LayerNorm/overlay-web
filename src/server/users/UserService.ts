@@ -10,10 +10,12 @@ import type {
 
 export class UserService {
   private readonly authProvider: UserAuthProvider
+  private readonly lifecycleEvents: UserServiceOptions['lifecycleEvents']
   private readonly repository: UserRepository
 
   constructor(options: UserServiceOptions) {
     this.authProvider = options.authProvider
+    this.lifecycleEvents = options.lifecycleEvents
     this.repository = options.repository
   }
 
@@ -21,7 +23,7 @@ export class UserService {
     const userId = normalizeRequiredString(session.user.id, 'session.user.id')
     const email = normalizeEmail(session.user.email)
 
-    return await this.repository.upsertFromIdentity({
+    const result = await this.repository.upsertFromIdentity({
       identity: {
         provider: this.authProvider,
         subject: userId,
@@ -38,6 +40,16 @@ export class UserService {
       },
       now: new Date(),
     })
+    if (result.isNewUser) {
+      await this.lifecycleEvents?.publish({
+        attributes: { authProvider: this.authProvider },
+        idempotencyKey: `user.created:${this.authProvider}:${result.userId}`,
+        name: 'user.created',
+        resource: { id: result.userId, type: 'user' },
+        userId: result.userId,
+      })
+    }
+    return result
   }
 }
 

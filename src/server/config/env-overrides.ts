@@ -364,6 +364,7 @@ function featuresFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
     apiDefaultRateLimit: readFeatureBool(env, 'API_DEFAULT_RATE_LIMIT'),
     apiMutationAudit: readFeatureBool(env, 'API_MUTATION_AUDIT'),
     apiMutationOriginGuard: readFeatureBool(env, 'API_MUTATION_ORIGIN_GUARD'),
+    lifecycleEvents: readFeatureBool(env, 'LIFECYCLE_EVENTS'),
     billing: readFeatureBool(env, 'BILLING') ?? readBool(env, 'BILLING_ENABLED'),
     webhooks: readFeatureBool(env, 'WEBHOOKS') ?? readBool(env, 'WEBHOOKS_ENABLED'),
     apiKeys: readFeatureBool(env, 'API_KEYS') ?? readBool(env, 'API_KEYS_ENABLED'),
