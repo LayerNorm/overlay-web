@@ -6,6 +6,20 @@ import {
   type AutomationEntitlementPolicy,
 } from './AutomationEntitlementPolicy'
 import type { AutomationRepository } from './AutomationRepository'
+import { LifecycleEventPublisher, LIFECYCLE_EVENT_TOPIC } from '@/server/lifecycle-events'
+import type { EventBus } from '@overlay/app-core'
+
+class CapturingEventBus implements EventBus {
+  readonly events: Array<{ payload: unknown; topic: string }> = []
+
+  async publish(topic: string, payload: unknown): Promise<void> {
+    this.events.push({ topic, payload })
+  }
+
+  subscribe(): () => void {
+    return () => {}
+  }
+}
 
 function createRepository(overrides: Partial<AutomationRepository> = {}): AutomationRepository & {
   failedRuns: Array<Record<string, unknown>>
@@ -84,8 +98,17 @@ function createService(
   entitlementPolicy: AutomationEntitlementPolicy = new PaidPlanAutomationEntitlementPolicy(
     async () => 'paid',
   ),
-  assertProjectAutomationAllowed?: (args: { projectId: string; userId: string }) => Promise<boolean>,
+  projectPolicyOrLifecycleEvents?:
+    | ((args: { projectId: string; userId: string }) => Promise<boolean>)
+    | LifecycleEventPublisher,
+  lifecycleEvents?: LifecycleEventPublisher,
 ) {
+  const assertProjectAutomationAllowed = typeof projectPolicyOrLifecycleEvents === 'function'
+    ? projectPolicyOrLifecycleEvents
+    : undefined
+  const resolvedLifecycleEvents = typeof projectPolicyOrLifecycleEvents === 'function'
+    ? lifecycleEvents
+    : projectPolicyOrLifecycleEvents
   const finishedEvents: Array<Record<string, unknown>> = []
   const failedEvents: Array<Record<string, unknown>> = []
   return {
@@ -100,6 +123,7 @@ function createService(
         finished: (event) => finishedEvents.push(event),
         failed: (event) => failedEvents.push(event),
       },
+      lifecycleEvents: resolvedLifecycleEvents ? () => resolvedLifecycleEvents : undefined,
       executor: async () => ({ conversationId: 'conversation_result' as never }),
     }),
   }
@@ -244,6 +268,7 @@ test('AutomationService exposes durable run cancellation and retry actions', asy
 test('AutomationService.testAutomation marks run failed and emits failure on executor error', async () => {
   const repository = createRepository()
   const failedEvents: Array<Record<string, unknown>> = []
+  const eventBus = new CapturingEventBus()
   const service = new AutomationService({
     entitlementPolicy: new PaidPlanAutomationEntitlementPolicy(async () => 'paid'),
     repository,
@@ -252,6 +277,7 @@ test('AutomationService.testAutomation marks run failed and emits failure on exe
       finished: () => {},
       failed: (event) => failedEvents.push(event),
     },
+    lifecycleEvents: () => new LifecycleEventPublisher({ eventBus }),
     executor: async () => {
       throw new Error('executor failed')
     },
@@ -266,4 +292,41 @@ test('AutomationService.testAutomation marks run failed and emits failure on exe
   assert.equal(repository.failedRuns[0]?.error, 'executor failed')
   assert.equal(failedEvents.length, 1)
   assert.equal(failedEvents[0]?.error, 'executor failed')
+  assert.equal(eventBus.events[0]?.topic, LIFECYCLE_EVENT_TOPIC)
+  assert.deepEqual(eventBus.events[0]?.payload, {
+    attributes: { execution: 'manual', failureClass: 'unknown' },
+    classification: 'operational',
+    destinations: ['analytics', 'audit', 'email', 'metrics', 'notification'],
+    eventId: (eventBus.events[0]?.payload as { eventId: string }).eventId,
+    idempotencyKey: 'automation.failed:run_1',
+    name: 'automation.failed',
+    occurredAt: (eventBus.events[0]?.payload as { occurredAt: number }).occurredAt,
+    resource: { automationId: 'automation_1', id: 'run_1', type: 'automation_run' },
+    schemaVersion: 1,
+    userId: 'user_1',
+  })
+})
+
+test('AutomationService publishes successful run metadata without automation content', async () => {
+  const eventBus = new CapturingEventBus()
+  const { service } = createService(
+    createRepository(),
+    new PaidPlanAutomationEntitlementPolicy(async () => 'paid'),
+    new LifecycleEventPublisher({ eventBus }),
+  )
+
+  await service.testAutomation({ userId: 'user_1', automationId: 'automation_1' })
+
+  assert.equal(eventBus.events[0]?.topic, LIFECYCLE_EVENT_TOPIC)
+  assert.deepEqual(
+    eventBus.events.map((event) => {
+      const payload = event.payload as { attributes: unknown; name: string; resource: unknown }
+      return { attributes: payload.attributes, name: payload.name, resource: payload.resource }
+    }),
+    [{
+      attributes: { execution: 'manual' },
+      name: 'automation.succeeded',
+      resource: { automationId: 'automation_1', id: 'run_1', type: 'automation_run' },
+    }],
+  )
 })

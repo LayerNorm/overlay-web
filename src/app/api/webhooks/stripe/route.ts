@@ -40,6 +40,7 @@ export async function POST(request: Request) {
   const service = new StripeWebhookService({
     billing: context.appData.repositories.billing as BillingRepository & BillingWebhookRepository,
     events: context.appData.repositories.billingEvents,
+    lifecycleEvents: context.lifecycleEvents,
   })
   const result = await service.handle({ event, rawBody })
   await context.auditService.record({

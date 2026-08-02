@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
+import type { LifecycleEventPublisher } from '@/server/lifecycle-events'
 import {
   clampPaidPlanAmountCents,
   clampTopUpAmountCents,
@@ -17,6 +18,7 @@ type BillingCheckoutServiceDeps = {
   baseUrl?: () => string
   billingProvider: BillingProvider | (() => BillingProvider)
   clock?: { now(): number }
+  lifecycleEvents?: () => LifecycleEventPublisher
   repository: BillingRepository
 }
 
@@ -152,6 +154,18 @@ export class BillingCheckoutService {
       status: verification.status,
       currentPeriodStart: verification.currentPeriodStart,
       currentPeriodEnd: verification.currentPeriodEnd,
+    })
+    await this.publishLifecycleEvent({
+      attributes: {
+        changeSource: 'checkout_verification',
+        planKind: 'paid',
+        provider: 'stripe',
+        status: lifecycleSubscriptionStatus(verification.status),
+      },
+      idempotencyKey: `subscription.changed:checkout:${sessionId}:${verification.providerSubscriptionId}`,
+      name: 'subscription.changed',
+      resource: { id: verification.providerSubscriptionId, type: 'subscription' },
+      userId: args.userId,
     })
 
     logger.info('[Checkout Verify] Subscription verified and updated')
@@ -295,8 +309,21 @@ export class BillingCheckoutService {
       topUpAmountCents: amountCents,
       grantOffSessionConsent: autoTopUpEnabled,
     })
+    await this.publishLifecycleEvent({
+      attributes: { provider: 'stripe', source: 'manual' },
+      idempotencyKey: `topup.succeeded:checkout:${verification.providerSessionId}`,
+      name: 'topup.succeeded',
+      resource: { id: verification.providerSessionId, type: 'billing_topup' },
+      userId: args.userId,
+    })
 
     return { success: true, amountCents }
+  }
+
+  private async publishLifecycleEvent(
+    event: Parameters<LifecycleEventPublisher['publish']>[0],
+  ): Promise<void> {
+    await this.deps.lifecycleEvents?.().publish(event)
   }
 
   private billingProvider(): BillingProvider {
@@ -318,4 +345,13 @@ export class BillingCheckoutService {
       throw error
     }
   }
+}
+
+function lifecycleSubscriptionStatus(
+  status: string | undefined,
+): 'active' | 'canceled' | 'past_due' | 'trialing' | 'unknown' {
+  if (status === 'active' || status === 'canceled' || status === 'past_due' || status === 'trialing') {
+    return status
+  }
+  return 'unknown'
 }

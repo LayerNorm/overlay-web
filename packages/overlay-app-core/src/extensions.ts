@@ -65,6 +65,8 @@ export interface McpServerFormValues {
 export interface McpTestResultState {
   ok: boolean
   message: string
+  /** Set when the failure looks like an OAuth-only server, so the dialog can offer Connect. */
+  requiresAuth?: boolean
 }
 
 /** Result of an MCP create/update/delete attempt, carrying the server error so the dialog can show it. */
@@ -490,6 +492,7 @@ export function formatMcpTestResult(response: TestMcpServerResponse, ok: boolean
   return {
     ok: ok && response.ok,
     message: ok && response.ok ? `Connected — ${response.toolCount ?? 0} tools available` : (response.error || 'Connection failed'),
+    ...(response.requiresAuth ? { requiresAuth: true } : {}),
   }
 }
 

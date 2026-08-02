@@ -29,7 +29,7 @@ function CallbackContent() {
       return () => clearInterval(interval)
     } else {
       posthog.capture('integration_connect_failed', {
-        error: error ?? 'unknown',
+        failure_class: error ? 'provider_error' : 'unknown',
       })
     }
   }, [isSuccess, error])

@@ -50,6 +50,14 @@ export const list = query({
       toolCatalogError: s.toolCatalogError,
       defaultToolPolicy: s.defaultToolPolicy ?? 'allow',
       toolPolicies: s.toolPolicies ?? {},
+      // Non-secret OAuth state only. Tokens and the client secret stay encrypted and server-side.
+      oauthStatus: s.oauthStatus,
+      oauthClientId: s.oauthClientId,
+      oauthIssuer: s.oauthIssuer,
+      oauthScope: s.oauthScope,
+      oauthResource: s.oauthResource,
+      oauthConnectedAt: s.oauthConnectedAt,
+      oauthError: s.oauthError,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
     }))
@@ -109,7 +117,7 @@ export const create = mutation({
     transport: v.union(v.literal('sse'), v.literal('streamable-http')),
     url: v.string(),
     enabled: v.optional(v.boolean()),
-    authType: v.optional(v.union(v.literal('none'), v.literal('bearer'), v.literal('header'))),
+    authType: v.optional(v.union(v.literal('none'), v.literal('bearer'), v.literal('header'), v.literal('oauth'))),
     authConfig: v.optional(
       v.object({
         bearerToken: v.optional(v.string()),
@@ -162,7 +170,7 @@ export const update = mutation({
     transport: v.optional(v.union(v.literal('sse'), v.literal('streamable-http'))),
     url: v.optional(v.string()),
     enabled: v.optional(v.boolean()),
-    authType: v.optional(v.union(v.literal('none'), v.literal('bearer'), v.literal('header'))),
+    authType: v.optional(v.union(v.literal('none'), v.literal('bearer'), v.literal('header'), v.literal('oauth'))),
     authConfig: v.optional(
       v.object({
         bearerToken: v.optional(v.string()),
@@ -294,6 +302,141 @@ export const listExecutions = query({
         .order('desc')
         .take(Math.min(Math.max(args.limit ?? 50, 1), 200))
     return rows.filter((row) => row.userId === args.userId)
+  },
+})
+
+const oauthStatus = v.union(
+  v.literal('pending'),
+  v.literal('connected'),
+  v.literal('needs_reauth'),
+)
+
+/**
+ * Writes OAuth state. When `expectedTokenVersion` is supplied the token write is compare-and-set,
+ * so two concurrent refreshes cannot clobber each other on servers that rotate refresh tokens.
+ * Returns false when the caller lost the race and should re-read.
+ */
+export const updateOAuthState = mutation({
+  args: {
+    mcpServerId: v.id('mcpServers'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    encryptedOAuthTokens: v.optional(v.union(v.string(), v.null())),
+    encryptedOAuthClient: v.optional(v.union(v.string(), v.null())),
+    oauthClientId: v.optional(v.union(v.string(), v.null())),
+    oauthStatus: v.optional(oauthStatus),
+    oauthIssuer: v.optional(v.string()),
+    oauthScope: v.optional(v.string()),
+    oauthResource: v.optional(v.string()),
+    oauthError: v.optional(v.union(v.string(), v.null())),
+    expectedTokenVersion: v.optional(v.number()),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    await authorizeUserAccess(args)
+    const server = await ctx.db.get(args.mcpServerId)
+    if (!server || server.userId !== args.userId) throw new Error('Unauthorized')
+
+    const currentVersion = server.oauthTokenVersion ?? 0
+    if (args.expectedTokenVersion !== undefined && args.expectedTokenVersion !== currentVersion) {
+      return false
+    }
+
+    const patch: Record<string, unknown> = { updatedAt: Date.now() }
+    if (args.encryptedOAuthTokens !== undefined) {
+      patch.encryptedOAuthTokens = args.encryptedOAuthTokens ?? undefined
+      patch.oauthTokenVersion = currentVersion + 1
+      if (args.encryptedOAuthTokens) patch.oauthConnectedAt = Date.now()
+    }
+    if (args.encryptedOAuthClient !== undefined) {
+      patch.encryptedOAuthClient = args.encryptedOAuthClient ?? undefined
+    }
+    if (args.oauthClientId !== undefined) patch.oauthClientId = args.oauthClientId ?? undefined
+    if (args.oauthStatus !== undefined) patch.oauthStatus = args.oauthStatus
+    if (args.oauthIssuer !== undefined) patch.oauthIssuer = args.oauthIssuer
+    if (args.oauthScope !== undefined) patch.oauthScope = args.oauthScope
+    if (args.oauthResource !== undefined) patch.oauthResource = args.oauthResource
+    if (args.oauthError !== undefined) patch.oauthError = args.oauthError ?? undefined
+
+    await ctx.db.patch(args.mcpServerId, patch)
+    return true
+  },
+})
+
+export const createOAuthSession = mutation({
+  args: {
+    sessionId: v.string(),
+    userId: v.string(),
+    serverSecret: v.optional(v.string()),
+    accessToken: v.optional(v.string()),
+    mcpServerId: v.id('mcpServers'),
+    encryptedCodeVerifier: v.string(),
+    surface: v.union(v.literal('web'), v.literal('desktop')),
+    returnTo: v.optional(v.string()),
+    sessionBindingHash: v.optional(v.string()),
+    expiresAt: v.number(),
+    createdAt: v.optional(v.number()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await authorizeUserAccess(args)
+    const server = await ctx.db.get(args.mcpServerId)
+    if (!server || server.userId !== args.userId) throw new Error('Unauthorized')
+    await ctx.db.insert('mcpOAuthSessions', {
+      sessionId: args.sessionId,
+      userId: args.userId,
+      mcpServerId: args.mcpServerId,
+      encryptedCodeVerifier: args.encryptedCodeVerifier,
+      surface: args.surface,
+      returnTo: args.returnTo,
+      sessionBindingHash: args.sessionBindingHash,
+      expiresAt: args.expiresAt,
+      createdAt: args.createdAt ?? Date.now(),
+    })
+    return null
+  },
+})
+
+/**
+ * Single-use read: the row is deleted as it is consumed, so a replayed `state` finds nothing.
+ * Deliberately takes no userId — the caller is an unauthenticated browser redirect, and the row
+ * itself is what binds the flow to a user.
+ */
+export const consumeOAuthSession = mutation({
+  args: {
+    sessionId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const row = await ctx.db
+      .query('mcpOAuthSessions')
+      .withIndex('by_sessionId', (q) => q.eq('sessionId', args.sessionId))
+      .unique()
+      .catch(() => null)
+    if (!row) return null
+    await ctx.db.delete(row._id)
+    if (row.expiresAt < Date.now()) return null
+    return row
+  },
+})
+
+export const deleteExpiredOAuthSessions = mutation({
+  args: {
+    serverSecret: v.optional(v.string()),
+    now: v.optional(v.number()),
+  },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const cutoff = args.now ?? Date.now()
+    const expired = await ctx.db
+      .query('mcpOAuthSessions')
+      .withIndex('by_expiresAt', (q) => q.lt('expiresAt', cutoff))
+      .take(200)
+    for (const row of expired) await ctx.db.delete(row._id)
+    return expired.length
   },
 })
 

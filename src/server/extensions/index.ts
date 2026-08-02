@@ -1,6 +1,7 @@
 export * from './SkillRepository'
 export * from './McpServerRepository'
 export * from './McpCredentialCipher'
+export * from './McpOAuthProvider'
 export { ConvexSkillRepository } from './ConvexSkillRepository'
 export { PostgresSkillRepository } from './PostgresSkillRepository'
 export { ConvexMcpServerRepository } from './ConvexMcpServerRepository'

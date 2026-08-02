@@ -94,6 +94,22 @@ function context(): AppApiRouteContext {
     parsedJson: {},
     parsedQuery: {},
     appDataCapabilities: TEST_CONVEX_APP_DATA_CAPABILITIES,
+    // These direct domain-route tests characterize response shapes. The BFF
+    // owns authorization evaluation; observe mode prevents a second live
+    // authorization repository from becoming an accidental test dependency.
+    authorization: {
+      evaluation: {
+        mode: 'observe',
+        subject: {
+          capabilities: [],
+          groupIds: [],
+          isDeploymentOwner: false,
+          roleIds: [],
+          userId: 'user_1',
+        },
+      } as never,
+      policy: {} as never,
+    },
     workspace: {
       workspace: {
         id: 'workspace_1',
@@ -146,6 +162,7 @@ test('files POST route preserves success response shape', async (t) => {
       body: JSON.stringify({ name: 'x.txt' }),
     }),
     context(),
+    { workspaceService: { bindResource: async () => undefined as never } },
   )
 
   assert.equal(response.status, 200)

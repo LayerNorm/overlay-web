@@ -63,4 +63,22 @@ export class McpServersClient {
   testResponse(body: TestMcpServerRequest, init?: RequestInit) {
     return this.http.request('/api/v1/mcps/test', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
+
+  /** Starts an OAuth authorization; the response carries the provider URL to send the browser to. */
+  startOAuthResponse(
+    body: { mcpServerId: string; returnTo?: string; scope?: string; surface?: 'web' | 'desktop' },
+    init?: RequestInit,
+  ) {
+    return this.http.request(
+      '/api/v1/mcps/oauth',
+      this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  disconnectOAuthResponse(query: { mcpServerId: string }, init?: RequestInit) {
+    return this.http.request(
+      this.http.appendQuery('/api/v1/mcps/oauth', query as QueryParams),
+      { ...init, method: 'DELETE' },
+    )
+  }
 }

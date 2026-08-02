@@ -502,6 +502,18 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   { path: '/api/v1/mcps/test', methods: { POST: capability('mcp.use') } },
+  // The callback is authorized by its single-use, user-bound OAuth state (or the
+  // sealed desktop confirmation cookie), because an identity provider redirect
+  // cannot reliably carry an Overlay session. Starting and disconnecting still
+  // require the ordinary MCP capability.
+  {
+    path: '/api/v1/mcps/oauth/callback',
+    methods: { GET: publicPolicy(), POST: publicPolicy() },
+  },
+  {
+    path: '/api/v1/mcps/oauth',
+    methods: { POST: capability('mcp.use'), DELETE: capability('mcp.use') },
+  },
   {
     path: '/api/v1/memory',
     methods: {

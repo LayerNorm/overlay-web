@@ -1,6 +1,8 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
+import type { LifecycleEventPublisher } from '@/server/lifecycle-events'
+import { withObservabilityContext } from '@/server/observability/context'
 import { runActTurnForScheduledAutomation, type ScheduledAutomationTurn } from '@/server/agent/run-act-turn'
 import { emitAutomationFailed, emitAutomationFinished } from '@/server/shared/webhooks'
 import type {
@@ -58,6 +60,7 @@ export type AutomationServiceDeps = {
   events?: AutomationServiceEvents
   entitlementPolicy: AutomationEntitlementPolicy
   executor?: AutomationExecutor
+  lifecycleEvents?: () => LifecycleEventPublisher
   repository: AutomationRepository
 }
 
@@ -457,18 +460,23 @@ export class AutomationService {
       if (!runId) {
         throw new Error('Automation manual run create returned no id')
       }
+      const executionRunId = runId
+      const executionAutomationId = automationId
 
       await this.deps.repository.markManualRunStarted({
-        runId,
+        runId: executionRunId,
         userId: args.userId,
         conversationId,
         turnId,
         now: this.clock.now(),
       })
 
-      const result = await this.executor({
-        automationId,
-        runId,
+      const result = await withObservabilityContext({
+        provider: 'automation',
+        runId: executionRunId,
+      }, async () => await this.executor({
+        automationId: executionAutomationId,
+        runId: executionRunId,
         userId: args.userId,
         name,
         description: automation.description || '',
@@ -479,7 +487,7 @@ export class AutomationService {
         turnId,
         scheduledFor,
         baseUrl: args.baseUrl,
-      })
+      }))
 
       await this.deps.repository.markManualRunCompleted({
         runId,
@@ -493,6 +501,13 @@ export class AutomationService {
         automationId,
         runId,
         conversationId: result.conversationId,
+      })
+      await this.publishAutomationLifecycleEvent({
+        automationId,
+        execution: 'manual',
+        name: 'automation.succeeded',
+        runId,
+        userId: args.userId,
       })
 
       return { success: true, runId, conversationId: result.conversationId }
@@ -516,6 +531,7 @@ export class AutomationService {
     let userId: string | undefined
     try {
       if (!args.runId) serviceError({ error: 'runId required' }, 400)
+      const executionRunId = args.runId
       const payload = await this.deps.repository.getRunForExecution({ runId: args.runId })
       if (!payload || payload.run.status !== 'running') {
         serviceError({ error: 'Automation run is not executable' }, 409)
@@ -530,9 +546,12 @@ export class AutomationService {
       const turnId = run.turnId || `automation-${args.runId}-${this.clock.now()}`
       const conversationId = run.conversationId || automation.sourceConversationId || automation.conversationId
 
-      const result = await this.executor({
+      const result = await withObservabilityContext({
+        provider: 'automation',
+        runId: executionRunId,
+      }, async () => await this.executor({
         automationId: automation._id,
-        runId: args.runId,
+        runId: executionRunId,
         userId: automation.userId,
         name: automation.name || automation.title || 'Untitled automation',
         description: automation.description || '',
@@ -543,13 +562,20 @@ export class AutomationService {
         turnId,
         scheduledFor: run.scheduledFor,
         baseUrl: args.baseUrl,
-      })
+      }))
 
       this.events.finished({
         userId: automation.userId,
         automationId: automation._id,
         runId: args.runId,
         conversationId: result.conversationId,
+      })
+      await this.publishAutomationLifecycleEvent({
+        automationId: automation._id,
+        execution: 'scheduled',
+        name: 'automation.succeeded',
+        runId: args.runId,
+        userId: automation.userId,
       })
 
       return { success: true, conversationId: result.conversationId }
@@ -560,6 +586,14 @@ export class AutomationService {
           automationId,
           runId: args.runId,
           error: summarizeError(error).slice(0, 1000),
+        })
+        await this.publishAutomationLifecycleEvent({
+          automationId,
+          execution: 'scheduled',
+          failureClass: classifyAutomationFailure(error),
+          name: 'automation.failed',
+          runId: args.runId,
+          userId,
         })
       }
       throw error
@@ -635,6 +669,53 @@ export class AutomationService {
         runId: args.runId,
         error: message,
       })
+      await this.publishAutomationLifecycleEvent({
+        automationId: args.automationId,
+        execution: 'manual',
+        failureClass: classifyAutomationFailure(args.error),
+        name: 'automation.failed',
+        runId: args.runId,
+        userId: args.userId,
+      })
     }
   }
+
+  private async publishAutomationLifecycleEvent(args: {
+    automationId: string
+    execution: 'manual' | 'scheduled'
+    failureClass?: 'authorization' | 'provider' | 'transient' | 'unknown' | 'validation'
+    name: 'automation.failed' | 'automation.succeeded'
+    runId: string
+    userId: string
+  }): Promise<void> {
+    await this.deps.lifecycleEvents?.().publish({
+      attributes: {
+        execution: args.execution,
+        ...(args.failureClass ? { failureClass: args.failureClass } : {}),
+      },
+      idempotencyKey: `${args.name}:${args.runId}`,
+      name: args.name,
+      resource: {
+        automationId: args.automationId,
+        id: args.runId,
+        type: 'automation_run',
+      },
+      userId: args.userId,
+    })
+  }
+}
+
+function classifyAutomationFailure(
+  error: unknown,
+): 'authorization' | 'provider' | 'transient' | 'unknown' | 'validation' {
+  if (error instanceof AutomationServiceError) {
+    if (error.statusCode === 401 || error.statusCode === 403) return 'authorization'
+    if (error.statusCode >= 400 && error.statusCode < 500) return 'validation'
+  }
+  if (error instanceof Error) {
+    const name = error.name.toLowerCase()
+    if (name.includes('timeout') || name.includes('network')) return 'transient'
+    if (name.includes('provider') || name.includes('gateway')) return 'provider'
+  }
+  return 'unknown'
 }

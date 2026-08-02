@@ -3,12 +3,26 @@ import test from 'node:test'
 import { BillingCheckoutService } from './BillingCheckoutService'
 import { BillingServiceError } from './BillingCustomerService'
 import type { BillingRepository } from './BillingRepository'
+import { LifecycleEventPublisher, LIFECYCLE_EVENT_TOPIC } from '@/server/lifecycle-events'
 import type {
   BillingProvider,
   CheckoutArgs,
   CheckoutSessionVerificationArgs,
   UsageArgs,
 } from '@overlay/app-core'
+import type { EventBus } from '@overlay/app-core'
+
+class CapturingEventBus implements EventBus {
+  readonly events: Array<{ payload: unknown; topic: string }> = []
+
+  async publish(topic: string, payload: unknown): Promise<void> {
+    this.events.push({ topic, payload })
+  }
+
+  subscribe(): () => void {
+    return () => {}
+  }
+}
 
 function createRepository(overrides: Partial<BillingRepository> = {}): BillingRepository {
   return {
@@ -105,11 +119,16 @@ function createBillingProvider(overrides: Partial<BillingProvider> = {}): Billin
   }
 }
 
-function createService(repository = createRepository(), billingProvider = createBillingProvider()) {
+function createService(
+  repository = createRepository(),
+  billingProvider = createBillingProvider(),
+  lifecycleEvents?: LifecycleEventPublisher,
+) {
   return new BillingCheckoutService({
     repository,
     baseUrl: () => 'https://overlay.test',
     billingProvider,
+    lifecycleEvents: lifecycleEvents ? () => lifecycleEvents : undefined,
   })
 }
 
@@ -258,4 +277,45 @@ test('BillingCheckoutService.verifyTopUp records provider verification result', 
   assert.deepEqual(result, { success: true, amountCents: 1000 })
   assert.equal(topUps[0]?.stripeCheckoutSessionId, 'cs_test_123')
   assert.equal(preferenceUpdates[0]?.autoTopUpEnabled, true)
+})
+
+test('BillingCheckoutService emits identifier-only lifecycle events after committed billing updates', async () => {
+  const eventBus = new CapturingEventBus()
+  const service = createService(
+    createRepository(),
+    createBillingProvider(),
+    new LifecycleEventPublisher({ eventBus }),
+  )
+
+  await service.verifySubscriptionCheckout({ userId: 'user_1', sessionId: 'cs_test_123' })
+  await service.verifyTopUp({ userId: 'user_1', body: { sessionId: 'cs_test_123' } })
+
+  assert.deepEqual(eventBus.events.map((event) => event.topic), [
+    LIFECYCLE_EVENT_TOPIC,
+    LIFECYCLE_EVENT_TOPIC,
+  ])
+  assert.deepEqual(eventBus.events.map((event) => {
+    const payload = event.payload as {
+      attributes: unknown
+      name: string
+      resource: unknown
+    }
+    return { attributes: payload.attributes, name: payload.name, resource: payload.resource }
+  }), [
+    {
+      attributes: {
+        changeSource: 'checkout_verification',
+        planKind: 'paid',
+        provider: 'stripe',
+        status: 'active',
+      },
+      name: 'subscription.changed',
+      resource: { id: 'sub_1', type: 'subscription' },
+    },
+    {
+      attributes: { provider: 'stripe', source: 'manual' },
+      name: 'topup.succeeded',
+      resource: { id: 'cs_test_123', type: 'billing_topup' },
+    },
+  ])
 })
