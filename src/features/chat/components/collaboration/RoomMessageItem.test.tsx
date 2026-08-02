@@ -114,6 +114,20 @@ test('room members named in a message render as mention chips', () => {
   assert.match(html, /class="mx-0\.5 inline-flex[^"]*"[^>]*>@Maya Chen</)
 })
 
+test('human room messages render safe markdown even when room member metadata is present', () => {
+  const html = render(record({ id: 'message_7', content: '**Launch**\n\n- first\n- second\n\n[Overlay](https://getoverlay.io)' }))
+  assert.match(html, /<strong>Launch<\/strong>/)
+  assert.match(html, /<ul[^>]*>[\s\S]*<li[^>]*>first<\/li>[\s\S]*<li[^>]*>second<\/li>[\s\S]*<\/ul>/)
+  assert.match(html, /href="https:\/\/getoverlay\.io"/)
+  assert.doesNotMatch(html, /\*\*Launch\*\*/)
+})
+
+test('human room markdown never renders raw HTML or executable links', () => {
+  const html = render(record({ id: 'message_8', content: '<img src=x onerror=alert(1)> [bad](javascript:alert(1))' }))
+  assert.doesNotMatch(html, /<img/)
+  assert.doesNotMatch(html, /javascript:/)
+})
+
 test('collaboration operations sit in the hover action row', () => {
   const html = render(record({ id: 'message_4', authorPrincipalId: 'principal_maya' }))
   for (const label of ['Add reaction', 'Reply in thread', 'Pin message', 'Save message']) {

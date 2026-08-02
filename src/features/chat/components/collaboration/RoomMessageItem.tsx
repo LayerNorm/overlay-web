@@ -22,7 +22,6 @@ import { FlashCopyIconButton, UserMessageBubble } from '@overlay/chat-react'
 import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview } from '@overlay/chat-react'
 import { Textarea } from '@overlay/ui/primitives'
-import { RoomMessageMentions } from './RoomMessageMentions'
 import { SafeHumanMarkdown } from './SafeHumanMarkdown'
 
 export type RoomMessageReaction = {
@@ -320,9 +319,7 @@ export function RoomMessageItem({
             {attachments}
             {editing ? editor : message.text ? (
               <UserMessageBubble className={`max-w-full ${mine ? 'ml-auto' : 'mr-auto'}`}>
-                {message.mentions.length > 0
-                  ? <RoomMessageMentions text={message.text} mentions={message.mentions} />
-                  : <SafeHumanMarkdown text={message.text} />}
+                <SafeHumanMarkdown text={message.text} mentions={message.mentions} />
               </UserMessageBubble>
             ) : null}
           </div>
