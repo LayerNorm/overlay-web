@@ -76,6 +76,8 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const messageLimit = readPositiveIntParam(searchParams.get('limit'), 100)
     const beforeCreatedAtParam = searchParams.get('beforeCreatedAt')
     const beforeCreatedAt = beforeCreatedAtParam ? Number(beforeCreatedAtParam) : undefined
+    const mainOnly = readBooleanParam(searchParams.get('mainOnly'))
+    const threadRootMessageId = searchParams.get('threadRootMessageId')?.trim() || undefined
     const compactToolPayloads = readBooleanParam(searchParams.get('compactToolPayloads')) === true
     const workspaceId = context.workspace.workspace.id
     const conversationType = conversationTypeForView(searchParams.get('view'))
@@ -112,6 +114,8 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
             workspaceId,
             limit: messageLimit,
             ...(Number.isFinite(beforeCreatedAt) ? { beforeCreatedAt } : {}),
+            ...(mainOnly !== undefined ? { mainOnly } : {}),
+            ...(threadRootMessageId ? { threadRootMessageId } : {}),
             compactToolPayloads,
           })
         } catch (error) {

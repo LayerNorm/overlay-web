@@ -35,6 +35,7 @@ export function NewDirectMessageDialog({
   workspaceId,
   sourceConversationId,
   addToConversationId,
+  addToConversationType = 'channel',
   showcase = false,
   excludedPrincipalIds = [],
   onOpenChange,
@@ -45,6 +46,7 @@ export function NewDirectMessageDialog({
   workspaceId: string
   sourceConversationId?: string
   addToConversationId?: string
+  addToConversationType?: 'dm' | 'channel'
   showcase?: boolean
   excludedPrincipalIds?: string[]
   onOpenChange(open: boolean): void
@@ -120,7 +122,7 @@ export function NewDirectMessageDialog({
     setBusy(true)
     setError(null)
     try {
-      if (addToConversationId) {
+      if (addToConversationId && addToConversationType === 'channel') {
         await Promise.all(selected.map((principalId) => (
           overlayAppClient.conversations.addParticipant(addToConversationId, principalId)
         )))
@@ -131,7 +133,9 @@ export function NewDirectMessageDialog({
         return
       }
       const { directMessage } = await overlayAppClient.conversations.createDirectMessage({
-        principalIds: selected,
+        principalIds: addToConversationId
+          ? [...excludedPrincipalIds, ...selected]
+          : selected,
         sourceConversationId,
       })
       onCreated?.({ id: directMessage.conversationId, title: directMessage.title })
@@ -166,9 +170,11 @@ export function NewDirectMessageDialog({
     <DialogFrame
       open={open}
       onOpenChange={onOpenChange}
-      title={addToConversationId ? 'Add people' : sourceConversationId ? 'Continue with people' : 'New direct message'}
+      title={addToConversationId && addToConversationType === 'dm' ? 'Start a group DM' : addToConversationId ? 'Add people' : sourceConversationId ? 'Continue with people' : 'New direct message'}
       description={addToConversationId
-        ? 'New participants can read the full conversation history.'
+        ? addToConversationType === 'dm'
+          ? 'Overlay will start a new group DM without copying this private history.'
+          : 'People added to this channel can read its history.'
         : sourceConversationId
         ? 'Choose people. Overlay will fork this Personal chat so the original stays private.'
         : 'Choose one person for a DM or several people for a group DM.'}
@@ -178,7 +184,7 @@ export function NewDirectMessageDialog({
             Cancel
           </Button>
           <Button variant="primary" onClick={() => void create()} disabled={busy || selected.length === 0}>
-            {busy ? 'Working…' : addToConversationId ? 'Add people' : sourceConversationId ? 'Continue in DM' : 'Start message'}
+            {busy ? 'Working…' : addToConversationId && addToConversationType === 'dm' ? 'Start group DM' : addToConversationId ? 'Add people' : sourceConversationId ? 'Continue in DM' : 'Start message'}
           </Button>
         </>
       )}

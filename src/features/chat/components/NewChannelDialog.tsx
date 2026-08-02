@@ -62,12 +62,22 @@ export function NewChannelDialog({
     setBusy(true)
     setError(null)
     try {
-      const { channel } = await overlayAppClient.conversations.createChannel({
+      const response = await overlayAppClient.conversations.createChannel({
         name: name.trim(),
         topic: topic.trim() || undefined,
         visibility,
         principalIds: visibility === 'private' ? selected : undefined,
       })
+      // The BFF returns a typed success envelope, but validation/policy
+      // failures are JSON error envelopes. Guard the boundary so a rejected
+      // create never turns into an opaque `channel.conversationId` crash.
+      const channel = response.channel
+      if (!channel) {
+        const errorMessage = 'error' in response && typeof response.error === 'string'
+          ? response.error
+          : 'Could not create channel.'
+        throw new Error(errorMessage)
+      }
       onCreated({ id: channel.conversationId, title: channel.name })
       setName('')
       setTopic('')

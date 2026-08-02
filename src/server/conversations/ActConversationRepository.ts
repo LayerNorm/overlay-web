@@ -162,6 +162,8 @@ export interface ActConversationRepository {
     compactToolPayloads?: boolean
     conversationId: Id<'conversations'>
     limit: number
+    mainOnly?: boolean
+    threadRootMessageId?: string
     userId: string
     workspaceId?: string
   }): Promise<ConversationMessageRow[]>

@@ -191,11 +191,11 @@ test('Postgres direct messages are participant-scoped and realtime-ready', {
       workspaceId,
       conversationId: created.conversationId as never,
     }), true)
-    assert.equal((await conversations.getConversationMessages({
+    assert.deepEqual((await conversations.getConversationMessages({
       workspaceId,
       conversationId: created.conversationId as never,
       userId: memberUserId,
-    }))[0]?.content, 'Source context')
+    })).filter((message) => message.content === 'Source context'), [])
 
     const clientNonce = `${scope}_nonce`
     const messageId = await conversations.addMessage({
@@ -231,6 +231,20 @@ test('Postgres direct messages are participant-scoped and realtime-ready', {
       body: 'Hello owner',
       mentionedPrincipalIds: [ownerPrincipalId],
     })
+    const markedRead = await collaboration.updateParticipantState({
+      actorUserId: memberUserId,
+      workspaceId,
+      conversationId: created.conversationId,
+      markRead: true,
+    })
+    assert.ok((markedRead.lastReadSequence ?? 0) > 0)
+    const cappedRead = await collaboration.updateParticipantState({
+      actorUserId: memberUserId,
+      workspaceId,
+      conversationId: created.conversationId,
+      readSequence: Number.MAX_SAFE_INTEGER,
+    })
+    assert.equal(cappedRead.lastReadSequence, markedRead.lastReadSequence)
     const notifications = await collaboration.listNotifications({
       actorUserId: ownerUserId,
       workspaceId,
@@ -246,12 +260,25 @@ test('Postgres direct messages are participant-scoped and realtime-ready', {
       conversationId: created.conversationId,
       status: 'online',
       typing: true,
+      sessionId: 'tab-a',
+    })
+    await collaboration.upsertPresence({
+      actorUserId: memberUserId,
+      workspaceId,
+      conversationId: created.conversationId,
+      status: 'offline',
+      sessionId: 'tab-b',
     })
     assert.equal((await collaboration.listPresence({
       actorUserId: ownerUserId,
       workspaceId,
       conversationId: created.conversationId,
     })).find((row) => row.principalId === memberPrincipalId)?.typing, true)
+    assert.equal((await collaboration.listPresence({
+      actorUserId: ownerUserId,
+      workspaceId,
+      conversationId: created.conversationId,
+    })).find((row) => row.principalId === memberPrincipalId)?.status, 'online')
 
     assert.equal(await collaboration.editMessage({
       actorUserId: ownerUserId,
@@ -292,6 +319,15 @@ test('Postgres direct messages are participant-scoped and realtime-ready', {
       workspaceId,
       conversationId: created.conversationId,
     }), false)
+    await assert.rejects(
+      conversations.updateConversation({
+        workspaceId,
+        conversationId: created.conversationId as never,
+        userId: memberUserId,
+        title: 'Should remain private',
+      }),
+      /WORKSPACE_ACCESS_DENIED/,
+    )
   } finally {
     await db.delete(workspaces).where(inArray(workspaces.id, [personalWorkspaceId, workspaceId]))
     await db.delete(users).where(inArray(users.id, [ownerUserId, memberUserId]))

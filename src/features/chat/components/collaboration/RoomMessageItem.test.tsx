@@ -3,7 +3,13 @@ import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { RoomMessageItem } from './RoomMessageItem'
-import { isOwnRoomMessage, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
+import {
+  compareRoomMessageRecords,
+  isOwnRoomMessage,
+  mergeRoomMessages,
+  toRoomMessageView,
+  type RoomMessageRecord,
+} from './room-message-view'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -136,4 +142,13 @@ test('attachment summaries become chips, not body text', () => {
   assert.equal(view.text, 'Latest numbers')
   assert.deepEqual(view.documentNames, ['q3.csv'])
   assert.equal(view.images.length, 1)
+})
+
+test('room reconciliation uses deterministic ordering and replaces optimistic duplicates', () => {
+  const persisted = record({ id: 'message_real', createdAt: 20, clientNonce: 'nonce_1', content: 'saved' })
+  const pending = record({ id: 'optimistic_nonce_1', createdAt: 19, clientNonce: 'nonce_1', content: 'pending', delivery: 'sending' })
+  const later = record({ id: 'message_z', createdAt: 20, authorPrincipalId: 'principal_maya' })
+  const merged = mergeRoomMessages([persisted, later], [pending])
+  assert.deepEqual(merged.map((message) => message.id), ['message_real', 'message_z'])
+  assert.ok(compareRoomMessageRecords(merged[0]!, merged[1]!) < 0)
 })

@@ -95,6 +95,7 @@ async function participantView(
     updatedAt: participant.updatedAt,
     removedAt: participant.removedAt,
     lastReadAt: participant.lastReadAt,
+    lastReadSequence: participant.lastReadSequence,
     markedUnreadAt: participant.markedUnreadAt,
     archivedAt: participant.archivedAt,
   }
@@ -163,7 +164,6 @@ export const createDirectMessage = mutation({
       }
     }
 
-    let sourceMessages: Doc<'conversationMessages'>[] = []
     if (args.sourceConversationId) {
       const source = await ctx.db.get(args.sourceConversationId)
       if (
@@ -173,9 +173,6 @@ export const createDirectMessage = mutation({
         || (source.conversationType ?? 'personal') !== 'personal'
         || source.deletedAt
       ) throw new Error('The source Personal chat is unavailable')
-      sourceMessages = await ctx.db.query('conversationMessages')
-        .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', source._id))
-        .collect()
     }
 
     const now = Date.now()
@@ -232,13 +229,6 @@ export const createDirectMessage = mutation({
       createdAt: now,
       updatedAt: now,
     })
-    for (const message of sourceMessages) {
-      const { _id: _messageId, _creationTime: _createdByConvex, clientNonce: _clientNonce, ...copy } = message
-      void _messageId
-      void _createdByConvex
-      void _clientNonce
-      await ctx.db.insert('conversationMessages', { ...copy, conversationId })
-    }
     return {
       conversationId,
       workspaceId: args.workspaceId,
@@ -312,6 +302,9 @@ export const addParticipant = mutation({
   handler: async (ctx, args) => {
     const access = await requireConversationAccess(ctx, args)
     if (access.participant?.role !== 'moderator') throw new Error('CONVERSATION_MODERATOR_REQUIRED')
+    if (access.conversation?.conversationType === 'dm') {
+      throw new Error('DIRECT_MESSAGE_REQUIRES_NEW_GROUP')
+    }
     const principal = await ctx.db.query('workspacePrincipals')
       .withIndex('by_principalId', (q) => q.eq('principalId', args.principalId))
       .unique()
@@ -409,6 +402,7 @@ export const updateParticipantState = mutation({
     conversationId: v.id('conversations'),
     markRead: v.optional(v.boolean()),
     markUnread: v.optional(v.boolean()),
+    readSequence: v.optional(v.number()),
     notificationLevel: v.optional(v.union(v.literal('all'), v.literal('mentions'), v.literal('muted'))),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
@@ -418,10 +412,22 @@ export const updateParticipantState = mutation({
     const participant = access.participant
     if (!participant) throw new Error('CONVERSATION_ACCESS_DENIED')
     const now = Date.now()
+    const requestedReadSequence = Number.isSafeInteger(args.readSequence) && (args.readSequence ?? 0) >= 0
+      ? args.readSequence
+      : undefined
+    let readSequence = requestedReadSequence
+    if (args.markRead || requestedReadSequence !== undefined) {
+      const events = await ctx.db.query('conversationEvents')
+        .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
+        .collect()
+      const latestSequence = events.reduce((max, event) => Math.max(max, event._creationTime), 0)
+      readSequence = Math.min(requestedReadSequence ?? Number.MAX_SAFE_INTEGER, latestSequence)
+    }
     const patch = {
       ...(args.notificationLevel ? { notificationLevel: args.notificationLevel } : {}),
       ...(args.archived !== undefined ? { archivedAt: args.archived ? now : undefined } : {}),
-      ...(args.markRead ? { lastReadAt: now, markedUnreadAt: undefined } : {}),
+      ...(args.markRead ? { lastReadAt: now, lastReadSequence: readSequence ?? 0, markedUnreadAt: undefined } : {}),
+      ...(readSequence !== undefined && !args.markRead ? { lastReadSequence: readSequence } : {}),
       ...(args.markUnread ? { markedUnreadAt: now } : {}),
       updatedAt: now,
     }
@@ -434,6 +440,7 @@ export const upsertPresence = mutation({
   args: {
     actorUserId: v.string(),
     conversationId: v.optional(v.id('conversations')),
+    sessionId: v.optional(v.string()),
     status: v.union(v.literal('online'), v.literal('away'), v.literal('offline')),
     typing: v.optional(v.boolean()),
     workspaceId: v.string(),
@@ -442,14 +449,17 @@ export const upsertPresence = mutation({
   handler: async (ctx, args) => {
     const actor = await requireActor(ctx, args)
     if (args.conversationId) await requireConversationAccess(ctx, { ...args, conversationId: args.conversationId })
-    const existing = await ctx.db.query('workspacePresence')
+    const sessionId = args.sessionId?.trim() || 'legacy'
+    const existingRows = await ctx.db.query('workspacePresence')
       .withIndex('by_workspaceId_principalId', (q) => (
         q.eq('workspaceId', args.workspaceId).eq('principalId', actor.principalId)
-      )).unique()
+      )).collect()
+    const existing = existingRows.find((row) => (row.sessionId ?? 'legacy') === sessionId)
     const now = Date.now()
     const value = {
       workspaceId: args.workspaceId,
       principalId: actor.principalId,
+      sessionId,
       conversationId: args.conversationId,
       status: args.status,
       lastSeenAt: now,
@@ -479,25 +489,40 @@ export const listPresence = query({
         q.eq('conversationId', args.conversationId).eq('status', 'active')
       )).collect()
     const now = Date.now()
-    const result = []
+    const sessionsByPrincipal = new Map<string, Array<Doc<'workspacePresence'>>>()
     for (const participant of participants) {
-      const presence = await ctx.db.query('workspacePresence')
+      const presenceRows = await ctx.db.query('workspacePresence')
         .withIndex('by_workspaceId_principalId', (q) => (
           q.eq('workspaceId', args.workspaceId).eq('principalId', participant.principalId)
-        )).unique()
-      if (!presence) continue
-      const stale = now - presence.lastSeenAt > 120_000
-      result.push({
-        workspaceId: presence.workspaceId,
-        principalId: presence.principalId,
-        conversationId: presence.conversationId,
-        status: stale ? 'offline' as const : presence.status,
-        typing: !stale && Boolean(presence.typingExpiresAt && presence.typingExpiresAt > now),
-        lastSeenAt: presence.lastSeenAt,
-        typingExpiresAt: presence.typingExpiresAt,
-      })
+        )).collect()
+      const sessions = presenceRows
+        .filter((row) => !row.conversationId || row.conversationId === args.conversationId)
+      if (sessions.length > 0) sessionsByPrincipal.set(participant.principalId, sessions)
     }
-    return result
+    return [...sessionsByPrincipal.values()].map((sessions) => {
+      const active = sessions
+        .filter((session) => now - session.lastSeenAt <= 120_000)
+        .filter((session) => session.status !== 'offline')
+        .sort((left, right) => right.updatedAt - left.updatedAt)
+      const latest = [...sessions].sort((left, right) => right.updatedAt - left.updatedAt)[0]!
+      const representative = active[0] ?? latest
+      const status = active.some((session) => session.status === 'online')
+        ? 'online' as const
+        : active.length > 0 ? 'away' as const : 'offline' as const
+      const typing = active.some((session) => Boolean(
+        session.typingExpiresAt && session.typingExpiresAt > now,
+      ))
+      return {
+        workspaceId: representative.workspaceId,
+        principalId: representative.principalId,
+        sessionId: representative.sessionId,
+        conversationId: representative.conversationId,
+        status,
+        typing,
+        lastSeenAt: representative.lastSeenAt,
+        typingExpiresAt: typing ? representative.typingExpiresAt : undefined,
+      }
+    })
   },
 })
 
@@ -514,9 +539,6 @@ export const recordMessageActivity = mutation({
   handler: async (ctx, args) => {
     const access = await requireConversationAccess(ctx, args)
     const now = Date.now()
-    if (access.participant) {
-      await ctx.db.patch(access.participant._id, { lastReadAt: now, markedUnreadAt: undefined, updatedAt: now })
-    }
     const mentions = new Set(args.mentionedPrincipalIds ?? [])
     const participants = await ctx.db.query('conversationParticipants')
       .withIndex('by_conversationId_status', (q) => (
@@ -541,6 +563,78 @@ export const recordMessageActivity = mutation({
         createdAt: now,
       })
     }
+  },
+})
+
+async function accessibleConversationIdsForEvents(
+  ctx: CollaborationCtx,
+  args: { actorUserId: string; workspaceId: string; serverSecret?: string },
+): Promise<Set<Id<'conversations'>>> {
+  const actor = await requireActor(ctx, args)
+  const participantRows = await ctx.db.query('conversationParticipants')
+    .withIndex('by_workspaceId_principalId_status', (q) => (
+      q.eq('workspaceId', args.workspaceId).eq('principalId', actor.principalId).eq('status', 'active')
+    )).collect()
+  const ids = new Set<Id<'conversations'>>(participantRows.map((row) => row.conversationId))
+  const owned = await ctx.db.query('conversations')
+    .withIndex('by_workspaceId_conversationType_lastModified', (q) => q.eq('workspaceId', args.workspaceId))
+    .collect()
+  for (const conversation of owned) {
+    if (conversation.userId === args.actorUserId && (conversation.conversationType ?? 'personal') === 'personal') {
+      ids.add(conversation._id)
+    }
+  }
+  return ids
+}
+
+export const getConversationEventCursor = query({
+  args: {
+    actorUserId: v.string(),
+    workspaceId: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!args.workspaceId) return 0
+    const accessible = await accessibleConversationIdsForEvents(ctx, {
+      actorUserId: args.actorUserId,
+      workspaceId: args.workspaceId,
+      serverSecret: args.serverSecret,
+    })
+    const events = await ctx.db.query('conversationEvents').collect()
+    return events
+      .filter((event) => accessible.has(event.conversationId))
+      .reduce((max, event) => Math.max(max, event._creationTime), 0)
+  },
+})
+
+export const listConversationEvents = query({
+  args: {
+    actorUserId: v.string(),
+    afterSequence: v.number(),
+    limit: v.number(),
+    workspaceId: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!args.workspaceId) return []
+    const accessible = await accessibleConversationIdsForEvents(ctx, {
+      actorUserId: args.actorUserId,
+      workspaceId: args.workspaceId,
+      serverSecret: args.serverSecret,
+    })
+    const events = await ctx.db.query('conversationEvents').collect()
+    return events
+      .filter((event) => accessible.has(event.conversationId) && event._creationTime > args.afterSequence)
+      .sort((left, right) => left._creationTime - right._creationTime)
+      .slice(0, Math.max(1, Math.min(200, Math.floor(args.limit))))
+      .map((event) => ({
+        sequence: event._creationTime,
+        conversationId: event.conversationId,
+        type: event.type,
+        messageId: event.messageId,
+        payload: event.payload as Record<string, unknown> | undefined,
+        createdAt: event.createdAt,
+      }))
   },
 })
 

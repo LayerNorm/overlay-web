@@ -286,6 +286,8 @@ export type ConversationParticipant = {
   updatedAt: number
   removedAt?: number
   lastReadAt?: number
+  /** Durable event cursor last actually seen in this conversation. */
+  lastReadSequence?: number
   markedUnreadAt?: number
   archivedAt?: number
 }
@@ -309,11 +311,15 @@ export type ConversationParticipantStateInput = {
   archived?: boolean
   markUnread?: boolean
   markRead?: boolean
+  /** Optional explicit event boundary; omitted markRead advances to the server's current boundary. */
+  readSequence?: number
 }
 
 export type ConversationPresence = {
   workspaceId: string
   principalId: string
+  /** Browser/tab identity; presence is aggregated across active sessions. */
+  sessionId?: string
   conversationId?: string
   status: 'online' | 'away' | 'offline'
   typing: boolean

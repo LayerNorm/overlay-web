@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import dynamic from 'next/dynamic'
+import { useRouter } from 'next/navigation'
 import { AttachmentPreviewDialog } from '@overlay/chat-react'
 import type {
   ChannelSummary,
@@ -47,8 +48,14 @@ import { useComposerTextState } from './chat/useComposerTextState'
 import { useChatPanels } from './chat/useChatPanels'
 import { useChatShellPanels } from './chat/useChatShellPanels'
 import { buildTextTurnPayload } from './chat/chat-send-body-builders'
+import { usePostgresConversationEvents } from './chat/usePostgresConversationEvents'
 import { RoomMessageItem, roomMessageDomId } from './collaboration/RoomMessageItem'
-import { toRoomMessageView, type RoomMessageRecord } from './collaboration/room-message-view'
+import {
+  compareRoomMessageRecords,
+  mergeRoomMessages,
+  toRoomMessageView,
+  type RoomMessageRecord,
+} from './collaboration/room-message-view'
 import {
   RoomPeoplePanel,
   RoomPinnedPanel,
@@ -126,6 +133,20 @@ const SHOWCASE_MESSAGES: OptimisticMessage[] = [
   },
 ]
 
+function roomDayKey(timestamp: number): string {
+  const date = new Date(timestamp)
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+}
+
+function roomDayLabel(timestamp: number): string {
+  return new Date(timestamp).toLocaleDateString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
 export function DirectMessageExperience({
   conversationId,
   showcase = false,
@@ -137,6 +158,7 @@ export function DirectMessageExperience({
 }) {
   const { activeWorkspaceId } = useWorkspace()
   const { capabilities } = useOverlayCapabilities()
+  const router = useRouter()
   const [participants, setParticipants] = useState<ConversationParticipant[]>(
     showcase ? SHOWCASE_PARTICIPANTS : [],
   )
@@ -150,6 +172,8 @@ export function DirectMessageExperience({
     showcase ? SHOWCASE_MESSAGES : [],
   )
   const [loading, setLoading] = useState(!showcase)
+  const [hasMoreMessages, setHasMoreMessages] = useState(false)
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [roomPanel, setRoomPanel] = useState<RoomPanelKind | null>(null)
   const [addPeopleOpen, setAddPeopleOpen] = useState(false)
@@ -194,8 +218,11 @@ export function DirectMessageExperience({
   /** Latest messages for callbacks that must not close over a stale render. */
   const messagesRef = useRef<OptimisticMessage[]>(messages)
   messagesRef.current = messages
+  const sessionIdRef = useRef<string | null>(null)
+  const activeConversationRef = useRef<string | null>(conversationId)
+  const stickToBottomRef = useRef(true)
+  activeConversationRef.current = conversationId
   const lastTypingSentAt = useRef(0)
-  const lastNotificationReadAt = useRef(0)
 
   // ── composer state (identical wiring to the personal chat composer) ─────────
   const [composerNotice, setComposerNotice] = useState<string | null>(null)
@@ -265,36 +292,91 @@ export function DirectMessageExperience({
         threadRootMessageId?: string
         status?: 'generating' | 'completed' | 'error'
       }>
-    }>({ conversationId, messages: true, limit: 100 })
-    const persisted = (result.messages ?? []).map((message) => ({
+      hasMore?: boolean
+    }>({ conversationId, messages: true, limit: 100, mainOnly: true })
+    const threadResult = threadRootId
+      ? await overlayAppClient.conversations.get<{
+          messages: Array<{
+            id: string
+            authorKind: RoomMessageRecord['authorKind']
+            authorPrincipalId?: string
+            content?: string
+            parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
+            createdAt: number
+            editedAt?: number
+            deletedAt?: number
+            clientNonce?: string
+            threadRootMessageId?: string
+            status?: 'generating' | 'completed' | 'error'
+          }>
+        }>({ conversationId, messages: true, limit: 100, threadRootMessageId: threadRootId })
+      : null
+    setHasMoreMessages(result.hasMore === true)
+    const persisted = [...(result.messages ?? []), ...(threadResult?.messages ?? [])].map((message) => ({
       ...message,
       content: message.content
         ?? message.parts?.find((part) => part.type === 'text')?.text
         ?? '',
       turnId: message.id,
     }))
-    setMessages((current) => {
-      const persistedNonces = new Set(persisted.map((message) => message.clientNonce).filter(Boolean))
-      const pending = current.filter((message) => (
-        message.delivery && message.clientNonce && !persistedNonces.has(message.clientNonce)
-      ))
-      return [...persisted, ...pending].sort((a, b) => a.createdAt - b.createdAt)
-    })
-    await overlayAppClient.conversations.updateParticipantState(conversationId, { markRead: true })
-    if (Date.now() - lastNotificationReadAt.current > 10_000) {
-      lastNotificationReadAt.current = Date.now()
-      const { notifications } = await overlayAppClient.conversations.notifications({
-        unreadOnly: true,
-        limit: 100,
-      })
-      const notificationIds = notifications
-        .filter((notification) => notification.conversationId === conversationId)
-        .map((notification) => notification.id)
-      if (notificationIds.length > 0) {
-        await overlayAppClient.conversations.markNotificationsRead(notificationIds)
-      }
+    setMessages((current) => mergeRoomMessages(persisted, current))
+  }, [conversationId, threadRootId])
+
+  const loadOlderMessages = useCallback(async () => {
+    if (showcase || loadingOlderMessages || !hasMoreMessages) return
+    const earliest = messagesRef.current
+      .filter((message) => !message.threadRootMessageId)
+      .reduce<number | undefined>((value, message) => value === undefined ? message.createdAt : Math.min(value, message.createdAt), undefined)
+    if (earliest === undefined) return
+    setLoadingOlderMessages(true)
+    try {
+      const result = await overlayAppClient.conversations.get<{
+        messages: Array<{
+          id: string
+          authorKind: RoomMessageRecord['authorKind']
+          authorPrincipalId?: string
+          content?: string
+          parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
+          createdAt: number
+          editedAt?: number
+          deletedAt?: number
+          clientNonce?: string
+          threadRootMessageId?: string
+          status?: 'generating' | 'completed' | 'error'
+        }>
+        hasMore?: boolean
+      }>({ conversationId, messages: true, limit: 100, beforeCreatedAt: earliest, mainOnly: true })
+      setHasMoreMessages(result.hasMore === true)
+      const older = (result.messages ?? []).map((message) => ({
+        ...message,
+        content: message.content
+          ?? message.parts?.find((part) => part.type === 'text')?.text
+          ?? '',
+        turnId: message.id,
+      }))
+      setMessages((current) => mergeRoomMessages(older, current))
+    } catch {
+      setNotice('Older messages could not be loaded.')
+    } finally {
+      setLoadingOlderMessages(false)
     }
-  }, [conversationId])
+  }, [conversationId, hasMoreMessages, loadingOlderMessages, showcase])
+
+  const markVisibleRead = useCallback(async () => {
+    if (showcase || document.visibilityState !== 'visible') return
+    const node = listRef.current
+    if (!node || node.scrollHeight - node.scrollTop - node.clientHeight > 96) return
+    await overlayAppClient.conversations.updateParticipantState(conversationId, { markRead: true })
+  }, [conversationId, showcase])
+
+  usePostgresConversationEvents({
+    activeChatIdRef: activeConversationRef,
+    enabled: !showcase,
+    hasActiveLocalStream: () => Object.keys(streamingAgentReplies).length > 0,
+    loadChats: async () => {},
+    onRemoteStop: () => {},
+    reloadActiveConversation: loadMessages,
+  })
 
   const loadPresence = useCallback(async () => {
     const result = await overlayAppClient.conversations.presence(conversationId)
@@ -328,25 +410,30 @@ export function DirectMessageExperience({
           if (!cancelled) setLoading(false)
         })
     }, 0)
-    void overlayAppClient.conversations.updatePresence(conversationId, { status: 'online' })
-    const messagesTimer = window.setInterval(() => void loadMessages().catch(() => undefined), 2_000)
+    const sessionId = sessionIdRef.current ?? crypto.randomUUID()
+    sessionIdRef.current = sessionId
+    void overlayAppClient.conversations.updatePresence(conversationId, { status: 'online', sessionId })
     const presenceTimer = window.setInterval(() => void loadPresence().catch(() => undefined), 3_000)
     const heartbeatTimer = window.setInterval(() => {
-      void overlayAppClient.conversations.updatePresence(conversationId, { status: 'online' })
+      void overlayAppClient.conversations.updatePresence(conversationId, { status: 'online', sessionId })
     }, 45_000)
     return () => {
       cancelled = true
       window.clearTimeout(initialLoadTimer)
-      window.clearInterval(messagesTimer)
       window.clearInterval(presenceTimer)
       window.clearInterval(heartbeatTimer)
-      void overlayAppClient.conversations.updatePresence(conversationId, { status: 'offline' })
+      void overlayAppClient.conversations.updatePresence(conversationId, { status: 'offline', sessionId })
     }
   }, [conversationId, loadCollaboration, loadMessages, loadParticipants, loadPresence, showcase])
 
   useEffect(() => {
+    if (loading) return
+    void markVisibleRead()
+  }, [loading, markVisibleRead, messages.length])
+
+  useEffect(() => {
     const node = listRef.current
-    if (node) node.scrollTop = node.scrollHeight
+    if (node && stickToBottomRef.current) node.scrollTop = node.scrollHeight
   }, [messages.length])
 
   // Restore a half-written message when the room reopens. Storage failures are
@@ -480,7 +567,7 @@ export function DirectMessageExperience({
     const optimisticId = `optimistic_${clientNonce}`
     const threadRootMessageId = options?.threadRootMessageId
     if (showcase) {
-      setMessages((current) => [...current, {
+    setMessages((current) => [...current, {
         id: optimisticId,
         turnId,
         authorKind: 'human',
@@ -490,7 +577,7 @@ export function DirectMessageExperience({
         createdAt: options?.existing?.createdAt ?? Date.now(),
         clientNonce,
         threadRootMessageId,
-      } satisfies OptimisticMessage].sort((a, b) => a.createdAt - b.createdAt))
+      } satisfies OptimisticMessage].sort(compareRoomMessageRecords))
       return
     }
     setMessages((current) => [
@@ -507,7 +594,7 @@ export function DirectMessageExperience({
         delivery: 'sending',
         threadRootMessageId,
       } satisfies OptimisticMessage,
-    ].sort((a, b) => a.createdAt - b.createdAt))
+    ].sort(compareRoomMessageRecords))
     try {
       const mentionedPrincipalIds = resolveMentionTargets(text)
       const agentParticipants = participants.filter((participant) => participant.principalType === 'agent')
@@ -689,6 +776,7 @@ export function DirectMessageExperience({
       void overlayAppClient.conversations.updatePresence(conversationId, {
         status: 'online',
         typing: Boolean(text.trim()),
+        sessionId: sessionIdRef.current ?? undefined,
       })
     }
   }
@@ -828,7 +916,7 @@ export function DirectMessageExperience({
     renderAttachmentViewer,
   })
 
-  function renderMessage(message: OptimisticMessage, options?: { inThread?: boolean }) {
+  function renderMessage(message: OptimisticMessage, options?: { inThread?: boolean; grouped?: boolean }) {
     const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
     const view = toRoomMessageView({
       message,
@@ -873,6 +961,7 @@ export function DirectMessageExperience({
         onRetrySend={() => void sendMessage(message.content, { existing: message, threadRootMessageId: message.threadRootMessageId })}
         onOpenAttachmentPreview={openAttachmentPreview}
         highlighted={highlightedMessageId === message.id}
+        grouped={options?.grouped}
       />
     )
   }
@@ -1125,9 +1214,28 @@ export function DirectMessageExperience({
             <div className="overlay-chat-surface relative min-h-0 flex-1">
               <div
                 ref={listRef}
+                onScroll={() => {
+                  const node = listRef.current
+                  if (node) {
+                    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight
+                    stickToBottomRef.current = distanceFromBottom <= 96
+                    if (node.scrollTop <= 120 && hasMoreMessages) void loadOlderMessages()
+                  }
+                  void markVisibleRead()
+                }}
                 className="h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4"
               >
                 <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-5 sm:gap-6">
+                  {hasMoreMessages ? (
+                    <button
+                      type="button"
+                      onClick={() => void loadOlderMessages()}
+                      disabled={loadingOlderMessages}
+                      className="mx-auto rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] disabled:opacity-60"
+                    >
+                      {loadingOlderMessages ? 'Loading older messages…' : 'Load older messages'}
+                    </button>
+                  ) : null}
                   {loading ? (
                     <div className="space-y-5" aria-label="Loading messages">
                       {[0, 1, 2].map((row) => (
@@ -1147,7 +1255,31 @@ export function DirectMessageExperience({
                       </p>
                     </div>
                   ) : (
-                    mainMessages.map((message) => renderMessage(message))
+                    mainMessages.map((message, index) => {
+                      const previous = mainMessages[index - 1]
+                      const grouped = Boolean(
+                        previous
+                        && Boolean(message.authorPrincipalId)
+                        && Boolean(previous.authorPrincipalId)
+                        && previous.authorPrincipalId === message.authorPrincipalId
+                        && previous.authorKind === message.authorKind
+                        && message.createdAt - previous.createdAt <= 5 * 60_000,
+                      )
+                      const showDayDivider = !previous
+                        || roomDayKey(previous.createdAt) !== roomDayKey(message.createdAt)
+                      return (
+                        <div key={`room-message-row-${message.id}`} className="contents">
+                          {showDayDivider ? (
+                            <div className="flex items-center gap-3 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">
+                              <span className="h-px flex-1 bg-[var(--border)]" />
+                              <span>{roomDayLabel(message.createdAt)}</span>
+                              <span className="h-px flex-1 bg-[var(--border)]" />
+                            </div>
+                          ) : null}
+                          {renderMessage(message, { grouped })}
+                        </div>
+                      )
+                    })
                   )}
                   {mainStreamingReplies.map((reply) => renderStreamingAgentReply(reply))}
                   {agentResponding && mainStreamingReplies.length === 0 ? (
@@ -1282,8 +1414,13 @@ export function DirectMessageExperience({
           showcase={showcase}
           workspaceId={currentParticipant?.workspaceId ?? ''}
           addToConversationId={conversationId}
+          addToConversationType={conversationType}
           excludedPrincipalIds={participants.map((participant) => participant.principalId)}
           onOpenChange={setAddPeopleOpen}
+          onCreated={({ id }) => {
+            const view = conversationType === 'channel' ? 'channels' : 'dms'
+            router.push(`/app/chat?view=${view}&id=${encodeURIComponent(id)}`)
+          }}
           onParticipantsAdded={() => {
             setAddPeopleOpen(false)
             void loadParticipants()

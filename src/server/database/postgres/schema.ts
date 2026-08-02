@@ -1361,6 +1361,7 @@ export const conversationParticipants = pgTable('conversation_participants', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   removedAt: timestamp('removed_at', { withTimezone: true }),
   lastReadAt: timestamp('last_read_at', { withTimezone: true }),
+  lastReadSequence: bigint('last_read_sequence', { mode: 'number' }),
   markedUnreadAt: timestamp('marked_unread_at', { withTimezone: true }),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
 }, (table) => [
@@ -1395,6 +1396,7 @@ export const workspacePresence = pgTable('workspace_presence', {
     .notNull()
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   principalId: text('principal_id').notNull(),
+  sessionId: text('session_id').notNull().default('legacy'),
   conversationId: text('conversation_id')
     .references(() => conversations.id, { onDelete: 'set null' }),
   status: workspacePresenceStatus('status').default('online').notNull(),
@@ -1402,13 +1404,14 @@ export const workspacePresence = pgTable('workspace_presence', {
   typingExpiresAt: timestamp('typing_expires_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
-  primaryKey({ columns: [table.workspaceId, table.principalId] }),
+  primaryKey({ columns: [table.workspaceId, table.principalId, table.sessionId] }),
   foreignKey({
     columns: [table.workspaceId, table.principalId],
     foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
     name: 'workspace_presence_principal_fk',
   }).onDelete('cascade'),
   index('workspace_presence_conversation_idx').on(table.conversationId, table.updatedAt),
+  index('workspace_presence_principal_idx').on(table.workspaceId, table.principalId, table.updatedAt),
 ])
 
 export const workspaceNotifications = pgTable('workspace_notifications', {

@@ -288,20 +288,6 @@ implements ConversationCollaborationRepository {
         createdAt: now,
       })
 
-      if (args.sourceConversationId) {
-        const sourceMessages = await tx.select().from(conversationMessages)
-          .where(eq(conversationMessages.conversationId, args.sourceConversationId))
-          .orderBy(conversationMessages.createdAt)
-        if (sourceMessages.length > 0) {
-          await tx.insert(conversationMessages).values(sourceMessages.map((message) => ({
-            ...message,
-            id: `message_${randomUUID()}`,
-            conversationId,
-            clientNonce: undefined,
-          })))
-        }
-      }
-
       const invitees = eligible.map(({ principal }) => principal).filter((principal) => principal.id !== actor.id)
       if (invitees.length > 0) {
         await tx.insert(workspaceNotifications).values(invitees.map((principal) => ({
@@ -404,6 +390,16 @@ implements ConversationCollaborationRepository {
     workspaceId: string
   }): Promise<ConversationParticipant> {
     const actor = await this.requireModerator(args)
+    const [conversation] = await this.db.select({ conversationType: conversations.conversationType })
+      .from(conversations)
+      .where(and(
+        eq(conversations.id, args.conversationId),
+        eq(conversations.workspaceId, args.workspaceId),
+        isNull(conversations.deletedAt),
+      )).limit(1)
+    if (conversation?.conversationType === 'dm') {
+      throw new Error('DIRECT_MESSAGE_REQUIRES_NEW_GROUP')
+    }
     const [principal] = await this.db.select().from(workspacePrincipals)
       .innerJoin(workspaceMemberships, and(
         eq(workspaceMemberships.workspaceId, workspacePrincipals.workspaceId),
@@ -482,15 +478,29 @@ implements ConversationCollaborationRepository {
     markRead?: boolean
     markUnread?: boolean
     notificationLevel?: 'all' | 'mentions' | 'muted'
+    readSequence?: number
     workspaceId: string
   }): Promise<ConversationParticipant> {
     const actor = await this.requireActor(args)
     if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
     const now = new Date()
+    const requestedReadSequence = Number.isSafeInteger(args.readSequence) && (args.readSequence ?? 0) >= 0
+      ? args.readSequence
+      : undefined
+    let readSequence = requestedReadSequence
+    if (args.markRead || requestedReadSequence !== undefined) {
+      const [event] = await this.db.select({ sequence: conversationEvents.sequence })
+        .from(conversationEvents)
+        .where(eq(conversationEvents.conversationId, args.conversationId))
+        .orderBy(desc(conversationEvents.sequence))
+        .limit(1)
+      readSequence = Math.min(requestedReadSequence ?? Number.MAX_SAFE_INTEGER, event?.sequence ?? 0)
+    }
     const [row] = await this.db.update(conversationParticipants).set({
       ...(args.notificationLevel ? { notificationLevel: args.notificationLevel } : {}),
       ...(args.archived !== undefined ? { archivedAt: args.archived ? now : null } : {}),
-      ...(args.markRead ? { lastReadAt: now, markedUnreadAt: null } : {}),
+      ...(args.markRead ? { lastReadAt: now, lastReadSequence: readSequence ?? 0, markedUnreadAt: null } : {}),
+      ...(readSequence !== undefined && !args.markRead ? { lastReadSequence: readSequence } : {}),
       ...(args.markUnread ? { markedUnreadAt: now } : {}),
       updatedAt: now,
     }).where(and(
@@ -505,6 +515,7 @@ implements ConversationCollaborationRepository {
   async upsertPresence(args: {
     actorUserId: string
     conversationId?: string
+    sessionId?: string
     status: 'online' | 'away' | 'offline'
     typing?: boolean
     workspaceId: string
@@ -515,19 +526,21 @@ implements ConversationCollaborationRepository {
       conversationId: args.conversationId,
     })) throw new Error('CONVERSATION_ACCESS_DENIED')
     const now = new Date()
+    const sessionId = args.sessionId?.trim() || 'legacy'
     const typingExpiresAt = args.typing && args.conversationId
       ? new Date(now.getTime() + 6_000)
       : null
     const [row] = await this.db.insert(workspacePresence).values({
       workspaceId: args.workspaceId,
       principalId: actor.id,
+      sessionId,
       conversationId: args.conversationId,
       status: args.status,
       lastSeenAt: now,
       typingExpiresAt,
       updatedAt: now,
     }).onConflictDoUpdate({
-      target: [workspacePresence.workspaceId, workspacePresence.principalId],
+      target: [workspacePresence.workspaceId, workspacePresence.principalId, workspacePresence.sessionId],
       set: {
         conversationId: args.conversationId ?? null,
         status: args.status,
@@ -552,9 +565,35 @@ implements ConversationCollaborationRepository {
         eq(conversationParticipants.conversationId, args.conversationId),
         eq(conversationParticipants.status, 'active'),
       ))
-      .where(eq(workspacePresence.workspaceId, args.workspaceId))
+      .where(and(
+        eq(workspacePresence.workspaceId, args.workspaceId),
+        or(
+          isNull(workspacePresence.conversationId),
+          eq(workspacePresence.conversationId, args.conversationId),
+        ),
+      ))
     const now = new Date()
-    return rows.map((row) => mapPresence(row.workspace_presence, now))
+    const sessionsByPrincipal = new Map<string, Array<typeof rows[number]['workspace_presence']>>()
+    for (const row of rows) {
+      const sessions = sessionsByPrincipal.get(row.workspace_presence.principalId) ?? []
+      sessions.push(row.workspace_presence)
+      sessionsByPrincipal.set(row.workspace_presence.principalId, sessions)
+    }
+    return [...sessionsByPrincipal.values()].map((sessions) => {
+      const active = sessions
+        .filter((session) => now.getTime() - session.lastSeenAt.getTime() <= 120_000)
+        .filter((session) => session.status !== 'offline')
+        .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())
+      const latest = [...sessions].sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())[0]!
+      const representative = active[0] ?? latest
+      const status = active.some((session) => session.status === 'online')
+        ? 'online'
+        : active.length > 0 ? 'away' : 'offline'
+      const typing = active.some((session) => Boolean(
+        session.typingExpiresAt && session.typingExpiresAt.getTime() > now.getTime(),
+      ))
+      return mapPresence({ ...representative, status }, now, { typing })
+    })
   }
 
   async recordMessageActivity(args: {
@@ -579,14 +618,6 @@ implements ConversationCollaborationRepository {
       && (participant.notificationLevel !== 'mentions' || mentions.has(participant.principalId))
     ))
     await this.db.transaction(async (tx) => {
-      await tx.update(conversationParticipants).set({
-        lastReadAt: now,
-        markedUnreadAt: null,
-        updatedAt: now,
-      }).where(and(
-        eq(conversationParticipants.conversationId, args.conversationId),
-        eq(conversationParticipants.principalId, actor.id),
-      ))
       if (recipients.length > 0) {
         await tx.insert(workspaceNotifications).values(recipients.map((recipient) => ({
           id: `notification_${randomUUID()}`,
@@ -942,6 +973,7 @@ function mapParticipant(
     updatedAt: row.updatedAt.getTime(),
     removedAt: row.removedAt?.getTime(),
     lastReadAt: row.lastReadAt?.getTime(),
+    lastReadSequence: row.lastReadSequence ?? undefined,
     markedUnreadAt: row.markedUnreadAt?.getTime(),
     archivedAt: row.archivedAt?.getTime(),
   }
@@ -950,14 +982,16 @@ function mapParticipant(
 function mapPresence(
   row: typeof workspacePresence.$inferSelect,
   now: Date,
+  overrides: { typing?: boolean } = {},
 ): ConversationPresence {
   const stale = now.getTime() - row.lastSeenAt.getTime() > 120_000
   return {
     workspaceId: row.workspaceId,
     principalId: row.principalId,
+    sessionId: row.sessionId,
     conversationId: row.conversationId ?? undefined,
     status: stale ? 'offline' : row.status,
-    typing: !stale && Boolean(row.typingExpiresAt && row.typingExpiresAt > now),
+    typing: !stale && (overrides.typing ?? Boolean(row.typingExpiresAt && row.typingExpiresAt > now)),
     lastSeenAt: row.lastSeenAt.getTime(),
     typingExpiresAt: row.typingExpiresAt?.getTime(),
   }

@@ -1189,6 +1189,7 @@ export default defineSchema({
     updatedAt: v.number(),
     removedAt: v.optional(v.number()),
     lastReadAt: v.optional(v.number()),
+    lastReadSequence: v.optional(v.number()),
     markedUnreadAt: v.optional(v.number()),
     archivedAt: v.optional(v.number()),
   })
@@ -1199,6 +1200,7 @@ export default defineSchema({
   workspacePresence: defineTable({
     workspaceId: v.string(),
     principalId: v.string(),
+    sessionId: v.optional(v.string()),
     conversationId: v.optional(v.id('conversations')),
     status: v.union(v.literal('online'), v.literal('away'), v.literal('offline')),
     lastSeenAt: v.number(),
@@ -1206,7 +1208,22 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_workspaceId_principalId', ['workspaceId', 'principalId'])
+    .index('by_workspaceId_principalId_updatedAt', ['workspaceId', 'principalId', 'updatedAt'])
     .index('by_conversationId_updatedAt', ['conversationId', 'updatedAt']),
+
+  // Provider-neutral durable collaboration events. Convex uses the document
+  // creation time as the monotonic cursor; Postgres uses its identity sequence.
+  conversationEvents: defineTable({
+    conversationId: v.id('conversations'),
+    workspaceId: v.optional(v.string()),
+    userId: v.string(),
+    type: v.string(),
+    messageId: v.optional(v.id('conversationMessages')),
+    payload: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
+    .index('by_userId_createdAt', ['userId', 'createdAt']),
 
   workspaceNotifications: defineTable({
     notificationId: v.string(),

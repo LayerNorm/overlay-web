@@ -10,6 +10,8 @@ export interface ConversationQuery extends PaginationQuery {
   includeDeleted?: boolean
   limit?: number
   beforeCreatedAt?: number
+  mainOnly?: boolean
+  threadRootMessageId?: string
   compactToolPayloads?: boolean
 }
 

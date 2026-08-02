@@ -93,7 +93,16 @@ test('Phase 8 persists policy, directory identity, and export history', async ()
     'workspace_audit_exports',
     "'schema_version', '38'",
   ]) assert.match(migration, new RegExp(invariant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
-  assert.equal(APP_DATA_SCHEMA_VERSION, 38)
+  const correctnessMigration = await readFile(
+    `${root}/migrations/app-data/0039_conversation_correctness.sql`,
+    'utf8',
+  )
+  for (const invariant of [
+    'last_read_sequence',
+    'session_id',
+    'workspace_presence_principal_idx',
+  ]) assert.match(correctnessMigration, new RegExp(invariant))
+  assert.equal(APP_DATA_SCHEMA_VERSION, 39)
 })
 
 test('Phase 8 audit export covers membership, grants, messages, runs, and approvals', () => {

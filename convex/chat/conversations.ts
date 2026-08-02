@@ -7,6 +7,7 @@ import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { applyStorageUsageDelta } from '../files/lib/storageQuota'
+import { recordConversationEvent } from '../collaboration/events'
 
 const generatedUiVariant = v.object({
   id: v.string(),
@@ -807,6 +808,8 @@ export const getRecentMessages = query({
     limit: v.optional(v.number()),
     beforeCreatedAt: v.optional(v.number()),
     compactToolPayloads: v.optional(v.boolean()),
+    mainOnly: v.optional(v.boolean()),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
     workspaceId: v.optional(v.string()),
   },
   handler: async (ctx, {
@@ -818,6 +821,8 @@ export const getRecentMessages = query({
     limit,
     beforeCreatedAt,
     compactToolPayloads,
+    mainOnly,
+    threadRootMessageId,
   }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
@@ -851,7 +856,13 @@ export const getRecentMessages = query({
       })
       .order('desc')
       .take(scanLimit)
-    const messages = selectRecentConversationMessages(recentScan, safeLimit)
+    const scopedScan = recentScan.filter((message) => (
+      (mainOnly ? !message.threadRootMessageId : true)
+      && (threadRootMessageId ? message.threadRootMessageId === threadRootMessageId : true)
+    ))
+    const messages = mainOnly || threadRootMessageId
+      ? scopedScan.slice(0, safeLimit).sort((a, b) => a.createdAt - b.createdAt)
+      : selectRecentConversationMessages(scopedScan, safeLimit)
     const generating = messages.filter((message) => message.status === 'generating')
     if (generating.length === 0) {
       return messages.map((message) => compactMessageForHistory(message, compactToolPayloads))
@@ -1056,6 +1067,13 @@ export const addMessage = mutation({
       ? (await ctx.db.patch(match._id, payload), match._id)
       : await ctx.db.insert('conversationMessages', payload)
     await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId,
+      workspaceId: conversation.workspaceId,
+      userId: args.userId,
+      type: match ? 'message.updated' : 'message.created',
+      messageId: msgId,
+    })
 
 	    if (args.role === 'user' && args.skipMemoryExtraction !== true) {
 	      try {
@@ -1155,6 +1173,13 @@ export const startGeneratingMessage = mutation({
       ? (await ctx.db.patch(match._id, payload), match._id)
       : await ctx.db.insert('conversationMessages', payload)
     await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId,
+      workspaceId: conversation?.workspaceId,
+      userId: args.userId,
+      type: match ? 'message.updated' : 'message.created',
+      messageId: id,
+    })
     return id
   },
 })
@@ -1218,6 +1243,14 @@ export const finalizeGeneratingMessage = mutation({
     })
     await deleteMessageDeltas(ctx, args.messageId)
     await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
+    const conversation = await ctx.db.get(message.conversationId)
+    await recordConversationEvent(ctx, {
+      conversationId: message.conversationId,
+      workspaceId: conversation?.workspaceId,
+      userId: message.userId,
+      type: 'message.completed',
+      messageId: args.messageId,
+    })
   },
 })
 
@@ -1296,6 +1329,14 @@ export const failGeneratingMessage = mutation({
     })
     await deleteMessageDeltas(ctx, messageId)
     await ctx.db.patch(message.conversationId, { lastModified: now, updatedAt: now })
+    const conversation = await ctx.db.get(message.conversationId)
+    await recordConversationEvent(ctx, {
+      conversationId: message.conversationId,
+      workspaceId: conversation?.workspaceId,
+      userId: message.userId,
+      type: 'message.failed',
+      messageId,
+    })
   },
 })
 

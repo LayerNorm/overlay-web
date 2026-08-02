@@ -19,6 +19,7 @@ export async function PATCH(_request: Request, context: AppApiRouteContext) {
         archived: input.archived,
         markUnread: input.markUnread,
         markRead: input.markRead,
+        readSequence: input.readSequence,
       })
     return NextResponse.json({ participant })
   } catch (_error) {

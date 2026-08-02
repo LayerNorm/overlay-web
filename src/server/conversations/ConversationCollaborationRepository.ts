@@ -63,6 +63,7 @@ export interface ConversationCollaborationRepository {
   upsertPresence(args: {
     actorUserId: string
     conversationId?: string
+    sessionId?: string
     status: 'online' | 'away' | 'offline'
     typing?: boolean
     workspaceId: string
