@@ -1031,6 +1031,137 @@ export const webApiExcludedRouteDefinitions = [
     routePath: '/api/v1/extensions/[extensionId]/[...path]',
     reason: 'Extension proxy route. It is not part of the stable public web API reference.',
   },
+  // These are browser-facing application BFF routes used by the workspace UI.
+  // They are intentionally not part of the stable external API reference yet;
+  // keeping the exclusions explicit still makes route-coverage drift fail closed.
+  {
+    routePath: '/api/v1/agents',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/agents/[agentId]',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/conversations/[conversationId]/messages/[messageId]',
+    reason: 'Collaboration application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/conversations/[conversationId]/participants',
+    reason: 'Collaboration application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/conversations/[conversationId]/pins',
+    reason: 'Collaboration application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/conversations/[conversationId]/presence',
+    reason: 'Collaboration application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/conversations/[conversationId]/reactions',
+    reason: 'Collaboration application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/conversations/[conversationId]/reports',
+    reason: 'Collaboration application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/conversations/[conversationId]/state',
+    reason: 'Collaboration application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/conversations/agent-reply',
+    reason: 'Collaboration application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/conversations/channels',
+    reason: 'Collaboration application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/conversations/direct-messages',
+    reason: 'Collaboration application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/conversations/notifications',
+    reason: 'Collaboration application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/conversations/saved-messages',
+    reason: 'Collaboration application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/conversations/search',
+    reason: 'Collaboration application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/search',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/shares',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/shares/impact',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/shares/shared-with-me',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/workspace-invitations/[invitationId]/accept',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/workspaces',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/workspaces/active',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/workspaces/[workspaceId]/audit-export',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/workspaces/[workspaceId]/governance',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/workspaces/[workspaceId]/invitations',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/workspaces/[workspaceId]/invitations/[invitationId]',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/workspaces/[workspaceId]/lifecycle',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/workspaces/[workspaceId]/management',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/workspaces/[workspaceId]/members',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/workspaces/[workspaceId]/policies',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/workspaces/[workspaceId]/teams',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/workspaces/[workspaceId]/teams/[teamId]/members',
+    reason: 'Workspace application BFF route; not a stable public API reference.',
+  },
 ] as const satisfies readonly WebApiExcludedRouteDefinition[]
 
 const webApiBoundaryDefinitionList: readonly WebApiBoundaryDefinition[] = webApiBoundaryDefinitions
