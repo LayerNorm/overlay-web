@@ -1,8 +1,9 @@
 'use client'
 
-import { useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { BookOpen, Bot, File, Folder, Workflow } from 'lucide-react'
 import { SidebarResourceList } from '@overlay/ui/primitives'
+import { FilesCategorySidebar, resolveFilesCategory } from '@/components/layout/FilesCategorySidebar'
 import {
   SHOWCASE_AUTOMATIONS,
   SHOWCASE_KNOWLEDGE_NODES,
@@ -25,26 +26,42 @@ const SHOWCASE_KNOWLEDGE_BASES = [
 
 export function PublicShowcaseFilesInlinePanel({ onNavigate }: { onNavigate?: () => void }) {
   const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const activeId = searchParams?.get('file') ?? null
+  const activeCategory = resolveFilesCategory(searchParams?.get('view'))
+
+  function selectCategory(category: ReturnType<typeof resolveFilesCategory>) {
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
+    params.set('showcase', '1')
+    if (category === 'all') params.delete('view')
+    else params.set('view', category)
+    params.delete('file')
+    params.delete('folder')
+    router.push(`${pathname}?${params.toString()}`)
+    onNavigate?.()
+  }
 
   return (
-    <SidebarResourceList>
-      {SHOWCASE_KNOWLEDGE_NODES.map((file) => (
-        <button
-          key={file._id}
-          type="button"
-          className={`${rowClass} ${activeId === file._id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-          onClick={() => {
-            router.push(`/app/files?${new URLSearchParams({ showcase: '1', file: file._id }).toString()}`)
-            onNavigate?.()
-          }}
-        >
-          <File size={12} className="shrink-0" />
-          <span className="truncate">{file.name}</span>
-        </button>
-      ))}
-    </SidebarResourceList>
+    <>
+      <FilesCategorySidebar category={activeCategory} onChange={selectCategory} />
+      <SidebarResourceList>
+        {SHOWCASE_KNOWLEDGE_NODES.map((file) => (
+          <button
+            key={file._id}
+            type="button"
+            className={`${rowClass} ${activeId === file._id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+            onClick={() => {
+              router.push(`/app/files?${new URLSearchParams({ showcase: '1', file: file._id }).toString()}`)
+              onNavigate?.()
+            }}
+          >
+            <File size={12} className="shrink-0" />
+            <span className="truncate">{file.name}</span>
+          </button>
+        ))}
+      </SidebarResourceList>
+    </>
   )
 }
 

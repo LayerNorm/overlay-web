@@ -31,7 +31,7 @@ test('shared surface preserves the web files markup and controls', () => {
     />,
   )
   assert.match(html, /overlay-knowledge-surface/)
-  assert.match(html, /Files/)
+  assert.match(html, /All/)
   assert.match(html, /Projects/)
   assert.match(html, /Parity note/)
   assert.match(html, /overlay-knowledge-list/)
