@@ -122,6 +122,11 @@ test('human room messages render safe markdown even when room member metadata is
   assert.doesNotMatch(html, /\*\*Launch\*\*/)
 })
 
+test('human room messages preserve authored line breaks', () => {
+  const html = render(record({ id: 'message_9', content: 'First line\nSecond line' }))
+  assert.match(html, /whitespace-pre-wrap[^>]*>First line\nSecond line<\/p>/)
+})
+
 test('human room markdown never renders raw HTML or executable links', () => {
   const html = render(record({ id: 'message_8', content: '<img src=x onerror=alert(1)> [bad](javascript:alert(1))' }))
   assert.doesNotMatch(html, /<img/)

@@ -196,7 +196,7 @@ export function RoomMessageItem({
         value={editingContent}
         onChange={(event) => onEditingContentChange(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === 'Enter' && !event.shiftKey) {
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
             event.preventDefault()
             onSaveEdit()
           }
