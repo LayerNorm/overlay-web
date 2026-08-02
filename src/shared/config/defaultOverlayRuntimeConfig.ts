@@ -30,6 +30,7 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     analytics: true,
     errorReporting: true,
     apiDefaultRateLimit: true,
+    apiMutationAudit: true,
     // Kept independently switchable so an unexpected client compatibility issue can
     // be rolled back without weakening authentication, authorization, or rate limits.
     apiMutationOriginGuard: true,

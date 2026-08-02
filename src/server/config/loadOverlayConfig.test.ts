@@ -135,6 +135,7 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     OVERLAY_FEATURE_SANDBOXES: 'false',
     OVERLAY_FEATURE_ANALYTICS: 'false',
     OVERLAY_FEATURE_API_DEFAULT_RATE_LIMIT: 'false',
+    OVERLAY_FEATURE_API_MUTATION_AUDIT: 'false',
     OVERLAY_FEATURE_API_MUTATION_ORIGIN_GUARD: 'false',
     OVERLAY_PROVIDER_SANDBOX: 'none',
     OVERLAY_PROVIDER_BROWSER: 'none',
@@ -152,6 +153,7 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     sandboxes: false,
     analytics: false,
     apiDefaultRateLimit: false,
+    apiMutationAudit: false,
     apiMutationOriginGuard: false,
   })
   assert.deepEqual(overrides.providers, {

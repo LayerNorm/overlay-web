@@ -172,17 +172,29 @@ export async function handleBffRoute(
     { repository: idempotencyRepository },
   )
   const standardizedResponse = await standardizePaginatedListResponse(request, response)
-  await recordBffMutationAuditIfNeeded({ auth, clientIp, request, response: standardizedResponse, serverContext })
+  await recordBffMutationAuditIfNeeded({
+    auth,
+    clientIp,
+    enabled: bffSafety.mutationAuditEnabled,
+    request,
+    response: standardizedResponse,
+    serverContext,
+  })
   return standardizedResponse
 }
 
 async function resolveBffSafety(
   request: NextRequest,
   auth: NonNullable<Awaited<ReturnType<typeof resolveAuthenticatedAppUser>>>,
-): Promise<{ defaultRateLimitEnabled: boolean; originResponse: Response | null }> {
+): Promise<{
+  defaultRateLimitEnabled: boolean
+  mutationAuditEnabled: boolean
+  originResponse: Response | null
+}> {
   const runtimeConfig = await getOverlayRuntimeConfig()
   return {
     defaultRateLimitEnabled: runtimeConfig.features.apiDefaultRateLimit !== false,
+    mutationAuditEnabled: runtimeConfig.features.apiMutationAudit !== false,
     originResponse: runtimeConfig.features.apiMutationOriginGuard !== false
       ? rejectCrossSiteBrowserMutation(request, auth)
       : null,
@@ -292,11 +304,12 @@ async function enforceBffRouteRateLimits(
 async function recordBffMutationAuditIfNeeded(args: {
   auth: NonNullable<Awaited<ReturnType<typeof resolveAuthenticatedAppUser>>>
   clientIp: string
+  enabled: boolean
   request: NextRequest
   response: Response
   serverContext: ReturnType<typeof getOverlayServerContext>
 }): Promise<void> {
-  if (SAFE_METHODS.has(args.request.method.toUpperCase())) return
+  if (!args.enabled || SAFE_METHODS.has(args.request.method.toUpperCase())) return
   await recordBffMutationAudit(args)
 }
 
