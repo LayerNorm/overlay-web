@@ -51,8 +51,11 @@ export function ChatActivityPanel({
         overlayAppClient.conversations.notifications({ filter, limit: 100 }),
         preferences ? Promise.resolve({ preferences }) : overlayAppClient.conversations.notificationPreferences(),
       ])
-      setNotifications(activity.notifications)
-      setPreferences(settings.preferences)
+      // `overlayAppClient` intentionally returns parsed error bodies for non-2xx
+      // responses. Treat an unavailable activity endpoint as an empty, retryable
+      // feed instead of letting an error payload crash the chat shell.
+      setNotifications(Array.isArray(activity?.notifications) ? activity.notifications : [])
+      setPreferences(settings?.preferences ?? null)
     } catch {
       setNotifications([])
     } finally {
