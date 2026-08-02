@@ -4,6 +4,10 @@ import { getAuthorizedResourceUserId, getGrantedResources, type AppApiRouteConte
 import { fileErrorResponse, fileService } from '@/server/files/http'
 import { getOverlayServerContext } from '@/server/bootstrap'
 
+interface FilesRouteDependencies {
+  workspaceService?: Pick<ReturnType<typeof getOverlayServerContext>['workspaceService'], 'bindResource'>
+}
+
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { searchParams } = request.nextUrl
@@ -43,7 +47,11 @@ function grantedFileMatches(file: unknown, searchParams: URLSearchParams): boole
   return filters.every(([key, expected]) => !expected || value[key] === expected)
 }
 
-export async function POST(request: NextRequest, context: AppApiRouteContext) {
+export async function POST(
+  request: NextRequest,
+  context: AppApiRouteContext,
+  dependencies: FilesRouteDependencies = {},
+) {
   try {
     const formDataContentType = request.headers.get('content-type') || ''
     const body = formDataContentType.includes('application/json') ? await request.json() : {}
@@ -55,8 +63,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       ...(typeof result.id === 'string' ? [result.id] : []),
       ...(result.ids ?? []),
     ])]
+    const workspaceService = dependencies.workspaceService ?? getOverlayServerContext().workspaceService
     await Promise.all(resourceIds.map((resourceId) => (
-      getOverlayServerContext().workspaceService.bindResource({
+      workspaceService.bindResource({
         actorUserId: context.auth.userId,
         workspaceId: context.workspace.workspace.id,
         resourceType: 'file',

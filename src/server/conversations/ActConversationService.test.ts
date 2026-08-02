@@ -10,6 +10,12 @@ import { ActUsageBudgetService } from './ActUsageBudgetService'
 import { UnlimitedUsagePolicy } from './ActUsagePolicy'
 import type { Id } from '../../../convex/_generated/dataModel'
 
+const AUTO_RETRIEVAL_BILLING = {
+  idempotencyKey: 'fixture-idempotency-key',
+  operationId: 'conversation.act.auto-retrieval',
+  requestFingerprint: 'fixture-request-fingerprint',
+}
+
 const freeEntitlements = {
   tier: 'free',
   planKind: 'free',
@@ -229,6 +235,7 @@ test('act context service scopes attached knowledge-base conversations and disab
   })
 
   assert.deepEqual(retrievalArgs, {
+    billing: AUTO_RETRIEVAL_BILLING,
     includeMemories: false,
     knowledgeBaseIds: ['kb_1'],
     projectId: 'project_1',
@@ -281,6 +288,7 @@ test('act context service combines project and conversation knowledge bases whil
 
   assert.equal(context.projectInstructions, 'Write a concise implementation plan.')
   assert.deepEqual(retrievalArgs, {
+    billing: AUTO_RETRIEVAL_BILLING,
     includeMemories: false,
     knowledgeBaseIds: ['conversation_kb', 'project_kb', 'second_project_kb'],
     projectId: 'project_1',
@@ -323,6 +331,7 @@ test('act context service lets an explicit knowledge mention narrow retrieval to
   // Project instructions still apply; only the retrieval corpus narrows.
   assert.equal(context.projectInstructions, 'Project rules stay in force.')
   assert.deepEqual(retrievalArgs, {
+    billing: AUTO_RETRIEVAL_BILLING,
     includeMemories: false,
     knowledgeBaseIds: ['project_kb'],
     projectId: 'project_1',
@@ -364,6 +373,7 @@ test('act context service falls back to the legacy single project attachment', a
   })
 
   assert.deepEqual(retrievalArgs, {
+    billing: AUTO_RETRIEVAL_BILLING,
     includeMemories: false,
     knowledgeBaseIds: ['legacy_kb'],
     projectId: 'project_1',
@@ -406,6 +416,7 @@ test('act context service ignores archived project instructions and knowledge at
 
   assert.equal(context.projectInstructions, '')
   assert.deepEqual(retrievalArgs, {
+    billing: AUTO_RETRIEVAL_BILLING,
     includeMemories: true,
     projectId: 'project_1',
     userId: 'user_1',
