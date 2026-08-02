@@ -52,6 +52,19 @@ export function redactUrlForTelemetry(raw: string): string {
   }
 }
 
+/**
+ * Keeps route-level analytics useful without exporting share tokens, record IDs, or user-controlled path segments.
+ */
+export function routeForTelemetry(pathname: string): string {
+  const safePath = pathname.split('?')[0]?.split('#')[0] ?? ''
+  const segments = safePath.split('/').map((segment) => {
+    if (!segment || /^[a-z][a-z0-9-]{0,63}$/.test(segment)) return segment
+    return ':id'
+  })
+  const route = segments.join('/') || '/'
+  return route.length <= 256 ? route : '/:redacted'
+}
+
 export function sameOriginPathUrl(baseUrl: string, candidate: unknown, fallbackPath = '/account'): string {
   const base = new URL(baseUrl)
   const raw = typeof candidate === 'string' && candidate.trim() ? candidate.trim() : fallbackPath

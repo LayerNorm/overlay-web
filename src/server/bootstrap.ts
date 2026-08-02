@@ -15,6 +15,8 @@ import { NoOpBillingProvider } from '@/server/billing/providers/noop-billing-pro
 import { StripeBillingProvider } from '@/server/billing/providers/stripe-billing-provider'
 import { getOverlayRuntimeConfigSync, OverlayConfigError } from '@/server/config'
 import { logger } from '@/server/observability/logger'
+import { createPostHogLifecycleSink } from '@/server/observability/posthog-server'
+import { createOpenTelemetryLifecycleSink } from '@/server/observability/open-telemetry'
 import { ConvexRateLimiter } from '@/server/shared/providers/convex-rate-limiter'
 import { InMemoryEventBus } from '@/server/shared/providers/in-memory-event-bus'
 import { LifecycleEventPublisher, createLifecycleAuditSink } from '@/server/lifecycle-events'
@@ -123,7 +125,11 @@ export function createOverlayServerContext(
     onDeliveryFailure: ({ destination, eventName }) => {
       logger.warn('Lifecycle event delivery failed', { destination, eventName })
     },
-    sinks: [createLifecycleAuditSink(auditService)],
+    sinks: [
+      createLifecycleAuditSink(auditService),
+      createPostHogLifecycleSink(),
+      createOpenTelemetryLifecycleSink(),
+    ],
   })
   const userService = new UserService({
     authProvider: selectedAuthProviderForUserService(runtimeConfig),

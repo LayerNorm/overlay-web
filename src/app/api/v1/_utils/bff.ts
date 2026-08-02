@@ -36,6 +36,7 @@ import {
 } from '@/server/billing/owner-funded-operations'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import { logSecurityEvent } from '@/server/observability/security-events'
+import { contextForRequest, withObservabilityContext } from '@/server/observability/context'
 import { rejectCrossSiteBrowserMutation } from '@/server/security/browser-mutation-origin'
 
 const API_KEY_CANDIDATE_RATE_LIMITS = [
@@ -168,7 +169,13 @@ export async function handleBffRoute(
   const response = await handleIdempotentMutation(
     request,
     auth.userId,
-    async () => service(request, serviceContext),
+    async () => await withObservabilityContext(
+      contextForRequest(request, {
+        provider: appDataCapabilities.provider,
+        tenantId: auth.organizationId,
+      }),
+      async () => await service(request, serviceContext),
+    ),
     { repository: idempotencyRepository },
   )
   const standardizedResponse = await standardizePaginatedListResponse(request, response)

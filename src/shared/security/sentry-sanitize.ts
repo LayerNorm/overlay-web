@@ -27,6 +27,22 @@ const SENSITIVE_QUERY_PARAMS = new Set([
   'token',
 ])
 
+const SENSITIVE_FIELD_EXACT = new Set([
+  'authorization',
+  'content',
+  'cookie',
+  'first_name',
+  'last_name',
+  'message',
+  'name',
+  'reason',
+  'username',
+])
+
+const SENSITIVE_FIELD_PARTS = ['document', 'email', 'ip', 'password', 'prompt', 'token', 'useragent']
+
+const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -36,7 +52,7 @@ function redactSecrets(value: string): string {
   for (const pattern of SECRET_PATTERNS) {
     result = result.replace(pattern, '[REDACTED]')
   }
-  return result
+  return result.replace(EMAIL_PATTERN, '[REDACTED]')
 }
 
 function sanitizeUrl(value: string): string {
@@ -53,7 +69,12 @@ function sanitizeUrl(value: string): string {
   }
 }
 
-function sanitizeUnknown(value: unknown, seen = new WeakMap<object, unknown>()): unknown {
+function sanitizeUnknown(
+  value: unknown,
+  seen = new WeakMap<object, unknown>(),
+  key?: string,
+): unknown {
+  if (key && isSensitiveField(key)) return '[REDACTED]'
   if (typeof value === 'string') {
     return redactSecrets(value)
   }
@@ -74,10 +95,15 @@ function sanitizeUnknown(value: unknown, seen = new WeakMap<object, unknown>()):
   seen.set(value, output)
 
   for (const [key, entry] of Object.entries(value)) {
-    output[key] = sanitizeUnknown(entry, seen)
+    output[key] = sanitizeUnknown(entry, seen, key)
   }
 
   return output
+}
+
+function isSensitiveField(key: string): boolean {
+  const normalized = key.toLowerCase().replaceAll('-', '_')
+  return SENSITIVE_FIELD_EXACT.has(normalized) || SENSITIVE_FIELD_PARTS.some((part) => normalized.includes(part))
 }
 
 export function sanitizeSentryEvent<T>(event: T): T {
@@ -101,9 +127,21 @@ export function sanitizeSentryEvent<T>(event: T): T {
       request.cookies = '[REDACTED]'
     }
 
+    if ('data' in request) {
+      request.data = '[REDACTED]'
+    }
+
     if (typeof request.url === 'string') {
       request.url = sanitizeUrl(request.url)
     }
+  }
+
+  const exception = isRecord(sanitized.exception) ? sanitized.exception : null
+  if (exception && Array.isArray(exception.values)) {
+    exception.values = exception.values.map((value) => {
+      if (!isRecord(value)) return value
+      return { ...value, value: '[REDACTED]' }
+    })
   }
 
   return sanitized

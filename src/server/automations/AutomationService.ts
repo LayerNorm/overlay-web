@@ -2,6 +2,7 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import type { LifecycleEventPublisher } from '@/server/lifecycle-events'
+import { withObservabilityContext } from '@/server/observability/context'
 import { runActTurnForScheduledAutomation, type ScheduledAutomationTurn } from '@/server/agent/run-act-turn'
 import { emitAutomationFailed, emitAutomationFinished } from '@/server/shared/webhooks'
 import type {
@@ -442,18 +443,23 @@ export class AutomationService {
       if (!runId) {
         throw new Error('Automation manual run create returned no id')
       }
+      const executionRunId = runId
+      const executionAutomationId = automationId
 
       await this.deps.repository.markManualRunStarted({
-        runId,
+        runId: executionRunId,
         userId: args.userId,
         conversationId,
         turnId,
         now: this.clock.now(),
       })
 
-      const result = await this.executor({
-        automationId,
-        runId,
+      const result = await withObservabilityContext({
+        provider: 'automation',
+        runId: executionRunId,
+      }, async () => await this.executor({
+        automationId: executionAutomationId,
+        runId: executionRunId,
         userId: args.userId,
         name,
         description: automation.description || '',
@@ -464,7 +470,7 @@ export class AutomationService {
         turnId,
         scheduledFor,
         baseUrl: args.baseUrl,
-      })
+      }))
 
       await this.deps.repository.markManualRunCompleted({
         runId,
@@ -508,6 +514,7 @@ export class AutomationService {
     let userId: string | undefined
     try {
       if (!args.runId) serviceError({ error: 'runId required' }, 400)
+      const executionRunId = args.runId
       const payload = await this.deps.repository.getRunForExecution({ runId: args.runId })
       if (!payload || payload.run.status !== 'running') {
         serviceError({ error: 'Automation run is not executable' }, 409)
@@ -521,9 +528,12 @@ export class AutomationService {
       const turnId = run.turnId || `automation-${args.runId}-${this.clock.now()}`
       const conversationId = run.conversationId || automation.sourceConversationId || automation.conversationId
 
-      const result = await this.executor({
+      const result = await withObservabilityContext({
+        provider: 'automation',
+        runId: executionRunId,
+      }, async () => await this.executor({
         automationId: automation._id,
-        runId: args.runId,
+        runId: executionRunId,
         userId: automation.userId,
         name: automation.name || automation.title || 'Untitled automation',
         description: automation.description || '',
@@ -534,7 +544,7 @@ export class AutomationService {
         turnId,
         scheduledFor: run.scheduledFor,
         baseUrl: args.baseUrl,
-      })
+      }))
 
       this.events.finished({
         userId: automation.userId,

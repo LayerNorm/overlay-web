@@ -2,62 +2,42 @@ import { logger } from '@/server/observability/logger'
 import { NextResponse } from 'next/server'
 import { getOverlaySession } from '@/server/auth/session'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { getPostHogClient } from '@/server/observability/posthog-server'
+import { captureProductEvent } from '@/server/observability/posthog-server'
+import { contextForRequest, withObservabilityContext } from '@/server/observability/context'
 
 export async function POST(request: Request) {
   try {
-    const session = await getOverlaySession(request)
-    
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      )
-    }
+    return await withObservabilityContext(contextForRequest(request, { provider: 'auth' }), async () => {
+      const session = await getOverlaySession(request)
 
-    const result = await getOverlayServerContext().userService.upsertFromSession(session)
+      if (!session) {
+        return NextResponse.json(
+          { error: 'Not authenticated' },
+          { status: 401 },
+        )
+      }
 
-    if (!result) {
-      return NextResponse.json(
-        { error: 'Failed to sync profile' },
-        { status: 502 }
-      )
-    }
+      const result = await getOverlayServerContext().userService.upsertFromSession(session)
 
-    const posthog = getPostHogClient()
-    if (posthog) {
-      if (result.isNewUser) {
-        posthog.capture({
-          distinctId: session.user.id,
-          event: 'user_signed_up',
-          properties: {
-            email: session.user.email,
-            first_name: session.user.firstName,
-            last_name: session.user.lastName,
-          },
-        })
-      } else {
-        posthog.capture({
-          distinctId: session.user.id,
-          event: 'user_signed_in',
-          properties: {
-            email: session.user.email,
-          },
+      if (!result) {
+        return NextResponse.json(
+          { error: 'Failed to sync profile' },
+          { status: 502 },
+        )
+      }
+
+      if (!result.isNewUser) {
+        captureProductEvent({
+          name: 'auth.session.signed_in',
+          properties: {},
+          userId: result.userId,
         })
       }
-      posthog.identify({
-        distinctId: session.user.id,
-        properties: {
-          email: session.user.email,
-          first_name: session.user.firstName,
-          last_name: session.user.lastName,
-        },
-      })
-    }
 
-    return NextResponse.json({
-      success: true,
-      isNewUser: result.isNewUser,
+      return NextResponse.json({
+        success: true,
+        isNewUser: result.isNewUser,
+      })
     })
   } catch (error) {
     logger.error('[Auth] Profile sync error:', error)

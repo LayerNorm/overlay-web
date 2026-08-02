@@ -7,9 +7,28 @@ function envFeatureEnabled(name: string): boolean {
   return !['0', 'false', 'no', 'off'].includes((value ?? '').trim().toLowerCase())
 }
 
-if (envFeatureEnabled('OVERLAY_FEATURE_ERROR_REPORTING')) {
+function sentryProviderEnabled(): boolean {
+  const provider = (
+    process.env.NEXT_PUBLIC_OVERLAY_PROVIDER_ERROR_REPORTING ??
+    process.env.OVERLAY_PROVIDER_ERROR_REPORTING ??
+    ''
+  ).trim().toLowerCase()
+  return provider !== 'none'
+}
+
+function clientObservabilityContext(): Record<string, string> {
+  return {
+    deployment: process.env.NEXT_PUBLIC_OVERLAY_DEPLOYMENT_ID?.trim() || 'web',
+    environment: process.env.NEXT_PUBLIC_OVERLAY_DEPLOYMENT_ENV?.trim() || 'unknown',
+    release: process.env.NEXT_PUBLIC_OVERLAY_RELEASE?.trim() || 'unknown',
+  }
+}
+
+if (envFeatureEnabled('OVERLAY_FEATURE_ERROR_REPORTING') && sentryProviderEnabled()) {
   Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+    environment: clientObservabilityContext().environment,
+    release: clientObservabilityContext().release,
     sendDefaultPii: false,
     tracesSampleRate: process.env.NODE_ENV === 'development' ? 1 : 0.1,
     beforeSend: sanitizeSentryEvent,
@@ -41,6 +60,7 @@ if (envFeatureEnabled('OVERLAY_FEATURE_ANALYTICS') && posthogToken && posthogHos
       capture_pageleave: true,
       persistence: resolvePosthogPersistence(),
     })
+    posthog.register(clientObservabilityContext())
   } catch (error) {
     console.warn('[PostHog] Client init failed; analytics disabled for this session.', error)
   }

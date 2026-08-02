@@ -4,11 +4,21 @@ import { logger } from '@/server/observability/logger'
 import * as Sentry from '@sentry/nextjs'
 import { publicEnv } from '@/shared/env/public-env'
 import { serverEnv } from '@/server/env/server-env'
+import { sanitizeSentryEvent } from '@/shared/security/sentry-sanitize'
+import { getOverlayRuntimeConfigSync } from '@/server/config'
 
 type SecurityEventLevel = 'info' | 'warning' | 'error'
 
 function sentryEnabled(): boolean {
-  return Boolean(serverEnv.sentryDsn || publicEnv.sentryDsn)
+  const feature = process.env.OVERLAY_FEATURE_ERROR_REPORTING?.trim().toLowerCase()
+  if (['0', 'false', 'no', 'off'].includes(feature ?? '')) return false
+  try {
+    const config = getOverlayRuntimeConfigSync()
+    const provider = config.providers.errorReporting?.provider ?? 'sentry'
+    return config.features.errorReporting !== false && provider === 'sentry' && Boolean(serverEnv.sentryDsn || publicEnv.sentryDsn)
+  } catch (_error) {
+    return false
+  }
 }
 
 export function logSecurityEvent(
@@ -23,13 +33,12 @@ export function logSecurityEvent(
     ...details,
   }
 
-  const serialized = JSON.stringify(payload)
   if (level === 'error') {
-    logger.error('[SecurityEvent]', serialized)
+    logger.error('[SecurityEvent]', payload)
   } else if (level === 'info') {
-    logger.info('[SecurityEvent]', serialized)
+    logger.info('[SecurityEvent]', payload)
   } else {
-    logger.warn('[SecurityEvent]', serialized)
+    logger.warn('[SecurityEvent]', payload)
   }
 
   if (!sentryEnabled()) {
@@ -39,9 +48,12 @@ export function logSecurityEvent(
   Sentry.withScope((scope) => {
     scope.setTag('security_event', type)
     scope.setLevel(level === 'error' ? 'error' : level === 'info' ? 'info' : 'warning')
-    for (const [key, value] of Object.entries(details)) {
-      scope.setExtra(key, value)
-    }
+    scope.setContext('security_event', sanitizeSecurityDetails(details))
     Sentry.captureMessage(`security_event:${type}`)
   })
+}
+
+function sanitizeSecurityDetails(details: Record<string, unknown>): Record<string, unknown> {
+  const sanitized = sanitizeSentryEvent({ extra: details })
+  return sanitized.extra
 }
