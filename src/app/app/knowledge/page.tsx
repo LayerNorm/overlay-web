@@ -1,52 +1,41 @@
 import { Suspense } from 'react'
 import dynamic from 'next/dynamic'
+import { notFound, redirect } from 'next/navigation'
 import { getOverlaySession } from '@/server/auth/session'
-import { getInitialKnowledgeFiles, getInitialKnowledgeMemories } from '@/server/app/route-data'
-import { redirect } from 'next/navigation'
+import { getOverlayCapabilities } from '@/server/capabilities'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { KnowledgeRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { PublicShowcaseKnowledgeBasesView } from '@/features/showcase/PublicShowcaseKnowledgeBasesView'
 
-const KnowledgeView = dynamic(() => import('../_components/KnowledgeViewHost'), {
-  loading: () => <KnowledgeRouteSkeleton />,
-})
+const KnowledgeBaseListView = dynamic(
+  () => import('@/features/knowledge-bases/components/KnowledgeBaseListView')
+    .then((module) => module.KnowledgeBaseListView),
+  { loading: () => <KnowledgeRouteSkeleton /> },
+)
 
-async function KnowledgeRouteContent({ userId }: { userId: string }) {
-  const [initialFiles, initialMemories] = await Promise.all([
-    getInitialKnowledgeFiles(),
-    getInitialKnowledgeMemories(),
-  ])
-
-  return (
-    <KnowledgeView
-      userId={userId}
-      initialFiles={initialFiles}
-      initialMemories={initialMemories}
-    />
-  )
+async function KnowledgeBaseListContent({ userId }: { userId: string }) {
+  const knowledgeBases = await getOverlayServerContext().knowledgeBaseService.listKnowledgeBases(userId)
+  return <KnowledgeBaseListView initialKnowledgeBases={knowledgeBases} userId={userId} />
 }
 
 export default async function KnowledgePage({
   searchParams,
 }: {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>
+  searchParams?: Promise<{ showcase?: string | string[] }>
 }) {
-  const session = await getOverlaySession()
-
-  if (!session) redirect('/app/chat?signin=nav')
   const params = await searchParams
-  const rawView = params?.view
-  const view = Array.isArray(rawView) ? rawView[0] : rawView
-  const rawFile = params?.file
-  const file = Array.isArray(rawFile) ? rawFile[0] : rawFile
-  const rawMemory = params?.memory
-  const memory = Array.isArray(rawMemory) ? rawMemory[0] : rawMemory
-  if (file) redirect(`/app/files?file=${encodeURIComponent(file)}`)
-  if (memory) redirect('/app/settings?section=memories')
-  if (view === 'files') redirect('/app/files')
-  if (view === 'outputs') redirect('/app/files?view=outputs')
-  if (!view || view === 'memories') redirect('/app/settings?section=memories')
+  const publicShowcase = Array.isArray(params?.showcase) ? params.showcase[0] === '1' : params?.showcase === '1'
+  if (publicShowcase) return <PublicShowcaseKnowledgeBasesView />
+
+  const capabilities = await getOverlayCapabilities()
+  if (!capabilities.knowledge) notFound()
+
+  const session = await getOverlaySession()
+  if (!session) redirect('/app/chat?signin=nav')
+
   return (
     <Suspense fallback={<KnowledgeRouteSkeleton />}>
-      <KnowledgeRouteContent userId={session.user.id} />
+      <KnowledgeBaseListContent userId={session.user.id} />
     </Suspense>
   )
 }

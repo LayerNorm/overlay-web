@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   buildPersistedMessageContent,
@@ -8,6 +8,8 @@ import {
 } from '@/server/chat/chat-message-persistence'
 import { normalizeGeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
+import { invokeWorkspaceAgentsForHumanMessage } from '@/server/agents/workspace-agent-invocation'
+import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -27,8 +29,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       replySnippet?: string
       accessToken?: string
       userId?: string
+      clientNonce?: string
+      threadRootMessageId?: string
+      mentionedPrincipalIds?: string[]
+      /**
+       * The caller is watching the agent reply stream, so it triggers the
+       * invocation itself. Skipping it here keeps a mentioned agent from
+       * running twice for one message.
+       */
+      deferAgentReply?: boolean
     }
-    const { auth } = context
 
 
     const normalizedParts = sanitizeMessagePartsForPersistence(body.parts, {
@@ -49,9 +59,47 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const mode = body.mode ?? 'act'
     const contentType = body.contentType ?? 'text'
     const modelId = body.modelId ?? body.model
-    await getOverlayServerContext().appData.repositories.conversations.addMessage({
+    const server = getOverlayServerContext()
+    const hasChannelBroadcast = /(^|\s)@channel(?=\s|$)/i.test(normalizedContent)
+    const hasHereBroadcast = /(^|\s)@here(?=\s|$)/i.test(normalizedContent)
+    if (body.role === 'user' && (hasChannelBroadcast || hasHereBroadcast)) {
+      const conversation = await server.appData.repositories.conversations.getConversationById({
+        conversationId: body.conversationId as Id<'conversations'>,
+        userId: getAuthorizedResourceUserId(context),
+        workspaceId: context.workspace.workspace.id,
+      })
+      if (conversation?.conversationType === 'channel' && hasChannelBroadcast) {
+        const participants = await server.appData.repositories.conversationCollaboration.listParticipants({
+          actorUserId: context.auth.userId,
+          conversationId: body.conversationId,
+          workspaceId: context.workspace.workspace.id,
+        })
+        if (participants.find((participant) => participant.principalId === context.workspace.principal.id)?.role !== 'moderator') {
+          return NextResponse.json({ error: '@channel requires channel moderator access' }, { status: 403 })
+        }
+      }
+    }
+    // Abuse limits are keyed by workspace, then by the sending principal (guests
+    // harder than members), then by the room.
+    if (body.role === 'user') {
+      await server.workspaceGovernanceService.assertWithinLimits({
+        action: 'message.send',
+        scope: {
+          workspaceId: context.workspace.workspace.id,
+          principalId: context.workspace.principal.id,
+          conversationId: body.conversationId,
+          guest: context.workspace.membership.role === 'guest',
+        },
+      })
+    }
+    const messageId = await server.appData.repositories.conversations.addMessage({
       conversationId: body.conversationId as Id<'conversations'>,
-      userId: auth.userId,
+      userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+      authorKind: body.role === 'user' ? 'human' : 'model',
+      authorPrincipalId: body.role === 'user' ? context.workspace.principal.id : undefined,
+      clientNonce: body.clientNonce?.trim() || undefined,
+      threadRootMessageId: body.threadRootMessageId?.trim(),
       turnId,
       role: body.role,
       mode,
@@ -64,9 +112,32 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         ? { replyToTurnId: body.replyToTurnId.trim(), replySnippet: body.replySnippet?.trim() }
         : {}),
     })
+    if (messageId && body.role === 'user') {
+      await server.appData.repositories.conversationCollaboration.recordMessageActivity({
+        actorUserId: context.auth.userId,
+        workspaceId: context.workspace.workspace.id,
+        conversationId: body.conversationId,
+        messageId,
+        body: normalizedContent,
+        mentionedPrincipalIds: body.mentionedPrincipalIds,
+        threadRootMessageId: body.threadRootMessageId?.trim(),
+      })
+      if (body.deferAgentReply !== true) await invokeWorkspaceAgentsForHumanMessage({
+        accessToken: context.auth.accessToken,
+        actorUserId: context.auth.userId,
+        workspaceId: context.workspace.workspace.id,
+        conversationId: body.conversationId,
+        messageId,
+        mentionedPrincipalIds: body.mentionedPrincipalIds,
+        threadRootMessageId: body.threadRootMessageId?.trim(),
+      })
+    }
 
     return NextResponse.json({ success: true, conversationId: body.conversationId, turnId })
   } catch (e) {
+    if (e instanceof WorkspaceServiceError) {
+      return NextResponse.json({ error: e.message }, { status: e.statusCode })
+    }
     logger.error('[conversations/message POST]', e)
     const msg = e instanceof Error ? e.message : 'Failed to save message'
     return NextResponse.json({ error: msg }, { status: 500 })
@@ -81,7 +152,6 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
       accessToken?: string
       userId?: string
     }
-    const { auth } = context
     const conversationId = body.conversationId?.trim()
     const turnId = body.turnId?.trim()
     if (!conversationId || !turnId) {
@@ -91,7 +161,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     try {
       await getOverlayServerContext().appData.repositories.conversations.deleteTurn({
         conversationId: conversationId as Id<'conversations'>,
-        userId: auth.userId,
+        userId: getAuthorizedResourceUserId(context),
         turnId,
       })
     } catch (err) {
@@ -120,7 +190,6 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       accessToken?: string
       userId?: string
     }
-    const { auth } = context
     const conversationId = body.conversationId?.trim()
     const messageId = body.messageId?.trim()
     const partId = body.partId?.trim()
@@ -136,7 +205,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       const updated = await getOverlayServerContext().appData.repositories.conversations.updateMessageUiPart({
         conversationId: conversationId as Id<'conversations'>,
         messageId: messageId as Id<'conversationMessages'>,
-        userId: auth.userId,
+        userId: getAuthorizedResourceUserId(context),
         partId,
         data: data as unknown as Record<string, unknown>,
       })

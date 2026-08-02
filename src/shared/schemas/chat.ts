@@ -23,12 +23,14 @@ export const CreateConversationRequest = z.object({
   actModelId: z.string().optional(),
   lastMode: z.enum(['ask', 'act']).optional(),
   clientId: z.string().optional(),
+  knowledgeBaseId: z.string().min(1).optional(),
 })
 
 export const UpdateConversationRequest = CreateConversationRequest.partial().extend({
   ...AuthFields,
   conversationId: z.string().min(1),
   projectId: z.string().nullable().optional(),
+  knowledgeBaseId: z.string().min(1).nullable().optional(),
 })
 
 export const DeleteConversationRequest = z.object({
@@ -75,6 +77,10 @@ export const ActConversationRequest = z.object({
   conversationId: z.string().optional(),
   conversationClientId: z.string().min(1).optional(),
   projectId: z.string().optional(),
+  /** @deprecated Prefer `knowledgeBaseIds`; kept so older clients keep working. */
+  knowledgeBaseId: z.string().min(1).optional(),
+  /** Bases named on this turn: attached to the conversation and used to narrow retrieval. */
+  knowledgeBaseIds: z.array(z.string().min(1)).max(8).optional(),
   askModelIds: z.array(z.string()).optional(),
   messages: z.array(z.unknown()).optional(),
   prompt: z.string().optional(),
@@ -120,6 +126,7 @@ export const GenerateImageRequest = z.object({
   modelId: z.string().min(1).optional(),
   aspectRatio: z.string().min(1).max(20).optional(),
   conversationId: z.string().min(1).optional(),
+  projectId: z.string().min(1).optional(),
   turnId: z.string().min(1).optional(),
   imageUrl: z.string().min(1).optional(),
   temporaryChat: z.boolean().optional(),

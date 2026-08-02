@@ -54,10 +54,7 @@ export function useChatShellPanels({
       ? closeSourcesPanel
       : undefined
   const shellRightPanelWidth = attachmentPreview && attachmentPreviewMode === 'panel' ? 440 : 380
-  const shellRightPanelMode: 'docked' | 'floating' =
-    sourcesPanel && !(attachmentPreview && attachmentPreviewMode === 'panel')
-      ? 'floating'
-      : 'docked'
+  const shellRightPanelMode: 'docked' | 'floating' = 'docked'
 
   return {
     shellRightPanel,

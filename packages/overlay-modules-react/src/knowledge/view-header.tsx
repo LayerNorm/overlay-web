@@ -18,6 +18,7 @@ import {
   SquareMousePointer,
   Trash2,
 } from 'lucide-react'
+import { SegmentedControl } from '@overlay/ui'
 import type {
   KnowledgeFileNode as FileNode,
   KnowledgeOutputFilter as OutputFilter,
@@ -306,27 +307,17 @@ function FilesCategoryControls({
   onChange: (category: FilesCategory) => void
 }) {
   return (
-    <div className="flex h-8 min-h-8 items-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] p-0.5">
-      {FILES_CATEGORY_ITEMS.map(({ id, label, Icon }) => {
-        const active = category === id
-        return (
-          <button
-            type="button"
-            key={id}
-            onClick={() => onChange(id)}
-            aria-current={active ? 'page' : undefined}
-            className={`inline-flex h-7 items-center gap-1.5 rounded px-2 text-[11px] font-medium transition-colors ${
-              active
-                ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
-                : 'text-[var(--muted)] hover:text-[var(--foreground)]'
-            }`}
-          >
-            <Icon size={12} strokeWidth={1.75} />
-            <span className="hidden sm:inline">{label}</span>
-          </button>
-        )
-      })}
-    </div>
+    <SegmentedControl
+      value={category}
+      options={FILES_CATEGORY_ITEMS.map(({ id, label, Icon }) => ({
+        value: id,
+        label,
+        icon: Icon,
+      }))}
+      onChange={onChange}
+      ariaLabel="File category"
+      compactLabels
+    />
   )
 }
 

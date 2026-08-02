@@ -9,6 +9,7 @@ import type { MentionType } from '@/shared/knowledge/mention-types'
 
 const VALID_TYPES: ReadonlySet<MentionType> = new Set([
   'file',
+  'knowledge',
   'connector',
   'automation',
   'skill',

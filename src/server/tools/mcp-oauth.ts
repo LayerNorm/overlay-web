@@ -1,11 +1,12 @@
 import 'server-only'
 
-import { createHash } from 'node:crypto'
+import { scryptSync } from 'node:crypto'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
 import { createGuardedFetch } from '@/server/security/guarded-fetch'
 import {
   createMcpOAuthSessionId,
+  McpCredentialConfigurationError,
   McpCredentialCipher,
   mcpOAuthSessionExpiry,
   McpOAuthProvider,
@@ -38,9 +39,26 @@ export function mcpOAuthRedirectUri(baseUrl: string): string {
   return `${baseUrl.replace(/\/$/, '')}/api/v1/mcps/oauth/callback`
 }
 
-/** Bind a browser-started flow to its session cookie without storing the cookie itself. */
+/**
+ * Bind a browser-started flow to its account without storing the account identifier itself.
+ *
+ * A plain digest is reversible by enumeration for a stable user id. The credential-encryption key
+ * is already required to persist this flow's verifier, so derive a keyed value with scrypt rather
+ * than adding a second secret or storing the identifier in the OAuth state record.
+ */
 export function hashSessionBinding(value: string): string {
-  return createHash('sha256').update(`mcp-oauth-binding:v1:${value}`).digest('hex')
+  const key = process.env.MCP_CREDENTIAL_ENCRYPTION_KEY?.trim()
+  if (!key || key.length < 32) {
+    throw new McpCredentialConfigurationError(
+      'MCP_CREDENTIAL_ENCRYPTION_KEY is required before starting an authenticated MCP OAuth flow',
+    )
+  }
+  return scryptSync(value, `mcp-oauth-binding:v1:${key}`, 32, {
+    N: 16_384,
+    maxmem: 32 * 1024 * 1024,
+    p: 1,
+    r: 8,
+  }).toString('hex')
 }
 
 export const MCP_OAUTH_CONFIRM_COOKIE = 'overlay_mcp_oauth_confirm'

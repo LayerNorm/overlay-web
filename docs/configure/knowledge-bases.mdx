@@ -1,0 +1,77 @@
+---
+title: "Knowledge Bases"
+description: "Create searchable personal and organization brains with durable sources, grounded chat, and authorization-aware sharing."
+---
+
+Knowledge bases turn uploaded files and pasted text into reusable, searchable context. A personal knowledge base belongs to one user. An organization knowledge base uses the same storage and retrieval contracts but is intended for distribution through users, groups, and custom roles.
+
+## User workflow
+
+1. Open **Knowledge** in the application sidebar.
+2. Open **My knowledge** for your private, curated brain, or create another knowledge base.
+3. Drop files into the source panel or add pasted text.
+4. Wait for each source to become **Ready**.
+5. Search the source set or attach the knowledge base to a chat or project.
+6. Open **Share** to grant viewer or editor access.
+
+Assistant responses also expose **Save to My knowledge**. This is an explicit
+capture action: ordinary chats and project files are never indexed into personal
+knowledge automatically.
+
+Viewers can search sources and attach the base to their own chats. Editors can
+also add, disable, retry, and remove sources. Only the owner can delete or
+redistribute the knowledge base through the normal workspace.
+
+## Organization administration
+
+Administrators with `administration.access`, `knowledge.publish`, `knowledge.share`, and `roles.read` see a **Knowledge** section in `/app/admin`. It provides an organization-wide inventory with owner, source, grant, kind, and lifecycle status.
+
+Administrators with `roles.manage` can create organization knowledge bases and manage access grants. Sharing selectors use the persisted user directory and active authorization groups and roles; operators do not need to copy internal IDs.
+
+Common patterns include:
+
+- Grant **viewer** access to a student or client group.
+- Grant **editor** access to a teacher, analyst, or subject-matter-expert role.
+- Share directly with one user for a temporary collaboration.
+
+## Retrieval and citations
+
+Each source is canonical and versioned. Indexing is durable. Search is scoped to enabled sources in the selected knowledge base and combines lexical and semantic retrieval when vector search is configured. Grounded chat receives only authorized source chunks and emits citations that resolve back to the source.
+
+Postgres deployments use the configured durable worker and pgvector path. Convex deployments use the equivalent Convex repositories. The browser and API contracts are identical.
+
+## Authorization requirements
+
+The relevant capabilities are:
+
+| Capability | Purpose |
+| --- | --- |
+| `knowledge.create` | Create a personal or organization knowledge base |
+| `knowledge.read` | List, open, search, and chat with accessible knowledge bases |
+| `knowledge.edit` | Modify metadata and source membership with editor access |
+| `knowledge.share` | List and change grants with owner access |
+| `knowledge.delete` | Delete an owned knowledge base |
+| `knowledge.publish` | Inspect organization-wide knowledge inventory in administration |
+
+Resource grants are additive to capabilities. A user needs both the relevant capability and a sufficient knowledge-base grant. Removing a grant takes effect on the next request.
+
+## Release verification
+
+Run the shared release gate:
+
+```bash
+npm run test:knowledge-bases:phase8
+npm run docs:health
+npm run build
+```
+
+Before deployment, verify with two ordinary accounts and one administrator:
+
+- Private knowledge bases do not appear across accounts.
+- Direct, group, and role grants expose only the intended knowledge base.
+- Viewer users cannot modify sources or grants.
+- Editor users can manage sources but cannot delete or reshare the base.
+- Revocation removes API and UI access immediately.
+- Administrator inventory lists personal and organization bases without changing their ownership.
+- Search and chat citations never include a source outside the selected knowledge base.
+- Account and knowledge-base deletion remove memberships, conversations, grants, chunks, and embeddings according to the deployment retention policy.

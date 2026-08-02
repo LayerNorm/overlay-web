@@ -98,14 +98,24 @@ function createService(
   entitlementPolicy: AutomationEntitlementPolicy = new PaidPlanAutomationEntitlementPolicy(
     async () => 'paid',
   ),
+  projectPolicyOrLifecycleEvents?:
+    | ((args: { projectId: string; userId: string }) => Promise<boolean>)
+    | LifecycleEventPublisher,
   lifecycleEvents?: LifecycleEventPublisher,
 ) {
+  const assertProjectAutomationAllowed = typeof projectPolicyOrLifecycleEvents === 'function'
+    ? projectPolicyOrLifecycleEvents
+    : undefined
+  const resolvedLifecycleEvents = typeof projectPolicyOrLifecycleEvents === 'function'
+    ? lifecycleEvents
+    : projectPolicyOrLifecycleEvents
   const finishedEvents: Array<Record<string, unknown>> = []
   const failedEvents: Array<Record<string, unknown>> = []
   return {
     finishedEvents,
     failedEvents,
     service: new AutomationService({
+      assertProjectAutomationAllowed,
       entitlementPolicy,
       repository,
       clock: { now: () => 1_700_000_000_000 },
@@ -113,11 +123,36 @@ function createService(
         finished: (event) => finishedEvents.push(event),
         failed: (event) => failedEvents.push(event),
       },
-      lifecycleEvents: lifecycleEvents ? () => lifecycleEvents : undefined,
+      lifecycleEvents: resolvedLifecycleEvents ? () => resolvedLifecycleEvents : undefined,
       executor: async () => ({ conversationId: 'conversation_result' as never }),
     }),
   }
 }
+
+test('AutomationService rejects project execution when project policy disables automations', async () => {
+  const { service } = createService(
+    createRepository(),
+    undefined,
+    async () => false,
+  )
+
+  await assert.rejects(
+    () => service.createAutomation({
+      userId: 'user_1',
+      body: {
+        name: 'A',
+        description: 'D',
+        instructions: 'I',
+        projectId: 'project_1',
+        schedule: { kind: 'daily' },
+      },
+    }),
+    (error) =>
+      error instanceof AutomationServiceError &&
+      error.statusCode === 409 &&
+      error.payload.error === 'Automations are disabled for this project',
+  )
+})
 
 test('AutomationService.createAutomation preserves paid-plan requirement', async () => {
   const repository = createRepository()

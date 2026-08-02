@@ -133,6 +133,51 @@ async function resolveOne(
       case 'connector': {
         return `- connector slug=${m.id} name="${safeName}" — Composio tools for this app are available; prefer them over generic web tools.`
       }
+      case 'knowledge': {
+        const service = getOverlayServerContext().knowledgeBaseService
+        const knowledgeBase = await service
+          .getKnowledgeBase({ knowledgeBaseId: m.id, userId })
+          .catch((_error) => null)
+        if (!knowledgeBase) {
+          return `- knowledge id=${m.id} name="${safeName}" — (not found or inaccessible)`
+        }
+        const description = knowledgeBase.description
+          ? `description="${knowledgeBase.description.slice(0, 160)}"`
+          : 'curated retrieval corpus'
+        // The source manifest is included inline so the model never has to guess
+        // what a knowledge base contains. Without it, a vaguely named base (say
+        // "Notes") invites the model to answer from unrelated files and in-app
+        // notes that merely share the name.
+        const sources = await service
+          .listSources({ knowledgeBaseId: knowledgeBase.id, userId })
+          .catch((_error) => [])
+        const retrievable = sources.filter(
+          ({ membership, source }) => membership.enabled && source.status === 'ready',
+        )
+        const title = knowledgeBase.title || safeName
+        const header = `- knowledge id=${knowledgeBase.id} name="${title}" — ${description}`
+        if (sources.length === 0) {
+          return `${header}\n  (this knowledge base currently has no sources; say so rather than`
+            + ' describing other files)'
+        }
+        const listed = retrievable
+          .slice(0, MAX_LISTED_KNOWLEDGE_SOURCES)
+          .map(({ source }) => `    - ${source.title}`)
+          .join('\n')
+        const overflow = retrievable.length > MAX_LISTED_KNOWLEDGE_SOURCES
+          ? `\n    - (+${retrievable.length - MAX_LISTED_KNOWLEDGE_SOURCES} more;`
+            + ' call list_knowledge_base_sources for the full list)'
+          : ''
+        const pending = sources.length - retrievable.length
+        const pendingNote = pending > 0
+          ? `\n  ${pending} further source(s) are disabled or still processing and are not retrievable.`
+          : ''
+        return `${header}\n  This knowledge base contains exactly ${retrievable.length}`
+          + ` retrievable source(s), and nothing else:\n${listed}${overflow}${pendingNote}`
+          + '\n  Treat this list as authoritative. Do not attribute any other file, note, or'
+          + ` document to "${title}". Use search_knowledge_base or read_knowledge_source for its`
+          + ' contents; search_knowledge and list_notes are account-wide and will return unrelated material.'
+      }
       case 'chat': {
         const c = await convex
           .query<ConversationDoc | null>('chat/conversations:get', {
@@ -154,6 +199,9 @@ async function resolveOne(
     return `- ${m.type} id=${m.id} name="${safeName}"`
   }
 }
+
+/** Keeps the injected manifest bounded; the tool returns the full list. */
+const MAX_LISTED_KNOWLEDGE_SOURCES = 25
 
 export async function resolveMentionsContext(
   mentions: IncomingMention[] | undefined,

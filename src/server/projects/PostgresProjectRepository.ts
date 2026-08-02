@@ -47,6 +47,7 @@ export class PostgresProjectRepository implements ProjectRepository {
   }
 
   async listProjects(args: {
+    includeArchived?: boolean
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
@@ -58,6 +59,7 @@ export class PostgresProjectRepository implements ProjectRepository {
       .where(and(
         eq(projects.userId, args.userId),
         args.includeDeleted ? undefined : isNull(projects.deletedAt),
+        args.includeArchived ? undefined : isNull(projects.archivedAt),
         updatedSince ? gt(projects.updatedAt, updatedSince) : undefined,
       ))
       .orderBy(asc(projects.createdAt))
@@ -67,8 +69,10 @@ export class PostgresProjectRepository implements ProjectRepository {
   async createProject(args: {
     clientId?: string
     instructions?: string
+    knowledgeBaseId?: string | null
     name: string
     parentId?: string | null
+    settings?: Record<string, unknown>
     userId: string
   }): Promise<ProjectRecord> {
     return await this.db.transaction(async (tx) => {
@@ -81,7 +85,9 @@ export class PostgresProjectRepository implements ProjectRepository {
         clientId: normalizeOptional(args.clientId),
         name: args.name,
         instructions: normalizeOptional(args.instructions),
+        knowledgeBaseId: normalizeOptional(args.knowledgeBaseId),
         parentId: normalizeOptional(args.parentId),
+        settings: args.settings ?? {},
         createdAt: now,
         updatedAt: now,
       }
@@ -109,7 +115,9 @@ export class PostgresProjectRepository implements ProjectRepository {
             .update(projects)
             .set({
               deletedAt: null,
+              archivedAt: null,
               instructions: values.instructions,
+              knowledgeBaseId: values.knowledgeBaseId,
               name: values.name,
               parentId: values.parentId,
               updatedAt: now,
@@ -131,10 +139,13 @@ export class PostgresProjectRepository implements ProjectRepository {
   }
 
   async updateProject(args: {
+    archivedAt?: number | null
     instructions?: string | null
+    knowledgeBaseId?: string | null
     name?: string
     parentId?: string | null
     projectId: string
+    settings?: Record<string, unknown>
     userId: string
   }): Promise<ProjectRecord | null> {
     return await this.db.transaction(async (tx) => {
@@ -159,9 +170,16 @@ export class PostgresProjectRepository implements ProjectRepository {
       const [row] = await tx
         .update(projects)
         .set({
+          ...(args.archivedAt !== undefined
+            ? { archivedAt: args.archivedAt === null ? null : new Date(args.archivedAt) }
+            : {}),
           ...(args.instructions !== undefined ? { instructions: args.instructions } : {}),
+          ...(args.knowledgeBaseId !== undefined
+            ? { knowledgeBaseId: normalizeOptional(args.knowledgeBaseId) }
+            : {}),
           ...(args.name !== undefined ? { name: args.name } : {}),
           ...(args.parentId !== undefined ? { parentId: normalizeOptional(args.parentId) } : {}),
+          ...(args.settings !== undefined ? { settings: args.settings } : {}),
           updatedAt: new Date(),
         })
         .where(and(
@@ -358,9 +376,12 @@ function mapProjectRow(row: ProjectRow): ProjectRecord {
     clientId: row.clientId ?? undefined,
     name: row.name,
     instructions: row.instructions ?? undefined,
+    knowledgeBaseId: row.knowledgeBaseId ?? undefined,
     parentId: row.parentId ?? undefined,
+    settings: row.settings ?? {},
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
+    archivedAt: row.archivedAt?.getTime(),
     deletedAt: row.deletedAt?.getTime(),
   }
 }
@@ -383,6 +404,7 @@ async function assertValidParent(
     .where(and(
       eq(projects.id, args.parentId),
       eq(projects.userId, args.userId),
+      isNull(projects.archivedAt),
       isNull(projects.deletedAt),
     ))
     .limit(1)
@@ -401,7 +423,7 @@ function validateParentChange(
   }
   const byId = new Map(allProjects.map((project) => [project.id, project]))
   const parent = byId.get(args.parentId)
-  if (!parent || parent.userId !== args.userId || parent.deletedAt) {
+  if (!parent || parent.userId !== args.userId || parent.archivedAt || parent.deletedAt) {
     throw new ProjectRepositoryError('Invalid parent project', 'invalid_parent')
   }
   const seen = new Set<string>([args.projectId])

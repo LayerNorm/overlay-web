@@ -63,6 +63,254 @@ test('file methods preserve route paths, methods, queries, and JSON bodies', asy
   assert.equal(calls[4]!.init?.method, undefined)
 })
 
+test('agent methods preserve workspace selection and lifecycle payloads', async () => {
+  const { calls, client } = createRecordedClient()
+  await client.agents.list('workspace_1')
+  await client.agents.create('workspace_1', {
+    name: 'Scout', instructions: 'Find primary evidence.', modelId: 'openrouter/free',
+    teamIds: ['team_1'],
+  })
+  await client.agents.update('workspace_1', 'agent/1', { name: 'Scout Prime' })
+  await client.agents.archive('workspace_1', 'agent/1')
+
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/agents')
+  assert.equal(new Headers(calls[0]!.init?.headers).get('x-overlay-workspace-id'), 'workspace_1')
+  assert.equal(calls[1]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[1]!), {
+    name: 'Scout', instructions: 'Find primary evidence.', modelId: 'openrouter/free', teamIds: ['team_1'],
+  })
+  assert.equal(String(calls[2]!.input), 'https://example.test/api/v1/agents/agent%2F1')
+  assert.equal(calls[2]!.init?.method, 'PATCH')
+  assert.equal(calls[3]!.init?.method, 'DELETE')
+})
+
+test('authorization administration methods preserve resource routes and payloads', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.adminAuthorization.createRoleResponse({
+    name: 'Knowledge publisher',
+    capabilities: ['knowledge.read', 'knowledge.publish'],
+  })
+  await client.adminAuthorization.createGroupResponse({ name: 'Curriculum team' })
+  await client.adminAuthorization.addMembershipResponse({ groupId: 'group_1', userId: 'user_1' })
+  await client.adminAuthorization.assignRoleResponse({
+    subjectType: 'group',
+    subjectId: 'group_1',
+    roleId: 'role_1',
+  })
+  await client.adminAuthorization.listRoleAssignments('role_1')
+  await client.adminAuthorization.upsertResourceGrantResponse({
+    resourceType: 'knowledge_base',
+    resourceId: 'kb_1',
+    principalType: 'group',
+    principalId: 'group_1',
+    accessRole: 'editor',
+  })
+
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/admin/authorization/roles')
+  assert.equal(calls[0]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[0]!), {
+    name: 'Knowledge publisher',
+    capabilities: ['knowledge.read', 'knowledge.publish'],
+  })
+  assert.equal(String(calls[1]!.input), 'https://example.test/api/v1/admin/authorization/groups')
+  assert.equal(String(calls[2]!.input), 'https://example.test/api/v1/admin/authorization/memberships')
+  assert.equal(String(calls[3]!.input), 'https://example.test/api/v1/admin/authorization/assignments')
+  assert.equal(String(calls[4]!.input), 'https://example.test/api/v1/admin/authorization/assignments?roleId=role_1')
+  assert.equal(String(calls[5]!.input), 'https://example.test/api/v1/admin/authorization/grants')
+  assert.deepEqual(await jsonBody(calls[5]!), {
+    resourceType: 'knowledge_base',
+    resourceId: 'kb_1',
+    principalType: 'group',
+    principalId: 'group_1',
+    accessRole: 'editor',
+  })
+})
+
+test('authorization administration list methods preserve forbidden status', async () => {
+  const client = createOverlayAppClient({
+    baseUrl: 'https://example.test',
+    fetch: async () => Response.json({ error: 'Forbidden' }, { status: 403 }),
+  })
+
+  await assert.rejects(
+    client.adminAuthorization.listCapabilities(),
+    (error: Error & { status?: number }) => error.message === 'Forbidden' && error.status === 403,
+  )
+})
+
+test('governance administration preserves policy, review, and export contracts', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.adminGovernance.createPolicy({
+    resourceType: 'knowledge_base',
+    resourceId: 'kb_1',
+    legalHold: true,
+    retentionUntil: 1_900_000_000_000,
+  })
+  await client.adminGovernance.decidePolicy({ policyId: 'policy_1', action: 'approve' })
+  await client.adminGovernance.createAccessReview({
+    resourceType: 'project',
+    resourceId: 'project_1',
+  })
+  await client.adminGovernance.completeAccessReview({ reviewId: 'review_1' })
+
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/admin/governance/policies')
+  assert.equal(calls[0]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[0]!), {
+    resourceType: 'knowledge_base',
+    resourceId: 'kb_1',
+    legalHold: true,
+    retentionUntil: 1_900_000_000_000,
+  })
+  assert.equal(calls[1]!.init?.method, 'PATCH')
+  assert.deepEqual(await jsonBody(calls[1]!), {
+    policyId: 'policy_1',
+    action: 'approve',
+  })
+  assert.equal(String(calls[2]!.input), 'https://example.test/api/v1/admin/governance/reviews')
+  assert.equal(calls[2]!.init?.method, 'POST')
+  assert.equal(calls[3]!.init?.method, 'PATCH')
+  assert.equal(
+    client.adminGovernance.exportUrl({
+      resourceType: 'project',
+      resourceId: 'project_1',
+      format: 'csv',
+    }),
+    '/api/v1/admin/governance/export?resourceType=project&resourceId=project_1&format=csv',
+  )
+})
+
+test('knowledge-base source operations preserve diagnostics and reindex contracts', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.knowledgeBases.createSource('kb_1', {
+    kind: 'url',
+    ref: 'https://example.test/handbook',
+    title: 'Handbook',
+  })
+  await client.knowledgeBases.diagnostics('kb_1')
+  await client.knowledgeBases.extractionPreview('kb_1', 'source_1', 5000)
+  await client.knowledgeBases.reindex('kb_1', { sourceId: 'source_1' })
+  await client.knowledgeBases.reindex('kb_1', { onlyStale: true })
+
+  assert.equal(String(calls[0]!.input), 'https://example.test/api/v1/knowledge-bases/kb_1/sources')
+  assert.equal(calls[0]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[0]!), {
+    kind: 'url',
+    ref: 'https://example.test/handbook',
+    title: 'Handbook',
+  })
+  assert.equal(String(calls[1]!.input), 'https://example.test/api/v1/knowledge-bases/kb_1/diagnostics')
+  assert.equal(
+    String(calls[2]!.input),
+    'https://example.test/api/v1/knowledge-bases/kb_1/diagnostics?sourceId=source_1&previewLimit=5000',
+  )
+  assert.equal(String(calls[3]!.input), 'https://example.test/api/v1/knowledge-bases/kb_1/reindex')
+  assert.deepEqual(await jsonBody(calls[3]!), { sourceId: 'source_1' })
+  assert.deepEqual(await jsonBody(calls[4]!), { onlyStale: true })
+})
+
+test('personal knowledge capture remains an explicit API operation', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.knowledgeBases.listPersonal()
+  await client.knowledgeBases.ensurePersonal()
+  await client.projects.transfer({
+    direction: 'save-answer',
+    knowledgeBaseId: 'kb_personal',
+    conversationId: 'conversation_1',
+    messageId: 'message_1',
+    content: 'A durable answer.',
+    title: 'Durable answer',
+  })
+
+  assert.equal(
+    String(calls[0]!.input),
+    'https://example.test/api/v1/knowledge-bases/personal',
+  )
+  assert.equal(calls[0]!.init?.method, undefined)
+  assert.equal(
+    String(calls[1]!.input),
+    'https://example.test/api/v1/knowledge-bases/personal',
+  )
+  assert.equal(calls[1]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[1]!), {})
+  assert.equal(
+    String(calls[2]!.input),
+    'https://example.test/api/v1/projects/knowledge-transfer',
+  )
+  assert.equal(calls[2]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[2]!), {
+    direction: 'save-answer',
+    knowledgeBaseId: 'kb_personal',
+    conversationId: 'conversation_1',
+    messageId: 'message_1',
+    content: 'A durable answer.',
+    title: 'Durable answer',
+  })
+})
+
+test('workspace methods preserve canonical routes, selector headers, and mutation bodies', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.workspaces.management('workspace_1', 'people')
+  await client.workspaces.invite('workspace_1', {
+    email: 'member@example.com',
+    role: 'member',
+  })
+  await client.workspaces.updateMember('workspace_1', {
+    action: 'set-role',
+    principalId: 'principal_1',
+    role: 'admin',
+  })
+  await client.workspaces.createTeam('workspace_1', {
+    name: 'Research',
+    description: 'Research people and agents',
+  })
+  await client.workspaces.addTeamMember('workspace_1', 'team_1', {
+    principalId: 'principal_1',
+  })
+  await client.workspaces.acceptInvitation('invitation_1')
+
+  assert.equal(
+    String(calls[0]!.input),
+    'https://example.test/api/v1/workspaces/workspace_1/management?view=people',
+  )
+  assert.equal(new Headers(calls[0]!.init?.headers).get('x-overlay-workspace-id'), 'workspace_1')
+  assert.equal(
+    String(calls[1]!.input),
+    'https://example.test/api/v1/workspaces/workspace_1/invitations',
+  )
+  assert.equal(calls[1]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[1]!), {
+    email: 'member@example.com',
+    role: 'member',
+  })
+  assert.equal(calls[2]!.init?.method, 'PATCH')
+  assert.deepEqual(await jsonBody(calls[2]!), {
+    action: 'set-role',
+    principalId: 'principal_1',
+    role: 'admin',
+  })
+  assert.equal(
+    String(calls[3]!.input),
+    'https://example.test/api/v1/workspaces/workspace_1/teams',
+  )
+  assert.deepEqual(await jsonBody(calls[3]!), {
+    name: 'Research',
+    description: 'Research people and agents',
+  })
+  assert.equal(
+    String(calls[4]!.input),
+    'https://example.test/api/v1/workspaces/workspace_1/teams/team_1/members',
+  )
+  assert.equal(
+    String(calls[5]!.input),
+    'https://example.test/api/v1/workspace-invitations/invitation_1/accept',
+  )
+})
+
 test('file mutations accept null parent and project IDs', async () => {
   const { calls, client } = createRecordedClient()
 

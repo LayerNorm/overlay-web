@@ -2,6 +2,7 @@ import type { ConversationMessage, ConversationSummary } from '@overlay/app-core
 import type { PaginationQuery } from '../shared/types'
 
 export interface ConversationQuery extends PaginationQuery {
+  view?: 'personal' | 'dms' | 'channels' | 'unread' | 'all'
   conversationId?: string
   messages?: boolean
   projectId?: string
@@ -9,6 +10,9 @@ export interface ConversationQuery extends PaginationQuery {
   includeDeleted?: boolean
   limit?: number
   beforeCreatedAt?: number
+  mainOnly?: boolean
+  threadRootMessageId?: string
+  messageId?: string
   compactToolPayloads?: boolean
 }
 
@@ -23,12 +27,14 @@ export type ConversationGetResponse =
     }
 
 export interface CreateConversationRequest {
+  conversationType?: 'personal' | 'dm' | 'channel'
   title?: string
   projectId?: string
   askModelIds?: string[]
   actModelId?: string
   lastMode?: 'ask' | 'act'
   clientId?: string
+  knowledgeBaseId?: string
 }
 
 export interface CreateConversationResponse {
@@ -45,6 +51,7 @@ export interface UpdateConversationRequest {
   askModelIds?: string[]
   actModelId?: string
   lastModified?: number
+  knowledgeBaseId?: string | null
 }
 
 export interface ConversationMessageRequest {
@@ -63,6 +70,11 @@ export interface ConversationMessageRequest {
   replySnippet?: string
   accessToken?: string
   userId?: string
+  clientNonce?: string
+  threadRootMessageId?: string
+  mentionedPrincipalIds?: string[]
+  /** Caller streams the agent reply itself via `agentReplyStream`. */
+  deferAgentReply?: boolean
 }
 
 export type ActConversationRequest = Record<string, unknown>

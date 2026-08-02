@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { isVerifiedChatStreamRelayRequest } from '@/server/chat/chat-stream-relay-auth'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     const conversation = await getOverlayServerContext().appData.repositories.conversations.getConversationById({
       conversationId: conversationId as Id<'conversations'>,
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
     })
     if (!conversation) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })

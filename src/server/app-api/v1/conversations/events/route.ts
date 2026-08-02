@@ -8,7 +8,10 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
   const repository = getOverlayServerContext().appData.repositories.conversations
   const rawAfter = request.nextUrl.searchParams.get('after')
   if (rawAfter === null) {
-    const cursor = await repository.getConversationEventCursor({ userId: context.auth.userId })
+    const cursor = await repository.getConversationEventCursor({
+      userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+    })
     return NextResponse.json({ cursor, events: [] }, { headers: noStoreHeaders() })
   }
 
@@ -23,6 +26,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     signal: request.signal,
     timeoutMs: LONG_POLL_MS,
     userId: context.auth.userId,
+    workspaceId: context.workspace.workspace.id,
   })
 
   return NextResponse.json({

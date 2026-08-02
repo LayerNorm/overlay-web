@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, getGrantedResources, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { repositoryProxy } from '@/server/app-data/errors'
 import { handleRouteError } from '@/server/app-api/route-errors'
 import { readValidatedJson, readValidatedQuery } from '@/server/app-api/validated-input'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { KnowledgeBaseServiceError } from '@/server/knowledge-bases'
 import {
   ProjectService,
   ProjectServiceError,
@@ -15,9 +16,51 @@ import {
   ProjectListQuery,
   UpdateProjectRequest,
 } from '@/shared/schemas/projects'
+import {
+  projectAutomationsEnabled,
+  readProjectSettings,
+} from '@/shared/projects/project-settings'
+import { suspendProjectAutomations } from '@/server/projects/suspendProjectAutomations'
 const projectService = new ProjectService(repositoryProxy<ProjectRepository>(
   () => getOverlayServerContext().appData.repositories.projects,
-))
+), {
+  assertKnowledgeBaseAccess: async ({ knowledgeBaseId, userId }) => {
+    try {
+      await getOverlayServerContext().knowledgeBaseService.getKnowledgeBase({
+        knowledgeBaseId,
+        userId,
+      })
+    } catch (error) {
+      if (error instanceof KnowledgeBaseServiceError) {
+        throw new ProjectServiceError(error.message, error.statusCode)
+      }
+      throw error
+    }
+  },
+  assertProjectDeletion: async (projectId) => {
+    try {
+      await getOverlayServerContext().governanceService.assertDeletionAllowed({
+        resourceType: 'project',
+        resourceId: projectId,
+      })
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error) {
+        throw new ProjectServiceError(
+          error.message,
+          Number((error as { statusCode: number }).statusCode),
+        )
+      }
+      throw error
+    }
+  },
+  afterProjectDeletion: async (projectIds) => {
+    await Promise.all(projectIds.map((resourceId) =>
+      getOverlayServerContext().governanceService.removeForDeletedResource({
+        resourceType: 'project',
+        resourceId,
+      })))
+  },
+})
 
 function readBooleanParam(value: string | null): boolean | undefined {
   if (value == null) return undefined
@@ -31,13 +74,12 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const queryResult = readValidatedQuery(request, context, ProjectListQuery)
     if (!queryResult.ok) return queryResult.response
     const query = queryResult.data
-    const { auth } = context
     const projectId = query.projectId ?? null
 
     if (projectId) {
       const project = await projectService.getProject({
         projectId,
-        userId: auth.userId,
+        userId: getAuthorizedResourceUserId(context),
       })
       if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
       return NextResponse.json(project)
@@ -45,14 +87,19 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     const updatedSinceParam = query.updatedSince
     const updatedSince = updatedSinceParam ? Number(updatedSinceParam) : undefined
+    const includeArchived = readBooleanParam(query.includeArchived ?? null)
     const includeDeleted = readBooleanParam(query.includeDeleted ?? null)
 
     const projects = await projectService.listProjects({
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
       ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
+      ...(includeArchived !== undefined ? { includeArchived } : {}),
       ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })
-    return NextResponse.json(projects || [])
+    const granted = await Promise.all(getGrantedResources(context).map(({ ownerUserId, resourceId }) => (
+      projectService.getProject({ projectId: resourceId, userId: ownerUserId })
+    )))
+    return NextResponse.json([...(projects || []), ...granted.filter(Boolean)])
   } catch (error) {
     return handleRouteError(error, {
       route: 'projects',
@@ -67,14 +114,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const bodyResult = await readValidatedJson(request, context, CreateProjectRequest)
     if (!bodyResult.ok) return bodyResult.response
     const body = bodyResult.data
-    const { auth } = context
-    const { name, parentId, instructions, clientId } = body
+    const { name, parentId, instructions, knowledgeBaseId, clientId, settings } = body
     const project = await projectService.createProject({
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
       clientId: clientId?.trim() || undefined,
       name,
       instructions: instructions?.trim() || undefined,
+      knowledgeBaseId,
       parentId,
+      settings,
     })
     return NextResponse.json({ id: project._id, project })
   } catch (error) {
@@ -94,16 +142,25 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const bodyResult = await readValidatedJson(request, context, UpdateProjectRequest)
     if (!bodyResult.ok) return bodyResult.response
     const body = bodyResult.data
-    const { auth } = context
-    const { projectId, name, instructions, parentId } = body
+    const { projectId, name, instructions, knowledgeBaseId, parentId, archived, settings } = body
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
     const project = await projectService.updateProject({
       projectId,
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
       name,
       instructions,
+      knowledgeBaseId,
       parentId,
+      archived,
+      settings,
     })
+    if (archived === true || !projectAutomationsEnabled(readProjectSettings(project.settings))) {
+      await suspendProjectAutomations({
+        repository: getOverlayServerContext().appData.repositories.automations,
+        projectId,
+        userId: getAuthorizedResourceUserId(context),
+      })
+    }
     return NextResponse.json({ success: true, project })
   } catch (error) {
     if (error instanceof ProjectServiceError) {
@@ -122,12 +179,11 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     const queryResult = readValidatedQuery(request, context, DeleteProjectRequest)
     if (!queryResult.ok) return queryResult.response
     const query = queryResult.data
-    const { auth } = context
     const projectId = query.projectId ?? null
     if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
     const result = await projectService.deleteProjectTree({
       projectId,
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
     })
     return NextResponse.json({
       success: true,

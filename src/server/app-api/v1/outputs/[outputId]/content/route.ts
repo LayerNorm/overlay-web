@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { outputService } from '@/server/outputs/http'
 
 export const runtime = 'nodejs'
@@ -12,7 +12,7 @@ export async function GET(
   const { outputId } = await context.params as { outputId: string }
   const result = await outputService.content({
     outputId,
-    userId: context.auth.userId,
+    userId: getAuthorizedResourceUserId(context),
   })
 
   if (result.kind === 'json') return Response.json(result.payload, { status: result.status })

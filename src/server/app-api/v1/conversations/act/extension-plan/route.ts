@@ -26,6 +26,7 @@ import {
   releaseProviderBudgetReservation,
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
+import { authorizeCatalogResource } from '@/server/authorization'
 
 export const maxDuration = 120
 
@@ -313,6 +314,25 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const effectiveModelId: string = isLegacyFreeTierDefaultModelId(requestedModelId)
       ? FREE_TIER_DEFAULT_MODEL_ID
       : requestedModelId
+    const authorizationService = getOverlayServerContext().authorizationService
+    const modelDenied = await authorizeCatalogResource({
+      authorization: authorizationService,
+      capability: 'models.use',
+      context,
+      resourceId: effectiveModelId,
+      resourceType: 'model',
+    })
+    if (modelDenied) return modelDenied
+    const toolDenied = await authorizeCatalogResource({
+      authorization: authorizationService,
+      capability: 'tools.use',
+      context,
+      resourceId: 'browser',
+      resourceType: 'tool',
+    })
+    if (toolDenied) return toolDenied
+    // Entitlements come from the provider-neutral usage policy rather than a
+    // direct Convex query, so this route works on the Postgres provider too.
     const entitlements = await getOverlayServerContext().generationUsagePolicy.getEntitlements({
       userId: auth.userId,
     })

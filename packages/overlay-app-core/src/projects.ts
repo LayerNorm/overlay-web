@@ -6,7 +6,7 @@ export const PROJECT_META_UPDATED_EVENT = 'overlay:project-meta-updated'
 export const PROJECTS_CHANGED_EVENT = 'overlay:projects-changed'
 
 export type ProjectRouteView = 'chat' | 'note' | 'file'
-export type ProjectHubTab = 'chats' | 'files' | 'instructions'
+export type ProjectHubTab = 'chat' | 'files' | 'settings'
 
 export interface ProjectMetaUpdatedDetail {
   projectId?: string

@@ -108,6 +108,7 @@ test('builds pending-first and normal act bodies without null conversation ids',
     pendingConversationClientId: 'client-1',
     temporaryChatSnapshot: false,
     embedProjectId: 'project-1',
+    knowledgeBaseId: 'knowledge-1',
     textModelsForTurn: ['model-a'],
     turnId: 'turn-1',
     requestMode: 'automate',
@@ -124,6 +125,7 @@ test('builds pending-first and normal act bodies without null conversation ids',
   const pendingRecord = pendingBody as Record<string, unknown>
   assert.equal(pendingRecord.conversationClientId, 'client-1')
   assert.equal(pendingRecord.projectId, 'project-1')
+  assert.deepEqual(pendingRecord.knowledgeBaseIds, ['knowledge-1'])
   assert.equal(pendingRecord.conversationId, undefined)
   assert.equal(pendingRecord.automationId, 'automation-1')
   assert.deepEqual(pendingRecord.askModelIds, ['model-a'])
@@ -133,6 +135,7 @@ test('builds pending-first and normal act bodies without null conversation ids',
     pendingConversationClientId: null,
     temporaryChatSnapshot: false,
     embedProjectId: null,
+    knowledgeBaseId: undefined,
     textModelsForTurn: ['model-a'],
     turnId: 'turn-1',
     requestMode: 'chat',
@@ -147,6 +150,59 @@ test('builds pending-first and normal act bodies without null conversation ids',
   const normalRecord = normalBody as Record<string, unknown>
   assert.equal(normalRecord.conversationId, 'chat-1')
   assert.equal(normalRecord.conversationClientId, undefined)
+
+  const mentionedKnowledgeBody = buildCommonActBody({
+    chatId: 'chat-2',
+    pendingConversationClientId: null,
+    temporaryChatSnapshot: false,
+    embedProjectId: null,
+    knowledgeBaseId: undefined,
+    textModelsForTurn: ['model-a'],
+    turnId: 'turn-2',
+    requestMode: 'chat',
+    automationIdParam: null,
+    indexedFileNames: [],
+    indexedAttachments: [],
+    replyContext: null,
+    userMeta: {
+      mentions: [{ type: 'knowledge', id: 'knowledge-mentioned', name: 'Policy library' }],
+    },
+    selectedToolIdsSnapshot: [],
+    memoryEnabledSnapshot: false,
+  })
+  assert.deepEqual(
+    (mentionedKnowledgeBody as Record<string, unknown>).knowledgeBaseIds,
+    ['knowledge-mentioned'],
+  )
+
+  // An explicit mention narrows the turn: the project's base must not be unioned in.
+  const narrowedBody = buildCommonActBody({
+    chatId: 'chat-3',
+    pendingConversationClientId: null,
+    temporaryChatSnapshot: false,
+    embedProjectId: 'project-1',
+    knowledgeBaseId: 'project-knowledge',
+    textModelsForTurn: ['model-a'],
+    turnId: 'turn-3',
+    requestMode: 'chat',
+    automationIdParam: null,
+    indexedFileNames: [],
+    indexedAttachments: [],
+    replyContext: null,
+    userMeta: {
+      mentions: [
+        { type: 'knowledge', id: 'mentioned-a', name: 'Handbook' },
+        { type: 'knowledge', id: 'mentioned-a', name: 'Handbook' },
+        { type: 'knowledge', id: 'mentioned-b', name: 'Policies' },
+      ],
+    },
+    selectedToolIdsSnapshot: [],
+    memoryEnabledSnapshot: false,
+  })
+  assert.deepEqual(
+    (narrowedBody as Record<string, unknown>).knowledgeBaseIds,
+    ['mentioned-a', 'mentioned-b'],
+  )
 })
 
 test('builds media prompt with reply context only when user text exists', () => {

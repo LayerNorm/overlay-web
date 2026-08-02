@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import { durableJobs } from '@/server/database/postgres/schema'
+import { durableJobAuthorization } from '@/server/jobs/DurableJobAuthorization'
 
 export const MEMORY_EXTRACT_TURN_JOB = 'memory.extract-turn'
 
@@ -24,7 +25,10 @@ export async function enqueueMemoryExtractionJob(db: JobDb, args: {
     dedupeKey,
     id,
     maxAttempts: 5,
-    payload: args,
+    payload: {
+      ...args,
+      ...durableJobAuthorization(args.userId, ['memory.use']),
+    },
     priority: 10,
     type: MEMORY_EXTRACT_TURN_JOB,
   }).onConflictDoNothing().returning({ id: durableJobs.id })

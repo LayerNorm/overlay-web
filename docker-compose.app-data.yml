@@ -1,6 +1,8 @@
 services:
   app-data-postgres:
-    image: postgres:16-alpine
+    # App-data migrations install the pgvector extension. Keep the local
+    # contract-test database on the same PostgreSQL 16 + pgvector baseline.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${OVERLAY_POSTGRES_DB:-overlay_app}
       POSTGRES_USER: ${OVERLAY_POSTGRES_USER:-overlay_app}

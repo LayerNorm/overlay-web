@@ -13,6 +13,7 @@ import {
 } from '@/server/database/postgres/schema'
 import { computeNextAutomationRunAt, normalizeAutomationSchedule } from './AutomationSchedule'
 import type { AutomationSchedule } from './AutomationRepository'
+import { durableJobAuthorization } from '@/server/jobs/DurableJobAuthorization'
 
 export const AUTOMATION_SCHEDULE_DUE_JOB = 'automation.schedule-due'
 export const AUTOMATION_EXECUTE_JOB = 'automation.execute'
@@ -115,7 +116,10 @@ export class PostgresAutomationRunCoordinator {
               dedupeKey: `automation-run:${runId}`,
               id: jobId,
               maxAttempts: 5,
-              payload: { runId },
+              payload: {
+                runId,
+                ...durableJobAuthorization(item.userId, ['automations.use', 'models.use']),
+              },
               priority: 10,
               type: AUTOMATION_EXECUTE_JOB,
             })
@@ -251,10 +255,56 @@ export class PostgresAutomationRunCoordinator {
     now?: number
     result?: Record<string, unknown>
     runId: string
-  }): Promise<void> {
+  }): Promise<'cancelled' | 'succeeded' | 'terminal'> {
     const now = new Date(args.now ?? Date.now())
-    await this.db.transaction(async (tx) => {
-      const [run] = await tx
+    return await this.db.transaction(async (tx) => {
+      const rows = await tx.execute<{
+        automation_id: string
+        cancellation_requested_at: Date | string | null
+        status: string
+      }>(sql`
+        SELECT automation_id, cancellation_requested_at, status
+        FROM automation_runs
+        WHERE id = ${args.runId}
+        FOR UPDATE
+      `)
+      const current = rows.rows[0]
+      if (!current || ['succeeded', 'completed', 'failed', 'cancelled', 'skipped', 'dead_letter'].includes(current.status)) {
+        return 'terminal'
+      }
+      if (current.cancellation_requested_at || current.status === 'cancel_requested') {
+        await tx
+          .update(automationRuns)
+          .set({
+            completedAt: now,
+            error: 'Cancelled while execution was in progress',
+            status: 'cancelled',
+            updatedAt: now,
+          })
+          .where(eq(automationRuns.id, args.runId))
+        await tx
+          .update(automationRunAttempts)
+          .set({
+            completedAt: now,
+            error: 'Result discarded because cancellation was requested',
+            status: 'cancelled',
+          })
+          .where(and(
+            eq(automationRunAttempts.runId, args.runId),
+            eq(automationRunAttempts.attemptNumber, args.attemptNumber),
+          ))
+        await tx
+          .update(automations)
+          .set({
+            lastError: null,
+            lastRunAt: now,
+            lastRunStatus: 'cancelled',
+            updatedAt: now,
+          })
+          .where(eq(automations.id, current.automation_id))
+        return 'cancelled'
+      }
+      await tx
         .update(automationRuns)
         .set({
           completedAt: now,
@@ -264,11 +314,7 @@ export class PostgresAutomationRunCoordinator {
           status: 'succeeded',
           updatedAt: now,
         })
-        .where(and(
-          eq(automationRuns.id, args.runId),
-          inArray(automationRuns.status, ['running', 'cancel_requested']),
-        ))
-        .returning({ automationId: automationRuns.automationId })
+        .where(eq(automationRuns.id, args.runId))
       await tx
         .update(automationRunAttempts)
         .set({ completedAt: now, result: args.result, status: 'succeeded' })
@@ -276,18 +322,17 @@ export class PostgresAutomationRunCoordinator {
           eq(automationRunAttempts.runId, args.runId),
           eq(automationRunAttempts.attemptNumber, args.attemptNumber),
         ))
-      if (run) {
-        await tx
-          .update(automations)
-          .set({
-            conversationId: args.conversationId,
-            lastError: null,
-            lastRunAt: now,
-            lastRunStatus: 'succeeded',
-            updatedAt: now,
-          })
-          .where(eq(automations.id, run.automationId))
-      }
+      await tx
+        .update(automations)
+        .set({
+          conversationId: args.conversationId,
+          lastError: null,
+          lastRunAt: now,
+          lastRunStatus: 'succeeded',
+          updatedAt: now,
+        })
+        .where(eq(automations.id, current.automation_id))
+      return 'succeeded'
     })
   }
 
@@ -297,38 +342,57 @@ export class PostgresAutomationRunCoordinator {
     now?: number
     runId: string
     terminal: boolean
-  }): Promise<void> {
+  }): Promise<'cancelled' | 'failed' | 'terminal'> {
     const now = new Date(args.now ?? Date.now())
     const error = args.error.slice(0, 4_000)
-    await this.db.transaction(async (tx) => {
-      const [run] = await tx
+    return await this.db.transaction(async (tx) => {
+      const rows = await tx.execute<{
+        automation_id: string
+        cancellation_requested_at: Date | string | null
+        status: string
+      }>(sql`
+        SELECT automation_id, cancellation_requested_at, status
+        FROM automation_runs
+        WHERE id = ${args.runId}
+        FOR UPDATE
+      `)
+      const current = rows.rows[0]
+      if (!current || ['succeeded', 'completed', 'failed', 'cancelled', 'skipped', 'dead_letter'].includes(current.status)) {
+        return 'terminal'
+      }
+      const cancelled = Boolean(
+        current.cancellation_requested_at || current.status === 'cancel_requested',
+      )
+      await tx
         .update(automationRuns)
         .set({
-          ...(args.terminal ? { completedAt: now } : {}),
-          error,
-          status: args.terminal ? 'dead_letter' : 'queued',
+          ...(args.terminal || cancelled ? { completedAt: now } : {}),
+          error: cancelled ? 'Cancelled while execution was in progress' : error,
+          status: cancelled ? 'cancelled' : args.terminal ? 'dead_letter' : 'queued',
           updatedAt: now,
         })
         .where(eq(automationRuns.id, args.runId))
-        .returning({ automationId: automationRuns.automationId })
       await tx
         .update(automationRunAttempts)
-        .set({ completedAt: now, error, status: 'failed' })
+        .set({
+          completedAt: now,
+          error: cancelled ? 'Execution stopped after cancellation was requested' : error,
+          status: cancelled ? 'cancelled' : 'failed',
+        })
         .where(and(
           eq(automationRunAttempts.runId, args.runId),
           eq(automationRunAttempts.attemptNumber, args.attemptNumber),
         ))
-      if (run) {
-        await tx
-          .update(automations)
-          .set({
-            lastError: error,
-            lastRunAt: now,
-            lastRunStatus: args.terminal ? 'dead_letter' : 'failed',
-            updatedAt: now,
-          })
-          .where(eq(automations.id, run.automationId))
-      }
+      await tx
+        .update(automations)
+        .set({
+          lastError: cancelled ? null : error,
+          lastRunAt: now,
+          lastRunStatus: cancelled ? 'cancelled' : args.terminal ? 'dead_letter' : 'failed',
+          updatedAt: now,
+        })
+        .where(eq(automations.id, current.automation_id))
+      return cancelled ? 'cancelled' : 'failed'
     })
   }
 
@@ -344,6 +408,27 @@ export class PostgresAutomationRunCoordinator {
       ))
       .returning({ id: automationRuns.id })
     return rows.length > 0
+  }
+
+  async denyRunForAuthorization(args: { error: string; runId: string }): Promise<void> {
+    const now = new Date()
+    const error = args.error.slice(0, 4_000)
+    const [run] = await this.db
+      .update(automationRuns)
+      .set({ completedAt: now, error, status: 'cancelled', updatedAt: now })
+      .where(and(
+        eq(automationRuns.id, args.runId),
+        inArray(automationRuns.status, ['queued', 'running', 'cancel_requested']),
+      ))
+      .returning({ automationId: automationRuns.automationId })
+    if (run) {
+      await this.db.update(automations).set({
+        lastError: error,
+        lastRunAt: now,
+        lastRunStatus: 'cancelled',
+        updatedAt: now,
+      }).where(eq(automations.id, run.automationId))
+    }
   }
 }
 

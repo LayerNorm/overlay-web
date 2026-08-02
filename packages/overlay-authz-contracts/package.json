@@ -1,0 +1,24 @@
+{
+  "name": "@overlay/authz-contracts",
+  "version": "0.0.1",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./capabilities": "./src/capabilities.ts",
+    "./repositories": "./src/repositories.ts",
+    "./types": "./src/types.ts"
+  },
+  "scripts": {
+    "test": "tsx --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "tsx": "^4.8.1",
+    "typescript": "^5"
+  }
+}

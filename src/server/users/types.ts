@@ -23,12 +23,21 @@ export interface UserUpsertResult {
   userId: string
 }
 
+export type UserDirectoryEntry = {
+  id: string
+  email: string
+  name?: string
+  profilePictureUrl?: string
+}
+
 export interface UserRepository {
   upsertFromIdentity(input: UserUpsertInput): Promise<UserUpsertResult>
+  listDirectory?(): Promise<UserDirectoryEntry[]>
 }
 
 export interface UserServiceOptions {
   authProvider: UserAuthProvider
+  afterUpsert?: (result: UserUpsertResult) => Promise<void>
   lifecycleEvents?: LifecycleEventPublisher
   repository: UserRepository
 }

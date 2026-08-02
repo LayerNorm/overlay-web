@@ -3,10 +3,12 @@ import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvi
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
+import { useAuthorization } from '@/components/providers/AuthorizationProvider'
 
 interface CachedData {
   cacheKey: string
   files: MentionItem[]
+  knowledge: MentionItem[]
   connectors: MentionItem[]
   automations: MentionItem[]
   skills: MentionItem[]
@@ -18,6 +20,7 @@ type MentionListKey = Exclude<keyof CachedData, 'cacheKey'>
 
 const CATEGORY_META: Array<{ type: MentionType; label: string; icon: string }> = [
   { type: 'file', label: 'Files', icon: 'FileText' },
+  { type: 'knowledge', label: 'Knowledge', icon: 'BookOpen' },
   { type: 'connector', label: 'Connectors', icon: 'Plug' },
   { type: 'automation', label: 'Automations', icon: 'Zap' },
   { type: 'skill', label: 'Skills', icon: 'Sparkles' },
@@ -25,29 +28,33 @@ const CATEGORY_META: Array<{ type: MentionType; label: string; icon: string }> =
   { type: 'chat', label: 'Chats', icon: 'MessageSquare' },
 ]
 
-function supportedMentionTypes(capabilities: ReturnType<typeof useOverlayCapabilities>['capabilities']): MentionType[] {
+function supportedMentionTypes(
+  capabilities: ReturnType<typeof useOverlayCapabilities>['capabilities'],
+  can: ReturnType<typeof useAuthorization>['can'],
+): MentionType[] {
   return CATEGORY_META
     .filter((cat) => {
       switch (cat.type) {
         case 'file':
-          return capabilities.files
+          return capabilities.files && can('files.read')
+        case 'knowledge':
+          return capabilities.knowledge && can('knowledge.read')
         case 'connector':
-          return capabilities.integrations
+          return capabilities.integrations && can('integrations.use')
         case 'automation':
-          return capabilities.automations
+          return capabilities.automations && can('automations.use')
         case 'skill':
-          return capabilities.skills
+          return capabilities.skills && can('skills.use')
         case 'mcp':
-          return capabilities.mcpServers
+          return capabilities.mcpServers && can('mcp.use')
         case 'chat':
-          return capabilities.chat
+          return capabilities.chat && can('conversations.read')
+        case 'person':
+          // Room members are supplied per-conversation, not from the global catalog.
+          return false
       }
     })
     .map((cat) => cat.type)
-}
-
-function mentionCapabilityCacheKey(capabilities: ReturnType<typeof useOverlayCapabilities>['capabilities']): string {
-  return supportedMentionTypes(capabilities).join('|')
 }
 
 function fuzzyMatch(text: string, query: string): boolean {
@@ -68,8 +75,12 @@ function scoreMatch(item: MentionItem, query: string): number {
 
 export function useMentionData() {
   const { capabilities } = useOverlayCapabilities()
-  const availableTypes = useMemo(() => supportedMentionTypes(capabilities), [capabilities])
-  const cacheKey = useMemo(() => mentionCapabilityCacheKey(capabilities), [capabilities])
+  const { allows } = useAuthorization()
+  const can = useCallback((capability: Parameters<ReturnType<typeof useAuthorization>['can']>[0]) => (
+    allows({ all: [capability] })
+  ), [allows])
+  const availableTypes = useMemo(() => supportedMentionTypes(capabilities, can), [capabilities, can])
+  const cacheKey = useMemo(() => availableTypes.join('|'), [availableTypes])
   const [loading, setLoading] = useState(false)
   const cacheRef = useRef<CachedData | null>(null)
   const fetchingRef = useRef(false)
@@ -93,24 +104,27 @@ export function useMentionData() {
     setLoading(true)
 
     try {
-      const [filesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
+      const [filesRes, knowledgeRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
         await Promise.allSettled([
-          capabilities.files
+          capabilities.files && can('files.read')
             ? overlayAppClient.files.getResponse({ limit: 100, summary: true }).then((r) => r.ok ? r.json() : [])
             : Promise.resolve([]),
-          capabilities.integrations
+          capabilities.knowledge && can('knowledge.read')
+            ? overlayAppClient.knowledgeBases.list()
+            : Promise.resolve({ knowledgeBases: [] }),
+          capabilities.integrations && can('integrations.use')
             ? overlayAppClient.integrations.getResponse().then((r) => r.ok ? r.json() : { items: [] })
             : Promise.resolve({ items: [] }),
-          capabilities.automations
+          capabilities.automations && can('automations.use')
             ? overlayAppClient.automations.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : [])
             : Promise.resolve([]),
-          capabilities.skills
+          capabilities.skills && can('skills.use')
             ? overlayAppClient.skills.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : [])
             : Promise.resolve([]),
-          capabilities.mcpServers
+          capabilities.mcpServers && can('mcp.use')
             ? overlayAppClient.mcpServers.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : [])
             : Promise.resolve([]),
-          capabilities.chat
+          capabilities.chat && can('conversations.read')
             ? overlayAppClient.conversations.getResponse({ limit: 100 }).then((r) => r.ok ? r.json() : [])
             : Promise.resolve([]),
         ])
@@ -125,6 +139,16 @@ export function useMentionData() {
         name: f.name || 'Untitled',
         description: f.kind || f.mimeType || 'file',
         icon: 'FileText',
+      }))
+
+      const knowledge: MentionItem[] = (
+        knowledgeRes.status === 'fulfilled' ? knowledgeRes.value.knowledgeBases : []
+      ).map((knowledgeBase) => ({
+        type: 'knowledge' as const,
+        id: knowledgeBase.id,
+        name: knowledgeBase.title,
+        description: knowledgeBase.description || 'Knowledge base',
+        icon: 'BookOpen',
       }))
 
       const connectorsRaw = connectorsRes.status === 'fulfilled' ? connectorsRes.value : { items: [] }
@@ -190,7 +214,16 @@ export function useMentionData() {
         icon: 'MessageSquare',
       }))
 
-      const data: CachedData = { cacheKey, files, connectors, automations, skills, mcps, chats }
+      const data: CachedData = {
+        cacheKey,
+        files,
+        knowledge,
+        connectors,
+        automations,
+        skills,
+        mcps,
+        chats,
+      }
       cacheRef.current = data
       return data
     } finally {
@@ -203,8 +236,10 @@ export function useMentionData() {
     capabilities.chat,
     capabilities.files,
     capabilities.integrations,
+    capabilities.knowledge,
     capabilities.mcpServers,
     capabilities.skills,
+    can,
   ])
 
   const search = useCallback(
@@ -238,5 +273,6 @@ export function useMentionData() {
 }
 
 function mentionListKey(type: MentionType): MentionListKey {
+  if (type === 'knowledge') return 'knowledge'
   return type === 'connector' ? 'connectors' : `${type}s` as MentionListKey
 }

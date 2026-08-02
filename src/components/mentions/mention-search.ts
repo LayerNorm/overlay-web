@@ -10,6 +10,7 @@ import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowled
 interface CachedData {
   cacheKey: string
   files: MentionItem[]
+  knowledge: MentionItem[]
   connectors: MentionItem[]
   automations: MentionItem[]
   skills: MentionItem[]
@@ -21,6 +22,7 @@ type MentionListKey = Exclude<keyof CachedData, 'cacheKey'>
 
 const CATEGORY_META: Array<{ type: MentionType; label: string; icon: string }> = [
   { type: 'file', label: 'Files', icon: 'FileText' },
+  { type: 'knowledge', label: 'Knowledge', icon: 'BookOpen' },
   { type: 'connector', label: 'Connectors', icon: 'Plug' },
   { type: 'automation', label: 'Automations', icon: 'Zap' },
   { type: 'skill', label: 'Skills', icon: 'Sparkles' },
@@ -33,6 +35,7 @@ let inFlight: Promise<CachedData> | null = null
 let capabilityState: Promise<{
   chat: boolean
   files: boolean
+  knowledge: boolean
   integrations: boolean
   automations: boolean
   skills: boolean
@@ -51,7 +54,7 @@ async function fetchAll(): Promise<CachedData> {
     const automationsEnabled = await areAutomationsEnabled()
     const capabilities = await getMentionCapabilities()
     const cacheKey = mentionCapabilityCacheKey(capabilities)
-    const [filesRes, notesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
+    const [filesRes, notesRes, knowledgeRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
       await Promise.allSettled([
         capabilities.files
           ? overlayAppClient.files.getResponse({ limit: 100, summary: true }).then((r) => (r.ok ? r.json() : []))
@@ -59,6 +62,9 @@ async function fetchAll(): Promise<CachedData> {
         capabilities.files
           ? overlayAppClient.notes.getResponse({ limit: 100 }).then((r) => (r.ok ? r.json() : []))
           : Promise.resolve([]),
+        capabilities.knowledge
+          ? overlayAppClient.knowledgeBases.list()
+          : Promise.resolve({ knowledgeBases: [] }),
         capabilities.integrations
           ? overlayAppClient.integrations.getResponse().then((r) => (r.ok ? r.json() : { items: [] }))
           : Promise.resolve({ items: [] }),
@@ -99,6 +105,15 @@ async function fetchAll(): Promise<CachedData> {
       icon: 'FileText',
     }))
     const files = [...new Map([...canonicalFiles, ...notes].map((item) => [item.id, item])).values()]
+    const knowledge: MentionItem[] = (
+      knowledgeRes.status === 'fulfilled' ? knowledgeRes.value.knowledgeBases : []
+    ).map((knowledgeBase) => ({
+      type: 'knowledge' as const,
+      id: knowledgeBase.id,
+      name: knowledgeBase.title,
+      description: knowledgeBase.description || 'Knowledge base',
+      icon: 'BookOpen',
+    }))
     const connectorsRaw = connectorsRes.status === 'fulfilled' ? connectorsRes.value : { items: [] }
     const connectors: MentionItem[] = (connectorsRaw.items || []).map(
       (c: { slug: string; name: string; description?: string; logoUrl?: string }) => ({
@@ -158,7 +173,7 @@ async function fetchAll(): Promise<CachedData> {
       icon: 'MessageSquare',
     }))
 
-    cache = { cacheKey, files, connectors, automations, skills, mcps, chats }
+    cache = { cacheKey, files, knowledge, connectors, automations, skills, mcps, chats }
     return cache
   })()
   try {
@@ -175,6 +190,7 @@ async function areAutomationsEnabled(): Promise<boolean> {
 async function getMentionCapabilities(): Promise<{
   chat: boolean
   files: boolean
+  knowledge: boolean
   integrations: boolean
   automations: boolean
   skills: boolean
@@ -189,6 +205,7 @@ async function getMentionCapabilities(): Promise<{
         return {
           chat: capabilities.chat !== false,
           files: capabilities.files !== false,
+          knowledge: capabilities.knowledge !== false,
           integrations: capabilities.integrations !== false,
           automations: capabilities.automations !== false,
           skills: capabilities.skills !== false,
@@ -204,6 +221,7 @@ function defaultMentionCapabilities() {
   return {
     chat: true,
     files: true,
+    knowledge: true,
     integrations: true,
     automations: true,
     skills: true,
@@ -217,6 +235,8 @@ function mentionCapabilityCacheKey(capabilities: Awaited<ReturnType<typeof getMe
       switch (cat.type) {
         case 'file':
           return capabilities.files
+        case 'knowledge':
+          return capabilities.knowledge
         case 'connector':
           return capabilities.integrations
         case 'automation':
@@ -251,6 +271,8 @@ export async function searchMentions(query: string): Promise<MentionCategory[]> 
     switch (cat.type) {
       case 'file':
         return capabilities.files
+      case 'knowledge':
+        return capabilities.knowledge
       case 'connector':
         return capabilities.integrations
       case 'automation':
@@ -282,5 +304,6 @@ export async function searchMentions(query: string): Promise<MentionCategory[]> 
 }
 
 function mentionListKey(type: MentionType): MentionListKey {
+  if (type === 'knowledge') return 'knowledge'
   return type === 'connector' ? 'connectors' : `${type}s` as MentionListKey
 }

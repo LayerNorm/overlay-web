@@ -37,6 +37,8 @@ export async function ensureActConversationId(params: {
   projectId?: string
   askModelIds?: string[]
   actModelId?: string
+  workspaceId?: string
+  createdByPrincipalId?: string
 }): Promise<Id<'conversations'>> {
   const clientId = params.conversationClientId.trim()
   if (!clientId) {
@@ -59,6 +61,9 @@ export async function ensureActConversationId(params: {
     askModelIds: isFreeTier ? freeAskModelIds : paidModels.askModelIds,
     actModelId: isFreeTier ? freeActModelId : paidModels.actModelId,
     lastMode: 'act',
+    workspaceId: params.workspaceId,
+    createdByPrincipalId: params.createdByPrincipalId,
+    conversationType: 'personal',
   })
   if (!id) {
     throw new Error('Failed to create conversation')

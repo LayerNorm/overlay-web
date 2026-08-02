@@ -36,6 +36,7 @@ export function sendTextTurn({
   completeSessionForStream,
   createNewChat,
   embedProjectId,
+  knowledgeBaseId,
   emptyRuntime,
   ensureConversationRuntime,
   isFirstMessage,
@@ -64,6 +65,7 @@ export function sendTextTurn({
   completeSessionForStream: CompleteSession
   createNewChat: (options?: CreateNewChatOptions) => Promise<string | null>
   embedProjectId: string | null
+  knowledgeBaseId?: string
   emptyRuntime: ConversationRuntime
   ensureConversationRuntime: EnsureConversationRuntime
   isFirstMessage: boolean
@@ -248,6 +250,7 @@ export function sendTextTurn({
         : null,
     temporaryChatSnapshot: snapshot.temporaryChatSnapshot,
     embedProjectId,
+    knowledgeBaseId,
     textModelsForTurn: snapshot.textModelsForTurn,
     turnId: textTurnId,
     requestMode: snapshot.requestMode,

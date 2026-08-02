@@ -10,6 +10,12 @@ import { ActUsageBudgetService } from './ActUsageBudgetService'
 import { UnlimitedUsagePolicy } from './ActUsagePolicy'
 import type { Id } from '../../../convex/_generated/dataModel'
 
+const AUTO_RETRIEVAL_BILLING = {
+  idempotencyKey: 'fixture-idempotency-key',
+  operationId: 'conversation.act.auto-retrieval',
+  requestFingerprint: 'fixture-request-fingerprint',
+}
+
 const freeEntitlements = {
   tier: 'free',
   planKind: 'free',
@@ -193,6 +199,229 @@ test('act context service keeps auto retrieval enabled when external provider co
     '1': { kind: 'memory', sourceId: 'memory_1' },
   })
   assert.equal(context.mentionsContext, '')
+})
+
+test('act context service scopes attached knowledge-base conversations and disables personal memory retrieval', async () => {
+  let retrievalArgs: Record<string, unknown> | undefined
+  const service = new ActContextService({
+    repository: repository({
+      getConversation: async () => ({ projectId: 'project_1' }),
+      getProject: async () => ({ instructions: 'Project rules' }),
+      listMemories: async () => [],
+      listSkills: async () => [],
+    }),
+    resolveConversationKnowledgeBaseIds: async () => ['kb_1'],
+    buildAutoRetrievalBundle: async (args) => {
+      retrievalArgs = args
+      return {
+        extension: '\nKB_GROUNDED_CONTEXT',
+        citations: {
+          '1': { kind: 'knowledge', knowledgeBaseId: 'kb_1', sourceId: 'source_1' },
+        },
+      }
+    },
+  })
+
+  const context = await service.loadTurnContext({
+    conversationId: 'conversation_1' as Id<'conversations'>,
+    externalContextEnabled: false,
+    indexedAttachments: [],
+    latestUserText: 'Explain the reaction mechanism.',
+    memoryEnabled: true,
+    requestIdempotencyKey: 'fixture-idempotency-key',
+    requestFingerprint: 'fixture-request-fingerprint',
+    serverSecret: 'server-secret',
+    userId: 'user_1',
+  })
+
+  assert.deepEqual(retrievalArgs, {
+    billing: AUTO_RETRIEVAL_BILLING,
+    includeMemories: false,
+    knowledgeBaseIds: ['kb_1'],
+    projectId: 'project_1',
+    userId: 'user_1',
+    userMessage: 'Explain the reaction mechanism.',
+  })
+  assert.equal(context.autoRetrieval, '\nKB_GROUNDED_CONTEXT')
+  assert.deepEqual(context.sourceCitationMap, {
+    '1': { kind: 'knowledge', knowledgeBaseId: 'kb_1', sourceId: 'source_1' },
+  })
+})
+
+test('act context service combines project and conversation knowledge bases while preserving project instructions', async () => {
+  let retrievalArgs: Record<string, unknown> | undefined
+  const service = new ActContextService({
+    repository: repository({
+      getConversation: async () => ({ projectId: 'project_1' }),
+      getProject: async () => ({ instructions: 'Write a concise implementation plan.' }),
+      listMemories: async () => [],
+      listSkills: async () => [],
+    }),
+    resolveConversationKnowledgeBaseIds: async () => ['conversation_kb'],
+    resolveProjectKnowledgeBaseIds: async () => ['project_kb', 'second_project_kb'],
+    buildAutoRetrievalBundle: async (args) => {
+      retrievalArgs = args
+      return {
+        extension: '\nPROJECT_KB_CONTEXT',
+        citations: {
+          '1': {
+            kind: 'knowledge',
+            knowledgeBaseId: 'project_kb',
+            sourceId: 'policy_source',
+          },
+        },
+      }
+    },
+  })
+
+  const context = await service.loadTurnContext({
+    conversationId: 'conversation_1' as Id<'conversations'>,
+    externalContextEnabled: false,
+    indexedAttachments: [],
+    latestUserText: 'Revise the working draft using the policy.',
+    memoryEnabled: true,
+    requestIdempotencyKey: 'fixture-idempotency-key',
+    requestFingerprint: 'fixture-request-fingerprint',
+    serverSecret: 'server-secret',
+    userId: 'user_1',
+  })
+
+  assert.equal(context.projectInstructions, 'Write a concise implementation plan.')
+  assert.deepEqual(retrievalArgs, {
+    billing: AUTO_RETRIEVAL_BILLING,
+    includeMemories: false,
+    knowledgeBaseIds: ['conversation_kb', 'project_kb', 'second_project_kb'],
+    projectId: 'project_1',
+    userId: 'user_1',
+    userMessage: 'Revise the working draft using the policy.',
+  })
+  assert.equal(context.autoRetrieval, '\nPROJECT_KB_CONTEXT')
+})
+
+test('act context service lets an explicit knowledge mention narrow retrieval to that base', async () => {
+  let retrievalArgs: Record<string, unknown> | undefined
+  const service = new ActContextService({
+    repository: repository({
+      getConversation: async () => ({ projectId: 'project_1' }),
+      getProject: async () => ({ instructions: 'Project rules stay in force.' }),
+      listMemories: async () => [],
+      listSkills: async () => [],
+    }),
+    resolveConversationKnowledgeBaseIds: async () => ['conversation_kb'],
+    resolveProjectKnowledgeBaseIds: async () => ['project_kb', 'second_project_kb'],
+    buildAutoRetrievalBundle: async (args) => {
+      retrievalArgs = args
+      return { extension: '\nNARROWED', citations: {} }
+    },
+  })
+
+  const context = await service.loadTurnContext({
+    conversationId: 'conversation_1' as Id<'conversations'>,
+    externalContextEnabled: false,
+    indexedAttachments: [],
+    latestUserText: 'What does the handbook say?',
+    memoryEnabled: true,
+    mentionedKnowledgeBaseIds: ['project_kb'],
+    requestIdempotencyKey: 'fixture-idempotency-key',
+    requestFingerprint: 'fixture-request-fingerprint',
+    serverSecret: 'server-secret',
+    userId: 'user_1',
+  })
+
+  // Project instructions still apply; only the retrieval corpus narrows.
+  assert.equal(context.projectInstructions, 'Project rules stay in force.')
+  assert.deepEqual(retrievalArgs, {
+    billing: AUTO_RETRIEVAL_BILLING,
+    includeMemories: false,
+    knowledgeBaseIds: ['project_kb'],
+    projectId: 'project_1',
+    userId: 'user_1',
+    userMessage: 'What does the handbook say?',
+  })
+})
+
+test('act context service falls back to the legacy single project attachment', async () => {
+  let retrievalArgs: Record<string, unknown> | undefined
+  const service = new ActContextService({
+    repository: repository({
+      getConversation: async () => ({ projectId: 'project_1' }),
+      getProject: async () => ({
+        instructions: 'Legacy project.',
+        knowledgeBaseId: 'legacy_kb',
+      }),
+      listMemories: async () => [],
+      listSkills: async () => [],
+    }),
+    // A project written before schema 23 has no join-table rows.
+    resolveProjectKnowledgeBaseIds: async () => [],
+    buildAutoRetrievalBundle: async (args) => {
+      retrievalArgs = args
+      return { extension: '', citations: {} }
+    },
+  })
+
+  await service.loadTurnContext({
+    conversationId: 'conversation_1' as Id<'conversations'>,
+    externalContextEnabled: false,
+    indexedAttachments: [],
+    latestUserText: 'Continue the work.',
+    memoryEnabled: true,
+    requestIdempotencyKey: 'fixture-idempotency-key',
+    requestFingerprint: 'fixture-request-fingerprint',
+    serverSecret: 'server-secret',
+    userId: 'user_1',
+  })
+
+  assert.deepEqual(retrievalArgs, {
+    billing: AUTO_RETRIEVAL_BILLING,
+    includeMemories: false,
+    knowledgeBaseIds: ['legacy_kb'],
+    projectId: 'project_1',
+    userId: 'user_1',
+    userMessage: 'Continue the work.',
+  })
+})
+
+test('act context service ignores archived project instructions and knowledge attachment', async () => {
+  let retrievalArgs: Record<string, unknown> | undefined
+  const service = new ActContextService({
+    repository: repository({
+      getConversation: async () => ({ projectId: 'project_1' }),
+      getProject: async () => ({
+        archivedAt: Date.now(),
+        instructions: 'Do not use archived instructions.',
+        knowledgeBaseId: 'archived_project_kb',
+      }),
+      listMemories: async () => [],
+      listSkills: async () => [],
+    }),
+    resolveConversationKnowledgeBaseIds: async () => [],
+    buildAutoRetrievalBundle: async (args) => {
+      retrievalArgs = args
+      return { extension: '', citations: {} }
+    },
+  })
+
+  const context = await service.loadTurnContext({
+    conversationId: 'conversation_1' as Id<'conversations'>,
+    externalContextEnabled: false,
+    indexedAttachments: [],
+    latestUserText: 'Continue',
+    memoryEnabled: true,
+    requestIdempotencyKey: 'fixture-idempotency-key',
+    requestFingerprint: 'fixture-request-fingerprint',
+    serverSecret: 'server-secret',
+    userId: 'user_1',
+  })
+
+  assert.equal(context.projectInstructions, '')
+  assert.deepEqual(retrievalArgs, {
+    billing: AUTO_RETRIEVAL_BILLING,
+    includeMemories: true,
+    projectId: 'project_1',
+    userId: 'user_1',
+    userMessage: 'Continue',
+  })
 })
 
 test('act context service preloads attached documents through the active file repository', async () => {

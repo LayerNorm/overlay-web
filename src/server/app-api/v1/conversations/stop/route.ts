@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 
@@ -15,7 +15,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId?: string
     }
 
-    const { auth } = context
 
     const conversationId = body.conversationId?.trim()
     if (!conversationId) {
@@ -30,7 +29,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       ...(body.messageId ? { messageId: body.messageId as Id<'conversationMessages'> } : {}),
       ...(body.partialContent !== undefined ? { partialContent: body.partialContent } : {}),
       ...(body.partialParts !== undefined ? { partialParts: body.partialParts } : {}),
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
     })
 
     return NextResponse.json({ success: true, stoppedCount: result.stoppedCount })

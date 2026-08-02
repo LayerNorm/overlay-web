@@ -12,6 +12,7 @@ import {
   getBudgetTotals,
   isPaidPlan,
 } from '@/server/billing/billing-runtime'
+import { authorizeCatalogResource } from '@/server/authorization'
 
 export const maxDuration = 300
 
@@ -70,7 +71,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
 
-    const { generationUsagePolicy } = getOverlayServerContext()
+    const { authorizationService, generationUsagePolicy } = getOverlayServerContext()
+    const denied = await authorizeCatalogResource({
+      authorization: authorizationService,
+      capability: 'tools.use',
+      context,
+      resourceId: 'browser',
+      resourceType: 'tool',
+    })
+    if (denied) return denied
     const entitlements = await generationUsagePolicy.getEntitlements({ userId: auth.userId })
 
     if (!entitlements) {

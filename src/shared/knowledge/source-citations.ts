@@ -17,7 +17,9 @@ export function linkifySourceCitationsMarkdown(
         if (!source) return `[${digit}]`
         const href = source.kind === 'memory'
           ? `/app/settings?section=memories&memory=${encodeURIComponent(source.sourceId)}`
-          : `/app/files?file=${encodeURIComponent(source.sourceId)}`
+          : source.kind === 'knowledge'
+            ? `/app/knowledge/${encodeURIComponent(source.knowledgeBaseId)}?source=${encodeURIComponent(source.sourceId)}`
+            : `/app/files?file=${encodeURIComponent(source.sourceId)}`
         return `[${digit}](${href})`
       })
     })

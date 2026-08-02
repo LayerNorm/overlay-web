@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { LogOut, Sparkles, User } from 'lucide-react'
+import { CollapsibleSection } from '@overlay/ui/primitives'
 import { PROFILE_APP_LINKS } from './sidebarNavigation'
 import { StorageBar, UsageBar, type SidebarEntitlements } from './SidebarUsageMeters'
 
@@ -24,18 +25,19 @@ export function SidebarAccountMenu({
     <>
       {billingEnabled ? (
         <>
-          <div className="px-3 py-2">
-            <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Usage</p>
-            <UsageBar entitlements={entitlements} />
-          </div>
-          <div className="border-t border-[var(--border)] px-3 py-2">
-            <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Storage</p>
-            <StorageBar entitlements={entitlements} />
-          </div>
+          <CollapsibleSection label="Usage">
+            <div className="px-3 pb-1">
+              <UsageBar entitlements={entitlements} />
+            </div>
+          </CollapsibleSection>
+          <CollapsibleSection label="Storage" className="border-t border-[var(--border)]">
+            <div className="px-3 pb-1">
+              <StorageBar entitlements={entitlements} />
+            </div>
+          </CollapsibleSection>
         </>
       ) : null}
-      <div className="border-t border-[var(--border)]">
-        <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">Apps</p>
+      <CollapsibleSection label="Apps" className="border-t border-[var(--border)]">
         {PROFILE_APP_LINKS.map(({ label, icon: Icon }) => (
           <button
             key={label}
@@ -51,7 +53,7 @@ export function SidebarAccountMenu({
             <span className="rounded-full border border-[var(--border)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-[var(--muted-light)]">Soon</span>
           </button>
         ))}
-      </div>
+      </CollapsibleSection>
       {demoHref ? (
         <div className="border-t border-[var(--border)]">
           <Link

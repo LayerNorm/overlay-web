@@ -32,6 +32,12 @@ import {
   executeUpdateAutomation,
   executeUpdateMemory,
 } from './overlay-executes'
+import {
+  executeListKnowledgeBaseSources,
+  executeListKnowledgeBases,
+  executeReadKnowledgeSource,
+  executeSearchKnowledgeBase,
+} from './knowledge-base-executes'
 import { assertOverlayToolAllowed } from './policy'
 import type { OverlayToolsOptions } from './types'
 
@@ -42,6 +48,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
   const allowedToolIds = options.allowedToolIds ? new Set(options.allowedToolIds) : null
   const memoryEnabled = options.memoryEnabled !== false
+  const activeKnowledgeBaseIds = options.activeKnowledgeBaseIds ?? []
   const memoryMutationToolIds = new Set(['save_memory', 'save_memory_batch', 'update_memory', 'delete_memory'])
   const shouldExposeTool = (toolId: string): boolean => {
     if (!memoryEnabled && memoryMutationToolIds.has(toolId)) return false
@@ -279,10 +286,19 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
 
   if (shouldExposeTool('search_knowledge')) {
     tools.search_knowledge = tool({
+    // Deliberately does NOT call itself "the knowledge base". This tool is
+    // account-wide; saying otherwise made the model answer knowledge-base
+    // questions from unrelated files and notes.
     description:
-      memoryEnabled
-        ? 'Search the user\'s saved knowledge: indexed files and memories. Uses hybrid semantic + keyword retrieval. Call this when you need facts from their knowledge base, prior notes, or stored context that is not in the chat transcript.'
-        : 'Search the user\'s indexed files. Memory is off for this turn, so this tool is restricted to file results.',
+      (memoryEnabled
+        ? 'Search across ALL of the user\'s own indexed files and memories, account-wide. Uses hybrid semantic + keyword retrieval. Use for general recall when no specific knowledge base is in play.'
+        : 'Search across ALL of the user\'s own indexed files, account-wide. Memory is off for this turn, so this tool is restricted to file results.')
+      + (activeKnowledgeBaseIds.length > 0
+        ? ' IMPORTANT: this turn references a specific knowledge base'
+          + ` (${activeKnowledgeBaseIds.join(', ')}). This tool is NOT scoped to it and will return`
+          + ' unrelated material. For anything about that knowledge base use'
+          + ' search_knowledge_base or list_knowledge_base_sources instead.'
+        : ' This tool is not scoped to any knowledge base; if the user names one, use search_knowledge_base.'),
     inputSchema: z.object({
       query: z.string().describe('Search query: keywords or a short natural-language question'),
       sourceKind: z
@@ -295,6 +311,90 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       return executeSearchKnowledge(options, memoryEnabled ? input : { ...input, sourceKind: 'file' as const })
     },
   })
+  }
+
+  if (shouldExposeTool('list_knowledge_bases')) {
+    tools.list_knowledge_bases = tool({
+      description:
+        'List the knowledge bases the user can read, with their ids, titles and descriptions. '
+        + 'Use this to turn a knowledge-base name the user mentioned into an id.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        assertToolAllowed('list_knowledge_bases')
+        return executeListKnowledgeBases(options)
+      },
+    })
+  }
+
+  if (shouldExposeTool('list_knowledge_base_sources')) {
+    tools.list_knowledge_base_sources = tool({
+      description:
+        'List every source inside a knowledge base: titles, ids, processing status, and whether each is enabled. '
+        + 'This returns the COMPLETE and AUTHORITATIVE contents of that knowledge base. '
+        + 'Use it for any question about what a knowledge base contains, holds, or covers — '
+        + '"what is in X", "take me through X", "summarize X", "how many documents are in X". '
+        + 'Do NOT use search_knowledge or list_notes for those questions: they are account-wide '
+        + 'and will invent contents that are not actually in the knowledge base.',
+      inputSchema: z.object({
+        knowledgeBaseId: z
+          .string()
+          .optional()
+          .describe('Knowledge base id. Omit only when exactly one knowledge base is active this turn.'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('list_knowledge_base_sources')
+        return executeListKnowledgeBaseSources(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('search_knowledge_base')) {
+    tools.search_knowledge_base = tool({
+      description:
+        'Hybrid semantic + keyword search restricted to ONE knowledge base. '
+        + 'Returns only passages from that knowledge base\'s enabled, fully-processed sources, with citations. '
+        + 'Use this whenever the user asks a factual question about a knowledge base they named. '
+        + 'If it returns nothing, say the knowledge base does not cover it rather than falling back to account-wide search.',
+      inputSchema: z.object({
+        knowledgeBaseId: z
+          .string()
+          .optional()
+          .describe('Knowledge base id. Omit only when exactly one knowledge base is active this turn.'),
+        query: z.string().describe('Keywords or a short natural-language question'),
+        limit: z.number().int().min(1).max(50).optional().describe('Maximum passages to return (default 12)'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('search_knowledge_base')
+        return executeSearchKnowledgeBase(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('read_knowledge_source')) {
+    tools.read_knowledge_source = tool({
+      description:
+        'Read the extracted text of one knowledge-base source, from the start. '
+        + 'Use this after list_knowledge_base_sources when the user wants a walkthrough or summary of a '
+        + 'specific document, where ranked search snippets are the wrong shape of answer.',
+      inputSchema: z.object({
+        knowledgeBaseId: z
+          .string()
+          .optional()
+          .describe('Knowledge base id. Omit only when exactly one knowledge base is active this turn.'),
+        sourceId: z.string().describe('Source id from list_knowledge_base_sources'),
+        limit: z
+          .number()
+          .int()
+          .min(200)
+          .max(20_000)
+          .optional()
+          .describe('Maximum characters to return (default 4000)'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('read_knowledge_source')
+        return executeReadKnowledgeSource(options, input)
+      },
+    })
   }
 
   if (shouldExposeTool('search_in_files')) {

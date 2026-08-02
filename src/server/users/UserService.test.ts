@@ -130,3 +130,19 @@ test('UserService rejects sessions without a stable user id or email', async () 
   )
   assert.equal(repository.inputs.length, 0)
 })
+
+test('UserService applies post-upsert provisioning to the persisted user id', async () => {
+  const repository = new CapturingUserRepository()
+  const provisioned: string[] = []
+  const service = new UserService({
+    authProvider: 'workos',
+    repository,
+    afterUpsert: async ({ userId }) => { provisioned.push(userId) },
+  })
+
+  await service.upsertFromSession({
+    user: { id: 'user_member', email: 'member@example.com' },
+  })
+
+  assert.deepEqual(provisioned, ['user_member'])
+})

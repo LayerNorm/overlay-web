@@ -4,6 +4,9 @@ export interface AccountDataDeletionCounts {
   apiIdempotencyKeys: number
   apiKeys: number
   administrativePrincipals: number
+  authorizationGroupMemberships: number
+  authorizationResourceGrants: number
+  authorizationUserRoles: number
   automationRunAttempts: number
   automationRuns: number
   automationTriggers: number
@@ -18,6 +21,8 @@ export interface AccountDataDeletionCounts {
   conversations: number
   daytonaWorkspaces: number
   files: number
+  governanceAccessReviews: number
+  governancePolicies: number
   knowledgeChunkEmbeddings: number
   knowledgeChunks: number
   memoryExtractionRuns: number
@@ -38,6 +43,8 @@ export interface AccountDataDeletionCounts {
   webhookDeliveries: number
   webhookDeliveryAttempts: number
   webhookSubscriptions: number
+  workspacePersonalWorkspaces: number
+  workspacePrincipals: number
 }
 
 export interface AccountDataDeletionVerification {

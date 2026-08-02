@@ -20,6 +20,7 @@ import type { DaytonaWorkspaceRepository } from '@/server/ai/sandbox/DaytonaWork
 import { hashTextContent } from '@/server/storage/text-content-hash'
 import type { MemoryRepository } from '@/server/memory'
 import type { ChatSuggestionRepository } from '@/server/chat-suggestions/ChatSuggestionRepository'
+import type { KnowledgeBaseRepositories } from '@overlay/app-core'
 
 export interface AppDataRepositoryContractBackend {
   accountDeletionRepository?: AccountDataDeletionRepository
@@ -29,6 +30,7 @@ export interface AppDataRepositoryContractBackend {
   daytonaWorkspaces: DaytonaWorkspaceRepository
   deleteAccount?: (userId: string) => Promise<AccountDeletionResult>
   files: FileRepository
+  knowledgeBases: KnowledgeBaseRepositories
   memories: MemoryRepository
   name: string
   notes: NoteRepository
@@ -148,6 +150,73 @@ export async function runAppDataRepositoryContractSuite(
         projectId: root._id,
         userId: foreignUserId,
       }), null)
+
+      const knowledgeBaseId = `knowledge_base_${randomUUID()}`
+      await backend.knowledgeBases.bases.create({
+        createdBy: userId,
+        id: knowledgeBaseId,
+        ownerUserId: userId,
+        title: 'Trusted project knowledge',
+      })
+      const attachedProject = await backend.projects.updateProject({
+        knowledgeBaseId,
+        projectId: root._id,
+        userId,
+      })
+      assert.equal(attachedProject?.knowledgeBaseId, knowledgeBaseId)
+      assert.equal((await backend.projects.getProject({
+        projectId: root._id,
+        userId,
+      }))?.knowledgeBaseId, knowledgeBaseId)
+
+      const archivedProject = await backend.projects.updateProject({
+        archivedAt: Date.now(),
+        projectId: root._id,
+        userId,
+      })
+      assert.ok(archivedProject?.archivedAt)
+      assert.equal((await backend.projects.listProjects({ userId }))
+        .some((row) => row._id === root._id), false)
+      assert.equal((await backend.projects.listProjects({
+        includeArchived: true,
+        userId,
+      })).some((row) => row._id === root._id), true)
+      await assert.rejects(backend.conversations.createConversation({
+        actModelId: 'openrouter/free',
+        askModelIds: ['openrouter/free'],
+        projectId: root._id,
+        title: 'Archived project conversation',
+        userId,
+      }))
+      await assert.rejects(backend.notes.createNote({
+        content: 'Archived project note',
+        projectId: root._id,
+        title: 'Archived project note',
+        userId,
+      }))
+      await assert.rejects(backend.files.createFile({
+        content: 'Archived project file',
+        kind: 'upload',
+        name: 'archived.txt',
+        projectId: root._id,
+        type: 'file',
+        userId,
+      }))
+      const restoredProject = await backend.projects.updateProject({
+        archivedAt: null,
+        projectId: root._id,
+        userId,
+      })
+      assert.equal(restoredProject?.archivedAt, undefined)
+      assert.equal((await backend.projects.listProjects({ userId }))
+        .some((row) => row._id === root._id), true)
+
+      assert.equal(await backend.knowledgeBases.bases.remove(knowledgeBaseId), true)
+      assert.equal((await backend.projects.getProject({
+        projectId: root._id,
+        userId,
+      }))?.knowledgeBaseId, undefined)
+
       await assert.rejects(backend.projects.createProject({
         name: 'Unauthorized child',
         parentId: root._id,

@@ -10,7 +10,6 @@ import {
   automationRuns,
   automations,
   automationTriggers,
-  conversations,
   durableJobs,
   users,
 } from '@/server/database/postgres/schema'
@@ -36,13 +35,22 @@ test(
     })
     const db = createOverlayPostgresDb(pool)
     const userId = `p6_runtime_${randomUUID()}`
-    const conversationId = `p6_runtime_conversation_${randomUUID()}`
+    let conversationId = ''
     const repository = new PostgresAutomationRepository(db, new PostgresActConversationRepository(db))
     const executions: string[] = []
     let shouldFail = false
+    let blockedExecution: {
+      markStarted: () => void
+      release: Promise<void>
+    } | null = null
     const runtime = createPostgresRuntime({
       automationExecutor: async (input) => {
         executions.push(input.runId)
+        if (blockedExecution) {
+          const gate = blockedExecution
+          gate.markStarted()
+          await gate.release
+        }
         if (shouldFail) throw new Error('expected automation failure')
         return { conversationId }
       },
@@ -57,12 +65,10 @@ test(
         AUTOMATION_SCHEDULE_DUE_JOB,
       ]))
       await db.insert(users).values({ email: `${userId}@example.test`, id: userId })
-      await db.insert(conversations).values({
+      conversationId = await new PostgresActConversationRepository(db).createConversation({
         actModelId: 'openai/gpt-4.1',
         askModelIds: ['openai/gpt-4.1'],
-        id: conversationId,
         lastMode: 'act',
-        lastModified: new Date(),
         title: 'P6 runtime output',
         userId,
       })
@@ -130,6 +136,36 @@ test(
         const [cancelled] = await db.select().from(automationRuns).where(eq(automationRuns.id, run!.id))
         assert.equal(cancelled?.status, 'cancelled')
         assert.equal(executions.length, executionCount)
+      })
+
+      await t.test('cancellation during execution cannot be overwritten by a late result', async () => {
+        const automationId = await createDueAutomation(repository, db, userId, 'In-flight cancellation')
+        assert.equal((await runtime.automationRuns.enqueueDueRuns()).enqueued, 1)
+        const [run] = await db.select().from(automationRuns)
+          .where(eq(automationRuns.automationId, automationId))
+        let markStarted!: () => void
+        let release!: () => void
+        const started = new Promise<void>((resolve) => { markStarted = resolve })
+        const releasePromise = new Promise<void>((resolve) => { release = resolve })
+        blockedExecution = { markStarted, release: releasePromise }
+
+        const workerResult = runtime.worker.runOnce(Date.now() + 60_000)
+        await started
+        assert.equal(await repository.requestActiveRunCancellation({ automationId, userId }), 1)
+        release()
+        assert.equal(await workerResult, 'succeeded')
+        blockedExecution = null
+
+        const [cancelled] = await db.select().from(automationRuns)
+          .where(eq(automationRuns.id, run!.id))
+        const [attempt] = await db.select().from(automationRunAttempts)
+          .where(eq(automationRunAttempts.runId, run!.id))
+        const [automation] = await db.select().from(automations)
+          .where(eq(automations.id, automationId))
+        assert.equal(cancelled?.status, 'cancelled')
+        assert.equal(cancelled?.conversationId, null)
+        assert.equal(attempt?.status, 'cancelled')
+        assert.equal(automation?.lastRunStatus, 'cancelled')
       })
 
       await t.test('skip concurrency policy records an overlapping occurrence without a second job', async () => {

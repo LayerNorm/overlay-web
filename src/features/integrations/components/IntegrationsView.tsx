@@ -67,9 +67,11 @@ function buildInitialIntegrationState(initialData?: IntegrationsInitialData) {
 export default function IntegrationsView({
   userId: _userId,
   initialData,
+  title = 'Integrations',
 }: {
   userId: string
   initialData?: IntegrationsInitialData
+  title?: string
 }) {
   void _userId
   const hasInitialData = Boolean(initialData?.bootstrap || initialData?.connected || initialData?.catalog)
@@ -295,7 +297,7 @@ export default function IntegrationsView({
     <AppScreenShell
       header={
         <ExtensionPageHeader
-          title="Integrations"
+          title={title}
           searchOpen={searchOpen}
           searchQuery={searchQuery}
           searchPlaceholder="Search integrations…"

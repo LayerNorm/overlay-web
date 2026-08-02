@@ -1,7 +1,8 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { fileErrorResponse, fileService } from '@/server/files/http'
+import { assertPublicLinkPolicy, publicLinkPolicyResponse } from '@/server/sharing/public-link-policy'
 
 function originForShareUrl(request: NextRequest): string {
   return request.headers.get('origin') || `${request.nextUrl.protocol}//${request.nextUrl.host}`
@@ -15,15 +16,17 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       accessToken?: string
       userId?: string
     }
-    const { auth } = context
+    if (body.visibility === 'public') await assertPublicLinkPolicy(context)
     const result = await fileService.setShare({
       fileId: body.fileId,
       visibility: body.visibility,
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
       origin: originForShareUrl(request),
     })
     return NextResponse.json(result)
   } catch (error) {
+    const policyResponse = publicLinkPolicyResponse(error)
+    if (policyResponse) return policyResponse
     if (error instanceof Error && error.name === 'FileServiceError') {
       return fileErrorResponse(error, 'Failed to update share visibility')
     }

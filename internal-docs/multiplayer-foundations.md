@@ -1,0 +1,202 @@
+---
+title: "Multiplayer Foundations"
+description: "Accepted Phase 0 decisions for workspace isolation, collaborative chats, agents, and resource sharing."
+---
+
+## Status
+
+Accepted on July 26, 2026. Phase 1 shipped the workspace foundation, Phase 2 shipped the workspace-aware Chats information architecture, Phase 3 shipped participant-scoped Direct Messages, Phase 4 shipped Channels and threads, Phase 5 shipped named workspace agents, Phase 6 shipped universal resource sharing, Phase 7 shipped collaboration polish and cross-surface parity, and Phase 8 shipped enterprise hardening and staged rollout on July 29, 2026. The `workspaces`, `collaborativeChats`, `channels`, `agents`, and `resourceSharing` app features are enabled; shared multi-tenant deployment remains disabled until its release gate passes.
+
+Phase 1 includes:
+
+- Idempotent Personal workspaces and user-created organization workspaces.
+- Canonical `/app/w/:workspaceId/*` navigation plus persisted active-workspace selection.
+- Human, agent, and service principals with owner, administrator, member, and guest memberships.
+- Email-bound, expiring, replaceable invitations and final-owner protection.
+- Teams containing human and agent principals, with nested teams and services rejected.
+- A provider-neutral resource-scope registry that rejects cross-workspace rebinding.
+- Matching Postgres and Convex repositories, account-deletion semantics, and contract tests.
+- Workspace switching, creation, people, guest, team, ownership-transfer, and archive UI.
+
+Every new organization now receives `#general` atomically. The Phase 4 migration backfilled the same room and active public-channel membership for existing organizations.
+
+Phase 2 includes:
+
+- A top-level **Chats** navigation item with Personal, Direct Messages, Channels, Unread, and All views above the constrained conversation list.
+- Canonical workspace-aware chat URLs and cache partitions by both workspace and view.
+- Explicit `personal`, `dm`, and `channel` conversation types, plus human, agent, model, and system message-author kinds.
+- Workspace and creator-principal bindings on every conversation, and author-principal attribution for human and agent messages.
+- Provider-neutral workspace filtering on conversation list, lookup, mutation, deletion, and message history boundaries.
+- A stable public-token path that remains independent of the active workspace while authenticated reads fail closed across workspace boundaries.
+- Cursor-paginated Convex migration and audit functions plus an idempotent Postgres migration.
+
+The Phase 2 provider migration preserved row counts and reached zero missing bindings:
+
+| Provider | Conversations | Messages | Missing conversation scope | Missing author | Missing resource scope |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Convex production | 1,197 | 4,585 | 0 | 0 | 0 |
+| Convex development | 851 | 1,961 | 0 | 0 | 0 |
+
+The Postgres migration was also rehearsed from an empty database through schema version 32, and its principal-attribution foreign key was verified to cascade Personal-workspace erasure without breaking the message identity invariant.
+
+Phase 3 includes:
+
+- Reused one-to-one and group DMs addressed by their canonical participant set.
+- A unified human-and-agent participant picker, workspace invitation path, and Personal-chat-to-DM fork.
+- Participant-scoped reads and writes that override legacy creator ownership only after canonical workspace and active-membership checks pass.
+- Optimistic messages with retry-safe client nonces, author-only editing, deletion tombstones, mentions, unread state, notification preferences, archive state, and presence.
+- A dedicated collaborative conversation surface with people management, typing state, near-real-time synchronization, and responsive desktop/mobile layouts.
+- Matching Postgres and Convex collaboration repositories, account-deletion cleanup, and provider contract tests.
+
+The Postgres migration was rehearsed from an empty database through schema version 33. Production and development Convex deployments both received the participant, presence, notification, retry, and tombstone indexes before the feature gate was accepted.
+
+Phase 4 includes:
+
+- Named public and private channels with unique workspace-local slugs and explicit room membership.
+- Atomic `#general` creation for new organizations plus idempotent backfill for existing organizations.
+- Public-channel enrollment for active human and agent principals when they join a workspace.
+- Slack-style reply threads in DMs and Channels while Personal chats remain linear.
+- Reactions, moderator-managed pins, per-principal saved messages, and participant-filtered workspace chat search.
+- Channel creation with visibility, topic, and private-member selection; responsive thread and channel surfaces; and workspace search in the Chats command palette.
+- Matching Postgres and Convex repositories, authorization policies, account/workspace deletion cleanup, BFF routes, API-client methods, and provider contract tests.
+
+The Postgres migration was rehearsed from an empty database through schema version 34. Convex schema and functions were deployed only to the development deployment for Phase 4, then validated with the live development provider contract.
+
+Phase 5 includes:
+
+- Workspace-owned reusable agent definitions linked one-to-one with agent principals.
+- A top-level Agents directory, Buzz-inspired create/edit flow, reusable Agent teams, and one-click agent DMs.
+- Atomic principal, membership, selected-team, public-channel, and resource-scope creation.
+- Explicit model, harness, instructions, avatar, and tool-allowlist configuration.
+- Mention-first invocation: implicit only in one-human/one-agent DMs, explicit human mentions in groups and Channels, and human replies in agent threads.
+- Agent-authored messages with durable agent-principal attribution, retry-safe invocation nonces, no agent-to-agent triggering, and no inherited human resource/tool context.
+- Matching Postgres and Convex repositories, lifecycle cleanup, BFF routes, API-client methods, and provider contracts.
+
+The Postgres migration was rehearsed through schema version 35. The matching Convex schema and functions were deployed only to the development deployment and validated against that live development provider.
+
+Phase 6 includes:
+
+- One Share dialog for chats, files, projects, knowledge bases, automations, and agents, lifted to shared UI so every feature opens the same experience.
+- Grants addressed to a person or agent principal, a team, or a room, with team and room grants following membership as it changes.
+- Resource-appropriate permissions from a single policy module: view everywhere, run for automations and agents only, edit where editing exists, and view-only for conversations. A grant never confers delete or reshare.
+- Disclosure before the fact: adding a dynamic target lists who would gain access and who already has it another way; removing a grant lists who loses access outright and who keeps it.
+- Attach-time room grant prompts — attaching a restricted resource to a DM or Channel names the participants who cannot open it, then either creates the room grant or posts a request-access link.
+- Public links kept as General access under a per-workspace policy, editable by owners and admins in Workspace settings → Sharing & links and enforced server-side on both the file and conversation share routes.
+- Resource reads, automation runs, and knowledge-base listings routed through resource authorization so shared resources appear for the people they were shared with.
+- Matching Postgres and Convex repositories, BFF routes, API-client methods, and provider contract tests.
+
+Two provider-parity defects were found by the Phase 6 contract tests and fixed rather than documented as differences:
+
+- The Postgres scope foreign key omitted `workspace_id`, so Postgres accepted a grant whose workspace disagreed with the resource binding while Convex rejected it. Schema version 37 widens the key and deletes any disagreeing rows first.
+- The Convex grant upsert returned the request payload instead of the persisted row, reporting a stale `updatedAt` where Postgres reported the new one.
+
+The Postgres migration was rehearsed from an empty database through schema version 37. Convex schema and functions were deployed only to the development deployment and validated against that live development provider.
+
+Phase 7 includes:
+
+- One permission-filtered workspace search across chats, files, projects, knowledge bases, automations, and agents, served by `/api/v1/search` and scoped to the caller's active workspace.
+- A command palette that renders authorized server results first and only falls back to client-side lists for kinds the workspace endpoint does not own (skills, MCP servers, connectors).
+- **Shared with me**, listing everything reachable through a person, team, or room grant, and explaining which of the three carries the access. For a guest this is their whole workspace.
+- Mention autocomplete for humans and agents with recent-activity ordering, keyboard selection, and an `aria-activedescendant` listbox so focus stays in the composer.
+- Deterministic mention resolution: longest display name wins, matches must sit on word boundaries, and the client sends explicit principal ids. `sam@scout.example` no longer mentions Scout, and "@Sam" no longer mentions Samantha.
+- Per-conversation, per-thread composer drafts that survive reopening and cannot crash private browsing — every storage failure loses the draft instead of propagating.
+- A polite live region announcing typing and agent-response activity.
+- A moderation intake hook: reporting a message records an audit event and changes nothing visible in the room, deliberately leaving review, appeal, and enforcement policy to enterprise hardening.
+- One isomorphic search contract shared by web, desktop, and mobile adapters, with no server-only or DOM dependency.
+
+The stale on-prem Convex runtime baseline was refreshed after review: the additions are the workspace, agent, sharing, and search provider repositories plus their BFF routes. The browser touchpoint list is unchanged, so the Postgres deployment still reaches no Convex code from the browser.
+
+Phase 8 includes:
+
+- Workspace policy covering public links, whether members may create channels, agents, or invitations, guest expiry, allowed agent runtimes, agent budgets, channel retention, legal hold, data residency, and rollout stage. Every field defaults to today's behavior, and inviting is the one member right that starts closed because it reaches outsiders.
+- Policy enforced on the creation paths themselves — channel creation, agent creation, invitations, guest expiry, and agent runtime selection — not only in the settings UI.
+- Abuse limits keyed by workspace first, then principal, room, or agent, with guests on their own buckets. A zero limit is a policy refusal (403), not a throttle (429), and no limit key is ever shared between workspaces.
+- Immutable audit export as newline-delimited JSON for owners and admins, filtered to the workspace, resumable from a watermark, and recorded so an operator can prove which window an export covered.
+- Provider-neutral SSO/SCIM identity mapping. A directory supplies identity, never authorization: group claims are stored for reference while roles and teams stay explicit. Deprovisioning retires the mapping and suspends the membership, and still retires the mapping when the principal is the last owner.
+- Retention with legal hold, swept by a script that is dry-run by default and skips held workspaces entirely.
+- Operational signals per workspace: event backlog, failed deliveries, agent queue depth and failures, authorization denials, invitation failures, unread drift, and provider parity.
+- Staged rollout by tenant allowlist: a deployment declares how far the rollout has reached and each workspace declares its stage, so internal dogfood comes first, then invited workspaces, then everybody.
+
+Gate evidence:
+
+- The tenant-isolation and confused-deputy suite covers cross-workspace reads, grants recorded under another workspace, moved resource bindings, forged workspace ids in search, agent-to-agent invocation, guest escalation, and per-workspace limit keys.
+- The migration rollback rehearsal seeds a scratch workspace with a channel message, a grant, and a guest, rolls the Phase 8 schema back inside an aborting transaction, and verifies every count is unchanged and restored.
+- Audit exports reconcile with membership, grant, and agent-run history, and every exported event carries its workspace.
+- `check:tenant-boundaries` passes again: the seven previously undocumented user-owned Convex tables now carry explicit tenant decisions, and the workspace tables are documented as a workspace boundary inside the deployment.
+
+The Postgres migration was rehearsed from an empty database through schema version 38. Convex schema and functions were deployed only to the development deployment and validated against that live development provider.
+
+## Workspace Is The Isolation Boundary
+
+Every account receives a Personal workspace and may join organization workspaces. Every persisted resource, grant, search document, cache key, realtime topic, background job, agent run, usage record, and audit event must resolve to exactly one workspace.
+
+The active workspace is stored in the authenticated session for navigation and list operations. Resource authorization still resolves the resource's persisted workspace server-side; a client-provided workspace ID is never proof of access.
+
+Organization defaults:
+
+- The creator becomes an owner.
+- New organizations receive a `#general` channel after Channels ship.
+- Owners and administrators manage workspace invitations and policy.
+- Members may create direct messages, channels, teams, and agents unless a later workspace policy restricts them.
+- Invitations expire, can be cancelled or replaced, and may be accepted only by the invited email address.
+- The final owner cannot leave, be removed, or lose the owner role until ownership is transferred.
+- Workspace deletion is an archive operation. Permanent erasure is a separate audited retention workflow.
+- Single-tenant deployments use the same workspace-scoped repositories and authorization checks even when the workspace switcher is hidden.
+
+## Conversation Taxonomy
+
+- A **Personal chat** contains one human and unnamed model executions.
+- A **Direct Message** contains an explicit set of named human or agent principals.
+- A Direct Message with three or more named participants is a **group DM**.
+- A **Channel** is an explicitly named, durable workspace room. Participant count never creates a Channel automatically.
+- Adding a named agent to a Personal chat makes it a Direct Message.
+- Creating a Channel from a private conversation forks it and preserves the source.
+
+DMs and Channels use Slack-style reply threads. Personal chats keep their linear turn experience. Inline quoted replies remain deferred and must not be accepted as a persisted workspace setting until implemented.
+
+## Principals And Authorization
+
+Humans, named agents, and services receive distinct workspace-scoped identities and audit attribution. Unnamed model executions and system events remain message-author kinds without becoming reusable principals.
+
+Workspace roles, room membership, and resource grants remain separate:
+
+- Workspace roles govern administration and broad creation capabilities.
+- Room membership governs reading, posting, and membership management.
+- Resource grants govern access to files, projects, knowledge bases, automations, and agents.
+- Teams are the user-facing name for authorization groups and may contain humans and agents.
+- Agents execute with their own authorization subject. They never inherit unrelated privileges from the human who invoked them.
+
+## Dynamic Room Grants
+
+Sharing a resource with a Team or conversation is dynamic. Adding or removing a Team or room member changes effective access without materializing permanent individual grants.
+
+Restricted attachments require an explicit prompt before a room grant is created. Public-link access remains a separate, workspace-policy-controlled general-access mode.
+
+## Agent Runtime Boundary
+
+Agents are workspace-owned reusable definitions. Overlay may use AgentOS as an execution adapter, but agent identity, authorization, persistence, and room membership remain Overlay contracts.
+
+Mention-first is the only initial behavior:
+
+- A human message in a one-to-one agent DM implicitly invokes that agent.
+- Group DMs and Channels require an explicit mention or a human reply in the agent's thread.
+- Agent-authored mentions do not invoke other agents in the first release.
+- Proactive and always-respond modes remain disabled until loop budgets and approval policies ship.
+
+Block Buzz is a product and interaction reference only. Overlay does not adopt Buzz's relay, protocol, tenancy, or persistence substrate.
+
+## Characterized Starting Point
+
+Phase 0 intentionally preserves the current behavior before multiplayer schemas are introduced:
+
+| Surface | Current boundary |
+| --- | --- |
+| Conversations | Owner-scoped with private/public token sharing |
+| Files | Owner-scoped with private/public token sharing |
+| Knowledge bases | Viewer/editor/owner grants for users, groups, and roles |
+| Projects | Owner-scoped with viewer/editor grants for users, groups, and roles |
+| Automations | Capability-gated; run and edit are not resource-separated |
+| Agents | No durable reusable agent directory or principal |
+| Multi-tenancy | Disabled by runtime validation |
+
+`npm run test:workspaces:phase0` preserves the pre-multiplayer characterization. `npm run test:workspaces:phase1` validates the workspace lifecycle, `npm run test:workspaces:phase2` adds Chats IA, migration, isolation, and authorship gates, `npm run test:workspaces:phase3` validates DMs and realtime collaboration, `npm run test:workspaces:phase4` validates Channels and threads, and `npm run test:workspaces:phase5` validates named agents, mention-first invocation, lifecycle cleanup, and provider parity. Later phases must update the characterization test in the same commit that deliberately changes a boundary.

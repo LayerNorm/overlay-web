@@ -1,7 +1,8 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, getGrantedResources, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { automationErrorResponse, automationService } from '@/server/automations/http'
+import { getOverlayServerContext } from '@/server/bootstrap'
 
 async function readJsonBody(request: NextRequest, context: AppApiRouteContext) {
   if (Object.keys(context.parsedJson).length > 0) return context.parsedJson
@@ -18,13 +19,17 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       request.nextUrl.searchParams.get('runs') === 'true' ||
       request.nextUrl.searchParams.get('includeRuns') === 'true'
     const result = await automationService.getAutomations({
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
       automationId,
       projectId,
       includeDeleted,
       includeRuns,
     })
-    return NextResponse.json(result)
+    if (!Array.isArray(result) || automationId) return NextResponse.json(result)
+    const granted = await Promise.all(getGrantedResources(context).map(({ ownerUserId, resourceId }) => (
+      automationService.getAutomations({ automationId: resourceId, userId: ownerUserId })
+    )))
+    return NextResponse.json([...result, ...granted])
   } catch (error) {
     if (error instanceof Error && error.name === 'AutomationServiceError') {
       return automationErrorResponse(error, 'Failed to fetch automations')
@@ -42,6 +47,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId: auth.userId,
       body,
     })
+    if (typeof result.id === 'string') {
+      await getOverlayServerContext().workspaceService.bindResource({
+        actorUserId: context.auth.userId,
+        workspaceId: context.workspace.workspace.id,
+        resourceType: 'automation',
+        resourceId: result.id,
+      })
+    }
     return NextResponse.json(result)
   } catch (error) {
     if (!(error instanceof Error && error.name === 'AutomationServiceError')) {
@@ -56,7 +69,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const body = await readJsonBody(request, context)
     const { auth } = context
     const result = await automationService.updateAutomation({
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
       body,
     })
     return NextResponse.json(result)
@@ -78,7 +91,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     const { auth } = context
     const result = await automationService.deleteAutomation({
       automationId: body.automationId || request.nextUrl.searchParams.get('automationId'),
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
     })
     return NextResponse.json(result)
   } catch (error) {

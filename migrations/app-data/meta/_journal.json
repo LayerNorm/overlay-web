@@ -139,7 +139,161 @@
       "idx": 19,
       "version": "7",
       "when": 1784833200000,
-      "tag": "0019_p7i_mcp_oauth",
+      "tag": "0019_authorization_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784919600000,
+      "tag": "0020_authorization_fixed_role_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1785006000000,
+      "tag": "0021_knowledge_bases",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1785092400000,
+      "tag": "0022_project_knowledge_base",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1785178800000,
+      "tag": "0023_multi_knowledge_base_attachment",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1785265200000,
+      "tag": "0024_external_knowledge_source_kinds",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1785351600000,
+      "tag": "0025_project_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1785438000000,
+      "tag": "0026_knowledge_group_defaults",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1785524400000,
+      "tag": "0027_governance_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1785610800000,
+      "tag": "0028_governance_actor_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1785697200000,
+      "tag": "0029_workspace_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1785783600000,
+      "tag": "0030_workspace_account_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1785870000000,
+      "tag": "0031_workspace_resource_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1785956400000,
+      "tag": "0032_workspace_conversations",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1786042800000,
+      "tag": "0033_direct_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1786129200000,
+      "tag": "0034_channels_threads",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1786215600000,
+      "tag": "0035_workspace_agents",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1786302000000,
+      "tag": "0036_workspace_resource_sharing",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1786388400000,
+      "tag": "0037_workspace_sharing_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1786474800000,
+      "tag": "0038_workspace_governance_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1786561200000,
+      "tag": "0039_conversation_correctness",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1785646000214,
+      "tag": "0040_attention_system",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1785650000000,
+      "tag": "0041_mcp_oauth",
       "breakpoints": true
     }
   ]

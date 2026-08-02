@@ -26,6 +26,7 @@ export class ConvexProjectRepository implements ProjectRepository {
   }
 
   async listProjects(args: {
+    includeArchived?: boolean
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
@@ -34,6 +35,7 @@ export class ConvexProjectRepository implements ProjectRepository {
       userId: args.userId,
       serverSecret: this.serverSecret,
       updatedSince: args.updatedSince,
+      includeArchived: args.includeArchived,
       includeDeleted: args.includeDeleted,
     }) ?? []
   }
@@ -41,8 +43,10 @@ export class ConvexProjectRepository implements ProjectRepository {
   async createProject(args: {
     clientId?: string
     instructions?: string
+    knowledgeBaseId?: string | null
     name: string
     parentId?: string | null
+    settings?: Record<string, unknown>
     userId: string
   }): Promise<ProjectRecord> {
     const id = await convex.mutation<Id<'projects'>>('projects/projects:create', {
@@ -50,8 +54,10 @@ export class ConvexProjectRepository implements ProjectRepository {
       serverSecret: this.serverSecret,
       clientId: args.clientId,
       instructions: args.instructions,
+      knowledgeBaseId: args.knowledgeBaseId ?? undefined,
       name: args.name,
       parentId: args.parentId ?? undefined,
+      settings: args.settings,
     }, { throwOnError: true })
     if (!id) throw new Error('Failed to create project')
     const project = await this.getProject({ projectId: id, userId: args.userId })
@@ -60,10 +66,13 @@ export class ConvexProjectRepository implements ProjectRepository {
   }
 
   async updateProject(args: {
+    archivedAt?: number | null
     instructions?: string | null
+    knowledgeBaseId?: string | null
     name?: string
     parentId?: string | null
     projectId: string
+    settings?: Record<string, unknown>
     userId: string
   }): Promise<ProjectRecord | null> {
     const existing = await this.getProject(args)
@@ -72,9 +81,12 @@ export class ConvexProjectRepository implements ProjectRepository {
       projectId: args.projectId as Id<'projects'>,
       userId: args.userId,
       serverSecret: this.serverSecret,
+      archivedAt: args.archivedAt,
       instructions: args.instructions,
+      knowledgeBaseId: args.knowledgeBaseId,
       name: args.name,
       parentId: args.parentId,
+      settings: args.settings,
     }, { throwOnError: true })
     return await this.getProject(args)
   }

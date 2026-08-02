@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { automationErrorResponse, automationService } from '@/server/automations/http'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
 
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const { auth } = context
     const result = await automationService.testAutomation({
       automationId: body.automationId,
-      userId: auth.userId,
+      userId: getAuthorizedResourceUserId(context),
       baseUrl: getInternalApiBaseUrl(request),
     })
     return NextResponse.json(result)

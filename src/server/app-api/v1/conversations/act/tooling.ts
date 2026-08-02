@@ -6,6 +6,7 @@ import {
 } from '@/server/config'
 import {
   deriveOverlayCapabilities,
+  normalizeIntegrationProviderKey,
   type CapabilityCheck,
 } from '@overlay/app-core'
 import {
@@ -19,9 +20,14 @@ import {
 import {
   createIntegrationToolSet,
   filterIntegrationToolSet,
+  getIntegrationProvider,
   getSelectedIntegrationProviderId,
 } from '@/server/integrations'
 import { createMcpLazyMetaTools } from '@/server/tools/mcp-tools'
+import {
+  applyProjectToolPolicy,
+  type ProjectSettings,
+} from '@/shared/projects/project-settings'
 import {
   allowedOverlayToolIdsForTurn,
 } from '@/server/tools/tools/exposure-policy'
@@ -40,6 +46,7 @@ type MediaToolIntent = 'image' | 'video' | null
 type ToolDefinition = ToolSet[string]
 
 export interface ActToolPreloadTasks {
+  connectedConnectorIdsTask: Promise<string[]>
   integrationToolsTask: Promise<ToolSet>
 }
 
@@ -63,12 +70,32 @@ export function preloadActExternalToolTasks(params: {
 }): ActToolPreloadTasks {
   try {
     if (!getActCapabilitiesSync().integrations) {
-      return { integrationToolsTask: Promise.resolve({} as ToolSet) }
+      return {
+        connectedConnectorIdsTask: Promise.resolve([]),
+        integrationToolsTask: Promise.resolve({} as ToolSet),
+      }
     }
   } catch (_error) {
-    return { integrationToolsTask: Promise.resolve({} as ToolSet) }
+    return {
+      connectedConnectorIdsTask: Promise.resolve([]),
+      integrationToolsTask: Promise.resolve({} as ToolSet),
+    }
   }
 
+  const connectedConnectorIdsTask = getIntegrationProvider()
+    .listConnections({
+      userId: params.userId,
+      accessToken: params.accessToken,
+    })
+    .then((connections) => [...new Set(connections
+      .map(({ providerKey }) => normalizeIntegrationProviderKey(providerKey)))])
+    .catch((error) => {
+      logger.warn(
+        '[conversations/act] connected connector preload failed:',
+        summarizeErrorForLog(error),
+      )
+      return []
+    })
   const integrationToolsTask = createIntegrationToolSet({
     userId: params.userId,
     accessToken: params.accessToken,
@@ -77,10 +104,12 @@ export function preloadActExternalToolTasks(params: {
     logger.warn('[conversations/act] integration tool preload failed:', summarizeErrorForLog(error))
   })
 
-  return { integrationToolsTask }
+  return { connectedConnectorIdsTask, integrationToolsTask }
 }
 
 export async function prepareActTooling(params: {
+  accountAllowedConnectorIds?: readonly string[]
+  accountAllowedToolIds?: readonly string[]
   accessToken?: string
   automationExecution?: boolean
   automationMode?: boolean
@@ -88,6 +117,10 @@ export async function prepareActTooling(params: {
   baseUrl: string
   conversationId?: string
   conversationProjectId?: string
+  /** Knowledge bases in scope this turn; steers tools toward the scoped variants. */
+  activeKnowledgeBaseIds?: readonly string[]
+  /** Configuration of the conversation's project, when it has one. */
+  projectSettings?: ProjectSettings
   entitlements: Entitlements
   effectiveModelId: string
   forwardCookie?: string | null
@@ -106,7 +139,10 @@ export async function prepareActTooling(params: {
 }): Promise<ActTooling> {
   const capabilities = await getActCapabilities()
   const memoryEnabled = params.memoryEnabled !== false && capabilities.memory && capabilities.vectorSearch
-  const allowedOverlayToolIds = applyRuntimeToolGates(
+  // Account and project policies are applied after deployment gates and only
+  // ever narrow, so neither can reintroduce a tool the deployment withheld.
+  // Project policy remains last so it can further constrain account access.
+  const accountScopedToolIds = applyAccountToolPolicy(applyRuntimeToolGates(
     withRequestedOverlayToolIds(
       allowedOverlayToolIdsForTurn({
         latestUserText: params.latestUserText ?? '',
@@ -118,6 +154,15 @@ export async function prepareActTooling(params: {
       memoryEnabled,
     ),
     capabilities,
+  ), params.accountAllowedToolIds)
+  // Project policy is applied last and only ever narrows, so a project can never
+  // reintroduce a tool the account or deployment already withheld. This gate lives
+  // at the tool layer deliberately: Phase 4 scoped only the retrieval path and left
+  // the agent's tools reachable, which is how a knowledge base answered from
+  // unrelated files.
+  const allowedOverlayToolIds = applyProjectToolPolicy(
+    accountScopedToolIds,
+    params.projectSettings,
   )
 
   const mcpCatalogStartedAt = performance.now()
@@ -131,6 +176,7 @@ export async function prepareActTooling(params: {
         turnId: params.turnId,
         modelId: params.effectiveModelId,
         projectId: params.conversationProjectId,
+        enabledServerIds: params.projectSettings?.enabledMcpServerIds,
       })
   const [integrationRaw, mcpToolsRaw, webToolSet, perplexityTool, parallelTool] = await Promise.all([
     capabilities.integrations ? params.preloadTasks.integrationToolsTask : Promise.resolve({} as ToolSet),
@@ -149,6 +195,7 @@ export async function prepareActTooling(params: {
         forwardCookie: params.forwardCookie ?? undefined,
         includePaidOnlyOverlayTools: params.paid,
         memoryEnabled,
+        activeKnowledgeBaseIds: params.activeKnowledgeBaseIds,
       }),
     ),
     params.paid && capabilities.webSearch
@@ -181,6 +228,10 @@ export async function prepareActTooling(params: {
     parallelTool,
     perplexityTool,
     webToolSet,
+    enabledConnectorSlugs: intersectConnectorPolicies(
+      params.accountAllowedConnectorIds,
+      params.projectSettings?.enabledConnectorSlugs,
+    ),
   })
 
   tooling.ttft = { mcpCatalogMs: +mcpCatalogMs.toFixed(1) }
@@ -204,6 +255,30 @@ export async function prepareActTooling(params: {
   }
 }
 
+export function applyAccountToolPolicy(
+  deploymentAllowedToolIds: readonly string[],
+  accountAllowedToolIds?: readonly string[],
+): string[] {
+  if (accountAllowedToolIds === undefined) return [...deploymentAllowedToolIds]
+  const accountIds = new Set(accountAllowedToolIds)
+  return deploymentAllowedToolIds.filter((toolId) => accountIds.has(toolId))
+}
+
+export function intersectConnectorPolicies(
+  accountAllowedConnectorIds?: readonly string[],
+  projectEnabledConnectorIds?: readonly string[],
+): string[] | undefined {
+  if (accountAllowedConnectorIds === undefined) {
+    return projectEnabledConnectorIds === undefined
+      ? undefined
+      : projectEnabledConnectorIds.map(normalizeIntegrationProviderKey)
+  }
+  const accountIds = accountAllowedConnectorIds.map(normalizeIntegrationProviderKey)
+  if (projectEnabledConnectorIds === undefined) return accountIds
+  const projectIds = new Set(projectEnabledConnectorIds.map(normalizeIntegrationProviderKey))
+  return accountIds.filter((id) => projectIds.has(id))
+}
+
 export function buildActTooling(params: {
   allowedOverlayToolIds: string[]
   integrationProvider?: 'composio' | 'executor' | 'none'
@@ -214,11 +289,13 @@ export function buildActTooling(params: {
   parallelTool: ToolDefinition | null
   perplexityTool: ToolDefinition | null
   webToolSet: ToolSet
+  enabledConnectorSlugs?: readonly string[]
 }): ActTooling {
   const integrationTools = filterIntegrationToolSet(
     params.integrationRaw,
     params.paid,
     params.integrationProvider,
+    params.enabledConnectorSlugs,
   )
   const integrationsForAgent: ToolSet = params.isMultiModelFollowUpSlot ? {} : integrationTools
   const freeTierStubsActive = !params.paid && !params.isMultiModelFollowUpSlot

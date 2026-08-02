@@ -16,6 +16,89 @@ A feature worktree must never change production Convex. The `main` app and produ
 
 The development Convex deployment is shared by local development and `staging.getoverlay.io`. A Convex change from one branch changes that backend for every user of this lane. Do not run concurrent staging QA sessions that make incompatible changes under `convex/`.
 
+## Vercel projects
+
+Two Vercel projects are connected to this repository. Each one is responsible for
+exactly one branch:
+
+| Vercel project | Production branch | Domain |
+| --- | --- | --- |
+| `overlay-landing` | `main` | `www.getoverlay.io` |
+| `overlay-web-staging` | `staging` | `staging.getoverlay.io` |
+
+By default Vercel builds every branch push in every connected project, so one
+push produces preview deployments in both projects. Those preview URLs are not
+registered WorkOS redirect URIs, so they cannot be signed into and are not part
+of this workflow. Keep each project to its own branch.
+
+Configure both projects once:
+
+1. **Settings → Environment Variables**, exposed to all environments:
+   - `overlay-landing`: `DEPLOY_BRANCH=main`
+   - `overlay-web-staging`: `DEPLOY_BRANCH=staging`
+2. **Settings → Git → Ignored Build Step**, in both projects:
+
+   ```bash
+   bash scripts/vercel-ignore-build.sh
+   ```
+
+Vercel's exit contract is inverted — `exit 0` skips a build and `exit 1` runs one
+— which is why this lives in a reviewed script rather than an inline command.
+Skipped pushes still appear in the project's deployment list, marked as canceled,
+with the reason in the build log.
+
+If `DEPLOY_BRANCH` is missing, the guard falls back to building only that
+project's own production branch. A missing variable must never silently restore
+the preview builds the guard exists to prevent.
+
+Alternative worth knowing about: `vercel.json` supports
+`git.deploymentEnabled` for per-branch control, but that file is shared by both
+projects, so it cannot enable `staging` for one project while disabling it for
+the other. The per-project variable above is what makes the two lanes
+independent.
+
+## Pair staging web with development Convex
+
+`overlay-web-staging` deploys `staging.getoverlay.io` as that project's
+**Production** deployment (`VERCEL_ENV=production`, `NODE_ENV=production`). The
+shared staging lane still must use the **development** Convex deployment, not
+production.
+
+Set these on **`overlay-web-staging`** (Production for the staging domain; Preview
+only if you intentionally keep previews):
+
+| Variable | Staging value | Notes |
+| --- | --- | --- |
+| `NEXT_PUBLIC_APP_URL` | `https://staging.getoverlay.io` | Names the staging lane for config resolution |
+| `NEXT_PUBLIC_CONVEX_URL` | `https://different-caiman-77.convex.cloud` | **Required for the browser client.** Must be a single scheme, no quotes, no trailing slash |
+| `DEV_NEXT_PUBLIC_CONVEX_URL` | same as above | Preferred by the server when the app is on the staging lane |
+| `NEXT_PUBLIC_CONVEX_SITE_URL` | `https://different-caiman-77.convex.site` | Only if the app reads the Convex site URL |
+| `INTERNAL_API_SECRET` | same secret as on the development Convex deployment | Server↔Convex auth; mismatch breaks chat and BFF routes |
+| `OVERLAY_DEPLOYMENT_ENV` | `staging` | Optional explicit lane; host-based detection also treats `staging.getoverlay.io` as staging |
+
+On **`overlay-landing`** (production), keep:
+
+| Variable | Production value |
+| --- | --- |
+| `NEXT_PUBLIC_APP_URL` | `https://www.getoverlay.io` |
+| `NEXT_PUBLIC_CONVEX_URL` | production Convex URL (`colorful-chickadee-419`) |
+| `INTERNAL_API_SECRET` | production Convex secret |
+
+Common failure modes:
+
+1. **Doubled scheme** — pasting `https://…` into a field that already prefixes
+   `https://` produces host `https` and a bare `fetch failed`. Use exactly
+   `https://different-caiman-77.convex.cloud`.
+2. **Only `DEV_NEXT_PUBLIC_CONVEX_URL` set** — the browser only reliably sees
+   `NEXT_PUBLIC_*` vars at build time. Always set `NEXT_PUBLIC_CONVEX_URL` on the
+   staging project to the development deployment.
+3. **Env changed without redeploy** — `NEXT_PUBLIC_*` values are baked into the
+   client bundle. After changing Convex URLs, trigger a new Vercel deploy.
+4. **Secret mismatch** — `INTERNAL_API_SECRET` on Vercel must match the value on
+   the development Convex deployment dashboard.
+5. **Stale Convex functions** — after merging `convex/` into `staging`, push from
+   the dedicated staging worktree: `npm run convex:push:dev`.
+
 ## Create a feature worktree
 
 Keep the canonical checkout at `~/Downloads/overlay-mono/overlay-landing` on `main`. Create feature worktrees beside it; do not check `staging` out inside a feature worktree.
@@ -46,6 +129,48 @@ npm run convex:push:all
 npm run convex:deploy
 npm run convex:deploy:all
 ```
+
+## Lint before you push
+
+`next build` runs ESLint, so a lint error does not surface locally — it fails the
+Vercel build minutes later, in a remote log. Some of these rules cannot be caught
+by `npm run typecheck`: React Compiler's `react-hooks/preserve-manual-memoization`
+fails the build when a component's manual `useCallback` or `useMemo` dependencies
+stop matching the dependencies the compiler infers, and editing one part of a
+component can change that inference elsewhere in the same file.
+
+Lint only what the change touched:
+
+```bash
+npm run lint:changed
+```
+
+That covers the staged changes, or the working tree when nothing is staged. It
+takes a few seconds against a handful of files, where a full `npm run lint` takes
+about half a minute against the repository. Linting the changed files is
+sufficient for these rules because ESLint evaluates every rule per file.
+
+A tracked `pre-push` hook runs the same check over the commits being pushed.
+Install it once per clone:
+
+```bash
+npm run hooks:install
+```
+
+`npm install` also installs it, via the `prepare` lifecycle script. The hooks live
+in `.githooks` and are wired up with `core.hooksPath`, so they are reviewed like
+any other file in the repository and apply to every worktree. The hook falls back
+to a full lint whenever the pushed range cannot be resolved or is very large, so
+an unverified push never reports a pass.
+
+To push anyway — a revert or a hotfix, for example:
+
+```bash
+git push --no-verify
+```
+
+Warnings do not block a push. This repository carries documented cross-feature
+import warnings; only errors fail the build.
 
 ## Prepare the staging release candidate
 

@@ -17,6 +17,9 @@ const ZERO_COUNTS: AccountDataDeletionCounts = {
   apiIdempotencyKeys: 0,
   apiKeys: 0,
   administrativePrincipals: 0,
+  authorizationGroupMemberships: 0,
+  authorizationResourceGrants: 0,
+  authorizationUserRoles: 0,
   automationRunAttempts: 0,
   automationRuns: 0,
   automationTriggers: 0,
@@ -31,6 +34,8 @@ const ZERO_COUNTS: AccountDataDeletionCounts = {
   conversations: 0,
   daytonaWorkspaces: 0,
   files: 0,
+  governanceAccessReviews: 0,
+  governancePolicies: 0,
   knowledgeChunkEmbeddings: 0,
   knowledgeChunks: 0,
   memoryExtractionRuns: 0,
@@ -51,6 +56,8 @@ const ZERO_COUNTS: AccountDataDeletionCounts = {
   webhookDeliveries: 0,
   webhookDeliveryAttempts: 0,
   webhookSubscriptions: 0,
+  workspacePersonalWorkspaces: 0,
+  workspacePrincipals: 0,
 }
 
 export class PostgresAccountDataDeletionRepository implements AccountDataDeletionRepository {
@@ -71,6 +78,13 @@ export class PostgresAccountDataDeletionRepository implements AccountDataDeletio
       })
 
       await deleteUserOwnedDurableJobs(tx, args.userId)
+      await deleteUserOwnedGovernance(tx, args.userId)
+      await prepareWorkspaceAccountDeletion(tx, args.userId)
+
+      await tx.execute(sql`
+        DELETE FROM authorization_resource_grants
+        WHERE principal_type = 'user' AND principal_id = ${args.userId}
+      `)
 
       await tx.execute(sql`
         DELETE FROM users
@@ -95,6 +109,33 @@ export class PostgresAccountDataDeletionRepository implements AccountDataDeletio
   }
 }
 
+async function deleteUserOwnedGovernance(tx: Transaction, userId: string): Promise<void> {
+  await tx.execute(sql`
+    DELETE FROM governance_access_reviews
+    WHERE (
+      resource_type = 'project'
+      AND resource_id IN (SELECT id FROM projects WHERE user_id = ${userId})
+    ) OR (
+      resource_type = 'knowledge_base'
+      AND resource_id IN (
+        SELECT id FROM knowledge_bases WHERE owner_user_id = ${userId}
+      )
+    )
+  `)
+  await tx.execute(sql`
+    DELETE FROM governance_policies
+    WHERE (
+      resource_type = 'project'
+      AND resource_id IN (SELECT id FROM projects WHERE user_id = ${userId})
+    ) OR (
+      resource_type = 'knowledge_base'
+      AND resource_id IN (
+        SELECT id FROM knowledge_bases WHERE owner_user_id = ${userId}
+      )
+    )
+  `)
+}
+
 async function deleteUserOwnedDurableJobs(tx: Transaction, userId: string): Promise<void> {
   await tx.execute(sql`
     DELETE FROM durable_jobs
@@ -112,6 +153,158 @@ async function deleteUserOwnedDurableJobs(tx: Transaction, userId: string): Prom
         WHERE delivery.user_id = ${userId}
       )
     )
+  `)
+}
+
+async function prepareWorkspaceAccountDeletion(tx: Transaction, userId: string): Promise<void> {
+  const finalOwner = await tx.execute<{ name: string }>(sql`
+    SELECT workspace.name
+    FROM workspace_memberships membership
+    INNER JOIN workspace_principals principal
+      ON principal.workspace_id = membership.workspace_id
+      AND principal.id = membership.principal_id
+    INNER JOIN workspaces workspace ON workspace.id = membership.workspace_id
+    WHERE principal.user_id = ${userId}
+      AND workspace.kind = 'organization'
+      AND workspace.status = 'active'
+      AND membership.role = 'owner'
+      AND membership.status = 'active'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM workspace_memberships another_owner
+        WHERE another_owner.workspace_id = membership.workspace_id
+          AND another_owner.principal_id <> membership.principal_id
+          AND another_owner.role = 'owner'
+          AND another_owner.status = 'active'
+      )
+    LIMIT 1
+    FOR UPDATE OF membership
+  `)
+  if (finalOwner.rows[0]) {
+    throw new Error(
+      `Transfer ownership of ${finalOwner.rows[0].name} before deleting your account`,
+    )
+  }
+
+  // A Personal workspace belongs to the account and is permanently erased with
+  // it. Organization data remains under workspace retention policy.
+  await tx.execute(sql`
+    DELETE FROM workspaces
+    WHERE kind = 'personal' AND personal_owner_user_id = ${userId}
+  `)
+
+  // The legacy chat tables still require a user_id even though organization
+  // DMs are now owned by their workspace and participants. Move that
+  // compatibility key to an active owner before the account row is deleted;
+  // author_principal_id continues to preserve the actual historical author.
+  await reassignOrganizationConversationCompatibilityOwner(tx, userId)
+
+  const organizationPrincipals = sql`
+    SELECT id
+    FROM workspace_principals
+    WHERE user_id = ${userId}
+  `
+  await tx.execute(sql`
+    DELETE FROM workspace_team_members
+    WHERE principal_id IN (${organizationPrincipals})
+  `)
+  await tx.execute(sql`
+    UPDATE workspace_resource_guests
+    SET status = 'revoked', revoked_at = now(), updated_at = now()
+    WHERE principal_id IN (${organizationPrincipals})
+      AND status IN ('pending', 'active')
+  `)
+  // Organization conversation history is retained, but a deleted identity must
+  // immediately stop appearing as an active participant or presence target.
+  await tx.execute(sql`
+    UPDATE conversation_participants
+    SET
+      status = 'removed',
+      removed_at = COALESCE(removed_at, now()),
+      archived_at = COALESCE(archived_at, now()),
+      updated_at = now()
+    WHERE principal_id IN (${organizationPrincipals})
+      AND status = 'active'
+  `)
+  await tx.execute(sql`
+    DELETE FROM workspace_presence
+    WHERE principal_id IN (${organizationPrincipals})
+  `)
+  await tx.execute(sql`
+    DELETE FROM workspace_notifications
+    WHERE recipient_principal_id IN (${organizationPrincipals})
+  `)
+  await tx.execute(sql`
+    DELETE FROM workspace_memberships
+    WHERE principal_id IN (${organizationPrincipals})
+  `)
+  await tx.execute(sql`
+    UPDATE workspace_principals
+    SET
+      archived_at = COALESCE(archived_at, now()),
+      display_name = 'Deleted member',
+      email = NULL,
+      updated_at = now()
+    WHERE user_id = ${userId}
+  `)
+}
+
+async function reassignOrganizationConversationCompatibilityOwner(
+  tx: Transaction,
+  userId: string,
+): Promise<void> {
+  await tx.execute(sql`
+    WITH replacement AS (
+      SELECT DISTINCT ON (membership.workspace_id)
+        membership.workspace_id,
+        principal.user_id
+      FROM workspace_memberships membership
+      INNER JOIN workspace_principals principal
+        ON principal.workspace_id = membership.workspace_id
+        AND principal.id = membership.principal_id
+      INNER JOIN workspaces workspace ON workspace.id = membership.workspace_id
+      WHERE workspace.kind = 'organization'
+        AND workspace.status = 'active'
+        AND membership.status = 'active'
+        AND membership.role = 'owner'
+        AND principal.type = 'human'
+        AND principal.archived_at IS NULL
+        AND principal.user_id IS NOT NULL
+        AND principal.user_id <> ${userId}
+      ORDER BY membership.workspace_id, membership.joined_at, principal.id
+    )
+    UPDATE conversation_messages message
+    SET user_id = replacement.user_id
+    FROM conversations conversation
+    INNER JOIN replacement ON replacement.workspace_id = conversation.workspace_id
+    WHERE message.conversation_id = conversation.id
+      AND message.user_id = ${userId}
+  `)
+  await tx.execute(sql`
+    WITH replacement AS (
+      SELECT DISTINCT ON (membership.workspace_id)
+        membership.workspace_id,
+        principal.user_id
+      FROM workspace_memberships membership
+      INNER JOIN workspace_principals principal
+        ON principal.workspace_id = membership.workspace_id
+        AND principal.id = membership.principal_id
+      INNER JOIN workspaces workspace ON workspace.id = membership.workspace_id
+      WHERE workspace.kind = 'organization'
+        AND workspace.status = 'active'
+        AND membership.status = 'active'
+        AND membership.role = 'owner'
+        AND principal.type = 'human'
+        AND principal.archived_at IS NULL
+        AND principal.user_id IS NOT NULL
+        AND principal.user_id <> ${userId}
+      ORDER BY membership.workspace_id, membership.joined_at, principal.id
+    )
+    UPDATE conversations conversation
+    SET user_id = replacement.user_id, updated_at = now()
+    FROM replacement
+    WHERE conversation.workspace_id = replacement.workspace_id
+      AND conversation.user_id = ${userId}
   `)
 }
 
@@ -159,6 +352,9 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     api_idempotency_keys: number
     api_keys: number
     administrative_principals: number
+    authorization_group_memberships: number
+    authorization_resource_grants: number
+    authorization_user_roles: number
     automation_run_attempts: number
     automation_runs: number
     automation_triggers: number
@@ -173,6 +369,8 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     conversations: number
     daytona_workspaces: number
     files: number
+    governance_access_reviews: number
+    governance_policies: number
     knowledge_chunk_embeddings: number
     knowledge_chunks: number
     memory_extraction_runs: number
@@ -193,11 +391,16 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     webhook_deliveries: number
     webhook_delivery_attempts: number
     webhook_subscriptions: number
+    workspace_personal_workspaces: number
+    workspace_principals: number
   }>(sql`
     SELECT
       (SELECT count(*)::int FROM api_idempotency_keys WHERE user_id = ${userId}) AS api_idempotency_keys,
       (SELECT count(*)::int FROM api_keys WHERE user_id = ${userId}) AS api_keys,
       (SELECT count(*)::int FROM administrative_principals WHERE user_id = ${userId}) AS administrative_principals,
+      (SELECT count(*)::int FROM authorization_group_memberships WHERE user_id = ${userId}) AS authorization_group_memberships,
+      (SELECT count(*)::int FROM authorization_resource_grants WHERE principal_type = 'user' AND principal_id = ${userId}) AS authorization_resource_grants,
+      (SELECT count(*)::int FROM authorization_user_roles WHERE user_id = ${userId}) AS authorization_user_roles,
       (SELECT count(*)::int FROM automations WHERE user_id = ${userId}) AS automations,
       (SELECT count(*)::int FROM billing_subscriptions WHERE user_id = ${userId}) AS billing_subscriptions,
       (SELECT count(*)::int FROM billing_top_ups WHERE user_id = ${userId}) AS billing_top_ups,
@@ -212,6 +415,38 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
       (SELECT count(*)::int FROM conversations WHERE user_id = ${userId}) AS conversations,
       (SELECT count(*)::int FROM daytona_workspaces WHERE user_id = ${userId}) AS daytona_workspaces,
       (SELECT count(*)::int FROM files WHERE user_id = ${userId}) AS files,
+      (SELECT count(*)::int
+        FROM governance_access_reviews review
+        WHERE review.created_by = ${userId}
+          OR review.reviewer_user_id = ${userId}
+          OR review.owner_user_id = ${userId}
+          OR (
+            review.resource_type = 'project'
+            AND review.resource_id IN (SELECT id FROM projects WHERE user_id = ${userId})
+          )
+          OR (
+            review.resource_type = 'knowledge_base'
+            AND review.resource_id IN (
+              SELECT id FROM knowledge_bases WHERE owner_user_id = ${userId}
+            )
+          )
+      ) AS governance_access_reviews,
+      (SELECT count(*)::int
+        FROM governance_policies policy
+        WHERE policy.created_by = ${userId}
+          OR policy.approved_by = ${userId}
+          OR policy.rejected_by = ${userId}
+          OR (
+            policy.resource_type = 'project'
+            AND policy.resource_id IN (SELECT id FROM projects WHERE user_id = ${userId})
+          )
+          OR (
+            policy.resource_type = 'knowledge_base'
+            AND policy.resource_id IN (
+              SELECT id FROM knowledge_bases WHERE owner_user_id = ${userId}
+            )
+          )
+      ) AS governance_policies,
       (SELECT count(*)::int FROM knowledge_chunk_embeddings WHERE user_id = ${userId}) AS knowledge_chunk_embeddings,
       (SELECT count(*)::int FROM knowledge_chunks WHERE user_id = ${userId}) AS knowledge_chunks,
       (SELECT count(*)::int FROM memory_extraction_runs WHERE user_id = ${userId}) AS memory_extraction_runs,
@@ -232,6 +467,8 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
       ,(SELECT count(*)::int FROM webhook_subscriptions WHERE user_id = ${userId}) AS webhook_subscriptions
       ,(SELECT count(*)::int FROM webhook_deliveries WHERE user_id = ${userId}) AS webhook_deliveries
       ,(SELECT count(*)::int FROM webhook_delivery_attempts attempt JOIN webhook_deliveries delivery ON delivery.id = attempt.delivery_id WHERE delivery.user_id = ${userId}) AS webhook_delivery_attempts
+      ,(SELECT count(*)::int FROM workspaces WHERE kind = 'personal' AND personal_owner_user_id = ${userId}) AS workspace_personal_workspaces
+      ,(SELECT count(*)::int FROM workspace_principals WHERE user_id = ${userId}) AS workspace_principals
   `)
   const row = result.rows[0]
   if (!row) return { ...ZERO_COUNTS }
@@ -240,6 +477,9 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     apiIdempotencyKeys: Number(row.api_idempotency_keys ?? 0),
     apiKeys: Number(row.api_keys ?? 0),
     administrativePrincipals: Number(row.administrative_principals ?? 0),
+    authorizationGroupMemberships: Number(row.authorization_group_memberships ?? 0),
+    authorizationResourceGrants: Number(row.authorization_resource_grants ?? 0),
+    authorizationUserRoles: Number(row.authorization_user_roles ?? 0),
     automationRunAttempts: Number(row.automation_run_attempts ?? 0),
     automationRuns: Number(row.automation_runs ?? 0),
     automationTriggers: Number(row.automation_triggers ?? 0),
@@ -254,6 +494,8 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     conversations: Number(row.conversations ?? 0),
     daytonaWorkspaces: Number(row.daytona_workspaces ?? 0),
     files: Number(row.files ?? 0),
+    governanceAccessReviews: Number(row.governance_access_reviews ?? 0),
+    governancePolicies: Number(row.governance_policies ?? 0),
     knowledgeChunkEmbeddings: Number(row.knowledge_chunk_embeddings ?? 0),
     knowledgeChunks: Number(row.knowledge_chunks ?? 0),
     memoryExtractionRuns: Number(row.memory_extraction_runs ?? 0),
@@ -274,6 +516,8 @@ async function countUserRows(tx: Transaction, userId: string): Promise<AccountDa
     webhookDeliveries: Number(row.webhook_deliveries ?? 0),
     webhookDeliveryAttempts: Number(row.webhook_delivery_attempts ?? 0),
     webhookSubscriptions: Number(row.webhook_subscriptions ?? 0),
+    workspacePersonalWorkspaces: Number(row.workspace_personal_workspaces ?? 0),
+    workspacePrincipals: Number(row.workspace_principals ?? 0),
   }
 }
 

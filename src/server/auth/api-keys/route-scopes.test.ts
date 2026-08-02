@@ -1,9 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-
-const { getRequiredApiKeyScopesForRoute } = await import(
-  new URL('./route-scopes.ts', import.meta.url).href
-)
+import { getRequiredApiKeyScopesForRoute } from './route-scopes'
 
 test('getRequiredApiKeyScopesForRoute maps conversation routes to chat scopes', () => {
   assert.deepEqual(getRequiredApiKeyScopesForRoute('GET', '/api/v1/conversations'), ['chat:read'])
