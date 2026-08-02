@@ -1,11 +1,12 @@
 import 'server-only'
 
-import { createHmac } from 'node:crypto'
+import { scryptSync } from 'node:crypto'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
 import { createGuardedFetch } from '@/server/security/guarded-fetch'
 import {
   createMcpOAuthSessionId,
+  McpCredentialConfigurationError,
   McpCredentialCipher,
   mcpOAuthSessionExpiry,
   McpOAuthProvider,
@@ -42,8 +43,8 @@ export function mcpOAuthRedirectUri(baseUrl: string): string {
  * Bind a browser-started flow to its account without storing the account identifier itself.
  *
  * A plain digest is reversible by enumeration for a stable user id. The credential-encryption key
- * is already required to persist this flow's verifier, so use it as an HMAC key rather than adding
- * a second secret or pretending a password KDF is the right primitive for a deterministic lookup.
+ * is already required to persist this flow's verifier, so derive a keyed value with scrypt rather
+ * than adding a second secret or storing the identifier in the OAuth state record.
  */
 export function hashSessionBinding(value: string): string {
   const key = process.env.MCP_CREDENTIAL_ENCRYPTION_KEY?.trim()
@@ -52,7 +53,12 @@ export function hashSessionBinding(value: string): string {
       'MCP_CREDENTIAL_ENCRYPTION_KEY is required before starting an authenticated MCP OAuth flow',
     )
   }
-  return createHmac('sha256', key).update(`mcp-oauth-binding:v1:${value}`).digest('hex')
+  return scryptSync(value, `mcp-oauth-binding:v1:${key}`, 32, {
+    N: 16_384,
+    maxmem: 32 * 1024 * 1024,
+    p: 1,
+    r: 8,
+  }).toString('hex')
 }
 
 export const MCP_OAUTH_CONFIRM_COOKIE = 'overlay_mcp_oauth_confirm'
