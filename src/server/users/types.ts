@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { Session, User } from '@overlay/app-core'
+import type { LifecycleEventPublisher } from '@/server/lifecycle-events'
 
 export type UserAuthProvider = 'workos' | 'better-auth' | 'oidc' | 'none'
 
@@ -28,6 +29,7 @@ export interface UserRepository {
 
 export interface UserServiceOptions {
   authProvider: UserAuthProvider
+  lifecycleEvents?: LifecycleEventPublisher
   repository: UserRepository
 }
 

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
+import type { LifecycleEventPublisher } from '@/server/lifecycle-events'
 import { runActTurnForScheduledAutomation, type ScheduledAutomationTurn } from '@/server/agent/run-act-turn'
 import { emitAutomationFailed, emitAutomationFinished } from '@/server/shared/webhooks'
 import type {
@@ -54,6 +55,7 @@ export type AutomationServiceDeps = {
   events?: AutomationServiceEvents
   entitlementPolicy: AutomationEntitlementPolicy
   executor?: AutomationExecutor
+  lifecycleEvents?: () => LifecycleEventPublisher
   repository: AutomationRepository
 }
 
@@ -477,6 +479,13 @@ export class AutomationService {
         runId,
         conversationId: result.conversationId,
       })
+      await this.publishAutomationLifecycleEvent({
+        automationId,
+        execution: 'manual',
+        name: 'automation.succeeded',
+        runId,
+        userId: args.userId,
+      })
 
       return { success: true, runId, conversationId: result.conversationId }
     } catch (error) {
@@ -533,6 +542,13 @@ export class AutomationService {
         runId: args.runId,
         conversationId: result.conversationId,
       })
+      await this.publishAutomationLifecycleEvent({
+        automationId: automation._id,
+        execution: 'scheduled',
+        name: 'automation.succeeded',
+        runId: args.runId,
+        userId: automation.userId,
+      })
 
       return { success: true, conversationId: result.conversationId }
     } catch (error) {
@@ -542,6 +558,14 @@ export class AutomationService {
           automationId,
           runId: args.runId,
           error: summarizeError(error).slice(0, 1000),
+        })
+        await this.publishAutomationLifecycleEvent({
+          automationId,
+          execution: 'scheduled',
+          failureClass: classifyAutomationFailure(error),
+          name: 'automation.failed',
+          runId: args.runId,
+          userId,
         })
       }
       throw error
@@ -607,6 +631,53 @@ export class AutomationService {
         runId: args.runId,
         error: message,
       })
+      await this.publishAutomationLifecycleEvent({
+        automationId: args.automationId,
+        execution: 'manual',
+        failureClass: classifyAutomationFailure(args.error),
+        name: 'automation.failed',
+        runId: args.runId,
+        userId: args.userId,
+      })
     }
   }
+
+  private async publishAutomationLifecycleEvent(args: {
+    automationId: string
+    execution: 'manual' | 'scheduled'
+    failureClass?: 'authorization' | 'provider' | 'transient' | 'unknown' | 'validation'
+    name: 'automation.failed' | 'automation.succeeded'
+    runId: string
+    userId: string
+  }): Promise<void> {
+    await this.deps.lifecycleEvents?.().publish({
+      attributes: {
+        execution: args.execution,
+        ...(args.failureClass ? { failureClass: args.failureClass } : {}),
+      },
+      idempotencyKey: `${args.name}:${args.runId}`,
+      name: args.name,
+      resource: {
+        automationId: args.automationId,
+        id: args.runId,
+        type: 'automation_run',
+      },
+      userId: args.userId,
+    })
+  }
+}
+
+function classifyAutomationFailure(
+  error: unknown,
+): 'authorization' | 'provider' | 'transient' | 'unknown' | 'validation' {
+  if (error instanceof AutomationServiceError) {
+    if (error.statusCode === 401 || error.statusCode === 403) return 'authorization'
+    if (error.statusCode >= 400 && error.statusCode < 500) return 'validation'
+  }
+  if (error instanceof Error) {
+    const name = error.name.toLowerCase()
+    if (name.includes('timeout') || name.includes('network')) return 'transient'
+    if (name.includes('provider') || name.includes('gateway')) return 'provider'
+  }
+  return 'unknown'
 }

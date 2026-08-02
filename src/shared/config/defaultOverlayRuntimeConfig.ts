@@ -34,6 +34,7 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     // Kept independently switchable so an unexpected client compatibility issue can
     // be rolled back without weakening authentication, authorization, or rate limits.
     apiMutationOriginGuard: true,
+    lifecycleEvents: true,
     billing: true,
     webhooks: false,
     apiKeys: false,

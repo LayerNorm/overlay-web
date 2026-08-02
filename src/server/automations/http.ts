@@ -22,6 +22,7 @@ const entitlementPolicy = new ConfiguredAutomationEntitlementPolicy({
 
 export const automationService = new AutomationService({
   entitlementPolicy,
+  lifecycleEvents: () => getOverlayServerContext().lifecycleEvents,
   repository: repositoryProxy<AutomationRepository>(
     () => getOverlayServerContext().appData.repositories.automations,
   ),

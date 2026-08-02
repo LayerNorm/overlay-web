@@ -14,8 +14,10 @@ import {
 import { NoOpBillingProvider } from '@/server/billing/providers/noop-billing-provider'
 import { StripeBillingProvider } from '@/server/billing/providers/stripe-billing-provider'
 import { getOverlayRuntimeConfigSync, OverlayConfigError } from '@/server/config'
+import { logger } from '@/server/observability/logger'
 import { ConvexRateLimiter } from '@/server/shared/providers/convex-rate-limiter'
 import { InMemoryEventBus } from '@/server/shared/providers/in-memory-event-bus'
+import { LifecycleEventPublisher, createLifecycleAuditSink } from '@/server/lifecycle-events'
 import { InMemoryRateLimiter } from '@/server/shared/providers/in-memory-rate-limiter'
 import {
   RedisRateLimiter,
@@ -73,6 +75,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   knowledgeSearchService: KnowledgeSearchService
   noteRepository: NoteRepository
   apiKeyService: ApiKeyService
+  lifecycleEvents: LifecycleEventPublisher
   userService: UserService
 }
 
@@ -111,12 +114,22 @@ export function createOverlayServerContext(
     runtimeConfig,
     unlimitedEntitlements: chatUsagePolicy,
   })
-  const userService = new UserService({
-    authProvider: selectedAuthProviderForUserService(runtimeConfig),
-    repository: appData.repositories.users,
-  })
   const memoryService = new MemoryService(appData.repositories.memories)
   const auditService = new AuditService(appData.repositories.audit)
+  const eventBus = appConfig.eventBus ?? new InMemoryEventBus()
+  const lifecycleEvents = new LifecycleEventPublisher({
+    enabled: () => runtimeConfig?.features.lifecycleEvents !== false,
+    eventBus,
+    onDeliveryFailure: ({ destination, eventName }) => {
+      logger.warn('Lifecycle event delivery failed', { destination, eventName })
+    },
+    sinks: [createLifecycleAuditSink(auditService)],
+  })
+  const userService = new UserService({
+    authProvider: selectedAuthProviderForUserService(runtimeConfig),
+    lifecycleEvents,
+    repository: appData.repositories.users,
+  })
   const administrativeService = new AdministrativeService({
     audit: auditService,
     repository: appData.repositories.administration,
@@ -134,7 +147,7 @@ export function createOverlayServerContext(
     vectorStore: appConfig.vectorStore ?? createVectorStore(runtimeConfig),
     llmGateway: appConfig.llmGateway ?? createLlmGateway(runtimeConfig),
     rateLimiter: appConfig.rateLimiter ?? createRateLimiter(runtimeConfig),
-    eventBus: appConfig.eventBus ?? new InMemoryEventBus(),
+    eventBus,
     appData,
     appDataCapabilities: appData.capabilities,
     administrativeService,
@@ -145,6 +158,7 @@ export function createOverlayServerContext(
     knowledgeSearchService,
     noteRepository: appData.repositories.notes,
     apiKeyService: new ApiKeyService(appData.repositories.apiKeys),
+    lifecycleEvents,
     userService,
   }
 }
