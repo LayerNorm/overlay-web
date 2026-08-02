@@ -1232,12 +1232,17 @@ export default defineSchema({
     type: v.union(
       v.literal('message'),
       v.literal('mention'),
+      v.literal('thread'),
+      v.literal('reaction'),
       v.literal('invitation'),
       v.literal('participant'),
     ),
     conversationId: v.optional(v.id('conversations')),
     messageId: v.optional(v.id('conversationMessages')),
     actorPrincipalId: v.optional(v.string()),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
+    eventSequence: v.optional(v.number()),
+    mentionScope: v.optional(v.union(v.literal('direct'), v.literal('channel'), v.literal('here'))),
     title: v.string(),
     body: v.optional(v.string()),
     createdAt: v.number(),
@@ -1250,6 +1255,27 @@ export default defineSchema({
       'createdAt',
     ])
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt']),
+
+  conversationThreadFollows: defineTable({
+    workspaceId: v.string(),
+    conversationId: v.id('conversations'),
+    threadRootMessageId: v.id('conversationMessages'),
+    principalId: v.string(),
+    followedAt: v.number(),
+  })
+    .index('by_workspaceId_principalId_followedAt', ['workspaceId', 'principalId', 'followedAt'])
+    .index('by_conversationId_threadRootMessageId_principalId', ['conversationId', 'threadRootMessageId', 'principalId']),
+
+  workspaceNotificationPreferences: defineTable({
+    workspaceId: v.string(),
+    principalId: v.string(),
+    dmMessages: v.union(v.literal('activity'), v.literal('banner'), v.literal('off')),
+    mentions: v.union(v.literal('activity'), v.literal('banner'), v.literal('off')),
+    threadReplies: v.union(v.literal('activity'), v.literal('banner'), v.literal('off')),
+    reactions: v.union(v.literal('activity'), v.literal('banner'), v.literal('off')),
+    channelMessages: v.union(v.literal('activity'), v.literal('banner'), v.literal('off')),
+    updatedAt: v.number(),
+  }).index('by_workspaceId_principalId', ['workspaceId', 'principalId']),
 
   conversationMessageDeltas: defineTable({
     conversationId: v.id('conversations'),

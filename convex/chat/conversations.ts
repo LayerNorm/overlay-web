@@ -276,6 +276,27 @@ function compactMessageForHistory(message: MessageDoc, compactToolPayloads?: boo
   }
 }
 
+async function attachMessageEventSequences(
+  ctx: Pick<QueryCtx, 'db'>,
+  conversationId: Id<'conversations'>,
+  messages: MessageDoc[],
+) {
+  if (messages.length === 0) return messages
+  const ids = new Set(messages.map((message) => message._id))
+  const events = await ctx.db.query('conversationEvents')
+    .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversationId))
+    .collect()
+  const sequenceByMessageId = new Map<string, number>()
+  for (const event of events) {
+    if (event.type !== 'message.created' || !event.messageId || !ids.has(event.messageId)) continue
+    sequenceByMessageId.set(event.messageId, event._creationTime)
+  }
+  return messages.map((message) => ({
+    ...message,
+    eventSequence: sequenceByMessageId.get(message._id),
+  }))
+}
+
 function mergeStreamingParts(existingParts: MessageParts, newParts: MessageParts) {
   let nextParts = existingParts
   for (const part of newParts) {
@@ -788,14 +809,14 @@ export const getMessages = query({
       .order('asc')
       .collect()
     const generating = messages.filter((message) => message.status === 'generating')
-    if (generating.length === 0) return messages
+    if (generating.length === 0) return await attachMessageEventSequences(ctx, conversationId, messages)
 
     const hydrated = await Promise.all(generating.map(async (message) => {
       const deltas = await getMessageDeltas(ctx, message._id)
       return applyStreamingDeltas(message, deltas)
     }))
     const hydratedById = new Map(hydrated.map((message) => [message._id, message]))
-    return messages.map((message) => hydratedById.get(message._id) ?? message)
+    return await attachMessageEventSequences(ctx, conversationId, messages.map((message) => hydratedById.get(message._id) ?? message))
   },
 })
 
@@ -865,7 +886,11 @@ export const getRecentMessages = query({
       : selectRecentConversationMessages(scopedScan, safeLimit)
     const generating = messages.filter((message) => message.status === 'generating')
     if (generating.length === 0) {
-      return messages.map((message) => compactMessageForHistory(message, compactToolPayloads))
+      return await attachMessageEventSequences(
+        ctx,
+        conversationId,
+        messages.map((message) => compactMessageForHistory(message, compactToolPayloads)),
+      )
     }
 
     const hydrated = await Promise.all(generating.map(async (message) => {
@@ -873,8 +898,10 @@ export const getRecentMessages = query({
       return applyStreamingDeltas(message, deltas)
     }))
     const hydratedById = new Map(hydrated.map((message) => [message._id, message]))
-    return messages.map((message) =>
-      compactMessageForHistory(hydratedById.get(message._id) ?? message, compactToolPayloads)
+    return await attachMessageEventSequences(
+      ctx,
+      conversationId,
+      messages.map((message) => compactMessageForHistory(hydratedById.get(message._id) ?? message, compactToolPayloads)),
     )
   },
 })

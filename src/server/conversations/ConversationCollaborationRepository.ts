@@ -14,6 +14,9 @@ import type {
   MessageReaction,
   WorkspaceChatSearchResult,
   WorkspaceNotification,
+  WorkspaceNotificationFilter,
+  WorkspaceNotificationPreferences,
+  ConversationThreadFollow,
 } from '@overlay/workspace-contracts'
 
 export interface ConversationCollaborationRepository {
@@ -79,6 +82,7 @@ export interface ConversationCollaborationRepository {
     conversationId: string
     mentionedPrincipalIds?: string[]
     messageId: string
+    threadRootMessageId?: string
     workspaceId: string
   }): Promise<void>
   editMessage(args: {
@@ -138,6 +142,7 @@ export interface ConversationCollaborationRepository {
   }): Promise<WorkspaceChatSearchResult[]>
   listNotifications(args: {
     actorUserId: string
+    filter?: WorkspaceNotificationFilter
     limit?: number
     unreadOnly?: boolean
     workspaceId: string
@@ -147,6 +152,28 @@ export interface ConversationCollaborationRepository {
     notificationIds?: string[]
     workspaceId: string
   }): Promise<number>
+  setThreadFollow(args: {
+    actorUserId: string
+    conversationId: string
+    threadRootMessageId: string
+    followed: boolean
+    workspaceId: string
+  }): Promise<boolean>
+  listThreadFollows(args: {
+    actorUserId: string
+    conversationId: string
+    threadRootMessageId?: string
+    workspaceId: string
+  }): Promise<ConversationThreadFollow[]>
+  getNotificationPreferences(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<WorkspaceNotificationPreferences>
+  updateNotificationPreferences(args: {
+    actorUserId: string
+    workspaceId: string
+    preferences: Partial<WorkspaceNotificationPreferences>
+  }): Promise<WorkspaceNotificationPreferences>
 }
 
 export type ConversationParticipantStatePatch = {

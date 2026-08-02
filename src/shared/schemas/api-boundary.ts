@@ -1047,6 +1047,10 @@ export const webApiExcludedRouteDefinitions = [
     reason: 'Collaboration application BFF route; not a stable public API reference.',
   },
   {
+    routePath: '/api/v1/conversations/[conversationId]/threads/[threadRootMessageId]/follow',
+    reason: 'Collaboration application BFF route; not a stable public API reference.',
+  },
+  {
     routePath: '/api/v1/conversations/[conversationId]/participants',
     reason: 'Collaboration application BFF route; not a stable public API reference.',
   },
@@ -1084,6 +1088,10 @@ export const webApiExcludedRouteDefinitions = [
   },
   {
     routePath: '/api/v1/conversations/notifications',
+    reason: 'Collaboration application BFF route; not a stable public API reference.',
+  },
+  {
+    routePath: '/api/v1/conversations/notification-preferences',
     reason: 'Collaboration application BFF route; not a stable public API reference.',
   },
   {

@@ -7,6 +7,12 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
     .conversationCollaboration.listNotifications({
       actorUserId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
+      filter: context.parsedQuery.filter === 'unread'
+        || context.parsedQuery.filter === 'mentions'
+        || context.parsedQuery.filter === 'threads'
+        || context.parsedQuery.filter === 'reactions'
+        ? context.parsedQuery.filter
+        : 'all',
       unreadOnly: context.parsedQuery.unreadOnly === 'true',
       limit: typeof context.parsedQuery.limit === 'string'
         ? Number(context.parsedQuery.limit)

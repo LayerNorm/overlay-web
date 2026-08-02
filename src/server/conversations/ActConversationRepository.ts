@@ -74,6 +74,8 @@ export type ConversationMessageRow = {
   modelId?: string
   variantIndex?: number
   createdAt: number
+  /** Durable conversation event cursor for the message.created event. */
+  eventSequence?: number
   replyToTurnId?: string
   replySnippet?: string
   routedModelId?: string
@@ -107,6 +109,8 @@ export type ConversationEventType =
   | 'message.deleted'
   | 'message.updated'
   | 'message.ui-updated'
+  | 'reaction.changed'
+  | 'pin.changed'
 
 export type ConversationEventRow = {
   sequence: number

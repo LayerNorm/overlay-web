@@ -299,7 +299,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
       .orderBy(desc(conversationMessages.createdAt), desc(conversationMessages.id))
       .limit(limit)
 
-    return rows.reverse().map(mapConversationMessageRow)
+    return await this.attachMessageEventSequences(rows.reverse().map(mapConversationMessageRow), args.conversationId)
   }
 
   async getConversationMessages(args: {
@@ -316,7 +316,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         args.workspaceId ? undefined : eq(conversationMessages.userId, args.userId),
       ))
       .orderBy(asc(conversationMessages.createdAt), asc(conversationMessages.id))
-    return rows.map(mapConversationMessageRow)
+    return await this.attachMessageEventSequences(rows.map(mapConversationMessageRow), args.conversationId)
   }
 
   async updateConversation(args: {
@@ -1160,6 +1160,31 @@ export class PostgresActConversationRepository implements ActConversationReposit
         .limit(1)
       return event?.sequence ?? 0
     })
+  }
+
+  private async attachMessageEventSequences(
+    messages: ConversationMessageRow[],
+    conversationId: ConversationId,
+  ): Promise<ConversationMessageRow[]> {
+    if (messages.length === 0) return messages
+    const events = await this.db
+      .select({ messageId: conversationEvents.messageId, sequence: conversationEvents.sequence })
+      .from(conversationEvents)
+      .where(and(
+        eq(conversationEvents.conversationId, conversationId),
+        eq(conversationEvents.type, 'message.created'),
+        inArray(conversationEvents.messageId, messages.map((message) => message._id)),
+      ))
+    const sequenceByMessageId = new Map<string, number>()
+    for (const event of events) {
+      if (event.messageId && !sequenceByMessageId.has(event.messageId)) {
+        sequenceByMessageId.set(event.messageId, event.sequence)
+      }
+    }
+    return messages.map((message) => ({
+      ...message,
+      eventSequence: sequenceByMessageId.get(message._id),
+    }))
   }
 
   async listConversationEvents(args: {

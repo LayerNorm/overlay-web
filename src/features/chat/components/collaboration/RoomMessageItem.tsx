@@ -9,6 +9,7 @@ import {
   Check,
   FileText,
   Flag,
+  Link2,
   MessageSquareReply,
   Pencil,
   Pin,
@@ -20,8 +21,9 @@ import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { FlashCopyIconButton, UserMessageBubble } from '@overlay/chat-react'
 import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview } from '@overlay/chat-react'
-import { Input } from '@overlay/ui/primitives'
+import { Textarea } from '@overlay/ui/primitives'
 import { RoomMessageMentions } from './RoomMessageMentions'
+import { SafeHumanMarkdown } from './SafeHumanMarkdown'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -43,6 +45,7 @@ export type RoomMessageView = {
   authorKind: 'human' | 'agent' | 'model' | 'system'
   authorColor?: string
   createdAt: number
+  eventSequence?: number
   editedAt?: number
   deletedAt?: number
   delivery?: 'sending' | 'failed'
@@ -78,6 +81,7 @@ export type RoomMessageItemProps = {
   onQuoteReply: () => void
   onRetrySend: () => void
   onOpenAttachmentPreview: (preview: AttachmentPreview) => void
+  onCopyPermalink: () => void
   /** Briefly outlines the message after a jump from the pinned or thread list. */
   highlighted?: boolean
   /** Consecutive messages from the same author use a compact transcript row. */
@@ -121,6 +125,7 @@ export function RoomMessageItem({
   onQuoteReply,
   onRetrySend,
   onOpenAttachmentPreview,
+  onCopyPermalink,
   highlighted = false,
   grouped = false,
 }: RoomMessageItemProps) {
@@ -186,14 +191,19 @@ export function RoomMessageItem({
 
   const editor = (
     <div className="mt-1 flex w-full gap-2">
-      <Input
+      <Textarea
         autoFocus
+        rows={3}
         value={editingContent}
         onChange={(event) => onEditingContentChange(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === 'Enter') onSaveEdit()
+          if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault()
+            onSaveEdit()
+          }
           if (event.key === 'Escape') onCancelEdit()
         }}
+        className="min-h-20 flex-1 resize-y"
       />
       <button
         type="button"
@@ -231,6 +241,7 @@ export function RoomMessageItem({
       onQuoteReply={onQuoteReply}
       onTogglePinned={onTogglePinned}
       onToggleSaved={onToggleSaved}
+      onCopyPermalink={onCopyPermalink}
     />
   )
 
@@ -309,7 +320,9 @@ export function RoomMessageItem({
             {attachments}
             {editing ? editor : message.text ? (
               <UserMessageBubble className={`max-w-full ${mine ? 'ml-auto' : 'mr-auto'}`}>
-                <RoomMessageMentions text={message.text} mentions={message.mentions} />
+                {message.mentions.length > 0
+                  ? <RoomMessageMentions text={message.text} mentions={message.mentions} />
+                  : <SafeHumanMarkdown text={message.text} />}
               </UserMessageBubble>
             ) : null}
           </div>
@@ -386,7 +399,8 @@ function RoomMessageToolbar({
   onOpenThread,
   onQuoteReply,
   onTogglePinned,
-  onToggleSaved,
+    onToggleSaved,
+    onCopyPermalink,
 }: {
   alignEnd: boolean
   copyText: string
@@ -403,6 +417,7 @@ function RoomMessageToolbar({
   onQuoteReply: () => void
   onTogglePinned: () => void
   onToggleSaved: () => void
+  onCopyPermalink: () => void
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const buttonClass =
@@ -417,6 +432,16 @@ function RoomMessageToolbar({
       } ${alignEnd ? 'justify-end' : ''}`}
     >
       <FlashCopyIconButton copyText={copyText} disabled={disabled || copyText.length === 0} ariaLabel="Copy message" />
+      <button
+        type="button"
+        onClick={onCopyPermalink}
+        disabled={disabled}
+        aria-label="Copy message link"
+        title="Copy message link"
+        className={buttonClass}
+      >
+        <Link2 size={14} strokeWidth={1.75} />
+      </button>
       <EmojiPickerButton
         alignEnd={alignEnd}
         disabled={disabled}

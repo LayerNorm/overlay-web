@@ -18,6 +18,7 @@ export type RoomMessageRecord = {
   content: string
   parts?: RoomMessagePart[]
   createdAt: number
+  eventSequence?: number
   editedAt?: number
   deletedAt?: number
   clientNonce?: string
@@ -127,6 +128,7 @@ export function toRoomMessageView({
     authorKind: message.authorKind,
     authorColor,
     createdAt: message.createdAt,
+    eventSequence: message.eventSequence,
     editedAt: message.editedAt,
     deletedAt: message.deletedAt,
     delivery: message.delivery,

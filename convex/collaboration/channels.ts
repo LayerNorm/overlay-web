@@ -4,6 +4,7 @@ import { mutation, query } from '../_generated/server'
 import type { Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { validateServerSecret } from '../lib/auth'
+import { recordConversationEvent } from './events'
 
 type Ctx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
 
@@ -228,12 +229,45 @@ export const setReaction = mutation({
       .withIndex('by_messageId_principalId_emoji', (q) => (
         q.eq('messageId', args.messageId).eq('principalId', actor.principalId).eq('emoji', emoji)
       )).unique()
+    const reactionChanged = args.enabled ? !existing : Boolean(existing)
     if (args.enabled && !existing) {
       await ctx.db.insert('conversationMessageReactions', {
         conversationId: args.conversationId, messageId: args.messageId, workspaceId: args.workspaceId,
         principalId: actor.principalId, emoji, createdAt: Date.now(),
       })
     } else if (!args.enabled && existing) await ctx.db.delete(existing._id)
+    if (args.enabled && reactionChanged) {
+      const message = await ctx.db.get(args.messageId)
+      if (message?.authorPrincipalId && message.authorPrincipalId !== actor.principalId) {
+        const preferences = await ctx.db.query('workspaceNotificationPreferences')
+          .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', message.authorPrincipalId!))
+          .unique()
+        if (preferences?.reactions !== 'off') {
+          await ctx.db.insert('workspaceNotifications', {
+            notificationId: crypto.randomUUID(),
+            workspaceId: args.workspaceId,
+            recipientPrincipalId: message.authorPrincipalId,
+            type: 'reaction',
+            conversationId: args.conversationId,
+            messageId: args.messageId,
+            actorPrincipalId: actor.principalId,
+            title: `${actor.displayName} reacted ${emoji}`,
+            body: undefined,
+            createdAt: Date.now(),
+          })
+        }
+      }
+    }
+    if (reactionChanged) {
+      await recordConversationEvent(ctx, {
+        conversationId: args.conversationId,
+        workspaceId: args.workspaceId,
+        userId: args.actorUserId,
+        type: 'reaction.changed',
+        messageId: args.messageId,
+        payload: { enabled: args.enabled, emoji },
+      })
+    }
     const rows = await ctx.db.query('conversationMessageReactions')
       .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
       .collect()
@@ -277,10 +311,26 @@ export const setPinned = mutation({
         conversationId: args.conversationId, messageId: args.messageId, workspaceId: args.workspaceId,
         pinnedByPrincipalId: actor.principalId, createdAt: Date.now(),
       })
+      await recordConversationEvent(ctx, {
+        conversationId: args.conversationId,
+        workspaceId: args.workspaceId,
+        userId: args.actorUserId,
+        type: 'pin.changed',
+        messageId: args.messageId,
+        payload: { pinned: true },
+      })
       return true
     }
     if (!args.pinned && existing) {
       await ctx.db.delete(existing._id)
+      await recordConversationEvent(ctx, {
+        conversationId: args.conversationId,
+        workspaceId: args.workspaceId,
+        userId: args.actorUserId,
+        type: 'pin.changed',
+        messageId: args.messageId,
+        payload: { pinned: false },
+      })
       return true
     }
     return false

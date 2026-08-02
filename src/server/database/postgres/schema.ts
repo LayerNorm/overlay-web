@@ -369,8 +369,16 @@ export const workspacePresenceStatus = pgEnum('overlay_workspace_presence_status
 export const workspaceNotificationType = pgEnum('overlay_workspace_notification_type', [
   'message',
   'mention',
+  'thread',
+  'reaction',
   'invitation',
   'participant',
+])
+
+export const workspaceNotificationPreferenceMode = pgEnum('overlay_workspace_notification_preference_mode', [
+  'activity',
+  'banner',
+  'off',
 ])
 
 export const channelVisibility = pgEnum('overlay_channel_visibility', [
@@ -1426,6 +1434,10 @@ export const workspaceNotifications = pgTable('workspace_notifications', {
   messageId: text('message_id')
     .references(() => conversationMessages.id, { onDelete: 'cascade' }),
   actorPrincipalId: text('actor_principal_id'),
+  threadRootMessageId: text('thread_root_message_id')
+    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
+  eventSequence: bigint('event_sequence', { mode: 'number' }),
+  mentionScope: text('mention_scope'),
   title: text('title').notNull(),
   body: text('body'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -1443,6 +1455,49 @@ export const workspaceNotifications = pgTable('workspace_notifications', {
     table.createdAt,
   ),
   index('workspace_notifications_conversation_idx').on(table.conversationId, table.createdAt),
+])
+
+export const conversationThreadFollows = pgTable('conversation_thread_follows', {
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  conversationId: text('conversation_id')
+    .notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  threadRootMessageId: text('thread_root_message_id')
+    .notNull()
+    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
+  principalId: text('principal_id').notNull(),
+  followedAt: timestamp('followed_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.threadRootMessageId, table.principalId] }),
+  foreignKey({
+    columns: [table.workspaceId, table.principalId],
+    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
+    name: 'conversation_thread_follows_principal_fk',
+  }).onDelete('cascade'),
+  index('conversation_thread_follows_principal_idx').on(table.workspaceId, table.principalId, table.followedAt),
+  index('conversation_thread_follows_thread_idx').on(table.conversationId, table.threadRootMessageId),
+])
+
+export const workspaceNotificationPreferences = pgTable('workspace_notification_preferences', {
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  principalId: text('principal_id').notNull(),
+  dmMessages: workspaceNotificationPreferenceMode('dm_messages').default('activity').notNull(),
+  mentions: workspaceNotificationPreferenceMode('mentions').default('banner').notNull(),
+  threadReplies: workspaceNotificationPreferenceMode('thread_replies').default('activity').notNull(),
+  reactions: workspaceNotificationPreferenceMode('reactions').default('activity').notNull(),
+  channelMessages: workspaceNotificationPreferenceMode('channel_messages').default('activity').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.workspaceId, table.principalId] }),
+  foreignKey({
+    columns: [table.workspaceId, table.principalId],
+    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
+    name: 'workspace_notification_preferences_principal_fk',
+  }).onDelete('cascade'),
 ])
 
 export const conversationMessageDeltas = pgTable('conversation_message_deltas', {
