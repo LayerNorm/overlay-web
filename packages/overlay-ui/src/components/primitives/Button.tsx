@@ -1,4 +1,4 @@
-import React, { type ButtonHTMLAttributes } from 'react'
+import type { ButtonHTMLAttributes } from 'react'
 import { cn } from '../../utils/cn'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'

@@ -2,21 +2,13 @@ import type {
   CreateProjectRequest,
   CreateProjectResponse,
   DeleteProjectResponse,
-  KnowledgeBase,
-  ProjectExport,
-  ProjectKnowledgeBase,
-  ProjectKnowledgeTransferRequest,
   ProjectSummary,
   UpdateProjectRequest,
   UpdateProjectResponse,
 } from '@overlay/app-core'
 import type { HttpContext } from '../shared/http'
 import type { PaginatedEnvelope, QueryParams } from '../shared/types'
-import type {
-  ProjectGrantsResponse,
-  ProjectQuery,
-  ProjectShareDirectoryResponse,
-} from './types'
+import type { ProjectQuery } from './types'
 
 export class ProjectsClient {
   constructor(private readonly http: HttpContext) {}
@@ -65,97 +57,5 @@ export class ProjectsClient {
 
   parseDeleteResponse(response: Response) {
     return this.http.parseJson<DeleteProjectResponse>(response)
-  }
-
-  private knowledgeBasePath(query?: { projectId: string; knowledgeBaseId?: string }): string {
-    return this.http.appendQuery(
-      '/api/v1/projects/knowledge-bases',
-      query as QueryParams | undefined,
-    )
-  }
-
-  listKnowledgeBases(query: { projectId: string }, init?: RequestInit) {
-    return this.http.json<{ knowledgeBases: KnowledgeBase[] }>(
-      this.knowledgeBasePath(query),
-      init,
-    )
-  }
-
-  attachKnowledgeBase(body: { projectId: string; knowledgeBaseId: string }, init?: RequestInit) {
-    return this.http.json<{ success: boolean; attachment: ProjectKnowledgeBase }>(
-      '/api/v1/projects/knowledge-bases',
-      this.http.jsonRequest(body, { ...init, method: 'POST' }),
-    )
-  }
-
-  detachKnowledgeBase(query: { projectId: string; knowledgeBaseId: string }, init?: RequestInit) {
-    return this.http.json<{ success: boolean }>(
-      this.knowledgeBasePath(query),
-      { ...init, method: 'DELETE' },
-    )
-  }
-
-  listTemplates(init?: RequestInit) {
-    return this.http.json<{ templates: ProjectSummary[] }>('/api/v1/projects/duplicate', init)
-  }
-
-  duplicate(
-    body: { sourceProjectId: string; name?: string },
-    init?: RequestInit,
-  ) {
-    return this.http.json<{ id: string; project: ProjectSummary }>(
-      '/api/v1/projects/duplicate',
-      this.http.jsonRequest(body, { ...init, method: 'POST' }),
-    )
-  }
-
-  transfer(body: ProjectKnowledgeTransferRequest, init?: RequestInit) {
-    return this.http.json<{ success: true; sourceId?: string; noteId?: string; jobId?: string }>(
-      '/api/v1/projects/knowledge-transfer',
-      this.http.jsonRequest(body, { ...init, method: 'POST' }),
-    )
-  }
-
-  exportProject(query: { projectId: string }, init?: RequestInit) {
-    return this.http.json<ProjectExport>(
-      this.http.appendQuery('/api/v1/projects/export', query),
-      init,
-    )
-  }
-
-  listShareDirectory(init?: RequestInit) {
-    return this.http.json<ProjectShareDirectoryResponse>(
-      '/api/v1/projects/share-directory',
-      init,
-    )
-  }
-
-  listGrants(projectId: string, init?: RequestInit) {
-    return this.http.json<ProjectGrantsResponse>(
-      this.http.appendQuery('/api/v1/projects/grants', { projectId }),
-      init,
-    )
-  }
-
-  share(
-    body: {
-      projectId: string
-      principalType: 'user' | 'group' | 'role'
-      principalId: string
-      accessRole: 'viewer' | 'editor'
-    },
-    init?: RequestInit,
-  ) {
-    return this.http.json<{ grant: ProjectGrantsResponse['grants'][number] }>(
-      '/api/v1/projects/grants',
-      this.http.jsonRequest(body, { ...init, method: 'POST' }),
-    )
-  }
-
-  revokeShare(body: { projectId: string; grantId: string }, init?: RequestInit) {
-    return this.http.json<{ removed: boolean; grantId: string }>(
-      '/api/v1/projects/grants',
-      this.http.jsonRequest(body, { ...init, method: 'DELETE' }),
-    )
   }
 }

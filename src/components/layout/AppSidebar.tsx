@@ -3,12 +3,11 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore, Suspense } from 'react'
-import { createPortal } from 'react-dom'
+import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore, Suspense } from 'react'
 import {
-  CreditCard, FileText, House, LayoutDashboard, MessageSquare, ScrollText, User,
-  ChevronUp, Loader2, Menu, X, Settings, ChevronLeft, ChevronRight, ShieldCheck,
-  Bot, Brain, Mail, Palette, UsersRound, Webhook,
+  MessageSquare, User,
+  ChevronUp, Plug, Sparkles, Server, Package,
+  Loader2, Menu, X, Settings, ChevronDown, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import {
   resolveOverlayAppShellConfig,
@@ -22,30 +21,22 @@ import {
   SidebarShell,
   SidebarNav,
   SidebarSection,
+  SidebarResourceSection,
 } from '@overlay/ui/primitives'
 import {
-  AgentsInlinePanel,
   FilesInlinePanel,
-  KnowledgeInlinePanel,
+  InlineNavChildren,
   ProjectsInlinePanel,
-  chatsInlineItems,
   toolsInlineItems,
 } from '@/components/layout/AppSidebarInlinePanels'
 import { useAppSidebarActions } from './sidebar/useAppSidebarActions'
 import overlayAppConfig from '@/overlay.config'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { useAuthorization } from '@/components/providers/AuthorizationProvider'
-import {
-  getNavigationAuthorizationRequirement,
-  getSettingsSectionAuthorizationRequirement,
-  getSidebarActionAuthorizationRequirement,
-} from '@/shared/authorization/client-policy'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import dynamic from 'next/dynamic'
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 import type { MentionType } from '@/shared/knowledge/mention-types'
 import { TEMPORARY_CHAT_UI_EVENT, type TemporaryChatUiEventDetail } from '@/shared/chat/temporary-chat-ui'
-import { NEW_CHANNEL_EVENT, NEW_DIRECT_MESSAGE_EVENT } from '@/shared/chat/collaboration-events'
 import {
   getSidebarCollapsedSnapshot,
   setStoredSidebarCollapsed,
@@ -54,61 +45,15 @@ import {
 import { SidebarAccountMenu } from './sidebar/SidebarAccountMenu'
 import { ICON_COMPONENTS, toMentionCategory } from './sidebar/sidebarNavigation'
 import type { SidebarEntitlements } from './sidebar/SidebarUsageMeters'
-import {
-  AppSidebarPrimaryRail,
-  type PrimaryRailItem,
-} from './sidebar/AppSidebarPrimaryRail'
-import {
-  AppSidebarSecondaryPanel,
-  SecondaryPanelContent,
-  type SecondaryPanelNav,
-} from './sidebar/AppSidebarSecondaryPanel'
 import type { AppSidebarProps } from './appSidebarTypes'
 import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
 import { ROOT_APP_DESTINATION, ROOT_SHOWCASE_DESTINATION } from '@/shared/auth/root-entry'
-import { NEW_AGENT_EVENT, NEW_KNOWLEDGE_BASE_EVENT } from '@/shared/workspace/sidebar-events'
 
 export type {
   AppSidebarChatPanelContext,
   AppSidebarNavigateContext,
   AppSidebarProps,
-  AppSidebarWorkspaceAdapter,
 } from './appSidebarTypes'
-
-type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'projects' | 'agents' | 'knowledge' | 'automations' | 'tools' | 'settings'
-
-const PANEL_KIND_TITLES: Record<SecondaryPanelKind, string> = {
-  chat: 'Chats',
-  files: 'Files',
-  notes: 'Notes',
-  projects: 'Projects',
-  agents: 'Agents',
-  knowledge: 'Knowledge',
-  automations: 'Automations',
-  tools: 'Extensions',
-  settings: 'Settings',
-}
-
-const SETTINGS_SECTION_ICONS: Record<string, typeof Settings> = {
-  general: Settings,
-  account: User,
-  customization: Palette,
-  memories: Brain,
-  models: Bot,
-  webhooks: Webhook,
-  contact: Mail,
-  workspace: UsersRound,
-}
-
-const RESOURCE_PANEL_KINDS: ReadonlySet<SecondaryPanelKind> = new Set([
-  'chat',
-  'files',
-  'notes',
-  'projects',
-  'agents',
-  'knowledge',
-  'automations',
-])
 
 export default function AppSidebar({
   publicShowcase = false,
@@ -116,9 +61,6 @@ export default function AppSidebar({
   renderAutomationsPanel,
   renderFilesPanel,
   renderProjectsPanel,
-  renderAgentsPanel,
-  renderKnowledgePanel,
-  workspace,
 }: AppSidebarProps) {
   const pathname = usePathname() ?? ''
   const router = useRouter()
@@ -128,7 +70,6 @@ export default function AppSidebar({
     [routeSearchParams],
   )
   const { capabilities } = useOverlayCapabilities()
-  const { allows, can } = useAuthorization()
   const { requireAuth } = useGuestGate()
   const { user, isLoading: authLoading } = useAuth()
   const appShell = useMemo(
@@ -137,50 +78,30 @@ export default function AppSidebar({
   )
   const availableToolsInlineItems = useMemo(
     () => toolsInlineItems.filter((item) => {
-      if (item.id === 'skills') return capabilities.skills && allows({ all: ['skills.use'] })
-      if (item.id === 'mcps') return capabilities.mcpServers && allows({ all: ['mcp.use'] })
-      if (item.id === 'connectors') return allows({ all: ['integrations.use'] })
+      if (item.id === 'skills') return capabilities.skills
+      if (item.id === 'mcps') return capabilities.mcpServers
       return true
     }),
-    [allows, capabilities.mcpServers, capabilities.skills],
+    [capabilities.mcpServers, capabilities.skills],
   )
   const navItems = useMemo(
-    () => appShell.navigation
-      .filter((item) => publicShowcase || !user || allows(getNavigationAuthorizationRequirement(item.id)))
-      .map((item) => ({
-        ...item,
-        icon: ICON_COMPONENTS[item.icon] ?? MessageSquare,
-      })),
-    [allows, appShell.navigation, publicShowcase, user],
+    () => appShell.navigation.map((item) => ({
+      ...item,
+      icon: ICON_COMPONENTS[item.icon] ?? MessageSquare,
+    })),
+    [appShell.navigation],
   )
-  const settingsSections = useMemo(
-    () => appShell.settingsSections.filter((section) => (
-      publicShowcase || !user || allows(getSettingsSectionAuthorizationRequirement(section.id))
-    )),
-    [allows, appShell.settingsSections, publicShowcase, user],
-  )
+  const settingsSections = appShell.settingsSections
   const brandConfig = appShell.brand
   const billingEnabled = capabilities.billing
   const authUserId = user?.id ?? null
   const isGuestConfirmed = !authLoading && !user
   const displayName = user ? (user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email) : 'Guest'
   const { totalUnread } = useAsyncSessions()
-  const activeWorkspaceId = workspace?.activeWorkspaceId ?? null
-  const resolveSurfaceAdapter = workspace?.resolveSurface
-  const buildHrefAdapter = workspace?.buildHref
-  const resolveWorkspaceSurface = useCallback(
-    (path: string) => resolveSurfaceAdapter?.(path) ?? null,
-    [resolveSurfaceAdapter],
-  )
-  const buildWorkspaceHref = useCallback(
-    (workspaceId: string, href: string) => buildHrefAdapter?.(workspaceId, href) ?? href,
-    [buildHrefAdapter],
-  )
 
   const [pendingNav, setPendingNav] = useState<{ href: string; fromPath: string } | null>(null)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [mobileView, setMobileView] = useState<'nav' | 'panel'>('nav')
   const [entitlements, setEntitlements] = useState<SidebarEntitlements | null>(null)
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false)
   const [temporaryChatUiHidden, setTemporaryChatUiHidden] = useState(false)
@@ -190,8 +111,6 @@ export default function AppSidebar({
     () => false,
   )
   const [showcaseSidebarCollapsed, setShowcaseSidebarCollapsed] = useState(false)
-  // Collapse now means "primary rail only": the contextual secondary panel is
-  // hidden and the rail stays put.
   const sidebarCollapsed = publicShowcase ? showcaseSidebarCollapsed : storedSidebarCollapsed
   const setSidebarCollapsed = useCallback((next: boolean) => {
     if (publicShowcase) setShowcaseSidebarCollapsed(next)
@@ -200,19 +119,8 @@ export default function AppSidebar({
   const [chatPanelRefreshKey, setChatPanelRefreshKey] = useState(0)
   const [projectsPanelRefreshKey, setProjectsPanelRefreshKey] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
-  const accountMenuPortalRef = useRef<HTMLDivElement>(null)
-  const mobileMenuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
-  const [accountMenuPosition, setAccountMenuPosition] = useState<{
-    left: number
-    bottom: number
-  } | null>(null)
-  const sidebarActions = useMemo(
-    () => appShell.sidebarActions.filter((action) => (
-      publicShowcase || !user || allows(getSidebarActionAuthorizationRequirement(action.actionKey))
-    )),
-    [allows, appShell.sidebarActions, publicShowcase, user],
-  )
+  const sidebarActions = appShell.sidebarActions
   const primaryNavActionByItemId = useMemo(() => {
     const entries = sidebarActions
       .filter((action) => action.primaryNavAction && action.navigationItemId)
@@ -242,10 +150,7 @@ export default function AppSidebar({
     searchParams: currentSearchParams,
     isFreeTier: sidebarIsFreeTier,
     requireAuth,
-    onCloseMobileMenu: () => {
-      setMobileMenuOpen(false)
-      setMobileView('nav')
-    },
+    onCloseMobileMenu: () => setMobileMenuOpen(false),
     onChatCreated: () => setChatPanelRefreshKey((value) => value + 1),
     onProjectCreated: () => setProjectsPanelRefreshKey((value) => value + 1),
   })
@@ -264,7 +169,6 @@ export default function AppSidebar({
       setTemporaryChatUiHidden(active)
       if (active) {
         setMobileMenuOpen(false)
-        setMobileView('nav')
         setMobileAccountOpen(false)
         setAccountMenuOpen(false)
       }
@@ -276,25 +180,15 @@ export default function AppSidebar({
 
   const effectivePendingHref =
     pendingNav && pathname === pendingNav.fromPath ? pendingNav.href : null
-  const hideTemporaryChatChrome = temporaryChatUiHidden && (
-    pathname.startsWith('/app/chat') ||
-    (pathname.startsWith('/app/w/') && resolveWorkspaceSurface(pathname) === 'chat')
-  )
-  const workspaceSurface = resolveWorkspaceSurface(pathname)
-  const canonicalWorkspaceRoute = pathname.startsWith('/app/w/')
-  const projectsOpen = pathname.startsWith('/app/projects') || (canonicalWorkspaceRoute && workspaceSurface === 'projects')
-  const notesOpen = pathname.startsWith('/app/notes') || (canonicalWorkspaceRoute && workspaceSurface === 'notes')
-  const filesOpen = pathname.startsWith('/app/files') || (canonicalWorkspaceRoute && workspaceSurface === 'files')
+  const hideTemporaryChatChrome = temporaryChatUiHidden && pathname.startsWith('/app/chat')
+  const projectsOpen = pathname.startsWith('/app/projects')
+  const notesOpen = pathname.startsWith('/app/notes')
+  const filesOpen = pathname.startsWith('/app/files')
   const filesSectionOpen = filesOpen || notesOpen
-  const agentsOpen = pathname.startsWith('/app/agents') || (canonicalWorkspaceRoute && workspaceSurface === 'agents')
-  const knowledgeOpen = pathname.startsWith('/app/knowledge') || (canonicalWorkspaceRoute && workspaceSurface === 'knowledge')
-  const chatOpen = pathname.startsWith('/app/chat') || (canonicalWorkspaceRoute && workspaceSurface === 'chat')
-  const adminOpen = pathname.startsWith('/app/admin') || (canonicalWorkspaceRoute && workspaceSurface === 'admin')
-  const showAdminNavigation = can('administration.access') && !publicShowcase && Boolean(user)
-  const automationsOpen = pathname.startsWith('/app/automations') || (canonicalWorkspaceRoute && workspaceSurface === 'automations')
+  const chatOpen = pathname.startsWith('/app/chat')
+  const automationsOpen = pathname.startsWith('/app/automations')
   const automationsSectionOpen = automationsOpen && capabilities.automations
-  const toolsOpen = pathname.startsWith('/app/tools') || (canonicalWorkspaceRoute && workspaceSurface === 'tools')
-  const settingsPathActive = pathname.startsWith('/app/settings') || (canonicalWorkspaceRoute && workspaceSurface === 'settings')
+  const settingsPathActive = pathname.startsWith('/app/settings')
   const settingsSection = currentSearchParams.get('section') ?? 'general'
   const toolsView = (() => {
     const current = currentSearchParams.get('view')
@@ -304,16 +198,6 @@ export default function AppSidebar({
     if (current === 'installed') return 'installed'
     return 'connectors'
   })()
-  const chatsView = (() => {
-    const current = currentSearchParams.get('view')
-    if (current === 'dms') return 'dms'
-    if (current === 'channels') return 'channels'
-    if (current === 'activity') return 'activity'
-    if (current === 'unread') return 'unread'
-    if (current === 'all') return 'all'
-    return 'personal'
-  })()
-
   const loadEntitlements = useCallback(async () => {
     if (!billingEnabled || authLoading || !authUserId) {
       setEntitlements(null)
@@ -366,10 +250,9 @@ export default function AppSidebar({
       }
       if (e.code === 'Digit7') {
         e.preventDefault()
-        if (settingsPathActive) return
+        if (pathname.startsWith('/app/settings')) return
         if (isGuestConfirmed) { requireAuth('settings'); return }
         setMobileMenuOpen(false)
-        setMobileView('nav')
         setPendingNav({ href: '/app/settings', fromPath: pathname })
         router.push('/app/settings')
         return
@@ -380,78 +263,33 @@ export default function AppSidebar({
       const item = navItems[idx]
       if (!item || item.disabled || !item.href) return
       e.preventDefault()
-      if (
-        pathname.startsWith(item.href) ||
-        (canonicalWorkspaceRoute && workspaceSurface === resolveWorkspaceSurface(item.href))
-      ) return
+      if (pathname.startsWith(item.href)) return
       if (isGuestConfirmed && !publicShowcase && item.href !== '/app/chat') { requireAuth('nav'); return }
-      const workspaceHref = activeWorkspaceId
-        ? buildWorkspaceHref(activeWorkspaceId, item.href)
-        : item.href
-      setPendingNav({ href: workspaceHref, fromPath: pathname })
+      setPendingNav({ href: item.href, fromPath: pathname })
       router.push(publicShowcase
         ? `${item.href}?${new URLSearchParams({
             showcase: '1',
             ...(item.href === '/app/chat' ? { id: 'showcase-welcome' } : {}),
           }).toString()}`
-        : workspaceHref)
+        : item.href)
     }
     window.addEventListener('keydown', onNavShortcut, true)
     return () => window.removeEventListener('keydown', onNavShortcut, true)
-  }, [
-    activeWorkspaceId,
-    buildWorkspaceHref,
-    canonicalWorkspaceRoute,
-    isGuestConfirmed,
-    navItems,
-    pathname,
-    publicShowcase,
-    requireAuth,
-    router,
-    settingsPathActive,
-    workspaceSurface,
-    resolveWorkspaceSurface,
-  ])
+  }, [pathname, router, navItems, isGuestConfirmed, publicShowcase, requireAuth])
+
+  /** Sub-items only while the settings route is open (avoids orphan dropdown state off-route). */
+  const settingsNavExpanded = settingsPathActive
 
   useEffect(() => {
     if (!accountMenuOpen) return
     function handleClick(e: MouseEvent) {
-      const target = e.target as Node
-      const insideDesktop = menuRef.current?.contains(target) ?? false
-      const insidePortal = accountMenuPortalRef.current?.contains(target) ?? false
-      const insideMobile = mobileMenuRef.current?.contains(target) ?? false
-      if (!insideDesktop && !insidePortal && !insideMobile) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setAccountMenuOpen(false)
       }
     }
     document.addEventListener('click', handleClick)
     return () => document.removeEventListener('click', handleClick)
   }, [accountMenuOpen])
-
-  useLayoutEffect(() => {
-    if (!accountMenuOpen || workspace) return
-    function updatePosition() {
-      const root = menuRef.current
-      if (!root) return
-      const rect = root.getBoundingClientRect()
-      const width = 256
-      const left = Math.min(
-        Math.max(8, rect.left),
-        Math.max(8, window.innerWidth - width - 8),
-      )
-      setAccountMenuPosition({
-        left,
-        bottom: Math.max(8, window.innerHeight - rect.top + 6),
-      })
-    }
-    updatePosition()
-    window.addEventListener('resize', updatePosition)
-    window.addEventListener('scroll', updatePosition, true)
-    return () => {
-      window.removeEventListener('resize', updatePosition)
-      window.removeEventListener('scroll', updatePosition, true)
-    }
-  }, [accountMenuOpen, workspace])
 
   useEffect(() => {
     if (!mobileAccountOpen) return
@@ -478,180 +316,63 @@ export default function AppSidebar({
     window.location.href = '/'
   }
 
-  function closeMobileDrawer() {
-    setMobileMenuOpen(false)
-    setMobileView('nav')
-  }
-
-  const contextualAction = resolveSidebarActionForPath(
-    canonicalWorkspaceRoute ? `/app/${workspaceSurface}` : pathname,
-    sidebarActions,
+  const brandLink = (
+    <Link
+      href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
+      className="flex min-w-0 items-center gap-2"
+      onClick={() => setMobileMenuOpen(false)}
+    >
+      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
+      <span
+        className="truncate text-xl font-medium tracking-tight"
+        style={{ fontFamily: 'var(--font-serif)' }}
+      >
+        {brandConfig.shortName ?? brandConfig.name}
+      </span>
+    </Link>
   )
 
-  const panelKind: SecondaryPanelKind | null = chatOpen
-    ? 'chat'
-    : filesOpen
-      ? 'files'
-      : notesOpen
-        ? 'notes'
-        : projectsOpen
-          ? 'projects'
-            : agentsOpen
-              ? 'agents'
-              : knowledgeOpen
-                ? 'knowledge'
-                : automationsSectionOpen
-                  ? 'automations'
-                  : toolsOpen
-                    ? 'tools'
-                    : settingsPathActive
-                      ? 'settings'
-                      : null
-  const hasResourcePanel = panelKind != null && RESOURCE_PANEL_KINDS.has(panelKind)
-  const showSecondaryPanel = panelKind != null
-  const panelTitle = panelKind
-    ? PANEL_KIND_TITLES[panelKind]
-    : brandConfig.shortName ?? brandConfig.name
+  const desktopBrandControl = sidebarCollapsed ? (
+    <button
+      type="button"
+      onClick={() => setSidebarCollapsed(false)}
+      className="group inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors hover:bg-[var(--surface-subtle)]"
+      aria-label="Expand sidebar"
+      title="Expand sidebar"
+    >
+      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0 group-hover:hidden" />
+      <ChevronRight size={16} className="hidden text-[var(--foreground)] group-hover:block" />
+    </button>
+  ) : (
+    brandLink
+  )
 
-  function navItemActive(item: (typeof navItems)[number]): boolean {
-    const { href } = item
-    if (!href) return false
-    const hrefSurface = resolveWorkspaceSurface(href)
-    if (effectivePendingHref) {
-      const pendingSurface = resolveWorkspaceSurface(effectivePendingHref)
-      return effectivePendingHref === href || pendingSurface === hrefSurface
-    }
-    if (href === '/app/files') return filesSectionOpen
-    if (canonicalWorkspaceRoute) return workspaceSurface === hrefSurface
-    return pathname.startsWith(href)
-  }
-
-  function navItemDestination(href: string): string {
-    return publicShowcase
-      ? `${href}?${new URLSearchParams({
-          showcase: '1',
-          ...(href === '/app/chat' ? { id: 'showcase-welcome' } : {}),
-        }).toString()}`
-      : activeWorkspaceId
-        ? buildWorkspaceHref(activeWorkspaceId, href)
-        : href
-  }
-
-  function panelKindForNavItem(item: (typeof navItems)[number]): SecondaryPanelKind | null {
-    switch (item.href) {
-      case '/app/chat':
-        return 'chat'
-      case '/app/files':
-        return 'files'
-      case '/app/projects':
-        return 'projects'
-      case '/app/agents':
-        return 'agents'
-      case '/app/knowledge':
-        return 'knowledge'
-      case '/app/automations':
-        return capabilities.automations ? 'automations' : null
-      case '/app/tools':
-        return 'tools'
-      default:
-        return null
-    }
-  }
-
-  function gateNavItem(item: (typeof navItems)[number]): 'action' | 'gated' | 'ok' {
-    if (!item.href || item.disabled) return 'gated'
-    if (isGuestConfirmed && !publicShowcase && item.href !== '/app/chat') {
-      requireAuth('nav')
-      return 'gated'
-    }
-    const primaryNavAction = primaryNavActionByItemId.get(item.id)
-    if (primaryNavAction) {
-      void runSidebarAction(primaryNavAction)
-      return 'action'
-    }
-    return 'ok'
-  }
-
-  function selectNavItem(item: (typeof navItems)[number]) {
-    if (gateNavItem(item) !== 'ok' || !item.href) return
-    const active = navItemActive(item)
-    if (active) {
-      // Clicking the current section re-opens its panel when it is hidden.
-      if (panelKind && sidebarCollapsed) setSidebarCollapsed(false)
-      return
-    }
-    const destination = navItemDestination(item.href)
-    setPendingNav({ href: destination, fromPath: pathname })
-    router.push(destination)
-  }
-
-  function handleMobileNavSelect(item: (typeof navItems)[number]) {
-    if (gateNavItem(item) !== 'ok' || !item.href) return
-    const active = navItemActive(item)
-    if (!active) {
-      const destination = navItemDestination(item.href)
-      setPendingNav({ href: destination, fromPath: pathname })
-      router.push(destination)
-    }
-    // Two-step drawer: destinations with a contextual panel drill into it;
-    // everything else navigates and closes.
-    if (panelKindForNavItem(item)) setMobileView('panel')
-    else closeMobileDrawer()
-  }
-
-  function handleMobileSettingsSelect() {
-    if (!user) { requireAuth('settings'); return }
-    if (!settingsPathActive) {
-      setPendingNav({ href: '/app/settings', fromPath: pathname })
-      router.push('/app/settings')
-    }
-    setMobileView('panel')
-  }
-
-  const resourceAction = chatOpen && chatsView === 'dms'
-    ? {
-      label: 'New message',
-      onClick: () => publicShowcase
-        ? requireAuth('nav')
-        : window.dispatchEvent(new CustomEvent(NEW_DIRECT_MESSAGE_EVENT)),
-    }
-    : chatOpen && chatsView === 'channels'
-      ? {
-        label: 'New channel',
-        onClick: () => publicShowcase
-          ? requireAuth('nav')
-          : window.dispatchEvent(new CustomEvent(NEW_CHANNEL_EVENT)),
-      }
-      : contextualAction
-        ? {
-          label: contextualAction.label,
-          onClick: () => publicShowcase ? requireAuth('nav') : void runSidebarAction(contextualAction),
-        }
-        : panelKind === 'agents'
-          ? {
-            label: 'New agent',
-            onClick: () => window.dispatchEvent(new CustomEvent(NEW_AGENT_EVENT)),
-          }
-          : panelKind === 'knowledge'
-            ? {
-              label: 'New Knowledge Base',
-              onClick: () => window.dispatchEvent(new CustomEvent(NEW_KNOWLEDGE_BASE_EVENT)),
-            }
-            : null
-  const contextualSearchCategory = toMentionCategory(contextualAction?.searchCategory)
+  /** Compact brand for the fixed mobile top bar (matches sidebar identity). */
+  const mobileBrandLink = (
+    <Link
+      href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
+      className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-2"
+      onClick={() => setMobileMenuOpen(false)}
+    >
+      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
+      <span
+        className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
+        style={{ fontFamily: 'var(--font-serif)' }}
+      >
+        {brandConfig.shortName ?? brandConfig.name}
+      </span>
+    </Link>
+  )
 
   // Global Cmd/Ctrl+K command palette. The same dialog is reused by the per-section
   // search buttons in the sidebar; passing `globalSearchInitialCategory` opens it
   // pre-filtered to the current section (chats, files, …).
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
   const [globalSearchInitialCategory, setGlobalSearchInitialCategory] = useState<MentionType | null>(null)
-  // Not wrapped in useCallback: this is only ever an inline JSX handler, never a
-  // hook dependency, and hand-memoizing it makes React Compiler bail out of the
-  // whole component ("existing memoization could not be preserved").
-  const openGlobalSearch = (category: MentionType | null) => {
+  const openGlobalSearch = useCallback((category: MentionType | null) => {
     setGlobalSearchInitialCategory(category)
     setGlobalSearchOpen(true)
-  }
+  }, [])
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const isMeta = e.metaKey || e.ctrlKey
@@ -665,570 +386,362 @@ export default function AppSidebar({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  const panelNav: SecondaryPanelNav | undefined = (() => {
-    if (panelKind === 'chat') {
-      const chatItems = publicShowcase
-        ? chatsInlineItems.filter((item) => item.id !== 'activity')
-        : chatsInlineItems
-      return {
-        items: chatItems,
-        activeId: chatsView,
-        onSelect: (next) => {
-          closeMobileDrawer()
-          const baseHref = activeWorkspaceId
-            ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
-            : '/app/chat'
-          router.push(`${baseHref}?${new URLSearchParams({
-            ...(publicShowcase ? { showcase: '1' } : {}),
-            view: next,
-          }).toString()}`)
-        },
-      }
-    }
-    if (panelKind === 'tools') {
-      return {
-        items: availableToolsInlineItems,
-        activeId: toolsView,
-        onSelect: (next) => {
-          closeMobileDrawer()
-          router.push(`/app/tools?${new URLSearchParams({
-            ...(publicShowcase ? { showcase: '1' } : {}),
-            view: next,
-          }).toString()}`)
-        },
-      }
-    }
-    if (panelKind === 'settings') {
-      return {
-        items: settingsSections.map(({ id, label, href: sectionHref }) => ({
-          id,
-          label,
-          icon: SETTINGS_SECTION_ICONS[id] ?? Settings,
-          href: sectionHref ?? `/app/settings?section=${id}`,
-        })),
-        activeId: settingsSection,
-        onSelect: () => closeMobileDrawer(),
-      }
-    }
-    return undefined
-  })()
+  const contextualAction = resolveSidebarActionForPath(pathname, sidebarActions)
+  const contextualSearchCategory = toMentionCategory(contextualAction?.searchCategory)
+  const hasInlineChildren = (href?: string) =>
+    href === '/app/tools'
 
-  const panelAction = hasResourcePanel ? resourceAction : null
-  const panelSearch = hasResourcePanel && contextualSearchCategory
-    ? {
-      title: contextualSearchCategory === 'chat' ? 'Search chats (⌘K)' : 'Search files (⌘K)',
-      onClick: () => publicShowcase ? requireAuth('history') : openGlobalSearch(contextualSearchCategory),
-    }
-    : null
-
-  const showcasePrimaryLinks = publicShowcase
-    ? [
-      { id: 'app', label: 'App', icon: LayoutDashboard, href: ROOT_APP_DESTINATION },
-      { id: 'home', label: 'Home', icon: House, href: '/app/home?showcase=1' },
-      { id: 'manifesto', label: 'Manifesto', icon: ScrollText, href: '/app/manifesto?showcase=1' },
-      { id: 'pricing', label: 'Pricing', icon: CreditCard, href: '/app/pricing?showcase=1' },
-      { id: 'docs', label: 'Docs', icon: FileText, href: MARKETING_DOCS_URL },
-    ]
-    : []
-
-  const panelResourceList = hasResourcePanel ? (
-    <Suspense fallback={<SidebarListSkeleton />}>
-      {panelKind === 'chat' && renderChatPanel
-        ? renderChatPanel({
-            refreshKey: chatPanelRefreshKey,
-            onNavigate: closeMobileDrawer,
-          })
-        : null}
-      {panelKind === 'files' || panelKind === 'notes' ? (
-        renderFilesPanel
-          ? renderFilesPanel({ onNavigate: closeMobileDrawer })
-          : <FilesInlinePanel searchQuery="" onNavigate={closeMobileDrawer} />
-      ) : null}
-      {panelKind === 'projects' ? (
-        renderProjectsPanel
-          ? renderProjectsPanel({ onNavigate: closeMobileDrawer })
-          : <ProjectsInlinePanel refreshKey={projectsPanelRefreshKey} onNavigate={closeMobileDrawer} />
-      ) : null}
-      {panelKind === 'agents' ? (
-        renderAgentsPanel
-          ? renderAgentsPanel({ onNavigate: closeMobileDrawer })
-          : <AgentsInlinePanel
-            workspaceId={activeWorkspaceId}
-            baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents') : undefined}
-            onNavigate={closeMobileDrawer}
-          />
-      ) : null}
-      {panelKind === 'knowledge' ? (
-        renderKnowledgePanel
-          ? renderKnowledgePanel({ onNavigate: closeMobileDrawer })
-          : <KnowledgeInlinePanel
-            baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/knowledge') : undefined}
-            onNavigate={closeMobileDrawer}
-          />
-      ) : null}
-      {panelKind === 'automations' && renderAutomationsPanel
-        ? renderAutomationsPanel({ onNavigate: closeMobileDrawer })
-        : null}
-    </Suspense>
-  ) : null
-
-  const panelChildren = panelKind
-    ? panelResourceList
-    : null
-
-  const brandLink = (
-    <Link
-      href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
-      className="flex min-w-0 items-center gap-2"
-      onClick={closeMobileDrawer}
-    >
-      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
-      <span
-        className="truncate text-xl font-medium tracking-tight"
-        style={{ fontFamily: 'var(--font-serif)' }}
-      >
-        {brandConfig.shortName ?? brandConfig.name}
-      </span>
-    </Link>
-  )
-
-  const railExpanded = !sidebarCollapsed
-  const railBrand = sidebarCollapsed ? (
-    // Collapsed, the rail is icon-only: the mark alone stands for the brand and
-    // the wordmark returns with the expanded sidebar.
-    <button
-      type="button"
-      onClick={() => setSidebarCollapsed(false)}
-      className="group inline-flex h-10 w-full items-center justify-center rounded-md transition-colors hover:bg-[var(--surface-subtle)]"
-      aria-label="Expand sidebar"
-      title="Expand sidebar"
-    >
-      <Image
-        src={brandConfig.logoSrc}
-        alt={brandConfig.logoAlt ?? ''}
-        width={10}
-        height={10}
-        className="shrink-0 group-hover:hidden"
-      />
-      <ChevronRight size={16} className="hidden text-[var(--foreground)] group-hover:block" />
-    </button>
-  ) : (
+  const sidebarContent = (
     <>
-      <Link
-        href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 transition-colors hover:bg-[var(--surface-subtle)]"
-        aria-label="Home"
-        title="Home"
-      >
-        <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
-        <span
-          className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
-          style={{ fontFamily: 'var(--font-serif)' }}
-        >
-          {brandConfig.shortName ?? brandConfig.name}
-        </span>
-      </Link>
-      <button
-        type="button"
-        onClick={() => {
-          setAccountMenuOpen(false)
-          setSidebarCollapsed(true)
-        }}
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-        aria-label="Collapse sidebar"
-        title="Collapse sidebar"
-      >
-        <ChevronLeft size={16} />
-      </button>
-    </>
-  )
-
-  /** Compact brand for the fixed mobile top bar (matches sidebar identity). */
-  const mobileBrandLink = (
-    <Link
-      href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
-      className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-2"
-      onClick={closeMobileDrawer}
-    >
-      <Image src={brandConfig.logoSrc} alt={brandConfig.logoAlt ?? ''} width={10} height={10} className="shrink-0" />
-      <span
-        className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
-        style={{ fontFamily: 'var(--font-serif)' }}
-      >
-        {brandConfig.shortName ?? brandConfig.name}
-      </span>
-    </Link>
-  )
-
-  const accountMenuContent = (
-    <SidebarAccountMenu
-      billingEnabled={billingEnabled}
-      entitlements={entitlements}
-      demoHref={!publicShowcase && user ? ROOT_SHOWCASE_DESTINATION : undefined}
-      onAccountClick={() => {
-        setAccountMenuOpen(false)
-        closeMobileDrawer()
-      }}
-      onSignOut={() => {
-        setAccountMenuOpen(false)
-        void handleSignOut()
-      }}
-    />
-  )
-
-  const railItems: PrimaryRailItem[] = []
-  if (showAdminNavigation) {
-    railItems.push({
-      id: 'admin',
-      label: 'Admin',
-      icon: ShieldCheck,
-      active: adminOpen,
-      pending: effectivePendingHref === '/app/admin',
-      onSelect: () => {
-        if (adminOpen) return
-        setPendingNav({ href: '/app/admin', fromPath: pathname })
-        router.push('/app/admin')
-      },
-    })
-  }
-  navItems.forEach((item, navIdx) => {
-    const shortcut = navIdx < 9 ? navIdx + 1 : null
-    railItems.push({
-      id: item.id,
-      label: item.label,
-      icon: item.icon,
-      disabled: item.disabled,
-      active: navItemActive(item),
-      pending: Boolean(item.href && effectivePendingHref === item.href),
-      badgeCount: item.href === '/app/chat' ? totalUnread : 0,
-      title: shortcut ? `${item.label} · ⌥${shortcut}` : item.label,
-      dataTour: item.href === '/app/chat'
-        ? 'nav-chat'
-        : item.href === '/app/files'
-          ? 'nav-knowledge'
-          : item.href === '/app/tools'
-            ? 'nav-extensions'
-            : undefined,
-      onSelect: () => selectNavItem(item),
-    })
-  })
-
-  const showcaseRailFooterItems: PrimaryRailItem[] = showcasePrimaryLinks.map((link) => ({
-    id: link.id,
-    label: link.label,
-    icon: link.icon,
-    title: link.label,
-    onSelect: () => {
-      if (/^https?:\/\//.test(link.href)) window.location.assign(link.href)
-      else router.push(link.href)
-    },
-  }))
-
-  const railFooterItems: PrimaryRailItem[] = [
-    ...showcaseRailFooterItems,
-    {
-      id: 'settings',
-      label: 'Settings',
-      icon: Settings,
-      active: settingsPathActive,
-      pending: effectivePendingHref === '/app/settings',
-      title: 'Settings · ⌥7',
-      onSelect: () => {
-        if (settingsPathActive) {
-          if (sidebarCollapsed) setSidebarCollapsed(false)
-          return
-        }
-        if (!user) { requireAuth('settings'); return }
-        setPendingNav({ href: '/app/settings', fromPath: pathname })
-        router.push('/app/settings')
-      },
-    },
-  ]
-
-  const desktopAccountMenu = accountMenuOpen && !workspace && typeof document !== 'undefined'
-    ? createPortal(
       <div
-        ref={accountMenuPortalRef}
-        className="overlay-fade-in fixed z-[10080] w-64 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
-        style={{
-          left: accountMenuPosition?.left ?? 8,
-          bottom: accountMenuPosition?.bottom ?? 8,
-          visibility: accountMenuPosition ? 'visible' : 'hidden',
-        }}
-        onMouseDown={(event) => event.stopPropagation()}
+        className={`hidden h-16 min-h-16 shrink-0 items-center border-b border-[var(--border)] md:flex ${
+          sidebarCollapsed ? 'justify-center px-4' : 'justify-between px-5'
+        }`}
       >
-        {accountMenuContent}
-      </div>,
-      document.body,
-    )
-    : null
-
-  const desktopAccountSlot = (
-    <div ref={menuRef} className="relative">
-      {!isGuestConfirmed && workspace ? (
-        workspace.renderSwitcher({
-          compact: !railExpanded,
-          onNavigate: () => {
-            setAccountMenuOpen(false)
-          },
-          placement: 'footer',
-          userLabel: displayName,
-          accountMenu: accountMenuContent,
-        })
-      ) : !isGuestConfirmed ? (
-        <>
-          {desktopAccountMenu}
+        {desktopBrandControl}
+        {!sidebarCollapsed ? (
           <button
             type="button"
-            onClick={() => setAccountMenuOpen((value) => !value)}
-            className={`flex h-9 w-full items-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-              railExpanded ? 'gap-2.5 px-3' : 'justify-center'
-            }`}
-            aria-label="Account menu"
-            aria-expanded={accountMenuOpen}
-            title={displayName}
+            onClick={() => {
+              setAccountMenuOpen(false)
+              setSidebarCollapsed(true)
+            }}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
           >
-            <User size={15} className="shrink-0" />
-            {railExpanded ? <span className="min-w-0 flex-1 truncate text-left text-sm">{displayName}</span> : null}
+            <ChevronLeft size={16} />
           </button>
-        </>
-      ) : (
-        <button
-          type="button"
-          onClick={() => requireAuth('send')}
-          className={`flex h-9 w-full items-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-            railExpanded ? 'gap-2.5 px-3' : 'justify-center'
-          }`}
-          aria-label="Sign in"
-          title="Sign in"
-        >
-          <User size={15} className="shrink-0" />
-          {railExpanded ? <span className="min-w-0 flex-1 text-left text-sm">Sign in</span> : null}
-        </button>
-      )}
-    </div>
-  )
-
-  const mobileNavStep = (
-    <>
-      <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
-        <div className="min-w-0 flex-1">
-          {brandLink}
-        </div>
-        <button
-          type="button"
-          onClick={closeMobileDrawer}
-          aria-label="Close app navigation"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)]"
-        >
-          <X size={16} />
-        </button>
+        ) : null}
       </div>
+
       <div className="flex min-h-0 flex-1 flex-col">
-        <SidebarNav className="min-h-0 flex-1 overflow-y-auto">
-          {showAdminNavigation ? (
-            <button
-              type="button"
-              onClick={() => {
-                if (adminOpen) {
-                  closeMobileDrawer()
-                  return
-                }
-                setPendingNav({ href: '/app/admin', fromPath: pathname })
-                router.push('/app/admin')
-                closeMobileDrawer()
-              }}
-              aria-label="Admin"
-              aria-current={adminOpen ? 'page' : undefined}
-              className={`group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors ${
-                adminOpen
-                  ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                  : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-              }`}
-            >
-              <ShieldCheck size={15} />
-              <div className="min-w-0 flex-1 text-left">Admin</div>
-            </button>
-          ) : null}
-          {navItems.map((item) => {
+        <SidebarNav className="shrink-0">
+          {navItems.map((item, navIdx) => {
             const { href, label, icon: Icon, disabled } = item
-            const active = navItemActive(item)
-            const isPending = Boolean(href && effectivePendingHref === href)
+            const active =
+              href &&
+              (effectivePendingHref
+                ? effectivePendingHref === href
+                : href === '/app/files'
+                  ? filesSectionOpen
+                  : pathname.startsWith(href))
+            const isPending = href && effectivePendingHref === href
             const unreadCount = href === '/app/chat' ? totalUnread : 0
-            const opensPanel = panelKindForNavItem(item) != null
-            const rowClass = `group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors ${
+            const shortcut = navIdx < 9 ? navIdx + 1 : null
+            const showShortcut = Boolean(shortcut) && !active
+            const showChevron = hasInlineChildren(href)
+            const commonClass = `group flex h-9 w-full items-center rounded-md px-3 text-sm transition-colors ${
               disabled
                 ? 'cursor-not-allowed text-[var(--muted-light)]'
                 : active
                   ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
                   : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-            }`
+            } ${sidebarCollapsed ? 'justify-center' : 'gap-2.5'}`
+            if (disabled) {
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  disabled
+                  title="Coming soon"
+                  aria-label={`${label} (coming soon)`}
+                  className={commonClass}
+                >
+                  <Icon size={15} />
+                  {!sidebarCollapsed ? <div className="min-w-0 flex-1 text-left">{label}</div> : null}
+                </button>
+              )
+            }
             return (
-              <button
-                key={item.id}
-                type="button"
-                disabled={disabled}
-                onClick={() => handleMobileNavSelect(item)}
-                title={disabled ? 'Coming soon' : label}
-                aria-label={disabled ? `${label} (coming soon)` : label}
-                aria-current={active ? 'page' : undefined}
-                className={rowClass}
-              >
-                <Icon size={15} />
-                <div className="min-w-0 flex-1 text-left">{label}</div>
-                {isPending ? (
-                  <Loader2 size={14} className="shrink-0 animate-spin text-[var(--muted)]" aria-hidden />
-                ) : unreadCount > 0 ? (
-                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--border)] text-[9px] font-medium text-[var(--foreground)]">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                ) : opensPanel && !disabled ? (
-                  <ChevronRight size={13} className="shrink-0 text-[var(--muted-light)]" aria-hidden />
+              <div key={href}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!href) return
+                    if (isGuestConfirmed && !publicShowcase && href !== '/app/chat') {
+                      requireAuth('nav')
+                      return
+                    }
+                    const primaryNavAction = primaryNavActionByItemId.get(item.id)
+                    if (primaryNavAction) {
+                      void runSidebarAction(primaryNavAction)
+                      return
+                    }
+                    if (pathname.startsWith(href)) return
+                    setMobileMenuOpen(false)
+                    const destination = publicShowcase
+                      ? `${href}?${new URLSearchParams({
+                          showcase: '1',
+                          ...(href === '/app/chat' ? { id: 'showcase-welcome' } : {}),
+                        }).toString()}`
+                      : href
+                    setPendingNav({ href: destination, fromPath: pathname })
+                    router.push(destination)
+                  }}
+                  title={shortcut ? `${label} · ⌥${shortcut}` : label}
+                  aria-label={label}
+                  data-tour={href === '/app/chat' ? 'nav-chat' : href === '/app/files' ? 'nav-knowledge' : href === '/app/tools' ? 'nav-extensions' : undefined}
+                  className={commonClass}
+                >
+                  {sidebarCollapsed && isPending ? (
+                    <Loader2 size={14} className="shrink-0 animate-spin text-[var(--muted)]" aria-hidden />
+                  ) : (
+                    <Icon size={15} />
+                  )}
+                  {!sidebarCollapsed ? (
+                    <div className="min-w-0 flex-1 text-left">
+                      <div>{label}</div>
+                    </div>
+                  ) : null}
+                  {!sidebarCollapsed && showShortcut ? (
+                    <span
+                      className={`shrink-0 text-[10px] font-medium tabular-nums transition-opacity ${
+                        active
+                          ? 'text-[var(--muted)] opacity-100'
+                          : 'text-[var(--muted-light)] opacity-0 group-hover:opacity-100'
+                      }`}
+                      aria-hidden
+                    >
+                      ⌥{shortcut}
+                    </span>
+                  ) : null}
+                  {!sidebarCollapsed && showChevron ? (
+                    <span
+                      className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition-opacity ${
+                        active
+                          ? 'text-[var(--muted)] opacity-100'
+                          : 'text-[var(--muted-light)] opacity-0 group-hover:opacity-100 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                      }`}
+                      aria-hidden
+                    >
+                      <ChevronDown
+                        size={13}
+                        className={`transition-transform ${active ? '' : '-rotate-90'}`}
+                      />
+                    </span>
+                  ) : null}
+                  {!sidebarCollapsed && isPending ? (
+                    <Loader2
+                      size={14}
+                      className="shrink-0 animate-spin text-[var(--muted)]"
+                      aria-hidden
+                    />
+                  ) : !sidebarCollapsed && unreadCount > 0 ? (
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--border)] text-[9px] font-medium text-[var(--foreground)]">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  ) : null}
+                </button>
+                {!sidebarCollapsed && href === '/app/tools' && active ? (
+                  <InlineNavChildren
+                    items={availableToolsInlineItems}
+                    activeId={toolsView}
+                    onSelect={(next) => {
+                      setMobileMenuOpen(false)
+                      router.push(`/app/tools?${new URLSearchParams({
+                        ...(publicShowcase ? { showcase: '1' } : {}),
+                        view: next,
+                      }).toString()}`)
+                    }}
+                  />
                 ) : null}
-              </button>
+                {sidebarCollapsed && href === '/app/tools' && active ? (
+                  <div className="mx-2 mt-1 flex flex-col overflow-hidden rounded-md border border-[var(--border)]">
+                    {availableToolsInlineItems.map((item) => {
+                      const sub = {
+                        connectors: { id: 'connectors', Icon: Plug, label: 'Connectors', locked: false },
+                        skills: { id: 'skills', Icon: Sparkles, label: 'Skills', locked: false },
+                        mcps: { id: 'mcps', Icon: Server, label: 'MCPs', locked: false },
+                        apps: { id: 'apps', Icon: Package, label: 'Apps', locked: true },
+                      }[item.id]
+                      return sub ? (
+                        <button
+                          key={sub.id}
+                          type="button"
+                          title={sub.locked ? `${sub.label} · Soon` : sub.label}
+                          aria-label={sub.label}
+                          disabled={sub.locked}
+                          onClick={() => {
+                            if (sub.locked) return
+                            router.push(`/app/tools?${new URLSearchParams({
+                              ...(publicShowcase ? { showcase: '1' } : {}),
+                              view: sub.id,
+                            }).toString()}`)
+                          }}
+                          className={`flex h-8 items-center justify-center transition-colors ${
+                            sub.locked
+                              ? 'cursor-default text-[var(--muted-light)]'
+                              : toolsView === sub.id
+                                ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                                : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                          }`}
+                        >
+                          <sub.Icon size={13} />
+                        </button>
+                      ) : null
+                    })}
+                  </div>
+                ) : null}
+              </div>
             )
           })}
-          {showcasePrimaryLinks.length ? (
-            <div className="mt-0.5 border-t border-[var(--border)] pt-1">
-              {showcasePrimaryLinks.map((link) => {
-                const Icon = link.icon
-                return (
-                  <button
-                    key={link.id}
-                    type="button"
-                    onClick={() => {
-                      if (/^https?:\/\//.test(link.href)) window.location.assign(link.href)
-                      else router.push(link.href)
-                      closeMobileDrawer()
-                    }}
-                    aria-label={link.label}
-                    className="group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  >
-                    <Icon size={15} />
-                    <div className="min-w-0 flex-1 text-left">{link.label}</div>
-                  </button>
-                )
-              })}
-            </div>
-          ) : null}
           <div className="mt-0.5">
             <button
               type="button"
-              onClick={handleMobileSettingsSelect}
+              onClick={() => {
+                if (settingsPathActive) return
+                if (!user) { requireAuth('settings'); return }
+                setMobileMenuOpen(false)
+                setPendingNav({ href: '/app/settings', fromPath: pathname })
+                router.push('/app/settings')
+              }}
+              title="Settings · ⌥7"
               aria-label="Settings"
-              aria-current={settingsPathActive ? 'page' : undefined}
-              className={`group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors ${
+              className={`group flex h-9 w-full items-center rounded-md px-3 text-sm transition-colors ${
                 settingsPathActive
                   ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
                   : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-              }`}
+              } ${sidebarCollapsed ? 'justify-center' : 'gap-2.5'}`}
             >
               <Settings size={15} />
-              <div className="min-w-0 flex-1 text-left">Settings</div>
-              <ChevronRight size={13} className="shrink-0 text-[var(--muted-light)]" aria-hidden />
+              {!sidebarCollapsed ? <div className="min-w-0 flex-1 text-left">Settings</div> : null}
+              {!sidebarCollapsed ? (
+                <span
+                  className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-light)] opacity-0 transition-opacity group-hover:opacity-100 ${
+                    settingsNavExpanded ? '' : '-rotate-90'
+                  }`}
+                  aria-hidden
+                >
+                  <ChevronDown size={13} />
+                </span>
+              ) : null}
             </button>
+            {!sidebarCollapsed && settingsNavExpanded ? (
+              <div className="mt-1 space-y-0.5 pl-7">
+                {settingsSections.map(({ id, label, href: sectionHref }) => {
+                  const active = settingsPathActive && settingsSection === id
+                  return (
+                    <Link
+                      key={id}
+                      href={sectionHref ?? `/app/settings?section=${id}`}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={`flex w-full items-center rounded-md px-3 py-1.5 text-xs transition-colors ${
+                        active
+                          ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                          : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                      }`}
+                    >
+                      <span className="flex-1 text-left">{label}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            ) : null}
           </div>
         </SidebarNav>
 
-        <SidebarSection className="space-y-3 px-3">
-          <div ref={mobileMenuRef} className="relative">
-            {!isGuestConfirmed && workspace ? (
-              workspace.renderSwitcher({
-                compact: false,
-                onNavigate: () => {
+        {!sidebarCollapsed && (chatOpen || filesSectionOpen || projectsOpen || automationsSectionOpen) ? (
+          <SidebarResourceSection
+            action={contextualAction ? {
+              label: contextualAction.label,
+              onClick: () => publicShowcase ? requireAuth('nav') : void runSidebarAction(contextualAction),
+            } : null}
+            search={contextualSearchCategory ? {
+              title: contextualSearchCategory === 'chat' ? 'Search chats (\u2318K)' : 'Search files (\u2318K)',
+              onClick: () => publicShowcase ? requireAuth('history') : openGlobalSearch(contextualSearchCategory),
+            } : null}
+          >
+            <Suspense fallback={<SidebarListSkeleton />}>
+              {chatOpen && renderChatPanel
+                ? renderChatPanel({
+                    refreshKey: chatPanelRefreshKey,
+                    onNavigate: () => setMobileMenuOpen(false),
+                  })
+                : null}
+              {notesOpen || filesOpen ? (
+                renderFilesPanel
+                  ? renderFilesPanel({ onNavigate: () => setMobileMenuOpen(false) })
+                  : <FilesInlinePanel searchQuery="" onNavigate={() => setMobileMenuOpen(false)} />
+              ) : null}
+              {projectsOpen ? (
+                renderProjectsPanel
+                  ? renderProjectsPanel({ onNavigate: () => setMobileMenuOpen(false) })
+                  : <ProjectsInlinePanel refreshKey={projectsPanelRefreshKey} onNavigate={() => setMobileMenuOpen(false)} />
+              ) : null}
+              {automationsSectionOpen && renderAutomationsPanel
+                ? renderAutomationsPanel({
+                    onNavigate: () => setMobileMenuOpen(false),
+                  })
+                : null}
+            </Suspense>
+          </SidebarResourceSection>
+        ) : null}
+      </div>
+
+      <SidebarSection className={`space-y-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
+        {publicShowcase && !sidebarCollapsed ? (
+          <nav aria-label="Overlay information" className="grid grid-cols-2 gap-x-3 gap-y-1 px-2 text-[11px] text-[var(--muted)]">
+            {user ? <Link href={ROOT_APP_DESTINATION} className="hover:text-[var(--foreground)]">App</Link> : null}
+            <Link href="/app/home?showcase=1" className="hover:text-[var(--foreground)]">Home</Link>
+            <Link href="/app/manifesto?showcase=1" className="hover:text-[var(--foreground)]">Manifesto</Link>
+            <Link href="/app/pricing?showcase=1" className="hover:text-[var(--foreground)]">Pricing</Link>
+            <Link href={MARKETING_DOCS_URL} className="hover:text-[var(--foreground)]">Docs</Link>
+          </nav>
+        ) : null}
+        <div ref={menuRef} className="relative">
+          {accountMenuOpen && (
+            <div
+              className={`overlay-fade-in absolute bottom-full z-50 mb-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg ${
+                sidebarCollapsed ? 'left-0 w-64' : 'left-0 right-0'
+              }`}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <SidebarAccountMenu
+                billingEnabled={billingEnabled}
+                entitlements={entitlements}
+                demoHref={!publicShowcase && user ? ROOT_SHOWCASE_DESTINATION : undefined}
+                onAccountClick={() => {
                   setAccountMenuOpen(false)
-                  closeMobileDrawer()
-                },
-                placement: 'footer',
-                userLabel: displayName,
-                accountMenu: accountMenuContent,
-              })
-            ) : !isGuestConfirmed ? (
-              <>
-                {accountMenuOpen ? (
-                  <div
-                    className="overlay-fade-in absolute bottom-full left-0 right-0 z-50 mb-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
-                    onMouseDown={(event) => event.stopPropagation()}
-                  >
-                    {accountMenuContent}
-                  </div>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setAccountMenuOpen((value) => !value)}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  aria-label="Account menu"
-                >
-                  <User size={13} />
-                  <span className="flex-1 truncate text-left">{displayName}</span>
-                  <ChevronUp size={11} className={`shrink-0 transition-transform ${accountMenuOpen ? '' : 'rotate-180'}`} />
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => requireAuth('send')}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                aria-label="Sign in"
-              >
-                <User size={13} />
-                <span className="flex-1 text-left">Sign in</span>
-              </button>
-            )}
-          </div>
-        </SidebarSection>
-      </div>
-    </>
-  )
+                  setMobileMenuOpen(false)
+                }}
+                onSignOut={() => {
+                  setAccountMenuOpen(false)
+                  void handleSignOut()
+                }}
+              />
+            </div>
+          )}
 
-  const mobilePanelStep = (
-    <>
-      <div className="flex h-14 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2">
-        <button
-          type="button"
-          onClick={() => setMobileView('nav')}
-          aria-label="Back to app navigation"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-        >
-          <ChevronLeft size={16} />
-        </button>
-        <span
-          className="min-w-0 flex-1 truncate px-1 text-lg font-medium tracking-tight text-[var(--foreground)]"
-          style={{ fontFamily: 'var(--font-serif)' }}
-        >
-          {panelTitle}
-        </span>
-        <button
-          type="button"
-          onClick={closeMobileDrawer}
-          aria-label="Close app navigation"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)]"
-        >
-          <X size={16} />
-        </button>
-      </div>
-      <SecondaryPanelContent
-        nav={panelNav}
-        action={panelAction}
-        search={panelSearch}
-      >
-        {panelChildren}
-      </SecondaryPanelContent>
+          {!isGuestConfirmed ? (
+            <button
+              type="button"
+              onClick={() => setAccountMenuOpen((value) => !value)}
+              className={`flex w-full items-center rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+                sidebarCollapsed ? 'justify-center' : 'gap-2'
+              }`}
+              aria-label="Account menu"
+            >
+              <User size={13} />
+              {!sidebarCollapsed ? <span className="flex-1 truncate text-left">{displayName}</span> : null}
+              {!sidebarCollapsed ? <ChevronUp size={11} className={`shrink-0 transition-transform ${accountMenuOpen ? '' : 'rotate-180'}`} /> : null}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => requireAuth('send')}
+              className={`flex w-full items-center rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+                sidebarCollapsed ? 'justify-center' : 'gap-2'
+              }`}
+              aria-label="Sign in"
+            >
+              <User size={13} />
+              {!sidebarCollapsed ? <span className="flex-1 text-left">Sign in</span> : null}
+            </button>
+          )}
+        </div>
+      </SidebarSection>
     </>
-  )
-
-  const mobileAccountMenu = (
-    <SidebarAccountMenu
-      billingEnabled={billingEnabled}
-      entitlements={entitlements}
-      itemPaddingClass="py-2.5"
-      demoHref={!publicShowcase && user ? ROOT_SHOWCASE_DESTINATION : undefined}
-      onAccountClick={() => setMobileAccountOpen(false)}
-      onSignOut={() => {
-        setMobileAccountOpen(false)
-        void handleSignOut()
-      }}
-    />
   )
 
   return (
@@ -1239,10 +752,7 @@ export default function AppSidebar({
         <div className="flex h-14 items-center justify-between gap-2 px-3">
           <button
             type="button"
-            onClick={() => {
-              setMobileView('nav')
-              setMobileMenuOpen(true)
-            }}
+            onClick={() => setMobileMenuOpen(true)}
             aria-label="Open app navigation"
             className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)]"
           >
@@ -1250,78 +760,52 @@ export default function AppSidebar({
           </button>
           <div className="flex min-w-0 flex-1 justify-center px-1">{mobileBrandLink}</div>
           <div className="relative shrink-0" ref={mobileAccountRef}>
-            {!isGuestConfirmed && workspace ? (
-              <div className="max-w-[min(14rem,calc(100vw-7rem))]">
-                {workspace.renderSwitcher({
-                  compact: true,
-                  placement: 'header',
-                  userLabel: displayName,
-                  onNavigate: () => {
+            <button
+              type="button"
+              onClick={() => setMobileAccountOpen((o) => !o)}
+              aria-label="Account menu"
+              aria-expanded={mobileAccountOpen}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            >
+              <User size={16} />
+            </button>
+            {mobileAccountOpen && (
+              <div
+                className="overlay-pop-in absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <SidebarAccountMenu
+                  billingEnabled={billingEnabled}
+                  entitlements={entitlements}
+                  itemPaddingClass="py-2.5"
+                  demoHref={!publicShowcase && user ? ROOT_SHOWCASE_DESTINATION : undefined}
+                  onAccountClick={() => setMobileAccountOpen(false)}
+                  onSignOut={() => {
                     setMobileAccountOpen(false)
-                    closeMobileDrawer()
-                  },
-                  accountMenu: mobileAccountMenu,
-                })}
+                    void handleSignOut()
+                  }}
+                />
               </div>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setMobileAccountOpen((o) => !o)}
-                  aria-label="Account menu"
-                  aria-expanded={mobileAccountOpen}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                >
-                  <User size={16} />
-                </button>
-                {mobileAccountOpen && (
-                  <div
-                    className="overlay-pop-in absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
-                    onMouseDown={(event) => event.stopPropagation()}
-                  >
-                    {mobileAccountMenu}
-                  </div>
-                )}
-              </>
             )}
           </div>
         </div>
       </div>
 
-      <AppSidebarPrimaryRail
-        brand={railBrand}
-        items={railItems}
-        footerItems={railFooterItems}
-        account={desktopAccountSlot}
-        expanded={railExpanded}
+      <SidebarShell
         className={`hidden h-full transition-[width,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
           hideTemporaryChatChrome
             ? 'w-0 border-transparent opacity-0 pointer-events-none'
-            : `${railExpanded ? 'w-56' : 'w-[72px]'} opacity-100`
+            : `${sidebarCollapsed ? 'w-[72px]' : 'w-56'} opacity-100`
         }`}
-      />
-
-      {showSecondaryPanel ? (
-        <AppSidebarSecondaryPanel
-          title={panelTitle}
-          nav={panelNav}
-          action={panelAction}
-          search={panelSearch}
-          className={`hidden h-full transition-[width,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
-            sidebarCollapsed || hideTemporaryChatChrome
-              ? 'w-0 border-transparent opacity-0 pointer-events-none invisible'
-              : 'w-60 opacity-100'
-          }`}
-        >
-          {panelChildren}
-        </AppSidebarSecondaryPanel>
-      ) : null}
+      >
+        {sidebarContent}
+      </SidebarShell>
 
       <div className={`fixed inset-0 z-50 md:hidden ${mobileMenuOpen && !hideTemporaryChatChrome ? '' : 'pointer-events-none'}`}>
         <button
           type="button"
           aria-label="Close app navigation"
-          onClick={closeMobileDrawer}
+          onClick={() => setMobileMenuOpen(false)}
           className={`absolute inset-0 bg-black/30 transition-opacity ${mobileMenuOpen && !hideTemporaryChatChrome ? 'opacity-100' : 'opacity-0'}`}
         />
         <SidebarShell
@@ -1329,7 +813,18 @@ export default function AppSidebar({
             mobileMenuOpen && !hideTemporaryChatChrome ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
-          {mobileView === 'panel' && showSecondaryPanel ? mobilePanelStep : mobileNavStep}
+          <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
+            <div className="min-w-0 flex-1">{brandLink}</div>
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(false)}
+              aria-label="Close app navigation"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)]"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          {sidebarContent}
         </SidebarShell>
       </div>
 

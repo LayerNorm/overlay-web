@@ -11,9 +11,6 @@ export type CachedConversation = {
   askModelIds?: string[]
   modelIds?: string[]
   actModelId?: string
-  workspaceId?: string
-  conversationType?: 'personal' | 'dm' | 'channel'
-  createdByPrincipalId?: string
 }
 
 const CACHE_TTL_MS = 15_000
@@ -37,56 +34,12 @@ export type ChatListFetchOutcome =
   | { status: 'unauthenticated' }
   | { status: 'error' }
 
-type WorkspaceChatListCache = {
-  cachedChats: CachedConversation[] | null
-  cachedAt: number
-  inFlight: Promise<ChatListFetchOutcome> | null
-  nextPageInFlight: Promise<CachedConversation[]> | null
-  cachedPageInfo: ChatListPageInfo
-  pendingEmptyChats: Map<string, { chat: CachedConversation; expiresAt: number }>
-}
-
-const LEGACY_WORKSPACE_KEY = '__legacy_personal_workspace__'
-const workspaceCaches = new Map<string, WorkspaceChatListCache>()
-let activeWorkspaceKey = LEGACY_WORKSPACE_KEY
-let activeChatView: 'personal' | 'dms' | 'channels' | 'unread' | 'all' = 'personal'
-
-function activeCacheKey() {
-  return `${activeWorkspaceKey}:${activeChatView}`
-}
-
-function createWorkspaceCache(): WorkspaceChatListCache {
-  return {
-    cachedChats: null,
-    cachedAt: 0,
-    inFlight: null,
-    nextPageInFlight: null,
-    cachedPageInfo: { hasMore: false },
-    pendingEmptyChats: new Map(),
-  }
-}
-
-function getWorkspaceCache(workspaceKey = activeCacheKey()): WorkspaceChatListCache {
-  const existing = workspaceCaches.get(workspaceKey)
-  if (existing) return existing
-  const created = createWorkspaceCache()
-  workspaceCaches.set(workspaceKey, created)
-  return created
-}
-
-export function setActiveChatListWorkspace(workspaceId: string | null | undefined) {
-  activeWorkspaceKey = workspaceId || LEGACY_WORKSPACE_KEY
-  getWorkspaceCache()
-}
-
-export function setActiveChatListView(view: typeof activeChatView) {
-  activeChatView = view
-  getWorkspaceCache()
-}
-
-export function getActiveChatListWorkspace(): string | null {
-  return activeWorkspaceKey === LEGACY_WORKSPACE_KEY ? null : activeWorkspaceKey
-}
+let cachedChats: CachedConversation[] | null = null
+let cachedAt = 0
+let inFlight: Promise<ChatListFetchOutcome> | null = null
+let nextPageInFlight: Promise<CachedConversation[]> | null = null
+let cachedPageInfo: ChatListPageInfo = { hasMore: false }
+const pendingEmptyChats = new Map<string, { chat: CachedConversation; expiresAt: number }>()
 
 function sortByLastModified(chats: CachedConversation[]): CachedConversation[] {
   return [...chats].sort((a, b) => {
@@ -97,42 +50,38 @@ function sortByLastModified(chats: CachedConversation[]): CachedConversation[] {
 }
 
 export function getCachedChatList(): CachedConversation[] | null {
-  return getWorkspaceCache().cachedChats
+  return cachedChats
 }
 
 export function getCachedChatListPageInfo(): ChatListPageInfo {
-  return getWorkspaceCache().cachedPageInfo
+  return cachedPageInfo
 }
 
 export function primeChatList(
   chats: CachedConversation[],
   pageInfo: ChatListPageInfo = { hasMore: false },
-  workspaceKey = activeCacheKey(),
 ) {
-  const cache = getWorkspaceCache(workspaceKey)
-  cache.cachedChats = sortByLastModified(chats)
-  cache.cachedPageInfo = pageInfo
-  cache.cachedAt = Date.now()
+  cachedChats = sortByLastModified(chats)
+  cachedPageInfo = pageInfo
+  cachedAt = Date.now()
 }
 
 export function upsertCachedChat(chat: CachedConversation) {
-  const cache = getWorkspaceCache()
-  const current = cache.cachedChats ?? []
+  const current = cachedChats ?? []
   const existing = current.find((item) => item._id === chat._id)
   const merged = existing ? { ...existing, ...chat } : chat
-  cache.cachedChats = sortByLastModified([merged, ...current.filter((item) => item._id !== chat._id)])
-  cache.cachedAt = Date.now()
+  cachedChats = sortByLastModified([merged, ...current.filter((item) => item._id !== chat._id)])
+  cachedAt = Date.now()
 }
 
 export function markNewEmptyChat(chat: CachedConversation) {
-  getWorkspaceCache().pendingEmptyChats.set(chat._id, {
+  pendingEmptyChats.set(chat._id, {
     chat,
     expiresAt: Date.now() + NEW_EMPTY_CHAT_TTL_MS,
   })
 }
 
 export function consumeNewEmptyChat(chatId: string): CachedConversation | null {
-  const pendingEmptyChats = getWorkspaceCache().pendingEmptyChats
   const entry = pendingEmptyChats.get(chatId)
   pendingEmptyChats.delete(chatId)
   if (!entry || entry.expiresAt < Date.now()) return null
@@ -140,34 +89,26 @@ export function consumeNewEmptyChat(chatId: string): CachedConversation | null {
 }
 
 export function removeCachedChat(chatId: string) {
-  const cache = getWorkspaceCache()
-  if (!cache.cachedChats) return
-  cache.cachedChats = cache.cachedChats.filter((chat) => chat._id !== chatId)
-  cache.cachedAt = Date.now()
+  if (!cachedChats) return
+  cachedChats = cachedChats.filter((chat) => chat._id !== chatId)
+  cachedAt = Date.now()
 }
 
 export function clearChatListCache() {
-  workspaceCaches.delete(activeCacheKey())
-}
-
-export function clearAllChatListCaches() {
-  workspaceCaches.clear()
+  cachedChats = null
+  cachedAt = 0
+  cachedPageInfo = { hasMore: false }
+  pendingEmptyChats.clear()
 }
 
 export async function fetchChatListResult(options: { force?: boolean } = {}): Promise<ChatListFetchOutcome> {
-  const requestWorkspaceKey = activeCacheKey()
-  const requestView = activeChatView
-  const cache = getWorkspaceCache(requestWorkspaceKey)
   const now = Date.now()
-  if (!options.force && cache.cachedChats && now - cache.cachedAt < CACHE_TTL_MS) {
-    return { status: 'success', chats: cache.cachedChats }
+  if (!options.force && cachedChats && now - cachedAt < CACHE_TTL_MS) {
+    return { status: 'success', chats: cachedChats }
   }
-  if (!options.force && cache.inFlight) return cache.inFlight
+  if (!options.force && inFlight) return inFlight
 
-  cache.inFlight = overlayAppClient.conversations.getResponse({
-    limit: INITIAL_CHAT_LIST_LIMIT,
-    view: requestView,
-  })
+  inFlight = overlayAppClient.conversations.getResponse({ limit: INITIAL_CHAT_LIST_LIMIT })
     .then(async (res): Promise<ChatListFetchOutcome> => {
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) return { status: 'unauthenticated' }
@@ -178,15 +119,15 @@ export async function fetchChatListResult(options: { force?: boolean } = {}): Pr
       primeChatList(payload.data, {
         nextCursor: payload.nextCursor,
         hasMore: payload.hasMore,
-      }, requestWorkspaceKey)
+      })
       return { status: 'success', chats: payload.data }
     })
     .catch((): ChatListFetchOutcome => ({ status: 'error' }))
     .finally(() => {
-      getWorkspaceCache(requestWorkspaceKey).inFlight = null
+      inFlight = null
     })
 
-  return cache.inFlight
+  return inFlight
 }
 
 export async function fetchChatList(options: { force?: boolean } = {}): Promise<CachedConversation[]> {
@@ -195,30 +136,25 @@ export async function fetchChatList(options: { force?: boolean } = {}): Promise<
   // A guest (or expired session) must not keep seeing previously cached
   // conversations from an authenticated session.
   if (outcome.status === 'unauthenticated') {
-    clearAllChatListCaches()
+    clearChatListCache()
     return []
   }
-  return getCachedChatList() ?? []
+  return cachedChats ?? []
 }
 
 export async function fetchNextChatListPage(): Promise<CachedConversation[]> {
-  const requestWorkspaceKey = activeCacheKey()
-  const requestView = activeChatView
-  const cache = getWorkspaceCache(requestWorkspaceKey)
-  if (!cache.cachedPageInfo.hasMore || !cache.cachedPageInfo.nextCursor) return cache.cachedChats ?? []
-  if (cache.nextPageInFlight) return cache.nextPageInFlight
+  if (!cachedPageInfo.hasMore || !cachedPageInfo.nextCursor) return cachedChats ?? []
+  if (nextPageInFlight) return nextPageInFlight
 
-  cache.nextPageInFlight = overlayAppClient.conversations.getResponse({
-    cursor: cache.cachedPageInfo.nextCursor,
+  nextPageInFlight = overlayAppClient.conversations.getResponse({
+    cursor: cachedPageInfo.nextCursor,
     limit: INITIAL_CHAT_LIST_LIMIT,
-    view: requestView,
   })
     .then(async (res) => {
-      const requestCache = getWorkspaceCache(requestWorkspaceKey)
-      if (!res.ok) return requestCache.cachedChats ?? []
+      if (!res.ok) return cachedChats ?? []
       const payload = await res.json() as PaginatedEnvelope<CachedConversation>
-      if (!isPaginatedEnvelope<CachedConversation>(payload)) return requestCache.cachedChats ?? []
-      const current = requestCache.cachedChats ?? []
+      if (!isPaginatedEnvelope<CachedConversation>(payload)) return cachedChats ?? []
+      const current = cachedChats ?? []
       const byId = new Map(current.map((chat) => [chat._id, chat]))
       for (const chat of payload.data) {
         byId.set(chat._id, { ...byId.get(chat._id), ...chat })
@@ -227,12 +163,12 @@ export async function fetchNextChatListPage(): Promise<CachedConversation[]> {
       primeChatList(merged, {
         nextCursor: payload.nextCursor,
         hasMore: payload.hasMore,
-      }, requestWorkspaceKey)
-      return getWorkspaceCache(requestWorkspaceKey).cachedChats ?? merged
+      })
+      return getCachedChatList() ?? merged
     })
     .finally(() => {
-      getWorkspaceCache(requestWorkspaceKey).nextPageInFlight = null
+      nextPageInFlight = null
     })
 
-  return cache.nextPageInFlight
+  return nextPageInFlight
 }

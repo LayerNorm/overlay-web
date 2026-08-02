@@ -17,7 +17,6 @@ import type {
   WebhookRepository,
   WebhookSubscriptionRecord,
 } from './WebhookRepository'
-import { durableJobAuthorization } from '@/server/jobs/DurableJobAuthorization'
 
 export class PostgresWebhookRepository implements WebhookRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
@@ -174,10 +173,7 @@ export class PostgresWebhookRepository implements WebhookRepository {
         dedupeKey: `webhook-delivery:${deliveryId}`,
         id: jobId,
         maxAttempts: 5,
-        payload: {
-          deliveryId,
-          ...durableJobAuthorization(args.userId, ['webhooks.manage']),
-        },
+        payload: { deliveryId },
         priority: 10,
         type: WEBHOOK_DELIVERY_JOB,
       })
@@ -216,10 +212,7 @@ export class PostgresWebhookRepository implements WebhookRepository {
           dedupeKey: `webhook-delivery:${deliveryId}`,
           id: jobId,
           maxAttempts: 5,
-          payload: {
-            deliveryId,
-            ...durableJobAuthorization(args.userId, ['webhooks.manage']),
-          },
+          payload: { deliveryId },
           priority: 5,
           type: WEBHOOK_DELIVERY_JOB,
         })

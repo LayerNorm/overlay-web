@@ -84,28 +84,12 @@ export function isGatewayCatalogRegistered(): boolean {
 }
 
 export function registerGatewayCatalogModels(models: readonly GatewayCatalogModel[]): void {
-  const curatedById = new Map(CURATED_FALLBACK_CHAT_MODELS.map((model) => [model.id, model]))
   const registered: ChatModel[] = []
   const registeredIds = new Set<string>()
   for (const model of models) {
     if (model.type !== 'language' || SPECIAL_CHAT_MODELS.some((special) => special.id === model.id)) continue
     const chatModel = gatewayCatalogModelToChatModel(model)
-    const curated = curatedById.get(chatModel.id)
-    // Prefer curated capability metadata when the gateway omits tags — bare
-    // rows with no vision/reasoning chips are a common source of "models with
-    // no details" in the picker.
-    if (curated) {
-      chatModel.supportsVision = chatModel.supportsVision || curated.supportsVision
-      chatModel.supportsReasoning = chatModel.supportsReasoning || curated.supportsReasoning
-      chatModel.supportsSearch = chatModel.supportsSearch || curated.supportsSearch
-      if (chatModel.cost === 1 && curated.cost !== 1) chatModel.cost = curated.cost
-      if (!chatModel.description && curated.description) chatModel.description = curated.description
-      if (curated.name && chatModel.name !== curated.name) {
-        // Keep human-facing curated names for known IDs when gateway naming drifts.
-        chatModel.name = curated.name
-      }
-    }
-    chatModel.supportsZeroDataRetention = ZDR_MODEL_IDS.has(chatModel.id) || Boolean(curated?.supportsZeroDataRetention)
+    chatModel.supportsZeroDataRetention = ZDR_MODEL_IDS.has(chatModel.id)
     chatModel.intelligence = Math.max(0, 100 - (CHAT_MODEL_QUALITY_PRIORITY.indexOf(chatModel.id) + 1))
     gatewayCatalogModels.set(model.id, chatModel)
     registeredIds.add(chatModel.id)
@@ -300,18 +284,12 @@ export function getEnabledChatModels(
   const enabled = new Set(ids.map((id) => LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id))
   const curated = getModelsByIntelligence(isFreeTier).filter((model) => enabled.has(model.id))
   const curatedIds = new Set(curated.map((model) => model.id))
-  // Keep enabled ids visible. Prefer real catalog/curated rows; only synthesize a
-  // provisional row before the gateway catalog loads so the picker never collapses.
+  // Keep every enabled id visible even before the gateway catalog has registered —
+  // unresolved ids get a provisional entry so the picker never shrinks to 1–2 rows.
   const additional = ids
     .map((id) => LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id)
     .filter((id) => !curatedIds.has(id))
-    .map((id) => {
-      const known = getModel(id) ?? gatewayCatalogModels.get(id)
-      if (known) return known
-      if (gatewayCatalogRegistered) return null
-      return provisionalChatModelFromId(id)
-    })
-    .filter((model): model is ChatModel => model !== null)
+    .map((id) => getModel(id) ?? provisionalChatModelFromId(id))
     .sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name))
   const ordered = [...curated, ...additional]
   const free = ordered.filter((model) => isFreeTierChatModelId(model.id))

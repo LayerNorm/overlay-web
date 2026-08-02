@@ -66,54 +66,10 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
     enabled: true,
     requiredAnyCapabilities: ['integrations', 'skills', 'mcpServers'],
   },
-  {
-    id: 'workspaces',
-    label: 'Workspaces',
-    description: 'Workspace isolation, membership, invitations, teams, and active-workspace routing.',
-    enabled: false,
-  },
-  {
-    id: 'collaborativeChats',
-    label: 'Collaborative chats',
-    description: 'Principal-addressed direct messages, group direct messages, and multiplayer read state.',
-    enabled: false,
-  },
-  {
-    id: 'channels',
-    label: 'Channels',
-    description: 'Named workspace rooms, membership, discovery, and reply threads.',
-    enabled: false,
-  },
-  {
-    id: 'agents',
-    label: 'Agents',
-    description: 'Workspace-owned reusable agents that participate as named principals.',
-    enabled: false,
-  },
-  {
-    id: 'resourceSharing',
-    label: 'Resource sharing',
-    description: 'Unified sharing with people, agents, teams, rooms, and resource guests.',
-    enabled: false,
-  },
 ] as const
 
 export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
-  {
-    id: 'chat',
-    href: '/app/chat',
-    label: 'Chats',
-    icon: 'message-square',
-    requiredCapabilities: ['chat'],
-    subviews: ['personal', 'dms', 'channels', 'unread', 'all'],
-  },
-  {
-    id: 'agents',
-    href: '/app/agents',
-    label: 'Agents',
-    icon: 'bot',
-    featureFlagId: 'agents',
-  },
+  { id: 'chat', href: '/app/chat', label: 'Chat', icon: 'message-square', requiredCapabilities: ['chat'] },
   { id: 'files', href: '/app/files', label: 'Files', icon: 'file-text', requiredCapabilities: ['files', 'knowledge'] },
   {
     id: 'extensions',
@@ -131,14 +87,6 @@ export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
     icon: 'folder-open',
     featureFlagId: 'projects',
     requiredCapabilities: ['projects'],
-  },
-  {
-    id: 'knowledge',
-    href: '/app/knowledge',
-    label: 'Knowledge',
-    icon: 'book-open',
-    featureFlagId: 'knowledge',
-    requiredCapabilities: ['knowledge'],
   },
   {
     id: 'automations',

@@ -23,5 +23,5 @@ export default function ToolsView({ userId }: { userId: string }) {
   if (!capabilities.integrations && capabilities.skills) return <SkillsView userId={userId} />
   if (!capabilities.integrations && capabilities.mcpServers) return <McpServersView userId={userId} />
 
-  return <IntegrationsView userId={userId} title={view === 'connectors' ? 'Connectors' : 'Integrations'} />
+  return <IntegrationsView userId={userId} />
 }

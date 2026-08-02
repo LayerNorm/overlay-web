@@ -5,11 +5,10 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useMemo,
   useRef,
   useState,
 } from 'react'
-import { MENTION_POPUP_LISTBOX_ID, MentionPopup } from '@/components/mentions/MentionPopup'
+import { MentionPopup } from '@/components/mentions/MentionPopup'
 import { useMentionData } from './useMentionData'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
@@ -35,24 +34,6 @@ interface MentionInputProps {
   placeholder?: string
   className?: string
   disabled?: boolean
-  /**
-   * Conversation-scoped mention sources (room members) merged ahead of the
-   * workspace catalog. Items are matched locally — no extra fetch.
-   */
-  extraCategories?: MentionCategory[]
-}
-
-function filterMentionCategories(categories: MentionCategory[], query: string): MentionCategory[] {
-  const q = query.trim().toLowerCase()
-  if (!q) return categories.filter((category) => category.items.length > 0)
-  return categories
-    .map((category) => ({
-      ...category,
-      items: category.items.filter((item) => (
-        item.name.toLowerCase().includes(q) || (item.description?.toLowerCase().includes(q) ?? false)
-      )),
-    }))
-    .filter((category) => category.items.length > 0)
 }
 
 const MENTION_ATTR = 'data-mention'
@@ -235,7 +216,6 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       placeholder,
       className,
       disabled,
-      extraCategories,
     },
     ref
   ) {
@@ -245,7 +225,6 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null)
     const [categories, setCategories] = useState<MentionCategory[]>([])
     const [selectedCategory, setSelectedCategory] = useState<MentionType | null>(null)
-    const [activeDescendantId, setActiveDescendantId] = useState<string | null>(null)
     const triggerOffsetRef = useRef<number>(0)
     const isComposingRef = useRef(false)
     const suppressInputRef = useRef(false)
@@ -255,14 +234,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     const buttonInsertedAtRef = useRef(false)
     const [isEditorEmpty, setIsEditorEmpty] = useState(() => isComposerTextEmpty(value))
 
-    const { availableTypes: catalogTypes, search: searchCatalog, loading } = useMentionData()
-    const availableTypes = useMemo(() => [
-      ...(extraCategories ?? []).map((category) => category.type),
-      ...catalogTypes,
-    ], [catalogTypes, extraCategories])
-    const runSearch = useCallback((query: string) => {
-      void searchCatalog(query).then(setCategories).catch(() => setCategories([]))
-    }, [searchCatalog])
+    const { availableTypes, search, loading } = useMentionData()
 
     // Sync explicit external value commands into the editor (clear on send,
     // populate restored draft after hydration). Normal typing stays local to
@@ -362,17 +334,6 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       },
     }))
 
-    /**
-     * Conversation-scoped sources (room members) match locally, so they show
-     * before the workspace catalog request settles — and even if it fails.
-     */
-    const localCategories = useMemo(() => (
-      extraCategories?.length ? filterMentionCategories(extraCategories, mentionQuery) : []
-    ), [extraCategories, mentionQuery])
-    const shownCategories = useMemo(() => (
-      localCategories.length > 0 ? [...localCategories, ...categories] : categories
-    ), [categories, localCategories])
-
     const handleInput = useCallback(() => {
       if (suppressInputRef.current) return
       const el = editorRef.current
@@ -405,13 +366,13 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
           if (coords) {
             setPopupPosition(coords)
             setShowPopup(true)
-            runSearch(mentionState.query)
+            void search(mentionState.query).then(setCategories)
           }
         } else {
           setShowPopup(false)
         }
       }
-    }, [onChange, onMentionsChange, runSearch])
+    }, [onChange, onMentionsChange, search])
 
     const syncEditorEmptyState = useCallback(() => {
       const el = editorRef.current
@@ -426,8 +387,8 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     // Search when mentionQuery changes
     useEffect(() => {
       if (!showPopup) return
-      runSearch(mentionQuery)
-    }, [mentionQuery, showPopup, runSearch])
+      void search(mentionQuery).then(setCategories)
+    }, [mentionQuery, showPopup, search])
 
     const handleSelect = useCallback(
       (item: MentionItem) => {
@@ -591,16 +552,13 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
           }}
           data-placeholder={placeholder}
           className={`relative w-full min-h-11 max-h-40 resize-none overflow-hidden overscroll-contain whitespace-pre-wrap break-words border-0 bg-transparent px-0.5 py-1 text-sm leading-6 text-[var(--foreground)] shadow-none outline-none ring-0 focus:ring-0 ${className || ''}`}
-          role="combobox"
-          aria-label={placeholder}
-          aria-expanded={showPopup}
-          aria-controls={MENTION_POPUP_LISTBOX_ID}
-          aria-autocomplete="list"
-          aria-activedescendant={showPopup ? activeDescendantId ?? undefined : undefined}
+          role="textbox"
+          aria-multiline="true"
+          aria-placeholder={placeholder}
         />
         {showPopup && (
           <MentionPopup
-            categories={shownCategories}
+            categories={categories}
             loading={loading}
             position={popupPosition}
             onSelect={handleSelect}
@@ -613,7 +571,6 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
             availableTypes={availableTypes}
             selectedCategory={selectedCategory}
             onSelectedCategoryChange={setSelectedCategory}
-            onActiveDescendantChange={setActiveDescendantId}
           />
         )}
       </div>

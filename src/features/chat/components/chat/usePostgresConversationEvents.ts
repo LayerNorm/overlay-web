@@ -11,8 +11,6 @@ type ConversationEvent = {
   sequence: number
   conversationId: string
   type: string
-  messageId?: string
-  payload?: Record<string, unknown>
 }
 
 type ConversationEventResponse = {
@@ -26,7 +24,6 @@ export function usePostgresConversationEvents({
   hasActiveLocalStream,
   loadChats,
   onRemoteStop,
-  onEvents,
   reloadActiveConversation,
 }: {
   activeChatIdRef: { current: string | null }
@@ -34,11 +31,10 @@ export function usePostgresConversationEvents({
   hasActiveLocalStream: () => boolean
   loadChats: () => Promise<void>
   onRemoteStop: () => void
-  onEvents?: (events: ConversationEvent[]) => void
   reloadActiveConversation: (chatId: string) => Promise<void>
 }) {
-  const callbacksRef = useRef({ hasActiveLocalStream, loadChats, onRemoteStop, onEvents, reloadActiveConversation })
-  callbacksRef.current = { hasActiveLocalStream, loadChats, onRemoteStop, onEvents, reloadActiveConversation }
+  const callbacksRef = useRef({ hasActiveLocalStream, loadChats, onRemoteStop, reloadActiveConversation })
+  callbacksRef.current = { hasActiveLocalStream, loadChats, onRemoteStop, reloadActiveConversation }
 
   useEffect(() => {
     if (!enabled) return
@@ -118,7 +114,6 @@ export function usePostgresConversationEvents({
           if (stopped) return
           cursor = response.cursor
           if (response.events.length === 0) continue
-          callbacksRef.current.onEvents?.(response.events)
           scheduleListReload()
           const activeChatId = activeChatIdRef.current
           const activeEvents = activeChatId

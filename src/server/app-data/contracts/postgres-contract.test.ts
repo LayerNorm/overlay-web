@@ -38,7 +38,6 @@ import { PostgresDaytonaWorkspaceRepository } from '@/server/ai/sandbox/Postgres
 import { PostgresOutputRetentionService } from '@/server/outputs/PostgresOutputRetentionService'
 import { PostgresMemoryRepository } from '@/server/memory'
 import { PostgresChatSuggestionRepository } from '@/server/chat-suggestions/PostgresChatSuggestionRepository'
-import { createPostgresKnowledgeBaseRepositories } from '@/server/knowledge-bases'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
 
@@ -248,7 +247,6 @@ function testSearchBilling(label: string) {
       ),
       daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),
       files: new PostgresFileRepository(db),
-      knowledgeBases: createPostgresKnowledgeBaseRepositories(db),
       memories: new PostgresMemoryRepository(db),
       notes: new PostgresNoteRepository(db),
       projects: new PostgresProjectRepository(db),

@@ -28,7 +28,6 @@ import { useState,type MouseEvent } from 'react'
 
 import { Field } from './shared'
 import { AppScreenBody } from '../shell'
-import { Select } from '@overlay/ui/primitives'
 
 export type McpDialogMutationOutcome = boolean | void | McpMutationResult
 
@@ -175,7 +174,7 @@ export function McpServerDialog({
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Transport">
-              <Select value={values.transport} onChange={(event) => update('transport', event.target.value as McpTransport)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]"><option value="streamable-http">Streamable HTTP</option><option value="sse">SSE</option></Select>
+              <select value={values.transport} onChange={(event) => update('transport', event.target.value as McpTransport)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]"><option value="streamable-http">Streamable HTTP</option><option value="sse">SSE</option></select>
             </Field>
             <Field label="Timeout (ms)">
               <input type="number" value={values.timeoutMs} onChange={(event) => update('timeoutMs', event.target.value === '' ? '' : Number(event.target.value))} placeholder="30000" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" />
@@ -186,14 +185,14 @@ export function McpServerDialog({
             <p className="text-[10px] text-[var(--muted-light)]">HTTPS required in production. HTTP allowed for localhost only.</p>
           </Field>
           <Field label="Authentication">
-            <Select value={values.authType} onChange={(event) => update('authType', event.target.value as McpAuthType)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]"><option value="none">None</option><option value="bearer">Bearer Token</option><option value="header">Custom Header</option><option value="oauth">OAuth (sign in with browser)</option></Select>
+            <select value={values.authType} onChange={(event) => update('authType', event.target.value as McpAuthType)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]"><option value="none">None</option><option value="bearer">Bearer Token</option><option value="header">Custom Header</option><option value="oauth">OAuth (sign in with browser)</option></select>
           </Field>
           <Field label="Tool execution policy">
-            <Select value={values.defaultToolPolicy} onChange={(event) => update('defaultToolPolicy', event.target.value as McpToolPolicyMode)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]">
+            <select value={values.defaultToolPolicy} onChange={(event) => update('defaultToolPolicy', event.target.value as McpToolPolicyMode)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]">
               <option value="allow">Allow tools</option>
               <option value="approval_required">Require approval</option>
               <option value="deny">Deny tools</option>
-            </Select>
+            </select>
           </Field>
           {isOAuth ? (
             <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3">

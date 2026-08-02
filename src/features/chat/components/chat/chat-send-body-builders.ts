@@ -262,7 +262,6 @@ export function buildCommonActBody({
   pendingConversationClientId,
   temporaryChatSnapshot,
   embedProjectId,
-  knowledgeBaseId,
   textModelsForTurn,
   turnId,
   requestMode,
@@ -279,7 +278,6 @@ export function buildCommonActBody({
   pendingConversationClientId: string | null
   temporaryChatSnapshot: boolean
   embedProjectId: string | null
-  knowledgeBaseId?: string
   textModelsForTurn: string[]
   turnId: string
   requestMode: 'chat' | 'automate'
@@ -292,21 +290,6 @@ export function buildCommonActBody({
   selectedToolIdsSnapshot: ChatToolRequestId[]
   memoryEnabledSnapshot: boolean
 }) {
-  // Every knowledge mention on this turn is sent. The server narrows retrieval to
-  // these when present, so an explicit mention overrides the project's default
-  // corpus instead of being shadowed by it.
-  const mentionedKnowledgeBaseIds = [...new Set(
-    (userMeta.mentions ?? [])
-      .filter((mention) => mention.type === 'knowledge')
-      .map((mention) => mention.id)
-      .filter((id): id is string => Boolean(id)),
-  )]
-  const effectiveKnowledgeBaseIds = mentionedKnowledgeBaseIds.length > 0
-    ? mentionedKnowledgeBaseIds
-    : knowledgeBaseId
-      ? [knowledgeBaseId]
-      : []
-
   return {
     ...(temporaryChatSnapshot
       ? { temporaryChat: true }
@@ -317,9 +300,6 @@ export function buildCommonActBody({
             askModelIds: textModelsForTurn,
           }
         : { conversationId: chatId }),
-    ...(effectiveKnowledgeBaseIds.length > 0
-      ? { knowledgeBaseIds: effectiveKnowledgeBaseIds }
-      : {}),
     turnId,
     mode: requestMode,
     automationMode: requestMode === 'automate',

@@ -2,7 +2,6 @@
 
 import type { ReactNode } from 'react'
 import type { ThemePresetId } from '@overlay/app-core'
-import { Select } from '@overlay/ui/primitives'
 
 export interface SettingsToggleProps {
   checked: boolean
@@ -127,7 +126,7 @@ export function ThemePresetRow({
             />
           </div>
         ) : null}
-        <Select
+        <select
           disabled={disabled}
           value={value}
           onChange={(event) => onChange(event.target.value as ThemePresetId)}
@@ -138,7 +137,7 @@ export function ThemePresetRow({
               {preset.name}
             </option>
           ))}
-        </Select>
+        </select>
       </div>
     </div>
   )

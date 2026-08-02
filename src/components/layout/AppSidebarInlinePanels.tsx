@@ -1,26 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { LucideIcon } from 'lucide-react'
-import {
-  Bell,
-  BookOpen,
-  Bot,
-  Brain,
-  Hash,
-  Inbox,
-  Loader2,
-  Mail,
-  MessageSquare,
-  Package,
-  Plug,
-  Server,
-  Sparkles,
-} from 'lucide-react'
-import type { KnowledgeBase } from '@overlay/app-core'
-import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
   KNOWLEDGE_ENTITY_MUTATION_EVENT,
@@ -400,201 +381,43 @@ export function ProjectsInlinePanel({
   )
 }
 
-const resourceRowClass =
-  'flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-
-export function AgentsInlinePanel({
-  workspaceId,
-  baseHref = '/app/agents',
-  onNavigate,
-}: {
-  workspaceId: string | null
-  baseHref?: string
-  onNavigate?: () => void
-}) {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const activeAgentId = searchParams?.get('agent') ?? null
-
-  const loadAgents = useCallback(async () => {
-    if (!workspaceId) {
-      setAgents([])
-      setLoading(false)
-      return
-    }
-    setLoading(true)
-    try {
-      const response = await overlayAppClient.agents.list(workspaceId)
-      setAgents(arrayOrEmpty<WorkspaceAgentDirectoryItem>(response.agents))
-    } catch {
-      setAgents([])
-    } finally {
-      setLoading(false)
-    }
-  }, [workspaceId])
-
-  useEffect(() => { void loadAgents() }, [loadAgents])
-
-  return (
-    <SidebarResourceList>
-      {loading ? (
-        <div className="flex items-center gap-2 px-2.5 py-2 text-xs text-[var(--muted-light)]">
-          <Loader2 size={13} className="animate-spin" /> Loading agents...
-        </div>
-      ) : agents.length ? (
-        agents.map((agent) => (
-          <button
-            key={agent.id}
-            type="button"
-            className={`${resourceRowClass} ${activeAgentId === agent.id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-            onClick={() => {
-              router.push(`${baseHref}?agent=${encodeURIComponent(agent.id)}`)
-              onNavigate?.()
-            }}
-          >
-            <Bot size={13} className="shrink-0" />
-            <span className="truncate">{agent.name}</span>
-          </button>
-        ))
-      ) : (
-        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No agents yet</p>
-      )}
-    </SidebarResourceList>
-  )
-}
-
-export function KnowledgeInlinePanel({
-  baseHref = '/app/knowledge',
-  onNavigate,
-}: {
-  baseHref?: string
-  onNavigate?: () => void
-}) {
-  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
-  const [loading, setLoading] = useState(true)
-  const searchParams = useSearchParams()
-  const activeKnowledgeBaseId = searchParams?.get('knowledgeBase') ?? null
-
-  const loadKnowledgeBases = useCallback(async () => {
-    setLoading(true)
-    try {
-      const response = await overlayAppClient.knowledgeBases.list()
-      setKnowledgeBases(arrayOrEmpty<KnowledgeBase>(response.knowledgeBases))
-    } catch {
-      setKnowledgeBases([])
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { void loadKnowledgeBases() }, [loadKnowledgeBases])
-
-  return (
-    <SidebarResourceList>
-      {loading ? (
-        <div className="flex items-center gap-2 px-2.5 py-2 text-xs text-[var(--muted-light)]">
-          <Loader2 size={13} className="animate-spin" /> Loading knowledge...
-        </div>
-      ) : knowledgeBases.length ? (
-        knowledgeBases.map((knowledgeBase) => (
-          <Link
-            key={knowledgeBase.id}
-            href={`${baseHref}/${encodeURIComponent(knowledgeBase.id)}`}
-            onClick={onNavigate}
-            className={`${resourceRowClass} ${activeKnowledgeBaseId === knowledgeBase.id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-          >
-            {knowledgeBase.kind === 'personal' ? <Brain size={13} className="shrink-0" /> : <BookOpen size={13} className="shrink-0" />}
-            <span className="truncate">{knowledgeBase.title}</span>
-          </Link>
-        ))
-      ) : (
-        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No knowledge bases yet</p>
-      )}
-    </SidebarResourceList>
-  )
-}
-
 export const toolsInlineItems = [
-  { id: 'connectors', label: 'Connectors', icon: Plug },
-  { id: 'skills', label: 'Skills', icon: Sparkles },
-  { id: 'mcps', label: 'MCPs', icon: Server },
-  { id: 'apps', label: 'Apps', icon: Package, locked: true },
+  { id: 'connectors', label: 'Connectors' },
+  { id: 'skills', label: 'Skills' },
+  { id: 'mcps', label: 'MCPs' },
+  { id: 'apps', label: 'Apps', locked: true },
 ] as const
-
-export const chatsInlineItems = [
-  { id: 'personal', label: 'Personal', icon: MessageSquare },
-  { id: 'dms', label: 'Direct Messages', icon: Mail },
-  { id: 'channels', label: 'Channels', icon: Hash },
-  { id: 'activity', label: 'Activity', icon: Bell },
-  { id: 'unread', label: 'Unread', icon: Bell },
-  { id: 'all', label: 'All', icon: Inbox },
-] as const
-
-export interface InlineNavItem {
-  id: string
-  label: string
-  icon?: LucideIcon
-  locked?: boolean
-  /** Items with an href render as links so they support open-in-new-tab. */
-  href?: string
-}
 
 export function InlineNavChildren({
-  id,
   items,
   activeId,
   onSelect,
-  className = 'mt-1 space-y-0.5 pl-7',
 }: {
-  id?: string
-  items: ReadonlyArray<InlineNavItem>
-  /** Empty when the section is open but not the current route, so an expanded
-   * dropdown never implies a selection the person did not make. */
+  items: ReadonlyArray<{ id: string; label: string; locked?: boolean }>
   activeId: string
-  /** Also fires for href items on link click, so callers can close chrome. */
   onSelect: (id: string) => void
-  /** Container override — the default indents children under a nav row. */
-  className?: string
 }) {
   return (
-    <div id={id} className={className}>
-      {items.map((item) => {
-        const itemClass = `flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors ${
-          item.locked
-            ? 'cursor-default text-[var(--muted-light)]'
-            : activeId === item.id
-              ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-              : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-        }`
-        const content = (
-          <>
-            {item.icon ? <item.icon size={15} className="shrink-0" aria-hidden /> : null}
-            <span className="flex-1 text-left">{item.label}</span>
-            {item.locked ? <span className="text-[10px] text-[var(--muted-light)]">Soon</span> : null}
-          </>
-        )
-        if (item.href && !item.locked) {
-          return (
-            <Link key={item.id} href={item.href} onClick={() => onSelect(item.id)} className={itemClass}>
-              {content}
-            </Link>
-          )
-        }
-        return (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => {
-              if (!item.locked) onSelect(item.id)
-            }}
-            className={itemClass}
-          >
-            {content}
-          </button>
-        )
-      })}
+    <div className="mt-1 space-y-0.5 pl-7">
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => {
+            if (!item.locked) onSelect(item.id)
+          }}
+          className={`flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs transition-colors ${
+            item.locked
+              ? 'cursor-default text-[var(--muted-light)]'
+              : activeId === item.id
+                ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+          }`}
+        >
+          <span className="flex-1 text-left">{item.label}</span>
+          {item.locked ? <span className="text-[10px] text-[var(--muted-light)]">Soon</span> : null}
+        </button>
+      ))}
     </div>
   )
 }

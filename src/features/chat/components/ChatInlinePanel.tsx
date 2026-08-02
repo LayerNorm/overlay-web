@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, type MouseEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { MessageSquare, Check, Hash, Pencil, Trash2, UsersRound } from 'lucide-react'
+import { MessageSquare, Check, Pencil, Trash2 } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import {
@@ -11,14 +11,12 @@ import {
   CHAT_MODIFIED_EVENT,
   CHAT_TITLE_UPDATED_EVENT,
   dispatchChatDeleted,
-  dispatchChatCreated,
   dispatchChatTitleUpdated,
   sanitizeChatTitle,
   type ChatCreatedDetail,
   type ChatDeletedDetail,
   type ChatTitleUpdatedDetail,
 } from '@/shared/chat/chat-title'
-import { NEW_CHANNEL_EVENT, NEW_DIRECT_MESSAGE_EVENT } from '@/shared/chat/collaboration-events'
 import {
   fetchChatListResult,
   fetchNextChatListPage,
@@ -26,42 +24,28 @@ import {
   getCachedChatList,
   getCachedChatListPageInfo,
   removeCachedChat,
-  setActiveChatListView,
   upsertCachedChat,
 } from '@/shared/chat/chat-list-cache'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { SidebarResourceList } from '@overlay/ui/primitives'
 import { useAuth } from '@/contexts/AuthContext'
-import { NewDirectMessageDialog } from './NewDirectMessageDialog'
-import { NewChannelDialog } from './NewChannelDialog'
-import { isSameChatSurface } from '@/features/workspaces/lib/workspace-routing'
-import { ChatActivityPanel } from './ChatActivityPanel'
 
 const panelItemClass =
   'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
 const inlineConfirmDeleteButtonClass =
   'ml-1 inline-flex h-5 shrink-0 items-center rounded-full bg-red-500/15 px-2 text-[11px] font-medium leading-none text-red-500 transition-colors hover:bg-red-500/25'
 
-type Conversation = {
-  _id: string
-  title: string
-  lastModified: number
-  conversationType?: 'personal' | 'dm' | 'channel'
-}
+type Conversation = { _id: string; title: string; lastModified: number }
 
 export function ChatInlinePanel({
   refreshKey,
   searchQuery = '',
   onNavigate,
-  baseHref = '/app/chat',
-  workspaceId,
   seededChats,
 }: {
   refreshKey: number
   searchQuery?: string
   onNavigate?: () => void
-  baseHref?: string
-  workspaceId?: string | null
   seededChats?: Conversation[]
 }) {
   const router = useRouter()
@@ -78,62 +62,7 @@ export function ChatInlinePanel({
   const [editingTitle, setEditingTitle] = useState('')
   const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
   const [pendingDeleteChatId, setPendingDeleteChatId] = useState<string | null>(null)
-  const [newDirectMessageOpen, setNewDirectMessageOpen] = useState(false)
-  const [newChannelOpen, setNewChannelOpen] = useState(false)
-  const [collaborationUnread, setCollaborationUnread] = useState<Record<string, number>>({})
   const activeId = searchParams?.get('id') ?? null
-  const chatView = (() => {
-    const value = searchParams?.get('view')
-    if (value === 'dms' || value === 'channels' || value === 'unread' || value === 'all' || value === 'activity') return value
-    return 'personal'
-  })()
-  setActiveChatListView(chatView === 'activity' ? 'all' : chatView)
-
-  useEffect(() => {
-    const openDialog = () => {
-      if (chatView === 'dms' && workspaceId) setNewDirectMessageOpen(true)
-    }
-    const openChannelDialog = () => {
-      if (chatView === 'channels' && workspaceId) setNewChannelOpen(true)
-    }
-    window.addEventListener(NEW_DIRECT_MESSAGE_EVENT, openDialog)
-    window.addEventListener(NEW_CHANNEL_EVENT, openChannelDialog)
-    return () => {
-      window.removeEventListener(NEW_DIRECT_MESSAGE_EVENT, openDialog)
-      window.removeEventListener(NEW_CHANNEL_EVENT, openChannelDialog)
-    }
-  }, [chatView, workspaceId])
-
-  useEffect(() => {
-    if (!workspaceId || isPublicShowcase || !user) {
-      setCollaborationUnread({})
-      return
-    }
-    let cancelled = false
-    const loadUnread = async () => {
-      try {
-        const { notifications } = await overlayAppClient.conversations.notifications({
-          unreadOnly: true,
-          limit: 100,
-        })
-        if (cancelled) return
-        const counts: Record<string, number> = {}
-        for (const notification of notifications) {
-          if (!notification.conversationId) continue
-          counts[notification.conversationId] = (counts[notification.conversationId] ?? 0) + 1
-        }
-        setCollaborationUnread(counts)
-      } catch {
-        // Realtime badges are best effort; the conversation remains accessible.
-      }
-    }
-    void loadUnread()
-    const timer = window.setInterval(() => void loadUnread(), 15_000)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [isPublicShowcase, user, workspaceId])
 
   const loadChats = useCallback(async (signal?: { cancelled: boolean }) => {
     if (seededChats) {
@@ -221,7 +150,7 @@ export function ChatInlinePanel({
       signal.cancelled = true
       window.clearTimeout(timeoutId)
     }
-  }, [authLoading, chatView, loadChats, refreshKey, seededChats, user, workspaceId])
+  }, [authLoading, loadChats, refreshKey, seededChats, user])
 
   useEffect(() => {
     if (isPublicShowcase) return
@@ -334,49 +263,25 @@ export function ChatInlinePanel({
     dispatchChatDeleted({ chatId })
     await overlayAppClient.conversations.deleteResponse({ conversationId: chatId })
     if (activeId === chatId) {
-      router.push(`${baseHref}?${new URLSearchParams({ view: chatView }).toString()}`)
+      router.push('/app/chat')
     }
   }
 
-  if (chatView === 'activity' && workspaceId && !isPublicShowcase) {
-    return <ChatActivityPanel baseHref={baseHref} onNavigate={onNavigate} />
-  }
-
-  const viewChats = chatView === 'personal'
-    ? chats.filter((chat) => (chat.conversationType ?? 'personal') === 'personal')
-    : chatView === 'dms'
-      ? chats.filter((chat) => chat.conversationType === 'dm')
-      : chatView === 'channels'
-        ? chats.filter((chat) => chat.conversationType === 'channel')
-        : chatView === 'unread'
-          ? chats.filter((chat) => Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0) > 0)
-          : chats
   const filteredChats = searchQuery.trim()
-    ? viewChats.filter((c) => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
-    : viewChats
-  const emptyLabel = {
-    personal: 'No personal chats yet',
-    dms: 'No direct messages yet',
-    channels: 'No channels yet',
-    unread: 'You are all caught up',
-    all: 'No chats yet',
-    activity: 'You are all caught up',
-  }[chatView]
+    ? chats.filter((c) => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    : chats
 
   return (
-    <>
     <SidebarResourceList>
       {loading ? (
         <SidebarListSkeleton rows={6} />
       ) : filteredChats.length === 0 ? (
-        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">
-          {viewChats.length === 0 ? emptyLabel : 'No results'}
-        </p>
+        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">{chats.length === 0 ? 'No chats yet' : 'No results'}</p>
       ) : (
         <>
           {filteredChats.map((chat) => {
             const isStreaming = sessions[chat._id]?.status === 'streaming'
-            const unread = Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0)
+            const unread = getUnread(chat._id)
             const active = activeId === chat._id
             const isEditing = editingChatId === chat._id
             const isDeleting = deletingChatIds.includes(chat._id)
@@ -390,14 +295,11 @@ export function ChatInlinePanel({
                 onClick={() => {
                   if (isDeleting) return
                   if (isEditing) return
-                  const href = `${baseHref}?${new URLSearchParams({
+                  const href = `/app/chat?${new URLSearchParams({
                     ...(isPublicShowcase ? { showcase: '1' } : {}),
-                    view: chatView,
                     id: chat._id,
                   }).toString()}`
-                  // Soft-navigate on the same chat surface so Next does not
-                  // remount the app shell (and WorkspaceProvider) on every switch.
-                  if (isSameChatSurface(pathname, baseHref)) {
+                  if (pathname === '/app/chat') {
                     window.history.pushState(null, '', href)
                     window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
                       detail: { chatId: chat._id },
@@ -411,13 +313,7 @@ export function ChatInlinePanel({
                   isDeleting ? 'max-h-0 -translate-y-1 opacity-0' : 'max-h-7 opacity-100'
                 } ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
               >
-                {chat.conversationType === 'channel' ? (
-                  <Hash size={12} className="shrink-0" />
-                ) : chat.conversationType === 'dm' ? (
-                  <UsersRound size={12} className="shrink-0" />
-                ) : (
-                  <MessageSquare size={12} className="shrink-0" />
-                )}
+                <MessageSquare size={12} className="shrink-0" />
                 {!isPublicShowcase && isEditing ? (
                   <input
                     autoFocus
@@ -509,38 +405,5 @@ export function ChatInlinePanel({
         </>
       )}
     </SidebarResourceList>
-    {workspaceId ? (
-      <NewDirectMessageDialog
-        open={newDirectMessageOpen}
-        workspaceId={workspaceId}
-        onOpenChange={setNewDirectMessageOpen}
-        onCreated={({ id, title }) => {
-          dispatchChatCreated({
-            chat: {
-              _id: id,
-              title,
-              lastModified: Date.now(),
-              conversationType: 'dm',
-            },
-          })
-          router.push(`${baseHref}?${new URLSearchParams({ view: 'dms', id }).toString()}`)
-          onNavigate?.()
-        }}
-      />
-    ) : null}
-    {workspaceId ? (
-      <NewChannelDialog
-        open={newChannelOpen}
-        workspaceId={workspaceId}
-        showcase={isPublicShowcase}
-        onOpenChange={setNewChannelOpen}
-        onCreated={({ id, title }) => {
-          dispatchChatCreated({ chat: { _id: id, title, lastModified: Date.now(), conversationType: 'channel' } })
-          router.push(`${baseHref}?${new URLSearchParams({ view: 'channels', id }).toString()}`)
-          onNavigate?.()
-        }}
-      />
-    ) : null}
-    </>
   )
 }

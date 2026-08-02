@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { fileService } from '@/server/files/http'
 
 export const runtime = 'nodejs'
@@ -8,10 +8,11 @@ export async function GET(
   request: NextRequest,
   context: AppApiRouteContext,
 ) {
+  const { auth } = context
   const { fileId } = await context.params as { fileId: string }
   const result = await fileService.getContentProxy({
     fileId,
-    userId: getAuthorizedResourceUserId(context),
+    userId: auth.userId,
   })
 
   if (result.kind === 'json') {

@@ -1,18 +1,14 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthorizedResourceUserId, getGrantedResources, type AppApiRouteContext } from '@/server/app-api/bff-context'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { fileErrorResponse, fileService } from '@/server/files/http'
-import { getOverlayServerContext } from '@/server/bootstrap'
-
-interface FilesRouteDependencies {
-  workspaceService?: Pick<ReturnType<typeof getOverlayServerContext>['workspaceService'], 'bindResource'>
-}
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
+    const { auth } = context
     const { searchParams } = request.nextUrl
     const result = await fileService.getOrListFiles({
-      userId: getAuthorizedResourceUserId(context),
+      userId: auth.userId,
       fileId: searchParams.get('fileId'),
       projectId: searchParams.get('projectId'),
       kind: searchParams.get('kind'),
@@ -21,11 +17,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       outputType: searchParams.get('outputType') ?? searchParams.get('type'),
       summary: ['true', '1'].includes(searchParams.get('summary') ?? ''),
     })
-    if (!Array.isArray(result) || searchParams.get('fileId')) return NextResponse.json(result)
-    const granted = await Promise.all(getGrantedResources(context).map(({ ownerUserId, resourceId }) => (
-      fileService.getOrListFiles({ fileId: resourceId, userId: ownerUserId })
-    )))
-    return NextResponse.json([...result, ...granted.filter((file) => grantedFileMatches(file, searchParams))])
+    return NextResponse.json(result)
   } catch (error) {
     if (error instanceof Error && error.name === 'FileServiceError') {
       return fileErrorResponse(error, 'Failed to fetch files')
@@ -34,44 +26,15 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
   }
 }
 
-function grantedFileMatches(file: unknown, searchParams: URLSearchParams): boolean {
-  if (!file || typeof file !== 'object') return false
-  const value = file as Record<string, unknown>
-  const filters = [
-    ['projectId', searchParams.get('projectId')],
-    ['kind', searchParams.get('kind')],
-    ['parentId', searchParams.get('parentId')],
-    ['conversationId', searchParams.get('conversationId')],
-    ['outputType', searchParams.get('outputType') ?? searchParams.get('type')],
-  ] as const
-  return filters.every(([key, expected]) => !expected || value[key] === expected)
-}
-
-export async function POST(
-  request: NextRequest,
-  context: AppApiRouteContext,
-  dependencies: FilesRouteDependencies = {},
-) {
+export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const formDataContentType = request.headers.get('content-type') || ''
     const body = formDataContentType.includes('application/json') ? await request.json() : {}
+    const { auth } = context
     const result = await fileService.createFile({
-      userId: getAuthorizedResourceUserId(context),
+      userId: auth.userId,
       body: body as Record<string, unknown>,
     })
-    const resourceIds = [...new Set([
-      ...(typeof result.id === 'string' ? [result.id] : []),
-      ...(result.ids ?? []),
-    ])]
-    const workspaceService = dependencies.workspaceService ?? getOverlayServerContext().workspaceService
-    await Promise.all(resourceIds.map((resourceId) => (
-      workspaceService.bindResource({
-        actorUserId: context.auth.userId,
-        workspaceId: context.workspace.workspace.id,
-        resourceType: 'file',
-        resourceId,
-      })
-    )))
     return NextResponse.json(result)
   } catch (error) {
     return fileErrorResponse(error, 'Failed to create file')
@@ -81,8 +44,9 @@ export async function POST(
 export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json()
+    const { auth } = context
     const result = await fileService.updateFile({
-      userId: getAuthorizedResourceUserId(context),
+      userId: auth.userId,
       body: body as Record<string, unknown>,
     })
     return NextResponse.json(result)
@@ -102,9 +66,10 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
         body = {}
       }
     }
+    const { auth } = context
     const result = await fileService.deleteFile({
       fileId: request.nextUrl.searchParams.get('fileId') || body.fileId,
-      userId: getAuthorizedResourceUserId(context),
+      userId: auth.userId,
     })
     return NextResponse.json(result)
   } catch (error) {

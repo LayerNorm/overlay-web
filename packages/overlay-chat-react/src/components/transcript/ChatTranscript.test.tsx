@@ -149,7 +149,6 @@ test('exchange actions keep branch and sources immediately after reply', () => {
       onDeleteTurn={() => undefined}
       onReply={() => undefined}
       onBranch={() => undefined}
-      onSaveToKnowledge={() => undefined}
       turnIdForActions="turn-1"
       actionsLocked={false}
       webSources={[
@@ -168,10 +167,8 @@ test('exchange actions keep branch and sources immediately after reply', () => {
 
   const replyIndex = markup.indexOf('aria-label="Reply"')
   const branchIndex = markup.indexOf('aria-label="Branch chat from here"')
-  const saveIndex = markup.indexOf('aria-label="Save response to My knowledge"')
   const sourcesIndex = markup.indexOf('aria-label="Open sources"')
   assert.ok(replyIndex >= 0)
   assert.ok(replyIndex < branchIndex)
-  assert.ok(branchIndex < saveIndex)
-  assert.ok(saveIndex < sourcesIndex)
+  assert.ok(branchIndex < sourcesIndex)
 })

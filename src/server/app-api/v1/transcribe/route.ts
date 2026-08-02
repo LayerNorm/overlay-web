@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
-import { authorizeCatalogResource } from '@/server/authorization'
 import {
   billableBudgetCentsFromProviderUsd,
   isPaidPlan,
@@ -24,14 +23,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
 
     const serverContext = getOverlayServerContext()
-    const denied = await authorizeCatalogResource({
-      authorization: serverContext.authorizationService,
-      capability: 'tools.use',
-      context,
-      resourceId: 'transcribe',
-      resourceType: 'tool',
-    })
-    if (denied) return denied
     const entitlements = await serverContext.generationUsagePolicy.getEntitlements({ userId: auth.userId })
     if (!entitlements) return NextResponse.json({ error: 'Could not verify subscription.' }, { status: 401 })
     if (!isPaidPlan(entitlements)) {

@@ -81,16 +81,6 @@ export class PostgresWebhookDeliveryService {
     }
   }
 
-  async denyForAuthorization(args: { deliveryId: string; error: string }): Promise<void> {
-    const now = new Date()
-    await this.db.update(webhookDeliveries).set({
-      deadLetteredAt: now,
-      lastError: args.error.slice(0, 1_000),
-      status: 'dead_letter',
-      updatedAt: now,
-    }).where(eq(webhookDeliveries.id, args.deliveryId))
-  }
-
   private async startAttempt(args: {
     attemptNumber: number
     deliveryId: string

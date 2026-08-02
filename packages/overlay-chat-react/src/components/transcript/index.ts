@@ -1,4 +1,3 @@
-export * from './AssistantVisualBlocks'
 export * from './ChatExchange'
 export * from './ChatTranscript'
 export * from './ExchangeLoadingState'

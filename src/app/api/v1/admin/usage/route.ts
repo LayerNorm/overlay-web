@@ -9,7 +9,7 @@ import { handleBffRoute, type BffDomainService } from '../../_utils/bff'
 const listUsage: BffDomainService = async (request, context) => {
   const server = getOverlayServerContext()
   try {
-    if (!await server.administrativeService.canViewUsage(context.auth.userId)) {
+    if (!await server.administrativeService.canManageBilling(context.auth.userId)) {
       throw new AdministrativeAuthorizationError()
     }
     return NextResponse.json({

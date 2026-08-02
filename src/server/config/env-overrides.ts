@@ -283,9 +283,9 @@ function databaseConfigFromEnv(
   deploymentEnvironment?: OverlayDeploymentEnvironment,
 ): OverlayRuntimeConfigLayer | null {
   const provider = readEnv(env, 'OVERLAY_PROVIDER_DATABASE')
-  const convexUrl = deploymentEnvironment === 'production'
-    ? readEnv(env, 'NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL')
-    : readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'NEXT_PUBLIC_CONVEX_URL')
+  const convexUrl = deploymentEnvironment === 'development'
+    ? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'NEXT_PUBLIC_CONVEX_URL')
+    : readEnv(env, 'NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL')
   const postgresConnectionString = readEnv(env, 'OVERLAY_DATABASE_URL')
   const postgresSslMode = readEnv(env, 'OVERLAY_DATABASE_SSL_MODE')
 
@@ -558,20 +558,11 @@ function resolveDeploymentEnvironment(env: EnvSource): OverlayDeploymentEnvironm
   if (isDeploymentEnvironment(explicit)) return explicit
 
   const vercelEnv = readEnv(env, 'VERCEL_ENV')
-  // Preview/dev Vercel envs win first; they already prefer non-production secrets.
+  if (vercelEnv === 'production') return 'production'
   if (vercelEnv === 'preview') return 'preview'
   if (vercelEnv === 'development') return 'development'
 
-  // Dual Vercel projects: staging.getoverlay.io is the Production deployment of
-  // overlay-web-staging (VERCEL_ENV=production), but it is the shared staging lane
-  // and must prefer development Convex / Stripe / WorkOS values.
   const appUrl = resolveAppBaseUrl(env)
-  if (appUrl && /(?:^https?:\/\/)?(?:www\.)?staging\.getoverlay\.io\b/i.test(appUrl)) {
-    return 'staging'
-  }
-
-  if (vercelEnv === 'production') return 'production'
-
   if (appUrl && /staging|preview|vercel\.app/i.test(appUrl)) return 'staging'
 
   const nodeEnv = readEnv(env, 'NODE_ENV')

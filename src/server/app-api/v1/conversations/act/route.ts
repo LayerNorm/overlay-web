@@ -20,7 +20,6 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { normalizeChatToolRequestIds } from '@/shared/chat/tool-requests'
 import { MAX_TOOL_STEPS_ACT } from '@/server/tools/tools/policy'
-import { OVERLAY_TOOL_IDS } from '@overlay/tools-core'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildSecondarySystemPromptExtension } from '@/server/agent/operator-system-prompt'
@@ -76,15 +75,6 @@ import {
   prepareActTooling,
   preloadActExternalToolTasks,
 } from './tooling'
-import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
-import {
-  authorizeCapability,
-  authorizeCatalogResource,
-  filterCatalogResources,
-} from '@/server/authorization'
-import type { AuthorizationCapability } from '@overlay/authz-contracts'
-import { normalizeIntegrationProviderKey } from '@overlay/app-core'
-import { readProjectSettings } from '@/shared/projects/project-settings'
 
 export const maxDuration = 800
 
@@ -94,7 +84,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let budgetReservationId: string | null = null
   let budgetReservationFinalized = false
   let currentUserId: string | undefined
-  let currentResourceUserId: string | undefined
   let actWebhookConversationId: Id<'conversations'> | undefined
   let actWebhookTurnId: string | undefined
   let actWebhookSkip = false
@@ -132,8 +121,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       conversationId,
       conversationClientId,
       projectId,
-      knowledgeBaseId,
-      knowledgeBaseIds,
       askModelIds,
       turnId,
       modelId,
@@ -164,10 +151,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const isPostgresAppData = overlayContext.appDataCapabilities.provider === 'postgres'
     actWebhookSkip = automationExecution === true || isPostgresAppData
     const { auth } = context
-    const userId = auth.userId
-    const conversationUserId = getAuthorizedResourceUserId(context)
-    currentUserId = userId
-    currentResourceUserId = conversationUserId
+	    const userId = auth.userId
+	    currentUserId = userId
     const accessToken = auth.accessToken || undefined
 	    const streamPersistence = resolveActStreamPersistence({
 	      requestedMode: streamPersistenceMode,
@@ -184,24 +169,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       turnId,
       variantIndex: rawMultiModelSlotIndex,
     })
-    const preferredProjectModelId = await resolveProjectPreferredModelId({
-      conversationId: conversationId as Id<'conversations'> | undefined,
-      projectId,
-      userId: conversationUserId,
-    })
-    const effectiveModelId = resolveEffectiveActModelId(modelId ?? preferredProjectModelId)
+    const effectiveModelId = resolveEffectiveActModelId(modelId)
     const serverSecret = getInternalApiSecret()
     const requestedToolIds = normalizeChatToolRequestIds(rawRequestedToolIds)
     const memoryEnabled = rawMemoryEnabled !== false
-    const dynamicAuthorization = await authorizeActRequest({
-      authorization: overlayContext.authorizationService,
-      context,
-      effectiveModelId,
-      memoryEnabled,
-      mentions: rawMentions,
-      requestedToolIds,
-    })
-    if (dynamicAuthorization) return dynamicAuthorization
     const {
       appSettings,
       paid,
@@ -240,31 +211,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     if (!cid && trimmedClientId) {
       const ensureStartedAt = _ttftDebug ? performance.now() : 0
       cid = await ensureActConversationId({
-        userId: conversationUserId,
+        userId,
         repository: actConversationRepository,
         conversationClientId: trimmedClientId,
         entitlements: runtimeEntitlements,
         projectId,
         askModelIds,
         actModelId: effectiveModelId,
-        workspaceId: context.workspace.workspace.id,
-        createdByPrincipalId: context.workspace.principal.id,
       })
       if (_ttftDebug) _tEnsureConversationMs = performance.now() - ensureStartedAt
-    }
-    // Bases named on this turn become part of the conversation's grounding and
-    // also narrow this turn's retrieval. Access is verified inside the service.
-    const turnKnowledgeBaseIds = [
-      ...new Set([...(knowledgeBaseIds ?? []), ...(knowledgeBaseId ? [knowledgeBaseId] : [])]),
-    ]
-    if (cid && turnKnowledgeBaseIds.length > 0) {
-      for (const id of turnKnowledgeBaseIds) {
-        await overlayContext.knowledgeBaseService.attachConversation({
-          conversationId: cid,
-          knowledgeBaseId: id,
-          userId: conversationUserId,
-        })
-      }
     }
     const tid = resolveActTurnId(turnId)
     actWebhookConversationId = cid
@@ -287,28 +242,11 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       accessToken,
       serverSecret,
     })
-    const accountAllowedToolIdsTask = filterCatalogResources({
-      authorization: overlayContext.authorizationService,
-      capability: 'tools.use',
-      context,
-      getId: (toolId) => toolId,
-      resourceType: 'tool',
-      values: OVERLAY_TOOL_IDS,
-    })
-    const accountAllowedConnectorIdsTask = toolPreloadTasks.connectedConnectorIdsTask
-      .then((connectorIds) => filterCatalogResources({
-        authorization: overlayContext.authorizationService,
-        capability: 'integrations.use',
-        context,
-        getId: (connectorId) => connectorId,
-        resourceType: 'connector',
-        values: connectorIds,
-      }))
 
     // P3.2 Wave 1: user-message save + context fetches stay parallel.
     const saveUserMessageTask = actMessagePersistenceService.persistUserMessage({
       conversationId: cid,
-      userId: conversationUserId,
+      userId,
       turnId: tid,
       modelId: effectiveModelId,
       latestUserContent,
@@ -324,15 +262,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       indexedAttachments: rawIndexedAttachments,
       indexedFileNames,
       latestUserText,
-      memoryEnabled,
-      mentions: rawMentions,
-      mentionedKnowledgeBaseIds: turnKnowledgeBaseIds,
-      requestIdempotencyKey: context.requestIdempotencyKey!,
-      requestFingerprint: context.requestFingerprint,
-      serverSecret,
-      // The resource owner, not the caller: a shared conversation loads its
-      // owner's context while billing still follows the authenticated caller.
-      userId: conversationUserId,
+	      memoryEnabled,
+	      mentions: rawMentions,
+	      requestIdempotencyKey: context.requestIdempotencyKey!,
+	      requestFingerprint: context.requestFingerprint,
+	      serverSecret,
+      userId,
       externalContextEnabled: !isPostgresAppData,
     })
 
@@ -353,18 +288,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       })
     })()
 
-    const [
-      ,
-      turnContext,
-      resolvedMediaToolIntent,
-      accountAllowedToolIds,
-      accountAllowedConnectorIds,
-    ] = await Promise.all([
+    const [, turnContext, resolvedMediaToolIntent] = await Promise.all([
       saveUserMessageTask,
       turnContextTask,
       mediaIntentTask,
-      accountAllowedToolIdsTask,
-      accountAllowedConnectorIdsTask,
     ])
     const {
       autoRetrieval,
@@ -375,7 +302,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       memoryContext,
       mentionsContext,
       projectInstructions,
-      projectSettings,
       skillsContext,
       sourceCitationMap,
     } = turnContext
@@ -388,7 +314,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       latestUserMessage,
       latestTurnId: tid,
       conversationId: cid,
-      userId: conversationUserId,
+      userId,
       targetModelId: effectiveModelId,
       historyBaseModelId,
     })
@@ -458,7 +384,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       messages: messagesForModel,
       replyContextForModel,
       targetModelId: effectiveModelId,
-      userId: conversationUserId,
+      userId,
     })
     const userSystemPromptExtension = buildSecondarySystemPromptExtension(systemPrompt)
 
@@ -476,25 +402,21 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 	    const [generatingMessageId, actTooling] = await Promise.all([
 	      actGeneratingMessageService.start({
 	        conversationId: cid,
-	        userId: conversationUserId,
+	        userId,
 	        turnId: tid,
 	        modelId: effectiveModelId,
 	        multiModelTotal,
 	        multiModelSlotIndex,
 	      }),
-		      prepareActTooling({
-		        accountAllowedConnectorIds,
-		        accountAllowedToolIds,
-		        accessToken,
+	      prepareActTooling({
+	        accessToken,
 	        automationExecution: automationExecution === true,
 	        automationMode: automationMode === true,
 	        automationId,
 	        baseUrl: getInternalApiBaseUrl(request),
 	        conversationId: cid,
 	        conversationProjectId,
-        activeKnowledgeBaseIds: turnKnowledgeBaseIds,
-        projectSettings,
-        entitlements: runtimeEntitlements,
+	        entitlements: runtimeEntitlements,
 	        effectiveModelId,
 	        forwardCookie: request.headers.get('cookie'),
 	        isMultiModelFollowUpSlot,
@@ -701,7 +623,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           timeoutMs: actAbortTimeoutMsResolved,
           toolFailuresByCallId,
           turnId: tid,
-          userId: conversationUserId,
+          userId,
         })
       },
       })
@@ -777,7 +699,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
                 : err,
               messageId: generatingMessageId,
               turnId: actWebhookTurnId,
-              userId: conversationUserId,
+              userId,
             })
           }
         })
@@ -798,7 +720,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
                   modelId: attemptModelId,
                   requestId,
                   turnId: tid,
-                  userId: conversationUserId,
+                  userId,
                   variantIndex: multiModelSlotIndex,
                 },
               })
@@ -1040,80 +962,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       error,
       messageId: pendingGeneratingMessageId,
       turnId: actWebhookTurnId,
-      userId: currentResourceUserId,
+      userId: currentUserId,
     })
     return NextResponse.json(
       { error: userFacingOpenRouterError(error), requestId },
       { status: 500, headers: { 'x-request-id': requestId } },
     )
   }
-}
-
-async function authorizeActRequest(args: {
-  authorization: ReturnType<typeof getOverlayServerContext>['authorizationService']
-  context: AppApiRouteContext
-  effectiveModelId: string
-  memoryEnabled: boolean
-  mentions: unknown
-  requestedToolIds: readonly string[]
-}): Promise<NextResponse | null> {
-  const modelDenied = await authorizeCatalogResource({
-    authorization: args.authorization,
-    capability: 'models.use',
-    context: args.context,
-    resourceId: args.effectiveModelId,
-    resourceType: 'model',
-  })
-  if (modelDenied) return modelDenied
-
-  const capabilityRequirements = new Set<AuthorizationCapability>()
-  if (args.requestedToolIds.length > 0) capabilityRequirements.add('tools.use')
-  if (args.requestedToolIds.includes('web_search')) capabilityRequirements.add('web_search.use')
-  if (args.memoryEnabled || args.requestedToolIds.includes('memory')) capabilityRequirements.add('memory.use')
-  for (const mention of Array.isArray(args.mentions) ? args.mentions : []) {
-    if (!mention || typeof mention !== 'object') continue
-    const type = 'type' in mention ? mention.type : undefined
-    if (type === 'connector') capabilityRequirements.add('integrations.use')
-    if (type === 'knowledge') capabilityRequirements.add('knowledge.read')
-    if (type === 'skill') capabilityRequirements.add('skills.use')
-    if (type === 'mcp') capabilityRequirements.add('mcp.use')
-    if (type === 'automation') capabilityRequirements.add('automations.use')
-  }
-  for (const mention of Array.isArray(args.mentions) ? args.mentions : []) {
-    if (!mention || typeof mention !== 'object') continue
-    const type = 'type' in mention ? mention.type : undefined
-    const id = 'id' in mention && typeof mention.id === 'string'
-      ? normalizeIntegrationProviderKey(mention.id)
-      : ''
-    if (type !== 'connector' || !id) continue
-    const denied = await authorizeCatalogResource({
-      authorization: args.authorization,
-      capability: 'integrations.use',
-      context: args.context,
-      resourceId: id,
-      resourceType: 'connector',
-    })
-    if (denied) return denied
-  }
-  for (const capability of capabilityRequirements) {
-    const denied = await authorizeCapability({
-      authorization: args.authorization,
-      capability,
-      context: args.context,
-    })
-    if (denied) return denied
-  }
-  for (const toolId of args.requestedToolIds) {
-    const denied = await authorizeCatalogResource({
-      authorization: args.authorization,
-      capability: 'tools.use',
-      context: args.context,
-      resourceId: toolId,
-      resourceType: 'tool',
-    })
-    if (denied) return denied
-  }
-  return null
 }
 
 function modelAttemptFailureReasonFromReservation(errorCode?: string): ActModelAttemptFailureReason {
@@ -1127,30 +982,5 @@ function safeGatewayModelId(modelId: string): string | null {
     return getGatewayModelId(modelId)
   } catch (_error) {
     return null
-  }
-}
-
-async function resolveProjectPreferredModelId(args: {
-  conversationId?: Id<'conversations'>
-  projectId?: string
-  userId: string
-}): Promise<string | undefined> {
-  try {
-    const conversation = args.conversationId
-      ? await actConversationRepository.getConversation({
-          conversationId: args.conversationId,
-          userId: args.userId,
-        })
-      : null
-    const projectId = args.projectId?.trim() || conversation?.projectId
-    if (!projectId) return undefined
-    const project = await actConversationRepository.getProject({
-      projectId: projectId as Id<'projects'>,
-      userId: args.userId,
-    })
-    if (!project || project.archivedAt) return undefined
-    return readProjectSettings(project.settings).preferredModelId
-  } catch (_error) {
-    return undefined
   }
 }

@@ -569,7 +569,6 @@ export async function executeGenerateVideo(
         videoSubMode,
         imageUrl: imageUrl ?? referenceVideoUrl,
         conversationId: options.conversationId,
-        projectId: options.projectId,
         turnId: options.turnId,
         ...toolAuthBody(options),
       },

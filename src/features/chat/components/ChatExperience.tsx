@@ -5,7 +5,6 @@ import dynamic from 'next/dynamic'
 import {
   ArrowUp,
   ChevronDown,
-  UsersRound,
 } from 'lucide-react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
@@ -48,10 +47,6 @@ import { useChatModelSelectionController } from './chat/useChatModelSelectionCon
 import { useChatRetryController } from './chat/useChatRetryController'
 import { useChatRouteController } from './chat/useChatRouteController'
 import {
-  buildWorkspaceHref,
-  resolveChatBasePath,
-} from '@/features/workspaces/lib/workspace-routing'
-import {
   TEMPORARY_CHAT_ID,
   useChatSendController,
 } from './chat/useChatSendController'
@@ -76,9 +71,8 @@ import { DelayedTooltip } from './DelayedTooltip'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { useAuthorization } from '@/components/providers/AuthorizationProvider'
 import { buildSharePageUrl } from '@/features/share/lib/share-url'
-import { ShareDialog } from '@/components/share/ShareDialog'
+import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { createIdempotencyKey } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
@@ -104,8 +98,6 @@ import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import type { ConversationLoadSnapshot } from './chat/chatTransport'
-import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
-import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 
 // Heavy, conditionally-rendered surfaces are code-split out of the initial chat
 // bundle. They only mount on specific interactions (billing top-up, export,
@@ -139,8 +131,6 @@ export default function ChatExperience({
   firstName,
   hideSidebar,
   projectName,
-  contextNavigation,
-  knowledgeBaseId,
   mode = 'chat',
   hideHeader = false,
   belowEmptyComposer,
@@ -152,8 +142,6 @@ export default function ChatExperience({
   firstName?: string
   hideSidebar?: boolean
   projectName?: string
-  contextNavigation?: React.ReactNode
-  knowledgeBaseId?: string
   mode?: 'chat' | 'automate'
   hideHeader?: boolean
   belowEmptyComposer?: React.ReactNode
@@ -161,8 +149,6 @@ export default function ChatExperience({
   initialChatPageInfo?: ChatListPageInfo
   publicShowcaseSnapshots?: Readonly<Record<string, ConversationLoadSnapshot>>
 }) {
-  const { activeWorkspaceId } = useWorkspace()
-  const [continueInDirectMessageOpen, setContinueInDirectMessageOpen] = useState(false)
   recordRender('ChatExperience')
   const router = useRouter()
   const pathname = usePathname()
@@ -184,7 +170,6 @@ export default function ChatExperience({
     revision: gatewayCatalogRevision,
   } = useGatewayModelCatalog({ enabled: !isPublicShowcase })
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
-  const { allows: allowsAuthorization } = useAuthorization()
   const billingEnabled = capabilities.billing
   const convexLiveSyncEnabled = !isPublicShowcase &&
     appDataCapabilities.requiresConvexClient && appDataCapabilities.supportsRealtime
@@ -308,17 +293,6 @@ export default function ChatExperience({
   const [memoryEnabled, setMemoryEnabled] = useState(() =>
     defaultMemoryEnabled({ temporary: false }),
   )
-  useEffect(() => {
-    const toolsAllowed = allowsAuthorization({ all: ['tools.use'] })
-    const webSearchAllowed = toolsAllowed && allowsAuthorization({ all: ['web_search.use'] })
-    const memoryAllowed = allowsAuthorization({ all: ['memory.use'] })
-    if (!memoryAllowed) setMemoryEnabled(false)
-    setSelectedToolIds((current) => current.filter((toolId) => {
-      if (toolId === 'web_search') return webSearchAllowed
-      if (toolId === 'memory') return toolsAllowed && memoryAllowed
-      return toolsAllowed
-    }))
-  }, [allowsAuthorization])
   const [isDragging, setIsDragging] = useState(false)
   const lastStreamChunkAtRef = useRef<number>(Date.now())
   const autoContinuedForMessageRef = useRef<Set<string>>(new Set())
@@ -543,10 +517,8 @@ export default function ChatExperience({
   const wasStreamingRef = useRef(false)
 
   const replaceActiveChatRoute = useCallback(() => {
-    if (hideSidebar) return
-    const livePathname = typeof window !== 'undefined' ? window.location.pathname : pathname
-    router.replace(resolveChatBasePath(livePathname))
-  }, [hideSidebar, pathname, router])
+    if (!hideSidebar) router.replace('/app/chat')
+  }, [hideSidebar, router])
 
   const {
     activeChatTitle,
@@ -1294,44 +1266,6 @@ export default function ChatExperience({
     }
   }
 
-  async function handleSaveAssistantToKnowledge({
-    content,
-    messageId,
-  }: {
-    content: string
-    messageId: string
-    turnId: string | null
-  }) {
-    const conversationId = activeChatIdRef.current ?? activeChatId
-    if (!conversationId || !content.trim() || !messageId) {
-      setComposerNotice('Save this response after the conversation is stored.')
-      window.setTimeout(() => setComposerNotice(null), 4000)
-      return
-    }
-    try {
-      setComposerNotice('Saving to My knowledge…')
-      const { knowledgeBase } = await overlayAppClient.knowledgeBases.ensurePersonal()
-      const firstLine = content
-        .split('\n')
-        .map((line) => line.replace(/^#+\s*/, '').trim())
-        .find(Boolean)
-      await overlayAppClient.projects.transfer({
-        direction: 'save-answer',
-        knowledgeBaseId: knowledgeBase.id,
-        conversationId,
-        messageId,
-        content,
-        title: (firstLine || 'Saved chat answer').slice(0, 160),
-        ...(embedProjectId ? { projectId: embedProjectId } : {}),
-      })
-      setComposerNotice('Saved to My knowledge.')
-      window.setTimeout(() => setComposerNotice(null), 3000)
-    } catch (error) {
-      setComposerNotice(error instanceof Error ? error.message : 'Could not save this response')
-      window.setTimeout(() => setComposerNotice(null), 5000)
-    }
-  }
-
   async function handleDeleteTurnById(turnId: string) {
     const cid = activeChatIdRef.current ?? activeChatId
     if (!cid || !turnId) {
@@ -1396,7 +1330,6 @@ export default function ChatExperience({
     completeSession,
     effectiveGenType,
     embedProjectId,
-    knowledgeBaseId,
     emptyRuntimeRef,
     ensureConversationRuntime,
     inputRef,
@@ -1768,7 +1701,7 @@ export default function ChatExperience({
             ? buildSharePageUrl('chat', activeChat.shareToken)
             : null
         }
-        renderShareDialog={(props) => <ShareDialog {...props} workspaceId={activeWorkspaceId} />}
+        renderShareDialog={(props) => <ShareDialog {...props} />}
       />
     )
   }, [
@@ -1875,7 +1808,6 @@ export default function ChatExperience({
         onBeginHeaderChatRename: beginHeaderChatRename,
         showRenameButton: Boolean(activeChatId && !selectedAutomation && !isPublicShowcase),
         projectName,
-        contextNavigation,
         showAutomationChatTab,
         appMode: mode,
         isTemporaryChat,
@@ -1884,18 +1816,6 @@ export default function ChatExperience({
         onGenerationModeChange: handleModeChange,
         generationMode,
         renderExportMenu,
-        collaborationAction: activeChatId && !isTemporaryChat && !isPublicShowcase && activeWorkspaceId ? (
-          <DelayedTooltip label="Continue with people" side="bottom">
-            <button
-              type="button"
-              onClick={() => setContinueInDirectMessageOpen(true)}
-              className="flex h-8 min-h-8 items-center gap-1.5 rounded-md bg-[var(--surface-subtle)] px-2.5 text-xs text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]"
-            >
-              <UsersRound size={13} />
-              <span className="hidden lg:inline">People</span>
-            </button>
-          </DelayedTooltip>
-        ) : null,
         ...headerModelProps,
         automationHeaderModelId,
         automationHeaderModels,
@@ -1974,9 +1894,6 @@ export default function ChatExperience({
                 onReplyToMediaPrompt: beginReplyToMediaPrompt,
                 onReplyToAssistantText: beginReplyToAssistantText,
                 onBranch: isPublicShowcase ? () => requireAuth('history') : handleBranchConversationAtTurn,
-                onSaveAssistantToKnowledge: isPublicShowcase
-                  ? () => requireAuth('history')
-                  : handleSaveAssistantToKnowledge,
                 onOpenDraft: setDraftModalState,
                 onCreateAutomationDraft: isPublicShowcase ? () => requireAuth('nav') : handleCreateAutomationDraftViaChat,
                 onOpenSources: openSourcesPanel,
@@ -2100,12 +2017,7 @@ export default function ChatExperience({
                 setShowModeMenu,
                 modeMenuRef,
                 onNavigateMode: (nextMode) => {
-                  const livePathname = typeof window !== 'undefined' ? window.location.pathname : pathname
-                  const workspaceId = activeWorkspaceId
-                  const nextHref = nextMode === 'chat'
-                    ? (workspaceId ? buildWorkspaceHref(workspaceId, '/app/chat') : resolveChatBasePath(livePathname))
-                    : (workspaceId ? buildWorkspaceHref(workspaceId, '/app/automations') : '/app/automations')
-                  router.push(nextHref)
+                  router.push(nextMode === 'chat' ? '/app/chat' : '/app/automations')
                   setShowModeMenu(false)
                 },
               },
@@ -2135,20 +2047,6 @@ export default function ChatExperience({
         renderViewer: renderAttachmentViewer,
       }}
       />
-      {activeWorkspaceId && activeChatId ? (
-        <NewDirectMessageDialog
-          open={continueInDirectMessageOpen}
-          workspaceId={activeWorkspaceId}
-          sourceConversationId={activeChatId}
-          onOpenChange={setContinueInDirectMessageOpen}
-          onCreated={({ id }) => {
-            const params = new URLSearchParams(searchParams?.toString() ?? '')
-            params.set('view', 'dms')
-            params.set('id', id)
-            router.push(`${pathname ?? '/app/chat'}?${params.toString()}`)
-          }}
-        />
-      ) : null}
     </>
   )
 }

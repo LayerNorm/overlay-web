@@ -56,10 +56,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head suppressHydrationWarning>
+      <head>
         <script
-          id="overlay-theme-init"
-          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `
               (function () {

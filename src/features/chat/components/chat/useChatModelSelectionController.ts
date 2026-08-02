@@ -309,21 +309,23 @@ export function useChatModelSelectionController({
   ])
 
   const isOnNewChatSurface = !activeChatId && !isTemporaryChat
-  const persistLastUsedAskModels = useCallback((ids: string[]) => {
+  const persistNewChatAskModels = useCallback((ids: string[]) => {
+    if (!isOnNewChatSurface) return
     const normalized = normalizeChatModelSelection({ askModelIds: ids })
     void updateSettings({
       defaultAskModelIds: normalized.askModelIds,
       defaultActModelId: normalized.actModelId,
     })
-  }, [updateSettings])
+  }, [isOnNewChatSurface, updateSettings])
 
-  const persistLastUsedActModel = useCallback((id: string) => {
+  const persistNewChatActModel = useCallback((id: string) => {
+    if (!isOnNewChatSurface) return
     const normalized = normalizeChatModelSelection({ askModelIds: selectedModels, actModelId: id })
     void updateSettings({
       defaultAskModelIds: normalized.askModelIds,
       defaultActModelId: normalized.actModelId,
     })
-  }, [selectedModels, updateSettings])
+  }, [isOnNewChatSurface, selectedModels, updateSettings])
 
   useEffect(() => {
     if (!chatPrefsHydrated) return
@@ -412,18 +414,19 @@ export function useChatModelSelectionController({
       const one = [selectedModels[0]!]
       setSelectedModels(one)
       setSelectedActModel(one[0]!)
-      persistLastUsedAskModels(one)
+      persistNewChatAskModels(one)
+      persistNewChatActModel(one[0]!)
     } else if (next === 'multiple' && selectedModels.length > 0) {
       setSelectedActModel(selectedModels[0]!)
-      persistLastUsedActModel(selectedModels[0]!)
+      persistNewChatActModel(selectedModels[0]!)
     }
   }, [
     askModelSelectionMode,
     generationMode,
     hasAutomationContext,
     isFreeTier,
-    persistLastUsedActModel,
-    persistLastUsedAskModels,
+    persistNewChatActModel,
+    persistNewChatAskModels,
     selectedModels,
     setAskModelSelectionMode,
     setSelectedActModel,
@@ -442,7 +445,8 @@ export function useChatModelSelectionController({
       if (sameModelOrder(next, selectedModels) && selectedActModel === modelId) return
       setSelectedActModel(modelId)
       setSelectedModels(next)
-      persistLastUsedAskModels(next)
+      persistNewChatActModel(modelId)
+      persistNewChatAskModels(next)
       setShowModelPicker(false)
       return
     }
@@ -451,14 +455,17 @@ export function useChatModelSelectionController({
     setSelectedModels(next)
     if (!next.includes(selectedActModel)) {
       setSelectedActModel(next[0]!)
+      persistNewChatActModel(next[0]!)
     } else if (next.length === 1) {
       setSelectedActModel(modelId)
+      persistNewChatActModel(modelId)
     }
-    persistLastUsedAskModels(next)
+    persistNewChatAskModels(next)
   }, [
     askModelSelectionMode,
     isOnNewChatSurface,
-    persistLastUsedAskModels,
+    persistNewChatActModel,
+    persistNewChatAskModels,
     selectedActModel,
     selectedModels,
     setSelectedActModel,

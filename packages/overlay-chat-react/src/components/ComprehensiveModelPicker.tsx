@@ -116,12 +116,12 @@ export function ComprehensiveModelPicker<TPreferences extends ChatModelPreferenc
         aria-expanded={open}
         aria-haspopup="listbox"
         onClick={() => !disabled && setOpen((v) => !v)}
-        className={`flex w-full min-w-0 items-center justify-between gap-2.5 rounded-md bg-[var(--surface-subtle)] py-1.5 pl-3 pr-3 text-left text-xs md:max-w-[13rem] ${
+        className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-xs md:max-w-[13rem] ${
           disabled ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
         }`}
       >
-        <span className="min-w-0 flex-1 truncate">{buttonLabel}</span>
-        <ChevronDown size={12} className={`ml-1 shrink-0 opacity-70 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <span className="min-w-0 truncate">{buttonLabel}</span>
+        <ChevronDown size={11} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open ? (
         <div

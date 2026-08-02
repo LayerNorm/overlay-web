@@ -7,6 +7,7 @@ import { and, eq } from 'drizzle-orm'
 import { createOverlayPostgresDb, createOverlayPostgresPool } from '@/server/database/postgres/client'
 import {
   automationTriggers,
+  conversations,
   projects,
   users,
 } from '@/server/database/postgres/schema'
@@ -29,7 +30,7 @@ test(
     const userId = `p6_user_${randomUUID()}`
     const foreignUserId = `p6_foreign_${randomUUID()}`
     const projectId = `p6_project_${randomUUID()}`
-    let conversationId = ''
+    const conversationId = `p6_conversation_${randomUUID()}`
     const conversationsRepository = new PostgresActConversationRepository(db)
     const repository = new PostgresAutomationRepository(db, conversationsRepository)
 
@@ -39,12 +40,16 @@ test(
         { email: `${foreignUserId}@example.test`, id: foreignUserId },
       ])
       await db.insert(projects).values({ id: projectId, name: 'P6 project', userId })
-      conversationId = await conversationsRepository.createConversation({
+      await db.insert(conversations).values({
         actModelId: 'openai/gpt-4.1',
         askModelIds: ['openai/gpt-4.1'],
+        createdAt: new Date(),
+        id: conversationId,
         lastMode: 'act',
+        lastModified: new Date(),
         projectId,
         title: 'Automation conversation',
+        updatedAt: new Date(),
         userId,
       })
 

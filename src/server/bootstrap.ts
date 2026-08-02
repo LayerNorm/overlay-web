@@ -31,10 +31,7 @@ import { InMemoryVectorStore } from '@/server/storage/providers/in-memory-vector
 import { NoOpObjectStore } from '@/server/storage/providers/noop-object-store'
 import { R2ObjectStore } from '@/server/storage/providers/r2-object-store'
 import { S3CompatibleObjectStore } from '@/server/storage/providers/s3-compatible-object-store'
-import {
-  applyAppDataCapabilitiesToOverlayCapabilities,
-  type AppDataCapabilities,
-} from '@/server/app-data/capabilities'
+import type { AppDataCapabilities } from '@/server/app-data/capabilities'
 import { createAppDataContext, type AppDataContext } from '@/server/app-data/repositories'
 import { createActUsagePolicy, type ActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import {
@@ -42,42 +39,15 @@ import {
   type GenerationUsagePolicy,
 } from '@/server/outputs/GenerationUsagePolicy'
 import { UserService, type UserAuthProvider } from '@/server/users'
-import {
-  AuthorizationAdministrationService,
-  AuthorizationService,
-  FixedRoleAuthorizationBridge,
-  createAuthorizationCapabilityPolicy,
-} from '@/server/authorization'
 import type { NoteRepository } from '@/server/notes'
-import { ProjectKnowledgeTransferService } from '@/server/projects/ProjectKnowledgeTransferService'
 import { MemoryService } from '@/server/memory'
 import {
   KnowledgeSearchService,
   PostgresKnowledgeSearchRepository,
   UnavailableKnowledgeSearchRepository,
   createEmbeddingProvider,
-  type EmbeddingModelIdentity,
 } from '@/server/knowledge'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
-import {
-  ConvexCanonicalKnowledgeIndexQueue,
-  IntegrationKnowledgeSourceFetcher,
-  KnowledgeBaseService,
-  KnowledgeSourceFetcherRegistry,
-  type KnowledgeSourceFetcher,
-  UrlKnowledgeSourceFetcher,
-  KnowledgeBaseRetrievalService,
-  KnowledgeSourceIngestionService,
-  PostgresCanonicalKnowledgeIndexQueue,
-} from '@/server/knowledge-bases'
-import {
-  getIntegrationProvider,
-} from '@/server/integrations'
-import { GovernanceService, WorkspaceGovernanceService } from '@/server/governance'
-import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
-import { WorkspaceAgentService } from '@/server/agents'
-import { WorkspaceSharingService } from '@/server/sharing'
-import { WorkspaceSearchService } from '@/server/search'
 import { ServerProviderUsageMeter } from '@/server/billing/ServerProviderUsageMeter'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
@@ -100,28 +70,15 @@ export interface OverlayServerContext extends OverlayProviderContext {
   appData: AppDataContext
   appDataCapabilities: AppDataCapabilities
   administrativeService: AdministrativeService
-  authorizationAdministrationService: AuthorizationAdministrationService
-  fixedRoleAuthorizationBridge: FixedRoleAuthorizationBridge
-  authorizationService: AuthorizationService
   auditService: AuditService
   chatUsagePolicy: ActUsagePolicy
   generationUsagePolicy: GenerationUsagePolicy
-  governanceService: GovernanceService
   memoryService: MemoryService
   knowledgeSearchService: KnowledgeSearchService
-  knowledgeBaseService: KnowledgeBaseService
-  knowledgeBaseRetrievalService: KnowledgeBaseRetrievalService
-  knowledgeSourceIngestionService: KnowledgeSourceIngestionService
-  projectKnowledgeTransferService: ProjectKnowledgeTransferService
   noteRepository: NoteRepository
   apiKeyService: ApiKeyService
   lifecycleEvents: LifecycleEventPublisher
   userService: UserService
-  workspaceService: WorkspaceService
-  workspaceAgentService: WorkspaceAgentService
-  workspaceSharingService: WorkspaceSharingService
-  workspaceSearchService: WorkspaceSearchService
-  workspaceGovernanceService: WorkspaceGovernanceService
 }
 
 export interface CreateOverlayServerContextOptions {
@@ -174,161 +131,16 @@ export function createOverlayServerContext(
       createOpenTelemetryLifecycleSink(),
     ],
   })
-  const authorizationService = new AuthorizationService({
-    repositories: appData.repositories.authorization,
-    capabilityPolicy: createAuthorizationCapabilityPolicy(
-      applyAppDataCapabilitiesToOverlayCapabilities(
-        resolveOverlayCapabilities(runtimeConfig),
-        appData.capabilities,
-      ),
-    ),
-  })
-  const fixedRoleAuthorizationBridge = new FixedRoleAuthorizationBridge(
-    appData.repositories.authorization,
-  )
-  const workspaceService = new WorkspaceService(appData.repositories.workspaces)
-  const workspaceAgentService = new WorkspaceAgentService(
-    appData.repositories.workspaceAgents,
-    workspaceService,
-  )
-  const workspaceSharingService = new WorkspaceSharingService({
-    agents: appData.repositories.workspaceAgents,
-    collaboration: appData.repositories.conversationCollaboration,
-    conversations: appData.repositories.conversations,
-    repository: appData.repositories.workspaceSharing,
-    resourceOwners: appData.repositories.authorization.resourceOwners,
-    workspaceRepository: appData.repositories.workspaces,
-    workspaces: workspaceService,
-  })
-  const workspaceSearchService = new WorkspaceSearchService({
-    agents: appData.repositories.workspaceAgents,
-    collaboration: appData.repositories.conversationCollaboration,
-    conversations: appData.repositories.conversations,
-    sharing: workspaceSharingService,
-    workspaces: workspaceService,
-    sources: {
-      files: async ({ userId }) => await appData.repositories.files.listFiles({
-        userId,
-        limit: 200,
-        summary: true,
-      }) as Array<{ _id?: string; name?: string; updatedAt?: number }>,
-      projects: async ({ userId }) => await appData.repositories.projects.listProjects({ userId }),
-      knowledgeBases: async ({ userId }) => await appData.repositories.knowledgeBases.bases
-        .listForOwner(userId),
-      automations: async ({ userId }) => await appData.repositories.automations
-        .listAutomations({ userId }),
-    },
-    // Titles for shared resources are read with the owner's identity only after
-    // the sharing service has already authorized the actor.
-    loaders: {
-      file: async ({ resourceId, ownerUserId }) => {
-        const file = await appData.repositories.files.getFile({
-          fileId: resourceId,
-          userId: ownerUserId,
-        }) as { name?: string; updatedAt?: number } | null
-        return file ? { title: file.name ?? 'Untitled', updatedAt: file.updatedAt } : null
-      },
-      project: async ({ resourceId, ownerUserId }) => {
-        const project = await appData.repositories.projects.getProject({
-          projectId: resourceId,
-          userId: ownerUserId,
-        })
-        return project ? { title: project.name, updatedAt: project.updatedAt } : null
-      },
-      knowledge_base: async ({ resourceId }) => {
-        const base = await appData.repositories.knowledgeBases.bases.get(resourceId)
-        return base ? { title: base.title, updatedAt: base.updatedAt } : null
-      },
-      automation: async ({ resourceId, ownerUserId }) => {
-        const automation = await appData.repositories.automations.getAutomation({
-          automationId: resourceId,
-          userId: ownerUserId,
-        })
-        return automation ? { title: automation.name ?? 'Untitled automation' } : null
-      },
-    },
-  })
-  const collaborationRateLimiter = appConfig.rateLimiter ?? createRateLimiter(runtimeConfig)
-  const workspaceGovernanceService = new WorkspaceGovernanceService({
-    audit: appData.repositories.audit,
-    rateLimiter: collaborationRateLimiter,
-    repository: appData.repositories.workspaces,
-    workspaces: workspaceService,
-    appDataProvider: appData.capabilities.provider,
-    requiresConvexClient: appData.capabilities.requiresConvexClient,
-  })
   const userService = new UserService({
     authProvider: selectedAuthProviderForUserService(runtimeConfig),
     lifecycleEvents,
-    afterUpsert: async ({ userId }) => {
-      await Promise.all([
-        fixedRoleAuthorizationBridge.ensureDefaultUserRole(userId),
-        workspaceService.ensurePersonalWorkspace({ userId }),
-      ])
-    },
     repository: appData.repositories.users,
   })
   const administrativeService = new AdministrativeService({
     audit: auditService,
     repository: appData.repositories.administration,
-    authorization: authorizationService,
-    compatibility: fixedRoleAuthorizationBridge,
-  })
-  const authorizationAdministrationService = new AuthorizationAdministrationService({
-    assertCapability: (userId, capability) =>
-      administrativeService.assertCapability(userId, capability),
-    audit: auditService,
-    prepareAuthorization: () => fixedRoleAuthorizationBridge.ensureSystemRoles(),
-    repositories: appData.repositories.authorization,
-  })
-  const governanceService = new GovernanceService({
-    assertCapability: (userId, capability) =>
-      administrativeService.assertCapability(userId, capability),
-    audit: auditService,
-    authorization: appData.repositories.authorization,
-    repository: appData.repositories.governance,
-  })
-  const knowledgeBaseService = new KnowledgeBaseService({
-    authorization: authorizationService,
-    authorizationRepositories: appData.repositories.authorization,
-    audit: auditService,
-    embeddingIdentity: resolveEmbeddingIdentity(appData, runtimeConfig),
-    repositories: appData.repositories.knowledgeBases,
-    users: appData.repositories.users,
-    governance: governanceService,
-  })
-  const canonicalIndexQueue = appData.capabilities.provider === 'postgres'
-    ? new PostgresCanonicalKnowledgeIndexQueue(requiredPostgres(appData).db)
-    : new ConvexCanonicalKnowledgeIndexQueue()
-  const knowledgeSourceFetchers: KnowledgeSourceFetcher[] = [new UrlKnowledgeSourceFetcher()]
-  const integrationProvider = runtimeConfig?.providers.integrations?.provider ??
-    (runtimeConfig?.features.integrations === false ? 'none' : 'composio')
-  if (runtimeConfig && integrationProvider === 'composio') {
-    const execute = (request: Parameters<ReturnType<typeof getIntegrationProvider>['execute']>[0]) =>
-      getIntegrationProvider().execute(request)
-    knowledgeSourceFetchers.push(
-      new IntegrationKnowledgeSourceFetcher('connector', execute),
-      new IntegrationKnowledgeSourceFetcher('drive', execute),
-    )
-  }
-  const knowledgeSourceIngestionService = new KnowledgeSourceIngestionService({
-    authorization: authorizationService,
-    bases: knowledgeBaseService,
-    fetchers: new KnowledgeSourceFetcherRegistry(knowledgeSourceFetchers),
-    indexQueue: canonicalIndexQueue,
-    repositories: appData.repositories.knowledgeBases,
-  })
-  const projectKnowledgeTransferService = new ProjectKnowledgeTransferService({
-    bases: knowledgeBaseService,
-    files: appData.repositories.files,
-    ingestion: knowledgeSourceIngestionService,
-    notes: appData.repositories.notes,
   })
   const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
-  const knowledgeBaseRetrievalService = new KnowledgeBaseRetrievalService({
-    bases: knowledgeBaseService,
-    search: knowledgeSearchService,
-  })
 
   return {
     auth: appConfig.authProvider ?? createAuthProvider(runtimeConfig, userService),
@@ -340,39 +152,21 @@ export function createOverlayServerContext(
     objectStore: appConfig.objectStore ?? createObjectStoreForRuntime(runtimeConfig),
     vectorStore: appConfig.vectorStore ?? createVectorStore(runtimeConfig),
     llmGateway: appConfig.llmGateway ?? createLlmGateway(runtimeConfig),
-    rateLimiter: collaborationRateLimiter,
+    rateLimiter: appConfig.rateLimiter ?? createRateLimiter(runtimeConfig),
     eventBus,
     appData,
     appDataCapabilities: appData.capabilities,
     administrativeService,
-    authorizationAdministrationService,
-    fixedRoleAuthorizationBridge,
-    authorizationService,
     auditService,
     chatUsagePolicy,
     generationUsagePolicy,
-    governanceService,
     memoryService,
-    knowledgeBaseService,
-    knowledgeBaseRetrievalService,
-    knowledgeSourceIngestionService,
-    projectKnowledgeTransferService,
     knowledgeSearchService,
     noteRepository: appData.repositories.notes,
     apiKeyService: new ApiKeyService(appData.repositories.apiKeys),
     lifecycleEvents,
     userService,
-    workspaceService,
-    workspaceAgentService,
-    workspaceSharingService,
-    workspaceSearchService,
-    workspaceGovernanceService,
   }
-}
-
-function requiredPostgres(appData: AppDataContext): NonNullable<AppDataContext['postgres']> {
-  if (!appData.postgres) throw new Error('Postgres application data context is unavailable')
-  return appData.postgres
 }
 
 function createKnowledgeSearchService(
@@ -391,26 +185,6 @@ function createKnowledgeSearchService(
     embeddings: createEmbeddingProvider(runtimeConfig),
     usageMeter: new ServerProviderUsageMeter(appData.repositories.usage),
   }))
-}
-
-/**
- * Current embedding identity, when the runtime actually embeds locally. Convex
- * manages embeddings centrally and does not expose an identity, so drift
- * detection is only meaningful on the Postgres path.
- */
-function resolveEmbeddingIdentity(
-  appData: AppDataContext,
-  runtimeConfig: OverlayRuntimeConfig | null,
-): EmbeddingModelIdentity | undefined {
-  if (appData.capabilities.provider !== 'postgres') return undefined
-  if (!runtimeConfig || !appData.capabilities.supportsVectorSearch) return undefined
-  try {
-    return createEmbeddingProvider(runtimeConfig).identity
-  } catch (_error) {
-    // A misconfigured embeddings provider must not stop the server from booting;
-    // diagnostics simply omit drift information.
-    return undefined
-  }
 }
 
 let defaultServerContext: OverlayServerContext | null = null

@@ -62,7 +62,6 @@ export function useChatSendController({
   completeSession,
   effectiveGenType,
   embedProjectId,
-  knowledgeBaseId,
   emptyRuntimeRef,
   ensureConversationRuntime,
   inputRef,
@@ -130,7 +129,6 @@ export function useChatSendController({
   completeSession: CompleteSession
   effectiveGenType: 'image' | 'video' | null
   embedProjectId: string | null
-  knowledgeBaseId?: string
   emptyRuntimeRef: MutableRefObject<ConversationRuntime>
   ensureConversationRuntime: (
     chatId: string,
@@ -244,7 +242,6 @@ export function useChatSendController({
       askModelSelectionMode,
       clearTransientComposerState,
       embedProjectId,
-      knowledgeBaseId,
       emptyRuntime: emptyRuntimeRef.current,
       ensureConversationRuntime,
       invalidateLoadChatRequest,
@@ -272,7 +269,6 @@ export function useChatSendController({
     askModelSelectionMode,
     clearTransientComposerState,
     embedProjectId,
-    knowledgeBaseId,
     emptyRuntimeRef,
     ensureConversationRuntime,
     invalidateLoadChatRequest,
@@ -420,7 +416,6 @@ export function useChatSendController({
       completeSessionForStream,
       createNewChat,
       embedProjectId,
-      knowledgeBaseId,
       emptyRuntime: emptyRuntimeRef.current,
       ensureConversationRuntime,
       isFirstMessage,
@@ -456,7 +451,6 @@ export function useChatSendController({
     createNewChat,
     effectiveGenType,
     embedProjectId,
-    knowledgeBaseId,
     emptyRuntimeRef,
     ensureConversationRuntime,
     inputRef,

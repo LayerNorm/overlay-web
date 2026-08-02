@@ -43,34 +43,6 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'app-shell',
   },
   {
-    id: 'workspaces',
-    methods: '*',
-    prefixes: ['/api/v1/workspaces', '/api/v1/workspace-invitations'],
-    status: 'supported',
-    feature: 'workspaces',
-  },
-  {
-    id: 'workspace-agents',
-    methods: '*',
-    prefixes: ['/api/v1/agents'],
-    status: 'supported',
-    feature: 'workspace-agents',
-  },
-  {
-    id: 'workspace-sharing',
-    methods: '*',
-    prefixes: ['/api/v1/shares'],
-    status: 'supported',
-    feature: 'workspace-sharing',
-  },
-  {
-    id: 'workspace-search',
-    methods: ['GET'],
-    prefixes: ['/api/v1/search'],
-    status: 'supported',
-    feature: 'workspace-search',
-  },
-  {
     id: 'discovery',
     methods: ['GET'],
     paths: ['/api/v1/discovery'],
@@ -117,9 +89,6 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     methods: '*',
     prefixes: [
       '/api/v1/conversations/events',
-      '/api/v1/conversations/direct-messages',
-      '/api/v1/conversations/notifications',
-      '/api/v1/conversations',
       '/api/v1/conversations/message',
       '/api/v1/conversations/share',
       '/api/v1/conversations/stop',
@@ -230,13 +199,6 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     prefixes: ['/api/v1/knowledge', '/api/v1/memory'],
     status: 'supported',
     feature: 'vector-search',
-  },
-  {
-    id: 'knowledge-bases',
-    methods: '*',
-    prefixes: ['/api/v1/knowledge-bases'],
-    status: 'supported',
-    feature: 'knowledge-bases',
   },
   {
     id: 'mcp-and-skills',
