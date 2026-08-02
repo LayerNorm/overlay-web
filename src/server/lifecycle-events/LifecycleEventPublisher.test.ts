@@ -46,7 +46,7 @@ test('LifecycleEventPublisher emits a metadata-only, versioned lifecycle event t
   assert.equal(eventBus.events[0]?.topic, LIFECYCLE_EVENT_TOPIC)
   assert.equal(event?.schemaVersion, 1)
   assert.equal(event?.occurredAt, 1_700_000_000_000)
-  assert.deepEqual(event?.destinations, ['analytics', 'audit', 'email', 'notification'])
+  assert.deepEqual(event?.destinations, ['analytics', 'audit', 'email', 'metrics', 'notification'])
   assert.equal(auditEvents[0]?.eventId, event?.eventId)
   assert.deepEqual(Object.keys(event ?? {}).sort(), [
     'attributes',
@@ -141,11 +141,13 @@ test('lifecycle catalog declares destinations without creating external delivery
     'analytics',
     'audit',
     'email',
+    'metrics',
     'notification',
   ])
   assert.deepEqual(destinationsForLifecycleEvent('automation.succeeded'), [
     'analytics',
     'audit',
+    'metrics',
     'notification',
   ])
 })

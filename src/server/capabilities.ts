@@ -21,6 +21,7 @@ import {
   getCapabilityDisabledError,
   getRequiredCapabilityForRoute,
 } from './capabilities-core'
+import type { OverlayRuntimeConfig } from '@/shared/config'
 
 export { getRequiredCapabilityForRoute } from './capabilities-core'
 
@@ -29,9 +30,10 @@ export function getOverlayCapabilitiesSync(): CapabilityCheck {
     return deriveOverlayCapabilities()
   }
   const runtimeConfig = getOverlayRuntimeConfigSync()
+  const appDataCapabilities = deriveAppDataCapabilities(runtimeConfig)
   return applyAppDataCapabilitiesToOverlayCapabilities(
-    deriveOverlayCapabilities(runtimeConfig),
-    deriveAppDataCapabilities(runtimeConfig),
+    withObservabilityProviderCapabilities(deriveOverlayCapabilities(runtimeConfig), runtimeConfig),
+    appDataCapabilities,
   )
 }
 
@@ -47,10 +49,24 @@ export async function getOverlayCapabilities(): Promise<CapabilityCheck> {
     return deriveOverlayCapabilities()
   }
   const runtimeConfig = await getOverlayRuntimeConfig()
+  const appDataCapabilities = deriveAppDataCapabilities(runtimeConfig)
   return applyAppDataCapabilitiesToOverlayCapabilities(
-    deriveOverlayCapabilities(runtimeConfig),
-    deriveAppDataCapabilities(runtimeConfig),
+    withObservabilityProviderCapabilities(deriveOverlayCapabilities(runtimeConfig), runtimeConfig),
+    appDataCapabilities,
   )
+}
+
+export function withObservabilityProviderCapabilities(
+  capabilities: CapabilityCheck,
+  runtimeConfig: OverlayRuntimeConfig,
+): CapabilityCheck {
+  const analyticsProvider = runtimeConfig.providers.analytics?.provider ?? 'posthog'
+  const errorReportingProvider = runtimeConfig.providers.errorReporting?.provider ?? 'sentry'
+  return {
+    ...capabilities,
+    analytics: capabilities.analytics && analyticsProvider === 'posthog',
+    errorReporting: capabilities.errorReporting && errorReportingProvider === 'sentry',
+  }
 }
 
 export async function getAppDataCapabilities(): Promise<AppDataCapabilities> {

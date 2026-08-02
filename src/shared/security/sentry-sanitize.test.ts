@@ -26,11 +26,9 @@ test('sanitizeSentryEvent strips sensitive headers and cookies', async () => {
     'content-type': 'application/json',
   })
   assert.equal(sanitized.request?.cookies, '[REDACTED]')
-  assert.deepEqual(sanitized.request?.data, {
-    prompt: 'use [REDACTED]',
-  })
+  assert.equal(sanitized.request?.data, '[REDACTED]')
   assert.equal(sanitized.request?.url, 'https://example.com/callback?token=%5BREDACTED%5D&safe=1')
-  assert.equal(sanitized.message, 'jwt [REDACTED]')
+  assert.equal(sanitized.message, '[REDACTED]')
 })
 
 test('sanitizeSentryEvent redacts nested strings without mutating the original event', async () => {
@@ -58,9 +56,34 @@ test('sanitizeSentryEvent redacts nested strings without mutating the original e
   const sanitized = sanitizeSentryEvent(original)
 
   assert.equal(original.exception.values[0]?.value, 'provider key pk_live_1234567890')
-  assert.equal(sanitized.exception.values[0]?.value, 'provider key [REDACTED]')
+  assert.equal(sanitized.exception.values[0]?.value, '[REDACTED]')
   assert.equal(sanitized.extra.nested.token, '[REDACTED]')
   assert.equal(sanitized.breadcrumbs[0]?.message, '[REDACTED]')
+})
+
+test('sanitizeSentryEvent removes identity and prompt fields before vendor delivery', async () => {
+  const { sanitizeSentryEvent } = await loadSanitizer()
+  const sanitized = sanitizeSentryEvent({
+    extra: {
+      documentName: 'private.pdf',
+      prompt: 'summarize this private document',
+    },
+    user: {
+      email: 'person@example.com',
+      id: 'user_1',
+      username: 'Person Name',
+    },
+  })
+
+  assert.deepEqual(sanitized.extra, {
+    documentName: '[REDACTED]',
+    prompt: '[REDACTED]',
+  })
+  assert.deepEqual(sanitized.user, {
+    email: '[REDACTED]',
+    id: 'user_1',
+    username: '[REDACTED]',
+  })
 })
 
 async function loadSanitizer() {

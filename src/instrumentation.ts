@@ -1,9 +1,13 @@
 import * as Sentry from '@sentry/nextjs'
 
 function errorReportingEnabled(): boolean {
-  return !['0', 'false', 'no', 'off'].includes(
-    (process.env.OVERLAY_FEATURE_ERROR_REPORTING ?? '').trim().toLowerCase(),
-  )
+  const feature = process.env.OVERLAY_FEATURE_ERROR_REPORTING?.trim().toLowerCase()
+  if (['0', 'false', 'no', 'off'].includes(feature ?? '')) return false
+  // This file is compiled for the Edge runtime. Runtime config may read a local
+  // file, so use only the explicit environment override here. Server-side
+  // capability resolution remains the source of truth for app behavior.
+  const provider = process.env.OVERLAY_PROVIDER_ERROR_REPORTING?.trim().toLowerCase()
+  return provider !== 'none'
 }
 
 export async function register() {
@@ -12,6 +16,8 @@ export async function register() {
       './server/database/postgres/schema-compatibility'
     )
     await assertConfiguredPostgresSchemaCompatible()
+    const { startOnPremOpenTelemetry } = await import('./server/observability/open-telemetry')
+    await startOnPremOpenTelemetry()
   }
 
   if (!errorReportingEnabled()) return

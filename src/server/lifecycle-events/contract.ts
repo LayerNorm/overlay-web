@@ -3,7 +3,7 @@ import 'server-only'
 export const LIFECYCLE_EVENT_TOPIC = 'overlay.lifecycle.v1'
 export const LIFECYCLE_EVENT_SCHEMA_VERSION = 1
 
-export type LifecycleEventDestination = 'analytics' | 'audit' | 'email' | 'notification'
+export type LifecycleEventDestination = 'analytics' | 'audit' | 'email' | 'metrics' | 'notification'
 
 export type LifecycleEventName =
   | 'user.created'
@@ -75,11 +75,11 @@ export type LifecycleEventInput =
   | Omit<AutomationLifecycleEvent<'automation.failed'>, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
 
 const lifecycleEventDestinations: Record<LifecycleEventName, readonly LifecycleEventDestination[]> = {
-  'user.created': ['analytics', 'audit', 'email', 'notification'],
-  'subscription.changed': ['analytics', 'audit', 'email', 'notification'],
-  'topup.succeeded': ['analytics', 'audit', 'email', 'notification'],
-  'automation.succeeded': ['analytics', 'audit', 'notification'],
-  'automation.failed': ['analytics', 'audit', 'email', 'notification'],
+  'user.created': ['analytics', 'audit', 'email', 'metrics', 'notification'],
+  'subscription.changed': ['analytics', 'audit', 'email', 'metrics', 'notification'],
+  'topup.succeeded': ['analytics', 'audit', 'email', 'metrics', 'notification'],
+  'automation.succeeded': ['analytics', 'audit', 'metrics', 'notification'],
+  'automation.failed': ['analytics', 'audit', 'email', 'metrics', 'notification'],
 }
 
 export function destinationsForLifecycleEvent(

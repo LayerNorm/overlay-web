@@ -261,7 +261,7 @@ test('AutomationService.testAutomation marks run failed and emits failure on exe
   assert.deepEqual(eventBus.events[0]?.payload, {
     attributes: { execution: 'manual', failureClass: 'unknown' },
     classification: 'operational',
-    destinations: ['analytics', 'audit', 'email', 'notification'],
+    destinations: ['analytics', 'audit', 'email', 'metrics', 'notification'],
     eventId: (eventBus.events[0]?.payload as { eventId: string }).eventId,
     idempotencyKey: 'automation.failed:run_1',
     name: 'automation.failed',

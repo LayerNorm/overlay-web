@@ -101,7 +101,7 @@ test('UserService publishes a metadata-only lifecycle event only for a new user'
   assert.deepEqual(eventBus.events[0]?.payload, {
     attributes: { authProvider: 'workos' },
     classification: 'operational',
-    destinations: ['analytics', 'audit', 'email', 'notification'],
+    destinations: ['analytics', 'audit', 'email', 'metrics', 'notification'],
     eventId: (eventBus.events[0]?.payload as { eventId: string }).eventId,
     idempotencyKey: 'user.created:workos:user_123',
     name: 'user.created',
