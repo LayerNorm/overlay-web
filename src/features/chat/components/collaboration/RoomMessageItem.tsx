@@ -80,6 +80,8 @@ export type RoomMessageItemProps = {
   onOpenAttachmentPreview: (preview: AttachmentPreview) => void
   /** Briefly outlines the message after a jump from the pinned or thread list. */
   highlighted?: boolean
+  /** Consecutive messages from the same author use a compact transcript row. */
+  grouped?: boolean
 }
 
 /** Rooms do not surface draft review; agent drafts are handled in personal chat. */
@@ -120,6 +122,7 @@ export function RoomMessageItem({
   onRetrySend,
   onOpenAttachmentPreview,
   highlighted = false,
+  grouped = false,
 }: RoomMessageItemProps) {
   const { mine } = message
   const isAgent = message.authorKind === 'agent' || message.authorKind === 'model'
@@ -236,7 +239,11 @@ export function RoomMessageItem({
    * even when a teammate wrote them, which is exactly the confusion a shared
    * room cannot afford.
    */
-  const meta = (
+  const meta = grouped ? (
+    <time className={`px-1 text-[10px] text-[var(--muted-light)] opacity-0 transition-opacity group-hover/exchange:opacity-100 ${mine ? 'text-right' : 'text-left'}`}>
+      {timeLabel}
+    </time>
+  ) : (
     <div className={`flex items-center gap-2 px-1 ${mine ? 'justify-end' : ''}`}>
       <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-[var(--foreground)]">
         {isAgent ? (

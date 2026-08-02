@@ -32,6 +32,9 @@ export async function PATCH(_request: Request, context: AppApiRouteContext) {
         actorUserId: context.auth.userId,
         workspaceId: context.workspace.workspace.id,
         conversationId: await id(context),
+        sessionId: typeof context.parsedJson.sessionId === 'string'
+          ? context.parsedJson.sessionId.trim()
+          : undefined,
         status,
         typing: context.parsedJson.typing === true,
       })

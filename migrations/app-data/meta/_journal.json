@@ -274,6 +274,13 @@
       "when": 1786474800000,
       "tag": "0038_workspace_governance_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1786561200000,
+      "tag": "0039_conversation_correctness",
+      "breakpoints": true
     }
   ]
 }

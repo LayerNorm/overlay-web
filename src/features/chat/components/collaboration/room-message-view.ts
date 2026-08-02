@@ -26,6 +26,27 @@ export type RoomMessageRecord = {
   status?: 'generating' | 'completed' | 'error'
 }
 
+/** Stable ordering and optimistic reconciliation for room messages. */
+export function compareRoomMessageRecords(left: Pick<RoomMessageRecord, 'id' | 'createdAt'>, right: Pick<RoomMessageRecord, 'id' | 'createdAt'>): number {
+  return left.createdAt - right.createdAt || left.id.localeCompare(right.id)
+}
+
+export function mergeRoomMessages(
+  persisted: RoomMessageRecord[],
+  current: RoomMessageRecord[],
+): RoomMessageRecord[] {
+  const merged = new Map<string, RoomMessageRecord>()
+  for (const message of persisted) {
+    merged.set(message.clientNonce ? `nonce:${message.clientNonce}` : `id:${message.id}`, message)
+  }
+  for (const message of current) {
+    const key = message.clientNonce ? `nonce:${message.clientNonce}` : `id:${message.id}`
+    const existing = merged.get(key)
+    if (!existing || (existing.delivery && !message.delivery)) merged.set(key, message)
+  }
+  return [...merged.values()].sort(compareRoomMessageRecords)
+}
+
 /** The server appends "[Attached 2 images: a.png]" to stored content; thumbnails already say that. */
 const ATTACHMENT_SUMMARY = /\[Attached [^\]]*\]/g
 

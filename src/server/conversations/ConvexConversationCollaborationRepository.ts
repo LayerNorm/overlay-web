@@ -121,6 +121,7 @@ implements ConversationCollaborationRepository {
     markRead?: boolean
     markUnread?: boolean
     notificationLevel?: 'all' | 'mentions' | 'muted'
+    readSequence?: number
     workspaceId: string
   }) {
     return await convex.mutation<ConversationParticipant>('collaboration/directMessages:updateParticipantState', {
@@ -133,6 +134,7 @@ implements ConversationCollaborationRepository {
   async upsertPresence(args: {
     actorUserId: string
     conversationId?: string
+    sessionId?: string
     status: 'online' | 'away' | 'offline'
     typing?: boolean
     workspaceId: string

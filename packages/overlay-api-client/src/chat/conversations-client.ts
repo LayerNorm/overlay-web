@@ -316,7 +316,7 @@ export class ConversationsClient {
 
   updatePresence(
     conversationId: string,
-    body: { status: 'online' | 'away' | 'offline'; typing?: boolean },
+    body: { status: 'online' | 'away' | 'offline'; typing?: boolean; sessionId?: string },
     init?: MutationRequestInit,
   ) {
     return this.http.json<{ presence: ConversationPresence }>(
