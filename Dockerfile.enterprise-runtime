@@ -6,7 +6,6 @@ ENV NEXT_OUTPUT_MODE=standalone
 
 COPY .npmrc package.json package-lock.json ./
 COPY packages ./packages
-COPY scripts/install-git-hooks.mjs ./scripts/install-git-hooks.mjs
 RUN npm ci --include=dev --no-audit --no-fund \
   --fetch-retries=5 \
   --fetch-retry-mintimeout=20000 \
