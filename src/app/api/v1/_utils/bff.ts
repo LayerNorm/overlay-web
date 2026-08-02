@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { CapabilityCheck } from '@overlay/app-core'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import {
+  resolveAuthenticatedAppUser,
+  type AuthenticatedAppUser,
+} from '@/server/auth/app-api-auth'
 import {
   enforceRateLimits,
   getClientIp,
@@ -105,81 +108,23 @@ export async function handleBffRoute(
   if (parsedInput.error) return parsedInput.error
   const clientIp = getClientIp(request)
   const bearer = getBearerToken(request)
-  if (isApiKeyCandidate(bearer)) {
-    let apiKeyCandidateLimit: Response | null
-    try {
-      apiKeyCandidateLimit = await enforceRateLimits(
-        request,
-        API_KEY_CANDIDATE_RATE_LIMITS.map((rule) => ({ ...rule, key: clientIp })),
-      )
-    } catch (error) {
-      if (isOverlayConfigError(error)) return runtimeConfigErrorResponse(error)
-      throw error
-    }
-    if (apiKeyCandidateLimit) return apiKeyCandidateLimit
-  }
+  const apiKeyCandidateLimit = await enforceApiKeyCandidateRateLimit(request, bearer, clientIp)
+  if (apiKeyCandidateLimit) return apiKeyCandidateLimit
 
-  let auth
-  try {
-    auth = await resolveAuthenticatedAppUser(request, parsedInput.parsedJson, {
-      clientIp,
-      requiredApiKeyScopes: getRequiredApiKeyScopesForRoute(
-        request.method,
-        request.nextUrl.pathname,
-      ),
-    })
-  } catch (error) {
-    if (isOverlayConfigError(error)) return runtimeConfigErrorResponse(error)
-    throw error
-  }
-  if (!auth) {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      {
-        status: 401,
-        headers: {
-          'Cache-Control': 'no-store',
-          'WWW-Authenticate': bearer
-            ? 'Bearer error="invalid_token"'
-            : 'Bearer',
-        },
-      },
-    )
-  }
+  const authResult = await resolveBffRouteAuth(request, parsedInput.parsedJson, bearer, clientIp)
+  if (authResult instanceof Response) return authResult
+  const auth = authResult
 
-  let runtimeConfig
+  let bffSafety
   try {
-    runtimeConfig = await getOverlayRuntimeConfig()
-    if (runtimeConfig.features.apiMutationOriginGuard !== false) {
-      const originResponse = rejectCrossSiteBrowserMutation(request, auth)
-      if (originResponse) return originResponse
-    }
+    bffSafety = await resolveBffSafety(request, auth)
   } catch (error) {
     return runtimeConfigErrorResponse(error)
   }
+  if (bffSafety.originResponse) return bffSafety.originResponse
 
-  const ownerFundedOperation = getOwnerFundedOperation(
-    request.method,
-    request.nextUrl.pathname,
-  )
-  if (
-    ownerFundedOperationRequiresIdempotencyKey(ownerFundedOperation) &&
-    !request.headers.get('idempotency-key')?.trim()
-  ) {
-    logSecurityEvent('owner_funded_idempotency_missing', {
-      authType: auth.authType,
-      operation: ownerFundedOperation.id,
-      userHash: hashOperationalIdentifier('security-user:v1', auth.userId),
-    })
-    return NextResponse.json(
-      {
-        error: 'Idempotency-Key header is required for owner-funded operations',
-        code: 'idempotency_key_required',
-        operation: ownerFundedOperation.id,
-      },
-      { status: 428 },
-    )
-  }
+  const ownerFundedIdempotencyResponse = requireOwnerFundedIdempotency(request, auth)
+  if (ownerFundedIdempotencyResponse) return ownerFundedIdempotencyResponse
 
   const rateLimits = getEndpointRateLimitSpecs({
     ...(clientIp !== 'unknown'
@@ -200,26 +145,12 @@ export async function handleBffRoute(
     pathname: request.nextUrl.pathname,
     userId: auth.userId,
   })
-  if (runtimeConfig.features.apiDefaultRateLimit !== false && rateLimits.length === 0) {
-    rateLimits.push(...DEFAULT_AUTHENTICATED_ROUTE_RATE_LIMITS.map((rule) => ({
-      ...rule,
-      key: rule.bucket.endsWith(':ip') ? clientIp : auth.userId,
-    })))
-  }
+  addDefaultAuthenticatedRouteRateLimits(rateLimits, bffSafety.defaultRateLimitEnabled, clientIp, auth.userId)
   if (auth.authType === 'api-key' && auth.apiKeyId) {
     rateLimits.push({ ...API_KEY_REQUEST_RATE_LIMIT, key: auth.apiKeyId })
   }
-  if (rateLimits.length > 0) {
-    let rateLimitResponse: Response | null
-    try {
-      rateLimitResponse = await enforceRateLimits(request, rateLimits)
-    } catch (error) {
-      if (isOverlayConfigError(error)) return runtimeConfigErrorResponse(error)
-      throw error
-    }
-    if (rateLimitResponse) return rateLimitResponse
-    markRateLimitsSatisfied(request)
-  }
+  const rateLimitResponse = await enforceBffRouteRateLimits(request, rateLimits)
+  if (rateLimitResponse) return rateLimitResponse
 
   const serviceContext = {
     params: Promise.resolve({}),
@@ -241,16 +172,132 @@ export async function handleBffRoute(
     { repository: idempotencyRepository },
   )
   const standardizedResponse = await standardizePaginatedListResponse(request, response)
-  if (!SAFE_METHODS.has(request.method.toUpperCase())) {
-    await recordBffMutationAudit({
-      auth,
-      clientIp,
-      request,
-      response: standardizedResponse,
-      serverContext,
-    })
-  }
+  await recordBffMutationAuditIfNeeded({ auth, clientIp, request, response: standardizedResponse, serverContext })
   return standardizedResponse
+}
+
+async function resolveBffSafety(
+  request: NextRequest,
+  auth: NonNullable<Awaited<ReturnType<typeof resolveAuthenticatedAppUser>>>,
+): Promise<{ defaultRateLimitEnabled: boolean; originResponse: Response | null }> {
+  const runtimeConfig = await getOverlayRuntimeConfig()
+  return {
+    defaultRateLimitEnabled: runtimeConfig.features.apiDefaultRateLimit !== false,
+    originResponse: runtimeConfig.features.apiMutationOriginGuard !== false
+      ? rejectCrossSiteBrowserMutation(request, auth)
+      : null,
+  }
+}
+
+async function enforceApiKeyCandidateRateLimit(
+  request: NextRequest,
+  bearer: string | undefined,
+  clientIp: string,
+): Promise<Response | null> {
+  if (!isApiKeyCandidate(bearer)) return null
+  try {
+    return await enforceRateLimits(
+      request,
+      API_KEY_CANDIDATE_RATE_LIMITS.map((rule) => ({ ...rule, key: clientIp })),
+    )
+  } catch (error) {
+    if (isOverlayConfigError(error)) return runtimeConfigErrorResponse(error)
+    throw error
+  }
+}
+
+async function resolveBffRouteAuth(
+  request: NextRequest,
+  parsedJson: Record<string, unknown>,
+  bearer: string | undefined,
+  clientIp: string,
+): Promise<AuthenticatedAppUser | Response> {
+  try {
+    const auth = await resolveAuthenticatedAppUser(request, parsedJson, {
+      clientIp,
+      requiredApiKeyScopes: getRequiredApiKeyScopesForRoute(
+        request.method,
+        request.nextUrl.pathname,
+      ),
+    })
+    if (auth) return auth
+  } catch (error) {
+    if (isOverlayConfigError(error)) return runtimeConfigErrorResponse(error)
+    throw error
+  }
+
+  return NextResponse.json(
+    { error: 'Unauthorized' },
+    {
+      status: 401,
+      headers: {
+        'Cache-Control': 'no-store',
+        'WWW-Authenticate': bearer ? 'Bearer error="invalid_token"' : 'Bearer',
+      },
+    },
+  )
+}
+
+function requireOwnerFundedIdempotency(
+  request: NextRequest,
+  auth: AuthenticatedAppUser,
+): Response | null {
+  const operation = getOwnerFundedOperation(request.method, request.nextUrl.pathname)
+  if (!ownerFundedOperationRequiresIdempotencyKey(operation) || request.headers.get('idempotency-key')?.trim()) {
+    return null
+  }
+  logSecurityEvent('owner_funded_idempotency_missing', {
+    authType: auth.authType,
+    operation: operation.id,
+    userHash: hashOperationalIdentifier('security-user:v1', auth.userId),
+  })
+  return NextResponse.json(
+    {
+      error: 'Idempotency-Key header is required for owner-funded operations',
+      code: 'idempotency_key_required',
+      operation: operation.id,
+    },
+    { status: 428 },
+  )
+}
+
+function addDefaultAuthenticatedRouteRateLimits(
+  rateLimits: Parameters<typeof enforceRateLimits>[1],
+  enabled: boolean,
+  clientIp: string,
+  userId: string,
+): void {
+  if (!enabled || rateLimits.length > 0) return
+  rateLimits.push(...DEFAULT_AUTHENTICATED_ROUTE_RATE_LIMITS.map((rule) => ({
+    ...rule,
+    key: rule.bucket.endsWith(':ip') ? clientIp : userId,
+  })))
+}
+
+async function enforceBffRouteRateLimits(
+  request: NextRequest,
+  rateLimits: Parameters<typeof enforceRateLimits>[1],
+): Promise<Response | null> {
+  if (rateLimits.length === 0) return null
+  try {
+    const response = await enforceRateLimits(request, rateLimits)
+    if (!response) markRateLimitsSatisfied(request)
+    return response
+  } catch (error) {
+    if (isOverlayConfigError(error)) return runtimeConfigErrorResponse(error)
+    throw error
+  }
+}
+
+async function recordBffMutationAuditIfNeeded(args: {
+  auth: NonNullable<Awaited<ReturnType<typeof resolveAuthenticatedAppUser>>>
+  clientIp: string
+  request: NextRequest
+  response: Response
+  serverContext: ReturnType<typeof getOverlayServerContext>
+}): Promise<void> {
+  if (SAFE_METHODS.has(args.request.method.toUpperCase())) return
+  await recordBffMutationAudit(args)
 }
 
 async function recordBffMutationAudit(args: {
