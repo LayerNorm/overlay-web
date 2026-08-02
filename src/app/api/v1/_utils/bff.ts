@@ -21,7 +21,7 @@ import {
   runtimeConfigErrorResponse,
 } from '@/server/capabilities'
 import { parseApiBoundaryInput } from '@/server/app-api/boundary'
-import { isOverlayConfigError } from '@/server/config'
+import { getOverlayRuntimeConfig, isOverlayConfigError } from '@/server/config'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   appDataRouteUnsupportedResponse,
@@ -33,6 +33,7 @@ import {
 } from '@/server/billing/owner-funded-operations'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import { logSecurityEvent } from '@/server/observability/security-events'
+import { rejectCrossSiteBrowserMutation } from '@/server/security/browser-mutation-origin'
 
 const API_KEY_CANDIDATE_RATE_LIMITS = [
   { bucket: 'api-key-auth:candidate:ip', limit: 60, windowMs: 60_000 },
@@ -44,6 +45,13 @@ const API_KEY_REQUEST_RATE_LIMIT = {
   limit: 300,
   windowMs: 10 * 60_000,
 } as const
+
+const DEFAULT_AUTHENTICATED_ROUTE_RATE_LIMITS = [
+  { bucket: 'api:default:ip', limit: 600, windowMs: 10 * 60_000 },
+  { bucket: 'api:default:user', limit: 300, windowMs: 10 * 60_000 },
+] as const
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 export type BffRouteContext = {
   params: Promise<Record<string, string | string[]>>
@@ -67,8 +75,9 @@ export async function handleBffRoute(
   }
   let appDataCapabilities
   let idempotencyRepository
+  let serverContext!: ReturnType<typeof getOverlayServerContext>
   try {
-    const serverContext = getOverlayServerContext()
+    serverContext = getOverlayServerContext()
     appDataCapabilities = serverContext.appDataCapabilities
     idempotencyRepository = serverContext.appData.repositories.idempotency
   } catch (error) {
@@ -138,6 +147,17 @@ export async function handleBffRoute(
     )
   }
 
+  let runtimeConfig
+  try {
+    runtimeConfig = await getOverlayRuntimeConfig()
+    if (runtimeConfig.features.apiMutationOriginGuard !== false) {
+      const originResponse = rejectCrossSiteBrowserMutation(request, auth)
+      if (originResponse) return originResponse
+    }
+  } catch (error) {
+    return runtimeConfigErrorResponse(error)
+  }
+
   const ownerFundedOperation = getOwnerFundedOperation(
     request.method,
     request.nextUrl.pathname,
@@ -180,6 +200,12 @@ export async function handleBffRoute(
     pathname: request.nextUrl.pathname,
     userId: auth.userId,
   })
+  if (runtimeConfig.features.apiDefaultRateLimit !== false && rateLimits.length === 0) {
+    rateLimits.push(...DEFAULT_AUTHENTICATED_ROUTE_RATE_LIMITS.map((rule) => ({
+      ...rule,
+      key: rule.bucket.endsWith(':ip') ? clientIp : auth.userId,
+    })))
+  }
   if (auth.authType === 'api-key' && auth.apiKeyId) {
     rateLimits.push({ ...API_KEY_REQUEST_RATE_LIMIT, key: auth.apiKeyId })
   }
@@ -214,7 +240,57 @@ export async function handleBffRoute(
     async () => service(request, serviceContext),
     { repository: idempotencyRepository },
   )
-  return standardizePaginatedListResponse(request, response)
+  const standardizedResponse = await standardizePaginatedListResponse(request, response)
+  if (!SAFE_METHODS.has(request.method.toUpperCase())) {
+    await recordBffMutationAudit({
+      auth,
+      clientIp,
+      request,
+      response: standardizedResponse,
+      serverContext,
+    })
+  }
+  return standardizedResponse
+}
+
+async function recordBffMutationAudit(args: {
+  auth: NonNullable<Awaited<ReturnType<typeof resolveAuthenticatedAppUser>>>
+  clientIp: string
+  request: NextRequest
+  response: Response
+  serverContext: ReturnType<typeof getOverlayServerContext>
+}): Promise<void> {
+  const actorType = args.auth.authType === 'api-key'
+    ? 'api_key'
+    : args.auth.authType === 'service'
+      ? 'service'
+      : 'user'
+  try {
+    await args.serverContext.auditService.record({
+      action: 'api.mutation.completed',
+      actorType,
+      actorUserId: args.auth.userId,
+      ...(actorType === 'api_key' ? { actorApiKeyId: args.auth.apiKeyId } : {}),
+      ipAddress: args.clientIp,
+      metadata: {
+        method: args.request.method.toUpperCase(),
+        path: args.request.nextUrl.pathname,
+        statusCode: args.response.status,
+      },
+      outcome: args.response.ok ? 'success' : 'failure',
+      resourceId: args.request.nextUrl.pathname,
+      resourceType: 'api_route',
+    })
+  } catch (_error) {
+    // Audit infrastructure must not turn a completed customer mutation into a second,
+    // externally visible failure. The security event preserves an actionable signal.
+    logSecurityEvent('api_mutation_audit_failed', {
+      authType: args.auth.authType,
+      method: args.request.method.toUpperCase(),
+      path: args.request.nextUrl.pathname,
+      userHash: hashOperationalIdentifier('security-user:v1', args.auth.userId),
+    })
+  }
 }
 
 function getBearerToken(request: NextRequest): string | undefined {

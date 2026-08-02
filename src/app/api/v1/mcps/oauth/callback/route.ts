@@ -76,13 +76,28 @@ export async function GET(request: NextRequest) {
   }
 
   // Consuming first means a replayed state can never be used twice, even on the error paths below.
-  const repository = getOverlayServerContext().appData.repositories.mcpServers
+  const serverContext = getOverlayServerContext()
+  const repository = serverContext.appData.repositories.mcpServers
   const session = await repository.consumeOAuthSession({ sessionId: state }).catch((_error) => null)
   if (!session) {
     return NextResponse.redirect(settingsUrl({ mcpOAuth: 'error', reason: 'expired_state' }), {
       headers: NO_STORE,
     })
   }
+  await serverContext.auditService.record({
+    action: 'mcp.oauth.callback.consumed',
+    actorType: 'system',
+    actorUserId: session.userId,
+    ipAddress: getClientIp(request),
+    metadata: { surface: session.surface },
+    outcome: 'success',
+    resourceId: session.mcpServerId,
+    resourceType: 'mcp_server',
+  }).catch((error) => {
+    logger.warn('[MCP] OAuth callback audit write failed', {
+      reason: error instanceof Error ? error.message : 'unknown',
+    })
+  })
 
   if (providerError) {
     logger.warn('[MCP] OAuth provider returned an error', { providerError })

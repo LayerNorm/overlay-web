@@ -71,6 +71,8 @@ const OverlayFeatureFlagsSchema = z
     webSearch: z.boolean().optional(),
     analytics: z.boolean().optional(),
     errorReporting: z.boolean().optional(),
+    apiDefaultRateLimit: z.boolean().optional(),
+    apiMutationOriginGuard: z.boolean().optional(),
     billing: z.boolean().optional(),
     webhooks: z.boolean().optional(),
     apiKeys: z.boolean().optional(),
