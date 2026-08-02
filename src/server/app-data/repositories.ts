@@ -52,6 +52,7 @@ import {
 import {
   PostgresDurableJobRepository,
   PostgresOutboxRepository,
+  ConvexOutboxRepository,
   type DurableJobRepository,
   type OutboxRepository,
 } from '@/server/jobs'
@@ -209,7 +210,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       mcpServers: new ConvexMcpServerRepository(),
       notes: new ConvexNoteRepository(),
       onboarding: unsupportedRepository<OnboardingRepository>('OnboardingRepository'),
-      outbox: unsupportedRepository<OutboxRepository>('OutboxRepository'),
+      outbox: new ConvexOutboxRepository(),
       projects: new ConvexProjectRepository(),
       settings: unsupportedRepository<AppSettingsRepository>('AppSettingsRepository'),
       skills: new ConvexSkillRepository(),

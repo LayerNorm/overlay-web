@@ -20,6 +20,7 @@ import { createOpenTelemetryLifecycleSink } from '@/server/observability/open-te
 import { ConvexRateLimiter } from '@/server/shared/providers/convex-rate-limiter'
 import { InMemoryEventBus } from '@/server/shared/providers/in-memory-event-bus'
 import { LifecycleEventPublisher, createLifecycleAuditSink } from '@/server/lifecycle-events'
+import { createEmailLifecycleSink } from '@/server/email'
 import { InMemoryRateLimiter } from '@/server/shared/providers/in-memory-rate-limiter'
 import {
   RedisRateLimiter,
@@ -129,6 +130,9 @@ export function createOverlayServerContext(
       createLifecycleAuditSink(auditService),
       createPostHogLifecycleSink(),
       createOpenTelemetryLifecycleSink(),
+      ...(transactionalEmailEnabled(runtimeConfig)
+        ? [createEmailLifecycleSink(appData.repositories.outbox)]
+        : []),
     ],
   })
   const userService = new UserService({
@@ -400,6 +404,7 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
   const modelProvider = selectedProvider(config, 'models', config.llm.gatewayProvider)
   const vectorSearchProvider = selectedProvider(config, 'vectorSearch', capabilities.vectorSearch ? 'convex' : 'none')
   const rateLimitProvider = selectedProvider(config, 'rateLimit', config.app.deploymentEnvironment === 'onprem' ? 'memory' : 'convex')
+  const emailProvider = selectedProvider(config, 'email', config.email?.provider ?? 'none')
 
   if (authProvider === 'workos') {
     const clientId = config.auth.workos.clientId ??
@@ -470,10 +475,26 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
       issues.push('rateLimit.redis requires a TCP URL or REST URL/token pair')
     }
   }
+  if (config.features.transactionalEmail !== false && emailProvider !== 'none') {
+    if (!config.email?.from) issues.push('email.from is required when transactional email is enabled')
+    if (emailProvider === 'ses') {
+      if (!config.email?.ses.accessKeyId) issues.push('email.ses.accessKeyId is required')
+      if (!config.email?.ses.secretAccessKey) issues.push('email.ses.secretAccessKey is required')
+      if (!config.email?.ses.region) issues.push('email.ses.region is required')
+    }
+    if (emailProvider === 'smtp' && !config.email?.smtp.host) {
+      issues.push('email.smtp.host is required')
+    }
+  }
 
   if (issues.length > 0) {
     throw new OverlayConfigError('Overlay provider configuration is invalid', issues)
   }
+}
+
+function transactionalEmailEnabled(config: OverlayRuntimeConfig | null): config is OverlayRuntimeConfig {
+  if (!config || config.features.transactionalEmail === false) return false
+  return selectedProvider(config, 'email', config.email?.provider ?? 'none') !== 'none'
 }
 
 function runtimeCapabilities(config: OverlayRuntimeConfig): CapabilityCheck {

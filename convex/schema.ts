@@ -67,6 +67,10 @@ export default defineSchema({
     // include fractional cents for Daytona runtime accrual).
     // Reset to 0 whenever currentPeriodStart rolls over.
     creditsUsed: v.optional(v.number()),
+    // Additive bucketed accounting. creditsUsed remains the compatibility total.
+    allowanceUsedCents: v.optional(v.number()),
+    topUpPurchasedCents: v.optional(v.number()),
+    topUpBalanceCents: v.optional(v.number()),
     autoTopUpEnabled: v.optional(v.boolean()),
     autoTopUpAmountCents: v.optional(v.number()),
     offSessionConsentAt: v.optional(v.number()),
@@ -239,6 +243,8 @@ export default defineSchema({
     operationId: v.optional(v.string()),
     requestFingerprint: v.optional(v.string()),
     reservedCents: v.number(),
+    reservedAllowanceCents: v.optional(v.number()),
+    reservedTopUpCents: v.optional(v.number()),
     finalizedCents: v.optional(v.number()),
     providerWorkStarted: v.optional(v.boolean()),
     providerWorkCompleted: v.optional(v.boolean()),
@@ -300,6 +306,47 @@ export default defineSchema({
     .index('by_eventId', ['eventId'])
     .index('by_actorUserId_createdAt', ['actorUserId', 'createdAt'])
     .index('by_createdAt', ['createdAt']),
+
+  emailOutbox: defineTable({
+    eventId: v.string(),
+    topic: v.string(),
+    payloadJson: v.string(),
+    status: v.union(
+      v.literal('pending'),
+      v.literal('publishing'),
+      v.literal('published'),
+      v.literal('dead_letter'),
+    ),
+    attempts: v.number(),
+    maxAttempts: v.number(),
+    availableAt: v.number(),
+    dedupeKey: v.optional(v.string()),
+    leaseOwner: v.optional(v.string()),
+    leaseExpiresAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    providerMessageId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    publishedAt: v.optional(v.number()),
+    deadLetteredAt: v.optional(v.number()),
+  })
+    .index('by_eventId', ['eventId'])
+    .index('by_dedupeKey', ['dedupeKey'])
+    .index('by_status_availableAt', ['status', 'availableAt'])
+    .index('by_status_leaseExpiresAt', ['status', 'leaseExpiresAt']),
+
+  emailSuppressions: defineTable({
+    userId: v.string(),
+    reason: v.union(
+      v.literal('bounce'),
+      v.literal('complaint'),
+      v.literal('manual'),
+      v.literal('provider_suppression'),
+    ),
+    source: v.union(v.literal('admin'), v.literal('provider')),
+    suppressedAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_userId', ['userId']),
 
   daytonaWorkspaces: defineTable({
     userId: v.string(),

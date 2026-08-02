@@ -1098,6 +1098,25 @@ export const outboxEvents = pgTable('outbox_events', {
   uniqueIndex('outbox_events_dedupe_key_idx').on(table.dedupeKey),
 ])
 
+export const emailSuppressions = pgTable('email_suppressions', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  reason: text('reason')
+    .$type<'bounce' | 'complaint' | 'manual' | 'provider_suppression'>()
+    .notNull(),
+  source: text('source').$type<'admin' | 'provider'>().notNull(),
+  suppressedAt: timestamp('suppressed_at', { withTimezone: true }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('email_suppressions_suppressed_at_idx').on(table.suppressedAt),
+  check(
+    'email_suppressions_reason_check',
+    sql`${table.reason} IN ('bounce', 'complaint', 'manual', 'provider_suppression')`,
+  ),
+  check('email_suppressions_source_check', sql`${table.source} IN ('admin', 'provider')`),
+])
+
 export const scheduledTasks = pgTable('scheduled_tasks', {
   id: text('id').primaryKey(),
   jobType: text('job_type').notNull(),
@@ -1129,6 +1148,11 @@ export const usageBudgetAccounts = pgTable('usage_budget_accounts', {
     .references(() => users.id, { onDelete: 'cascade' }),
   mode: usageBudgetMode('mode').default('unlimited').notNull(),
   includedMicros: bigint('included_micros', { mode: 'number' }).default(0).notNull(),
+  institutionalGrantMicros: bigint('institutional_grant_micros', { mode: 'number' }).default(0).notNull(),
+  allowanceUsedMicros: bigint('allowance_used_micros', { mode: 'number' }).default(0).notNull(),
+  topUpPurchasedMicros: bigint('top_up_purchased_micros', { mode: 'number' }).default(0).notNull(),
+  topUpBalanceMicros: bigint('top_up_balance_micros', { mode: 'number' }).default(0).notNull(),
+  // Legacy combined grant total. Retained until every client has migrated.
   grantedMicros: bigint('granted_micros', { mode: 'number' }).default(0).notNull(),
   usedMicros: bigint('used_micros', { mode: 'number' }).default(0).notNull(),
   reservedMicros: bigint('reserved_micros', { mode: 'number' }).default(0).notNull(),
@@ -1138,6 +1162,11 @@ export const usageBudgetAccounts = pgTable('usage_budget_accounts', {
 }, (table) => [
   check('usage_budget_accounts_non_negative_check', sql`
     ${table.includedMicros} >= 0 AND
+    ${table.institutionalGrantMicros} >= 0 AND
+    ${table.allowanceUsedMicros} >= 0 AND
+    ${table.topUpPurchasedMicros} >= 0 AND
+    ${table.topUpBalanceMicros} >= 0 AND
+    ${table.topUpBalanceMicros} <= ${table.topUpPurchasedMicros} AND
     ${table.grantedMicros} >= 0 AND
     ${table.usedMicros} >= 0 AND
     ${table.reservedMicros} >= 0

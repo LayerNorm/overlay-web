@@ -59,6 +59,13 @@ import {
 } from '@/server/agent/run-act-turn'
 import { PostgresUsageRepository } from '@/server/usage'
 import { ServerProviderUsageMeter } from '@/server/billing/ServerProviderUsageMeter'
+import { AuditService, PostgresAuditRepository } from '@/server/admin'
+import { createLazyEmailProvider } from '@/server/email/createLazyEmailProvider'
+import { EmailOutboxDelivery } from '@/server/email/EmailOutboxDelivery'
+import { PostgresEmailRecipientRepository } from '@/server/email/EmailRecipientRepository'
+import { PostgresEmailSuppressionRepository } from '@/server/email/PostgresEmailSuppressionRepository'
+import { PostgresOutboxRepository } from './PostgresOutboxRepository'
+import { PostgresOutboxWorker } from './PostgresOutboxWorker'
 
 export function createPostgresRuntime(args: {
   db: OverlayPostgresDb
@@ -210,7 +217,33 @@ export function createPostgresRuntime(args: {
     workerId: args.workerId,
   })
 
-  return { automationRuns, jobs, scheduler, worker }
+  const emailOutboxWorker = createEmailOutboxWorker(args)
+
+  return { automationRuns, emailOutboxWorker, jobs, scheduler, worker }
+}
+
+function createEmailOutboxWorker(args: {
+  db: OverlayPostgresDb
+  leaseMs: number
+  runtimeConfig?: OverlayRuntimeConfig
+  workerId: string
+}): PostgresOutboxWorker | null {
+  const config = args.runtimeConfig
+  const providerName = config?.providers.email?.provider ?? config?.email?.provider ?? 'none'
+  if (!config || config.features.transactionalEmail === false || providerName === 'none') return null
+  const delivery = new EmailOutboxDelivery({
+    audit: new AuditService(new PostgresAuditRepository(args.db)),
+    config,
+    provider: createLazyEmailProvider(config),
+    recipients: new PostgresEmailRecipientRepository(args.db),
+    suppressions: new PostgresEmailSuppressionRepository(args.db),
+  })
+  return new PostgresOutboxWorker({
+    leaseMs: args.leaseMs,
+    publisher: delivery.publisher(),
+    repository: new PostgresOutboxRepository(args.db),
+    workerId: `${args.workerId}:email`,
+  })
 }
 
 function stringPayload(value: unknown): string | undefined {

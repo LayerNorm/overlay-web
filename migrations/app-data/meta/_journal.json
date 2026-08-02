@@ -141,6 +141,20 @@
       "when": 1784833200000,
       "tag": "0019_p7i_mcp_oauth",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1785708409640,
+      "tag": "0020_transactional_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1785708410640,
+      "tag": "0021_usage_buckets",
+      "breakpoints": true
     }
   ]
 }

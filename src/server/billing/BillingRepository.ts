@@ -8,6 +8,10 @@ export type BillingEntitlementsRecord = {
   budgetUsedCents: number
   budgetTotalCents: number
   budgetRemainingCents: number
+  allowanceTotalCents?: number
+  allowanceUsedCents?: number
+  allowancePercentUsed?: number
+  topUpBalanceCents?: number
   autoTopUpEnabled: boolean
   autoTopUpAmountCents: number
   autoTopUpConsentGranted: boolean
@@ -60,6 +64,10 @@ export type AdministrativeUsageRecord = {
   budgetUsedCents: number
   budgetTotalCents: number
   budgetRemainingCents: number
+  allowanceTotalCents?: number
+  allowanceUsedCents?: number
+  allowancePercentUsed?: number
+  topUpBalanceCents?: number
 }
 
 export interface BillingRepository {

@@ -24,6 +24,8 @@ import type * as billing_stripeSync from "../billing/stripeSync.js";
 import type * as billing_subscriptions from "../billing/subscriptions.js";
 import type * as chat_conversations from "../chat/conversations.js";
 import type * as crons from "../crons.js";
+import type * as email_deliveryRunner from "../email/deliveryRunner.js";
+import type * as email_outbox from "../email/outbox.js";
 import type * as files_files from "../files/files.js";
 import type * as files_lib_storageQuota from "../files/lib/storageQuota.js";
 import type * as files_notes from "../files/notes.js";
@@ -75,6 +77,8 @@ declare const fullApi: ApiFromModules<{
   "billing/subscriptions": typeof billing_subscriptions;
   "chat/conversations": typeof chat_conversations;
   crons: typeof crons;
+  "email/deliveryRunner": typeof email_deliveryRunner;
+  "email/outbox": typeof email_outbox;
   "files/files": typeof files_files;
   "files/lib/storageQuota": typeof files_lib_storageQuota;
   "files/notes": typeof files_notes;

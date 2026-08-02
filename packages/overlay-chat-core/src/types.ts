@@ -63,6 +63,10 @@ export interface Entitlements {
   budgetUsedCents?: number
   budgetTotalCents?: number
   budgetRemainingCents?: number
+  allowanceTotalCents?: number
+  allowanceUsedCents?: number
+  allowancePercentUsed?: number
+  topUpBalanceCents?: number
   autoTopUpEnabled?: boolean
   topUpAmountCents?: number
   autoTopUpAmountCents?: number
