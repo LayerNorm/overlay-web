@@ -656,6 +656,16 @@ export default defineSchema({
 
   conversations: defineTable({
     userId: v.string(),
+    // Compatibility-only fields retained for rows written during the reverted
+    // collaboration release. The restored application does not read or write
+    // them, but Convex must be able to validate existing production records.
+    workspaceId: v.optional(v.string()),
+    conversationType: v.optional(v.union(
+      v.literal('personal'),
+      v.literal('dm'),
+      v.literal('channel'),
+    )),
+    createdByPrincipalId: v.optional(v.string()),
     clientId: v.optional(v.string()),
     title: v.string(),
     projectId: v.optional(v.string()),
@@ -670,6 +680,10 @@ export default defineSchema({
     shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
     sharedAt: v.optional(v.number()),
     isAutomation: v.optional(v.boolean()),
+    dmIdentityKey: v.optional(v.string()),
+    channelSlug: v.optional(v.string()),
+    channelVisibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
+    channelTopic: v.optional(v.string()),
   }).index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_lastModified', ['userId', 'lastModified'])
@@ -680,6 +694,15 @@ export default defineSchema({
   conversationMessages: defineTable({
     conversationId: v.id('conversations'),
     userId: v.string(),
+    // Compatibility-only fields retained for rows written during the reverted
+    // collaboration release. See the equivalent note on `conversations`.
+    authorKind: v.optional(v.union(
+      v.literal('human'),
+      v.literal('agent'),
+      v.literal('model'),
+      v.literal('system'),
+    )),
+    authorPrincipalId: v.optional(v.string()),
     turnId: v.string(),
     role: v.union(v.literal('user'), v.literal('assistant')),
     mode: v.union(v.literal('ask'), v.literal('act')),
@@ -763,6 +786,10 @@ export default defineSchema({
       v.literal('error'),
     )),
     updatedAt: v.optional(v.number()),
+    clientNonce: v.optional(v.string()),
+    editedAt: v.optional(v.number()),
+    deletedAt: v.optional(v.number()),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
     createdAt: v.number(),
   }).index('by_conversationId', ['conversationId'])
     .index('by_userId', ['userId'])
