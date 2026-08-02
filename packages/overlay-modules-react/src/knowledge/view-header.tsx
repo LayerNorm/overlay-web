@@ -3,13 +3,9 @@
 import type React from 'react'
 import {
   ArrowLeft,
-  BookOpen,
   ChevronRight,
-  Files,
-  FileText,
   FolderInput,
   FolderOpen,
-  Images,
   LayoutGrid,
   LayoutList,
   Plus,
@@ -18,7 +14,6 @@ import {
   SquareMousePointer,
   Trash2,
 } from 'lucide-react'
-import { SegmentedControl } from '@overlay/ui'
 import type {
   KnowledgeFileNode as FileNode,
   KnowledgeOutputFilter as OutputFilter,
@@ -288,39 +283,6 @@ function LayoutControls({
   )
 }
 
-const FILES_CATEGORY_ITEMS: Array<{
-  id: FilesCategory
-  label: string
-  Icon: typeof BookOpen
-}> = [
-  { id: 'all', label: 'All', Icon: Files },
-  { id: 'notes', label: 'Notes', Icon: BookOpen },
-  { id: 'files', label: 'Files', Icon: FileText },
-  { id: 'outputs', label: 'Outputs', Icon: Images },
-]
-
-function FilesCategoryControls({
-  category,
-  onChange,
-}: {
-  category: FilesCategory
-  onChange: (category: FilesCategory) => void
-}) {
-  return (
-    <SegmentedControl
-      value={category}
-      options={FILES_CATEGORY_ITEMS.map(({ id, label, Icon }) => ({
-        value: id,
-        label,
-        icon: Icon,
-      }))}
-      onChange={onChange}
-      ariaLabel="File category"
-      compactLabels
-    />
-  )
-}
-
 export function KnowledgeViewHeader({
   activeFolder,
   activeTab,
@@ -574,16 +536,6 @@ export function KnowledgeViewHeader({
                 uploadMenuRef={uploadMenuRef}
               />
               </>
-            ) : null}
-            {mode === 'files' && activeTab === 'files' ? (
-              <FilesCategoryControls
-                category={filesCategory}
-                onChange={(category) => onUpdateQuery({
-                  view: category === 'all' ? null : category,
-                  file: null,
-                  folder: null,
-                })}
-              />
             ) : null}
           </div>
         </>

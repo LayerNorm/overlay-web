@@ -1,8 +1,18 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { RefreshCw, Search, ShieldCheck, WalletCards } from 'lucide-react'
-import { SegmentedControl } from '@overlay/ui'
+import {
+  BookOpen,
+  LayoutDashboard,
+  ListTree,
+  RefreshCw,
+  Scale,
+  Search,
+  ShieldCheck,
+  UsersRound,
+  WalletCards,
+  type LucideIcon,
+} from 'lucide-react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { AuthorizationAdminPanel } from '@/features/admin/authorization/AuthorizationAdminPanel'
 import { CatalogPolicyAdminPanel } from '@/features/admin/catalog/CatalogPolicyAdminPanel'
@@ -30,6 +40,14 @@ type AuditRow = {
   createdAt: number
 }
 
+type AdminSection = 'overview' | 'roles' | 'groups' | 'knowledge' | 'catalog' | 'governance'
+
+type AdminSectionOption = {
+  value: AdminSection
+  label: string
+  Icon: LucideIcon
+}
+
 export default function AdminPage() {
   const { can } = useAuthorization()
   const canViewUsage = can('usage.read')
@@ -46,7 +64,7 @@ export default function AdminPage() {
   const canViewGovernance = can('governance.read')
   const canManageGovernance = can('governance.manage')
   const canExportGovernance = can('governance.export')
-  const [section, setSection] = useState<'overview' | 'roles' | 'groups' | 'knowledge' | 'catalog' | 'governance'>('overview')
+  const [section, setSection] = useState<AdminSection>('overview')
   const [usage, setUsage] = useState<UsageRow[]>([])
   const [events, setEvents] = useState<AuditRow[]>([])
   const [userFilter, setUserFilter] = useState('')
@@ -56,13 +74,13 @@ export default function AdminPage() {
   const [busy, setBusy] = useState(false)
   const [forbidden, setForbidden] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const sections = [
-    ...(canViewUsage || canViewAudit ? [{ value: 'overview' as const, label: 'Overview' }] : []),
-    ...(canViewRoles ? [{ value: 'roles' as const, label: 'Roles' }] : []),
-    ...(canViewGroups ? [{ value: 'groups' as const, label: 'Groups' }] : []),
-    ...(canViewKnowledge ? [{ value: 'knowledge' as const, label: 'Knowledge' }] : []),
-    ...(canViewCatalog ? [{ value: 'catalog' as const, label: 'Catalog' }] : []),
-    ...(canViewGovernance ? [{ value: 'governance' as const, label: 'Governance' }] : []),
+  const sections: AdminSectionOption[] = [
+    ...(canViewUsage || canViewAudit ? [{ value: 'overview' as const, label: 'Overview', Icon: LayoutDashboard }] : []),
+    ...(canViewRoles ? [{ value: 'roles' as const, label: 'Roles', Icon: ShieldCheck }] : []),
+    ...(canViewGroups ? [{ value: 'groups' as const, label: 'Groups', Icon: UsersRound }] : []),
+    ...(canViewKnowledge ? [{ value: 'knowledge' as const, label: 'Knowledge', Icon: BookOpen }] : []),
+    ...(canViewCatalog ? [{ value: 'catalog' as const, label: 'Catalog', Icon: ListTree }] : []),
+    ...(canViewGovernance ? [{ value: 'governance' as const, label: 'Governance', Icon: Scale }] : []),
   ]
 
   const load = useCallback(async () => {
@@ -129,18 +147,34 @@ export default function AdminPage() {
   return (
     <AppScreenShell
       data-testid="admin-console"
+      sidebarBehavior="always"
+      sidebarClassName="w-12 p-1 sm:w-52 sm:p-2"
+      sidebar={(
+        <nav aria-label="Administration sections" className="flex flex-col gap-1">
+          {sections.map(({ value, label, Icon }) => (
+            <button
+              key={value}
+              type="button"
+              aria-current={section === value ? 'page' : undefined}
+              onClick={() => setSection(value)}
+              className={`flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-sm transition-colors max-sm:justify-center max-sm:px-0 ${
+                section === value
+                  ? 'bg-[var(--surface-subtle)] font-medium text-[var(--foreground)]'
+                  : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              <Icon size={16} strokeWidth={1.75} className="shrink-0" />
+              <span className="truncate max-sm:hidden">{label}</span>
+            </button>
+          ))}
+        </nav>
+      )}
       header={(
         <AppScreenHeader
           title="Administration"
           subtitle="Workspace controls"
           actions={(
             <>
-              <SegmentedControl
-                value={section}
-                options={sections}
-                onChange={setSection}
-                ariaLabel="Administration sections"
-              />
               <button
                 type="button"
                 aria-label="Refresh administration"
