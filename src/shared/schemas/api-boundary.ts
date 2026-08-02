@@ -633,6 +633,10 @@ export const webApiBoundaryDefinitions = [
 
 export const webApiExcludedRouteDefinitions = [
   {
+    routePath: '/api/v1/mcps/oauth/callback',
+    reason: 'Third-party OAuth redirect and desktop confirmation flow; it is protected by single-use state rather than the public API authentication scheme.',
+  },
+  {
     routePath: '/api/v1/extensions/[extensionId]/[...path]',
     reason: 'Extension proxy route. It is not part of the stable public web API reference.',
   },
