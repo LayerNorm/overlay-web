@@ -5,18 +5,29 @@ export interface McpServerSummary {
   transport: 'sse' | 'streamable-http'
   url: string
   enabled: boolean
-  authType: 'none' | 'bearer' | 'header'
+  authType: McpAuthType
   hasAuth?: boolean
+  /** Present only for authType 'oauth'; tokens and client secrets never reach the client. */
+  oauthStatus?: McpOAuthStatus
+  oauthClientId?: string
+  oauthIssuer?: string
+  oauthScope?: string
+  oauthConnectedAt?: number
+  oauthError?: string
   timeoutMs?: number
   projectId?: string
   defaultToolPolicy?: McpToolPolicyMode
   toolPolicies?: Record<string, McpToolPolicyMode>
   toolCatalogCount?: number
+  toolCatalogUpdatedAt?: number
+  /** Why the last tool-catalog refresh failed; the server is reachable but exposes no tools to chat. */
+  toolCatalogError?: string
   createdAt: number
   updatedAt: number
 }
 
-export type McpAuthType = 'none' | 'bearer' | 'header'
+export type McpAuthType = 'none' | 'bearer' | 'header' | 'oauth'
+export type McpOAuthStatus = 'pending' | 'connected' | 'needs_reauth'
 export type McpTransport = 'sse' | 'streamable-http'
 export type McpToolPolicyMode = 'allow' | 'approval_required' | 'deny'
 
@@ -60,4 +71,6 @@ export interface TestMcpServerResponse {
   ok: boolean
   toolCount?: number
   error?: string
+  /** The server answered 401 while unauthenticated — it likely wants OAuth. */
+  requiresAuth?: boolean
 }

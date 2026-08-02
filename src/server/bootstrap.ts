@@ -14,8 +14,12 @@ import {
 import { NoOpBillingProvider } from '@/server/billing/providers/noop-billing-provider'
 import { StripeBillingProvider } from '@/server/billing/providers/stripe-billing-provider'
 import { getOverlayRuntimeConfigSync, OverlayConfigError } from '@/server/config'
+import { logger } from '@/server/observability/logger'
+import { createPostHogLifecycleSink } from '@/server/observability/posthog-server'
+import { createOpenTelemetryLifecycleSink } from '@/server/observability/open-telemetry'
 import { ConvexRateLimiter } from '@/server/shared/providers/convex-rate-limiter'
 import { InMemoryEventBus } from '@/server/shared/providers/in-memory-event-bus'
+import { LifecycleEventPublisher, createLifecycleAuditSink } from '@/server/lifecycle-events'
 import { InMemoryRateLimiter } from '@/server/shared/providers/in-memory-rate-limiter'
 import {
   RedisRateLimiter,
@@ -111,6 +115,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   projectKnowledgeTransferService: ProjectKnowledgeTransferService
   noteRepository: NoteRepository
   apiKeyService: ApiKeyService
+  lifecycleEvents: LifecycleEventPublisher
   userService: UserService
   workspaceService: WorkspaceService
   workspaceAgentService: WorkspaceAgentService
@@ -156,6 +161,19 @@ export function createOverlayServerContext(
   })
   const memoryService = new MemoryService(appData.repositories.memories)
   const auditService = new AuditService(appData.repositories.audit)
+  const eventBus = appConfig.eventBus ?? new InMemoryEventBus()
+  const lifecycleEvents = new LifecycleEventPublisher({
+    enabled: () => runtimeConfig?.features.lifecycleEvents !== false,
+    eventBus,
+    onDeliveryFailure: ({ destination, eventName }) => {
+      logger.warn('Lifecycle event delivery failed', { destination, eventName })
+    },
+    sinks: [
+      createLifecycleAuditSink(auditService),
+      createPostHogLifecycleSink(),
+      createOpenTelemetryLifecycleSink(),
+    ],
+  })
   const authorizationService = new AuthorizationService({
     repositories: appData.repositories.authorization,
     capabilityPolicy: createAuthorizationCapabilityPolicy(
@@ -241,6 +259,7 @@ export function createOverlayServerContext(
   })
   const userService = new UserService({
     authProvider: selectedAuthProviderForUserService(runtimeConfig),
+    lifecycleEvents,
     afterUpsert: async ({ userId }) => {
       await Promise.all([
         fixedRoleAuthorizationBridge.ensureDefaultUserRole(userId),
@@ -322,7 +341,7 @@ export function createOverlayServerContext(
     vectorStore: appConfig.vectorStore ?? createVectorStore(runtimeConfig),
     llmGateway: appConfig.llmGateway ?? createLlmGateway(runtimeConfig),
     rateLimiter: collaborationRateLimiter,
-    eventBus: appConfig.eventBus ?? new InMemoryEventBus(),
+    eventBus,
     appData,
     appDataCapabilities: appData.capabilities,
     administrativeService,
@@ -341,6 +360,7 @@ export function createOverlayServerContext(
     knowledgeSearchService,
     noteRepository: appData.repositories.notes,
     apiKeyService: new ApiKeyService(appData.repositories.apiKeys),
+    lifecycleEvents,
     userService,
     workspaceService,
     workspaceAgentService,

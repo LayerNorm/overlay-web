@@ -90,6 +90,8 @@ import {
   SearchKnowledgeBaseRequest,
   CreateKnowledgeBaseGrantRequest,
   DeleteKnowledgeBaseGrantRequest,
+  McpOAuthDisconnectRequest,
+  McpOAuthStartRequest,
   McpTestRequest,
   MemoryListQuery,
   NoteListQuery,
@@ -532,6 +534,20 @@ export const webApiBoundaryDefinitions = [
     path: '/api/v1/mcps',
     schema: { query: EntityDeleteRequest, json: EntityDeleteRequest },
     summary: 'Delete an MCP server',
+    tag: 'MCP Servers',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/mcps/oauth',
+    schema: { json: McpOAuthStartRequest },
+    summary: 'Start an OAuth authorization for an MCP server',
+    tag: 'MCP Servers',
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/mcps/oauth',
+    schema: { query: McpOAuthDisconnectRequest },
+    summary: 'Disconnect OAuth for an MCP server',
     tag: 'MCP Servers',
   },
   { method: 'POST', path: '/api/v1/mcps/test', schema: { json: McpTestRequest }, summary: 'Test an MCP server', tag: 'MCP Servers' },
@@ -1027,6 +1043,10 @@ export const webApiBoundaryDefinitions = [
 ] satisfies readonly WebApiBoundaryDefinition[]
 
 export const webApiExcludedRouteDefinitions = [
+  {
+    routePath: '/api/v1/mcps/oauth/callback',
+    reason: 'Third-party OAuth redirect and desktop confirmation flow; it is protected by single-use state rather than the public API authentication scheme.',
+  },
   {
     routePath: '/api/v1/extensions/[extensionId]/[...path]',
     reason: 'Extension proxy route. It is not part of the stable public web API reference.',

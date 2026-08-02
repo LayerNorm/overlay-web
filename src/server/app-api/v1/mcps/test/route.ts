@@ -18,6 +18,7 @@ function parseTransport(value: unknown): McpServerConfig['transport'] {
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let mcpServerId: string | undefined
+  let attemptedAuthType: McpServerConfig['authType'] = 'none'
   try {
     const body = await request.json()
     const record = body as Record<string, unknown>
@@ -53,8 +54,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       timeoutMs: typeof record.timeoutMs === 'number' ? record.timeoutMs : undefined,
       defaultToolPolicy: saved?.defaultToolPolicy ?? 'allow',
       toolPolicies: saved?.toolPolicies ?? {},
+      // OAuth credentials only ever come from storage — a client cannot supply tokens here.
+      ...(saved?.authType === 'oauth'
+        ? {
+          oauthClient: saved.oauthClient,
+          oauthScope: saved.oauthScope,
+          oauthStatus: saved.oauthStatus,
+          oauthTokenVersion: saved.oauthTokenVersion,
+          oauthTokens: saved.oauthTokens,
+        }
+        : {}),
     }
 
+    attemptedAuthType = config.authType
     const tools = await discoverToolsCatalogForServer(config)
 
     if (mcpServerId) {
@@ -75,6 +87,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         tools: [],
         catalogError: message,
       }).catch((_error) => undefined)
+    }
+    // A 401 from a server we hold no OAuth session for is the signature of an OAuth-only server
+    // (Monid, for one). Say so, instead of leaving the user to guess at a bearer token.
+    const looksUnauthorized = /\b401\b|unauthor|invalid_token/i.test(message)
+    if (looksUnauthorized && attemptedAuthType !== 'oauth') {
+      return NextResponse.json({
+        ok: false,
+        error: 'This server requires authentication. If it supports OAuth, set Authentication to "OAuth (sign in with browser)" and click Connect.',
+        requiresAuth: true,
+      }, { status: 502 })
     }
     return NextResponse.json({ ok: false, error: message }, { status: 502 })
   }

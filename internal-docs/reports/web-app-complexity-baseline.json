@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-02T01:19:11.211Z",
+  "generatedAt": "2026-08-02T07:40:56.545Z",
   "budgets": {
     "maxProductionFileLoc": 500,
     "maxFunctionComplexity": 25,
@@ -42,6 +42,7 @@
     "packages/overlay-modules-react/src/notes/editor.tsx",
     "packages/overlay-modules-react/src/notes/inline-diff-extension.ts",
     "packages/overlay-workspace-contracts/src/types.ts",
+    "src/app/api/v1/_utils/bff.ts",
     "src/app/pricing/PricingClient.tsx",
     "src/components/layout/AppSidebar.tsx",
     "src/components/layout/AppSidebarInlinePanels.tsx",
@@ -51,6 +52,7 @@
     "src/features/chat/components/ChatExperience.tsx",
     "src/features/chat/components/ChatInlinePanel.tsx",
     "src/features/chat/components/DirectMessageExperience.tsx",
+    "src/features/chat/components/MarkdownMessage.tsx",
     "src/features/chat/components/chat-interface/MentionInput.tsx",
     "src/features/chat/components/chat/useChatModelSelectionController.ts",
     "src/features/chat/components/collaboration/RoomMessageItem.tsx",
@@ -88,16 +90,16 @@
     "src/components/layout/AppSidebar.tsx#AppSidebar": 1,
     "src/shared/config/overlayConfigSchema.ts#callback": 1,
     "src/features/chat/components/ChatExperience.tsx#ChatExperience": 1,
-    "src/app/api/v1/_utils/bff.ts#handleBffRoute": 1,
     "src/features/chat/components/ChatMessage.tsx#TextChatMessage": 1,
     "src/server/app-api/v1/settings/route.ts#PATCH": 1,
     "src/components/providers/AppSettingsProvider.tsx#isAppSettingsPayload": 1,
     "src/server/app-api/v1/generate-video/route.ts#start": 1,
+    "src/app/api/v1/_utils/bff.ts#handleBffRoute": 1,
     "src/shared/tools/output-types.ts#classifyOutputType": 1,
     "packages/overlay-chat-core/src/visual-sequence.ts#buildAssistantVisualSequence": 1,
+    "src/features/chat/components/DirectMessageExperience.tsx#DirectMessageExperience": 1,
     "packages/overlay-tools-core/src/mcp-schema-to-zod.ts#jsonSchemaToZod": 1,
     "src/app/app/settings/page.tsx#SettingsPage": 1,
-    "src/features/chat/components/DirectMessageExperience.tsx#DirectMessageExperience": 1,
     "src/features/chat/components/chat/useChatConversationLoader.ts#callback": 1,
     "src/server/app-api/v1/generate-image/route.ts#POST": 1,
     "src/server/bootstrap.ts#assertSelectedProviderConfig": 1,
@@ -115,10 +117,12 @@
     "src/server/app-api/v1/conversations/act/route.ts#POST": 1,
     "src/server/files/PostgresFileRepository.ts#callback": 1,
     "src/server/knowledge/mention-resolver.ts#resolveOne": 1,
-    "src/features/files/lib/export/markdown.ts#walk": 1,
+    "packages/overlay-modules-react/src/extensions/mcp.tsx#McpServerDialog": 1,
     "src/features/chat/components/collaboration/RoomMessageItem.tsx#RoomMessageItem": 1,
+    "src/features/files/lib/export/markdown.ts#walk": 1,
     "src/app/app/admin/page.tsx#AdminPage": 1,
     "packages/overlay-chat-react/src/components/transcript/ChatExchange.tsx#ChatExchange": 1,
+    "src/server/app-api/v1/conversations/route.ts#GET": 1,
     "src/server/database/convex.ts#callConvex": 1,
     "packages/overlay-chat-react/src/components/transcript/AssistantVisualBlocks.tsx#callback": 1,
     "src/features/chat/components/chat/chat-send-text.ts#sendTextTurn": 1,
@@ -353,7 +357,7 @@
     {
       "file": "src/app/api/auth/sync-profile/route.ts",
       "layer": "src/app/api other",
-      "loc": 63,
+      "loc": 43,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -631,6 +635,13 @@
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
+      "file": "src/app/api/v1/conversations/[conversationId]/threads/[threadRootMessageId]/follow/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 9,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
       "file": "src/app/api/v1/conversations/act/extension-plan/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 7,
@@ -674,6 +685,13 @@
     },
     {
       "file": "src/app/api/v1/conversations/message/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 9,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/conversations/notification-preferences/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 9,
       "classification": "keep",
@@ -900,6 +918,20 @@
       "file": "src/app/api/v1/knowledge/search/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 7,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/mcps/oauth/callback/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 238,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/mcps/oauth/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 9,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -1186,7 +1218,7 @@
     {
       "file": "src/app/api/webhooks/stripe/route.ts",
       "layer": "src/app/api other",
-      "loc": 50,
+      "loc": 51,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -1487,7 +1519,7 @@
     {
       "file": "src/app/auth/callback/page.tsx",
       "layer": "src/app routes",
-      "loc": 174,
+      "loc": 173,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -1662,14 +1694,14 @@
     {
       "file": "src/instrumentation-client.ts",
       "layer": "other",
-      "loc": 43,
+      "loc": 61,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
       "file": "src/instrumentation.ts",
       "layer": "other",
-      "loc": 25,
+      "loc": 28,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -1717,12 +1749,12 @@
     }
   ],
   "totals": {
-    "files": 1611,
-    "code": 195599,
-    "total": 216479,
-    "productionFiles": 1348,
-    "productionCode": 164787,
-    "testFiles": 263,
-    "testCode": 30812
+    "files": 1642,
+    "code": 200293,
+    "total": 221880,
+    "productionFiles": 1368,
+    "productionCode": 168543,
+    "testFiles": 274,
+    "testCode": 31750
   }
 }

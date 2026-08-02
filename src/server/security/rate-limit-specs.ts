@@ -89,6 +89,21 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'files/files:search-text:ip', limit: 120, windowMs: TEN_MINUTES },
     { bucket: 'files/files:search-text:user', limit: 60, windowMs: TEN_MINUTES },
   ],
+  // Each Connect performs discovery and possibly dynamic client registration against a
+  // user-supplied host, so it is deliberately cheap to rate limit and expensive to abuse.
+  'POST /api/v1/mcps/oauth': [
+    { bucket: 'mcps/oauth:start:ip', limit: 30, windowMs: TEN_MINUTES },
+    { bucket: 'mcps/oauth:start:user', limit: 15, windowMs: TEN_MINUTES },
+  ],
+  'DELETE /api/v1/mcps/oauth': [
+    { bucket: 'mcps/oauth:disconnect:ip', limit: 60, windowMs: TEN_MINUTES },
+    { bucket: 'mcps/oauth:disconnect:user', limit: 30, windowMs: TEN_MINUTES },
+  ],
+  // The callback is reachable without an Overlay session (the desktop browser may not have one),
+  // so it is limited by IP only — there is no authenticated user to key on.
+  'GET /api/v1/mcps/oauth/callback': [
+    { bucket: 'mcps/oauth:callback:ip', limit: 60, windowMs: TEN_MINUTES },
+  ],
 }
 
 type DynamicEndpointRateLimit = {

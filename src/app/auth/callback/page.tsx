@@ -52,8 +52,7 @@ function AuthCallbackContent() {
         window.history.replaceState(null, "", redactUrlForTelemetry(window.location.href));
       }
       posthog.capture('auth_callback_error', {
-        error: error ?? 'missing_code',
-        error_description: errorDescription ?? undefined,
+        failure_class: error ? 'provider_error' : 'missing_code',
       });
     }
   }, [code, error, errorDescription]);

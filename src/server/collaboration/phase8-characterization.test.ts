@@ -102,7 +102,7 @@ test('Phase 8 persists policy, directory identity, and export history', async ()
     'session_id',
     'workspace_presence_principal_idx',
   ]) assert.match(correctnessMigration, new RegExp(invariant))
-  assert.equal(APP_DATA_SCHEMA_VERSION, 39)
+  assert.equal(APP_DATA_SCHEMA_VERSION, 41)
 })
 
 test('Phase 8 audit export covers membership, grants, messages, runs, and approvals', () => {
