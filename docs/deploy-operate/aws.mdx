@@ -68,7 +68,7 @@ access keys.
 | --- | --- |
 | Network | At least two Availability Zones; public ALB subnets; private ECS subnets; isolated RDS/Redis subnets; approved NAT, proxy, or VPC endpoints. |
 | Compute | ECS cluster; web service with at least two tasks; worker service with at least two tasks; scheduler service; one-off migration task. |
-| Database | Encrypted Multi-AZ RDS PostgreSQL or Aurora PostgreSQL writer; separate app/auth databases and roles; `pgvector` when knowledge is enabled; automated backups and restore test. |
+| Database | Encrypted Multi-AZ RDS PostgreSQL or Aurora PostgreSQL writer; separate app/auth databases and roles; install `pgvector` before app-data migrations; automated backups and restore test. |
 | Redis | TLS ElastiCache with fail-closed application behavior; Multi-AZ automatic failover for the target pilot. |
 | Objects | Private encrypted, versioned S3 bucket; block public access; lifecycle, logging, backup/recovery, and deletion policy. |
 | Ingress | HTTPS ALB listener, healthy target group, customer DNS, ACM certificate, and WAF/edge controls required by policy. |

@@ -29,7 +29,7 @@ Use `none` plus the matching feature flag when a provider family must be disable
 | Web search | `ai-gateway`, `perplexity`, `tavily`, `none` | Search queries and result snippets | `ai-gateway` and `none` are supported. Direct `perplexity` and `tavily` are declared but rejected until adapters exist. |
 | Analytics | `posthog`, `none` | Pageviews and product events | `posthog` and `none` are supported. Set feature and provider to disabled values to avoid SDK initialization. |
 | Error reporting | `sentry`, `none` | Error events and sanitized stack/request metadata | `sentry` and `none` are supported. Set feature and provider to disabled values to avoid initialization. |
-| Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | `env` is the general runtime path. `workos-vault` exists for selected provider-key flows. AWS Secrets Manager and Vault are declared but rejected for runtime secret loading. |
+| Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | `env` is the general runtime path. `workos-vault` supports hosted BYOK flows. `aws-secrets-manager` supports BYOK provider keys when app data uses Postgres; Postgres stores only the opaque secret ARN. Vault remains declared but unsupported. |
 | Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | All declared providers are supported. Multi-instance production/on-prem deployments should use Redis with fail-closed behavior; memory is development-only. |
 
 ## Disable External Processors
