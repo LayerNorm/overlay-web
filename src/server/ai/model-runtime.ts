@@ -18,41 +18,23 @@ import {
   resolveNvidiaApiKey,
 } from '@/server/ai/gateway/nvidia-nim-openai'
 import { ByokGateway, type ByokConnection } from '@overlay/llm-gateway'
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { readByokVaultKey } from '@/server/ai/gateway/byok-vault'
+import type { ProviderConnectionRecord } from '@/server/ai/provider-connections'
 import { assertByokRuntimeConnectionAllowed } from '@/server/ai/gateway/byok-security'
 import { createByokProviderFetch } from '@/server/ai/gateway/byok-provider-fetch'
 import { isByokModelId, parseByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import type { LanguageModelV3 } from '@/server/ai/provider-types'
 
-type ByokConnectionRow = {
-  _id: string
-  userId: string
-  providerId: string
-  endpoint: string
-  vaultObjectId?: string
-  enabledModelIds: string[]
-  isDefault: boolean
-  status: string
-}
-
 async function getUserByokConnection(
   userId: string,
   connectionId: string,
-): Promise<ByokConnectionRow | null> {
-  const row = await convex.query<ByokConnectionRow>(
-    'providers/connections:getByServer',
-    { serverSecret: getInternalApiSecret(), connectionId },
-    { throwOnError: true },
-  )
-  return row?.userId === userId ? row : null
+): Promise<ProviderConnectionRecord | null> {
+  return await getOverlayServerContext().appData.repositories.providerConnections.get({ connectionId, userId })
 }
 
 export async function assertUserCanUseByokModel(
   modelId: string,
   userId: string,
-): Promise<{ connection: ByokConnectionRow; rawModelId: string }> {
+): Promise<{ connection: ProviderConnectionRecord; rawModelId: string }> {
   const parsed = parseByokModelId(modelId)
   if (!parsed) throw new Error('Invalid BYOK model id.')
   const connection = await getUserByokConnection(userId, parsed.connectionId)
@@ -71,8 +53,8 @@ export async function getLanguageModel(
   if (parsed) {
     if (!userId) throw new Error('Authenticated user required for BYOK models.')
     const { connection, rawModelId } = await assertUserCanUseByokModel(modelId, userId)
-    const apiKey = connection.vaultObjectId
-      ? await readByokVaultKey(connection.vaultObjectId)
+    const apiKey = connection.credentialRef
+      ? await getOverlayServerContext().byokCredentialStore.read(connection.credentialRef)
       : null
     const byokConnection: ByokConnection = {
       providerId: connection.providerId,

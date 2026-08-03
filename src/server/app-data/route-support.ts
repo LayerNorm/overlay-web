@@ -143,9 +143,8 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'provider-connections',
     methods: '*',
     prefixes: ['/api/v1/providers/connections'],
-    status: 'unsupported',
+    status: 'supported',
     feature: 'provider-connections',
-    reason: 'BYOK provider connections currently require Convex app-data storage.',
   },
   {
     id: 'onboarding',

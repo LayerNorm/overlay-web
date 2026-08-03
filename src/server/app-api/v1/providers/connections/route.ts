@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
-import {
-  writeByokVaultKey,
-  updateByokVaultKey,
-  deleteByokVaultKey,
-  byokVaultKeyName,
-  type ByokVaultKeyContext,
-} from '@/server/ai/gateway/byok-vault'
+import type { ByokCredentialContext } from '@/server/ai/gateway/byok-credential-store'
+import type { ProviderConnectionRepository } from '@/server/ai/provider-connections'
 import { getGatewayLanguageCatalog } from '@/server/ai/gateway/gateway-catalog'
 import { getByokPreset } from '@overlay/llm-gateway'
 import {
@@ -28,7 +22,7 @@ const MAX_CONNECTIONS_PER_USER = 20
 const MAX_DISPLAY_NAME_LENGTH = 80
 const MAX_API_KEY_LENGTH = 16_384
 const MAX_MODEL_IDS = 400
-// Leaves room for `byok/{convexConnectionId}/` within the 160-character app model limit.
+// Leaves room for `byok/{connectionId}/` within the 160-character app model limit.
 const MAX_MODEL_ID_LENGTH = 100
 const MAX_DISCOVERY_JSON_LENGTH = 1_000_000
 const MAX_LAST_ERROR_LENGTH = 500
@@ -116,7 +110,7 @@ function defaultGatewayNeedsSeed(connections: readonly ByokConnectionRow[]): boo
 
 async function ensureDefaultGatewayConnection(
   userId: string,
-  serverSecret: string,
+  repository: ProviderConnectionRepository,
   connections: readonly ByokConnectionRow[],
 ): Promise<ByokConnectionRow[]> {
   if (!defaultGatewayNeedsSeed(connections)) return [...connections]
@@ -126,23 +120,18 @@ async function ensureDefaultGatewayConnection(
 
   const gatewayModels = await getGatewayLanguageCatalog().catch((_error) => [])
   const discoveredModels = overlayProviderDiscoveryModels(gatewayModels)
-  const seeded = await convex.mutation<ByokConnectionRow>(
-    'providers/connections:ensureDefaultGatewayByServer',
-    {
-      serverSecret,
-      userId,
-      endpoint: preset.defaultBaseURL,
-      displayName: preset.label,
-      enabledModelIds: discoveredModels.map((model) => model.id),
-      ...(discoveredModels.length > 0
-        ? {
-            discoveredModelsJson: JSON.stringify({ data: discoveredModels }),
-            discoveredAt: Date.now(),
-          }
-        : {}),
-    },
-    { throwOnError: true },
-  )
+  const seeded = await repository.ensureDefaultGateway({
+    userId,
+    endpoint: preset.defaultBaseURL,
+    displayName: preset.label,
+    enabledModelIds: discoveredModels.map((model) => model.id),
+    ...(discoveredModels.length > 0
+      ? {
+          discoveredModelsJson: JSON.stringify({ data: discoveredModels }),
+          discoveredAt: Date.now(),
+        }
+      : {}),
+  })
   if (!seeded) return [...connections]
 
   return [
@@ -151,11 +140,11 @@ async function ensureDefaultGatewayConnection(
   ]
 }
 
-function buildVaultContext(
+function buildCredentialContext(
   userId: string,
   providerId: string,
   connectionId?: string,
-): ByokVaultKeyContext {
+): ByokCredentialContext {
   return {
     purpose: 'byok-provider-key',
     userId,
@@ -168,20 +157,12 @@ function buildVaultContext(
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
-    const serverSecret = getInternalApiSecret()
-
-    const connections = await convex.query<ByokConnectionRow[]>(
-      'providers/connections:listPublicByServer',
-      {
-        serverSecret,
-        userId: auth.userId,
-      },
-      { throwOnError: true },
-    )
+    const repository = getOverlayServerContext().appData.repositories.providerConnections
+    const connections = await repository.listPublic({ userId: auth.userId })
     const seededConnections = await ensureDefaultGatewayConnection(
       auth.userId,
-      serverSecret,
-      connections || [],
+      repository,
+      connections,
     )
     const data = sortConnections(seededConnections)
     return NextResponse.json({ data, hasMore: false, total: data.length })
@@ -193,7 +174,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
 // POST /api/v1/providers/connections — create a new BYOK provider connection
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
-  let pendingVaultObjectId: string | undefined
+  let pendingCredentialRef: string | undefined
   try {
     if (!context.requestIdempotencyKey) {
       return NextResponse.json(
@@ -206,7 +187,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
     }
     const { auth } = context
-    const serverSecret = getInternalApiSecret()
+    const serverContext = getOverlayServerContext()
+    const repository = serverContext.appData.repositories.providerConnections
 
     const {
       providerId,
@@ -260,43 +242,30 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'Invalid enabledModelIds' }, { status: 400 })
     }
 
-    const existingConnections = await convex.query<ByokConnectionRow[]>(
-      'providers/connections:listPublicByServer',
-      { serverSecret, userId: auth.userId },
-      { throwOnError: true },
-    )
-    if ((existingConnections?.length ?? 0) >= MAX_CONNECTIONS_PER_USER) {
+    if (await repository.count({ userId: auth.userId }) >= MAX_CONNECTIONS_PER_USER) {
       return NextResponse.json({ error: 'Provider connection limit reached' }, { status: 409 })
     }
 
-    // 1. Write the API key to WorkOS Vault with an up-front unique key name.
-    const vaultKeyName = byokVaultKeyName(auth.userId, crypto.randomUUID())
-
+    // 1. Write the API key to the configured secret store before creating
+    // metadata. A failed metadata write is compensated below.
     if (safeApiKey) {
-      pendingVaultObjectId = await writeByokVaultKey(
-        vaultKeyName,
-        safeApiKey,
-        buildVaultContext(auth.userId, providerId),
-      )
+      pendingCredentialRef = await serverContext.byokCredentialStore.write({
+        apiKey: safeApiKey,
+        context: buildCredentialContext(auth.userId, providerId),
+      })
     }
 
-    // 2. Create the Convex record
-    const connectionId = await convex.mutation<string>(
-      'providers/connections:createByServer',
-      {
-        serverSecret,
-        userId: auth.userId,
-        providerId,
-        endpoint: resolvedEndpoint,
-        displayName: safeDisplayName,
-        vaultKeyName,
-        vaultObjectId: pendingVaultObjectId,
-        enabledModelIds: safeEnabledModelIds ?? [],
-        isDefault: preset.isDefault,
-        isDeletable: preset.isDeletable,
-      },
-      { throwOnError: true },
-    )
+    // 2. Store non-secret metadata in the selected app-data backend.
+    const connectionId = await repository.create({
+      userId: auth.userId,
+      providerId,
+      endpoint: resolvedEndpoint,
+      displayName: safeDisplayName,
+      credentialRef: pendingCredentialRef,
+      enabledModelIds: safeEnabledModelIds ?? [],
+      isDefault: preset.isDefault,
+      isDeletable: preset.isDeletable,
+    })
 
     if (!connectionId) {
       return NextResponse.json(
@@ -305,10 +274,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
 
-    pendingVaultObjectId = undefined
+    pendingCredentialRef = undefined
     return NextResponse.json({ id: connectionId })
   } catch (error) {
-    if (pendingVaultObjectId) await deleteByokVaultKey(pendingVaultObjectId)
+    if (pendingCredentialRef) {
+      await getOverlayServerContext().byokCredentialStore.delete(pendingCredentialRef).catch((_error) => undefined)
+    }
     logger.error('[BYOK] Failed to create provider connection', summarizeErrorForLog(error))
     return NextResponse.json({ error: 'Failed to create provider connection' }, { status: 500 })
   }
@@ -316,14 +287,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
 // PATCH /api/v1/providers/connections — update an existing connection
 export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
-  let newlyCreatedVaultObjectId: string | undefined
+  let newlyCreatedCredentialRef: string | undefined
   try {
     const body = await request.json().catch((_error) => null)
     if (!isRecord(body)) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
     }
     const { auth } = context
-    const serverSecret = getInternalApiSecret()
+    const serverContext = getOverlayServerContext()
+    const repository = serverContext.appData.repositories.providerConnections
 
     const {
       connectionId,
@@ -342,26 +314,11 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'connectionId is required' }, { status: 400 })
     }
 
-    // Fetch the existing connection to verify ownership and get vault info
-    const existing = await convex.query<{
-      userId: string
-      vaultObjectId?: string
-      providerId: string
-      endpoint: string
-      displayName?: string
-      isDefault: boolean
-    } | null>(
-      'providers/connections:getByServer',
-      { serverSecret, connectionId },
-      { throwOnError: true },
-    )
+    // The repository scopes the lookup to the authenticated user so a caller
+    // never learns whether another user's connection ID exists.
+    const existing = await repository.get({ connectionId, userId: auth.userId })
 
     if (!existing) {
-      return NextResponse.json({ error: 'Connection not found' }, { status: 404 })
-    }
-
-    // Verify the connection belongs to the authenticated user
-    if (existing.userId !== auth.userId) {
       return NextResponse.json({ error: 'Connection not found' }, { status: 404 })
     }
 
@@ -426,44 +383,43 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       : safeEnabledModelIds
 
     // Rotate only after every metadata field has passed validation.
-    let vaultObjectId: string | undefined
+    let credentialRef: string | undefined
     if (safeApiKey) {
-      if (existing.vaultObjectId) {
-        await updateByokVaultKey(existing.vaultObjectId, safeApiKey)
-        vaultObjectId = existing.vaultObjectId
+      if (existing.credentialRef) {
+        await serverContext.byokCredentialStore.update({
+          credentialRef: existing.credentialRef,
+          apiKey: safeApiKey,
+        })
+        credentialRef = existing.credentialRef
       } else {
-        const vaultKeyName = byokVaultKeyName(auth.userId, connectionId)
-        vaultObjectId = await writeByokVaultKey(
-          vaultKeyName,
-          safeApiKey,
-          buildVaultContext(auth.userId, existing.providerId, connectionId),
-        )
-        newlyCreatedVaultObjectId = vaultObjectId
+        credentialRef = await serverContext.byokCredentialStore.write({
+          apiKey: safeApiKey,
+          context: buildCredentialContext(auth.userId, existing.providerId, connectionId),
+        })
+        newlyCreatedCredentialRef = credentialRef
       }
     }
 
-    await convex.mutation(
-      'providers/connections:updateByServer',
-      {
-        serverSecret,
-        connectionId,
-        ...(safeDisplayName !== undefined ? { displayName: safeDisplayName } : {}),
-        ...(endpointResolution.endpoint !== undefined ? { endpoint: endpointResolution.endpoint } : {}),
-        ...(vaultObjectId !== undefined ? { vaultObjectId } : {}),
-        ...(effectiveEnabledModelIds !== undefined ? { enabledModelIds: effectiveEnabledModelIds } : {}),
-        ...(safeDiscoveredModelsJson !== undefined ? { discoveredModelsJson: safeDiscoveredModelsJson } : {}),
-        ...(discoveredAt !== undefined ? { discoveredAt } : {}),
-        ...(effectiveStatus !== undefined ? { status: effectiveStatus } : {}),
-        ...(lastError !== undefined ? { lastError } : {}),
-        ...(lastTestedAt !== undefined ? { lastTestedAt } : {}),
-      },
-      { throwOnError: true },
-    )
+    await repository.update({
+      connectionId,
+      userId: auth.userId,
+      ...(safeDisplayName !== undefined ? { displayName: safeDisplayName } : {}),
+      ...(endpointResolution.endpoint !== undefined ? { endpoint: endpointResolution.endpoint } : {}),
+      ...(credentialRef !== undefined ? { credentialRef } : {}),
+      ...(effectiveEnabledModelIds !== undefined ? { enabledModelIds: effectiveEnabledModelIds } : {}),
+      ...(safeDiscoveredModelsJson !== undefined ? { discoveredModelsJson: safeDiscoveredModelsJson } : {}),
+      ...(discoveredAt !== undefined ? { discoveredAt } : {}),
+      ...(effectiveStatus !== undefined ? { status: effectiveStatus } : {}),
+      ...(lastError !== undefined ? { lastError } : {}),
+      ...(lastTestedAt !== undefined ? { lastTestedAt } : {}),
+    })
 
-    newlyCreatedVaultObjectId = undefined
+    newlyCreatedCredentialRef = undefined
     return NextResponse.json({ success: true })
   } catch (error) {
-    if (newlyCreatedVaultObjectId) await deleteByokVaultKey(newlyCreatedVaultObjectId)
+    if (newlyCreatedCredentialRef) {
+      await getOverlayServerContext().byokCredentialStore.delete(newlyCreatedCredentialRef).catch((_error) => undefined)
+    }
     logger.error('[BYOK] Failed to update provider connection', summarizeErrorForLog(error))
     return NextResponse.json({ error: 'Failed to update provider connection' }, { status: 500 })
   }
@@ -473,30 +429,17 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
 export async function DELETE(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
-    const serverSecret = getInternalApiSecret()
+    const serverContext = getOverlayServerContext()
+    const repository = serverContext.appData.repositories.providerConnections
 
     const connectionId = request.nextUrl.searchParams.get('connectionId')
     if (!connectionId || !CONNECTION_ID_PATTERN.test(connectionId)) {
       return NextResponse.json({ error: 'connectionId is required' }, { status: 400 })
     }
 
-    // Fetch the connection to get the vault object ID for cleanup
-    const existing = await convex.query<{
-      userId: string
-      vaultObjectId?: string
-      isDeletable: boolean
-    } | null>(
-      'providers/connections:getByServer',
-      { serverSecret, connectionId },
-      { throwOnError: true },
-    )
+    const existing = await repository.get({ connectionId, userId: auth.userId })
 
     if (!existing) {
-      return NextResponse.json({ error: 'Connection not found' }, { status: 404 })
-    }
-
-    // Verify the connection belongs to the authenticated user
-    if (existing.userId !== auth.userId) {
       return NextResponse.json({ error: 'Connection not found' }, { status: 404 })
     }
 
@@ -507,15 +450,14 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
       )
     }
 
-    // Remove authorization metadata first. Vault cleanup is best-effort after
-    // the connection is no longer reachable by runtime model routing.
-    await convex.mutation(
-      'providers/connections:deleteByServer',
-      { serverSecret, connectionId },
-      { throwOnError: true },
-    )
-    if (existing.vaultObjectId) {
-      await deleteByokVaultKey(existing.vaultObjectId)
+    // Delete the external credential first. If AWS rejects that call, metadata
+    // remains reachable for a safe retry instead of orphaning a live API key.
+    if (existing.credentialRef) {
+      await serverContext.byokCredentialStore.delete(existing.credentialRef)
+    }
+    const removed = await repository.remove({ connectionId, userId: auth.userId })
+    if (!removed) {
+      return NextResponse.json({ error: 'Connection not found' }, { status: 404 })
     }
 
     return NextResponse.json({ success: true })

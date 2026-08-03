@@ -27,6 +27,7 @@ export interface AccountDataDeletionCounts {
   notes: number
   onboardingState: number
   projects: number
+  providerConnections: number
   r2UploadIntents: number
   skills: number
   userSettings: number

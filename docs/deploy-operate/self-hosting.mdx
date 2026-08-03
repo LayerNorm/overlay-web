@@ -219,7 +219,7 @@ Enterprise provider matrix:
 | Web search | `ai-gateway`, `perplexity`, `tavily`, `none` | Search queries and result snippets | Search/model provider policy | `ai-gateway` and `none` supported. Direct `perplexity` and `tavily` are declared but rejected until adapters exist. |
 | Analytics | `posthog`, `none` | Pageviews and product events | PostHog project region | Supported. Set analytics feature/provider to `false`/`none` to avoid SDK initialization and capture. |
 | Error reporting | `sentry`, `none` | Error events and sanitized stack/request metadata | Sentry project region | Supported. Set error reporting feature/provider to `false`/`none` to avoid initialization and capture. |
-| Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | Secret manager region | `env` supported; WorkOS vault-backed provider keys exist for selected flows. AWS Secrets Manager and Vault are declared but rejected for runtime secret loading. |
+| Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | Secret manager region | `env` and WorkOS vault-backed provider keys are supported for hosted flows. In Postgres mode, BYOK provider keys use AWS Secrets Manager when `providers.secrets.provider="aws-secrets-manager"`; app-data stores only the opaque secret ARN. Vault remains declared but unsupported. |
 | Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | App/database region | All declared providers are supported. Use Redis with fail-closed behavior for multi-instance production/on-prem deployments; memory is development-only. |
 
 ### Postgres app-data setup

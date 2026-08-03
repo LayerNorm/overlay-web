@@ -33,6 +33,10 @@ import { R2ObjectStore } from '@/server/storage/providers/r2-object-store'
 import { S3CompatibleObjectStore } from '@/server/storage/providers/s3-compatible-object-store'
 import type { AppDataCapabilities } from '@/server/app-data/capabilities'
 import { createAppDataContext, type AppDataContext } from '@/server/app-data/repositories'
+import {
+  createByokCredentialStore,
+  type ByokCredentialStore,
+} from '@/server/ai/gateway/byok-credential-store'
 import { createActUsagePolicy, type ActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import {
   createGenerationUsagePolicy,
@@ -69,6 +73,7 @@ import { deriveOverlayCapabilities as resolveOverlayCapabilities } from '@overla
 export interface OverlayServerContext extends OverlayProviderContext {
   appData: AppDataContext
   appDataCapabilities: AppDataCapabilities
+  byokCredentialStore: ByokCredentialStore
   administrativeService: AdministrativeService
   auditService: AuditService
   chatUsagePolicy: ActUsagePolicy
@@ -103,6 +108,7 @@ export function createOverlayServerContext(
     assertSelectedProviderConfig(runtimeConfig)
   }
   const appData = createAppDataContext(runtimeConfig)
+  const byokCredentialStore = createByokCredentialStore(runtimeConfig)
   const chatUsagePolicy = createActUsagePolicy({
     appDataProvider: appData.capabilities.provider,
     repository: appData.repositories.conversations,
@@ -156,6 +162,7 @@ export function createOverlayServerContext(
     eventBus,
     appData,
     appDataCapabilities: appData.capabilities,
+    byokCredentialStore,
     administrativeService,
     auditService,
     chatUsagePolicy,

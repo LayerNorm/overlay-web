@@ -377,6 +377,33 @@ test('OverlayRuntimeConfigSchema accepts configured Postgres database provider',
   assert.equal(parsed.database.postgres.connectionString, 'postgres://overlay:secret@db.internal/overlay')
 })
 
+test('OverlayRuntimeConfigSchema accepts AWS Secrets Manager for Postgres BYOK', () => {
+  const parsed = OverlayRuntimeConfigSchema.parse({
+    ...minimalSaasConfig,
+    billing: { provider: 'none', stripe: {} },
+    capabilities: {
+      ...minimalSaasConfig.capabilities,
+      billing: false,
+      vectorSearch: false,
+    },
+    database: {
+      ...minimalSaasConfig.database,
+      provider: 'postgres',
+      postgres: {
+        connectionString: 'postgres://overlay:secret@db.internal/overlay',
+        sslMode: 'require',
+      },
+    },
+    providers: {
+      database: { provider: 'postgres' },
+      secrets: { provider: 'aws-secrets-manager' },
+      vectorSearch: { provider: 'none' },
+    },
+  })
+
+  assert.equal(parsed.providers.secrets?.provider, 'aws-secrets-manager')
+})
+
 test('OverlayRuntimeConfigSchema accepts fail-closed Redis rate limiting for on-prem', () => {
   const parsed = OverlayRuntimeConfigSchema.parse({
     ...minimalSaasConfig,

@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { readByokVaultKey } from '@/server/ai/gateway/byok-vault'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { createByokProviderFetch } from '@/server/ai/gateway/byok-provider-fetch'
 import { getGatewayLanguageCatalog } from '@/server/ai/gateway/gateway-catalog'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
 import { getByokPreset } from '@overlay/llm-gateway'
 import {
@@ -86,7 +84,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
 
     const { connectionId, providerId, endpoint, apiKey } = body
-    const serverSecret = getInternalApiSecret()
+    const serverContext = getOverlayServerContext()
     let resolvedProviderId = typeof providerId === 'string' ? providerId : ''
     let resolvedEndpoint = ''
     let resolvedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
@@ -102,19 +100,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
 
     if (typeof connectionId === 'string' && connectionId) {
-      const existing = await convex.query<{
-        userId: string
-        providerId: string
-        endpoint: string
-        vaultObjectId?: string
-        isDefault: boolean
-      } | null>(
-        'providers/connections:getByServer',
-        { serverSecret, connectionId },
-        { throwOnError: true },
-      )
+      const existing = await serverContext.appData.repositories.providerConnections.get({
+        connectionId,
+        userId: context.auth.userId,
+      })
 
-      if (!existing || existing.userId !== context.auth.userId) {
+      if (!existing) {
         return NextResponse.json({ error: 'Connection not found' }, { status: 404 })
       }
 
@@ -145,8 +136,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       } else {
         resolvedEndpoint = existing.endpoint
       }
-      if (!resolvedApiKey && existing.vaultObjectId) {
-        resolvedApiKey = await readByokVaultKey(existing.vaultObjectId) ?? ''
+      if (!resolvedApiKey && existing.credentialRef) {
+        resolvedApiKey = await serverContext.byokCredentialStore.read(existing.credentialRef) ?? ''
       }
     } else {
       if (!resolvedProviderId) {

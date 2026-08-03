@@ -97,6 +97,11 @@ import {
   type McpServerRepository,
   type SkillRepository,
 } from '@/server/extensions'
+import {
+  ConvexProviderConnectionRepository,
+  PostgresProviderConnectionRepository,
+  type ProviderConnectionRepository,
+} from '@/server/ai/provider-connections'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -119,6 +124,7 @@ export interface AppDataRepositories {
   notes: NoteRepository
   onboarding: OnboardingRepository
   outbox: OutboxRepository
+  providerConnections: ProviderConnectionRepository
   projects: ProjectRepository
   settings: AppSettingsRepository
   skills: SkillRepository
@@ -176,6 +182,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         notes: new PostgresNoteRepository(db),
         onboarding: new PostgresOnboardingRepository(db),
         outbox: new PostgresOutboxRepository(db),
+        providerConnections: new PostgresProviderConnectionRepository(db),
         projects: new PostgresProjectRepository(db),
         settings: new PostgresAppSettingsRepository(db),
         skills: new PostgresSkillRepository(db),
@@ -210,6 +217,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       notes: new ConvexNoteRepository(),
       onboarding: unsupportedRepository<OnboardingRepository>('OnboardingRepository'),
       outbox: unsupportedRepository<OutboxRepository>('OutboxRepository'),
+      providerConnections: new ConvexProviderConnectionRepository(),
       projects: new ConvexProjectRepository(),
       settings: unsupportedRepository<AppSettingsRepository>('AppSettingsRepository'),
       skills: new ConvexSkillRepository(),

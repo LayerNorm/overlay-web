@@ -534,7 +534,6 @@ export const OverlayRuntimeConfigSchema = z
       tavily: 'Tavily web search is declared but not implemented. Use webSearch.provider=ai-gateway or none.',
     })
     addUnsupportedProviderIssue(ctx, ['providers', 'secrets', 'provider'], selectedProviders.secrets, {
-      'aws-secrets-manager': 'AWS Secrets Manager is declared but not implemented for runtime secret loading. Use secrets.provider=env or workos-vault.',
       vault: 'HashiCorp Vault is declared but not implemented for runtime secret loading. Use secrets.provider=env or workos-vault.',
     })
     if (selectedProviders.rateLimit === 'redis') {
