@@ -64,12 +64,7 @@ export default function SettingsPage() {
     () => resolveOverlayAppShellConfig(overlayAppConfig, { capabilities }),
     [capabilities],
   )
-  const sections = useMemo(
-    () => appShell.settingsSections.filter(
-      (candidate) => candidate.id !== 'providers' || appDataCapabilities.provider === 'convex',
-    ),
-    [appDataCapabilities.provider, appShell.settingsSections],
-  )
+  const sections = appShell.settingsSections
   const settingsPanels = appShell.settingsPanels
   const defaultSectionId = sections[0]?.id ?? 'general'
   const sectionIds = useMemo(() => new Set<string>(sections.map((s) => s.id)), [sections])
