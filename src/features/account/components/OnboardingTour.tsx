@@ -118,6 +118,8 @@ interface Props {
   onSkip: () => void
   onDone: () => void
   isClosing?: boolean
+  memoryEnabled?: boolean
+  integrationsEnabled?: boolean
 }
 
 const PADDING = 10
@@ -272,6 +274,8 @@ export function OnboardingTour({
   onSkip,
   onDone,
   isClosing = false,
+  memoryEnabled = true,
+  integrationsEnabled = true,
 }: Props) {
   const router = useRouter()
   const step = steps[currentStep]
@@ -472,6 +476,17 @@ export function OnboardingTour({
     setPostTourPhase('connectors')
   }, [])
 
+  const finishImportStep = useCallback(() => {
+    if (integrationsEnabled) goToConnectorsStep()
+    else finishPostTour()
+  }, [finishPostTour, goToConnectorsStep, integrationsEnabled])
+
+  const beginPostTour = useCallback(() => {
+    if (memoryEnabled) setPostTourPhase('import-memories')
+    else if (integrationsEnabled) setPostTourPhase('connectors')
+    else finishPostTour()
+  }, [finishPostTour, integrationsEnabled, memoryEnabled])
+
   const saveImportedMemories = useCallback(async () => {
     const text = importPaste.trim()
     if (!text || isImportSaving) return
@@ -488,16 +503,16 @@ export function OnboardingTour({
         setImportError((err as { error?: string }).error ?? 'Failed to save memories')
         return
       }
-      goToConnectorsStep()
+      finishImportStep()
     } finally {
       setIsImportSaving(false)
     }
-  }, [importPaste, isImportSaving, goToConnectorsStep])
+  }, [importPaste, isImportSaving, finishImportStep])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (postTourPhase === 'import-memories') {
-        if (e.key === 'Escape') goToConnectorsStep()
+        if (e.key === 'Escape') finishImportStep()
         return
       }
       if (postTourPhase === 'connectors') {
@@ -508,7 +523,7 @@ export function OnboardingTour({
       if (e.key === 'ArrowRight' || e.key === 'Enter') {
         if (currentStep < steps.length - 1) onNext()
         else {
-          setPostTourPhase('import-memories')
+          beginPostTour()
         }
       }
     }
@@ -520,8 +535,9 @@ export function OnboardingTour({
     onNext,
     onSkip,
     postTourPhase,
-    goToConnectorsStep,
+    finishImportStep,
     finishPostTour,
+    beginPostTour,
   ])
 
   if (!step) return null
@@ -530,7 +546,7 @@ export function OnboardingTour({
     return (
       <div
         className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 p-4"
-        onClick={(e) => { if (e.target === e.currentTarget) goToConnectorsStep() }}
+        onClick={(e) => { if (e.target === e.currentTarget) finishImportStep() }}
       >
         <div
           role="dialog"
@@ -544,7 +560,7 @@ export function OnboardingTour({
             </h2>
             <button
               type="button"
-              onClick={goToConnectorsStep}
+              onClick={finishImportStep}
               className="rounded p-0.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
               aria-label="Skip import"
             >
@@ -606,7 +622,7 @@ export function OnboardingTour({
           </div>
 
           <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
-            <button type="button" onClick={goToConnectorsStep} className={DIALOG_SECONDARY_CLASS}>
+            <button type="button" onClick={finishImportStep} className={DIALOG_SECONDARY_CLASS}>
               Skip
             </button>
             <button
@@ -842,7 +858,7 @@ export function OnboardingTour({
               )}
               <button
                 type="button"
-                onClick={isLast ? () => setPostTourPhase('import-memories') : onNext}
+                onClick={isLast ? beginPostTour : onNext}
                 className="flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-4 py-1.5 text-sm font-medium text-[var(--background)]"
               >
                 {isLast ? (

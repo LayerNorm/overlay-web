@@ -48,3 +48,36 @@ test('does not apply origin checks to safe methods', () => {
     null,
   )
 })
+
+test('allows the configured public app origin behind a trusted reverse proxy', () => {
+  const proxiedRequest = new NextRequest('http://127.0.0.1:3000/api/v1/automations', {
+    method: 'POST',
+    headers: {
+      origin: 'https://overlay.example.com',
+      'sec-fetch-site': 'same-origin',
+    },
+  })
+
+  assert.equal(
+    rejectCrossSiteBrowserMutation(
+      proxiedRequest,
+      sessionAuth,
+      'https://overlay.example.com',
+    ),
+    null,
+  )
+  assert.equal(
+    rejectCrossSiteBrowserMutation(
+      new NextRequest(proxiedRequest.url, {
+        method: 'POST',
+        headers: {
+          origin: 'https://attacker.test',
+          'sec-fetch-site': 'same-origin',
+        },
+      }),
+      sessionAuth,
+      'https://overlay.example.com',
+    )?.status,
+    403,
+  )
+})

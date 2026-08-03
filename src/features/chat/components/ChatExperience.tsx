@@ -172,7 +172,7 @@ export default function ChatExperience({
     revision: gatewayCatalogRevision,
   } = useGatewayModelCatalog({ enabled: !isPublicShowcase })
   const { connections: byokConnections, isLoading: byokModelsLoading } = useByokModels({
-    enabled: !isPublicShowcase && appDataCapabilities.provider === 'convex',
+    enabled: !isPublicShowcase && capabilities.modelRouting,
   })
   const modelCatalogVersion = useMemo(
     () => `${gatewayCatalogRevision}:${byokConnections.map((connection) => [

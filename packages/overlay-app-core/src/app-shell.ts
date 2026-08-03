@@ -70,7 +70,7 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
 
 export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
   { id: 'chat', href: '/app/chat', label: 'Chat', icon: 'message-square', requiredCapabilities: ['chat'] },
-  { id: 'files', href: '/app/files', label: 'Files', icon: 'file-text', requiredCapabilities: ['files', 'knowledge'] },
+  { id: 'files', href: '/app/files', label: 'Files', icon: 'file-text', requiredCapabilities: ['files'] },
   {
     id: 'extensions',
     href: '/app/tools',

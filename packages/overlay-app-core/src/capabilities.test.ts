@@ -54,6 +54,14 @@ test('resolveOverlayAppShellConfig exposes webhook settings when enabled', () =>
   assert.equal(shell.settingsPanels.some((item) => item.id === 'webhooks'), true)
 })
 
+test('resolveOverlayAppShellConfig exposes files without requiring knowledge services', () => {
+  const shell = resolveOverlayAppShellConfig(undefined, {
+    capabilities: { files: true, knowledge: false },
+  })
+
+  assert.equal(shell.navigation.some((item) => item.id === 'files'), true)
+})
+
 test('redacted capability bootstrap payload exposes capabilities without secrets', () => {
   const shell = resolveOverlayAppShellConfig(undefined, {
     capabilities: {

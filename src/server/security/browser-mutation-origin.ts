@@ -16,6 +16,7 @@ type BrowserMutationAuth = {
 export function rejectCrossSiteBrowserMutation(
   request: NextRequest,
   auth: BrowserMutationAuth,
+  canonicalAppUrl?: string,
 ): NextResponse | null {
   if (auth.authType !== 'session' || SAFE_METHODS.has(request.method.toUpperCase())) {
     return null
@@ -23,9 +24,20 @@ export function rejectCrossSiteBrowserMutation(
 
   const origin = request.headers.get('origin')
   const fetchSite = request.headers.get('sec-fetch-site')?.toLowerCase()
+  let canonicalOrigin: string | null = null
+  if (canonicalAppUrl) {
+    try {
+      canonicalOrigin = new URL(canonicalAppUrl).origin
+    } catch (_error) {
+      canonicalOrigin = null
+    }
+  }
+  const originMatchesApp = origin === null ||
+    origin === request.nextUrl.origin ||
+    origin === canonicalOrigin
   if (
     fetchSite === 'cross-site' ||
-    (origin !== null && origin !== request.nextUrl.origin)
+    !originMatchesApp
   ) {
     return NextResponse.json(
       { error: 'Invalid request origin' },

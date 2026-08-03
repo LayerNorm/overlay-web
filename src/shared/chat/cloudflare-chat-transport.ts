@@ -115,7 +115,7 @@ export function createChatDiagnosticFetch(fetchImpl?: ChatFetch): ChatFetch {
       const phase = typeof payload.phase === 'string' ? payload.phase : null
       const message = errorMessage(payload, response)
 
-      console.error('[chat-stream] http error', {
+      const diagnostic = {
         endpoint,
         status: response.status,
         statusText: response.statusText || undefined,
@@ -127,7 +127,8 @@ export function createChatDiagnosticFetch(fetchImpl?: ChatFetch): ChatFetch {
         cfRay: response.headers.get('cf-ray') ?? undefined,
         vercelId: response.headers.get('x-vercel-id') ?? undefined,
         elapsedMs: Math.round(performance.now() - startedAt),
-      })
+      }
+      console.error(`[chat-stream] http error ${JSON.stringify(diagnostic)}`)
       throw new ChatTransportHttpError({
         endpoint,
         fallbackSafe,
