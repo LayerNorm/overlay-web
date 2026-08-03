@@ -311,6 +311,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
       dismissedZdrWarningGlobally: row.dismissedZdrWarningGlobally ?? DEFAULT_APP_SETTINGS.dismissedZdrWarningGlobally,
       dismissedZdrWarningModelIds: row.dismissedZdrWarningModelIds ?? DEFAULT_APP_SETTINGS.dismissedZdrWarningModelIds,
       enabledChatModelIds: row.enabledChatModelIds ?? DEFAULT_APP_SETTINGS.enabledChatModelIds,
+      modelOrder: row.modelOrder ?? DEFAULT_APP_SETTINGS.modelOrder,
     }
   }
 

@@ -33,6 +33,7 @@ import dynamic from 'next/dynamic'
 import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
 import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
 import { ApiKeySettings } from '@/features/settings/components/ApiKeySettings'
+import { ProviderConnectionsSetting } from '@/features/settings/components/ProviderConnectionsSetting'
 
 const MemoriesView = dynamic(
   () => import('@/features/knowledge/components/MemoriesView'),
@@ -49,6 +50,7 @@ const IMPLEMENTED_SECTION_IDS = new Set<string>([
   'account',
   'customization',
   'memories',
+  'providers',
   'models',
   'webhooks',
   'contact',
@@ -62,7 +64,12 @@ export default function SettingsPage() {
     () => resolveOverlayAppShellConfig(overlayAppConfig, { capabilities }),
     [capabilities],
   )
-  const sections = appShell.settingsSections
+  const sections = useMemo(
+    () => appShell.settingsSections.filter(
+      (candidate) => candidate.id !== 'providers' || appDataCapabilities.provider === 'convex',
+    ),
+    [appDataCapabilities.provider, appShell.settingsSections],
+  )
   const settingsPanels = appShell.settingsPanels
   const defaultSectionId = sections[0]?.id ?? 'general'
   const sectionIds = useMemo(() => new Set<string>(sections.map((s) => s.id)), [sections])
@@ -187,6 +194,7 @@ export default function SettingsPage() {
                 isFreeTier={billingSettings?.planKind === 'free'}
                 onlyAllowZdrModels={settings.onlyAllowZdrModels}
                 enabledModelIds={settings.enabledChatModelIds}
+                modelOrder={settings.modelOrder}
                 disabled={busy || (capabilities.billing && !billingSettings)}
                 onSelect={(actModelId, askModelIds) => {
                   void updateSettings({
@@ -329,10 +337,13 @@ export default function SettingsPage() {
           {!isLoading && section === 'models' && (
             <ModelCatalogSetting
               enabledModelIds={settings.enabledChatModelIds}
+              modelOrder={settings.modelOrder}
               disabled={busy}
-              onChange={(enabledChatModelIds) => void updateSettings({ enabledChatModelIds })}
+              onChange={(patch) => void updateSettings(patch)}
             />
           )}
+
+          {!isLoading && section === 'providers' && <ProviderConnectionsSetting />}
 
           {!isLoading && section === 'webhooks' && <WebhookSettings />}
 

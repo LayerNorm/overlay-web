@@ -6,6 +6,7 @@ import {
 } from '@/shared/ai/gateway/model-types'
 import { getModel, modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 
 export function tierDefaultActModelId(isFreeTier: boolean): string {
   return isFreeTier ? FREE_TIER_AUTO_MODEL_ID : PAID_TIER_DEFAULT_MODEL_ID
@@ -34,9 +35,11 @@ export function resolveDefaultChatModelSelection({
   let askModelIds = defaultAskModelIds ? [...defaultAskModelIds] : undefined
 
   if (isFreeTier) {
-    actModelId = actModelId ? resolveFreeTierChatModelId(actModelId) ?? tierDefault : undefined
+    actModelId = actModelId
+      ? (isByokModelId(actModelId) ? actModelId : resolveFreeTierChatModelId(actModelId) ?? tierDefault)
+      : undefined
     askModelIds = askModelIds
-      ?.map((id) => resolveFreeTierChatModelId(id))
+      ?.map((id) => isByokModelId(id) ? id : resolveFreeTierChatModelId(id))
       .filter((id): id is string => Boolean(id))
   } else if (onlyAllowZdrModels) {
     actModelId = actModelId && modelSupportsZeroDataRetention(actModelId) ? actModelId : undefined
@@ -59,8 +62,10 @@ export function resolveDefaultChatModelSelection({
   })
 
   if (isFreeTier) {
-    const actIsFree = isFreeTierChatModelId(normalized.actModelId)
-    const askAreFree = normalized.askModelIds.every(isFreeTierChatModelId)
+    const actIsFree = isByokModelId(normalized.actModelId) || isFreeTierChatModelId(normalized.actModelId)
+    const askAreFree = normalized.askModelIds.every(
+      (id) => isByokModelId(id) || isFreeTierChatModelId(id),
+    )
     if (!actIsFree || !askAreFree) {
       return normalizeChatModelSelection({
         askModelIds: [tierDefault],

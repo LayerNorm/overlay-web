@@ -6,12 +6,14 @@ import { convertToModelMessages, generateText, stepCountIs, ToolLoopAgent, type 
 import type { LanguageModelV3 } from '@/server/ai/provider-types'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import {
+  assertUserCanUseByokModel,
   getLanguageModel,
   getGatewayModelId,
   getOpenRouterLanguageModelCapturingRoutedModel,
 } from '@/server/ai/model-runtime'
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import { getChatModelFallbackCandidates } from '@/shared/ai/gateway/model-fallbacks'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import {
   FREE_TIER_AUTO_MODEL_ID,
@@ -87,6 +89,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let actWebhookConversationId: Id<'conversations'> | undefined
   let actWebhookTurnId: string | undefined
   let actWebhookSkip = false
+  let requestModelId: string | undefined
   try {
     const {
       ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
@@ -170,6 +173,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       variantIndex: rawMultiModelSlotIndex,
     })
     const effectiveModelId = resolveEffectiveActModelId(modelId)
+    requestModelId = effectiveModelId
     const serverSecret = getInternalApiSecret()
     const requestedToolIds = normalizeChatToolRequestIds(rawRequestedToolIds)
     const memoryEnabled = rawMemoryEnabled !== false
@@ -181,10 +185,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       effectiveModelId,
       userId,
     })
-    const authorizedModelIds = await resolveAuthorizedModelIds({
-      entitlements: runtimeEntitlements,
-    })
-    if (!authorizedModelIds.chat.has(effectiveModelId)) {
+    const byokRequest = isByokModelId(effectiveModelId)
+    if (byokRequest) {
+      await assertUserCanUseByokModel(effectiveModelId, userId)
+    }
+    const authorizedModelIds = await resolveAuthorizedModelIds({ entitlements: runtimeEntitlements })
+    if (!byokRequest && !authorizedModelIds.chat.has(effectiveModelId)) {
       return NextResponse.json(
         {
           error: 'model_not_allowed',
@@ -645,7 +651,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           modelId: attemptModelId,
           error: summarizeErrorForLog(error),
         })
-        return userFacingOpenRouterError(error)
+        return isByokModelId(attemptModelId)
+          ? userFacingByokError(error)
+          : userFacingOpenRouterError(error)
       },
       messageMetadata: ({ part }) => {
         const metadata: Record<string, unknown> = {}
@@ -866,16 +874,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         )
       }
 
-      return getLanguageModel(attemptModelId, accessToken)
+      return getLanguageModel(attemptModelId, accessToken, userId)
     }
 
-    const fallbackModelIds = getChatModelFallbackCandidates({
+    const fallbackModelIds = (byokRequest ? [] : getChatModelFallbackCandidates({
       modelId: effectiveModelId,
       paid,
       onlyAllowZdrModels: paid && appSettings?.onlyAllowZdrModels === true,
       requiresVision: messagesRequireVision(uiMessages),
       maxCandidates: MAX_ACT_MODEL_ATTEMPTS - 1,
-    }).filter((candidateId) => authorizedModelIds.chat.has(candidateId))
+    })).filter((candidateId) => authorizedModelIds.chat.has(candidateId))
     const attemptModelIds = [...new Set([effectiveModelId, ...fallbackModelIds])].slice(0, MAX_ACT_MODEL_ATTEMPTS)
     logger.info('[conversations/act] model attempts planned', {
       requestId,
@@ -965,10 +973,32 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId: currentUserId,
     })
     return NextResponse.json(
-      { error: userFacingOpenRouterError(error), requestId },
+      {
+        error: requestModelId && isByokModelId(requestModelId)
+          ? userFacingByokError(error)
+          : userFacingOpenRouterError(error),
+        requestId,
+      },
       { status: 500, headers: { 'x-request-id': requestId } },
     )
   }
+}
+
+function userFacingByokError(error: unknown): string {
+  const lower = error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
+  if (lower.includes('401') || lower.includes('unauthorized') || lower.includes('invalid api key')) {
+    return 'Your provider rejected this API key. Update or retest it in Settings → Providers.'
+  }
+  if (lower.includes('404') || lower.includes('model not found') || lower.includes('does not exist')) {
+    return 'This model is no longer available from the provider. Refresh the connection in Settings → Providers.'
+  }
+  if (lower.includes('429') || lower.includes('rate limit')) {
+    return 'Your provider is rate-limiting this key. Wait a moment and try again.'
+  }
+  if (lower.includes('tool') && (lower.includes('unsupported') || lower.includes('not supported'))) {
+    return 'This provider model does not support the tools required by this chat.'
+  }
+  return 'The provider request failed. Retest the connection in Settings → Providers.'
 }
 
 function modelAttemptFailureReasonFromReservation(errorCode?: string): ActModelAttemptFailureReason {

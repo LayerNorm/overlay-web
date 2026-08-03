@@ -60,7 +60,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
       { key: 'supportsSettings', expectedAtParity: true },
       { key: 'supportsOnboarding', expectedAtParity: true },
     ],
-    routeRuleIds: ['bootstrap', 'capabilities', 'settings', 'onboarding'],
+    routeRuleIds: ['bootstrap', 'capabilities', 'discovery', 'settings', 'onboarding'],
     exitGate: 'Bootstrap is no longer degraded and settings/onboarding pass shared route and browser tests.',
   },
   {
@@ -137,7 +137,12 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     name: 'Integrations and extensions',
     targetPhase: 'P7',
     capabilities: [{ key: 'supportsIntegrations', expectedAtParity: true }],
-    routeRuleIds: ['integrations', 'extension-proxy', 'chat-extension-plan'],
+    routeRuleIds: [
+      'integrations',
+      'provider-connections',
+      'extension-proxy',
+      'chat-extension-plan',
+    ],
     exitGate: 'Connector state, OAuth lifecycle, proxy execution, scoping, and audits work without Convex.',
   },
   {

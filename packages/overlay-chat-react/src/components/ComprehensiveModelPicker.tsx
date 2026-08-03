@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { BrainCircuit, Check, ChevronDown, Image as ImageIcon } from 'lucide-react'
+import { BrainCircuit, Check, ChevronDown, Image as ImageIcon, KeyRound } from 'lucide-react'
 import {
   type ChatModelPreferences,
   type ChatModel,
@@ -8,25 +8,43 @@ import {
   type VideoModel,
 } from '@overlay/chat-core'
 
+function isByokModel(model: ChatModel): boolean {
+  return model.id.startsWith('byok/')
+}
+
 function ModelBadges({ m, isHovered }: { m: ChatModel; isHovered: boolean }) {
+  const byok = isByokModel(m)
   const cost = m.cost ?? 1
   if (isHovered) {
     return (
       <span className="flex h-5 shrink-0 items-center gap-1">
-        <span
-          className={`inline-flex h-5 items-center rounded-full px-1.5 text-[9px] font-semibold leading-none tracking-tight ${
-            cost === 0 ? '' : 'bg-[var(--surface-subtle)] text-[var(--muted)]'
-          }`}
-          style={cost === 0 ? { background: 'var(--chat-badge-free-bg)', color: 'var(--chat-badge-free-fg)' } : undefined}
-        >
-          {cost === 0 ? 'Free' : '$'.repeat(cost)}
-        </span>
+        {byok ? (
+          <span className="inline-flex h-5 items-center rounded-full bg-[var(--surface-subtle)] px-1.5 text-[9px] font-semibold leading-none tracking-tight text-[var(--muted)]">
+            <KeyRound size={8} strokeWidth={2} className="mr-0.5" />
+            BYOK
+          </span>
+        ) : (
+          <span
+            className={`inline-flex h-5 items-center rounded-full px-1.5 text-[9px] font-semibold leading-none tracking-tight ${
+              cost === 0 ? '' : 'bg-[var(--surface-subtle)] text-[var(--muted)]'
+            }`}
+            style={cost === 0 ? { background: 'var(--chat-badge-free-bg)', color: 'var(--chat-badge-free-fg)' } : undefined}
+          >
+            {cost === 0 ? 'Free' : '$'.repeat(cost)}
+          </span>
+        )}
       </span>
     )
   }
 
   return (
     <span className="flex h-5 shrink-0 items-center gap-1">
+      {byok ? (
+        <span className="inline-flex h-5 items-center rounded bg-[var(--surface-subtle)] px-1 text-[9px] font-semibold leading-none text-[var(--muted)]">
+          <KeyRound size={8} strokeWidth={2} className="mr-0.5" />
+          BYOK
+        </span>
+      ) : null}
       {m.supportsVision ? (
         <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
           <ImageIcon size={10} strokeWidth={1.75} />
@@ -175,6 +193,7 @@ export function ComprehensiveModelPicker<TPreferences extends ChatModelPreferenc
                   })
                 : chatModels.map((m) => {
                     const isSel = m.id === ids.chatId
+                    const byok = isByokModel(m)
                     return (
                       <button
                         key={m.id}
@@ -188,9 +207,12 @@ export function ComprehensiveModelPicker<TPreferences extends ChatModelPreferenc
                           setOpen(false)
                         }}
                       >
-                        <span className="flex items-center gap-2">
-                          {isSel ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
-                          {m.name}
+                        <span className="flex min-w-0 items-center gap-2">
+                          {isSel ? <Check size={10} className="shrink-0" /> : <span className="inline-block w-[10px] shrink-0" />}
+                          <span className="min-w-0 truncate">{m.name}</span>
+                          {byok && m.provider ? (
+                            <span className="shrink-0 truncate text-[10px] text-[var(--muted-light)]">{m.provider}</span>
+                          ) : null}
                         </span>
                         <ModelBadges m={m} isHovered={hoveredId === m.id} />
                       </button>

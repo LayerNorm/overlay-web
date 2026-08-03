@@ -33,6 +33,7 @@ const uiSettingsValidator = v.object({
   dismissedZdrWarningGlobally: v.boolean(),
   dismissedZdrWarningModelIds: v.array(v.string()),
   enabledChatModelIds: v.array(v.string()),
+  modelOrder: v.array(v.string()),
 })
 
 function defaultUiSettings() {
@@ -52,6 +53,7 @@ function defaultUiSettings() {
     dismissedZdrWarningGlobally: false,
     dismissedZdrWarningModelIds: [] as string[],
     enabledChatModelIds: [] as string[],
+    modelOrder: [] as string[],
   }
 }
 
@@ -117,6 +119,7 @@ export const getByServer = query({
       dismissedZdrWarningGlobally: existing.dismissedZdrWarningGlobally ?? false,
       dismissedZdrWarningModelIds: safeModelIds(existing.dismissedZdrWarningModelIds, 100) ?? [],
       enabledChatModelIds: safeModelIds(existing.enabledChatModelIds, MAX_ENABLED_MODEL_IDS) ?? [],
+      modelOrder: safeModelIds(existing.modelOrder, MAX_ENABLED_MODEL_IDS) ?? [],
     }
     return {
       ...settings,
@@ -154,6 +157,7 @@ export const upsertByServer = mutation({
     dismissedZdrWarningGlobally: v.optional(v.boolean()),
     dismissedZdrWarningModelIds: v.optional(v.array(v.string())),
     enabledChatModelIds: v.optional(v.array(v.string())),
+    modelOrder: v.optional(v.array(v.string())),
   },
   returns: uiSettingsValidator,
   handler: async (ctx, args) => {
@@ -184,6 +188,10 @@ export const upsertByServer = mutation({
       enabledChatModelIds:
         safeModelIds(args.enabledChatModelIds, MAX_ENABLED_MODEL_IDS) ??
         safeModelIds(existing?.enabledChatModelIds, MAX_ENABLED_MODEL_IDS) ??
+        [],
+      modelOrder:
+        safeModelIds(args.modelOrder, MAX_ENABLED_MODEL_IDS) ??
+        safeModelIds(existing?.modelOrder, MAX_ENABLED_MODEL_IDS) ??
         [],
     }
     const optionalNext = {

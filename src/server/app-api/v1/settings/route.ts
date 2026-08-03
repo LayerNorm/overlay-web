@@ -90,6 +90,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       dismissedZdrWarningGlobally?: boolean
       dismissedZdrWarningModelIds?: string[]
       enabledChatModelIds?: string[]
+      modelOrder?: string[]
       /** @deprecated Only `token` is supported; `chunk` is accepted for compatibility and normalized away. */
       chatStreamingMode?: 'token' | 'chunk'
       accessToken?: string
@@ -179,6 +180,14 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'Invalid enabledChatModelIds' }, { status: 400 })
     }
     if (
+      body.modelOrder !== undefined &&
+      (!Array.isArray(body.modelOrder) ||
+        body.modelOrder.length > MAX_ENABLED_MODEL_IDS ||
+        !body.modelOrder.every(isSafeModelId))
+    ) {
+      return NextResponse.json({ error: 'Invalid modelOrder' }, { status: 400 })
+    }
+    if (
       body.chatStreamingMode !== undefined &&
       body.chatStreamingMode !== 'token' &&
       body.chatStreamingMode !== 'chunk'
@@ -210,6 +219,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       dismissedZdrWarningGlobally?: boolean
       dismissedZdrWarningModelIds?: string[]
       enabledChatModelIds?: string[]
+      modelOrder?: string[]
     } = {
       userId: auth.userId,
       serverSecret: getInternalApiSecret(),
@@ -286,6 +296,10 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     if (body.enabledChatModelIds !== undefined) {
       mutationArgs.enabledChatModelIds = Array.from(new Set(body.enabledChatModelIds.map((id) => id.trim()))).slice(0, MAX_ENABLED_MODEL_IDS)
       settingsPatch.enabledChatModelIds = mutationArgs.enabledChatModelIds
+    }
+    if (body.modelOrder !== undefined) {
+      mutationArgs.modelOrder = Array.from(new Set(body.modelOrder.map((id) => id.trim()))).slice(0, MAX_ENABLED_MODEL_IDS)
+      settingsPatch.modelOrder = mutationArgs.modelOrder
     }
     if (body.chatStreamingMode !== undefined) {
       settingsPatch.chatStreamingMode = 'token'

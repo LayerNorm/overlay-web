@@ -103,6 +103,7 @@ export const DEFAULT_OVERLAY_SETTINGS_SECTIONS: readonly OverlaySettingsSection[
   { id: 'account', label: 'Account' },
   { id: 'customization', label: 'Customization' },
   { id: 'memories', label: 'Memories', featureFlagId: 'knowledge', requiredCapabilities: ['memory', 'vectorSearch'] },
+  { id: 'providers', label: 'Providers', requiredCapabilities: ['modelRouting'] },
   { id: 'models', label: 'Models', requiredCapabilities: ['modelRouting'] },
   { id: 'webhooks', label: 'Webhooks', requiredCapabilities: ['webhooks'] },
   { id: 'contact', label: 'Contact' },

@@ -9,12 +9,19 @@ import {
   gatewayCatalogModelToChatModel,
   type GatewayCatalogModel,
 } from '@/shared/ai/gateway/gateway-catalog'
+import {
+  byokConnectionsToChatModels,
+  isByokModelId,
+  type ByokConnectionRow,
+} from '@/shared/ai/gateway/byok-model-conversion'
 
 const SPECIAL_CHAT_MODELS: ChatModel[] = [
   { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
   { id: 'openrouter/nvidia/nemotron-3-super-120b-a12b:free', name: 'Free: Nemotron 3 Super 120B', provider: 'openrouter', intelligence: 0, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
   { id: 'stepfun-ai/step-3.5-flash', name: 'Free: Step 3.5 Flash', provider: 'nvidia', intelligence: 0, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
 ]
+
+export const OVERLAY_FREE_CHAT_MODELS: readonly ChatModel[] = SPECIAL_CHAT_MODELS
 
 const CURATED_FALLBACK_CHAT_MODELS: ChatModel[] = [
   { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview', provider: 'google', intelligence: 0, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: true },
@@ -62,6 +69,7 @@ export const DEFAULT_CURATED_CHAT_MODEL_IDS = [
 export const AVAILABLE_MODELS: ChatModel[] = [...CURATED_FALLBACK_CHAT_MODELS, ...SPECIAL_CHAT_MODELS]
 
 const gatewayCatalogModels = new Map<string, ChatModel>()
+const byokModels = new Map<string, ChatModel>()
 /** Bumps whenever the gateway catalog is registered so React can re-render pickers. */
 let gatewayCatalogRevision = 0
 let gatewayCatalogRegistered = false
@@ -95,10 +103,36 @@ export function registerGatewayCatalogModels(models: readonly GatewayCatalogMode
     registeredIds.add(chatModel.id)
     registered.push(chatModel)
   }
-  const fallbackMissingFromCatalog = CURATED_FALLBACK_CHAT_MODELS.filter((model) => !registeredIds.has(model.id))
-  AVAILABLE_MODELS.splice(0, AVAILABLE_MODELS.length, ...registered, ...fallbackMissingFromCatalog, ...SPECIAL_CHAT_MODELS)
-  _intelRange = null
+  rebuildAvailableModels(registered, registeredIds)
   gatewayCatalogRegistered = true
+}
+
+export function registerByokModels(connections: readonly ByokConnectionRow[] | unknown): void {
+  if (!Array.isArray(connections)) return
+  byokModels.clear()
+  for (const model of byokConnectionsToChatModels(connections)) {
+    byokModels.set(model.id, model)
+  }
+  const gatewayModels = Array.from(gatewayCatalogModels.values())
+  rebuildAvailableModels(gatewayModels, new Set(gatewayModels.map((model) => model.id)))
+}
+
+function rebuildAvailableModels(
+  registeredGatewayModels: readonly ChatModel[],
+  registeredGatewayIds: ReadonlySet<string>,
+): void {
+  const fallbackMissingFromCatalog = CURATED_FALLBACK_CHAT_MODELS.filter(
+    (model) => !registeredGatewayIds.has(model.id),
+  )
+  AVAILABLE_MODELS.splice(
+    0,
+    AVAILABLE_MODELS.length,
+    ...registeredGatewayModels,
+    ...fallbackMissingFromCatalog,
+    ...SPECIAL_CHAT_MODELS,
+    ...byokModels.values(),
+  )
+  _intelRange = null
   gatewayCatalogRevision += 1
 }
 
@@ -279,6 +313,7 @@ export function getModelsByIntelligence(isFreeTier: boolean): ChatModel[] {
 export function getEnabledChatModels(
   enabledModelIds: readonly string[],
   isFreeTier: boolean,
+  modelOrder?: readonly string[],
 ): ChatModel[] {
   const ids = enabledModelIds.length > 0 ? enabledModelIds : DEFAULT_CURATED_CHAT_MODEL_IDS
   const enabled = new Set(ids.map((id) => LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id))
@@ -289,9 +324,21 @@ export function getEnabledChatModels(
   const additional = ids
     .map((id) => LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id)
     .filter((id) => !curatedIds.has(id))
-    .map((id) => getModel(id) ?? provisionalChatModelFromId(id))
+    .map((id) => getModel(id) ?? (isByokModelId(id) ? undefined : provisionalChatModelFromId(id)))
+    .filter((model): model is ChatModel => Boolean(model))
     .sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name))
   const ordered = [...curated, ...additional]
+
+  if (modelOrder && modelOrder.length > 0) {
+    const normalizedOrder = modelOrder.map((id) => LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id)
+    const orderIndex = new Map(normalizedOrder.map((id, index) => [id, index]))
+    const explicitlyOrdered = ordered
+      .filter((model) => orderIndex.has(model.id))
+      .sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0))
+    const remaining = ordered.filter((model) => !orderIndex.has(model.id))
+    return [...explicitlyOrdered, ...remaining]
+  }
+
   const free = ordered.filter((model) => isFreeTierChatModelId(model.id))
   const premium = ordered.filter((model) => !isFreeTierChatModelId(model.id))
   return isFreeTier ? [...free, ...premium] : [...premium, ...free]

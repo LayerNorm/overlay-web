@@ -330,6 +330,7 @@ export const userSettings = pgTable('user_settings', {
   dismissedZdrWarningGlobally: boolean('dismissed_zdr_warning_globally'),
   dismissedZdrWarningModelIds: jsonb('dismissed_zdr_warning_model_ids').$type<string[]>(),
   enabledChatModelIds: jsonb('enabled_chat_model_ids').$type<string[]>(),
+  modelOrder: jsonb('model_order').$type<string[]>(),
   chatSuggestions: jsonb('chat_suggestions').$type<string[]>(),
   chatSuggestionDay: text('chat_suggestion_day'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

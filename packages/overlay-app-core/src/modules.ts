@@ -147,6 +147,9 @@ export function applySettingsPatch(settings: AppSettings, patch: Partial<AppSett
     dismissedZdrWarningModelIds: patch.dismissedZdrWarningModelIds
       ? [...patch.dismissedZdrWarningModelIds]
       : [...settings.dismissedZdrWarningModelIds],
+    modelOrder: patch.modelOrder
+      ? [...patch.modelOrder]
+      : [...settings.modelOrder],
   }
 }
 

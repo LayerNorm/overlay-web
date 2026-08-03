@@ -5,7 +5,9 @@ import { Bot } from 'lucide-react'
 import { SettingsActionRow } from '@overlay/modules-react/settings'
 import { getEnabledChatModels } from '@/shared/ai/gateway/model-data'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
+import { useByokModels } from '@/components/providers/useByokModels'
 import { resolveDefaultChatModelSelection } from '@/shared/chat/default-chat-model'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 
 export function DefaultChatModelSetting({
   defaultActModelId,
@@ -13,6 +15,7 @@ export function DefaultChatModelSetting({
   isFreeTier,
   onlyAllowZdrModels,
   enabledModelIds,
+  modelOrder,
   disabled,
   onSelect,
 }: {
@@ -21,17 +24,23 @@ export function DefaultChatModelSetting({
   isFreeTier: boolean
   onlyAllowZdrModels: boolean
   enabledModelIds: readonly string[]
+  modelOrder?: readonly string[]
   disabled?: boolean
   onSelect: (actModelId: string, askModelIds: string[]) => void
 }) {
   const { revision: catalogRevision } = useGatewayModelCatalog()
+  const { appDataCapabilities } = useOverlayCapabilities()
+  const { connections: byokConnections } = useByokModels({
+    enabled: appDataCapabilities.provider === 'convex',
+  })
   const effectiveOnlyAllowZdr = onlyAllowZdrModels && !isFreeTier
   const models = useMemo(() => {
     void catalogRevision
-    return getEnabledChatModels(enabledModelIds, isFreeTier)
+    void byokConnections
+    return getEnabledChatModels(enabledModelIds, isFreeTier, modelOrder)
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
       .filter((model) => !effectiveOnlyAllowZdr || model.supportsZeroDataRetention)
-  }, [catalogRevision, effectiveOnlyAllowZdr, enabledModelIds, isFreeTier])
+  }, [byokConnections, catalogRevision, effectiveOnlyAllowZdr, enabledModelIds, isFreeTier, modelOrder])
 
   const currentSelection = resolveDefaultChatModelSelection({
     defaultActModelId,

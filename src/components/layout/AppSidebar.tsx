@@ -69,7 +69,7 @@ export default function AppSidebar({
     () => new URLSearchParams(routeSearchParams?.toString() ?? ''),
     [routeSearchParams],
   )
-  const { capabilities } = useOverlayCapabilities()
+  const { capabilities, appDataCapabilities } = useOverlayCapabilities()
   const { requireAuth } = useGuestGate()
   const { user, isLoading: authLoading } = useAuth()
   const appShell = useMemo(
@@ -91,7 +91,12 @@ export default function AppSidebar({
     })),
     [appShell.navigation],
   )
-  const settingsSections = appShell.settingsSections
+  const settingsSections = useMemo(
+    () => appShell.settingsSections.filter(
+      (section) => section.id !== 'providers' || appDataCapabilities.provider === 'convex',
+    ),
+    [appDataCapabilities.provider, appShell.settingsSections],
+  )
   const brandConfig = appShell.brand
   const billingEnabled = capabilities.billing
   const authUserId = user?.id ?? null

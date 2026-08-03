@@ -22,6 +22,8 @@ import { MentionInput } from '@/features/chat/components/chat-interface/MentionI
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { ACT_MODEL_KEY, readStoredActModelId } from '@/shared/chat/chat-model-prefs'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 
 const MarkdownMessage = dynamic(() =>
   import('@/features/chat/components/MarkdownMessage').then((module) => ({ default: module.MarkdownMessage })),
@@ -53,10 +55,15 @@ export default function NotebookEditor({
   const router = useRouter()
   const searchParams = useSearchParams()
   const models = useMemo(
-    () => getModelsByIntelligence(false).map(({ id, name }) => ({ id, name })),
+    () => getModelsByIntelligence(false)
+      .filter(({ id }) => !isByokModelId(id))
+      .map(({ id, name }) => ({ id, name })),
     [],
   )
-  const initialModelId = useMemo(() => readStoredActModelId(), [])
+  const initialModelId = useMemo(() => {
+    const storedModelId = readStoredActModelId()
+    return isByokModelId(storedModelId) ? DEFAULT_MODEL_ID : storedModelId
+  }, [])
 
   const repository = useMemo<NotebookEditorRepository>(() => ({
     list: (signal) => overlayAppClient.notes.get<NoteDoc[]>({ limit: 100 }, { signal }),

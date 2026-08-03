@@ -4,6 +4,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import { RefreshCw } from 'lucide-react'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type {
   AutomationDetail,
@@ -61,7 +62,9 @@ export function AutomationEditorPanel({
   const [runsBusy, setRunsBusy] = useState(false)
   const timeZoneOptions = useMemo(() => supportedTimeZoneOptions(), [])
   const modelOptions = useMemo(
-    () => getModelsByIntelligence(isFreeTier).filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2'),
+    () => getModelsByIntelligence(isFreeTier).filter((model) => (
+      model.id !== 'nvidia/nemotron-nano-9b-v2' && !isByokModelId(model.id)
+    )),
     [isFreeTier],
   )
 

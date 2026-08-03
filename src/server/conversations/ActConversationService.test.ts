@@ -88,6 +88,22 @@ test('act entitlement service preserves premium-model free-tier gate shape', asy
   )
 })
 
+test('act entitlement service allows a free-tier user to use their own provider key', async () => {
+  const service = new ActEntitlementService({
+    repository: repository({
+      getEntitlements: async () => freeEntitlements,
+      getAppSettings: async () => null,
+    }),
+  })
+
+  const result = await service.gateModelAccess({
+    effectiveModelId: 'byok/connection_1/vendor/model-a',
+    userId: 'user_1',
+  })
+  assert.equal(result.paid, false)
+  assert.equal(result.runtimeEntitlements.planKind, 'free')
+})
+
 test('act context service builds model history without current turn or other assistant model variants', async () => {
   const service = new ActContextService({
     repository: repository({
@@ -328,6 +344,31 @@ test('act usage budget service skips reservations for unpaid/free-model attempts
   })
 
   assert.deepEqual(result, { ok: true, reservationId: null })
+})
+
+test('act usage budget service never charges BYOK attempts', async () => {
+  const service = new ActUsageBudgetService({ repository: repository() })
+  const modelId = 'byok/connection_1/vendor/model-a'
+
+  assert.deepEqual(await service.reserveForAttempt({
+    entitlements: freeEntitlements,
+    estimatedInputTokens: 1000,
+    maxOutputTokens: 1000,
+    modelId,
+    operationId: 'conversation.act',
+    paid: false,
+    requestFingerprint: 'byok-attempt',
+    userId: 'user_1',
+  }), { ok: true, reservationId: null })
+
+  assert.deepEqual(await service.recordFinishedUsage({
+    forceFreeTierLimits: false,
+    inputTokens: 100,
+    modelId,
+    outputTokens: 50,
+    reservationId: null,
+    userId: 'user_1',
+  }), { finalized: false, reservationId: null })
 })
 
 test('unlimited usage policy exposes explicit paid entitlements and no-op accounting', async () => {

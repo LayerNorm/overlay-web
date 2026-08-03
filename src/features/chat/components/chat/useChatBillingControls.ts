@@ -12,6 +12,7 @@ import {
   modelSupportsZeroDataRetention,
 } from '@/shared/ai/gateway/model-data'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import type { Entitlements } from '../chat-interface/types'
 
 type ChatRouter = {
@@ -42,9 +43,12 @@ export function useChatBillingControls({
   activeChatId,
   billingEnabled,
   catalogRevision,
+  modelCatalogVersion,
+  modelCatalogReady = true,
   chatPrefsHydrated,
   onlyAllowZdrModels,
   enabledModelIds,
+  modelOrder,
   pathname,
   router,
   searchParams,
@@ -59,9 +63,12 @@ export function useChatBillingControls({
   billingEnabled: boolean
   /** From useGatewayModelCatalog — forces recompute when AVAILABLE_MODELS mutates. */
   catalogRevision: number
+  modelCatalogVersion?: string | number
+  modelCatalogReady?: boolean
   chatPrefsHydrated: boolean
   onlyAllowZdrModels: boolean
   enabledModelIds: readonly string[]
+  modelOrder?: readonly string[]
   pathname: string
   router: ChatRouter
   searchParams: ChatSearchParams
@@ -93,18 +100,39 @@ export function useChatBillingControls({
   // which mutates when the gateway catalog registers.
   const selectableTextModels = useMemo(() => {
     void catalogRevision
-    const enabledTextModels = getEnabledChatModels(enabledModelIds, isModelAccessRestricted)
+    void modelCatalogVersion
+    const enabledTextModels = getEnabledChatModels(enabledModelIds, isModelAccessRestricted, modelOrder)
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
     return effectiveOnlyAllowZdrModels
       ? enabledTextModels.filter((model) => model.supportsZeroDataRetention)
       : enabledTextModels
-  }, [catalogRevision, effectiveOnlyAllowZdrModels, enabledModelIds, isModelAccessRestricted])
+  }, [catalogRevision, effectiveOnlyAllowZdrModels, enabledModelIds, isModelAccessRestricted, modelCatalogVersion, modelOrder])
   const premiumModelBlocked =
-    isModelAccessRestricted && !isFreeTierChatModelId(selectedActModel)
+    isModelAccessRestricted &&
+    !isByokModelId(selectedActModel) &&
+    !isFreeTierChatModelId(selectedActModel)
   const isSendBlocked = premiumModelBlocked
 
   useEffect(() => {
+    if (!chatPrefsHydrated || !modelCatalogReady || !isByokModelId(selectedActModel)) return
+    if (selectableTextModels.some((model) => model.id === selectedActModel)) return
+    const fallbackModelId = selectableTextModels[0]?.id ?? FREE_TIER_AUTO_MODEL_ID
+    setSelectedModels([fallbackModelId])
+    setSelectedActModel(fallbackModelId)
+    setAskModelSelectionMode('single')
+  }, [
+    chatPrefsHydrated,
+    modelCatalogReady,
+    selectableTextModels,
+    selectedActModel,
+    setAskModelSelectionMode,
+    setSelectedActModel,
+    setSelectedModels,
+  ])
+
+  useEffect(() => {
     if (!chatPrefsHydrated || !isModelAccessRestricted || activeChatId) return
+    if (isByokModelId(selectedActModel)) return
     if (isFreeTierChatModelId(selectedActModel) && !isLegacyFreeTierDefaultModelId(selectedActModel)) return
 
     setSelectedModels([FREE_TIER_AUTO_MODEL_ID])

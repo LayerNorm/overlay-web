@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import {
   ArrowUp,
@@ -70,6 +70,7 @@ import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import { DelayedTooltip } from './DelayedTooltip'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
+import { useByokModels } from '@/components/providers/useByokModels'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { buildSharePageUrl } from '@/features/share/lib/share-url'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
@@ -164,12 +165,24 @@ export default function ChatExperience({
       ? rawEmbedProjectId
       : null
   const { settings, updateSettings } = useAppSettings()
+  const { appDataCapabilities, capabilities } = useOverlayCapabilities()
   const {
     models: gatewayCatalogModels,
     isLoading: gatewayModelsLoading,
     revision: gatewayCatalogRevision,
   } = useGatewayModelCatalog({ enabled: !isPublicShowcase })
-  const { appDataCapabilities, capabilities } = useOverlayCapabilities()
+  const { connections: byokConnections, isLoading: byokModelsLoading } = useByokModels({
+    enabled: !isPublicShowcase && appDataCapabilities.provider === 'convex',
+  })
+  const modelCatalogVersion = useMemo(
+    () => `${gatewayCatalogRevision}:${byokConnections.map((connection) => [
+      connection._id,
+      connection.status,
+      connection.discoveredAt ?? 0,
+      connection.enabledModelIds.join(','),
+    ].join(':')).join('|')}`,
+    [byokConnections, gatewayCatalogRevision],
+  )
   const billingEnabled = capabilities.billing
   const convexLiveSyncEnabled = !isPublicShowcase &&
     appDataCapabilities.requiresConvexClient && appDataCapabilities.supportsRealtime
@@ -384,9 +397,12 @@ export default function ChatExperience({
     activeChatId,
     billingEnabled,
     catalogRevision: gatewayCatalogRevision,
+    modelCatalogVersion,
+    modelCatalogReady: !byokModelsLoading,
     chatPrefsHydrated,
     onlyAllowZdrModels: settings.onlyAllowZdrModels,
     enabledModelIds: settings.enabledChatModelIds,
+    modelOrder: settings.modelOrder,
     pathname,
     router,
     searchParams,
