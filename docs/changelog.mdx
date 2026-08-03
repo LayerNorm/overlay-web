@@ -5,6 +5,8 @@ description: "Overlay Web documentation and API changes."
 
 ## July 2026
 
+- **Self-hosted automation streaming** — Scheduled and manual Postgres automation runs now use direct stream persistence instead of requiring the managed Cloudflare stream mirror.
+- **AWS-native S3 credentials** — EC2 and ECS deployments can use bucket-scoped workload roles through the AWS SDK credential chain instead of storing long-lived S3 access keys.
 - **Docs pipeline restored** — `npm run docs:check` now passes. Added missing API boundary definitions for `/api/v1/admin/*` routes and the generated OpenAPI reference.
 - **Enterprise security launch checklist** — Added `docs/deploy-operate/enterprise-security-launch-checklist.mdx` with cloud-side controls for Vercel, R2, Daytona, Convex, WorkOS, Stripe, and security telemetry.
 - **Package READMEs** — Added `README.md` files for all `@overlay/*` workspace packages.

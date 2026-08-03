@@ -121,9 +121,10 @@ OVERLAY_REDIS_URL
 AI_GATEWAY_API_KEY
 ```
 
-Add provider credentials only for approved, enabled features. The current S3
-adapter requires bucket-scoped `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`;
-store them in Secrets Manager and rotate them. Do not place any secret in a
+Add provider credentials only for approved, enabled features. On ECS or EC2,
+prefer a bucket-scoped task or instance role and omit `S3_ACCESS_KEY_ID` and
+`S3_SECRET_ACCESS_KEY`. For non-AWS S3-compatible storage, configure both keys,
+store them in Secrets Manager, and rotate them. Do not place any secret in a
 `NEXT_PUBLIC_*` variable, source file, task-definition plaintext environment
 value, build log, document, ticket, email, or chat.
 

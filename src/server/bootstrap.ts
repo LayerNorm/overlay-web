@@ -297,8 +297,8 @@ export function createObjectStoreForRuntime(config: OverlayRuntimeConfig | null)
         bucketName: config.storage.s3.bucketName ?? '',
         region: config.storage.s3.region ?? 'us-east-1',
         endpointUrl: config.storage.s3.endpointUrl,
-        accessKeyId: config.storage.s3.accessKeyId ?? '',
-        secretAccessKey: config.storage.s3.secretAccessKey ?? '',
+        accessKeyId: config.storage.s3.accessKeyId,
+        secretAccessKey: config.storage.s3.secretAccessKey,
         forcePathStyle: config.storage.s3.forcePathStyle,
         presignTtlSeconds: config.storage.s3.presignTtlSeconds,
       })
@@ -451,8 +451,9 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
     const s3 = config.storage.s3
     if (!s3.bucketName) issues.push('storage.s3.bucketName is required when storage.provider is s3')
     if (!s3.region) issues.push('storage.s3.region is required when storage.provider is s3')
-    if (!s3.accessKeyId) issues.push('storage.s3.accessKeyId is required when storage.provider is s3')
-    if (!s3.secretAccessKey) issues.push('storage.s3.secretAccessKey is required when storage.provider is s3')
+    if (Boolean(s3.accessKeyId) !== Boolean(s3.secretAccessKey)) {
+      issues.push('storage.s3.accessKeyId and storage.s3.secretAccessKey must be configured together')
+    }
   }
   if (capabilities.modelRouting && modelProvider !== 'none' && config.llm.keySource === 'config') {
     issues.push('llm.keySource=config is reserved until encrypted runtime config secrets are implemented')

@@ -39,3 +39,13 @@ test('S3 presign lifetime is capped at fifteen minutes', async () => {
   const url = new URL(await store.getDownloadUrl('users/user_1/files/file_1/report.txt'))
   assert.equal(url.searchParams.get('X-Amz-Expires'), '900')
 })
+
+test('S3 can use the AWS default credential chain without static keys', () => {
+  const store = new S3CompatibleObjectStore({
+    bucketName: 'overlay-private',
+    region: 'us-east-1',
+  })
+
+  assert.equal(store.providerConfigSummary.hasAccessKeyId, false)
+  assert.equal(store.providerConfigSummary.hasSecretAccessKey, false)
+})
