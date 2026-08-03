@@ -14,6 +14,7 @@ import {
   getGatewayCatalogRevision,
 } from '@/shared/ai/gateway/model-data'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
+import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 
 const AVATAR_COLORS = ['#64748b', '#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626']
 
@@ -37,6 +38,8 @@ export function AgentEditorDialog({
   onArchive?(): void
 }) {
   const { revision } = useGatewayModelCatalog({ enabled: open })
+  const { settings } = useAppSettings()
+  const enabledModelIds = settings.enabledChatModelIds
   const [name, setName] = useState(agent?.name ?? '')
   const [description, setDescription] = useState(agent?.description ?? '')
   const [instructions, setInstructions] = useState(agent?.instructions ?? '')
@@ -45,13 +48,15 @@ export function AgentEditorDialog({
   const [teamIds, setTeamIds] = useState<string[]>(agent?.teamIds ?? [])
   const [advanced, setAdvanced] = useState(false)
 
+  // Same catalog the personal chat model picker offers: every model the
+  // workspace has enabled in settings, not just the curated defaults.
   const modelOptions = useMemo(() => {
     void revision
     void getGatewayCatalogRevision()
-    return getEnabledChatModels([], false)
+    return getEnabledChatModels(enabledModelIds, false)
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
       .map((model) => ({ value: model.id, label: model.name }))
-  }, [revision])
+  }, [enabledModelIds, revision])
 
   const valid = name.trim() && instructions.trim() && modelId.trim()
   return (

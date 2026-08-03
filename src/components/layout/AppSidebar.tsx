@@ -289,7 +289,10 @@ export default function AppSidebar({
   const filesSectionOpen = filesOpen || notesOpen
   const agentsOpen = pathname.startsWith('/app/agents') || (canonicalWorkspaceRoute && workspaceSurface === 'agents')
   const knowledgeOpen = pathname.startsWith('/app/knowledge') || (canonicalWorkspaceRoute && workspaceSurface === 'knowledge')
-  const chatOpen = pathname.startsWith('/app/chat') || (canonicalWorkspaceRoute && workspaceSurface === 'chat')
+  // Activity is its own page but stays under the Chats secondary panel, so the
+  // subnavigation it was selected from remains visible beside it.
+  const activityOpen = pathname.startsWith('/app/activity') || (canonicalWorkspaceRoute && workspaceSurface === 'activity')
+  const chatOpen = activityOpen || pathname.startsWith('/app/chat') || (canonicalWorkspaceRoute && workspaceSurface === 'chat')
   const adminOpen = pathname.startsWith('/app/admin') || (canonicalWorkspaceRoute && workspaceSurface === 'admin')
   const showAdminNavigation = can('administration.access') && !publicShowcase && Boolean(user)
   const automationsOpen = pathname.startsWith('/app/automations') || (canonicalWorkspaceRoute && workspaceSurface === 'automations')
@@ -307,10 +310,10 @@ export default function AppSidebar({
   })()
   const filesView = resolveFilesCategory(currentSearchParams.get('view'))
   const chatsView = (() => {
+    if (activityOpen) return 'activity'
     const current = currentSearchParams.get('view')
     if (current === 'dms') return 'dms'
     if (current === 'channels') return 'channels'
-    if (current === 'activity') return 'activity'
     if (current === 'unread') return 'unread'
     if (current === 'all') return 'all'
     return 'personal'
@@ -677,6 +680,12 @@ export default function AppSidebar({
         activeId: chatsView,
         onSelect: (next) => {
           closeMobileDrawer()
+          if (next === 'activity') {
+            router.push(activeWorkspaceId
+              ? buildWorkspaceHref(activeWorkspaceId, '/app/activity')
+              : '/app/activity')
+            return
+          }
           const baseHref = activeWorkspaceId
             ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
             : '/app/chat'
@@ -1211,10 +1220,7 @@ export default function AppSidebar({
         >
           <ChevronLeft size={16} />
         </button>
-        <span
-          className="min-w-0 flex-1 truncate px-1 text-lg font-medium tracking-tight text-[var(--foreground)]"
-          style={{ fontFamily: 'var(--font-serif)' }}
-        >
+        <span className="min-w-0 flex-1 truncate px-1 text-lg font-medium tracking-tight text-[var(--foreground)]">
           {panelTitle}
         </span>
         <button

@@ -35,7 +35,6 @@ import { useAuth } from '@/contexts/AuthContext'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { NewChannelDialog } from './NewChannelDialog'
 import { isSameChatSurface } from '@/features/workspaces/lib/workspace-routing'
-import { ChatActivityPanel } from './ChatActivityPanel'
 
 const panelItemClass =
   'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
@@ -84,10 +83,10 @@ export function ChatInlinePanel({
   const activeId = searchParams?.get('id') ?? null
   const chatView = (() => {
     const value = searchParams?.get('view')
-    if (value === 'dms' || value === 'channels' || value === 'unread' || value === 'all' || value === 'activity') return value
+    if (value === 'dms' || value === 'channels' || value === 'unread' || value === 'all') return value
     return 'personal'
   })()
-  setActiveChatListView(chatView === 'activity' ? 'all' : chatView)
+  setActiveChatListView(chatView)
 
   useEffect(() => {
     const openDialog = () => {
@@ -336,10 +335,6 @@ export function ChatInlinePanel({
     if (activeId === chatId) {
       router.push(`${baseHref}?${new URLSearchParams({ view: chatView }).toString()}`)
     }
-  }
-
-  if (chatView === 'activity' && workspaceId && !isPublicShowcase) {
-    return <ChatActivityPanel baseHref={baseHref} onNavigate={onNavigate} />
   }
 
   const viewChats = chatView === 'personal'

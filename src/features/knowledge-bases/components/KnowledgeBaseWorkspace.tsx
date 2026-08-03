@@ -21,7 +21,6 @@ import {
   FileText,
   Globe2,
   Loader2,
-  Menu,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -77,7 +76,6 @@ export function KnowledgeBaseWorkspace({
   const [sources, setSources] = useState(initialSources)
   const [sourceTab, setSourceTab] = useState<SourceTab>('sources')
   const [searchRevision, setSearchRevision] = useState(0)
-  const [mobileSourcesOpen, setMobileSourcesOpen] = useState(false)
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(
     initialSelectedSourceId &&
       initialSources.some(({ source }) => source.id === initialSelectedSourceId)
@@ -321,41 +319,12 @@ export function KnowledgeBaseWorkspace({
     router.replace('/app/knowledge')
   }
 
-  const sourcePanel = (
-    <KnowledgeSourcePanel
-      canEdit={canEdit}
-      dragging={dragging}
-      knowledgeBaseId={knowledgeBase.id}
-      notice={notice}
-      selectedSourceId={selectedSourceId}
-      searchRevision={searchRevision}
-      sourceTab={sourceTab}
-      sources={sources}
-      uploading={uploading}
-      onAddText={() => setTextDialogOpen(true)}
-      onAddWebsite={() => setUrlDialogOpen(true)}
-      onAddConnected={canAddConnectedSource ? () => setConnectedDialogOpen(true) : undefined}
-      onCloseMobile={() => setMobileSourcesOpen(false)}
-      onDrop={handleDrop}
-      onDragActive={setDragging}
-      onOpenFilePicker={() => fileInputRef.current?.click()}
-      onSelectSource={(sourceId) => {
-        setSelectedSourceId(sourceId)
-        setMobileSourcesOpen(false)
-      }}
-      onTabChange={setSourceTab}
-      onToggleSource={(sourceId, enabled) => void toggleSource(sourceId, enabled)}
-    />
-  )
-
   return (
     <>
       <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileInput} />
       <AppScreenShell
         className="h-full"
         contentClassName="flex min-h-0"
-        sidebar={sourcePanel}
-        sidebarClassName="w-80 xl:w-96"
         header={(
           <AppScreenHeader
             title={knowledgeBase.title}
@@ -367,9 +336,15 @@ export function KnowledgeBaseWorkspace({
             )}
             actions={(
               <>
-                <Button className="lg:hidden" size="sm" onClick={() => setMobileSourcesOpen(true)}>
-                  <Menu size={14} /> Sources
-                </Button>
+                <SegmentedControl
+                  value={sourceTab}
+                  options={[
+                    { value: 'sources', label: 'Sources' },
+                    { value: 'search', label: 'Search' },
+                  ]}
+                  onChange={setSourceTab}
+                  ariaLabel="Knowledge base views"
+                />
                 {canShare ? (
                   <Button size="sm" onClick={() => setShareOpen(true)}>
                     <Share2 size={14} /> Share
@@ -393,33 +368,33 @@ export function KnowledgeBaseWorkspace({
             onDelete={() => void deleteSource(selectedSource.source.id)}
             onRetry={() => void retrySource(selectedSource.source.id)}
           />
-        ) : mobileSourcesOpen ? sourcePanel : null}
-        rightPanelOpen={Boolean(selectedSource || mobileSourcesOpen)}
-        rightPanelWidth={mobileSourcesOpen ? 360 : 420}
-        onRightPanelClose={() => {
-          setSelectedSourceId(null)
-          setMobileSourcesOpen(false)
-        }}
-        rightPanelOverlayLabel={selectedSource ? 'Knowledge source details' : 'Knowledge sources'}
+        ) : null}
+        rightPanelOpen={Boolean(selectedSource)}
+        rightPanelWidth={420}
+        onRightPanelClose={() => setSelectedSourceId(null)}
+        rightPanelOverlayLabel="Knowledge source details"
       >
-        <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center p-6">
-          <div className="w-full max-w-xl text-center">
-            <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-md bg-[var(--surface-subtle)] text-[var(--muted)]">
-              <BookOpen size={18} />
-            </span>
-            <h2 className="mt-4 text-sm font-medium text-[var(--foreground)]">{knowledgeBase.title}</h2>
-            <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-[var(--muted)]">
-              {knowledgeBase.description || 'A curated source collection for semantic and keyword retrieval.'}
-            </p>
-            <div className="mt-5 flex items-center justify-center gap-5 text-xs text-[var(--muted)]">
-              <span><strong className="font-medium text-[var(--foreground)]">{sources.length}</strong> sources</span>
-              <span><strong className="font-medium text-[var(--foreground)]">{readySourceCount}</strong> ready</span>
-            </div>
-            <p className="mt-6 text-[11px] text-[var(--muted-light)]">
-              Use Sources to manage the corpus or Search to inspect retrieved passages.
-            </p>
-          </div>
-        </div>
+        <KnowledgeBaseBody
+          canEdit={canEdit}
+          description={knowledgeBase.description ?? null}
+          dragging={dragging}
+          knowledgeBaseId={knowledgeBase.id}
+          notice={notice}
+          readySourceCount={readySourceCount}
+          selectedSourceId={selectedSourceId}
+          searchRevision={searchRevision}
+          sourceTab={sourceTab}
+          sources={sources}
+          uploading={uploading}
+          onAddText={() => setTextDialogOpen(true)}
+          onAddWebsite={() => setUrlDialogOpen(true)}
+          onAddConnected={canAddConnectedSource ? () => setConnectedDialogOpen(true) : undefined}
+          onDrop={handleDrop}
+          onDragActive={setDragging}
+          onOpenFilePicker={() => fileInputRef.current?.click()}
+          onSelectSource={setSelectedSourceId}
+          onToggleSource={(sourceId, enabled) => void toggleSource(sourceId, enabled)}
+        />
       </AppScreenShell>
 
       <DialogFrame
@@ -622,11 +597,18 @@ function connectedSourceIdentifierPlaceholder(recipe: ConnectedKnowledgeSourceRe
   }
 }
 
-function KnowledgeSourcePanel({
+/**
+ * The whole knowledge base surface in one column. Sources and Search used to
+ * live in a tertiary "Notebook" sidebar next to an empty placeholder page; they
+ * are now the page itself, switched by the toggle in the screen header.
+ */
+function KnowledgeBaseBody({
   canEdit,
+  description,
   dragging,
   knowledgeBaseId,
   notice,
+  readySourceCount,
   selectedSourceId,
   searchRevision,
   sourceTab,
@@ -635,18 +617,18 @@ function KnowledgeSourcePanel({
   onAddText,
   onAddWebsite,
   onAddConnected,
-  onCloseMobile,
   onDragActive,
   onDrop,
   onOpenFilePicker,
   onSelectSource,
-  onTabChange,
   onToggleSource,
 }: {
   canEdit: boolean
+  description: string | null
   dragging: boolean
   knowledgeBaseId: string
   notice: string | null
+  readySourceCount: number
   selectedSourceId: string | null
   searchRevision: number
   sourceTab: SourceTab
@@ -655,12 +637,10 @@ function KnowledgeSourcePanel({
   onAddText: () => void
   onAddWebsite: () => void
   onAddConnected?: () => void
-  onCloseMobile: () => void
   onDragActive: (active: boolean) => void
   onDrop: (event: DragEvent<HTMLDivElement>) => void
   onOpenFilePicker: () => void
   onSelectSource: (id: string) => void
-  onTabChange: (tab: SourceTab) => void
   onToggleSource: (sourceId: string, enabled: boolean) => void
 }) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -685,95 +665,95 @@ function KnowledgeSourcePanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-[var(--sidebar-surface)]">
-      <div className="flex h-14 min-h-14 shrink-0 items-center justify-between border-b border-[var(--border)] px-4 md:h-16 md:min-h-16">
-        <div className="flex items-center gap-2 text-sm font-medium"><BookOpen size={15} /> Notebook</div>
-        <IconButton className="lg:hidden" aria-label="Close sources" onClick={onCloseMobile}><X size={15} /></IconButton>
-      </div>
-      <div className="flex justify-center border-b border-[var(--border)] px-3 py-2">
-        <SegmentedControl
-          value={sourceTab}
-          options={[
-            { value: 'sources', label: 'Sources' },
-            { value: 'search', label: 'Search' },
-          ]}
-          onChange={onTabChange}
-          ariaLabel="Knowledge base views"
-          className="w-full [&>button]:flex-1"
-        />
-      </div>
-      {sourceTab === 'sources' ? (
-        <>
-          {canEdit ? (
-            <div className="border-b border-[var(--border)] p-3">
-              <div
-                onDragEnter={(event) => { event.preventDefault(); onDragActive(true) }}
-                onDragOver={(event) => { event.preventDefault(); onDragActive(true) }}
-                onDragLeave={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onDragActive(false)
-                }}
-                onDrop={onDrop}
-                className={`flex min-h-28 flex-col items-center justify-center rounded-lg border border-dashed px-4 text-center transition-colors ${dragging ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]' : 'border-[var(--border)]'}`}
-                data-testid="knowledge-source-dropzone"
-              >
-                {uploading ? <Loader2 className="animate-spin text-[var(--muted)]" size={19} /> : <Upload className="text-[var(--muted)]" size={19} />}
-                <p className="mt-2 text-xs font-medium">{uploading ? 'Adding sources…' : 'Drop files here'}</p>
-                <p className="mt-1 text-[11px] text-[var(--muted)]">PDF, Office, text, and code files</p>
+    <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl px-5 py-6 sm:px-6">
+        {sourceTab === 'sources' ? (
+          <>
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--surface-subtle)] text-[var(--muted)]">
+                <BookOpen size={17} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm leading-5 text-[var(--muted)]">
+                  {description || 'A curated source collection for semantic and keyword retrieval.'}
+                </p>
+                <div className="mt-2 flex items-center gap-4 text-xs text-[var(--muted)]">
+                  <span><strong className="font-medium text-[var(--foreground)]">{sources.length}</strong> sources</span>
+                  <span><strong className="font-medium text-[var(--foreground)]">{readySourceCount}</strong> ready</span>
+                </div>
               </div>
-              <div className={`mt-2 grid gap-2 ${onAddConnected ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                <Button size="sm" onClick={onOpenFilePicker}><Plus size={13} /> Add files</Button>
-                <Button size="sm" onClick={onAddText}><FileText size={13} /> Paste text</Button>
-                <Button size="sm" onClick={onAddWebsite}><Globe2 size={13} /> Website</Button>
-                {onAddConnected ? (
-                  <Button size="sm" onClick={onAddConnected}><Cloud size={13} /> Connected</Button>
-                ) : null}
-              </div>
-              {notice ? <p role="alert" className="mt-2 text-xs text-red-500">{notice}</p> : null}
             </div>
-          ) : null}
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            {sources.length === 0 ? (
-              <div className="px-4 py-10 text-center text-xs leading-relaxed text-[var(--muted)]">
-                No sources yet. Add a document to make this knowledge base searchable.
+            {canEdit ? (
+              <div className="mt-6">
+                <div
+                  onDragEnter={(event) => { event.preventDefault(); onDragActive(true) }}
+                  onDragOver={(event) => { event.preventDefault(); onDragActive(true) }}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onDragActive(false)
+                  }}
+                  onDrop={onDrop}
+                  className={`flex min-h-32 flex-col items-center justify-center rounded-lg border border-dashed px-4 text-center transition-colors ${dragging ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]' : 'border-[var(--border)]'}`}
+                  data-testid="knowledge-source-dropzone"
+                >
+                  {uploading ? <Loader2 className="animate-spin text-[var(--muted)]" size={19} /> : <Upload className="text-[var(--muted)]" size={19} />}
+                  <p className="mt-2 text-xs font-medium">{uploading ? 'Adding sources…' : 'Drop files here'}</p>
+                  <p className="mt-1 text-[11px] text-[var(--muted)]">PDF, Office, text, and code files</p>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button size="sm" onClick={onOpenFilePicker}><Plus size={13} /> Add files</Button>
+                  <Button size="sm" onClick={onAddText}><FileText size={13} /> Paste text</Button>
+                  <Button size="sm" onClick={onAddWebsite}><Globe2 size={13} /> Website</Button>
+                  {onAddConnected ? (
+                    <Button size="sm" onClick={onAddConnected}><Cloud size={13} /> Connected</Button>
+                  ) : null}
+                </div>
+                {notice ? <p role="alert" className="mt-2 text-xs text-red-500">{notice}</p> : null}
               </div>
-            ) : sources.map((detail) => (
-              <SourceRow
-                key={detail.source.id}
-                detail={detail}
-                selected={selectedSourceId === detail.source.id}
-                canEdit={canEdit}
-                onSelect={() => onSelectSource(detail.source.id)}
-                onToggle={(enabled) => onToggleSource(detail.source.id, enabled)}
-              />
-            ))}
-          </div>
-        </>
-      ) : sourceTab === 'search' ? (
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <div className="flex gap-2">
-            <label className="relative min-w-0 flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" size={13} />
-              <span className="sr-only">Search this knowledge base</span>
-              <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void searchKnowledgeBase() }} placeholder="Search sources" className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] pl-8 pr-2 text-xs outline-none" />
-            </label>
-            <IconButton aria-label="Search" onClick={() => void searchKnowledgeBase()} disabled={!searchQuery.trim() || searching}>
-              {searching ? <Loader2 className="animate-spin" size={14} /> : <ChevronRight size={14} />}
-            </IconButton>
-          </div>
-          {searchResult ? (
-            <div className="mt-4 space-y-2">
-              {searchResult.chunks.length === 0 ? <p className="py-8 text-center text-xs text-[var(--muted)]">No matching passages.</p> : searchResult.chunks.map((chunk, index) => (
-                <button key={`${chunk.sourceId}-${chunk.chunkIndex}-${index}`} type="button" onClick={() => chunk.knowledgeSourceId && onSelectSource(chunk.knowledgeSourceId)} className="w-full rounded-md border border-[var(--border)] p-3 text-left hover:bg-[var(--surface-subtle)]">
-                  <p className="truncate text-xs font-medium">{chunk.title || 'Source passage'}</p>
-                  <p className="mt-1.5 line-clamp-4 text-[11px] leading-relaxed text-[var(--muted)]">{chunk.text}</p>
-                </button>
+            ) : null}
+            <div className="mt-6 border-t border-[var(--border)] pt-2">
+              {sources.length === 0 ? (
+                <div className="px-4 py-10 text-center text-xs leading-relaxed text-[var(--muted)]">
+                  No sources yet. Add a document to make this knowledge base searchable.
+                </div>
+              ) : sources.map((detail) => (
+                <SourceRow
+                  key={detail.source.id}
+                  detail={detail}
+                  selected={selectedSourceId === detail.source.id}
+                  canEdit={canEdit}
+                  onSelect={() => onSelectSource(detail.source.id)}
+                  onToggle={(enabled) => onToggleSource(detail.source.id, enabled)}
+                />
               ))}
             </div>
-          ) : (
-            <p className="px-3 py-10 text-center text-xs leading-relaxed text-[var(--muted)]">Find passages across every enabled source using keyword and semantic search.</p>
-          )}
-        </div>
-      ) : null}
+          </>
+        ) : (
+          <>
+            <div className="flex gap-2">
+              <label className="relative min-w-0 flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" size={14} />
+                <span className="sr-only">Search this knowledge base</span>
+                <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void searchKnowledgeBase() }} placeholder="Search sources" className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] pl-9 pr-3 text-sm outline-none" />
+              </label>
+              <IconButton aria-label="Search" onClick={() => void searchKnowledgeBase()} disabled={!searchQuery.trim() || searching}>
+                {searching ? <Loader2 className="animate-spin" size={14} /> : <ChevronRight size={14} />}
+              </IconButton>
+            </div>
+            {searchResult ? (
+              <div className="mt-4 space-y-2">
+                {searchResult.chunks.length === 0 ? <p className="py-8 text-center text-xs text-[var(--muted)]">No matching passages.</p> : searchResult.chunks.map((chunk, index) => (
+                  <button key={`${chunk.sourceId}-${chunk.chunkIndex}-${index}`} type="button" onClick={() => chunk.knowledgeSourceId && onSelectSource(chunk.knowledgeSourceId)} className="w-full rounded-md border border-[var(--border)] p-3 text-left hover:bg-[var(--surface-subtle)]">
+                    <p className="truncate text-xs font-medium">{chunk.title || 'Source passage'}</p>
+                    <p className="mt-1.5 line-clamp-4 text-[11px] leading-relaxed text-[var(--muted)]">{chunk.text}</p>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="px-3 py-10 text-center text-xs leading-relaxed text-[var(--muted)]">Find passages across every enabled source using keyword and semantic search.</p>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -794,7 +774,7 @@ function SourceRow({
   const busy = ACTIVE_SOURCE_STATUSES.has(detail.source.status)
   return (
     <div
-      className={`group flex items-center gap-2 rounded-md px-2 py-2 ${selected ? 'bg-[var(--surface-subtle)]' : 'hover:bg-[var(--surface-subtle)]'}`}
+      className={`group flex items-center gap-2.5 rounded-md px-2 py-2.5 ${selected ? 'bg-[var(--surface-subtle)]' : 'hover:bg-[var(--surface-subtle)]'}`}
       data-testid={`knowledge-source-${detail.source.id}`}
     >
       {canEdit ? (
@@ -805,7 +785,7 @@ function SourceRow({
       <button type="button" onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-2 text-left">
         <FileText size={14} className="shrink-0 text-[var(--muted)]" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs font-medium">{detail.source.title}</span>
+          <span className="block truncate text-sm font-medium">{detail.source.title}</span>
           <span
             className={`mt-0.5 block text-[10px] capitalize ${detail.source.status === 'failed' ? 'text-red-500' : 'text-[var(--muted)]'}`}
             data-testid={`knowledge-source-status-${detail.source.id}`}

@@ -1,5 +1,6 @@
 const FALLBACK_SURFACE = 'chat'
 const APP_SURFACES = new Set([
+  'activity',
   'admin',
   'agents',
   'automations',
