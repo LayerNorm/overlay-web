@@ -48,6 +48,7 @@ import type * as platform_seedDemoAccount from "../platform/seedDemoAccount.js";
 import type * as platform_uiSettings from "../platform/uiSettings.js";
 import type * as platform_usage from "../platform/usage.js";
 import type * as projects_projects from "../projects/projects.js";
+import type * as providers_connections from "../providers/connections.js";
 import type * as webhooks_deliveries from "../webhooks/deliveries.js";
 import type * as webhooks_deliveryRunner from "../webhooks/deliveryRunner.js";
 import type * as webhooks_subscriptions from "../webhooks/subscriptions.js";
@@ -99,6 +100,7 @@ declare const fullApi: ApiFromModules<{
   "platform/uiSettings": typeof platform_uiSettings;
   "platform/usage": typeof platform_usage;
   "projects/projects": typeof projects_projects;
+  "providers/connections": typeof providers_connections;
   "webhooks/deliveries": typeof webhooks_deliveries;
   "webhooks/deliveryRunner": typeof webhooks_deliveryRunner;
   "webhooks/subscriptions": typeof webhooks_subscriptions;
