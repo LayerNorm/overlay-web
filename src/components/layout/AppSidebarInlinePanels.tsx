@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
 import {
   Bell,
@@ -50,7 +50,6 @@ import {
 import { FilesInlineTree, ProjectsInlineTree } from '@overlay/modules-react/projects'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { SidebarResourceList } from '@overlay/ui/primitives'
-import { FilesCategorySidebar, resolveFilesCategory } from './FilesCategorySidebar'
 
 type Project = ProjectSummary
 type ProjectChat = ProjectChatSummary
@@ -70,7 +69,6 @@ export function FilesInlinePanel({
   onNavigate?: () => void
 }) {
   const router = useRouter()
-  const pathname = usePathname()
   const searchParams = useSearchParams()
   const [files, setFiles] = useState<ProjectFile[]>([])
   const [loading, setLoading] = useState(true)
@@ -78,17 +76,6 @@ export function FilesInlinePanel({
   const activeFileId = searchParams?.get('file') ?? null
   const activeNoteId = searchParams?.get('id') ?? null
   const activeCanonicalFileId = activeFileId ?? activeNoteId
-  const activeCategory = resolveFilesCategory(searchParams?.get('view'))
-
-  function selectCategory(category: ReturnType<typeof resolveFilesCategory>) {
-    const params = new URLSearchParams(searchParams?.toString() ?? '')
-    if (category === 'all') params.delete('view')
-    else params.set('view', category)
-    params.delete('file')
-    params.delete('folder')
-    router.push(`${pathname}?${params.toString()}`)
-    onNavigate?.()
-  }
 
   const fetchItems = useCallback(async (signal?: AbortSignal): Promise<ProjectFile[]> => {
     const [fileRows, noteRows] = await Promise.all([
@@ -209,22 +196,19 @@ export function FilesInlinePanel({
   const filteredFiles = useMemo(() => filterProjectFilesForSearch(files, q), [files, q])
 
   return (
-    <>
-      <FilesCategorySidebar category={activeCategory} onChange={selectCategory} />
-      <SidebarResourceList>
-        <FilesInlineTree
-          files={filteredFiles}
-          loading={loading}
-          loadingContent={<SidebarListSkeleton rows={7} />}
-          emptyLabel={q ? 'No results' : 'No files yet'}
-          activeFileId={activeCanonicalFileId}
-          expanded={expanded}
-          onToggle={toggleFile}
-          onOpen={openFile}
-          onMove={moveFile}
-        />
-      </SidebarResourceList>
-    </>
+    <SidebarResourceList>
+      <FilesInlineTree
+        files={filteredFiles}
+        loading={loading}
+        loadingContent={<SidebarListSkeleton rows={7} />}
+        emptyLabel={q ? 'No results' : 'No files yet'}
+        activeFileId={activeCanonicalFileId}
+        expanded={expanded}
+        onToggle={toggleFile}
+        onOpen={openFile}
+        onMove={moveFile}
+      />
+    </SidebarResourceList>
   )
 }
 

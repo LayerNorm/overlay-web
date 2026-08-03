@@ -31,6 +31,7 @@ import {
   chatsInlineItems,
   toolsInlineItems,
 } from '@/components/layout/AppSidebarInlinePanels'
+import { filesInlineItems, resolveFilesCategory } from '@/components/layout/FilesCategorySidebar'
 import { useAppSidebarActions } from './sidebar/useAppSidebarActions'
 import overlayAppConfig from '@/overlay.config'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -304,6 +305,7 @@ export default function AppSidebar({
     if (current === 'installed') return 'installed'
     return 'connectors'
   })()
+  const filesView = resolveFilesCategory(currentSearchParams.get('view'))
   const chatsView = (() => {
     const current = currentSearchParams.get('view')
     if (current === 'dms') return 'dms'
@@ -682,6 +684,23 @@ export default function AppSidebar({
             ...(publicShowcase ? { showcase: '1' } : {}),
             view: next,
           }).toString()}`)
+        },
+      }
+    }
+    if (panelKind === 'files' || panelKind === 'notes') {
+      return {
+        items: filesInlineItems,
+        activeId: filesView,
+        onSelect: (next) => {
+          closeMobileDrawer()
+          const params = new URLSearchParams(currentSearchParams.toString())
+          if (publicShowcase) params.set('showcase', '1')
+          if (next === 'all') params.delete('view')
+          else params.set('view', next)
+          params.delete('file')
+          params.delete('folder')
+          const query = params.toString()
+          router.push(query ? `${pathname}?${query}` : pathname)
         },
       }
     }
