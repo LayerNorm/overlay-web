@@ -19,6 +19,7 @@ import { CatalogPolicyAdminPanel } from '@/features/admin/catalog/CatalogPolicyA
 import { KnowledgeAdminPanel } from '@/features/admin/knowledge/KnowledgeAdminPanel'
 import { GovernanceAdminPanel } from '@/features/admin/governance/GovernanceAdminPanel'
 import { useAuthorization } from '@/components/providers/AuthorizationProvider'
+import { SecondaryPanelHeader } from '@/components/layout/sidebar/AppSidebarSecondaryPanel'
 
 type UsageRow = {
   userId: string
@@ -148,26 +149,29 @@ export default function AdminPage() {
     <AppScreenShell
       data-testid="admin-console"
       sidebarBehavior="always"
-      sidebarClassName="w-12 p-1 sm:w-52 sm:p-2"
+      sidebarClassName="w-12 p-0 sm:w-60"
       sidebar={(
-        <nav aria-label="Administration sections" className="flex flex-col gap-1">
-          {sections.map(({ value, label, Icon }) => (
-            <button
-              key={value}
-              type="button"
-              aria-current={section === value ? 'page' : undefined}
-              onClick={() => setSection(value)}
-              className={`flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-sm transition-colors max-sm:justify-center max-sm:px-0 ${
-                section === value
-                  ? 'bg-[var(--surface-subtle)] font-medium text-[var(--foreground)]'
-                  : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-              }`}
-            >
-              <Icon size={16} strokeWidth={1.75} className="shrink-0" />
-              <span className="truncate max-sm:hidden">{label}</span>
-            </button>
-          ))}
-        </nav>
+        <>
+          <SecondaryPanelHeader title="Admin" />
+          <nav aria-label="Administration sections" className="space-y-0.5 px-2 py-3">
+            {sections.map(({ value, label, Icon }) => (
+              <button
+                key={value}
+                type="button"
+                aria-current={section === value ? 'page' : undefined}
+                onClick={() => setSection(value)}
+                className={`flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-left text-sm transition-colors max-sm:justify-center max-sm:px-0 ${
+                  section === value
+                    ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                    : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                <Icon size={15} strokeWidth={1.75} className="shrink-0" />
+                <span className="truncate max-sm:hidden">{label}</span>
+              </button>
+            ))}
+          </nav>
+        </>
       )}
       header={(
         <AppScreenHeader
