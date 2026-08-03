@@ -704,9 +704,10 @@ function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: Provide
 
   const preset = getByokPreset(providerId)
 
-  // Provider endpoints are fixed so credentials cannot be forwarded to arbitrary hosts.
+  // Fixed presets are locked to their vendor URL. The custom preset requires
+  // an explicit user URL and is guarded on the server before any key is sent.
   useEffect(() => {
-    if (preset && !endpoint) {
+    if (preset && !preset.allowsCustomEndpoint && !endpoint) {
       setEndpoint(preset.defaultBaseURL)
     }
   }, [preset, endpoint])
@@ -749,13 +750,22 @@ function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: Provide
     onBusyChange(true)
     try {
       if (isEdit && existing) {
+        const customEndpointChanged = Boolean(
+          preset?.allowsCustomEndpoint &&
+          endpoint.trim().replace(/\/+$/, '') !== existing.endpoint.trim().replace(/\/+$/, ''),
+        )
         const body: Record<string, unknown> = {
           connectionId: existing._id,
           displayName,
           enabledModelIds,
-          status: testResult?.ok ? 'active' : existing.status,
+          status: testResult?.ok
+            ? 'active'
+            : customEndpointChanged
+              ? 'untested'
+              : existing.status,
           lastTestedAt: testResult ? Date.now() : undefined,
         }
+        if (preset?.allowsCustomEndpoint) body.endpoint = endpoint
         if (apiKey) body.apiKey = apiKey
         if (testResult?.ok) {
           body.discoveredModelsJson = JSON.stringify({ data: testResult.models })
@@ -812,7 +822,10 @@ function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: Provide
     }
   }, [isEdit, existing, displayName, enabledModelIds, apiKey, providerId, endpoint, preset, testResult, onSaved, onBusyChange])
 
-  const canSave = displayName.trim().length > 0 && (!preset?.requiresApiKey || apiKey || isEdit)
+  const hasRequiredEndpoint = !preset?.allowsCustomEndpoint || endpoint.trim().length > 0
+  const hasRequiredApiKey = !preset?.requiresApiKey || Boolean(apiKey) || isEdit
+  const canSave = displayName.trim().length > 0 && hasRequiredEndpoint && hasRequiredApiKey
+  const canTest = Boolean(preset) && hasRequiredEndpoint && hasRequiredApiKey
   // Provider dropdown options (exclude vercel-ai-gateway for add mode)
   const availablePresets = BYOK_PROVIDER_PRESETS.filter(
     (p) => p.id !== 'vercel-ai-gateway' || isEdit,
@@ -829,7 +842,7 @@ function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: Provide
           <button
             type="button"
             onClick={handleTest}
-            disabled={testing || busy}
+            disabled={testing || busy || !canTest}
             className="mr-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-[var(--foreground)] transition-opacity hover:opacity-80 disabled:opacity-50"
           >
             {testing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
@@ -890,6 +903,30 @@ function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: Provide
                 Provider docs
               </a>
             ) : null}
+          </div>
+        ) : null}
+
+        {preset?.allowsCustomEndpoint ? (
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
+              API base URL
+            </label>
+            <input
+              type="url"
+              value={endpoint}
+              onChange={(event) => {
+                setEndpoint(event.target.value)
+                setTestResult(null)
+                setEnabledModelIds([])
+              }}
+              autoComplete="url"
+              spellCheck={false}
+              placeholder="https://api.example.com/v1"
+              className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+            />
+            <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted-light)]">
+              Use an HTTPS OpenAI-compatible base URL. Overlay blocks redirects and private-network addresses before sending your key.
+            </p>
           </div>
         ) : null}
 

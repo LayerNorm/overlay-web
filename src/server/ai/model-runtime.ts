@@ -22,6 +22,7 @@ import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { readByokVaultKey } from '@/server/ai/gateway/byok-vault'
 import { assertByokRuntimeConnectionAllowed } from '@/server/ai/gateway/byok-security'
+import { createByokProviderFetch } from '@/server/ai/gateway/byok-provider-fetch'
 import { isByokModelId, parseByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import type { LanguageModelV3 } from '@/server/ai/provider-types'
 
@@ -60,10 +61,6 @@ export async function assertUserCanUseByokModel(
   return { connection, rawModelId: parsed.rawModelId }
 }
 
-const noRedirectFetch: typeof fetch = async (input, init) => {
-  return await fetch(input, { ...init, redirect: 'error' })
-}
-
 export async function getLanguageModel(
   modelId: string,
   accessToken?: string,
@@ -84,7 +81,7 @@ export async function getLanguageModel(
     const gateway = new ByokGateway({
       connection: byokConnection,
       apiKey,
-      fetch: noRedirectFetch,
+      fetch: createByokProviderFetch(connection.endpoint),
     })
     const model = await gateway.createLanguageModel(rawModelId, { accessToken })
     return model.implementation as LanguageModelV3

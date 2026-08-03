@@ -16,6 +16,7 @@ import { getByokPreset } from '@overlay/llm-gateway'
 import {
   DEFAULT_GATEWAY_PROVIDER_ID,
   byokEndpointMatchesPreset,
+  normalizeByokEndpoint,
   resolveByokEndpointForCreate,
   resolveByokEndpointForPatch,
 } from '@/server/ai/gateway/byok-security'
@@ -413,6 +414,17 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'Invalid discoveredAt' }, { status: 400 })
     }
 
+    const endpointChanged = endpointResolution.endpoint !== undefined &&
+      normalizeByokEndpoint(endpointResolution.endpoint) !== normalizeByokEndpoint(existing.endpoint)
+    const hasFreshEndpointTest = endpointChanged &&
+      status === 'active' &&
+      lastTestedAt !== undefined &&
+      safeDiscoveredModelsJson !== undefined
+    const effectiveStatus = endpointChanged && !hasFreshEndpointTest ? 'untested' : status
+    const effectiveEnabledModelIds = endpointChanged && !hasFreshEndpointTest
+      ? []
+      : safeEnabledModelIds
+
     // Rotate only after every metadata field has passed validation.
     let vaultObjectId: string | undefined
     if (safeApiKey) {
@@ -438,10 +450,10 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
         ...(safeDisplayName !== undefined ? { displayName: safeDisplayName } : {}),
         ...(endpointResolution.endpoint !== undefined ? { endpoint: endpointResolution.endpoint } : {}),
         ...(vaultObjectId !== undefined ? { vaultObjectId } : {}),
-        ...(safeEnabledModelIds !== undefined ? { enabledModelIds: safeEnabledModelIds } : {}),
+        ...(effectiveEnabledModelIds !== undefined ? { enabledModelIds: effectiveEnabledModelIds } : {}),
         ...(safeDiscoveredModelsJson !== undefined ? { discoveredModelsJson: safeDiscoveredModelsJson } : {}),
         ...(discoveredAt !== undefined ? { discoveredAt } : {}),
-        ...(status !== undefined ? { status } : {}),
+        ...(effectiveStatus !== undefined ? { status: effectiveStatus } : {}),
         ...(lastError !== undefined ? { lastError } : {}),
         ...(lastTestedAt !== undefined ? { lastTestedAt } : {}),
       },

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { readByokVaultKey } from '@/server/ai/gateway/byok-vault'
+import { createByokProviderFetch } from '@/server/ai/gateway/byok-provider-fetch'
 import { getGatewayLanguageCatalog } from '@/server/ai/gateway/gateway-catalog'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
@@ -9,6 +10,7 @@ import { getByokPreset } from '@overlay/llm-gateway'
 import {
   byokEndpointMatchesPreset,
   resolveByokEndpointForCreate,
+  resolveByokEndpointForPatch,
 } from '@/server/ai/gateway/byok-security'
 import { overlayProviderDiscoveryModels } from '@/server/ai/gateway/overlay-provider-models'
 import { logger } from '@/server/observability/logger'
@@ -73,8 +75,9 @@ function normalizeDiscoveredModels(payload: unknown): Array<{ id: string; name: 
 }
 
 // POST /api/v1/providers/connections/test
-// Tests a known provider's fixed model-discovery endpoint. Redirects are rejected
-// so an Authorization header can never be forwarded to a second origin.
+// Tests a known provider's model-discovery endpoint. Redirects are rejected so
+// an Authorization header can never be forwarded to a second origin. Custom
+// endpoints also use socket-time DNS/IP validation to prevent DNS rebinding.
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json().catch((_error) => null)
@@ -126,7 +129,22 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       }
 
       resolvedProviderId = existing.providerId
-      resolvedEndpoint = existingPreset.defaultBaseURL
+      if (endpoint !== undefined) {
+        const resolution = resolveByokEndpointForPatch(
+          existing.providerId,
+          endpoint,
+          { isDefault: existing.isDefault },
+        )
+        if (!resolution.ok) {
+          return NextResponse.json(
+            { error: resolution.error },
+            { status: resolution.status },
+          )
+        }
+        resolvedEndpoint = resolution.endpoint ?? existing.endpoint
+      } else {
+        resolvedEndpoint = existing.endpoint
+      }
       if (!resolvedApiKey && existing.vaultObjectId) {
         resolvedApiKey = await readByokVaultKey(existing.vaultObjectId) ?? ''
       }
@@ -165,7 +183,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
 
     const discoveryUrl = `${resolvedEndpoint.replace(/\/$/, '')}${preset.discoveryPath}`
-    const response = await fetch(discoveryUrl, {
+    const providerFetch = createByokProviderFetch(resolvedEndpoint)
+    const response = await providerFetch(discoveryUrl, {
       method: 'GET',
       headers: {
         accept: 'application/json',

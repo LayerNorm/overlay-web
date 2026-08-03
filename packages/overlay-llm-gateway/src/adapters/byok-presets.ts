@@ -5,7 +5,8 @@
  * `/v1/chat/completions` endpoint. The preset supplies the default base URL,
  * model-discovery path, and any provider-specific headers. At runtime, a
  * {@link ByokGateway} is constructed per user connection with the user's API
- * key. Provider endpoints are fixed to vendor-owned HTTPS origins.
+ * key. Provider endpoints are fixed to vendor-owned HTTPS origins unless the
+ * preset explicitly opts into a user-supplied endpoint.
  *
  * The Overlay preset is special: it is pre-seeded for every user,
  * cannot be deleted, and uses Overlay's hosted gateway key through the hosted gateway
@@ -25,6 +26,8 @@ export interface ByokProviderPreset {
   label: string
   /** Default base URL for the provider's OpenAI-compatible API. */
   defaultBaseURL: string
+  /** Whether the user must supply the OpenAI-compatible API base URL. */
+  allowsCustomEndpoint?: boolean
   /** Path appended to the base URL to list available models (e.g. `/models`). */
   discoveryPath: string
   /** Shape of the model-discovery response. `openai` = `{ data: [{ id }] }`. */
@@ -177,6 +180,18 @@ export const BYOK_PROVIDER_PRESETS: readonly ByokProviderPreset[] = [
     isDefault: false,
     isDeletable: true,
     docsURL: 'https://deepinfra.com',
+  },
+  {
+    id: 'custom-openai-compatible',
+    label: 'Custom OpenAI-compatible',
+    defaultBaseURL: '',
+    allowsCustomEndpoint: true,
+    discoveryPath: '/models',
+    discoveryShape: 'openai',
+    requiresApiKey: true,
+    isDefault: false,
+    isDeletable: true,
+    docsURL: 'https://platform.openai.com/docs/api-reference',
   },
 ]
 

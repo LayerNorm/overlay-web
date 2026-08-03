@@ -49,8 +49,14 @@ export class ByokGateway implements LLMGateway {
     }
     const endpoint = options.connection.endpoint.trim().replace(/\/+$/, '')
     const presetEndpoint = preset.defaultBaseURL.trim().replace(/\/+$/, '')
-    if (endpoint !== presetEndpoint) {
+    if (!preset.allowsCustomEndpoint && endpoint !== presetEndpoint) {
       throw new Error(`${preset.label} must use its locked provider endpoint.`)
+    }
+    if (preset.allowsCustomEndpoint && !endpoint) {
+      throw new Error(`${preset.label} requires an API base URL.`)
+    }
+    if (preset.allowsCustomEndpoint && !options.fetch) {
+      throw new Error(`${preset.label} requires a guarded fetch implementation.`)
     }
     if (preset.requiresApiKey && !options.apiKey) {
       throw new Error(

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  CUSTOM_BYOK_PROVIDER_ID,
   DEFAULT_GATEWAY_PROVIDER_ID,
   assertByokRuntimeConnectionAllowed,
   byokEndpointMatchesPreset,
@@ -78,6 +79,37 @@ test('patch rejects unknown providers', () => {
   }
 })
 
+test('custom provider requires and normalizes a user HTTPS API base URL', () => {
+  assert.deepEqual(
+    resolveByokEndpointForCreate(CUSTOM_BYOK_PROVIDER_ID, ' https://models.example.com/v1/// '),
+    { ok: true, endpoint: 'https://models.example.com/v1' },
+  )
+  assert.equal(byokEndpointMatchesPreset(
+    CUSTOM_BYOK_PROVIDER_ID,
+    'https://models.example.com/v1',
+  ), true)
+  assert.equal(resolveByokEndpointForCreate(CUSTOM_BYOK_PROVIDER_ID, undefined).ok, false)
+})
+
+test('custom provider rejects unsafe API base URL syntax', () => {
+  for (const endpoint of [
+    'http://models.example.com/v1',
+    'https://user:password@models.example.com/v1',
+    'https://models.example.com/v1?token=secret',
+    'https://models.example.com/v1#fragment',
+  ]) {
+    const result = resolveByokEndpointForCreate(CUSTOM_BYOK_PROVIDER_ID, endpoint)
+    assert.equal(result.ok, false, endpoint)
+  }
+})
+
+test('custom provider endpoint can be changed to another valid HTTPS API URL', () => {
+  assert.deepEqual(
+    resolveByokEndpointForPatch(CUSTOM_BYOK_PROVIDER_ID, 'https://new.example.com/openai/v1/'),
+    { ok: true, endpoint: 'https://new.example.com/openai/v1' },
+  )
+})
+
 test('runtime rejects hosted default Overlay BYOK model ids', () => {
   assert.throws(
     () => assertByokRuntimeConnectionAllowed({
@@ -126,6 +158,16 @@ test('runtime rejects providers outside the locked preset registry', () => {
     isDefault: false,
     status: 'active',
   }, 'z-ai/glm-5.2'), /not supported/)
+})
+
+test('runtime allows an active custom provider with an enabled model', () => {
+  assert.doesNotThrow(() => assertByokRuntimeConnectionAllowed({
+    providerId: CUSTOM_BYOK_PROVIDER_ID,
+    endpoint: 'https://models.example.com/v1',
+    enabledModelIds: ['organization/model-1'],
+    isDefault: false,
+    status: 'active',
+  }, 'organization/model-1'))
 })
 
 test('runtime allows active Vercel AI Gateway BYOK enabled models at the locked endpoint', () => {

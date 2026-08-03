@@ -307,6 +307,7 @@
     "remark-math": "^6.0.0",
     "server-only": "^0.0.1",
     "stripe": "^20.3.1",
+    "undici": "7.29.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
