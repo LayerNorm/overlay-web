@@ -1,5 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
+import { unstable_rethrow } from 'next/navigation'
 import { getOverlaySession } from '@/server/auth/session'
 import { requireOverlayCapability } from '@/server/capabilities'
 import { billingCheckoutService, billingErrorResponse } from '@/server/billing/http'
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest) {
     })
     return NextResponse.json(result)
   } catch (error) {
+    unstable_rethrow(error)
     if (error instanceof Error && error.name === 'BillingServiceError') {
       return billingErrorResponse(error, 'Failed to verify checkout')
     }

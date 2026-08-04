@@ -359,15 +359,15 @@
     "lowlight": "^3.3.0",
     "lucide-react": "^0.575.0",
     "mammoth": "^1.12.0",
-    "next": "^15.5.15",
+    "next": "16.3.0",
     "pdf-parse": "^2.4.5",
     "pg": "^8.22.0",
     "picomatch": "^2.3.2",
     "posthog-js": "^1.369.0",
     "posthog-node": "^5.29.2",
     "proxy-from-env": "^2.1.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.1",
     "redis": "^5.12.1",
@@ -381,18 +381,18 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@next/bundle-analyzer": "^15.5.18",
+    "@next/bundle-analyzer": "16.3.0",
     "@remotion/cli": "^4.0.441",
     "@remotion/player": "^4.0.441",
     "@types/dompurify": "^3.0.5",
     "@types/node": "^20",
     "@types/pg": "^8.20.0",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
     "autoprefixer": "^10.5.0",
     "drizzle-kit": "^0.31.10",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.1",
+    "eslint": "10.8.0",
+    "eslint-config-next": "16.3.0",
     "mintlify": "^4.2.626",
     "playwright": "^1.61.1",
     "postcss": "8.5.23",
@@ -416,6 +416,8 @@
     },
     "glob@13.0.6": {
       "brace-expansion": "5.0.8"
-    }
+    },
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4"
   }
 }

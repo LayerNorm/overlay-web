@@ -7,6 +7,10 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { KnowledgeBaseServiceError, KNOWLEDGE_BASE_RESOURCE_TYPE } from '@/server/knowledge-bases'
 import { KnowledgeRouteSkeleton } from '../../_components/AppRouteSkeletons'
 
+// TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
+// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
+export const instant = false;
+
 const KnowledgeBaseWorkspace = dynamic(
   () => import('@/features/knowledge-bases/components/KnowledgeBaseWorkspace')
     .then((module) => module.KnowledgeBaseWorkspace),

@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { unstable_noStore as noStore } from 'next/cache'
+import { connection } from 'next/server'
 import { cookies, headers } from 'next/headers'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { Session } from '@overlay/app-core'
@@ -41,7 +41,7 @@ export async function getOverlaySession(
   request?: Request,
   options: { refresh?: boolean } = {},
 ): Promise<AuthSession | null> {
-  noStore()
+  await connection()
   const sessionRequest = request ?? await requestFromCurrentHeaders()
   const auth = getOverlayServerContext().auth
   const session = options.refresh && auth.refreshSession

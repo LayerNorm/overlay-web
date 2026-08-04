@@ -3,6 +3,10 @@ import { FileParityHarness } from '@/features/files/dev/FileParityHarness'
 import { SharedKnowledgeSurfaceHarness } from '@/features/files/dev/SharedKnowledgeSurfaceHarness'
 import type { FileParityFixtureScenario } from '@overlay/modules-react/file-parity-fixture'
 
+// TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
+// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
+export const instant = false;
+
 type FixtureSearchParams = Record<string, string | string[] | undefined>
 const SCENARIOS = new Set<FileParityFixtureScenario>(['gallery', 'states', 'inventory', 'viewers', 'notebook', 'sync', 'surface'])
 

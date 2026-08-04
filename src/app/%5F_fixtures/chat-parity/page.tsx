@@ -1,6 +1,10 @@
 import { notFound } from 'next/navigation'
 import { ChatParityHarness } from '@/features/chat/dev/ChatParityHarness'
 
+// TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
+// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
+export const instant = false;
+
 type FixtureSearchParams = Record<string, string | string[] | undefined>
 
 function first(value: string | string[] | undefined): string | undefined {

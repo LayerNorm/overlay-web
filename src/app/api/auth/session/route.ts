@@ -1,11 +1,10 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
+import { unstable_rethrow } from 'next/navigation'
 import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
 import { getOverlaySession } from '@/server/auth/session'
 import { formatOverlayConfigError, isOverlayConfigError } from '@/server/config'
 import { rateLimitByIp } from '@/server/security/rate-limit'
-
-export const dynamic = 'force-dynamic'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
@@ -30,6 +29,7 @@ export async function GET(request: NextRequest) {
       user: session.user,
     }, { headers: NO_STORE_HEADERS })
   } catch (error) {
+    unstable_rethrow(error)
     if (isOverlayConfigError(error)) {
       const formatted = formatOverlayConfigError(error)
       return NextResponse.json(

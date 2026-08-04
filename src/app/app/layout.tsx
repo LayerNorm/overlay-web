@@ -20,6 +20,10 @@ import { AppShellLoadingFallback, ChatRouteSkeleton } from './_components/AppRou
 import { getSelectedIntegrationProviderId } from '@/server/integrations'
 import { WorkspaceAppBoundary } from '@/features/workspaces/components/WorkspaceAppBoundary'
 
+// TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
+// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
+export const instant = false;
+
 export const metadata: Metadata = {
   robots: {
     index: false,
@@ -44,7 +48,7 @@ async function AppLayoutContent({ children }: { children: React.ReactNode }) {
       const server = getOverlayServerContext()
       await server.fixedRoleAuthorizationBridge.ensureDefaultUserRole(session.user.id)
       authorization = {
-          ...await server.authorizationService.resolveSubject(session.user.id),
+          ...(await server.authorizationService.resolveSubject(session.user.id)),
           enforcementMode: getAuthorizationEnforcementMode(),
       }
     } else {

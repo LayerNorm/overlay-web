@@ -1,8 +1,7 @@
 import 'server-only'
 
-import { unstable_noStore as noStore } from 'next/cache'
+import { connection, NextRequest } from 'next/server'
 import { headers } from 'next/headers'
-import { NextRequest } from 'next/server'
 import type {
   AppBootstrapResponse,
   ConnectedIntegrationsResponse,
@@ -56,7 +55,7 @@ function originFromHeaders(headerList: Headers): string {
  * capability checks, rate limits, idempotency, and pagination envelopes).
  */
 async function callAppApi<T>(path: string, service: BffDomainService, fallback: T): Promise<T> {
-  noStore()
+  await connection()
   const headerList = await headers()
   const cookie = headerList.get('cookie')
   const url = new URL(path, originFromHeaders(headerList))

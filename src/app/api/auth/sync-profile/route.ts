@@ -1,5 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextResponse } from 'next/server'
+import { unstable_rethrow } from 'next/navigation'
 import { getOverlaySession } from '@/server/auth/session'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { captureProductEvent } from '@/server/observability/posthog-server'
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
       })
     })
   } catch (error) {
+    unstable_rethrow(error)
     logger.error('[Auth] Profile sync error:', error)
     return NextResponse.json(
       { error: 'Failed to sync profile' },

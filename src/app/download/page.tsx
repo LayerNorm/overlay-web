@@ -5,14 +5,17 @@ import {
   fetchLatestReleaseInfo,
   type LatestReleaseInfo,
 } from '@/shared/web/latest-release'
+import { LandingThemeProvider } from '@/contexts/LandingThemeContext'
+
+// TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
+// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
+export const instant = false;
 
 export const metadata: Metadata = {
   title: 'Download Overlay for macOS',
   description:
     'Download Overlay Desktop for macOS Apple Silicon, or build from the public source repository.',
 }
-
-export const dynamic = 'force-dynamic'
 
 export default async function DownloadRoutePage() {
   const downloadsEnabled = areOfficialDesktopDownloadsEnabled()
@@ -29,10 +32,12 @@ export default async function DownloadRoutePage() {
   }
 
   return (
-    <DesktopDownloadPage
-      downloadsEnabled={downloadsEnabled}
-      release={release}
-      releaseError={releaseError}
-    />
+    <LandingThemeProvider>
+      <DesktopDownloadPage
+        downloadsEnabled={downloadsEnabled}
+        release={release}
+        releaseError={releaseError}
+      />
+    </LandingThemeProvider>
   )
 }

@@ -1,11 +1,11 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 @import '@overlay/ui/styles.css';
 @import '@overlay/modules-react/knowledge-surface.css';
 @import '@overlay/modules-react/file-viewer.css';
 @import '@overlay/modules-react/notebook-editor.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 @font-face {
   font-family: 'Libre Baskerville';
