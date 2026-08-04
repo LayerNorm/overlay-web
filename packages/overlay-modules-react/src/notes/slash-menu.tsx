@@ -35,7 +35,7 @@ export function SlashMenu({
   filteredSlashItems,
   executeSlashCommand,
   onClose,
-}: SlashMenuProps): React.ReactElement | null {
+}: SlashMenuProps): React.ReactElement<any> | null {
   const slashMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

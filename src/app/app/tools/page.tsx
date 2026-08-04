@@ -3,6 +3,10 @@ import { getOverlaySession } from '@/server/auth/session'
 import { redirect } from 'next/navigation'
 import { PublicShowcaseToolsView } from '@/features/showcase/PublicShowcaseToolsView'
 
+// TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
+// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
+export const instant = false;
+
 const ToolsView = dynamic(() => import('@/features/tools/components/ToolsView'), {
   loading: () => <div className="flex min-h-[40vh] items-center justify-center text-sm text-[#888]">Loading...</div>,
 })

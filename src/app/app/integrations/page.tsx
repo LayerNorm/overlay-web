@@ -5,6 +5,10 @@ import { redirect } from 'next/navigation'
 import { getInitialIntegrationsData } from '@/server/app/route-data'
 import { IntegrationsRouteSkeleton } from '../_components/AppRouteSkeletons'
 
+// TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
+// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
+export const instant = false;
+
 const IntegrationsView = dynamic(() => import('@/features/integrations/components/IntegrationsView'), {
   loading: () => <IntegrationsRouteSkeleton />,
 })
