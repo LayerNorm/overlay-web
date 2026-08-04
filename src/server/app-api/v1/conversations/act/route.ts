@@ -2,8 +2,8 @@ import { logger } from '@/server/observability/logger'
 import { after, NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { readValidatedJson } from '@/server/app-api/validated-input'
-import { convertToModelMessages, generateText, stepCountIs, ToolLoopAgent, type UIMessage } from '@/server/ai/sdk'
-import type { LanguageModelV3 } from '@/server/ai/provider-types'
+import { convertToModelMessages, generateText, isStepCount, ToolLoopAgent, type UIMessage } from '@/server/ai/sdk'
+import type { LanguageModel } from '@/server/ai/provider-types'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import {
   getLanguageModel,
@@ -547,7 +547,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
 
     const runActStream = async (params: {
-      languageModel: LanguageModelV3
+      languageModel: LanguageModel
       modelId: string
       fallbackNotice?: string
     }) => {
@@ -559,7 +559,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       ...(attemptModelSupportsZdr
         ? { providerOptions: { gateway: { zeroDataRetention: true } } }
         : {}),
-      stopWhen: stepCountIs(MAX_TOOL_STEPS_ACT),
+      stopWhen: isStepCount(MAX_TOOL_STEPS_ACT),
       instructions: actInstructions,
     })
 
@@ -595,7 +595,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           },
         }),
       } : {}),
-      experimental_onToolCallStart: ({ toolCall }) => {
+      onToolExecutionStart: ({ toolCall }) => {
         if (!toolCall) return
         if (_ttftDebug && !_firstToolCallLogged) {
           _firstToolCallLogged = true
@@ -609,9 +609,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           input: summarizeToolInputForLog(input),
         })
       },
-      experimental_onToolCallFinish: ({ toolCall, success, durationMs, output, error }) => {
+      onToolExecutionEnd: ({ toolCall, toolOutput, toolExecutionMs }) => {
         if (!toolCall?.toolName) return
         if (toolCall.toolCallId) finishedToolCallIds.add(toolCall.toolCallId)
+        const success = toolOutput.type === 'tool-result'
+        const output = success ? toolOutput.output : undefined
+        const error = !success ? toolOutput.error : undefined
+        const durationMs = toolExecutionMs
         if (!success && toolCall.toolCallId) {
           toolFailuresByCallId.set(toolCall.toolCallId, {
             toolName: toolCall.toolName,
@@ -655,7 +659,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             })
         }
       },
-      onFinish: async (event) => {
+      onEnd: async (event) => {
         const totalUsage = event.totalUsage
         const totalInputTokens = totalUsage?.inputTokens ?? 0
         const totalOutputTokens = totalUsage?.outputTokens ?? 0
@@ -926,7 +930,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       return { ok: true as const }
     }
 
-    const languageModelForAttempt = async (attemptModelId: string): Promise<LanguageModelV3> => {
+    const languageModelForAttempt = async (attemptModelId: string): Promise<LanguageModel> => {
       if (isNvidiaNimChatModelId(attemptModelId)) {
         const nvidiaKey = await resolveNvidiaApiKey(accessToken)
         if (!nvidiaKey) {
