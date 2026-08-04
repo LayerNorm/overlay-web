@@ -7,23 +7,25 @@ import { getOverlayCapabilities } from '@/server/capabilities'
 import { ProjectsRouteSkeleton } from '../_components/AppRouteSkeletons'
 import { PublicShowcaseProjectsView } from '@/features/showcase/PublicShowcaseProjectsView'
 
-// TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
-// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
-export const instant = false;
-
 const ProjectsView = dynamic(() => import('@/features/projects/components/ProjectsView'), {
   loading: () => <ProjectsRouteSkeleton />,
 })
 
 async function ProjectsRouteContent({
-  userId,
-  firstName,
+  searchParams,
 }: {
-  userId: string
-  firstName?: string
+  searchParams?: Promise<{ showcase?: string | string[] }>
 }) {
+  const session = await getOverlaySession()
+  const params = await searchParams
+  const showcaseParam = Array.isArray(params?.showcase) ? params.showcase[0] : params?.showcase
+
+  if (showcaseParam === '1') return <PublicShowcaseProjectsView />
+  if (!session) {
+    redirect('/app/chat?signin=nav')
+  }
   const initialProjects = await getInitialProjectList()
-  return <ProjectsView userId={userId} firstName={firstName} initialProjects={initialProjects} />
+  return <ProjectsView userId={session.user.id} firstName={session.user.firstName ?? undefined} initialProjects={initialProjects} />
 }
 
 export default async function ProjectsPage({
@@ -36,17 +38,9 @@ export default async function ProjectsPage({
     notFound()
   }
 
-  const session = await getOverlaySession()
-  const params = await searchParams
-  const showcaseParam = Array.isArray(params?.showcase) ? params.showcase[0] : params?.showcase
-
-  if (showcaseParam === '1') return <PublicShowcaseProjectsView />
-  if (!session) {
-    redirect('/app/chat?signin=nav')
-  }
   return (
     <Suspense fallback={<ProjectsRouteSkeleton />}>
-      <ProjectsRouteContent userId={session.user.id} firstName={session.user.firstName ?? undefined} />
+      <ProjectsRouteContent searchParams={searchParams} />
     </Suspense>
   )
 }
