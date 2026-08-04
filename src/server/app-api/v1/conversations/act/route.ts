@@ -13,6 +13,7 @@ import {
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import { getChatModelFallbackCandidates } from '@/shared/ai/gateway/model-fallbacks'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
+import { uploadFilePartsForModel } from '@/server/ai/file-upload'
 import {
   FREE_TIER_AUTO_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
@@ -155,6 +156,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       /** Parallel multi-model: slot 0 = primary (full tools including Composio). Slots 1+ are compare-only. */
       multiModelSlotIndex: rawMultiModelSlotIndex,
       multiModelTotal: rawMultiModelTotal,
+      reasoning: rawReasoning,
     } = bodyResult.data
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'messages required' }, { status: 400 })
@@ -553,6 +555,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }) => {
     const attemptModelId = params.modelId
     const attemptModelSupportsZdr = modelSupportsZeroDataRetention(attemptModelId)
+
+    // v7: Upload large file attachments to the provider's file storage and
+    // replace inline URLs with provider references. Falls back to inline
+    // when the provider doesn't support file uploads or no API key is set.
+    await uploadFilePartsForModel(uiMessages as Array<{ role: string; parts?: Array<{ type: string; url?: string; mediaType?: string; fileName?: string }> }>, attemptModelId)
+
     const agent = new ToolLoopAgent({
       model: params.languageModel,
       tools,
@@ -564,6 +572,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       // allowSystemInMessages: context-compaction.ts injects a trusted server-generated
       // summary as a system message. This is not user input — safe to pass through.
       allowSystemInMessages: true,
+      // v7: top-level reasoning parameter standardizes reasoning effort across providers.
+      // Only set when the user explicitly chose a level (not 'provider-default').
+      ...(rawReasoning && rawReasoning !== 'provider-default'
+        ? { reasoning: rawReasoning }
+        : {}),
+      // v7: OpenTelemetry traces for AI SDK calls. The functionId groups all
+      // spans for this act turn under a single label.
+      telemetry: {
+        functionId: `act:${attemptModelId}`,
+      },
       // v7: toolApproval replaces deprecated per-tool needsApproval. The MCP
       // approval function checks call_mcp_tool's input (serverId/toolName)
       // against the MCP server's policy at call time.

@@ -285,6 +285,8 @@ export interface VideoModel {
   defaultAspectRatio?: string
 }
 
+export type ReasoningLevel = 'provider-default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+
 export interface ChatModelPreferences {
   modelId?: string
   askModelIds?: string[]
@@ -292,6 +294,8 @@ export interface ChatModelPreferences {
   imageModelId?: string
   videoModelId?: string
   generationMode?: GenerationMode
+  /** v7: reasoning effort level for reasoning-capable models. */
+  reasoning?: ReasoningLevel
 }
 
 export type BrowserScope = 'active-tab' | 'current-window'

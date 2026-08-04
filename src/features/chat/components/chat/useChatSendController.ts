@@ -13,6 +13,7 @@ import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { VideoSubMode } from '@/shared/ai/gateway/model-types'
+import type { ReasoningLevel } from '@overlay/chat-core'
 import {
   beginTtftClientTurn,
 } from '@/shared/chat/ttft-client-debug'
@@ -89,6 +90,7 @@ export function useChatSendController({
   replyContext,
   requireAuth,
   resetComposerToolIds,
+  reasoning,
   selectedActModel,
   selectedImageModels,
   selectedModels,
@@ -165,6 +167,7 @@ export function useChatSendController({
   replyContext: ReplyContext
   requireAuth: (reason: 'send') => void
   resetComposerToolIds: (temporary: boolean) => void
+  reasoning?: ReasoningLevel
   selectedActModel: string
   selectedImageModels: string[]
   selectedModels: string[]
@@ -434,6 +437,7 @@ export function useChatSendController({
       refreshSelectedAutomation,
       replyContext: replyCtxSnapshot,
       selectedActModelSnapshot: snapshot.selectedActModelSnapshot,
+      reasoning,
       setComposerNotice,
       setIsFirstMessage,
       setRuntimeHydrationVersion,
@@ -481,6 +485,7 @@ export function useChatSendController({
     replyContext,
     requireAuth,
     resetComposerToolIds,
+    reasoning,
     selectedActModel,
     selectedImageModels,
     selectedModels,

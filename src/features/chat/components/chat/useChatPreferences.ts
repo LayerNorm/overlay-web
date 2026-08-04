@@ -3,12 +3,17 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AskModelSelectionMode } from '../chat-interface/types'
 import type { GenerationMode, VideoSubMode } from '@/shared/ai/gateway/model-types'
+import type { ReasoningLevel } from '@overlay/chat-core'
 import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_MODEL_ID,
   DEFAULT_VIDEO_MODEL_ID,
 } from '@/shared/ai/gateway/model-types'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/shared/ai/gateway/model-data'
+import {
+  readStoredReasoningLevel,
+  writeStoredReasoningLevel,
+} from '@/shared/chat/chat-model-prefs'
 import {
   CHAT_GEN_MODE_KEY,
   IMAGE_MODEL_SELECTION_MODE_KEY,
@@ -29,6 +34,7 @@ export function useChatPreferences() {
   const [selectedVideoModels, setSelectedVideoModels] = useState<string[]>([DEFAULT_VIDEO_MODEL_ID])
   const [imageModelSelectionMode, setImageModelSelectionMode] = useState<AskModelSelectionMode>('single')
   const [videoModelSelectionMode, setVideoModelSelectionMode] = useState<AskModelSelectionMode>('single')
+  const [reasoning, setReasoning] = useState<ReasoningLevel | undefined>(undefined)
   const [videoSubMode, setVideoSubMode] = useState<VideoSubMode>(() => {
     try {
       const saved = localStorage.getItem(VIDEO_SUB_MODE_KEY)
@@ -85,6 +91,16 @@ export function useChatPreferences() {
     }
   }, [])
 
+  // Hydrate reasoning level from localStorage after mount
+  useEffect(() => {
+    setReasoning(readStoredReasoningLevel())
+  }, [])
+
+  const handleSetReasoning = useRef((level: ReasoningLevel | undefined) => {
+    setReasoning(level)
+    if (level) writeStoredReasoningLevel(level)
+  }).current
+
   return {
     selectedActModel,
     setSelectedActModel,
@@ -108,5 +124,7 @@ export function useChatPreferences() {
     videoSubMode,
     setVideoSubMode,
     lastGeneratedImageUrlRef,
+    reasoning,
+    setReasoning: handleSetReasoning,
   }
 }

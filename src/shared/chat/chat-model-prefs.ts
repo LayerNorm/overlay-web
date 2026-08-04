@@ -1,10 +1,16 @@
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { getModel } from '@/shared/ai/gateway/model-data'
 import { resolveDefaultChatModelSelection } from '@/shared/chat/default-chat-model'
+import type { ReasoningLevel } from '@overlay/chat-core'
 
 /** Persisted chat model selection — shared with ChatInterface and sidebar "new chat" actions. */
 export const CHAT_MODEL_KEY = 'overlay_chat_model'
 export const ACT_MODEL_KEY = 'overlay_act_model'
+export const REASONING_KEY = 'overlay_reasoning_level'
+
+const VALID_REASONING_LEVELS: readonly ReasoningLevel[] = [
+  'provider-default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh',
+]
 function normalizeAskIds(raw: string[]): string[] {
   const seen = new Set<string>()
   const out: string[] = []
@@ -125,4 +131,28 @@ export function readNewChatModelFieldsFromStorage(): {
   lastMode: 'act'
 } {
   return resolveNewChatModelFields({})
+}
+
+/** Read preferred reasoning level from localStorage (browser only). */
+export function readStoredReasoningLevel(): ReasoningLevel | undefined {
+  if (typeof window === 'undefined') return undefined
+  try {
+    const saved = localStorage.getItem(REASONING_KEY)?.trim()
+    if (saved && VALID_REASONING_LEVELS.includes(saved as ReasoningLevel)) {
+      return saved as ReasoningLevel
+    }
+  } catch {
+    /* ignore */
+  }
+  return undefined
+}
+
+/** Persist reasoning level to localStorage (browser only). */
+export function writeStoredReasoningLevel(level: ReasoningLevel): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(REASONING_KEY, level)
+  } catch {
+    /* ignore */
+  }
 }

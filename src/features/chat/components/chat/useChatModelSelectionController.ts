@@ -7,6 +7,7 @@ import {
   createConversationUiState,
   sameModelOrder,
 } from '@overlay/chat-core'
+import type { ReasoningLevel } from '@overlay/chat-core'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import {
   isFreeTierChatModelId,
@@ -58,6 +59,8 @@ export function useChatModelSelectionController({
   isActiveLoading,
   isFreeTier,
   isTemporaryChat,
+  reasoning,
+  onReasoningChange,
   selectableTextModels,
   selectedActModel,
   selectedImageModels,
@@ -93,6 +96,8 @@ export function useChatModelSelectionController({
   isActiveLoading: boolean
   isFreeTier: boolean
   isTemporaryChat: boolean
+  reasoning?: ReasoningLevel
+  onReasoningChange?: (level: ReasoningLevel | undefined) => void
   selectableTextModels: ChatModel[]
   selectedActModel: string
   selectedImageModels: string[]
@@ -500,7 +505,9 @@ export function useChatModelSelectionController({
     modelPickerListScrollRef,
     modelPickerRef,
     modelQualitiesPos,
+    reasoning,
     onHoveredModelChange,
+    onReasoningChange,
     onImageModelSelectionModeChange: handleImageModelSelectionModeChange,
     onSetShowModelPicker: setShowModelPicker,
     onSetShowVideoSubModePicker: setShowVideoSubModePicker,
@@ -539,6 +546,8 @@ export function useChatModelSelectionController({
     modelPickerLabel,
     modelQualitiesPos,
     onHoveredModelChange,
+    onReasoningChange,
+    reasoning,
     selectableTextModels,
     selectedActModel,
     selectedImageModels,
