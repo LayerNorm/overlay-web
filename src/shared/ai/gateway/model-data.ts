@@ -1,4 +1,4 @@
-import type { ChatModel, ImageModel, VideoModel, VideoSubMode } from '@/shared/ai/gateway/model-types'
+import type { ChatModel, ImageModel, ModelReasoningOption, VideoModel, VideoSubMode } from '@/shared/ai/gateway/model-types'
 import {
   FREE_TIER_AUTO_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
@@ -10,6 +10,49 @@ import {
   type GatewayCatalogModel,
 } from '@/shared/ai/gateway/gateway-catalog'
 
+const REASONING_DEFAULT: readonly ModelReasoningOption[] = [
+  { value: 'provider-default', label: 'Default' },
+]
+const REASONING_GEMINI_31_PRO: readonly ModelReasoningOption[] = [
+  ...REASONING_DEFAULT,
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+]
+const REASONING_GEMINI_3_FLASH: readonly ModelReasoningOption[] = [
+  ...REASONING_DEFAULT,
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+]
+const REASONING_OPENAI_GPT5: readonly ModelReasoningOption[] = [
+  ...REASONING_DEFAULT,
+  { value: 'none', label: 'None' },
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'xhigh', label: 'Max' },
+]
+const REASONING_ANTHROPIC: readonly ModelReasoningOption[] = [
+  ...REASONING_DEFAULT,
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+]
+const REASONING_DEEPSEEK: readonly ModelReasoningOption[] = [
+  ...REASONING_DEFAULT,
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'xhigh', label: 'Max' },
+]
+const REASONING_KIMI_K3: readonly ModelReasoningOption[] = [
+  { value: 'xhigh', label: 'Always on' },
+]
+
 const SPECIAL_CHAT_MODELS: ChatModel[] = [
   { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
   { id: 'openrouter/nvidia/nemotron-3-super-120b-a12b:free', name: 'Free: Nemotron 3 Super 120B', provider: 'openrouter', intelligence: 0, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
@@ -17,20 +60,20 @@ const SPECIAL_CHAT_MODELS: ChatModel[] = [
 ]
 
 const CURATED_FALLBACK_CHAT_MODELS: ChatModel[] = [
-  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview', provider: 'google', intelligence: 0, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: true },
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview', provider: 'google', intelligence: 0, cost: 1, speedTier: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: true },
+  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview', provider: 'google', intelligence: 0, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, reasoningLevels: REASONING_GEMINI_31_PRO, supportsSearch: false, supportsZeroDataRetention: true },
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview', provider: 'google', intelligence: 0, cost: 1, speedTier: 3, supportsVision: true, supportsReasoning: true, reasoningLevels: REASONING_GEMINI_3_FLASH, supportsSearch: false, supportsZeroDataRetention: true },
   { id: 'google/gemma-4-26b-a4b-it', name: 'Gemma 4 26B', provider: 'google', intelligence: 0, cost: 1, speedTier: 3, supportsVision: false, supportsReasoning: false, supportsSearch: false, supportsZeroDataRetention: true },
-  { id: 'gpt-5.4', name: 'GPT-5.4', provider: 'openai', intelligence: 0, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
-  { id: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini', provider: 'openai', intelligence: 0, cost: 1, speedTier: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
+  { id: 'gpt-5.4', name: 'GPT-5.4', provider: 'openai', intelligence: 0, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, reasoningLevels: REASONING_OPENAI_GPT5, supportsSearch: false, supportsZeroDataRetention: false },
+  { id: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini', provider: 'openai', intelligence: 0, cost: 1, speedTier: 3, supportsVision: true, supportsReasoning: true, reasoningLevels: REASONING_OPENAI_GPT5, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'gpt-4.1-2025-04-14', name: 'GPT-4.1', provider: 'openai', intelligence: 0, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: false, supportsSearch: false, supportsZeroDataRetention: false },
-  { id: 'anthropic/claude-opus-4.7', name: 'Claude Opus 4.7', provider: 'anthropic', intelligence: 0, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: true },
-  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'anthropic', intelligence: 0, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: true },
+  { id: 'anthropic/claude-opus-4.7', name: 'Claude Opus 4.7', provider: 'anthropic', intelligence: 0, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, reasoningLevels: REASONING_ANTHROPIC, supportsSearch: false, supportsZeroDataRetention: true },
+  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'anthropic', intelligence: 0, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, reasoningLevels: REASONING_ANTHROPIC, supportsSearch: false, supportsZeroDataRetention: true },
   { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', provider: 'anthropic', intelligence: 0, cost: 1, speedTier: 3, supportsVision: true, supportsReasoning: false, supportsSearch: false, supportsZeroDataRetention: true },
   { id: 'xai/grok-4.20-reasoning', name: 'Grok 4.20 Reasoning', provider: 'xai', intelligence: 0, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
-  { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', provider: 'deepseek', intelligence: 0, cost: 2, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
-  { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', provider: 'deepseek', intelligence: 0, cost: 1, speedTier: 3, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
+  { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', provider: 'deepseek', intelligence: 0, cost: 2, speedTier: 2, supportsVision: false, supportsReasoning: true, reasoningLevels: REASONING_DEEPSEEK, supportsSearch: false, supportsZeroDataRetention: false },
+  { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', provider: 'deepseek', intelligence: 0, cost: 1, speedTier: 3, supportsVision: false, supportsReasoning: true, reasoningLevels: REASONING_DEEPSEEK, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'minimax/minimax-m2.7', name: 'MiniMax M2.7', provider: 'minimax', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
-  { id: 'moonshotai/kimi-k3', name: 'Kimi K3', provider: 'moonshotai', intelligence: 0, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
+  { id: 'moonshotai/kimi-k3', name: 'Kimi K3', provider: 'moonshotai', intelligence: 0, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, reasoningLevels: REASONING_KIMI_K3, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'moonshotai/kimi-k2.6', name: 'Kimi K2.6', provider: 'moonshotai', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'z-ai/glm-5.1', name: 'GLM 5.1', provider: 'z-ai', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'qwen/qwen3.6-plus', name: 'Qwen3.6 Plus', provider: 'qwen', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
@@ -97,6 +140,7 @@ export function registerGatewayCatalogModels(models: readonly GatewayCatalogMode
     if (curated) {
       chatModel.supportsVision = chatModel.supportsVision || curated.supportsVision
       chatModel.supportsReasoning = chatModel.supportsReasoning || curated.supportsReasoning
+      chatModel.reasoningLevels = curated.reasoningLevels
       chatModel.supportsSearch = chatModel.supportsSearch || curated.supportsSearch
       if (chatModel.cost === 1 && curated.cost !== 1) chatModel.cost = curated.cost
       if (!chatModel.description && curated.description) chatModel.description = curated.description
