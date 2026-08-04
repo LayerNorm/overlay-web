@@ -10,7 +10,7 @@ const CHAT_VIEWS = [
   { id: 'personal', label: 'Personal' },
   { id: 'dms', label: 'Direct Messages' },
   { id: 'channels', label: 'Channels' },
-  { id: 'unread', label: 'Unread' },
+  { id: 'activity', label: 'Activity' },
   { id: 'all', label: 'All' },
 ]
 

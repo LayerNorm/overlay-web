@@ -9,7 +9,7 @@ import { AppSidebarSecondaryPanel, SecondaryPanelContent } from './AppSidebarSec
 test('the panel renders its section title and subnavigation', () => {
   const html = renderToStaticMarkup(
     <AppSidebarSecondaryPanel
-      title="Chats"
+      title="chats"
       nav={{
         items: [
           { id: 'personal', label: 'Personal' },
@@ -22,7 +22,9 @@ test('the panel renders its section title and subnavigation', () => {
       <div>conversation list</div>
     </AppSidebarSecondaryPanel>,
   )
-  assert.match(html, /Chats/)
+  assert.match(html, /chats/)
+  assert.match(html, /font-serif/)
+  assert.match(html, /lowercase/)
   assert.match(html, /Personal/)
   assert.match(html, /Direct Messages/)
   assert.match(html, /conversation list/)

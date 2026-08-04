@@ -12,7 +12,7 @@ test('Phase 2 exposes Chats as five workspace-scoped views', () => {
   assert.equal(chats?.label, 'Chats')
   assert.deepEqual(
     chats?.subviews,
-    ['personal', 'dms', 'channels', 'unread', 'all'],
+    ['personal', 'dms', 'channels', 'activity', 'all'],
   )
   assert.equal(
     overlayAppShell.featureFlags.find((flag) => flag.id === 'collaborativeChats')?.enabled,

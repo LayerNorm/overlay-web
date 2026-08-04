@@ -528,7 +528,6 @@ export const chatsInlineItems = [
   { id: 'dms', label: 'Direct Messages', icon: Mail },
   { id: 'channels', label: 'Channels', icon: Hash },
   { id: 'activity', label: 'Activity', icon: Bell },
-  { id: 'unread', label: 'Unread', icon: Bell },
   { id: 'all', label: 'All', icon: Inbox },
 ] as const
 

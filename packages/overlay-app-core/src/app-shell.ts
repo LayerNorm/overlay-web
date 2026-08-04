@@ -105,7 +105,7 @@ export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
     label: 'Chats',
     icon: 'message-square',
     requiredCapabilities: ['chat'],
-    subviews: ['personal', 'dms', 'channels', 'unread', 'all'],
+    subviews: ['personal', 'dms', 'channels', 'activity', 'all'],
   },
   {
     id: 'agents',
