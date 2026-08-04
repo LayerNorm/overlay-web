@@ -1,13 +1,20 @@
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { getOverlaySession } from '@/server/auth/session'
 import { RootEntryResolver } from '@/features/showcase/RootEntryResolver'
 import { ROOT_APP_DESTINATION } from '@/shared/auth/root-entry'
 
-// TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
-// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
-export const instant = false;
+function RootEntryFallback() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-background text-foreground">
+      <p role="status" className="text-sm text-[var(--muted)]">
+        Opening Overlay…
+      </p>
+    </main>
+  )
+}
 
-export default async function Page() {
+async function SessionGate() {
   let session: Awaited<ReturnType<typeof getOverlaySession>> = null
   try {
     session = await getOverlaySession()
@@ -19,4 +26,12 @@ export default async function Page() {
 
   if (session) redirect(ROOT_APP_DESTINATION)
   return <RootEntryResolver />
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<RootEntryFallback />}>
+      <SessionGate />
+    </Suspense>
+  )
 }
