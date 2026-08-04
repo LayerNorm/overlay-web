@@ -244,7 +244,7 @@ export const extractFromTurn = internalAction({
         result = await generateObject({
           model,
           schema: ExtractionSchema,
-          system: SYSTEM_PROMPT,
+          instructions: SYSTEM_PROMPT,
           messages: [{ role: "user", content: prompt }],
           maxOutputTokens,
         });

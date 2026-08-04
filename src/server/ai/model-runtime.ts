@@ -17,17 +17,17 @@ import {
   createNvidiaNimChatLanguageModel,
   resolveNvidiaApiKey,
 } from '@/server/ai/gateway/nvidia-nim-openai'
-import type { LanguageModelV3 } from '@/server/ai/provider-types'
+import type { LanguageModel } from '@/server/ai/provider-types'
 
 export async function getLanguageModel(
   modelId: string,
   accessToken?: string,
-): Promise<LanguageModelV3> {
+): Promise<LanguageModel> {
   const model = await getOverlayServerContext().llmGateway.createLanguageModel(
     modelId,
     { accessToken },
   )
-  return model.implementation as LanguageModelV3
+  return model.implementation as LanguageModel
 }
 
 export {

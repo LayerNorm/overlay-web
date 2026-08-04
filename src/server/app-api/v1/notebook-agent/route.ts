@@ -1,7 +1,7 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { ToolLoopAgent, stepCountIs, tool, type ToolSet } from '@/server/ai/sdk'
+import { ToolLoopAgent, isStepCount, tool, type ToolSet } from '@/server/ai/sdk'
 import { z } from 'zod'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -352,8 +352,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           model,
           instructions,
           tools,
-          stopWhen: stepCountIs(20),
-          onStepFinish: async ({ text }) => {
+          stopWhen: isStepCount(20),
+          onStepEnd: async ({ text }) => {
             emitText(text)
           },
         })

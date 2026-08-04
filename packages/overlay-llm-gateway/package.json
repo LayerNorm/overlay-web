@@ -21,10 +21,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.58",
-    "@ai-sdk/groq": "^3.0.29",
-    "@ai-sdk/openai": "^3.0.41",
-    "@openrouter/ai-sdk-provider": "^2.3.3"
+    "@ai-sdk/anthropic": "^4.0.29",
+    "@ai-sdk/groq": "^4.0.21",
+    "@ai-sdk/openai": "^4.0.29",
+    "@openrouter/ai-sdk-provider": "^3.0.0"
   },
   "devDependencies": {
     "tsx": "^4.8.1",

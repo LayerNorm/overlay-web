@@ -6,7 +6,7 @@ export {
   generateImage,
   generateObject,
   generateText,
-  stepCountIs,
+  isStepCount,
   ToolLoopAgent,
   tool,
 } from 'ai'
