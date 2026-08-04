@@ -149,6 +149,8 @@
     "overlay-desktop",
     "overlay-mobile",
     "workers",
-    "scripts"
+    "scripts",
+    "**/*.test.ts",
+    "**/*.test.tsx"
   ]
 }
