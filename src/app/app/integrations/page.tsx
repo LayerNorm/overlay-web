@@ -5,26 +5,21 @@ import { redirect } from 'next/navigation'
 import { getInitialIntegrationsData } from '@/server/app/route-data'
 import { IntegrationsRouteSkeleton } from '../_components/AppRouteSkeletons'
 
-// TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
-// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
-export const instant = false;
-
 const IntegrationsView = dynamic(() => import('@/features/integrations/components/IntegrationsView'), {
   loading: () => <IntegrationsRouteSkeleton />,
 })
 
-async function IntegrationsRouteContent({ userId }: { userId: string }) {
+async function IntegrationsRouteContent() {
+  const session = await getOverlaySession()
+  if (!session) redirect('/app/chat?signin=nav')
   const initialData = await getInitialIntegrationsData()
-  return <IntegrationsView userId={userId} initialData={initialData} />
+  return <IntegrationsView userId={session.user.id} initialData={initialData} />
 }
 
-export default async function IntegrationsPage() {
-  const session = await getOverlaySession()
-
-  if (!session) redirect('/app/chat?signin=nav')
+export default function IntegrationsPage() {
   return (
     <Suspense fallback={<IntegrationsRouteSkeleton />}>
-      <IntegrationsRouteContent userId={session.user.id} />
+      <IntegrationsRouteContent />
     </Suspense>
   )
 }

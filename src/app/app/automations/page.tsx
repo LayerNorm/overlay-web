@@ -7,32 +7,34 @@ import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
 import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
 import { PublicShowcaseAutomationsView } from '@/features/showcase/PublicShowcaseAutomationsView'
 
-// TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
-// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
-export const instant = false;
-
 function DisabledAutomationsRoute() {
   return (
     <AppScreenShell>
       <AppScreenBody padding="none" maxWidth="none" className="flex h-full items-center justify-center px-6">
-      <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold text-[var(--foreground)]">Automations unavailable</h1>
-        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-          Automations are disabled for this deployment.
-        </p>
-      </div>
+        <div className="max-w-md text-center">
+          <h1 className="text-xl font-semibold text-[var(--foreground)]">Automations unavailable</h1>
+          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+            Automations are disabled for this deployment.
+          </p>
+        </div>
       </AppScreenBody>
     </AppScreenShell>
   )
 }
 
 async function AutomationsRouteContent({
-  userId,
-  firstName,
+  searchParams,
 }: {
-  userId: string | null
-  firstName?: string
+  searchParams?: Promise<{ showcase?: string | string[] }>
 }) {
+  const session = await getOverlaySession()
+  const params = await searchParams
+  const showcaseParam = Array.isArray(params?.showcase) ? params.showcase[0] : params?.showcase
+
+  if (showcaseParam === '1') return <PublicShowcaseAutomationsView />
+
+  const userId = session?.user.id ?? null
+  const firstName = session?.user.firstName ?? undefined
   const initialChatPage = userId
     ? await getInitialChatHistory()
     : { data: [], hasMore: false }
@@ -50,26 +52,17 @@ async function AutomationsRouteContent({
   )
 }
 
-export default async function AutomationsPage({
+export default function AutomationsPage({
   searchParams,
 }: {
   searchParams?: Promise<{ showcase?: string | string[] }>
 }) {
   const capabilities = getOverlayCapabilitiesSync()
-  const session = await getOverlaySession()
-  const params = await searchParams
-  const showcaseParam = Array.isArray(params?.showcase) ? params.showcase[0] : params?.showcase
-
-  if (showcaseParam === '1') return <PublicShowcaseAutomationsView />
-
   if (!capabilities.automations) return <DisabledAutomationsRoute />
 
   return (
     <Suspense fallback={<ChatRouteSkeleton mode="automate" />}>
-      <AutomationsRouteContent
-        userId={session?.user.id ?? null}
-        firstName={session?.user.firstName ?? undefined}
-      />
+      <AutomationsRouteContent searchParams={searchParams} />
     </Suspense>
   )
 }

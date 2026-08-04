@@ -1,10 +1,8 @@
+import { Suspense } from 'react'
 import dynamic from 'next/dynamic'
 import { getOverlaySession } from '@/server/auth/session'
 import { redirect } from 'next/navigation'
-
-// TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
-// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
-export const instant = false;
+import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
 
 const NotebookEditor = dynamic(() => import('@/features/notebook/components/NotebookEditor'), {
   loading: () => (
@@ -14,9 +12,16 @@ const NotebookEditor = dynamic(() => import('@/features/notebook/components/Note
   ),
 })
 
-export default async function NotesPage() {
+async function NotesRouteContent() {
   const session = await getOverlaySession()
-
   if (!session) redirect('/app/chat?signin=nav')
   return <NotebookEditor userId={session.user.id} />
+}
+
+export default function NotesPage() {
+  return (
+    <Suspense fallback={<ChatRouteSkeleton />}>
+      <NotesRouteContent />
+    </Suspense>
+  )
 }
