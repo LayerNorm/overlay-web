@@ -49,7 +49,7 @@ type WorkspaceChatListCache = {
 const LEGACY_WORKSPACE_KEY = '__legacy_personal_workspace__'
 const workspaceCaches = new Map<string, WorkspaceChatListCache>()
 let activeWorkspaceKey = LEGACY_WORKSPACE_KEY
-let activeChatView: 'personal' | 'dms' | 'channels' | 'unread' | 'all' = 'personal'
+let activeChatView: 'personal' | 'dms' | 'channels' | 'all' = 'personal'
 
 function activeCacheKey() {
   return `${activeWorkspaceKey}:${activeChatView}`

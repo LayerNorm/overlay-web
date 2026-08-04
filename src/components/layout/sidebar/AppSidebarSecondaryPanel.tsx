@@ -36,8 +36,11 @@ export function SecondaryPanelHeader({
 }) {
   return (
     <div className="flex h-16 min-h-16 shrink-0 items-center gap-2 border-b border-[var(--border)] px-4">
-      {/* Sans, not the brand serif: the wordmark is the only serif in the chrome. */}
-      <span className="min-w-0 flex-1 truncate text-lg font-medium tracking-tight text-[var(--foreground)]">
+      {/* Match the primary rail wordmark: Libre Baskerville, lowercase, text-lg. */}
+      <span
+        className="min-w-0 flex-1 truncate text-lg font-medium lowercase tracking-tight text-[var(--foreground)]"
+        style={{ fontFamily: 'var(--font-serif)' }}
+      >
         {title}
       </span>
       {action}

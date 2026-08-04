@@ -29,6 +29,7 @@ import {
   setActiveChatListView,
   upsertCachedChat,
 } from '@/shared/chat/chat-list-cache'
+import { clearLastChatForView, rememberLastChatForView } from '@/shared/chat/last-chat-by-view'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { SidebarResourceList } from '@overlay/ui/primitives'
 import { useAuth } from '@/contexts/AuthContext'
@@ -83,7 +84,7 @@ export function ChatInlinePanel({
   const activeId = searchParams?.get('id') ?? null
   const chatView = (() => {
     const value = searchParams?.get('view')
-    if (value === 'dms' || value === 'channels' || value === 'unread' || value === 'all') return value
+    if (value === 'dms' || value === 'channels' || value === 'all') return value
     return 'personal'
   })()
   setActiveChatListView(chatView)
@@ -332,6 +333,7 @@ export function ChatInlinePanel({
     setPendingDeleteChatId(null)
     dispatchChatDeleted({ chatId })
     await overlayAppClient.conversations.deleteResponse({ conversationId: chatId })
+    clearLastChatForView(workspaceId, chatView, chatId)
     if (activeId === chatId) {
       router.push(`${baseHref}?${new URLSearchParams({ view: chatView }).toString()}`)
     }
@@ -343,9 +345,7 @@ export function ChatInlinePanel({
       ? chats.filter((chat) => chat.conversationType === 'dm')
       : chatView === 'channels'
         ? chats.filter((chat) => chat.conversationType === 'channel')
-        : chatView === 'unread'
-          ? chats.filter((chat) => Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0) > 0)
-          : chats
+        : chats
   const filteredChats = searchQuery.trim()
     ? viewChats.filter((c) => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
     : viewChats
@@ -353,9 +353,7 @@ export function ChatInlinePanel({
     personal: 'No personal chats yet',
     dms: 'No direct messages yet',
     channels: 'No channels yet',
-    unread: 'You are all caught up',
     all: 'No chats yet',
-    activity: 'You are all caught up',
   }[chatView]
 
   return (
@@ -385,6 +383,7 @@ export function ChatInlinePanel({
                 onClick={() => {
                   if (isDeleting) return
                   if (isEditing) return
+                  rememberLastChatForView(workspaceId, chatView, chat._id)
                   const href = `${baseHref}?${new URLSearchParams({
                     ...(isPublicShowcase ? { showcase: '1' } : {}),
                     view: chatView,
@@ -518,6 +517,7 @@ export function ChatInlinePanel({
               conversationType: 'dm',
             },
           })
+          rememberLastChatForView(workspaceId, 'dms', id)
           router.push(`${baseHref}?${new URLSearchParams({ view: 'dms', id }).toString()}`)
           onNavigate?.()
         }}
@@ -531,6 +531,7 @@ export function ChatInlinePanel({
         onOpenChange={setNewChannelOpen}
         onCreated={({ id, title }) => {
           dispatchChatCreated({ chat: { _id: id, title, lastModified: Date.now(), conversationType: 'channel' } })
+          rememberLastChatForView(workspaceId, 'channels', id)
           router.push(`${baseHref}?${new URLSearchParams({ view: 'channels', id }).toString()}`)
           onNavigate?.()
         }}

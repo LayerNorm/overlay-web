@@ -47,6 +47,7 @@ const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mo
 import type { MentionType } from '@/shared/knowledge/mention-types'
 import { TEMPORARY_CHAT_UI_EVENT, type TemporaryChatUiEventDetail } from '@/shared/chat/temporary-chat-ui'
 import { NEW_CHANNEL_EVENT, NEW_DIRECT_MESSAGE_EVENT } from '@/shared/chat/collaboration-events'
+import { getLastChatForView } from '@/shared/chat/last-chat-by-view'
 import {
   getSidebarCollapsedSnapshot,
   setStoredSidebarCollapsed,
@@ -79,15 +80,15 @@ export type {
 type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'projects' | 'agents' | 'knowledge' | 'automations' | 'tools' | 'settings'
 
 const PANEL_KIND_TITLES: Record<SecondaryPanelKind, string> = {
-  chat: 'Chats',
-  files: 'Files',
-  notes: 'Notes',
-  projects: 'Projects',
-  agents: 'Agents',
-  knowledge: 'Knowledge',
-  automations: 'Automations',
-  tools: 'Extensions',
-  settings: 'Settings',
+  chat: 'chats',
+  files: 'files',
+  notes: 'notes',
+  projects: 'projects',
+  agents: 'agents',
+  knowledge: 'knowledge',
+  automations: 'automations',
+  tools: 'extensions',
+  settings: 'settings',
 }
 
 const SETTINGS_SECTION_ICONS: Record<string, typeof Settings> = {
@@ -309,15 +310,22 @@ export default function AppSidebar({
     return 'connectors'
   })()
   const filesView = resolveFilesCategory(currentSearchParams.get('view'))
+  const chatViewParam = currentSearchParams.get('view')
   const chatsView = (() => {
     if (activityOpen) return 'activity'
-    const current = currentSearchParams.get('view')
-    if (current === 'dms') return 'dms'
-    if (current === 'channels') return 'channels'
-    if (current === 'unread') return 'unread'
-    if (current === 'all') return 'all'
+    if (chatViewParam === 'dms') return 'dms'
+    if (chatViewParam === 'channels') return 'channels'
+    if (chatViewParam === 'all') return 'all'
     return 'personal'
   })()
+
+  useEffect(() => {
+    // Unread was folded into Activity; rewrite stale deep links.
+    if (chatViewParam !== 'unread') return
+    router.replace(activeWorkspaceId
+      ? buildWorkspaceHref(activeWorkspaceId, '/app/activity')
+      : '/app/activity')
+  }, [activeWorkspaceId, buildWorkspaceHref, chatViewParam, router])
 
   const loadEntitlements = useCallback(async () => {
     if (!billingEnabled || authLoading || !authUserId) {
@@ -489,7 +497,12 @@ export default function AppSidebar({
   }
 
   const contextualAction = resolveSidebarActionForPath(
-    canonicalWorkspaceRoute ? `/app/${workspaceSurface}` : pathname,
+    // Activity lives under the Chats secondary panel, so keep New chat + search.
+    activityOpen || chatsView === 'activity'
+      ? '/app/chat'
+      : canonicalWorkspaceRoute
+        ? `/app/${workspaceSurface}`
+        : pathname,
     sidebarActions,
   )
 
@@ -689,9 +702,11 @@ export default function AppSidebar({
           const baseHref = activeWorkspaceId
             ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
             : '/app/chat'
+          const lastChatId = getLastChatForView(activeWorkspaceId, next)
           router.push(`${baseHref}?${new URLSearchParams({
             ...(publicShowcase ? { showcase: '1' } : {}),
             view: next,
+            ...(lastChatId ? { id: lastChatId } : {}),
           }).toString()}`)
         },
       }
@@ -844,7 +859,7 @@ export default function AppSidebar({
     <>
       <Link
         href={publicShowcase ? '/app/chat?showcase=1&id=showcase-welcome' : brandConfig.homeHref}
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 transition-colors hover:bg-[var(--surface-subtle)]"
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-3 py-1.5 transition-colors hover:bg-[var(--surface-subtle)]"
         aria-label="Home"
         title="Home"
       >
@@ -1220,7 +1235,10 @@ export default function AppSidebar({
         >
           <ChevronLeft size={16} />
         </button>
-        <span className="min-w-0 flex-1 truncate px-1 text-lg font-medium tracking-tight text-[var(--foreground)]">
+        <span
+          className="min-w-0 flex-1 truncate px-1 text-lg font-medium lowercase tracking-tight text-[var(--foreground)]"
+          style={{ fontFamily: 'var(--font-serif)' }}
+        >
           {panelTitle}
         </span>
         <button

@@ -88,7 +88,9 @@ export function AppSidebarPrimaryRail({
     <SidebarShell className={className}>
       <div
         className={`flex h-16 min-h-16 shrink-0 items-center border-b border-[var(--border)] ${
-          expanded ? 'justify-between gap-2 px-3' : 'justify-center'
+          // Match nav `px-2` so the brand mark lines up with rail icons (same
+          // inset as SidebarNav + button `px-3` on main).
+          expanded ? 'justify-between gap-2 px-2' : 'justify-center'
         }`}
       >
         {brand}
