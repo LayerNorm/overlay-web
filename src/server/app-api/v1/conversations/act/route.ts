@@ -561,6 +561,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         : {}),
       stopWhen: isStepCount(MAX_TOOL_STEPS_ACT),
       instructions: actInstructions,
+      // allowSystemInMessages: context-compaction.ts injects a trusted server-generated
+      // summary as a system message. This is not user input — safe to pass through.
+      allowSystemInMessages: true,
     })
 
     const toolFailuresByCallId = new Map<string, { toolName: string; error: string }>()
@@ -660,9 +663,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         }
       },
       onEnd: async (event) => {
-        const totalUsage = event.totalUsage
-        const totalInputTokens = totalUsage?.inputTokens ?? 0
-        const totalOutputTokens = totalUsage?.outputTokens ?? 0
+        const usage = event.usage
+        const totalInputTokens = usage?.inputTokens ?? 0
+        const totalOutputTokens = usage?.outputTokens ?? 0
         // Fallback: if the fetch-interceptor did not capture the model yet, try the step response.
         if (attemptModelId === FREE_TIER_AUTO_MODEL_ID && !streamedRoutedModelId) {
           const rid = event.steps.at(-1)?.response.modelId

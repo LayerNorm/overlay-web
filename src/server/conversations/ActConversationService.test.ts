@@ -502,7 +502,7 @@ test('act assistant persistence finalizes generating messages and emits completi
     event: {
       steps: [],
       text: 'done\n\n**Sources:** [1]',
-      totalUsage: { inputTokens: 3, outputTokens: 4 },
+      usage: { inputTokens: 3, outputTokens: 4 },
     } as ActAssistantFinishEvent,
     finishedToolCallIds: new Set(),
     generatingMessageId: 'message_1' as Id<'conversationMessages'>,
