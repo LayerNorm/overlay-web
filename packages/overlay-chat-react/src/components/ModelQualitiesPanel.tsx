@@ -1,6 +1,11 @@
 import { BrainCircuit, Check, DollarSign, ShieldCheck, X, Zap } from 'lucide-react'
 import type { ComponentType, ReactNode } from 'react'
+import type { ReasoningLevel } from '@overlay/chat-core'
 import type { ChatModelIndicatorModel } from './ModelIndicators'
+
+const PROVIDER_DEFAULT_REASONING: readonly { value: ReasoningLevel; label: string }[] = [
+  { value: 'provider-default', label: 'Default' },
+]
 
 function MetricRow({
   icon: Icon,
@@ -26,12 +31,27 @@ function MetricRow({
 
 export function ModelQualitiesPanel({
   model,
+  reasoning,
+  onReasoningChange,
 }: {
   model: ChatModelIndicatorModel | null | undefined
+  reasoning?: ReasoningLevel
+  onReasoningChange?: (level: ReasoningLevel | undefined) => void
 }) {
   if (!model) return null
+  const reasoningLevels = model.supportsReasoning
+    ? (model.reasoningLevels ?? PROVIDER_DEFAULT_REASONING).map((level) => ({
+        value: level.value as ReasoningLevel,
+        label: level.label,
+      }))
+    : []
+  const selectedReasoning = reasoning ?? 'provider-default'
+  const selectedLevel = reasoningLevels.some(({ value }) => value === selectedReasoning)
+    ? selectedReasoning
+    : reasoningLevels[0]?.value ?? 'provider-default'
+
   return (
-    <div className="pointer-events-none flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
       <MetricRow
         icon={BrainCircuit}
         label="Intelligence"
@@ -56,6 +76,26 @@ export function ModelQualitiesPanel({
           </span>
         }
       />
+      {reasoningLevels.length > 0 && onReasoningChange ? (
+        <div className="mt-1 flex items-center justify-between gap-2 border-t border-[var(--border)] pt-1.5">
+          <span className="text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--muted-light)]">Reasoning</span>
+          <select
+            aria-label="Reasoning effort"
+            value={selectedLevel}
+            onChange={(event) => {
+              const next = event.target.value as ReasoningLevel
+              onReasoningChange(next === 'provider-default' ? undefined : next)
+            }}
+            className="min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-1.5 py-0.5 text-[11px] text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+          >
+            {reasoningLevels.map((level) => (
+              <option key={level.value} value={level.value}>
+                {level.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
     </div>
   )
 }

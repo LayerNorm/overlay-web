@@ -11,6 +11,7 @@ import {
   getOpenRouterLanguageModelCapturingRoutedModel,
 } from '@/server/ai/model-runtime'
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
+import { isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
 import { getChatModelFallbackCandidates } from '@/shared/ai/gateway/model-fallbacks'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import { uploadFilePartsForModel } from '@/server/ai/file-upload'
@@ -555,6 +556,11 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }) => {
     const attemptModelId = params.modelId
     const attemptModelSupportsZdr = modelSupportsZeroDataRetention(attemptModelId)
+    // Kimi K3 always reasons and the AI SDK provider only exposes max effort.
+    // Do not send a stale persisted `none` value that the provider cannot honor.
+    const effectiveReasoning = isKimiK3ModelId(attemptModelId) && rawReasoning && rawReasoning !== 'provider-default'
+      ? 'xhigh'
+      : rawReasoning
 
     // v7: Upload large file attachments to the provider's file storage and
     // replace inline URLs with provider references. Falls back to inline
@@ -574,8 +580,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       allowSystemInMessages: true,
       // v7: top-level reasoning parameter standardizes reasoning effort across providers.
       // Only set when the user explicitly chose a level (not 'provider-default').
-      ...(rawReasoning && rawReasoning !== 'provider-default'
-        ? { reasoning: rawReasoning }
+      ...(effectiveReasoning && effectiveReasoning !== 'provider-default'
+        ? { reasoning: effectiveReasoning }
         : {}),
       // v7: OpenTelemetry traces for AI SDK calls. The functionId groups all
       // spans for this act turn under a single label.

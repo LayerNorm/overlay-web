@@ -1,5 +1,12 @@
 export type GenerationMode = 'text' | 'image' | 'video'
 
+export type ModelReasoningLevel = 'provider-default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+
+export interface ModelReasoningOption {
+  value: ModelReasoningLevel
+  label: string
+}
+
 export type VideoSubMode =
   | 'text-to-video'
   | 'image-to-video'
@@ -19,6 +26,8 @@ export interface ChatModel {
   speedTier: 1 | 2 | 3
   supportsVision: boolean
   supportsReasoning: boolean
+  /** Explicit effort levels supported by this model. Unknown models expose only provider-default. */
+  reasoningLevels?: readonly ModelReasoningOption[]
   supportsSearch: boolean
   supportsZeroDataRetention: boolean
   /** Price per 1M blended tokens ($). */
@@ -50,6 +59,12 @@ export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
 /** @deprecated Alias for {@link FREE_TIER_AUTO_MODEL_ID}. */
 export const FREE_TIER_DEFAULT_MODEL_ID = FREE_TIER_AUTO_MODEL_ID
 export const PAID_TIER_DEFAULT_MODEL_ID = 'moonshotai/kimi-k2.6' as const
+export const KIMI_K3_MODEL_ID = 'moonshotai/kimi-k3' as const
+
+export function isKimiK3ModelId(modelId: string | undefined): boolean {
+  return modelId === KIMI_K3_MODEL_ID
+}
+
 // Retired free IDs stay here only so saved user preferences migrate to the current default.
 export const FREE_TIER_LEGACY_DEFAULT_MODEL_IDS = [
   'openrouter/moonshotai/kimi-k2.6:free',
