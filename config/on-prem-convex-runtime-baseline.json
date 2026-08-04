@@ -108,6 +108,8 @@
     "src/app/api/v1/knowledge-bases/route.ts",
     "src/app/api/v1/knowledge-bases/share-directory/route.ts",
     "src/app/api/v1/knowledge/search/route.ts",
+    "src/app/api/v1/mcps/oauth/callback/route.ts",
+    "src/app/api/v1/mcps/oauth/route.ts",
     "src/app/api/v1/mcps/route.ts",
     "src/app/api/v1/mcps/test/route.ts",
     "src/app/api/v1/memory/route.ts",
