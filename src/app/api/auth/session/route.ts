@@ -1,5 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
+import { unstable_rethrow } from 'next/navigation'
 import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
 import { getOverlaySession } from '@/server/auth/session'
 import { formatOverlayConfigError, isOverlayConfigError } from '@/server/config'
@@ -28,6 +29,7 @@ export async function GET(request: NextRequest) {
       user: session.user,
     }, { headers: NO_STORE_HEADERS })
   } catch (error) {
+    unstable_rethrow(error)
     if (isOverlayConfigError(error)) {
       const formatted = formatOverlayConfigError(error)
       return NextResponse.json(

@@ -1,5 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextResponse } from 'next/server'
+import { unstable_rethrow } from 'next/navigation'
 import { logAuthDebug, summarizeSessionForLog } from '@/server/auth/auth-debug'
 import { getOverlaySession } from '@/server/auth/session'
 import { billingCustomerService, billingErrorResponse } from '@/server/billing/http'
@@ -40,6 +41,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Failed to fetch entitlements' }, { status: 500 })
     }
   } catch (error) {
+    unstable_rethrow(error)
     logAuthDebug('/api/entitlements outer error', {
       error: error instanceof Error ? error.message : String(error),
     })

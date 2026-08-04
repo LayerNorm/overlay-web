@@ -1,5 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
+import { unstable_rethrow } from 'next/navigation'
 import {
   consumeAuthorizationState,
   handleCallback,
@@ -150,6 +151,7 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.redirect(finalRedirect)
   } catch (error) {
+    unstable_rethrow(error)
     logger.error('[Auth] Callback error:', error)
     return NextResponse.redirect(`${getBaseUrl()}/auth/sign-in?error=Authentication failed`)
   }

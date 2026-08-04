@@ -1,5 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
+import { unstable_rethrow } from 'next/navigation'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { rateLimitByIp } from '@/server/security/rate-limit'
@@ -52,6 +53,7 @@ export async function GET(request: NextRequest) {
       { headers: NO_STORE_HEADERS },
     )
   } catch (error) {
+    unstable_rethrow(error)
     logger.error('[NativeSubscription] Error:', error)
     return NextResponse.json(
       { error: 'Failed to fetch subscription' },

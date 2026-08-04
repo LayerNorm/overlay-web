@@ -1,5 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextResponse } from 'next/server'
+import { unstable_rethrow } from 'next/navigation'
 import { getOverlaySession } from '@/server/auth/session'
 import { createHash, randomBytes } from 'crypto'
 import { convex } from '@/server/database/convex'
@@ -111,6 +112,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ deepLink }, { headers: NO_STORE_HEADERS })
   } catch (error) {
+    unstable_rethrow(error)
     logger.error('[Desktop Link] Error:', summarizeErrorForLog(error))
     return NextResponse.json(
       { error: 'Failed to generate desktop link' },
