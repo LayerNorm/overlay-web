@@ -2,6 +2,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { AUTOMATIONS_UPDATED_EVENT } from '@overlay/app-core/automations'
 import { createConversationUiState } from '@overlay/chat-core'
+import type { ReasoningLevel } from '@overlay/chat-core'
 import { markTtftClientMilestone, setTtftClientTurnId } from '@/shared/chat/ttft-client-debug'
 import type {
   ConversationRuntime,
@@ -37,6 +38,7 @@ export function sendTextTurn({
   createNewChat,
   embedProjectId,
   knowledgeBaseId,
+  reasoning,
   emptyRuntime,
   ensureConversationRuntime,
   isFirstMessage,
@@ -79,6 +81,7 @@ export function sendTextTurn({
   refreshSelectedAutomation: (options?: { showLoading?: boolean }) => Promise<void>
   replyContext: ReplyContext
   selectedActModelSnapshot: string
+  reasoning?: ReasoningLevel
   setComposerNotice: Dispatch<SetStateAction<string | null>>
   setIsFirstMessage: (isFirstMessage: boolean) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
@@ -262,6 +265,7 @@ export function sendTextTurn({
     textHistoryBaseModelId,
     selectedToolIdsSnapshot: snapshot.selectedToolIdsSnapshot,
     memoryEnabledSnapshot: snapshot.memoryEnabledSnapshot,
+    reasoning,
   })
 
   const refreshAfterActTextTurn = async () => {

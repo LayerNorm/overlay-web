@@ -109,6 +109,7 @@ export const ActConversationRequest = z.object({
   })).optional(),
   multiModelSlotIndex: z.number().int().min(0).optional(),
   multiModelTotal: z.number().int().min(1).optional(),
+  reasoning: z.enum(['provider-default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
 }).passthrough()
 
 export const ChatSuggestionQuery = z.object({})

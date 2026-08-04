@@ -417,7 +417,7 @@ export async function createMcpLazyMetaTools(args: {
   modelId?: string
   projectId?: string
   enabledServerIds?: readonly string[]
-}): Promise<{ tools: ToolSet; toolApproval?: McpToolApprovalFn }> {
+}): Promise<{ tools: ToolSet; toolApproval?: McpToolApprovalFn; toolsContext?: Record<string, unknown> }> {
   const configs = await listRuntimeMcpServers({
     userId: args.userId,
     projectId: args.projectId,
@@ -491,7 +491,18 @@ export async function createMcpLazyMetaTools(args: {
       toolName: z.string().describe('Exact MCP tool name from search_mcp_tools'),
       arguments: z.record(z.string(), z.unknown()).optional().describe('Tool arguments object'),
     }),
-    execute: async ({ serverId, toolName, arguments: toolArgs }) => {
+    // v7: typed tool context — runtime metadata validated per-tool.
+    // Replaces ad-hoc closure capture of request-scoped values.
+    contextSchema: z.object({
+      userId: z.string(),
+      conversationId: z.string().optional(),
+      turnId: z.string().optional(),
+      modelId: z.string().optional(),
+    }),
+    execute: async ({ serverId, toolName, arguments: toolArgs }, options) => {
+      // v7: context is passed via toolsContext at the agent level and made
+      // available in options.context. Cast to our expected shape.
+      const context = (options?.context ?? undefined) as { userId?: string; conversationId?: string; turnId?: string; modelId?: string } | undefined
       const config = configById.get(serverId)
       if (!config) {
         const available = configs.map((entry) => `${entry.name}=${entry._id}`).join(', ')
@@ -533,12 +544,12 @@ export async function createMcpLazyMetaTools(args: {
           errorMessage: result.isError ? 'Tool returned error flag' : undefined,
         })
         void fireAndForgetRecordToolInvocation({
-          userId: args.userId,
+          userId: context?.userId ?? args.userId,
           toolName: toolId,
           mode: 'act',
-          modelId: args.modelId,
-          conversationId: args.conversationId,
-          turnId: args.turnId,
+          modelId: context?.modelId ?? args.modelId,
+          conversationId: context?.conversationId ?? args.conversationId,
+          turnId: context?.turnId ?? args.turnId,
           success: !result.isError,
           durationMs: Date.now() - start,
           error: result.isError ? 'Tool returned error flag' : undefined,
@@ -556,12 +567,12 @@ export async function createMcpLazyMetaTools(args: {
           errorMessage: err instanceof Error ? err.message : String(err),
         }).catch((_error) => undefined)
         void fireAndForgetRecordToolInvocation({
-          userId: args.userId,
+          userId: context?.userId ?? args.userId,
           toolName: toolId,
           mode: 'act',
-          modelId: args.modelId,
-          conversationId: args.conversationId,
-          turnId: args.turnId,
+          modelId: context?.modelId ?? args.modelId,
+          conversationId: context?.conversationId ?? args.conversationId,
+          turnId: context?.turnId ?? args.turnId,
           success: false,
           durationMs: Date.now() - start,
           error: err instanceof Error ? err.message : String(err),
@@ -585,12 +596,23 @@ export async function createMcpLazyMetaTools(args: {
       : undefined
   }
 
+  // v7: toolsContext provides request-scoped runtime metadata to tools
+  // that declare a `contextSchema`. This replaces closure capture for
+  // values that vary per request (userId, conversationId, turnId, modelId).
+  const toolsContext = {
+    userId: args.userId,
+    ...(args.conversationId ? { conversationId: args.conversationId } : {}),
+    ...(args.turnId ? { turnId: args.turnId } : {}),
+    ...(args.modelId ? { modelId: args.modelId } : {}),
+  }
+
   return {
     tools: {
       search_mcp_tools: searchMcpTools,
       call_mcp_tool: callMcpToolMeta,
     },
     toolApproval,
+    toolsContext,
   }
 }
 

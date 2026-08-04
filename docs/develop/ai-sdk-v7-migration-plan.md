@@ -268,12 +268,16 @@ v7 makes telemetry opt-out (enabled by default once an integration is registered
 
 **Goal:** Leverage v7 capabilities. Not required for the migration itself.
 
-- [ ] **4.1** **Reasoning control:** Use `reasoning: 'high'` on the act agent for reasoning-capable models instead of provider-specific `providerOptions`. Remove overlapping reasoning settings from `providerOptions`.
-- [ ] **4.2** **Tool context:** Migrate MCP tool API keys from ad-hoc `experimental_context` to typed `contextSchema` + `toolsContext`.
-- [ ] **4.3** **Runtime context:** If we adopt `prepareStep`, use `runtimeContext` for shared state.
-- [ ] **4.4** **Tool approvals with HMAC:** Evaluate HMAC-signed approvals for high-risk MCP tools.
-- [ ] **4.5** **Telemetry:** Register `@ai-sdk/otel` in `instrumentation.ts` if we want AI SDK traces.
-- [ ] **4.6** **Provider file uploads:** Use `uploadFile` for large PDFs/images in the act agent to avoid re-sending bytes.
+- [x] **4.1** **Reasoning control:** Use `reasoning: 'high'` on the act agent for reasoning-capable models instead of provider-specific `providerOptions`. Remove overlapping reasoning settings from `providerOptions`.
+  - **Implemented:** Added `reasoning` field to `ChatModelPreferences` (`ReasoningLevel` type: `provider-default|none|minimal|low|medium|high|xhigh`). Persisted in localStorage via `REASONING_KEY`. UI: reasoning dropdown added as last row in model picker (only shown when selected model has `supportsReasoning: true`). Model picker hover panel made persistent (pointer-events-auto, stays open on hover). Threaded through `useChatPreferences` → `useChatSendController` → `sendTextTurn` → `buildCommonActBody` → `ActConversationRequest` schema → `ToolLoopAgent` constructor.
+- [x] **4.2** **Tool context:** Migrate MCP tool API keys from ad-hoc `experimental_context` to typed `contextSchema` + `toolsContext`.
+  - **Implemented:** Added `contextSchema` to `call_mcp_tool` meta-tool with `userId`, `conversationId`, `turnId`, `modelId`. `execute` receives context via `options.context`. `createMcpLazyMetaTools` returns `toolsContext` object. Threaded through `ActTooling` interface → `buildActTooling` → `prepareActTooling` → `ToolLoopAgent` constructor. Context values used in `fireAndForgetRecordToolInvocation` with closure fallback.
+- [ ] **4.3** **Runtime context:** If we adopt `prepareStep`, use `runtimeContext` for shared state. *(Skipped — not needed yet)*
+- [ ] **4.4** **Tool approvals with HMAC:** Evaluate HMAC-signed approvals for high-risk MCP tools. *(Skipped — not needed yet)*
+- [x] **4.5** **Telemetry:** Register `@ai-sdk/otel` in `instrumentation.ts` if we want AI SDK traces.
+  - **Implemented:** Installed `@ai-sdk/otel` + `@vercel/otel`. `registerTelemetry(new OpenTelemetry())` called in `instrumentation.ts` when `OVERLAY_FEATURE_TELEMETRY` is not disabled (defaults to enabled). `telemetry: { functionId: 'act:<modelId>' }` added to `ToolLoopAgent` in act route. Type assertion used for `OpenTelemetry` → `Telemetry` interface compat.
+- [x] **4.6** **Provider file uploads:** Use `uploadFile` for large PDFs/images in the act agent to avoid re-sending bytes.
+  - **Implemented:** `uploadFile` and `ProviderReference` re-exported from `sdk.ts`. Created `src/server/ai/file-upload.ts` with `tryUploadFileToProvider` and `uploadFilePartsForModel` helpers. Supports OpenAI, Anthropic, Google, xAI providers (requires direct API keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.). Falls back to inline for small files (<100KB data: URLs), non-image media types, or when no direct API key is configured. Called in act route before `ToolLoopAgent` creation.
 
 ### Phase 5: Staging QA + production rollout
 

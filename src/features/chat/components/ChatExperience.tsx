@@ -294,6 +294,8 @@ export default function ChatExperience({
     videoSubMode,
     setVideoSubMode,
     lastGeneratedImageUrlRef,
+    reasoning,
+    setReasoning,
   } = useChatPreferences()
   const askModelSelectionModeRef = useRef(askModelSelectionMode)
   askModelSelectionModeRef.current = askModelSelectionMode
@@ -1166,6 +1168,8 @@ export default function ChatExperience({
     isActiveLoading,
     isFreeTier,
     isTemporaryChat,
+    reasoning,
+    onReasoningChange: setReasoning,
     selectableTextModels,
     selectedActModel,
     selectedImageModels,
@@ -1423,6 +1427,7 @@ export default function ChatExperience({
     replyContext,
     requireAuth,
     resetComposerToolIds,
+    reasoning,
     selectedActModel,
     selectedImageModels,
     selectedModels,

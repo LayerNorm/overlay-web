@@ -17,6 +17,7 @@ import type {
   ChatModel,
   GenerationMode,
   ImageModel,
+  ReasoningLevel,
   VideoModel,
   VideoSubMode,
 } from '@overlay/chat-core'
@@ -167,6 +168,8 @@ export interface ChatExperienceHeaderProps {
   onToggleTextModel: (modelId: string) => void
   onTextModelSelectionModeChange: (mode: AskModelSelectionMode) => void
   hasAutomationContext: boolean
+  reasoning?: ReasoningLevel
+  onReasoningChange?: (level: ReasoningLevel | undefined) => void
 }
 
 export function ChatExperienceHeader({
@@ -235,6 +238,8 @@ export function ChatExperienceHeader({
   onToggleTextModel,
   onTextModelSelectionModeChange,
   hasAutomationContext,
+  reasoning,
+  onReasoningChange,
 }: ChatExperienceHeaderProps) {
   return (
     <AppScreenHeader className={`px-3 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:px-4 md:py-0 ${hideHeader ? 'hidden' : ''}`}>
@@ -454,12 +459,14 @@ export function ChatExperienceHeader({
                 {generationMode === 'text' && hoveredModelId && modelQualitiesPos ? (
                   <div
                     aria-hidden
-                    className="pointer-events-none fixed z-[100] hidden w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
+                    className="fixed z-[100] hidden w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
                     style={{
                       left: modelQualitiesPos.x,
                       top: modelQualitiesPos.y,
                       transform: 'translate(calc(-100% - 8px), -50%)',
                     }}
+                    onMouseEnter={() => onHoveredModelChange(hoveredModelId, modelQualitiesPos)}
+                    onMouseLeave={() => onHoveredModelChange(null, null)}
                   >
                     <Suspense fallback={null}>
                       <ModelQualitiesPanel model={resolveModel(hoveredModelId)} />
@@ -469,7 +476,6 @@ export function ChatExperienceHeader({
                 <div
                   data-tour="model-picker"
                   className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
-                  onMouseLeave={() => onHoveredModelChange(null, null)}
                 >
                   <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
                     {generationMode === 'text' && textModelsLoading && !isFreeTier ? (
@@ -647,6 +653,35 @@ export function ChatExperienceHeader({
                       </div>
                     </div>
                   ) : null}
+                  {generationMode === 'text' && !hasAutomationContext && onReasoningChange && (() => {
+                    const selModel = resolveModel(selectedActModel)
+                    if (!selModel?.supportsReasoning) return null
+                    const levels: { value: ReasoningLevel; label: string }[] = [
+                      { value: 'provider-default', label: 'Default' },
+                      { value: 'none', label: 'None' },
+                      { value: 'minimal', label: 'Minimal' },
+                      { value: 'low', label: 'Low' },
+                      { value: 'medium', label: 'Medium' },
+                      { value: 'high', label: 'High' },
+                      { value: 'xhigh', label: 'Max' },
+                    ]
+                    return (
+                      <div className="border-t border-[var(--border)] px-3 py-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--muted-light)]">Reasoning</span>
+                          <select
+                            value={reasoning ?? 'provider-default'}
+                            onChange={(e) => onReasoningChange(e.target.value === 'provider-default' ? undefined : (e.target.value as ReasoningLevel))}
+                            className="rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-1.5 py-0.5 text-[11px] text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+                          >
+                            {levels.map((l) => (
+                              <option key={l.value} value={l.value}>{l.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               </>
             ) : null}

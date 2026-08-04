@@ -59,6 +59,8 @@ export interface ActTooling {
   tools: ToolSet
   /** v7 toolApproval function for MCP tools (replaces deprecated per-tool needsApproval). */
   toolApproval?: McpToolApprovalFn
+  /** v7 toolsContext — request-scoped runtime metadata for tools with contextSchema. */
+  toolsContext?: Record<string, unknown>
   /** Populated when TTFT_DEBUG timing is collected during prepareActTooling. */
   ttft?: {
     mcpCatalogMs: number
@@ -168,7 +170,7 @@ export async function prepareActTooling(params: {
   )
 
   const mcpCatalogStartedAt = performance.now()
-  const mcpToolsTask: Promise<{ tools: ToolSet; toolApproval?: McpToolApprovalFn }> =
+  const mcpToolsTask: Promise<{ tools: ToolSet; toolApproval?: McpToolApprovalFn; toolsContext?: Record<string, unknown> }> =
     params.isMultiModelFollowUpSlot || !capabilities.mcpServers
       ? Promise.resolve({ tools: {} })
       : createMcpLazyMetaTools({
@@ -228,6 +230,7 @@ export async function prepareActTooling(params: {
     isMultiModelFollowUpSlot: params.isMultiModelFollowUpSlot,
     mcpToolsRaw: mcpToolsResult.tools,
     mcpToolApproval: mcpToolsResult.toolApproval,
+    mcpToolsContext: mcpToolsResult.toolsContext,
     paid: params.paid,
     parallelTool,
     perplexityTool,
@@ -290,6 +293,7 @@ export function buildActTooling(params: {
   isMultiModelFollowUpSlot: boolean
   mcpToolsRaw: ToolSet
   mcpToolApproval?: McpToolApprovalFn
+  mcpToolsContext?: Record<string, unknown>
   paid: boolean
   parallelTool: ToolDefinition | null
   perplexityTool: ToolDefinition | null
@@ -327,6 +331,9 @@ export function buildActTooling(params: {
     tools,
     ...(params.mcpToolApproval && !params.isMultiModelFollowUpSlot
       ? { toolApproval: params.mcpToolApproval }
+      : {}),
+    ...(params.mcpToolsContext && !params.isMultiModelFollowUpSlot
+      ? { toolsContext: params.mcpToolsContext }
       : {}),
   }
 }

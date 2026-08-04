@@ -11,9 +11,11 @@ export {
   toUIMessageStream,
   ToolLoopAgent,
   tool,
+  uploadFile,
 } from 'ai'
 
 export type {
+  ProviderReference,
   StreamTextTransform,
   TextStreamPart,
   ToolApprovalConfiguration,
