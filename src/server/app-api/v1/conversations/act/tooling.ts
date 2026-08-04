@@ -23,7 +23,7 @@ import {
   getIntegrationProvider,
   getSelectedIntegrationProviderId,
 } from '@/server/integrations'
-import { createMcpLazyMetaTools } from '@/server/tools/mcp-tools'
+import { createMcpLazyMetaTools, type McpToolApprovalFn } from '@/server/tools/mcp-tools'
 import {
   applyProjectToolPolicy,
   type ProjectSettings,
@@ -57,6 +57,8 @@ export interface ActTooling {
   gatewaySearchLog: string
   missingGatewaySearchTools: boolean
   tools: ToolSet
+  /** v7 toolApproval function for MCP tools (replaces deprecated per-tool needsApproval). */
+  toolApproval?: McpToolApprovalFn
   /** Populated when TTFT_DEBUG timing is collected during prepareActTooling. */
   ttft?: {
     mcpCatalogMs: number
@@ -166,19 +168,20 @@ export async function prepareActTooling(params: {
   )
 
   const mcpCatalogStartedAt = performance.now()
-  const mcpToolsTask = params.isMultiModelFollowUpSlot || !capabilities.mcpServers
-    ? Promise.resolve({} as ToolSet)
-    : createMcpLazyMetaTools({
-        userId: params.userId,
-        accessToken: params.accessToken,
-        serverSecret: params.serverSecret,
-        conversationId: params.conversationId,
-        turnId: params.turnId,
-        modelId: params.effectiveModelId,
-        projectId: params.conversationProjectId,
-        enabledServerIds: params.projectSettings?.enabledMcpServerIds,
-      })
-  const [integrationRaw, mcpToolsRaw, webToolSet, perplexityTool, parallelTool] = await Promise.all([
+  const mcpToolsTask: Promise<{ tools: ToolSet; toolApproval?: McpToolApprovalFn }> =
+    params.isMultiModelFollowUpSlot || !capabilities.mcpServers
+      ? Promise.resolve({ tools: {} })
+      : createMcpLazyMetaTools({
+          userId: params.userId,
+          accessToken: params.accessToken,
+          serverSecret: params.serverSecret,
+          conversationId: params.conversationId,
+          turnId: params.turnId,
+          modelId: params.effectiveModelId,
+          projectId: params.conversationProjectId,
+          enabledServerIds: params.projectSettings?.enabledMcpServerIds,
+        })
+  const [integrationRaw, mcpToolsResult, webToolSet, perplexityTool, parallelTool] = await Promise.all([
     capabilities.integrations ? params.preloadTasks.integrationToolsTask : Promise.resolve({} as ToolSet),
     mcpToolsTask,
     Promise.resolve(
@@ -223,7 +226,8 @@ export async function prepareActTooling(params: {
     integrationProvider: getSelectedIntegrationProviderId(),
     integrationRaw,
     isMultiModelFollowUpSlot: params.isMultiModelFollowUpSlot,
-    mcpToolsRaw,
+    mcpToolsRaw: mcpToolsResult.tools,
+    mcpToolApproval: mcpToolsResult.toolApproval,
     paid: params.paid,
     parallelTool,
     perplexityTool,
@@ -285,6 +289,7 @@ export function buildActTooling(params: {
   integrationRaw: ToolSet
   isMultiModelFollowUpSlot: boolean
   mcpToolsRaw: ToolSet
+  mcpToolApproval?: McpToolApprovalFn
   paid: boolean
   parallelTool: ToolDefinition | null
   perplexityTool: ToolDefinition | null
@@ -320,6 +325,9 @@ export function buildActTooling(params: {
     ].join(' '),
     missingGatewaySearchTools: !params.perplexityTool || !params.parallelTool,
     tools,
+    ...(params.mcpToolApproval && !params.isMultiModelFollowUpSlot
+      ? { toolApproval: params.mcpToolApproval }
+      : {}),
   }
 }
 
