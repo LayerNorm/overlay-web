@@ -3,10 +3,6 @@ import PricingClient from '@/app/pricing/PricingClient'
 import { PublicMarketingPageFrame } from '@/features/showcase/PublicMarketingPageFrame'
 import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 
-// TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
-// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
-export const instant = false;
-
 export const metadata: Metadata = {
   title: 'Pricing — Overlay',
   description:
