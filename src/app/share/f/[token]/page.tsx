@@ -7,9 +7,6 @@ import { SharedFileView } from '@/features/share/components/SharedFileView'
 // See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
 export const instant = false;
 
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
-
 export type SharedFile = {
   _id: string
   name: string

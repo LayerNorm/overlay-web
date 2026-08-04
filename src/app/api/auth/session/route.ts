@@ -5,8 +5,6 @@ import { getOverlaySession } from '@/server/auth/session'
 import { formatOverlayConfigError, isOverlayConfigError } from '@/server/config'
 import { rateLimitByIp } from '@/server/security/rate-limit'
 
-export const dynamic = 'force-dynamic'
-
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
   Vary: 'Cookie',

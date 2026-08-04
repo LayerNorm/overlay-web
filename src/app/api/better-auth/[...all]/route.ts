@@ -2,7 +2,6 @@ import { toNextJsHandler } from 'better-auth/next-js'
 import { getBetterAuth } from '@/server/auth/better-auth'
 
 export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
 
 const handlers = toNextJsHandler((request) => getBetterAuth().handler(request))
 

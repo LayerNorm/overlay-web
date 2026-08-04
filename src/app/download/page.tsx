@@ -16,8 +16,6 @@ export const metadata: Metadata = {
     'Download Overlay Desktop for macOS Apple Silicon, or build from the public source repository.',
 }
 
-export const dynamic = 'force-dynamic'
-
 export default async function DownloadRoutePage() {
   const downloadsEnabled = areOfficialDesktopDownloadsEnabled()
 

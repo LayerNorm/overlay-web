@@ -8,9 +8,6 @@ import type { SharedConversation } from '@/shared/chat/shared-conversation'
 // See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
 export const instant = false;
 
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
-
 async function loadShared(token: string): Promise<SharedConversation | null> {
   return await loadSharedConversation(token)
 }
