@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { fileIngestErrorResponse, fileService } from '@/server/files/http'
-
-export const runtime = 'nodejs'
-
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context

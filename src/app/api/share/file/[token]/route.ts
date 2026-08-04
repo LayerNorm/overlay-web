@@ -3,9 +3,6 @@ import { convex } from '@/server/database/convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { generatePresignedDownloadUrl } from '@/server/storage/object-store'
 import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/server/storage/storage-keys'
-
-export const runtime = 'nodejs'
-
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ token: string }> },

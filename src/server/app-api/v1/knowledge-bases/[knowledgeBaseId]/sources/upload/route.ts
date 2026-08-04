@@ -4,9 +4,6 @@ import { fileIngestErrorResponse, fileService } from '@/server/files/http'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { knowledgeBaseErrorResponse, requiredKnowledgeBaseId } from '../../../errors'
-
-export const runtime = 'nodejs'
-
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   const knowledgeBaseId = await requiredKnowledgeBaseId(context)
   const form = context.parsedFormData ?? await request.formData().catch((_error) => null)

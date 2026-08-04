@@ -5,6 +5,7 @@ import {
   fetchLatestReleaseInfo,
   type LatestReleaseInfo,
 } from '@/shared/web/latest-release'
+import { LandingThemeProvider } from '@/contexts/LandingThemeContext'
 
 // TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
 // See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
@@ -31,10 +32,12 @@ export default async function DownloadRoutePage() {
   }
 
   return (
-    <DesktopDownloadPage
-      downloadsEnabled={downloadsEnabled}
-      release={release}
-      releaseError={releaseError}
-    />
+    <LandingThemeProvider>
+      <DesktopDownloadPage
+        downloadsEnabled={downloadsEnabled}
+        release={release}
+        releaseError={releaseError}
+      />
+    </LandingThemeProvider>
   )
 }

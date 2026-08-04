@@ -1,9 +1,6 @@
 import { NextRequest } from 'next/server'
 import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { outputService } from '@/server/outputs/http'
-
-export const runtime = 'nodejs'
-
 export async function GET(
   request: NextRequest,
   context: AppApiRouteContext,
