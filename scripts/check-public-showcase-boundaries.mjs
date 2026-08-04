@@ -148,9 +148,9 @@ for (const [path, destination] of [
   }
 }
 
-const middleware = read('src/middleware.ts')
+const proxy = read('src/proxy.ts')
 for (const route of ["'/home': '/app/home'", "'/manifesto': '/app/manifesto'", "'/pricing': '/app/pricing'"]) {
-  if (!middleware.includes(route)) violations.push(`clean marketing routes must rewrite into the app shell: ${route}`)
+  if (!proxy.includes(route)) violations.push(`clean marketing routes must rewrite into the app shell: ${route}`)
 }
 
 const marketing = read('src/shared/marketing/marketing.ts')
