@@ -12,6 +12,28 @@ export const CHAT_RATE_LIMITS: RateLimitSpec[] = [
 ]
 
 const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
+  // Bootstrap read routes fire on every app-shell load. Without dedicated
+  // specs they fall through to the shared `api:default:user` bucket
+  // (300/10min), so a burst from one route (e.g. the model-catalog hook's
+  // old 429-retry loop) could lock out the others and prevent the workspace
+  // from opening. Each gets its own per-user bucket so they cannot starve
+  // each other; the limits are generous because these are cheap reads.
+  'GET /api/v1/model-catalog': [
+    { bucket: 'model-catalog:ip', limit: 600, windowMs: TEN_MINUTES },
+    { bucket: 'model-catalog:user', limit: 300, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/settings': [
+    { bucket: 'settings:ip', limit: 600, windowMs: TEN_MINUTES },
+    { bucket: 'settings:user', limit: 300, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/workspaces': [
+    { bucket: 'workspaces:list:ip', limit: 600, windowMs: TEN_MINUTES },
+    { bucket: 'workspaces:list:user', limit: 300, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/conversations': [
+    { bucket: 'conversations:list:ip', limit: 600, windowMs: TEN_MINUTES },
+    { bucket: 'conversations:list:user', limit: 300, windowMs: TEN_MINUTES },
+  ],
   'GET /api/v1/chat-suggestions': [
     { bucket: 'helper:chat-suggestions:ip', limit: 120, windowMs: TEN_MINUTES },
     { bucket: 'helper:chat-suggestions:user', limit: 30, windowMs: TEN_MINUTES },

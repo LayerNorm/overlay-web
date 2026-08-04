@@ -35,3 +35,30 @@ test('non-owner-funded routes do not consume provider-wide buckets', () => {
     false,
   )
 })
+
+test('bootstrap read routes get dedicated buckets so they cannot starve each other', () => {
+  const bootstrapRoutes = [
+    { method: 'GET', pathname: '/api/v1/model-catalog', expectedBucket: 'model-catalog:user' },
+    { method: 'GET', pathname: '/api/v1/settings', expectedBucket: 'settings:user' },
+    { method: 'GET', pathname: '/api/v1/workspaces', expectedBucket: 'workspaces:list:user' },
+    { method: 'GET', pathname: '/api/v1/conversations', expectedBucket: 'conversations:list:user' },
+  ]
+  for (const route of bootstrapRoutes) {
+    const rules = getEndpointRateLimitSpecs({
+      ip: '203.0.113.5',
+      method: route.method,
+      pathname: route.pathname,
+      userId: 'user_1',
+    })
+    const buckets = rules.map((rule) => rule.bucket)
+    assert.ok(
+      buckets.includes(route.expectedBucket),
+      `${route.pathname} should have a dedicated ${route.expectedBucket} bucket, got: ${buckets.join(', ')}`,
+    )
+    // None of these routes should fall through to the shared default bucket.
+    assert.ok(
+      !buckets.includes('api:default:user'),
+      `${route.pathname} should not use the shared api:default:user bucket`,
+    )
+  }
+})
