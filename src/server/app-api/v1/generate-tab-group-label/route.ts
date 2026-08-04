@@ -83,7 +83,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       const result = await generateObject({
         model,
         schema: tabGroupLabelSchema,
-        system:
+        instructions:
           'You label Chrome tab groups. Return a title that is 1 to 3 words only, no quotes or trailing punctuation.',
         prompt: userPrompt,
         temperature: 0,

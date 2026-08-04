@@ -62,7 +62,7 @@ class ConfiguredMemoryExtractionProvider implements MemoryExtractionProvider {
       messages: [{ role: 'user', content: prompt }],
       model: await getLanguageModel(this.modelId),
       schema: ExtractionSchema,
-      system: SYSTEM_PROMPT,
+      instructions: SYSTEM_PROMPT,
     })
     return result.object.candidates
   }

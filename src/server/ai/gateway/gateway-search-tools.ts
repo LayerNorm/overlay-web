@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
-import { createGateway, generateText, stepCountIs, tool, type ToolSet } from 'ai'
+import { createGateway, generateText, isStepCount, tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 import {
   getOrCreateGateway,
@@ -266,7 +266,7 @@ async function runInnerGenerateTextWithTool<T extends 'perplexity_search' | 'par
           tools: { [toolName]: providerTool },
           toolChoice: { type: 'tool', toolName },
           prompt,
-          stopWhen: stepCountIs(2),
+          stopWhen: isStepCount(2),
         })
       } catch (error) {
         lastError = error
