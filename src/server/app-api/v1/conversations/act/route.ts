@@ -2,7 +2,7 @@ import { logger } from '@/server/observability/logger'
 import { after, NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { readValidatedJson } from '@/server/app-api/validated-input'
-import { convertToModelMessages, generateText, isStepCount, ToolLoopAgent, type UIMessage } from '@/server/ai/sdk'
+import { convertToModelMessages, createUIMessageStreamResponse, generateText, isStepCount, toUIMessageStream, ToolLoopAgent, type ToolApprovalConfiguration, type UIMessage } from '@/server/ai/sdk'
 import type { LanguageModel } from '@/server/ai/provider-types'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import {
@@ -564,6 +564,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       // allowSystemInMessages: context-compaction.ts injects a trusted server-generated
       // summary as a system message. This is not user input — safe to pass through.
       allowSystemInMessages: true,
+      // v7: toolApproval replaces deprecated per-tool needsApproval. The MCP
+      // approval function checks call_mcp_tool's input (serverId/toolName)
+      // against the MCP server's policy at call time.
+      ...(actTooling.toolApproval
+        ? { toolApproval: actTooling.toolApproval as unknown as ToolApprovalConfiguration<typeof tools, unknown> }
+        : {}),
     })
 
     const toolFailuresByCallId = new Map<string, { toolName: string; error: string }>()
@@ -722,7 +728,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     const hasCitations = Object.keys(sourceCitationMap).length > 0
 
-    const _uiResp = result.toUIMessageStreamResponse({
+    const _uiStream = toUIMessageStream({
+      stream: result.stream,
       originalMessages: uiMessages,
       onError: (error: unknown) => {
         logger.error('[conversations/act] stream error', {
@@ -748,6 +755,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         return Object.keys(metadata).length > 0 ? metadata : undefined
       },
     })
+    const _uiResp = createUIMessageStreamResponse({ stream: _uiStream })
     let responseBody: ReadableStream<Uint8Array<ArrayBufferLike>> | null =
       prefixFallbackNoticeAfterStart(_uiResp.body, params.fallbackNotice)
     const responseHeaders = new Headers(_uiResp.headers)

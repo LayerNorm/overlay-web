@@ -234,30 +234,35 @@ v7 makes telemetry opt-out (enabled by default once an integration is registered
 - [ ] **2.6** Run `npm run typecheck && npm run build && npm run lint:changed`
 - [ ] **2.7** Commit: `fix: adapt to AI SDK v7 behavioral changes`
 
-### Phase 3: Migrate deprecated patterns to stable APIs
+### Phase 3: Migrate deprecated patterns to stable APIs — COMPLETE
 
 **Goal:** Move off deprecated aliases so we're ready for v8. Each item is independent and can be done incrementally.
 
-- [ ] **3.1** **`toUIMessageStreamResponse` → stateless helpers (M8):**
-  - In `act/route.ts` line 718, replace `result.toUIMessageStreamResponse(...)` with:
-    ```ts
-    import { toUIMessageStream, createUIMessageStreamResponse } from 'ai'
-    const uiStream = toUIMessageStream({ stream: result.stream, ... })
-    return createUIMessageStreamResponse({ stream: uiStream })
-    ```
+- [x] **3.1** **`toUIMessageStreamResponse` → stateless helpers (M8):**
+  - In `act/route.ts`, replaced `result.toUIMessageStreamResponse(...)` with `toUIMessageStream({ stream: result.stream, ... })` + `createUIMessageStreamResponse({ stream: uiStream })`.
+  - Added `toUIMessageStream` and `createUIMessageStreamResponse` to `src/server/ai/sdk.ts` re-exports.
+  - The `_uiResp` variable (used for `.body`, `.headers`, `.status`) is now created from `createUIMessageStreamResponse` — rest of the streaming pipeline is unchanged.
 
-- [ ] **3.2** **`needsApproval` → `toolApproval` (M9):**
-  - In `mcp-tools.ts`, move `needsApproval` from `tool()` definitions to `toolApproval` on the `ToolLoopAgent` or `generateText`/`streamText` call.
-  - This is a larger refactor — the approval logic is per-tool and dynamic (depends on MCP server config). Need to build a `toolApproval` map from the MCP config at call time.
+- [x] **3.2** **`needsApproval` → `toolApproval` (M9):**
+  - Removed `needsApproval` from both `call_mcp_tool` (meta-tool) and discovered MCP tool definitions in `mcp-tools.ts`.
+  - `createMcpLazyMetaTools` now returns `{ tools: ToolSet; toolApproval?: McpToolApprovalFn }` instead of just `ToolSet`.
+  - The `toolApproval` function checks `call_mcp_tool`'s input (`serverId`/`toolName`) against the MCP server's policy at call time — same behavior as the deprecated `needsApproval`, now using the v7 agent-level `toolApproval` API.
+  - Threaded `toolApproval` through `tooling.ts` (`ActTooling` interface, `buildActTooling`, `prepareActTooling`) to `act/route.ts` where it's passed to the `ToolLoopAgent` constructor.
+  - The eager `discoverToolsForServer` path (only used by `prewarmMcpTools` cache warmer, not the act route) had `needsApproval` removed with a comment noting approval should be set at the agent level if that path is ever used.
+  - Exported `McpToolApprovalFn` type from `mcp-tools.ts` and `ToolApprovalConfiguration` type from `sdk.ts`.
 
-- [ ] **3.3** **`experimental_generateVideo` — no change needed:** Still experimental in v7. `src/server/ai/sdk.ts` and `generate-video/route.ts` stay as-is.
+- [x] **3.3** **`experimental_generateVideo` — no change needed:** Still experimental in v7. `src/server/ai/sdk.ts` and `generate-video/route.ts` stay as-is.
 
-- [ ] **3.4** **`experimental_transform` — no change needed:** Still experimental in v7. `act/route.ts` and `chat-stream-persistence.ts` stay as-is.
+- [x] **3.4** **`experimental_transform` — no change needed:** Still experimental in v7. `act/route.ts` and `chat-stream-persistence.ts` stay as-is.
 
-- [ ] **3.5** **`experimental_throttle` → `throttle` — done in Phase 1:** Already renamed during Phase 1 step 1.3.
+- [x] **3.5** **`experimental_throttle` → `throttle` — done in Phase 1:** Already renamed during Phase 1 step 1.3.
 
-- [ ] **3.6** Run `npm run typecheck && npm run build && npm run lint:changed`
-- [ ] **3.7** Commit: `refactor: migrate to stable AI SDK v7 APIs`
+- [x] **3.6** Run `npm run typecheck && npm run build && npm run lint:changed`
+  - Typecheck: pass (exit 0)
+  - Build: `next build` compiled successfully, 167 routes generated (exit 0)
+  - Lint: `lint:changed` hit a pre-existing `eslint-plugin-react` compatibility issue (`getFilename is not a function`); `next build`'s ESLint integration passed clean.
+
+- [x] **3.7** Commit: `refactor: migrate to stable AI SDK v7 APIs`
 
 ### Phase 4: Adopt new v7 features (optional, post-migration)
 

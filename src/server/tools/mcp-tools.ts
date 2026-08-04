@@ -4,6 +4,16 @@ import { createHash } from 'node:crypto'
 import { logger } from '@/server/observability/logger'
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
+
+/**
+ * Tool approval function for MCP tools. Uses the v7 `toolApproval` API
+ * (replaces deprecated per-tool `needsApproval`). The function form allows
+ * dynamic approval decisions based on the tool call's input — e.g.
+ * `call_mcp_tool` needs to inspect `serverId`/`toolName` to resolve policy.
+ */
+export type McpToolApprovalFn = (options: {
+  toolCall: { toolName: string; input: Record<string, unknown> }
+}) => 'user-approval' | undefined
 import { jsonSchemaToZod } from './mcp-schema-to-zod'
 import { fireAndForgetRecordToolInvocation } from './tools/record-tool-invocation'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
@@ -334,7 +344,7 @@ export async function createMcpLazyMetaTools(args: {
   modelId?: string
   projectId?: string
   enabledServerIds?: readonly string[]
-}): Promise<ToolSet> {
+}): Promise<{ tools: ToolSet; toolApproval?: McpToolApprovalFn }> {
   const configs = await listRuntimeMcpServers({
     userId: args.userId,
     projectId: args.projectId,
@@ -342,7 +352,7 @@ export async function createMcpLazyMetaTools(args: {
   })
 
   if (!configs || configs.length === 0) {
-    return {}
+    return { tools: {} }
   }
 
   const configById = new Map(configs.map((config) => [config._id, config]))
@@ -403,10 +413,6 @@ export async function createMcpLazyMetaTools(args: {
       toolName: z.string().describe('Exact MCP tool name from search_mcp_tools'),
       arguments: z.record(z.string(), z.unknown()).optional().describe('Tool arguments object'),
     }),
-    needsApproval: ({ serverId, toolName }) => {
-      const config = configById.get(serverId)
-      return config ? resolveMcpToolPolicy(config, toolName) === 'approval_required' : false
-    },
     execute: async ({ serverId, toolName, arguments: toolArgs }) => {
       const config = configById.get(serverId)
       if (!config) {
@@ -484,9 +490,26 @@ export async function createMcpLazyMetaTools(args: {
     },
   })
 
+  // v7 toolApproval: moved from per-tool `needsApproval` to the agent-level
+  // `toolApproval` configuration. The approval decision for `call_mcp_tool`
+  // depends on the tool's input (serverId/toolName), so we use a function that
+  // resolves the MCP server's policy at call time.
+  const toolApproval: McpToolApprovalFn = ({ toolCall }) => {
+    if (toolCall.toolName !== 'call_mcp_tool') return undefined
+    const { serverId, toolName } = toolCall.input as { serverId?: string; toolName?: string }
+    if (!serverId || !toolName) return undefined
+    const config = configById.get(serverId)
+    return config && resolveMcpToolPolicy(config, toolName) === 'approval_required'
+      ? 'user-approval'
+      : undefined
+  }
+
   return {
-    search_mcp_tools: searchMcpTools,
-    call_mcp_tool: callMcpToolMeta,
+    tools: {
+      search_mcp_tools: searchMcpTools,
+      call_mcp_tool: callMcpToolMeta,
+    },
+    toolApproval,
   }
 }
 
@@ -600,7 +623,11 @@ async function discoverToolsForServer(config: McpServerConfig): Promise<ToolSet>
       toolSet[toolId] = tool({
         description: descriptionParts.join(' '),
         inputSchema: zodSchema as z.ZodTypeAny,
-        needsApproval: policyDecision === 'approval_required',
+        // v7: per-tool `needsApproval` removed — approval is now configured at
+        // the agent level via `toolApproval`. This eager tool-set path is only
+        // used by `prewarmMcpTools` (cache warmer); the act route uses the lazy
+        // meta-tools path (`createMcpLazyMetaTools`) which returns a
+        // `toolApproval` function.
         execute: async (input) => {
           const start = Date.now()
           try {
