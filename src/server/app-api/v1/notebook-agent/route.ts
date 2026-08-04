@@ -369,10 +369,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
         emitText(result.text)
 
-	        const totalUsage = result.totalUsage
-	        const totalInputTokens = totalUsage?.inputTokens ?? 0
-	        const totalOutputTokens = totalUsage?.outputTokens ?? 0
-	        const cachedTokens = totalUsage?.inputTokenDetails?.cacheReadTokens ?? 0
+	        const usage = result.usage
+	        const totalInputTokens = usage?.inputTokens ?? 0
+	        const totalOutputTokens = usage?.outputTokens ?? 0
+	        const cachedTokens = usage?.inputTokenDetails?.cacheReadTokens ?? 0
 	        const providerCostUsd = await calculateLanguageModelTokenCostOrNull(
 	          effectiveModelId,
 	          totalInputTokens,

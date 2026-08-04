@@ -335,7 +335,7 @@ async function finalizeGatewaySearch(params: {
   result: Awaited<ReturnType<typeof generateText>>
   toolName: 'perplexity_search' | 'parallel_search'
 }) {
-  const usage = params.result.totalUsage
+  const usage = params.result.usage
   const inputTokens = usage?.inputTokens ?? 0
   const outputTokens = usage?.outputTokens ?? 0
   const cachedTokens = usage?.inputTokenDetails?.cacheReadTokens ?? 0
