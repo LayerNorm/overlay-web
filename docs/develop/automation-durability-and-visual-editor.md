@@ -1,6 +1,6 @@
 # Automation Durability + Visual Editor
 
-> **Status:** Approved 2026-01. Step 1 complete.
+> **Status:** Approved 2026-01. Steps 1–2 complete.
 > **Commits:** `AUTOMATIONS STEP {#}: {message}`
 
 ## Problem
