@@ -52,6 +52,12 @@
     "src/app/api/v1/agents/[agentId]/route.ts",
     "src/app/api/v1/agents/route.ts",
     "src/app/api/v1/api-keys/route.ts",
+    "src/app/api/v1/automations/[id]/approve/route.ts",
+    "src/app/api/v1/automations/[id]/events/route.ts",
+    "src/app/api/v1/automations/[id]/run/route.ts",
+    "src/app/api/v1/automations/[id]/start-scheduler/route.ts",
+    "src/app/api/v1/automations/[id]/stream/route.ts",
+    "src/app/api/v1/automations/execute/route.ts",
     "src/app/api/v1/automations/route.ts",
     "src/app/api/v1/automations/run/route.ts",
     "src/app/api/v1/automations/test/route.ts",
@@ -138,6 +144,7 @@
     "src/app/api/v1/subscription/settings/route.ts",
     "src/app/api/v1/transcribe/route.ts",
     "src/app/api/v1/webhooks/route.ts",
+    "src/app/api/v1/workflows/spike/route.ts",
     "src/app/api/v1/workspace-invitations/[invitationId]/accept/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/audit-export/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/governance/route.ts",
@@ -169,7 +176,7 @@
     },
     {
       "cadence": "{ minutes: 1 }",
-      "name": "automation scheduler",
+      "name": "automation_scheduler_legacy",
       "target": "internal.automations.automationRunner.runMinuteTick"
     },
     {

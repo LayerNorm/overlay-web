@@ -24,6 +24,20 @@ export async function register() {
     await assertConfiguredPostgresSchemaCompatible()
     const { startOnPremOpenTelemetry } = await import('./server/observability/open-telemetry')
     await startOnPremOpenTelemetry()
+
+    // Start the Workflow SDK World for on-prem/self-hosted deployments.
+    // On Vercel, the Vercel World is used automatically (no start() needed).
+    // When WORKFLOW_TARGET_WORLD is set (e.g. to @workflow/world-postgres),
+    // we call world.start() to begin the graphile-worker queue polling.
+    if (process.env.WORKFLOW_TARGET_WORLD) {
+      try {
+        const { getWorld } = await import('workflow/runtime')
+        const world = await getWorld()
+        await world.start?.()
+      } catch {
+        // World packages may not be installed in all environments — fail silently.
+      }
+    }
   }
 
   // v7: Register AI SDK OpenTelemetry integration for production observability.

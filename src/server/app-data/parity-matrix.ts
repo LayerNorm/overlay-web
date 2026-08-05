@@ -156,7 +156,7 @@ export const ON_PREM_PARITY_MATRIX: readonly OnPremParityDomain[] = [
     name: 'Automations',
     targetPhase: 'P6',
     capabilities: [{ key: 'supportsAutomations', expectedAtParity: true }],
-    routeRuleIds: ['automations'],
+    routeRuleIds: ['automations', 'workflows'],
     exitGate: 'Schedules and runs survive worker replacement, retry safely, and produce auditable execution records.',
   },
   {

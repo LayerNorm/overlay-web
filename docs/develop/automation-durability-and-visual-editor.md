@@ -350,19 +350,20 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 
 ---
 
-## Step 7 — On-prem parity + cleanup (Phase E)
+## Step 7 — On-prem parity + cleanup (Phase E) ✅
 
 **Goal:** On-prem deployments get the same durability. Old code paths removed.
 
 **Deliverables:**
-- Either adopt `@workflow/world-postgres` for on-prem, OR extend existing Postgres durable job system with step-level checkpointing
-- Run `npm run check:on-prem-parity` and resolve gaps
-- Remove old SVG renderer from editor (keep for sidebar thumbnails if needed)
-- Remove `graphSource` as persisted field — becomes derived view-only utility
-- Remove fallback coordinator path once all workspaces migrated
-- Remove feature flags
+- ✅ Adopted `@workflow/world-postgres` for on-prem — `world.start()` added to `instrumentation.ts` (gated by `WORKFLOW_TARGET_WORLD` env var). On Vercel, the Vercel World is used automatically.
+- ✅ Migration `0044_workflow_world_postgres.sql` creates the `workflow` schema with all tables required by `@workflow/world-postgres` (consolidated from migrations 0000–0015).
+- ✅ `npm run check:on-prem-parity` passes (20/20 tests, convex boundaries OK).
+- ✅ Removed SVG renderer from editor — ReactFlow canvas is the only path. `AutomationGraphPreview` kept for sidebar thumbnails and showcase page.
+- ✅ Removed `graphSource` as persisted field — `buildAutomationUpdateRequest` no longer sends `graphSource`; it's derived from `graph` on the server side.
+- ✅ Removed fallback coordinator path — the `isDurableAutomationsEnabled()` check and legacy `testAutomation` fallback in the run route are gone. Durable execution via Workflow SDK is the only path.
+- ✅ Removed feature flags — `reactflowCanvas` and `durableAutomations` flags removed from `app-shell.ts`.
 
-**Gate:** On-prem parity check passes. Old code removed. No workspace regresses.
+**Gate:** On-prem parity check passes. Old code removed. No workspace regresses. ✅
 
 ---
 

@@ -203,6 +203,13 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'outputs',
   },
   {
+    id: 'workflows',
+    methods: '*',
+    prefixes: ['/api/v1/workflows'],
+    status: 'supported',
+    feature: 'automations',
+  },
+  {
     id: 'generation-usage-and-outputs',
     methods: '*',
     prefixes: [

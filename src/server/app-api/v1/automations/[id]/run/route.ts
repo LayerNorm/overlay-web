@@ -7,33 +7,13 @@ import { automationService } from '@/server/automations/http'
 import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/server/auth/service-auth'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { logger } from '@/server/observability/logger'
-import { automationRunWorkflow, type AutomationRunWorkflowInput } from '@/workflows/automation-run'
 import { automationScheduleWorkflow, type AutomationScheduleWorkflowInput, buildApprovalToken } from '@/workflows/automation-schedule'
 
 // ---------------------------------------------------------------------------
 // POST /api/v1/automations/{id}/run
 //
-// Triggers a durable automation run via the Vercel Workflow SDK.
-// When the `durableAutomations` feature flag is disabled, falls back to the
-// existing test endpoint which handles the full run lifecycle.
+// Triggers a durable automation run via the Workflow SDK.
 // ---------------------------------------------------------------------------
-
-export function isDurableAutomationsEnabled(): boolean {
-  // Env var override takes precedence (allows opt-in/out per deployment)
-  const raw = process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-  if (raw === '1' || raw === 'true') return true
-  if (raw === '0' || raw === 'false') return false
-  // Fall back to the app-shell feature flag config
-  try {
-    const { default: overlayAppConfig } = require('@/overlay.config')
-    const { resolveOverlayAppShellConfig } = require('@overlay/app-core')
-    const shell = resolveOverlayAppShellConfig(overlayAppConfig, {})
-    const flag = shell.featureFlags.find((f: { id: string; enabled: boolean }) => f.id === 'durableAutomations')
-    return flag?.enabled ?? false
-  } catch {
-    return false
-  }
-}
 
 export async function POST(request: NextRequest, context?: AppApiRouteContext) {
   try {
@@ -48,7 +28,7 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
     }
     const userId = context.auth.userId
 
-    // Get automation details first (needed for both paths)
+    // Get automation details
     const automation = await automationService.getAutomationForExecution({
       automationId,
       userId,
@@ -58,22 +38,6 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
         { error: 'Automation not found' },
         { status: 404 },
       )
-    }
-
-    if (!isDurableAutomationsEnabled()) {
-      // Fallback: use the existing test endpoint which handles the full
-      // lifecycle (create run → mark started → execute → mark completed).
-      const baseUrl = getInternalApiBaseUrl(request)
-      const result = await automationService.testAutomation({
-        automationId,
-        userId,
-        baseUrl,
-      })
-      return NextResponse.json({
-        ok: true,
-        durable: false,
-        ...result,
-      })
     }
 
     // Durable path: create a manual run, then start the workflow

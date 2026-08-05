@@ -5,8 +5,6 @@ import { RefreshCw } from 'lucide-react'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import overlayAppConfig from '@/overlay.config'
-import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import type {
   AutomationDetail,
   AutomationDetailTab,
@@ -15,9 +13,6 @@ import type {
   AutomationSchedule,
   AutomationRunSummary,
   AutomationTestState,
-} from '@overlay/app-core'
-import {
-  resolveOverlayAppShellConfig,
 } from '@overlay/app-core'
 import {
   applyAutomationUpdate,
@@ -67,17 +62,6 @@ export function AutomationEditorPanel({
   const [runsBusy, setRunsBusy] = useState(false)
   const [liveWorkflowRunId, setLiveWorkflowRunId] = useState<string | null>(null)
   const timeZoneOptions = useMemo(() => supportedTimeZoneOptions(), [])
-  const { capabilities } = useOverlayCapabilities()
-  const reactflowCanvasEnabled = useMemo(() => {
-    const appShell = resolveOverlayAppShellConfig(overlayAppConfig, { capabilities })
-    const flag = appShell.featureFlags.find((f) => f.id === 'reactflowCanvas')
-    return flag?.enabled ?? false
-  }, [capabilities])
-  const durableAutomationsEnabled = useMemo(() => {
-    const appShell = resolveOverlayAppShellConfig(overlayAppConfig, { capabilities })
-    const flag = appShell.featureFlags.find((f) => f.id === 'durableAutomations')
-    return flag?.enabled ?? false
-  }, [capabilities])
   const modelOptions = useMemo(
     () => getModelsByIntelligence(isFreeTier).filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2'),
     [isFreeTier],
@@ -137,47 +121,31 @@ export function AutomationEditorPanel({
     setTestState('running')
     setTestMessage(null)
     try {
-      if (durableAutomationsEnabled) {
-        // Durable path: trigger via the per-automation run endpoint, capture
-        // the workflowRunId for live visualization, then open the chat.
-        const res = await overlayAppClient.automations.runDurableResponse(automation._id)
-        const data = await res.json().catch(() => ({})) as {
-          workflowRunId?: string
-          runId?: string
-          conversationId?: string
-          error?: string
-          message?: string
-        }
-        if (!res.ok) {
-          throw new Error(data.message || data.error || 'Failed to test automation')
-        }
-        if (data.workflowRunId) {
-          setLiveWorkflowRunId(data.workflowRunId)
-        }
-        setTestState('success')
-        setTestMessage('Durable run started. Live status available in Run Visualization below.')
-        // Refresh runs list so the new run appears in the replay dropdown
-        void loadRuns()
-        // Don't navigate away immediately — let the user watch live status.
-        // The user can click "Open" in run history to view the chat.
-        if (data.conversationId) {
-          // Optionally navigate after a short delay to let the user see live status
-          window.setTimeout(() => onTested(data.conversationId!), 3000)
-        }
-      } else {
-        // Legacy path: non-durable test endpoint
-        const res = await overlayAppClient.automations.testResponse({ automationId: automation._id })
-        const data = await res.json().catch(() => ({})) as {
-          conversationId?: string
-          message?: string
-          error?: string
-        }
-        if (!res.ok || !data.conversationId) {
-          throw new Error(data.message || data.error || 'Failed to test automation')
-        }
-        setTestState('success')
-        setTestMessage('Test run completed. Opening the automation chat.')
-        onTested(data.conversationId)
+      // Durable path: trigger via the per-automation run endpoint, capture
+      // the workflowRunId for live visualization, then open the chat.
+      const res = await overlayAppClient.automations.runDurableResponse(automation._id)
+      const data = await res.json().catch(() => ({})) as {
+        workflowRunId?: string
+        runId?: string
+        conversationId?: string
+        error?: string
+        message?: string
+      }
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Failed to test automation')
+      }
+      if (data.workflowRunId) {
+        setLiveWorkflowRunId(data.workflowRunId)
+      }
+      setTestState('success')
+      setTestMessage('Durable run started. Live status available in Run Visualization below.')
+      // Refresh runs list so the new run appears in the replay dropdown
+      void loadRuns()
+      // Don't navigate away immediately — let the user watch live status.
+      // The user can click "Open" in run history to view the chat.
+      if (data.conversationId) {
+        // Optionally navigate after a short delay to let the user see live status
+        window.setTimeout(() => onTested(data.conversationId!), 3000)
       }
     } catch (error) {
       setTestState('error')
@@ -221,7 +189,6 @@ export function AutomationEditorPanel({
       saveState={saveState}
       testState={testState}
       testMessage={testMessage}
-      reactflowCanvasEnabled={reactflowCanvasEnabled}
       onGraphChange={(graph) => updateDraft({ graph })}
       onNameChange={(name) => updateDraft({ name })}
       onDescriptionChange={(description) => updateDraft({ description })}
@@ -252,7 +219,7 @@ export function AutomationEditorPanel({
         </Suspense>
       )}
       />
-      {reactflowCanvasEnabled && draft.graph && draft.graph.nodes.length > 0 && (
+      {draft.graph && draft.graph.nodes.length > 0 && (
         <section className="mx-auto w-full max-w-3xl border-t border-[var(--border)] pt-6">
           <AutomationRunViewer
             graph={draft.graph}

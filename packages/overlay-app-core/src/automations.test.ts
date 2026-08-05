@@ -126,7 +126,9 @@ test('automation update request keeps endpoint body shape typed', () => {
   assert.equal(request.name, 'New')
   assert.equal(request.instructions, '1. First\n2. Second')
   assert.deepEqual(request.schedule, { kind: 'daily', hourUTC: 10, minuteUTC: 0 })
-  assert.match(request.graphSource ?? '', /step2/)
+  // graphSource is no longer persisted in the update request — it's derived
+  // from the structured graph on the server side.
+  assert.equal(request.graphSource, undefined)
   assert.ok(request.graph, 'update request should include structured graph')
   assert.equal(request.graph!.version, AUTOMATION_GRAPH_VERSION)
 })

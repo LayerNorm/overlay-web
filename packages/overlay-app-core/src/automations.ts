@@ -673,7 +673,6 @@ export function buildAutomationUpdateRequest(input: {
         input.draft.modelId,
       )
     : input.draft.graph ?? resolveAutomationGraph(input.automation, input.draft.modelId)
-  const graphSource = graphSourceFromAutomationGraph(graph)
   return {
     automationId: input.automation._id,
     name: input.draft.name,
@@ -689,7 +688,6 @@ export function buildAutomationUpdateRequest(input: {
       timeZone: input.draft.timezone,
     }),
     timezone: input.draft.timezone,
-    graphSource,
     graph,
     modelId: input.draft.modelId,
   }

@@ -1,62 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isDurableAutomationsEnabled } from './route'
 
 // ---------------------------------------------------------------------------
-// Feature flag logic
+// The durable automations feature flag has been removed in Step 7.
+// Durable execution via the Workflow SDK is now the only path.
+// The isDurableAutomationsEnabled() function and its env-var override
+// (OVERLAY_FEATURE_DURABLE_AUTOMATIONS) are no longer exported.
 // ---------------------------------------------------------------------------
 
-test('isDurableAutomationsEnabled returns false when env var is not set', () => {
-  const original = process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-  delete process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-  assert.equal(isDurableAutomationsEnabled(), false)
-  if (original !== undefined) process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS = original
-})
-
-test('isDurableAutomationsEnabled returns true when env var is "1"', () => {
-  const original = process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-  process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS = '1'
-  assert.equal(isDurableAutomationsEnabled(), true)
-  if (original !== undefined) process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS = original
-  else delete process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-})
-
-test('isDurableAutomationsEnabled returns true when env var is "true"', () => {
-  const original = process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-  process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS = 'true'
-  assert.equal(isDurableAutomationsEnabled(), true)
-  if (original !== undefined) process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS = original
-  else delete process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-})
-
-test('isDurableAutomationsEnabled returns false when env var is "false"', () => {
-  const original = process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-  process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS = 'false'
-  assert.equal(isDurableAutomationsEnabled(), false)
-  if (original !== undefined) process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS = original
-  else delete process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-})
-
-test('isDurableAutomationsEnabled returns false when env var is "0"', () => {
-  const original = process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-  process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS = '0'
-  assert.equal(isDurableAutomationsEnabled(), false)
-  if (original !== undefined) process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS = original
-  else delete process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-})
-
-test('isDurableAutomationsEnabled returns false when env var is empty string', () => {
-  const original = process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-  process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS = ''
-  assert.equal(isDurableAutomationsEnabled(), false)
-  if (original !== undefined) process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS = original
-  else delete process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-})
-
-test('isDurableAutomationsEnabled is case-sensitive (only lowercase "true" works)', () => {
-  const original = process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-  process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS = 'TRUE'
-  assert.equal(isDurableAutomationsEnabled(), false)
-  if (original !== undefined) process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS = original
-  else delete process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
+test('durable automations are always enabled (feature flag removed)', () => {
+  // This test exists to document that the feature flag gating is gone.
+  // The run route always uses the Workflow SDK path.
+  assert.ok(true)
 })

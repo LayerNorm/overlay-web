@@ -336,6 +336,7 @@
     "@vercel/analytics": "^2.0.1",
     "@vercel/otel": "^2.1.3",
     "@vercel/speed-insights": "^1.3.1",
+    "@workflow/world-postgres": "^4.3.3",
     "@workos-inc/authkit-nextjs": "^2.14.0",
     "@workos-inc/node": "^8.7.0",
     "@xmldom/xmldom": "^0.9.9",
