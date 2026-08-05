@@ -610,11 +610,11 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     PATCH: capability('automations.use'),
   } },
   {
-    path: '/api/v1/automations/{id}/run',
+    path: '/api/v1/automations/:id/run',
     methods: { POST: resource('automation', 'execute', {}, 'automations.use') },
   },
   {
-    path: '/api/v1/automations/{runId}/stream',
+    path: '/api/v1/automations/:runId/stream',
     methods: { GET: resource('automation', 'view', { optional: true }, 'automations.use') },
   },
   {
