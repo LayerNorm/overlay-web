@@ -308,7 +308,7 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 
 ---
 
-## Step 6 — Live run visualization (B4)
+## Step 6 — Live run visualization (B4) ✅
 
 **Goal:** Canvas becomes a real-time run viewer with per-node status.
 
@@ -320,7 +320,27 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 - Error overlay: failed nodes show error message and retry count
 - Tests: status transitions match event log, replay renders correctly
 
-**Gate:** User triggers a run and watches nodes light up in real time. Can open past run and replay step-by-step.
+**Implementation:**
+- `packages/overlay-app-core/src/contracts/automations.ts` — added `AutomationNodeRunStatus`, `AutomationRunEvent`, `AutomationRunStatusSnapshot` types
+- `packages/overlay-app-core/src/automations/run-status.ts` — pure event-to-status reducer (`initialRunStatus`, `applyEvent`, `replayEvents`, `replayEventsUpTo`); maps workflow step names (`waitForApproval` → condition nodes, `executeAutomationRun` → prompt/tool/output nodes) to graph node statuses
+- `packages/overlay-app-core/src/automations/run-status.test.ts` — 18 tests covering all status transitions, error handling, retry tracking, replay, and scrubbing
+- `src/server/app-api/v1/automations/[runId]/events/route.ts` — SSE endpoint that polls `world.events.list()` every 2s and streams step events as SSE data lines; closes on terminal run status
+- `src/app/api/v1/automations/[id]/events/route.ts` — app-level route proxy with `maxDuration = 60`
+- `src/server/authorization/authorization-route-policy.ts` — added `:runId/events` route policy
+- `packages/overlay-modules-react/src/automations/run-viewer-hooks.ts` — `useRunStatus` (SSE subscription) and `useReplayStatus` (load all events + scrubber) hooks
+- `packages/overlay-modules-react/src/automations/reactflow-canvas.tsx` — node status styling (colors, icons, spin animation for running), error overlay tooltip with retry count, animated edges for active data flow, read-only mode for run viewing
+- `packages/overlay-modules-react/src/automations/run-viewer.tsx` — `AutomationRunViewer` component with Live/Replay mode toggle, run selector dropdown, and scrubber timeline
+- `src/features/chat/components/chat-interface/AutomationEditor.tsx` — wires `AutomationRunViewer` into the editor when `reactflowCanvasEnabled` and graph has nodes
+
+**Key design decisions:**
+- SSE endpoint polls `world.events.list()` (not `world.steps.list()`) because events provide the full lifecycle (step_started → step_completed/step_failed → step_retrying) needed for accurate status transitions
+- Step-to-node mapping is by kind, not by ID: `waitForApproval` → all condition nodes, `executeAutomationRun` → all prompt/tool/output nodes. This keeps the mapping resilient to graph structure changes.
+- The reducer is a pure function (`applyEvent`) so it can be used for both live streaming and replay (replaying events up to an index for the scrubber)
+- `EventSource` is used for SSE (browser-native, auto-reconnects); for replay, we fetch the SSE stream once and drain it
+- The canvas enters read-only mode when `nodeStatuses` is provided — toolbar, config panel, and editing are hidden
+- Edge animation uses ReactFlow's built-in `animated` prop (CSS dash animation) with color coding: blue for active, green for completed, red for failed
+
+**Gate:** User triggers a run and watches nodes light up in real time. Can open past run and replay step-by-step. (Code complete — visual QA pending feature flag enablement.)
 
 ---
 

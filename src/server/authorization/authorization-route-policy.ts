@@ -626,6 +626,10 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { GET: capability('automations.use') },
   },
   {
+    path: '/api/v1/automations/:runId/events',
+    methods: { GET: capability('automations.use') },
+  },
+  {
     path: '/api/v1/api-keys',
     methods: {
       GET: capability('api_keys.manage'),

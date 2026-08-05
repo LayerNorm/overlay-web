@@ -35,12 +35,17 @@ import {
   Redo2,
   Trash2,
   X,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  SkipForward,
 } from 'lucide-react'
 import type {
   AutomationGraph,
   AutomationGraphNode,
   AutomationGraphNodeKind,
   AutomationGraphNodeConfig,
+  AutomationNodeRunStatus,
 } from '@overlay/app-core'
 import { autoLayout, NODE_WIDTH, NODE_HEIGHT } from './auto-layout'
 import {
@@ -75,25 +80,86 @@ const NODE_KIND_CONFIG: Record<
 const ADDABLE_KINDS: AutomationGraphNodeKind[] = ['prompt', 'tool', 'condition', 'output']
 
 // ---------------------------------------------------------------------------
+// Run status styling — per-status colors, icons, and border classes
+// ---------------------------------------------------------------------------
+
+const NODE_STATUS_CONFIG: Record<
+  AutomationNodeRunStatus,
+  {
+    icon: typeof CheckCircle2 | null
+    borderClass: string
+    bgClass: string
+    iconColor: string
+    label: string
+  }
+> = {
+  pending: {
+    icon: null,
+    borderClass: 'border-[var(--border)]',
+    bgClass: 'bg-[var(--surface-elevated)]',
+    iconColor: 'text-[var(--muted)]',
+    label: '',
+  },
+  running: {
+    icon: Loader2,
+    borderClass: 'border-blue-500 ring-1 ring-blue-500/30',
+    bgClass: 'bg-[var(--surface-elevated)]',
+    iconColor: 'text-blue-500',
+    label: 'Running',
+  },
+  succeeded: {
+    icon: CheckCircle2,
+    borderClass: 'border-green-500/50',
+    bgClass: 'bg-green-500/5',
+    iconColor: 'text-green-500',
+    label: 'Done',
+  },
+  failed: {
+    icon: XCircle,
+    borderClass: 'border-red-500 ring-1 ring-red-500/30',
+    bgClass: 'bg-red-500/5',
+    iconColor: 'text-red-500',
+    label: 'Failed',
+  },
+  skipped: {
+    icon: SkipForward,
+    borderClass: 'border-[var(--border)] opacity-60',
+    bgClass: 'bg-[var(--surface-elevated)]',
+    iconColor: 'text-[var(--muted)]',
+    label: 'Skipped',
+  },
+}
+
+// ---------------------------------------------------------------------------
 // Custom node component
 // ---------------------------------------------------------------------------
 
-type AutomationNodeData = { node: AutomationGraphNode }
+type AutomationNodeData = {
+  node: AutomationGraphNode
+  runStatus?: AutomationNodeRunStatus
+  errorMessage?: string
+  attemptCount?: number
+}
 
 function AutomationNode({ data, selected }: NodeProps) {
-  const { node } = data as AutomationNodeData
+  const { node, runStatus, errorMessage, attemptCount } = data as AutomationNodeData
   const config = NODE_KIND_CONFIG[node.kind] ?? NODE_KIND_CONFIG.prompt
   const Icon = config.icon
   const isTrigger = node.kind === 'trigger'
   const isOutput = node.kind === 'output'
+  const statusConfig = runStatus ? NODE_STATUS_CONFIG[runStatus] : null
+  const StatusIcon = statusConfig?.icon
+  const isRunning = runStatus === 'running'
+
+  const borderClass = statusConfig
+    ? statusConfig.borderClass
+    : selected
+      ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]'
+      : 'border-[var(--border)]'
 
   return (
     <div
-      className={`relative flex items-center gap-3 rounded-xl border bg-[var(--surface-elevated)] px-3 py-2.5 shadow-sm transition-shadow ${
-        selected
-          ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]'
-          : 'border-[var(--border)]'
-      }`}
+      className={`relative flex items-center gap-3 rounded-xl border ${borderClass} ${statusConfig?.bgClass ?? 'bg-[var(--surface-elevated)]'} px-3 py-2.5 shadow-sm transition-shadow`}
       style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
     >
       {!isTrigger && (
@@ -114,12 +180,30 @@ function AutomationNode({ data, selected }: NodeProps) {
           {node.label}
         </p>
       </div>
+      {StatusIcon && (
+        <div className="flex shrink-0 items-center" title={statusConfig.label}>
+          <StatusIcon
+            size={14}
+            strokeWidth={2}
+            className={`${statusConfig.iconColor} ${isRunning ? 'animate-spin' : ''}`}
+          />
+        </div>
+      )}
       {!isOutput && (
         <Handle
           type="source"
           position={Position.Bottom}
           className="!h-2 !w-2 !border-0 !bg-[var(--border)]"
         />
+      )}
+      {/* Error overlay tooltip */}
+      {runStatus === 'failed' && errorMessage && (
+        <div className="absolute -bottom-1 left-2 right-2 translate-y-full rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-600 shadow-sm" style={{ zIndex: 10 }}>
+          <p className="truncate">{errorMessage}</p>
+          {attemptCount && attemptCount > 1 ? (
+            <p className="text-red-400">retry {attemptCount - 1}x</p>
+          ) : null}
+        </div>
       )}
     </div>
   )
@@ -272,9 +356,21 @@ function AddNodeButton({
 function GraphCanvasInner({
   graph,
   onGraphChange,
+  nodeStatuses,
+  nodeErrors,
+  nodeAttempts,
+  readOnly,
 }: {
   graph: AutomationGraph
   onGraphChange?: (graph: AutomationGraph) => void
+  /** Per-node run status (nodeId → status). When present, canvas enters run-viewer mode. */
+  nodeStatuses?: Record<string, AutomationNodeRunStatus>
+  /** Per-node error messages (nodeId → error text). */
+  nodeErrors?: Record<string, string>
+  /** Per-node retry counts (nodeId → attempt count). */
+  nodeAttempts?: Record<string, number>
+  /** When true, the canvas is read-only (no editing, no toolbar). Used in run-viewer mode. */
+  readOnly?: boolean
 }) {
   const { fitView, screenToFlowPosition } = useReactFlow()
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
@@ -307,6 +403,53 @@ function GraphCanvasInner({
     setValidationErrors(validateAutomationGraph(graph))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph])
+
+  // Update node data when run statuses change (without resetting layout)
+  useEffect(() => {
+    if (!nodeStatuses) return
+    setNodes((currentNodes) =>
+      currentNodes.map((n) => {
+        const nodeId = n.id
+        const status = nodeStatuses[nodeId] ?? 'pending'
+        const existingData = n.data as AutomationNodeData
+        // Skip update if status hasn't changed
+        if (existingData.runStatus === status) return n
+        return {
+          ...n,
+          data: {
+            ...existingData,
+            runStatus: status,
+            errorMessage: nodeErrors?.[nodeId],
+            attemptCount: nodeAttempts?.[nodeId],
+          },
+        }
+      }),
+    )
+    // Update edge styles for animated data flow
+    setEdges((currentEdges) =>
+      currentEdges.map((e) => {
+        const sourceStatus = nodeStatuses[e.source]
+        const targetStatus = nodeStatuses[e.target]
+        // Animate edge when source is running or succeeded and target is pending/running
+        const isAnimated =
+          (sourceStatus === 'running' || sourceStatus === 'succeeded') &&
+          (targetStatus === 'pending' || targetStatus === 'running')
+        const isError = sourceStatus === 'failed' || targetStatus === 'failed'
+        const stroke = isError
+          ? 'var(--red-500, #ef4444)'
+          : isAnimated
+            ? 'var(--blue-500, #3b82f6)'
+            : sourceStatus === 'succeeded'
+              ? 'var(--green-500, #22c55e)'
+              : 'var(--border)'
+        return {
+          ...e,
+          animated: isAnimated,
+          style: { ...e.style, stroke, strokeWidth: 1.5 },
+        }
+      }),
+    )
+  }, [nodeStatuses, nodeErrors, nodeAttempts])
 
   // Fit view after initial layout
   useEffect(() => {
@@ -542,44 +685,48 @@ function GraphCanvasInner({
   return (
     <div className="flex overflow-hidden rounded-lg border border-[var(--border)]">
       <div className="relative flex-1">
-        {/* Toolbar */}
-        <div className="absolute left-3 top-3 z-10 flex flex-wrap items-center gap-1.5">
-          {ADDABLE_KINDS.map((kind) => (
-            <AddNodeButton key={kind} kind={kind} onAdd={handleAddNode} />
-          ))}
-        </div>
-        <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={undo}
-            disabled={!historyRef.current.canUndo()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)] disabled:opacity-40"
-          >
-            <Undo2 size={12} strokeWidth={1.75} />
-          </button>
-          <button
-            type="button"
-            onClick={redo}
-            disabled={!historyRef.current.canRedo()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)] disabled:opacity-40"
-          >
-            <Redo2 size={12} strokeWidth={1.75} />
-          </button>
-          <button
-            type="button"
-            onClick={tidyUp}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)]"
-          >
-            <LayoutGrid size={12} strokeWidth={1.75} />
-            Tidy up
-          </button>
-        </div>
+        {/* Toolbar (hidden in read-only / run-viewer mode) */}
+        {!readOnly && (
+          <>
+            <div className="absolute left-3 top-3 z-10 flex flex-wrap items-center gap-1.5">
+              {ADDABLE_KINDS.map((kind) => (
+                <AddNodeButton key={kind} kind={kind} onAdd={handleAddNode} />
+              ))}
+            </div>
+            <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={undo}
+                disabled={!historyRef.current.canUndo()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)] disabled:opacity-40"
+              >
+                <Undo2 size={12} strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                onClick={redo}
+                disabled={!historyRef.current.canRedo()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)] disabled:opacity-40"
+              >
+                <Redo2 size={12} strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                onClick={tidyUp}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)]"
+              >
+                <LayoutGrid size={12} strokeWidth={1.75} />
+                Tidy up
+              </button>
+            </div>
 
-        {/* Validation errors */}
-        {validationErrors.length > 0 && (
-          <div className="absolute bottom-3 left-3 z-10 max-w-sm rounded-lg border border-red-500/30 bg-[var(--surface-elevated)] px-3 py-2 text-xs text-red-500 shadow-sm">
-            {validationErrors[0].message}
-          </div>
+            {/* Validation errors */}
+            {validationErrors.length > 0 && (
+              <div className="absolute bottom-3 left-3 z-10 max-w-sm rounded-lg border border-red-500/30 bg-[var(--surface-elevated)] px-3 py-2 text-xs text-red-500 shadow-sm">
+                {validationErrors[0].message}
+              </div>
+            )}
+          </>
         )}
 
         <div className="h-96 overflow-hidden bg-[var(--surface-subtle)]">
@@ -587,11 +734,11 @@ function GraphCanvasInner({
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
-            onNodesChange={handleNodesChange}
-            onEdgesChange={handleEdgesChange}
-            onConnect={handleConnect}
-            nodesDraggable
-            nodesConnectable
+            onNodesChange={readOnly ? undefined : handleNodesChange}
+            onEdgesChange={readOnly ? undefined : handleEdgesChange}
+            onConnect={readOnly ? undefined : handleConnect}
+            nodesDraggable={!readOnly}
+            nodesConnectable={!readOnly}
             elementsSelectable
             panOnDrag
             zoomOnScroll
@@ -616,8 +763,8 @@ function GraphCanvasInner({
         </div>
       </div>
 
-      {/* Node config side panel */}
-      {selectedNode && (
+      {/* Node config side panel (hidden in read-only mode) */}
+      {selectedNode && !readOnly && (
         <NodeConfigPanel
           node={selectedNode}
           onUpdate={handleUpdateSelectedNode}
@@ -632,20 +779,44 @@ function GraphCanvasInner({
 // Exported canvas component (wrapped in ReactFlowProvider)
 // ---------------------------------------------------------------------------
 
+export interface AutomationGraphCanvasProps {
+  graph: AutomationGraph
+  onGraphChange?: (graph: AutomationGraph) => void
+  /** Per-node run status (nodeId → status). When present, canvas enters run-viewer mode. */
+  nodeStatuses?: Record<string, AutomationNodeRunStatus>
+  /** Per-node error messages (nodeId → error text). */
+  nodeErrors?: Record<string, string>
+  /** Per-node retry counts (nodeId → attempt count). */
+  nodeAttempts?: Record<string, number>
+  /** When true, the canvas is read-only (no editing, no toolbar). Used in run-viewer mode. */
+  readOnly?: boolean
+}
+
 export function AutomationGraphCanvas({
   graph,
   onGraphChange,
-}: {
-  graph: AutomationGraph
-  onGraphChange?: (graph: AutomationGraph) => void
-}) {
+  nodeStatuses,
+  nodeErrors,
+  nodeAttempts,
+  readOnly = false,
+}: AutomationGraphCanvasProps) {
+  const isRunViewer = !!nodeStatuses
   return (
     <div className="space-y-3">
-      <p className="text-xs text-[var(--muted)]">
-        Drag to rearrange, click to select, connect nodes by dragging from handles. Use Tidy up to reset layout. Delete/Backspace removes the selected node. Cmd+Z / Cmd+Shift+Z for undo/redo.
-      </p>
+      {!isRunViewer && (
+        <p className="text-xs text-[var(--muted)]">
+          Drag to rearrange, click to select, connect nodes by dragging from handles. Use Tidy up to reset layout. Delete/Backspace removes the selected node. Cmd+Z / Cmd+Shift+Z for undo/redo.
+        </p>
+      )}
       <ReactFlowProvider>
-        <GraphCanvasInner graph={graph} onGraphChange={onGraphChange} />
+        <GraphCanvasInner
+          graph={graph}
+          onGraphChange={onGraphChange}
+          nodeStatuses={nodeStatuses}
+          nodeErrors={nodeErrors}
+          nodeAttempts={nodeAttempts}
+          readOnly={readOnly || isRunViewer}
+        />
       </ReactFlowProvider>
     </div>
   )

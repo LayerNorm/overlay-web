@@ -147,3 +147,56 @@ export interface AutomationRunDetail extends AutomationRunSummary {
   requestId?: string
   stage?: string
 }
+
+// ---------------------------------------------------------------------------
+// Live Run Visualization (Step 6)
+//
+// Types for streaming workflow step events to the client and mapping them
+// to per-node statuses on the ReactFlow canvas.
+// ---------------------------------------------------------------------------
+
+/** Per-node status shown on the canvas during a live or replayed run. */
+export type AutomationNodeRunStatus =
+  | 'pending'    // not yet started
+  | 'running'    // currently executing
+  | 'succeeded'  // completed successfully
+  | 'failed'     // errored
+  | 'skipped'    // skipped (e.g. approval denied)
+
+/** A single workflow event relevant to run visualization. */
+export interface AutomationRunEvent {
+  /** Event ID from the Workflow SDK event log. */
+  eventId: string
+  /** Event type (step_started, step_completed, step_failed, run_completed, etc.). */
+  eventType: string
+  /** Step name (present for step_* events, undefined for run_* events). */
+  stepName?: string
+  /** Attempt number (for step_started events). */
+  attempt?: number
+  /** Error message (for step_failed / run_failed events). */
+  error?: string
+  /** Error stack trace (for step_failed events). */
+  stack?: string
+  /** Timestamp when the event was created. */
+  createdAt: string
+}
+
+/** Snapshot of a run's status at a point in time. */
+export interface AutomationRunStatusSnapshot {
+  /** Workflow run ID. */
+  workflowRunId: string
+  /** Overall run status: pending | running | completed | failed | cancelled. */
+  runStatus: string
+  /** Workflow function name. */
+  workflowName?: string
+  /** Per-node status map (nodeId → status). */
+  nodeStatuses: Record<string, AutomationNodeRunStatus>
+  /** Per-node error messages (nodeId → error text). */
+  nodeErrors: Record<string, string>
+  /** Per-node retry counts (nodeId → attempt count). */
+  nodeAttempts: Record<string, number>
+  /** All events seen so far (for replay). */
+  events: AutomationRunEvent[]
+  /** Whether the run has reached a terminal state. */
+  isTerminal: boolean
+}

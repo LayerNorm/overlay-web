@@ -30,6 +30,7 @@ import {
 import {
   AUTOMATION_DETAIL_TABS,
   AutomationEditorForm,
+  AutomationRunViewer,
 } from '@overlay/modules-react/automations'
 
 const AutomationInstructionsEditor = lazy(() =>
@@ -214,6 +215,14 @@ export function AutomationEditorPanel({
         </Suspense>
       )}
       />
+      {reactflowCanvasEnabled && draft.graph && draft.graph.nodes.length > 0 && (
+        <section className="mx-auto w-full max-w-3xl border-t border-[var(--border)] pt-6">
+          <AutomationRunViewer
+            graph={draft.graph}
+            runs={runs}
+          />
+        </section>
+      )}
       <section className="mx-auto w-full max-w-3xl border-t border-[var(--border)] pt-6">
         <div className="mb-3 flex items-center justify-between">
           <div>
