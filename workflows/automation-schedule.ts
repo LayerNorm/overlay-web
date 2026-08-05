@@ -97,8 +97,6 @@ export async function automationScheduleWorkflow(input: AutomationScheduleWorkfl
 // ---------------------------------------------------------------------------
 
 async function waitForApproval(input: AutomationScheduleWorkflowInput): Promise<boolean> {
-  "use step"
-
   if (!input.approvalToken) {
     throw new FatalError("Approval required but no approval token provided")
   }

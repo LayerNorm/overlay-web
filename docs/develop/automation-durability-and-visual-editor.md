@@ -367,6 +367,32 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 
 ---
 
+## Post-Step-7 QA + polish
+
+**Status:** Staging QA in progress. Production rollout remains intentionally deferred.
+
+**Automated coverage added:**
+- Durable run lifecycle delegation now covers started, succeeded, and failed status updates.
+- Create and update service paths cover stringified schedule inputs before repository persistence.
+- Postgres automation contract coverage verifies `workflowRunId`, `startedAt`, `completedAt`, and terminal status are returned for replay.
+- Workflow input coverage verifies the durable run ID is carried into the scheduling workflow.
+
+**Staging verification completed:**
+- Manual durable run connected to the SSE event stream, showed `running` status with active prompt/output nodes, then reached `completed`.
+- Replay selector displayed historical runs with their workflow IDs.
+- Replay event timeline loaded and clicking an event moved the scrubber to the corresponding step and status.
+- Stringified schedule creation succeeded through the deployed Postgres API and the temporary automation was removed.
+- The pre-fix approval test exposed a Workflow SDK error because `createHook()` was called inside a step. Approval hook creation was moved into workflow context, and the run-start route now marks a created run failed if workflow startup throws.
+- On-prem parity checks and TypeScript checks pass.
+
+**Still pending before production rollout:**
+- Redeploy the approval-context fix to the Postgres staging deployment and verify approve/resume end to end.
+- Run the scheduled-loop start/cancel lifecycle test. The current scheduler endpoint starts a long-lived workflow but does not yet expose a user-facing cancellation route or a dedicated scheduler workflow ID field.
+- Run the 24-hour no-drift observation after scheduler cancellation semantics are finalized.
+- Correct the one historical queued run whose Workflow SDK run completed before lifecycle status syncing was deployed. It is identified in the QA notes and requires a database-side update.
+
+---
+
 ## Step 8 — Production rollout
 
 **Goal:** Gradual enablement with monitoring.

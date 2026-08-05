@@ -167,6 +167,11 @@ test('AutomationScheduleWorkflowInput conversationId is optional for first run',
   assert.equal(convInput.conversationId, 'conv_001')
 })
 
+test('AutomationScheduleWorkflowInput carries the automation run ID for lifecycle sync', () => {
+  const input = createTestInput({ runId: 'run_001' })
+  assert.equal(input.runId, 'run_001')
+})
+
 // ---------------------------------------------------------------------------
 // Schedule type contract
 // ---------------------------------------------------------------------------

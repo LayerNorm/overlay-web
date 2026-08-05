@@ -16,6 +16,7 @@ import { automationScheduleWorkflow, type AutomationScheduleWorkflowInput, build
 // ---------------------------------------------------------------------------
 
 export async function POST(request: NextRequest, context?: AppApiRouteContext) {
+  let runId: string | null = null
   try {
     const automationId = (await context?.params ?? {})['id'] as string | undefined
     if (!automationId) {
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
     }
 
     // Durable path: create a manual run, then start the workflow
-    const runId = await automationService.createManualRunForDurableExecution({
+    runId = await automationService.createManualRunForDurableExecution({
       automationId,
       userId,
     })
@@ -104,7 +105,17 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
       runId,
     }
 
-    const workflowRun = await start(automationScheduleWorkflow, [scheduleInput])
+    let workflowRun: { runId: string }
+    try {
+      workflowRun = await start(automationScheduleWorkflow, [scheduleInput])
+    } catch (error) {
+      await automationService.markRunFailed({
+        runId,
+        userId,
+        error: error instanceof Error ? error.message : 'Failed to start automation workflow',
+      }).catch(() => null)
+      throw error
+    }
 
     // Store the workflow run ID on the automation run record
     await automationService.updateRunWorkflowRunId({

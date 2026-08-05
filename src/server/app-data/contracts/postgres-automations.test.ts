@@ -119,6 +119,37 @@ test(
         assert.ok(trigger?.nextFireAt)
       })
 
+      await t.test('manual run lifecycle persists status and workflow ID for replay', async () => {
+        const runId = await repository.createManualRun({
+          automationId,
+          scheduledFor: Date.now(),
+          userId,
+        })
+        assert.ok(runId)
+        await repository.updateRunWorkflowRunId({
+          runId: runId!,
+          workflowRunId: 'wrun_p6_replay',
+        })
+        await repository.markManualRunStarted({
+          now: Date.now(),
+          runId: runId!,
+          turnId: 'turn_p6_replay',
+          userId,
+        })
+        await repository.markManualRunCompleted({
+          now: Date.now(),
+          runId: runId!,
+          userId,
+        })
+
+        const runs = await repository.listRuns({ automationId, userId })
+        const run = runs.find((candidate) => candidate._id === runId)
+        assert.equal(run?.status, 'succeeded')
+        assert.equal(run?.workflowRunId, 'wrun_p6_replay')
+        assert.ok(run?.startedAt)
+        assert.ok(run?.completedAt)
+      })
+
       await t.test('soft delete hides the automation and disables its trigger', async () => {
         await repository.removeAutomation({ automationId, userId })
         assert.equal(await repository.getAutomation({ automationId, userId }), null)

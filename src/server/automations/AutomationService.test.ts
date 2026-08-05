@@ -22,14 +22,26 @@ class CapturingEventBus implements EventBus {
 }
 
 function createRepository(overrides: Partial<AutomationRepository> = {}): AutomationRepository & {
+  createdAutomations: Array<Record<string, unknown>>
   failedRuns: Array<Record<string, unknown>>
+  startedRuns: Array<Record<string, unknown>>
+  completedRuns: Array<Record<string, unknown>>
   updateNotes: Array<Record<string, unknown>>
+  updatedAutomations: Array<Record<string, unknown>>
 } {
+  const createdAutomations: Array<Record<string, unknown>> = []
   const failedRuns: Array<Record<string, unknown>> = []
+  const startedRuns: Array<Record<string, unknown>> = []
+  const completedRuns: Array<Record<string, unknown>> = []
   const updateNotes: Array<Record<string, unknown>> = []
+  const updatedAutomations: Array<Record<string, unknown>> = []
   return {
+    createdAutomations,
     failedRuns,
+    startedRuns,
+    completedRuns,
     updateNotes,
+    updatedAutomations,
     async listAutomations() {
       return []
     },
@@ -56,10 +68,13 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
         sourceConversationId: 'conversation_1',
       } as never
     },
-    async createAutomation() {
+    async createAutomation(args) {
+      createdAutomations.push(args)
       return 'automation_1'
     },
-    async updateAutomation() {},
+    async updateAutomation(args) {
+      updatedAutomations.push(args)
+    },
     async pauseAutomation() {},
     async resumeAutomation() {},
     async removeAutomation() {},
@@ -72,8 +87,12 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
     async createManualRun() {
       return 'run_1' as never
     },
-    async markManualRunStarted() {},
-    async markManualRunCompleted() {},
+    async markManualRunStarted(args) {
+      startedRuns.push(args)
+    },
+    async markManualRunCompleted(args) {
+      completedRuns.push(args)
+    },
     async markManualRunFailed(args) {
       failedRuns.push(args)
     },
@@ -198,6 +217,28 @@ test('AutomationService.createAutomation preserves interval floor response shape
   )
 })
 
+test('AutomationService.createAutomation parses a stringified schedule before persistence', async () => {
+  const repository = createRepository()
+  const { service } = createService(repository)
+
+  await service.createAutomation({
+    userId: 'user_1',
+    body: {
+      name: 'A',
+      description: 'D',
+      instructions: 'I',
+      schedule: JSON.stringify({ kind: 'daily', hourUTC: 9, minuteUTC: 30 }) as never,
+      enabled: false,
+    },
+  })
+
+  assert.deepEqual(repository.createdAutomations[0]?.schedule, {
+    kind: 'daily',
+    hourUTC: 9,
+    minuteUTC: 30,
+  })
+})
+
 test('buildAutomationUpdateNote preserves update note wording', () => {
   const note = buildAutomationUpdateNote({
     _id: 'automation_1' as never,
@@ -237,6 +278,26 @@ test('AutomationService.updateAutomation appends update note best effort', async
 
   assert.equal(repository.updateNotes.length, 1)
   assert.equal(repository.updateNotes[0]?.content, 'Automation updated: name changed to "New name".')
+})
+
+test('AutomationService.updateAutomation parses a stringified schedule before persistence', async () => {
+  const repository = createRepository()
+  const { service } = createService(repository)
+
+  await service.updateAutomation({
+    userId: 'user_1',
+    body: {
+      automationId: 'automation_1',
+      schedule: JSON.stringify({ kind: 'weekly', dayOfWeekUTC: 2, hourUTC: 10, minuteUTC: 15 }) as never,
+    },
+  })
+
+  assert.deepEqual(repository.updatedAutomations[0]?.schedule, {
+    kind: 'weekly',
+    dayOfWeekUTC: 2,
+    hourUTC: 10,
+    minuteUTC: 15,
+  })
 })
 
 test('AutomationService exposes durable run cancellation and retry actions', async () => {
@@ -375,6 +436,48 @@ test('AutomationService.getAutomationForExecution delegates to repository.getAut
   assert.equal(automation?._id, 'automation_1')
   assert.equal(automation?.name, 'Durable automation')
   assert.equal(automation?.modelId, 'gpt-4o')
+})
+
+test('AutomationService syncs durable run lifecycle status through the repository', async () => {
+  const repository = createRepository()
+  const { service } = createService(repository)
+
+  await service.markRunStarted({
+    runId: 'run_1',
+    userId: 'user_1',
+    conversationId: 'conversation_1',
+    turnId: 'turn_1',
+  })
+  await service.markRunCompleted({
+    runId: 'run_1',
+    userId: 'user_1',
+    conversationId: 'conversation_1',
+  })
+  await service.markRunFailed({
+    runId: 'run_2',
+    userId: 'user_1',
+    error: 'workflow failed',
+  })
+
+  assert.deepEqual(repository.startedRuns, [{
+    runId: 'run_1',
+    userId: 'user_1',
+    conversationId: 'conversation_1',
+    turnId: 'turn_1',
+    now: 1_700_000_000_000,
+  }])
+  assert.deepEqual(repository.completedRuns, [{
+    runId: 'run_1',
+    userId: 'user_1',
+    conversationId: 'conversation_1',
+    now: 1_700_000_000_000,
+  }])
+  assert.deepEqual(repository.failedRuns, [{
+    runId: 'run_2',
+    userId: 'user_1',
+    error: 'workflow failed',
+    now: 1_700_000_000_000,
+  }])
 })
 
 test('AutomationService.updateRunWorkflowRunId delegates to repository when supported', async () => {
