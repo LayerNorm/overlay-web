@@ -237,6 +237,21 @@ describe('replayEvents', () => {
     assert.equal(snapshot.isTerminal, false)
     assert.equal(snapshot.events.length, 0)
   })
+
+  it('handles prefixed step names from the Workflow SDK', () => {
+    // The SDK emits step names like `step//./workflows/automation-schedule//executeAutomationRun`
+    const graph = makeTestGraph()
+    const events: AutomationRunEvent[] = [
+      makeEvent('run_started'),
+      makeEvent('step_started', 'step//./workflows/automation-schedule//executeAutomationRun'),
+      makeEvent('step_completed', 'step//./workflows/automation-schedule//executeAutomationRun'),
+      makeEvent('run_completed'),
+    ]
+    const snapshot = replayEvents(graph, 'wrun_test', events)
+    assert.equal(snapshot.runStatus, 'completed')
+    assert.equal(snapshot.nodeStatuses['n-prompt'], 'succeeded')
+    assert.equal(snapshot.nodeStatuses['n-output'], 'succeeded')
+  })
 })
 
 describe('replayEventsUpTo', () => {

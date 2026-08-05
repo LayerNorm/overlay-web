@@ -27,16 +27,20 @@ export const STEP_NAMES = {
   executeAutomationRun: 'executeAutomationRun',
 } as const
 
-/** Map a workflow step name to the graph node kinds it affects. */
+/** Map a workflow step name to the graph node kinds it affects.
+ *
+ * The Workflow SDK emits step names with a path prefix like
+ * `step//./workflows/automation-schedule//executeAutomationRun`,
+ * so we match by suffix/contains rather than exact equality.
+ */
 function nodeKindsForStep(stepName: string): string[] {
-  switch (stepName) {
-    case STEP_NAMES.waitForApproval:
-      return ['condition']
-    case STEP_NAMES.executeAutomationRun:
-      return ['prompt', 'tool', 'output']
-    default:
-      return []
+  if (stepName.includes(STEP_NAMES.waitForApproval)) {
+    return ['condition']
   }
+  if (stepName.includes(STEP_NAMES.executeAutomationRun)) {
+    return ['prompt', 'tool', 'output']
+  }
+  return []
 }
 
 // ---------------------------------------------------------------------------
