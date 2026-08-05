@@ -103,19 +103,13 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
   // Bind the conversation to the user's active workspace so the BFF's
   // workspace resource authorization allows the subsequent act route call.
   if (!input.conversationId) {
-    try {
-      const workspace = await overlayContext.workspaceService.resolveActiveWorkspace(input.userId)
-      await overlayContext.workspaceService.bindResource({
-        actorUserId: input.userId,
-        workspaceId: workspace.workspace.id,
-        resourceType: 'conversation',
-        resourceId: conversationId,
-      })
-    } catch (error) {
-      // Workspace binding is best-effort — the act route may still succeed
-      // in observe mode or if the conversation is otherwise accessible.
-      console.warn('[runActTurnForScheduledAutomation] Failed to bind conversation to workspace', error)
-    }
+    const workspace = await overlayContext.workspaceService.resolveActiveWorkspace(input.userId)
+    await overlayContext.workspaceService.bindResource({
+      actorUserId: input.userId,
+      workspaceId: workspace.workspace.id,
+      resourceType: 'conversation',
+      resourceId: conversationId,
+    })
   }
 
   const message: UIMessage = {
