@@ -121,6 +121,7 @@ export interface AutomationRunSummary {
   resultSummary?: string
   retryOfRunId?: string
   triggerSource?: string
+  workflowRunId?: string
   createdAt: number
   updatedAt?: number
 }

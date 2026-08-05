@@ -441,6 +441,16 @@ export class PostgresAutomationRepository implements AutomationRepository {
       : null
   }
 
+  async updateRunWorkflowRunId(args: {
+    runId: string
+    workflowRunId: string
+  }): Promise<void> {
+    await this.db
+      .update(automationRuns)
+      .set({ workflowRunId: args.workflowRunId, updatedAt: new Date() })
+      .where(eq(automationRuns.id, args.runId))
+  }
+
   private async setEnabled(args: {
     automationId: string
     enabled: boolean

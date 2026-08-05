@@ -125,4 +125,8 @@ export interface AutomationRepository {
   getRunForExecution(args: {
     runId: string
   }): Promise<AutomationExecutionPayload | null>
+  updateRunWorkflowRunId?(args: {
+    runId: string
+    workflowRunId: string
+  }): Promise<void>
 }

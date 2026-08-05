@@ -605,6 +605,39 @@ export class AutomationService {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Durable execution helpers — used by the POST /api/v1/automations/{id}/run
+  // route to start a workflow-based automation run.
+  // -------------------------------------------------------------------------
+
+  async createManualRunForDurableExecution(args: {
+    automationId: string
+    userId: string
+  }): Promise<string | null> {
+    return await this.deps.repository.createManualRun({
+      automationId: args.automationId,
+      userId: args.userId,
+      scheduledFor: this.clock.now(),
+    })
+  }
+
+  async getAutomationForExecution(args: {
+    automationId: string
+    userId: string
+  }) {
+    return await this.deps.repository.getAutomation({
+      automationId: args.automationId,
+      userId: args.userId,
+    })
+  }
+
+  async updateRunWorkflowRunId(args: {
+    runId: string
+    workflowRunId: string
+  }): Promise<void> {
+    await this.deps.repository.updateRunWorkflowRunId?.(args)
+  }
+
   private assertScheduleAllowed(schedule: AutomationSchedule | undefined): void {
     if (scheduleTooFrequent(schedule)) {
       serviceError({ error: `Interval automations must run at least ${MIN_INTERVAL_MINUTES} minutes apart.` }, 400)

@@ -899,6 +899,7 @@ export default defineSchema({
     conversationId: v.optional(v.id('conversations')),
     turnId: v.optional(v.string()),
     error: v.optional(v.string()),
+    workflowRunId: v.optional(v.string()),
     // Legacy run fields kept so existing production rows continue to validate.
     attemptNumber: v.optional(v.number()),
     assistantMessage: v.optional(v.string()),

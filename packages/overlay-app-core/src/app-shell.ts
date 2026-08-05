@@ -102,6 +102,12 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
     description: 'ReactFlow-based visual editor for automation graphs (replaces static SVG).',
     enabled: false,
   },
+  {
+    id: 'durableAutomations',
+    label: 'Durable automation execution',
+    description: 'Run automations via Vercel Workflow SDK with step-level durability, retries, and resumability.',
+    enabled: false,
+  },
 ] as const
 
 export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [

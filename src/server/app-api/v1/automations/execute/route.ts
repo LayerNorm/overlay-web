@@ -1,0 +1,136 @@
+import 'server-only'
+
+import { NextRequest, NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
+import { consumeServiceAuthReplayNonce } from '@/server/auth/service-auth-replay'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { logger } from '@/server/observability/logger'
+import type { Id } from '../../../../../../convex/_generated/dataModel'
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/automations/execute/prepare
+//
+// Internal endpoint called by the automation-run workflow's prepareExecution
+// step. Creates a conversation for the automation run if one doesn't already
+// exist. Service auth required.
+// ---------------------------------------------------------------------------
+
+async function resolveServiceAuth(
+  request: NextRequest,
+  context?: AppApiRouteContext,
+): Promise<{ userId: string } | null> {
+  if (context?.auth.authType === 'service') {
+    return { userId: context.auth.userId }
+  }
+  const serviceAuthHeader = request.headers.get(getServiceAuthHeaderName())
+  if (!serviceAuthHeader) return null
+  return await verifyServiceAuthToken(serviceAuthHeader, {
+    method: request.method,
+    path: request.nextUrl.pathname,
+    replayConsumer: consumeServiceAuthReplayNonce,
+  })
+}
+
+export async function POST(request: NextRequest, context?: AppApiRouteContext) {
+  try {
+    const serviceAuth = await resolveServiceAuth(request, context)
+    if (!serviceAuth) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json() as {
+      automationId?: string
+      userId?: string
+      name?: string
+      projectId?: string
+      modelId?: string
+      conversationId?: string
+    }
+
+    if (!body.userId || body.userId !== serviceAuth.userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // If conversation already exists, reuse it (idempotent)
+    if (body.conversationId) {
+      return NextResponse.json({ conversationId: body.conversationId })
+    }
+
+    const title = `Automation: ${body.name ?? 'Untitled'}`
+    const conversationId = await getOverlayServerContext()
+      .appData.repositories.conversations.createConversation({
+        userId: body.userId,
+        title,
+        projectId: body.projectId,
+        askModelIds: [body.modelId || DEFAULT_MODEL_ID],
+        actModelId: body.modelId || DEFAULT_MODEL_ID,
+        lastMode: 'act',
+      })
+
+    if (!conversationId) {
+      return NextResponse.json(
+        { error: 'Failed to create conversation' },
+        { status: 500 },
+      )
+    }
+
+    return NextResponse.json({ conversationId })
+  } catch (error) {
+    logger.error('[automations/execute/prepare]', error)
+    return NextResponse.json(
+      { error: 'Failed to prepare automation execution' },
+      { status: 500 },
+    )
+  }
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/automations/execute/finalize
+//
+// Internal endpoint called by the automation-run workflow's finalizeRun step.
+// Settles generating messages for the turn. Service auth required.
+// ---------------------------------------------------------------------------
+
+export async function PATCH(request: NextRequest, context?: AppApiRouteContext) {
+  try {
+    const serviceAuth = await resolveServiceAuth(request, context)
+    if (!serviceAuth) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json() as {
+      conversationId?: string
+      userId?: string
+      turnId?: string
+      status?: 'completed' | 'error'
+      fallbackText?: string
+    }
+
+    if (!body.userId || body.userId !== serviceAuth.userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (!body.conversationId || !body.turnId) {
+      return NextResponse.json(
+        { error: 'conversationId and turnId are required' },
+        { status: 400 },
+      )
+    }
+
+    await getOverlayServerContext().appData.repositories.conversations
+      .settleGeneratingMessagesForTurn({
+        conversationId: body.conversationId as Id<'conversations'>,
+        userId: body.userId,
+        turnId: body.turnId,
+        status: body.status ?? 'completed',
+        fallbackText: body.fallbackText ?? 'Automation run finished.',
+      })
+
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    logger.error('[automations/execute/finalize]', error)
+    // Non-fatal — the act route may have already settled the turn
+    return NextResponse.json({ ok: true, warning: 'finalize error' })
+  }
+}

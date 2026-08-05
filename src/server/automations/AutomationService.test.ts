@@ -330,3 +330,81 @@ test('AutomationService publishes successful run metadata without automation con
     }],
   )
 })
+
+// ---------------------------------------------------------------------------
+// Durable execution helpers — used by POST /api/v1/automations/{id}/run
+// ---------------------------------------------------------------------------
+
+test('AutomationService.createManualRunForDurableExecution delegates to repository.createManualRun', async () => {
+  const repository = createRepository({
+    async createManualRun(args) {
+      return `durable_${args.automationId}_${args.userId}` as never
+    },
+  })
+  const { service } = createService(repository)
+
+  const runId = await service.createManualRunForDurableExecution({
+    automationId: 'automation_1',
+    userId: 'user_1',
+  })
+
+  assert.equal(runId, 'durable_automation_1_user_1')
+})
+
+test('AutomationService.getAutomationForExecution delegates to repository.getAutomation', async () => {
+  const repository = createRepository({
+    async getAutomation(args) {
+      return {
+        _id: args.automationId,
+        userId: args.userId,
+        name: 'Durable automation',
+        instructions: 'Do something durable',
+        projectId: 'project_1',
+        modelId: 'gpt-4o',
+        conversationId: 'conv_1',
+      } as never
+    },
+  })
+  const { service } = createService(repository)
+
+  const automation = await service.getAutomationForExecution({
+    automationId: 'automation_1',
+    userId: 'user_1',
+  })
+
+  assert.equal(automation?._id, 'automation_1')
+  assert.equal(automation?.name, 'Durable automation')
+  assert.equal(automation?.modelId, 'gpt-4o')
+})
+
+test('AutomationService.updateRunWorkflowRunId delegates to repository when supported', async () => {
+  const updates: Array<{ runId: string; workflowRunId: string }> = []
+  const repository = createRepository({
+    async updateRunWorkflowRunId(args) {
+      updates.push(args)
+    },
+  })
+  const { service } = createService(repository)
+
+  await service.updateRunWorkflowRunId({
+    runId: 'run_1',
+    workflowRunId: 'wfrun_abc',
+  })
+
+  assert.equal(updates.length, 1)
+  assert.equal(updates[0]?.runId, 'run_1')
+  assert.equal(updates[0]?.workflowRunId, 'wfrun_abc')
+})
+
+test('AutomationService.updateRunWorkflowRunId is a no-op when repository does not support it', async () => {
+  const repository = createRepository()
+  // createRepository does NOT provide updateRunWorkflowRunId — the optional
+  // method should be safely skipped.
+  const { service } = createService(repository)
+
+  // Should not throw
+  await service.updateRunWorkflowRunId({
+    runId: 'run_1',
+    workflowRunId: 'wfrun_abc',
+  })
+})

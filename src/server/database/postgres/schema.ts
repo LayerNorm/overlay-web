@@ -1932,6 +1932,7 @@ export const automationRuns = pgTable('automation_runs', {
   scheduledFor: timestamp('scheduled_for', { withTimezone: true }).notNull(),
   idempotencyKey: text('idempotency_key').notNull(),
   jobId: text('job_id'),
+  workflowRunId: text('workflow_run_id'),
   conversationId: text('conversation_id')
     .references(() => conversations.id, { onDelete: 'set null' }),
   turnId: text('turn_id'),
