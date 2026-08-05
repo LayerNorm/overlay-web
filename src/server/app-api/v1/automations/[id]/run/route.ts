@@ -8,6 +8,7 @@ import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/server/auth/s
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { logger } from '@/server/observability/logger'
 import { automationRunWorkflow, type AutomationRunWorkflowInput } from '@/workflows/automation-run'
+import { automationScheduleWorkflow, type AutomationScheduleWorkflowInput, buildApprovalToken } from '@/workflows/automation-schedule'
 
 // ---------------------------------------------------------------------------
 // POST /api/v1/automations/{id}/run
@@ -89,11 +90,19 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
     const workspace = await getOverlayServerContext().workspaceService.resolveActiveWorkspace(userId)
 
     const turnId = `automation-${runId}-${Date.now()}`
+    const now = Date.now()
 
-    const workflowInput: AutomationRunWorkflowInput = {
-      runId,
-      userId,
+    // Check if the automation graph has any condition nodes requiring approval
+    const graph = (automation as { graph?: { nodes?: Array<{ kind: string }> } }).graph
+    const hasConditionNode = graph?.nodes?.some(n => n.kind === 'condition') ?? false
+    const approvalToken = hasConditionNode ? buildApprovalToken(automationId, now) : undefined
+
+    // Use the scheduling workflow in one-shot mode for manual runs.
+    // This unifies the execution path — the scheduling workflow handles both
+    // one-shot and scheduled loop modes, plus optional approval hooks.
+    const scheduleInput: AutomationScheduleWorkflowInput = {
       automationId,
+      userId,
       name: (automation as { name?: string; title?: string }).name ||
         (automation as { title?: string }).title ||
         'Untitled automation',
@@ -104,8 +113,12 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
       modelId: (automation as { modelId?: string }).modelId,
       conversationId: (automation as { conversationId?: string; sourceConversationId?: string }).conversationId ||
         (automation as { sourceConversationId?: string }).sourceConversationId,
-      turnId,
-      scheduledFor: Date.now(),
+      schedule: (automation as { schedule?: AutomationScheduleWorkflowInput['schedule'] }).schedule ??
+        { kind: 'interval' as const, intervalMinutes: 60 },
+      oneShot: true,
+      approvalRequired: hasConditionNode,
+      approvalToken,
+      approvalTimeoutMs: 24 * 60 * 60_000, // 24h approval timeout
       baseUrl,
       serviceAuthHeader,
       serviceToken,
@@ -114,7 +127,7 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
       workspaceId: workspace.workspace.id,
     }
 
-    const workflowRun = await start(automationRunWorkflow, [workflowInput])
+    const workflowRun = await start(automationScheduleWorkflow, [scheduleInput])
 
     // Store the workflow run ID on the automation run record
     await automationService.updateRunWorkflowRunId({
@@ -127,6 +140,7 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
       runId,
       workflowRunId: workflowRun.runId,
       durable: true,
+      ...(approvalToken ? { approvalToken, approvalRequired: true } : {}),
     })
   } catch (error) {
     logger.error('[automations/[id]/run]', error)

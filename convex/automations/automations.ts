@@ -4,6 +4,12 @@ import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import type { Doc, Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
 import { derivePlanKind } from '../../src/shared/billing/billing-pricing'
+import {
+  computeNextRunAt as sharedComputeNextRunAt,
+  normalizeSchedule as sharedNormalizeSchedule,
+  DEFAULT_SCHEDULE as SHARED_DEFAULT_SCHEDULE,
+  MIN_INTERVAL_MINUTES as SHARED_MIN_INTERVAL_MINUTES,
+} from '../../src/shared/automations/schedule'
 
 const automationSchedule = v.object({
   kind: v.union(
@@ -41,8 +47,8 @@ function clampInteger(value: number, min: number, max: number, fallback: number)
 type AutomationSchedule = NonNullable<Doc<'automations'>['schedule']>
 type AutomationPolicyCtx = MutationCtx | QueryCtx
 
-const DEFAULT_SCHEDULE: AutomationSchedule = { kind: 'daily', hourUTC: 14, minuteUTC: 0 }
-const MIN_INTERVAL_MINUTES = 15
+const DEFAULT_SCHEDULE = SHARED_DEFAULT_SCHEDULE
+const MIN_INTERVAL_MINUTES = SHARED_MIN_INTERVAL_MINUTES
 const MAX_ENABLED_AUTOMATIONS = 25
 const STALE_AUTOMATION_RUN_MS = 15 * 60_000
 const AUTOMATION_POLICY_ERRORS = {
@@ -52,33 +58,7 @@ const AUTOMATION_POLICY_ERRORS = {
 } as const
 
 function normalizeSchedule(schedule: AutomationSchedule): AutomationSchedule {
-  switch (schedule.kind) {
-    case 'interval':
-      return {
-        kind: 'interval',
-        intervalMinutes: clampInteger(schedule.intervalMinutes ?? 60, MIN_INTERVAL_MINUTES, 60 * 24 * 365, 60),
-      }
-    case 'daily':
-      return {
-        kind: 'daily',
-        hourUTC: clampInteger(schedule.hourUTC ?? 9, 0, 23, 9),
-        minuteUTC: clampInteger(schedule.minuteUTC ?? 0, 0, 59, 0),
-      }
-    case 'weekly':
-      return {
-        kind: 'weekly',
-        dayOfWeekUTC: clampInteger(schedule.dayOfWeekUTC ?? 1, 0, 6, 1),
-        hourUTC: clampInteger(schedule.hourUTC ?? 9, 0, 23, 9),
-        minuteUTC: clampInteger(schedule.minuteUTC ?? 0, 0, 59, 0),
-      }
-    case 'monthly':
-      return {
-        kind: 'monthly',
-        dayOfMonthUTC: clampInteger(schedule.dayOfMonthUTC ?? 1, 1, 31, 1),
-        hourUTC: clampInteger(schedule.hourUTC ?? 9, 0, 23, 9),
-        minuteUTC: clampInteger(schedule.minuteUTC ?? 0, 0, 59, 0),
-      }
-  }
+  return sharedNormalizeSchedule(schedule)
 }
 
 function assertSchedulePolicy(schedule: AutomationSchedule): void {
@@ -149,77 +129,8 @@ async function getAutomationRunPolicyViolation(
   return null
 }
 
-function daysInUtcMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
-}
-
 export function computeNextRunAt(scheduleInput: AutomationSchedule, fromMs: number): number {
-  const schedule = normalizeSchedule(scheduleInput)
-  const from = new Date(fromMs)
-
-  if (schedule.kind === 'interval') {
-    return fromMs + (schedule.intervalMinutes ?? 60) * 60_000
-  }
-
-  if (schedule.kind === 'daily') {
-    const candidate = Date.UTC(
-      from.getUTCFullYear(),
-      from.getUTCMonth(),
-      from.getUTCDate(),
-      schedule.hourUTC ?? 9,
-      schedule.minuteUTC ?? 0,
-      0,
-      0,
-    )
-    return candidate > fromMs ? candidate : candidate + 24 * 60 * 60_000
-  }
-
-  if (schedule.kind === 'weekly') {
-    const today = from.getUTCDay()
-    const target = schedule.dayOfWeekUTC ?? 1
-    let dayOffset = (target - today + 7) % 7
-    let candidate = Date.UTC(
-      from.getUTCFullYear(),
-      from.getUTCMonth(),
-      from.getUTCDate() + dayOffset,
-      schedule.hourUTC ?? 9,
-      schedule.minuteUTC ?? 0,
-      0,
-      0,
-    )
-    if (candidate <= fromMs) {
-      dayOffset += 7
-      candidate = Date.UTC(
-        from.getUTCFullYear(),
-        from.getUTCMonth(),
-        from.getUTCDate() + dayOffset,
-        schedule.hourUTC ?? 9,
-        schedule.minuteUTC ?? 0,
-        0,
-        0,
-      )
-    }
-    return candidate
-  }
-
-  const targetDay = schedule.dayOfMonthUTC ?? 1
-  for (let monthOffset = 0; monthOffset < 24; monthOffset += 1) {
-    const year = from.getUTCFullYear()
-    const month = from.getUTCMonth() + monthOffset
-    const day = Math.min(targetDay, daysInUtcMonth(year, month))
-    const candidate = Date.UTC(
-      year,
-      month,
-      day,
-      schedule.hourUTC ?? 9,
-      schedule.minuteUTC ?? 0,
-      0,
-      0,
-    )
-    if (candidate > fromMs) return candidate
-  }
-
-  return fromMs + 30 * 24 * 60 * 60_000
+  return sharedComputeNextRunAt(scheduleInput, fromMs)
 }
 
 async function ensureProjectAccess(

@@ -614,6 +614,14 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { POST: capability('automations.use') },
   },
   {
+    path: '/api/v1/automations/:id/approve',
+    methods: { POST: capability('automations.use') },
+  },
+  {
+    path: '/api/v1/automations/:id/start-scheduler',
+    methods: { POST: capability('automations.use') },
+  },
+  {
     path: '/api/v1/automations/:runId/stream',
     methods: { GET: capability('automations.use') },
   },
