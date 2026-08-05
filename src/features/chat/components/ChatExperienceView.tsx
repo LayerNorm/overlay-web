@@ -94,7 +94,7 @@ export function ChatExperienceView({
           <AppScreenBody
             padding="none"
             maxWidth="none"
-            scroll="hidden"
+            scroll={automationEditorProps && !body.showAutomationChatTab ? 'auto' : 'hidden'}
             className={`flex min-h-0 flex-1 flex-col transition-[background-color,background-image] duration-300 ${
               body.isTemporaryChat ? 'temporary-chat-body-pattern' : ''
             }`}

@@ -201,7 +201,6 @@ export function AutomationEditorPanel({
   }
 
   return (
-    <div className="h-full overflow-y-auto">
     <div className="space-y-8 pb-8">
       <AutomationEditorForm
       name={draft.name}
@@ -331,7 +330,6 @@ export function AutomationEditorPanel({
           ))}
         </div>
       </section>
-    </div>
     </div>
   )
 }
