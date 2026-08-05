@@ -3,11 +3,15 @@
 import { GitBranch } from 'lucide-react'
 import { AutomationFlowPreview, parseAutomationFlow } from './flow-utils'
 
-export function AutomationGraphCanvas({
+/**
+ * Static SVG preview of the automation flow.
+ * Used for sidebar thumbnails and chat card previews.
+ * For the interactive editor canvas, see `reactflow-canvas.tsx`.
+ */
+export function AutomationGraphPreview({
   source,
 }: {
   source: string
-  onSourceChange?: (source: string) => void
 }) {
   const flow = parseAutomationFlow(source)
 

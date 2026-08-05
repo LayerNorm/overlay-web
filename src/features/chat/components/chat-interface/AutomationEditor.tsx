@@ -165,6 +165,7 @@ export function AutomationEditorPanel({
       dayOfWeek={draft.dayOfWeek}
       dayOfMonth={draft.dayOfMonth}
       graphSource={draft.graphSource}
+      graph={draft.graph}
       modelId={draft.modelId}
       timeZoneOptions={timeZoneOptions}
       modelOptions={modelOptions}

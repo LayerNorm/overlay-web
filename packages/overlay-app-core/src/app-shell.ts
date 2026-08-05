@@ -96,6 +96,12 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
     description: 'Unified sharing with people, agents, teams, rooms, and resource guests.',
     enabled: false,
   },
+  {
+    id: 'reactflowCanvas',
+    label: 'Interactive automation canvas',
+    description: 'ReactFlow-based visual editor for automation graphs (replaces static SVG).',
+    enabled: false,
+  },
 ] as const
 
 export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
