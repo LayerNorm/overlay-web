@@ -17,9 +17,8 @@ import { automationRunWorkflow, type AutomationRunWorkflowInput } from '@/workfl
 // existing test endpoint which handles the full run lifecycle.
 // ---------------------------------------------------------------------------
 
-function isDurableAutomationsEnabled(): boolean {
+export function isDurableAutomationsEnabled(): boolean {
   const raw = process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-  console.log('[automations/run] OVERLAY_FEATURE_DURABLE_AUTOMATIONS raw:', JSON.stringify(raw))
   return raw === '1' || raw === 'true'
 }
 

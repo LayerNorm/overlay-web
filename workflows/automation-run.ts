@@ -113,7 +113,7 @@ async function prepareExecution(input: AutomationRunWorkflowInput): Promise<{
 // Step 2: Execute the agent turn — call the act route
 // ---------------------------------------------------------------------------
 
-function buildAutomationUserMessage(input: AutomationRunWorkflowInput): string {
+export function buildAutomationUserMessage(input: AutomationRunWorkflowInput): string {
   const scheduledAt = new Date(input.scheduledFor).toISOString()
   return [
     `Execute saved automation now: ${input.name}`,
@@ -126,7 +126,7 @@ function buildAutomationUserMessage(input: AutomationRunWorkflowInput): string {
   ].filter(Boolean).join('\n')
 }
 
-function buildAutomationSystemPrompt(input: AutomationRunWorkflowInput): string {
+export function buildAutomationSystemPrompt(input: AutomationRunWorkflowInput): string {
   return [
     'You are running a scheduled automation for the user.',
     'Execute the stored automation instructions without asking clarifying questions.',

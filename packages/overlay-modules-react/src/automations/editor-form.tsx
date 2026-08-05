@@ -41,6 +41,9 @@ export interface AutomationEditorFormProps {
   saveState: AutomationSaveState
   testState: AutomationTestState
   testMessage?: string | null
+  /** When true, render the interactive ReactFlow canvas; when false, fall back to the static SVG preview. */
+  reactflowCanvasEnabled?: boolean
+  onGraphChange?: (graph: AutomationGraph) => void
   onNameChange: (value: string) => void
   onDescriptionChange: (value: string) => void
   onInstructionsChange: (value: string) => void
@@ -77,6 +80,8 @@ export function AutomationEditorForm({
   saveState,
   testState,
   testMessage,
+  reactflowCanvasEnabled = false,
+  onGraphChange,
   onNameChange,
   onDescriptionChange,
   onInstructionsChange,
@@ -251,13 +256,13 @@ export function AutomationEditorForm({
         </SettingsCard>
 
         <SettingsCard title="Flow">
-          {graph && graph.nodes.length > 0 ? (
+          {reactflowCanvasEnabled && graph && graph.nodes.length > 0 ? (
             <Suspense
               fallback={
                 <div className="h-80 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]" />
               }
             >
-              <AutomationGraphCanvas graph={graph} />
+              <AutomationGraphCanvas graph={graph} onGraphChange={onGraphChange} />
             </Suspense>
           ) : (
             <AutomationGraphPreview source={graphSource} />

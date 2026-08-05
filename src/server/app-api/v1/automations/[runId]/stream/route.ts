@@ -6,15 +6,17 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { logger } from '@/server/observability/logger'
 
 // ---------------------------------------------------------------------------
-// GET /api/v1/automations/{runId}/stream
+// GET /api/v1/automations/{id}/stream
 //
-// Returns the current status of a durable automation run. The runId here
-// is the workflow run ID (not the automation run ID).
+// Returns the current status of a durable automation run. The id here
+// is the workflow run ID (not the automation run ID). The app-level route
+// uses [id] (not [runId]) to satisfy Next.js's consistent-slug requirement.
 // ---------------------------------------------------------------------------
 
 export async function GET(_request: NextRequest, context?: AppApiRouteContext) {
   try {
-    const workflowRunId = (await context?.params ?? {})['runId'] as string | undefined
+    const params = await context?.params ?? {}
+    const workflowRunId = (params['runId'] ?? params['id']) as string | undefined
     if (!workflowRunId) {
       return NextResponse.json({ error: 'runId is required' }, { status: 400 })
     }

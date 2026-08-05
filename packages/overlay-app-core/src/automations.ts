@@ -205,7 +205,7 @@ export function extractAutomationInstructionSteps(instructions: string): string[
 }
 
 export function graphSourceFromAutomationInstructions(
-  automation: Pick<AutomationSummary, 'instructions' | 'instructionsMarkdown'>,
+  automation: Pick<AutomationSummary, 'instructions' | 'instructionsMarkdown' | 'schedule'>,
 ): string {
   const graph = automationGraphFromInstructions(automation)
   return graph ? graphSourceFromAutomationGraph(graph) : ''
@@ -229,17 +229,25 @@ export function defaultAutomationGraphSource(
  * Returns `null` if there are no instruction steps.
  */
 export function automationGraphFromInstructions(
-  automation: Pick<AutomationSummary, 'instructions' | 'instructionsMarkdown'>,
+  automation: Pick<AutomationSummary, 'instructions' | 'instructionsMarkdown' | 'schedule'>,
 ): AutomationGraph | null {
   const steps = extractAutomationInstructionSteps(getAutomationInstructions(automation))
   if (steps.length === 0) return null
 
-  const nodes: AutomationGraphNode[] = steps.map((step, index) => ({
-    id: `step${index + 1}`,
-    kind: 'prompt' as AutomationGraphNodeKind,
-    label: `${index + 1}. ${mermaidLabel(step).slice(0, 96)}`,
-    config: { text: step },
-  }))
+  const nodes: AutomationGraphNode[] = [
+    {
+      id: 'trigger',
+      kind: 'trigger' as AutomationGraphNodeKind,
+      label: `${automation.schedule?.kind ?? 'schedule'} trigger`,
+      config: { schedule: automation.schedule },
+    },
+    ...steps.map((step, index) => ({
+      id: `step${index + 1}`,
+      kind: 'prompt' as AutomationGraphNodeKind,
+      label: `${index + 1}. ${mermaidLabel(step).slice(0, 96)}`,
+      config: { text: step },
+    })),
+  ]
   nodes.push({
     id: 'output',
     kind: 'output',
@@ -247,10 +255,13 @@ export function automationGraphFromInstructions(
     config: { outputKind: 'chat' },
   })
 
-  const edges: AutomationGraphEdge[] = steps.map((_, index) => ({
-    from: `step${index + 1}`,
-    to: index < steps.length - 1 ? `step${index + 2}` : 'output',
-  }))
+  const edges: AutomationGraphEdge[] = [
+    { from: 'trigger', to: 'step1' },
+    ...steps.map((_, index) => ({
+      from: `step${index + 1}`,
+      to: index < steps.length - 1 ? `step${index + 2}` : 'output',
+    })),
+  ]
 
   return { version: AUTOMATION_GRAPH_VERSION, nodes, edges }
 }
@@ -649,7 +660,10 @@ export function buildAutomationUpdateRequest(input: {
   draft: AutomationEditorDraft
 }): UpdateAutomationRequest {
   const instructionsChanged = input.draft.instructions.trim() !== getAutomationInstructions(input.automation).trim()
-  const graph = instructionsChanged
+  // When the user has manually edited the graph in the visual editor, the graph
+  // is the source of truth — don't regenerate from instructions even if they changed.
+  // Only regenerate from instructions when the graph hasn't been manually edited.
+  const graph = instructionsChanged && !input.draft.graph?.manuallyEdited
     ? resolveAutomationGraph(
         { ...input.automation, instructions: input.draft.instructions, modelId: input.draft.modelId },
         input.draft.modelId,
@@ -690,6 +704,7 @@ export function applyAutomationUpdate(
     schedule: request.schedule ?? automation.schedule,
     timezone: request.timezone ?? automation.timezone,
     graphSource: request.graphSource ?? automation.graphSource,
+    graph: request.graph ?? automation.graph,
     modelId: request.modelId ?? automation.modelId,
   }
 }

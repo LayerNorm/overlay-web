@@ -5,6 +5,8 @@ import { RefreshCw } from 'lucide-react'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import overlayAppConfig from '@/overlay.config'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import type {
   AutomationDetail,
   AutomationDetailTab,
@@ -13,6 +15,9 @@ import type {
   AutomationSchedule,
   AutomationRunSummary,
   AutomationTestState,
+} from '@overlay/app-core'
+import {
+  resolveOverlayAppShellConfig,
 } from '@overlay/app-core'
 import {
   applyAutomationUpdate,
@@ -60,6 +65,12 @@ export function AutomationEditorPanel({
   const [runs, setRuns] = useState<AutomationRunSummary[]>([])
   const [runsBusy, setRunsBusy] = useState(false)
   const timeZoneOptions = useMemo(() => supportedTimeZoneOptions(), [])
+  const { capabilities } = useOverlayCapabilities()
+  const reactflowCanvasEnabled = useMemo(() => {
+    const appShell = resolveOverlayAppShellConfig(overlayAppConfig, { capabilities })
+    const flag = appShell.featureFlags.find((f) => f.id === 'reactflowCanvas')
+    return flag?.enabled ?? false
+  }, [capabilities])
   const modelOptions = useMemo(
     () => getModelsByIntelligence(isFreeTier).filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2'),
     [isFreeTier],
@@ -172,6 +183,8 @@ export function AutomationEditorPanel({
       saveState={saveState}
       testState={testState}
       testMessage={testMessage}
+      reactflowCanvasEnabled={reactflowCanvasEnabled}
+      onGraphChange={(graph) => updateDraft({ graph })}
       onNameChange={(name) => updateDraft({ name })}
       onDescriptionChange={(description) => updateDraft({ description })}
       onInstructionsChange={(instructions) => updateDraft({ instructions })}

@@ -100,7 +100,7 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
     id: 'reactflowCanvas',
     label: 'Interactive automation canvas',
     description: 'ReactFlow-based visual editor for automation graphs (replaces static SVG).',
-    enabled: false,
+    enabled: true,
   },
   {
     id: 'durableAutomations',

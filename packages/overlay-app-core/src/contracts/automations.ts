@@ -63,6 +63,12 @@ export interface AutomationGraph {
   version: typeof AUTOMATION_GRAPH_VERSION
   nodes: AutomationGraphNode[]
   edges: AutomationGraphEdge[]
+  /**
+   * Set to `true` once the user manually edits the graph in the visual editor.
+   * When `true`, chat-driven instruction updates will NOT regenerate the graph
+   * — the user's structural edits are preserved as the source of truth.
+   */
+  manuallyEdited?: boolean
 }
 
 export interface AutomationSummary {

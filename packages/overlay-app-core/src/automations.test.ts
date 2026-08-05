@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   applyAutomationRename,
+  applyAutomationUpdate,
   automationEditorDraftFromDetail,
   automationGraphFromGraphSource,
   automationGraphFromInstructions,
@@ -140,16 +141,19 @@ test('automationGraphFromInstructions builds a linear chain with an output node'
   })
   assert.ok(graph, 'should produce a graph')
   assert.equal(graph!.version, AUTOMATION_GRAPH_VERSION)
-  assert.equal(graph!.nodes.length, 3, 'two prompt nodes + one output node')
-  assert.equal(graph!.nodes[0]!.kind, 'prompt')
-  assert.equal(graph!.nodes[0]!.id, 'step1')
+  assert.equal(graph!.nodes.length, 4, 'trigger + two prompt nodes + one output node')
+  assert.equal(graph!.nodes[0]!.kind, 'trigger')
+  assert.equal(graph!.nodes[0]!.id, 'trigger')
   assert.equal(graph!.nodes[1]!.kind, 'prompt')
-  assert.equal(graph!.nodes[1]!.id, 'step2')
-  assert.equal(graph!.nodes[2]!.kind, 'output')
-  assert.equal(graph!.nodes[2]!.id, 'output')
-  assert.equal(graph!.edges.length, 2)
-  assert.deepEqual(graph!.edges[0], { from: 'step1', to: 'step2' })
-  assert.deepEqual(graph!.edges[1], { from: 'step2', to: 'output' })
+  assert.equal(graph!.nodes[1]!.id, 'step1')
+  assert.equal(graph!.nodes[2]!.kind, 'prompt')
+  assert.equal(graph!.nodes[2]!.id, 'step2')
+  assert.equal(graph!.nodes[3]!.kind, 'output')
+  assert.equal(graph!.nodes[3]!.id, 'output')
+  assert.equal(graph!.edges.length, 3)
+  assert.deepEqual(graph!.edges[0], { from: 'trigger', to: 'step1' })
+  assert.deepEqual(graph!.edges[1], { from: 'step1', to: 'step2' })
+  assert.deepEqual(graph!.edges[2], { from: 'step2', to: 'output' })
 })
 
 test('automationGraphFromInstructions returns null for empty instructions', () => {
@@ -282,6 +286,130 @@ test('automationEditorDraftFromDetail includes structured graph', () => {
   const draft = automationEditorDraftFromDetail(automation, 'model_a')
   assert.ok(draft.graph, 'draft should include structured graph')
   assert.equal(draft.graph!.version, AUTOMATION_GRAPH_VERSION)
-  assert.equal(draft.graph!.nodes.length, 3, 'two prompt nodes + output')
+  assert.equal(draft.graph!.nodes.length, 4, 'trigger + two prompt nodes + output')
   assert.ok(draft.graphSource, 'draft should still include graphSource for backward compat')
+})
+
+// ---------------------------------------------------------------------------
+// Step 4: Edit-then-regenerate preservation
+// ---------------------------------------------------------------------------
+
+test('buildAutomationUpdateRequest regenerates graph from instructions when not manuallyEdited', () => {
+  const automation = {
+    _id: 'auto_1',
+    name: 'Test',
+    instructions: '1. Step one\n2. Step two',
+    schedule: { kind: 'daily' as const, hourUTC: 14, minuteUTC: 0 },
+    timezone: 'UTC',
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const draft = automationEditorDraftFromDetail(automation, 'model_a')
+  // Change instructions — graph should be regenerated
+  draft.instructions = '1. New step\n2. Another step\n3. Final step'
+  const request = buildAutomationUpdateRequest({ automation, draft })
+  assert.ok(request.graph)
+  assert.equal(request.graph!.nodes.length, 5, 'regenerated graph should have trigger + 3 prompt nodes + output')
+  assert.equal(request.graph!.manuallyEdited, undefined)
+})
+
+test('buildAutomationUpdateRequest preserves manuallyEdited graph even when instructions change', () => {
+  const automation = {
+    _id: 'auto_1',
+    name: 'Test',
+    instructions: '1. Step one\n2. Step two',
+    schedule: { kind: 'daily' as const, hourUTC: 14, minuteUTC: 0 },
+    timezone: 'UTC',
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const draft = automationEditorDraftFromDetail(automation, 'model_a')
+  // Simulate manual edit: mark graph as manuallyEdited and add a node
+  draft.graph = {
+    ...draft.graph!,
+    manuallyEdited: true,
+    nodes: [
+      ...draft.graph!.nodes,
+      { id: 'custom_node', kind: 'tool', label: 'Custom Tool', config: { toolId: 'web_search' } },
+    ],
+    edges: [
+      ...draft.graph!.edges,
+      { from: 'step_1', to: 'custom_node' },
+      { from: 'custom_node', to: 'step_2' },
+    ],
+  }
+  // Change instructions — graph should NOT be regenerated because manuallyEdited
+  draft.instructions = '1. Completely different instructions'
+  const request = buildAutomationUpdateRequest({ automation, draft })
+  assert.ok(request.graph)
+  assert.equal(request.graph!.manuallyEdited, true)
+  // The custom node should still be there
+  assert.ok(request.graph!.nodes.some((n) => n.id === 'custom_node'))
+})
+
+test('buildAutomationUpdateRequest uses draft.graph when instructions unchanged', () => {
+  const automation = {
+    _id: 'auto_1',
+    name: 'Test',
+    instructions: '1. Step one\n2. Step two',
+    schedule: { kind: 'daily' as const, hourUTC: 14, minuteUTC: 0 },
+    timezone: 'UTC',
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const draft = automationEditorDraftFromDetail(automation, 'model_a')
+  // Don't change instructions — should use draft.graph as-is
+  const request = buildAutomationUpdateRequest({ automation, draft })
+  assert.ok(request.graph)
+  assert.deepEqual(request.graph, draft.graph)
+})
+
+test('applyAutomationUpdate persists graph field', () => {
+  const automation = {
+    _id: 'auto_1',
+    name: 'Test',
+    instructions: '1. Step one',
+    schedule: { kind: 'daily' as const, hourUTC: 14, minuteUTC: 0 },
+    timezone: 'UTC',
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const draft = automationEditorDraftFromDetail(automation, 'model_a')
+  draft.graph = {
+    ...draft.graph!,
+    manuallyEdited: true,
+  }
+  const request = buildAutomationUpdateRequest({ automation, draft })
+  const updated = applyAutomationUpdate(automation, request)
+  assert.ok(updated.graph)
+  assert.equal(updated.graph!.manuallyEdited, true)
+})
+
+test('manuallyEdited graph survives round-trip through editor draft', () => {
+  const automation = {
+    _id: 'auto_1',
+    name: 'Test',
+    instructions: '1. Step one',
+    schedule: { kind: 'daily' as const, hourUTC: 14, minuteUTC: 0 },
+    timezone: 'UTC',
+    createdAt: 1,
+    updatedAt: 1,
+    graph: {
+      version: AUTOMATION_GRAPH_VERSION,
+      nodes: [
+        { id: 'trigger', kind: 'trigger', label: 'Trigger', config: {} },
+        { id: 'custom', kind: 'tool', label: 'My Tool', config: { toolId: 'x' } },
+        { id: 'output', kind: 'output', label: 'Output', config: {} },
+      ],
+      edges: [
+        { from: 'trigger', to: 'custom' },
+        { from: 'custom', to: 'output' },
+      ],
+      manuallyEdited: true,
+    },
+  }
+  const draft = automationEditorDraftFromDetail(automation, 'model_a')
+  assert.ok(draft.graph)
+  assert.equal(draft.graph!.manuallyEdited, true, 'draft should preserve manuallyEdited flag')
+  assert.ok(draft.graph!.nodes.some((n) => n.id === 'custom'), 'custom node should survive')
 })

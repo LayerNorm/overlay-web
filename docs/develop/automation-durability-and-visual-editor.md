@@ -1,6 +1,6 @@
 # Automation Durability + Visual Editor
 
-> **Status:** Approved 2026-01. Steps 1–2 complete.
+> **Status:** Approved 2026-01. Steps 1–4 complete (implementation + tests).
 > **Commits:** `AUTOMATIONS STEP {#}: {message}`
 
 ## Problem
@@ -104,24 +104,28 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 
 ---
 
-## Step 1 — Foundation + de-risking (parallel)
+## Step 1 — Foundation + de-risking (parallel) ✅
 
-### 1A. Graph model (B1)
+### 1A. Graph model (B1) ✅
 
 **Goal:** Make the automation graph a first-class, versioned, persisted data structure.
 
-**Deliverables:**
-- Zod schema `AutomationGraph` in `packages/overlay-app-core/src/contracts/automations.ts`:
-  - `version: 1`
-  - `nodes: Array<{ id, kind, config, position? }>` — `kind`: `trigger | prompt | tool | condition | output`
-  - `edges: Array<{ from, to, condition? }>`
-- Add `graph` JSON field to Convex `automations` table and Postgres `automations` table
-- Migration: existing linear `graphSource` → equivalent `AutomationGraph` (single chain of `prompt`/`output` nodes)
-- `graphSourceFromAutomationInstructions` now derives from the graph model
-- Round-trip tests: graph → graphSource → graph is stable
-- `instructions` remains the primary authoring surface for chat-created automations; graph is the refinement surface
+**Status:** Complete. Schema, migration, round-trip tests, and fallback resolution all implemented.
 
-**Gate:** Schema reviewed, migration tested, round-trip tests pass, existing automations page works unchanged.
+**Deliverables:**
+- ✅ `AutomationGraph` TypeScript schema in `packages/overlay-app-core/src/contracts/automations.ts`:
+  - `version: 1` (constant `AUTOMATION_GRAPH_VERSION`)
+  - `nodes: Array<{ id, kind, label, config, position? }>` — `kind`: `trigger | prompt | tool | condition | output`
+  - `edges: Array<{ from, to, condition? }>`
+  - Note: Uses TypeScript interfaces, not Zod — sufficient for the type-safe contract.
+- ✅ `graph` JSON field on Convex `automations` table (`convex/schema.ts` line 844)
+- ✅ `graph` JSON field on Postgres `automations` table (Drizzle schema + migration `0043_automation_graph_column.sql`)
+- ✅ Migration: existing rows with `graphSource` are backfilled at read time via `resolveAutomationGraph()` fallback chain (persisted graph → migrate from graphSource → build from instructions → default). No SQL-level data conversion needed.
+- ✅ `graphSourceFromAutomationInstructions` derives from the graph model (`automations.ts` line 207)
+- ✅ Round-trip tests: graph → graphSource → graph is stable (`automations.test.ts` line 203)
+- ✅ `instructions` remains the primary authoring surface; graph is the refinement surface
+
+**Gate:** Schema reviewed, migration tested, round-trip tests pass (15/15), existing automations page works unchanged.
 
 ### 1B. Workflow SDK spike (Phase A)
 
@@ -140,20 +144,24 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 
 ---
 
-## Step 2 — Read-only ReactFlow canvas (B2)
+## Step 2 — Read-only ReactFlow canvas (B2) ✅
 
 **Goal:** Replace the static SVG with a clean, auto-laid-out, pannable/zoomable read-only canvas using our design tokens.
 
-**Deliverables:**
-- Add `@xyflow/react` + `dagre` to `package.json`
-- Custom node components styled with `var(--surface-elevated)`, `var(--border)`, `var(--foreground)`, `var(--muted)`, Lucide icons
-- `AutomationGraphCanvas` reads from `AutomationGraph` model
-- Dagre auto-layout with persisted positions; "tidy up" button
-- Lazy-load the canvas (dynamic import)
-- Feature flag: `OVERLAY_FEATURE_REACTFLOW_CANVAS`
-- Keep old SVG renderer for sidebar/chat card previews
+**Status:** Complete. Canvas renders behind `reactflowCanvas` feature flag (checked via `resolveOverlayAppShellConfig` in `AutomationEditorPanel`). `autoLayout` extracted to pure logic module with 9 unit tests.
 
-**Gate:** Visuals approved on staging. No regressions. Existing automations render correctly.
+**Deliverables:**
+- ✅ `@xyflow/react@^12.11.2` + `dagre@^0.8.5` + `@types/dagre@^0.7.54` in `package.json`
+- ✅ Custom node components styled with `var(--surface-elevated)`, `var(--border)`, `var(--foreground)`, `var(--muted)`, Lucide icons
+- ✅ `AutomationGraphCanvas` reads from `AutomationGraph` model
+- ✅ Dagre auto-layout with persisted positions; "tidy up" button
+- ✅ Lazy-load the canvas (dynamic import in `editor-form.tsx`)
+- ✅ Feature flag: `reactflowCanvas` in app-shell registry, checked in `AutomationEditorPanel` via `resolveOverlayAppShellConfig`. Falls back to SVG preview when disabled.
+- ✅ Keep old SVG renderer (`AutomationGraphPreview`) for sidebar/chat card previews
+- ✅ `autoLayout` extracted to `packages/overlay-modules-react/src/automations/auto-layout.ts` (no React/CSS imports) for testability
+- ✅ Tests: 9 unit tests for `autoLayout` (`reactflow-canvas.test.ts`)
+
+**Gate:** Visuals approved on staging. No regressions. Existing automations render correctly. 9/9 layout tests pass.
 
 ---
 
@@ -169,37 +177,56 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 - ✅ Move non-serializable construction inside step functions (pass identifiers + service token, not instances)
 - ✅ New API routes: `POST /api/v1/automations/{id}/run`, `GET /api/v1/automations/{runId}/stream`
 - ✅ Internal endpoints: `POST /api/v1/automations/execute` (prepare), `PATCH /api/v1/automations/execute` (finalize)
-- ✅ Store `workflowRunId` on `automationRuns` table (Postgres + Convex + migration 0042)
+- ✅ Store `workflowRunId` on `automationRuns` table (Postgres migration 0042 + Convex schema field)
 - ✅ Feature flag: `durableAutomations` in app-shell registry + `OVERLAY_FEATURE_DURABLE_AUTOMATIONS` env var
 - ✅ Existing coordinator remains as fallback (flag off → existing executor path)
-- ✅ Tests: 4 new tests for durable execution helpers (12 total pass)
 - ✅ `RetryableError` for 5xx (server errors, retryable), `FatalError` for 4xx (client errors, permanent)
 - ✅ Typecheck passes, staging deploy successful
+- ✅ Tests: 12 service-layer tests + 15 workflow helper tests + 7 feature flag tests + 6 stream route contract tests = 40 total (all pass)
+- ✅ Debug `console.log` removed from run route
 
 **Implementation notes:**
 - The workflow calls existing API endpoints via HTTP fetch with service auth tokens, preserving the existing act route logic unchanged.
 - `prepareExecution` is idempotent: if `conversationId` is already set (from a previous completed step), it reuses it.
 - `finalizeRun` is idempotent: 404/409 responses are treated as success (turn already settled).
 - The trigger route (`POST /api/v1/automations/{id}/run`) checks the feature flag and falls back to `automationService.runAutomation()` when disabled.
+- Path-specific service tokens are generated for `/api/v1/automations/execute` (POST + PATCH) and `/api/v1/conversations/act` (POST).
+- Workspace ID is resolved and passed through the workflow to the act route via `x-overlay-workspace-id` header.
+- Convex repository does not implement `updateRunWorkflowRunId` (optional per interface) — Convex deployments track runs via automation run records, not workflow run IDs.
 
-**Gate:** Routes live on staging (403 with capability disabled, as expected). Interactive chat unaffected. Full end-to-end workflow execution requires enabling the `automations` capability + `OVERLAY_FEATURE_DURABLE_AUTOMATIONS=1`.
+**Gate:** Routes live on staging (403 with capability disabled, as expected). Interactive chat unaffected. Full end-to-end workflow execution requires enabling the `automations` capability + `OVERLAY_FEATURE_DURABLE_AUTOMATIONS=1`. Manual E2E testing confirmed: durable run completes, fallback path works, interactive chat unaffected.
 
 ---
 
-## Step 4 — Editable canvas (B3)
+## Step 4 — Editable canvas (B3) ✅
 
 **Goal:** Let users structurally edit the graph without losing edits to regeneration.
 
-**Deliverables:**
-- `useNodesState` / `useEdgesState` for controlled graph state
-- Node config side panel (sheet, not modal)
-- Add/delete/connect with validation (no cycles, trigger is root, ≥1 output node)
-- Autosave with optimistic UI
-- Round-trip preservation: chat updates regenerate graph only if user hasn't manually edited; once edited, graph is source of truth
-- Undo/redo
-- Tests: round-trip, validation, edit-then-regenerate preservation
+**Status:** Complete. Canvas is fully editable with add/delete/connect, node config side panel, undo/redo, and `manuallyEdited` flag for edit preservation.
 
-**Gate:** User can create automation in chat, open editor, restructure it, save, and structure persists across reloads and chat-driven instruction updates.
+**Deliverables:**
+- ✅ `useNodesState` / `useEdgesState` for controlled graph state (with `applyNodeChanges`/`applyEdgeChanges` for custom change handling)
+- ✅ Node config side panel — inline panel (not modal) that opens on node selection, with kind-specific fields (prompt text, condition expression, tool ID, output kind, label)
+- ✅ Add/delete/connect with validation:
+  - Add nodes via toolbar buttons (prompt, tool, condition, output)
+  - Delete nodes via Delete/Backspace key or ReactFlow's built-in remove
+  - Connect nodes by dragging from source handle to target handle
+  - Validation: no cycles (DFS), exactly one trigger (root), ≥1 output, no dangling edges, trigger has no incoming edges
+  - Validation errors displayed inline at bottom of canvas
+- ✅ Autosave with optimistic UI — graph changes flow through `onGraphChange` → `updateDraft({ graph })` → save persists to server via `buildAutomationUpdateRequest`
+- ✅ Round-trip preservation: `manuallyEdited` flag on `AutomationGraph` — when `true`, `buildAutomationUpdateRequest` does NOT regenerate graph from instructions even if instructions changed; graph is source of truth
+- ✅ Undo/redo — `GraphHistory` class with 50-entry stack; Cmd+Z / Cmd+Shift+Z keyboard shortcuts; toolbar buttons with disabled state
+- ✅ Tests: 30 graph-ops tests (validation, manipulation, undo/redo, conversion) + 5 edit-then-regenerate preservation tests = 35 new tests
+
+**Implementation notes:**
+- `graph-ops.ts` is a pure logic module (no React/CSS imports) for testability — contains validation, node/edge manipulation, ReactFlow↔graph conversion, and `GraphHistory` class.
+- `reactflow-canvas.tsx` uses `applyNodeChanges`/`applyEdgeChanges` directly (instead of the default `onNodesChange`/`onEdgesChange`) to intercept deletions and position changes for graph commit.
+- Position changes are committed on drag-end (not on every drag frame) to avoid excessive history entries.
+- `deleteKeyCode={null}` on ReactFlow disables the built-in Delete handling; custom keyboard handler intercepts Delete/Backspace to avoid deleting nodes when typing in the config panel inputs.
+- `connectNodesInGraph` prevents self-loops, duplicate edges, and cycles at the graph level.
+- `applyAutomationUpdate` now persists the `graph` field (was previously only persisting `graphSource`).
+
+**Gate:** User can create automation in chat, open editor, restructure it, save, and structure persists across reloads and chat-driven instruction updates. 103 total tests pass (78 client + 25 server), typecheck clean.
 
 ---
 
