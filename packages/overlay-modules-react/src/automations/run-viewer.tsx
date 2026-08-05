@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { lazy, Suspense } from 'react'
 import type { AutomationGraph, AutomationRunSummary } from '@overlay/app-core'
 import { SettingsCard } from '@overlay/modules-react/settings'
@@ -33,6 +33,15 @@ export function AutomationRunViewer({
   const [mode, setMode] = useState<'live' | 'replay'>(
     workflowRunId && liveEnabled ? 'live' : 'replay',
   )
+
+  // Sync selectedRunId and mode when a new workflowRunId arrives (e.g. after
+  // the user clicks "Test automation" and the durable run starts).
+  useEffect(() => {
+    if (workflowRunId) {
+      setSelectedRunId(workflowRunId)
+      if (liveEnabled) setMode('live')
+    }
+  }, [workflowRunId, liveEnabled])
 
   const isLive = mode === 'live' && selectedRunId === workflowRunId
 
