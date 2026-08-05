@@ -371,11 +371,17 @@ export class AutomationService {
       )
     }
     if (body.action === 'pause') {
+      // Cancel any active scheduler workflow before pausing
+      await this.cancelSchedulerWorkflow(idArgs)
       await this.deps.repository.pauseAutomation(idArgs)
     } else if (body.action === 'resume') {
       await this.deps.repository.resumeAutomation(idArgs)
     } else {
       const before = existingAutomation
+      // If the update disables the automation, cancel its scheduler workflow
+      if (body.enabled === false && before?.schedulerWorkflowRunId) {
+        await this.cancelSchedulerWorkflow(idArgs)
+      }
       await this.deps.repository.updateAutomation({
         ...idArgs,
         name: body.name,
@@ -427,6 +433,24 @@ export class AutomationService {
       automation?.conversationId,
       isDraftPlaceholder ? automation?.sourceConversationId : undefined,
     ].filter((id, index, ids): id is string => Boolean(id && ids.indexOf(id) === index))
+
+    // Cancel any active scheduler workflow before deleting the automation
+    if (automation?.schedulerWorkflowRunId) {
+      await this.cancelSchedulerWorkflow({
+        automationId,
+        userId: args.userId,
+      })
+    }
+
+    // Cancel any active individual runs (queued or running)
+    if (this.deps.repository.requestActiveRunCancellation) {
+      await this.deps.repository.requestActiveRunCancellation({
+        automationId,
+        userId: args.userId,
+      }).catch((error) => {
+        logger.warn('[automations DELETE] Failed to cancel active runs', error)
+      })
+    }
 
     await this.deps.repository.removeAutomation({
       automationId,
@@ -655,6 +679,45 @@ export class AutomationService {
     await this.deps.repository.updateRunWorkflowRunId?.(args)
   }
 
+  async updateSchedulerWorkflowRunId(args: {
+    automationId: string
+    schedulerWorkflowRunId: string | null
+  }): Promise<void> {
+    await this.deps.repository.updateSchedulerWorkflowRunId?.(args)
+  }
+
+  /**
+   * Cancel the long-lived scheduler workflow for an automation.
+   * Called when the automation is deleted or paused. Best-effort — if the
+   * workflow run ID is missing or the workflow is already gone, this is a no-op.
+   */
+  async cancelSchedulerWorkflow(args: {
+    automationId: string
+    userId: string
+  }): Promise<void> {
+    const automation = await this.deps.repository.getAutomation({
+      automationId: args.automationId,
+      userId: args.userId,
+    })
+    const workflowRunId = automation?.schedulerWorkflowRunId
+    if (!workflowRunId) return
+
+    try {
+      const { getRun } = await import('workflow/api')
+      await getRun(workflowRunId).cancel()
+    } catch (error) {
+      logger.warn('[automations] Failed to cancel scheduler workflow', { automationId: args.automationId, workflowRunId, error })
+    }
+
+    // Clear the stored workflow run ID regardless of whether cancellation succeeded
+    await this.deps.repository.updateSchedulerWorkflowRunId?.({
+      automationId: args.automationId,
+      schedulerWorkflowRunId: null,
+    }).catch((error) => {
+      logger.warn('[automations] Failed to clear schedulerWorkflowRunId', { automationId: args.automationId, error })
+    })
+  }
+
   async markRunStarted(args: {
     runId: string
     userId: string
@@ -678,7 +741,9 @@ export class AutomationService {
     await this.deps.repository.markManualRunCompleted({
       runId: args.runId,
       userId: args.userId,
-      conversationId: args.conversationId ?? '',
+      // Pass undefined (not '') so Convex's v.optional(v.id()) validator
+      // accepts it. An empty string is not a valid Convex ID and will throw.
+      conversationId: args.conversationId || undefined,
       now: this.clock.now(),
     })
   }

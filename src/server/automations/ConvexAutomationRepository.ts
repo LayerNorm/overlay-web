@@ -206,7 +206,7 @@ export class ConvexAutomationRepository implements AutomationRepository {
   }): Promise<void> {
     await convex.mutation('automations/automations:markManualRunStarted', {
       ...args,
-      conversationId: args.conversationId as Id<'conversations'> | undefined,
+      conversationId: (args.conversationId || undefined) as Id<'conversations'> | undefined,
       runId: args.runId as Id<'automationRuns'>,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
@@ -220,7 +220,8 @@ export class ConvexAutomationRepository implements AutomationRepository {
   }): Promise<void> {
     await convex.mutation('automations/automations:markManualRunCompleted', {
       ...args,
-      conversationId: args.conversationId as Id<'conversations'> | undefined,
+      // Guard against empty strings — Convex's v.optional(v.id()) rejects them.
+      conversationId: (args.conversationId || undefined) as Id<'conversations'> | undefined,
       runId: args.runId as Id<'automationRuns'>,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
@@ -256,6 +257,17 @@ export class ConvexAutomationRepository implements AutomationRepository {
       runId: args.runId as Id<'automationRuns'>,
       serverSecret: this.serverSecret,
       workflowRunId: args.workflowRunId,
+    }, { throwOnError: true })
+  }
+
+  async updateSchedulerWorkflowRunId(args: {
+    automationId: string
+    schedulerWorkflowRunId: string | null
+  }): Promise<void> {
+    await convex.mutation('automations/automations:updateSchedulerWorkflowRunIdByServer', {
+      automationId: args.automationId as Id<'automations'>,
+      serverSecret: this.serverSecret,
+      schedulerWorkflowRunId: args.schedulerWorkflowRunId,
     }, { throwOnError: true })
   }
 }

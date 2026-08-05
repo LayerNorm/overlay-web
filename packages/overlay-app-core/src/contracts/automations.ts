@@ -94,6 +94,8 @@ export interface AutomationSummary {
   sourceConversationId?: string
   conversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
+  /** Workflow SDK run ID of the long-lived scheduler (sleep-loop). Used for cancellation. */
+  schedulerWorkflowRunId?: string
   createdAt: number
   updatedAt: number
   deletedAt?: number

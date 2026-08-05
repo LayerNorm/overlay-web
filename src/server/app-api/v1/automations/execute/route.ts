@@ -42,7 +42,7 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
     }
 
     const body = await request.json() as {
-      action?: 'prepare' | 'mark-started'
+      action?: 'prepare' | 'mark-started' | 'check-status'
       automationId?: string
       userId?: string
       name?: string
@@ -55,6 +55,25 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
 
     if (!body.userId || body.userId !== serviceAuth.userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // check-status: lightweight endpoint for the scheduler workflow to verify
+    // the automation is still enabled and not deleted before each iteration.
+    if (body.action === 'check-status') {
+      if (!body.automationId) {
+        return NextResponse.json({ error: 'automationId is required' }, { status: 400 })
+      }
+      const automation = await automationService.getAutomationForExecution({
+        automationId: body.automationId,
+        userId: body.userId,
+      })
+      if (!automation) {
+        return NextResponse.json({ enabled: false, deleted: true })
+      }
+      return NextResponse.json({
+        enabled: automation.enabled !== false,
+        deleted: false,
+      })
     }
 
     // mark-started: update automation_runs status to 'running'

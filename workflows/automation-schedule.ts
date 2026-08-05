@@ -77,6 +77,15 @@ export async function automationScheduleWorkflow(input: AutomationScheduleWorkfl
 
     await sleep(sleepMs)
 
+    // Safety net: check if the automation is still enabled before executing.
+    // This catches cases where the automation was disabled or deleted while
+    // the workflow was sleeping, but the scheduler workflow wasn't cancelled
+    // (e.g. after a deployment restart, or if the cancel call failed).
+    const status = await checkAutomationStatus(input)
+    if (!status.enabled || status.deleted) {
+      return { automationId: input.automationId, completed: true, cancelled: true }
+    }
+
     // Check for approval if required
     if (input.approvalRequired) {
       const approved = await waitForApproval(input)
@@ -255,6 +264,43 @@ async function markRunFinalized(
     })
   } catch {
     // Non-fatal — the run already completed, status sync is best-effort
+  }
+}
+
+/**
+ * Safety net: check if the automation is still enabled and not deleted.
+ * Called before each iteration of the scheduling loop. If the automation
+ * is disabled or deleted, the workflow exits gracefully.
+ */
+async function checkAutomationStatus(
+  input: AutomationScheduleWorkflowInput,
+): Promise<{ enabled: boolean; deleted: boolean }> {
+  const executePath = '/api/v1/automations/execute'
+  try {
+    const response = await fetch(`${input.baseUrl}${executePath}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        [input.serviceAuthHeader]: input.serviceToken,
+      },
+      body: JSON.stringify({
+        action: 'check-status',
+        automationId: input.automationId,
+        userId: input.userId,
+      }),
+    })
+    if (!response.ok) {
+      // If the check fails, assume the automation is still active (fail open)
+      return { enabled: true, deleted: false }
+    }
+    const data = await response.json() as { enabled?: boolean; deleted?: boolean }
+    return {
+      enabled: data.enabled !== false,
+      deleted: data.deleted === true,
+    }
+  } catch {
+    // Network errors — fail open, let the workflow continue
+    return { enabled: true, deleted: false }
   }
 }
 

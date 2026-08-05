@@ -451,6 +451,16 @@ export class PostgresAutomationRepository implements AutomationRepository {
       .where(eq(automationRuns.id, args.runId))
   }
 
+  async updateSchedulerWorkflowRunId(args: {
+    automationId: string
+    schedulerWorkflowRunId: string | null
+  }): Promise<void> {
+    await this.db
+      .update(automations)
+      .set({ schedulerWorkflowRunId: args.schedulerWorkflowRunId, updatedAt: new Date() })
+      .where(eq(automations.id, args.automationId))
+  }
+
   private async setEnabled(args: {
     automationId: string
     enabled: boolean
@@ -561,6 +571,7 @@ function mapAutomation(row: AutomationRow): AutomationRecord {
     sourceConversationId: row.sourceConversationId ?? undefined,
     conversationId: row.conversationId ?? undefined,
     concurrencyPolicy: row.concurrencyPolicy,
+    schedulerWorkflowRunId: row.schedulerWorkflowRunId ?? undefined,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
     deletedAt: row.deletedAt?.getTime(),

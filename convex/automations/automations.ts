@@ -642,6 +642,25 @@ export const updateRunWorkflowRunIdByServer = mutation({
   },
 })
 
+export const updateSchedulerWorkflowRunIdByServer = mutation({
+  args: {
+    automationId: v.id('automations'),
+    serverSecret: v.string(),
+    schedulerWorkflowRunId: v.union(v.string(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const automation = await ctx.db.get(args.automationId)
+    if (!automation) return null
+    await ctx.db.patch(args.automationId, {
+      schedulerWorkflowRunId: args.schedulerWorkflowRunId ?? undefined,
+      updatedAt: Date.now(),
+    })
+    return null
+  },
+})
+
 async function hasQueuedOrRunningRun(ctx: MutationCtx, automationId: Id<'automations'>, now: number) {
   const queued = await ctx.db
     .query('automationRuns')

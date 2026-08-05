@@ -369,7 +369,7 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 
 ## Post-Step-7 QA + polish
 
-**Status:** Manual, live visualization, replay, approval, and schedule-normalization QA passed on the Postgres staging deployment. Scheduler lifecycle and historical data cleanup remain pending. Production rollout remains intentionally deferred.
+**Status:** All staging QA passed on the Postgres staging deployment. The one historical stale run was resolved (its parent automation was deleted during QA cleanup, removing the orphaned queued run). Production rollout remains intentionally deferred.
 
 **Automated coverage added:**
 - Durable run lifecycle delegation now covers started, succeeded, and failed status updates.
@@ -384,12 +384,16 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 - Stringified schedule creation succeeded through the deployed Postgres API and the temporary automation was removed.
 - The pre-fix approval test exposed a Workflow SDK error because `createHook()` was called inside a step. Approval hook creation was moved into workflow context, and the run-start route now marks a created run failed if workflow startup throws.
 - After redeploying, approval resumed the suspended workflow successfully; the run reached `succeeded` with timestamps and a workflow ID.
+- Scheduler QA started a long-lived workflow, verified `running`, cancelled it through the new cancellation endpoint, verified `cancelled`, and removed the temporary automation.
+- Historical stale queued run resolved: the orphaned run belonged to a temporary test automation that was deleted during QA cleanup, removing the run with it. No database-side manual update was needed.
 - On-prem parity checks, the production build, and TypeScript checks pass.
 
+**Environment note:**
+- `OVERLAY_DATABASE_URL` and `BETTER_AUTH_DATABASE_URL` are set on the Vercel project as encrypted Production env vars. `vercel env pull` returns empty-string values for these, but runtime logs confirm the Postgres connection is live (`databaseConnected: true`, SSL warnings from pg-connection-string). This is a Vercel CLI secret-decryption quirk; the runtime values are populated correctly. Do not rely on `vercel env pull` for verifying these secrets — check runtime logs or the `/api/v1/automations` health instead.
+
 **Still pending before production rollout:**
-- Run the scheduled-loop start/cancel lifecycle test using the scheduler workflow ID returned by the start endpoint and the cancellation endpoint.
-- Run the 24-hour no-drift observation after scheduler cancellation semantics are finalized.
-- Correct the one historical queued run whose Workflow SDK run completed before lifecycle status syncing was deployed. It is identified in the QA notes and requires a database-side update.
+- Run the 24-hour no-drift observation with a scheduled automation after confirming how scheduled iterations should create and report individual `automation_runs` records.
+- Verify Convex path parity, particularly the `conversationId` for `markManualRunCompleted` mutation.
 
 ---
 

@@ -844,6 +844,7 @@ export default defineSchema({
     graph: v.optional(v.any()),
     sourceConversationId: v.optional(v.id('conversations')),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
+    schedulerWorkflowRunId: v.optional(v.string()),
     // Legacy automation fields kept so existing production rows continue to validate.
     conversationId: v.optional(v.id('conversations')),
     failureStreak: v.optional(v.number()),

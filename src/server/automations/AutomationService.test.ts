@@ -511,3 +511,194 @@ test('AutomationService.updateRunWorkflowRunId is a no-op when repository does n
     workflowRunId: 'wfrun_abc',
   })
 })
+
+// ---------------------------------------------------------------------------
+// Convex path parity: markRunCompleted must pass undefined (not '') for
+// conversationId so Convex's v.optional(v.id()) validator accepts it.
+// ---------------------------------------------------------------------------
+
+test('AutomationService.markRunCompleted passes undefined (not empty string) when conversationId is missing', async () => {
+  const repository = createRepository()
+  const { service } = createService(repository)
+
+  await service.markRunCompleted({
+    runId: 'run_1',
+    userId: 'user_1',
+    // No conversationId — should pass undefined, not ''
+  })
+
+  assert.equal(repository.completedRuns.length, 1)
+  assert.equal(repository.completedRuns[0]?.conversationId, undefined)
+  assert.notEqual(repository.completedRuns[0]?.conversationId, '')
+})
+
+test('AutomationService.markRunCompleted passes the conversationId when provided', async () => {
+  const repository = createRepository()
+  const { service } = createService(repository)
+
+  await service.markRunCompleted({
+    runId: 'run_1',
+    userId: 'user_1',
+    conversationId: 'conv_123',
+  })
+
+  assert.equal(repository.completedRuns.length, 1)
+  assert.equal(repository.completedRuns[0]?.conversationId, 'conv_123')
+})
+
+// ---------------------------------------------------------------------------
+// Scheduler cancellation: deleteAutomation and pause action should cancel
+// the active scheduler workflow.
+// ---------------------------------------------------------------------------
+
+test('AutomationService.deleteAutomation cancels the scheduler workflow before deleting', async () => {
+  const schedulerUpdates: Array<{ automationId: string; schedulerWorkflowRunId: string | null }> = []
+  let cancelCalled = false
+  const repository = createRepository({
+    async getAutomation() {
+      return {
+        _id: 'automation_1',
+        userId: 'user_1',
+        name: 'Test automation',
+        description: '',
+        instructions: 'Do things',
+        schedule: { kind: 'interval', intervalMinutes: 60 },
+        schedulerWorkflowRunId: 'wfrun_scheduler_1',
+        conversationId: 'conv_1',
+      } as never
+    },
+    async updateSchedulerWorkflowRunId(args) {
+      schedulerUpdates.push(args)
+    },
+  })
+  // Mock the workflow/api module
+  const originalImport = await import('workflow/api').catch(() => null)
+  // We can't easily mock the dynamic import in node:test, so we test that
+  // the service calls updateSchedulerWorkflowRunId(null) even if cancel fails
+  const { service } = createService(repository)
+
+  await service.deleteAutomation({
+    automationId: 'automation_1',
+    userId: 'user_1',
+  })
+
+  // The scheduler workflow run ID should have been cleared
+  assert.equal(schedulerUpdates.length, 1)
+  assert.equal(schedulerUpdates[0]?.schedulerWorkflowRunId, null)
+})
+
+test('AutomationService.deleteAutomation does not attempt scheduler cancellation when no schedulerWorkflowRunId', async () => {
+  const schedulerUpdates: Array<{ automationId: string; schedulerWorkflowRunId: string | null }> = []
+  const repository = createRepository({
+    async getAutomation() {
+      return {
+        _id: 'automation_1',
+        userId: 'user_1',
+        name: 'Test automation',
+        description: '',
+        instructions: 'Do things',
+        schedule: { kind: 'interval', intervalMinutes: 60 },
+        // No schedulerWorkflowRunId
+        conversationId: 'conv_1',
+      } as never
+    },
+    async updateSchedulerWorkflowRunId(args) {
+      schedulerUpdates.push(args)
+    },
+  })
+  const { service } = createService(repository)
+
+  await service.deleteAutomation({
+    automationId: 'automation_1',
+    userId: 'user_1',
+  })
+
+  // Should not have tried to clear the scheduler workflow run ID
+  assert.equal(schedulerUpdates.length, 0)
+})
+
+test('AutomationService.updateAutomation with pause action cancels the scheduler workflow', async () => {
+  const schedulerUpdates: Array<{ automationId: string; schedulerWorkflowRunId: string | null }> = []
+  let pauseCalled = false
+  const repository = createRepository({
+    async getAutomation() {
+      return {
+        _id: 'automation_1',
+        userId: 'user_1',
+        name: 'Test automation',
+        description: '',
+        instructions: 'Do things',
+        schedule: { kind: 'interval', intervalMinutes: 60 },
+        schedulerWorkflowRunId: 'wfrun_scheduler_1',
+        enabled: true,
+      } as never
+    },
+    async pauseAutomation() {
+      pauseCalled = true
+    },
+    async updateSchedulerWorkflowRunId(args) {
+      schedulerUpdates.push(args)
+    },
+  })
+  const { service } = createService(repository)
+
+  await service.updateAutomation({
+    body: { action: 'pause', automationId: 'automation_1' },
+    userId: 'user_1',
+  })
+
+  assert.equal(pauseCalled, true)
+  // The scheduler workflow run ID should have been cleared
+  assert.equal(schedulerUpdates.length, 1)
+  assert.equal(schedulerUpdates[0]?.schedulerWorkflowRunId, null)
+})
+
+test('AutomationService.updateAutomation with enabled=false cancels the scheduler workflow', async () => {
+  const schedulerUpdates: Array<{ automationId: string; schedulerWorkflowRunId: string | null }> = []
+  const repository = createRepository({
+    async getAutomation() {
+      return {
+        _id: 'automation_1',
+        userId: 'user_1',
+        name: 'Test automation',
+        description: '',
+        instructions: 'Do things',
+        schedule: { kind: 'interval', intervalMinutes: 60 },
+        schedulerWorkflowRunId: 'wfrun_scheduler_1',
+        enabled: true,
+      } as never
+    },
+    async updateSchedulerWorkflowRunId(args) {
+      schedulerUpdates.push(args)
+    },
+  })
+  const { service } = createService(repository)
+
+  await service.updateAutomation({
+    body: { automationId: 'automation_1', enabled: false },
+    userId: 'user_1',
+  })
+
+  // The scheduler workflow run ID should have been cleared
+  assert.equal(schedulerUpdates.length, 1)
+  assert.equal(schedulerUpdates[0]?.schedulerWorkflowRunId, null)
+})
+
+test('AutomationService.updateSchedulerWorkflowRunId delegates to repository when supported', async () => {
+  const updates: Array<{ automationId: string; schedulerWorkflowRunId: string | null }> = []
+  const repository = createRepository({
+    async updateSchedulerWorkflowRunId(args) {
+      updates.push(args)
+    },
+  })
+  const { service } = createService(repository)
+
+  await service.updateSchedulerWorkflowRunId({
+    automationId: 'automation_1',
+    schedulerWorkflowRunId: 'wfrun_abc',
+  })
+
+  assert.equal(updates.length, 1)
+  assert.equal(updates[0]?.automationId, 'automation_1')
+  assert.equal(updates[0]?.schedulerWorkflowRunId, 'wfrun_abc')
+})

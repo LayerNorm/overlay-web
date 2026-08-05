@@ -1891,6 +1891,7 @@ export const automations = pgTable('automations', {
   conversationId: text('conversation_id')
     .references(() => conversations.id, { onDelete: 'set null' }),
   concurrencyPolicy: automationConcurrencyPolicy('concurrency_policy').default('skip').notNull(),
+  schedulerWorkflowRunId: text('scheduler_workflow_run_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),

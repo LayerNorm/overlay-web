@@ -129,4 +129,8 @@ export interface AutomationRepository {
     runId: string
     workflowRunId: string
   }): Promise<void>
+  updateSchedulerWorkflowRunId?(args: {
+    automationId: string
+    schedulerWorkflowRunId: string | null
+  }): Promise<void>
 }

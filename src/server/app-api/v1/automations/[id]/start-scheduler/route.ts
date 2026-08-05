@@ -79,6 +79,15 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
 
     const workflowRun = await start(automationScheduleWorkflow, [workflowInput])
 
+    // Store the scheduler workflow run ID so it can be cancelled when the
+    // automation is deleted or paused.
+    await automationService.updateSchedulerWorkflowRunId({
+      automationId,
+      schedulerWorkflowRunId: workflowRun.runId,
+    }).catch((error) => {
+      logger.warn('[automations/[id]/start-scheduler] Failed to store schedulerWorkflowRunId', error)
+    })
+
     return NextResponse.json({
       ok: true,
       automationId,
