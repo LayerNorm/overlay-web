@@ -622,6 +622,10 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { POST: capability('automations.use') },
   },
   {
+    path: '/api/v1/automations/:id/cancel-scheduler',
+    methods: { POST: capability('automations.use') },
+  },
+  {
     path: '/api/v1/automations/:runId/stream',
     methods: { GET: capability('automations.use') },
   },

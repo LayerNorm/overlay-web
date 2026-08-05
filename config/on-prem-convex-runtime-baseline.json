@@ -53,6 +53,7 @@
     "src/app/api/v1/agents/route.ts",
     "src/app/api/v1/api-keys/route.ts",
     "src/app/api/v1/automations/[id]/approve/route.ts",
+    "src/app/api/v1/automations/[id]/cancel-scheduler/route.ts",
     "src/app/api/v1/automations/[id]/events/route.ts",
     "src/app/api/v1/automations/[id]/run/route.ts",
     "src/app/api/v1/automations/[id]/start-scheduler/route.ts",

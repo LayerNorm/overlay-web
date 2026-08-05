@@ -369,7 +369,7 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 
 ## Post-Step-7 QA + polish
 
-**Status:** Staging QA in progress. Production rollout remains intentionally deferred.
+**Status:** Manual, live visualization, replay, approval, and schedule-normalization QA passed on the Postgres staging deployment. Scheduler lifecycle and historical data cleanup remain pending. Production rollout remains intentionally deferred.
 
 **Automated coverage added:**
 - Durable run lifecycle delegation now covers started, succeeded, and failed status updates.
@@ -383,11 +383,11 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 - Replay event timeline loaded and clicking an event moved the scrubber to the corresponding step and status.
 - Stringified schedule creation succeeded through the deployed Postgres API and the temporary automation was removed.
 - The pre-fix approval test exposed a Workflow SDK error because `createHook()` was called inside a step. Approval hook creation was moved into workflow context, and the run-start route now marks a created run failed if workflow startup throws.
-- On-prem parity checks and TypeScript checks pass.
+- After redeploying, approval resumed the suspended workflow successfully; the run reached `succeeded` with timestamps and a workflow ID.
+- On-prem parity checks, the production build, and TypeScript checks pass.
 
 **Still pending before production rollout:**
-- Redeploy the approval-context fix to the Postgres staging deployment and verify approve/resume end to end.
-- Run the scheduled-loop start/cancel lifecycle test. The current scheduler endpoint starts a long-lived workflow but does not yet expose a user-facing cancellation route or a dedicated scheduler workflow ID field.
+- Run the scheduled-loop start/cancel lifecycle test using the scheduler workflow ID returned by the start endpoint and the cancellation endpoint.
 - Run the 24-hour no-drift observation after scheduler cancellation semantics are finalized.
 - Correct the one historical queued run whose Workflow SDK run completed before lifecycle status syncing was deployed. It is identified in the QA notes and requires a database-side update.
 

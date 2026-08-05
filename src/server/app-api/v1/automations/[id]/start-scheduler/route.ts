@@ -79,18 +79,6 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
 
     const workflowRun = await start(automationScheduleWorkflow, [workflowInput])
 
-    // Store the scheduler workflow run ID on the automation record
-    await automationService.updateRunWorkflowRunId({
-      runId: automationId, // Use automationId as the key for scheduler runs
-      workflowRunId: workflowRun.runId,
-    }).catch(() => {
-      // Non-fatal — the scheduler is running even if we can't store the ID
-      logger.warn('[automations/[id]/start-scheduler] Could not store workflow run ID', {
-        automationId,
-        workflowRunId: workflowRun.runId,
-      })
-    })
-
     return NextResponse.json({
       ok: true,
       automationId,
