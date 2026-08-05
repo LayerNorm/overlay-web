@@ -459,7 +459,7 @@ test('act context service preloads attached documents through the active file re
   assert.match(context.docContextBundle.contextText, /deployment checkpoint is green/)
 })
 
-test('act message persistence swallows user-message persistence failures', async () => {
+test('act message persistence surfaces user-message persistence failures', async () => {
   let addMessageCalls = 0
   const generatingMessages = new ActGeneratingMessageService({
     repository: repository(),
@@ -474,16 +474,19 @@ test('act message persistence swallows user-message persistence failures', async
     }),
   })
 
-  await service.persistUserMessage({
-    conversationId: 'conversation_1' as Id<'conversations'>,
-    latestUserContent: 'hello',
-    latestUserParts: [{ type: 'text', text: 'hello' }],
-    latestUserText: 'hello',
-    modelId: 'openrouter/free',
-    skip: false,
-    turnId: 'turn_1',
-    userId: 'user_1',
-  })
+  await assert.rejects(
+    service.persistUserMessage({
+      conversationId: 'conversation_1' as Id<'conversations'>,
+      latestUserContent: 'hello',
+      latestUserParts: [{ type: 'text', text: 'hello' }],
+      latestUserText: 'hello',
+      modelId: 'openrouter/free',
+      skip: false,
+      turnId: 'turn_1',
+      userId: 'user_1',
+    }),
+    /write failed/,
+  )
 
   assert.equal(addMessageCalls, 1)
 })

@@ -120,24 +120,20 @@ export class ActMessagePersistenceService {
     attachmentNames?: string[]
   }): Promise<void> {
     if (args.skip || !args.conversationId || !args.latestUserContent) return
-    try {
-      await this.deps.repository.addMessage({
-        conversationId: args.conversationId,
-        userId: args.userId,
-        turnId: args.turnId,
-        role: 'user',
-        mode: 'act',
-        content: args.latestUserText || args.latestUserContent,
-        contentType: 'text',
-        parts: sanitizeMessagePartsForPersistence(args.latestUserParts, {
-          attachmentNames: args.attachmentNames,
-        }) as Array<Record<string, unknown>>,
-        modelId: args.modelId,
-        skipMemoryExtraction: args.skipMemoryExtraction,
-      })
-    } catch (err) {
-      logger.error('[conversations/act] Failed to save user message:', summarizeErrorForLog(err))
-    }
+    await this.deps.repository.addMessage({
+      conversationId: args.conversationId,
+      userId: args.userId,
+      turnId: args.turnId,
+      role: 'user',
+      mode: 'act',
+      content: args.latestUserText || args.latestUserContent,
+      contentType: 'text',
+      parts: sanitizeMessagePartsForPersistence(args.latestUserParts, {
+        attachmentNames: args.attachmentNames,
+      }) as Array<Record<string, unknown>>,
+      modelId: args.modelId,
+      skipMemoryExtraction: args.skipMemoryExtraction,
+    })
   }
 
   async persistAssistantFinish(args: {

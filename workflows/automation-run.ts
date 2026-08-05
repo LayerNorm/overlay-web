@@ -35,6 +35,7 @@ export type AutomationRunWorkflowInput = {
   baseUrl: string
   serviceAuthHeader: string
   serviceToken: string
+  workspaceId?: string
 }
 
 export async function automationRunWorkflow(input: AutomationRunWorkflowInput) {
@@ -148,6 +149,7 @@ async function executeActTurn(input: AutomationRunWorkflowInput & {
       'content-type': 'application/json',
       'Idempotency-Key': `automation:${input.runId}:${input.turnId}`,
       [input.serviceAuthHeader]: input.serviceToken,
+      ...(input.workspaceId ? { 'x-overlay-workspace-id': input.workspaceId } : {}),
     },
     body: JSON.stringify({
       messages: [{

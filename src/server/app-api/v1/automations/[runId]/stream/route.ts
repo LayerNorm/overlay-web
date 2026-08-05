@@ -37,11 +37,23 @@ export async function GET(_request: NextRequest, context?: AppApiRouteContext) {
       }
     }
 
+    let error: string | undefined
+    if (status === 'failed') {
+      try {
+        // returnValue may throw or contain error info when the run failed
+        const returnValue = await run.returnValue
+        error = typeof returnValue === 'string' ? returnValue : JSON.stringify(returnValue)
+      } catch (e) {
+        error = e instanceof Error ? e.message : 'Workflow failed'
+      }
+    }
+
     return NextResponse.json({
       workflowRunId,
       status,
       workflowName,
       result,
+      error,
     })
   } catch (error) {
     logger.error('[automations/[runId]/stream]', error)

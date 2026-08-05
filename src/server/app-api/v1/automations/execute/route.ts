@@ -58,8 +58,12 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
       return NextResponse.json({ conversationId: body.conversationId })
     }
 
+    const overlayContext = getOverlayServerContext()
+    // Resolve the user's active workspace so the conversation is bound to
+    // the same workspace that the BFF will resolve for the act route call.
+    const workspace = await overlayContext.workspaceService.resolveActiveWorkspace(body.userId)
     const title = `Automation: ${body.name ?? 'Untitled'}`
-    const conversationId = await getOverlayServerContext()
+    const conversationId = await overlayContext
       .appData.repositories.conversations.createConversation({
         userId: body.userId,
         title,
@@ -67,6 +71,7 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
         askModelIds: [body.modelId || DEFAULT_MODEL_ID],
         actModelId: body.modelId || DEFAULT_MODEL_ID,
         lastMode: 'act',
+        workspaceId: workspace.workspace.id,
       })
 
     if (!conversationId) {

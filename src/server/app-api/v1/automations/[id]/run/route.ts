@@ -81,6 +81,11 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
     const serviceToken = await buildServiceAuthToken({ userId, method: 'POST', path })
     const serviceAuthHeader = getServiceAuthHeaderName()
 
+    // Resolve the user's active workspace so the workflow can pass it
+    // to the act route via the x-overlay-workspace-id header.
+    const { getOverlayServerContext } = await import('@/server/bootstrap')
+    const workspace = await getOverlayServerContext().workspaceService.resolveActiveWorkspace(userId)
+
     const turnId = `automation-${runId}-${Date.now()}`
 
     const workflowInput: AutomationRunWorkflowInput = {
@@ -102,6 +107,7 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
       baseUrl,
       serviceAuthHeader,
       serviceToken,
+      workspaceId: workspace.workspace.id,
     }
 
     const workflowRun = await start(automationRunWorkflow, [workflowInput])

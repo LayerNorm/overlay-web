@@ -92,3 +92,4 @@ agent/memory/*
 .almanac/.capture-*
 .almanac/.bootstrap-*
 .almanac/.ingest-*
+/.swc

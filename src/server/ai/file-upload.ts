@@ -89,19 +89,29 @@ function resolveProviderFilesApi(provider: string): ReturnType<ReturnType<typeof
 
 /**
  * Processes UIMessage file parts, uploading eligible files to the model's provider
- * and replacing inline URLs with provider references. Mutates messages in place.
+ * and adding provider references. Mutates messages in place.
  *
  * Only processes user messages with file parts that have URLs (data: or https:).
  * Files already using provider references are left as-is.
  */
 export async function uploadFilePartsForModel(
-  messages: Array<{ role: string; parts?: Array<{ type: string; url?: string; mediaType?: string; fileName?: string }> }>,
+  messages: Array<{
+    role: string
+    parts?: Array<{
+      type: string
+      url?: string
+      mediaType?: string
+      fileName?: string
+      filename?: string
+      providerReference?: ProviderReference
+    }>
+  }>,
   modelId: string,
 ): Promise<void> {
   for (const message of messages) {
     if (message.role !== 'user' || !message.parts) continue
     for (const part of message.parts) {
-      if (part.type !== 'file' || !part.url || !part.mediaType) continue
+      if (part.type !== 'file' || !part.url || !part.mediaType || part.providerReference) continue
       // Skip data: URLs that are small (< 100KB) — inline is cheaper for small files.
       if (part.url.startsWith('data:') && part.url.length < 100_000) continue
 
@@ -109,12 +119,12 @@ export async function uploadFilePartsForModel(
         modelId,
         url: part.url,
         mediaType: part.mediaType,
-        fileName: part.fileName,
+        fileName: part.fileName ?? part.filename,
       })
       if (result) {
-        // Store the provider reference as a JSON string in the URL field.
-        // The AI SDK will parse this when converting to model messages.
-        part.url = JSON.stringify(result.providerReference)
+        // AI SDK v7 reads provider references from this dedicated field.
+        // Keep the original URL as a fallback for providers that do not use it.
+        part.providerReference = result.providerReference
       }
     }
   }

@@ -472,7 +472,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       !mayNeedMediaGenerationTools(latestUserText) &&
       resolvedMediaToolIntent == null
 
-	    const modelMessages = await convertToModelMessages(messagesForModel)
 	    if (_ttftDebug) _tPrep = performance.now()
 	    // Declared before the primary LLM is chosen so the OpenRouter fetch callback can set it during calls.
 	    let streamedRoutedModelId: string | undefined
@@ -563,9 +562,21 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       : rawReasoning
 
     // v7: Upload large file attachments to the provider's file storage and
-    // replace inline URLs with provider references. Falls back to inline
-    // when the provider doesn't support file uploads or no API key is set.
-    await uploadFilePartsForModel(uiMessages as Array<{ role: string; parts?: Array<{ type: string; url?: string; mediaType?: string; fileName?: string }> }>, attemptModelId)
+    // add provider references. Falls back to inline when the provider doesn't
+    // support file uploads or no API key is set.
+    await uploadFilePartsForModel(uiMessages as Array<{
+      role: string
+      parts?: Array<{
+        type: string
+        url?: string
+        mediaType?: string
+        fileName?: string
+        filename?: string
+        providerReference?: Record<string, string>
+      }>
+    }>, attemptModelId)
+    // Convert only after uploads so AI SDK v7 sees providerReference on file parts.
+    const modelMessages = await convertToModelMessages(messagesForModel)
 
     const agent = new ToolLoopAgent({
       model: params.languageModel,
@@ -929,7 +940,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
     }
 
-    const estimatedInputTokens = Math.ceil(JSON.stringify(modelMessages).length / 4) + 2_000
+    const estimatedInputTokens = Math.ceil(JSON.stringify(messagesForModel).length / 4) + 2_000
     const maxOutputTokens = 8_192
     const reserveBudgetForAttempt = async (attemptModelId: string) => {
       streamedRoutedModelId = undefined
