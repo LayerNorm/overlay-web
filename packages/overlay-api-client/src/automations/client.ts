@@ -79,6 +79,22 @@ export class AutomationsClient {
     return this.http.request('/api/v1/automations/run', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
+  /** Trigger a durable run via `POST /api/v1/automations/{id}/run`. */
+  runDurable(automationId: string, init?: MutationRequestInit) {
+    return this.http.json<AutomationRunResponse>(
+      `/api/v1/automations/${encodeURIComponent(automationId)}/run`,
+      this.http.jsonRequest({}, { ...init, method: 'POST' }),
+    )
+  }
+
+  /** Same as `runDurable` but returns the raw Response for error handling. */
+  runDurableResponse(automationId: string, init?: MutationRequestInit) {
+    return this.http.request(
+      `/api/v1/automations/${encodeURIComponent(automationId)}/run`,
+      this.http.jsonRequest({}, { ...init, method: 'POST' }),
+    )
+  }
+
   test(body: AutomationTestRequest, init?: RequestInit) {
     return this.http.json<AutomationTestResponse>(
       '/api/v1/automations/test',

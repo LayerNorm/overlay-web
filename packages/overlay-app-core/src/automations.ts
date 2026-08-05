@@ -101,6 +101,10 @@ export interface AutomationRunResponse {
   conversationId?: string
   error?: string
   message?: string
+  /** Present when the run was triggered via the durable workflow path. */
+  workflowRunId?: string
+  durable?: boolean
+  runId?: string
 }
 
 export interface AutomationTestRequest {

@@ -19,8 +19,20 @@ import { automationScheduleWorkflow, type AutomationScheduleWorkflowInput, build
 // ---------------------------------------------------------------------------
 
 export function isDurableAutomationsEnabled(): boolean {
+  // Env var override takes precedence (allows opt-in/out per deployment)
   const raw = process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
-  return raw === '1' || raw === 'true'
+  if (raw === '1' || raw === 'true') return true
+  if (raw === '0' || raw === 'false') return false
+  // Fall back to the app-shell feature flag config
+  try {
+    const { default: overlayAppConfig } = require('@/overlay.config')
+    const { resolveOverlayAppShellConfig } = require('@overlay/app-core')
+    const shell = resolveOverlayAppShellConfig(overlayAppConfig, {})
+    const flag = shell.featureFlags.find((f: { id: string; enabled: boolean }) => f.id === 'durableAutomations')
+    return flag?.enabled ?? false
+  } catch {
+    return false
+  }
 }
 
 export async function POST(request: NextRequest, context?: AppApiRouteContext) {

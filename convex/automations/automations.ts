@@ -623,6 +623,25 @@ export const markManualRunFailed = mutation({
   },
 })
 
+export const updateRunWorkflowRunIdByServer = mutation({
+  args: {
+    runId: v.id('automationRuns'),
+    serverSecret: v.string(),
+    workflowRunId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const run = await ctx.db.get(args.runId)
+    if (!run) return null
+    await ctx.db.patch(args.runId, {
+      workflowRunId: args.workflowRunId,
+      updatedAt: Date.now(),
+    })
+    return null
+  },
+})
+
 async function hasQueuedOrRunningRun(ctx: MutationCtx, automationId: Id<'automations'>, now: number) {
   const queued = await ctx.db
     .query('automationRuns')

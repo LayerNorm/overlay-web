@@ -65,11 +65,17 @@ export function AutomationEditorPanel({
   const [testMessage, setTestMessage] = useState<string | null>(null)
   const [runs, setRuns] = useState<AutomationRunSummary[]>([])
   const [runsBusy, setRunsBusy] = useState(false)
+  const [liveWorkflowRunId, setLiveWorkflowRunId] = useState<string | null>(null)
   const timeZoneOptions = useMemo(() => supportedTimeZoneOptions(), [])
   const { capabilities } = useOverlayCapabilities()
   const reactflowCanvasEnabled = useMemo(() => {
     const appShell = resolveOverlayAppShellConfig(overlayAppConfig, { capabilities })
     const flag = appShell.featureFlags.find((f) => f.id === 'reactflowCanvas')
+    return flag?.enabled ?? false
+  }, [capabilities])
+  const durableAutomationsEnabled = useMemo(() => {
+    const appShell = resolveOverlayAppShellConfig(overlayAppConfig, { capabilities })
+    const flag = appShell.featureFlags.find((f) => f.id === 'durableAutomations')
     return flag?.enabled ?? false
   }, [capabilities])
   const modelOptions = useMemo(
@@ -90,6 +96,7 @@ export function AutomationEditorPanel({
     setSaveState('idle')
     setTestState('idle')
     setTestMessage(null)
+    setLiveWorkflowRunId(null)
   }, [automation])
 
   useEffect(() => {
@@ -130,18 +137,48 @@ export function AutomationEditorPanel({
     setTestState('running')
     setTestMessage(null)
     try {
-      const res = await overlayAppClient.automations.testResponse({ automationId: automation._id })
-      const data = await res.json().catch(() => ({})) as {
-        conversationId?: string
-        message?: string
-        error?: string
+      if (durableAutomationsEnabled) {
+        // Durable path: trigger via the per-automation run endpoint, capture
+        // the workflowRunId for live visualization, then open the chat.
+        const res = await overlayAppClient.automations.runDurableResponse(automation._id)
+        const data = await res.json().catch(() => ({})) as {
+          workflowRunId?: string
+          runId?: string
+          conversationId?: string
+          error?: string
+          message?: string
+        }
+        if (!res.ok) {
+          throw new Error(data.message || data.error || 'Failed to test automation')
+        }
+        if (data.workflowRunId) {
+          setLiveWorkflowRunId(data.workflowRunId)
+        }
+        setTestState('success')
+        setTestMessage('Durable run started. Live status available in Run Visualization below.')
+        // Refresh runs list so the new run appears in the replay dropdown
+        void loadRuns()
+        // Don't navigate away immediately — let the user watch live status.
+        // The user can click "Open" in run history to view the chat.
+        if (data.conversationId) {
+          // Optionally navigate after a short delay to let the user see live status
+          window.setTimeout(() => onTested(data.conversationId!), 3000)
+        }
+      } else {
+        // Legacy path: non-durable test endpoint
+        const res = await overlayAppClient.automations.testResponse({ automationId: automation._id })
+        const data = await res.json().catch(() => ({})) as {
+          conversationId?: string
+          message?: string
+          error?: string
+        }
+        if (!res.ok || !data.conversationId) {
+          throw new Error(data.message || data.error || 'Failed to test automation')
+        }
+        setTestState('success')
+        setTestMessage('Test run completed. Opening the automation chat.')
+        onTested(data.conversationId)
       }
-      if (!res.ok || !data.conversationId) {
-        throw new Error(data.message || data.error || 'Failed to test automation')
-      }
-      setTestState('success')
-      setTestMessage('Test run completed. Opening the automation chat.')
-      onTested(data.conversationId)
     } catch (error) {
       setTestState('error')
       setTestMessage(error instanceof Error ? error.message : 'Failed to test automation')
@@ -164,6 +201,7 @@ export function AutomationEditorPanel({
   }
 
   return (
+    <div className="h-full overflow-y-auto">
     <div className="space-y-8 pb-8">
       <AutomationEditorForm
       name={draft.name}
@@ -220,6 +258,7 @@ export function AutomationEditorPanel({
           <AutomationRunViewer
             graph={draft.graph}
             runs={runs}
+            workflowRunId={liveWorkflowRunId}
           />
         </section>
       )}
@@ -292,6 +331,7 @@ export function AutomationEditorPanel({
           ))}
         </div>
       </section>
+    </div>
     </div>
   )
 }

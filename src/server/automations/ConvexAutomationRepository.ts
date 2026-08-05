@@ -247,4 +247,15 @@ export class ConvexAutomationRepository implements AutomationRepository {
       serverSecret: this.serverSecret,
     })
   }
+
+  async updateRunWorkflowRunId(args: {
+    runId: string
+    workflowRunId: string
+  }): Promise<void> {
+    await convex.mutation('automations/automations:updateRunWorkflowRunIdByServer', {
+      runId: args.runId as Id<'automationRuns'>,
+      serverSecret: this.serverSecret,
+      workflowRunId: args.workflowRunId,
+    }, { throwOnError: true })
+  }
 }
