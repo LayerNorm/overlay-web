@@ -6,7 +6,6 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { automationService } from '@/server/automations/http'
 import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/server/auth/service-auth'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
-import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 import { logger } from '@/server/observability/logger'
 import { automationRunWorkflow, type AutomationRunWorkflowInput } from '@/workflows/automation-run'
 
@@ -15,13 +14,10 @@ import { automationRunWorkflow, type AutomationRunWorkflowInput } from '@/workfl
 //
 // Triggers a durable automation run via the Vercel Workflow SDK.
 // When the `durableAutomations` feature flag is disabled, falls back to the
-// existing coordinator path (POST /api/v1/automations/run).
+// existing test endpoint which handles the full run lifecycle.
 // ---------------------------------------------------------------------------
 
 function isDurableAutomationsEnabled(): boolean {
-  const capabilities = getOverlayCapabilitiesSync()
-  // The feature flag is checked via the app shell registry. For now, we use
-  // an env var override since the flag is not yet wired into capabilities.
   return process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS === '1' ||
     process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS === 'true'
 }
@@ -39,19 +35,7 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
     }
     const userId = context.auth.userId
 
-    // Create a manual run record
-    const runId = await automationService.createManualRunForDurableExecution({
-      automationId,
-      userId,
-    })
-    if (!runId) {
-      return NextResponse.json(
-        { error: 'Failed to create automation run' },
-        { status: 500 },
-      )
-    }
-
-    // Get automation details for the workflow input
+    // Get automation details first (needed for both paths)
     const automation = await automationService.getAutomationForExecution({
       automationId,
       userId,
@@ -64,22 +48,33 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
     }
 
     if (!isDurableAutomationsEnabled()) {
-      // Fallback: use the existing executor path
+      // Fallback: use the existing test endpoint which handles the full
+      // lifecycle (create run → mark started → execute → mark completed).
       const baseUrl = getInternalApiBaseUrl(request)
-      const result = await automationService.runAutomation({
-        runId,
-        serviceUserId: userId,
+      const result = await automationService.testAutomation({
+        automationId,
+        userId,
         baseUrl,
       })
       return NextResponse.json({
         ok: true,
-        runId,
-        conversationId: result.conversationId,
         durable: false,
+        ...result,
       })
     }
 
-    // Durable path: start the workflow
+    // Durable path: create a manual run, then start the workflow
+    const runId = await automationService.createManualRunForDurableExecution({
+      automationId,
+      userId,
+    })
+    if (!runId) {
+      return NextResponse.json(
+        { error: 'Failed to create automation run' },
+        { status: 500 },
+      )
+    }
+
     const baseUrl = getInternalApiBaseUrl(request)
     const path = '/api/v1/automations/execute'
     const serviceToken = await buildServiceAuthToken({ userId, method: 'POST', path })
@@ -91,12 +86,16 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
       runId,
       userId,
       automationId,
-      name: automation.name || automation.title || 'Untitled automation',
-      description: automation.description || '',
-      instructions: automation.instructions || automation.instructionsMarkdown || '',
-      projectId: automation.projectId,
-      modelId: automation.modelId,
-      conversationId: automation.conversationId || automation.sourceConversationId,
+      name: (automation as { name?: string; title?: string }).name ||
+        (automation as { title?: string }).title ||
+        'Untitled automation',
+      description: (automation as { description?: string }).description || '',
+      instructions: (automation as { instructions?: string; instructionsMarkdown?: string }).instructions ||
+        (automation as { instructionsMarkdown?: string }).instructionsMarkdown || '',
+      projectId: (automation as { projectId?: string }).projectId,
+      modelId: (automation as { modelId?: string }).modelId,
+      conversationId: (automation as { conversationId?: string; sourceConversationId?: string }).conversationId ||
+        (automation as { sourceConversationId?: string }).sourceConversationId,
       turnId,
       scheduledFor: Date.now(),
       baseUrl,
