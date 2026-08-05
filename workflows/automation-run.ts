@@ -35,6 +35,8 @@ export type AutomationRunWorkflowInput = {
   baseUrl: string
   serviceAuthHeader: string
   serviceToken: string
+  actServiceToken: string
+  finalizeServiceToken: string
   workspaceId?: string
 }
 
@@ -51,7 +53,7 @@ export async function automationRunWorkflow(input: AutomationRunWorkflowInput) {
   await finalizeRun({
     baseUrl: input.baseUrl,
     serviceAuthHeader: input.serviceAuthHeader,
-    serviceToken: input.serviceToken,
+    finalizeServiceToken: input.finalizeServiceToken,
     conversationId: prepared.conversationId,
     userId: input.userId,
     turnId: input.turnId,
@@ -148,7 +150,7 @@ async function executeActTurn(input: AutomationRunWorkflowInput & {
     headers: {
       'content-type': 'application/json',
       'Idempotency-Key': `automation:${input.runId}:${input.turnId}`,
-      [input.serviceAuthHeader]: input.serviceToken,
+      [input.serviceAuthHeader]: input.actServiceToken,
       ...(input.workspaceId ? { 'x-overlay-workspace-id': input.workspaceId } : {}),
     },
     body: JSON.stringify({
@@ -203,7 +205,7 @@ async function executeActTurn(input: AutomationRunWorkflowInput & {
 async function finalizeRun(input: {
   baseUrl: string
   serviceAuthHeader: string
-  serviceToken: string
+  finalizeServiceToken: string
   conversationId: string
   userId: string
   turnId: string
@@ -218,7 +220,7 @@ async function finalizeRun(input: {
       method: 'PATCH',
       headers: {
         'content-type': 'application/json',
-        [input.serviceAuthHeader]: input.serviceToken,
+        [input.serviceAuthHeader]: input.finalizeServiceToken,
       },
       body: JSON.stringify({
         conversationId: input.conversationId,

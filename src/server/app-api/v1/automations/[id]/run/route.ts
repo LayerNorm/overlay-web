@@ -77,8 +77,11 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
     }
 
     const baseUrl = getInternalApiBaseUrl(request)
-    const path = '/api/v1/automations/execute'
-    const serviceToken = await buildServiceAuthToken({ userId, method: 'POST', path })
+    const executePath = '/api/v1/automations/execute'
+    const actPath = '/api/v1/conversations/act'
+    const serviceToken = await buildServiceAuthToken({ userId, method: 'POST', path: executePath })
+    const actServiceToken = await buildServiceAuthToken({ userId, method: 'POST', path: actPath })
+    const finalizeServiceToken = await buildServiceAuthToken({ userId, method: 'PATCH', path: executePath })
     const serviceAuthHeader = getServiceAuthHeaderName()
 
     // Resolve the user's active workspace so the workflow can pass it
@@ -107,6 +110,8 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
       baseUrl,
       serviceAuthHeader,
       serviceToken,
+      actServiceToken,
+      finalizeServiceToken,
       workspaceId: workspace.workspace.id,
     }
 
