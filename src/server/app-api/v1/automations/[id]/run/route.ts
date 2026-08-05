@@ -18,8 +18,9 @@ import { automationRunWorkflow, type AutomationRunWorkflowInput } from '@/workfl
 // ---------------------------------------------------------------------------
 
 function isDurableAutomationsEnabled(): boolean {
-  return process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS === '1' ||
-    process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS === 'true'
+  const raw = process.env.OVERLAY_FEATURE_DURABLE_AUTOMATIONS
+  console.log('[automations/run] OVERLAY_FEATURE_DURABLE_AUTOMATIONS raw:', JSON.stringify(raw))
+  return raw === '1' || raw === 'true'
 }
 
 export async function POST(request: NextRequest, context?: AppApiRouteContext) {
