@@ -86,6 +86,15 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
 }> {
   const title = `Automation: ${input.name}`
   const overlayContext = getOverlayServerContext()
+
+  // Resolve the user's active workspace so we can pass it to both
+  // createConversation and the act route. Without this, Convex's
+  // createConversation binds the conversation to the user's personal
+  // workspace, while the BFF's resolveActiveWorkspace may resolve a
+  // different active workspace — causing assertResourceWorkspace to fail.
+  const workspace = await overlayContext.workspaceService.resolveActiveWorkspace(input.userId)
+  const workspaceId = workspace.workspace.id
+
   const conversationId = input.conversationId ?? await overlayContext
     .appData.repositories.conversations.createConversation({
       userId: input.userId,
@@ -94,22 +103,11 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
       askModelIds: [input.modelId || DEFAULT_MODEL_ID],
       actModelId: input.modelId || DEFAULT_MODEL_ID,
       lastMode: 'act',
+      workspaceId,
     })
 
   if (!conversationId) {
     throw new Error('Failed to create automation conversation')
-  }
-
-  // Bind the conversation to the user's active workspace so the BFF's
-  // workspace resource authorization allows the subsequent act route call.
-  if (!input.conversationId) {
-    const workspace = await overlayContext.workspaceService.resolveActiveWorkspace(input.userId)
-    await overlayContext.workspaceService.bindResource({
-      actorUserId: input.userId,
-      workspaceId: workspace.workspace.id,
-      resourceType: 'conversation',
-      resourceId: conversationId,
-    })
   }
 
   const message: UIMessage = {
@@ -131,6 +129,7 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
         'content-type': 'application/json',
         'Idempotency-Key': `automation:${input.runId}:${input.turnId}`,
         [getServiceAuthHeaderName()]: serviceToken,
+        'x-overlay-workspace-id': workspaceId,
       },
       body: JSON.stringify({
         messages: [message],
