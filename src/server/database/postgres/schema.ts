@@ -17,7 +17,7 @@ import {
   unique,
   vector,
 } from 'drizzle-orm/pg-core'
-import type { AutomationSchedule } from '@overlay/app-core'
+import type { AutomationGraph, AutomationSchedule } from '@overlay/app-core'
 
 export const overlayAppDataMetadata = pgTable('overlay_app_data_metadata', {
   key: text('key').primaryKey(),
@@ -1885,6 +1885,7 @@ export const automations = pgTable('automations', {
   lastError: text('last_error'),
   modelId: text('model_id'),
   graphSource: text('graph_source'),
+  graph: jsonb('graph').$type<AutomationGraph>(),
   sourceConversationId: text('source_conversation_id')
     .references(() => conversations.id, { onDelete: 'set null' }),
   conversationId: text('conversation_id')

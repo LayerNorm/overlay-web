@@ -279,6 +279,7 @@
     "@ai-sdk/openai-compatible": "^3.0.15",
     "@ai-sdk/otel": "^1.0.51",
     "@ai-sdk/react": "^4.0.41",
+    "@ai-sdk/workflow": "^1.0.52",
     "@ai-sdk/xai": "^4.0.27",
     "@aws-sdk/s3-request-presigner": "^3.1019.0",
     "@better-auth/sso": "^1.6.23",
@@ -373,6 +374,7 @@
     "remark-math": "^6.0.0",
     "server-only": "^0.0.1",
     "stripe": "^20.3.1",
+    "workflow": "^4.8.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

@@ -10,6 +10,7 @@ import type {
   AutomationRepository,
   AutomationSchedule,
 } from './AutomationRepository'
+import type { AutomationSummary } from '@overlay/app-core'
 import {
   AutomationEntitlementError,
   type AutomationEntitlementPolicy,
@@ -76,6 +77,7 @@ type CreateAutomationBody = {
   projectId?: string
   modelId?: string
   graphSource?: string
+  graph?: AutomationSummary['graph']
   sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
 }
@@ -95,6 +97,7 @@ type UpdateAutomationBody = {
   projectId?: string
   modelId?: string
   graphSource?: string
+  graph?: AutomationSummary['graph']
   sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
 }
@@ -298,6 +301,7 @@ export class AutomationService {
       projectId: body.projectId,
       modelId: body.modelId,
       graphSource: body.graphSource,
+      graph: body.graph,
       sourceConversationId: body.sourceConversationId,
       concurrencyPolicy: body.concurrencyPolicy,
     })
@@ -366,6 +370,7 @@ export class AutomationService {
         projectId: body.projectId,
         modelId: body.modelId,
         graphSource: body.graphSource,
+        graph: body.graph,
         sourceConversationId: body.sourceConversationId,
         concurrencyPolicy: body.concurrencyPolicy,
       })

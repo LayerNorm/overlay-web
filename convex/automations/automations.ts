@@ -299,6 +299,7 @@ export const create = mutation({
     projectId: v.optional(v.string()),
     modelId: v.optional(v.string()),
     graphSource: v.optional(v.string()),
+    graph: v.optional(v.any()),
     sourceConversationId: v.optional(v.id('conversations')),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
   },
@@ -332,6 +333,7 @@ export const create = mutation({
       projectId: args.projectId,
       modelId: args.modelId?.trim() || undefined,
       graphSource: args.graphSource?.trim() || undefined,
+      graph: args.graph ?? undefined,
       sourceConversationId: args.sourceConversationId,
       concurrencyPolicy: args.concurrencyPolicy ?? 'skip',
       createdAt: now,
@@ -355,6 +357,7 @@ export const update = mutation({
     projectId: v.optional(v.string()),
     modelId: v.optional(v.string()),
     graphSource: v.optional(v.string()),
+    graph: v.optional(v.any()),
     sourceConversationId: v.optional(v.id('conversations')),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
   },
@@ -392,6 +395,7 @@ export const update = mutation({
     if (updates.projectId !== undefined) patch.projectId = updates.projectId || undefined
     if (updates.modelId !== undefined) patch.modelId = updates.modelId.trim() || undefined
     if (updates.graphSource !== undefined) patch.graphSource = updates.graphSource.trim() || undefined
+    if (updates.graph !== undefined) patch.graph = updates.graph ?? undefined
     if (updates.sourceConversationId !== undefined) patch.sourceConversationId = updates.sourceConversationId
     if (updates.concurrencyPolicy !== undefined) patch.concurrencyPolicy = updates.concurrencyPolicy
     if (updates.schedule !== undefined) {

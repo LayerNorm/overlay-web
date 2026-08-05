@@ -44,6 +44,7 @@ The `docs/develop/` directory contains living documentation that coding agents *
 | `docs/develop/api-source-of-truth.mdx` | Any change to where API logic lives (Convex vs BFF vs `@overlay/api-client`), or the contract between layers. |
 | `docs/develop/customization.mdx` | Any change to theming, settings panels, or workspace configuration. |
 | `docs/develop/local-integrations.mdx` | Any change to local integration setup, connector configuration, or OAuth flow. |
+| `docs/develop/automation-durability-and-visual-editor.md` | Any change to the automation graph model, Workflow SDK integration, ReactFlow canvas, or automation run durability. |
 
 **Rules:**
 1. Read the relevant doc(s) before starting work in a new area.

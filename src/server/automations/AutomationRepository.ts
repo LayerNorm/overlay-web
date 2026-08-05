@@ -34,6 +34,7 @@ export type CreateAutomationInput = {
   projectId?: string
   modelId?: string
   graphSource?: string
+  graph?: AutomationSummary['graph']
   sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
 }

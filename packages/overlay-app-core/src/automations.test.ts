@@ -3,17 +3,23 @@ import test from 'node:test'
 import {
   applyAutomationRename,
   automationEditorDraftFromDetail,
+  automationGraphFromGraphSource,
+  automationGraphFromInstructions,
   automationHref,
   automationStatus,
   buildAutomationSchedule,
   buildAutomationUpdateRequest,
+  defaultAutomationGraph,
   defaultAutomationGraphSource,
   extractAutomationInstructionSteps,
   getAutomationDisplayName,
+  graphSourceFromAutomationGraph,
   normalizeAutomationDetailTab,
   parseAutomationTime,
   removeAutomationById,
+  resolveAutomationGraph,
 } from './automations'
+import { AUTOMATION_GRAPH_VERSION } from './contracts'
 
 test('automation sidebar helpers preserve labels, routes, and optimistic state', () => {
   const automations = [
@@ -120,4 +126,162 @@ test('automation update request keeps endpoint body shape typed', () => {
   assert.equal(request.instructions, '1. First\n2. Second')
   assert.deepEqual(request.schedule, { kind: 'daily', hourUTC: 10, minuteUTC: 0 })
   assert.match(request.graphSource ?? '', /step2/)
+  assert.ok(request.graph, 'update request should include structured graph')
+  assert.equal(request.graph!.version, AUTOMATION_GRAPH_VERSION)
+})
+
+// ---------------------------------------------------------------------------
+// AutomationGraph model tests
+// ---------------------------------------------------------------------------
+
+test('automationGraphFromInstructions builds a linear chain with an output node', () => {
+  const graph = automationGraphFromInstructions({
+    instructions: '1. Check the inbox\n2. Summarize urgent mail',
+  })
+  assert.ok(graph, 'should produce a graph')
+  assert.equal(graph!.version, AUTOMATION_GRAPH_VERSION)
+  assert.equal(graph!.nodes.length, 3, 'two prompt nodes + one output node')
+  assert.equal(graph!.nodes[0]!.kind, 'prompt')
+  assert.equal(graph!.nodes[0]!.id, 'step1')
+  assert.equal(graph!.nodes[1]!.kind, 'prompt')
+  assert.equal(graph!.nodes[1]!.id, 'step2')
+  assert.equal(graph!.nodes[2]!.kind, 'output')
+  assert.equal(graph!.nodes[2]!.id, 'output')
+  assert.equal(graph!.edges.length, 2)
+  assert.deepEqual(graph!.edges[0], { from: 'step1', to: 'step2' })
+  assert.deepEqual(graph!.edges[1], { from: 'step2', to: 'output' })
+})
+
+test('automationGraphFromInstructions returns null for empty instructions', () => {
+  assert.equal(automationGraphFromInstructions({ instructions: '' }), null)
+  assert.equal(automationGraphFromInstructions({ instructions: '   \n  ' }), null)
+})
+
+test('graphSourceFromAutomationGraph produces valid Mermaid output', () => {
+  const graph = automationGraphFromInstructions({
+    instructions: '1. First step\n2. Second step',
+  })!
+  const source = graphSourceFromAutomationGraph(graph)
+  assert.match(source, /^flowchart TD/)
+  assert.match(source, /step1\["1\. First step"\]/)
+  assert.match(source, /step2\["2\. Second step"\]/)
+  assert.match(source, /output\["Write result to automation chat"\]/)
+  assert.match(source, /step1 --> step2/)
+  assert.match(source, /step2 --> output/)
+})
+
+test('graphSourceFromAutomationGraph returns empty string for empty graph', () => {
+  assert.equal(graphSourceFromAutomationGraph({ version: 1, nodes: [], edges: [] }), '')
+})
+
+test('automationGraphFromGraphSource migrates legacy Mermaid to structured graph', () => {
+  const legacySource = [
+    'flowchart TD',
+    '  trigger["daily trigger"] --> instructions["My automation"]',
+    '  instructions --> output["Write result"]',
+  ].join('\n')
+  const graph = automationGraphFromGraphSource(legacySource)
+  assert.ok(graph, 'should migrate legacy graphSource')
+  assert.equal(graph!.version, AUTOMATION_GRAPH_VERSION)
+  const triggerNode = graph!.nodes.find((n) => n.id === 'trigger')
+  assert.ok(triggerNode, 'should have trigger node')
+  assert.equal(triggerNode!.kind, 'trigger')
+  const outputNode = graph!.nodes.find((n) => n.id === 'output')
+  assert.ok(outputNode, 'should have output node')
+  assert.equal(outputNode!.kind, 'output')
+  const promptNode = graph!.nodes.find((n) => n.id === 'instructions')
+  assert.ok(promptNode, 'should have prompt node')
+  assert.equal(promptNode!.kind, 'prompt')
+  assert.equal(graph!.edges.length, 2)
+})
+
+test('automationGraphFromGraphSource returns null for invalid input', () => {
+  assert.equal(automationGraphFromGraphSource(''), null)
+  assert.equal(automationGraphFromGraphSource('not a graph'), null)
+})
+
+test('round-trip: instructions → graph → graphSource → graph is stable', () => {
+  const instructions = '1. Check inbox\n2. Summarize mail\n3. Send digest'
+  const graph1 = automationGraphFromInstructions({ instructions })!
+  const source1 = graphSourceFromAutomationGraph(graph1)
+  const graph2 = automationGraphFromGraphSource(source1)!
+  const source2 = graphSourceFromAutomationGraph(graph2)
+
+  // graphSource should be identical after round-trip
+  assert.equal(source1, source2, 'graphSource should be stable after round-trip')
+
+  // Node IDs and edge structure should match
+  assert.deepEqual(
+    graph1.nodes.map((n) => n.id),
+    graph2.nodes.map((n) => n.id),
+  )
+  assert.deepEqual(graph1.edges, graph2.edges)
+})
+
+test('defaultAutomationGraph builds trigger → prompt → output when no instructions', () => {
+  const graph = defaultAutomationGraph({
+    name: 'Test automation',
+    schedule: { kind: 'daily', hourUTC: 9, minuteUTC: 0 },
+    modelId: 'model_a',
+  }, 'default')
+  assert.equal(graph.version, AUTOMATION_GRAPH_VERSION)
+  assert.equal(graph.nodes.length, 3)
+  assert.equal(graph.nodes[0]!.kind, 'trigger')
+  assert.equal(graph.nodes[0]!.label, 'daily trigger')
+  assert.equal(graph.nodes[1]!.kind, 'prompt')
+  assert.equal(graph.nodes[2]!.kind, 'output')
+  assert.equal(graph.edges.length, 2)
+})
+
+test('defaultAutomationGraphSource still produces Mermaid via graph model', () => {
+  const source = defaultAutomationGraphSource({
+    name: 'Test',
+    instructions: '1. Do thing',
+    schedule: { kind: 'interval', intervalMinutes: 60 },
+    modelId: 'model_a',
+  }, 'default')
+  assert.match(source, /^flowchart TD/)
+  assert.match(source, /step1/)
+  assert.match(source, /output/)
+})
+
+test('resolveAutomationGraph uses persisted graph first, then graphSource, then instructions', () => {
+  const persistedGraph = {
+    version: 1,
+    nodes: [{ id: 'custom', kind: 'prompt' as const, label: 'Custom', config: {} }],
+    edges: [],
+  }
+  // Prefers persisted graph
+  assert.equal(
+    resolveAutomationGraph({ graph: persistedGraph, graphSource: 'flowchart TD\n  a["A"]' }),
+    persistedGraph,
+  )
+
+  // Falls back to graphSource migration
+  const fromSource = resolveAutomationGraph({
+    graphSource: 'flowchart TD\n  trigger["trigger"] --> output["out"]',
+  })
+  assert.ok(fromSource.nodes.find((n) => n.id === 'trigger'))
+
+  // Falls back to default graph
+  const fromDefault = resolveAutomationGraph({ name: 'Test', schedule: { kind: 'daily' } })
+  assert.equal(fromDefault.nodes.length, 3)
+  assert.equal(fromDefault.nodes[0]!.kind, 'trigger')
+})
+
+test('automationEditorDraftFromDetail includes structured graph', () => {
+  const automation = {
+    _id: 'auto_1',
+    name: 'Test',
+    instructions: '1. Step one\n2. Step two',
+    schedule: { kind: 'daily' as const, hourUTC: 14, minuteUTC: 0 },
+    timezone: 'UTC',
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const draft = automationEditorDraftFromDetail(automation, 'model_a')
+  assert.ok(draft.graph, 'draft should include structured graph')
+  assert.equal(draft.graph!.version, AUTOMATION_GRAPH_VERSION)
+  assert.equal(draft.graph!.nodes.length, 3, 'two prompt nodes + output')
+  assert.ok(draft.graphSource, 'draft should still include graphSource for backward compat')
 })

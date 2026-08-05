@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 import createBundleAnalyzer from "@next/bundle-analyzer";
+import { withWorkflow } from "workflow/next";
 
 const withBundleAnalyzer = createBundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
@@ -137,20 +138,24 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withBundleAnalyzer(withSentryConfig(nextConfig, {
-  silent: !process.env.CI,
-  webpack: {
-    disableSentryConfig: !hasSentryUploadConfig,
-    treeshake: {
-      removeDebugLogging: true,
-    },
-  },
-  ...(hasSentryUploadConfig
-    ? {
-        authToken: process.env.SENTRY_AUTH_TOKEN,
-        org: process.env.SENTRY_ORG,
-        project: process.env.SENTRY_PROJECT,
-        widenClientFileUpload: true,
-      }
-    : {}),
-}));
+export default withWorkflow(
+  withBundleAnalyzer(
+    withSentryConfig(nextConfig, {
+      silent: !process.env.CI,
+      webpack: {
+        disableSentryConfig: !hasSentryUploadConfig,
+        treeshake: {
+          removeDebugLogging: true,
+        },
+      },
+      ...(hasSentryUploadConfig
+        ? {
+            authToken: process.env.SENTRY_AUTH_TOKEN,
+            org: process.env.SENTRY_ORG,
+            project: process.env.SENTRY_PROJECT,
+            widenClientFileUpload: true,
+          }
+        : {}),
+    }),
+  ),
+);
