@@ -213,14 +213,14 @@ export class ConvexAutomationRepository implements AutomationRepository {
   }
 
   async markManualRunCompleted(args: {
-    conversationId: string
+    conversationId?: string
     now: number
     runId: string
     userId: string
   }): Promise<void> {
     await convex.mutation('automations/automations:markManualRunCompleted', {
       ...args,
-      conversationId: args.conversationId as Id<'conversations'>,
+      conversationId: args.conversationId as Id<'conversations'> | undefined,
       runId: args.runId as Id<'automationRuns'>,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })

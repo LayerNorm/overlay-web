@@ -120,6 +120,21 @@ function scheduleTooFrequent(schedule: AutomationSchedule | undefined): boolean 
   return schedule?.kind === 'interval' && (schedule.intervalMinutes ?? 60) < MIN_INTERVAL_MINUTES
 }
 
+/**
+ * Defensive: LLMs or other API clients may pass the schedule as a stringified
+ * JSON string instead of a JSON object. Parse it back to an object if needed.
+ */
+function normalizeScheduleValue(schedule: unknown): AutomationSchedule {
+  if (typeof schedule === 'string') {
+    try {
+      return JSON.parse(schedule) as AutomationSchedule
+    } catch {
+      throw new Error('Invalid schedule: expected an object, received a string that is not valid JSON')
+    }
+  }
+  return schedule as AutomationSchedule
+}
+
 function stableScheduleKey(schedule: AutomationSchedule | undefined): string {
   if (!schedule) return ''
   if (schedule.kind === 'interval') return `interval:${schedule.intervalMinutes ?? ''}`
@@ -284,7 +299,8 @@ export class AutomationService {
     if (!body.name?.trim() || !body.description?.trim() || !body.instructions?.trim() || !body.schedule) {
       serviceError({ error: 'name, description, instructions, and schedule are required' }, 400)
     }
-    this.assertScheduleAllowed(body.schedule)
+    const schedule = normalizeScheduleValue(body.schedule)
+    this.assertScheduleAllowed(schedule)
     await this.assertProjectAllowsAutomation(body.projectId, args.userId)
     if (body.enabled !== false) {
       await this.assertCanEnable(args.userId)
@@ -296,7 +312,7 @@ export class AutomationService {
       description: body.description,
       instructions: body.instructions,
       enabled: body.enabled,
-      schedule: body.schedule,
+      schedule,
       timezone: body.timezone,
       projectId: body.projectId,
       modelId: body.modelId,
@@ -335,7 +351,8 @@ export class AutomationService {
     if (!body.automationId) {
       serviceError({ error: 'automationId required' }, 400)
     }
-    this.assertScheduleAllowed(body.schedule)
+    const schedule = body.schedule ? normalizeScheduleValue(body.schedule) : body.schedule
+    this.assertScheduleAllowed(schedule)
     if (body.action === 'resume' || body.enabled === true) {
       await this.assertCanEnable(args.userId)
     }
@@ -365,7 +382,7 @@ export class AutomationService {
         description: body.description,
         instructions: body.instructions,
         enabled: body.enabled,
-        schedule: body.schedule,
+        schedule,
         timezone: body.timezone,
         projectId: body.projectId,
         modelId: body.modelId,
@@ -380,7 +397,7 @@ export class AutomationService {
           description: body.description,
           instructions: body.instructions,
           enabled: body.enabled,
-          schedule: body.schedule,
+          schedule,
           timezone: body.timezone,
           modelId: body.modelId,
         }, args.userId)
@@ -636,6 +653,47 @@ export class AutomationService {
     workflowRunId: string
   }): Promise<void> {
     await this.deps.repository.updateRunWorkflowRunId?.(args)
+  }
+
+  async markRunStarted(args: {
+    runId: string
+    userId: string
+    conversationId?: string
+    turnId?: string
+  }): Promise<void> {
+    await this.deps.repository.markManualRunStarted({
+      runId: args.runId,
+      userId: args.userId,
+      conversationId: args.conversationId,
+      turnId: args.turnId ?? `automation-${args.runId}-${Date.now()}`,
+      now: this.clock.now(),
+    })
+  }
+
+  async markRunCompleted(args: {
+    runId: string
+    userId: string
+    conversationId?: string
+  }): Promise<void> {
+    await this.deps.repository.markManualRunCompleted({
+      runId: args.runId,
+      userId: args.userId,
+      conversationId: args.conversationId ?? '',
+      now: this.clock.now(),
+    })
+  }
+
+  async markRunFailed(args: {
+    runId: string
+    userId: string
+    error: string
+  }): Promise<void> {
+    await this.deps.repository.markManualRunFailed({
+      runId: args.runId,
+      userId: args.userId,
+      error: args.error,
+      now: this.clock.now(),
+    })
   }
 
   private assertScheduleAllowed(schedule: AutomationSchedule | undefined): void {

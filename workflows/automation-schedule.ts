@@ -46,6 +46,8 @@ export type AutomationScheduleWorkflowInput = {
   actServiceToken: string
   finalizeServiceToken: string
   workspaceId?: string
+  /** The automation_runs record ID — used to sync run status back to the database. */
+  runId?: string
 }
 
 /**
@@ -135,35 +137,69 @@ async function waitForApproval(input: AutomationScheduleWorkflowInput): Promise<
 async function executeAutomationRun(input: AutomationScheduleWorkflowInput): Promise<{ ok: true }> {
   "use step"
 
-  const runPath = '/api/v1/automations/execute'
+  const executePath = '/api/v1/automations/execute'
   const turnId = `automation-${input.automationId}-${Date.now()}`
 
-  const response = await fetch(`${input.baseUrl}/api/v1/conversations/act`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'Idempotency-Key': `automation:${input.automationId}:${turnId}`,
-      [input.serviceAuthHeader]: input.actServiceToken,
-      ...(input.workspaceId ? { 'x-overlay-workspace-id': input.workspaceId } : {}),
-    },
-    body: JSON.stringify({
-      messages: [{
-        id: turnId,
-        role: 'user',
-        parts: [{ type: 'text', text: buildAutomationUserMessage(input) }],
-      }],
-      systemPrompt: buildAutomationSystemPrompt(input),
-      conversationId: input.conversationId,
-      turnId,
-      modelId: input.modelId,
-      userId: input.userId,
-      automationExecution: true,
-      actAbortTimeoutMs: 720_000,
-    }),
-  })
+  // Mark the run as started in the automation_runs table
+  if (input.runId) {
+    try {
+      await fetch(`${input.baseUrl}${executePath}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          [input.serviceAuthHeader]: input.serviceToken,
+        },
+        body: JSON.stringify({
+          action: 'mark-started',
+          runId: input.runId,
+          userId: input.userId,
+          turnId,
+          ...(input.conversationId ? { conversationId: input.conversationId } : {}),
+        }),
+      })
+    } catch (markStartedError) {
+      // Non-fatal — the run will still execute, just with a stale status
+    }
+  }
+
+  let response: Response
+  try {
+    response = await fetch(`${input.baseUrl}/api/v1/conversations/act`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'Idempotency-Key': `automation:${input.automationId}:${turnId}`,
+        [input.serviceAuthHeader]: input.actServiceToken,
+        ...(input.workspaceId ? { 'x-overlay-workspace-id': input.workspaceId } : {}),
+      },
+      body: JSON.stringify({
+        messages: [{
+          id: turnId,
+          role: 'user',
+          parts: [{ type: 'text', text: buildAutomationUserMessage(input) }],
+        }],
+        systemPrompt: buildAutomationSystemPrompt(input),
+        conversationId: input.conversationId,
+        turnId,
+        modelId: input.modelId,
+        userId: input.userId,
+        automationExecution: true,
+        actAbortTimeoutMs: 720_000,
+      }),
+    })
+  } catch (actError) {
+    // Mark the run as failed if the act call itself threw
+    if (input.runId) {
+      await markRunFinalized(input, 'failed', actError instanceof Error ? actError.message : 'Act request failed')
+    }
+    throw actError
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '')
+    if (input.runId) {
+      await markRunFinalized(input, 'failed', `Act route returned ${response.status}: ${text || 'error'}`)
+    }
     if (response.status >= 400 && response.status < 500) {
       throw new FatalError(
         `Act route returned ${response.status}: ${text || 'Client error'}`,
@@ -186,7 +222,42 @@ async function executeAutomationRun(input: AutomationScheduleWorkflowInput): Pro
     }
   }
 
+  // Mark the run as succeeded
+  if (input.runId) {
+    await markRunFinalized(input, 'succeeded')
+  }
+
   return { ok: true }
+}
+
+/**
+ * Mark the automation run as succeeded or failed via the execute endpoint.
+ * Uses the finalizeServiceToken (PATCH /api/v1/automations/execute).
+ */
+async function markRunFinalized(
+  input: AutomationScheduleWorkflowInput,
+  runStatus: 'succeeded' | 'failed',
+  errorMessage?: string,
+): Promise<void> {
+  const executePath = '/api/v1/automations/execute'
+  try {
+    await fetch(`${input.baseUrl}${executePath}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        [input.serviceAuthHeader]: input.finalizeServiceToken,
+      },
+      body: JSON.stringify({
+        runId: input.runId,
+        runStatus,
+        userId: input.userId,
+        ...(input.conversationId ? { conversationId: input.conversationId } : {}),
+        ...(errorMessage ? { error: errorMessage } : {}),
+      }),
+    })
+  } catch {
+    // Non-fatal — the run already completed, status sync is best-effort
+  }
 }
 
 // ---------------------------------------------------------------------------

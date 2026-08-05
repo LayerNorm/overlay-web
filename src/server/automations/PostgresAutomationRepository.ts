@@ -406,7 +406,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
   }
 
   async markManualRunCompleted(args: {
-    conversationId: string
+    conversationId?: string
     now: number
     runId: string
     userId: string
@@ -580,6 +580,7 @@ function mapRun(row: AutomationRunRow): AutomationRunSummary {
     turnId: row.turnId ?? undefined,
     error: row.error ?? undefined,
     triggerSource: row.triggerSource,
+    workflowRunId: row.workflowRunId ?? undefined,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
   }

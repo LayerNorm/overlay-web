@@ -90,6 +90,11 @@ export function AutomationRunViewer({
               ))}
             </Select>
           )}
+          {mode === 'replay' && runs && runs.length > 0 && !runs.some((r) => r.workflowRunId) && (
+            <span className="text-xs text-[var(--muted)]">
+              No replayable runs yet — trigger a test run first.
+            </span>
+          )}
         </div>
 
         {/* Canvas with status overlay */}

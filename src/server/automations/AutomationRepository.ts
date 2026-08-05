@@ -111,7 +111,7 @@ export interface AutomationRepository {
     userId: string
   }): Promise<void>
   markManualRunCompleted(args: {
-    conversationId: string
+    conversationId?: string
     now: number
     runId: string
     userId: string

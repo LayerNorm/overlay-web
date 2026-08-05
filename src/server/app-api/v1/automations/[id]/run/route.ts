@@ -101,6 +101,7 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
       actServiceToken,
       finalizeServiceToken,
       workspaceId: workspace.workspace.id,
+      runId,
     }
 
     const workflowRun = await start(automationScheduleWorkflow, [scheduleInput])
