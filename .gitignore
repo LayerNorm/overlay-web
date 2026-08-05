@@ -93,3 +93,4 @@ agent/memory/*
 .almanac/.bootstrap-*
 .almanac/.ingest-*
 /.swc
+.workflow-data/
