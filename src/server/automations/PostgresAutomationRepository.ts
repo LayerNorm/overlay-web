@@ -205,6 +205,31 @@ export class PostgresAutomationRepository implements AutomationRepository {
     })
   }
 
+  async attachSourceConversation(args: {
+    automationId: string
+    conversationId: string
+    userId: string
+  }): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await assertConversationAccess(tx, {
+        conversationId: args.conversationId,
+        userId: args.userId,
+      })
+      await tx
+        .update(automations)
+        .set({
+          sourceConversationId: args.conversationId,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(automations.id, args.automationId),
+          eq(automations.userId, args.userId),
+          isNull(automations.sourceConversationId),
+          isNull(automations.deletedAt),
+        ))
+    })
+  }
+
   async pauseAutomation(args: { automationId: string; userId: string }): Promise<void> {
     await this.setEnabled({ ...args, enabled: false })
   }

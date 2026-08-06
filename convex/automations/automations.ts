@@ -623,6 +623,38 @@ export const markManualRunFailed = mutation({
   },
 })
 
+export const attachSourceConversationByServer = mutation({
+  args: {
+    automationId: v.id('automations'),
+    conversationId: v.id('conversations'),
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const automation = await ctx.db.get(args.automationId)
+    const conversation = await ctx.db.get(args.conversationId)
+    if (
+      !automation ||
+      automation.userId !== args.userId ||
+      automation.deletedAt ||
+      !conversation ||
+      conversation.userId !== args.userId ||
+      conversation.deletedAt
+    ) {
+      throw new Error('Unauthorized')
+    }
+    if (!automation.sourceConversationId) {
+      await ctx.db.patch(args.automationId, {
+        sourceConversationId: args.conversationId,
+        updatedAt: Date.now(),
+      })
+    }
+    return null
+  },
+})
+
 export const updateRunWorkflowRunIdByServer = mutation({
   args: {
     runId: v.id('automationRuns'),

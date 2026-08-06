@@ -64,6 +64,11 @@ export interface AutomationRepository {
   }): Promise<AutomationRunTarget | null>
   createAutomation(args: CreateAutomationInput): Promise<string>
   updateAutomation(args: UpdateAutomationInput): Promise<void>
+  attachSourceConversation(args: {
+    automationId: string
+    conversationId: string
+    userId: string
+  }): Promise<void>
   pauseAutomation(args: {
     automationId: string
     userId: string

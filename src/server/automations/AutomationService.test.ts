@@ -75,6 +75,7 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
     async updateAutomation(args) {
       updatedAutomations.push(args)
     },
+    async attachSourceConversation() {},
     async pauseAutomation() {},
     async resumeAutomation() {},
     async removeAutomation() {},
@@ -477,6 +478,28 @@ test('AutomationService syncs durable run lifecycle status through the repositor
     userId: 'user_1',
     error: 'workflow failed',
     now: 1_700_000_000_000,
+  }])
+})
+
+test('AutomationService.attachSourceConversation delegates to repository', async () => {
+  const links: Array<{ automationId: string; conversationId: string; userId: string }> = []
+  const repository = createRepository({
+    async attachSourceConversation(args) {
+      links.push(args)
+    },
+  })
+  const { service } = createService(repository)
+
+  await service.attachSourceConversation({
+    automationId: 'automation_1',
+    conversationId: 'conversation_1',
+    userId: 'user_1',
+  })
+
+  assert.deepEqual(links, [{
+    automationId: 'automation_1',
+    conversationId: 'conversation_1',
+    userId: 'user_1',
   }])
 })
 

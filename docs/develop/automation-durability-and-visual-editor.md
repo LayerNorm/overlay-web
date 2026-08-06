@@ -401,6 +401,11 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 - Added a workflow-level safety net: the scheduling loop calls a new `check-status` action on the execute endpoint before each iteration. If the automation is disabled or deleted (e.g. after a deployment restart where the cancel call was lost), the workflow exits gracefully instead of continuing to execute.
 - Verified end-to-end on staging: created an automation, started the scheduler, confirmed `schedulerWorkflowRunId` was stored, paused the automation, confirmed the ID was cleared, resumed, started a new scheduler, deleted the automation, confirmed the scheduler was cancelled and the automation was removed.
 
+**Automation chat continuity:**
+- Automations without a linked conversation now show their saved description and instructions instead of a blank chat surface.
+- The first Automate-mode message links the created conversation to the automation's `sourceConversationId`, so subsequent navigation opens the same conversation and keeps the automation context in the URL.
+- The route synchronizer preserves `automationId` from the live browser URL when activating a newly created conversation; this prevents the message from becoming a standalone regular chat.
+
 **Still pending before production rollout:**
 - Run the 24-hour no-drift observation with a scheduled automation after confirming how scheduled iterations should create and report individual `automation_runs` records.
 

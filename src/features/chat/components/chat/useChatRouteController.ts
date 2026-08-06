@@ -83,9 +83,14 @@ export function useChatRouteController({
         : '/app/automations'
       const params = new URLSearchParams()
       if (chatId) params.set('id', chatId)
-      const automationId = searchParams?.get('automationId')
+      const liveSearchParams = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
+        : null
+      const automationId = automationIdParam ?? liveSearchParams?.get('automationId')
       if (automationId) params.set('automationId', automationId)
-      const tab = normalizeAutomationDetailTab(searchParams?.get('tab'))
+      const tab = normalizeAutomationDetailTab(
+        liveSearchParams?.get('tab') ?? searchParams?.get('tab'),
+      )
       if (tab !== 'chat') params.set('tab', tab)
       const query = params.toString()
       replaceUrl(`${basePath}${query ? `?${query}` : ''}`)
@@ -100,7 +105,7 @@ export function useChatRouteController({
     if (chatId) params.set('id', chatId)
     const query = params.toString()
     replaceUrl(query ? `${basePath}?${query}` : basePath)
-  }, [hideSidebar, mode, searchParams])
+  }, [automationIdParam, hideSidebar, mode, searchParams])
 
   const resetToBlankChatSurface = useCallback((options: { temporary: boolean }) => {
     invalidateLoadChatRequestRef.current?.()

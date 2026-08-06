@@ -672,6 +672,14 @@ export class AutomationService {
     })
   }
 
+  async attachSourceConversation(args: {
+    automationId: string
+    conversationId: string
+    userId: string
+  }): Promise<void> {
+    await this.deps.repository.attachSourceConversation(args)
+  }
+
   async updateRunWorkflowRunId(args: {
     runId: string
     workflowRunId: string

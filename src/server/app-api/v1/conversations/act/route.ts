@@ -24,6 +24,7 @@ import { normalizeChatToolRequestIds } from '@/shared/chat/tool-requests'
 import { MAX_TOOL_STEPS_ACT } from '@/server/tools/tools/policy'
 import { OVERLAY_TOOL_IDS } from '@overlay/tools-core'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
+import { automationService } from '@/server/automations/http'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildSecondarySystemPromptExtension } from '@/server/agent/operator-system-prompt'
 import {
@@ -254,6 +255,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         createdByPrincipalId: context.workspace.principal.id,
       })
       if (_ttftDebug) _tEnsureConversationMs = performance.now() - ensureStartedAt
+    }
+    if (automationMode === true && automationId && cid) {
+      await automationService.attachSourceConversation({
+        automationId,
+        conversationId: cid,
+        userId: conversationUserId,
+      }).catch((error) => {
+        logger.warn('[conversations/act] Failed to link automation chat', {
+          automationId,
+          conversationId: cid,
+          error,
+        })
+      })
     }
     // Bases named on this turn become part of the conversation's grounding and
     // also narrow this turn's retrieval. Access is verified inside the service.
