@@ -276,11 +276,7 @@ export function WorkspaceSwitcher({
         </p>
       ) : null}
 
-      {accountMenu ? (
-        <div className="mt-1 border-t border-[var(--border)] pt-1">
-          {accountMenu}
-        </div>
-      ) : null}
+      {accountMenu}
     </>
   )
 

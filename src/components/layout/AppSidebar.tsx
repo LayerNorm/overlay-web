@@ -617,15 +617,6 @@ export default function AppSidebar({
     else closeMobileDrawer()
   }
 
-  function handleMobileSettingsSelect() {
-    if (!user) { requireAuth('settings'); return }
-    if (!settingsPathActive) {
-      setPendingNav({ href: '/app/settings', fromPath: pathname })
-      router.push('/app/settings')
-    }
-    setMobileView('panel')
-  }
-
   const resourceAction = chatOpen && chatsView === 'dms'
     ? {
       label: 'New message',
@@ -967,26 +958,7 @@ export default function AppSidebar({
     },
   }))
 
-  const railFooterItems: PrimaryRailItem[] = [
-    ...showcaseRailFooterItems,
-    {
-      id: 'settings',
-      label: 'Settings',
-      icon: Settings,
-      active: settingsPathActive,
-      pending: effectivePendingHref === '/app/settings',
-      title: 'Settings · ⌥7',
-      onSelect: () => {
-        if (settingsPathActive) {
-          if (sidebarCollapsed) setSidebarCollapsed(false)
-          return
-        }
-        if (!user) { requireAuth('settings'); return }
-        setPendingNav({ href: '/app/settings', fromPath: pathname })
-        router.push('/app/settings')
-      },
-    },
-  ]
+  const railFooterItems: PrimaryRailItem[] = showcaseRailFooterItems
 
   const desktopAccountMenu = accountMenuOpen && !workspace && typeof document !== 'undefined'
     ? createPortal(
@@ -1154,23 +1126,6 @@ export default function AppSidebar({
               })}
             </div>
           ) : null}
-          <div className="mt-0.5">
-            <button
-              type="button"
-              onClick={handleMobileSettingsSelect}
-              aria-label="Settings"
-              aria-current={settingsPathActive ? 'page' : undefined}
-              className={`group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors ${
-                settingsPathActive
-                  ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                  : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-              }`}
-            >
-              <Settings size={15} />
-              <div className="min-w-0 flex-1 text-left">Settings</div>
-              <ChevronRight size={13} className="shrink-0 text-[var(--muted-light)]" aria-hidden />
-            </button>
-          </div>
         </SidebarNav>
 
         <SidebarSection className="space-y-3 px-3">
