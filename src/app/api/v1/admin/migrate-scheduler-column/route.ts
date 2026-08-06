@@ -9,9 +9,9 @@ export async function POST(request: NextRequest) {
   // Delete this file after the migration has been applied.
   try {
     const ctx = getOverlayServerContext()
-    const db = (ctx.appData as { db?: { execute: (sql: string) => Promise<unknown> } }).db
+    const db = (ctx.appData as { postgres?: { db?: { execute: (sql: string) => Promise<unknown> } } }).postgres?.db
     if (!db?.execute) {
-      return Response.json({ error: 'No DB access' }, { status: 500 })
+      return Response.json({ error: 'No Postgres DB access' }, { status: 500 })
     }
     await db.execute(
       `ALTER TABLE "automations" ADD COLUMN IF NOT EXISTS "scheduler_workflow_run_id" text`,
