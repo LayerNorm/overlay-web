@@ -37,14 +37,6 @@ export function SidebarAccountMenu({
           </CollapsibleSection>
         </>
       ) : null}
-      <Link
-        href="/app/settings"
-        onClick={onAccountClick}
-        className={`flex w-full items-center gap-2 px-3 ${itemPaddingClass} text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]`}
-      >
-        <Settings size={13} />
-        Settings
-      </Link>
       <CollapsibleSection label="Apps" className="border-t border-[var(--border)]">
         {PROFILE_APP_LINKS.map(({ label, icon: Icon }) => (
           <button
@@ -82,6 +74,16 @@ export function SidebarAccountMenu({
         >
           <User size={13} />
           Account
+        </Link>
+      </div>
+      <div className="border-t border-[var(--border)]">
+        <Link
+          href="/app/settings"
+          onClick={onAccountClick}
+          className={`flex w-full items-center gap-2 px-3 ${itemPaddingClass} text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]`}
+        >
+          <Settings size={13} />
+          Settings
         </Link>
       </div>
       <div className="border-t border-[var(--border)]">
