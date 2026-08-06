@@ -391,9 +391,18 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 **Environment note:**
 - `OVERLAY_DATABASE_URL` and `BETTER_AUTH_DATABASE_URL` are set on the Vercel project as encrypted Production env vars. `vercel env pull` returns empty-string values for these, but runtime logs confirm the Postgres connection is live (`databaseConnected: true`, SSL warnings from pg-connection-string). This is a Vercel CLI secret-decryption quirk; the runtime values are populated correctly. Do not rely on `vercel env pull` for verifying these secrets — check runtime logs or the `/api/v1/automations` health instead.
 
+**Convex path parity fix:**
+- `AutomationService.markRunCompleted` was passing `conversationId: args.conversationId ?? ''` (empty string). Convex's `v.optional(v.id('conversations'))` validator rejects empty strings — they are not valid Convex IDs. Fixed to pass `undefined` instead. Added defensive `|| undefined` guards in `ConvexAutomationRepository` for both `markManualRunStarted` and `markManualRunCompleted`.
+
+**Scheduler cancellation lifecycle:**
+- Added `schedulerWorkflowRunId` field to the `automations` table (Postgres migration 0045) and Convex schema. The `start-scheduler` route stores the workflow run ID after starting the scheduler.
+- `deleteAutomation` and `pauseAutomation` (and `updateAutomation` with `enabled: false`) now cancel the scheduler workflow via `getRun(workflowRunId).cancel()` before modifying the record, then clear the stored ID.
+- `deleteAutomation` also calls `requestActiveRunCancellation` to cancel any active individual runs (queued or running).
+- Added a workflow-level safety net: the scheduling loop calls a new `check-status` action on the execute endpoint before each iteration. If the automation is disabled or deleted (e.g. after a deployment restart where the cancel call was lost), the workflow exits gracefully instead of continuing to execute.
+- Verified end-to-end on staging: created an automation, started the scheduler, confirmed `schedulerWorkflowRunId` was stored, paused the automation, confirmed the ID was cleared, resumed, started a new scheduler, deleted the automation, confirmed the scheduler was cancelled and the automation was removed.
+
 **Still pending before production rollout:**
 - Run the 24-hour no-drift observation with a scheduled automation after confirming how scheduled iterations should create and report individual `automation_runs` records.
-- Verify Convex path parity, particularly the `conversationId` for `markManualRunCompleted` mutation.
 
 ---
 
