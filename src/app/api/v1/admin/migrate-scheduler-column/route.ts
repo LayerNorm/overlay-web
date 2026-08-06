@@ -1,12 +1,12 @@
 import type { NextRequest } from 'next/server'
-import { handleBffRoute, type BffDomainService } from '../../_utils/bff'
+import { handleBffRoute } from '../../_utils/bff'
 
 export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
   return handleBffRoute(request, {}, async (req, context) => {
-    // Service auth only
-    if (context?.auth.authType !== 'service') {
+    // User auth required (any logged-in user can trigger this one-time migration)
+    if (!context?.auth.userId) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
     const { getOverlayServerContext } = await import('@/server/bootstrap')
