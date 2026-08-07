@@ -1583,8 +1583,8 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
     archivedAt: v.optional(v.number()),
-    teamIds: v.array(v.string()),
-    roomCount: v.number(),
+    teamIds: v.optional(v.array(v.string())),
+    roomCount: v.optional(v.number()),
   })
     .index('by_agentId', ['agentId'])
     .index('by_workspaceId', ['workspaceId']),
