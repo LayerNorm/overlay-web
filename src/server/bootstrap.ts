@@ -220,7 +220,7 @@ export function createOverlayServerContext(
 
   const authorizationService = new AuthorizationService({
     repositories: authorizationRepositories,
-    isDeploymentOwner: (userId: string) => {
+    isDeploymentOwner: (_userId: string) => {
       // Deployment owners bypass capability checks. Until a dedicated
       // administrative principals table is wired, treat no one as a deployment
       // owner by default — the capability policy still apply.

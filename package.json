@@ -315,6 +315,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@eslint/compat": "^2.1.0",
     "@next/bundle-analyzer": "16.3.0",
     "@remotion/cli": "^4.0.441",
     "@remotion/player": "^4.0.441",
