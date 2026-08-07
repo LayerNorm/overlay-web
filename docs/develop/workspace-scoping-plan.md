@@ -404,11 +404,46 @@ which triggers a refetch of workspace-scoped data.
 
 ---
 
-### Phase 8: Knowledge base sources — scope via parent
+### Phase 8: Knowledge base sources — scope via parent ✅ DONE
 
-Knowledge base sources (`knowledgeBaseSources` or similar) reference files, notes, and memories. Since those will be workspace-scoped, knowledge base sources inherit workspace scoping via their parent resource.
+Knowledge bases are bound to workspaces via `workspace_resource_scopes` (the
+`bindResource` call in the POST route). Knowledge base sources inherit workspace
+scoping via their parent knowledge base — no direct `workspaceId` on sources.
 
-**Action:** No direct `workspaceId` needed on sources. When listing sources, join through the parent resource which is already workspace-scoped.
+**Changes:**
+
+1. **List knowledge bases by workspace** — Added `listResourceIdsByWorkspace`
+   to `WorkspaceRepository` interface + Postgres/Convex implementations +
+   `WorkspaceService`. The BFF GET route now fetches workspace-scoped resource
+   IDs first, then filters `listKnowledgeBases` to only those bound to the
+   active workspace.
+
+2. **Knowledge search workspace filtering** — Added `workspaceId` to
+   `KnowledgeSearchArgs`. The BFF search route passes
+   `context.workspace.workspace.id`. The Postgres search repository adds a
+   `workspace_id` SQL filter to both vector and lexical queries. The Convex
+   `hybridSearch` action filters lexical results via the search index
+   `filterFields` and post-filters vector results by fetching the chunk doc
+   (since `knowledgeChunkEmbeddings` doesn't have `workspaceId`).
+
+3. **Postgres schema** — Added `workspace_id` column + index to
+   `knowledge_chunks` table (migration `0048_knowledge_chunks_workspace_id.sql`).
+   The Convex `knowledgeChunks` table already had `workspaceId` from Phase 1.
+
+**Files changed:**
+- `src/server/workspaces/WorkspaceRepository.ts` — interface method
+- `src/server/workspaces/PostgresWorkspaceRepository.ts` — SQL implementation
+- `src/server/workspaces/ConvexWorkspaceRepository.ts` — Convex implementation
+- `src/server/workspaces/WorkspaceService.ts` — public service method
+- `convex/collaboration/workspaces.ts` — `listResourceIdsByWorkspaceByServer` query
+- `src/server/knowledge-bases/KnowledgeBaseService.ts` — `workspaceScopedResourceIds` filter
+- `src/server/app-api/v1/knowledge-bases/route.ts` — pass workspace filter to list
+- `src/server/knowledge/KnowledgeSearchRepository.ts` — `workspaceId` in args
+- `src/server/knowledge/PostgresKnowledgeSearchRepository.ts` — SQL workspace filter
+- `convex/knowledge/knowledge.ts` — workspace filter in hybridSearch + lexical
+- `src/server/app-api/v1/knowledge/search/route.ts` — pass workspaceId
+- `src/server/database/postgres/schema.ts` — `workspace_id` column + index
+- `migrations/app-data/0048_knowledge_chunks_workspace_id.sql` — new migration
 
 ---
 

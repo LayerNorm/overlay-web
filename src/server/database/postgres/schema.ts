@@ -671,6 +671,7 @@ export const knowledgeChunks = pgTable('knowledge_chunks', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id'),
   projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
   sourceKind: knowledgeSourceKind('source_kind').notNull(),
   sourceId: text('source_id').notNull(),
@@ -686,6 +687,7 @@ export const knowledgeChunks = pgTable('knowledge_chunks', {
   index('knowledge_chunks_user_source_idx').on(table.userId, table.sourceKind),
   index('knowledge_chunks_user_project_idx').on(table.userId, table.projectId),
   index('knowledge_chunks_source_idx').on(table.sourceKind, table.sourceId),
+  index('knowledge_chunks_workspace_id_idx').on(table.workspaceId),
 ])
 
 export const knowledgeChunkEmbeddings = pgTable('knowledge_chunk_embeddings', {
