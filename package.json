@@ -185,6 +185,7 @@
     "convex:audit:storage": "node --experimental-strip-types scripts/convex-storage-audit.ts",
     "convex:backfill:storage": "node --experimental-strip-types scripts/convex-storage-backfill.ts",
     "convex:backfill:filesystem": "node --experimental-strip-types scripts/backfill-canonical-filesystem.ts",
+    "convex:backfill:workspace-ids": "NODE_OPTIONS=--conditions=react-server tsx scripts/backfill-workspace-ids.ts",
     "convex:reindex:knowledge": "node --experimental-strip-types scripts/convex-knowledge-reindex.ts",
     "chat-stream:dev": "npm --prefix workers/chat-stream run dev",
     "chat-stream:deploy": "npm --prefix workers/chat-stream run deploy",

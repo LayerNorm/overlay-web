@@ -326,38 +326,36 @@ workspaceConnectors: defineTable({
 
 ---
 
-### Phase 6: Backfill migration
+### Phase 6: Backfill migration ✅ DONE
 
-**One-time Convex migration function** (`convex/migrations/backfillWorkspaceIds.ts`):
+One-time Convex migration that sets `workspaceId` on all existing rows that
+don't have one, using each user's personal workspace.
 
-```typescript
-// Pseudocode
-export const backfillWorkspaceIds = mutation({
-  args: { serverSecret: v.string() },
-  handler: async (ctx, args) => {
-    requireServerSecret(args.serverSecret)
-    
-    // 1. For each user, get their personal workspace ID
-    const allUsers = await ctx.db.query('subscriptions').collect()
-    for (const user of allUsers) {
-      const personalWorkspace = await getOrCreatePersonalWorkspace(ctx, user.userId)
-      
-      // 2. Backfill each resource table
-      for (const table of ['conversations', 'files', 'skills', 'mcpServers', ...]) {
-        const rows = await ctx.db.query(table)
-          .withIndex('by_userId', q => q.eq('userId', user.userId))
-          .filter(q => q.eq(q.field('workspaceId'), undefined))
-          .collect()
-        for (const row of rows) {
-          await ctx.db.patch(row._id, { workspaceId: personalWorkspace })
-        }
-      }
-    }
-  },
-})
-```
+**Convex functions** (`convex/migrations/backfillWorkspaceIds.ts`):
+- `auditBackfillByServer` — paginated query that counts rows missing
+  `workspaceId` per table
+- `backfillBatchByServer` — paginated mutation that patches rows with
+  `workspaceId` from the user's personal workspace (creates the personal
+  workspace if it doesn't exist via `ensureLegacyPersonalScope`)
 
-**Important:** Run this BEFORE making `workspaceId` required in the schema. After backfill completes, promote to `v.string()`.
+**Tables backfilled** (11):
+- conversations, files, notes, skills, mcpServers, projects, automations,
+  memories, outputs, webhookSubscriptions, knowledgeChunks
+
+**Pattern:** Follows the existing `collaboration/conversationMigration.ts`
+pattern — paginated batch processing with `paginationOptsValidator`, server
+secret auth, and audit before/after.
+
+**Runner script** (`scripts/backfill-workspace-ids.ts`):
+- Audits all 11 tables (counts missing `workspaceId`)
+- Migrates all 11 tables (patches rows with personal workspace ID)
+- Audits again to verify zero rows missing `workspaceId`
+- Fails if any rows still missing after migration
+
+**npm script:** `npm run convex:backfill:workspace-ids`
+
+**Important:** Run this BEFORE making `workspaceId` required in the schema.
+After backfill completes, promote to `v.string()`.
 
 ---
 
