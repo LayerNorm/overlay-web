@@ -1621,4 +1621,16 @@ export default defineSchema({
       'threadRootMessageId',
       'principalId',
     ]),
+
+  workspaceConnectors: defineTable({
+    workspaceId: v.string(),
+    userId: v.string(),
+    providerKey: v.string(),
+    connectedAccountId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_providerKey', ['workspaceId', 'providerKey'])
+    .index('by_userId', ['userId']),
 })

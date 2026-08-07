@@ -98,6 +98,10 @@ import {
   type McpServerRepository,
   type SkillRepository,
 } from '@/server/extensions'
+import {
+  ConvexWorkspaceConnectorRepository,
+  type WorkspaceConnectorRepository,
+} from '@/server/integrations'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
@@ -127,6 +131,7 @@ export interface AppDataRepositories {
   users: UserRepository
   webhooks: WebhookRepository
   usage: UsageRepository
+  workspaceConnectors: WorkspaceConnectorRepository
 }
 
 export interface AppDataContext {
@@ -184,6 +189,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         users: new PostgresUserRepository(db),
         webhooks: new PostgresWebhookRepository(db),
         usage: new PostgresUsageRepository(db),
+        workspaceConnectors: new ConvexWorkspaceConnectorRepository(),
       },
     }
   }
@@ -218,6 +224,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       users: new ConvexUserRepository(),
       webhooks: new ConvexWebhookRepository(),
       usage: new ConvexUsageRepository(),
+      workspaceConnectors: new ConvexWorkspaceConnectorRepository(),
     },
   }
 }

@@ -278,12 +278,13 @@ allowed as before.
 
 ---
 
-### Phase 5: Connectors (Composio) — workspace-scoped connection mapping
+### Phase 5: Connectors (Composio) — workspace-scoped connection mapping ✅ DONE
 
-**Problem:** Composio connections are stored externally and keyed by `userId`. There's no Convex table for them.
+Created a `workspaceConnectors` table in Convex that maps Composio connected
+accounts to workspaces. A user connecting Gmail in Workspace A won't see it
+in Workspace B — they'd need to reconnect.
 
-**Solution:** Create a `workspaceConnectors` table in Convex:
-
+**Schema** (`convex/schema.ts`):
 ```
 workspaceConnectors: defineTable({
   workspaceId: v.string(),
@@ -297,12 +298,31 @@ workspaceConnectors: defineTable({
   .index('by_userId', ['userId'])
 ```
 
-**Flow:**
-1. **List connectors:** Query `workspaceConnectors` by `workspaceId`, then fetch details from Composio by `connectedAccountId`.
-2. **Connect:** Create the Composio connection (as today), then insert a row in `workspaceConnectors` with the active `workspaceId`.
-3. **Disconnect:** Delete from Composio + delete the `workspaceConnectors` row.
+**Convex functions** (`convex/integrations/workspaceConnectors.ts`):
+- `listByWorkspace` — query by workspaceId, filter by userId in JS
+- `insert` — upsert (patch if exists, insert if new)
+- `remove` — delete by workspaceId + providerKey + userId
+- `removeByUser` — bulk delete for account cleanup
 
-**Note:** This means a user connecting Gmail in Workspace A won't see it in Workspace B. They'd need to reconnect. This is the correct behavior for workspace isolation.
+**Repository layer:**
+- `WorkspaceConnectorRepository` interface (`src/server/integrations/`)
+- `ConvexWorkspaceConnectorRepository` implementation
+- Registered in `AppDataRepositories` as `workspaceConnectors`
+
+**Updated contracts** (`src/server/integrations/contracts.ts`):
+- `IntegrationConnectionContext` — added `workspaceId?: string`
+- `ConnectionRepository.listConnections` — added `workspaceId?: string`
+- `IntegrationCatalogQuery` — added `workspaceId?: string`
+- `IntegrationCatalog.getCatalogEntry` — added `workspaceId?: string`
+- `IntegrationService.listConnected` — added `workspaceId?: string`
+
+**BFF route** (`src/server/app-api/v1/integrations/route.ts`):
+- **GET (list):** Passes `workspaceId` to `listConnected`, then filters
+  connections and items to only those with a `workspaceConnectors` mapping.
+- **POST (connect):** Passes `workspaceId` to `connect`, then inserts a
+  `workspaceConnectors` mapping with the `connectionId` from the result.
+- **POST (disconnect):** Passes `workspaceId` to `disconnect`, then removes
+  the `workspaceConnectors` mapping.
 
 ---
 
