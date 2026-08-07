@@ -65,6 +65,12 @@
       "@overlay/auth-contracts/*": [
         "./packages/overlay-auth-contracts/src/*"
       ],
+      "@overlay/authz-contracts": [
+        "./packages/overlay-authz-contracts/src/index.ts"
+      ],
+      "@overlay/authz-contracts/*": [
+        "./packages/overlay-authz-contracts/src/*"
+      ],
       "@overlay/chat-core": [
         "./packages/overlay-chat-core/src/index.ts"
       ],
@@ -121,6 +127,12 @@
       ],
       "@overlay/ui/*": [
         "./packages/overlay-ui/src/*"
+      ],
+      "@overlay/workspace-contracts": [
+        "./packages/overlay-workspace-contracts/src/index.ts"
+      ],
+      "@overlay/workspace-contracts/*": [
+        "./packages/overlay-workspace-contracts/src/*"
       ]
     }
   },

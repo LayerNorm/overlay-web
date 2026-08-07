@@ -38,6 +38,7 @@ import { hashOperationalIdentifier } from '@/server/security/operational-key-has
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { contextForRequest, withObservabilityContext } from '@/server/observability/context'
 import { rejectCrossSiteBrowserMutation } from '@/server/security/browser-mutation-origin'
+import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 
 const API_KEY_CANDIDATE_RATE_LIMITS = [
   { bucket: 'api-key-auth:candidate:ip', limit: 60, windowMs: 60_000 },
@@ -153,6 +154,22 @@ export async function handleBffRoute(
   const rateLimitResponse = await enforceBffRouteRateLimits(request, rateLimits)
   if (rateLimitResponse) return rateLimitResponse
 
+  // Resolve the active workspace for this request. The client may pass an
+  // explicit workspace ID via the x-overlay-workspace-id header; otherwise the
+  // user's stored preference is used. Every user has a personal workspace, so
+  // this always succeeds (ensurePersonalWorkspace creates one if needed).
+  const requestedWorkspaceId = request.headers.get(ACTIVE_WORKSPACE_HEADER)?.trim() || undefined
+  let workspace
+  try {
+    workspace = await serverContext.workspaceService.resolveActiveWorkspace(
+      auth.userId,
+      requestedWorkspaceId,
+    )
+  } catch (error) {
+    if (isOverlayConfigError(error)) return runtimeConfigErrorResponse(error)
+    throw error
+  }
+
   const serviceContext = {
     params: Promise.resolve({}),
     ...(context && typeof context === 'object' ? context as object : {}),
@@ -164,6 +181,7 @@ export async function handleBffRoute(
     appDataCapabilities,
     requestFingerprint: await fingerprintApiRequest(request),
     requestIdempotencyKey: request.headers.get('idempotency-key')?.trim() || null,
+    workspace,
   } as AppApiRouteContext
 
   const response = await handleIdempotentMutation(

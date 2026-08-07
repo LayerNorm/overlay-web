@@ -49,6 +49,9 @@ import {
   createEmbeddingProvider,
 } from '@/server/knowledge'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
+import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
+import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
+import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspaceRepository'
 import { ServerProviderUsageMeter } from '@/server/billing/ServerProviderUsageMeter'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
@@ -80,6 +83,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   apiKeyService: ApiKeyService
   lifecycleEvents: LifecycleEventPublisher
   userService: UserService
+  workspaceService: WorkspaceService
 }
 
 export interface CreateOverlayServerContextOptions {
@@ -146,6 +150,11 @@ export function createOverlayServerContext(
   })
   const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
 
+  const workspaceRepository = appData.capabilities.provider === 'postgres' && appData.postgres
+    ? new PostgresWorkspaceRepository(appData.postgres.db)
+    : new ConvexWorkspaceRepository()
+  const workspaceService = new WorkspaceService(workspaceRepository)
+
   return {
     auth: appConfig.authProvider ?? createAuthProvider(runtimeConfig, userService),
     billing: appConfig.billingProvider ?? createBillingProvider(
@@ -170,6 +179,7 @@ export function createOverlayServerContext(
     apiKeyService: new ApiKeyService(appData.repositories.apiKeys),
     lifecycleEvents,
     userService,
+    workspaceService,
   }
 }
 

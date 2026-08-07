@@ -735,10 +735,18 @@ export default defineSchema({
     channelVisibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
     channelTopic: v.optional(v.string()),
   }).index('by_userId', ['userId'])
+    .index('by_workspaceId_clientId', ['workspaceId', 'clientId'])
+    .index('by_workspaceId_conversationType_lastModified', [
+      'workspaceId',
+      'conversationType',
+      'lastModified',
+    ])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_lastModified', ['userId', 'lastModified'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_projectId', ['projectId'])
+    .index('by_workspaceId_dmIdentityKey', ['workspaceId', 'dmIdentityKey'])
+    .index('by_workspaceId_channelSlug', ['workspaceId', 'channelSlug'])
     .index('by_shareToken', ['shareToken']),
 
   conversationMessages: defineTable({
@@ -1191,4 +1199,392 @@ export default defineSchema({
     .index('by_status_nextAttemptAt', ['status', 'nextAttemptAt'])
     .index('by_subscriptionId_eventId', ['subscriptionId', 'eventId'])
     .index('by_userId_createdAt', ['userId', 'createdAt']),
+
+  // ─── Collaboration / workspace tables ───────────────────────────────────
+  // These tables were part of the workspace collaboration release, reverted
+  // from schema.ts but kept in the Convex deployment. They are restored here
+  // so the WorkspaceService and collaboration routes can function.
+
+  workspaces: defineTable({
+    workspaceId: v.string(),
+    kind: v.union(v.literal('personal'), v.literal('organization')),
+    name: v.string(),
+    slug: v.string(),
+    status: v.union(v.literal('active'), v.literal('archived')),
+    createdByPrincipalId: v.optional(v.string()),
+    personalOwnerUserId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
+  })
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_slug', ['slug'])
+    .index('by_personalOwnerUserId', ['personalOwnerUserId'])
+    .index('by_status_updatedAt', ['status', 'updatedAt']),
+
+  workspacePrincipals: defineTable({
+    principalId: v.string(),
+    workspaceId: v.string(),
+    type: v.union(v.literal('human'), v.literal('agent'), v.literal('service')),
+    userId: v.optional(v.string()),
+    agentId: v.optional(v.string()),
+    serviceId: v.optional(v.string()),
+    displayName: v.string(),
+    email: v.optional(v.string()),
+    createdByPrincipalId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
+  })
+    .index('by_principalId', ['principalId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
+    .index('by_workspaceId_agentId', ['workspaceId', 'agentId'])
+    .index('by_workspaceId_serviceId', ['workspaceId', 'serviceId'])
+    .index('by_workspaceId_email', ['workspaceId', 'email'])
+    .index('by_userId', ['userId']),
+
+  workspaceMemberships: defineTable({
+    membershipId: v.string(),
+    workspaceId: v.string(),
+    principalId: v.string(),
+    role: v.union(
+      v.literal('owner'),
+      v.literal('admin'),
+      v.literal('member'),
+      v.literal('guest'),
+    ),
+    status: v.union(v.literal('active'), v.literal('suspended')),
+    invitedByPrincipalId: v.optional(v.string()),
+    joinedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_membershipId', ['membershipId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_principalId', ['workspaceId', 'principalId'])
+    .index('by_workspaceId_role_status', ['workspaceId', 'role', 'status'])
+    .index('by_principalId_status', ['principalId', 'status']),
+
+  workspaceInvitations: defineTable({
+    invitationId: v.string(),
+    workspaceId: v.string(),
+    email: v.string(),
+    role: v.union(
+      v.literal('admin'),
+      v.literal('member'),
+      v.literal('guest'),
+    ),
+    status: v.union(
+      v.literal('pending'),
+      v.literal('accepted'),
+      v.literal('expired'),
+      v.literal('cancelled'),
+      v.literal('replaced'),
+    ),
+    invitedByPrincipalId: v.string(),
+    expiresAt: v.number(),
+    acceptedByPrincipalId: v.optional(v.string()),
+    acceptedAt: v.optional(v.number()),
+    cancelledAt: v.optional(v.number()),
+    replacedByInvitationId: v.optional(v.string()),
+    replacedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_invitationId', ['invitationId'])
+    .index('by_workspaceId_createdAt', ['workspaceId', 'createdAt'])
+    .index('by_workspaceId_email_status', ['workspaceId', 'email', 'status'])
+    .index('by_email_status', ['email', 'status'])
+    .index('by_status_expiresAt', ['status', 'expiresAt'])
+    .index('by_workspaceId_status_expiresAt', ['workspaceId', 'status', 'expiresAt']),
+
+  workspaceTeams: defineTable({
+    teamId: v.string(),
+    workspaceId: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    createdByPrincipalId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
+  })
+    .index('by_teamId', ['teamId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_name', ['workspaceId', 'name']),
+
+  workspaceTeamMemberships: defineTable({
+    teamMembershipId: v.string(),
+    workspaceId: v.string(),
+    teamId: v.string(),
+    principalId: v.string(),
+    principalType: v.union(v.literal('human'), v.literal('agent')),
+    addedByPrincipalId: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index('by_teamMembershipId', ['teamMembershipId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_teamId', ['teamId'])
+    .index('by_teamId_principalId', ['teamId', 'principalId'])
+    .index('by_principalId', ['principalId']),
+
+  workspaceAgentDefinitions: defineTable({
+    agentId: v.string(),
+    workspaceId: v.string(),
+    principalId: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    instructions: v.string(),
+    harness: v.union(v.literal('overlay'), v.literal('claude-code')),
+    modelId: v.string(),
+    avatarColor: v.optional(v.string()),
+    allowedToolIds: v.array(v.string()),
+    invocationPolicy: v.literal('mention'),
+    createdByPrincipalId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
+  })
+    .index('by_agentId', ['agentId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_name', ['workspaceId', 'name'])
+    .index('by_principalId', ['principalId']),
+
+  workspaceResourceGuests: defineTable({
+    resourceGuestId: v.string(),
+    workspaceId: v.string(),
+    resourceType: v.string(),
+    resourceId: v.string(),
+    principalId: v.string(),
+    accessRole: v.union(v.literal('viewer'), v.literal('editor')),
+    status: v.union(
+      v.literal('pending'),
+      v.literal('active'),
+      v.literal('expired'),
+      v.literal('revoked'),
+    ),
+    grantedByPrincipalId: v.string(),
+    expiresAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_resourceGuestId', ['resourceGuestId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_resource', ['workspaceId', 'resourceType', 'resourceId'])
+    .index('by_workspaceId_principalId', ['workspaceId', 'principalId']),
+
+  workspaceResourceScopes: defineTable({
+    workspaceId: v.string(),
+    resourceType: v.string(),
+    resourceId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index('by_resource', ['resourceType', 'resourceId'])
+    .index('by_workspaceId_resource', ['workspaceId', 'resourceType', 'resourceId']),
+
+  workspaceResourceGrants: defineTable({
+    grantId: v.string(),
+    workspaceId: v.string(),
+    resourceType: v.union(
+      v.literal('conversation'), v.literal('file'), v.literal('project'),
+      v.literal('knowledge_base'), v.literal('automation'), v.literal('agent'),
+    ),
+    resourceId: v.string(),
+    targetType: v.union(v.literal('principal'), v.literal('team'), v.literal('room')),
+    targetId: v.string(),
+    accessRole: v.union(v.literal('viewer'), v.literal('operator'), v.literal('editor')),
+    grantedByPrincipalId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_grantId', ['grantId'])
+    .index('by_workspaceId_resource', ['workspaceId', 'resourceType', 'resourceId'])
+    .index('by_workspaceId_target', ['workspaceId', 'targetType', 'targetId', 'resourceType']),
+
+  workspaceSharingPolicies: defineTable({
+    workspaceId: v.string(),
+    publicLinksEnabled: v.boolean(),
+    memberCanCreateChannels: v.optional(v.boolean()),
+    memberCanCreateAgents: v.optional(v.boolean()),
+    memberCanInvite: v.optional(v.boolean()),
+    guestExpirationDays: v.optional(v.number()),
+    allowedAgentHarnesses: v.optional(v.array(v.string())),
+    agentRunBudgetCents: v.optional(v.number()),
+    channelRetentionDays: v.optional(v.number()),
+    legalHold: v.optional(v.boolean()),
+    dataResidency: v.optional(v.string()),
+    rolloutStage: v.optional(v.union(
+      v.literal('dogfood'),
+      v.literal('invited'),
+      v.literal('general'),
+    )),
+    updatedByPrincipalId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_workspaceId', ['workspaceId']),
+
+  workspaceIdentityMappings: defineTable({
+    mappingId: v.string(),
+    workspaceId: v.string(),
+    principalId: v.string(),
+    directory: v.string(),
+    externalId: v.string(),
+    externalGroupIds: v.array(v.string()),
+    status: v.union(v.literal('active'), v.literal('deprovisioned')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    deprovisionedAt: v.optional(v.number()),
+  })
+    .index('by_mappingId', ['mappingId'])
+    .index('by_workspaceId_external', ['workspaceId', 'directory', 'externalId'])
+    .index('by_workspaceId_principal', ['workspaceId', 'principalId']),
+
+  workspaceAuditExports: defineTable({
+    exportId: v.string(),
+    workspaceId: v.string(),
+    requestedByPrincipalId: v.string(),
+    fromRecordedAt: v.optional(v.number()),
+    toRecordedAt: v.number(),
+    eventCount: v.number(),
+    createdAt: v.number(),
+  })
+    .index('by_exportId', ['exportId'])
+    .index('by_workspaceId', ['workspaceId', 'createdAt']),
+
+  workspaceUserPreferences: defineTable({
+    userId: v.string(),
+    activeWorkspaceId: v.string(),
+    updatedAt: v.number(),
+  }).index('by_userId', ['userId']),
+
+  workspacePresence: defineTable({
+    workspaceId: v.string(),
+    principalId: v.string(),
+    sessionId: v.optional(v.string()),
+    conversationId: v.optional(v.id('conversations')),
+    status: v.union(v.literal('online'), v.literal('away'), v.literal('offline')),
+    lastSeenAt: v.number(),
+    typingExpiresAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index('by_workspaceId_principalId', ['workspaceId', 'principalId'])
+    .index('by_workspaceId_principalId_updatedAt', ['workspaceId', 'principalId', 'updatedAt'])
+    .index('by_conversationId_updatedAt', ['conversationId', 'updatedAt']),
+
+  workspaceNotifications: defineTable({
+    notificationId: v.string(),
+    workspaceId: v.string(),
+    recipientPrincipalId: v.string(),
+    type: v.union(
+      v.literal('message'),
+      v.literal('mention'),
+      v.literal('invitation'),
+      v.literal('participant'),
+    ),
+    conversationId: v.optional(v.id('conversations')),
+    messageId: v.optional(v.id('conversationMessages')),
+    actorPrincipalId: v.optional(v.string()),
+    title: v.string(),
+    body: v.optional(v.string()),
+    createdAt: v.number(),
+    readAt: v.optional(v.number()),
+  })
+    .index('by_notificationId', ['notificationId'])
+    .index('by_workspaceId_recipientPrincipalId_createdAt', [
+      'workspaceId',
+      'recipientPrincipalId',
+      'createdAt',
+    ])
+    .index('by_conversationId_createdAt', ['conversationId', 'createdAt']),
+
+  workspaceNotificationPreferences: defineTable({
+    workspaceId: v.string(),
+    principalId: v.string(),
+    dmMessages: v.optional(v.union(v.literal('activity'), v.literal('banner'), v.literal('off'))),
+    mentions: v.optional(v.union(v.literal('activity'), v.literal('banner'), v.literal('off'))),
+    threadReplies: v.optional(v.union(v.literal('activity'), v.literal('banner'), v.literal('off'))),
+    reactions: v.optional(v.union(v.literal('activity'), v.literal('banner'), v.literal('off'))),
+    channelMessages: v.optional(v.union(v.literal('activity'), v.literal('banner'), v.literal('off'))),
+    updatedAt: v.number(),
+  })
+    .index('by_workspaceId_principalId', ['workspaceId', 'principalId']),
+
+  conversationEvents: defineTable({
+    conversationId: v.id('conversations'),
+    workspaceId: v.optional(v.string()),
+    userId: v.string(),
+    type: v.string(),
+    messageId: v.optional(v.id('conversationMessages')),
+    payload: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
+    .index('by_userId_createdAt', ['userId', 'createdAt']),
+
+  conversationMessageReactions: defineTable({
+    conversationId: v.id('conversations'),
+    messageId: v.id('conversationMessages'),
+    workspaceId: v.string(),
+    principalId: v.string(),
+    emoji: v.string(),
+    createdAt: v.number(),
+  })
+    .index('by_messageId_principalId_emoji', ['messageId', 'principalId', 'emoji'])
+    .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
+    .index('by_workspaceId_principalId', ['workspaceId', 'principalId']),
+
+  conversationPins: defineTable({
+    conversationId: v.id('conversations'),
+    messageId: v.id('conversationMessages'),
+    workspaceId: v.string(),
+    pinnedByPrincipalId: v.string(),
+    createdAt: v.number(),
+  })
+    .index('by_conversationId_messageId', ['conversationId', 'messageId'])
+    .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
+    .index('by_workspaceId_pinnedByPrincipalId', ['workspaceId', 'pinnedByPrincipalId']),
+
+  conversationSavedMessages: defineTable({
+    conversationId: v.id('conversations'),
+    messageId: v.id('conversationMessages'),
+    workspaceId: v.string(),
+    principalId: v.string(),
+    createdAt: v.number(),
+  })
+    .index('by_messageId_principalId', ['messageId', 'principalId'])
+    .index('by_workspaceId_principalId_createdAt', ['workspaceId', 'principalId', 'createdAt']),
+
+  conversationParticipants: defineTable({
+    conversationId: v.id('conversations'),
+    workspaceId: v.string(),
+    principalId: v.string(),
+    principalType: v.union(v.literal('human'), v.literal('agent')),
+    role: v.union(v.literal('member'), v.literal('moderator')),
+    status: v.union(v.literal('active'), v.literal('removed')),
+    notificationLevel: v.union(v.literal('all'), v.literal('mentions'), v.literal('muted')),
+    joinedAt: v.number(),
+    updatedAt: v.number(),
+    removedAt: v.optional(v.number()),
+    lastReadAt: v.optional(v.number()),
+    lastReadSequence: v.optional(v.number()),
+    markedUnreadAt: v.optional(v.number()),
+    archivedAt: v.optional(v.number()),
+  })
+    .index('by_conversationId_principalId', ['conversationId', 'principalId'])
+    .index('by_conversationId_status', ['conversationId', 'status'])
+    .index('by_workspaceId_principalId_status', ['workspaceId', 'principalId', 'status']),
+
+  conversationThreadFollows: defineTable({
+    conversationId: v.id('conversations'),
+    workspaceId: v.string(),
+    threadRootMessageId: v.id('conversationMessages'),
+    principalId: v.string(),
+    followedAt: v.number(),
+  })
+    .index('by_conversationId_threadRootMessageId_principalId', [
+      'conversationId',
+      'threadRootMessageId',
+      'principalId',
+    ]),
 })
