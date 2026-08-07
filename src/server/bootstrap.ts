@@ -50,6 +50,48 @@ import {
 } from '@/server/knowledge'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
 import { ServerProviderUsageMeter } from '@/server/billing/ServerProviderUsageMeter'
+import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
+import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspaceRepository'
+import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
+import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
+import { PostgresWorkspaceAgentRepository } from '@/server/agents/PostgresWorkspaceAgentRepository'
+import { ConvexWorkspaceAgentRepository } from '@/server/agents/ConvexWorkspaceAgentRepository'
+import { WorkspaceSharingService } from '@/server/sharing/WorkspaceSharingService'
+import { PostgresWorkspaceSharingRepository } from '@/server/sharing/PostgresWorkspaceSharingRepository'
+import { ConvexWorkspaceSharingRepository } from '@/server/sharing/ConvexWorkspaceSharingRepository'
+import { WorkspaceSearchService } from '@/server/search/WorkspaceSearchService'
+import { WorkspaceGovernanceService } from '@/server/governance/WorkspaceGovernanceService'
+import { GovernanceService } from '@/server/governance/GovernanceService'
+import { PostgresGovernanceRepository } from '@/server/governance/PostgresGovernanceRepository'
+import { ConvexGovernanceRepository } from '@/server/governance/ConvexGovernanceRepository'
+import {
+  AuthorizationService,
+} from '@/server/authorization/AuthorizationService'
+import { FixedRoleAuthorizationBridge } from '@/server/authorization/FixedRoleAuthorizationBridge'
+import { AuthorizationAdministrationService } from '@/server/authorization/AuthorizationAdministrationService'
+import { createPostgresAuthorizationRepositories } from '@/server/authorization/PostgresAuthorizationRepositories'
+import { createConvexAuthorizationRepositories } from '@/server/authorization/ConvexAuthorizationRepositories'
+import type { AuthorizationRepositories } from '@overlay/authz-contracts'
+import type { AuthorizationCapability } from '@overlay/authz-contracts'
+import {
+  PostgresConversationCollaborationRepository,
+} from '@/server/conversations/PostgresConversationCollaborationRepository'
+import {
+  ConvexConversationCollaborationRepository,
+} from '@/server/conversations/ConvexConversationCollaborationRepository'
+import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
+import {
+  KnowledgeBaseService,
+  KnowledgeSourceIngestionService,
+  KnowledgeBaseRetrievalService,
+  createPostgresKnowledgeBaseRepositories,
+  createConvexKnowledgeBaseRepositories,
+  PostgresCanonicalKnowledgeIndexQueue,
+  ConvexCanonicalKnowledgeIndexQueue,
+  KnowledgeSourceFetcherRegistry,
+} from '@/server/knowledge-bases'
+import { ProjectKnowledgeTransferService } from '@/server/projects/ProjectKnowledgeTransferService'
+import { ProjectSharingService } from '@/server/projects/ProjectSharingService'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -80,6 +122,21 @@ export interface OverlayServerContext extends OverlayProviderContext {
   apiKeyService: ApiKeyService
   lifecycleEvents: LifecycleEventPublisher
   userService: UserService
+  workspaceService: WorkspaceService
+  workspaceGovernanceService: WorkspaceGovernanceService
+  workspaceAgentService: WorkspaceAgentService
+  workspaceSharingService: WorkspaceSharingService
+  workspaceSearchService: WorkspaceSearchService
+  knowledgeSourceIngestionService: KnowledgeSourceIngestionService
+  knowledgeBaseRetrievalService: KnowledgeBaseRetrievalService
+  knowledgeBaseService: KnowledgeBaseService
+  authorizationService: AuthorizationService
+  governanceService: GovernanceService
+  fixedRoleAuthorizationBridge: FixedRoleAuthorizationBridge
+  authorizationAdministrationService: AuthorizationAdministrationService
+  conversationCollaboration: ConversationCollaborationRepository
+  projectKnowledgeTransferService: ProjectKnowledgeTransferService
+  projectSharingService: ProjectSharingService
 }
 
 export interface CreateOverlayServerContextOptions {
@@ -146,6 +203,146 @@ export function createOverlayServerContext(
   })
   const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
 
+  // ── Workspace, authorization, and collaboration services ────────────────
+  const isPostgres = appData.capabilities.provider === 'postgres'
+  const postgresDb = appData.postgres?.db ?? null
+
+  const workspaceRepository = isPostgres && postgresDb
+    ? new PostgresWorkspaceRepository(postgresDb)
+    : new ConvexWorkspaceRepository()
+  const workspaceService = new WorkspaceService(workspaceRepository)
+
+  const authorizationRepositories: AuthorizationRepositories = isPostgres && postgresDb
+    ? createPostgresAuthorizationRepositories(postgresDb)
+    : createConvexAuthorizationRepositories()
+
+  const fixedRoleAuthorizationBridge = new FixedRoleAuthorizationBridge(authorizationRepositories)
+
+  const authorizationService = new AuthorizationService({
+    repositories: authorizationRepositories,
+    isDeploymentOwner: (userId: string) => {
+      // Deployment owners bypass capability checks. Until a dedicated
+      // administrative principals table is wired, treat no one as a deployment
+      // owner by default — the capability policy still apply.
+      return false
+    },
+  })
+
+  const assertCapability = async (userId: string, capability: AuthorizationCapability) => {
+    await authorizationService.assertCapability({ userId, capability })
+  }
+
+  const governanceRepository = isPostgres && postgresDb
+    ? new PostgresGovernanceRepository(postgresDb)
+    : new ConvexGovernanceRepository()
+
+  const governanceService = new GovernanceService({
+    assertCapability,
+    audit: auditService,
+    authorization: authorizationRepositories,
+    repository: governanceRepository,
+  })
+
+  const authorizationAdministrationService = new AuthorizationAdministrationService({
+    assertCapability,
+    audit: auditService,
+    prepareAuthorization: () => fixedRoleAuthorizationBridge.ensureSystemRoles(),
+    repositories: authorizationRepositories,
+  })
+
+  const conversationCollaboration: ConversationCollaborationRepository = isPostgres && postgresDb
+    ? new PostgresConversationCollaborationRepository(postgresDb)
+    : new ConvexConversationCollaborationRepository()
+
+  const workspaceAgentRepository = isPostgres && postgresDb
+    ? new PostgresWorkspaceAgentRepository(postgresDb)
+    : new ConvexWorkspaceAgentRepository()
+  const workspaceAgentService = new WorkspaceAgentService(workspaceAgentRepository, workspaceService)
+
+  const workspaceSharingRepository = isPostgres && postgresDb
+    ? new PostgresWorkspaceSharingRepository(postgresDb)
+    : new ConvexWorkspaceSharingRepository()
+  const workspaceSharingService = new WorkspaceSharingService({
+    agents: workspaceAgentRepository,
+    collaboration: conversationCollaboration,
+    conversations: appData.repositories.conversations,
+    repository: workspaceSharingRepository,
+    resourceOwners: authorizationRepositories.resourceOwners,
+    workspaceRepository,
+    workspaces: workspaceService,
+  })
+
+  const workspaceSearchService = new WorkspaceSearchService({
+    agents: workspaceAgentRepository,
+    collaboration: conversationCollaboration,
+    conversations: appData.repositories.conversations,
+    sharing: workspaceSharingService,
+    sources: {
+      files: async () => [],
+      projects: async () => [],
+      knowledgeBases: async () => [],
+      automations: async () => [],
+    },
+    loaders: {},
+    workspaces: workspaceService,
+  })
+
+  const workspaceGovernanceService = new WorkspaceGovernanceService({
+    audit: appData.repositories.audit,
+    rateLimiter: appConfig.rateLimiter ?? createRateLimiter(runtimeConfig),
+    repository: workspaceRepository,
+    workspaces: workspaceService,
+    appDataProvider: appData.capabilities.provider,
+    requiresConvexClient: !isPostgres,
+  })
+
+  const knowledgeBaseRepositories = isPostgres && postgresDb
+    ? createPostgresKnowledgeBaseRepositories(postgresDb)
+    : createConvexKnowledgeBaseRepositories()
+
+  const knowledgeBaseService = new KnowledgeBaseService({
+    authorization: authorizationService,
+    authorizationRepositories,
+    audit: auditService,
+    governance: governanceService,
+    repositories: knowledgeBaseRepositories,
+    users: appData.repositories.users,
+  })
+
+  const canonicalIndexQueue = isPostgres && postgresDb
+    ? new PostgresCanonicalKnowledgeIndexQueue(postgresDb)
+    : new ConvexCanonicalKnowledgeIndexQueue()
+
+  const knowledgeSourceIngestionService = new KnowledgeSourceIngestionService({
+    authorization: authorizationService,
+    bases: knowledgeBaseService,
+    fetchers: new KnowledgeSourceFetcherRegistry(),
+    indexQueue: canonicalIndexQueue,
+    repositories: knowledgeBaseRepositories,
+  })
+
+  const knowledgeBaseRetrievalService = new KnowledgeBaseRetrievalService({
+    bases: knowledgeBaseService,
+    search: knowledgeSearchService,
+  })
+
+  const projectKnowledgeTransferService = new ProjectKnowledgeTransferService({
+    bases: knowledgeBaseService,
+    files: appData.repositories.files,
+    ingestion: knowledgeSourceIngestionService,
+    notes: {
+      createNote: async (args) => appData.repositories.notes.createNote(args),
+    },
+  })
+
+  const projectSharingService = new ProjectSharingService({
+    authorization: authorizationService,
+    authorizationRepositories,
+    projects: appData.repositories.projects,
+    users: appData.repositories.users,
+    audit: auditService,
+  })
+
   return {
     auth: appConfig.authProvider ?? createAuthProvider(runtimeConfig, userService),
     billing: appConfig.billingProvider ?? createBillingProvider(
@@ -170,6 +367,21 @@ export function createOverlayServerContext(
     apiKeyService: new ApiKeyService(appData.repositories.apiKeys),
     lifecycleEvents,
     userService,
+    workspaceService,
+    workspaceGovernanceService,
+    workspaceAgentService,
+    workspaceSharingService,
+    workspaceSearchService,
+    knowledgeSourceIngestionService,
+    knowledgeBaseRetrievalService,
+    knowledgeBaseService,
+    authorizationService,
+    governanceService,
+    fixedRoleAuthorizationBridge,
+    authorizationAdministrationService,
+    conversationCollaboration,
+    projectKnowledgeTransferService,
+    projectSharingService,
   }
 }
 

@@ -2,6 +2,9 @@ import { AccountClient } from './auth/account-client'
 import { BillingClient } from './auth/billing-client'
 import { SubscriptionClient } from './auth/subscription-client'
 import { TopUpsClient } from './auth/topups-client'
+import { AdminAuthorizationClient } from './admin-authorization/client'
+import { AdminGovernanceClient } from './admin-governance/client'
+import { AgentsClient } from './agents/client'
 import { AutomationRunsClient } from './automation-runs/client'
 import { AutomationsClient } from './automations/client'
 import { BootstrapClient } from './bootstrap/client'
@@ -10,6 +13,7 @@ import { ConversationsClient } from './chat/conversations-client'
 import { DiscoveryClient } from './discovery/client'
 import { FilesClient } from './files/client'
 import { IntegrationsClient } from './integrations/client'
+import { KnowledgeBasesClient } from './knowledge-bases/client'
 import { McpServersClient } from './mcp-servers/client'
 import { MemoryClient } from './memory/client'
 import { NotesClient } from './notes/client'
@@ -17,8 +21,10 @@ import { OnboardingClient } from './onboarding/client'
 import { OutputsClient } from './outputs/client'
 import { ProjectsClient } from './projects/client'
 import { SettingsClient } from './settings/client'
+import { SharingClient } from './sharing/client'
 import { SkillsClient } from './skills/client'
 import { WebhooksClient } from './webhooks/client'
+import { WorkspacesClient } from './workspaces/client'
 import { createHttpContext } from './shared/http'
 import type { CreateOverlayAppClientOptions } from './shared/types'
 
@@ -49,6 +55,12 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     chat: new ChatAuxClient(http),
     automationRuns: new AutomationRunsClient(http),
     webhooks: new WebhooksClient(http),
+    adminAuthorization: new AdminAuthorizationClient(http),
+    adminGovernance: new AdminGovernanceClient(http),
+    sharing: new SharingClient(http),
+    knowledgeBases: new KnowledgeBasesClient(http),
+    workspaces: new WorkspacesClient(http),
+    agents: new AgentsClient(http),
   }
 }
 

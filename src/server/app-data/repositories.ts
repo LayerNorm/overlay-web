@@ -18,6 +18,9 @@ import { ConvexActConversationRepository } from '@/server/conversations/ConvexAc
 import { PostgresActConversationRepository } from '@/server/conversations/PostgresActConversationRepository'
 import { PostgresConversationEventNotifier } from '@/server/conversations/PostgresConversationEventNotifier'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
+import { ConvexConversationCollaborationRepository } from '@/server/conversations/ConvexConversationCollaborationRepository'
+import { PostgresConversationCollaborationRepository } from '@/server/conversations/PostgresConversationCollaborationRepository'
+import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
 import { ConvexFileRepository } from '@/server/files/ConvexFileRepository'
 import type { FileRepository } from '@/server/files/FileRepository'
 import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
@@ -109,6 +112,7 @@ export interface AppDataRepositories {
   billingEvents: BillingProviderEventRepository
   billingWebhooks: BillingWebhookRepository
   chatSuggestions: ChatSuggestionRepository
+  conversationCollaboration: ConversationCollaborationRepository
   conversations: ActConversationRepository
   durableJobs: DurableJobRepository
   daytonaWorkspaces: DaytonaWorkspaceRepository
@@ -166,6 +170,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         billingEvents: new PostgresBillingProviderEventRepository(db),
         billingWebhooks: billing,
         chatSuggestions: new PostgresChatSuggestionRepository(db),
+        conversationCollaboration: new PostgresConversationCollaborationRepository(db),
         conversations,
         durableJobs: new PostgresDurableJobRepository(db),
         daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),
@@ -200,6 +205,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       billingEvents: new ConvexBillingProviderEventRepository(),
       billingWebhooks: new ConvexBillingRepository(),
       chatSuggestions: new ConvexChatSuggestionRepository(),
+      conversationCollaboration: new ConvexConversationCollaborationRepository(),
       conversations: new ConvexActConversationRepository(),
       durableJobs: unsupportedRepository<DurableJobRepository>('DurableJobRepository'),
       daytonaWorkspaces: new ConvexDaytonaWorkspaceRepository(),
