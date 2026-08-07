@@ -998,6 +998,7 @@ export default defineSchema({
     sourceKind: v.union(v.literal('file'), v.literal('memory')),
     sourceId: v.string(),
     knowledgeSourceId: v.optional(v.string()),
+    knowledgeSourceVersionId: v.optional(v.string()),
     chunkIndex: v.number(),
     startOffset: v.number(),
     text: v.string(),
