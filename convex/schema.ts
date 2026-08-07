@@ -1637,7 +1637,7 @@ export default defineSchema({
     messageId: v.optional(v.id('conversationMessages')),
     actorPrincipalId: v.string(),
     threadRootMessageId: v.optional(v.id('conversationMessages')),
-    eventSequence: v.number(),
+    eventSequence: v.optional(v.number()),
     mentionScope: v.optional(v.union(v.literal('direct'), v.literal('channel'), v.literal('here'))),
     title: v.string(),
     body: v.optional(v.string()),
