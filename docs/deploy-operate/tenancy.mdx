@@ -102,6 +102,13 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `files` | `userId` | Deployment boundary | Add `tenantId`; file/folder/share indexes must define cross-tenant behavior. |
 | `webhookSubscriptions` | `userId` | Deployment boundary | Add `tenantId`; subscriptions, signing secrets, and event ownership must be tenant-scoped. |
 | `webhookDeliveries` | `userId` | Deployment boundary | Add `tenantId`; delivery runner claims and retries must enforce tenant ownership. |
+| `emailSuppressions` | `userId` | Deployment boundary | Add `tenantId`; suppression lists must be tenant-scoped to prevent cross-tenant email leakage. |
+| `mcpOAuthSessions` | `userId` | Deployment boundary | Add `tenantId`; OAuth session tokens and refresh flows must be tenant-scoped. |
+| `authorizationGroupMemberships` | `userId` | Deployment boundary | Add `tenantId`; group membership queries must enforce tenant context. |
+| `authorizationUserRoles` | `userId` | Deployment boundary | Add `tenantId`; role assignment queries must enforce tenant context. |
+| `conversationEvents` | `userId` | Deployment boundary | Add `tenantId`; event stream and presence queries must be tenant-scoped. |
+| `workspacePrincipals` | `userId` | Deployment boundary | Add `tenantId`; principal identity and directory queries must enforce tenant context. |
+| `workspaceUserPreferences` | `userId` | Deployment boundary | Add `tenantId`; per-user workspace preferences must be tenant-scoped. |
 
 The following tables are not user-owned tenant data today. They still need review before shared multi-tenant deployments, but the static check only requires explicit documentation for `userId`-owned tables:
 
