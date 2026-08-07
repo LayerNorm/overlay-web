@@ -66,6 +66,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     const id = await repository().create({
       userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
       projectId: optionalString(body.projectId),
       name,
       description: optionalString(body.description),

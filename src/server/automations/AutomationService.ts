@@ -294,6 +294,7 @@ export class AutomationService {
   async createAutomation(args: {
     body: CreateAutomationBody
     userId: string
+    workspaceId?: string
   }): Promise<{ success: true; id: unknown }> {
     const { body } = args
     if (!body.name?.trim() || !body.description?.trim() || !body.instructions?.trim() || !body.schedule) {

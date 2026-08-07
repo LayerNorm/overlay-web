@@ -611,6 +611,7 @@ export const getR2KeysForSubtree = query({
 export const create = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     clientId: v.optional(v.string()),
@@ -758,6 +759,7 @@ export const create = mutation({
         : null
     const id = await ctx.db.insert('files', {
       userId: args.userId,
+      workspaceId: args.workspaceId,
       clientId,
       name: args.name,
       type,
@@ -804,6 +806,7 @@ export const create = mutation({
 export const createWithStorage = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     name: v.string(),
@@ -827,6 +830,7 @@ export const createWithStorage = mutation({
     const now = Date.now()
     const id = await ctx.db.insert('files', {
       userId: args.userId,
+      workspaceId: args.workspaceId,
       name: args.name,
       type: 'file',
       kind: 'upload',
@@ -849,6 +853,7 @@ export const createWithStorage = mutation({
 export const createExtractedDocument = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     r2Key: v.string(),
@@ -886,6 +891,7 @@ export const createExtractedDocument = mutation({
       )
       const id = await ctx.db.insert('files', {
         userId: args.userId,
+        workspaceId: args.workspaceId,
         name: part.name,
         type: 'file',
         kind: 'upload',

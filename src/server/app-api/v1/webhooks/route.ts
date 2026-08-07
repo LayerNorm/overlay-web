@@ -66,6 +66,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     const created = await getOverlayServerContext().appData.repositories.webhooks.create({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       url: parsed.data.url,
       events,
       description: parsed.data.description,

@@ -55,6 +55,7 @@ export const get = query({
 export const create = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     clientId: v.optional(v.string()),
@@ -62,7 +63,7 @@ export const create = mutation({
     instructions: v.optional(v.string()),
     parentId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, clientId, name, instructions, parentId }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, clientId, name, instructions, parentId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (clientId?.trim()) {
       const existing = await ctx.db
@@ -91,6 +92,7 @@ export const create = mutation({
     const now = Date.now()
     return await ctx.db.insert('projects', {
       userId,
+      workspaceId,
       clientId: clientId?.trim() || undefined,
       name,
       instructions: instructions?.trim() || undefined,

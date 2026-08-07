@@ -174,6 +174,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const paidModels = normalizePaidChatModels(body.askModelIds, body.actModelId)
     const id = await repository.createConversation({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       clientId: body.clientId?.trim() || undefined,
       title: body.title || 'New Chat',
       projectId: body.projectId ?? undefined,

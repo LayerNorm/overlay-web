@@ -109,6 +109,7 @@ export const get = query({
 export const create = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     name: v.string(),
@@ -141,6 +142,7 @@ export const create = mutation({
     const now = Date.now()
     return await ctx.db.insert('mcpServers', {
       userId: args.userId,
+      workspaceId: args.workspaceId,
       projectId: args.projectId,
       name: args.name,
       description: args.description,

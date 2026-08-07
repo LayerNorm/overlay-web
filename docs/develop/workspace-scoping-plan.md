@@ -122,43 +122,58 @@ New writes always set the field (Phase 2); the backfill mutation (Phase 5) popul
 
 ---
 
-### Phase 2: Write paths — thread `workspaceId` through creates
+### Phase 2: Write paths — thread `workspaceId` through creates ✅ DONE
 
-Every create mutation must accept and persist `workspaceId`.
+Added `workspaceId: v.optional(v.string())` to all Convex create mutations and
+`workspaceId: args.workspaceId` to all `ctx.db.insert` calls. Updated all BFF
+route POST handlers to pass `workspaceId: context.workspace.workspace.id`.
 
-**Convex mutations to update:**
+**Convex mutations updated (10 files, 14 mutations):**
 
-| Table | Mutation file | Mutation function |
-|-------|-------------|------------------|
-| `conversations` | `convex/chat/conversations.ts` | `create`, `createByServer` |
-| `files` | `convex/files/files.ts` | `create`, `createByServer` |
+| Table | File | Mutations |
+|-------|------|-----------|
+| `conversations` | `convex/chat/conversations.ts` | `create` |
+| `files` | `convex/files/files.ts` | `create`, `createWithStorage`, `createExtractedDocument` |
 | `skills` | `convex/integrations/skills.ts` | `create` |
 | `mcpServers` | `convex/integrations/mcpServers.ts` | `create` |
-| `projects` | `convex/projects/projects.ts` (or similar) | `create` |
-| `automations` | `convex/automations/automations.ts` (or similar) | `create` |
+| `projects` | `convex/projects/projects.ts` | `create` |
+| `automations` | `convex/automations/automations.ts` | `create` |
 | `notes` | `convex/files/notes.ts` | `create` |
-| `memories` | `convex/knowledge/memories.ts` (or similar) | `create` |
-| `outputs` | `convex/outputs/outputs.ts` (or similar) | `create` |
-| `webhookSubscriptions` | `convex/webhooks/subscriptions.ts` (or similar) | `create` |
-| `knowledgeBases` | `convex/knowledge/bases.ts` | `createBaseByServer` |
+| `memories` | `convex/knowledge/memories.ts` | `add` |
+| `outputs` | `convex/outputs/outputs.ts` | `create` |
+| `webhookSubscriptions` | `convex/webhooks/subscriptions.ts` | `create`, `createByServer` |
 
-**BFF routes to update (pass workspaceId from context to mutation):**
+**BFF routes updated (13 routes):**
 
 | Route | File |
 |-------|------|
-| `POST /api/v1/conversations` | `src/server/app-api/v1/conversations/route.ts` |
-| `POST /api/v1/files` | `src/server/app-api/v1/files/route.ts` |
-| `POST /api/v1/skills` | `src/server/app-api/v1/skills/route.ts` |
-| `POST /api/v1/mcps` | `src/server/app-api/v1/mcps/route.ts` |
-| `POST /api/v1/projects` | `src/server/app-api/v1/projects/route.ts` |
-| `POST /api/v1/automations` | `src/server/app-api/v1/automations/route.ts` |
-| `POST /api/v1/notes` | `src/server/app-api/v1/notes/route.ts` |
-| `POST /api/v1/memory` | `src/server/app-api/v1/memory/route.ts` |
-| `POST /api/v1/outputs` | `src/server/app-api/v1/outputs/route.ts` |
-| `POST /api/v1/webhooks` | `src/server/app-api/v1/webhooks/route.ts` |
-| `POST /api/v1/knowledge-bases` | `src/server/app-api/v1/knowledge-bases/route.ts` |
+| `POST /api/v1/conversations` | `conversations/route.ts` |
+| `POST /api/v1/files` | `files/route.ts` |
+| `POST /api/v1/skills` | `skills/route.ts` |
+| `POST /api/v1/mcps` | `mcps/route.ts` |
+| `POST /api/v1/projects` | `projects/route.ts` |
+| `POST /api/v1/automations` | `automations/route.ts` |
+| `POST /api/v1/notes` | `notes/route.ts` |
+| `POST /api/v1/memory` | `memory/route.ts` |
+| `POST /api/v1/webhooks` | `webhooks/route.ts` |
+| `POST /api/v1/generate-video` | `generate-video/route.ts` (output creation) |
+| `POST /api/v1/generate-image` | `generate-image/route.ts` (output creation) |
+| `POST /api/v1/daytona/run` | `daytona/run/route.ts` (output creation) |
+| `POST /api/v1/browser-task` | `browser-task/route.ts` (output creation) |
 
-**Pattern:** `context.workspace.workspace.id` → pass as `workspaceId` to the repository/mutation call.
+**Service/repository input types updated (10 files):**
+- `AutomationService.createAutomation` — added `workspaceId?: string`
+- `OutputService.create` — added `workspaceId?: string`
+- `FileService.createFile` — added `workspaceId?: string`
+- `McpServerRepository.CreateMcpServerInput` — added `workspaceId?: string`
+- `MemoryService.create` + `MemoryRepository.MemoryWrite` — added `workspaceId?: string`
+- `CreateNoteRequest` (in `@overlay/app-core`) — added `workspaceId?: string`
+- `ProjectService.createProject` — added `workspaceId?: string`
+- `SkillRepository.CreateSkillInput` — added `workspaceId?: string`
+- `WebhookRepository.create` — added `workspaceId?: string`
+
+**Pattern:** `context.workspace.workspace.id` → passed as `workspaceId` to the
+service/repository call → forwarded to Convex mutation → persisted in `ctx.db.insert`.
 
 ---
 

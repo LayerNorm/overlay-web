@@ -59,6 +59,7 @@ export class OutputService {
     metadata?: Record<string, unknown>
     conversationId?: string
     turnId?: string
+    workspaceId?: string
   }): Promise<string> {
     if (!isKnownOutputType(args.type)) throw new Error(`Unsupported output type: ${args.type}`)
     const now = Date.now()

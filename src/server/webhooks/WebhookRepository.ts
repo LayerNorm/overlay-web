@@ -51,6 +51,7 @@ export interface WebhookRepository {
     events: WebhookEventType[]
     url: string
     userId: string
+    workspaceId?: string
   }): Promise<{ id: string; secret: string }>
   update(args: {
     description?: string

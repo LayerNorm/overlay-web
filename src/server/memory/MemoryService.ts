@@ -44,6 +44,7 @@ export class MemoryService {
     turnId?: string
     type?: MemoryType
     userId: string
+    workspaceId?: string
   }): Promise<{ count: number; ids: string[]; memory: MemoryRecord }> {
     const content = validateRouteContent(args.content)
     const chunks = segmentMemoryForIngestion(content)

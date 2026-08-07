@@ -41,6 +41,7 @@ export class ProjectService {
     name?: string
     parentId?: string | null
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord> {
     const name = requiredName(args.name)
     return await this.mapRepositoryErrors(() => this.repository.createProject({

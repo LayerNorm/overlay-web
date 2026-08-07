@@ -71,6 +71,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const { name, parentId, instructions, clientId } = body
     const project = await projectService.createProject({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       clientId: clientId?.trim() || undefined,
       name,
       instructions: instructions?.trim() || undefined,

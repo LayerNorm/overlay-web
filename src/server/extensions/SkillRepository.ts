@@ -20,6 +20,7 @@ export type CreateSkillInput = {
   instructions: string
   enabled?: boolean
   projectId?: string
+  workspaceId?: string
 }
 
 export type UpdateSkillInput = {

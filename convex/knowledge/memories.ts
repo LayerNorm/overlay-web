@@ -59,6 +59,7 @@ export const list = query({
 export const add = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     clientId: v.optional(v.string()),
@@ -119,6 +120,7 @@ export const add = mutation({
     const now = Date.now()
     const memoryId = await ctx.db.insert('memories', {
       userId: args.userId,
+      workspaceId: args.workspaceId,
       clientId: args.clientId?.trim() || undefined,
       content: args.content,
       source: args.source,

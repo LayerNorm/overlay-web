@@ -26,6 +26,7 @@ export interface CreateNoteRequest {
   clientId?: string
   accessToken?: string
   userId?: string
+  workspaceId?: string
 }
 
 export interface CreateNoteResponse {

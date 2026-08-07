@@ -38,6 +38,7 @@ export type MemoryWrite = {
   turnId?: string
   type?: MemoryType
   userId: string
+  workspaceId?: string
 }
 
 export interface MemoryRepository {

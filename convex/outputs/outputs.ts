@@ -46,6 +46,7 @@ function outputTextContent(args: { type: string; metadata?: unknown }): string {
 export const create = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     type: v.union(
@@ -94,6 +95,7 @@ export const create = mutation({
     }
     const id = await ctx.db.insert('outputs', {
       userId: args.userId,
+      workspaceId: args.workspaceId,
       type: args.type,
       source:
         args.source ??

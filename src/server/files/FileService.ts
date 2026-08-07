@@ -167,6 +167,7 @@ export class FileService {
   async createFile(args: {
     body: Record<string, unknown>
     userId: string
+    workspaceId?: string
   }): Promise<{ id: unknown; ids?: string[]; parts?: number }> {
     const createRequest = parseCreateFileRequest(args.body, args.userId)
     let id: unknown

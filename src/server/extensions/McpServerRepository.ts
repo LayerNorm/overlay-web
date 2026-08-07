@@ -99,6 +99,7 @@ export type CreateMcpServerInput = {
   timeoutMs?: number
   defaultToolPolicy?: McpToolPolicyMode
   toolPolicies?: Record<string, McpToolPolicyMode>
+  workspaceId?: string
 }
 
 export type UpdateMcpServerInput = Partial<Omit<CreateMcpServerInput, 'userId'>> & {

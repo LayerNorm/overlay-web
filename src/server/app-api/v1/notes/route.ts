@@ -90,6 +90,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       projectId: body.projectId,
       clientId: body.clientId,
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json(result)
   } catch (error) {

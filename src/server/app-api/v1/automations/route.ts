@@ -40,6 +40,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const { auth } = context
     const result = await automationService.createAutomation({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       body,
     })
     return NextResponse.json(result)

@@ -443,6 +443,7 @@ export const get = query({
 export const create = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     clientId: v.optional(v.string()),
@@ -453,7 +454,7 @@ export const create = mutation({
     lastMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
     isAutomation: v.optional(v.boolean()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, clientId, title, projectId, askModelIds, actModelId, lastMode, isAutomation }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, clientId, title, projectId, askModelIds, actModelId, lastMode, isAutomation }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (clientId?.trim()) {
       const existing = await ctx.db
@@ -475,6 +476,7 @@ export const create = mutation({
     const now = Date.now()
     return await ctx.db.insert('conversations', {
       userId,
+      workspaceId,
       clientId: clientId?.trim() || undefined,
       title,
       projectId,

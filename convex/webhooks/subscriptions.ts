@@ -87,6 +87,7 @@ export const list = query({
 export const create = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     url: v.string(),
@@ -105,6 +106,7 @@ export const create = mutation({
     const secret = crypto.randomUUID()
     const id = await ctx.db.insert('webhookSubscriptions', {
       userId: args.userId,
+      workspaceId: args.workspaceId,
       url: args.url.trim(),
       secret,
       events: normalizeEvents(args.events),
@@ -200,6 +202,7 @@ export const createByServer = mutation({
   args: {
     serverSecret: v.string(),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     url: v.string(),
     events: eventTypesValidator,
     description: v.optional(v.string()),
@@ -214,6 +217,7 @@ export const createByServer = mutation({
     const secret = args.secret?.trim() || crypto.randomUUID()
     return await ctx.db.insert('webhookSubscriptions', {
       userId: args.userId,
+      workspaceId: args.workspaceId,
       url: args.url.trim(),
       secret,
       events: args.events,

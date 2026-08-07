@@ -51,6 +51,7 @@ export const get = query({
 export const create = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     name: v.string(),
@@ -70,6 +71,7 @@ export const create = mutation({
     const now = Date.now()
     return await ctx.db.insert('skills', {
       userId: args.userId,
+      workspaceId: args.workspaceId,
       name: args.name,
       description: args.description,
       instructions: args.instructions,
