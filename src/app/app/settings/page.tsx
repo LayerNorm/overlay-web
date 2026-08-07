@@ -31,6 +31,7 @@ import dynamic from 'next/dynamic'
 import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
 import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
 import { ApiKeySettings } from '@/features/settings/components/ApiKeySettings'
+import { WorkspaceSettingsPanel } from '@/features/workspaces/components/WorkspaceSettingsPanel'
 
 const MemoriesView = dynamic(
   () => import('@/features/knowledge/components/MemoriesView'),
@@ -201,7 +202,7 @@ export default function SettingsPage() {
 
           {!isLoading && section === 'workspace' && (
             <WorkspaceSettingsPanel
-              client={publicShowcase ? showcaseWorkspaceManagementClient : undefined}
+              client={undefined}
             />
           )}
 
