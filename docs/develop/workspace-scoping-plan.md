@@ -461,15 +461,172 @@ scoping via their parent knowledge base — no direct `workspaceId` on sources.
 
 ---
 
-## Postgres Parity (Later)
+## Postgres Parity Plan
 
-The Postgres repositories (`PostgresActConversationRepository.ts`, etc.) will need the same treatment:
-1. Add `workspaceId` column to each Postgres table (migration).
-2. Add `WHERE workspace_id = $1` to all list queries.
-3. Thread `workspaceId` through all create/update/delete paths.
-4. Backfill existing rows with personal workspace ID.
+The Postgres provider is not the production default (Convex is), but the
+codebase maintains full Postgres implementations for all resource repos.
+The repository **interfaces** already accept `workspaceId` (from the Convex
+phases), but the Postgres implementations ignore it. This plan closes that
+gap so the Postgres provider is workspace-safe when enabled.
 
-The repository interfaces (`ActConversationRepository.ts`, etc.) already define the contract — adding `workspaceId` to the interface params will require both Convex and Postgres implementations to update simultaneously.
+### Current state
+
+| Layer | Status |
+|-------|--------|
+| Repository interfaces | ✅ `workspaceId?: string` in all 8 repos (from Convex phases) |
+| Postgres schema columns | ❌ Only `knowledge_chunks` has `workspace_id` (migration 0048) |
+| Postgres repo implementations | ❌ None of the 8 repos accept or filter by `workspaceId` |
+| Postgres backfill | ❌ Not done |
+| `PostgresConversationCollaborationRepository` | ✅ Already workspace-scoped (channels/DMs) |
+| `PostgresWorkspaceRepository` | ✅ `bindResource` / `listResourceIdsByWorkspace` work |
+| `PostgresKnowledgeSearchRepository` | ✅ Filters by `workspace_id` on `knowledge_chunks` |
+
+### Phase PG-1: Schema — add `workspace_id` columns + indexes
+
+**File:** `src/server/database/postgres/schema.ts`
+
+Add `workspaceId: text('workspace_id')` column + `index('..._workspace_id_idx')` to these 8 tables:
+
+| Table | schema.ts export | Current indexes to mirror |
+|-------|-----------------|--------------------------|
+| `files` | `files` (line 754) | Add `files_workspace_id_idx` |
+| `notes` | `notes` (line 611) | Add `notes_workspace_id_idx` |
+| `projects` | `projects` (line 350) | Add `projects_workspace_id_idx` |
+| `automations` | `automations` (line 857) | Add `automations_workspace_id_idx` |
+| `skills` | `skills` (line 370) | Add `skills_workspace_id_idx` |
+| `mcp_servers` | `mcpServers` (line 388) | Add `mcp_servers_workspace_id_idx` |
+| `memories` | `memories` (line 632) | Add `memories_workspace_id_idx` |
+| `webhook_subscriptions` | `webhookSubscriptions` (line 963) | Add `webhook_subscriptions_workspace_id_idx` |
+
+Also add `workspaceId: text('workspace_id')` to `conversations` table (line 484) + `conversations_workspace_id_idx`.
+
+**Migration:** `migrations/app-data/0049_resource_tables_workspace_id.sql`
+
+```sql
+ALTER TABLE "files" ADD COLUMN IF NOT EXISTS "workspace_id" text;
+CREATE INDEX IF NOT EXISTS "files_workspace_id_idx" ON "files" ("workspace_id");
+
+ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "workspace_id" text;
+CREATE INDEX IF NOT EXISTS "notes_workspace_id_idx" ON "notes" ("workspace_id");
+
+ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "workspace_id" text;
+CREATE INDEX IF NOT EXISTS "projects_workspace_id_idx" ON "projects" ("workspace_id");
+
+ALTER TABLE "automations" ADD COLUMN IF NOT EXISTS "workspace_id" text;
+CREATE INDEX IF NOT EXISTS "automations_workspace_id_idx" ON "automations" ("workspace_id");
+
+ALTER TABLE "skills" ADD COLUMN IF NOT EXISTS "workspace_id" text;
+CREATE INDEX IF NOT EXISTS "skills_workspace_id_idx" ON "skills" ("workspace_id");
+
+ALTER TABLE "mcp_servers" ADD COLUMN IF NOT EXISTS "workspace_id" text;
+CREATE INDEX IF NOT EXISTS "mcp_servers_workspace_id_idx" ON "mcp_servers" ("workspace_id");
+
+ALTER TABLE "memories" ADD COLUMN IF NOT EXISTS "workspace_id" text;
+CREATE INDEX IF NOT EXISTS "memories_workspace_id_idx" ON "memories" ("workspace_id");
+
+ALTER TABLE "webhook_subscriptions" ADD COLUMN IF NOT EXISTS "workspace_id" text;
+CREATE INDEX IF NOT EXISTS "webhook_subscriptions_workspace_id_idx" ON "webhook_subscriptions" ("workspace_id");
+
+ALTER TABLE "conversations" ADD COLUMN IF NOT EXISTS "workspace_id" text;
+CREATE INDEX IF NOT EXISTS "conversations_workspace_id_idx" ON "conversations" ("workspace_id");
+```
+
+Register in `migrations/app-data/meta/_journal.json` as idx 49.
+
+### Phase PG-2: Repository implementations — thread `workspaceId` through
+
+For each of the 8 Postgres repositories, add `workspaceId?: string` to method
+params (if not already in the interface) and filter/set it in queries.
+
+**Pattern** (from `PostgresConversationCollaborationRepository`):
+- List queries: add `args.workspaceId ? eq(table.workspaceId, args.workspaceId) : undefined` to `and()` filter
+- Create: set `workspaceId: args.workspaceId` in the insert values
+- Get/update/delete: add workspaceId to the WHERE clause, or fetch + verify
+
+#### 2a. `PostgresFileRepository.ts`
+- `getFile`: add `workspaceId` to WHERE
+- `listFiles`: add `workspaceId` filter
+- `createFile` / `createFileWithStorage` / `createExtractedDocument`: set `workspaceId`
+- `updateFile` / `removeFile`: add `workspaceId` to WHERE
+- Storage/utility methods (`getUploadIntent`, `getR2KeysForSubtree`, etc.): no change needed (not resource-list operations)
+
+#### 2b. `PostgresNoteRepository.ts`
+- `getNote`: add `workspaceId` to WHERE
+- `listNotes`: add `workspaceId` filter
+- `createNote`: set `workspaceId`
+- `updateNote` / `deleteNote`: add `workspaceId` to WHERE
+
+#### 2c. `PostgresProjectRepository.ts`
+- `getProject`: add `workspaceId` to WHERE
+- `listProjects`: add `workspaceId` filter
+- `createProject`: set `workspaceId`
+- `updateProject` / `deleteProjectTree`: add `workspaceId` to WHERE
+
+#### 2d. `PostgresAutomationRepository.ts`
+- `listAutomations`: add `workspaceId` filter
+- `getAutomation`: add `workspaceId` to WHERE
+- `createAutomation`: set `workspaceId`
+- `updateAutomation` / `removeAutomation`: add `workspaceId` to WHERE
+
+#### 2e. `PostgresSkillRepository.ts`
+- `list`: add `workspaceId` filter
+- `get`: add `workspaceId` to WHERE
+- `create`: set `workspaceId`
+- `update` / `remove`: add `workspaceId` to WHERE
+
+#### 2f. `PostgresMcpServerRepository.ts`
+- `list`: add `workspaceId` filter
+- `get`: add `workspaceId` to WHERE
+- `create`: set `workspaceId`
+- `update` / `remove`: add `workspaceId` to WHERE
+
+#### 2g. `PostgresMemoryRepository.ts`
+- `get`: add `workspaceId` to WHERE
+- `list`: add `workspaceId` filter
+- `create`: set `workspaceId`
+- `update` / `remove`: add `workspaceId` to WHERE
+
+#### 2h. `PostgresWebhookRepository.ts`
+- `list`: add `workspaceId` filter
+- `create`: set `workspaceId`
+- `update` / `remove`: add `workspaceId` to WHERE
+- `listDeliveries`: add `workspaceId` filter
+- `rotateSecret` / `dispatch`: no change (not workspace-scoped operations)
+
+#### 2i. `PostgresActConversationRepository.ts`
+- `listConversations`: add `workspaceId` filter
+- `createConversation`: set `workspaceId`
+- `getConversationById`: add `workspaceId` to WHERE
+- `updateConversation` / `deleteConversation`: add `workspaceId` to WHERE
+
+### Phase PG-3: Backfill
+
+**Migration:** `migrations/app-data/0050_backfill_workspace_ids.sql`
+
+Backfill existing Postgres rows with the user's personal workspace ID:
+
+```sql
+-- For each resource table, set workspace_id to the user's personal workspace
+UPDATE "files" f
+SET "workspace_id" = w."id"
+FROM "workspaces" w
+WHERE f."user_id" = w."personal_owner_user_id"
+  AND w."kind" = 'personal'
+  AND f."workspace_id" IS NULL;
+```
+
+Repeat for: `notes`, `projects`, `automations`, `skills`, `mcp_servers`,
+`memories`, `webhook_subscriptions`, `conversations`.
+
+For users without a personal workspace, the migration should create one first
+(CTE pattern from the Convex `ensureLegacyPersonalScope`).
+
+### Phase PG-4: Verification
+
+- Typecheck: no new errors
+- ESLint: no new errors
+- Contract tests: run `npm run test:app-data-contracts:postgres` if available
+- Verify all 8 repos pass `workspaceId` through to queries
 
 ---
 
