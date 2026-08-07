@@ -149,6 +149,7 @@ export class FileService {
     projectId?: string | null
     summary?: boolean
     userId: string
+    workspaceId?: string
   }): Promise<unknown> {
     if (args.fileId) {
       const file = await this.deps.repository.getFile({

@@ -36,9 +36,10 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         limit: Number.isFinite(rawLimit) ? rawLimit : undefined,
         subscriptionId: request.nextUrl.searchParams.get('subscriptionId') || undefined,
         userId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
       }))
     }
-    return NextResponse.json(await repository.list({ userId: auth.userId }))
+    return NextResponse.json(await repository.list({ userId: auth.userId, workspaceId: context.workspace.workspace.id }))
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to fetch webhook subscriptions' }, { status: 500 })
   }

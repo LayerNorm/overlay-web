@@ -361,12 +361,13 @@ async function cleanupInactiveMessageDeltas(
 export const list = query({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     updatedSince: v.optional(v.number()),
     includeDeleted: v.optional(v.boolean()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -387,6 +388,7 @@ export const list = query({
       .filter((c) => !automationConversationIds.has(c._id))
       .filter((c) => (updatedSince !== undefined ? c.updatedAt > updatedSince : true))
       .filter((c) => (includeDeleted ? true : !c.deletedAt))
+      .filter((c) => (workspaceId !== undefined ? c.workspaceId === workspaceId : true))
       .slice(0, 100)
   },
 })
@@ -395,12 +397,13 @@ export const listByProject = query({
   args: {
     projectId: v.string(),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     updatedSince: v.optional(v.number()),
     includeDeleted: v.optional(v.boolean()),
   },
-  handler: async (ctx, { projectId, userId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
+  handler: async (ctx, { projectId, userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -421,6 +424,7 @@ export const listByProject = query({
       .filter((conversation) => !automationConversationIds.has(conversation._id))
       .filter((conversation) => (updatedSince !== undefined ? conversation.updatedAt > updatedSince : true))
       .filter((conversation) => (includeDeleted ? true : !conversation.deletedAt))
+      .filter((conversation) => (workspaceId !== undefined ? conversation.workspaceId === workspaceId : true))
       .sort((a, b) => (b.lastModified ?? b.createdAt) - (a.lastModified ?? a.createdAt))
   },
 })

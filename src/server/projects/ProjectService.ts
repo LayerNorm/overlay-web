@@ -31,6 +31,7 @@ export class ProjectService {
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord[]> {
     return this.repository.listProjects(args)
   }

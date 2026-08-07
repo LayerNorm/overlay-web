@@ -49,6 +49,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     const projects = await projectService.listProjects({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
       ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })

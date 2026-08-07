@@ -130,6 +130,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       const list = await repository.listConversationsByProject({
         projectId,
         userId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
         ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
         ...(includeDeleted !== undefined ? { includeDeleted } : {}),
       })
@@ -138,6 +139,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     const list = await repository.listConversations({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
       ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })

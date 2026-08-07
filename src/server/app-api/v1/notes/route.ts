@@ -69,6 +69,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const includeDeleted = readBooleanParam(request.nextUrl.searchParams.get('includeDeleted'))
     const notes = await noteService.listNotes({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       projectId,
       includeDeleted,
     })

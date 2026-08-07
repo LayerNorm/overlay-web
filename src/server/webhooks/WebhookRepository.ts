@@ -44,7 +44,7 @@ export type WebhookDeliveryRecord = {
 }
 
 export interface WebhookRepository {
-  list(args: { userId: string }): Promise<WebhookSubscriptionRecord[]>
+  list(args: { userId: string; workspaceId?: string }): Promise<WebhookSubscriptionRecord[]>
   create(args: {
     description?: string
     enabled?: boolean
@@ -67,6 +67,7 @@ export interface WebhookRepository {
     limit?: number
     subscriptionId?: string
     userId: string
+    workspaceId?: string
   }): Promise<WebhookDeliveryRecord[]>
   redriveDelivery(args: { deliveryId: string; userId: string }): Promise<string | null>
   dispatch(args: { event: WebhookEvent; userId: string }): Promise<{ enqueued: number }>

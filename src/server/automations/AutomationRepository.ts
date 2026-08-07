@@ -49,6 +49,7 @@ export interface AutomationRepository {
     includeDeleted?: boolean
     projectId?: string
     userId: string
+    workspaceId?: string
   }): Promise<AutomationRecord[]>
   listRuns(args: {
     automationId: string

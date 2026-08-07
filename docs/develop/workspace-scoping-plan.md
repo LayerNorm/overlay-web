@@ -177,52 +177,51 @@ service/repository call → forwarded to Convex mutation → persisted in `ctx.d
 
 ---
 
-### Phase 3: Read paths — filter by `workspaceId` in list queries
+### Phase 3: Read paths — filter by `workspaceId` in list queries ✅ DONE
 
-Every list query must filter by `workspaceId` in addition to `userId`.
+Added `workspaceId: v.optional(v.string())` to all Convex list queries and
+in-memory `.filter()` calls that filter by workspaceId when provided. Updated
+all BFF route GET handlers to pass `workspaceId: context.workspace.workspace.id`.
 
-**Convex queries to update:**
+**Strategy:** In-memory filtering after the existing `by_userId` index. This
+works immediately without index changes and is fine for the current scale.
+The `by_workspaceId_*` indexes added in Phase 1 are available for future
+optimization of high-volume tables.
 
-| Table | Query file | Query function | Current filter | New filter |
-|-------|-----------|---------------|----------------|------------|
-| `conversations` | `convex/chat/conversations.ts` | `list` | `by_userId_lastModified` | `by_workspaceId_lastModified` (or filter after `by_userId`) |
-| `files` | `convex/files/files.ts` | `list` | `by_userId` | `by_workspaceId` (or filter after `by_userId`) |
-| `skills` | `convex/integrations/skills.ts` | `list` | `by_userId` | `by_workspaceId` (or filter after `by_userId`) |
-| `mcpServers` | `convex/integrations/mcpServers.ts` | `list`, `listEnabled` | `by_userId`, `by_userId_enabled` | `by_workspaceId`, `by_workspaceId_enabled` |
-| `projects` | `convex/projects/projects.ts` | `list` | `by_userId` | `by_workspaceId` (or filter) |
-| `automations` | `convex/automations/automations.ts` | `list` | `by_userId` | `by_workspaceId` (or filter) |
-| `notes` | `convex/files/notes.ts` | `list` | `by_userId` | `by_workspaceId` (or filter) |
-| `memories` | `convex/knowledge/memories.ts` | `list` | `by_userId` | `by_workspaceId` (or filter) |
-| `outputs` | `convex/outputs/outputs.ts` | `list` | `by_userId` | `by_workspaceId` (or filter) |
-| `webhookSubscriptions` | `convex/webhooks/subscriptions.ts` | `list` | `by_userId` | `by_workspaceId` (or filter) |
-| `knowledgeBases` | `convex/knowledge/bases.ts` | `listBasesByServer` | `ownerUserId` | `workspaceId` |
+**Convex queries updated (10 files, 16 queries):**
 
-**BFF routes to update (pass workspaceId from context to query):**
+| Table | File | Queries |
+|-------|------|---------|
+| `conversations` | `convex/chat/conversations.ts` | `list`, `listByProject` |
+| `files` | `convex/files/files.ts` | `list` |
+| `skills` | `convex/integrations/skills.ts` | `list` |
+| `mcpServers` | `convex/integrations/mcpServers.ts` | `list`, `listEnabled` |
+| `projects` | `convex/projects/projects.ts` | `list` |
+| `automations` | `convex/automations/automations.ts` | `list` |
+| `notes` | `convex/files/notes.ts` | `list`, `listByProject` |
+| `memories` | `convex/knowledge/memories.ts` | `list` |
+| `outputs` | `convex/outputs/outputs.ts` | `list`, `listByConversationId`, `listByTurnId` |
+| `webhookSubscriptions` | `convex/webhooks/subscriptions.ts` | `list`, `listByServer` |
 
-| Route | File |
-|-------|------|
-| `GET /api/v1/conversations` | `src/server/app-api/v1/conversations/route.ts` |
-| `GET /api/v1/files` | `src/server/app-api/v1/files/route.ts` |
-| `GET /api/v1/skills` | `src/server/app-api/v1/skills/route.ts` |
-| `GET /api/v1/mcps` | `src/server/app-api/v1/mcps/route.ts` |
-| `GET /api/v1/projects` | `src/server/app-api/v1/projects/route.ts` |
-| `GET /api/v1/automations` | `src/server/app-api/v1/automations/route.ts` |
-| `GET /api/v1/notes` | `src/server/app-api/v1/notes/route.ts` |
-| `GET /api/v1/memory` | `src/server/app-api/v1/memory/route.ts` |
-| `GET /api/v1/outputs` | `src/server/app-api/v1/outputs/route.ts` |
-| `GET /api/v1/webhooks` | `src/server/app-api/v1/webhooks/route.ts` |
-| `GET /api/v1/knowledge-bases` | `src/server/app-api/v1/knowledge-bases/route.ts` |
+**BFF routes updated (10 files, 12 list calls):**
+- `conversations` (2 calls), `files`, `skills`, `mcps`, `projects`,
+  `automations`, `notes`, `memory`, `outputs`, `webhooks` (2 calls)
 
-**Repository interfaces to update:**
-- `ActConversationRepository.ts` — `listConversations` and `listConversationsByProject` need `workspaceId` param
-- `ConvexActConversationRepository.ts` / `PostgresActConversationRepository.ts` — implement the new param
-- Similar updates for all other repository interfaces
+**Service/repository list method types updated (13 files, 15 methods):**
+- `AutomationService.getAutomations` + `AutomationRepository.listAutomations`
+- `ActConversationRepository.listConversations` + `listConversationsByProject`
+- `FileService.getOrListFiles`
+- `McpServerRepository.list`
+- `MemoryService.list` + `MemoryRepository.list`
+- `NoteService.listNotes` + `NoteRepository.listNotes`
+- `OutputService.list`
+- `ProjectService.listProjects` + `ProjectRepository.listProjects`
+- `SkillRepository.list`
+- `WebhookRepository.list` + `listDeliveries`
 
-**Convex query strategy:** Since Convex indexes can't be changed at query time, we have two options:
-1. **Use the new `by_workspaceId_*` indexes** — most efficient, but requires the index to exist.
-2. **Filter in memory after `by_userId`** — simpler, works immediately, but less efficient for users with many workspaces.
-
-**Recommendation:** Use the new indexes for tables that will have many rows (conversations, files, notes, memories). For tables with few rows per user (skills, MCPs, webhooks, projects, automations), in-memory filtering after `by_userId` is fine.
+**Filter pattern:** `(workspaceId !== undefined ? row.workspaceId === workspaceId : true)`
+— returns all rows when workspaceId is not provided (backward compatible),
+filters to matching workspace when provided.
 
 ---
 

@@ -125,7 +125,7 @@ export type McpExecutionRecord = {
 }
 
 export interface McpServerRepository {
-  list(args: { userId: string; projectId?: string }): Promise<McpServerSummary[]>
+  list(args: { userId: string; projectId?: string; workspaceId?: string }): Promise<McpServerSummary[]>
   listEnabled(args: { userId: string; projectId?: string }): Promise<McpServerRecord[]>
   get(args: { mcpServerId: string; userId: string }): Promise<McpServerRecord | null>
   create(args: CreateMcpServerInput): Promise<string>

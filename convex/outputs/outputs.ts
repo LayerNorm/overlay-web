@@ -272,6 +272,7 @@ export const get = query({
 export const list = query({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     type: v.optional(
@@ -288,17 +289,19 @@ export const list = query({
     ),
     limit: v.optional(v.number()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, type, limit }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, type, limit }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
-    const all = await ctx.db
+    const taken = await ctx.db
       .query('outputs')
       .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
       .order('desc')
       .take(limit ?? 100)
+
+    const all = workspaceId !== undefined ? taken.filter((output) => output.workspaceId === workspaceId) : taken
 
     const normalized = all.map((output) => ({
       ...output,
@@ -311,8 +314,8 @@ export const list = query({
 })
 
 export const listByConversationId = query({
-  args: { conversationId: v.string(), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { conversationId, userId, accessToken, serverSecret }) => {
+  args: { conversationId: v.string(), userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { conversationId, userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -325,6 +328,7 @@ export const listByConversationId = query({
       .collect()
     return all
       .filter((output) => output.userId === userId)
+      .filter((output) => (workspaceId !== undefined ? output.workspaceId === workspaceId : true))
       .map((output) => ({
         ...output,
         type: resolveStoredType(output),
@@ -334,8 +338,8 @@ export const listByConversationId = query({
 })
 
 export const listByTurnId = query({
-  args: { turnId: v.string(), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { turnId, userId, accessToken, serverSecret }) => {
+  args: { turnId: v.string(), userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { turnId, userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -348,6 +352,7 @@ export const listByTurnId = query({
       .collect()
     return all
       .filter((output) => output.userId === userId)
+      .filter((output) => (workspaceId !== undefined ? output.workspaceId === workspaceId : true))
       .map((output) => ({
         ...output,
         type: resolveStoredType(output),

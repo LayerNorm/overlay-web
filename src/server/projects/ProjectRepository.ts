@@ -39,6 +39,7 @@ export interface ProjectRepository {
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord[]>
   createProject(args: {
     clientId?: string

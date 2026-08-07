@@ -33,7 +33,7 @@ export type UpdateSkillInput = {
 }
 
 export interface SkillRepository {
-  list(args: { userId: string; projectId?: string }): Promise<SkillRecord[]>
+  list(args: { userId: string; projectId?: string; workspaceId?: string }): Promise<SkillRecord[]>
   get(args: { skillId: string; userId: string }): Promise<SkillRecord | null>
   create(args: CreateSkillInput): Promise<string>
   update(args: UpdateSkillInput): Promise<void>

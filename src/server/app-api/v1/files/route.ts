@@ -9,6 +9,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const { searchParams } = request.nextUrl
     const result = await fileService.getOrListFiles({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       fileId: searchParams.get('fileId'),
       projectId: searchParams.get('projectId'),
       kind: searchParams.get('kind'),

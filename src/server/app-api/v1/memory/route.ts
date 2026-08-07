@@ -36,6 +36,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       projectId: request.nextUrl.searchParams.get('projectId') ?? undefined,
       updatedSince: Number.isFinite(updatedSinceValue) && updatedSinceValue > 0 ? updatedSinceValue : undefined,
       userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json(raw ? rows : memoriesToClientListRows(rows))
   } catch (error) {

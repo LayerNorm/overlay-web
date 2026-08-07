@@ -148,13 +148,14 @@ async function ensureProjectAccess(
 export const list = query({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     includeDeleted: v.optional(v.boolean()),
     projectId: v.optional(v.string()),
   },
   returns: v.array(automationDoc),
-  handler: async (ctx, { userId, accessToken, serverSecret, includeDeleted, projectId }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, includeDeleted, projectId }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -174,6 +175,7 @@ export const list = query({
     return rows
       .filter((row) => row.userId === userId)
       .filter((row) => (includeDeleted ? true : !row.deletedAt))
+      .filter((row) => (workspaceId !== undefined ? row.workspaceId === workspaceId : true))
   },
 })
 

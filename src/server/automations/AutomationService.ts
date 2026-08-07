@@ -269,6 +269,7 @@ export class AutomationService {
     includeRuns?: boolean
     projectId?: string
     userId: string
+    workspaceId?: string
   }): Promise<unknown> {
     if (args.automationId && args.includeRuns) {
       return await this.deps.repository.listRuns({

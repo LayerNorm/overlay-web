@@ -50,6 +50,7 @@ export interface MemoryRepository {
     projectId?: string
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<MemoryRecord[]>
   create(args: MemoryWrite): Promise<MemoryRecord>
   update(args: Omit<MemoryWrite, 'clientId' | 'userId'> & {

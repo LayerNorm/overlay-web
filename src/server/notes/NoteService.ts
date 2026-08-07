@@ -38,6 +38,7 @@ export interface NoteRepository {
     userId: string
     projectId?: string
     includeDeleted?: boolean
+    workspaceId?: string
   }): Promise<NoteRecord[]>
   createNote(args: {
     userId: string
@@ -120,6 +121,7 @@ export class NoteService {
     userId: string
     projectId?: string
     includeDeleted?: boolean
+    workspaceId?: string
   }): Promise<ServerNoteDoc[]> {
     const notes = await this.context.noteRepository.listNotes(args)
     return notes.map(noteRecordToDoc)

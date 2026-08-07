@@ -17,12 +17,13 @@ async function authorizeUserAccess(params: {
 export const list = query({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     updatedSince: v.optional(v.number()),
     includeDeleted: v.optional(v.boolean()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -36,6 +37,7 @@ export const list = query({
     return projects
       .filter((project) => (updatedSince !== undefined ? project.updatedAt > updatedSince : true))
       .filter((project) => (includeDeleted ? true : !project.deletedAt))
+      .filter((project) => (workspaceId !== undefined ? project.workspaceId === workspaceId : true))
   },
 })
 

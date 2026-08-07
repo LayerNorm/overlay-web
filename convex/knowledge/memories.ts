@@ -27,6 +27,7 @@ function normalizeMemoryDoc<T extends {
 export const list = query({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     updatedSince: v.optional(v.number()),
@@ -35,7 +36,7 @@ export const list = query({
     conversationId: v.optional(v.string()),
     noteId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, updatedSince, includeDeleted, projectId, conversationId, noteId }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted, projectId, conversationId, noteId }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -53,6 +54,7 @@ export const list = query({
       .filter((memory) => (projectId !== undefined ? memory.projectId === projectId : true))
       .filter((memory) => (conversationId !== undefined ? memory.conversationId === conversationId : true))
       .filter((memory) => (noteId !== undefined ? memory.noteId === noteId : true))
+      .filter((memory) => (workspaceId !== undefined ? memory.workspaceId === workspaceId : true))
   },
 })
 

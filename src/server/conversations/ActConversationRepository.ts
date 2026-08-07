@@ -131,12 +131,14 @@ export interface ActConversationRepository {
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<ConversationListRow[]>
   listConversationsByProject(args: {
     includeDeleted?: boolean
     projectId: string
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<ConversationListRow[]>
   getRecentMessages(args: {
     beforeCreatedAt?: number

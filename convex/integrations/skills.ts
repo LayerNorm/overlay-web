@@ -15,8 +15,8 @@ async function authorizeUserAccess(params: {
 }
 
 export const list = query({
-  args: { userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()), projectId: v.optional(v.string()) },
-  handler: async (ctx, { userId, accessToken, serverSecret, projectId }) => {
+  args: { userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()), projectId: v.optional(v.string()) },
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, projectId }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -28,10 +28,10 @@ export const list = query({
       .order('desc')
       .collect()
     if (projectId !== undefined) {
-      return all.filter((s) => s.projectId === projectId)
+      return all.filter((s) => s.projectId === projectId).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true))
     }
     // Global skills = no projectId
-    return all.filter((s) => !s.projectId)
+    return all.filter((s) => !s.projectId).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true))
   },
 })
 

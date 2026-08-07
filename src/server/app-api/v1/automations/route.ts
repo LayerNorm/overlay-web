@@ -19,6 +19,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       request.nextUrl.searchParams.get('includeRuns') === 'true'
     const result = await automationService.getAutomations({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       automationId,
       projectId,
       includeDeleted,

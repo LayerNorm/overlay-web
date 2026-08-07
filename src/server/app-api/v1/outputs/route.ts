@@ -15,6 +15,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const type = rawType && isKnownOutputType(rawType) ? rawType : null
     const outputs = await outputService.list({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       conversationId: request.nextUrl.searchParams.get('conversationId'),
       type,
     })

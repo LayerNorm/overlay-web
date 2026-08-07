@@ -17,11 +17,12 @@ async function authorizeUserAccess(params: {
 export const list = query({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     projectId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, projectId }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, projectId }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -33,7 +34,7 @@ export const list = query({
       .order('desc')
       .collect()
     // Scrub authConfig from the response
-    return all.filter((s) => projectId !== undefined ? s.projectId === projectId : !s.projectId).map((s) => ({
+    return all.filter((s) => projectId !== undefined ? s.projectId === projectId : !s.projectId).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true)).map((s) => ({
       _id: s._id,
       userId: s.userId,
       projectId: s.projectId,
@@ -67,11 +68,12 @@ export const list = query({
 export const listEnabled = query({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     projectId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, projectId }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, projectId }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -83,7 +85,7 @@ export const listEnabled = query({
         q.eq('userId', userId).eq('enabled', true)
       )
       .collect()
-    return all.filter((server) => projectId !== undefined ? server.projectId === projectId : !server.projectId)
+    return all.filter((server) => projectId !== undefined ? server.projectId === projectId : !server.projectId).filter((server) => (workspaceId !== undefined ? server.workspaceId === workspaceId : true))
   },
 })
 

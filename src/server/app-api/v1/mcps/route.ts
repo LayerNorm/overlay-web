@@ -39,7 +39,7 @@ async function validateMcpUrl(url: unknown): Promise<string | null> {
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const projectId = request.nextUrl.searchParams.get('projectId') || undefined
-    return NextResponse.json(await repository().list({ userId: context.auth.userId, projectId }))
+    return NextResponse.json(await repository().list({ userId: context.auth.userId, workspaceId: context.workspace.workspace.id, projectId }))
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to fetch MCP servers' }, { status: 500 })
   }

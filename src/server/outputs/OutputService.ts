@@ -141,6 +141,7 @@ export class OutputService {
     conversationId?: string | null
     type?: string | null
     userId: string
+    workspaceId?: string
   }): Promise<OutputRecord[]> {
     const files = await this.deps.repository.listFiles({
       userId: args.userId,

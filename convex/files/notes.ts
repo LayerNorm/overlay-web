@@ -29,12 +29,13 @@ function normalizeNoteDoc<T extends {
 export const list = query({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     updatedSince: v.optional(v.number()),
     includeDeleted: v.optional(v.boolean()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -50,6 +51,7 @@ export const list = query({
       .filter((n) => !n.projectId)
       .filter((n) => (updatedSince !== undefined ? n.updatedAt > updatedSince : true))
       .filter((n) => (includeDeleted ? true : !n.deletedAt))
+      .filter((n) => (workspaceId !== undefined ? n.workspaceId === workspaceId : true))
       .slice(0, 200)
   },
 })
@@ -59,12 +61,13 @@ export const listByProject = query({
   args: {
     projectId: v.string(),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     updatedSince: v.optional(v.number()),
     includeDeleted: v.optional(v.boolean()),
   },
-  handler: async (ctx, { projectId, userId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
+  handler: async (ctx, { projectId, userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -80,6 +83,7 @@ export const listByProject = query({
       .filter((note) => note.userId === userId)
       .filter((note) => (updatedSince !== undefined ? note.updatedAt > updatedSince : true))
       .filter((note) => (includeDeleted ? true : !note.deletedAt))
+      .filter((note) => (workspaceId !== undefined ? note.workspaceId === workspaceId : true))
   },
 })
 

@@ -413,6 +413,7 @@ export const expireUploadIntentsByServer = mutation({
 export const list = query({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     projectId: v.optional(v.string()),
@@ -430,6 +431,7 @@ export const list = query({
   },
   handler: async (ctx, {
     userId,
+    workspaceId,
     accessToken,
     serverSecret,
     projectId,
@@ -458,6 +460,7 @@ export const list = query({
       .filter((file) => (conversationId !== undefined ? file.conversationId === conversationId : true))
       .filter((file) => (outputType !== undefined ? file.outputType === outputType : true))
       .filter((file) => (kind !== undefined ? inferKind(file) === kind : true))
+      .filter((file) => (workspaceId !== undefined ? file.workspaceId === workspaceId : true))
 
     return summary
       ? filteredFiles.map(normalizeFileSummary)

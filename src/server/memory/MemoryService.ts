@@ -26,6 +26,7 @@ export class MemoryService {
     projectId?: string
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }) {
     return this.repository.list(args)
   }

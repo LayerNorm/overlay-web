@@ -55,6 +55,7 @@ function scrubSubscription(row: {
 export const list = query({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
@@ -80,7 +81,9 @@ export const list = query({
       .order('desc')
       .collect()
 
-    return rows.map(scrubSubscription)
+    return rows
+      .filter((sub) => (args.workspaceId !== undefined ? sub.workspaceId === args.workspaceId : true))
+      .map(scrubSubscription)
   },
 })
 
@@ -233,6 +236,7 @@ export const listByServer = query({
   args: {
     serverSecret: v.string(),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
   },
   returns: v.array(v.object({
     _id: v.id('webhookSubscriptions'),
@@ -251,15 +255,17 @@ export const listByServer = query({
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
       .collect()
 
-    return rows.map((row) => ({
-      _id: row._id,
-      url: row.url,
-      events: row.events,
-      enabled: row.enabled,
-      description: row.description,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    }))
+    return rows
+      .filter((sub) => (args.workspaceId !== undefined ? sub.workspaceId === args.workspaceId : true))
+      .map((row) => ({
+        _id: row._id,
+        url: row.url,
+        events: row.events,
+        enabled: row.enabled,
+        description: row.description,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      }))
   },
 })
 
