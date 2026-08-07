@@ -50,7 +50,7 @@ export const CANONICAL_APP_DESTINATIONS: readonly AppDestinationConfig[] = [
     href: '/app/settings',
     subviews: ['general', 'account', 'customization', 'models', 'contact'],
   },
-  { id: 'account', label: 'Account', href: '/account' },
+  { id: 'account', label: 'Account settings', href: '/app/settings?section=account' },
 ] as const
 
 export interface AppFeatureFlags {

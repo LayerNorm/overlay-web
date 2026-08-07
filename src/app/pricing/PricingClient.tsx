@@ -578,7 +578,7 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
                 <h2 className={`text-sm font-medium ${theme.heading}`}>Top-ups</h2>
                 <p className={`mt-2 text-sm leading-relaxed ${theme.body}`}>
                   One-time and automatic top-ups use <span className="font-medium">$8</span> per recharge unless you change this in{' '}
-                  <Link href="/account" className={`font-medium underline underline-offset-4 ${theme.heading}`}>
+                  <Link href="/app/settings?section=account" className={`font-medium underline underline-offset-4 ${theme.heading}`}>
                     Account
                   </Link>
                   . Automatic top-ups are off until you opt in.
@@ -627,7 +627,7 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
                 </div>
                 <p className={`mt-4 text-sm ${theme.body}`}>
                   Manage payment method and invoices in{' '}
-                  <Link href="/account" className={`font-medium underline underline-offset-4 ${theme.heading}`}>
+                  <Link href="/app/settings?section=account" className={`font-medium underline underline-offset-4 ${theme.heading}`}>
                     Account
                   </Link>
                   .

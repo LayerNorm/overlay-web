@@ -2058,7 +2058,7 @@ export default function ChatExperience({
                     note={
                       <>
                         Your paid storage stays active. You can also manage budget from{' '}
-                        <Link href="/account" className="font-medium underline underline-offset-4">
+                        <Link href="/app/settings?section=account" className="font-medium underline underline-offset-4">
                           Account
                         </Link>
                         .

@@ -94,10 +94,10 @@ const TABS: ReadonlyArray<{
   },
   {
     id: 'chats-agents',
-    label: 'Chats & agents',
+    label: 'Agents',
     icon: Bot,
-    emptyTitle: 'No shared chats or agents',
-    emptyDescription: 'Channels, direct messages, and named agents will be managed here.',
+    emptyTitle: 'No shared agents',
+    emptyDescription: 'Named agents for this workspace will be managed here.',
     action: 'Add agent',
   },
   {
