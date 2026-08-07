@@ -36,15 +36,13 @@ export function SidebarResourceSection({
   action,
   search,
   children,
-  className,
 }: {
   action?: SidebarResourceAction | null
   search?: SidebarResourceSearch | null
   children: ReactNode
-  className?: string
 }) {
   return (
-    <div className={cn('flex min-h-0 flex-1 flex-col border-t border-[var(--border)] px-2 py-3', className)}>
+    <div className="flex min-h-0 flex-1 flex-col border-t border-[var(--border)] px-2 py-3">
       {action && search ? (
         <div className="mb-3 flex items-center gap-1.5">
           <button

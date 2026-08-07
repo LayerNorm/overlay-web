@@ -27,27 +27,9 @@ import { parseApiBoundaryInput } from '@/server/app-api/boundary'
 import { getOverlayRuntimeConfig, isOverlayConfigError } from '@/server/config'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
-  evaluateAuthorizationRoute,
-  evaluateResourceRoute,
-  firstDeniedCapability,
-  getAuthorizationEnforcementMode,
-  getAuthorizationRoutePolicy,
-} from '@/server/authorization'
-import { recordAuthorizationDenial } from '@/server/authorization/authorization-denial-audit'
-import { logger } from '@/server/observability/logger'
-import {
   appDataRouteUnsupportedResponse,
   getAppDataRouteSupport,
 } from '@/server/app-data/route-support'
-import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
-import {
-  ACTIVE_WORKSPACE_COOKIE,
-  ACTIVE_WORKSPACE_HEADER,
-} from '@/shared/workspaces/constants'
-import {
-  WORKSPACE_SHARE_RESOURCE_TYPES,
-  type WorkspaceShareResourceType,
-} from '@overlay/workspace-contracts'
 import {
   getOwnerFundedOperation,
   ownerFundedOperationRequiresIdempotencyKey,
@@ -145,199 +127,6 @@ export async function handleBffRoute(
   const ownerFundedIdempotencyResponse = requireOwnerFundedIdempotency(request, auth)
   if (ownerFundedIdempotencyResponse) return ownerFundedIdempotencyResponse
 
-  let workspace
-  const requestedByHeader = request.headers.get(ACTIVE_WORKSPACE_HEADER)?.trim() || undefined
-  const requestedByCookie = request.cookies.get(ACTIVE_WORKSPACE_COOKIE)?.value.trim() || undefined
-  try {
-    workspace = await serverContext.workspaceService.resolveActiveWorkspace(
-      auth.userId,
-      requestedByHeader ?? requestedByCookie,
-    )
-  } catch (error) {
-    if (requestedByHeader && error instanceof WorkspaceServiceError && error.code === 'not_found') {
-      return NextResponse.json(
-        { error: 'Not found', code: 'workspace_not_found' },
-        { status: 404 },
-      )
-    }
-    if (requestedByCookie && error instanceof WorkspaceServiceError && error.code === 'not_found') {
-      workspace = await serverContext.workspaceService.resolveActiveWorkspace(auth.userId)
-    } else {
-      throw error
-    }
-  }
-
-  const authorizationPolicy = getAuthorizationRoutePolicy(
-    request.method,
-    request.nextUrl.pathname,
-  )
-  if (!authorizationPolicy) {
-    logger.error('[Authorization] Missing route policy', {
-      method: request.method,
-      pathname: request.nextUrl.pathname,
-    })
-    return NextResponse.json({
-      error: 'Authorization policy missing',
-      code: 'authorization_policy_missing',
-    }, { status: 500 })
-  }
-  await serverContext.fixedRoleAuthorizationBridge.ensureDefaultUserRole(auth.userId)
-  const authorizationEvaluation = await evaluateAuthorizationRoute({
-    authorization: serverContext.authorizationService,
-    mode: getAuthorizationEnforcementMode(),
-    policy: authorizationPolicy,
-    userId: auth.userId,
-  })
-  const deniedCapability = firstDeniedCapability(authorizationEvaluation)
-  if (deniedCapability) {
-    logger.warn('[Authorization] Route capability denied', {
-      allowed: authorizationEvaluation.allowed,
-      authType: auth.authType,
-      capability: deniedCapability.capability,
-      method: request.method,
-      mode: authorizationEvaluation.mode,
-      pathname: request.nextUrl.pathname,
-      reason: deniedCapability.reason,
-      userId: auth.userId,
-    })
-  }
-  if (!authorizationEvaluation.allowed) {
-    await recordAuthorizationDenial({
-      auditService: serverContext.auditService,
-      actor: auth,
-      clientIp,
-      capability: deniedCapability?.capability,
-      method: request.method,
-      pathname: request.nextUrl.pathname,
-      reason: deniedCapability?.reason ?? 'authorization_denied',
-      requestId: request.headers.get('x-request-id') ?? undefined,
-    })
-    return NextResponse.json({
-      error: 'Forbidden',
-      code: 'authorization_denied',
-      capability: deniedCapability?.capability,
-      reason: deniedCapability?.reason ?? 'authorization_denied',
-    }, { status: 403 })
-  }
-
-  const routeParams = await resolveRouteParams(context)
-  let resourceAuthorization = await evaluateResourceRoute({
-    authorization: serverContext.authorizationService,
-    evaluation: authorizationEvaluation,
-    mode: authorizationEvaluation.mode,
-    params: routeParams,
-    parsedJson: parsedInput.parsedJson,
-    parsedQuery: parsedInput.parsedQuery,
-    policy: authorizationPolicy,
-  })
-  const workspaceShareResourceType = workspaceResourceType(authorizationPolicy.resource?.type)
-  if (authorizationPolicy.access === 'resource' && workspaceShareResourceType) {
-    const action = authorizationPolicy.resource!.action
-    if (resourceAuthorization.resourceId && resourceAuthorization.decision?.allowed === false) {
-      const shared = await serverContext.workspaceSharingService.checkAccess({
-        action,
-        actorUserId: auth.userId,
-        workspaceId: workspace.workspace.id,
-        resourceType: workspaceShareResourceType,
-        resourceId: resourceAuthorization.resourceId,
-      })
-      if (shared.allowed && shared.ownerUserId) {
-        resourceAuthorization = {
-          ...resourceAuthorization,
-          ownerUserId: shared.ownerUserId,
-          decision: {
-            ...resourceAuthorization.decision,
-            allowed: true,
-            effectiveAccessRole: shared.accessRole === 'viewer' ? 'viewer' : 'editor',
-            reason: 'resource_access_granted',
-          },
-        }
-      }
-    } else if (!resourceAuthorization.resourceId && authorizationPolicy.resource?.optional) {
-      const shared = await serverContext.workspaceSharingService.listAccessibleResources({
-        action,
-        actorUserId: auth.userId,
-        workspaceId: workspace.workspace.id,
-        resourceType: workspaceShareResourceType,
-      })
-      const merged = new Map((resourceAuthorization.grantedResources ?? [])
-        .map((item) => [item.resourceId, item]))
-      for (const item of shared) merged.set(item.resourceId, item)
-      resourceAuthorization = {
-        ...resourceAuthorization,
-        grantedResources: [...merged.values()],
-      }
-    }
-  }
-  const conversationParticipantAccess = resourceAuthorization.resourceId
-    && resourceAuthorization.decision?.resourceType === 'conversation'
-    ? await serverContext.appData.repositories.conversationCollaboration.canAccessConversation({
-      actorUserId: auth.userId,
-      workspaceId: workspace.workspace.id,
-      conversationId: resourceAuthorization.resourceId,
-    })
-    : false
-  if (
-    resourceAuthorization.decision
-    && !resourceAuthorization.decision.allowed
-    && !conversationParticipantAccess
-  ) {
-    logger.warn('[Authorization] Resource access denied', {
-      action: resourceAuthorization.decision.requiredAction,
-      method: request.method,
-      pathname: request.nextUrl.pathname,
-      reason: resourceAuthorization.decision.reason,
-      resourceId: resourceAuthorization.resourceId,
-      resourceType: resourceAuthorization.decision.resourceType,
-      userId: auth.userId,
-    })
-    if (authorizationEvaluation.mode === 'enforce') {
-      await recordAuthorizationDenial({
-        auditService: serverContext.auditService,
-        actor: auth,
-        clientIp,
-        capability: resourceAuthorization.decision.capability,
-        method: request.method,
-        pathname: request.nextUrl.pathname,
-        reason: resourceAuthorization.decision.reason,
-        requestId: request.headers.get('x-request-id') ?? undefined,
-        resourceId: resourceAuthorization.resourceId,
-        resourceType: resourceAuthorization.decision.resourceType,
-      })
-      return NextResponse.json({
-        error: 'Not found',
-        code: 'resource_not_found',
-      }, { status: 404 })
-    }
-  }
-  if (
-    resourceAuthorization.resourceId
-    && resourceAuthorization.decision?.resourceType === 'conversation'
-  ) {
-    try {
-      await serverContext.workspaceService.assertResourceWorkspace({
-        actorUserId: auth.userId,
-        workspaceId: workspace.workspace.id,
-        resourceType: 'conversation',
-        resourceId: resourceAuthorization.resourceId,
-      })
-      if (!conversationParticipantAccess && resourceAuthorization.decision.allowed === false) {
-        return NextResponse.json({
-          error: 'Not found',
-          code: 'resource_not_found',
-        }, { status: 404 })
-      }
-    } catch (error) {
-      if (error instanceof WorkspaceServiceError && error.code === 'not_found') {
-        return NextResponse.json({
-          error: 'Not found',
-          code: 'resource_not_found',
-        }, { status: 404 })
-      }
-      throw error
-    }
-  }
-
   const rateLimits = getEndpointRateLimitSpecs({
     ...(clientIp !== 'unknown'
       ? {
@@ -365,7 +154,7 @@ export async function handleBffRoute(
   if (rateLimitResponse) return rateLimitResponse
 
   const serviceContext = {
-    params: Promise.resolve(routeParams),
+    params: Promise.resolve({}),
     ...(context && typeof context === 'object' ? context as object : {}),
     auth,
     parsedQuery: parsedInput.parsedQuery,
@@ -373,15 +162,6 @@ export async function handleBffRoute(
     parsedFormData: parsedInput.parsedFormData,
     capabilities,
     appDataCapabilities,
-    workspace,
-    authorization: {
-      evaluation: authorizationEvaluation,
-      policy: authorizationPolicy,
-      resourceDecision: resourceAuthorization.decision,
-      resourceId: resourceAuthorization.resourceId,
-      resourceOwnerUserId: resourceAuthorization.ownerUserId,
-      grantedResources: resourceAuthorization.grantedResources,
-    },
     requestFingerprint: await fingerprintApiRequest(request),
     requestIdempotencyKey: request.headers.get('idempotency-key')?.trim() || null,
   } as AppApiRouteContext
@@ -580,17 +360,7 @@ async function recordBffMutationAudit(args: {
   }
 }
 
-async function resolveRouteParams(context: unknown): Promise<Record<string, string | string[]>> {
-  if (!context || typeof context !== 'object' || !('params' in context)) return {}
-  const params = await Promise.resolve((context as BffRouteContext).params)
-  return params ?? {}
-}
-
 function getBearerToken(request: NextRequest): string | undefined {
   const authHeader = request.headers.get('authorization')
   return authHeader?.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : undefined
-}
-
-function workspaceResourceType(value: string | undefined): WorkspaceShareResourceType | undefined {
-  return WORKSPACE_SHARE_RESOURCE_TYPES.find((type) => type === value)
 }

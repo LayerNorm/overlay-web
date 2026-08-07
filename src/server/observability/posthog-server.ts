@@ -133,5 +133,7 @@ export function productEventForLifecycle(event: LifecycleEvent): ProductEvent | 
         },
         userId: event.userId,
       }
+    case 'api_key.changed':
+      return null
   }
 }

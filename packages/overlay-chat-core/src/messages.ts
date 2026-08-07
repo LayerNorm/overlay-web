@@ -524,18 +524,6 @@ export function finalizeStreamingConversationParts(
 const CONNECTION_LOST_LABEL =
   'Connection lost mid-response. Check your network and try again.'
 
-const PERSISTED_INTERRUPTION_MARKERS = [
-  '[Interrupted by user. Continue?]',
-  '[Request timed out after 300s. Continue?]',
-] as const
-
-export function hasPersistedInterruptionMarker(
-  responseText: string | null | undefined,
-): boolean {
-  const text = responseText ?? ''
-  return PERSISTED_INTERRUPTION_MARKERS.some((marker) => text.includes(marker))
-}
-
 /** True when `message` is a short stored failure string, not leftover assistant prose. */
 export function looksLikeStoredGenerationError(message: string): boolean {
   const text = message.trim()

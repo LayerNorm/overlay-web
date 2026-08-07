@@ -18,9 +18,6 @@ import { ConvexActConversationRepository } from '@/server/conversations/ConvexAc
 import { PostgresActConversationRepository } from '@/server/conversations/PostgresActConversationRepository'
 import { PostgresConversationEventNotifier } from '@/server/conversations/PostgresConversationEventNotifier'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
-import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
-import { ConvexConversationCollaborationRepository } from '@/server/conversations/ConvexConversationCollaborationRepository'
-import { PostgresConversationCollaborationRepository } from '@/server/conversations/PostgresConversationCollaborationRepository'
 import { ConvexFileRepository } from '@/server/files/ConvexFileRepository'
 import type { FileRepository } from '@/server/files/FileRepository'
 import { PostgresFileRepository } from '@/server/files/PostgresFileRepository'
@@ -55,6 +52,7 @@ import {
 import {
   PostgresDurableJobRepository,
   PostgresOutboxRepository,
+  ConvexOutboxRepository,
   type DurableJobRepository,
   type OutboxRepository,
 } from '@/server/jobs'
@@ -100,33 +98,10 @@ import {
   type McpServerRepository,
   type SkillRepository,
 } from '@/server/extensions'
-import type { AuthorizationRepositories } from '@overlay/authz-contracts'
-import {
-  createConvexAuthorizationRepositories,
-  createPostgresAuthorizationRepositories,
-} from '@/server/authorization'
-import type { KnowledgeBaseRepositories } from '@overlay/app-core'
-import {
-  createConvexKnowledgeBaseRepositories,
-  createPostgresKnowledgeBaseRepositories,
-} from '@/server/knowledge-bases'
-import type { GovernanceRepository } from '@overlay/app-core'
-import {
-  ConvexGovernanceRepository,
-  PostgresGovernanceRepository,
-} from '@/server/governance'
-import type { WorkspaceRepository } from '@/server/workspaces/WorkspaceRepository'
-import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
-import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspaceRepository'
-import type { WorkspaceAgentRepository } from '@/server/agents'
-import { ConvexWorkspaceAgentRepository, PostgresWorkspaceAgentRepository } from '@/server/agents'
-import type { WorkspaceSharingRepository } from '@/server/sharing'
-import { ConvexWorkspaceSharingRepository, PostgresWorkspaceSharingRepository } from '@/server/sharing'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
   administration: AdministrativeRepository
-  authorization: AuthorizationRepositories
   apiKeys: ApiKeyRepository
   audit: AuditRepository
   automations: AutomationRepository
@@ -135,13 +110,10 @@ export interface AppDataRepositories {
   billingWebhooks: BillingWebhookRepository
   chatSuggestions: ChatSuggestionRepository
   conversations: ActConversationRepository
-  conversationCollaboration: ConversationCollaborationRepository
   durableJobs: DurableJobRepository
   daytonaWorkspaces: DaytonaWorkspaceRepository
   files: FileRepository
-  governance: GovernanceRepository
   idempotency: IdempotencyRepository
-  knowledgeBases: KnowledgeBaseRepositories
   modelCatalog: ModelCatalogRepository
   memories: MemoryRepository
   mcpServers: McpServerRepository
@@ -154,9 +126,6 @@ export interface AppDataRepositories {
   serviceAuthReplay: ServiceAuthReplayRepository
   users: UserRepository
   webhooks: WebhookRepository
-  workspaces: WorkspaceRepository
-  workspaceAgents: WorkspaceAgentRepository
-  workspaceSharing: WorkspaceSharingRepository
   usage: UsageRepository
 }
 
@@ -190,7 +159,6 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       repositories: {
         accountDeletion: new PostgresAccountDataDeletionRepository(db),
         administration: new PostgresAdministrativeRepository(db),
-        authorization: createPostgresAuthorizationRepositories(db),
         apiKeys: new PostgresApiKeyRepository(db),
         audit: new PostgresAuditRepository(db),
         automations: new PostgresAutomationRepository(db, conversations),
@@ -199,13 +167,10 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         billingWebhooks: billing,
         chatSuggestions: new PostgresChatSuggestionRepository(db),
         conversations,
-        conversationCollaboration: new PostgresConversationCollaborationRepository(db),
         durableJobs: new PostgresDurableJobRepository(db),
         daytonaWorkspaces: new PostgresDaytonaWorkspaceRepository(db),
         files: new PostgresFileRepository(db),
-        governance: new PostgresGovernanceRepository(db),
         idempotency: new PostgresIdempotencyRepository(db),
-        knowledgeBases: createPostgresKnowledgeBaseRepositories(db),
         modelCatalog: new PostgresModelCatalogRepository(db),
         memories: new PostgresMemoryRepository(db),
         mcpServers: new PostgresMcpServerRepository(db),
@@ -218,9 +183,6 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         serviceAuthReplay: new PostgresServiceAuthReplayRepository(db),
         users: new PostgresUserRepository(db),
         webhooks: new PostgresWebhookRepository(db),
-        workspaces: new PostgresWorkspaceRepository(db),
-        workspaceAgents: new PostgresWorkspaceAgentRepository(db),
-        workspaceSharing: new PostgresWorkspaceSharingRepository(db),
         usage: new PostgresUsageRepository(db),
       },
     }
@@ -231,7 +193,6 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
     repositories: {
       accountDeletion: unsupportedRepository<AccountDataDeletionRepository>('AccountDataDeletionRepository'),
       administration: new ConvexAdministrativeRepository(),
-      authorization: createConvexAuthorizationRepositories(),
       apiKeys: new ConvexApiKeyRepository(),
       audit: new ConvexAuditRepository(),
       automations: new ConvexAutomationRepository(),
@@ -240,28 +201,22 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       billingWebhooks: new ConvexBillingRepository(),
       chatSuggestions: new ConvexChatSuggestionRepository(),
       conversations: new ConvexActConversationRepository(),
-      conversationCollaboration: new ConvexConversationCollaborationRepository(),
       durableJobs: unsupportedRepository<DurableJobRepository>('DurableJobRepository'),
       daytonaWorkspaces: new ConvexDaytonaWorkspaceRepository(),
       files: new ConvexFileRepository(),
-      governance: new ConvexGovernanceRepository(),
       idempotency: new ConvexIdempotencyRepository(),
-      knowledgeBases: createConvexKnowledgeBaseRepositories(),
       modelCatalog: new ConvexModelCatalogRepository(),
       memories: new ConvexMemoryRepository(),
       mcpServers: new ConvexMcpServerRepository(),
       notes: new ConvexNoteRepository(),
       onboarding: unsupportedRepository<OnboardingRepository>('OnboardingRepository'),
-      outbox: unsupportedRepository<OutboxRepository>('OutboxRepository'),
+      outbox: new ConvexOutboxRepository(),
       projects: new ConvexProjectRepository(),
       settings: unsupportedRepository<AppSettingsRepository>('AppSettingsRepository'),
       skills: new ConvexSkillRepository(),
       serviceAuthReplay: new ConvexServiceAuthReplayRepository(),
       users: new ConvexUserRepository(),
       webhooks: new ConvexWebhookRepository(),
-      workspaces: new ConvexWorkspaceRepository(),
-      workspaceAgents: new ConvexWorkspaceAgentRepository(),
-      workspaceSharing: new ConvexWorkspaceSharingRepository(),
       usage: new ConvexUsageRepository(),
     },
   }

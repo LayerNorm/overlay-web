@@ -9,9 +9,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { useRouter } from 'next/navigation'
 import { CommandPalette, type CommandPaletteRow } from '@overlay/ui/overlays'
 import {
-  BookOpen,
   FileText,
-  Hash,
   MessageSquare,
   Plug,
   Server,
@@ -20,32 +18,19 @@ import {
 } from 'lucide-react'
 import { invalidateMentionCache, searchMentions } from '@/components/mentions/mention-search'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import {
-  WORKSPACE_SEARCH_KIND_LABELS,
-  workspaceSearchHref,
-  type WorkspaceSearchKind,
-  type WorkspaceSearchResult,
-} from '@/shared/search/workspace-search'
-import { Bot, FolderOpen } from 'lucide-react'
 
 const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; strokeWidth?: number }>> = {
-  Bot,
-  FolderOpen,
-  BookOpen,
   FileText,
   Plug,
   Zap,
   Sparkles,
   Server,
   MessageSquare,
-  Hash,
 }
 
 const CATEGORY_ORDER: Array<{ type: MentionType; label: string; icon: string }> = [
   { type: 'chat', label: 'Chats', icon: 'MessageSquare' },
   { type: 'file', label: 'Files', icon: 'FileText' },
-  { type: 'knowledge', label: 'Knowledge', icon: 'BookOpen' },
   { type: 'automation', label: 'Automations', icon: 'Zap' },
   { type: 'skill', label: 'Skills', icon: 'Sparkles' },
   { type: 'mcp', label: 'MCP Servers', icon: 'Server' },
@@ -58,15 +43,6 @@ function CategoryIcon({ icon, className, size = 16 }: { icon: string; className?
   return <Icon size={size} strokeWidth={1.75} className={className} />
 }
 
-function workspaceRowId(result: WorkspaceSearchResult): string {
-  return `ws-${result.kind}-${result.id}`
-}
-
-/** Kinds the workspace endpoint owns once it has returned anything. */
-function coveredByWorkspaceSearch(type: MentionType, hasWorkspaceResults: boolean): boolean {
-  return hasWorkspaceResults && CATEGORY_TO_WORKSPACE_KIND[type] !== undefined
-}
-
 function hrefForItem(item: MentionItem): string {
   switch (item.type) {
     case 'chat':
@@ -74,8 +50,6 @@ function hrefForItem(item: MentionItem): string {
     case 'file':
       if (item.description === 'note') return `/app/notes?id=${encodeURIComponent(item.id)}`
       return `/app/files?file=${encodeURIComponent(item.id)}`
-    case 'knowledge':
-      return `/app/knowledge/${encodeURIComponent(item.id)}`
     case 'automation':
       return `/app/automations?automationId=${encodeURIComponent(item.id)}`
     case 'skill':
@@ -99,25 +73,6 @@ interface GlobalSearchDialogProps {
 type RowSource =
   | { kind: 'category'; type: MentionType; label: string; icon: string }
   | { kind: 'item'; item: MentionItem; categoryType: MentionType }
-  /** Permission-filtered result from the workspace search endpoint. */
-  | { kind: 'workspace'; result: WorkspaceSearchResult }
-
-const WORKSPACE_KIND_ICONS: Record<WorkspaceSearchKind, string> = {
-  conversation: 'MessageSquare',
-  file: 'FileText',
-  project: 'FolderOpen',
-  knowledge_base: 'BookOpen',
-  automation: 'Zap',
-  agent: 'Bot',
-}
-
-/** Maps a palette category to the workspace kind it corresponds to, if any. */
-const CATEGORY_TO_WORKSPACE_KIND: Partial<Record<MentionType, WorkspaceSearchKind>> = {
-  chat: 'conversation',
-  file: 'file',
-  knowledge: 'knowledge_base',
-  automation: 'automation',
-}
 
 export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNewChat }: GlobalSearchDialogProps) {
   const router = useRouter()
@@ -125,7 +80,6 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
   const [selectedCategory, setSelectedCategory] = useState<MentionType | null>(initialCategory)
   const [categories, setCategories] = useState<MentionCategory[]>([])
   const [loading, setLoading] = useState(false)
-  const [workspaceResults, setWorkspaceResults] = useState<WorkspaceSearchResult[]>([])
 
   useEffect(() => {
     if (!open) return
@@ -161,29 +115,6 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
     }
   }, [open, query])
 
-  // Workspace-wide results come from the server so they are permission
-  // filtered: the palette never renders a snippet the person cannot open.
-  useEffect(() => {
-    if (!open || query.trim().length < 2) {
-      queueMicrotask(() => setWorkspaceResults([]))
-      return
-    }
-    let cancelled = false
-    const timer = window.setTimeout(() => {
-      void overlayAppClient.search.workspace(null, { q: query.trim() })
-        .then(({ results }) => {
-          if (!cancelled) setWorkspaceResults(results as WorkspaceSearchResult[])
-        })
-        .catch(() => {
-          if (!cancelled) setWorkspaceResults([])
-        })
-    }, 180)
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [open, query])
-
   const rowSources: RowSource[] = useMemo(() => {
     const list: RowSource[] = []
     const trimmed = query.trim()
@@ -196,13 +127,7 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
         }
         return list
       }
-      // Authorized workspace results lead, and the client-side lists only fill
-      // in kinds the workspace endpoint does not cover (skills, MCP, connectors).
-      for (const result of workspaceResults) {
-        list.push({ kind: 'workspace', result })
-      }
       for (const cat of categories) {
-        if (coveredByWorkspaceSearch(cat.type, workspaceResults.length > 0)) continue
         for (const item of cat.items) {
           list.push({ kind: 'item', item, categoryType: cat.type })
         }
@@ -210,12 +135,6 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
       return list
     }
 
-    const workspaceKind = CATEGORY_TO_WORKSPACE_KIND[selectedCategory]
-    const scoped = workspaceKind
-      ? workspaceResults.filter((result) => result.kind === workspaceKind)
-      : []
-    for (const result of scoped) list.push({ kind: 'workspace', result })
-    if (scoped.length > 0) return list
     const cat = categories.find((c) => c.type === selectedCategory)
     if (cat) {
       for (const item of cat.items) {
@@ -223,7 +142,7 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
       }
     }
     return list
-  }, [categories, query, selectedCategory, workspaceResults])
+  }, [categories, query, selectedCategory])
 
   const rows: CommandPaletteRow[] = useMemo(() => {
     return rowSources.map((row) => {
@@ -233,17 +152,6 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
           id: `cat-${row.type}`,
           label: row.label,
           icon: <CategoryIcon icon={row.icon} className="shrink-0 opacity-70" />,
-        }
-      }
-      if (row.kind === 'workspace') {
-        return {
-          kind: 'item' as const,
-          id: workspaceRowId(row.result),
-          label: row.result.title,
-          description: row.result.snippet
-            ?? row.result.subtitle
-            ?? `${WORKSPACE_SEARCH_KIND_LABELS[row.result.kind]}${row.result.sharedVia ? ' · shared with you' : ''}`,
-          icon: <CategoryIcon icon={WORKSPACE_KIND_ICONS[row.result.kind]} className="shrink-0 opacity-70" />,
         }
       }
       const fallbackIcon = CATEGORY_ORDER.find((c) => c.type === row.categoryType)?.icon || 'FileText'
@@ -287,16 +195,6 @@ export function GlobalSearchDialog({ open, onClose, initialCategory = null, onNe
       if (row.kind === 'category') {
         const type = row.id.replace(/^cat-/, '') as MentionType
         setSelectedCategory(type)
-        return
-      }
-      const workspaceSource = rowSources.find(
-        (candidate) => candidate.kind === 'workspace' && workspaceRowId(candidate.result) === row.id,
-      )
-      if (workspaceSource?.kind === 'workspace') {
-        // Hrefs stay workspace-relative: the server already scoped the result to
-        // the active workspace, and the app router resolves the canonical path.
-        router.push(workspaceSearchHref(workspaceSource.result, null))
-        onClose()
         return
       }
       const source = rowSources.find(

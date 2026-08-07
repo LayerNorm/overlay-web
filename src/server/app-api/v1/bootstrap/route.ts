@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import {
   DEFAULT_APP_SETTINGS,
-  normalizeIntegrationProviderKey,
   overlayNavigationToDestinations,
   resolveOverlayAppShellConfig,
   type AppBootstrapResponse,
@@ -35,9 +34,6 @@ import { isRuntimeConfigSummaryVisible } from '@/shared/config'
 import { getOverlayCapabilities } from '@/server/capabilities'
 import { deriveAppDataCapabilities, type AppDataCapabilities } from '@/server/app-data/capabilities'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { getAuthorizationEnforcementMode } from '@/server/authorization'
-import { filterCatalogResources } from '@/server/authorization'
-import { toWorkspaceSummary } from '@/server/app-api/v1/workspaces/presentation'
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   let runtimeConfig
@@ -63,14 +59,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const isPostgresAppData = appDataCapabilities.provider === 'postgres'
     const serverContext = getOverlayServerContext()
 
-    const [
-      profile,
-      entitlements,
-      uiSettings,
-      gatewayModels,
-      authorization,
-      workspaceAccesses,
-    ] = await Promise.all([
+    const [profile, entitlements, uiSettings, gatewayModels] = await Promise.all([
       !isPostgresAppData && auth.accessToken
         ? convex.query<{
             profile?: {
@@ -105,8 +94,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         logger.warn('[app/bootstrap] gateway language catalog unavailable; using curated fallback', error)
         return null
       }),
-      serverContext.authorizationService.resolveSubject(auth.userId),
-      serverContext.workspaceService.listForUser(auth.userId),
     ])
     // Only register when the catalog fetch succeeds. Registering `[]` would leave
     // AVAILABLE_MODELS as the curated fallback and cause enabled-model filters to
@@ -128,54 +115,20 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
           }
         : null)
     const modelPolicyContext = { user, entitlements }
-    const policyChatModels = [
+    const chatModels = [
       ...(overlayAppConfig.modelPolicy?.filterChatModels?.(AVAILABLE_MODELS, modelPolicyContext) ??
         AVAILABLE_MODELS),
     ]
-    const policyImageModels = [
+    const imageModels = [
       ...(overlayAppConfig.modelPolicy?.filterImageModels?.(IMAGE_MODELS, modelPolicyContext) ??
         IMAGE_MODELS),
     ]
-    const policyVideoModels = [
+    const videoModels = [
       ...(overlayAppConfig.modelPolicy?.filterVideoModels?.(VIDEO_MODELS, modelPolicyContext) ??
         VIDEO_MODELS),
     ]
-    const [chatModels, imageModels, videoModels, capabilities] = await Promise.all([
-      filterCatalogResources({
-        authorization: serverContext.authorizationService,
-        capability: 'models.use',
-        context,
-        getId: (model) => model.id,
-        resourceType: 'model',
-        values: policyChatModels,
-      }),
-      filterCatalogResources({
-        authorization: serverContext.authorizationService,
-        capability: 'models.use',
-        context,
-        getId: (model) => model.id,
-        resourceType: 'model',
-        values: policyImageModels,
-      }),
-      filterCatalogResources({
-        authorization: serverContext.authorizationService,
-        capability: 'models.use',
-        context,
-        getId: (model) => model.id,
-        resourceType: 'model',
-        values: policyVideoModels,
-      }),
-      getOverlayCapabilities(),
-    ])
+    const capabilities = await getOverlayCapabilities()
     const appShell = resolveOverlayAppShellConfig(overlayAppConfig, { capabilities })
-    const integrationRegistry = await filterCatalogResources({
-      authorization: serverContext.authorizationService,
-      capability: 'integrations.use',
-      context,
-      getId: (integration) => normalizeIntegrationProviderKey(integration.providerKey),
-      resourceType: 'connector',
-      values: appShell.integrations,
-    })
 
     const response: AppBootstrapResponse & {
       appDataCapabilities: AppDataCapabilities
@@ -195,16 +148,12 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       sidebarActions: [...appShell.sidebarActions],
       settingsPanels: [...appShell.settingsPanels],
       toolRegistry: [...appShell.tools],
-      integrationRegistry,
+      integrationRegistry: [...appShell.integrations],
       modelProviderRegistry: [...appShell.modelProviders],
       policyGates: [...appShell.policyGates],
       theme: appShell.theme,
       featureFlags: appShell.appFeatureFlags,
       capabilities,
-      authorization: {
-        ...authorization,
-        enforcementMode: getAuthorizationEnforcementMode(),
-      },
       appDataCapabilities,
       destinations: overlayNavigationToDestinations(appShell.navigation, appShell.settingsSections),
       defaults: {
@@ -218,8 +167,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
           overlayAppConfig.modelPolicy?.getDefaultVideoModelId?.(videoModels, modelPolicyContext) ??
           DEFAULT_VIDEO_MODEL_ID,
       },
-      workspaces: workspaceAccesses.map((access) => toWorkspaceSummary(access)),
-      activeWorkspaceId: context.workspace.workspace.id,
     }
 
     if (isRuntimeConfigSummaryVisible(runtimeConfig)) {

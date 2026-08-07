@@ -219,6 +219,7 @@ Enterprise provider matrix:
 | Web search | `ai-gateway`, `perplexity`, `tavily`, `none` | Search queries and result snippets | Search/model provider policy | `ai-gateway` and `none` supported. Direct `perplexity` and `tavily` are declared but rejected until adapters exist. |
 | Analytics | `posthog`, `none` | Pageviews and product events | PostHog project region | Supported. Set analytics feature/provider to `false`/`none` to avoid SDK initialization and capture. |
 | Error reporting | `sentry`, `none` | Error events and sanitized stack/request metadata | Sentry project region | Supported. Set error reporting feature/provider to `false`/`none` to avoid initialization and capture. |
+| Transactional email | `ses`, `smtp`, `none` | Recipient address and transactional account content | Selected email provider region | Supported. Defaults to `none`; SMTP requires TLS in production/on-prem. SES/SMTP delivery uses a durable outbox, stable message key, suppression checks, and audit records. |
 | Secrets | `env`, `workos-vault`, `aws-secrets-manager`, `vault`, `none` | Provider credentials | Secret manager region | `env` supported; WorkOS vault-backed provider keys exist for selected flows. AWS Secrets Manager and Vault are declared but rejected for runtime secret loading. |
 | Rate limit | `convex`, `memory`, `redis`, `none` | Rate-limit counters | App/database region | All declared providers are supported. Use Redis with fail-closed behavior for multi-instance production/on-prem deployments; memory is development-only. |
 

@@ -87,14 +87,6 @@ test('Composio adapter satisfies the shared integration-provider contract', asyn
       list: async () => ({ items: [{ id: 'account-1' }] }),
       delete: async () => { disconnected = true },
     },
-    tools: {
-      execute: async () => ({
-        data: { messages: [] },
-        error: null,
-        successful: true,
-        logId: 'execution-1',
-      }),
-    },
   }
   const fetcher: typeof fetch = async (input) => {
     const url = String(input)
@@ -120,17 +112,6 @@ test('Composio adapter satisfies the shared integration-provider contract', asyn
     disconnected: () => disconnected,
     overlayManagesDisconnect: true,
   })
-  const result = await new ComposioIntegrationProvider({
-    fetcher,
-    apiKeyResolver: async () => 'test-key',
-    sdkFactory: async () => sdk,
-  }).execute({
-    args: { maxResults: 10 },
-    toolId: 'GMAIL_FETCH_EMAILS',
-    userId: 'user-1',
-  })
-  assert.equal(result.status, 'completed')
-  assert.deepEqual(result.output, { messages: [] })
 })
 
 test('Executor adapter satisfies the shared integration-provider contract and executes by exact tool address', async () => {

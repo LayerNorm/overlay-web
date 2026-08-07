@@ -7,10 +7,6 @@ import { AutomationService, AutomationServiceError } from './AutomationService'
 import { ConfiguredAutomationEntitlementPolicy } from './AutomationEntitlementPolicy'
 import type { AutomationRepository } from './AutomationRepository'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
-import {
-  projectAutomationsEnabled,
-  readProjectSettings,
-} from '@/shared/projects/project-settings'
 
 const entitlementPolicy = new ConfiguredAutomationEntitlementPolicy({
   billingDisabled: () => {
@@ -25,17 +21,6 @@ const entitlementPolicy = new ConfiguredAutomationEntitlementPolicy({
 })
 
 export const automationService = new AutomationService({
-  assertProjectAutomationAllowed: async ({ projectId, userId }) => {
-    const project = await getOverlayServerContext().appData.repositories.projects.getProject({
-      projectId,
-      userId,
-    })
-    return Boolean(
-      project
-      && !project.archivedAt
-      && projectAutomationsEnabled(readProjectSettings(project.settings)),
-    )
-  },
   entitlementPolicy,
   lifecycleEvents: () => getOverlayServerContext().lifecycleEvents,
   repository: repositoryProxy<AutomationRepository>(

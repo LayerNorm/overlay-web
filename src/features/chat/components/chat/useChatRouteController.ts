@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, t
 import type { ReadonlyURLSearchParams } from 'next/navigation'
 import { normalizeAutomationDetailTab } from '@overlay/app-core/automations'
 import type { AutomationDetail } from '@overlay/app-core'
-import { resolveChatBasePath } from '@/features/workspaces/lib/workspace-routing'
 import { resetRuntimeState } from './conversation-runtime-utils'
 import type { ConversationRuntime, ConversationUiState } from '../chat-interface/types'
 
@@ -74,13 +73,7 @@ export function useChatRouteController({
     const replaceUrl = (href: string) => {
       window.history.replaceState(null, '', href)
     }
-    // Prefer the live browser path so first-message URL sync does not strip
-    // `/app/w/:workspaceId` and force a full App Router remount.
-    const livePathname = typeof window !== 'undefined' ? window.location.pathname : null
     if (mode === 'automate') {
-      const basePath = resolveChatBasePath(livePathname) === '/app/automations'
-        ? resolveChatBasePath(livePathname)
-        : '/app/automations'
       const params = new URLSearchParams()
       if (chatId) params.set('id', chatId)
       const liveSearchParams = typeof window !== 'undefined'
@@ -93,15 +86,12 @@ export function useChatRouteController({
       )
       if (tab !== 'chat') params.set('tab', tab)
       const query = params.toString()
-      replaceUrl(`${basePath}${query ? `?${query}` : ''}`)
+      replaceUrl(`/app/automations${query ? `?${query}` : ''}`)
       return
     }
-    const basePath = resolveChatBasePath(livePathname)
+    const basePath = '/app/chat'
     const params = new URLSearchParams()
     if (searchParams?.get('showcase') === '1') params.set('showcase', '1')
-    const view = searchParams?.get('view')
-      ?? (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('view') : null)
-    if (view) params.set('view', view)
     if (chatId) params.set('id', chatId)
     const query = params.toString()
     replaceUrl(query ? `${basePath}?${query}` : basePath)
@@ -220,9 +210,7 @@ export function useChatRouteController({
   }, [activeChatIdRef, automationConversationId, mode])
 
   const replaceActiveChatRoute = useCallback(() => {
-    if (hideSidebar) return
-    const livePathname = typeof window !== 'undefined' ? window.location.pathname : null
-    routerReplace(resolveChatBasePath(livePathname))
+    if (!hideSidebar) routerReplace('/app/chat')
   }, [hideSidebar, routerReplace])
 
   return {

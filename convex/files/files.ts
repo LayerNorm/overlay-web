@@ -232,7 +232,7 @@ async function assertParentAndProject(ctx: { db: { get: (id: Id<'files'> | Id<'p
   }
   if (args.projectId) {
     const project = await ctx.db.get(args.projectId as Id<'projects'>) as Doc<'projects'> | null
-    if (!project || project.userId !== args.userId || project.archivedAt || project.deletedAt) {
+    if (!project || project.userId !== args.userId || project.deletedAt) {
       throw new Error('Unauthorized')
     }
   }

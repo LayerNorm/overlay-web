@@ -55,6 +55,10 @@ export interface Entitlements {
   budgetUsedCents?: number
   budgetTotalCents?: number
   budgetRemainingCents?: number
+  allowanceTotalCents?: number
+  allowanceUsedCents?: number
+  allowancePercentUsed?: number
+  topUpBalanceCents?: number
   autoTopUpEnabled?: boolean
   topUpAmountCents?: number
   autoTopUpAmountCents?: number
@@ -91,15 +95,7 @@ export type AssistantVisualSegment =
   | { kind: 'browser'; block: ToolVisualBlock; originIndex: number }
   | { kind: 'tools'; items: ToolGroupItem[]; originIndex: number }
 
-export type MentionType =
-  | 'file'
-  | 'knowledge'
-  | 'connector'
-  | 'automation'
-  | 'skill'
-  | 'mcp'
-  | 'chat'
-  | 'person'
+export type MentionType = 'file' | 'connector' | 'automation' | 'skill' | 'mcp' | 'chat'
 
 export interface ChatMessageMention {
   type: MentionType

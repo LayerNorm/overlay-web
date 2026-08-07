@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { mutation, query, internalMutation, internalQuery } from '../_generated/server'
+import { mutation, query, internalMutation, internalQuery, type MutationCtx } from '../_generated/server'
 import { getVerifiedAccessTokenClaims, requireAccessToken, requireServerSecret } from '../lib/auth'
 import {
   DEFAULT_MARKUP_BASIS_POINTS,
@@ -22,6 +22,138 @@ function isPeriodRollover(existingPeriodStart: number | undefined, newPeriodStar
   // Only count forward movement of the period boundary beyond the min gap as a
   // rollover. Backward or near-equal timestamps are retries/replays.
   return newPeriodStart - existingPeriodStart >= PERIOD_ROLLOVER_MIN_GAP_MS
+}
+
+async function grantTopUpBalance(
+  ctx: MutationCtx,
+  subscription: {
+    _id: Parameters<MutationCtx['db']['patch']>[0]
+    userId: string
+    currentPeriodStart?: number
+    creditsUsed?: number
+    allowanceUsedCents?: number
+    topUpPurchasedCents?: number
+    topUpBalanceCents?: number
+    planAmountCents?: number
+    institutionalGrantCents?: number
+    planKind?: 'free' | 'paid'
+    tier: 'free' | 'pro' | 'max'
+  },
+  amountCents: number,
+): Promise<void> {
+  const allowanceTotal = derivePlanKind(subscription) === 'paid'
+    ? derivePlanAmountCents(subscription) + (subscription.institutionalGrantCents ?? 0)
+    : 0
+  const creditsUsed = Math.max(0, subscription.creditsUsed ?? 0)
+  const allowanceUsed = subscription.allowanceUsedCents ?? Math.min(creditsUsed, allowanceTotal)
+  const historical = subscription.currentPeriodStart
+    ? await ctx.db
+        .query('budgetTopUps')
+        .withIndex('by_userId_billingPeriodStart', (q) =>
+          q.eq('userId', subscription.userId).eq('billingPeriodStart', subscription.currentPeriodStart!),
+        )
+        .collect()
+    : []
+  const historicalPurchased = historical.reduce(
+    (sum, row) => row.status === 'succeeded' ? sum + Math.max(0, row.amountCents) : sum,
+    0,
+  )
+  const purchased = subscription.topUpPurchasedCents ?? Math.max(0, historicalPurchased - amountCents)
+  const balance = subscription.topUpBalanceCents ?? Math.max(0, purchased - (creditsUsed - allowanceUsed))
+  await ctx.db.patch(subscription._id, {
+    allowanceUsedCents: allowanceUsed,
+    topUpPurchasedCents: purchased + amountCents,
+    topUpBalanceCents: balance + amountCents,
+  })
+}
+
+async function topUpBalanceForRollover(
+  ctx: MutationCtx,
+  subscription: {
+    userId: string
+    currentPeriodStart?: number
+    creditsUsed?: number
+    allowanceUsedCents?: number
+    topUpPurchasedCents?: number
+    topUpBalanceCents?: number
+    planAmountCents?: number
+    institutionalGrantCents?: number
+    planKind?: 'free' | 'paid'
+    tier: 'free' | 'pro' | 'max'
+  },
+): Promise<number> {
+  if (subscription.topUpBalanceCents !== undefined) return subscription.topUpBalanceCents
+  const rows = subscription.currentPeriodStart
+    ? await ctx.db
+        .query('budgetTopUps')
+        .withIndex('by_userId_billingPeriodStart', (q) =>
+          q.eq('userId', subscription.userId).eq('billingPeriodStart', subscription.currentPeriodStart!),
+        )
+        .collect()
+    : []
+  const purchased = subscription.topUpPurchasedCents ?? rows.reduce(
+    (sum, row) => row.status === 'succeeded' ? sum + Math.max(0, row.amountCents) : sum,
+    0,
+  )
+  const allowanceTotal = derivePlanKind(subscription) === 'paid'
+    ? derivePlanAmountCents(subscription) + (subscription.institutionalGrantCents ?? 0)
+    : 0
+  const allowanceUsed = subscription.allowanceUsedCents ?? Math.min(
+    Math.max(0, subscription.creditsUsed ?? 0),
+    allowanceTotal,
+  )
+  return Math.max(0, purchased - Math.max(0, (subscription.creditsUsed ?? 0) - allowanceUsed))
+}
+
+async function rebalanceUsageForAllowance(
+  ctx: MutationCtx,
+  subscription: {
+    userId: string
+    currentPeriodStart?: number
+    creditsUsed?: number
+    allowanceUsedCents?: number
+    topUpPurchasedCents?: number
+    planAmountCents?: number
+    institutionalGrantCents?: number
+    planKind?: 'free' | 'paid'
+    tier: 'free' | 'pro' | 'max'
+  },
+  nextPlan: {
+    planAmountCents?: number
+    planKind?: 'free' | 'paid'
+    tier: 'free' | 'pro' | 'max'
+  },
+): Promise<{
+  allowanceUsedCents: number
+  topUpBalanceCents: number
+  topUpPurchasedCents: number
+}> {
+  const rows = subscription.currentPeriodStart
+    ? await ctx.db
+        .query('budgetTopUps')
+        .withIndex('by_userId_billingPeriodStart', (q) =>
+          q.eq('userId', subscription.userId).eq('billingPeriodStart', subscription.currentPeriodStart!),
+        )
+        .collect()
+    : []
+  const topUpPurchasedCents = subscription.topUpPurchasedCents ?? rows.reduce(
+    (sum, row) => row.status === 'succeeded' ? sum + Math.max(0, row.amountCents) : sum,
+    0,
+  )
+  const allowanceTotal = derivePlanKind(nextPlan) === 'paid'
+    ? derivePlanAmountCents(nextPlan) + (subscription.institutionalGrantCents ?? 0)
+    : 0
+  const creditsUsed = Math.max(0, subscription.creditsUsed ?? 0)
+  const allowanceUsedCents = Math.min(creditsUsed, allowanceTotal)
+  const topUpSpent = Math.max(0, creditsUsed - allowanceUsedCents)
+  if (topUpSpent > topUpPurchasedCents + 0.000001) {
+    throw new Error('Subscription change would remove already consumed or reserved credits')
+  }
+  return {
+    allowanceUsedCents,
+    topUpBalanceCents: Math.max(0, topUpPurchasedCents - topUpSpent),
+    topUpPurchasedCents,
+  }
 }
 
 function defaultPlanMetadata(args: {
@@ -185,7 +317,7 @@ export const upsertSubscription = mutation({
       if (args.offSessionConsentAt !== undefined) updateData.offSessionConsentAt = args.offSessionConsentAt
 
       const nextTier = args.tier ?? existing.tier
-      Object.assign(updateData, defaultPlanMetadata({
+      const nextPlanMetadata = defaultPlanMetadata({
         tier: nextTier,
         planKind: args.planKind ?? existing.planKind,
         planVersion: args.planVersion ?? existing.planVersion,
@@ -193,14 +325,32 @@ export const upsertSubscription = mutation({
         stripePriceId: args.stripePriceId ?? existing.stripePriceId,
         stripeQuantity: args.stripeQuantity ?? existing.stripeQuantity,
         markupBasisPoints: args.markupBasisPoints ?? existing.markupBasisPoints,
-      }))
+      })
+      Object.assign(updateData, nextPlanMetadata)
 
       // Reset credits when the billing period rolls over
       if (
         args.currentPeriodStart !== undefined &&
         isPeriodRollover(existing.currentPeriodStart, args.currentPeriodStart)
       ) {
+        const activeReservations = await ctx.db
+          .query('budgetReservations')
+          .withIndex('by_userId_createdAt', (q) => q.eq('userId', args.userId))
+          .collect()
+        if (activeReservations.some((row) => row.status === 'reserved' || row.status === 'reconcile_required')) {
+          throw new Error('Cannot roll over a usage period while reservations are active')
+        }
+        const topUpBalanceCents = await topUpBalanceForRollover(ctx, existing)
         updateData.creditsUsed = 0
+        updateData.allowanceUsedCents = 0
+        updateData.topUpPurchasedCents = topUpBalanceCents
+        updateData.topUpBalanceCents = topUpBalanceCents
+      } else {
+        Object.assign(updateData, await rebalanceUsageForAllowance(ctx, existing, {
+          tier: nextTier,
+          planKind: nextPlanMetadata.planKind,
+          planAmountCents: nextPlanMetadata.planAmountCents,
+        }))
       }
 
       await ctx.db.patch(existing._id, updateData)
@@ -226,6 +376,9 @@ export const upsertSubscription = mutation({
         currentPeriodStart: args.currentPeriodStart || now,
         currentPeriodEnd: args.currentPeriodEnd || now + thirtyDays,
         creditsUsed: 0,
+        allowanceUsedCents: 0,
+        topUpPurchasedCents: 0,
+        topUpBalanceCents: 0,
         overlayStorageBytesUsed: 0,
         autoTopUpEnabled: args.autoTopUpEnabled ?? false,
         autoTopUpAmountCents: args.autoTopUpAmountCents,
@@ -284,6 +437,14 @@ export const downgradeToFree = mutation({
 
     if (subscription) {
       const now = Date.now()
+      const activeReservations = await ctx.db
+        .query('budgetReservations')
+        .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
+        .collect()
+      if (activeReservations.some((row) => row.status === 'reserved' || row.status === 'reconcile_required')) {
+        throw new Error('Cannot downgrade while usage reservations are active')
+      }
+      const topUpBalanceCents = await topUpBalanceForRollover(ctx, subscription)
       await ctx.db.patch(subscription._id, {
         tier: 'free',
         planKind: 'free',
@@ -292,6 +453,9 @@ export const downgradeToFree = mutation({
         stripeQuantity: undefined,
         status: 'canceled',
         creditsUsed: 0,
+        allowanceUsedCents: 0,
+        topUpPurchasedCents: topUpBalanceCents,
+        topUpBalanceCents,
         currentPeriodStart: now,
         currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000
       })
@@ -373,6 +537,37 @@ export const upsertFromStripeInternal = internalMutation({
 
     if (existing) {
       const periodRolled = isPeriodRollover(existing.currentPeriodStart, args.currentPeriodStart)
+      let topUpBalanceCents = existing.topUpBalanceCents
+      const nextPlanMetadata = defaultPlanMetadata({
+        tier: args.tier,
+        planKind: args.planKind,
+        planVersion: args.planVersion,
+        planAmountCents: args.planAmountCents,
+        stripePriceId: args.stripePriceId,
+        stripeQuantity: args.stripeQuantity,
+        markupBasisPoints: args.markupBasisPoints ?? existing.markupBasisPoints,
+      })
+      if (periodRolled) {
+        const activeReservations = await ctx.db
+          .query('budgetReservations')
+          .withIndex('by_userId_createdAt', (q) => q.eq('userId', args.userId))
+          .collect()
+        if (activeReservations.some((row) => row.status === 'reserved' || row.status === 'reconcile_required')) {
+          throw new Error('Cannot roll over a usage period while reservations are active')
+        }
+        topUpBalanceCents = await topUpBalanceForRollover(ctx, existing)
+      }
+      const rebalancedUsage = periodRolled
+        ? {
+            allowanceUsedCents: 0,
+            topUpPurchasedCents: topUpBalanceCents,
+            topUpBalanceCents,
+          }
+        : await rebalanceUsageForAllowance(ctx, existing, {
+            tier: args.tier,
+            planKind: nextPlanMetadata.planKind,
+            planAmountCents: nextPlanMetadata.planAmountCents,
+          })
 
       await ctx.db.patch(existing._id, {
         email: args.email,
@@ -380,15 +575,7 @@ export const upsertFromStripeInternal = internalMutation({
         stripeCustomerId: args.stripeCustomerId,
         stripeSubscriptionId: args.stripeSubscriptionId,
         tier: args.tier,
-        ...defaultPlanMetadata({
-          tier: args.tier,
-          planKind: args.planKind,
-          planVersion: args.planVersion,
-          planAmountCents: args.planAmountCents,
-          stripePriceId: args.stripePriceId,
-          stripeQuantity: args.stripeQuantity,
-          markupBasisPoints: args.markupBasisPoints ?? existing.markupBasisPoints,
-        }),
+        ...nextPlanMetadata,
         ...(args.autoTopUpEnabled !== undefined ? { autoTopUpEnabled: args.autoTopUpEnabled } : {}),
         ...(args.autoTopUpAmountCents !== undefined ? { autoTopUpAmountCents: args.autoTopUpAmountCents } : {}),
         ...(args.offSessionConsentAt !== undefined ? { offSessionConsentAt: args.offSessionConsentAt } : {}),
@@ -397,6 +584,7 @@ export const upsertFromStripeInternal = internalMutation({
         currentPeriodEnd: args.currentPeriodEnd,
         // Reset credit counter on period rollover (monthly renewal or plan change)
         creditsUsed: periodRolled ? 0 : (existing.creditsUsed ?? 0),
+        ...rebalancedUsage,
       })
       return existing._id
     } else {
@@ -423,6 +611,9 @@ export const upsertFromStripeInternal = internalMutation({
         currentPeriodStart: args.currentPeriodStart,
         currentPeriodEnd: args.currentPeriodEnd,
         creditsUsed: 0,
+        allowanceUsedCents: 0,
+        topUpPurchasedCents: 0,
+        topUpBalanceCents: 0,
         overlayStorageBytesUsed: 0,
       })
     }
@@ -596,8 +787,16 @@ export const recordBudgetTopUpByServer = mutation({
           .first()
       : null
     const existing = existingByPaymentIntent ?? existingByCheckoutSession
+    if (existing && existing.userId !== args.userId) {
+      throw new Error('Top-up provider reference already belongs to another user')
+    }
+    const normalizedAmount = Math.max(0, Math.round(args.amountCents))
+    if (existing && existing.amountCents !== normalizedAmount) {
+      throw new Error('Top-up provider reference was reused with a different amount')
+    }
     const now = Date.now()
     const status = existing?.status === 'succeeded' ? 'succeeded' as const : args.status
+    const grant = status === 'succeeded' && existing?.status !== 'succeeded'
     const payload = {
       userId: args.userId,
       stripeCustomerId: args.stripeCustomerId,
@@ -606,7 +805,7 @@ export const recordBudgetTopUpByServer = mutation({
       stripeInvoiceId: args.stripeInvoiceId,
       billingPeriodStart: subscription.currentPeriodStart,
       billingPeriodEnd: subscription.currentPeriodEnd,
-      amountCents: Math.max(0, Math.round(args.amountCents)),
+      amountCents: normalizedAmount,
       source: args.source,
       status,
       createdAt: now,
@@ -620,9 +819,12 @@ export const recordBudgetTopUpByServer = mutation({
         billingPeriodStart: existing.billingPeriodStart,
         billingPeriodEnd: existing.billingPeriodEnd,
       })
+      if (grant) await grantTopUpBalance(ctx, subscription, normalizedAmount)
       return existing._id
     }
-    return await ctx.db.insert('budgetTopUps', payload)
+    const id = await ctx.db.insert('budgetTopUps', payload)
+    if (grant) await grantTopUpBalance(ctx, subscription, normalizedAmount)
+    return id
   },
 })
 
@@ -659,8 +861,16 @@ export const recordBudgetTopUpInternal = internalMutation({
           .first()
       : null
     const existing = existingByPaymentIntent ?? existingByCheckoutSession
+    if (existing && existing.userId !== args.userId) {
+      throw new Error('Top-up provider reference already belongs to another user')
+    }
+    const normalizedAmount = Math.max(0, Math.round(args.amountCents))
+    if (existing && existing.amountCents !== normalizedAmount) {
+      throw new Error('Top-up provider reference was reused with a different amount')
+    }
     const now = Date.now()
     const status = existing?.status === 'succeeded' ? 'succeeded' as const : args.status
+    const grant = status === 'succeeded' && existing?.status !== 'succeeded'
     const payload = {
       userId: args.userId,
       stripeCustomerId: args.stripeCustomerId,
@@ -669,7 +879,7 @@ export const recordBudgetTopUpInternal = internalMutation({
       stripeInvoiceId: args.stripeInvoiceId,
       billingPeriodStart: subscription.currentPeriodStart,
       billingPeriodEnd: subscription.currentPeriodEnd,
-      amountCents: Math.max(0, Math.round(args.amountCents)),
+      amountCents: normalizedAmount,
       source: args.source,
       status,
       createdAt: now,
@@ -683,9 +893,12 @@ export const recordBudgetTopUpInternal = internalMutation({
         billingPeriodStart: existing.billingPeriodStart,
         billingPeriodEnd: existing.billingPeriodEnd,
       })
+      if (grant) await grantTopUpBalance(ctx, subscription, normalizedAmount)
       return existing._id
     }
-    return await ctx.db.insert('budgetTopUps', payload)
+    const id = await ctx.db.insert('budgetTopUps', payload)
+    if (grant) await grantTopUpBalance(ctx, subscription, normalizedAmount)
+    return id
   },
 })
 

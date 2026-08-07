@@ -1,6 +1,6 @@
 import type { ClipboardEventHandler, Dispatch, ReactNode, RefObject, SetStateAction } from 'react'
 import type { GenerationMode } from '@/shared/ai/gateway/model-types'
-import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-types'
+import type { MentionItem } from '@/shared/knowledge/mention-types'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { AttachmentPreview, AttachmentPreviewOpenOptions } from '@overlay/chat-react'
 import type { CapabilityCheck } from '@overlay/app-core'
@@ -50,30 +50,15 @@ export type ChatComposerActions = {
   onEmptySuggestion?: (id: EmptyChatSuggestionId) => void
   onAutomateSuggestion?: (id: EmptyAutomateSuggestionId) => void
 }
-/**
- * Per-surface trims. Rooms (direct messages and channels) reuse the chat
- * composer verbatim minus the single-player controls that have no meaning with
- * other members in the conversation.
- */
-export type ChatComposerSurface = {
-  /** Hide the Chat/Automate switcher. */
-  hideModeMenu?: boolean
-  /** Hide image/video generation and tool-request entries. */
-  hideGenerationModes?: boolean
-  /** Override the textarea placeholder. */
-  placeholder?: string
-  /** Conversation-scoped @-mention sources (room members) shown above the workspace catalog. */
-  mentionCategories?: MentionCategory[]
-}
 export type ChatComposerProps = {
   mode: 'chat' | 'automate'; emptyState: ChatComposerEmptyState; attachments: ChatComposerAttachmentState
   runtime: ChatComposerRuntime; inputState: ChatComposerInputState; toolState: ChatComposerToolState
-  modeState: ChatComposerModeState; actions: ChatComposerActions; surface?: ChatComposerSurface
+  modeState: ChatComposerModeState; actions: ChatComposerActions
 }
-export type ComposerViewProps = { mode: 'chat' | 'automate'; surface: ChatComposerSurface }
+export type ComposerViewProps = { mode: 'chat' | 'automate' }
   & ChatComposerEmptyState & ChatComposerAttachmentState & ChatComposerRuntime & ChatComposerInputState
   & ChatComposerToolState & ChatComposerModeState & ChatComposerActions
 
 export function toComposerViewProps(props: ChatComposerProps): ComposerViewProps {
-  return { mode: props.mode, surface: props.surface ?? {}, ...props.emptyState, ...props.attachments, ...props.runtime, ...props.inputState, ...props.toolState, ...props.modeState, ...props.actions }
+  return { mode: props.mode, ...props.emptyState, ...props.attachments, ...props.runtime, ...props.inputState, ...props.toolState, ...props.modeState, ...props.actions }
 }

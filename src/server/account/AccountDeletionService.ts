@@ -27,7 +27,6 @@ export class AccountDeletionService {
   constructor(private readonly ctx: OverlayServerContext) {}
 
   async deleteAccount(args: { userId: string; request?: Request }): Promise<AccountDeletionResult> {
-    await this.ctx.workspaceService.assertAccountDeletionAllowed(args.userId)
     await this.deleteIntegrationConnectionsBestEffort(args.userId)
     if (this.ctx.appDataCapabilities.provider === 'postgres') {
       return await this.deletePostgresAccount(args)

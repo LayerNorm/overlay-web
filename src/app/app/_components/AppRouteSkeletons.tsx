@@ -166,12 +166,7 @@ export function FilesRouteSkeleton({ layout = 'list' }: { layout?: FilesRouteSke
 
 export function KnowledgeRouteSkeleton() {
   return (
-    <div
-      className="flex h-full flex-col bg-[var(--background)]"
-      role="status"
-      aria-label="Loading knowledge"
-      data-testid="knowledge-route-loading"
-    >
+    <div className="flex h-full flex-col bg-[var(--background)]">
       <PageHeaderSkeleton actions={3} />
       <div className="mx-auto w-full max-w-5xl flex-1 px-5 py-5">
         <div className="mb-5 flex items-center justify-between">
@@ -232,12 +227,7 @@ export function OutputsLoadingRouteSkeleton() {
 
 export function ProjectsRouteSkeleton() {
   return (
-    <div
-      className="flex h-full flex-col bg-[var(--background)]"
-      role="status"
-      aria-label="Loading projects"
-      data-testid="projects-route-loading"
-    >
+    <div className="flex h-full flex-col bg-[var(--background)]">
       <PageHeaderSkeleton actions={1} />
       <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-3">
         {Array.from({ length: 6 }).map((_, index) => (

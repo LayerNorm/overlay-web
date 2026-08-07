@@ -1,0 +1,7 @@
+export { createEmailLifecycleSink } from './createEmailLifecycleSink'
+export { EmailOutboxDelivery, LIFECYCLE_EMAIL_OUTBOX_TOPIC } from './EmailOutboxDelivery'
+export type { EmailRecipientRepository } from './EmailRecipientRepository'
+export { PostgresEmailRecipientRepository } from './EmailRecipientRepository'
+export type { EmailSuppression, EmailSuppressionRepository } from './EmailSuppressionRepository'
+export { PostgresEmailSuppressionRepository } from './PostgresEmailSuppressionRepository'
+export { ConvexEmailSuppressionRepository } from './ConvexEmailSuppressionRepository'

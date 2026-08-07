@@ -75,22 +75,6 @@ test('OutputService creates and completes canonical generated output files', asy
   assert.equal(output?.url, `/api/v1/files/${id}/content`)
 })
 
-test('OutputService retains project ownership on generated outputs', async () => {
-  const { service, rows } = fixture()
-  const id = await service.create({
-    userId: 'user_1',
-    projectId: 'project_1',
-    type: 'image',
-    source: 'image_generation',
-    status: 'pending',
-    prompt: 'project diagram',
-    modelId: 'image/model',
-    fileName: 'diagram.png',
-  })
-
-  assert.equal(rows.get(id)?.projectId, 'project_1')
-})
-
 test('OutputService applies shorter sandbox retention and owner-scoped deletion', async () => {
   const { deleted, service } = fixture()
   const before = Date.now()

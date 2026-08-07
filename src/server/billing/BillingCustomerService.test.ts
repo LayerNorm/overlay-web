@@ -80,6 +80,8 @@ test('BillingCustomerService.getLandingSubscription preserves response mapping',
   assert.equal(response.creditsUsed, 500)
   assert.equal(response.creditsTotal, 2000)
   assert.equal(response.topUpAmountCents, 1000)
+  assert.equal(response.allowancePercentUsed, 25)
+  assert.equal(response.topUpBalanceCents, 0)
   assert.equal(response.billingPeriodEnd, '2026-06-01T00:00:00.000Z')
 })
 
@@ -133,5 +135,7 @@ test('BillingCustomerService.getEntitlements preserves nested entitlement shape'
   assert.equal(response.usage.tokenCostAccrued, 500)
   assert.equal(response.remaining.tokenBudget, 1500)
   assert.equal(response.creditsTotal, 20)
+  assert.equal(response.allowancePercentUsed, 25)
+  assert.equal(response.topUpBalanceCents, 0)
   assert.equal(response.billingPeriodEnd, 1780272000)
 })

@@ -1,5 +1,5 @@
 import { Suspense, type ReactNode } from 'react'
-import { ConversationExperienceRouter } from './ConversationExperienceRouter'
+import ChatExperience from './ChatExperience'
 import type { CachedConversation, ChatListPageInfo } from '@/shared/chat/chat-list-cache'
 import type { ConversationLoadSnapshot } from './chat/chatTransport'
 
@@ -8,10 +8,8 @@ type ChatInterfaceProps = {
   firstName?: string
   hideSidebar?: boolean
   projectName?: string
-  contextNavigation?: ReactNode
   mode?: 'chat' | 'automate'
   hideHeader?: boolean
-  knowledgeBaseId?: string
   belowEmptyComposer?: ReactNode
   initialChats?: CachedConversation[]
   initialChatPageInfo?: ChatListPageInfo
@@ -56,7 +54,7 @@ function ChatSuspenseFallback({ hideHeader = false, mode = 'chat' }: { hideHeade
 export default function ChatSuspenseBoundary(props: ChatInterfaceProps) {
   return (
     <Suspense fallback={<ChatSuspenseFallback hideHeader={props.hideHeader} mode={props.mode} />}>
-      <ConversationExperienceRouter {...props} />
+      <ChatExperience {...props} />
     </Suspense>
   )
 }

@@ -738,7 +738,6 @@ export class PostgresFileRepository implements FileRepository {
         .where(and(
           eq(projects.id, args.projectId),
           eq(projects.userId, args.userId),
-          isNull(projects.archivedAt),
           isNull(projects.deletedAt),
         ))
         .limit(1)

@@ -62,6 +62,10 @@ export async function runP7ProviderContract(
       await backend.billing.recordBudgetTopUp(topUp)
       await backend.billing.recordBudgetTopUp(topUp)
       await backend.billing.recordBudgetTopUp({ ...topUp, status: 'pending' })
+      await assert.rejects(
+        backend.billing.recordBudgetTopUp({ ...topUp, amountCents: 2_000 }),
+        /different amount/,
+      )
       const topUps = await backend.billing.listBudgetTopUpsByServer({ userId })
       assert.equal(topUps.length, 1)
       assert.equal(topUps[0]?.status, 'succeeded')
@@ -69,6 +73,9 @@ export async function runP7ProviderContract(
       assert.ok(entitlements)
       assert.ok(entitlements!.budgetTotalCents >= 1_000)
       assert.equal(entitlements!.budgetRemainingCents, entitlements!.budgetTotalCents)
+      assert.equal(entitlements!.allowanceUsedCents, 0)
+      assert.equal(entitlements!.allowancePercentUsed, 0)
+      assert.equal(entitlements!.topUpBalanceCents, 1_000)
     })
 
     await t.test(`${backend.provider} usage reserve/finalize/release and idempotency`, async () => {
@@ -134,6 +141,10 @@ export async function runP7ProviderContract(
       }
       assert.equal((await backend.usage.recordBatch({ events: [event], operationId, userId })).recorded, 1)
       assert.equal((await backend.usage.recordBatch({ events: [event], operationId, userId })).recorded, 0)
+      const after = await requireEntitlements(backend.usage, userId)
+      assert.equal(after.budgetUsedCents, 80)
+      assert.equal(after.allowanceUsedCents, 80)
+      assert.equal(after.topUpBalanceCents, 1_000)
     })
 
     await t.test(`${backend.provider} enforces one budget under 20 concurrent reservations`, async () => {

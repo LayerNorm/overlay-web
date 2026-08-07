@@ -36,7 +36,6 @@ export interface ProjectRepository {
     userId: string
   }): Promise<ProjectRecord | null>
   listProjects(args: {
-    includeArchived?: boolean
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
@@ -44,20 +43,15 @@ export interface ProjectRepository {
   createProject(args: {
     clientId?: string
     instructions?: string
-    knowledgeBaseId?: string | null
     name: string
     parentId?: string | null
-    settings?: Record<string, unknown>
     userId: string
   }): Promise<ProjectRecord>
   updateProject(args: {
-    archivedAt?: number | null
     instructions?: string | null
-    knowledgeBaseId?: string | null
     name?: string
     parentId?: string | null
     projectId: string
-    settings?: Record<string, unknown>
     userId: string
   }): Promise<ProjectRecord | null>
   deleteProjectTree(args: {

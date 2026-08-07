@@ -71,7 +71,6 @@ const DEFAULT_APP_DATA_CAPABILITIES: ClientAppDataCapabilities = {
 type CapabilitiesContextValue = {
   capabilities: CapabilityCheck
   appDataCapabilities: ClientAppDataCapabilities
-  integrationProvider: 'composio' | 'executor' | 'none'
   isLoading: boolean
 }
 
@@ -126,12 +125,10 @@ export function CapabilitiesProvider({
   children,
   initialAppDataCapabilities,
   initialCapabilities,
-  initialIntegrationProvider = 'none',
 }: {
   children: React.ReactNode
   initialAppDataCapabilities?: ClientAppDataCapabilities
   initialCapabilities?: CapabilityCheck
-  initialIntegrationProvider?: 'composio' | 'executor' | 'none'
 }) {
   const [capabilities, setCapabilities] = useState<CapabilityCheck>(
     initialCapabilities ?? DEFAULT_OVERLAY_CAPABILITIES,
@@ -140,7 +137,6 @@ export function CapabilitiesProvider({
     initialAppDataCapabilities ?? DEFAULT_APP_DATA_CAPABILITIES,
   )
   const [isLoading, setIsLoading] = useState(!initialCapabilities || !initialAppDataCapabilities)
-  const [integrationProvider, setIntegrationProvider] = useState(initialIntegrationProvider)
 
   useEffect(() => {
     if (initialCapabilities && initialAppDataCapabilities) return
@@ -155,14 +151,6 @@ export function CapabilitiesProvider({
         if (active && next) setCapabilities(next)
         const nextAppData = normalizeAppDataCapabilities(payload?.appDataCapabilities)
         if (active && nextAppData) setAppDataCapabilities(nextAppData)
-        if (
-          active &&
-          (payload?.integrationProvider === 'composio' ||
-            payload?.integrationProvider === 'executor' ||
-            payload?.integrationProvider === 'none')
-        ) {
-          setIntegrationProvider(payload.integrationProvider)
-        }
       })
       .catch(() => {})
       .finally(() => {
@@ -175,8 +163,8 @@ export function CapabilitiesProvider({
   }, [initialAppDataCapabilities, initialCapabilities])
 
   const value = useMemo(
-    () => ({ appDataCapabilities, capabilities, integrationProvider, isLoading }),
-    [appDataCapabilities, capabilities, integrationProvider, isLoading],
+    () => ({ appDataCapabilities, capabilities, isLoading }),
+    [appDataCapabilities, capabilities, isLoading],
   )
 
   return (
@@ -190,7 +178,6 @@ export function useOverlayCapabilities(): CapabilitiesContextValue {
   return useContext(CapabilitiesContext) ?? {
     appDataCapabilities: DEFAULT_APP_DATA_CAPABILITIES,
     capabilities: DEFAULT_OVERLAY_CAPABILITIES,
-    integrationProvider: 'none',
     isLoading: true,
   }
 }

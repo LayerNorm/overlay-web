@@ -14,7 +14,6 @@ export interface ChatCreatedDetail {
     _id: string
     title: string
     lastModified: number
-    conversationType?: 'personal' | 'dm' | 'channel'
   }
 }
 

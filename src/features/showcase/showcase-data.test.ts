@@ -27,7 +27,7 @@ test('public workspace has a deterministic outcome-led seed', () => {
   const fileIds = SHOWCASE_FILES.map((file) => file.id)
   assert.equal(new Set(conversationIds).size, conversationIds.length)
   assert.equal(new Set(fileIds).size, fileIds.length)
-  assert.equal(SHOWCASE_CHAT_SUMMARIES.length, SHOWCASE_CONVERSATIONS.length + 2)
+  assert.equal(SHOWCASE_CHAT_SUMMARIES.length, SHOWCASE_CONVERSATIONS.length)
   assert.equal(Object.keys(SHOWCASE_CHAT_SNAPSHOTS).length, SHOWCASE_CONVERSATIONS.length)
   assert.equal(SHOWCASE_KNOWLEDGE_NODES.length, SHOWCASE_FILES.length)
 })

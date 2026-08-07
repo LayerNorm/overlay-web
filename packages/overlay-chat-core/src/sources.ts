@@ -100,14 +100,6 @@ function extractHttpUrlsFromText(value: string): string[] {
   return value.match(/https?:\/\/[^\s"'<>\\)\]}]+/gi) ?? []
 }
 
-function trimTrailingUrlPunctuation(value: string): string {
-  let end = value.length
-  while (end > 0 && (value[end - 1] === '.' || value[end - 1] === ',' || value[end - 1] === ';')) {
-    end -= 1
-  }
-  return end === value.length ? value : value.slice(0, end)
-}
-
 function collectSourceCandidatesFromUnknown(
   value: unknown,
   origin: WebSourceItem['origin'],
@@ -119,7 +111,7 @@ function collectSourceCandidatesFromUnknown(
 
   if (typeof value === 'string') {
     for (const rawUrl of extractHttpUrlsFromText(value)) {
-      const url = safeHttpUrl(trimTrailingUrlPunctuation(rawUrl))
+      const url = safeHttpUrl(rawUrl.replace(/[.,;]+$/, ''))
       if (!url || seen.has(url)) continue
       seen.add(url)
       acc.push({ url, title: webSourceDisplayKey(url), origin })

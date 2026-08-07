@@ -42,6 +42,10 @@ export interface AccountEntitlements {
   budgetUsedCents: number
   budgetTotalCents: number
   budgetRemainingCents: number
+  allowanceTotalCents?: number
+  allowanceUsedCents?: number
+  allowancePercentUsed?: number
+  topUpBalanceCents?: number
   creditsUsed: number
   creditsTotal: number
   overlayStorageBytesUsed: number

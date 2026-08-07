@@ -43,6 +43,27 @@ function normalizeLimitValue(value: number | string | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function normalizeUsageBuckets(entitlements: BillingEntitlementsRecord) {
+  const budgetUsedCents = entitlements.budgetUsedCents ?? entitlements.creditsUsed
+  const budgetTotalCents = entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100
+  const budgetRemainingCents = entitlements.budgetRemainingCents ?? Math.max(0, budgetTotalCents - budgetUsedCents)
+  const allowanceTotalCents = entitlements.allowanceTotalCents ?? entitlements.planAmountCents ?? budgetTotalCents
+  const allowanceUsedCents = entitlements.allowanceUsedCents ?? Math.min(budgetUsedCents, allowanceTotalCents)
+  const allowancePercentUsed = entitlements.allowancePercentUsed ?? (
+    allowanceTotalCents > 0 ? Math.min(100, Math.max(0, allowanceUsedCents / allowanceTotalCents * 100)) : 0
+  )
+  const allowanceRemainingCents = Math.max(0, allowanceTotalCents - allowanceUsedCents)
+  return {
+    budgetUsedCents,
+    budgetTotalCents,
+    budgetRemainingCents,
+    allowanceTotalCents,
+    allowanceUsedCents,
+    allowancePercentUsed,
+    topUpBalanceCents: entitlements.topUpBalanceCents ?? Math.max(0, budgetRemainingCents - allowanceRemainingCents),
+  }
+}
+
 export class BillingCustomerService {
   constructor(private readonly deps: BillingCustomerServiceDeps) {}
 
@@ -53,6 +74,7 @@ export class BillingCustomerService {
     if (!entitlements) {
       serviceError({ error: 'Failed to load subscription' }, 502)
     }
+    const usageBuckets = normalizeUsageBuckets(entitlements)
 
     return {
       tier: entitlements.tier,
@@ -60,13 +82,9 @@ export class BillingCustomerService {
       planAmountCents: entitlements.planAmountCents,
       status: 'active' as const,
       ...getTopUpPreferenceSnapshot(entitlements),
-      creditsUsed: entitlements.budgetUsedCents ?? entitlements.creditsUsed,
-      creditsTotal: entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100,
-      budgetUsedCents: entitlements.budgetUsedCents ?? entitlements.creditsUsed,
-      budgetTotalCents: entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100,
-      budgetRemainingCents:
-        entitlements.budgetRemainingCents ??
-        Math.max(0, (entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100) - (entitlements.budgetUsedCents ?? entitlements.creditsUsed)),
+      creditsUsed: usageBuckets.budgetUsedCents,
+      creditsTotal: usageBuckets.budgetTotalCents,
+      ...usageBuckets,
       autoTopUpEnabled: entitlements.autoTopUpEnabled,
       autoTopUpConsentGranted: entitlements.autoTopUpConsentGranted,
       billingPeriodEnd: entitlements.billingPeriodEnd || null,
@@ -80,14 +98,13 @@ export class BillingCustomerService {
     if (!entitlements) {
       serviceError({ error: 'Failed to load subscription' }, 502)
     }
+    const usageBuckets = normalizeUsageBuckets(entitlements)
     return {
       ...entitlements,
       ...getTopUpPreferenceSnapshot(entitlements),
-      creditsUsed: entitlements.budgetUsedCents ?? entitlements.creditsUsed,
-      creditsTotal:
-        entitlements.budgetTotalCents !== undefined
-          ? entitlements.budgetTotalCents / 100
-          : entitlements.creditsTotal,
+      ...usageBuckets,
+      creditsUsed: usageBuckets.budgetUsedCents,
+      creditsTotal: usageBuckets.budgetTotalCents / 100,
     }
   }
 
@@ -195,8 +212,9 @@ export class BillingCustomerService {
     const planKind = convexData.planKind
     const dailyUsage = convexData.dailyUsage ?? { ask: 0, write: 0, agent: 0 }
     const dailyLimits = convexData.dailyLimits ?? { ask: 0, write: 0, agent: 0 }
-    const creditsUsed = convexData.budgetUsedCents ?? convexData.creditsUsed
-    const creditsTotal = convexData.budgetTotalCents ?? convexData.creditsTotal * 100
+    const usageBuckets = normalizeUsageBuckets(convexData)
+    const creditsUsed = usageBuckets.budgetUsedCents
+    const creditsTotal = usageBuckets.budgetTotalCents
     const transcriptionSecondsUsed = convexData.transcriptionSecondsUsed ?? 0
     const transcriptionSecondsLimit = convexData.transcriptionSecondsLimit ?? 0
     const overlayStorageBytesUsed = convexData.overlayStorageBytesUsed ?? 0
@@ -240,6 +258,10 @@ export class BillingCustomerService {
       budgetUsedCents: creditsUsed,
       budgetTotalCents: creditsTotal,
       budgetRemainingCents: convexData.budgetRemainingCents ?? Math.max(0, creditsTotal - creditsUsed),
+      allowanceTotalCents: usageBuckets.allowanceTotalCents,
+      allowanceUsedCents: usageBuckets.allowanceUsedCents,
+      allowancePercentUsed: usageBuckets.allowancePercentUsed,
+      topUpBalanceCents: usageBuckets.topUpBalanceCents,
       creditsUsed,
       creditsTotal: creditsTotal / 100,
       dailyUsage,

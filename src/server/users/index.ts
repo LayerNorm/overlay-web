@@ -6,7 +6,6 @@ export type {
   UserAuthProvider,
   UserIdentityInput,
   UserRepository,
-  UserDirectoryEntry,
   UserServiceOptions,
   UserSession,
   UserUpsertInput,

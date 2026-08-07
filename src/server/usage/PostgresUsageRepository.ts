@@ -10,16 +10,26 @@ import type {
   UsageReservationResult,
   UsageReservationStatus,
 } from './UsageRepository'
+import {
+  allocateUsageCharge,
+  availableUsageBalance,
+  topUpBalanceAfterReservations,
+  type UsageBuckets,
+} from '@/shared/billing/usage-buckets'
 
 const MICROS_PER_CENT = 10_000
 const DEFAULT_RESERVATION_TTL_MS = 30 * 60_000
 const UNLIMITED_TOTAL_MICROS = Number.MAX_SAFE_INTEGER
 
 type BudgetAccountRow = {
+  allowanceUsedMicros: number | string
   grantedMicros: number | string
   includedMicros: number | string
+  institutionalGrantMicros: number | string
   mode: 'unlimited' | 'budgeted'
   reservedMicros: number | string
+  topUpBalanceMicros: number | string
+  topUpPurchasedMicros: number | string
   usedMicros: number | string
 }
 
@@ -164,14 +174,13 @@ export class PostgresUsageRepository implements UsageRepository {
             provider_work_started = true, finalized_at = ${now}, updated_at = ${now}, error = NULL
         WHERE id = ${args.reservationId}
       `)
-      await tx.execute(sql`
-        UPDATE usage_budget_accounts
-        SET reserved_micros = GREATEST(0, reserved_micros - ${reservedMicros}),
-            used_micros = used_micros + ${actualMicros},
-            version = version + 1,
-            updated_at = ${now}
-        WHERE user_id = ${args.userId}
-      `)
+      await applyFinalizedSpend(tx, {
+        account,
+        actualMicros,
+        reservedMicros,
+        updatedAt: now,
+        userId: args.userId,
+      })
       await insertTransaction(tx, {
         amountMicros: actualMicros,
         reservationId: args.reservationId,
@@ -268,17 +277,17 @@ export class PostgresUsageRepository implements UsageRepository {
     userId: string
   }): Promise<{ recorded: number }> {
     return await this.db.transaction(async (tx) => {
-      await lockOrCreateAccount(tx, args.userId)
+      const account = await lockOrCreateAccount(tx, args.userId)
       const inserted = await insertEvents(tx, args)
       const totalMicros = inserted.reduce((total, event) => total + event.billableMicros, 0)
       if (totalMicros > 0) {
-        await tx.execute(sql`
-          UPDATE usage_budget_accounts
-          SET used_micros = used_micros + ${totalMicros},
-              version = version + 1,
-              updated_at = now()
-          WHERE user_id = ${args.userId}
-        `)
+        if (
+          account.mode === 'budgeted' &&
+          availableUsageBalance(bucketsFromAccount(account), Number(account.reservedMicros)) < totalMicros
+        ) {
+          throw new Error('insufficient_budget')
+        }
+        await applyDirectSpend(tx, { account, amountMicros: totalMicros, userId: args.userId })
         for (const event of inserted) {
           await insertTransaction(tx, {
             amountMicros: event.billableMicros,
@@ -347,6 +356,10 @@ async function lockOrCreateAccount(tx: Transaction, userId: string): Promise<Bud
     SELECT
       mode,
       included_micros AS "includedMicros",
+      institutional_grant_micros AS "institutionalGrantMicros",
+      allowance_used_micros AS "allowanceUsedMicros",
+      top_up_purchased_micros AS "topUpPurchasedMicros",
+      top_up_balance_micros AS "topUpBalanceMicros",
       granted_micros AS "grantedMicros",
       used_micros AS "usedMicros",
       reserved_micros AS "reservedMicros"
@@ -464,6 +477,7 @@ async function insertTransaction(tx: Transaction, args: {
 
 function entitlementsFromAccount(account: BudgetAccountRow): Entitlements {
   const usedMicros = Number(account.usedMicros)
+  const buckets = bucketsFromAccount(account)
   const configuredTotalMicros = Number(account.includedMicros) + Number(account.grantedMicros)
   const totalMicros = account.mode === 'unlimited' ? UNLIMITED_TOTAL_MICROS : configuredTotalMicros
   const remainingMicros = account.mode === 'unlimited'
@@ -477,6 +491,12 @@ function entitlementsFromAccount(account: BudgetAccountRow): Entitlements {
     budgetUsedCents: microsToCents(usedMicros),
     budgetTotalCents: microsToCents(totalMicros),
     budgetRemainingCents: microsToCents(remainingMicros),
+    allowanceTotalCents: microsToCents(buckets.allowanceTotal),
+    allowanceUsedCents: microsToCents(buckets.allowanceUsed),
+    allowancePercentUsed: percentageUsed(buckets.allowanceUsed, buckets.allowanceTotal),
+    topUpBalanceCents: microsToCents(
+      topUpBalanceAfterReservations(buckets, Number(account.reservedMicros)),
+    ),
     dailyUsage: { ask: 0, write: 0, agent: 0 },
     dailyLimits: {
       ask: Number.MAX_SAFE_INTEGER,
@@ -490,11 +510,91 @@ function entitlementsFromAccount(account: BudgetAccountRow): Entitlements {
 
 function availableMicrosFor(account: BudgetAccountRow): number {
   if (account.mode === 'unlimited') return UNLIMITED_TOTAL_MICROS
-  return Math.max(
-    0,
-    Number(account.includedMicros) + Number(account.grantedMicros) -
-      Number(account.usedMicros) - Number(account.reservedMicros),
-  )
+  return availableUsageBalance(bucketsFromAccount(account), Number(account.reservedMicros))
+}
+
+function bucketsFromAccount(account: BudgetAccountRow): UsageBuckets {
+  const allowanceTotal = Number(account.includedMicros) + Number(account.institutionalGrantMicros)
+  const topUpPurchased = Number(account.topUpPurchasedMicros)
+  const storedAllowanceUsed = Number(account.allowanceUsedMicros)
+  const storedTopUpBalance = Number(account.topUpBalanceMicros)
+  const legacyUsed = Number(account.usedMicros)
+  const storedProjection = storedAllowanceUsed + topUpPurchased - storedTopUpBalance
+  const storedBucketsAreCurrent = Math.abs(storedProjection - legacyUsed) < 0.000001
+  const allowanceUsed = storedBucketsAreCurrent
+    ? storedAllowanceUsed
+    : Math.min(legacyUsed, allowanceTotal)
+  return {
+    allowanceTotal,
+    allowanceUsed,
+    topUpBalance: storedBucketsAreCurrent
+      ? storedTopUpBalance
+      : Math.max(0, topUpPurchased - Math.max(0, legacyUsed - allowanceUsed)),
+    topUpPurchased,
+  }
+}
+
+async function applyFinalizedSpend(tx: Transaction, args: {
+  account: BudgetAccountRow
+  actualMicros: number
+  reservedMicros: number
+  updatedAt: Date
+  userId: string
+}): Promise<void> {
+  if (args.account.mode === 'unlimited') {
+    await tx.execute(sql`
+      UPDATE usage_budget_accounts
+      SET reserved_micros = GREATEST(0, reserved_micros - ${args.reservedMicros}),
+          used_micros = used_micros + ${args.actualMicros},
+          version = version + 1,
+          updated_at = ${args.updatedAt}
+      WHERE user_id = ${args.userId}
+    `)
+    return
+  }
+  const next = allocateUsageCharge(bucketsFromAccount(args.account), args.actualMicros)
+  await tx.execute(sql`
+    UPDATE usage_budget_accounts
+    SET reserved_micros = GREATEST(0, reserved_micros - ${args.reservedMicros}),
+        used_micros = used_micros + ${args.actualMicros},
+        allowance_used_micros = ${next.buckets.allowanceUsed},
+        top_up_balance_micros = ${next.buckets.topUpBalance},
+        version = version + 1,
+        updated_at = ${args.updatedAt}
+    WHERE user_id = ${args.userId}
+  `)
+}
+
+async function applyDirectSpend(tx: Transaction, args: {
+  account: BudgetAccountRow
+  amountMicros: number
+  userId: string
+}): Promise<void> {
+  if (args.account.mode === 'unlimited') {
+    await tx.execute(sql`
+      UPDATE usage_budget_accounts
+      SET used_micros = used_micros + ${args.amountMicros},
+          version = version + 1,
+          updated_at = now()
+      WHERE user_id = ${args.userId}
+    `)
+    return
+  }
+  const next = allocateUsageCharge(bucketsFromAccount(args.account), args.amountMicros)
+  await tx.execute(sql`
+    UPDATE usage_budget_accounts
+    SET used_micros = used_micros + ${args.amountMicros},
+        allowance_used_micros = ${next.buckets.allowanceUsed},
+        top_up_balance_micros = ${next.buckets.topUpBalance},
+        version = version + 1,
+        updated_at = now()
+    WHERE user_id = ${args.userId}
+  `)
+}
+
+function percentageUsed(used: number, total: number): number {
+  if (total <= 0) return 0
+  return Math.min(100, Math.max(0, used / total * 100))
 }
 
 function centsToMicros(value: number): number {

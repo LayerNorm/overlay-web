@@ -4,7 +4,6 @@ import { createHash, randomUUID } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import { durableJobs } from '@/server/database/postgres/schema'
-import { durableJobAuthorization } from '@/server/jobs/DurableJobAuthorization'
 
 export const KNOWLEDGE_REINDEX_JOB = 'knowledge.reindex-source'
 
@@ -37,7 +36,6 @@ export async function enqueueKnowledgeReindexJob(db: JobDb, args: {
         sourceId: args.sourceId,
         sourceKind: args.sourceKind,
         userId: args.userId,
-        ...durableJobAuthorization(args.userId, ['knowledge.edit']),
       },
       priority: 20,
       type: KNOWLEDGE_REINDEX_JOB,
