@@ -643,7 +643,7 @@ export default function AppSidebar({
           }
           : panelKind === 'knowledge'
             ? {
-              label: 'New Knowledge Base',
+              label: 'New knowledge base',
               onClick: () => window.dispatchEvent(new CustomEvent(NEW_KNOWLEDGE_BASE_EVENT)),
             }
             : null

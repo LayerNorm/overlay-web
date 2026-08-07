@@ -78,7 +78,7 @@ export function sendTextTurn({
   pendingFirstSendRef: MutableRefObject<PendingFirstSendState | null>
   pendingScrollChatIdRef: MutableRefObject<string | null>
   pendingScrollTurnIdRef: MutableRefObject<string | null>
-  refreshSelectedAutomation: (options?: { showLoading?: boolean }) => Promise<void>
+  refreshSelectedAutomation: (options?: { showLoading?: boolean; conversationId?: string }) => Promise<void>
   replyContext: ReplyContext
   selectedActModelSnapshot: string
   reasoning?: ReasoningLevel
@@ -270,10 +270,12 @@ export function sendTextTurn({
 
   const refreshAfterActTextTurn = async () => {
     await loadSubscription()
-    if (snapshot.requestMode === 'automate' && automationIdParam) {
-      await refreshSelectedAutomation({ showLoading: false })
-      window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
-    }
+    if (snapshot.requestMode !== 'automate') return
+    await refreshSelectedAutomation({
+      showLoading: false,
+      conversationId: activeChatIdRef.current ?? undefined,
+    })
+    window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
   }
 
   startActTextStream({
