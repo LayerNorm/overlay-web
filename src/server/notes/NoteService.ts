@@ -47,6 +47,7 @@ export interface NoteRepository {
     projectId?: string
     tags?: string[]
     clientId?: string
+    workspaceId?: string
   }): Promise<{ id: string; note: NoteRecord | null }>
   updateNote(args: {
     noteId: string
@@ -142,6 +143,7 @@ export class NoteService {
       projectId: args.projectId,
       tags: args.tags,
       clientId: args.clientId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
     return {
       id: result.id,
@@ -164,6 +166,7 @@ export class NoteService {
       projectId: args.projectId,
       tags: args.tags,
       expectedUpdatedAt: args.expectedUpdatedAt,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
     if (!note) {
       throw new NoteServiceError('Not found', 404)
@@ -187,6 +190,7 @@ export class NoteService {
     const result = await this.context.noteRepository.deleteNote({
       noteId: args.noteId,
       userId: args.userId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
     if (!result) {
       throw new NoteServiceError('Not found', 404)

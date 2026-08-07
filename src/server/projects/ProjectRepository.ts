@@ -48,6 +48,7 @@ export interface ProjectRepository {
     name: string
     parentId?: string | null
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord>
   updateProject(args: {
     instructions?: string | null

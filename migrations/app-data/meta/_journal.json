@@ -337,6 +337,13 @@
       "when": 1786647601000,
       "tag": "0047_usage_buckets",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1786734000000,
+      "tag": "0048_knowledge_chunks_workspace_id",
+      "breakpoints": true
     }
   ]
 }

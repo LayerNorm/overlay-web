@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { WORKSPACE_CHANGED_EVENT, type WorkspaceChangedEventDetail } from './workspace-events'
+import { WORKSPACE_CHANGED_EVENT, type WorkspaceChangedEventDetail } from '@/shared/workspaces/events'
 
 /**
  * Calls `callback` whenever the active workspace changes.

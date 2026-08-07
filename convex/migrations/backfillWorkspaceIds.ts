@@ -18,8 +18,6 @@ const BACKFILL_TABLES = [
   'knowledgeChunks',
 ] as const
 
-type BackfillTable = (typeof BACKFILL_TABLES)[number]
-
 export const auditBackfillByServer = query({
   args: {
     serverSecret: v.string(),

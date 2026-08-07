@@ -52,6 +52,7 @@ export class ProjectService {
       name,
       parentId: normalizeParentId(args.parentId),
       userId: args.userId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }))
   }
 
@@ -71,6 +72,7 @@ export class ProjectService {
       parentId: args.parentId === undefined ? undefined : normalizeParentId(args.parentId),
       projectId: args.projectId,
       userId: args.userId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }))
     if (!project) throw new ProjectServiceError('Not found', 404)
     return project

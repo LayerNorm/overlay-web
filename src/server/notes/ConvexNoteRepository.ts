@@ -13,22 +13,26 @@ export class ConvexNoteRepository implements NoteRepository {
   private async getCanonicalFile(args: {
     fileId: string
     userId: string
+    workspaceId?: string
   }): Promise<NoteRecord | null> {
     return await convex.query<NoteRecord | null>('files/files:get', {
       fileId: args.fileId,
       userId: args.userId,
       serverSecret: this.serverSecret,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
   }
 
   async getNote(args: {
     noteId: string
     userId: string
+    workspaceId?: string
   }): Promise<NoteRecord | null> {
     let directLookupRejected = false
     const direct = await this.getCanonicalFile({
       fileId: args.noteId,
       userId: args.userId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }).catch((_error) => {
       directLookupRejected = true
       return null
@@ -40,6 +44,7 @@ export class ConvexNoteRepository implements NoteRepository {
       noteId: args.noteId,
       userId: args.userId,
       serverSecret: this.serverSecret,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }).catch((_error) => null)
     return migrated?.kind === 'note' ? migrated : null
   }
@@ -48,6 +53,7 @@ export class ConvexNoteRepository implements NoteRepository {
     userId: string
     projectId?: string
     includeDeleted?: boolean
+    workspaceId?: string
   }): Promise<NoteRecord[]> {
     return await convex.query<NoteRecord[]>('files/files:list', {
       userId: args.userId,
@@ -55,6 +61,7 @@ export class ConvexNoteRepository implements NoteRepository {
       kind: 'note',
       ...(args.projectId !== undefined ? { projectId: args.projectId } : {}),
       ...(args.includeDeleted !== undefined ? { includeDeleted: args.includeDeleted } : {}),
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }) ?? []
   }
 
@@ -65,6 +72,7 @@ export class ConvexNoteRepository implements NoteRepository {
     projectId?: string
     tags?: string[]
     clientId?: string
+    workspaceId?: string
   }): Promise<{ id: string; note: NoteRecord | null }> {
     void args.tags
     const fileId = await convex.mutation<string>('files/files:create', {
@@ -77,6 +85,7 @@ export class ConvexNoteRepository implements NoteRepository {
       content: args.content,
       contentHash: args.content ? hashTextContent(args.content) : undefined,
       projectId: args.projectId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
     if (!fileId) {
       throw new Error('Failed to create note')
@@ -85,6 +94,7 @@ export class ConvexNoteRepository implements NoteRepository {
     const note = await this.getCanonicalFile({
       fileId,
       userId: args.userId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
     return { id: fileId, note }
   }
@@ -97,11 +107,13 @@ export class ConvexNoteRepository implements NoteRepository {
     projectId?: string | null
     tags?: string[]
     expectedUpdatedAt?: number
+    workspaceId?: string
   }): Promise<NoteRecord | null> {
     void args.tags
     const existing = await this.getNote({
       noteId: args.noteId,
       userId: args.userId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
     if (!existing) return null
 
@@ -118,10 +130,11 @@ export class ConvexNoteRepository implements NoteRepository {
         ...(args.expectedUpdatedAt !== undefined
           ? { expectedUpdatedAt: args.expectedUpdatedAt }
           : {}),
+        ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
       })
     } catch (error) {
       if (error instanceof Error && error.message.includes('NOTE_REVISION_CONFLICT')) {
-        const current = await this.getNote({ noteId: args.noteId, userId: args.userId })
+        const current = await this.getNote({ noteId: args.noteId, userId: args.userId, ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}) })
         throw new NoteRevisionConflictError(args.expectedUpdatedAt, current?.updatedAt ?? existing.updatedAt)
       }
       throw error
@@ -130,12 +143,14 @@ export class ConvexNoteRepository implements NoteRepository {
     return await this.getCanonicalFile({
       fileId: existing._id,
       userId: args.userId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
   }
 
   async deleteNote(args: {
     noteId: string
     userId: string
+    workspaceId?: string
   }): Promise<{ noteId: string; deletedAt: number } | null> {
     const existing = await this.getNote(args)
     if (!existing) return null
@@ -144,6 +159,7 @@ export class ConvexNoteRepository implements NoteRepository {
       fileId: existing._id,
       userId: args.userId,
       serverSecret: this.serverSecret,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
 
     return {
