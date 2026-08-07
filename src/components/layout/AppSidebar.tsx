@@ -981,7 +981,7 @@ export default function AppSidebar({
   const desktopAccountSlot = (
     <div ref={menuRef} className="relative">
       {!isGuestConfirmed && workspace ? (
-        workspace.renderSwitcher({
+        workspace.renderSwitcher?.({
           compact: !railExpanded,
           onNavigate: () => {
             setAccountMenuOpen(false)
@@ -1131,7 +1131,7 @@ export default function AppSidebar({
         <SidebarSection className="space-y-3 px-3">
           <div ref={mobileMenuRef} className="relative">
             {!isGuestConfirmed && workspace ? (
-              workspace.renderSwitcher({
+              workspace.renderSwitcher?.({
                 compact: false,
                 onNavigate: () => {
                   setAccountMenuOpen(false)
@@ -1250,7 +1250,7 @@ export default function AppSidebar({
           <div className="relative shrink-0" ref={mobileAccountRef}>
             {!isGuestConfirmed && workspace ? (
               <div className="max-w-[min(14rem,calc(100vw-7rem))]">
-                {workspace.renderSwitcher({
+                {workspace.renderSwitcher?.({
                   compact: true,
                   placement: 'header',
                   userLabel: displayName,

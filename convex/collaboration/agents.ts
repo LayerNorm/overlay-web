@@ -63,6 +63,7 @@ export const createByServer = mutation({
       instructions: args.instructions.trim(), harness: args.harness, modelId: args.modelId.trim(),
       avatarColor: cleanOptional(args.avatarColor), allowedToolIds: unique(args.allowedToolIds),
       invocationPolicy: 'mention', createdByPrincipalId: args.createdByPrincipalId,
+      teamIds: unique(args.teamIds), roomCount: 0,
       createdAt: args.now, updatedAt: args.now,
     })
     for (const teamId of unique(args.teamIds)) {

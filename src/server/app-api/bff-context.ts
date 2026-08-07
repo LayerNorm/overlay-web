@@ -2,6 +2,7 @@ import type { CapabilityCheck } from '@overlay/app-core'
 import type { WorkspaceAccess } from '@overlay/workspace-contracts'
 import type { AuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import type { AppDataCapabilities } from '@/server/app-data/capabilities'
+import type { AuthorizationService } from '@/server/authorization/AuthorizationService'
 
 export type AppApiRouteContext = {
   params: Promise<Record<string, string | string[]>>
@@ -14,6 +15,7 @@ export type AppApiRouteContext = {
   requestFingerprint: string
   requestIdempotencyKey: string | null
   workspace: WorkspaceAccess
+  authorization?: AuthorizationService
 }
 
 /**

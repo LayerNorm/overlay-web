@@ -365,6 +365,16 @@ export const conversationType = pgEnum('overlay_conversation_type', [
   'channel',
 ])
 
+export const conversationEventType = pgEnum('overlay_conversation_event_type', [
+  'message',
+  'mention',
+  'thread',
+  'reaction',
+  'participant',
+  'pin.changed',
+  'reaction.changed',
+])
+
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
   email: text('email').notNull(),
@@ -592,6 +602,11 @@ export const conversations = pgTable('conversations', {
   isAutomation: boolean('is_automation'),
   conversationType: conversationType('conversation_type').default('personal').notNull(),
   workspaceId: text('workspace_id'),
+  createdByPrincipalId: text('created_by_principal_id'),
+  dmIdentityKey: text('dm_identity_key'),
+  channelSlug: text('channel_slug'),
+  channelVisibility: text('channel_visibility'),
+  channelTopic: text('channel_topic'),
 }, (table) => [
   index('conversations_user_id_idx').on(table.userId),
   uniqueIndex('conversations_user_id_client_id_idx').on(table.userId, table.clientId),
@@ -601,6 +616,8 @@ export const conversations = pgTable('conversations', {
   index('conversations_project_id_idx').on(table.projectId),
   uniqueIndex('conversations_share_token_idx').on(table.shareToken),
   index('conversations_workspace_type_last_modified_idx').on(table.workspaceId, table.conversationType, table.lastModified),
+  uniqueIndex('conversations_workspace_dm_identity_key_idx').on(table.workspaceId, table.dmIdentityKey),
+  uniqueIndex('conversations_workspace_channel_slug_idx').on(table.workspaceId, table.channelSlug),
 ])
 
 export const conversationMessages = pgTable('conversation_messages', {
@@ -624,6 +641,10 @@ export const conversationMessages = pgTable('conversation_messages', {
   replySnippet: text('reply_snippet'),
   routedModelId: text('routed_model_id'),
   status: messageStatus('status'),
+  authorKind: text('author_kind'),
+  authorPrincipalId: text('author_principal_id'),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  editedAt: timestamp('edited_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
@@ -633,6 +654,7 @@ export const conversationMessages = pgTable('conversation_messages', {
   index('conversation_messages_conversation_status_updated_at_idx').on(table.conversationId, table.status, table.updatedAt),
   index('conversation_messages_status_updated_at_idx').on(table.status, table.updatedAt),
   index('conversation_messages_turn_id_idx').on(table.turnId),
+  index('conversation_messages_author_principal_id_idx').on(table.authorPrincipalId),
 ])
 
 export const conversationMessageDeltas = pgTable('conversation_message_deltas', {
@@ -767,6 +789,8 @@ export const knowledgeChunks = pgTable('knowledge_chunks', {
   projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
   sourceKind: knowledgeSourceKind('source_kind').notNull(),
   sourceId: text('source_id').notNull(),
+  knowledgeSourceId: text('knowledge_source_id'),
+  knowledgeSourceVersionId: text('knowledge_source_version_id'),
   chunkIndex: integer('chunk_index').notNull(),
   startOffset: integer('start_offset').notNull(),
   text: text('text').notNull(),
@@ -779,6 +803,7 @@ export const knowledgeChunks = pgTable('knowledge_chunks', {
   index('knowledge_chunks_user_source_idx').on(table.userId, table.sourceKind),
   index('knowledge_chunks_user_project_idx').on(table.userId, table.projectId),
   index('knowledge_chunks_source_idx').on(table.sourceKind, table.sourceId),
+  index('knowledge_chunks_knowledge_source_id_idx').on(table.knowledgeSourceId),
 ])
 
 export const knowledgeChunkEmbeddings = pgTable('knowledge_chunk_embeddings', {
@@ -1482,7 +1507,7 @@ export const knowledgeSources = pgTable('knowledge_sources', {
   contentHash: text('content_hash'),
   status: knowledgeSourceStatus('status').default('pending').notNull(),
   statusMessage: text('status_message'),
-  metadata: jsonb('metadata').default(sql`'{}'::jsonb`).notNull(),
+  metadata: jsonb('metadata').$type<{ content?: string }>().default(sql`'{}'::jsonb`).notNull(),
   createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -1502,7 +1527,7 @@ export const knowledgeSourceVersions = pgTable('knowledge_source_versions', {
   version: integer('version').notNull(),
   contentHash: text('content_hash').notNull(),
   status: knowledgeSourceStatus('status').default('pending').notNull(),
-  metadata: jsonb('metadata').default(sql`'{}'::jsonb`).notNull(),
+  metadata: jsonb('metadata').$type<{ content?: string }>().default(sql`'{}'::jsonb`).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
@@ -1602,6 +1627,7 @@ export const conversationParticipants = pgTable('conversation_participants', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   removedAt: timestamp('removed_at', { withTimezone: true }),
   lastReadAt: timestamp('last_read_at', { withTimezone: true }),
+  lastReadSequence: integer('last_read_sequence'),
   markedUnreadAt: timestamp('marked_unread_at', { withTimezone: true }),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
 }, (table) => [
@@ -1617,12 +1643,14 @@ export const workspacePresence = pgTable('workspace_presence', {
   principalId: text('principal_id').notNull(),
   conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'set null' }),
   status: workspacePresenceStatus('status').notNull().default('online'),
+  sessionId: text('session_id'),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
   typingExpiresAt: timestamp('typing_expires_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   primaryKey({ columns: [table.workspaceId, table.principalId] }),
   index('workspace_presence_conversation_idx').on(table.conversationId, table.updatedAt),
+  index('workspace_presence_session_id_idx').on(table.sessionId),
 ])
 
 export const workspaceNotifications = pgTable('workspace_notifications', {
@@ -1678,4 +1706,56 @@ export const conversationThreadFollows = pgTable('conversation_thread_follows', 
   primaryKey({ columns: [table.threadRootMessageId, table.principalId] }),
   index('conversation_thread_follows_principal_idx').on(table.workspaceId, table.principalId, table.followedAt),
   index('conversation_thread_follows_thread_idx').on(table.conversationId, table.threadRootMessageId),
+])
+
+export const conversationMessageReactions = pgTable('conversation_message_reactions', {
+  id: text('id').primaryKey(),
+  conversationId: text('conversation_id')
+    .notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  messageId: text('message_id').notNull(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  principalId: text('principal_id').notNull(),
+  emoji: text('emoji').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('conversation_message_reactions_message_principal_emoji_idx').on(table.messageId, table.principalId, table.emoji),
+  index('conversation_message_reactions_conversation_idx').on(table.conversationId),
+  index('conversation_message_reactions_workspace_idx').on(table.workspaceId),
+  index('conversation_message_reactions_message_idx').on(table.messageId),
+])
+
+export const conversationPins = pgTable('conversation_pins', {
+  id: text('id').primaryKey(),
+  conversationId: text('conversation_id')
+    .notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  messageId: text('message_id').notNull(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  pinnedByPrincipalId: text('pinned_by_principal_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('conversation_pins_conversation_message_idx').on(table.conversationId, table.messageId),
+  index('conversation_pins_conversation_idx').on(table.conversationId),
+  index('conversation_pins_workspace_idx').on(table.workspaceId),
+])
+
+export const conversationSavedMessages = pgTable('conversation_saved_messages', {
+  id: text('id').primaryKey(),
+  conversationId: text('conversation_id')
+    .notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  messageId: text('message_id').notNull(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  principalId: text('principal_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('conversation_saved_messages_conversation_message_principal_idx').on(table.conversationId, table.messageId, table.principalId),
+  index('conversation_saved_messages_workspace_principal_idx').on(table.workspaceId, table.principalId),
 ])

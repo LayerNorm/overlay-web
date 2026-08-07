@@ -37,6 +37,8 @@ export async function ensureActConversationId(params: {
   projectId?: string
   askModelIds?: string[]
   actModelId?: string
+  workspaceId?: string
+  createdByPrincipalId?: string
 }): Promise<Id<'conversations'>> {
   const clientId = params.conversationClientId.trim()
   if (!clientId) {

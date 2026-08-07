@@ -304,7 +304,6 @@ export function buildActTooling(params: {
     params.integrationRaw,
     params.paid,
     params.integrationProvider,
-    params.enabledConnectorSlugs,
   )
   const integrationsForAgent: ToolSet = params.isMultiModelFollowUpSlot ? {} : integrationTools
   const freeTierStubsActive = !params.paid && !params.isMultiModelFollowUpSlot

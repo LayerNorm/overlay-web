@@ -378,6 +378,22 @@ export const reindexFileInternal = internalAction({
   },
 })
 
+export const reindexCanonicalSourceInternal = internalAction({
+  args: {
+    contentHash: v.string(),
+    sourceId: v.string(),
+    sourceVersionId: v.string(),
+    userId: v.string(),
+  },
+  handler: async (_ctx, _args) => {
+    // Stub: canonical source reindexing is performed by the Postgres-backed
+    // indexing service. This internal action exists so the BFF can schedule it
+    // via the Convex scheduler without a TypeScript error against the generated
+    // `internal.knowledge.knowledge` API surface.
+    return { reindexed: false }
+  },
+})
+
 export const reindexMemoryInternal = internalAction({
   args: { memoryId: v.id('memories') },
   handler: async (ctx, { memoryId }) => {

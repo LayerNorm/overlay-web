@@ -71,6 +71,7 @@ const DEFAULT_APP_DATA_CAPABILITIES: ClientAppDataCapabilities = {
 type CapabilitiesContextValue = {
   capabilities: CapabilityCheck
   appDataCapabilities: ClientAppDataCapabilities
+  integrationProvider: 'none' | 'composio' | 'executor'
   isLoading: boolean
 }
 
@@ -125,10 +126,12 @@ export function CapabilitiesProvider({
   children,
   initialAppDataCapabilities,
   initialCapabilities,
+  initialIntegrationProvider = 'none',
 }: {
   children: React.ReactNode
   initialAppDataCapabilities?: ClientAppDataCapabilities
   initialCapabilities?: CapabilityCheck
+  initialIntegrationProvider?: 'none' | 'composio' | 'executor'
 }) {
   const [capabilities, setCapabilities] = useState<CapabilityCheck>(
     initialCapabilities ?? DEFAULT_OVERLAY_CAPABILITIES,
@@ -163,8 +166,8 @@ export function CapabilitiesProvider({
   }, [initialAppDataCapabilities, initialCapabilities])
 
   const value = useMemo(
-    () => ({ appDataCapabilities, capabilities, isLoading }),
-    [appDataCapabilities, capabilities, isLoading],
+    () => ({ appDataCapabilities, capabilities, integrationProvider: initialIntegrationProvider ?? 'none', isLoading }),
+    [appDataCapabilities, capabilities, initialIntegrationProvider, isLoading],
   )
 
   return (
@@ -178,6 +181,7 @@ export function useOverlayCapabilities(): CapabilitiesContextValue {
   return useContext(CapabilitiesContext) ?? {
     appDataCapabilities: DEFAULT_APP_DATA_CAPABILITIES,
     capabilities: DEFAULT_OVERLAY_CAPABILITIES,
+    integrationProvider: 'none' as const,
     isLoading: true,
   }
 }

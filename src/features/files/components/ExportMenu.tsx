@@ -266,6 +266,7 @@ export function ExportMenu({
         resource:
           shareUrl
             ? {
+                id: resourceId ?? '',
                 type: type === 'chat' ? 'chat' : 'file',
                 title: title || (type === 'chat' ? 'Shared chat' : 'Shared note'),
                 url: shareUrl,

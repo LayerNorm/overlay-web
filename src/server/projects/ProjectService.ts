@@ -81,6 +81,50 @@ export class ProjectService {
     return result
   }
 
+  /**
+   * Lists projects that are marked as reusable templates.
+   * Stub implementation: returns all non-deleted projects for the user.
+   */
+  async listTemplates(args: {
+    userId: string
+  }): Promise<ProjectRecord[]> {
+    return this.mapRepositoryErrors(() => this.repository.listProjects({
+      userId: args.userId,
+    }))
+  }
+
+  /**
+   * Creates a new project by duplicating an existing project's configuration.
+   * Working data (conversations, notes, files) is not carried across — only
+   * the project metadata is copied. Knowledge bases are attached via the
+   * caller-provided `attachKnowledgeBases` callback.
+   */
+  async duplicateProject(args: {
+    sourceProjectId: string
+    name?: string
+    userId: string
+    attachKnowledgeBases?: (args: { projectId: string }) => Promise<void>
+  }): Promise<ProjectRecord> {
+    const source = await this.mapRepositoryErrors(() => this.repository.getProject({
+      projectId: args.sourceProjectId,
+      userId: args.userId,
+    }))
+    if (!source) throw new ProjectServiceError('Source project not found', 404)
+
+    const duplicate = await this.mapRepositoryErrors(() => this.repository.createProject({
+      name: args.name ?? `${source.name} (copy)`,
+      instructions: source.instructions,
+      parentId: source.parentId ?? null,
+      userId: args.userId,
+    }))
+
+    if (args.attachKnowledgeBases) {
+      await args.attachKnowledgeBases({ projectId: duplicate._id })
+    }
+
+    return duplicate
+  }
+
   private async mapRepositoryErrors<T>(operation: () => Promise<T>): Promise<T> {
     try {
       return await operation()

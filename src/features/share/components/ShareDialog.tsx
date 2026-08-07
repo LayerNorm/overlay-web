@@ -5,9 +5,10 @@ import { Check, Linkedin, Link2, X } from 'lucide-react'
 import { usePresence } from '@overlay/ui'
 
 type Resource = {
-  type: 'chat' | 'file'
+  id?: string
+  type: 'chat' | 'file' | 'agent' | 'knowledge_base'
   title: string
-  url: string
+  url?: string
   /** Thumbnail (OG image) url, optional. */
   thumbnailUrl?: string
 }
@@ -78,7 +79,7 @@ export function ShareDialog({
   }, [isOpen, onClose])
 
   const socials = useMemo(
-    () => (resource ? buildSocialUrls(resource.url, resource.title) : null),
+    () => (resource?.url ? buildSocialUrls(resource.url, resource.title) : null),
     [resource],
   )
 
@@ -87,7 +88,7 @@ export function ShareDialog({
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(resource.url)
+      await navigator.clipboard.writeText(resource.url ?? '')
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1500)
     } catch {

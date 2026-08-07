@@ -462,13 +462,15 @@ export default defineSchema({
     name: v.string(),
     instructions: v.optional(v.string()),
     parentId: v.optional(v.string()),
+    knowledgeBaseId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),
   })
     .index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
-    .index('by_userId_updatedAt', ['userId', 'updatedAt']),
+    .index('by_userId_updatedAt', ['userId', 'updatedAt'])
+    .index('by_knowledgeBaseId', ['knowledgeBaseId']),
 
   skills: defineTable({
     userId: v.string(),
@@ -740,7 +742,9 @@ export default defineSchema({
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_projectId', ['projectId'])
     .index('by_shareToken', ['shareToken'])
-    .index('by_workspaceId_conversationType_lastModified', ['workspaceId', 'conversationType', 'lastModified']),
+    .index('by_workspaceId_conversationType_lastModified', ['workspaceId', 'conversationType', 'lastModified'])
+    .index('by_workspaceId_channelSlug', ['workspaceId', 'channelSlug'])
+    .index('by_workspaceId_dmIdentityKey', ['workspaceId', 'dmIdentityKey']),
 
   conversationMessages: defineTable({
     conversationId: v.id('conversations'),
@@ -993,6 +997,7 @@ export default defineSchema({
     projectId: v.optional(v.string()),
     sourceKind: v.union(v.literal('file'), v.literal('memory')),
     sourceId: v.string(),
+    knowledgeSourceId: v.optional(v.string()),
     chunkIndex: v.number(),
     startOffset: v.number(),
     text: v.string(),
@@ -1000,6 +1005,7 @@ export default defineSchema({
   })
     .index('by_source', ['sourceKind', 'sourceId'])
     .index('by_userId', ['userId'])
+    .index('by_knowledgeSourceId', ['knowledgeSourceId'])
     .searchIndex('search_text', {
       searchField: 'text',
       filterFields: ['userId', 'sourceKind'],
@@ -1624,9 +1630,9 @@ export default defineSchema({
     notificationId: v.string(),
     workspaceId: v.string(),
     recipientPrincipalId: v.string(),
-    type: v.union(v.literal('mention'), v.literal('thread'), v.literal('message')),
+    type: v.union(v.literal('mention'), v.literal('thread'), v.literal('message'), v.literal('reaction'), v.literal('participant')),
     conversationId: v.id('conversations'),
-    messageId: v.id('conversationMessages'),
+    messageId: v.optional(v.id('conversationMessages')),
     actorPrincipalId: v.string(),
     threadRootMessageId: v.optional(v.id('conversationMessages')),
     eventSequence: v.number(),
@@ -1771,5 +1777,6 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
     createdAt: v.number(),
   })
-    .index('by_reviewId', ['reviewId']),
+    .index('by_reviewId', ['reviewId'])
+    .index('by_resource_createdAt', ['resourceType', 'resourceId', 'createdAt']),
 })

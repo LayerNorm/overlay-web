@@ -101,12 +101,16 @@ import {
   type McpServerRepository,
   type SkillRepository,
 } from '@/server/extensions'
+import type { AuthorizationRepositories } from '@overlay/authz-contracts'
+import { createPostgresAuthorizationRepositories } from '@/server/authorization/PostgresAuthorizationRepositories'
+import { createConvexAuthorizationRepositories } from '@/server/authorization/ConvexAuthorizationRepositories'
 
 export interface AppDataRepositories {
   accountDeletion: AccountDataDeletionRepository
   administration: AdministrativeRepository
   apiKeys: ApiKeyRepository
   audit: AuditRepository
+  authorization: AuthorizationRepositories
   automations: AutomationRepository
   billing: BillingRepository
   billingEvents: BillingProviderEventRepository
@@ -165,6 +169,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         administration: new PostgresAdministrativeRepository(db),
         apiKeys: new PostgresApiKeyRepository(db),
         audit: new PostgresAuditRepository(db),
+        authorization: createPostgresAuthorizationRepositories(db),
         automations: new PostgresAutomationRepository(db, conversations),
         billing,
         billingEvents: new PostgresBillingProviderEventRepository(db),
@@ -200,6 +205,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       administration: new ConvexAdministrativeRepository(),
       apiKeys: new ConvexApiKeyRepository(),
       audit: new ConvexAuditRepository(),
+      authorization: createConvexAuthorizationRepositories(),
       automations: new ConvexAutomationRepository(),
       billing: new ConvexBillingRepository(),
       billingEvents: new ConvexBillingProviderEventRepository(),

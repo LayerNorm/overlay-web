@@ -18,6 +18,8 @@ export interface ListboxSelectProps<T extends string> {
   buttonClassName?: string
   menuClassName?: string
   'aria-label'?: string
+  /** When true, renders the dropdown menu in a React portal. */
+  portal?: boolean
 }
 
 export function ListboxSelect<T extends string>({

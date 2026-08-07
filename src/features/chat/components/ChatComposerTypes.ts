@@ -50,10 +50,17 @@ export type ChatComposerActions = {
   onEmptySuggestion?: (id: EmptyChatSuggestionId) => void
   onAutomateSuggestion?: (id: EmptyAutomateSuggestionId) => void
 }
+export type ChatComposerSurface = {
+  hideModeMenu?: boolean
+  hideGenerationModes?: boolean
+  placeholder?: string
+  mentionCategories?: Array<{ type: string; label: string; icon: string; items: Array<{ type: string; id: string; name: string; description?: string; icon?: string }> }>
+}
 export type ChatComposerProps = {
   mode: 'chat' | 'automate'; emptyState: ChatComposerEmptyState; attachments: ChatComposerAttachmentState
   runtime: ChatComposerRuntime; inputState: ChatComposerInputState; toolState: ChatComposerToolState
   modeState: ChatComposerModeState; actions: ChatComposerActions
+  surface?: ChatComposerSurface
 }
 export type ComposerViewProps = { mode: 'chat' | 'automate' }
   & ChatComposerEmptyState & ChatComposerAttachmentState & ChatComposerRuntime & ChatComposerInputState

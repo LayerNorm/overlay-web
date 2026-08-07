@@ -263,6 +263,7 @@ export function buildCommonActBody({
   pendingConversationClientId,
   temporaryChatSnapshot,
   embedProjectId,
+  knowledgeBaseId,
   textModelsForTurn,
   turnId,
   requestMode,
@@ -280,6 +281,7 @@ export function buildCommonActBody({
   pendingConversationClientId: string | null
   temporaryChatSnapshot: boolean
   embedProjectId: string | null
+  knowledgeBaseId?: string
   textModelsForTurn: string[]
   turnId: string
   requestMode: 'chat' | 'automate'
@@ -313,6 +315,7 @@ export function buildCommonActBody({
     ...(textHistoryBaseModelId ? { historyBaseModelId: textHistoryBaseModelId } : {}),
     requestedToolIds: selectedToolIdsSnapshot,
     memoryEnabled: memoryEnabledSnapshot,
+    ...(knowledgeBaseId ? { knowledgeBaseId } : {}),
     ...(reasoning && reasoning !== 'provider-default' ? { reasoning } : {}),
   }
 }

@@ -440,6 +440,8 @@ interface Props {
    * in-flight tail so text streams without a duplicate marker mid-message.
    */
   suppressTypingIndicator?: boolean
+  /** Mention metadata for rendering @mention chips in human messages. */
+  mentions?: Array<{ type: string; id: string; name: string }>
 }
 
 export function MarkdownMessage({
@@ -448,6 +450,7 @@ export function MarkdownMessage({
   sourceCitations,
   webSources,
   suppressTypingIndicator = false,
+  mentions,
 }: Props) {
   const hasCitationMap = !!(sourceCitations && Object.keys(sourceCitations).length > 0)
   const hasWebSources = !!(webSources && webSources.length > 0)
@@ -584,3 +587,5 @@ export function MarkdownMessage({
     </div>
   )
 }
+
+export { MarkdownMessage as HumanMarkdownMessage }

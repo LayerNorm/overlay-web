@@ -29,18 +29,18 @@ function formatSize(sizeBytes?: number): string {
 interface ChatComposerProps {
   /** Act approval / posture control — rendered above the textarea. */
   toolbarAboveTextarea?: ReactNode
-  attachments: AttachmentDraft[]
-  onAddFiles: (files: File[]) => void
-  onRemoveAttachment: (id: string) => void
-  generationMode: GenerationMode
-  onGenerationModeChange: (mode: GenerationMode) => void
-  value: string
+  attachments?: AttachmentDraft[] | Record<string, unknown>
+  onAddFiles?: (files: File[]) => void
+  onRemoveAttachment?: (id: string) => void
+  generationMode?: GenerationMode
+  onGenerationModeChange?: (mode: GenerationMode) => void
+  value?: string
   placeholder?: string
   disabled?: boolean
   loading?: boolean
   canStop?: boolean
-  onChange: (value: string) => void
-  onSubmit: () => void
+  onChange?: (value: string) => void
+  onSubmit?: () => void
   onStop?: () => void
   /** Optional voice dictation (extension). */
   voiceEnabled?: boolean
@@ -48,16 +48,25 @@ interface ChatComposerProps {
   transcribing?: boolean
   onVoiceStart?: () => void
   onVoiceStop?: () => void
+  /** Structured prop API for collaboration surfaces (DirectMessageExperience, channels). */
+  mode?: string
+  surface?: { hideModeMenu?: boolean; hideGenerationModes?: boolean; placeholder?: string; mentionCategories?: unknown[] }
+  emptyState?: { showCenteredEmptyChat?: boolean; greetingLine?: string }
+  runtime?: { composerNotice?: ReactNode; isSendBlocked?: boolean; isActiveLoading?: boolean; isTemporaryChat?: boolean; blockedComposerContent?: ReactNode }
+  inputState?: { replyContext?: unknown; setReplyContext?: (v: unknown) => void; textareaRef?: React.RefObject<HTMLTextAreaElement | null>; input?: string; inputRevision?: number; onInputChange?: (v: string) => void; onMentionsChange?: (v: unknown) => void; onPaste?: (e: unknown) => void; hasComposerText?: boolean }
+  toolState?: { showAttachMenu?: boolean; setShowAttachMenu?: (v: boolean) => void; attachMenuRef?: React.RefObject<HTMLDivElement | null>; selectedToolIds?: string[]; memoryEnabled?: boolean; capabilities?: unknown; onToggleTool?: () => void; onToggleMemory?: () => void; onRemoveTool?: () => void }
+  modeState?: { onModeChange?: () => void; generationChip?: unknown; setGenerationChip?: (v: unknown) => void; showModeMenu?: boolean; setShowModeMenu?: (v: boolean) => void; modeMenuRef?: React.RefObject<HTMLDivElement | null>; onNavigateMode?: () => void }
+  actions?: { onStop?: () => void; onSend?: () => void }
 }
 
 export function ChatComposer({
   toolbarAboveTextarea,
-  attachments,
+  attachments = [],
   onAddFiles,
   onRemoveAttachment,
-  generationMode,
+  generationMode = 'text',
   onGenerationModeChange,
-  value,
+  value = '',
   placeholder,
   disabled,
   loading,
@@ -112,7 +121,7 @@ export function ChatComposer({
           e.preventDefault()
           setDragOver(false)
           const files = Array.from(e.dataTransfer.files || [])
-          if (files.length > 0) onAddFiles(files)
+          if (files.length > 0) onAddFiles?.(files)
         }}
         className={`overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${
           dragOver ? 'ring-2 ring-[var(--foreground)]/20' : ''
@@ -123,7 +132,7 @@ export function ChatComposer({
             <div className="mb-2 flex min-h-8 flex-wrap items-center gap-2">{toolbarAboveTextarea}</div>
           ) : null}
 
-          {attachments.length > 0 ? (
+          {Array.isArray(attachments) && attachments.length > 0 ? (
             <div className="mb-2 flex flex-wrap gap-1.5">
               {attachments.map((attachment) => (
                 <div
@@ -147,7 +156,7 @@ export function ChatComposer({
                   ) : null}
                   <button
                     type="button"
-                    onClick={() => onRemoveAttachment(attachment.id)}
+                    onClick={() => onRemoveAttachment?.(attachment.id)}
                     className="text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
                     aria-label={`Remove ${attachment.name}`}
                   >
@@ -160,11 +169,11 @@ export function ChatComposer({
 
           <textarea
             value={value}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => onChange?.(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault()
-                if (!disabled && !loading && canSend) onSubmit()
+                if (!disabled && !loading && canSend) onSubmit?.()
               }
             }}
             placeholder={placeholder || 'Ask anything...'}
@@ -181,7 +190,7 @@ export function ChatComposer({
             className="hidden"
             onChange={(e) => {
               const files = e.target.files ? Array.from(e.target.files) : []
-              if (files.length) onAddFiles(files)
+              if (files.length) onAddFiles?.(files)
               e.target.value = ''
               setAttachMenuOpen(false)
             }}
@@ -194,7 +203,7 @@ export function ChatComposer({
             className="hidden"
             onChange={(e) => {
               const files = e.target.files ? Array.from(e.target.files) : []
-              if (files.length) onAddFiles(files)
+              if (files.length) onAddFiles?.(files)
               e.target.value = ''
               setAttachMenuOpen(false)
             }}
@@ -235,7 +244,7 @@ export function ChatComposer({
                     type="button"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--foreground)] hover:bg-[var(--surface-muted)]"
                     onClick={() => {
-                      onGenerationModeChange('image')
+                      onGenerationModeChange?.('image')
                       setAttachMenuOpen(false)
                     }}
                   >
@@ -246,7 +255,7 @@ export function ChatComposer({
                     type="button"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--foreground)] hover:bg-[var(--surface-muted)]"
                     onClick={() => {
-                      onGenerationModeChange('video')
+                      onGenerationModeChange?.('video')
                       setAttachMenuOpen(false)
                     }}
                   >
@@ -283,7 +292,7 @@ export function ChatComposer({
 
             <CollapsibleGenerationMode
               mode={generationMode}
-              onChange={onGenerationModeChange}
+              onChange={onGenerationModeChange ?? (() => {})}
               disabled={Boolean(loading && !canStop)}
             />
 

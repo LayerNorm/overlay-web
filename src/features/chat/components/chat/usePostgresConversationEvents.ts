@@ -23,6 +23,7 @@ export function usePostgresConversationEvents({
   enabled,
   hasActiveLocalStream,
   loadChats,
+  onEvents,
   onRemoteStop,
   reloadActiveConversation,
 }: {
@@ -30,11 +31,12 @@ export function usePostgresConversationEvents({
   enabled: boolean
   hasActiveLocalStream: () => boolean
   loadChats: () => Promise<void>
+  onEvents?: (events: ConversationEvent[]) => void
   onRemoteStop: () => void
   reloadActiveConversation: (chatId: string) => Promise<void>
 }) {
-  const callbacksRef = useRef({ hasActiveLocalStream, loadChats, onRemoteStop, reloadActiveConversation })
-  callbacksRef.current = { hasActiveLocalStream, loadChats, onRemoteStop, reloadActiveConversation }
+  const callbacksRef = useRef({ hasActiveLocalStream, loadChats, onEvents, onRemoteStop, reloadActiveConversation })
+  callbacksRef.current = { hasActiveLocalStream, loadChats, onEvents, onRemoteStop, reloadActiveConversation }
 
   useEffect(() => {
     if (!enabled) return

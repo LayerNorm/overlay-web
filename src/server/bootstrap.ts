@@ -316,7 +316,7 @@ export function createOverlayServerContext(
   const knowledgeSourceIngestionService = new KnowledgeSourceIngestionService({
     authorization: authorizationService,
     bases: knowledgeBaseService,
-    fetchers: new KnowledgeSourceFetcherRegistry(),
+    fetchers: new KnowledgeSourceFetcherRegistry([]),
     indexQueue: canonicalIndexQueue,
     repositories: knowledgeBaseRepositories,
   })

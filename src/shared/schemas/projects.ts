@@ -62,3 +62,33 @@ export const ProjectKnowledgeTransferRequest = z.object({
   content: z.string().optional(),
   title: z.string().optional(),
 }).passthrough()
+
+export const ProjectTemplateListQuery = PaginationQuery.extend({
+  updatedSince: IntegerQueryValue,
+  includeDeleted: BooleanQueryValue,
+}).passthrough()
+
+export const DuplicateProjectRequest = z.object({
+  ...AuthFields,
+  sourceProjectId: z.string().min(1),
+  name: z.string().min(1).max(200).optional(),
+}).passthrough()
+
+export const ProjectGrantListQuery = z.object({
+  ...AuthFields,
+  projectId: z.string().min(1),
+}).passthrough()
+
+export const CreateProjectGrantRequest = z.object({
+  ...AuthFields,
+  projectId: z.string().min(1),
+  principalId: z.string().min(1),
+  principalType: z.enum(['user', 'group', 'role']),
+  accessRole: z.enum(['viewer', 'editor']),
+}).passthrough()
+
+export const DeleteProjectGrantRequest = z.object({
+  ...AuthFields,
+  projectId: z.string().min(1),
+  grantId: z.string().min(1),
+}).passthrough()

@@ -9,6 +9,7 @@ export type KnowledgeSearchArgs = {
     operationId: string
     requestFingerprint: string
   }
+  canonicalSourceIds?: string[]
   kLex?: number
   kVec?: number
   m?: number

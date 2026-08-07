@@ -5,6 +5,9 @@ export type HybridSearchChunk = {
   sourceKind: 'file' | 'memory'
   text: string
   title?: string
+  knowledgeSourceId?: string
+  startOffset?: number
+  knowledgeSourceVersionId?: string
 }
 
 export type HybridSearchResult = {

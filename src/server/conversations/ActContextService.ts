@@ -79,6 +79,7 @@ export type ActTurnContext = {
   memoryContext: string
   mentionsContext: string
   projectInstructions: string
+  projectSettings?: Record<string, unknown>
   skillsContext: string
   sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
 }
@@ -147,6 +148,7 @@ export class ActContextService {
     externalContextEnabled?: boolean
     memoryEnabled?: boolean
     mentions?: IncomingMention[]
+    mentionedKnowledgeBaseIds?: string[]
     requestIdempotencyKey: string
     requestFingerprint: string
     serverSecret: string

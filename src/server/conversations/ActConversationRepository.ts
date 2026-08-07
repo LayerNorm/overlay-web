@@ -34,6 +34,8 @@ export type ActConversationRow = {
 
 export type ActProjectRow = {
   instructions?: string
+  archivedAt?: number
+  settings?: Record<string, unknown>
 }
 
 export type ConversationListRow = {
@@ -71,6 +73,10 @@ export type ConversationMessageRow = {
   replySnippet?: string
   routedModelId?: string
   status?: 'generating' | 'completed' | 'error'
+  clientNonce?: string
+  deletedAt?: number
+  authorPrincipalId?: string
+  authorKind?: 'user' | 'agent' | 'system'
 }
 
 export type ActUsageEvent = {
@@ -95,6 +101,8 @@ export type ConversationEventType =
   | 'message.stopped'
   | 'message.deleted'
   | 'message.ui-updated'
+  | 'pin.changed'
+  | 'reaction.changed'
 
 export type ConversationEventRow = {
   sequence: number
@@ -133,6 +141,7 @@ export interface ActConversationRepository {
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<ConversationListRow[]>
   listConversationsByProject(args: {
     includeDeleted?: boolean
@@ -190,6 +199,11 @@ export interface ActConversationRepository {
     turnId: string
     userId: string
     variantIndex?: number
+    workspaceId?: string
+    authorKind?: 'user' | 'agent' | 'system'
+    authorPrincipalId?: string
+    clientNonce?: string
+    threadRootMessageId?: string
   }): Promise<Id<'conversationMessages'> | null>
   listMemories(args: {
     userId: string

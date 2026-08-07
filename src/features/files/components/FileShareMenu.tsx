@@ -140,7 +140,7 @@ export function FileShareMenu({
         onClose: () => setShareDialogOpen(false),
         resource:
           shareUrl
-            ? { type: 'file', title: title || 'Shared file', url: shareUrl }
+            ? { id: fileId, type: 'file', title: title || 'Shared file', url: shareUrl }
             : null,
       })}
     </div>

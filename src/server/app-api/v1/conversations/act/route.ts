@@ -272,7 +272,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     // Bases named on this turn become part of the conversation's grounding and
     // also narrow this turn's retrieval. Access is verified inside the service.
     const turnKnowledgeBaseIds = [
-      ...new Set([...(knowledgeBaseIds ?? []), ...(knowledgeBaseId ? [knowledgeBaseId] : [])]),
+      ...new Set([...(Array.isArray(knowledgeBaseIds) ? knowledgeBaseIds : []), ...(knowledgeBaseId ? [knowledgeBaseId] : [])]),
     ]
     if (cid && turnKnowledgeBaseIds.length > 0) {
       for (const id of turnKnowledgeBaseIds) {
