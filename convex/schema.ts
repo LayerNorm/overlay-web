@@ -458,6 +458,7 @@ export default defineSchema({
 
   projects: defineTable({
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     clientId: v.optional(v.string()),
     name: v.string(),
     instructions: v.optional(v.string()),
@@ -467,11 +468,14 @@ export default defineSchema({
     deletedAt: v.optional(v.number()),
   })
     .index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt']),
 
   skills: defineTable({
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     name: v.string(),
     description: v.string(),
     instructions: v.string(),
@@ -480,10 +484,15 @@ export default defineSchema({
     version: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index('by_userId', ['userId']).index('by_projectId', ['projectId']),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
+    .index('by_projectId', ['projectId']),
 
   automations: defineTable({
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     name: v.optional(v.string()),
     description: v.optional(v.string()),
     instructions: v.optional(v.string()),
@@ -542,6 +551,8 @@ export default defineSchema({
     deletedAt: v.optional(v.number()),
   })
     .index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_userId_enabled', ['userId', 'enabled'])
     .index('by_enabled_nextRunAt', ['enabled', 'nextRunAt'])
@@ -598,6 +609,7 @@ export default defineSchema({
 
   mcpServers: defineTable({
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     projectId: v.optional(v.string()),
     name: v.string(),
     description: v.optional(v.string()),
@@ -655,6 +667,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId_enabled', ['userId', 'enabled'])
     .index('by_projectId', ['projectId']),
 
@@ -706,10 +720,13 @@ export default defineSchema({
 
   conversations: defineTable({
     userId: v.string(),
+    // Workspace scoping field. Optional during the migration backfill window;
+    // new writes always set it. Existing rows are backfilled with the user's
+    // personal workspace ID.
+    workspaceId: v.optional(v.string()),
     // Compatibility-only fields retained for rows written during the reverted
     // collaboration release. The restored application does not read or write
     // them, but Convex must be able to validate existing production records.
-    workspaceId: v.optional(v.string()),
     conversationType: v.optional(v.union(
       v.literal('personal'),
       v.literal('dm'),
@@ -950,6 +967,7 @@ export default defineSchema({
 
   notes: defineTable({
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     clientId: v.optional(v.string()),
     title: v.string(),
     icon: v.optional(v.string()),
@@ -960,12 +978,15 @@ export default defineSchema({
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_projectId', ['projectId']),
 
   memories: defineTable({
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     clientId: v.optional(v.string()),
     content: v.string(),
     source: v.union(v.literal('chat'), v.literal('note'), v.literal('manual')),
@@ -991,12 +1012,15 @@ export default defineSchema({
     deletedAt: v.optional(v.number()),
   })
     .index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt']),
 
   // Searchable chunks for hybrid vector + full-text retrieval (files + memories).
   knowledgeChunks: defineTable({
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     projectId: v.optional(v.string()),
     sourceKind: v.union(v.literal('file'), v.literal('memory')),
     sourceId: v.string(),
@@ -1007,9 +1031,10 @@ export default defineSchema({
   })
     .index('by_source', ['sourceKind', 'sourceId'])
     .index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId'])
     .searchIndex('search_text', {
       searchField: 'text',
-      filterFields: ['userId', 'sourceKind'],
+      filterFields: ['userId', 'sourceKind', 'workspaceId'],
     }),
 
   // Embeddings stored separately so routine reads avoid loading large vectors.
@@ -1030,6 +1055,7 @@ export default defineSchema({
   // Generated images and videos from Chat and Agent sessions.
   outputs: defineTable({
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     type: v.union(
       v.literal('image'),
       v.literal('video'),
@@ -1064,6 +1090,8 @@ export default defineSchema({
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_conversationId', ['conversationId'])
     .index('by_turnId', ['turnId']),
@@ -1093,6 +1121,7 @@ export default defineSchema({
 
   files: defineTable({
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     clientId: v.optional(v.string()),
     name: v.string(),
     type: v.union(v.literal('file'), v.literal('folder')),
@@ -1152,6 +1181,8 @@ export default defineSchema({
     shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
     sharedAt: v.optional(v.number()),
   }).index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_contentHash', ['userId', 'contentHash'])
     .index('by_duplicateOfFileId', ['duplicateOfFileId'])
@@ -1164,6 +1195,7 @@ export default defineSchema({
 
   webhookSubscriptions: defineTable({
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     url: v.string(),
     secret: v.string(),
     events: v.array(v.string()),
@@ -1173,6 +1205,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId_enabled', ['userId', 'enabled']),
 
   webhookDeliveries: defineTable({

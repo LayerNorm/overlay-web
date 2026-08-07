@@ -73,7 +73,7 @@ Every user-facing resource is scoped to exactly one workspace. Switching workspa
 
 ## Implementation Plan
 
-### Phase 0: BFF workspace context resolution
+### Phase 0: BFF workspace context resolution ✅ DONE
 
 **Problem:** Collaboration routes already use `context.workspace.workspace.id` but `AppApiRouteContext` doesn't have a `workspace` field. The workspace resolution was never wired into the BFF boundary layer.
 
@@ -92,39 +92,33 @@ Every user-facing resource is scoped to exactly one workspace. Switching workspa
 
 ---
 
-### Phase 1: Schema migration — add `workspaceId` to resource tables
+### Phase 1: Schema migration — add `workspaceId` to resource tables ✅ DONE
 
-For each of the 11 Convex tables (12 including knowledgeBases), add:
-- `workspaceId: v.string()` field (required for new rows)
-- `by_workspaceId` index
-- `by_userId_workspaceId` composite index (for queries that filter by both)
+Added `workspaceId: v.optional(v.string())` to 10 resource tables plus `knowledgeChunks`.
+Used `v.optional` so existing production rows continue to validate during the backfill window.
+New writes always set the field (Phase 2); the backfill mutation (Phase 5) populates legacy rows.
 
-**Tables to migrate in `convex/schema.ts`:**
+**Tables migrated in `convex/schema.ts`:**
 
-| Table | Current indexes | New indexes to add |
-|-------|----------------|-------------------|
-| `conversations` | `by_userId`, `by_userId_lastModified`, etc. | `by_workspaceId`, `by_workspaceId_lastModified` |
-| `files` | `by_userId` | `by_workspaceId`, `by_userId_workspaceId` |
-| `skills` | `by_userId`, `by_projectId` | `by_workspaceId`, `by_workspaceId_projectId` |
-| `mcpServers` | `by_userId`, `by_userId_enabled` | `by_workspaceId`, `by_workspaceId_enabled` |
-| `projects` | `by_userId`, `by_userId_updatedAt` | `by_workspaceId`, `by_workspaceId_updatedAt` |
-| `automations` | `by_userId`, `by_userId_enabled` | `by_workspaceId`, `by_workspaceId_enabled` |
-| `notes` | `by_userId`, `by_userId_updatedAt` | `by_workspaceId`, `by_workspaceId_updatedAt` |
-| `memories` | `by_userId`, `by_userId_updatedAt` | `by_workspaceId`, `by_workspaceId_updatedAt` |
-| `outputs` | `by_userId`, `by_userId_createdAt` | `by_workspaceId`, `by_workspaceId_createdAt` |
-| `webhookSubscriptions` | `by_userId`, `by_userId_enabled` | `by_workspaceId`, `by_workspaceId_enabled` |
-| `knowledgeBases` | (not in schema) | Add to schema with `by_workspaceId`, `by_ownerUserId` |
+| Table | Field added | Indexes added |
+|-------|------------|---------------|
+| `conversations` | (already had `workspaceId`) | `by_workspaceId_clientId`, `by_workspaceId_conversationType_lastModified`, `by_workspaceId_dmIdentityKey`, `by_workspaceId_channelSlug` (restored from collaboration release) |
+| `projects` | `workspaceId` | `by_workspaceId`, `by_workspaceId_userId` |
+| `skills` | `workspaceId` | `by_workspaceId`, `by_workspaceId_userId` |
+| `automations` | `workspaceId` | `by_workspaceId`, `by_workspaceId_userId` |
+| `mcpServers` | `workspaceId` | `by_workspaceId`, `by_workspaceId_userId` |
+| `notes` | `workspaceId` | `by_workspaceId`, `by_workspaceId_userId` |
+| `memories` | `workspaceId` | `by_workspaceId`, `by_workspaceId_userId` |
+| `outputs` | `workspaceId` | `by_workspaceId`, `by_workspaceId_userId` |
+| `files` | `workspaceId` | `by_workspaceId`, `by_workspaceId_userId` |
+| `webhookSubscriptions` | `workspaceId` | `by_workspaceId`, `by_workspaceId_userId` |
+| `knowledgeChunks` | `workspaceId` | `by_workspaceId` + added `workspaceId` to `search_text` filterFields |
 
-**For `conversations`:** The `workspaceId` field already exists as `v.optional(v.string())`. Promote it to `v.string()` (required). The compatibility comment can be removed.
-
-**For `knowledgeBases`:** Add the table to `schema.ts` with `workspaceId` from the start.
-
-**Backfill strategy:**
-- Add `workspaceId` as `v.optional(v.string())` first (so existing rows validate).
-- Run a one-time Convex migration function that:
-  1. For each user, resolves their personal workspace ID.
-  2. Updates all rows in each table where `workspaceId` is undefined to the personal workspace ID.
-- After backfill, promote to `v.string()` (required).
+**Decisions:**
+- `knowledgeBases` is not in the Convex schema — it's a Postgres/app-data layer table. Workspace scoping for knowledge bases will be handled in the app-data repository layer, not via Convex schema.
+- `knowledgeChunks` got `workspaceId` directly (not just via parent) so workspace-scoped search can filter without a join.
+- `knowledgeChunkEmbeddings` does NOT get `workspaceId` — it's joined via `chunkId` and inherits scoping from the chunk.
+- All fields are `v.optional(v.string())` during the migration window. Phase 5 backfill will populate them, then we promote to `v.string()`.
 
 ---
 
