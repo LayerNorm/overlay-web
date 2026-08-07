@@ -22,9 +22,13 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
       context.auth.userId,
       workspaceId,
     )
+    const members = await getOverlayServerContext().workspaceService.listMembers({
+      actorUserId: context.auth.userId,
+      workspaceId: access.workspace.id,
+    })
     const response: WorkspaceActivateResponse = {
       activeWorkspaceId: access.workspace.id,
-      workspace: toWorkspaceSummary(access),
+      workspace: toWorkspaceSummary(access, { memberCount: members.length }),
     }
     const result = NextResponse.json(response)
     result.cookies.set(ACTIVE_WORKSPACE_COOKIE, access.workspace.id, {

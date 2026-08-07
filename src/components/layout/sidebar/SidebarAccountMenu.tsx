@@ -68,12 +68,12 @@ export function SidebarAccountMenu({
       ) : null}
       <div className="border-t border-[var(--border)]">
         <Link
-          href="/account"
+          href="/app/settings?section=account"
           onClick={onAccountClick}
           className={`flex w-full items-center gap-2 px-3 ${itemPaddingClass} text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]`}
         >
           <User size={13} />
-          Account
+          Account settings
         </Link>
       </div>
       <div className="border-t border-[var(--border)]">

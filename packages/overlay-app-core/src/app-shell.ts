@@ -568,7 +568,7 @@ export function overlayNavigationToDestinations(
     href: '/app/settings',
     subviews: settingsSections.map((section) => section.id),
   })
-  destinations.push({ id: 'account', label: 'Account', href: '/account' })
+  destinations.push({ id: 'account', label: 'Account settings', href: '/app/settings?section=account' })
 
   return destinations
 }

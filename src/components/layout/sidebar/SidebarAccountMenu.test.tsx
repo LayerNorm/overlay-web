@@ -39,11 +39,10 @@ test('usage, storage, and apps collapse behind disclosure headers', () => {
   assert.doesNotMatch(html, /available/)
 })
 
-test('settings, account, and sign out stay one click away', () => {
+test('account settings and sign out stay one click away', () => {
   const html = render()
+  assert.match(html, /href="\/app\/settings\?section=account"/)
   assert.match(html, /href="\/app\/settings"/)
-  assert.ok(html.indexOf('href="/account"') < html.indexOf('href="/app/settings"'))
-  assert.ok(html.indexOf('href="/app/settings"') < html.indexOf('Sign out'))
   assert.match(html, /Account/)
   assert.match(html, /Sign out/)
 })

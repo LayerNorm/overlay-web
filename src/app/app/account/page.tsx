@@ -44,7 +44,7 @@ function triggerDeepLink(url: string) {
   window.location.href = url
 }
 
-function AccountPageContent() {
+export function AccountPageContent({ embedded = false }: { embedded?: boolean }) {
   const { settings } = useAppSettings()
   const isLandingDark = settings.theme === 'dark'
   const panel = minimalPanel() + ' p-5'
@@ -312,9 +312,11 @@ function AccountPageContent() {
     void performDesktopHandoff(true)
   }, [performDesktopHandoff])
 
+  const Content = embedded ? 'div' : 'main'
+
   return (
-    <main className={minimalSectionSm()}>
-      <div className="mx-auto max-w-3xl">
+    <Content className={embedded ? 'space-y-5' : minimalSectionSm()}>
+      <div className={embedded ? 'w-full' : 'mx-auto max-w-3xl'}>
         {message ? (
           <AccountMessageBanner
             message={message}
@@ -324,15 +326,17 @@ function AccountPageContent() {
           />
         ) : null}
 
-        <div className="mb-12">
-          <p className={minimalLabel()}>Account</p>
-          <h1 className={`mt-4 ${minimalDisplaySm()}`} style={minimalSerif()}>
-            Your Overlay control center.
-          </h1>
-          <p className={`mt-5 max-w-xl ${minimalBody()}`}>
-            Manage plan status, usage, top-ups, desktop handoff, and account access.
-          </p>
-        </div>
+        {!embedded ? (
+          <div className="mb-12">
+            <p className={minimalLabel()}>Account</p>
+            <h1 className={`mt-4 ${minimalDisplaySm()}`} style={minimalSerif()}>
+              Your Overlay control center.
+            </h1>
+            <p className={`mt-5 max-w-xl ${minimalBody()}`}>
+              Manage plan status, usage, top-ups, desktop handoff, and account access.
+            </p>
+          </div>
+        ) : null}
 
         {loading || authLoading || !sessionCheckComplete || !capabilitiesLoaded ? (
           <AccountLoadingState mutedClass={t.muted} dark={isLandingDark} />
@@ -434,7 +438,27 @@ function AccountPageContent() {
           </div>
         )}
       </div>
-    </main>
+    </Content>
+  )
+}
+
+function AccountPageRedirect() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
+    params.set('section', 'account')
+    router.replace(`/app/settings?${params.toString()}`, { scroll: false })
+  }, [router, searchParams])
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[var(--background)] text-[var(--foreground)]">
+      <div className="relative z-10 text-center">
+        <RefreshCw className="mx-auto h-8 w-8 animate-spin text-[var(--muted)]" />
+        <p className="mt-4 text-[var(--muted)]">Opening account settings…</p>
+      </div>
+    </div>
   )
 }
 
@@ -450,7 +474,7 @@ export default function AccountPage() {
         </div>
       }
     >
-      <AccountPageContent />
+      <AccountPageRedirect />
     </Suspense>
   )
 }

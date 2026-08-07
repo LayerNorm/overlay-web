@@ -79,7 +79,7 @@ export default function MobileCompletePage() {
               Try again
             </Link>
             <Link
-              href="/account"
+              href="/app/settings?section=account"
               className="w-full py-3 px-4 border border-[var(--border)] rounded-xl text-sm font-medium hover:bg-white/5 transition-colors"
             >
               Go to account

@@ -3,13 +3,12 @@
 // Compatibility wrapper: canonical settings registry metadata lives in @overlay/app-core,
 // with reusable panel rendering primitives in @overlay/modules-react.
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { Mail, Moon, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
+import { AccountPageContent } from '@/app/app/account/page'
 import { DefaultChatModelSetting } from '@/features/settings/components/DefaultChatModelSetting'
 import { ModelCatalogSetting } from '@/features/settings/components/ModelCatalogSetting'
-import { TopUpPreferenceControl } from '@/features/billing/components/TopUpPreferenceControl'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { SettingsSectionSkeleton } from '@overlay/ui/feedback'
@@ -18,14 +17,13 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import overlayAppConfig from '@/overlay.config'
 import type { BillingSettings } from '@overlay/app-core'
 import { resolveOverlayAppShellConfig } from '@overlay/app-core'
-import { normalizeTopUpDraft, resolveSettingsPanel } from '@overlay/app-core/settings-account'
+import { resolveSettingsPanel } from '@overlay/app-core/settings-account'
 import {
   SettingRow,
   SettingsActionRow,
   SettingsCard,
   SettingsGroup,
   SettingsPageShell,
-  SettingsTopUpCard,
   ThemePresetRow,
 } from '@overlay/modules-react/settings'
 import { getExtensionComponent } from '@/extensions/registry'
@@ -81,9 +79,6 @@ export default function SettingsPage() {
     updateSettings,
   } = useAppSettings()
   const [billingSettings, setBillingSettings] = useState<BillingSettings | null>(null)
-  const [billingBusy, setBillingBusy] = useState(false)
-  const [topUpDraftCents, setTopUpDraftCents] = useState(800)
-  const [autoTopUpEnabledDraft, setAutoTopUpEnabledDraft] = useState(false)
   const [memoriesHeaderState, setMemoriesHeaderState] = useState<MemoriesHeaderState | null>(null)
 
   const busy = isLoading || isSaving
@@ -109,7 +104,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!capabilities.billing) return
-    if (section !== 'account' && section !== 'general') return
+    if (section !== 'general') return
     let active = true
     void overlayAppClient.subscription.getSettingsResponse()
       .then(async (response) => {
@@ -118,10 +113,7 @@ export default function SettingsPage() {
       })
       .then((data) => {
         if (active && data) {
-          const draft = normalizeTopUpDraft(data)
           setBillingSettings(data)
-          setTopUpDraftCents(draft.topUpAmountCents)
-          setAutoTopUpEnabledDraft(draft.autoTopUpEnabled)
         }
       })
       .catch(() => {})
@@ -130,32 +122,6 @@ export default function SettingsPage() {
       active = false
     }
   }, [capabilities.billing, section])
-
-  async function updateBillingSettings(next: {
-    autoTopUpEnabled: boolean
-    topUpAmountCents: number
-    grantOffSessionConsent?: boolean
-  }) {
-    if (!capabilities.billing) return
-    setBillingBusy(true)
-    try {
-      const response = await overlayAppClient.subscription.updateSettingsResponse({
-        ...next,
-        confirmation: 'UPDATE_BILLING_SETTINGS',
-      })
-      if (!response.ok) return
-      const refreshed = await overlayAppClient.subscription.getSettingsResponse()
-      if (refreshed.ok) {
-        const data = await refreshed.json()
-        const draft = normalizeTopUpDraft(data)
-        setBillingSettings(data)
-        setTopUpDraftCents(draft.topUpAmountCents)
-        setAutoTopUpEnabledDraft(draft.autoTopUpEnabled)
-      }
-    } finally {
-      setBillingBusy(false)
-    }
-  }
 
   return (
     <SettingsPageShell
@@ -227,63 +193,10 @@ export default function SettingsPage() {
           )}
 
           {!isLoading && section === 'account' && (
-            <>
-              {!capabilities.billing ? (
-                <SettingsCard title="Account">
-                  <p>This deployment does not use Overlay-managed billing.</p>
-                </SettingsCard>
-              ) : null}
-
-              {capabilities.billing ? (
-                <SettingsCard title="Billing">
-                  <p>
-                    {billingSettings?.planKind === 'paid'
-                      ? 'Paid plans unlock premium models, Daytona sandboxes, browser tasks, and generation tools. Adjust your recurring amount in billing, and use auto top-up here for off-session recharges.'
-                      : 'You are currently on the free plan. Upgrade from the pricing page to unlock premium features and budget controls.'}
-                  </p>
-                  <Link
-                    href="/account"
-                    className="mt-4 inline-flex text-sm font-medium text-[var(--foreground)] underline underline-offset-4 hover:opacity-90"
-                  >
-                    Open account →
-                  </Link>
-                </SettingsCard>
-              ) : null}
-
-              {capabilities.billing && billingSettings?.planKind === 'paid' ? (
-                <SettingsTopUpCard>
-                  <TopUpPreferenceControl
-                    variant="app"
-                    title="Top-up amount"
-                    description="Use one amount for manual top-ups and future automatic recharges."
-                    amountCents={topUpDraftCents}
-                    minAmountCents={billingSettings.topUpMinAmountCents}
-                    maxAmountCents={billingSettings.topUpMaxAmountCents}
-                    stepAmountCents={billingSettings.topUpStepAmountCents}
-                    onAmountChange={setTopUpDraftCents}
-                    autoTopUpEnabled={autoTopUpEnabledDraft}
-                    onAutoTopUpEnabledChange={setAutoTopUpEnabledDraft}
-                    checkboxDescription="If enabled, this same amount will recharge automatically whenever your cumulative budget reaches zero."
-                    note="Use Account to run a manual top-up now. Saving here updates the future recharge amount and auto-top-up preference."
-                    footer={
-                      <button
-                        type="button"
-                        disabled={billingBusy}
-                        onClick={() => void updateBillingSettings({
-                          autoTopUpEnabled: autoTopUpEnabledDraft,
-                          topUpAmountCents: topUpDraftCents,
-                          grantOffSessionConsent: autoTopUpEnabledDraft,
-                        })}
-                        className="inline-flex rounded-xl bg-[var(--foreground)] px-4 py-2 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-60"
-                      >
-                        {billingBusy ? 'Saving...' : 'Save top-up preference'}
-                      </button>
-                    }
-                  />
-                </SettingsTopUpCard>
-              ) : null}
+            <div className="space-y-5">
+              <AccountPageContent embedded />
               {appDataCapabilities.supportsApiKeys ? <ApiKeySettings /> : null}
-            </>
+            </div>
           )}
 
           {!isLoading && section === 'customization' && (

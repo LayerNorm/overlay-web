@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, Menu, MoonStar, SunMedium, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLandingThemeOptional } from "@/contexts/LandingThemeContext";
@@ -96,13 +96,15 @@ function activeLinkClass(active: boolean) {
  */
 export function MarketingNavbar() {
   const pathname = usePathname() ?? "";
+  const searchParams = useSearchParams();
   const { isAuthenticated } = useAuth();
   const landing = useLandingThemeOptional();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [useCasesOpen, setUseCasesOpen] = useState(false);
   const useCasesRef = useRef<HTMLDivElement>(null);
   const appHref = getMarketingAppHref(isAuthenticated);
-  const accountIsActive = pathname === "/account";
+  const accountIsActive = pathname === "/account"
+    || (pathname === "/app/settings" && searchParams?.get("section") === "account");
   const useCasesIsActive = pathname.startsWith("/use-cases");
   const serif = marketingSerifStyle();
   const navText = marketingNavText();
@@ -129,12 +131,12 @@ export function MarketingNavbar() {
   }, [pathname]);
 
   // Auth-aware account/sign-in link. Authenticated users see "Account"
-  // (routes to /account); unauthenticated users see "Sign in" (routes to the
+  // (routes to account settings); unauthenticated users see "Sign in" (routes to the
   // sign-in page with a sanitized redirect to the app). The two are
   // interchangeable opposites — only one is rendered, in the same nav slot
   // next to Docs. The right-side CTA remains "Try Overlay", which already
   // routes authenticated users straight to the app.
-  const authNavHref = isAuthenticated ? "/account" : "/auth/sign-in?redirect=%2Fapp%2Fchat";
+  const authNavHref = isAuthenticated ? "/app/settings?section=account" : "/auth/sign-in?redirect=%2Fapp%2Fchat";
   const authNavLabel = isAuthenticated ? "Account" : "Sign in";
   const authNavActive = isAuthenticated ? accountIsActive : false;
 
@@ -334,7 +336,7 @@ export function MarketingNavbar() {
               </a>
               {isAuthenticated ? (
                 <Link
-                  href="/account"
+                  href="/app/settings?section=account"
                   onClick={() => setMobileMenuOpen(false)}
                   className={`rounded-xl px-4 py-3 ${navText} transition-colors ${
                     accountIsActive
