@@ -103,6 +103,7 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
       askModelIds: [input.modelId || DEFAULT_MODEL_ID],
       actModelId: input.modelId || DEFAULT_MODEL_ID,
       lastMode: 'act',
+      isAutomation: true,
       workspaceId,
     })
 

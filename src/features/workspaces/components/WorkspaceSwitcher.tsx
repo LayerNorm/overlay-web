@@ -9,8 +9,6 @@ import {
   Loader2,
   Plus,
   RefreshCw,
-  Settings,
-  UsersRound,
 } from 'lucide-react'
 import { CollapsibleSection, MenuItem, MenuSurface } from '@overlay/ui/primitives'
 import { useWorkspace } from './WorkspaceProvider'
@@ -222,6 +220,19 @@ export function WorkspaceSwitcher({
           </MenuItem>
         )
       }) : null}
+      <div className="my-1 h-px bg-[var(--border)]" />
+      <MenuItem
+        role="menuitem"
+        className="rounded-lg"
+        onClick={() => {
+          setOpen(false)
+          setCreateOpen(true)
+          setActionError(null)
+        }}
+      >
+        <Plus size={14} />
+        Create workspace
+      </MenuItem>
     </>
   )
 
@@ -237,39 +248,6 @@ export function WorkspaceSwitcher({
         {workspaceListBody}
       </CollapsibleSection>
 
-      <div className="my-1 h-px bg-[var(--border)]" />
-      <MenuItem
-        role="menuitem"
-        className="rounded-lg"
-        onClick={() => {
-          setOpen(false)
-          setCreateOpen(true)
-          setActionError(null)
-        }}
-      >
-        <Plus size={14} />
-        Create workspace
-      </MenuItem>
-      {activeWorkspaceId ? (
-        <MenuItem
-          role="menuitem"
-          className="rounded-lg"
-          onClick={() => {
-            setOpen(false)
-            onNavigate?.()
-            router.push(
-              `${buildWorkspaceHref(activeWorkspaceId, '/app/settings')}?section=workspace${showcase ? '&showcase=1' : ''}`,
-            )
-          }}
-        >
-          <Settings size={14} />
-          Workspace settings
-        </MenuItem>
-      ) : null}
-      <div className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-[10px] text-[var(--muted-light)]">
-        <UsersRound size={11} />
-        People, agents, and resources share this boundary.
-      </div>
       {actionError ? (
         <p role="alert" className="px-3 pb-2 pt-1 text-[11px] text-red-500">
           {actionError}
