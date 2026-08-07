@@ -463,6 +463,7 @@ export default defineSchema({
     instructions: v.optional(v.string()),
     parentId: v.optional(v.string()),
     knowledgeBaseId: v.optional(v.string()),
+    settings: v.optional(v.any()),
     createdAt: v.number(),
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),
