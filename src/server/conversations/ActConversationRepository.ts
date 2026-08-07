@@ -51,6 +51,7 @@ export type ConversationListRow = {
   projectId?: string
   shareVisibility?: 'private' | 'public'
   shareToken?: string | null
+  isAutomation?: boolean
 }
 
 export type ConversationMessageRow = {
@@ -119,6 +120,8 @@ export interface ActConversationRepository {
     projectId?: string
     title: string
     userId: string
+    isAutomation?: boolean
+    workspaceId?: string
   }): Promise<Id<'conversations'>>
   getConversationById(args: {
     conversationId: Id<'conversations'>

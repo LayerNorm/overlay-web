@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { randomBytes, randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, or } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, notInArray, or } from 'drizzle-orm'
 import { DEFAULT_APP_SETTINGS } from '@overlay/app-core'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import { withTransientPostgresReadRetry } from '@/server/database/postgres/transient-errors'
@@ -11,6 +11,7 @@ import {
   conversationMessageDeltas,
   conversationMessages,
   conversations,
+  automations,
   projects,
   skills,
   userSettings,
@@ -54,6 +55,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     projectId?: string
     title: string
     userId: string
+    isAutomation?: boolean
   }): Promise<ConversationId> {
     const now = new Date()
     const id = conversationId()
@@ -69,6 +71,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
       lastModified: now,
       createdAt: now,
       updatedAt: now,
+      isAutomation: args.isAutomation ?? false,
     }
 
     const [row] = await this.db.transaction(async (tx) => {
@@ -89,6 +92,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
                 lastModified: now,
                 projectId: values.projectId,
                 title: values.title,
+                isAutomation: values.isAutomation,
                 updatedAt: now,
               },
             })
@@ -132,6 +136,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     updatedSince?: number
     userId: string
   }): Promise<ConversationListRow[]> {
+    const linkedAutomationConversationIds = await listLinkedAutomationConversationIds(this.db, args.userId)
     const rows = await this.db
       .select()
       .from(conversations)
@@ -139,6 +144,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         includeDeleted: args.includeDeleted,
         updatedSince: args.updatedSince,
         userId: args.userId,
+        linkedAutomationConversationIds,
       }))
       .orderBy(desc(conversations.lastModified))
     return rows.map(mapConversationRow)
@@ -150,6 +156,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     updatedSince?: number
     userId: string
   }): Promise<ConversationListRow[]> {
+    const linkedAutomationConversationIds = await listLinkedAutomationConversationIds(this.db, args.userId)
     const rows = await this.db
       .select()
       .from(conversations)
@@ -158,6 +165,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
           includeDeleted: args.includeDeleted,
           updatedSince: args.updatedSince,
           userId: args.userId,
+          linkedAutomationConversationIds,
         }),
         eq(conversations.projectId, args.projectId),
       ))
@@ -1023,11 +1031,16 @@ export class PostgresActConversationRepository implements ActConversationReposit
 
 function conversationListWhere(args: {
   includeDeleted?: boolean
+  linkedAutomationConversationIds: string[]
   updatedSince?: number
   userId: string
 }) {
   return and(
     eq(conversations.userId, args.userId),
+    or(isNull(conversations.isAutomation), eq(conversations.isAutomation, false)),
+    args.linkedAutomationConversationIds.length > 0
+      ? notInArray(conversations.id, args.linkedAutomationConversationIds)
+      : undefined,
     args.includeDeleted ? undefined : isNull(conversations.deletedAt),
     finiteDate(args.updatedSince)
       ? or(
@@ -1036,6 +1049,25 @@ function conversationListWhere(args: {
         )
       : undefined,
   )
+}
+
+async function listLinkedAutomationConversationIds(
+  db: OverlayPostgresDb,
+  userId: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({
+      sourceConversationId: automations.sourceConversationId,
+      conversationId: automations.conversationId,
+    })
+    .from(automations)
+    .where(and(
+      eq(automations.userId, userId),
+      isNull(automations.deletedAt),
+    ))
+  return [...new Set(rows.flatMap((row) => [row.sourceConversationId, row.conversationId].filter(
+    (id): id is string => Boolean(id),
+  )))]
 }
 
 function mapConversationRow(row: typeof conversations.$inferSelect): ConversationListRow {
@@ -1054,6 +1086,7 @@ function mapConversationRow(row: typeof conversations.$inferSelect): Conversatio
     projectId: row.projectId ?? undefined,
     shareVisibility: row.shareVisibility ?? undefined,
     shareToken: row.shareToken,
+    isAutomation: row.isAutomation ?? undefined,
   }
 }
 

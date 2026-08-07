@@ -32,6 +32,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     projectId?: string
     title: string
     userId: string
+    isAutomation?: boolean
     workspaceId?: string
   }): Promise<Id<'conversations'>> {
     const id = await convex.mutation<Id<'conversations'>>('chat/conversations:create', {
