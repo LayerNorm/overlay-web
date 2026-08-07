@@ -225,26 +225,56 @@ filters to matching workspace when provided.
 
 ---
 
-### Phase 4: Update/read paths — scope individual resource access
+### Phase 4: Update/read paths — scope individual resource access ✅ DONE
 
-When accessing a single resource (get, update, delete), verify the resource belongs to the active workspace.
+Added `workspaceId: v.optional(v.string())` to all Convex get/update/delete
+functions and defense-in-depth workspace checks in the authorization logic.
+Updated all BFF route GET/PATCH/DELETE handlers to pass
+`workspaceId: context.workspace.workspace.id`.
 
-**Pattern:** Before returning/modifying a resource, check `resource.workspaceId === context.workspace.workspace.id`. If mismatch, return 404 (not 403, to avoid leaking existence).
+**Defense-in-depth pattern:**
+- `get` queries: `&& (workspaceId === undefined || resource.workspaceId === workspaceId)`
+  — returns null when workspace doesn't match
+- `update`/`delete` mutations: `|| (workspaceId !== undefined && resource.workspaceId !== workspaceId)`
+  — throws "Unauthorized" when workspace doesn't match
+- Webhook update/remove (return false instead of throwing): same check added to
+  the return-false condition
 
-**Convex queries/mutations to update:**
-- `conversations:get`, `conversations:update`, `conversations:delete`
-- `files:get`, `files:update`, `files:delete`
-- `skills:get`, `skills:update`, `skills:remove`
-- `mcpServers:get`, `mcpServers:update`, `mcpServers:remove`
-- `projects:get`, `projects:update`, `projects:delete`
-- `automations:get`, `automations:update`, `automations:delete`
-- `notes:get`, `notes:update`, `notes:delete`
-- `memories:get`, `memories:update`, `memories:delete`
-- `outputs:get`, `outputs:delete`
-- `webhookSubscriptions:get`, `webhookSubscriptions:update`, `webhookSubscriptions:delete`
-- `knowledgeBases:*`
+The check only rejects when `workspaceId` is provided AND doesn't match. When
+`workspaceId` is undefined (backward compat / server-only calls), access is
+allowed as before.
 
-**Alternative (simpler):** Since all queries already filter by `userId`, and `workspaceId` is added, we can filter by both in the query: `resource.userId === userId && resource.workspaceId === workspaceId`. This is a defense-in-depth approach.
+**Convex functions updated (10 files, 30 functions):**
+
+| Table | File | Functions |
+|-------|------|-----------|
+| `conversations` | `convex/chat/conversations.ts` | `get`, `update`, `remove` |
+| `files` | `convex/files/files.ts` | `get`, `update`, `remove` |
+| `notes` | `convex/files/notes.ts` | `get`, `update`, `remove` |
+| `skills` | `convex/integrations/skills.ts` | `get`, `update`, `remove` |
+| `mcpServers` | `convex/integrations/mcpServers.ts` | `get`, `update`, `remove` |
+| `projects` | `convex/projects/projects.ts` | `get`, `update`, `remove` |
+| `automations` | `convex/automations/automations.ts` | `get`, `update`, `pause`, `resume`, `remove` |
+| `memories` | `convex/knowledge/memories.ts` | `update`, `remove` (no `get`) |
+| `outputs` | `convex/outputs/outputs.ts` | `get`, `update`, `remove` |
+| `webhookSubscriptions` | `convex/webhooks/subscriptions.ts` | `update`, `remove` (no `get`) |
+
+**BFF routes updated (10 files, 24 calls):**
+- conversations (3), files (2), skills (2), mcps (2), projects (3),
+  automations (2), notes (3), memory (3), outputs (2), webhooks (2)
+
+**Service/repository types updated (13 files, 23 methods):**
+- `AutomationService.updateAutomation` + `deleteAutomation`
+- `ActConversationRepository.getConversationById` + `updateConversation` + `deleteConversation`
+- `FileService.updateFile` + `deleteFile`
+- `McpServerRepository.remove`
+- `MemoryService` + `MemoryRepository`: `get`, `update`, `remove`
+- `NoteService` + `NoteRepository`: `getNote`, `updateNote`, `deleteNote`
+- `UpdateNoteRequest` (in `@overlay/app-core`)
+- `OutputService.share` + `delete`
+- `ProjectService` + `ProjectRepository`: `getProject`, `updateProject`, `deleteProjectTree`
+- `SkillRepository.UpdateSkillInput` + `remove`
+- `WebhookRepository.update` + `remove`
 
 ---
 

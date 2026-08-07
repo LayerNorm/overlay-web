@@ -430,15 +430,15 @@ export const listByProject = query({
 })
 
 export const get = query({
-  args: { conversationId: v.id('conversations'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { conversationId, userId, accessToken, serverSecret }) => {
+  args: { conversationId: v.id('conversations'), userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { conversationId, userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return null
     }
     const conversation = await ctx.db.get(conversationId)
-    return conversation?.userId === userId && !conversation.deletedAt
+    return conversation?.userId === userId && !conversation.deletedAt && (workspaceId === undefined || conversation.workspaceId === workspaceId)
       ? normalizeConversationDoc(conversation)
       : null
   },
@@ -498,6 +498,7 @@ export const create = mutation({
 export const update = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     conversationId: v.id('conversations'),
@@ -507,10 +508,10 @@ export const update = mutation({
     actModelId: v.optional(v.string()),
     lastMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, conversationId, title, projectId, askModelIds, actModelId, lastMode }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, conversationId, title, projectId, askModelIds, actModelId, lastMode }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const conversation = await ctx.db.get(conversationId)
-    if (!conversation || conversation.userId !== userId || conversation.deletedAt) {
+    if (!conversation || conversation.userId !== userId || conversation.deletedAt || (workspaceId !== undefined && conversation.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     if (projectId !== undefined && projectId !== null) {
@@ -531,11 +532,11 @@ export const update = mutation({
 })
 
 export const remove = mutation({
-  args: { conversationId: v.id('conversations'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { conversationId, userId, accessToken, serverSecret }) => {
+  args: { conversationId: v.id('conversations'), userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { conversationId, userId, workspaceId, accessToken, serverSecret }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const conversation = await ctx.db.get(conversationId)
-    if (!conversation || conversation.userId !== userId || conversation.deletedAt) {
+    if (!conversation || conversation.userId !== userId || conversation.deletedAt || (workspaceId !== undefined && conversation.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     const now = Date.now()

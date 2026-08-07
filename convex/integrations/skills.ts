@@ -36,15 +36,15 @@ export const list = query({
 })
 
 export const get = query({
-  args: { skillId: v.id('skills'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { skillId, userId, accessToken, serverSecret }) => {
+  args: { skillId: v.id('skills'), userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { skillId, userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return null
     }
     const skill = await ctx.db.get(skillId)
-    return skill?.userId === userId ? skill : null
+    return skill?.userId === userId && (workspaceId === undefined || skill.workspaceId === workspaceId) ? skill : null
   },
 })
 
@@ -88,6 +88,7 @@ export const update = mutation({
   args: {
     skillId: v.id('skills'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     name: v.optional(v.string()),
@@ -95,10 +96,10 @@ export const update = mutation({
     instructions: v.optional(v.string()),
     enabled: v.optional(v.boolean()),
   },
-  handler: async (ctx, { skillId, userId, accessToken, serverSecret, ...updates }) => {
+  handler: async (ctx, { skillId, userId, workspaceId, accessToken, serverSecret, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const skill = await ctx.db.get(skillId)
-    if (!skill || skill.userId !== userId) {
+    if (!skill || skill.userId !== userId || (workspaceId !== undefined && skill.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
@@ -118,11 +119,11 @@ export const update = mutation({
 })
 
 export const remove = mutation({
-  args: { skillId: v.id('skills'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { skillId, userId, accessToken, serverSecret }) => {
+  args: { skillId: v.id('skills'), userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { skillId, userId, workspaceId, accessToken, serverSecret }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const skill = await ctx.db.get(skillId)
-    if (!skill || skill.userId !== userId) {
+    if (!skill || skill.userId !== userId || (workspaceId !== undefined && skill.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     await ctx.db.delete(skillId)

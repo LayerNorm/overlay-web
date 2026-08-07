@@ -146,6 +146,7 @@ export const add = mutation({
 export const update = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     memoryId: v.id('memories'),
@@ -169,10 +170,10 @@ export const update = mutation({
     tags: v.optional(v.array(v.string())),
     actor: v.optional(v.union(v.literal('user'), v.literal('agent'))),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, memoryId, ...updates }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, memoryId, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const existing = await ctx.db.get(memoryId)
-    if (!existing || existing.userId !== userId || existing.deletedAt) {
+    if (!existing || existing.userId !== userId || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     const MAX_MEMORY_BYTES = 50 * 1024
@@ -199,14 +200,15 @@ export const update = mutation({
 export const remove = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     memoryId: v.id('memories'),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, memoryId }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, memoryId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const existing = await ctx.db.get(memoryId)
-    if (!existing || existing.userId !== userId || existing.deletedAt) {
+    if (!existing || existing.userId !== userId || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {

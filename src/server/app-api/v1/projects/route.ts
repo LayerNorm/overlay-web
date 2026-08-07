@@ -38,6 +38,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       const project = await projectService.getProject({
         projectId,
         userId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
       })
       if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
       return NextResponse.json(project)
@@ -102,6 +103,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const project = await projectService.updateProject({
       projectId,
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       name,
       instructions,
       parentId,
@@ -130,6 +132,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     const result = await projectService.deleteProjectTree({
       projectId,
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json({
       success: true,

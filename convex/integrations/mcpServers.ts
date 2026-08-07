@@ -93,17 +93,18 @@ export const get = query({
   args: {
     mcpServerId: v.id('mcpServers'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
-  handler: async (ctx, { mcpServerId, userId, accessToken, serverSecret }) => {
+  handler: async (ctx, { mcpServerId, userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return null
     }
     const server = await ctx.db.get(mcpServerId)
-    if (!server || server.userId !== userId) return null
+    if (!server || server.userId !== userId || (workspaceId !== undefined && server.workspaceId !== workspaceId)) return null
     return server
   },
 })
@@ -167,6 +168,7 @@ export const update = mutation({
   args: {
     mcpServerId: v.id('mcpServers'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     name: v.optional(v.string()),
@@ -188,10 +190,10 @@ export const update = mutation({
     defaultToolPolicy: v.optional(v.union(v.literal('allow'), v.literal('approval_required'), v.literal('deny'))),
     toolPolicies: v.optional(v.record(v.string(), v.union(v.literal('allow'), v.literal('approval_required'), v.literal('deny')))),
   },
-  handler: async (ctx, { mcpServerId, userId, accessToken, serverSecret, ...updates }) => {
+  handler: async (ctx, { mcpServerId, userId, workspaceId, accessToken, serverSecret, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const server = await ctx.db.get(mcpServerId)
-    if (!server || server.userId !== userId) {
+    if (!server || server.userId !== userId || (workspaceId !== undefined && server.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
@@ -222,14 +224,15 @@ export const remove = mutation({
   args: {
     mcpServerId: v.id('mcpServers'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
   returns: v.null(),
-  handler: async (ctx, { mcpServerId, userId, accessToken, serverSecret }) => {
+  handler: async (ctx, { mcpServerId, userId, workspaceId, accessToken, serverSecret }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const server = await ctx.db.get(mcpServerId)
-    if (!server || server.userId !== userId) {
+    if (!server || server.userId !== userId || (workspaceId !== undefined && server.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     const executions = await ctx.db

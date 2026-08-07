@@ -183,18 +183,19 @@ export const get = query({
   args: {
     automationId: v.id('automations'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
   returns: v.union(automationDoc, v.null()),
-  handler: async (ctx, { automationId, userId, accessToken, serverSecret }) => {
+  handler: async (ctx, { automationId, userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return null
     }
     const automation = await ctx.db.get(automationId)
-    return automation && automation.userId === userId && !automation.deletedAt ? automation : null
+    return automation && automation.userId === userId && !automation.deletedAt && (workspaceId === undefined || automation.workspaceId === workspaceId) ? automation : null
   },
 })
 
@@ -261,6 +262,7 @@ export const update = mutation({
   args: {
     automationId: v.id('automations'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     name: v.optional(v.string()),
@@ -277,10 +279,10 @@ export const update = mutation({
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
   },
   returns: v.null(),
-  handler: async (ctx, { automationId, userId, accessToken, serverSecret, ...updates }) => {
+  handler: async (ctx, { automationId, userId, workspaceId, accessToken, serverSecret, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const automation = await ctx.db.get(automationId)
-    if (!automation || automation.userId !== userId || automation.deletedAt) {
+    if (!automation || automation.userId !== userId || automation.deletedAt || (workspaceId !== undefined && automation.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     await ensureProjectAccess(ctx, userId, updates.projectId)
@@ -335,6 +337,7 @@ export const pause = mutation({
   args: {
     automationId: v.id('automations'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
@@ -342,7 +345,7 @@ export const pause = mutation({
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
     const automation = await ctx.db.get(args.automationId)
-    if (!automation || automation.userId !== args.userId || automation.deletedAt) {
+    if (!automation || automation.userId !== args.userId || automation.deletedAt || (args.workspaceId !== undefined && automation.workspaceId !== args.workspaceId)) {
       throw new Error('Unauthorized')
     }
     await ctx.db.patch(args.automationId, {
@@ -358,6 +361,7 @@ export const resume = mutation({
   args: {
     automationId: v.id('automations'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
@@ -365,7 +369,7 @@ export const resume = mutation({
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
     const automation = await ctx.db.get(args.automationId)
-    if (!automation || automation.userId !== args.userId || automation.deletedAt) {
+    if (!automation || automation.userId !== args.userId || automation.deletedAt || (args.workspaceId !== undefined && automation.workspaceId !== args.workspaceId)) {
       throw new Error('Unauthorized')
     }
     const now = Date.now()
@@ -388,6 +392,7 @@ export const remove = mutation({
   args: {
     automationId: v.id('automations'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
@@ -395,7 +400,7 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
     const automation = await ctx.db.get(args.automationId)
-    if (!automation || automation.userId !== args.userId || automation.deletedAt) {
+    if (!automation || automation.userId !== args.userId || automation.deletedAt || (args.workspaceId !== undefined && automation.workspaceId !== args.workspaceId)) {
       throw new Error('Unauthorized')
     }
     await ctx.db.patch(args.automationId, {

@@ -33,7 +33,7 @@ export type ServerNoteDoc = NoteDoc & {
 }
 
 export interface NoteRepository {
-  getNote(args: { noteId: string; userId: string }): Promise<NoteRecord | null>
+  getNote(args: { noteId: string; userId: string; workspaceId?: string }): Promise<NoteRecord | null>
   listNotes(args: {
     userId: string
     projectId?: string
@@ -56,10 +56,12 @@ export interface NoteRepository {
     projectId?: string | null
     tags?: string[]
     expectedUpdatedAt?: number
+    workspaceId?: string
   }): Promise<NoteRecord | null>
   deleteNote(args: {
     noteId: string
     userId: string
+    workspaceId?: string
   }): Promise<{ noteId: string; deletedAt: number } | null>
 }
 
@@ -112,6 +114,7 @@ export class NoteService {
   async getNote(args: {
     userId: string
     noteId: string
+    workspaceId?: string
   }): Promise<ServerNoteDoc | null> {
     const note = await this.context.noteRepository.getNote(args)
     return note ? noteRecordToDoc(note) : null
@@ -175,6 +178,7 @@ export class NoteService {
   async deleteNote(args: {
     userId: string
     noteId: string | null
+    workspaceId?: string
   }): Promise<DeleteNoteResponse> {
     if (!args.noteId) {
       throw new NoteServiceError('noteId required', 400)

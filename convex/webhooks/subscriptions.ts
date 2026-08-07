@@ -126,6 +126,7 @@ export const create = mutation({
 export const update = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     subscriptionId: v.id('webhookSubscriptions'),
@@ -139,7 +140,7 @@ export const update = mutation({
     await authorizeUserAccess(args)
 
     const existing = await ctx.db.get(args.subscriptionId)
-    if (!existing || existing.userId !== args.userId) {
+    if (!existing || existing.userId !== args.userId || (args.workspaceId !== undefined && existing.workspaceId !== args.workspaceId)) {
       return { updated: false }
     }
 
@@ -183,6 +184,7 @@ export const rotateSecretByServer = mutation({
 export const remove = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     subscriptionId: v.id('webhookSubscriptions'),
@@ -192,7 +194,7 @@ export const remove = mutation({
     await authorizeUserAccess(args)
 
     const existing = await ctx.db.get(args.subscriptionId)
-    if (!existing || existing.userId !== args.userId) {
+    if (!existing || existing.userId !== args.userId || (args.workspaceId !== undefined && existing.workspaceId !== args.workspaceId)) {
       return { removed: false }
     }
 

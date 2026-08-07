@@ -49,6 +49,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const { auth } = context
     const result = await fileService.updateFile({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       body: body as Record<string, unknown>,
     })
     return NextResponse.json(result)
@@ -72,6 +73,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     const result = await fileService.deleteFile({
       fileId: request.nextUrl.searchParams.get('fileId') || body.fileId,
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json(result)
   } catch (error) {

@@ -91,17 +91,18 @@ export const get = query({
   args: {
     noteId: v.id('notes'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
-  handler: async (ctx, { noteId, userId, accessToken, serverSecret }) => {
+  handler: async (ctx, { noteId, userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return null
     }
     const note = await ctx.db.get(noteId)
-    return note?.userId === userId && !note.deletedAt ? normalizeNoteDoc(note) : null
+    return note?.userId === userId && !note.deletedAt && (workspaceId === undefined || note.workspaceId === workspaceId) ? normalizeNoteDoc(note) : null
   },
 })
 
@@ -152,6 +153,7 @@ export const create = mutation({
 export const update = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     noteId: v.id('notes'),
@@ -160,10 +162,10 @@ export const update = mutation({
     tags: v.optional(v.array(v.string())),
     projectId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, noteId, ...updates }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, noteId, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const existing = await ctx.db.get(noteId)
-    if (!existing || existing.userId !== userId || existing.deletedAt) {
+    if (!existing || existing.userId !== userId || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     if (updates.projectId !== undefined && updates.projectId !== null) {
@@ -185,13 +187,14 @@ export const remove = mutation({
   args: {
     noteId: v.id('notes'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
-  handler: async (ctx, { noteId, userId, accessToken, serverSecret }) => {
+  handler: async (ctx, { noteId, userId, workspaceId, accessToken, serverSecret }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const existing = await ctx.db.get(noteId)
-    if (!existing || existing.userId !== userId || existing.deletedAt) {
+    if (!existing || existing.userId !== userId || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     await ctx.db.patch(noteId, {

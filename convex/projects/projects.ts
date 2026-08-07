@@ -42,15 +42,15 @@ export const list = query({
 })
 
 export const get = query({
-  args: { projectId: v.id('projects'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { projectId, userId, accessToken, serverSecret }) => {
+  args: { projectId: v.id('projects'), userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { projectId, userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return null
     }
     const project = await ctx.db.get(projectId)
-    return project?.userId === userId && !project.deletedAt ? project : null
+    return project?.userId === userId && !project.deletedAt && (workspaceId === undefined || project.workspaceId === workspaceId) ? project : null
   },
 })
 
@@ -109,16 +109,17 @@ export const update = mutation({
   args: {
     projectId: v.id('projects'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     name: v.optional(v.string()),
     instructions: v.optional(v.union(v.string(), v.null())),
     parentId: v.optional(v.union(v.string(), v.null())),
   },
-  handler: async (ctx, { projectId, userId, accessToken, serverSecret, name, instructions, parentId }) => {
+  handler: async (ctx, { projectId, userId, workspaceId, accessToken, serverSecret, name, instructions, parentId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const project = await ctx.db.get(projectId)
-    if (!project || project.userId !== userId) {
+    if (!project || project.userId !== userId || (workspaceId !== undefined && project.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     if (parentId !== undefined && parentId !== null) {
@@ -134,11 +135,11 @@ export const update = mutation({
 
 // Removes one project and its linked records. The repository layer handles descendant traversal.
 export const remove = mutation({
-  args: { projectId: v.id('projects'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { projectId, userId, accessToken, serverSecret }) => {
+  args: { projectId: v.id('projects'), userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { projectId, userId, workspaceId, accessToken, serverSecret }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const project = await ctx.db.get(projectId)
-    if (!project || project.userId !== userId) {
+    if (!project || project.userId !== userId || (workspaceId !== undefined && project.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     const pid = projectId as string

@@ -23,6 +23,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         includeDeleted: raw,
         memoryId,
         userId: context.auth.userId,
+        workspaceId: context.workspace.workspace.id,
       })
       if (!memory) return NextResponse.json({ error: 'Not found' }, { status: 404 })
       return NextResponse.json(memory)
@@ -85,6 +86,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       memoryId: body.memoryId.trim(),
       source: body.source as MemorySource | undefined,
       userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json({ memory, success: true })
   } catch (error) {
@@ -105,6 +107,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     const result = await getOverlayServerContext().memoryService.remove({
       memoryId,
       userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json({ success: true, ...result })
   } catch (error) {

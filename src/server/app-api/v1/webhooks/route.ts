@@ -138,6 +138,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
 
     const updated = await repository.update({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       subscriptionId,
       url: typeof url === 'string' ? url : undefined,
       events: normalizedEvents ?? undefined,
@@ -179,6 +180,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
 
     const removed = await getOverlayServerContext().appData.repositories.webhooks.remove({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       subscriptionId,
     })
 

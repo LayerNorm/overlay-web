@@ -60,7 +60,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     const noteId = request.nextUrl.searchParams.get('noteId')
     if (noteId) {
-      const note = await noteService.getNote({ noteId, userId: auth.userId })
+      const note = await noteService.getNote({ noteId, userId: auth.userId, workspaceId: context.workspace.workspace.id })
       if (!note) return NextResponse.json({ error: 'Not found' }, { status: 404 })
       return NextResponse.json(note)
     }
@@ -112,6 +112,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       projectId: body.projectId,
       expectedUpdatedAt: body.expectedUpdatedAt,
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json(result)
   } catch (error) {
@@ -126,6 +127,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     const result = await noteService.deleteNote({
       noteId: request.nextUrl.searchParams.get('noteId'),
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json(result)
   } catch (error) {

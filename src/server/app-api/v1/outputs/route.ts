@@ -40,6 +40,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       origin: originForShareUrl(request),
       outputId: body.outputId,
       userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
       visibility: body.visibility,
     })
     return NextResponse.json(result)
@@ -54,7 +55,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
   try {
     const outputId = request.nextUrl.searchParams.get('outputId')
     if (!outputId) return NextResponse.json({ error: 'outputId required' }, { status: 400 })
-    await outputService.delete({ outputId, userId: context.auth.userId })
+    await outputService.delete({ outputId, userId: context.auth.userId, workspaceId: context.workspace.workspace.id })
     return NextResponse.json({ success: true })
   } catch (error) {
     logger.error('[Outputs API] delete failed:', error)

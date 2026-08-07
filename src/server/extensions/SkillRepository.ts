@@ -30,6 +30,7 @@ export type UpdateSkillInput = {
   description?: string
   instructions?: string
   enabled?: boolean
+  workspaceId?: string
 }
 
 export interface SkillRepository {
@@ -37,5 +38,5 @@ export interface SkillRepository {
   get(args: { skillId: string; userId: string }): Promise<SkillRecord | null>
   create(args: CreateSkillInput): Promise<string>
   update(args: UpdateSkillInput): Promise<void>
-  remove(args: { skillId: string; userId: string }): Promise<void>
+  remove(args: { skillId: string; userId: string; workspaceId?: string }): Promise<void>
 }

@@ -34,6 +34,7 @@ export interface ProjectRepository {
   getProject(args: {
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord | null>
   listProjects(args: {
     includeDeleted?: boolean
@@ -54,9 +55,11 @@ export interface ProjectRepository {
     parentId?: string | null
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord | null>
   deleteProjectTree(args: {
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<DeleteProjectTreeResult | null>
 }

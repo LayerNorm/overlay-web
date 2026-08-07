@@ -330,6 +330,7 @@ export class AutomationService {
   async updateAutomation(args: {
     body: UpdateAutomationBody
     userId: string
+    workspaceId?: string
   }): Promise<{ success: true }> {
     const { body } = args
     if (body.action === 'cancel-run') {
@@ -417,6 +418,7 @@ export class AutomationService {
   async deleteAutomation(args: {
     automationId?: string | null
     userId: string
+    workspaceId?: string
   }): Promise<{ success: true; linkedConversationIds: string[] }> {
     if (!args.automationId) {
       serviceError({ error: 'automationId required' }, 400)

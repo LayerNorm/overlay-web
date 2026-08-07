@@ -44,6 +44,7 @@ export interface UpdateNoteRequest {
   expectedUpdatedAt?: number
   accessToken?: string
   userId?: string
+  workspaceId?: string
 }
 
 export interface UpdateNoteResponse {

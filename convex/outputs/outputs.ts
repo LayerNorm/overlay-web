@@ -156,6 +156,7 @@ export const update = mutation({
   args: {
     outputId: v.id('outputs'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     status: v.optional(v.union(v.literal('pending'), v.literal('completed'), v.literal('failed'))),
@@ -190,11 +191,11 @@ export const update = mutation({
   },
   handler: async (
     ctx,
-    { outputId, userId, accessToken, serverSecret, status, storageId, r2Key, sizeBytes, url, modelId, source, type, fileName, mimeType, metadata, errorMessage },
+    { outputId, userId, workspaceId, accessToken, serverSecret, status, storageId, r2Key, sizeBytes, url, modelId, source, type, fileName, mimeType, metadata, errorMessage },
   ) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const output = await ctx.db.get(outputId)
-    if (!output || output.userId !== userId) {
+    if (!output || output.userId !== userId || (workspaceId !== undefined && output.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     if (r2Key !== undefined && r2Key) {
@@ -252,15 +253,15 @@ export const update = mutation({
 })
 
 export const get = query({
-  args: { outputId: v.id('outputs'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { outputId, userId, accessToken, serverSecret }) => {
+  args: { outputId: v.id('outputs'), userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { outputId, userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return null
     }
     const output = await ctx.db.get(outputId)
-    if (!output || output.userId !== userId) return null
+    if (!output || output.userId !== userId || (workspaceId !== undefined && output.workspaceId !== workspaceId)) return null
     return {
       ...output,
       type: resolveStoredType(output),
@@ -407,14 +408,15 @@ export const remove = mutation({
   args: {
     outputId: v.id('outputs'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     r2CleanupConfirmed: v.optional(v.boolean()),
   },
-  handler: async (ctx, { outputId, userId, accessToken, serverSecret, r2CleanupConfirmed }) => {
+  handler: async (ctx, { outputId, userId, workspaceId, accessToken, serverSecret, r2CleanupConfirmed }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const output = await ctx.db.get(outputId)
-    if (!output || output.userId !== userId) throw new Error('Unauthorized')
+    if (!output || output.userId !== userId || (workspaceId !== undefined && output.workspaceId !== workspaceId)) throw new Error('Unauthorized')
     if (output.storageId) {
       await ctx.storage.delete(output.storageId)
     }

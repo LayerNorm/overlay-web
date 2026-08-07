@@ -472,18 +472,19 @@ export const get = query({
   args: {
     fileId: v.id('files'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     includeDeleted: v.optional(v.boolean()),
   },
-  handler: async (ctx, { fileId, userId, accessToken, serverSecret, includeDeleted }) => {
+  handler: async (ctx, { fileId, userId, workspaceId, accessToken, serverSecret, includeDeleted }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return null
     }
     const file = await ctx.db.get(fileId)
-    if (!file || file.userId !== userId) return null
+    if (!file || file.userId !== userId || (workspaceId !== undefined && file.workspaceId !== workspaceId)) return null
     if (file.deletedAt && !includeDeleted) return null
     return normalizeFile(file)
   },
@@ -927,6 +928,7 @@ export const createExtractedDocument = mutation({
 export const update = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     fileId: v.id('files'),
@@ -966,10 +968,10 @@ export const update = mutation({
     expiresAt: v.optional(v.number()),
     expectedUpdatedAt: v.optional(v.number()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, fileId, ...updates }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, fileId, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const existing = await ctx.db.get(fileId)
-    if (!existing || existing.userId !== userId || existing.deletedAt) throw new Error('Unauthorized')
+    if (!existing || existing.userId !== userId || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId)) throw new Error('Unauthorized')
     if (updates.expectedUpdatedAt !== undefined && existing.updatedAt !== updates.expectedUpdatedAt) {
       throw new Error('NOTE_REVISION_CONFLICT')
     }
@@ -1065,14 +1067,15 @@ export const remove = mutation({
   args: {
     fileId: v.id('files'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     r2CleanupConfirmed: v.optional(v.boolean()),
   },
-  handler: async (ctx, { fileId, userId, accessToken, serverSecret, r2CleanupConfirmed }) => {
+  handler: async (ctx, { fileId, userId, workspaceId, accessToken, serverSecret, r2CleanupConfirmed }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const root = await ctx.db.get(fileId)
-    if (!root || root.userId !== userId || root.deletedAt) throw new Error('Unauthorized')
+    if (!root || root.userId !== userId || root.deletedAt || (workspaceId !== undefined && root.workspaceId !== workspaceId)) throw new Error('Unauthorized')
     const now = Date.now()
     async function deleteSubtree(id: Id<'files'>) {
       const children = await ctx.db

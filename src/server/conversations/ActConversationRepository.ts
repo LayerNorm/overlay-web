@@ -126,6 +126,7 @@ export interface ActConversationRepository {
   getConversationById(args: {
     conversationId: Id<'conversations'>
     userId: string
+    workspaceId?: string
   }): Promise<ConversationListRow | null>
   listConversations(args: {
     includeDeleted?: boolean
@@ -159,10 +160,12 @@ export interface ActConversationRepository {
     projectId?: string | null
     title?: string
     userId: string
+    workspaceId?: string
   }): Promise<void>
   deleteConversation(args: {
     conversationId: Id<'conversations'>
     userId: string
+    workspaceId?: string
   }): Promise<void>
   getEntitlements(args: {
     userId: string

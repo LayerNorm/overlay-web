@@ -60,9 +60,10 @@ export interface WebhookRepository {
     subscriptionId: string
     url?: string
     userId: string
+    workspaceId?: string
   }): Promise<boolean>
   rotateSecret(args: { subscriptionId: string; userId: string }): Promise<string | null>
-  remove(args: { subscriptionId: string; userId: string }): Promise<boolean>
+  remove(args: { subscriptionId: string; userId: string; workspaceId?: string }): Promise<boolean>
   listDeliveries(args: {
     limit?: number
     subscriptionId?: string

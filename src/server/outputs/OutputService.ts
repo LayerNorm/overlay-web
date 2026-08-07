@@ -155,7 +155,7 @@ export class OutputService {
       .sort((a, b) => b.createdAt - a.createdAt)
   }
 
-  async delete(args: { outputId: string; userId: string }): Promise<void> {
+  async delete(args: { outputId: string; userId: string; workspaceId?: string }): Promise<void> {
     const file = await this.getCanonicalFile(args.outputId, args.userId)
     if (!file || file.kind !== 'output') throw new Error('Output not found')
     await this.deps.files.deleteFile({ fileId: file._id, userId: args.userId })
@@ -172,6 +172,7 @@ export class OutputService {
     outputId: string
     userId: string
     visibility: 'private' | 'public'
+    workspaceId?: string
   }) {
     const file = await this.getCanonicalFile(args.outputId, args.userId)
     if (!file || file.kind !== 'output') throw new Error('Output not found')
