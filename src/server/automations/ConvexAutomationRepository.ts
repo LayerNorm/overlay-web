@@ -139,22 +139,6 @@ export class ConvexAutomationRepository implements AutomationRepository {
     return result?.cancelled ?? false
   }
 
-  async requestActiveRunCancellation(args: {
-    automationId: string
-    userId: string
-  }): Promise<number> {
-    const result = await convex.mutation<{ cancelled: number }>(
-      'automations/automations:requestActiveRunCancellationByServer',
-      {
-        ...args,
-        automationId: args.automationId as Id<'automations'>,
-        serverSecret: this.serverSecret,
-      },
-      { throwOnError: true },
-    )
-    return result?.cancelled ?? 0
-  }
-
   async retryRun(args: { runId: string; userId: string }): Promise<string | null> {
     const result = await convex.mutation<{ runId: Id<'automationRuns'> | null }>(
       'automations/automations:retryRunByServer',

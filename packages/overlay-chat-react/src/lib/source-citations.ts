@@ -6,6 +6,5 @@
  */
 export type SourceCitationMap = Record<
   string,
-  | { kind: 'file' | 'memory'; sourceId: string }
-  | { kind: 'knowledge'; knowledgeBaseId: string; sourceId: string }
+  { kind: 'file' | 'memory'; sourceId: string }
 >

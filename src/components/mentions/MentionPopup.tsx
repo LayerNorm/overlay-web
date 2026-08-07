@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  BookOpen,
   ChevronRight,
   FileText,
   MessageSquare,
@@ -10,26 +9,21 @@ import {
   Server,
   Sparkles,
   Upload,
-  Users,
   Zap,
 } from 'lucide-react'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
 const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; strokeWidth?: number }>> = {
-  BookOpen,
   FileText,
   Plug,
   Zap,
   Sparkles,
   Server,
   MessageSquare,
-  Users,
 }
 
 const CATEGORY_ORDER: Array<{ type: MentionType; label: string; icon: string }> = [
-  { type: 'person', label: 'People', icon: 'Users' },
   { type: 'file', label: 'Files', icon: 'FileText' },
-  { type: 'knowledge', label: 'Knowledge', icon: 'BookOpen' },
   { type: 'connector', label: 'Connectors', icon: 'Plug' },
   { type: 'automation', label: 'Automations', icon: 'Zap' },
   { type: 'skill', label: 'Skills', icon: 'Sparkles' },
@@ -41,13 +35,6 @@ function CategoryIcon({ icon, className }: { icon: string; className?: string })
   const Icon = ICON_MAP[icon]
   if (!Icon) return null
   return <Icon size={14} strokeWidth={1.75} className={className} />
-}
-
-export const MENTION_POPUP_LISTBOX_ID = 'overlay-mention-listbox'
-
-/** Stable id for the active row so the composer can point aria-activedescendant at it. */
-export function mentionPopupOptionId(index: number): string {
-  return `${MENTION_POPUP_LISTBOX_ID}-option-${index}`
 }
 
 interface MentionPopupProps {
@@ -62,8 +49,6 @@ interface MentionPopupProps {
   /** Active category filter. null = top-level category picker. */
   selectedCategory: MentionType | null
   onSelectedCategoryChange: (category: MentionType | null) => void
-  /** Reports the highlighted row so the composer can announce it. */
-  onActiveDescendantChange?: (optionId: string | null) => void
 }
 
 type Row =
@@ -82,7 +67,6 @@ export function MentionPopup({
   availableTypes,
   selectedCategory,
   onSelectedCategoryChange,
-  onActiveDescendantChange,
 }: MentionPopupProps) {
   const [activeIndex, setActiveIndex] = useState(0)
   const popupRef = useRef<HTMLDivElement>(null)
@@ -139,11 +123,6 @@ export function MentionPopup({
     const el = itemRefs.current[activeIndex]
     if (el) el.scrollIntoView({ block: 'nearest' })
   }, [activeIndex])
-
-  useEffect(() => {
-    onActiveDescendantChange?.(rows.length > 0 ? mentionPopupOptionId(activeIndex) : null)
-    return () => onActiveDescendantChange?.(null)
-  }, [activeIndex, onActiveDescendantChange, rows.length])
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -239,7 +218,7 @@ export function MentionPopup({
         </div>
       )}
 
-      <div className="overflow-y-auto" id={MENTION_POPUP_LISTBOX_ID} role="listbox" aria-label="Mention suggestions">
+      <div className="overflow-y-auto">
         {loading && categories.length === 0 && selectedCategory !== null ? (
           <div className="flex items-center justify-center py-6">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--muted)] border-t-transparent" />
@@ -263,9 +242,6 @@ export function MentionPopup({
                   <button
                     ref={(el) => { itemRefs.current[idx] = el }}
                     type="button"
-                    role="option"
-                    id={mentionPopupOptionId(idx)}
-                    aria-selected={isActive}
                     onClick={onUploadFile}
                     onMouseEnter={() => setActiveIndex(idx)}
                     className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors ${
@@ -290,9 +266,6 @@ export function MentionPopup({
                   key={`cat-${row.type}`}
                   ref={(el) => { itemRefs.current[idx] = el }}
                   type="button"
-                  role="option"
-                  id={mentionPopupOptionId(idx)}
-                  aria-selected={isActive}
                   onClick={() => onSelectedCategoryChange(row.type)}
                   onMouseEnter={() => setActiveIndex(idx)}
                   className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors ${
@@ -313,9 +286,6 @@ export function MentionPopup({
                   <button
                     ref={(el) => { itemRefs.current[idx] = el }}
                     type="button"
-                    role="option"
-                    id={mentionPopupOptionId(idx)}
-                    aria-selected={isActive}
                     onClick={onUploadFile}
                     onMouseEnter={() => setActiveIndex(idx)}
                     className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors ${
@@ -338,9 +308,6 @@ export function MentionPopup({
                 key={`${categoryType}-${item.id}`}
                 ref={(el) => { itemRefs.current[idx] = el }}
                 type="button"
-                role="option"
-                id={mentionPopupOptionId(idx)}
-                aria-selected={isActive}
                 onClick={() => onSelect(item)}
                 onMouseEnter={() => setActiveIndex(idx)}
                 className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-xs transition-colors ${

@@ -1,6 +1,6 @@
 export type ShareDialogResource = {
-  id?: string
-  type: 'chat' | 'file' | 'project' | 'knowledge_base' | 'automation' | 'agent'
+  id: string
+  type: 'chat' | 'file' | 'agent' | 'knowledge_base'
   title: string
   url?: string
   thumbnailUrl?: string

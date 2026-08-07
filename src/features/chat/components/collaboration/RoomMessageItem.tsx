@@ -319,7 +319,7 @@ export function RoomMessageItem({
             {attachments}
             {editing ? editor : message.text ? (
               <UserMessageBubble className={`max-w-full ${mine ? 'ml-auto' : 'mr-auto'}`}>
-                <SafeHumanMarkdown text={message.text} mentions={message.mentions} />
+                <SafeHumanMarkdown text={message.text} isStreaming={false} mentions={message.mentions} />
               </UserMessageBubble>
             ) : null}
           </div>

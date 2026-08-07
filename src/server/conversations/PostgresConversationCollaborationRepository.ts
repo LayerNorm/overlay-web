@@ -780,6 +780,7 @@ implements ConversationCollaborationRepository {
     let reactionChanged = false
     if (args.enabled) {
       const inserted = await this.db.insert(conversationMessageReactions).values({
+        id: `reaction_${randomUUID()}`,
         conversationId: args.conversationId,
         messageId: args.messageId,
         workspaceId: args.workspaceId,
@@ -861,6 +862,7 @@ implements ConversationCollaborationRepository {
     await this.requireConversationMessage(args)
     if (args.pinned) {
       const rows = await this.db.insert(conversationPins).values({
+        id: `pin_${randomUUID()}`,
         conversationId: args.conversationId,
         messageId: args.messageId,
         workspaceId: args.workspaceId,
@@ -923,6 +925,7 @@ implements ConversationCollaborationRepository {
     await this.requireConversationMessage(args)
     if (args.saved) {
       const rows = await this.db.insert(conversationSavedMessages).values({
+        id: `saved_${randomUUID()}`,
         conversationId: args.conversationId,
         messageId: args.messageId,
         workspaceId: args.workspaceId,
@@ -1201,7 +1204,7 @@ function mapPresence(
   return {
     workspaceId: row.workspaceId,
     principalId: row.principalId,
-    sessionId: row.sessionId,
+    sessionId: row.sessionId ?? undefined,
     conversationId: row.conversationId ?? undefined,
     status: stale ? 'offline' : row.status,
     typing: !stale && (overrides.typing ?? Boolean(row.typingExpiresAt && row.typingExpiresAt > now)),
@@ -1248,11 +1251,11 @@ function mapChannel(
   if (!row.channelSlug || !row.channelVisibility) throw new Error('Invalid channel record')
   return {
     conversationId: row.id,
-    workspaceId: row.workspaceId,
+    workspaceId: row.workspaceId ?? '',
     name: row.title,
     slug: row.channelSlug,
     topic: row.channelTopic ?? undefined,
-    visibility: row.channelVisibility,
+    visibility: (row.channelVisibility as 'public' | 'private') ?? 'private',
     participantCount,
     createdAt: row.createdAt.getTime(),
     updatedAt: (row.updatedAt ?? row.lastModified).getTime(),

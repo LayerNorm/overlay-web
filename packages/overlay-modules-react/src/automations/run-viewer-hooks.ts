@@ -21,6 +21,8 @@ export interface UseRunStatusOptions {
   workflowRunId: string | null | undefined
   graph: AutomationGraph | null | undefined
   enabled?: boolean
+  /** Injected fetch implementation so the presentational module does not call global fetch directly. */
+  fetchImpl?: typeof fetch
 }
 
 export interface UseRunStatusResult {
@@ -35,6 +37,7 @@ export function useRunStatus({
   workflowRunId,
   graph,
   enabled = true,
+  fetchImpl = fetch,
 }: UseRunStatusOptions): UseRunStatusResult {
   const [snapshot, setSnapshot] = useState<AutomationRunStatusSnapshot | null>(null)
   const [isConnected, setIsConnected] = useState(false)
@@ -143,6 +146,8 @@ export function useRunStatus({
 export interface UseReplayStatusOptions {
   workflowRunId: string | null | undefined
   graph: AutomationGraph | null | undefined
+  /** Injected fetch implementation so the presentational module does not call global fetch directly. */
+  fetchImpl?: typeof fetch
 }
 
 export interface UseReplayStatusResult {
@@ -157,6 +162,7 @@ export interface UseReplayStatusResult {
 export function useReplayStatus({
   workflowRunId,
   graph,
+  fetchImpl = fetch,
 }: UseReplayStatusOptions): UseReplayStatusResult {
   const [events, setEvents] = useState<AutomationRunEvent[]>([])
   const [currentIndex, setCurrentIndexState] = useState(0)
@@ -183,7 +189,7 @@ export function useReplayStatus({
       try {
         const runId = workflowRunId as string
         const url = `/api/v1/automations/${encodeURIComponent(runId)}/events`
-        const response = await fetch(url)
+        const response = await fetchImpl(url)
         if (!response.ok || !response.body) {
           throw new Error(`Failed to load events: ${response.status}`)
         }

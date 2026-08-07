@@ -230,6 +230,7 @@ export const createDirectMessage = mutation({
           actorPrincipalId: actor.principalId,
           title: `${actor.displayName} started a conversation`,
           body: title,
+          eventSequence: now,
           createdAt: now,
         })
       }
@@ -367,6 +368,7 @@ export const addParticipant = mutation({
       conversationId: args.conversationId,
       actorPrincipalId: access.actor.principalId,
       title: `${access.actor.displayName} added you to a conversation`,
+      eventSequence: now,
       createdAt: now,
     })
     return await participantView(ctx, participant)
@@ -575,7 +577,7 @@ export const recordMessageActivity = mutation({
     const messageEvents = await ctx.db.query('conversationEvents')
       .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
       .collect()
-    const eventSequence = messageEvents.find((event) => event.messageId === args.messageId && event.type === 'message.created')?._creationTime
+    const eventSequence = messageEvents.find((event) => event.messageId === args.messageId && event.type === 'message.created')?._creationTime ?? Date.now()
     const participants = await ctx.db.query('conversationParticipants')
       .withIndex('by_conversationId_status', (q) => (
         q.eq('conversationId', args.conversationId).eq('status', 'active')

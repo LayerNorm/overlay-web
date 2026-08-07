@@ -11,6 +11,7 @@ export type LifecycleEventName =
   | 'topup.succeeded'
   | 'automation.succeeded'
   | 'automation.failed'
+  | 'api_key.changed'
 
 type LifecycleEventBase<TName extends LifecycleEventName, TResource, TAttributes> = {
   attributes: TAttributes
@@ -60,12 +61,20 @@ type AutomationLifecycleEvent<TName extends 'automation.succeeded' | 'automation
     failureClass?: 'authorization' | 'provider' | 'transient' | 'unknown' | 'validation'
   }>
 
+type ApiKeyChangedLifecycleEvent = LifecycleEventBase<'api_key.changed', {
+    id: string
+    type: 'api_key'
+  }, {
+    action: 'created' | 'revoked' | 'rotated'
+  }>
+
 export type LifecycleEvent =
   | UserCreatedLifecycleEvent
   | SubscriptionChangedLifecycleEvent
   | TopUpSucceededLifecycleEvent
   | AutomationLifecycleEvent<'automation.succeeded'>
   | AutomationLifecycleEvent<'automation.failed'>
+  | ApiKeyChangedLifecycleEvent
 
 export type LifecycleEventInput =
   | Omit<UserCreatedLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
@@ -73,6 +82,7 @@ export type LifecycleEventInput =
   | Omit<TopUpSucceededLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
   | Omit<AutomationLifecycleEvent<'automation.succeeded'>, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
   | Omit<AutomationLifecycleEvent<'automation.failed'>, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
+  | Omit<ApiKeyChangedLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
 
 const lifecycleEventDestinations: Record<LifecycleEventName, readonly LifecycleEventDestination[]> = {
   'user.created': ['analytics', 'audit', 'email', 'metrics', 'notification'],
@@ -80,6 +90,7 @@ const lifecycleEventDestinations: Record<LifecycleEventName, readonly LifecycleE
   'topup.succeeded': ['analytics', 'audit', 'email', 'metrics', 'notification'],
   'automation.succeeded': ['analytics', 'audit', 'metrics', 'notification'],
   'automation.failed': ['analytics', 'audit', 'email', 'metrics', 'notification'],
+  'api_key.changed': ['audit', 'email', 'metrics', 'notification'],
 }
 
 export function destinationsForLifecycleEvent(

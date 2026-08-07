@@ -269,17 +269,17 @@ export function AccountPaidUsageCard({
 }: AccountPaidUsageCardProps) {
   return (
     <div className={panelClass}>
-      <h2 className={`text-lg font-medium mb-4 ${headingClass}`}>Usage This Period</h2>
+      <h2 className={`text-lg font-medium mb-4 ${headingClass}`}>Usage this period</h2>
       <UsageProgressBar
-        used={entitlements.budgetUsedCents / 100}
-        total={entitlements.budgetTotalCents / 100}
-        label="Monthly budget"
+        used={entitlements.allowanceUsedCents ?? Math.min(entitlements.budgetUsedCents, entitlements.planAmountCents)}
+        total={entitlements.allowanceTotalCents ?? entitlements.planAmountCents}
+        label="Subscription allowance"
         showAsPercentage={true}
+        percentageMode="used"
         isLandingDark={dark}
       />
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Used" value={formatCents(entitlements.budgetUsedCents)} />
-        <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Remaining" value={formatCents(entitlements.budgetRemainingCents)} />
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Top-up credits remaining" value={formatCents(entitlements.topUpBalanceCents ?? 0)} />
         <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Storage" value={storageUsageLabel} />
       </div>
     </div>
@@ -393,16 +393,19 @@ export function UsageProgressBar({
   total,
   label,
   showAsPercentage = false,
+  percentageMode = 'remaining',
   isLandingDark = false,
 }: {
   used: number
   total: number
   label: string
   showAsPercentage?: boolean
+  percentageMode?: 'remaining' | 'used'
   isLandingDark?: boolean
 }) {
   const remaining = Math.max(0, total - used)
   const percentage = remainingUsagePercentage(used, total)
+  const displayedPercentage = percentageMode === 'used' ? Math.max(0, 100 - percentage) : percentage
   const tone = usageProgressTone(percentage)
   const labelCls = isLandingDark ? 'text-zinc-400' : 'text-zinc-500'
   const valueCls = tone === 'empty'
@@ -420,11 +423,13 @@ export function UsageProgressBar({
       <div className="flex justify-between text-sm">
         <span className={labelCls}>{label}</span>
         <span className={valueCls}>
-          {showAsPercentage ? `${Math.round(percentage)}% remaining` : `$${remaining.toFixed(2)} / $${total}`}
+          {showAsPercentage
+            ? `${Math.round(displayedPercentage)}% ${percentageMode}`
+            : `$${remaining.toFixed(2)} / $${total}`}
         </span>
       </div>
       <div className={`h-1.5 overflow-hidden rounded-full ${track}`}>
-        <div className={`h-full rounded-full transition-all duration-300 ${fill}`} style={{ width: `${percentage}%` }} />
+        <div className={`h-full rounded-full transition-all duration-300 ${fill}`} style={{ width: `${displayedPercentage}%` }} />
       </div>
     </div>
   )

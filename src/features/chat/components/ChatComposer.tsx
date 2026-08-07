@@ -28,7 +28,6 @@ import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
 import { AttachmentPreviewTray, ComposerAlerts } from './ChatComposerAttachments'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import { toComposerViewProps, type ChatComposerProps, type ComposerViewProps } from './ChatComposerTypes'
-import { useAuthorization } from '@/components/providers/AuthorizationProvider'
 
 const DOCUMENT_FILE_ACCEPT = [
   '.pdf',
@@ -180,7 +179,6 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
         />
         <MentionInput
           ref={props.textareaRef}
-          extraCategories={props.surface.mentionCategories}
           value={props.input}
           valueRevision={props.inputRevision}
           onChange={props.onInputChange}
@@ -224,16 +222,12 @@ type ComposerControlsProps = ComposerViewProps & {
 }
 
 function ComposerControls(props: ComposerControlsProps) {
-  const { allows } = useAuthorization()
-  const can = (capability: Parameters<ReturnType<typeof useAuthorization>['can']>[0]) =>
-    allows({ all: [capability] })
   const mentionTooltip = mentionReferenceLabel(props.capabilities)
-  const showModeMenu = !props.isTemporaryChat && !props.surface.hideModeMenu
   return (
     <div className={`mt-2 grid min-h-9 items-center gap-2 ${
-      showModeMenu
-        ? 'grid-cols-[auto_auto_minmax(0,1fr)_auto_auto]'
-        : 'grid-cols-[auto_auto_minmax(0,1fr)_auto]'
+      props.isTemporaryChat
+        ? 'grid-cols-[auto_auto_minmax(0,1fr)_auto]'
+        : 'grid-cols-[auto_auto_minmax(0,1fr)_auto_auto]'
     }`}>
       <AttachMenu {...props} />
       <DelayedTooltip label={mentionTooltip} side="top">
@@ -242,7 +236,7 @@ function ComposerControls(props: ComposerControlsProps) {
         </button>
       </DelayedTooltip>
       <div className="flex min-w-0 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {!props.surface.hideGenerationModes && can('memory.use') && props.capabilities.memory && props.capabilities.vectorSearch && !props.memoryEnabled && (
+        {props.capabilities.memory && props.capabilities.vectorSearch && !props.memoryEnabled && (
           <DelayedTooltip label="Memory is off for this message." side="top">
             <div className="shrink-0">
               <ToolRequestChip
@@ -253,7 +247,7 @@ function ComposerControls(props: ComposerControlsProps) {
             </div>
           </DelayedTooltip>
         )}
-        {(props.surface.hideGenerationModes ? [] : props.selectedToolIds).filter((toolId) => isToolRequestEnabled(toolId, props, can)).map((toolId) => {
+        {props.selectedToolIds.filter((toolId) => isToolRequestEnabled(toolId, props)).map((toolId) => {
           const tool = TOOL_REQUEST_BY_ID.get(toolId)
           if (!tool) return null
           return (
@@ -265,15 +259,14 @@ function ComposerControls(props: ComposerControlsProps) {
             />
           )
         })}
-        {!props.surface.hideGenerationModes && props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
+        {props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
       </div>
-      {showModeMenu ? <ModeMenu {...props} /> : null}
+      {props.isTemporaryChat ? null : <ModeMenu {...props} />}
       {props.isActiveLoading ? (
         <DelayedTooltip label="Stop generating" side="top">
           <button
             type="button"
             onClick={() => void props.onStop()}
-            aria-label="Stop generating"
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80"
           >
             <div className="h-3.5 w-3.5 rounded-sm bg-current" />
@@ -285,7 +278,6 @@ function ComposerControls(props: ComposerControlsProps) {
             type="button"
             onClick={() => void props.onSend()}
             disabled={props.disabledSend}
-            aria-label="Send message"
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80 disabled:opacity-40"
           >
             <Send size={17} strokeWidth={1.75} />
@@ -309,7 +301,6 @@ function mentionReferenceLabel(capabilities: ComposerViewProps['capabilities']):
 }
 
 function composerPlaceholder(props: ComposerViewProps): string {
-  if (props.surface.placeholder) return props.surface.placeholder
   if (props.mode === 'automate') {
     return 'Describe an automation, use @ to reference available context...'
   }
@@ -318,9 +309,6 @@ function composerPlaceholder(props: ComposerViewProps): string {
 
 function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HTMLInputElement | null> }) {
   const [menuDirection, setMenuDirection] = useState<'up' | 'down'>('up')
-  const { allows } = useAuthorization()
-  const can = (capability: Parameters<ReturnType<typeof useAuthorization>['can']>[0]) =>
-    allows({ all: [capability] })
 
   function handleToggle(event: MouseEvent<HTMLButtonElement>) {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -350,7 +338,7 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
               suffix="Images, docs"
             />
           )}
-          {(props.surface.hideGenerationModes ? [] : TOOL_REQUEST_OPTIONS).filter((tool) => isToolRequestEnabled(tool.id, props, can)).map((tool) => {
+          {TOOL_REQUEST_OPTIONS.filter((tool) => isToolRequestEnabled(tool.id, props)).map((tool) => {
             const active = props.selectedToolIds.includes(tool.id)
             const Icon = tool.Icon
             return (
@@ -368,13 +356,9 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
               />
             )
           })}
-          {!props.surface.hideGenerationModes && (
-            <>
-              <AttachMenuButton onClick={() => { props.onModeChange('image'); props.setShowAttachMenu(false) }} icon={<ImageIcon size={13} className="text-[var(--foreground)]" />} label="Generate images" />
-              <AttachMenuButton onClick={() => { props.onModeChange('video'); props.setShowAttachMenu(false) }} icon={<Video size={13} className="text-[var(--foreground)]" />} label="Generate videos" />
-            </>
-          )}
-          {!props.surface.hideGenerationModes && can('memory.use') && props.capabilities.memory && props.capabilities.vectorSearch && (
+          <AttachMenuButton onClick={() => { props.onModeChange('image'); props.setShowAttachMenu(false) }} icon={<ImageIcon size={13} className="text-[var(--foreground)]" />} label="Generate images" />
+          <AttachMenuButton onClick={() => { props.onModeChange('video'); props.setShowAttachMenu(false) }} icon={<Video size={13} className="text-[var(--foreground)]" />} label="Generate videos" />
+          {props.capabilities.memory && props.capabilities.vectorSearch && (
             <>
               <div className="my-1 border-t border-[var(--border)]" />
               <AttachMenuButton
@@ -399,13 +383,11 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
 function isToolRequestEnabled(
   toolId: ChatToolRequestId,
   props: Pick<ComposerViewProps, 'capabilities'>,
-  can: ReturnType<typeof useAuthorization>['can'],
 ): boolean {
-  if (!can('tools.use')) return false
-  if (toolId === 'web_search') return can('web_search.use') && props.capabilities.webSearch
+  if (toolId === 'web_search') return props.capabilities.webSearch
   if (toolId === 'browser') return props.capabilities.browserUse
   if (toolId === 'sandbox') return props.capabilities.sandboxes
-  if (toolId === 'memory') return can('memory.use') && props.capabilities.memory && props.capabilities.vectorSearch
+  if (toolId === 'memory') return props.capabilities.memory && props.capabilities.vectorSearch
   return true
 }
 

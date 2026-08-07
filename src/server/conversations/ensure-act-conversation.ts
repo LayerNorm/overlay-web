@@ -61,9 +61,6 @@ export async function ensureActConversationId(params: {
     askModelIds: isFreeTier ? freeAskModelIds : paidModels.askModelIds,
     actModelId: isFreeTier ? freeActModelId : paidModels.actModelId,
     lastMode: 'act',
-    workspaceId: params.workspaceId,
-    createdByPrincipalId: params.createdByPrincipalId,
-    conversationType: 'personal',
   })
   if (!id) {
     throw new Error('Failed to create conversation')

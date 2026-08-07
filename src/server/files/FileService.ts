@@ -110,14 +110,10 @@ const defaultClock: FileServiceClock = {
 }
 
 async function parsePdfBuffer(buf: Buffer): Promise<string> {
-  const { PDFParse } = await import('pdf-parse')
-  const parser = new PDFParse({ data: buf })
-  try {
-    const data = await parser.getText()
-    return (data.text ?? '').trim()
-  } finally {
-    await parser.destroy()
-  }
+  const mod = await import('pdf-parse/lib/pdf-parse.js')
+  const parsePdf = mod.default
+  const data = await parsePdf(buf)
+  return (data.text ?? '').trim()
 }
 
 async function extractTextFromBuffer(buf: Buffer, file: File, ext: string): Promise<string> {

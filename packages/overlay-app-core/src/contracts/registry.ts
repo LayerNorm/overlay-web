@@ -1,9 +1,7 @@
 import type { LLMGateway as CoreLLMGateway } from '@overlay/llm-gateway'
 import type { AuthProvider, AuthUser } from '@overlay/auth-contracts'
-import type { AuthorizationSubject } from '@overlay/authz-contracts'
 import type { ObjectStore, VectorStore } from '@overlay/storage-contracts'
 import type { BillingProvider, Entitlements } from '@overlay/billing'
-import type { WorkspaceSummary } from '@overlay/workspace-contracts'
 import type { CapabilityCheck, OverlayCapability } from '../capabilities'
 import type { AppSettings, ChatModel, ImageModel, VideoModel, ThemePreference, ThemePresetId } from './settings'
 import type { AppDestinationConfig, AppDestinationId, AppFeatureFlags, SettingsSubview } from './navigation'
@@ -31,7 +29,6 @@ export type OverlayIconName =
   | 'smartphone'
   | 'sparkles'
   | 'user'
-  | 'users'
   | 'workflow'
 
 export type OverlayFeatureFlagId =
@@ -40,11 +37,6 @@ export type OverlayFeatureFlagId =
   | 'projects'
   | 'automations'
   | 'extensions'
-  | 'workspaces'
-  | 'collaborativeChats'
-  | 'channels'
-  | 'agents'
-  | 'resourceSharing'
   | (string & {})
 
 export interface OverlayFeatureFlag {
@@ -292,10 +284,6 @@ export interface AppBootstrapDefaults {
   videoModelId?: string
 }
 
-export interface AppAuthorizationState extends AuthorizationSubject {
-  enforcementMode: 'observe' | 'enforce'
-}
-
 export interface AppBootstrapResponse {
   user: AuthUser | null
   entitlements: Entitlements | null
@@ -317,12 +305,8 @@ export interface AppBootstrapResponse {
   theme?: OverlayThemeMetadata
   featureFlags: AppFeatureFlags
   capabilities: CapabilityCheck
-  authorization: AppAuthorizationState
   destinations: AppDestinationConfig[]
   defaults?: AppBootstrapDefaults
-  /** Workspace summaries are included so app chrome can hydrate without a second list request. */
-  workspaces?: WorkspaceSummary[]
-  activeWorkspaceId?: string
 }
 
 export type AppBootstrap = AppBootstrapResponse

@@ -446,7 +446,6 @@ export class AutomationService {
     if (this.deps.repository.requestActiveRunCancellation) {
       await this.deps.repository.requestActiveRunCancellation({
         automationId,
-        userId: args.userId,
       }).catch((error) => {
         logger.warn('[automations DELETE] Failed to cancel active runs', error)
       })

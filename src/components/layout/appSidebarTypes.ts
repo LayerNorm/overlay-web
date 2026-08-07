@@ -10,14 +10,15 @@ export interface AppSidebarChatPanelContext extends AppSidebarNavigateContext {
 
 export interface AppSidebarWorkspaceAdapter {
   activeWorkspaceId: string | null
-  buildHref(workspaceId: string, href: string): string
-  resolveSurface(pathname: string): string | null
-  renderSwitcher(context: AppSidebarNavigateContext & {
-    compact?: boolean
-    placement?: 'header' | 'footer'
-    userLabel?: string
-    accountMenu?: ReactNode
-  }): ReactNode
+  resolveSurface?: (path: string) => string | null
+  buildHref?: (workspaceId: string, href: string) => string
+  renderSwitcher?: (props: {
+    compact: boolean
+    onNavigate: () => void
+    placement: 'footer' | 'header'
+    userLabel: string
+    accountMenu: React.ReactNode
+  }) => React.ReactNode
 }
 
 export interface AppSidebarProps {
@@ -31,6 +32,5 @@ export interface AppSidebarProps {
   renderProjectsPanel?: (context: AppSidebarNavigateContext) => ReactNode
   renderAgentsPanel?: (context: AppSidebarNavigateContext) => ReactNode
   renderKnowledgePanel?: (context: AppSidebarNavigateContext) => ReactNode
-  /** Injected from the app composition root to keep workspace feature UI out of shared chrome. */
   workspace?: AppSidebarWorkspaceAdapter
 }

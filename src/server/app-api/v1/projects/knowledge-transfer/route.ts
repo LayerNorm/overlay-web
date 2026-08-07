@@ -35,9 +35,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       const result = await server.projectKnowledgeTransferService.saveAnswerAsKnowledge({
         content: body.content!,
         conversationId: body.conversationId ?? '',
-        knowledgeBaseId: body.knowledgeBaseId,
+        knowledgeBaseId: body.knowledgeBaseId!,
         messageId: body.messageId!,
-        projectId: body.projectId,
+        projectId: body.projectId!,
         title: body.title!,
         userId,
       })
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       const result = await server.projectKnowledgeTransferService.promoteProjectFileToKnowledgeBase({
         accessToken: context.auth.accessToken,
         fileId: body.fileId!,
-        knowledgeBaseId: body.knowledgeBaseId,
+        knowledgeBaseId: body.knowledgeBaseId!,
         projectId: body.projectId,
         title: body.title,
         userId,
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
 
     const result = await server.projectKnowledgeTransferService.copyKnowledgeSourceToProject({
-      knowledgeBaseId: body.knowledgeBaseId,
+      knowledgeBaseId: body.knowledgeBaseId!,
       projectId: body.projectId,
       sourceId: body.sourceId!,
       userId,

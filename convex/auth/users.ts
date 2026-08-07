@@ -90,6 +90,9 @@ export const syncUserProfile = mutation({
         currentPeriodStart: now,
         currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
         creditsUsed: 0,
+        allowanceUsedCents: 0,
+        topUpPurchasedCents: 0,
+        topUpBalanceCents: 0,
         autoTopUpEnabled: false,
         lastLoginAt: now,
       })
@@ -175,37 +178,14 @@ export const syncUserProfileByServer = mutation({
       currentPeriodStart: now,
       currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
       creditsUsed: 0,
+      allowanceUsedCents: 0,
+      topUpPurchasedCents: 0,
+      topUpBalanceCents: 0,
       autoTopUpEnabled: false,
       lastLoginAt: now,
     })
     logAuthDebug('auth/users:syncUserProfileByServer created subscription', { userId })
     return { success: true, isNewUser: true }
-  },
-})
-
-export const listUserIdsByServer = query({
-  args: { serverSecret: v.string() },
-  handler: async (ctx, { serverSecret }) => {
-    requireServerSecret(serverSecret)
-    const subscriptions = await ctx.db.query('subscriptions').collect()
-    return [...new Set(subscriptions.map(({ userId }) => userId))]
-  },
-})
-
-export const listUserDirectoryByServer = query({
-  args: { serverSecret: v.string() },
-  handler: async (ctx, { serverSecret }) => {
-    requireServerSecret(serverSecret)
-    const rows = await ctx.db.query('subscriptions').collect()
-    return rows
-      .filter((row) => Boolean(row.email))
-      .map((row) => ({
-        id: row.userId,
-        email: row.email!,
-        name: row.name,
-        profilePictureUrl: row.profilePictureUrl,
-      }))
-      .sort((a, b) => a.email.localeCompare(b.email) || a.id.localeCompare(b.id))
   },
 })
 
@@ -339,6 +319,9 @@ export const markOnboardingComplete = mutation({
       currentPeriodStart: now,
       currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
       creditsUsed: 0,
+      allowanceUsedCents: 0,
+      topUpPurchasedCents: 0,
+      topUpBalanceCents: 0,
       autoTopUpEnabled: false,
       lastLoginAt: now,
       hasSeenOnboarding: true,
@@ -457,206 +440,6 @@ export const deleteUserAccountByServer = mutation({
       }
     }
 
-    // Workspace preflight happens before any mutation. Active organization
-    // workspaces must never be stranded without a human owner.
-    const workspacePrincipals = await ctx.db
-      .query('workspacePrincipals')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .collect()
-    for (const principal of workspacePrincipals) {
-      const workspace = await ctx.db
-        .query('workspaces')
-        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', principal.workspaceId))
-        .first()
-      if (!workspace || workspace.kind !== 'organization' || workspace.status !== 'active') {
-        continue
-      }
-      const membership = await ctx.db
-        .query('workspaceMemberships')
-        .withIndex('by_workspaceId_principalId', (q) =>
-          q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId),
-        )
-        .first()
-      if (membership?.role !== 'owner' || membership.status !== 'active') continue
-      const owners = await ctx.db
-        .query('workspaceMemberships')
-        .withIndex('by_workspaceId_role_status', (q) =>
-          q.eq('workspaceId', principal.workspaceId).eq('role', 'owner').eq('status', 'active'),
-        )
-        .collect()
-      if (!owners.some((owner) => owner.principalId !== principal.principalId)) {
-        throw new Error(`Transfer ownership of ${workspace.name} before deleting your account`)
-      }
-    }
-
-    async function deletePersonalWorkspace(workspaceId: string): Promise<void> {
-      const workspace = await ctx.db
-        .query('workspaces')
-        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
-        .first()
-      if (!workspace || workspace.kind !== 'personal') return
-      const conversations = await ctx.db.query('conversations')
-        .withIndex('by_workspaceId_conversationType_lastModified', (q) => q.eq('workspaceId', workspaceId))
-        .collect()
-      for (const conversation of conversations) {
-        await deleteIndexed(() => ctx.db.query('conversationMessageReactions')
-          .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversation._id))
-          .collect())
-        await deleteIndexed(() => ctx.db.query('conversationPins')
-          .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversation._id))
-          .collect())
-        const savedMessages = await ctx.db.query('conversationSavedMessages').collect()
-        for (const saved of savedMessages.filter((row) => row.conversationId === conversation._id)) {
-          await ctx.db.delete(saved._id)
-          deletedRowCount += 1
-        }
-      }
-      await deleteIndexed(() =>
-        ctx.db.query('workspaceResourceGuests')
-          .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
-          .collect(),
-      )
-      await deleteIndexed(() =>
-        ctx.db.query('workspaceResourceScopes')
-          .withIndex('by_workspaceId_resource', (q) => q.eq('workspaceId', workspaceId))
-          .collect(),
-      )
-      await deleteIndexed(() =>
-        ctx.db.query('conversationParticipants')
-          .withIndex('by_workspaceId_principalId_status', (q) => q.eq('workspaceId', workspaceId))
-          .collect(),
-      )
-      await deleteIndexed(() =>
-        ctx.db.query('workspacePresence')
-          .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', workspaceId))
-          .collect(),
-      )
-      await deleteIndexed(() =>
-        ctx.db.query('workspaceNotifications')
-          .withIndex('by_workspaceId_recipientPrincipalId_createdAt', (q) => q.eq('workspaceId', workspaceId))
-          .collect(),
-      )
-      await deleteIndexed(() =>
-        ctx.db.query('workspaceTeamMemberships')
-          .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
-          .collect(),
-      )
-      await deleteIndexed(() =>
-        ctx.db.query('workspaceTeams')
-          .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
-          .collect(),
-      )
-      await deleteIndexed(() =>
-        ctx.db.query('workspaceInvitations')
-          .withIndex('by_workspaceId_createdAt', (q) => q.eq('workspaceId', workspaceId))
-          .collect(),
-      )
-      await deleteIndexed(() =>
-        ctx.db.query('workspaceMemberships')
-          .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
-          .collect(),
-      )
-      await deleteIndexed(() =>
-        ctx.db.query('workspaceAgentDefinitions')
-          .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
-          .collect(),
-      )
-      await deleteIndexed(() =>
-        ctx.db.query('workspacePrincipals')
-          .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
-          .collect(),
-      )
-      await ctx.db.delete(workspace._id)
-      deletedRowCount += 1
-    }
-
-    const personalWorkspaces = await ctx.db
-      .query('workspaces')
-      .withIndex('by_personalOwnerUserId', (q) => q.eq('personalOwnerUserId', userId))
-      .collect()
-    for (const workspace of personalWorkspaces) {
-      await deletePersonalWorkspace(workspace.workspaceId)
-    }
-
-    for (const principal of workspacePrincipals) {
-      const workspace = await ctx.db
-        .query('workspaces')
-        .withIndex('by_workspaceId', (q) => q.eq('workspaceId', principal.workspaceId))
-        .first()
-      if (!workspace || workspace.kind === 'personal') continue
-      await deleteIndexed(() => ctx.db.query('conversationMessageReactions')
-        .withIndex('by_workspaceId_principalId', (q) => (
-          q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId)
-        ))
-        .collect())
-      await deleteIndexed(() => ctx.db.query('conversationSavedMessages')
-        .withIndex('by_workspaceId_principalId_createdAt', (q) => (
-          q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId)
-        ))
-        .collect())
-      await deleteIndexed(() =>
-        ctx.db.query('conversationParticipants')
-          .withIndex('by_workspaceId_principalId_status', (q) => (
-            q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId)
-          ))
-          .collect(),
-      )
-      await deleteIndexed(() =>
-        ctx.db.query('workspacePresence')
-          .withIndex('by_workspaceId_principalId', (q) => (
-            q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId)
-          ))
-          .collect(),
-      )
-      await deleteIndexed(() =>
-        ctx.db.query('workspaceNotifications')
-          .withIndex('by_workspaceId_recipientPrincipalId_createdAt', (q) => (
-            q.eq('workspaceId', principal.workspaceId).eq('recipientPrincipalId', principal.principalId)
-          ))
-          .collect(),
-      )
-      await deleteIndexed(() =>
-        ctx.db.query('workspaceTeamMemberships')
-          .withIndex('by_principalId', (q) => q.eq('principalId', principal.principalId))
-          .collect(),
-      )
-      const resourceGuests = await ctx.db
-        .query('workspaceResourceGuests')
-        .withIndex('by_workspaceId_principalId', (q) =>
-          q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId),
-        )
-        .collect()
-      for (const guest of resourceGuests) {
-        if (guest.status === 'pending' || guest.status === 'active') {
-          await ctx.db.patch(guest._id, {
-            status: 'revoked',
-            revokedAt: Date.now(),
-            updatedAt: Date.now(),
-          })
-        }
-      }
-      await deleteIndexed(() =>
-        ctx.db.query('workspaceMemberships')
-          .withIndex('by_workspaceId_principalId', (q) =>
-            q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId),
-          )
-          .collect(),
-      )
-      await ctx.db.patch(principal._id, {
-        userId: undefined,
-        email: undefined,
-        displayName: 'Deleted member',
-        archivedAt: principal.archivedAt ?? Date.now(),
-        updatedAt: Date.now(),
-      })
-    }
-    await deleteIndexed(() =>
-      ctx.db
-        .query('workspaceUserPreferences')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .collect(),
-    )
-
     // 1. Tables with a `by_userId` (or compound) index — single-key lookup.
     await deleteIndexed(() =>
       ctx.db
@@ -724,120 +507,6 @@ export const deleteUserAccountByServer = mutation({
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect(),
     )
-    await deleteIndexed(() =>
-      ctx.db
-        .query('authorizationGroupMemberships')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .collect(),
-    )
-    await deleteIndexed(() =>
-      ctx.db
-        .query('authorizationUserRoles')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .collect(),
-    )
-    await deleteIndexed(() =>
-      ctx.db
-        .query('authorizationResourceGrants')
-        .withIndex('by_principal', (q) =>
-          q.eq('principalType', 'user').eq('principalId', userId),
-        )
-        .collect(),
-    )
-    const createdRoles = await ctx.db.query('authorizationRoles').collect()
-    for (const row of createdRoles) {
-      if (row.createdBy === userId) await ctx.db.patch(row._id, { createdBy: undefined })
-    }
-    const createdGroups = await ctx.db.query('authorizationGroups').collect()
-    for (const row of createdGroups) {
-      if (row.createdBy === userId) await ctx.db.patch(row._id, { createdBy: undefined })
-    }
-    const userRoleAssignments = await ctx.db.query('authorizationUserRoles').collect()
-    for (const row of userRoleAssignments) {
-      if (row.assignedBy === userId) await ctx.db.patch(row._id, { assignedBy: undefined })
-    }
-    const groupRoleAssignments = await ctx.db.query('authorizationGroupRoles').collect()
-    for (const row of groupRoleAssignments) {
-      if (row.assignedBy === userId) await ctx.db.patch(row._id, { assignedBy: undefined })
-    }
-    const resourceGrants = await ctx.db.query('authorizationResourceGrants').collect()
-    for (const row of resourceGrants) {
-      if (row.grantedBy === userId) await ctx.db.patch(row._id, { grantedBy: undefined })
-    }
-    const knowledgeBases = (await ctx.db.query('knowledgeBases').collect())
-      .filter((row) => row.ownerUserId === userId)
-    const knowledgeBaseIds = new Set(knowledgeBases.map((row) => row.knowledgeBaseId))
-    const ownedProjects = (await ctx.db.query('projects').collect())
-      .filter((row) => row.userId === userId)
-    const ownedProjectIds = new Set(ownedProjects.map((row) => String(row._id)))
-    const governancePolicies = await ctx.db.query('governancePolicies').collect()
-    for (const row of governancePolicies) {
-      const resourceOwned =
-        (row.resourceType === 'knowledge_base' && knowledgeBaseIds.has(row.resourceId)) ||
-        (row.resourceType === 'project' && ownedProjectIds.has(row.resourceId))
-      if (resourceOwned) {
-        await ctx.db.delete(row._id)
-        deletedRowCount += 1
-        continue
-      }
-      const patch: Record<string, undefined> = {}
-      if (row.createdBy === userId) patch.createdBy = undefined
-      if (row.approvedBy === userId) patch.approvedBy = undefined
-      if (row.rejectedBy === userId) patch.rejectedBy = undefined
-      if (Object.keys(patch).length > 0) await ctx.db.patch(row._id, patch)
-    }
-    const governanceAccessReviews = await ctx.db.query('governanceAccessReviews').collect()
-    for (const row of governanceAccessReviews) {
-      const resourceOwned =
-        (row.resourceType === 'knowledge_base' && knowledgeBaseIds.has(row.resourceId)) ||
-        (row.resourceType === 'project' && ownedProjectIds.has(row.resourceId))
-      if (resourceOwned) {
-        await ctx.db.delete(row._id)
-        deletedRowCount += 1
-        continue
-      }
-      const patch: Record<string, undefined> = {}
-      if (row.createdBy === userId) patch.createdBy = undefined
-      if (row.reviewerUserId === userId) patch.reviewerUserId = undefined
-      if (row.ownerUserId === userId) patch.ownerUserId = undefined
-      if (Object.keys(patch).length > 0) await ctx.db.patch(row._id, patch)
-    }
-    const knowledgeSources = (await ctx.db.query('knowledgeSources').collect())
-      .filter((row) => row.ownerUserId === userId)
-    const knowledgeSourceIds = new Set(knowledgeSources.map((row) => row.sourceId))
-    const knowledgeBaseSources = await ctx.db.query('knowledgeBaseSources').collect()
-    for (const row of knowledgeBaseSources) {
-      if (knowledgeBaseIds.has(row.knowledgeBaseId) || knowledgeSourceIds.has(row.sourceId)) {
-        await ctx.db.delete(row._id)
-        deletedRowCount += 1
-      } else if (row.addedBy === userId) {
-        await ctx.db.patch(row._id, { addedBy: undefined })
-      }
-    }
-    const knowledgeBaseConversations = await ctx.db.query('knowledgeBaseConversations').collect()
-    for (const row of knowledgeBaseConversations) {
-      if (knowledgeBaseIds.has(row.knowledgeBaseId)) {
-        await ctx.db.delete(row._id)
-        deletedRowCount += 1
-      } else if (row.createdBy === userId) {
-        await ctx.db.patch(row._id, { createdBy: undefined })
-      }
-    }
-    const knowledgeSourceVersions = await ctx.db.query('knowledgeSourceVersions').collect()
-    for (const row of knowledgeSourceVersions) {
-      if (knowledgeSourceIds.has(row.sourceId)) {
-        await ctx.db.delete(row._id)
-        deletedRowCount += 1
-      }
-    }
-    for (const row of knowledgeSources) {
-      await ctx.db.delete(row._id)
-      deletedRowCount += 1
-    }
-    for (const row of knowledgeBases) {
-      await ctx.db.delete(row._id)
-      deletedRowCount += 1
-    }
     const actorAuditRows = await ctx.db
       .query('auditEvents')
       .withIndex('by_actorUserId_createdAt', (q) => q.eq('actorUserId', userId))

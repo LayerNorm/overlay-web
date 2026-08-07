@@ -70,4 +70,10 @@ crons.interval(
   internal.webhooks.deliveryRunner.runMinuteTick,
 )
 
+crons.interval(
+  'transactional email delivery',
+  { minutes: 1 },
+  internal.email.deliveryRunner.runMinuteTick,
+)
+
 export default crons

@@ -5,10 +5,6 @@ export type ToolBucket = ToolCostBucket
 export const INTERNAL_TOOL_IDS = new Set<string>([
   'search_knowledge',
   'search_in_files',
-  'list_knowledge_bases',
-  'list_knowledge_base_sources',
-  'search_knowledge_base',
-  'read_knowledge_source',
   'save_memory',
   'save_memory_batch',
   'update_memory',

@@ -81,13 +81,10 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     compactToolPayloads?: boolean
     conversationId: Id<'conversations'>
     limit: number
-    mainOnly?: boolean
-    threadRootMessageId?: string
     userId: string
   }): Promise<ConversationMessageRow[]> {
     return await convex.query<ConversationMessageRow[]>('chat/conversations:getRecentMessages', {
       ...args,
-      threadRootMessageId: args.threadRootMessageId as Id<'conversationMessages'> | undefined,
       serverSecret: this.serverSecret,
     }) ?? []
   }
@@ -171,11 +168,6 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     tokens?: { input: number; output: number }
     turnId: string
     userId: string
-    workspaceId?: string
-    authorKind?: 'human' | 'agent' | 'model' | 'system'
-    authorPrincipalId?: string
-    clientNonce?: string
-    threadRootMessageId?: string
     variantIndex?: number
   }): Promise<Id<'conversationMessages'> | null> {
     return await convex.mutation<Id<'conversationMessages'> | null>('chat/conversations:addMessage', {
@@ -373,41 +365,26 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     return await convex.query<SharedConversationRow | null>('chat/conversations:getPublicByToken', args)
   }
 
-  async getConversationEventCursor(args: { userId: string; workspaceId?: string }): Promise<number> {
-    return await convex.query<number>('collaboration/directMessages:getConversationEventCursor', {
-      actorUserId: args.userId,
-      workspaceId: args.workspaceId,
-      serverSecret: this.serverSecret,
-    }) ?? 0
+  async getConversationEventCursor(_args: { userId: string }): Promise<number> {
+    return 0
   }
 
-  async listConversationEvents(args: {
+  async listConversationEvents(_args: {
     afterSequence: number
     limit: number
     userId: string
-    workspaceId?: string
   }): Promise<ConversationEventRow[]> {
-    return await convex.query<ConversationEventRow[]>('collaboration/directMessages:listConversationEvents', {
-      actorUserId: args.userId,
-      afterSequence: args.afterSequence,
-      limit: args.limit,
-      workspaceId: args.workspaceId,
-      serverSecret: this.serverSecret,
-    }) ?? []
+    return []
   }
 
-  async waitForConversationEvents(args: {
+  async waitForConversationEvents(_args: {
     afterSequence: number
     limit: number
     signal?: AbortSignal
     timeoutMs: number
     userId: string
-    workspaceId?: string
   }): Promise<ConversationEventRow[]> {
-    const first = await this.listConversationEvents(args)
-    if (first.length > 0 || args.signal?.aborted) return first
-    await delay(Math.min(Math.max(250, args.timeoutMs), 1_000), args.signal)
-    return args.signal?.aborted ? [] : await this.listConversationEvents(args)
+    return []
   }
 
   async recordUsageBatch(args: {
@@ -420,14 +397,4 @@ export class ConvexActConversationRepository implements ActConversationRepositor
       serverSecret: this.serverSecret,
     })
   }
-}
-
-function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, milliseconds)
-    signal?.addEventListener('abort', () => {
-      clearTimeout(timer)
-      resolve()
-    }, { once: true })
-  })
 }

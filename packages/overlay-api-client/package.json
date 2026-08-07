@@ -13,9 +13,7 @@
     "zod": "^3.25.76"
   },
   "peerDependencies": {
-    "@overlay/app-core": "0.0.1",
-    "@overlay/authz-contracts": "0.0.1",
-    "@overlay/workspace-contracts": "0.0.1"
+    "@overlay/app-core": "0.0.1"
   },
   "scripts": {
     "test": "tsx --test src/*.test.ts",
@@ -23,8 +21,6 @@
   },
   "devDependencies": {
     "@overlay/app-core": "file:../overlay-app-core",
-    "@overlay/authz-contracts": "file:../overlay-authz-contracts",
-    "@overlay/workspace-contracts": "file:../overlay-workspace-contracts",
     "tsx": "^4.8.1",
     "typescript": "^5"
   }

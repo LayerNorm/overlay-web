@@ -1,8 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   ArrowUp,
-  BookOpen,
-  Bot,
   Chrome,
   FileText,
   FolderOpen,
@@ -21,7 +19,6 @@ import {
   Smartphone,
   Sparkles,
   User,
-  Users,
   Workflow,
 } from 'lucide-react'
 import type { OverlayIconName, OverlaySidebarSearchCategory } from '@overlay/app-core'
@@ -29,8 +26,6 @@ import type { MentionType } from '@/shared/knowledge/mention-types'
 
 export const ICON_COMPONENTS: Partial<Record<OverlayIconName, LucideIcon>> = {
   'arrow-up': ArrowUp,
-  'book-open': BookOpen,
-  bot: Bot,
   chrome: Chrome,
   'file-text': FileText,
   'folder-open': FolderOpen,
@@ -49,7 +44,6 @@ export const ICON_COMPONENTS: Partial<Record<OverlayIconName, LucideIcon>> = {
   smartphone: Smartphone,
   sparkles: Sparkles,
   user: User,
-  users: Users,
   workflow: Workflow,
 }
 

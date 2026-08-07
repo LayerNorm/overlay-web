@@ -1,13 +1,18 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
-import { useMemo } from 'react'
+import { lazy, Suspense, useMemo } from 'react'
 import { AlertCircle, FileText, Play, Reply } from 'lucide-react'
-import type { AssistantVisualBlock, ChatExchangeStatus, DraftModalState } from '@overlay/chat-core'
+import type { AssistantVisualBlock, ChatExchangeStatus, DraftModalState, ToolVisualBlock } from '@overlay/chat-core'
 import {
   assistantBlocksToPlainText,
+  buildAssistantVisualSegments,
   collectWebSourcesFromBlocks,
+  computeToolChainFlags,
+  getDraftFromToolBlock,
+  isOverlayGatedToolOutput,
 } from '@overlay/chat-core'
 import type { SourceCitationMap } from '../../lib/source-citations'
 import type { WebSourceItem } from '../../lib/web-sources'
+import { MarkdownMessage } from '../MarkdownMessage'
 import { recordRender } from '../../lib/perf-debug'
 import type {
   AttachmentPreview,
@@ -15,12 +20,25 @@ import type {
 } from '../AttachmentPreviewShell'
 import type { GeneratedUiConnectorActions } from '../GeneratedUiCard'
 import { UserMessageBubble } from '../UserMessageBubble'
-import { renderInlineMentions } from '../exchange'
+import {
+  BrowserToolBlock,
+  DraftSuggestionCard,
+  GatedPaidFeatureCallout,
+  MemoryToolBlock,
+  ReasoningBlock,
+  SingleToolCallRow,
+  ToolCallsCollapsedGroup,
+  WebSearchToolBlock,
+  renderInlineMentions,
+} from '../exchange'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
-import { AssistantVisualBlocks } from './AssistantVisualBlocks'
 import { ExchangeActions } from './ExchangeActions'
 import { ExchangeLoadingState, exchangeLoadingPresentation } from './ExchangeLoadingState'
 import type { ChatTranscriptPresentation } from './ChatTranscript'
+
+const GeneratedUiCard = lazy(() =>
+  import('../GeneratedUiCard').then((mod) => ({ default: mod.GeneratedUiCard })),
+)
 
 export type UserImageAttachment = {
   url: string
@@ -58,7 +76,6 @@ export interface ChatExchangeProps {
   onDeleteTurn: () => void
   onReply: () => void
   onBranch?: () => void
-  onSaveToKnowledge?: () => void
   /** User stopped streaming for this exchange; show notice + footer actions. */
   interrupted?: boolean
   actionsLocked: boolean
@@ -89,13 +106,25 @@ export interface ChatExchangeProps {
 export function ChatExchange({
   userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, isTextStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, status, sourceCitations,
-  turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, onSaveToKnowledge, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
+  turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue, getModelDisplayName,
   generatedUiConnectorActions, onGeneratedUiChange, presentation,
 }: ChatExchangeProps) {
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
     const showTextBubble = userBodyText.length > 0
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
+    const lastTextBlockIndex = (() => {
+      let idx = -1
+      for (let i = 0; i < assistantVisualBlocks.length; i++) {
+        if (assistantVisualBlocks[i]!.kind === 'text') idx = i
+      }
+      return idx
+    })()
+    const assistantSegments = useMemo(
+      () => buildAssistantVisualSegments(assistantVisualBlocks),
+      [assistantVisualBlocks],
+    )
+    const toolChainFlags = useMemo(() => computeToolChainFlags(assistantSegments), [assistantSegments])
     const webSources = useMemo(() => collectWebSourcesFromBlocks(assistantVisualBlocks), [assistantVisualBlocks])
     const normalizedStatus: ChatExchangeStatus = status ?? (
       responseInProgress ? (assistantVisualBlocks.length > 0 ? 'streaming' : 'submitted') : 'completed'
@@ -218,21 +247,182 @@ export function ChatExchange({
           </div>
         )}
 
-        <AssistantVisualBlocks
-          blocks={assistantVisualBlocks}
-          blockKeyPrefix={exchIdx}
-          markdownKeyPrefix={`${userMsgId}-${responseModelId}`}
-          isStreaming={isStreaming}
-          isTextStreaming={isTextStreaming}
-          sourceCitations={sourceCitations}
-          suppressTypingIndicator={!loadingPresentation.inlineTextMarker}
-          onOpenDraft={onOpenDraft}
-          onCreateAutomationDraft={onCreateAutomationDraft}
-          onOpenAttachmentPreview={onOpenAttachmentPreview}
-          generatedUiConnectorActions={generatedUiConnectorActions}
-          onGeneratedUiChange={onGeneratedUiChange}
-        />
-
+        {assistantSegments.map((seg, segIdx) => {
+          const chain = toolChainFlags[segIdx]!
+          if (seg.kind === 'reasoning') {
+            // Actively streaming = still emitting reasoning deltas (or message-level stream and
+            // this part has not been explicitly marked `done`). Everything else collapses.
+            const active =
+              (isStreaming && seg.block.state === 'streaming') ||
+              (isStreaming && seg.block.state !== 'done' && seg.originIndex === assistantVisualBlocks.length - 1)
+            return (
+              <ReasoningBlock
+                key={`${exchIdx}-seq-r-${seg.originIndex}-${seg.block.key}`}
+                text={seg.block.text}
+                streaming={active}
+                connectTop={chain.chainTop}
+                connectBottom={chain.chainBottom}
+              />
+            )
+          }
+          if (seg.kind === 'browser') {
+            return (
+              <BrowserToolBlock
+                key={`${exchIdx}-seq-${seg.originIndex}-${seg.block.key}`}
+                block={seg.block}
+                connectTop={chain.chainTop}
+                connectBottom={chain.chainBottom}
+              />
+            )
+          }
+          if (seg.kind === 'tools') {
+            const onlyTools = seg.items.every((it): it is ToolVisualBlock => it.kind === 'tool')
+            if (onlyTools && seg.items.length === 1) {
+              const t = seg.items[0] as ToolVisualBlock
+              const draft = getDraftFromToolBlock(t)
+              if (draft) {
+                const isAutomationDraft = draft.kind === 'automation'
+                return (
+                  <DraftSuggestionCard
+                    key={`${exchIdx}-draft-${seg.originIndex}-${t.key}`}
+                    title={draft.draft.name}
+                    description={draft.draft.description}
+                    badge={isAutomationDraft ? 'Automation Draft' : 'Skill Draft'}
+                    reason={draft.draft.reason}
+                    primaryLabel="Review draft"
+                    secondaryLabel={isAutomationDraft ? 'Create automation' : 'Save skill'}
+                    onPrimary={() => onOpenDraft(draft)}
+                    onSecondary={() => {
+                      if (draft.kind === 'automation') {
+                        void onCreateAutomationDraft(draft)
+                      } else {
+                        onOpenDraft(draft)
+                      }
+                    }}
+                  />
+                )
+              }
+              if (isOverlayGatedToolOutput(t.toolOutput)) {
+                return (
+                  <GatedPaidFeatureCallout
+                    key={`${exchIdx}-gated-${seg.originIndex}-${t.key}`}
+                    block={t}
+                    connectTop={chain.chainTop}
+                    connectBottom={chain.chainBottom}
+                  />
+                )
+              }
+              if (t.name === 'perplexity_search' || t.name === 'parallel_search') {
+                return (
+                  <WebSearchToolBlock
+                    key={`${exchIdx}-seq-${seg.originIndex}-${t.key}`}
+                    block={t}
+                    connectTop={chain.chainTop}
+                    connectBottom={chain.chainBottom}
+                  />
+                )
+              }
+              if (t.name === 'save_memory' || t.name === 'save_memory_batch' || t.name === 'update_memory') {
+                return (
+                  <MemoryToolBlock
+                    key={`${exchIdx}-seq-${seg.originIndex}-${t.key}`}
+                    block={t}
+                    connectTop={chain.chainTop}
+                    connectBottom={chain.chainBottom}
+                  />
+                )
+              }
+              return (
+                <SingleToolCallRow
+                  key={`${exchIdx}-seq-${seg.originIndex}-${t.key}`}
+                  block={t}
+                  connectTop={chain.chainTop}
+                  connectBottom={chain.chainBottom}
+                />
+              )
+            }
+            return (
+              <ToolCallsCollapsedGroup
+                key={`${exchIdx}-seq-tools-${seg.originIndex}`}
+                items={seg.items}
+                connectTop={chain.chainTop}
+                connectBottom={chain.chainBottom}
+              />
+            )
+          }
+          if (seg.kind === 'file') {
+            const block = seg.block
+            const isImg = (block.mediaType?.startsWith('image/') ?? true)
+            const isVideo = block.mediaType?.startsWith('video/') ?? false
+            if (!isImg && !isVideo) return null
+            const previewName = isImg ? 'generated-image.png' : 'generated-video.mp4'
+            return (
+              <div key={`${exchIdx}-seq-${seg.originIndex}-file`} className="w-full px-1 py-1">
+                {isImg ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenAttachmentPreview?.({ name: previewName, content: block.url, url: block.url })}
+                    className="rounded-xl outline-none transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+                    title="Open attachment"
+                  >
+                    <img
+                      src={block.url}
+                      alt="Generated"
+                      className="max-h-[320px] max-w-full rounded-xl border border-[var(--border)] object-contain"
+                    />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onOpenAttachmentPreview?.({ name: previewName, content: block.url, url: block.url })}
+                    className="rounded-xl outline-none transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+                    title="Open attachment"
+                  >
+                    <video
+                      src={block.url}
+                      controls
+                      preload="metadata"
+                      playsInline
+                      className="max-h-[320px] max-w-full rounded-xl border border-[var(--border)] object-contain"
+                    />
+                  </button>
+                )}
+              </div>
+            )
+          }
+          if (seg.kind === 'generated-ui') {
+            return (
+              <Suspense
+                key={`${exchIdx}-seq-${seg.originIndex}-${seg.block.part.id}`}
+                fallback={<div className="ui-skeleton-line min-h-24 w-full rounded-lg" aria-busy="true" />}
+              >
+                <GeneratedUiCard
+                  part={seg.block.part}
+                  connectorActions={generatedUiConnectorActions}
+                  onDataChange={onGeneratedUiChange}
+                />
+              </Suspense>
+            )
+          }
+          const block = seg.block
+          const isLastText = seg.originIndex === lastTextBlockIndex
+          return (
+            <div
+              key={`${exchIdx}-seq-${seg.originIndex}-text`}
+              className="w-full px-1 py-1 text-sm leading-relaxed text-[var(--foreground)]"
+            >
+              <MarkdownMessage
+                key={`md-${userMsgId}-${responseModelId}-${seg.originIndex}`}
+                text={block.text}
+                isStreaming={isTextStreaming && isLastText}
+                sourceCitations={isLastText ? sourceCitations : undefined}
+                webSources={isLastText && webSources.length > 0 ? webSources : undefined}
+                suppressTypingIndicator={!loadingPresentation.inlineTextMarker}
+                onOpenAttachmentPreview={onOpenAttachmentPreview}
+              />
+            </div>
+          )
+        })}
 
         {!errorMessage ? <ExchangeLoadingState presentation={loadingPresentation} /> : null}
 
@@ -280,7 +470,6 @@ export function ChatExchange({
             onDeleteTurn={onDeleteTurn}
             onReply={onReply}
             onBranch={onBranch}
-            onSaveToKnowledge={onSaveToKnowledge}
             turnIdForActions={turnIdForActions}
             actionsLocked={actionsLocked}
             webSources={webSources}

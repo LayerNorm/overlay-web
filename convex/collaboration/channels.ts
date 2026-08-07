@@ -253,6 +253,7 @@ export const setReaction = mutation({
             actorPrincipalId: actor.principalId,
             title: `${actor.displayName} reacted ${emoji}`,
             body: undefined,
+            eventSequence: Date.now(),
             createdAt: Date.now(),
           })
         }

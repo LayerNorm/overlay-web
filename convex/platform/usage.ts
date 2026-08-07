@@ -6,6 +6,11 @@ import { FREE_TIER_AUTO_MODEL_ID } from '../../src/shared/ai/gateway/model-types
 import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForSubscription } from '../files/lib/storageQuota'
 import { roundCurrencyAmount } from '../../src/shared/ai/sandbox/daytona-pricing'
 import { derivePlanAmountCents, derivePlanKind } from '../../src/shared/billing/billing-pricing'
+import {
+  allocateUsageCharge,
+  refundUsageAllocation,
+  type UsageBuckets,
+} from '../../src/shared/billing/usage-buckets'
 
 function getPastWeekDates(): string[] {
   const dates: string[] = []
@@ -52,14 +57,86 @@ function roundCreditAmount(value: number): number {
   return roundCurrencyAmount(value)
 }
 
+function allowancePercentUsed(buckets: UsageBuckets): number {
+  if (buckets.allowanceTotal <= 0) return 0
+  return Math.min(100, Math.max(0, buckets.allowanceUsed / buckets.allowanceTotal * 100))
+}
+
+function refundAllocationFor(buckets: UsageBuckets, amount: number): { allowance: number; topUp: number } {
+  const topUpSpent = Math.max(0, buckets.topUpPurchased - buckets.topUpBalance)
+  const topUp = Math.min(amount, topUpSpent)
+  return { topUp, allowance: Math.min(buckets.allowanceUsed, amount - topUp) }
+}
+
+async function getUsageBuckets(
+  ctx: EntitlementCtx,
+  subscription: {
+    userId: string
+    currentPeriodStart?: number
+    planKind?: 'free' | 'paid'
+    planAmountCents?: number
+    institutionalGrantCents?: number
+    creditsUsed?: number
+    allowanceUsedCents?: number
+    topUpPurchasedCents?: number
+    topUpBalanceCents?: number
+    tier: 'free' | 'pro' | 'max'
+  },
+): Promise<UsageBuckets> {
+  const planKind = derivePlanKind(subscription)
+  const allowanceTotal = planKind === 'free'
+    ? 0
+    : derivePlanAmountCents(subscription) + (subscription.institutionalGrantCents ?? 0)
+  const historicalTopUps = await getSucceededTopUpTotalCents(
+    ctx,
+    subscription.userId,
+    subscription.currentPeriodStart,
+  )
+  const legacyUsed = Math.max(0, subscription.creditsUsed ?? 0)
+  const topUpPurchased = subscription.topUpPurchasedCents ?? historicalTopUps
+  const storedAllowanceUsed = subscription.allowanceUsedCents
+  const storedTopUpBalance = subscription.topUpBalanceCents
+  const storedProjection = storedAllowanceUsed !== undefined && storedTopUpBalance !== undefined
+    ? storedAllowanceUsed + topUpPurchased - storedTopUpBalance
+    : undefined
+  const storedBucketsAreCurrent = storedProjection !== undefined &&
+    Math.abs(storedProjection - legacyUsed) < 0.000001
+  const allowanceUsed = storedBucketsAreCurrent
+    ? storedAllowanceUsed
+    : Math.min(legacyUsed, allowanceTotal)
+  const resolvedAllowanceUsed = allowanceUsed ?? 0
+  const topUpBalance = storedBucketsAreCurrent
+    ? storedTopUpBalance ?? 0
+    : Math.max(0, topUpPurchased - Math.max(0, legacyUsed - resolvedAllowanceUsed))
+  return {
+    allowanceTotal: roundCreditAmount(allowanceTotal),
+    allowanceUsed: roundCreditAmount(resolvedAllowanceUsed),
+    topUpPurchased: roundCreditAmount(topUpPurchased),
+    topUpBalance: roundCreditAmount(topUpBalance),
+  }
+}
+
+async function persistUsageBuckets(
+  ctx: MutationCtx,
+  subscriptionId: Parameters<MutationCtx['db']['patch']>[0],
+  buckets: UsageBuckets,
+): Promise<void> {
+  const creditsUsed = roundCreditAmount(
+    buckets.allowanceUsed + (buckets.topUpPurchased - buckets.topUpBalance),
+  )
+  await ctx.db.patch(subscriptionId, {
+    allowanceUsedCents: roundCreditAmount(buckets.allowanceUsed),
+    topUpPurchasedCents: roundCreditAmount(buckets.topUpPurchased),
+    topUpBalanceCents: roundCreditAmount(buckets.topUpBalance),
+    creditsUsed,
+  })
+}
+
 async function getSubscriptionBudgetState(ctx: MutationCtx, userId: string) {
   const subscription = await getOrCreateSubscription(ctx, userId)
   const planKind = derivePlanKind(subscription ?? {})
-  const planAmountCents = derivePlanAmountCents(subscription ?? {})
-  const topUpTotalCents = await getSucceededTopUpTotalCents(ctx, userId, subscription.currentPeriodStart)
-  const budgetTotalCents = planKind === 'free'
-    ? 0
-    : planAmountCents + topUpTotalCents + (subscription?.institutionalGrantCents ?? 0)
+  const buckets = await getUsageBuckets(ctx, subscription)
+  const budgetTotalCents = buckets.allowanceTotal + buckets.topUpPurchased
   const budgetUsedCents = subscription.creditsUsed ?? 0
   return {
     subscription,
@@ -67,6 +144,7 @@ async function getSubscriptionBudgetState(ctx: MutationCtx, userId: string) {
     budgetTotalCents,
     budgetUsedCents,
     budgetRemainingCents: Math.max(0, budgetTotalCents - budgetUsedCents),
+    buckets,
   }
 }
 
@@ -117,10 +195,10 @@ async function buildEntitlements(ctx: EntitlementCtx, userId: string) {
   const planKind = derivePlanKind(subscription ?? {})
   const tier = planKind === 'free' ? 'free' : ((subscription?.tier === 'max' ? 'max' : 'pro') as 'free' | 'pro' | 'max')
   const planAmountCents = derivePlanAmountCents(subscription ?? {})
-  const topUpTotalCents = await getSucceededTopUpTotalCents(ctx, userId, subscription?.currentPeriodStart)
-  const budgetTotalCents = planKind === 'free'
-    ? 0
-    : planAmountCents + topUpTotalCents + (subscription?.institutionalGrantCents ?? 0)
+  const buckets = subscription
+    ? await getUsageBuckets(ctx, subscription)
+    : { allowanceTotal: 0, allowanceUsed: 0, topUpPurchased: 0, topUpBalance: 0 }
+  const budgetTotalCents = buckets.allowanceTotal + buckets.topUpPurchased
 
   const tierDefaults = {
     free: {
@@ -172,6 +250,10 @@ async function buildEntitlements(ctx: EntitlementCtx, userId: string) {
     budgetUsedCents,
     budgetTotalCents,
     budgetRemainingCents: Math.max(0, budgetTotalCents - budgetUsedCents),
+    allowanceTotalCents: buckets.allowanceTotal,
+    allowanceUsedCents: buckets.allowanceUsed,
+    allowancePercentUsed: allowancePercentUsed(buckets),
+    topUpBalanceCents: buckets.topUpBalance,
     autoTopUpEnabled: Boolean(subscription?.autoTopUpEnabled),
     autoTopUpAmountCents: subscription?.autoTopUpAmountCents ?? 0,
     autoTopUpConsentGranted: Boolean(subscription?.offSessionConsentAt),
@@ -267,9 +349,9 @@ export async function applyUsageEvents(
       .first()
 
     if (subscription && chargeCredits) {
-      await ctx.db.patch(subscription._id, {
-        creditsUsed: roundCreditAmount((subscription.creditsUsed ?? 0) + totalCost),
-      })
+      const buckets = await getUsageBuckets(ctx, subscription)
+      const allocation = allocateUsageCharge(buckets, totalCost)
+      await persistUsageBuckets(ctx, subscription._id, allocation.buckets)
     }
 
     const billingPeriodStart = subscription?.currentPeriodStart
@@ -356,10 +438,10 @@ export const getEntitlementsInternal = internalQuery({
     const planKind = derivePlanKind(subscription ?? {})
     const tier = planKind === 'free' ? 'free' : ((subscription?.tier === 'max' ? 'max' : 'pro') as 'free' | 'pro' | 'max')
     const planAmountCents = derivePlanAmountCents(subscription ?? {})
-    const topUpTotalCents = await getSucceededTopUpTotalCents(ctx, userId, subscription?.currentPeriodStart)
-    const budgetTotalCents = planKind === 'free'
-      ? 0
-      : planAmountCents + topUpTotalCents + (subscription?.institutionalGrantCents ?? 0)
+    const buckets = subscription
+      ? await getUsageBuckets(ctx, subscription)
+      : { allowanceTotal: 0, allowanceUsed: 0, topUpPurchased: 0, topUpBalance: 0 }
+    const budgetTotalCents = buckets.allowanceTotal + buckets.topUpPurchased
     return {
       tier,
       planKind,
@@ -367,6 +449,10 @@ export const getEntitlementsInternal = internalQuery({
       budgetUsedCents: subscription?.creditsUsed ?? 0,
       budgetTotalCents,
       budgetRemainingCents: Math.max(0, budgetTotalCents - (subscription?.creditsUsed ?? 0)),
+      allowanceTotalCents: buckets.allowanceTotal,
+      allowanceUsedCents: buckets.allowanceUsed,
+      allowancePercentUsed: allowancePercentUsed(buckets),
+      topUpBalanceCents: buckets.topUpBalance,
       autoTopUpEnabled: Boolean(subscription?.autoTopUpEnabled),
       autoTopUpAmountCents: subscription?.autoTopUpAmountCents ?? 0,
       creditsUsed: subscription?.creditsUsed ?? 0,
@@ -526,9 +612,18 @@ export const adjustBudgetByServer = mutation({
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
     if (!subscription) throw new Error('subscription_not_found')
-    const nextCreditsUsed = Math.max(0, roundCreditAmount((subscription.creditsUsed ?? 0) + amountCents))
-    await ctx.db.patch(subscription._id, { creditsUsed: nextCreditsUsed })
-    return { success: true, creditsUsed: nextCreditsUsed }
+    const buckets = await getUsageBuckets(ctx, subscription)
+    const safeAmount = roundCreditAmount(amountCents)
+    const next = safeAmount >= 0
+      ? allocateUsageCharge(buckets, safeAmount).buckets
+      : refundUsageAllocation(
+          buckets,
+          refundAllocationFor(buckets, Math.min(-safeAmount, subscription.creditsUsed ?? 0)),
+          Math.min(-safeAmount, subscription.creditsUsed ?? 0),
+        ).buckets
+    await persistUsageBuckets(ctx, subscription._id, next)
+    const creditsUsed = roundCreditAmount(next.allowanceUsed + next.topUpPurchased - next.topUpBalance)
+    return { success: true, creditsUsed }
   },
 })
 
@@ -546,11 +641,8 @@ export const listAdministrativeUsageByServer = query({
       : await ctx.db.query('subscriptions').take(limit)
     return await Promise.all(rows.slice(0, limit).map(async (subscription) => {
       const planKind = derivePlanKind(subscription)
-      const planAmountCents = derivePlanAmountCents(subscription)
-      const topUpTotalCents = await getSucceededTopUpTotalCents(ctx, subscription.userId, subscription.currentPeriodStart)
-      const budgetTotalCents = planKind === 'free'
-        ? 0
-        : planAmountCents + topUpTotalCents + (subscription.institutionalGrantCents ?? 0)
+      const buckets = await getUsageBuckets(ctx, subscription)
+      const budgetTotalCents = buckets.allowanceTotal + buckets.topUpPurchased
       const budgetUsedCents = subscription.creditsUsed ?? 0
       return {
         userId: subscription.userId,
@@ -560,6 +652,10 @@ export const listAdministrativeUsageByServer = query({
         budgetUsedCents,
         budgetTotalCents,
         budgetRemainingCents: Math.max(0, budgetTotalCents - budgetUsedCents),
+        allowanceTotalCents: buckets.allowanceTotal,
+        allowanceUsedCents: buckets.allowanceUsed,
+        allowancePercentUsed: allowancePercentUsed(buckets),
+        topUpBalanceCents: buckets.topUpBalance,
       }
     }))
   },
@@ -578,13 +674,15 @@ export const adjustAdministrativeBudgetByServer = mutation({
       0,
       roundCreditAmount((subscription.institutionalGrantCents ?? 0) + args.amountCents),
     )
+    const currentBuckets = await getUsageBuckets(ctx, subscription)
+    const nextAllowanceTotal = derivePlanAmountCents(subscription) + institutionalGrantCents
+    if (nextAllowanceTotal + 0.000001 < currentBuckets.allowanceUsed) {
+      throw new Error('administrative_grant_below_consumed_allowance')
+    }
     await ctx.db.patch(subscription._id, { institutionalGrantCents })
     const planKind = derivePlanKind(subscription)
-    const planAmountCents = derivePlanAmountCents(subscription)
-    const topUpTotalCents = await getSucceededTopUpTotalCents(ctx, args.userId, subscription.currentPeriodStart)
-    const budgetTotalCents = planKind === 'free'
-      ? 0
-      : planAmountCents + topUpTotalCents + institutionalGrantCents
+    const buckets = { ...currentBuckets, allowanceTotal: nextAllowanceTotal }
+    const budgetTotalCents = buckets.allowanceTotal + buckets.topUpPurchased
     const budgetUsedCents = subscription.creditsUsed ?? 0
     return {
       userId: args.userId,
@@ -594,6 +692,10 @@ export const adjustAdministrativeBudgetByServer = mutation({
       budgetUsedCents,
       budgetTotalCents,
       budgetRemainingCents: Math.max(0, budgetTotalCents - budgetUsedCents),
+      allowanceTotalCents: buckets.allowanceTotal,
+      allowanceUsedCents: buckets.allowanceUsed,
+      allowancePercentUsed: allowancePercentUsed(buckets),
+      topUpBalanceCents: buckets.topUpBalance,
     }
   },
 })
@@ -682,14 +784,15 @@ export const reserveBudgetByServer = mutation({
 
     const safeReservedCents = roundCreditAmount(Math.max(0, reservedCents))
     const budget = await getSubscriptionBudgetState(ctx, userId)
+    let reservedAllocation = { allowance: 0, topUp: 0 }
     if (safeReservedCents > 0) {
       if (budget.planKind !== 'paid') throw new Error('insufficient_budget: paid plan required')
       if (budget.budgetRemainingCents + 0.000001 < safeReservedCents) {
         throw new Error('insufficient_budget')
       }
-      await ctx.db.patch(budget.subscription._id, {
-        creditsUsed: roundCreditAmount(budget.budgetUsedCents + safeReservedCents),
-      })
+      const allocation = allocateUsageCharge(budget.buckets, safeReservedCents)
+      await persistUsageBuckets(ctx, budget.subscription._id, allocation.buckets)
+      reservedAllocation = allocation.allocation
     }
 
     const now = Date.now()
@@ -702,6 +805,8 @@ export const reserveBudgetByServer = mutation({
       operationId,
       requestFingerprint,
       reservedCents: safeReservedCents,
+      reservedAllowanceCents: reservedAllocation.allowance,
+      reservedTopUpCents: reservedAllocation.topUp,
       providerWorkStarted: false,
       providerWorkCompleted: false,
       expiresAt: expiresAt ?? now + 30 * 60_000,
@@ -767,12 +872,15 @@ async function reconcileExpiredBudgetReservations(
       .withIndex('by_userId', (q) => q.eq('userId', reservation.userId))
       .first()
     if (subscription && reservation.reservedCents > 0) {
-      await ctx.db.patch(subscription._id, {
-        creditsUsed: Math.max(
-          0,
-          roundCreditAmount((subscription.creditsUsed ?? 0) - reservation.reservedCents),
-        ),
-      })
+      const buckets = await getUsageBuckets(ctx, subscription)
+      const allocation = reservation.reservedAllowanceCents !== undefined
+        ? { allowance: reservation.reservedAllowanceCents, topUp: reservation.reservedTopUpCents ?? 0 }
+        : refundAllocationFor(buckets, reservation.reservedCents)
+      await persistUsageBuckets(
+        ctx,
+        subscription._id,
+        refundUsageAllocation(buckets, allocation, reservation.reservedCents).buckets,
+      )
     }
     await ctx.db.patch(reservation._id, {
       status: 'released',
@@ -852,11 +960,25 @@ export const finalizeBudgetReservationByServer = mutation({
       await applyUsageEvents(ctx, userId, events, { chargeCredits: false })
     }
 
-    const delta = roundCreditAmount(safeActualCents - reservation.reservedCents)
-    if (delta !== 0) {
-      await ctx.db.patch(subscription._id, {
-        creditsUsed: Math.max(0, roundCreditAmount((subscription.creditsUsed ?? 0) + delta)),
-      })
+    const refundCents = roundCreditAmount(reservation.reservedCents - safeActualCents)
+    if (refundCents > 0) {
+      const buckets = await getUsageBuckets(ctx, subscription)
+      let refundAllocation
+      if (reservation.reservedAllowanceCents !== undefined) {
+        const actualAllowance = Math.min(safeActualCents, reservation.reservedAllowanceCents)
+        const actualTopUp = Math.max(0, safeActualCents - actualAllowance)
+        refundAllocation = {
+          allowance: reservation.reservedAllowanceCents - actualAllowance,
+          topUp: (reservation.reservedTopUpCents ?? 0) - actualTopUp,
+        }
+      } else {
+        refundAllocation = refundAllocationFor(buckets, refundCents)
+      }
+      await persistUsageBuckets(
+        ctx,
+        subscription._id,
+        refundUsageAllocation(buckets, refundAllocation, refundCents).buckets,
+      )
     }
 
     await ctx.db.patch(reservation._id, {
@@ -933,9 +1055,15 @@ export const releaseBudgetReservationByServer = mutation({
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
     if (subscription && reservation.reservedCents > 0) {
-      await ctx.db.patch(subscription._id, {
-        creditsUsed: Math.max(0, roundCreditAmount((subscription.creditsUsed ?? 0) - reservation.reservedCents)),
-      })
+      const buckets = await getUsageBuckets(ctx, subscription)
+      const allocation = reservation.reservedAllowanceCents !== undefined
+        ? { allowance: reservation.reservedAllowanceCents, topUp: reservation.reservedTopUpCents ?? 0 }
+        : refundAllocationFor(buckets, reservation.reservedCents)
+      await persistUsageBuckets(
+        ctx,
+        subscription._id,
+        refundUsageAllocation(buckets, allocation, reservation.reservedCents).buckets,
+      )
     }
     await ctx.db.patch(reservation._id, {
       status: 'released',

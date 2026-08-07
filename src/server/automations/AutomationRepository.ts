@@ -87,8 +87,7 @@ export interface AutomationRepository {
   }): Promise<boolean>
   requestActiveRunCancellation?(args: {
     automationId: string
-    userId: string
-  }): Promise<number>
+  }): Promise<string[]>
   retryRun(args: {
     runId: string
     userId: string

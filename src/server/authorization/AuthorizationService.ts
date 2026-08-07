@@ -53,6 +53,12 @@ export class AuthorizationDeniedError extends Error {
 export class AuthorizationService {
   constructor(private readonly deps: AuthorizationServiceDeps) {}
 
+  /** Catalog resource authorization evaluation context. */
+  evaluation = {
+    mode: 'observe' as 'observe' | 'enforce',
+    subject: { userId: '', groupIds: [] as string[], roleIds: [] as string[], capabilities: [] as never[], isDeploymentOwner: false },
+  }
+
   async resolveSubject(userId: string): Promise<AuthorizationSubject> {
     const [groups, directAssignments, isDeploymentOwner] = await Promise.all([
       this.deps.repositories.groups.listForUser(userId),

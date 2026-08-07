@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   errorLabel,
-  hasPersistedInterruptionMarker,
   looksLikeStoredGenerationError,
   persistedGenerationErrorMessage,
 } from './messages'
@@ -35,17 +34,4 @@ test('persistedGenerationErrorMessage keeps real stored error strings', () => {
     persistedGenerationErrorMessage('generation_interrupted_server_timeout'),
     'generation_interrupted_server_timeout',
   )
-})
-
-test('hasPersistedInterruptionMarker recognizes durable stop and timeout sentinels', () => {
-  assert.equal(
-    hasPersistedInterruptionMarker('Partial answer\n\n[Interrupted by user. Continue?]'),
-    true,
-  )
-  assert.equal(
-    hasPersistedInterruptionMarker('Partial answer\n\n[Request timed out after 300s. Continue?]'),
-    true,
-  )
-  assert.equal(hasPersistedInterruptionMarker('A complete answer.'), false)
-  assert.equal(hasPersistedInterruptionMarker(undefined), false)
 })

@@ -27,11 +27,10 @@ export async function suspendProjectAutomations(args: {
       pausedAutomations = 1
     }
     if (args.repository.requestActiveRunCancellation) {
-      const cancelledRuns = await args.repository.requestActiveRunCancellation({
+      const cancelledRunIds = await args.repository.requestActiveRunCancellation({
         automationId: automation._id,
-        userId: args.userId,
       })
-      return { cancelledRuns, pausedAutomations }
+      return { cancelledRuns: cancelledRunIds.length, pausedAutomations }
     }
     const runs = await args.repository.listRuns({
       automationId: automation._id,

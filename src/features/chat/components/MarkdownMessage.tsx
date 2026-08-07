@@ -73,121 +73,6 @@ const mdSanitizeSchema = {
   },
 }
 
-const humanMarkdownSchema = {
-  ...defaultSchema,
-  tagNames: [
-    'a', 'blockquote', 'br', 'code', 'del', 'em', 'h1', 'h2', 'h3',
-    'h4', 'h5', 'h6', 'hr', 'li', 'ol', 'p', 'pre', 'strong', 'ul',
-  ],
-  attributes: {
-    ...defaultSchema.attributes,
-    a: [['href', /^(?:https?:\/\/|mailto:|#room-mention-)/i], 'title', 'target', 'rel'],
-  },
-  protocols: {
-    ...defaultSchema.protocols,
-    href: ['http', 'https', 'mailto'],
-  },
-}
-
-export type HumanMarkdownMention = { id: string; name: string; type: string }
-
-const LOOSE_HUMAN_MENTION = /@[^\s@]+/g
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function escapeMarkdownLinkText(value: string): string {
-  return value.replace(/([\\[\]])/g, '\\$1')
-}
-
-/**
- * Keep room mentions as semantic markdown links until the restricted renderer
- * turns them into inert chips. This lets people use markdown and mentions in
- * the same message without allowing custom HTML or executable URLs.
- */
-function withHumanMentionLinks(text: string, mentions: HumanMarkdownMention[]): string {
-  const names = [...new Set(mentions.map((mention) => mention.name).filter(Boolean))]
-    .sort((a, b) => b.length - a.length)
-    .map(escapeRegExp)
-  const pattern = names.length
-    ? new RegExp(`@(?:${names.join('|')})|${LOOSE_HUMAN_MENTION.source}`, 'g')
-    : new RegExp(LOOSE_HUMAN_MENTION.source, 'g')
-
-  return text.replace(pattern, (label) => (
-    `[${escapeMarkdownLinkText(label)}](#room-mention-${encodeURIComponent(label)})`
-  ))
-}
-
-/** Restricted renderer for human room messages. Agent-only blocks and raw HTML stay disabled. */
-export function HumanMarkdownMessage({
-  text,
-  mentions = [],
-}: {
-  text: string
-  mentions?: HumanMarkdownMention[]
-}) {
-  const markdown = mentions.length > 0 && text.includes('@')
-    ? withHumanMentionLinks(text, mentions)
-    : text
-
-  return (
-    <div className="room-human-markdown min-w-0 whitespace-normal break-words text-sm leading-6">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[[rehypeSanitize, humanMarkdownSchema]]}
-        components={{
-          a: (props) => {
-            const { children, href, node, ...anchorProps } = props
-            void node
-            if (typeof href === 'string' && href.startsWith('#room-mention-')) {
-              return (
-                <span className="mx-0.5 inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-1.5 py-0.5 align-middle text-xs font-medium text-[var(--foreground)]">
-                  {children}
-                </span>
-              )
-            }
-            return (
-              <a
-                {...anchorProps}
-                href={href}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="underline decoration-[var(--muted-light)] underline-offset-2 hover:decoration-[var(--foreground)]"
-              >
-                {children}
-              </a>
-            )
-          },
-          code: ({ className, children, ...props }) => (
-            <code
-              {...props}
-              className={`${className ?? ''} rounded bg-[var(--surface-subtle)] px-1 py-0.5 font-mono text-[0.9em]`}
-            >
-              {children}
-            </code>
-          ),
-          pre: ({ children }) => (
-            <pre className="my-2 max-w-full overflow-x-auto rounded-lg bg-[var(--surface-subtle)] p-3 font-mono text-xs leading-5">
-              {children}
-            </pre>
-          ),
-          p: ({ children }) => <p className="my-1 whitespace-pre-wrap first:mt-0 last:mb-0">{children}</p>,
-          ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
-          ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
-          blockquote: ({ children }) => (
-            <blockquote className="my-2 border-l-2 border-[var(--border)] pl-3 text-[var(--muted)]">
-              {children}
-            </blockquote>
-          ),
-        }}
-      >
-        {markdown}
-      </ReactMarkdown>
-    </div>
-  )
-}
-
 function stripHtmlishToMarkdown(text: string): string {
   return text
     .replace(/<span\s+class=["']overlay-stream-marker["']\s+aria-hidden=["']true["']\s*><\/span>/gi, '')
@@ -555,6 +440,8 @@ interface Props {
    * in-flight tail so text streams without a duplicate marker mid-message.
    */
   suppressTypingIndicator?: boolean
+  /** Mention metadata for rendering @mention chips in human messages. */
+  mentions?: Array<{ type: string; id: string; name: string }>
 }
 
 export function MarkdownMessage({
@@ -563,6 +450,7 @@ export function MarkdownMessage({
   sourceCitations,
   webSources,
   suppressTypingIndicator = false,
+  mentions,
 }: Props) {
   const hasCitationMap = !!(sourceCitations && Object.keys(sourceCitations).length > 0)
   const hasWebSources = !!(webSources && webSources.length > 0)
@@ -699,3 +587,5 @@ export function MarkdownMessage({
     </div>
   )
 }
+
+export { MarkdownMessage as HumanMarkdownMessage }

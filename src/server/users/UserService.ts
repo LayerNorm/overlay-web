@@ -9,13 +9,11 @@ import type {
 } from './types'
 
 export class UserService {
-  private readonly afterUpsert?: UserServiceOptions['afterUpsert']
   private readonly authProvider: UserAuthProvider
   private readonly lifecycleEvents: UserServiceOptions['lifecycleEvents']
   private readonly repository: UserRepository
 
   constructor(options: UserServiceOptions) {
-    this.afterUpsert = options.afterUpsert
     this.authProvider = options.authProvider
     this.lifecycleEvents = options.lifecycleEvents
     this.repository = options.repository
@@ -42,7 +40,6 @@ export class UserService {
       },
       now: new Date(),
     })
-    await this.afterUpsert?.(result)
     if (result.isNewUser) {
       await this.lifecycleEvents?.publish({
         attributes: { authProvider: this.authProvider },

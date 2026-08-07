@@ -50,6 +50,7 @@ export function configOverridesFromEnv(env: EnvSource): OverlayRuntimeConfigLaye
   const publicEnv = collectPublicEnv(env)
   const auth = authConfigFromEnv(env, deploymentEnvironment)
   const billing = billingConfigFromEnv(env, deploymentEnvironment)
+  const email = emailConfigFromEnv(env)
   const storage = storageConfigFromEnv(env)
   const llm = llmConfigFromEnv(env)
   const integrations = integrationsConfigFromEnv(env)
@@ -76,6 +77,7 @@ export function configOverridesFromEnv(env: EnvSource): OverlayRuntimeConfigLaye
   }
   if (auth) config.auth = auth
   if (billing) config.billing = billing
+  if (email) config.email = email
   if (storage) config.storage = storage
   if (llm) config.llm = llm
   if (integrations) config.integrations = integrations
@@ -209,6 +211,36 @@ function billingConfigFromEnv(
   }
 }
 
+function emailConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
+  const provider = readEnv(env, 'OVERLAY_EMAIL_PROVIDER') ?? readEnv(env, 'EMAIL_PROVIDER')
+  const from = readEnv(env, 'OVERLAY_EMAIL_FROM')
+  const replyTo = readEnv(env, 'OVERLAY_EMAIL_REPLY_TO')
+  const ses = compactObject({
+    accessKeyId: readEnv(env, 'OVERLAY_EMAIL_SES_ACCESS_KEY_ID'),
+    secretAccessKey: readEnv(env, 'OVERLAY_EMAIL_SES_SECRET_ACCESS_KEY'),
+    sessionToken: readEnv(env, 'OVERLAY_EMAIL_SES_SESSION_TOKEN'),
+    region: readEnv(env, 'OVERLAY_EMAIL_SES_REGION'),
+    configurationSetName: readEnv(env, 'OVERLAY_EMAIL_SES_CONFIGURATION_SET'),
+  })
+  const smtp = compactObject({
+    host: readEnv(env, 'OVERLAY_EMAIL_SMTP_HOST'),
+    port: readNumber(env, 'OVERLAY_EMAIL_SMTP_PORT'),
+    secure: readBool(env, 'OVERLAY_EMAIL_SMTP_SECURE'),
+    username: readEnv(env, 'OVERLAY_EMAIL_SMTP_USERNAME'),
+    password: readEnv(env, 'OVERLAY_EMAIL_SMTP_PASSWORD'),
+  })
+  if (!provider && !from && !replyTo && Object.keys(ses).length === 0 && Object.keys(smtp).length === 0) {
+    return null
+  }
+  return compactObject({
+    provider,
+    from,
+    replyTo,
+    ses: Object.keys(ses).length > 0 ? ses : undefined,
+    smtp: Object.keys(smtp).length > 0 ? smtp : undefined,
+  })
+}
+
 function storageConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
   const provider =
     readEnv(env, 'STORAGE_PROVIDER') ??
@@ -283,9 +315,9 @@ function databaseConfigFromEnv(
   deploymentEnvironment?: OverlayDeploymentEnvironment,
 ): OverlayRuntimeConfigLayer | null {
   const provider = readEnv(env, 'OVERLAY_PROVIDER_DATABASE')
-  const convexUrl = deploymentEnvironment === 'production'
-    ? readEnv(env, 'NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL')
-    : readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'NEXT_PUBLIC_CONVEX_URL')
+  const convexUrl = deploymentEnvironment === 'development'
+    ? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'NEXT_PUBLIC_CONVEX_URL')
+    : readEnv(env, 'NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL')
   const postgresConnectionString = readEnv(env, 'OVERLAY_DATABASE_URL')
   const postgresSslMode = readEnv(env, 'OVERLAY_DATABASE_SSL_MODE')
 
@@ -365,6 +397,7 @@ function featuresFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
     apiMutationAudit: readFeatureBool(env, 'API_MUTATION_AUDIT'),
     apiMutationOriginGuard: readFeatureBool(env, 'API_MUTATION_ORIGIN_GUARD'),
     lifecycleEvents: readFeatureBool(env, 'LIFECYCLE_EVENTS'),
+    transactionalEmail: readFeatureBool(env, 'TRANSACTIONAL_EMAIL'),
     openTelemetry: readFeatureBool(env, 'OPEN_TELEMETRY'),
     billing: readFeatureBool(env, 'BILLING') ?? readBool(env, 'BILLING_ENABLED'),
     webhooks: readFeatureBool(env, 'WEBHOOKS') ?? readBool(env, 'WEBHOOKS_ENABLED'),
@@ -422,6 +455,7 @@ function providersFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
     webSearch: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_WEB_SEARCH')),
     analytics: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_ANALYTICS')),
     errorReporting: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_ERROR_REPORTING')),
+    email: providerOverride(readEnv(env, 'OVERLAY_EMAIL_PROVIDER') ?? readEnv(env, 'EMAIL_PROVIDER')),
     secrets: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_SECRETS')),
     rateLimit: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_RATE_LIMIT')),
   })
@@ -558,20 +592,11 @@ function resolveDeploymentEnvironment(env: EnvSource): OverlayDeploymentEnvironm
   if (isDeploymentEnvironment(explicit)) return explicit
 
   const vercelEnv = readEnv(env, 'VERCEL_ENV')
-  // Preview/dev Vercel envs win first; they already prefer non-production secrets.
+  if (vercelEnv === 'production') return 'production'
   if (vercelEnv === 'preview') return 'preview'
   if (vercelEnv === 'development') return 'development'
 
-  // Dual Vercel projects: staging.getoverlay.io is the Production deployment of
-  // overlay-web-staging (VERCEL_ENV=production), but it is the shared staging lane
-  // and must prefer development Convex / Stripe / WorkOS values.
   const appUrl = resolveAppBaseUrl(env)
-  if (appUrl && /(?:^https?:\/\/)?(?:www\.)?staging\.getoverlay\.io\b/i.test(appUrl)) {
-    return 'staging'
-  }
-
-  if (vercelEnv === 'production') return 'production'
-
   if (appUrl && /staging|preview|vercel\.app/i.test(appUrl)) return 'staging'
 
   const nodeEnv = readEnv(env, 'NODE_ENV')

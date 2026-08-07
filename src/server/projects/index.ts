@@ -7,7 +7,4 @@ export {
   type ProjectRepository,
 } from './ProjectRepository'
 export { ProjectService, ProjectServiceError } from './ProjectService'
-export {
-  ProjectSharingService,
-  type ProjectShareDirectory,
-} from './ProjectSharingService'
+export { ProjectSharingService, type ProjectShareDirectory } from './ProjectSharingService'

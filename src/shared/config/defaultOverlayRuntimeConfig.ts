@@ -35,6 +35,7 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     // be rolled back without weakening authentication, authorization, or rate limits.
     apiMutationOriginGuard: true,
     lifecycleEvents: true,
+    transactionalEmail: true,
     // On-prem telemetry export is opt-in: it creates an outbound connection to a customer collector.
     openTelemetry: false,
     billing: true,
@@ -58,6 +59,7 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     webSearch: { provider: 'ai-gateway' },
     analytics: { provider: 'posthog' },
     errorReporting: { provider: 'sentry' },
+    email: { provider: 'none' },
     secrets: { provider: 'env' },
     rateLimit: { provider: 'convex' },
   },
@@ -79,6 +81,11 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     stripe: {
       mode: 'unknown',
     },
+  },
+  email: {
+    provider: 'none',
+    ses: {},
+    smtp: {},
   },
   storage: {
     provider: 'r2',

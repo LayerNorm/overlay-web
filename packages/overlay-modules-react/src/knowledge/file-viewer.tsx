@@ -33,6 +33,8 @@ export interface FileViewerProps {
   content: string
   url?: string
   operations?: FileViewerOperations
+  /** Injected fetch implementation so the presentational module does not call global fetch directly. */
+  fetchImpl?: typeof fetch
 }
 
 function previewSource(name: string, content: string, url?: string): string {
@@ -118,7 +120,7 @@ const proseMarkdown =
 
 // ─── Async binary viewers ─────────────────────────────────────────────────────
 
-function DocumentViewer({ url }: { url: string }) {
+function DocumentViewer({ url, fetchImpl = fetch }: { url: string; fetchImpl?: typeof fetch }) {
   const [html, setHtml] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -128,7 +130,7 @@ function DocumentViewer({ url }: { url: string }) {
     const controller = new AbortController()
     setLoading(true)
     setError(null)
-    fetch(url, { signal: controller.signal })
+    fetchImpl(url, { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`Failed to load (${r.status})`)
         return r.arrayBuffer()
@@ -222,7 +224,7 @@ function ViewerOperationButtons({
   )
 }
 
-export function FileViewer({ name, content, url, operations }: FileViewerProps) {
+export function FileViewer({ name, content, url, operations, fetchImpl }: FileViewerProps) {
   const type = getFileType(name)
   const source = previewSource(name, content, url)
 
@@ -365,7 +367,7 @@ export function FileViewer({ name, content, url, operations }: FileViewerProps) 
 
   if (type === 'document') {
     const documentUrl = resolveSafeViewerUrl(url, 'document')
-    if (documentUrl) return <DocumentViewer url={documentUrl} />
+    if (documentUrl) return <DocumentViewer url={documentUrl} fetchImpl={fetchImpl} />
   }
 
   // binary fallback

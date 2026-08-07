@@ -55,11 +55,6 @@ export type ChatMessageListActions = {
   onReplyToMediaPrompt: (prompt: string, kind: 'image' | 'video', turnId: string | null) => void
   onReplyToAssistantText: (assistantText: string, turnId: string | null) => void
   onBranch: (turnId: string | null) => void | Promise<void>
-  onSaveAssistantToKnowledge?: (args: {
-    content: string
-    messageId: string
-    turnId: string | null
-  }) => void | Promise<void>
   onOpenDraft: (state: DraftModalState) => void
   onCreateAutomationDraft: (state: Extract<DraftModalState, { kind: 'automation' }>) => void | Promise<void>
   onOpenSources: (turnId: string, sources: WebSourceItem[]) => void
@@ -237,7 +232,6 @@ function ChatMessages({
         onDeleteTurn={actions.onDeleteTurn}
         onReplyToAssistantText={actions.onReplyToAssistantText}
         onBranch={actions.onBranch}
-        onSaveAssistantToKnowledge={actions.onSaveAssistantToKnowledge}
         onOpenDraft={actions.onOpenDraft}
         onCreateAutomationDraft={actions.onCreateAutomationDraft}
         onOpenSources={(turnId: string, sources: WebSourceItem[]) => actions.onOpenSources(turnId, sources)}

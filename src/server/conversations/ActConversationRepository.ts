@@ -22,7 +22,6 @@ export type ActMemoryRow = {
 }
 
 export type ActSkillRow = {
-  _id?: string
   name: string
   instructions: string
   enabled?: boolean
@@ -34,19 +33,14 @@ export type ActConversationRow = {
 }
 
 export type ActProjectRow = {
-  archivedAt?: number
   instructions?: string
-  knowledgeBaseId?: string
-  /** Raw per-project configuration; parsed by readProjectSettings at the edge. */
+  archivedAt?: number
   settings?: Record<string, unknown>
 }
 
 export type ConversationListRow = {
   _id: string
   userId: string
-  workspaceId: string
-  conversationType: 'personal' | 'dm' | 'channel'
-  createdByPrincipalId: string
   clientId?: string
   title: string
   lastModified: number
@@ -60,14 +54,14 @@ export type ConversationListRow = {
   shareVisibility?: 'private' | 'public'
   shareToken?: string | null
   isAutomation?: boolean
+  conversationType?: 'personal' | 'dm' | 'channel'
+  workspaceId?: string
 }
 
 export type ConversationMessageRow = {
   _id: string
   turnId: string
   role: 'user' | 'assistant'
-  authorKind: 'human' | 'agent' | 'model' | 'system'
-  authorPrincipalId?: string
   mode: 'ask' | 'act'
   content: string
   contentType: 'text' | 'image' | 'video'
@@ -75,16 +69,14 @@ export type ConversationMessageRow = {
   modelId?: string
   variantIndex?: number
   createdAt: number
-  /** Durable conversation event cursor for the message.created event. */
-  eventSequence?: number
   replyToTurnId?: string
   replySnippet?: string
   routedModelId?: string
   status?: 'generating' | 'completed' | 'error'
   clientNonce?: string
-  editedAt?: number
   deletedAt?: number
-  threadRootMessageId?: string
+  authorPrincipalId?: string
+  authorKind?: 'user' | 'agent' | 'system'
 }
 
 export type ActUsageEvent = {
@@ -108,10 +100,9 @@ export type ConversationEventType =
   | 'message.failed'
   | 'message.stopped'
   | 'message.deleted'
-  | 'message.updated'
   | 'message.ui-updated'
-  | 'reaction.changed'
   | 'pin.changed'
+  | 'reaction.changed'
 
 export type ConversationEventRow = {
   sequence: number
@@ -139,44 +130,37 @@ export interface ActConversationRepository {
     projectId?: string
     title: string
     userId: string
+    isAutomation?: boolean
     workspaceId?: string
     conversationType?: 'personal' | 'dm' | 'channel'
     createdByPrincipalId?: string
-    isAutomation?: boolean
   }): Promise<Id<'conversations'>>
   getConversationById(args: {
     conversationId: Id<'conversations'>
     userId: string
-    workspaceId?: string
   }): Promise<ConversationListRow | null>
   listConversations(args: {
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
     workspaceId?: string
-    conversationType?: 'personal' | 'dm' | 'channel'
   }): Promise<ConversationListRow[]>
   listConversationsByProject(args: {
     includeDeleted?: boolean
     projectId: string
     updatedSince?: number
     userId: string
-    workspaceId?: string
   }): Promise<ConversationListRow[]>
   getRecentMessages(args: {
     beforeCreatedAt?: number
     compactToolPayloads?: boolean
     conversationId: Id<'conversations'>
     limit: number
-    mainOnly?: boolean
-    threadRootMessageId?: string
     userId: string
-    workspaceId?: string
   }): Promise<ConversationMessageRow[]>
   getConversationMessages(args: {
     conversationId: Id<'conversations'>
     userId: string
-    workspaceId?: string
   }): Promise<ConversationMessageRow[]>
   updateConversation(args: {
     actModelId?: string
@@ -186,12 +170,10 @@ export interface ActConversationRepository {
     projectId?: string | null
     title?: string
     userId: string
-    workspaceId?: string
   }): Promise<void>
   deleteConversation(args: {
     conversationId: Id<'conversations'>
     userId: string
-    workspaceId?: string
   }): Promise<void>
   getEntitlements(args: {
     userId: string
@@ -218,12 +200,12 @@ export interface ActConversationRepository {
     tokens?: { input: number; output: number }
     turnId: string
     userId: string
+    variantIndex?: number
     workspaceId?: string
-    authorKind?: 'human' | 'agent' | 'model' | 'system'
+    authorKind?: 'user' | 'agent' | 'system'
     authorPrincipalId?: string
     clientNonce?: string
     threadRootMessageId?: string
-    variantIndex?: number
   }): Promise<Id<'conversationMessages'> | null>
   listMemories(args: {
     userId: string
@@ -318,13 +300,11 @@ export interface ActConversationRepository {
   }): Promise<SharedConversationRow | null>
   getConversationEventCursor(args: {
     userId: string
-    workspaceId?: string
   }): Promise<number>
   listConversationEvents(args: {
     afterSequence: number
     limit: number
     userId: string
-    workspaceId?: string
   }): Promise<ConversationEventRow[]>
   waitForConversationEvents(args: {
     afterSequence: number
@@ -332,7 +312,6 @@ export interface ActConversationRepository {
     signal?: AbortSignal
     timeoutMs: number
     userId: string
-    workspaceId?: string
   }): Promise<ConversationEventRow[]>
   recordUsageBatch(args: {
     events: ActUsageEvent[]
