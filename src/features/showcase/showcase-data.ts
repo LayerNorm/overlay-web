@@ -241,3 +241,8 @@ export const SHOWCASE_MCPS = [
   ['Browser tools', 'Search, navigate, and extract structured information.'],
   ['Sandbox runtime', 'Run code and inspect generated artifacts in an isolated environment.'],
 ] as const
+
+export const SHOWCASE_WORKSPACES = [
+  { id: 'personal', name: 'Personal', slug: 'personal', kind: 'personal' as const, status: 'active' as const, role: 'owner' as const, memberCount: 1 },
+  { id: 'acme', name: 'Acme', slug: 'acme', kind: 'organization' as const, status: 'active' as const, role: 'owner' as const, memberCount: 5 },
+] as const

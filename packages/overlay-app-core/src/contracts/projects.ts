@@ -66,3 +66,16 @@ export interface DeleteProjectResponse extends MutationSuccessResponse {
   deletedIds?: string[]
   deletedAt?: number
 }
+
+export type ProjectExportFile = Record<string, unknown>
+
+export interface ProjectExport {
+  format: 'overlay-project'
+  version: number
+  exportedAt: string
+  project: ProjectSummary
+  knowledgeBases: Array<{ id: string; title: string; description?: string }>
+  conversations: Array<Record<string, unknown>>
+  notes: Array<Record<string, unknown>>
+  files: ProjectExportFile[]
+}

@@ -23,8 +23,15 @@ export interface UserUpsertResult {
   userId: string
 }
 
+export interface UserDirectoryEntry {
+  id: string
+  name: string
+  email: string
+}
+
 export interface UserRepository {
   upsertFromIdentity(input: UserUpsertInput): Promise<UserUpsertResult>
+  listDirectory(): Promise<UserDirectoryEntry[]>
 }
 
 export interface UserServiceOptions {

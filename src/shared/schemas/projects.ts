@@ -28,3 +28,37 @@ export const DeleteProjectRequest = z.object({
 })
 
 export const ProjectResponse = UnknownResponse
+
+export const ProjectExportQuery = z.object({
+  projectId: z.string().min(1),
+}).passthrough()
+
+export const ProjectShareDirectoryQuery = z.object({}).passthrough()
+
+export const ProjectKnowledgeBaseListQuery = z.object({
+  projectId: IdQuery,
+}).passthrough()
+
+export const AttachProjectKnowledgeBaseRequest = z.object({
+  ...AuthFields,
+  projectId: z.string().min(1),
+  knowledgeBaseId: z.string().min(1),
+}).passthrough()
+
+export const DetachProjectKnowledgeBaseRequest = z.object({
+  projectId: z.string().min(1),
+  knowledgeBaseId: z.string().min(1),
+}).passthrough()
+
+export const ProjectKnowledgeTransferRequest = z.object({
+  ...AuthFields,
+  projectId: z.string().min(1).optional(),
+  knowledgeBaseId: z.string().min(1).optional(),
+  direction: z.enum(['promote', 'copy', 'save-answer']),
+  fileId: z.string().min(1).optional(),
+  sourceId: z.string().min(1).optional(),
+  conversationId: z.string().min(1).optional(),
+  messageId: z.string().min(1).optional(),
+  content: z.string().optional(),
+  title: z.string().optional(),
+}).passthrough()

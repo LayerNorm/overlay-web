@@ -30,6 +30,17 @@ export type { McpServerQuery } from './mcp-servers/types'
 export type { MemoryQuery } from './memory/types'
 export type { OutputQuery } from './outputs/types'
 export type { OverlayServerDiscovery } from './discovery/types'
+export type {
+  AdministrativeKnowledgeBase,
+  KnowledgeBaseSearchResponse,
+  KnowledgeBaseShareDirectoryResponse,
+  KnowledgeBaseSourceDetail,
+  KnowledgeSourceDiagnostics,
+} from './knowledge-bases/types'
+export type {
+  AdminCatalogResource,
+  AdminCatalogResourceType,
+} from './admin-authorization/client'
 
 export { ConversationsClient } from './chat/conversations-client'
 export { ChatAuxClient } from './chat/chat-aux-client'
