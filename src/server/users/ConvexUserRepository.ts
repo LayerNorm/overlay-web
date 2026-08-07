@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import type { UserRepository, UserUpsertInput, UserUpsertResult } from './types'
+import type { UserDirectoryEntry, UserRepository, UserUpsertInput, UserUpsertResult } from './types'
 
 export class ConvexUserRepository implements UserRepository {
   async upsertFromIdentity(input: UserUpsertInput): Promise<UserUpsertResult> {
@@ -29,5 +29,18 @@ export class ConvexUserRepository implements UserRepository {
       isNewUser: syncResult.isNewUser,
       userId: input.user.id,
     }
+  }
+
+  async listDirectory(): Promise<UserDirectoryEntry[]> {
+    const { convex } = await import('@/server/database/convex')
+    const rows = await convex.query<{ id: string; name: string | null; email: string }[]>(
+      'auth/users:listDirectoryByServer',
+      { serverSecret: getInternalApiSecret() },
+    )
+    return (rows ?? []).map((row) => ({
+      id: row.id,
+      name: row.name ?? row.email,
+      email: row.email,
+    }))
   }
 }

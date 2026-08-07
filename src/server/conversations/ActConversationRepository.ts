@@ -52,6 +52,8 @@ export type ConversationListRow = {
   shareVisibility?: 'private' | 'public'
   shareToken?: string | null
   isAutomation?: boolean
+  conversationType?: 'personal' | 'dm' | 'channel'
+  workspaceId?: string
 }
 
 export type ConversationMessageRow = {

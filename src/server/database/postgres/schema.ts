@@ -359,6 +359,12 @@ export const workspaceNotificationPreferenceMode = pgEnum('overlay_workspace_not
   'off',
 ])
 
+export const conversationType = pgEnum('overlay_conversation_type', [
+  'personal',
+  'dm',
+  'channel',
+])
+
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
   email: text('email').notNull(),
@@ -584,6 +590,8 @@ export const conversations = pgTable('conversations', {
   shareVisibility: shareVisibility('share_visibility'),
   sharedAt: timestamp('shared_at', { withTimezone: true }),
   isAutomation: boolean('is_automation'),
+  conversationType: conversationType('conversation_type').default('personal').notNull(),
+  workspaceId: text('workspace_id'),
 }, (table) => [
   index('conversations_user_id_idx').on(table.userId),
   uniqueIndex('conversations_user_id_client_id_idx').on(table.userId, table.clientId),
@@ -592,6 +600,7 @@ export const conversations = pgTable('conversations', {
   index('conversations_deleted_at_created_at_idx').on(table.deletedAt, table.createdAt),
   index('conversations_project_id_idx').on(table.projectId),
   uniqueIndex('conversations_share_token_idx').on(table.shareToken),
+  index('conversations_workspace_type_last_modified_idx').on(table.workspaceId, table.conversationType, table.lastModified),
 ])
 
 export const conversationMessages = pgTable('conversation_messages', {

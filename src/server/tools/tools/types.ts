@@ -27,4 +27,6 @@ export interface OverlayToolsOptions {
   includePaidOnlyOverlayTools?: boolean
   /** When `false`, hides memory mutation tools and restricts knowledge search to files for this turn. */
   memoryEnabled?: boolean
+  /** Knowledge base ids activated for the current turn. */
+  activeKnowledgeBaseIds?: readonly string[]
 }

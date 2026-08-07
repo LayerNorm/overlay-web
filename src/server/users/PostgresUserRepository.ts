@@ -8,7 +8,7 @@ import {
   users,
   userSettings,
 } from '@/server/database/postgres/schema'
-import type { UserRepository, UserUpsertInput, UserUpsertResult } from './types'
+import type { UserDirectoryEntry, UserRepository, UserUpsertInput, UserUpsertResult } from './types'
 
 export class PostgresUserRepository implements UserRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
@@ -121,6 +121,22 @@ export class PostgresUserRepository implements UserRepository {
         userId: input.user.id,
       }
     })
+  }
+
+  async listDirectory(): Promise<UserDirectoryEntry[]> {
+    const rows = await this.db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+      })
+      .from(users)
+      .orderBy(users.name)
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name ?? row.email,
+      email: row.email,
+    }))
   }
 }
 

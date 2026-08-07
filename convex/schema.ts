@@ -739,7 +739,8 @@ export default defineSchema({
     .index('by_userId_lastModified', ['userId', 'lastModified'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_projectId', ['projectId'])
-    .index('by_shareToken', ['shareToken']),
+    .index('by_shareToken', ['shareToken'])
+    .index('by_workspaceId_conversationType_lastModified', ['workspaceId', 'conversationType', 'lastModified']),
 
   conversationMessages: defineTable({
     conversationId: v.id('conversations'),
