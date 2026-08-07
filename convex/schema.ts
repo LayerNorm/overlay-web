@@ -1481,7 +1481,7 @@ export default defineSchema({
     resourceType: v.string(),
     resourceId: v.string(),
     createdAt: v.number(),
-    updatedAt: v.number(),
+    updatedAt: v.optional(v.number()),
   })
     .index('by_resource', ['resourceType', 'resourceId'])
     .index('by_workspaceId_resource', ['workspaceId', 'resourceType', 'resourceId']),
