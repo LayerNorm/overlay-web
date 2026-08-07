@@ -359,19 +359,48 @@ After backfill completes, promote to `v.string()`.
 
 ---
 
-### Phase 7: Frontend — pass workspace context to API calls
+### Phase 7: Frontend — pass workspace context to API calls ✅ DONE
 
-**Current state:** The `WorkspaceProvider` already tracks `activeWorkspaceId` in React context. The `workspaceClient.activate()` call sets the active workspace on the server (via `POST /api/v1/workspaces/active`).
+**Already implemented (Phase 0):**
+- BFF resolves active workspace from session via `WorkspaceService.resolveActiveWorkspace`
+- BFF supports explicit `x-overlay-workspace-id` header override (falls back to session)
+- `WorkspaceProvider` dispatches `WORKSPACE_CHANGED_EVENT` on workspace switch
+- `WorkspaceProvider` calls `client.activate()` to set active workspace on server
+- `setActiveChatListWorkspace` updates chat list cache key on workspace switch
+- `x-overlay-workspace-id` header is used by proxy, workflows, agent runner, and API clients
 
-**What's needed:**
-1. The BFF boundary layer resolves the active workspace from the session (via `WorkspaceService.resolveActiveWorkspace`), so **the frontend doesn't need to explicitly pass `workspaceId` in every API call** — the server already knows which workspace is active.
-2. However, for explicitness and for API clients (not browser), the `workspaceId` can be passed as a query param or header. The BFF should prefer the explicit param if provided, otherwise fall back to the session's active workspace.
-3. After workspace switch, the frontend should refetch all resource lists (conversations, files, etc.) — the `dispatchWorkspaceChanged` event already exists for this.
+**Added in Phase 7:**
 
-**Files to verify:**
-- `src/features/workspaces/components/WorkspaceProvider.tsx` — already dispatches workspace change events
-- `src/shared/chat/chat-list-cache.ts` — already has `setActiveChatListWorkspace`
-- Resource list hooks/components — ensure they refetch on workspace change
+Created `useWorkspaceChanged` hook (`src/features/workspaces/lib/use-workspace-changed.ts`)
+that listens for the `overlay:workspace-changed` window event and calls a callback
+with the event detail. This lets resource list components refetch on workspace switch.
+
+Wired `useWorkspaceChanged` into 11 resource list components:
+
+| Component | File | Fetch function |
+|-----------|------|----------------|
+| ChatInlinePanel | `src/features/chat/components/ChatInlinePanel.tsx` | `loadChats` |
+| useChatListController | `src/features/chat/components/chat/useChatListController.ts` | `loadChats` |
+| ChatActivityView | `src/features/chat/components/ChatActivityView.tsx` | `load` |
+| FilesInlinePanel | `src/components/layout/AppSidebarInlinePanels.tsx` | `loadItems` |
+| ProjectsView | `src/features/projects/components/ProjectsView.tsx` | `loadProjects` |
+| ProjectsInlinePanel | `src/components/layout/AppSidebarInlinePanels.tsx` | `loadProjects` |
+| AutomationsInlinePanel | `src/features/automations/components/AutomationsInlinePanel.tsx` | `loadAutomations` |
+| SkillsView | `src/features/automations/components/SkillsView.tsx` | `loadSkills` |
+| McpServersView | `src/features/integrations/components/McpServersView.tsx` | `loadServers` |
+| MemoriesView | `src/features/knowledge/components/MemoriesView.tsx` | `loadMemories` |
+| IntegrationsView | `src/features/integrations/components/IntegrationsView.tsx` | `loadConnected` + `loadCatalog` |
+
+**Pattern:**
+```typescript
+import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
+
+// After existing initial-load useEffect:
+useWorkspaceChanged(loadXxx)
+```
+
+The hook listens for `WORKSPACE_CHANGED_EVENT` and calls the provided callback,
+which triggers a refetch of workspace-scoped data.
 
 ---
 

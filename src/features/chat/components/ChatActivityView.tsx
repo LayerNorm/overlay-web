@@ -11,6 +11,7 @@ import { SegmentedControl } from '@overlay/ui'
 import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 
 const FILTERS: Array<{ value: WorkspaceNotificationFilter; label: string; icon: typeof Bell }> = [
   { value: 'all', label: 'All', icon: Inbox },
@@ -67,6 +68,8 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
     const timer = window.setInterval(() => void load(), 15_000)
     return () => window.clearInterval(timer)
   }, [load])
+
+  useWorkspaceChanged(load)
 
   const unreadCount = notifications.filter((notification) => !notification.readAt).length
 

@@ -49,6 +49,7 @@ import {
 } from '@overlay/app-core'
 import { FilesInlineTree, ProjectsInlineTree } from '@overlay/modules-react/projects'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 import { SidebarResourceList } from '@overlay/ui/primitives'
 
 type Project = ProjectSummary
@@ -104,6 +105,8 @@ export function FilesInlinePanel({
     setLoading(true)
     void loadItems()
   }, [loadItems])
+
+  useWorkspaceChanged(loadItems)
 
   useEffect(() => {
     const consumer = new KnowledgeMutationConsumer({
@@ -246,6 +249,8 @@ export function ProjectsInlinePanel({
     setLoading(true)
     void loadProjects()
   }, [loadProjects, refreshKey])
+
+  useWorkspaceChanged(loadProjects)
 
   async function loadMoreProjects() {
     if (!nextCursor) return

@@ -7,6 +7,7 @@ import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, X } from 'luci
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { MemoriesLoadingState } from './MemoriesLoadingState'
+import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 
 interface MemoryListItem {
   key: string
@@ -134,6 +135,8 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   useEffect(() => {
     void loadMemories()
   }, [loadMemories])
+
+  useWorkspaceChanged(loadMemories)
 
   async function handleAdd() {
     const text = addText.trim()

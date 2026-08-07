@@ -25,6 +25,7 @@ import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/shared/int
 import { setIntegrationLogoUrl } from '@/shared/integrations/integration-logo-cache'
 import { IntegrationsDialog } from '@/features/integrations/components/IntegrationsDialog'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 
 const LIST_PAGE_SIZE = 8
 
@@ -153,6 +154,11 @@ export default function IntegrationsView({
     void loadConnected()
     void loadCatalog()
   }, [loadCatalog, loadConnected, loadRegistry])
+
+  useWorkspaceChanged(useCallback(() => {
+    loadConnected()
+    loadCatalog()
+  }, [loadConnected, loadCatalog]))
 
   useEffect(() => {
     const onFocus = () => {
