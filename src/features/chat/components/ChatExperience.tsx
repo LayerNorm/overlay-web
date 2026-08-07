@@ -876,15 +876,42 @@ export default function ChatExperience({
   })
   invalidateLoadChatRequestRef.current = invalidateLoadChatRequest
 
-  const refreshSelectedAutomation = useCallback(async (options?: { showLoading?: boolean }) => {
-    if (mode !== 'automate' || !automationIdParam) {
+  const refreshSelectedAutomation = useCallback(async (options?: {
+    showLoading?: boolean
+    conversationId?: string
+  }) => {
+    if (mode !== 'automate') {
       setSelectedAutomation(null)
       setSelectedAutomationLoading(false)
       return
     }
     if (options?.showLoading !== false) setSelectedAutomationLoading(true)
     try {
-      const res = await overlayAppClient.automations.getResponse({ automationId: automationIdParam }, {
+      let automationId = automationIdParam
+      if (!automationId) {
+        const conversationId = options?.conversationId ?? activeChatIdRef.current
+        if (conversationId) {
+          const page = await overlayAppClient.automations.getPage<AutomationDetail>({ limit: 100 })
+          const linked = (Array.isArray(page.data) ? page.data : []).find((automation) => (
+            automation.sourceConversationId === conversationId
+            || automation.conversationId === conversationId
+          ))
+          if (linked) {
+            automationId = linked._id
+            setSelectedAutomation(linked)
+            const params = new URLSearchParams(searchParams?.toString() ?? '')
+            params.set('automationId', linked._id)
+            if (!params.get('id')) params.set('id', conversationId)
+            const query = params.toString()
+            router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false })
+          }
+        }
+      }
+      if (!automationId) {
+        setSelectedAutomation(null)
+        return
+      }
+      const res = await overlayAppClient.automations.getResponse({ automationId }, {
         credentials: 'same-origin',
         cache: 'no-store',
       })
@@ -895,7 +922,7 @@ export default function ChatExperience({
     } finally {
       setSelectedAutomationLoading(false)
     }
-  }, [automationIdParam, mode])
+  }, [activeChatIdRef, automationIdParam, mode, pathname, router, searchParams])
 
   useEffect(() => {
     void refreshSelectedAutomation()

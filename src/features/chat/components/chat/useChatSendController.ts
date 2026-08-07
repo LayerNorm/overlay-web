@@ -155,7 +155,7 @@ export function useChatSendController({
   pendingScrollChatIdRef: MutableRefObject<string | null>
   pendingScrollTurnIdRef: MutableRefObject<string | null>
   persistActiveRuntimeUiState: () => void
-  refreshSelectedAutomation: (options?: { showLoading?: boolean }) => Promise<void>
+  refreshSelectedAutomation: (options?: { showLoading?: boolean; conversationId?: string }) => Promise<void>
   replaceConversationRuntime: (
     chatId: string,
     uiSnapshot: ConversationUiState,
