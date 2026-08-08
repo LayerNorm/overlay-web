@@ -62,7 +62,7 @@ export interface WebhookRepository {
     userId: string
     workspaceId?: string
   }): Promise<boolean>
-  rotateSecret(args: { subscriptionId: string; userId: string }): Promise<string | null>
+  rotateSecret(args: { subscriptionId: string; userId: string; workspaceId?: string }): Promise<string | null>
   remove(args: { subscriptionId: string; userId: string; workspaceId?: string }): Promise<boolean>
   listDeliveries(args: {
     limit?: number
@@ -70,6 +70,6 @@ export interface WebhookRepository {
     userId: string
     workspaceId?: string
   }): Promise<WebhookDeliveryRecord[]>
-  redriveDelivery(args: { deliveryId: string; userId: string }): Promise<string | null>
+  redriveDelivery(args: { deliveryId: string; userId: string; workspaceId?: string }): Promise<string | null>
   dispatch(args: { event: WebhookEvent; userId: string }): Promise<{ enqueued: number }>
 }

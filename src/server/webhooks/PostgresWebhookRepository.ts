@@ -87,6 +87,7 @@ export class PostgresWebhookRepository implements WebhookRepository {
       .where(and(
         eq(webhookSubscriptions.id, args.subscriptionId),
         eq(webhookSubscriptions.userId, args.userId),
+        args.workspaceId ? eq(webhookSubscriptions.workspaceId, args.workspaceId) : undefined,
       ))
       .returning({ id: webhookSubscriptions.id })
     return rows.length > 0 ? secret : null

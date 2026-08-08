@@ -106,6 +106,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       const nextDeliveryId = await repository.redriveDelivery({
         deliveryId,
         userId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
       })
       if (!nextDeliveryId) {
         return NextResponse.json({ error: 'Dead-letter delivery not found' }, { status: 404 })
@@ -117,7 +118,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     }
 
     if (action === 'rotate-secret') {
-      const secret = await repository.rotateSecret({ subscriptionId, userId: auth.userId })
+      const secret = await repository.rotateSecret({ subscriptionId, userId: auth.userId, workspaceId: context.workspace.workspace.id })
       if (!secret) {
         return NextResponse.json({ error: 'Webhook subscription not found' }, { status: 404 })
       }

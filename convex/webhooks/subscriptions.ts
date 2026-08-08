@@ -169,12 +169,14 @@ export const rotateSecretByServer = mutation({
     serverSecret: v.string(),
     subscriptionId: v.id('webhookSubscriptions'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
   },
   returns: v.object({ secret: v.union(v.string(), v.null()) }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const existing = await ctx.db.get(args.subscriptionId)
     if (!existing || existing.userId !== args.userId) return { secret: null }
+    if (args.workspaceId !== undefined && existing.workspaceId !== args.workspaceId) return { secret: null }
     const secret = crypto.randomUUID()
     await ctx.db.patch(args.subscriptionId, { secret, updatedAt: Date.now() })
     return { secret }
@@ -276,6 +278,7 @@ export const removeByServer = mutation({
     serverSecret: v.string(),
     userId: v.string(),
     subscriptionId: v.id('webhookSubscriptions'),
+    workspaceId: v.optional(v.string()),
   },
   returns: v.object({ removed: v.boolean() }),
   handler: async (ctx, args) => {
@@ -283,6 +286,9 @@ export const removeByServer = mutation({
 
     const existing = await ctx.db.get(args.subscriptionId)
     if (!existing || existing.userId !== args.userId) {
+      return { removed: false }
+    }
+    if (args.workspaceId !== undefined && existing.workspaceId !== args.workspaceId) {
       return { removed: false }
     }
 

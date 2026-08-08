@@ -83,6 +83,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       const conv = await repository.getConversationById({
         conversationId: conversationId as Id<'conversations'>,
         userId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -188,6 +189,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const conversation = await repository.getConversationById({
       conversationId: id,
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json({ id, conversation })
   } catch (error) {
@@ -248,6 +250,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const conversation = await repository.getConversationById({
       conversationId: body.conversationId as Id<'conversations'>,
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json({ success: true, conversation })
   } catch (error) {
