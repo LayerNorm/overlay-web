@@ -65,6 +65,21 @@ export const listByWorkspace = query({
   },
 })
 
+export const listByUser = query({
+  args: {
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, { userId, accessToken, serverSecret }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
+    return await ctx.db
+      .query('workspaceConnectors')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .collect()
+  },
+})
+
 export const insert = mutation({
   args: {
     workspaceId: v.string(),

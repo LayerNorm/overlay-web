@@ -37,3 +37,5 @@ PostHog and Sentry are optional locally. Use separate projects or DSNs per envir
 Composio catalog and connection setup require `COMPOSIO_API_KEY` on the Next.js server. Hosted deployments resolve WorkOS Vault first and fall back to the server environment. Keep the Vault object and deployment variable aligned when rotating the key.
 
 Verify configuration through `GET /api/v1/integrations?action=health`. Catalog requests fail with an actionable provider/configuration error when the key is missing, rejected, or the upstream catalog is unavailable; an empty catalog is reserved for a successful response with no matches.
+
+Connector visibility is workspace-scoped through `workspaceConnectors`. On the first Personal-workspace read after upgrading, active Composio accounts with no mapping in any workspace are assigned to Personal. Existing workspace mappings are never moved or duplicated.

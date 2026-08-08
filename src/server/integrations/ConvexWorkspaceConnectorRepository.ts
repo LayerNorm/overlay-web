@@ -16,6 +16,13 @@ export class ConvexWorkspaceConnectorRepository implements WorkspaceConnectorRep
     }) ?? []
   }
 
+  async listByUser(args: { userId: string }): Promise<WorkspaceConnectorRecord[]> {
+    return await convex.query<WorkspaceConnectorRecord[]>('integrations/workspaceConnectors:listByUser', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }) ?? []
+  }
+
   async insert(args: { workspaceId: string; userId: string; providerKey: string; connectedAccountId: string }): Promise<string> {
     const id = await convex.mutation<string>('integrations/workspaceConnectors:insert', {
       ...args,

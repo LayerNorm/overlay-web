@@ -301,7 +301,7 @@ export default function IntegrationsView({
     <AppScreenShell
       header={
         <ExtensionPageHeader
-          title="Integrations"
+          title="Connectors"
           searchOpen={searchOpen}
           searchQuery={searchQuery}
           searchPlaceholder="Search integrations…"

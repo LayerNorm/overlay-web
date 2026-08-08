@@ -108,7 +108,6 @@ function WorkspaceList({
         )
       }) : null}
 
-      <div className="my-1 h-px bg-[var(--border)]" />
       <MenuItem
         role="menuitem"
         className="rounded-lg"
@@ -263,7 +262,7 @@ function WorkspaceSwitcherTrigger({
           ) : null}
         </span>
       ) : null}
-      {!compact && !isFooter ? (
+      {!compact ? (
         <ChevronDown
           size={13}
           className={`shrink-0 text-[var(--muted-light)] transition-transform ${open ? 'rotate-180' : ''}`}

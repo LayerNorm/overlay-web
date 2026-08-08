@@ -3,7 +3,7 @@ import dynamic from 'next/dynamic'
 import { notFound, redirect } from 'next/navigation'
 import { getOverlaySession } from '@/server/auth/session'
 import { getOverlayCapabilities } from '@/server/capabilities'
-import { getOverlayServerContext } from '@/server/bootstrap'
+import { getInitialKnowledgeBases } from '@/server/app/route-data'
 import { KnowledgeRouteSkeleton } from '../_components/AppRouteSkeletons'
 import { PublicShowcaseKnowledgeBasesView } from '@/features/showcase/PublicShowcaseKnowledgeBasesView'
 
@@ -18,7 +18,7 @@ const KnowledgeBaseListView = dynamic(
 )
 
 async function KnowledgeBaseListContent({ userId }: { userId: string }) {
-  const knowledgeBases = await getOverlayServerContext().knowledgeBaseService.listKnowledgeBases(userId)
+  const knowledgeBases = await getInitialKnowledgeBases()
   return <KnowledgeBaseListView initialKnowledgeBases={knowledgeBases} userId={userId} />
 }
 

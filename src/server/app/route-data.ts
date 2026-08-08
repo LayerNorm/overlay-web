@@ -6,6 +6,7 @@ import type {
   AppBootstrapResponse,
   ConnectedIntegrationsResponse,
   IntegrationSearchResponse,
+  KnowledgeBase,
   KnowledgeFileNode,
   MemoryRow,
   NoteDoc,
@@ -24,6 +25,7 @@ import * as notesService from '@/server/app-api/v1/notes/route'
 import * as memoryService from '@/server/app-api/v1/memory/route'
 import * as bootstrapService from '@/server/app-api/v1/bootstrap/route'
 import * as integrationsService from '@/server/app-api/v1/integrations/route'
+import * as knowledgeBasesService from '@/server/app-api/v1/knowledge-bases/route'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 
 const INITIAL_CHAT_LIST_LIMIT = 24
@@ -115,6 +117,14 @@ export function getInitialKnowledgeMemories(): Promise<MemoryRow[]> {
     memoryService.GET as BffDomainService,
     [],
   )
+}
+
+export function getInitialKnowledgeBases(): Promise<KnowledgeBase[]> {
+  return callAppApi<{ knowledgeBases: KnowledgeBase[] }>(
+    '/api/v1/knowledge-bases',
+    knowledgeBasesService.GET as BffDomainService,
+    { knowledgeBases: [] },
+  ).then(({ knowledgeBases }) => knowledgeBases)
 }
 
 export async function getInitialIntegrationsData(): Promise<InitialIntegrationsRouteData> {

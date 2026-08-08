@@ -51,6 +51,7 @@ test('Convex connector mappings require active workspace membership and upsert b
 
     assert.equal(repeatedId, firstId)
     assert.equal((await connectors.listByWorkspace({ workspaceId, userId: ownerUserId })).length, 1)
+    assert.equal((await connectors.listByUser({ userId: ownerUserId })).length, 1)
     await assert.rejects(
       () => connectors.listByWorkspace({ workspaceId, userId: `${scope}_outsider` }),
       /WORKSPACE_ACCESS_DENIED/,
