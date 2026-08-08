@@ -37,6 +37,7 @@ export type CreateAutomationInput = {
   graph?: AutomationSummary['graph']
   sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
+  workspaceId?: string
 }
 
 export type UpdateAutomationInput = Partial<Omit<CreateAutomationInput, 'userId'>> & {
@@ -58,6 +59,7 @@ export interface AutomationRepository {
   getAutomation(args: {
     automationId: string
     userId: string
+    workspaceId?: string
   }): Promise<AutomationForUpdateNote | null>
   getAutomationRunTarget(args: {
     automationId: string
@@ -81,6 +83,7 @@ export interface AutomationRepository {
   removeAutomation(args: {
     automationId: string
     userId: string
+    workspaceId?: string
   }): Promise<void>
   requestRunCancellation(args: {
     runId: string

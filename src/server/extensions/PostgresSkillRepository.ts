@@ -12,24 +12,29 @@ type SkillRow = typeof skills.$inferSelect
 export class PostgresSkillRepository implements SkillRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
 
-  async list(args: { userId: string; projectId?: string }): Promise<SkillRecord[]> {
+  async list(args: { userId: string; projectId?: string; workspaceId?: string }): Promise<SkillRecord[]> {
     const rows = await this.db
       .select()
       .from(skills)
       .where(and(
         eq(skills.userId, args.userId),
         args.projectId ? eq(skills.projectId, args.projectId) : isNull(skills.projectId),
+        args.workspaceId ? eq(skills.workspaceId, args.workspaceId) : undefined,
       ))
       .orderBy(desc(skills.updatedAt))
       .limit(200)
     return rows.map(mapSkill)
   }
 
-  async get(args: { skillId: string; userId: string }): Promise<SkillRecord | null> {
+  async get(args: { skillId: string; userId: string; workspaceId?: string }): Promise<SkillRecord | null> {
     const [row] = await this.db
       .select()
       .from(skills)
-      .where(and(eq(skills.id, args.skillId), eq(skills.userId, args.userId)))
+      .where(and(
+        eq(skills.id, args.skillId),
+        eq(skills.userId, args.userId),
+        args.workspaceId ? eq(skills.workspaceId, args.workspaceId) : undefined,
+      ))
       .limit(1)
     return row ? mapSkill(row) : null
   }
@@ -45,6 +50,7 @@ export class PostgresSkillRepository implements SkillRepository {
       name: args.name.trim(),
       projectId: args.projectId,
       userId: args.userId,
+      workspaceId: args.workspaceId,
     })
     return id
   }
@@ -62,15 +68,23 @@ export class PostgresSkillRepository implements SkillRepository {
           ? { version: sql`${skills.version} + 1` }
           : {}),
       })
-      .where(and(eq(skills.id, args.skillId), eq(skills.userId, args.userId)))
+      .where(and(
+        eq(skills.id, args.skillId),
+        eq(skills.userId, args.userId),
+        args.workspaceId ? eq(skills.workspaceId, args.workspaceId) : undefined,
+      ))
       .returning({ id: skills.id })
     if (rows.length === 0) throw new Error('Unauthorized')
   }
 
-  async remove(args: { skillId: string; userId: string }): Promise<void> {
+  async remove(args: { skillId: string; userId: string; workspaceId?: string }): Promise<void> {
     const rows = await this.db
       .delete(skills)
-      .where(and(eq(skills.id, args.skillId), eq(skills.userId, args.userId)))
+      .where(and(
+        eq(skills.id, args.skillId),
+        eq(skills.userId, args.userId),
+        args.workspaceId ? eq(skills.workspaceId, args.workspaceId) : undefined,
+      ))
       .returning({ id: skills.id })
     if (rows.length === 0) throw new Error('Unauthorized')
   }
