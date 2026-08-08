@@ -1174,25 +1174,6 @@ async function listLinkedAutomationConversationIds(
   )))]
 }
 
-async function listLinkedAutomationConversationIds(
-  db: OverlayPostgresDb,
-  userId: string,
-): Promise<string[]> {
-  const rows = await db
-    .select({
-      sourceConversationId: automations.sourceConversationId,
-      conversationId: automations.conversationId,
-    })
-    .from(automations)
-    .where(and(
-      eq(automations.userId, userId),
-      isNull(automations.deletedAt),
-    ))
-  return [...new Set(rows.flatMap((row) => [row.sourceConversationId, row.conversationId].filter(
-    (id): id is string => Boolean(id),
-  )))]
-}
-
 function mapConversationRow(row: typeof conversations.$inferSelect): ConversationListRow {
   return {
     _id: row.id,
