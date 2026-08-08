@@ -46,6 +46,7 @@ interface MemoriesHeaderState {
 const IMPLEMENTED_SECTION_IDS = new Set<string>([
   'general',
   'account',
+  'workspace',
   'customization',
   'memories',
   'models',
