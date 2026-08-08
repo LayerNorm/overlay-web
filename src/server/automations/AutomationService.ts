@@ -128,7 +128,7 @@ function normalizeScheduleValue(schedule: unknown): AutomationSchedule {
   if (typeof schedule === 'string') {
     try {
       return JSON.parse(schedule) as AutomationSchedule
-    } catch {
+    } catch (_error) {
       throw new Error('Invalid schedule: expected an object, received a string that is not valid JSON')
     }
   }
@@ -281,6 +281,7 @@ export class AutomationService {
       const automation = await this.deps.repository.getAutomation({
         automationId: args.automationId,
         userId: args.userId,
+        workspaceId: args.workspaceId,
       })
       if (!automation) serviceError({ error: 'Not found' }, 404)
       return automation
@@ -289,6 +290,7 @@ export class AutomationService {
       userId: args.userId,
       includeDeleted: args.includeDeleted,
       projectId: args.projectId,
+      workspaceId: args.workspaceId,
     })
   }
 
