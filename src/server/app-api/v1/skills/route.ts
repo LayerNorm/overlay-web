@@ -9,7 +9,7 @@ function repository() {
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const projectId = request.nextUrl.searchParams.get('projectId') || undefined
-    return NextResponse.json(await repository().list({ userId: context.auth.userId, projectId }))
+    return NextResponse.json(await repository().list({ userId: context.auth.userId, workspaceId: context.workspace.workspace.id, projectId }))
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to fetch skills' }, { status: 500 })
   }
@@ -30,6 +30,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
     const id = await repository().create({
       userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
       name,
       description,
       instructions,
@@ -49,6 +50,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     await repository().update({
       skillId,
       userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
       ...(body.name !== undefined ? { name: stringValue(body.name) } : {}),
       ...(body.description !== undefined ? { description: stringValue(body.description) } : {}),
       ...(body.instructions !== undefined ? { instructions: stringValue(body.instructions) } : {}),
@@ -64,7 +66,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
   try {
     const skillId = request.nextUrl.searchParams.get('skillId')
     if (!skillId) return NextResponse.json({ error: 'skillId required' }, { status: 400 })
-    await repository().remove({ skillId, userId: context.auth.userId })
+    await repository().remove({ skillId, userId: context.auth.userId, workspaceId: context.workspace.workspace.id })
     return NextResponse.json({ success: true })
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to delete skill' }, { status: 500 })

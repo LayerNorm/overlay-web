@@ -269,6 +269,7 @@ export class AutomationService {
     includeRuns?: boolean
     projectId?: string
     userId: string
+    workspaceId?: string
   }): Promise<unknown> {
     if (args.automationId && args.includeRuns) {
       return await this.deps.repository.listRuns({
@@ -294,6 +295,7 @@ export class AutomationService {
   async createAutomation(args: {
     body: CreateAutomationBody
     userId: string
+    workspaceId?: string
   }): Promise<{ success: true; id: unknown }> {
     const { body } = args
     if (!body.name?.trim() || !body.description?.trim() || !body.instructions?.trim() || !body.schedule) {
@@ -328,6 +330,7 @@ export class AutomationService {
   async updateAutomation(args: {
     body: UpdateAutomationBody
     userId: string
+    workspaceId?: string
   }): Promise<{ success: true }> {
     const { body } = args
     if (body.action === 'cancel-run') {
@@ -415,6 +418,7 @@ export class AutomationService {
   async deleteAutomation(args: {
     automationId?: string | null
     userId: string
+    workspaceId?: string
   }): Promise<{ success: true; linkedConversationIds: string[] }> {
     if (!args.automationId) {
       serviceError({ error: 'automationId required' }, 400)

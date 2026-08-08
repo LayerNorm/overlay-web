@@ -52,6 +52,7 @@ import { FileShareMenu } from '@/features/files/components/FileShareMenu'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { buildSharePageUrl } from '@/shared/share/share-page-url'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 
 type HubChat = ProjectChatSummary
 type ProjectFileRecord = ProjectFileSummary
@@ -648,6 +649,8 @@ export default function ProjectsView({
     window.addEventListener(PROJECTS_CHANGED_EVENT, onProjectsChanged)
     return () => window.removeEventListener(PROJECTS_CHANGED_EVENT, onProjectsChanged)
   }, [loadProjects])
+
+  useWorkspaceChanged(loadProjects)
 
   const createProject = useCallback(async () => {
     if (creatingProject) return

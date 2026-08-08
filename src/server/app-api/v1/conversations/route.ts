@@ -73,6 +73,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       const conv = await repository.getConversationById({
         conversationId: conversationId as Id<'conversations'>,
         userId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
       return NextResponse.json(conv)
@@ -82,6 +83,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       const conv = await repository.getConversationById({
         conversationId: conversationId as Id<'conversations'>,
         userId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -130,6 +132,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       const list = await repository.listConversationsByProject({
         projectId,
         userId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
         ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
         ...(includeDeleted !== undefined ? { includeDeleted } : {}),
       })
@@ -138,6 +141,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     const list = await repository.listConversations({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
       ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })
@@ -174,6 +178,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const paidModels = normalizePaidChatModels(body.askModelIds, body.actModelId)
     const id = await repository.createConversation({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       clientId: body.clientId?.trim() || undefined,
       title: body.title || 'New Chat',
       projectId: body.projectId ?? undefined,
@@ -184,6 +189,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const conversation = await repository.getConversationById({
       conversationId: id,
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json({ id, conversation })
   } catch (error) {
@@ -234,6 +240,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     await repository.updateConversation({
       conversationId: body.conversationId as Id<'conversations'>,
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       title: body.title,
       projectId: body.projectId,
       askModelIds,
@@ -243,6 +250,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const conversation = await repository.getConversationById({
       conversationId: body.conversationId as Id<'conversations'>,
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json({ success: true, conversation })
   } catch (error) {
@@ -263,6 +271,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     await repository.deleteConversation({
       conversationId: conversationId as Id<'conversations'>,
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json({ success: true, conversationId, deletedAt: Date.now() })
   } catch (error) {

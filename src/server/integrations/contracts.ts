@@ -14,6 +14,7 @@ export interface IntegrationCatalogQuery {
   query?: string
   userId: string
   accessToken?: string
+  workspaceId?: string
 }
 
 export interface IntegrationCatalogPage {
@@ -38,6 +39,7 @@ export interface IntegrationConnectionContext {
   callbackOrigin: string
   providerKey: string
   userId: string
+  workspaceId?: string
 }
 
 export interface IntegrationHealth {
@@ -74,11 +76,12 @@ export interface IntegrationCatalog {
     accessToken?: string
     providerKey: string
     userId: string
+    workspaceId?: string
   }): Promise<IntegrationSummary | null>
 }
 
 export interface ConnectionRepository {
-  listConnections(args: { accessToken?: string; userId: string }): Promise<IntegrationConnection[]>
+  listConnections(args: { accessToken?: string; userId: string; workspaceId?: string }): Promise<IntegrationConnection[]>
   disconnect(context: IntegrationConnectionContext): Promise<void>
   deleteConnectionsForUser(args: { accessToken?: string; userId: string }): Promise<number>
 }

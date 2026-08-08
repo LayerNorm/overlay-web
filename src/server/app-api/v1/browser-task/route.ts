@@ -190,6 +190,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       : JSON.stringify(result.output ?? '')
     const outputId = await outputService.create({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       type: 'text',
       source: 'browser',
       status: 'completed',

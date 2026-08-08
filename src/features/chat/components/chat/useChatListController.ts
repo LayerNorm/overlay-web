@@ -7,6 +7,7 @@ import {
   primeChatList,
   type ChatListPageInfo,
 } from '@/shared/chat/chat-list-cache'
+import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 import type { Conversation } from '../chat-interface/types'
 
 export function useChatListController({
@@ -57,6 +58,8 @@ export function useChatListController({
       // Chat list refresh is best-effort; existing local/cached state remains usable.
     }
   }, [pendingTitleRef, useSeededGuestData])
+
+  useWorkspaceChanged(loadChats)
 
   return {
     chats,

@@ -458,12 +458,14 @@ export const projects = pgTable('projects', {
   parentId: text('parent_id').references((): AnyPgColumn => projects.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  workspaceId: text('workspace_id'),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 }, (table) => [
   index('projects_user_id_idx').on(table.userId),
   uniqueIndex('projects_user_id_client_id_idx').on(table.userId, table.clientId),
   index('projects_user_id_updated_at_idx').on(table.userId, table.updatedAt),
   index('projects_parent_id_idx').on(table.parentId),
+  index('projects_workspace_id_idx').on(table.workspaceId),
   check('projects_parent_not_self_check', sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`),
 ])
 
@@ -478,11 +480,13 @@ export const skills = pgTable('skills', {
   instructions: text('instructions').notNull(),
   enabled: boolean('enabled').default(true).notNull(),
   version: integer('version').default(1).notNull(),
+  workspaceId: text('workspace_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('skills_user_updated_idx').on(table.userId, table.updatedAt),
   index('skills_project_updated_idx').on(table.projectId, table.updatedAt),
+  index('skills_workspace_id_idx').on(table.workspaceId),
 ])
 
 export const mcpServers = pgTable('mcp_servers', {
@@ -523,12 +527,14 @@ export const mcpServers = pgTable('mcp_servers', {
     .notNull(),
   toolCatalogUpdatedAt: timestamp('tool_catalog_updated_at', { withTimezone: true }),
   toolCatalogError: text('tool_catalog_error'),
+  workspaceId: text('workspace_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('mcp_servers_user_updated_idx').on(table.userId, table.updatedAt),
   index('mcp_servers_user_enabled_idx').on(table.userId, table.enabled),
   index('mcp_servers_project_updated_idx').on(table.projectId, table.updatedAt),
+  index('mcp_servers_workspace_id_idx').on(table.workspaceId),
 ])
 
 /**
@@ -615,6 +621,7 @@ export const conversations = pgTable('conversations', {
   index('conversations_deleted_at_created_at_idx').on(table.deletedAt, table.createdAt),
   index('conversations_project_id_idx').on(table.projectId),
   uniqueIndex('conversations_share_token_idx').on(table.shareToken),
+  index('conversations_workspace_id_idx').on(table.workspaceId),
   index('conversations_workspace_type_last_modified_idx').on(table.workspaceId, table.conversationType, table.lastModified),
   uniqueIndex('conversations_workspace_dm_identity_key_idx').on(table.workspaceId, table.dmIdentityKey),
   uniqueIndex('conversations_workspace_channel_slug_idx').on(table.workspaceId, table.channelSlug),
@@ -734,6 +741,7 @@ export const notes = pgTable('notes', {
   content: text('content').default('').notNull(),
   tags: jsonb('tags').$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
   projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
+  workspaceId: text('workspace_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -742,6 +750,7 @@ export const notes = pgTable('notes', {
   uniqueIndex('notes_user_id_client_id_idx').on(table.userId, table.clientId),
   index('notes_user_id_updated_at_idx').on(table.userId, table.updatedAt),
   index('notes_project_id_idx').on(table.projectId),
+  index('notes_workspace_id_idx').on(table.workspaceId),
 ])
 
 export const memories = pgTable('memories', {
@@ -766,6 +775,7 @@ export const memories = pgTable('memories', {
   indexedAt: timestamp('indexed_at', { withTimezone: true }),
   indexError: text('index_error'),
   embeddingModelVersion: text('embedding_model_version'),
+  workspaceId: text('workspace_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -779,6 +789,7 @@ export const memories = pgTable('memories', {
   index('memories_conversation_id_idx').on(table.conversationId),
   index('memories_note_id_idx').on(table.noteId),
   index('memories_index_status_idx').on(table.indexStatus, table.updatedAt),
+  index('memories_workspace_id_idx').on(table.workspaceId),
 ])
 
 export const knowledgeChunks = pgTable('knowledge_chunks', {
@@ -786,6 +797,7 @@ export const knowledgeChunks = pgTable('knowledge_chunks', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id'),
   projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
   sourceKind: knowledgeSourceKind('source_kind').notNull(),
   sourceId: text('source_id').notNull(),
@@ -804,6 +816,7 @@ export const knowledgeChunks = pgTable('knowledge_chunks', {
   index('knowledge_chunks_user_project_idx').on(table.userId, table.projectId),
   index('knowledge_chunks_source_idx').on(table.sourceKind, table.sourceId),
   index('knowledge_chunks_knowledge_source_id_idx').on(table.knowledgeSourceId),
+  index('knowledge_chunks_workspace_id_idx').on(table.workspaceId),
 ])
 
 export const knowledgeChunkEmbeddings = pgTable('knowledge_chunk_embeddings', {
@@ -911,6 +924,7 @@ export const files = pgTable('files', {
   shareToken: text('share_token'),
   shareVisibility: shareVisibility('share_visibility'),
   sharedAt: timestamp('shared_at', { withTimezone: true }),
+  workspaceId: text('workspace_id'),
 }, (table) => [
   index('files_user_id_idx').on(table.userId),
   index('files_user_id_content_hash_idx').on(table.userId, table.contentHash),
@@ -923,6 +937,7 @@ export const files = pgTable('files', {
   index('files_r2_key_idx').on(table.r2Key),
   index('files_output_expiry_idx').on(table.kind, table.outputStatus, table.expiresAt),
   uniqueIndex('files_share_token_idx').on(table.shareToken),
+  index('files_workspace_id_idx').on(table.workspaceId),
   check('files_parent_not_self_check', sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`),
   check('files_duplicate_not_self_check', sql`${table.duplicateOfFileId} IS NULL OR ${table.duplicateOfFileId} <> ${table.id}`),
 ])
@@ -995,6 +1010,7 @@ export const automations = pgTable('automations', {
     .references(() => conversations.id, { onDelete: 'set null' }),
   concurrencyPolicy: automationConcurrencyPolicy('concurrency_policy').default('skip').notNull(),
   schedulerWorkflowRunId: text('scheduler_workflow_run_id'),
+  workspaceId: text('workspace_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -1003,6 +1019,7 @@ export const automations = pgTable('automations', {
   index('automations_user_id_enabled_idx').on(table.userId, table.enabled),
   index('automations_project_id_idx').on(table.projectId),
   index('automations_due_idx').on(table.enabled, table.nextRunAt),
+  index('automations_workspace_id_idx').on(table.workspaceId),
 ])
 
 export const automationTriggers = pgTable('automation_triggers', {
@@ -1086,11 +1103,13 @@ export const webhookSubscriptions = pgTable('webhook_subscriptions', {
   events: jsonb('events').$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
   enabled: boolean('enabled').default(true).notNull(),
   description: text('description'),
+  workspaceId: text('workspace_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('webhook_subscriptions_user_id_updated_at_idx').on(table.userId, table.updatedAt),
   index('webhook_subscriptions_user_id_enabled_idx').on(table.userId, table.enabled),
+  index('webhook_subscriptions_workspace_id_idx').on(table.workspaceId),
 ])
 
 export const webhookDeliveries = pgTable('webhook_deliveries', {

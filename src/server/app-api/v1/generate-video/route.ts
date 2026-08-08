@@ -185,6 +185,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           try {
             outputId = await outputService.create({
                 userId: auth.userId,
+                workspaceId: context.workspace.workspace.id,
                 type: 'video',
                 source: 'video_generation',
                 status: 'pending',

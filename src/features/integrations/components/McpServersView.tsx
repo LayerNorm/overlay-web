@@ -27,6 +27,7 @@ import {
 import { AppScreenShell } from '@overlay/modules-react/shell'
 import { ExtensionPageHeader, McpServerDialog, McpServersPanel } from '@overlay/modules-react/extensions'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 
 interface DialogState {
   mode: 'create' | 'edit'
@@ -59,6 +60,8 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
   useEffect(() => {
     void loadServers()
   }, [loadServers])
+
+  useWorkspaceChanged(loadServers)
 
   // The OAuth flow completes in another tab, so refresh when the user comes back to see the
   // updated connection status without a manual reload.

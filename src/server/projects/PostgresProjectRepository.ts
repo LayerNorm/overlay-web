@@ -33,6 +33,7 @@ export class PostgresProjectRepository implements ProjectRepository {
   async getProject(args: {
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord | null> {
     const [row] = await this.db
       .select()
@@ -41,6 +42,7 @@ export class PostgresProjectRepository implements ProjectRepository {
         eq(projects.id, args.projectId),
         eq(projects.userId, args.userId),
         isNull(projects.deletedAt),
+        args.workspaceId ? eq(projects.workspaceId, args.workspaceId) : undefined,
       ))
       .limit(1)
     return row ? mapProjectRow(row) : null
@@ -50,6 +52,7 @@ export class PostgresProjectRepository implements ProjectRepository {
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord[]> {
     const updatedSince = finiteDate(args.updatedSince)
     const rows = await this.db
@@ -59,6 +62,7 @@ export class PostgresProjectRepository implements ProjectRepository {
         eq(projects.userId, args.userId),
         args.includeDeleted ? undefined : isNull(projects.deletedAt),
         updatedSince ? gt(projects.updatedAt, updatedSince) : undefined,
+        args.workspaceId ? eq(projects.workspaceId, args.workspaceId) : undefined,
       ))
       .orderBy(asc(projects.createdAt))
     return rows.map(mapProjectRow)
@@ -70,6 +74,7 @@ export class PostgresProjectRepository implements ProjectRepository {
     name: string
     parentId?: string | null
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord> {
     return await this.db.transaction(async (tx) => {
       await lockProjectHierarchy(tx, args.userId)
@@ -84,6 +89,7 @@ export class PostgresProjectRepository implements ProjectRepository {
         parentId: normalizeOptional(args.parentId),
         createdAt: now,
         updatedAt: now,
+        workspaceId: args.workspaceId,
       }
       if (values.clientId) {
         const [existing] = await tx
@@ -136,6 +142,7 @@ export class PostgresProjectRepository implements ProjectRepository {
     parentId?: string | null
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord | null> {
     return await this.db.transaction(async (tx) => {
       await lockProjectHierarchy(tx, args.userId)
@@ -168,6 +175,7 @@ export class PostgresProjectRepository implements ProjectRepository {
           eq(projects.id, args.projectId),
           eq(projects.userId, args.userId),
           isNull(projects.deletedAt),
+          args.workspaceId ? eq(projects.workspaceId, args.workspaceId) : undefined,
         ))
         .returning()
       return row ? mapProjectRow(row) : null
@@ -177,13 +185,17 @@ export class PostgresProjectRepository implements ProjectRepository {
   async deleteProjectTree(args: {
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<DeleteProjectTreeResult | null> {
     return await this.db.transaction(async (tx) => {
       await lockProjectHierarchy(tx, args.userId)
       const allProjects = await tx
         .select()
         .from(projects)
-        .where(eq(projects.userId, args.userId))
+        .where(and(
+          eq(projects.userId, args.userId),
+          args.workspaceId ? eq(projects.workspaceId, args.workspaceId) : undefined,
+        ))
       const root = allProjects.find((project) => (
         project.id === args.projectId && !project.deletedAt
       ))

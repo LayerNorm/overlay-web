@@ -45,6 +45,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
     includeDeleted?: boolean
     projectId?: string
     userId: string
+    workspaceId?: string
   }): Promise<AutomationRecord[]> {
     const rows = await this.db
       .select()
@@ -53,6 +54,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
         eq(automations.userId, args.userId),
         args.includeDeleted ? undefined : isNull(automations.deletedAt),
         args.projectId ? eq(automations.projectId, args.projectId) : undefined,
+        args.workspaceId ? eq(automations.workspaceId, args.workspaceId) : undefined,
       ))
       .orderBy(desc(automations.updatedAt))
       .limit(200)
@@ -74,7 +76,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
     return rows.map(({ run }) => mapRun(run))
   }
 
-  async getAutomation(args: { automationId: string; userId: string }): Promise<AutomationRecord | null> {
+  async getAutomation(args: { automationId: string; userId: string; workspaceId?: string }): Promise<AutomationRecord | null> {
     const [row] = await this.db
       .select()
       .from(automations)
@@ -82,6 +84,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
         eq(automations.id, args.automationId),
         eq(automations.userId, args.userId),
         isNull(automations.deletedAt),
+        args.workspaceId ? eq(automations.workspaceId, args.workspaceId) : undefined,
       ))
       .limit(1)
     return row ? mapAutomation(row) : null
@@ -124,6 +127,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
         timezone: args.timezone?.trim() || 'UTC',
         updatedAt: new Date(now),
         userId: args.userId,
+        workspaceId: args.workspaceId,
       })
       await tx.insert(automationTriggers).values({
         automationId: id,
@@ -148,6 +152,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
           eq(automations.id, args.automationId),
           eq(automations.userId, args.userId),
           isNull(automations.deletedAt),
+          args.workspaceId ? eq(automations.workspaceId, args.workspaceId) : undefined,
         ))
         .limit(1)
       if (!current) throw new Error('Unauthorized')
@@ -188,7 +193,10 @@ export class PostgresAutomationRepository implements AutomationRepository {
           nextRunAt,
           updatedAt: new Date(now),
         })
-        .where(eq(automations.id, args.automationId))
+        .where(and(
+          eq(automations.id, args.automationId),
+          args.workspaceId ? eq(automations.workspaceId, args.workspaceId) : undefined,
+        ))
       await tx
         .update(automationTriggers)
         .set({
@@ -237,7 +245,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
     await this.setEnabled({ ...args, enabled: true })
   }
 
-  async removeAutomation(args: { automationId: string; userId: string }): Promise<void> {
+  async removeAutomation(args: { automationId: string; userId: string; workspaceId?: string }): Promise<void> {
     const now = new Date()
     await this.db.transaction(async (tx) => {
       const rows = await tx
@@ -247,6 +255,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
           eq(automations.id, args.automationId),
           eq(automations.userId, args.userId),
           isNull(automations.deletedAt),
+          args.workspaceId ? eq(automations.workspaceId, args.workspaceId) : undefined,
         ))
         .returning({ id: automations.id })
       if (rows.length === 0) throw new Error('Unauthorized')

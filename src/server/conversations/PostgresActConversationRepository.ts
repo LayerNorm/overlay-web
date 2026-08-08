@@ -59,6 +59,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     conversationType?: 'personal' | 'dm' | 'channel'
     createdByPrincipalId?: string
     isAutomation?: boolean
+    workspaceId?: string
   }): Promise<ConversationId> {
     const now = new Date()
     const id = conversationId()
@@ -75,6 +76,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
       createdAt: now,
       updatedAt: now,
       isAutomation: args.isAutomation ?? false,
+      workspaceId: args.workspaceId,
     }
 
     const [row] = await this.db.transaction(async (tx) => {
@@ -202,6 +204,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
   async getConversationById(args: {
     conversationId: ConversationId
     userId: string
+    workspaceId?: string
   }): Promise<ConversationListRow | null> {
     const [row] = await this.db
       .select()
@@ -209,6 +212,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
       .where(and(
         eq(conversations.id, args.conversationId),
         eq(conversations.userId, args.userId),
+        args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
       ))
       .limit(1)
     return row ? mapConversationRow(row) : null
@@ -218,6 +222,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<ConversationListRow[]> {
     const linkedAutomationConversationIds = await listLinkedAutomationConversationIds(this.db, args.userId)
     const rows = await this.db
@@ -230,6 +235,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         workspaceId: args.workspaceId,
         conversationType: args.conversationType,
         linkedAutomationConversationIds,
+        workspaceId: args.workspaceId,
       }))
       .orderBy(desc(conversations.lastModified))
     return rows.map(mapConversationRow)
@@ -240,6 +246,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     projectId: string
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<ConversationListRow[]> {
     const linkedAutomationConversationIds = await listLinkedAutomationConversationIds(this.db, args.userId)
     const rows = await this.db
@@ -252,6 +259,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
           userId: args.userId,
           workspaceId: args.workspaceId,
           linkedAutomationConversationIds,
+          workspaceId: args.workspaceId,
         }),
         eq(conversations.projectId, args.projectId),
       ))
@@ -307,6 +315,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
     projectId?: string | null
     title?: string
     userId: string
+    workspaceId?: string
   }): Promise<void> {
     const now = new Date()
     await this.db.transaction(async (tx) => {
@@ -330,6 +339,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         .where(and(
           eq(conversations.id, args.conversationId),
           eq(conversations.userId, args.userId),
+          args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
         ))
         .returning({ id: conversations.id })
       if (updated.length > 0) {
@@ -345,6 +355,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
   async deleteConversation(args: {
     conversationId: ConversationId
     userId: string
+    workspaceId?: string
   }): Promise<void> {
     const now = new Date()
     await this.db.transaction(async (tx) => {
@@ -358,6 +369,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         .where(and(
           eq(conversations.id, args.conversationId),
           eq(conversations.userId, args.userId),
+          args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
         ))
         .returning({ id: conversations.id })
       if (updated.length > 0) {
@@ -1120,6 +1132,7 @@ function conversationListWhere(args: {
   linkedAutomationConversationIds: string[]
   updatedSince?: number
   userId: string
+  workspaceId?: string
 }) {
   return and(
     eq(conversations.userId, args.userId),
@@ -1138,6 +1151,7 @@ function conversationListWhere(args: {
           gte(conversations.updatedAt, finiteDate(args.updatedSince)!),
         )
       : undefined,
+    args.workspaceId ? eq(conversations.workspaceId, args.workspaceId) : undefined,
   )
 }
 

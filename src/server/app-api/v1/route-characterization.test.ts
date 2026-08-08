@@ -96,6 +96,34 @@ function context(): AppApiRouteContext {
     appDataCapabilities: TEST_CONVEX_APP_DATA_CAPABILITIES,
     requestFingerprint: 'fixture-request-fingerprint',
     requestIdempotencyKey: 'fixture-idempotency-key',
+    workspace: {
+      workspace: {
+        id: 'ws_personal_user_1',
+        kind: 'personal',
+        name: 'Personal',
+        slug: 'personal-user_1',
+        status: 'active',
+        createdAt: 0,
+        updatedAt: 0,
+      },
+      principal: {
+        id: 'principal_1',
+        workspaceId: 'ws_personal_user_1',
+        type: 'human',
+        displayName: 'Test User',
+        createdAt: 0,
+        updatedAt: 0,
+      },
+      membership: {
+        membershipId: 'membership_1',
+        workspaceId: 'ws_personal_user_1',
+        principalId: 'principal_1',
+        role: 'owner',
+        status: 'active',
+        joinedAt: 0,
+        updatedAt: 0,
+      },
+    },
   }
 }
 

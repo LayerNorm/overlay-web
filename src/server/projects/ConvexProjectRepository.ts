@@ -17,11 +17,13 @@ export class ConvexProjectRepository implements ProjectRepository {
   async getProject(args: {
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord | null> {
     return await convex.query<ProjectRecord | null>('projects/projects:get', {
       projectId: args.projectId as Id<'projects'>,
       userId: args.userId,
       serverSecret: this.serverSecret,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
   }
 
@@ -29,12 +31,14 @@ export class ConvexProjectRepository implements ProjectRepository {
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord[]> {
     return await convex.query<ProjectRecord[]>('projects/projects:list', {
       userId: args.userId,
       serverSecret: this.serverSecret,
       updatedSince: args.updatedSince,
       includeDeleted: args.includeDeleted,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }) ?? []
   }
 
@@ -44,6 +48,7 @@ export class ConvexProjectRepository implements ProjectRepository {
     name: string
     parentId?: string | null
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord> {
     const id = await convex.mutation<Id<'projects'>>('projects/projects:create', {
       userId: args.userId,
@@ -52,9 +57,10 @@ export class ConvexProjectRepository implements ProjectRepository {
       instructions: args.instructions,
       name: args.name,
       parentId: args.parentId ?? undefined,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }, { throwOnError: true })
     if (!id) throw new Error('Failed to create project')
-    const project = await this.getProject({ projectId: id, userId: args.userId })
+    const project = await this.getProject({ projectId: id, userId: args.userId, ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}) })
     if (!project) throw new Error('Failed to create project')
     return project
   }
@@ -65,6 +71,7 @@ export class ConvexProjectRepository implements ProjectRepository {
     parentId?: string | null
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord | null> {
     const existing = await this.getProject(args)
     if (!existing) return null
@@ -75,6 +82,7 @@ export class ConvexProjectRepository implements ProjectRepository {
       instructions: args.instructions,
       name: args.name,
       parentId: args.parentId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }, { throwOnError: true })
     return await this.getProject(args)
   }
@@ -82,12 +90,14 @@ export class ConvexProjectRepository implements ProjectRepository {
   async deleteProjectTree(args: {
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<DeleteProjectTreeResult | null> {
     const root = await this.getProject(args)
     if (!root) return null
     const allProjects = await this.listProjects({
       includeDeleted: true,
       userId: args.userId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
     const deletedIds = collectDescendants(allProjects, args.projectId)
     for (const projectId of [...deletedIds].reverse()) {
@@ -95,6 +105,7 @@ export class ConvexProjectRepository implements ProjectRepository {
         projectId: projectId as Id<'projects'>,
         userId: args.userId,
         serverSecret: this.serverSecret,
+        ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
       }, { throwOnError: true })
     }
     return {

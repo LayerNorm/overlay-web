@@ -204,18 +204,22 @@ export const searchChunksLexical = internalQuery({
   args: {
     userId: v.string(),
     sourceKind: v.optional(v.union(v.literal('file'), v.literal('memory'))),
+    workspaceId: v.optional(v.string()),
     query: v.string(),
     limit: v.number(),
   },
-  handler: async (ctx, { userId, sourceKind, query, limit }) => {
+  handler: async (ctx, { userId, sourceKind, workspaceId, query, limit }) => {
     const qStr = truncateSearchQuery(query)
     if (!qStr) return []
     return await ctx.db
       .query('knowledgeChunks')
       .withSearchIndex('search_text', (q) => {
-        const chain = q.search('text', qStr).eq('userId', userId)
+        let chain = q.search('text', qStr).eq('userId', userId)
         if (sourceKind !== undefined) {
-          return chain.eq('sourceKind', sourceKind)
+          chain = chain.eq('sourceKind', sourceKind)
+        }
+        if (workspaceId !== undefined) {
+          chain = chain.eq('workspaceId', workspaceId)
         }
         return chain
       })
@@ -227,8 +231,9 @@ export const embeddingChunkIdsForVectorResults = internalQuery({
   args: {
     embeddingIds: v.array(v.id('knowledgeChunkEmbeddings')),
     sourceKind: v.optional(v.union(v.literal('file'), v.literal('memory'))),
+    workspaceId: v.optional(v.string()),
   },
-  handler: async (ctx, { embeddingIds, sourceKind }) => {
+  handler: async (ctx, { embeddingIds, sourceKind, workspaceId }) => {
     const ordered: Array<{ chunkId: Id<'knowledgeChunks'> | null }> = []
     for (const id of embeddingIds) {
       const row = await ctx.db.get(id)
@@ -239,6 +244,13 @@ export const embeddingChunkIdsForVectorResults = internalQuery({
       if (sourceKind !== undefined && row.sourceKind !== sourceKind) {
         ordered.push({ chunkId: null })
         continue
+      }
+      if (workspaceId !== undefined) {
+        const chunk = await ctx.db.get(row.chunkId)
+        if (!chunk || chunk.workspaceId !== workspaceId) {
+          ordered.push({ chunkId: null })
+          continue
+        }
       }
       ordered.push({ chunkId: row.chunkId })
     }
@@ -559,6 +571,7 @@ export const hybridSearch = action({
     query: v.string(),
     projectId: v.optional(v.string()),
     sourceKind: v.optional(v.union(v.literal('file'), v.literal('memory'))),
+    workspaceId: v.optional(v.string()),
     kVec: v.optional(v.number()),
     kLex: v.optional(v.number()),
     m: v.optional(v.number()),
@@ -681,6 +694,7 @@ export const hybridSearch = action({
       await ctx.runQuery(internal.knowledge.knowledge.embeddingChunkIdsForVectorResults, {
         embeddingIds: vecOrderedIds,
         sourceKind: args.sourceKind,
+        workspaceId: args.workspaceId,
       })
 
     const scores = new Map<string, number>()
@@ -694,6 +708,7 @@ export const hybridSearch = action({
     const lexDocs = await ctx.runQuery(internal.knowledge.knowledge.searchChunksLexical, {
       userId: args.userId,
       sourceKind: args.sourceKind,
+      workspaceId: args.workspaceId,
       query: q,
       limit: kLex,
     })

@@ -59,6 +59,7 @@ export class OutputService {
     metadata?: Record<string, unknown>
     conversationId?: string
     turnId?: string
+    workspaceId?: string
   }): Promise<string> {
     if (!isKnownOutputType(args.type)) throw new Error(`Unsupported output type: ${args.type}`)
     const now = Date.now()
@@ -140,6 +141,7 @@ export class OutputService {
     conversationId?: string | null
     type?: string | null
     userId: string
+    workspaceId?: string
   }): Promise<OutputRecord[]> {
     const files = await this.deps.repository.listFiles({
       userId: args.userId,
@@ -153,7 +155,7 @@ export class OutputService {
       .sort((a, b) => b.createdAt - a.createdAt)
   }
 
-  async delete(args: { outputId: string; userId: string }): Promise<void> {
+  async delete(args: { outputId: string; userId: string; workspaceId?: string }): Promise<void> {
     const file = await this.getCanonicalFile(args.outputId, args.userId)
     if (!file || file.kind !== 'output') throw new Error('Output not found')
     await this.deps.files.deleteFile({ fileId: file._id, userId: args.userId })
@@ -170,6 +172,7 @@ export class OutputService {
     outputId: string
     userId: string
     visibility: 'private' | 'public'
+    workspaceId?: string
   }) {
     const file = await this.getCanonicalFile(args.outputId, args.userId)
     if (!file || file.kind !== 'output') throw new Error('Output not found')

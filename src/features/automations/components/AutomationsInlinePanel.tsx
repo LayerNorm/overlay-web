@@ -14,6 +14,7 @@ import {
   removeAutomationById,
 } from '@overlay/app-core/automations'
 import { AutomationsInlineList } from '@overlay/modules-react/automations'
+import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 
 const INITIAL_SIDEBAR_LIST_LIMIT = 24
 
@@ -77,6 +78,8 @@ export function AutomationsInlinePanel({
   useEffect(() => {
     void loadAutomations()
   }, [loadAutomations])
+
+  useWorkspaceChanged(loadAutomations)
 
   useEffect(() => {
     function handleAutomationsUpdated() {

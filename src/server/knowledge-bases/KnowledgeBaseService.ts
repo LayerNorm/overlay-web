@@ -120,7 +120,10 @@ export class KnowledgeBaseService {
     users?: UserRepository
   }) {}
 
-  async listKnowledgeBases(userId: string): Promise<KnowledgeBase[]> {
+  async listKnowledgeBases(
+    userId: string,
+    workspaceScopedResourceIds?: Set<string>,
+  ): Promise<KnowledgeBase[]> {
     const subject = await this.requireCapability(userId, 'knowledge.read')
     const [owned, sharedIds] = await Promise.all([
       this.deps.repositories.bases.listForOwner(userId),
@@ -135,8 +138,12 @@ export class KnowledgeBaseService {
       .filter((id) => !ownedIds.has(id))
       .map((id) => this.deps.repositories.bases.get(id))))
       .filter((value): value is KnowledgeBase => Boolean(value?.status === 'active'))
-    return [...owned, ...shared]
+    const all = [...owned, ...shared]
       .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
+    if (workspaceScopedResourceIds) {
+      return all.filter((base) => workspaceScopedResourceIds.has(base.id))
+    }
+    return all
   }
 
   /**

@@ -188,7 +188,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       checkGlobalBudget: checkGlobalR2Budget,
       command: normalizedCommand,
       conversationId,
-      createOutput: (args) => outputService.create(args as Parameters<typeof outputService.create>[0]),
+      createOutput: (args) => outputService.create({ ...args, workspaceId: context.workspace.workspace.id } as Parameters<typeof outputService.create>[0]),
       deleteObject,
       downloadFile: downloadSandboxFile,
       expectedOutputs,

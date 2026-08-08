@@ -39,7 +39,7 @@ async function validateMcpUrl(url: unknown): Promise<string | null> {
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const projectId = request.nextUrl.searchParams.get('projectId') || undefined
-    return NextResponse.json(await repository().list({ userId: context.auth.userId, projectId }))
+    return NextResponse.json(await repository().list({ userId: context.auth.userId, workspaceId: context.workspace.workspace.id, projectId }))
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to fetch MCP servers' }, { status: 500 })
   }
@@ -66,6 +66,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     const id = await repository().create({
       userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
       projectId: optionalString(body.projectId),
       name,
       description: optionalString(body.description),
@@ -109,6 +110,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     await repository().update({
       mcpServerId,
       userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
       ...(body.name !== undefined ? { name: stringValue(body.name) } : {}),
       ...(body.description !== undefined ? { description: stringValue(body.description) } : {}),
       ...(body.transport !== undefined ? { transport: parseTransport(body.transport) ?? undefined } : {}),
@@ -134,7 +136,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
   try {
     const mcpServerId = request.nextUrl.searchParams.get('mcpServerId')
     if (!mcpServerId) return NextResponse.json({ error: 'mcpServerId required' }, { status: 400 })
-    await repository().remove({ mcpServerId, userId: context.auth.userId })
+    await repository().remove({ mcpServerId, userId: context.auth.userId, workspaceId: context.workspace.workspace.id })
     return NextResponse.json({ success: true })
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to delete MCP server' }, { status: 500 })

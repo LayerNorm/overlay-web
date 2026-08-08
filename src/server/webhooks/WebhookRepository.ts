@@ -44,13 +44,14 @@ export type WebhookDeliveryRecord = {
 }
 
 export interface WebhookRepository {
-  list(args: { userId: string }): Promise<WebhookSubscriptionRecord[]>
+  list(args: { userId: string; workspaceId?: string }): Promise<WebhookSubscriptionRecord[]>
   create(args: {
     description?: string
     enabled?: boolean
     events: WebhookEventType[]
     url: string
     userId: string
+    workspaceId?: string
   }): Promise<{ id: string; secret: string }>
   update(args: {
     description?: string
@@ -59,14 +60,16 @@ export interface WebhookRepository {
     subscriptionId: string
     url?: string
     userId: string
+    workspaceId?: string
   }): Promise<boolean>
-  rotateSecret(args: { subscriptionId: string; userId: string }): Promise<string | null>
-  remove(args: { subscriptionId: string; userId: string }): Promise<boolean>
+  rotateSecret(args: { subscriptionId: string; userId: string; workspaceId?: string }): Promise<string | null>
+  remove(args: { subscriptionId: string; userId: string; workspaceId?: string }): Promise<boolean>
   listDeliveries(args: {
     limit?: number
     subscriptionId?: string
     userId: string
+    workspaceId?: string
   }): Promise<WebhookDeliveryRecord[]>
-  redriveDelivery(args: { deliveryId: string; userId: string }): Promise<string | null>
+  redriveDelivery(args: { deliveryId: string; userId: string; workspaceId?: string }): Promise<string | null>
   dispatch(args: { event: WebhookEvent; userId: string }): Promise<{ enqueued: number }>
 }

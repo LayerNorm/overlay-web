@@ -9,6 +9,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const { searchParams } = request.nextUrl
     const result = await fileService.getOrListFiles({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       fileId: searchParams.get('fileId'),
       projectId: searchParams.get('projectId'),
       kind: searchParams.get('kind'),
@@ -33,6 +34,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const { auth } = context
     const result = await fileService.createFile({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       body: body as Record<string, unknown>,
     })
     return NextResponse.json(result)
@@ -47,6 +49,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const { auth } = context
     const result = await fileService.updateFile({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       body: body as Record<string, unknown>,
     })
     return NextResponse.json(result)
@@ -70,6 +73,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     const result = await fileService.deleteFile({
       fileId: request.nextUrl.searchParams.get('fileId') || body.fileId,
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json(result)
   } catch (error) {

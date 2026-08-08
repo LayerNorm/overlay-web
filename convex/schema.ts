@@ -457,6 +457,7 @@ export default defineSchema({
     .index('by_tokenHash', ['tokenHash']),
 
   projects: defineTable({
+    workspaceId: v.optional(v.string()),
     userId: v.string(),
     clientId: v.optional(v.string()),
     name: v.string(),
@@ -468,12 +469,15 @@ export default defineSchema({
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),
   })
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_knowledgeBaseId', ['knowledgeBaseId']),
 
   skills: defineTable({
+    workspaceId: v.optional(v.string()),
     userId: v.string(),
     name: v.string(),
     description: v.string(),
@@ -483,9 +487,10 @@ export default defineSchema({
     version: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index('by_userId', ['userId']).index('by_projectId', ['projectId']),
+  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId']).index('by_projectId', ['projectId']),
 
   automations: defineTable({
+    workspaceId: v.optional(v.string()),
     userId: v.string(),
     name: v.optional(v.string()),
     description: v.optional(v.string()),
@@ -544,6 +549,8 @@ export default defineSchema({
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),
   })
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId', ['userId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_userId_enabled', ['userId', 'enabled'])
@@ -600,6 +607,7 @@ export default defineSchema({
     .index('by_userId_createdAt', ['userId', 'createdAt']),
 
   mcpServers: defineTable({
+    workspaceId: v.optional(v.string()),
     userId: v.string(),
     projectId: v.optional(v.string()),
     name: v.string(),
@@ -657,6 +665,8 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId', ['userId'])
     .index('by_userId_enabled', ['userId', 'enabled'])
     .index('by_projectId', ['projectId']),
@@ -947,6 +957,7 @@ export default defineSchema({
     .index('by_userId_updatedAt', ['userId', 'updatedAt']),
 
   notes: defineTable({
+    workspaceId: v.optional(v.string()),
     userId: v.string(),
     clientId: v.optional(v.string()),
     title: v.string(),
@@ -957,12 +968,13 @@ export default defineSchema({
     createdAt: v.optional(v.number()),
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),
-  }).index('by_userId', ['userId'])
+  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_projectId', ['projectId']),
 
   memories: defineTable({
+    workspaceId: v.optional(v.string()),
     userId: v.string(),
     clientId: v.optional(v.string()),
     content: v.string(),
@@ -988,6 +1000,8 @@ export default defineSchema({
     updatedAt: v.optional(v.number()),
     deletedAt: v.optional(v.number()),
   })
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt']),
@@ -995,6 +1009,7 @@ export default defineSchema({
   // Searchable chunks for hybrid vector + full-text retrieval (files + memories).
   knowledgeChunks: defineTable({
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     projectId: v.optional(v.string()),
     sourceKind: v.union(v.literal('file'), v.literal('memory')),
     sourceId: v.string(),
@@ -1005,12 +1020,13 @@ export default defineSchema({
     text: v.string(),
     title: v.optional(v.string()),
   })
+    .index('by_workspaceId', ['workspaceId'])
     .index('by_source', ['sourceKind', 'sourceId'])
     .index('by_userId', ['userId'])
     .index('by_knowledgeSourceId', ['knowledgeSourceId'])
     .searchIndex('search_text', {
       searchField: 'text',
-      filterFields: ['userId', 'sourceKind'],
+      filterFields: ['userId', 'sourceKind', 'workspaceId'],
     }),
 
   // Embeddings stored separately so routine reads avoid loading large vectors.
@@ -1030,6 +1046,7 @@ export default defineSchema({
 
   // Generated images and videos from Chat and Agent sessions.
   outputs: defineTable({
+    workspaceId: v.optional(v.string()),
     userId: v.string(),
     type: v.union(
       v.literal('image'),
@@ -1064,7 +1081,7 @@ export default defineSchema({
     errorMessage: v.optional(v.string()),
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
-  }).index('by_userId', ['userId'])
+  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_conversationId', ['conversationId'])
     .index('by_turnId', ['turnId']),
@@ -1093,6 +1110,7 @@ export default defineSchema({
     .index('by_userId_status_expiresAt', ['userId', 'status', 'expiresAt']),
 
   files: defineTable({
+    workspaceId: v.optional(v.string()),
     userId: v.string(),
     clientId: v.optional(v.string()),
     name: v.string(),
@@ -1152,7 +1170,7 @@ export default defineSchema({
     shareToken: v.optional(v.string()),
     shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
     sharedAt: v.optional(v.number()),
-  }).index('by_userId', ['userId'])
+  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_contentHash', ['userId', 'contentHash'])
     .index('by_duplicateOfFileId', ['duplicateOfFileId'])
@@ -1164,6 +1182,7 @@ export default defineSchema({
     .index('by_shareToken', ['shareToken']),
 
   webhookSubscriptions: defineTable({
+    workspaceId: v.optional(v.string()),
     userId: v.string(),
     url: v.string(),
     secret: v.string(),
@@ -1173,6 +1192,8 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId', ['userId'])
     .index('by_userId_enabled', ['userId', 'enabled']),
 
@@ -1781,4 +1802,16 @@ export default defineSchema({
   })
     .index('by_reviewId', ['reviewId'])
     .index('by_resource_createdAt', ['resourceType', 'resourceId', 'createdAt']),
+
+  workspaceConnectors: defineTable({
+    workspaceId: v.string(),
+    userId: v.string(),
+    providerKey: v.string(),
+    connectedAccountId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_providerKey', ['workspaceId', 'providerKey'])
+    .index('by_userId', ['userId']),
 })
