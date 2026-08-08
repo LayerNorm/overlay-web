@@ -10,6 +10,8 @@
 
 **Phase 2 follow-up (2026-08-08):** The five characterization regressions were repaired without weakening route security: integration tests inject a connector repository, billing auth no longer calls Next's ambient `connection()` for explicit requests, conversation-act tests inject authorization and preserve the 403 premium gate, and user-message persistence failures no longer mask a later history-preparation failure. Documentation navigation, command references, stale phase framing, and OpenAPI's two MCP OAuth operations were reconciled. The required characterization, release-safety, tenancy, on-prem parity, docs-health, typecheck, targeted lint, and production-build checks now pass locally; the full repository lint still reports pre-existing errors outside this phase, and the optional live Convex connector contract remains skipped without deployment credentials.
 
+**Phase 3 follow-up (2026-08-08):** The first controlled simplification slice preserved workspace contracts while separating the `WorkspaceSwitcher` controller from its trigger/menu/dialog presentation and moving the Postgres sharing-policy upsert SQL behind a focused governance helper. The complexity baseline now records 57 complex functions (down from 59 at the audit snapshot), with no new over-budget file/function and no route/schema/feature-flag changes. The remaining workspace service, repository, Convex collaboration, and settings-panel seams remain planned for subsequent focused PRs; this phase does not claim the monoliths are fully decomposed.
+
 ## Scope and method
 
 This is a source and verification audit of the integrated repository, not a claim about a live deployment. The working tree was clean before the audit. The active branch is one commit ahead of `origin/staging`; the accumulated work compared with `origin/main` changes **760 files** (`+84,212 / -2,483` lines). The largest areas of change are `src/server` (+34,549), `src/features` (+10,830), workspace/collaboration Convex code (+4,411), migrations (+2,554), and the public app/API layer (+2,491).
@@ -45,7 +47,7 @@ The focused path is subtraction first: remove the two unsafe endpoints, restore 
 | Targeted ESLint on risky new files | Pass | Formatting/type-style checks do not catch the architectural issues. |
 | `npx next typegen` | Pass | No route-type collision was found. |
 | Chat/file boundary checks | Pass | The focused chat transcript and file route boundaries remain intact. |
-| `npm run check:web-complexity` | Pass with debt | It reports 59 complex functions and 59 large production files but accepts the checked-in baseline. |
+| `npm run check:web-complexity` | Pass with debt | It reports 57 complex functions and 56 large production files in the current baseline; existing debt remains accepted while the ratchet blocks net-new violations. |
 
 ## Findings
 

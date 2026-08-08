@@ -24,6 +24,15 @@ only; Postgres must not silently fall back to Convex for them.
 
 Clients should not call model providers, billing providers, identity admin APIs, object storage, or Convex directly unless a route explicitly exists for that surface.
 
+## Domain Decomposition
+
+Workspace behavior stays behind the existing provider/repository contracts while
+large seams are split by responsibility. The `WorkspaceSwitcher` controller owns
+navigation and lifecycle state; `WorkspaceSwitcherView` owns the trigger, menu,
+and dialog presentation. Postgres workspace governance writes build their SQL in
+`src/server/workspaces/workspace-sharing-policy-sql.ts`, keeping policy patch
+semantics separate from repository orchestration without changing the contract.
+
 ## Auth
 
 - Browser auth uses the signed httpOnly `overlay_session` cookie.
