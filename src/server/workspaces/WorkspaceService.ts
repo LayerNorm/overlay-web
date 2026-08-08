@@ -87,6 +87,11 @@ export class WorkspaceService {
     return await this.repository.listForUser(required(userId, 'userId'))
   }
 
+  /** Read-only principal lookup for lifecycle event attribution. */
+  async resolvePrincipal(principalId: string): Promise<WorkspacePrincipal | null> {
+    return await this.repository.getPrincipal(required(principalId, 'principalId'))
+  }
+
   async assertAccountDeletionAllowed(userId: string): Promise<void> {
     const accesses = await this.repository.listForUser(required(userId, 'userId'), {
       includeArchived: true,
