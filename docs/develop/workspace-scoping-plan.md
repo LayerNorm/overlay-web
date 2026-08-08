@@ -661,7 +661,7 @@ Compatibility routes without a workspace path segment (including `/app/settings`
 
 ### Legacy knowledge bases and connector ownership ✅
 
-- The Knowledge page loads its initial list through the workspace-aware BFF and reconciles again on `overlay:workspace-changed`; it never seeds the client from an owner-only repository query.
+- The Knowledge page and its secondary sidebar load through the workspace-aware BFF and reconcile again on `overlay:workspace-changed`; neither retains an owner-only list across a workspace switch.
 - Legacy personal knowledge bases without a resource binding are claimed lazily by the Personal workspace. Existing bindings are never moved.
 - Legacy Composio accounts without any workspace mapping are claimed lazily by the Personal workspace. Provider keys already mapped to any workspace are never copied across workspaces.
 
