@@ -25,6 +25,21 @@ export function readWorkspaceIdFromPath(pathname: string): string | null {
   }
 }
 
+export function isWorkspaceNavigationPending(args: {
+  activeWorkspaceId: string | null
+  pendingWorkspaceId: string | null
+  routeWorkspaceId: string | null
+}): boolean {
+  if (!args.pendingWorkspaceId) return false
+  // Canonical workspace URLs commit when the pathname reaches the target.
+  // Compatibility routes such as /app/settings and /app/automations do not
+  // carry a workspace segment, so the activated workspace is their commit
+  // signal instead.
+  return args.routeWorkspaceId
+    ? args.routeWorkspaceId !== args.pendingWorkspaceId
+    : args.activeWorkspaceId !== args.pendingWorkspaceId
+}
+
 export function resolveWorkspaceSurface(pathname: string): string {
   const segments = pathname.split('/').filter(Boolean)
   if (segments[0] !== 'app') return FALLBACK_SURFACE

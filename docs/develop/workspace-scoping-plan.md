@@ -657,6 +657,8 @@ For users without a personal workspace, the migration should create one first
 
 Canonical `/app/w/:workspaceId/:surface` requests forward `x-overlay-workspace-id` into in-process initial-data loads. The app shell keeps the sidebar mounted, masks the previous page as soon as a switch begins, and remounts the route-content subtree under a workspace-specific key when navigation commits. This prevents state initialized from Workspace A (`files`, chats, projects, knowledge, automations, and integrations) from surviving into Workspace B even though both canonical URLs rewrite to the same Next.js route.
 
+Compatibility routes without a workspace path segment (including `/app/settings` and `/app/automations`) treat the activated workspace state as the navigation commit signal. They must not wait for a workspace ID to appear in the pathname, or the route-content fallback will remain visible indefinitely.
+
 ---
 
 ## Risks and Mitigations

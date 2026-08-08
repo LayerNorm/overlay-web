@@ -4,7 +4,10 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import { WORKSPACE_CHANGED_EVENT, type WorkspaceChangedEventDetail } from '@/shared/workspaces/events'
 import { useWorkspace } from './WorkspaceProvider'
-import { readWorkspaceIdFromPath } from '../lib/workspace-routing'
+import {
+  isWorkspaceNavigationPending,
+  readWorkspaceIdFromPath,
+} from '../lib/workspace-routing'
 
 /**
  * Keeps route content isolated from the workspace that produced it.
@@ -35,9 +38,11 @@ export function WorkspaceScopedContentBoundary({
     return () => window.removeEventListener(WORKSPACE_CHANGED_EVENT, handleWorkspaceChanged)
   }, [])
 
-  const waitingForNavigation = Boolean(
-    pendingWorkspaceId && routeWorkspaceId !== pendingWorkspaceId,
-  )
+  const waitingForNavigation = isWorkspaceNavigationPending({
+    activeWorkspaceId,
+    pendingWorkspaceId,
+    routeWorkspaceId,
+  })
   if (switchingWorkspaceId || waitingForNavigation) return fallback
 
   const scopeKey = routeWorkspaceId ?? activeWorkspaceId ?? 'workspace-unavailable'
