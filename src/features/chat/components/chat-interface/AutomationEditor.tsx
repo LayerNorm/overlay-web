@@ -99,6 +99,10 @@ export function AutomationEditorPanel({
       const request = buildAutomationUpdateRequest({ automation, draft })
       const res = await overlayAppClient.automations.updateResponse(request)
       if (!res.ok) throw new Error('Failed to save automation')
+      if (draft.enabled && automation.enabled !== true) {
+        const schedulerRes = await overlayAppClient.automations.startSchedulerResponse(automation._id)
+        if (!schedulerRes.ok) throw new Error('Failed to start automation scheduler')
+      }
       const refreshedRes = await overlayAppClient.automations.getResponse(
         { automationId: automation._id },
         { credentials: 'same-origin', cache: 'no-store' },
