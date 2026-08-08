@@ -57,7 +57,7 @@ Minimum app runtime variables:
 | `NEXT_PUBLIC_APP_URL` | Always in deployed environments | Public browser URL for the web app. |
 | `NEXT_PUBLIC_CONVEX_URL` | Browser or server talks to Convex | Public Convex deployment URL for the selected environment. Use `DEV_NEXT_PUBLIC_CONVEX_URL` for local dev against a separate dev deployment. |
 | `INTERNAL_API_SECRET` | `database.provider="convex"` | Shared server-to-Convex secret. It is not required by a Postgres-only deployment. |
-| `INTERNAL_SERVICE_AUTH_SECRET` | App runtime only | Used for internal app service auth. Do not put this in Convex. |
+| `INTERNAL_SERVICE_AUTH_SECRET` | Automations | Shared by the app runtime and the selected Convex deployment when Convex executes automation callbacks. Keep it distinct from `INTERNAL_API_SECRET` and aligned per environment. Postgres-only deployments keep it on the app and worker runtimes. |
 | `SESSION_SECRET` | Cookie sessions | App runtime only. Must be long, random, and environment-specific. |
 | `SESSION_TRANSFER_KEY` | Native/session transfer flows | App runtime only. |
 | `SESSION_COOKIE_ENCRYPTION_KEY` | Encrypted session cookie payloads | App runtime only. |
