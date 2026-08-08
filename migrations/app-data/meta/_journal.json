@@ -351,6 +351,13 @@
       "when": 1786820400000,
       "tag": "0049_resource_tables_workspace_id",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1786906800000,
+      "tag": "0050_backfill_workspace_ids",
+      "breakpoints": true
     }
   ]
 }
