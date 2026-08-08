@@ -199,7 +199,9 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
         users: new PostgresUserRepository(db),
         webhooks: new PostgresWebhookRepository(db),
         usage: new PostgresUsageRepository(db),
-        workspaceConnectors: new ConvexWorkspaceConnectorRepository(),
+        // Connector mappings are intentionally gated in Postgres mode until a
+        // provider-neutral repository and migration are shipped.
+        workspaceConnectors: unsupportedRepository<WorkspaceConnectorRepository>('WorkspaceConnectorRepository'),
       },
     }
   }

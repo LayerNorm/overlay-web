@@ -324,9 +324,16 @@ workspaceConnectors: defineTable({
 - **POST (disconnect):** Passes `workspaceId` to `disconnect`, then removes
   the `workspaceConnectors` mapping.
 
+This mapping is currently Convex-only. Postgres mode advertises integrations as
+unsupported and rejects the integration route before the domain service runs;
+it must not construct the Convex repository or call Convex as a fallback. A
+future Postgres parity phase must add the equivalent migration, compound
+uniqueness constraint, repository, and membership contract before re-enabling
+the capability.
+
 ---
 
-### Phase 6: Backfill migration ✅ DONE
+### Workspace ID backfill migration ✅ DONE
 
 One-time Convex migration that sets `workspaceId` on all existing rows that
 don't have one, using each user's personal workspace.
@@ -451,7 +458,7 @@ scoping via their parent knowledge base — no direct `workspaceId` on sources.
 
 1. **Phase 0** — BFF workspace context (unblock collaboration routes, make `context.workspace` available everywhere)
 2. **Phase 1** — Schema migration (add optional `workspaceId` + indexes)
-3. **Phase 6** — Backfill migration (populate `workspaceId` for existing rows)
+3. **Workspace ID backfill** — Populate `workspaceId` for existing rows
 4. **Phase 1 (cont.)** — Promote `workspaceId` to required in schema
 5. **Phase 2** — Write paths (thread `workspaceId` through creates)
 6. **Phase 3** — Read paths (filter by `workspaceId` in list queries)

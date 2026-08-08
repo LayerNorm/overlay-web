@@ -15,7 +15,23 @@ Overlay is a Next.js app backed by Convex, server-mediated provider adapters, an
 - `packages/overlay-app-core/**` holds shared cross-surface contracts and UI settings types.
 - `packages/overlay-api-client/**` holds typed transport wrappers for `/api/v1/**`.
 
+App-data portability is capability-driven: `src/server/app-data/capabilities.ts`
+and `src/server/app-data/route-support.ts` are the source of truth for what
+Postgres mode exposes. Unsupported routes must return the structured
+`app_data_route_not_supported` response before domain services or Convex are
+called. Workspace collaboration and connector mappings are currently Convex
+only; Postgres must not silently fall back to Convex for them.
+
 Clients should not call model providers, billing providers, identity admin APIs, object storage, or Convex directly unless a route explicitly exists for that surface.
+
+## Domain Decomposition
+
+Workspace behavior stays behind the existing provider/repository contracts while
+large seams are split by responsibility. The `WorkspaceSwitcher` controller owns
+navigation and lifecycle state; `WorkspaceSwitcherView` owns the trigger, menu,
+and dialog presentation. Postgres workspace governance writes build their SQL in
+`src/server/workspaces/workspace-sharing-policy-sql.ts`, keeping policy patch
+semantics separate from repository orchestration without changing the contract.
 
 ## Auth
 
@@ -55,10 +71,9 @@ Uploaded files and generated assets are stored through server-mediated flows. R2
 
 ## Convex
 
-Development commonly uses a separate dev deployment from production. After editing `convex/`, push both deployments:
-
-```bash
-npm run convex:push:all
-```
-
-Do not pass `.env.local` to production Convex deploy commands; that can point deploys at the dev slug.
+Development commonly uses a separate dev deployment from production. Follow
+[Worktree Staging QA](/develop/worktree-staging-qa) and
+[Convex Workflow](/develop/convex-workflow) for the deployment lane that matches
+the current revision. Never push Convex from a feature worktree, and never use
+the all-deployments command as a shortcut around the staging/production
+boundary.

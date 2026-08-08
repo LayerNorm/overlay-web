@@ -145,7 +145,6 @@
     "src/app/api/v1/subscription/settings/route.ts",
     "src/app/api/v1/transcribe/route.ts",
     "src/app/api/v1/webhooks/route.ts",
-    "src/app/api/v1/workflows/spike/route.ts",
     "src/app/api/v1/workspace-invitations/[invitationId]/accept/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/audit-export/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/governance/route.ts",
@@ -211,6 +210,11 @@
       "target": "internal.chat.conversations.runStaleGeneratingCleanup"
     },
     {
+      "cadence": "{ minutes: 1 }",
+      "name": "transactional email delivery",
+      "target": "internal.email.deliveryRunner.runMinuteTick"
+    },
+    {
       "cadence": "{ minutes: 5 }",
       "name": "usage reservation reconciliation",
       "target": "internal.platform.usage.reconcileExpiredBudgetReservationsInternal"
@@ -259,8 +263,9 @@
     "src/server/chat-suggestions/ConvexChatSuggestionRepository.ts",
     "src/server/conversations/ConvexActConversationRepository.ts",
     "src/server/conversations/ConvexConversationCollaborationRepository.ts",
-    "src/server/database/convex.ts",
     "src/server/database/lazy-convex.ts",
+    "src/server/email/ConvexEmailSuppressionRepository.ts",
+    "src/server/email/index.ts",
     "src/server/extensions/ConvexMcpServerRepository.ts",
     "src/server/extensions/ConvexSkillRepository.ts",
     "src/server/extensions/index.ts",
@@ -271,6 +276,10 @@
     "src/server/governance/index.ts",
     "src/server/idempotency/ConvexIdempotencyRepository.ts",
     "src/server/idempotency/index.ts",
+    "src/server/integrations/ConvexWorkspaceConnectorRepository.ts",
+    "src/server/integrations/index.ts",
+    "src/server/jobs/ConvexOutboxRepository.ts",
+    "src/server/jobs/index.ts",
     "src/server/knowledge-bases/ConvexCanonicalKnowledgeIndexQueue.ts",
     "src/server/knowledge-bases/ConvexKnowledgeBaseRepositories.ts",
     "src/server/knowledge-bases/index.ts",
@@ -303,6 +312,7 @@
     "convex/automations/automationRunner.ts",
     "convex/automations/automations.ts",
     "convex/chat/conversations.ts",
+    "convex/email/deliveryRunner.ts",
     "convex/files/files.ts",
     "convex/knowledge/bases.ts",
     "convex/knowledge/memories.ts",

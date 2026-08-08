@@ -1,6 +1,9 @@
 import { v } from 'convex/values'
+import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { mutation, query } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
+
+type ConnectorDatabaseContext = { db: QueryCtx['db'] | MutationCtx['db'] }
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -13,6 +16,38 @@ async function authorizeUserAccess(params: {
   await requireAccessToken(params.accessToken ?? '', params.userId)
 }
 
+async function requireActiveWorkspaceMembership(
+  ctx: ConnectorDatabaseContext,
+  workspaceId: string,
+  userId: string,
+) {
+  const principal = await ctx.db
+    .query('workspacePrincipals')
+    .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', workspaceId).eq('userId', userId))
+    .unique()
+  if (!principal || principal.archivedAt) throw new Error('WORKSPACE_ACCESS_DENIED')
+
+  const membership = await ctx.db
+    .query('workspaceMemberships')
+    .withIndex('by_workspaceId_principalId', (q) =>
+      q.eq('workspaceId', workspaceId).eq('principalId', principal.principalId))
+    .unique()
+  if (!membership || membership.status !== 'active') throw new Error('WORKSPACE_ACCESS_DENIED')
+}
+
+async function authorizeWorkspaceUserAccess(
+  ctx: ConnectorDatabaseContext,
+  params: {
+    accessToken?: string
+    serverSecret?: string
+    userId: string
+    workspaceId: string
+  },
+) {
+  await authorizeUserAccess(params)
+  await requireActiveWorkspaceMembership(ctx, params.workspaceId, params.userId)
+}
+
 export const listByWorkspace = query({
   args: {
     workspaceId: v.string(),
@@ -21,12 +56,12 @@ export const listByWorkspace = query({
     serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, { workspaceId, userId, accessToken, serverSecret }) => {
-    await authorizeUserAccess({ userId, accessToken, serverSecret })
-    const all = await ctx.db
+    await authorizeWorkspaceUserAccess(ctx, { workspaceId, userId, accessToken, serverSecret })
+    return await ctx.db
       .query('workspaceConnectors')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
+      .withIndex('by_workspaceId_userId_providerKey', (q) =>
+        q.eq('workspaceId', workspaceId).eq('userId', userId))
       .collect()
-    return all.filter((row) => row.userId === userId)
   },
 })
 
@@ -40,15 +75,15 @@ export const insert = mutation({
     serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, { workspaceId, userId, providerKey, connectedAccountId, accessToken, serverSecret }) => {
-    await authorizeUserAccess({ userId, accessToken, serverSecret })
+    await authorizeWorkspaceUserAccess(ctx, { workspaceId, userId, accessToken, serverSecret })
     const now = Date.now()
     const rows = await ctx.db
       .query('workspaceConnectors')
-      .withIndex('by_workspaceId_providerKey', (q) =>
-        q.eq('workspaceId', workspaceId).eq('providerKey', providerKey),
-      )
+      .withIndex('by_workspaceId_userId_providerKey', (q) =>
+        q.eq('workspaceId', workspaceId).eq('userId', userId).eq('providerKey', providerKey))
       .collect()
-    const existing = rows.find((row) => row.userId === userId)
+    if (rows.length > 1) throw new Error('WORKSPACE_CONNECTOR_DUPLICATE')
+    const existing = rows[0]
     if (existing) {
       await ctx.db.patch(existing._id, { connectedAccountId, updatedAt: now })
       return existing._id
@@ -73,17 +108,13 @@ export const remove = mutation({
     serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, { workspaceId, providerKey, userId, accessToken, serverSecret }) => {
-    await authorizeUserAccess({ userId, accessToken, serverSecret })
+    await authorizeWorkspaceUserAccess(ctx, { workspaceId, userId, accessToken, serverSecret })
     const rows = await ctx.db
       .query('workspaceConnectors')
-      .withIndex('by_workspaceId_providerKey', (q) =>
-        q.eq('workspaceId', workspaceId).eq('providerKey', providerKey),
-      )
+      .withIndex('by_workspaceId_userId_providerKey', (q) =>
+        q.eq('workspaceId', workspaceId).eq('userId', userId).eq('providerKey', providerKey))
       .collect()
-    const existing = rows.find((row) => row.userId === userId)
-    if (existing) {
-      await ctx.db.delete(existing._id)
-    }
+    for (const row of rows) await ctx.db.delete(row._id)
   },
 })
 

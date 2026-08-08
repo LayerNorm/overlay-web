@@ -196,7 +196,7 @@ v7 makes telemetry opt-out (enabled by default once an integration is registered
 - [ ] **1.3** **Manually rename `experimental_throttle` → `throttle`** in `src/features/chat/components/chat/useChatRuntimes.ts` (5 call sites, lines 143-147). The codemod may not cover `@ai-sdk/react` options — verify after running it.
 - [ ] **1.4** Run `npm run typecheck` — fix any type errors the codemod missed
 - [ ] **1.5** Run `npm run build` — fix any build errors
-- [ ] **1.6** Run `npm run lint:changed` — fix any lint errors
+- [ ] **1.6** Run `npm run lint` — fix any lint errors
 - [ ] **1.7** Commit: `chore: upgrade AI SDK v6 → v7 + run codemod`
 
 ### Phase 2: Fix high-risk behavioral changes
@@ -231,7 +231,7 @@ v7 makes telemetry opt-out (enabled by default once an integration is registered
   - The `@ai-sdk/xai` package is in `package.json` but not imported in `src/` — it's used by the gateway internally.
   - **Action:** Upgrade `@ai-sdk/xai` to v4. Test xAI models (grok-4.20-reasoning) on staging to verify the gateway still routes correctly.
 
-- [ ] **2.6** Run `npm run typecheck && npm run build && npm run lint:changed`
+- [ ] **2.6** Run `npm run typecheck && npm run build && npm run lint`
 - [ ] **2.7** Commit: `fix: adapt to AI SDK v7 behavioral changes`
 
 ### Phase 3: Migrate deprecated patterns to stable APIs — COMPLETE
@@ -257,10 +257,10 @@ v7 makes telemetry opt-out (enabled by default once an integration is registered
 
 - [x] **3.5** **`experimental_throttle` → `throttle` — done in Phase 1:** Already renamed during Phase 1 step 1.3.
 
-- [x] **3.6** Run `npm run typecheck && npm run build && npm run lint:changed`
+- [x] **3.6** Run `npm run typecheck && npm run build && npm run lint`
   - Typecheck: pass (exit 0)
   - Build: `next build` compiled successfully, 167 routes generated (exit 0)
-  - Lint: `lint:changed` hit a pre-existing `eslint-plugin-react` compatibility issue (`getFilename is not a function`); `next build`'s ESLint integration passed clean.
+  - Lint: `npm run lint` hit a pre-existing `eslint-plugin-react` compatibility issue (`getFilename is not a function`); `next build`'s ESLint integration passed clean.
 
 - [x] **3.7** Commit: `refactor: migrate to stable AI SDK v7 APIs`
 
@@ -350,7 +350,7 @@ After each phase, these must pass before proceeding:
 |------|---------|------|
 | Typecheck | `npm run typecheck` | After every phase |
 | Build | `npm run build` | After phases 1, 2, 3 |
-| Lint | `npm run lint:changed` | After phases 1, 2, 3 |
+| Lint | `npm run lint` | After phases 1, 2, 3 |
 | Shared isomorphic | `npm run check:shared-isomorphic` | After phases 1, 2, 3 |
 | Staging QA | Manual + browser testing | After phase 5 |
 | Token billing audit | Compare usage amounts pre/post | During staging QA |

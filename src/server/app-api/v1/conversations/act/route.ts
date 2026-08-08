@@ -49,6 +49,7 @@ import {
   actMessagePersistenceService,
   actUsageBudgetService,
 } from '@/server/conversations/http'
+import type { ActEntitlementService } from '@/server/conversations/ActEntitlementService'
 import {
   classifyMediaToolIntentForTurn,
   mayNeedMediaGenerationTools,
@@ -86,12 +87,22 @@ import {
   filterCatalogResources,
 } from '@/server/authorization'
 import type { AuthorizationCapability } from '@overlay/authz-contracts'
+import type { AuthorizationService } from '@/server/authorization/AuthorizationService'
 import { normalizeIntegrationProviderKey } from '@overlay/app-core'
 import { readProjectSettings } from '@/shared/projects/project-settings'
 
 export const maxDuration = 800
 
-export async function POST(request: NextRequest, context: AppApiRouteContext) {
+export interface ActRouteDependencies {
+  authorizationService?: AuthorizationService
+  entitlementService?: Pick<ActEntitlementService, 'gateModelAccess'>
+}
+
+export async function POST(
+  request: NextRequest,
+  context: AppApiRouteContext,
+  dependencies: ActRouteDependencies = {},
+) {
   const requestId = request.headers.get('x-request-id')?.trim() || crypto.randomUUID()
   let pendingGeneratingMessageId: Id<'conversationMessages'> | undefined
   let budgetReservationId: string | null = null
@@ -197,8 +208,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const serverSecret = getInternalApiSecret()
     const requestedToolIds = normalizeChatToolRequestIds(rawRequestedToolIds)
     const memoryEnabled = rawMemoryEnabled !== false
+    const authorizationService = dependencies.authorizationService ?? overlayContext.authorizationService
     const dynamicAuthorization = await authorizeActRequest({
-      authorization: overlayContext.authorizationService,
+      authorization: authorizationService,
       context,
       effectiveModelId,
       memoryEnabled,
@@ -210,7 +222,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       appSettings,
       paid,
       runtimeEntitlements,
-    } = await actEntitlementService.gateModelAccess({
+    } = await (dependencies.entitlementService ?? actEntitlementService).gateModelAccess({
       effectiveModelId,
       userId,
     })
@@ -305,7 +317,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       serverSecret,
     })
     const accountAllowedToolIdsTask = filterCatalogResources({
-      authorization: overlayContext.authorizationService,
+      authorization: authorizationService,
       capability: 'tools.use',
       context,
       getId: (toolId) => toolId,
@@ -314,7 +326,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
     const accountAllowedConnectorIdsTask = toolPreloadTasks.connectedConnectorIdsTask
       .then((connectorIds) => filterCatalogResources({
-        authorization: overlayContext.authorizationService,
+        authorization: authorizationService,
         capability: 'integrations.use',
         context,
         getId: (connectorId) => connectorId,
@@ -334,6 +346,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       attachmentNames,
       skipMemoryExtraction: !memoryEnabled,
       skip: isMultiModelFollowUpSlot,
+    }).catch((error) => {
+      // History loading remains the authoritative preparation failure. A
+      // transient user-message write must not mask a later fatal context error
+      // or turn a recoverable stream start into an unrelated 500 response.
+      logger.warn('[conversations/act] user-message persistence failed', {
+        requestId,
+        error: summarizeErrorForLog(error),
+      })
     })
     const turnContextTask = actContextService.loadTurnContext({
       accessToken,

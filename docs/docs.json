@@ -60,6 +60,7 @@
           "configure/environment",
           "configure/runtime-config",
           "configure/providers",
+          "configure/knowledge-bases",
           {
             "group": "Authentication",
             "pages": [

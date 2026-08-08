@@ -4,6 +4,7 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getBaseUrl } from '@/server/web/app-url'
 import { getIntegrationProvider, IntegrationService } from '@/server/integrations'
+import type { WorkspaceConnectorRepository } from '@/server/integrations/WorkspaceConnectorRepository'
 
 function getAllowedAppOrigins(): string[] {
   const values = [process.env.NEXT_PUBLIC_APP_URL, process.env.DEV_NEXT_PUBLIC_APP_URL, getBaseUrl()]
@@ -38,6 +39,7 @@ function service() {
 
 interface IntegrationsRouteDependencies {
   service?: IntegrationService
+  workspaceConnectors?: WorkspaceConnectorRepository
 }
 
 export async function GET(
@@ -84,7 +86,9 @@ export async function GET(
       accessToken: context.auth.accessToken,
       workspaceId: context.workspace.workspace.id,
     })
-    const mappings = await getOverlayServerContext().appData.repositories.workspaceConnectors.listByWorkspace({
+    const workspaceConnectors = dependencies.workspaceConnectors
+      ?? getOverlayServerContext().appData.repositories.workspaceConnectors
+    const mappings = await workspaceConnectors.listByWorkspace({
       workspaceId: context.workspace.workspace.id,
       userId: context.auth.userId,
     })
@@ -125,7 +129,9 @@ export async function POST(
 
     if (body.action === 'disconnect') {
       await integrations.disconnect(connectionContext)
-      await getOverlayServerContext().appData.repositories.workspaceConnectors.remove({
+      const workspaceConnectors = dependencies.workspaceConnectors
+        ?? getOverlayServerContext().appData.repositories.workspaceConnectors
+      await workspaceConnectors.remove({
         workspaceId: context.workspace.workspace.id,
         userId: context.auth.userId,
         providerKey,
@@ -139,7 +145,9 @@ export async function POST(
 
     const result = await integrations.connect(connectionContext)
     if (result.connectionId) {
-      await getOverlayServerContext().appData.repositories.workspaceConnectors.insert({
+      const workspaceConnectors = dependencies.workspaceConnectors
+        ?? getOverlayServerContext().appData.repositories.workspaceConnectors
+      await workspaceConnectors.insert({
         workspaceId: context.workspace.workspace.id,
         userId: context.auth.userId,
         providerKey,

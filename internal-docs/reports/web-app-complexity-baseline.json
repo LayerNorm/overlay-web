@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-07T21:31:43.391Z",
+  "generatedAt": "2026-08-08T06:19:47.872Z",
   "budgets": {
     "maxProductionFileLoc": 500,
     "maxFunctionComplexity": 25,
@@ -44,7 +44,6 @@
     "packages/overlay-modules-react/src/notes/editor.tsx",
     "packages/overlay-modules-react/src/notes/inline-diff-extension.ts",
     "packages/overlay-workspace-contracts/src/types.ts",
-    "src/app/.well-known/workflow/v1/flow/route.js",
     "src/app/pricing/PricingClient.tsx",
     "src/components/layout/AppSidebar.tsx",
     "src/components/layout/AppSidebarInlinePanels.tsx",
@@ -103,19 +102,18 @@
     "packages/overlay-app-core/src/automations/run-status.ts#applyEvent": 1,
     "src/features/chat/components/chat/useChatConversationLoader.ts#callback": 1,
     "packages/overlay-chat-core/src/agent-assistant-text.ts#isNimLeakedNarrationLine": 1,
-    "src/server/app-api/v1/generate-image/route.ts#POST": 1,
     "src/app/app/settings/page.tsx#SettingsPage": 1,
-    "src/features/workspaces/components/WorkspaceSwitcher.tsx#WorkspaceSwitcher": 1,
+    "src/server/app-api/v1/generate-image/route.ts#POST": 1,
     "src/shared/chat/persist-assistant-turn.ts#buildAssistantPersistenceFromSteps": 1,
+    "src/server/app-api/v1/conversations/act/route.ts#POST": 1,
     "packages/overlay-chat-react/src/components/ChatExperienceHeader.tsx#ChatExperienceHeader": 1,
     "packages/overlay-modules-react/src/knowledge/surface.tsx#SharedKnowledgeSurface": 1,
     "packages/overlay-modules-react/src/notes/inline-diff-extension.ts#parseMarkdownLine": 1,
-    "src/server/app-api/v1/conversations/act/route.ts#POST": 1,
     "src/server/account/PostgresAccountDataDeletionRepository.ts#countUserRows": 1,
+    "src/server/files/PostgresFileRepository.ts#callback": 1,
     "src/shared/tools/tool-result-summary.ts#summarizeToolResultForTranscript": 1,
     "packages/overlay-modules-react/src/notes/inline-diff-extension.ts#parseMarkdownLines": 1,
     "src/server/app-api/v1/browser-task/route.ts#POST": 1,
-    "src/server/files/PostgresFileRepository.ts#callback": 1,
     "packages/overlay-modules-react/src/extensions/mcp.tsx#McpServerDialog": 1,
     "src/features/files/lib/export/markdown.ts#walk": 1,
     "src/features/chat/components/collaboration/RoomMessageItem.tsx#RoomMessageItem": 1,
@@ -133,7 +131,6 @@
     "src/server/knowledge/mention-resolver.ts#resolveOne": 1,
     "packages/overlay-billing/src/adapters/stripe-billing-provider.ts#verifyPaidPlanCheckoutSession": 1,
     "packages/overlay-chat-react/src/components/MediaSlotOutput.tsx#MediaSlotOutput": 1,
-    "src/server/workspaces/PostgresWorkspaceRepository.ts#setSharingPolicy": 1,
     "src/server/bootstrap.ts#createOverlayServerContext": 1,
     "src/server/database/convex.ts#callConvex": 1,
     "packages/overlay-chat-core/src/tool-labels.ts#describeComposioIntegrationTool": 1,
@@ -190,14 +187,14 @@
     {
       "file": "src/app/.well-known/workflow/v1/flow/route.js",
       "layer": "src/app routes",
-      "loc": 503,
+      "loc": 488,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
       "file": "src/app/.well-known/workflow/v1/step/route.js",
       "layer": "src/app routes",
-      "loc": 257,
+      "loc": 236,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -1196,13 +1193,6 @@
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
-      "file": "src/app/api/v1/workflows/spike/route.ts",
-      "layer": "src/app/api/v1 wrappers",
-      "loc": 12,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
       "file": "src/app/api/v1/workspace-invitations/[invitationId]/accept/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 10,
@@ -1569,7 +1559,7 @@
     {
       "file": "src/app/app/settings/page.tsx",
       "layer": "src/app routes",
-      "loc": 262,
+      "loc": 269,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -1847,13 +1837,6 @@
       "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
     },
     {
-      "file": "src/features/workspaces/components/WorkspaceSwitcher.tsx",
-      "layer": "src/features",
-      "loc": 344,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
       "file": "src/server/app-data/index.ts",
       "layer": "src/server",
       "loc": 33,
@@ -1890,12 +1873,12 @@
     }
   ],
   "totals": {
-    "files": 1699,
-    "code": 201077,
-    "total": 223783,
-    "productionFiles": 1414,
-    "productionCode": 168655,
-    "testFiles": 285,
-    "testCode": 32422
+    "files": 1705,
+    "code": 202743,
+    "total": 225614,
+    "productionFiles": 1419,
+    "productionCode": 170118,
+    "testFiles": 286,
+    "testCode": 32625
   }
 }
