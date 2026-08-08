@@ -84,6 +84,7 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
   },
   email: {
     provider: 'none',
+    resend: {},
     ses: {},
     smtp: {},
   },

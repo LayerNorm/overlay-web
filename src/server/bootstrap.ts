@@ -689,6 +689,9 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
   }
   if (config.features.transactionalEmail !== false && emailProvider !== 'none') {
     if (!config.email?.from) issues.push('email.from is required when transactional email is enabled')
+    if (emailProvider === 'resend') {
+      if (!config.email?.resend?.apiKey) issues.push('email.resend.apiKey is required')
+    }
     if (emailProvider === 'ses') {
       if (!config.email?.ses.accessKeyId) issues.push('email.ses.accessKeyId is required')
       if (!config.email?.ses.secretAccessKey) issues.push('email.ses.secretAccessKey is required')
