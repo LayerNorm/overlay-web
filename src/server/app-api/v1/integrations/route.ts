@@ -95,10 +95,29 @@ export async function GET(
     })
     const workspaceConnectors = dependencies.workspaceConnectors
       ?? getOverlayServerContext().appData.repositories.workspaceConnectors
-    const mappings = await workspaceConnectors.listByWorkspace({
+    let mappings = await workspaceConnectors.listByWorkspace({
       workspaceId: context.workspace.workspace.id,
       userId: context.auth.userId,
     })
+    if (context.workspace.workspace.kind === 'personal') {
+      const allMappings = await workspaceConnectors.listByUser({ userId: context.auth.userId })
+      const assignedProviderKeys = new Set(allMappings.map(({ providerKey }) => providerKey))
+      const legacyConnections = [...new Map(connected.connections
+        .filter(({ providerKey }) => !assignedProviderKeys.has(providerKey))
+        .map((connection) => [connection.providerKey, connection])).values()]
+      await Promise.all(legacyConnections.map((connection) => workspaceConnectors.insert({
+        workspaceId: context.workspace.workspace.id,
+        userId: context.auth.userId,
+        providerKey: connection.providerKey,
+        connectedAccountId: connection.id,
+      })))
+      if (legacyConnections.length > 0) {
+        mappings = await workspaceConnectors.listByWorkspace({
+          workspaceId: context.workspace.workspace.id,
+          userId: context.auth.userId,
+        })
+      }
+    }
     const mappedProviderKeys = new Set(mappings.map((mapping) => mapping.providerKey))
     const filteredConnections = connected.connections.filter((connection) => mappedProviderKeys.has(connection.providerKey))
     const filteredItems = connected.items.filter((item) => mappedProviderKeys.has(item.providerKey))

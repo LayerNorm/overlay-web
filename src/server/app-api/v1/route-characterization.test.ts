@@ -136,16 +136,20 @@ function composioIntegrationService() {
 }
 
 function workspaceConnectorRepositoryFixture(): WorkspaceConnectorRepository {
+  const rows = [{
+    _id: 'mapping_1',
+    workspaceId: 'ws_personal_user_1',
+    userId: 'user_1',
+    providerKey: 'gmail',
+    connectedAccountId: 'ca_gmail',
+    createdAt: 0,
+    updatedAt: 0,
+  }]
   return {
     listByWorkspace: async () => [{
-      _id: 'mapping_1',
-      workspaceId: 'ws_personal_user_1',
-      userId: 'user_1',
-      providerKey: 'gmail',
-      connectedAccountId: 'ca_gmail',
-      createdAt: 0,
-      updatedAt: 0,
+      ...rows[0]!,
     }],
+    listByUser: async () => rows,
     insert: async () => 'mapping_1',
     remove: async () => undefined,
     removeByUser: async () => 0,
@@ -556,6 +560,65 @@ test('integrations default list reads Composio v3 connected accounts by user id'
     providerCapabilities: COMPOSIO_INTEGRATION_CAPABILITIES,
     hasMore: false,
   })
+})
+
+test('integrations claim only orphaned legacy connections for the Personal workspace', async () => {
+  const mappings: Awaited<ReturnType<WorkspaceConnectorRepository['listByUser']>> = [{
+    _id: 'mapping_github',
+    workspaceId: 'ws_acme',
+    userId: 'user_1',
+    providerKey: 'github',
+    connectedAccountId: 'ca_github',
+    createdAt: 0,
+    updatedAt: 0,
+  }]
+  const inserted: string[] = []
+  const workspaceConnectors: WorkspaceConnectorRepository = {
+    async listByWorkspace({ workspaceId }) {
+      return mappings.filter((row) => row.workspaceId === workspaceId)
+    },
+    async listByUser() { return mappings },
+    async insert(input) {
+      inserted.push(input.providerKey)
+      mappings.push({ _id: `mapping_${input.providerKey}`, ...input, createdAt: 1, updatedAt: 1 })
+      return `mapping_${input.providerKey}`
+    },
+    async remove() {},
+    async removeByUser() { return 0 },
+  }
+  const integration = (providerKey: string, id: string) => ({
+    id,
+    provider: 'composio',
+    providerKey,
+    userId: 'user_1',
+    authenticationState: 'connected' as const,
+  })
+  const route = await import('./integrations/route')
+  const response = await route.GET(request('/api/v1/integrations'), context(), {
+    service: {
+      id: 'composio',
+      capabilities: COMPOSIO_INTEGRATION_CAPABILITIES,
+      async listConnected() {
+        return {
+          connections: [
+            integration('gmail', 'ca_gmail'),
+            integration('gmail', 'ca_gmail_duplicate'),
+            integration('github', 'ca_github'),
+          ],
+          items: [
+            { providerKey: 'gmail', slug: 'gmail' },
+            { providerKey: 'github', slug: 'github' },
+          ],
+        }
+      },
+    } as IntegrationService,
+    workspaceConnectors,
+  })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(inserted, ['gmail'])
+  assert.deepEqual((await readJson(response)).connected, ['gmail'])
+  assert.equal(mappings.find(({ providerKey }) => providerKey === 'github')?.workspaceId, 'ws_acme')
 })
 
 test('automations create/update/test/run preserve validation and auth error shapes', async (t) => {

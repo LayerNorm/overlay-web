@@ -666,6 +666,37 @@ export class WorkspaceService {
     })
   }
 
+  /**
+   * Claims legacy resources that predate workspace scoping for the caller's
+   * Personal workspace. Existing bindings are never moved, which keeps this
+   * safe to run lazily while old accounts are upgraded.
+   */
+  async bindUnscopedResourcesToPersonalWorkspace(args: {
+    actorUserId: string
+    workspaceId: string
+    resourceType: string
+    resourceIds: readonly string[]
+  }): Promise<string[]> {
+    const actor = await this.requireActiveMember(args)
+    if (actor.workspace.kind !== 'personal') return []
+
+    const resourceType = required(args.resourceType, 'resourceType')
+    const bound: string[] = []
+    for (const value of new Set(args.resourceIds)) {
+      const resourceId = required(value, 'resourceId')
+      const existing = await this.repository.getResourceWorkspace({ resourceType, resourceId })
+      if (existing) continue
+      await this.repository.bindResource({
+        workspaceId: actor.workspace.id,
+        resourceType,
+        resourceId,
+        now: this.now(),
+      })
+      bound.push(resourceId)
+    }
+    return bound
+  }
+
   async assertResourceWorkspace(args: {
     actorUserId: string
     workspaceId: string

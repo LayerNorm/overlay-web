@@ -101,6 +101,46 @@ test('resolveActiveWorkspace persists a usable fallback and rejects inaccessible
   )
 })
 
+test('legacy resources are claimed only by Personal and existing bindings never move', async () => {
+  const bindings = new Map<string, string>([['already_bound', 'workspace_acme']])
+  const bound: string[] = []
+  const personal = access({ workspaceId: 'workspace_personal' })
+  const service = new WorkspaceService(repository({
+    async getAccess() { return personal },
+    async getResourceWorkspace({ resourceId }) {
+      const workspaceId = bindings.get(resourceId)
+      return workspaceId
+        ? { workspaceId, resourceType: 'knowledge_base', resourceId, createdAt: 1, updatedAt: 1 }
+        : null
+    },
+    async bindResource(input) {
+      bindings.set(input.resourceId, input.workspaceId)
+      bound.push(input.resourceId)
+      return { ...input, createdAt: input.now, updatedAt: input.now }
+    },
+  }), { now: () => 10 })
+
+  assert.deepEqual(await service.bindUnscopedResourcesToPersonalWorkspace({
+    actorUserId: 'user_1',
+    workspaceId: personal.workspace.id,
+    resourceType: 'knowledge_base',
+    resourceIds: ['legacy_one', 'already_bound', 'legacy_one'],
+  }), ['legacy_one'])
+  assert.deepEqual(bound, ['legacy_one'])
+  assert.equal(bindings.get('already_bound'), 'workspace_acme')
+
+  const organization = access({ workspaceId: 'workspace_acme' })
+  const organizationService = new WorkspaceService(repository({
+    async getAccess() { return organization },
+  }))
+  assert.deepEqual(await organizationService.bindUnscopedResourcesToPersonalWorkspace({
+    actorUserId: 'user_1',
+    workspaceId: organization.workspace.id,
+    resourceType: 'knowledge_base',
+    resourceIds: ['unbound'],
+  }), [])
+})
+
 test('workspace management is role-gated and final-owner failures remain explicit', async () => {
   const memberAccess = access({ workspaceId: 'workspace_org', role: 'member' })
   const ownerAccess = access({ workspaceId: 'workspace_org', role: 'owner' })

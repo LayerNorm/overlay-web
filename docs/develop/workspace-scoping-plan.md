@@ -659,6 +659,12 @@ Canonical `/app/w/:workspaceId/:surface` requests forward `x-overlay-workspace-i
 
 Compatibility routes without a workspace path segment (including `/app/settings` and `/app/automations`) treat the activated workspace state as the navigation commit signal. They must not wait for a workspace ID to appear in the pathname, or the route-content fallback will remain visible indefinitely.
 
+### Legacy knowledge bases and connector ownership ✅
+
+- The Knowledge page loads its initial list through the workspace-aware BFF and reconciles again on `overlay:workspace-changed`; it never seeds the client from an owner-only repository query.
+- Legacy personal knowledge bases without a resource binding are claimed lazily by the Personal workspace. Existing bindings are never moved.
+- Legacy Composio accounts without any workspace mapping are claimed lazily by the Personal workspace. Provider keys already mapped to any workspace are never copied across workspaces.
+
 ---
 
 ## Risks and Mitigations

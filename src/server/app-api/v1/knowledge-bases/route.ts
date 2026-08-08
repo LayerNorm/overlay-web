@@ -7,6 +7,15 @@ export async function GET(_request: NextRequest, context: AppApiRouteContext) {
   try {
     const server = getOverlayServerContext()
     const service = server.knowledgeBaseService
+    if (context.workspace.workspace.kind === 'personal') {
+      const legacyPersonalBases = await service.listPersonalKnowledgeBases(context.auth.userId)
+      await server.workspaceService.bindUnscopedResourcesToPersonalWorkspace({
+        actorUserId: context.auth.userId,
+        workspaceId: context.workspace.workspace.id,
+        resourceType: 'knowledge_base',
+        resourceIds: legacyPersonalBases.map(({ id }) => id),
+      })
+    }
     const workspaceResourceIds = new Set(
       await server.workspaceService.listResourceIdsByWorkspace({
         actorUserId: context.auth.userId,
