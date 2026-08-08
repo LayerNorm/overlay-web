@@ -62,7 +62,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
     conversationType?: 'personal' | 'dm' | 'channel'
     createdByPrincipalId?: string
     isAutomation?: boolean
-    workspaceId?: string
   }): Promise<ConversationId> {
     const now = new Date()
     const id = conversationId()

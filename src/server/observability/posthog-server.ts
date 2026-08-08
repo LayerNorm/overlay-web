@@ -44,6 +44,21 @@ export type ProductEvent =
     properties: { provider: 'stripe'; source: 'auto' | 'manual' }
     userId: string
   }
+  | {
+    name: 'workspace.invitation_sent'
+    properties: Record<string, unknown>
+    userId: string
+  }
+  | {
+    name: 'workspace.mention'
+    properties: Record<string, unknown>
+    userId: string
+  }
+  | {
+    name: 'workspace.dm_received'
+    properties: Record<string, unknown>
+    userId: string
+  }
 
 let posthogClient: PostHog | null = null
 
