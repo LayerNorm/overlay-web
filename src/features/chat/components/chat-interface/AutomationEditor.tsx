@@ -19,6 +19,7 @@ import {
   automationEditorDraftFromDetail,
   AUTOMATIONS_UPDATED_EVENT,
   buildAutomationUpdateRequest,
+  formatAutomationRunError,
   normalizeAutomationDetailTab,
   supportedTimeZoneOptions,
 } from '@overlay/app-core/automations'
@@ -247,54 +248,57 @@ export function AutomationEditorPanel({
         <div className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
           {runs.length === 0 ? (
             <p className="py-5 text-sm text-[var(--muted)]">No runs yet.</p>
-          ) : runs.slice(0, 50).map((run) => (
-            <div key={run._id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-              <div className="min-w-0">
-                <p className="text-sm font-medium capitalize text-[var(--foreground)]">
-                  {run.status.replace('_', ' ')}
-                </p>
-                <p className="mt-1 text-xs text-[var(--muted)]">
-                  {new Date(run.scheduledFor).toLocaleString()}
-                  {run.triggerSource ? ` · ${run.triggerSource}` : ''}
-                </p>
-                {run.error || run.errorMessage ? (
-                  <p className="mt-1 max-w-2xl truncate text-xs text-red-600 dark:text-red-400">
-                    {run.error || run.errorMessage}
+          ) : runs.slice(0, 50).map((run) => {
+            const runError = formatAutomationRunError(run.error || run.errorMessage)
+            return (
+              <div key={run._id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium capitalize text-[var(--foreground)]">
+                    {run.status.replace('_', ' ')}
                   </p>
-                ) : null}
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    {new Date(run.scheduledFor).toLocaleString()}
+                    {run.triggerSource ? ` · ${run.triggerSource}` : ''}
+                  </p>
+                  {runError ? (
+                    <p className="mt-1 max-w-2xl truncate text-xs text-red-600 dark:text-red-400">
+                      {runError}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-2">
+                  {run.conversationId ? (
+                    <a
+                      className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs"
+                      href={`/app/automations?id=${encodeURIComponent(run.conversationId)}&automationId=${encodeURIComponent(automation._id)}`}
+                    >
+                      Open
+                    </a>
+                  ) : null}
+                  {run.status === 'queued' || run.status === 'running' ? (
+                    <button
+                      type="button"
+                      className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs"
+                      disabled={runsBusy}
+                      onClick={() => void updateRun('cancel-run', run._id)}
+                    >
+                      Cancel
+                    </button>
+                  ) : null}
+                  {run.status === 'failed' || run.status === 'dead_letter' || run.status === 'cancelled' ? (
+                    <button
+                      type="button"
+                      className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs"
+                      disabled={runsBusy}
+                      onClick={() => void updateRun('retry-run', run._id)}
+                    >
+                      Retry
+                    </button>
+                  ) : null}
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                {run.conversationId ? (
-                  <a
-                    className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs"
-                    href={`/app/automations?id=${encodeURIComponent(run.conversationId)}&automationId=${encodeURIComponent(automation._id)}`}
-                  >
-                    Open
-                  </a>
-                ) : null}
-                {run.status === 'queued' || run.status === 'running' ? (
-                  <button
-                    type="button"
-                    className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs"
-                    disabled={runsBusy}
-                    onClick={() => void updateRun('cancel-run', run._id)}
-                  >
-                    Cancel
-                  </button>
-                ) : null}
-                {run.status === 'failed' || run.status === 'dead_letter' || run.status === 'cancelled' ? (
-                  <button
-                    type="button"
-                    className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs"
-                    disabled={runsBusy}
-                    onClick={() => void updateRun('retry-run', run._id)}
-                  >
-                    Retry
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </section>
     </div>

@@ -173,6 +173,8 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 
 **Status:** Complete. Deployed to staging. Routes live and properly gated by `automations` capability. Feature flag `durableAutomations` defaults to off; existing coordinator path remains as fallback.
 
+**Service authentication:** Scheduler inputs contain identifiers and execution data only. Each HTTP step mints a new path- and method-bound service credential immediately before its request. Never serialize the 60-second service tokens into a workflow input: scheduled sleeps and approval waits outlive them and will otherwise produce deterministic `401 Unauthorized` failures.
+
 **Deliverables:**
 - ✅ `workflows/automation-run.ts` with `"use workflow"` directive
 - ✅ Decompose act pipeline into `"use step"` functions: `prepareExecution` → `executeActTurn` → `finalizeRun`

@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { start } from 'workflow/api'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { automationService } from '@/server/automations/http'
-import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/server/auth/service-auth'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { logger } from '@/server/observability/logger'
 import { automationScheduleWorkflow, type AutomationScheduleWorkflowInput, buildApprovalToken } from '@/workflows/automation-schedule'
@@ -54,19 +53,8 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
     }
 
     const baseUrl = getInternalApiBaseUrl(request)
-    const executePath = '/api/v1/automations/execute'
-    const actPath = '/api/v1/conversations/act'
-    const serviceToken = await buildServiceAuthToken({ userId, method: 'POST', path: executePath })
-    const actServiceToken = await buildServiceAuthToken({ userId, method: 'POST', path: actPath })
-    const finalizeServiceToken = await buildServiceAuthToken({ userId, method: 'PATCH', path: executePath })
-    const serviceAuthHeader = getServiceAuthHeaderName()
+    const workspaceId = context.workspace.workspace.id
 
-    // Resolve the user's active workspace so the workflow can pass it
-    // to the act route via the x-overlay-workspace-id header.
-    const { getOverlayServerContext } = await import('@/server/bootstrap')
-    const workspace = await getOverlayServerContext().workspaceService.resolveActiveWorkspace(userId)
-
-    const turnId = `automation-${runId}-${Date.now()}`
     const now = Date.now()
 
     // Check if the automation graph has any condition nodes requiring approval
@@ -97,11 +85,7 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
       approvalToken,
       approvalTimeoutMs: 24 * 60 * 60_000, // 24h approval timeout
       baseUrl,
-      serviceAuthHeader,
-      serviceToken,
-      actServiceToken,
-      finalizeServiceToken,
-      workspaceId: workspace.workspace.id,
+      workspaceId,
       runId,
     }
 
@@ -113,7 +97,7 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
         runId,
         userId,
         error: error instanceof Error ? error.message : 'Failed to start automation workflow',
-      }).catch(() => null)
+      }).catch((_error) => null)
       throw error
     }
 

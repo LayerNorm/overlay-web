@@ -17,10 +17,6 @@ function createTestInput(overrides: Partial<AutomationRunWorkflowInput> = {}): A
     turnId: 'automation-run_001-1700000000000',
     scheduledFor: 1700000000000,
     baseUrl: 'http://localhost:3000',
-    serviceAuthHeader: 'x-overlay-service-auth',
-    serviceToken: 'token-prepare',
-    actServiceToken: 'token-act',
-    finalizeServiceToken: 'token-finalize',
     ...overrides,
   }
 }
@@ -110,10 +106,9 @@ test('AutomationRunWorkflowInput includes all required fields for workflow execu
   assert.equal(typeof input.turnId, 'string')
   assert.equal(typeof input.scheduledFor, 'number')
   assert.equal(typeof input.baseUrl, 'string')
-  assert.equal(typeof input.serviceAuthHeader, 'string')
-  assert.equal(typeof input.serviceToken, 'string')
-  assert.equal(typeof input.actServiceToken, 'string')
-  assert.equal(typeof input.finalizeServiceToken, 'string')
+  assert.equal('serviceToken' in input, false)
+  assert.equal('actServiceToken' in input, false)
+  assert.equal('finalizeServiceToken' in input, false)
 })
 
 test('AutomationRunWorkflowInput workspaceId is optional', () => {

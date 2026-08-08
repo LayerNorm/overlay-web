@@ -27,7 +27,15 @@ export class EmailOutboxDelivery {
       throw new Error(`Unsupported outbox topic: ${outbox.topic}`)
     }
     const event = parseLifecycleEmailEvent(outbox.payload)
-    const suppressed = await this.deps.suppressions.get(event.userId)
+    // Workspace invitations are addressed to a not-yet-member email, not to
+    // the inviter identified by event.userId. Account suppressions therefore
+    // apply only to account-owned lifecycle mail.
+    const invitationRecipient = event.name === 'workspace.invitation_sent'
+      ? optionalEmail(event.attributes.invitedEmail)
+      : null
+    const suppressed = invitationRecipient
+      ? null
+      : await this.deps.suppressions.get(event.userId)
     if (suppressed) {
       await this.recordAudit(outbox, event, 'email.delivery.suppressed', 'denied', {
         reason: suppressed.reason,
@@ -35,7 +43,7 @@ export class EmailOutboxDelivery {
       })
       return
     }
-    const recipient = await this.deps.recipients.getEmail(event.userId)
+    const recipient = invitationRecipient ?? await this.deps.recipients.getEmail(event.userId)
     if (!recipient) throw new Error('Transactional email recipient is unavailable')
     const content = renderLifecycleEmail(event, this.deps.config.app.baseUrl)
     const from = this.deps.config.email?.from
@@ -63,7 +71,7 @@ export class EmailOutboxDelivery {
         },
       )
     } catch (error) {
-      if (isProviderSuppression(error)) {
+      if (!invitationRecipient && isProviderSuppression(error)) {
         await this.deps.suppressions.suppress({
           reason: 'provider_suppression',
           source: 'provider',
@@ -132,6 +140,12 @@ function recordValue(value: unknown): Record<string, unknown> {
 function requiredString(value: unknown, label: string): string {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${label} is required`)
   return value.trim()
+}
+
+function optionalEmail(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const email = value.trim().toLowerCase()
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null
 }
 
 function isProviderSuppression(error: unknown): boolean {

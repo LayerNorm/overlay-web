@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { start } from 'workflow/api'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { automationService } from '@/server/automations/http'
-import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/server/auth/service-auth'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { logger } from '@/server/observability/logger'
 import {
@@ -44,15 +43,7 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
     }
 
     const baseUrl = getInternalApiBaseUrl(request)
-    const executePath = '/api/v1/automations/execute'
-    const actPath = '/api/v1/conversations/act'
-    const serviceToken = await buildServiceAuthToken({ userId, method: 'POST', path: executePath })
-    const actServiceToken = await buildServiceAuthToken({ userId, method: 'POST', path: actPath })
-    const finalizeServiceToken = await buildServiceAuthToken({ userId, method: 'PATCH', path: executePath })
-    const serviceAuthHeader = getServiceAuthHeaderName()
-
-    const { getOverlayServerContext } = await import('@/server/bootstrap')
-    const workspace = await getOverlayServerContext().workspaceService.resolveActiveWorkspace(userId)
+    const workspaceId = context.workspace.workspace.id
 
     const schedule = (automation as { schedule?: AutomationScheduleWorkflowInput['schedule'] }).schedule ??
       { kind: 'interval' as const, intervalMinutes: 60 }
@@ -70,11 +61,7 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
       schedule,
       oneShot: false,
       baseUrl,
-      serviceAuthHeader,
-      serviceToken,
-      actServiceToken,
-      finalizeServiceToken,
-      workspaceId: workspace.workspace.id,
+      workspaceId,
     }
 
     const workflowRun = await start(automationScheduleWorkflow, [workflowInput])

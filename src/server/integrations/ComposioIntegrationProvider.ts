@@ -168,7 +168,9 @@ export class ComposioIntegrationProvider implements IntegrationProvider {
 
   async listCatalog(query: Parameters<IntegrationProvider['listCatalog']>[0]) {
     const apiKey = await this.apiKeyResolver(query.accessToken)
-    if (!apiKey) return { items: [], nextCursor: null, hasMore: false }
+    if (!apiKey) {
+      throw new Error('Composio is not configured. Add COMPOSIO_API_KEY to the server environment or WorkOS Vault.')
+    }
     const connections = await this.listConnections(query)
     const connected = new Map(connections.map((item) => [item.providerKey, item]))
     const url = new URL(`${COMPOSIO_API_BASE_URL}/toolkits`)
@@ -176,7 +178,12 @@ export class ComposioIntegrationProvider implements IntegrationProvider {
     if (query.cursor) url.searchParams.set('cursor', query.cursor)
     url.searchParams.set('limit', String(query.limit))
     const response = await this.fetcher(url, { headers: { 'x-api-key': apiKey }, cache: 'no-store' })
-    if (!response.ok) return { items: [], nextCursor: null, hasMore: false }
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`Composio rejected the configured API key (HTTP ${response.status}). Rotate COMPOSIO_API_KEY and retry.`)
+      }
+      throw new Error(`Composio catalog is unavailable (HTTP ${response.status}). Try again shortly.`)
+    }
     const data = await response.json() as {
       items?: ComposioToolkitRecord[]
       nextCursor?: string
