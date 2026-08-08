@@ -6,6 +6,8 @@
 
 **Phase 0 follow-up (2026-08-07):** The two unsafe side-effecting routes and duplicate direct email implementation identified in A-01/A-02 were removed in this worktree. Lifecycle transactional email/outbox behavior was retained and re-verified. The remaining findings in this report are not addressed by Phase 0.
 
+**Phase 1 follow-up (2026-08-07):** Postgres mode now makes an explicit product decision to gate workspace/collaboration and connector surfaces until provider-neutral repositories exist. All API exports are classified, Postgres no longer constructs the Convex connector repository, Convex connector handlers require active workspace membership, and the connector mapping has a compound lookup index. Full Postgres connector parity remains deferred to the later parity phase.
+
 ## Scope and method
 
 This is a source and verification audit of the integrated repository, not a claim about a live deployment. The working tree was clean before the audit. The active branch is one commit ahead of `origin/staging`; the accumulated work compared with `origin/main` changes **760 files** (`+84,212 / -2,483` lines). The largest areas of change are `src/server` (+34,549), `src/features` (+10,830), workspace/collaboration Convex code (+4,411), migrations (+2,554), and the public app/API layer (+2,491).

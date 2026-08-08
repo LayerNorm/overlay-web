@@ -70,7 +70,9 @@ export const POSTGRES_APP_DATA_V1_CAPABILITIES: AppDataCapabilities = {
   supportsFileUploads: true,
   supportsNotes: true,
   supportsProjects: true,
-  supportsIntegrations: true,
+  // Connector account state is Convex-backed until the Postgres parity phase.
+  // Keep the capability false so the app shell and server gates agree.
+  supportsIntegrations: false,
   supportsSkills: true,
   supportsMcpServers: true,
   supportsSettings: true,

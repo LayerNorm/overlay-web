@@ -1813,5 +1813,6 @@ export default defineSchema({
   })
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_providerKey', ['workspaceId', 'providerKey'])
+    .index('by_workspaceId_userId_providerKey', ['workspaceId', 'userId', 'providerKey'])
     .index('by_userId', ['userId']),
 })

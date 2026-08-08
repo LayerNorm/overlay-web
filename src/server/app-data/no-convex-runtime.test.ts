@@ -121,6 +121,13 @@ test('Postgres server context boots and executes safe policies without Convex co
     assert.equal(repositories.users instanceof PostgresUserRepository, true)
     assert.equal(repositories.webhooks instanceof PostgresWebhookRepository, true)
     assert.equal(repositories.usage instanceof PostgresUsageRepository, true)
+    assert.throws(
+      () => repositories.workspaceConnectors.listByWorkspace({
+        workspaceId: 'workspace-gated',
+        userId: 'user-gated',
+      }),
+      /WorkspaceConnectorRepository is not implemented for the selected app-data provider/,
+    )
     const rateLimit = await context.rateLimiter.check('p0-user', [{
       bucket: 'p0-bootstrap',
       limit: 2,

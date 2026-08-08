@@ -714,12 +714,14 @@ Check:
 - The selected model gateway can serve `nvidia/nemotron-nano-9b-v2`.
 - `billing.provider=none` is active for Postgres mode or a future usage backend is configured.
 
-### Extensions is visible in Postgres mode
+### If connector controls appear in Postgres mode
 
 Check:
 
 - `/api/v1/capabilities` returns `capabilities.integrations=false`.
 - `appDataCapabilities.supportsIntegrations=false`.
+- `/api/v1/integrations` returns `501 app_data_route_not_supported` before the
+  integration domain service runs.
 - The browser has refreshed after deploy.
 - No explicit runtime config override re-enabled `OVERLAY_FEATURE_INTEGRATIONS`.
 

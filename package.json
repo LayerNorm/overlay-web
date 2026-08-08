@@ -51,7 +51,7 @@
     "check:on-prem-convex-boundaries": "tsx scripts/check-on-prem-convex-boundaries.ts",
     "test:on-prem:no-convex-server": "NODE_OPTIONS=--conditions=react-server tsx --test src/server/app-data/no-convex-runtime.test.ts",
     "test:on-prem:no-convex-browser": "tsx scripts/on-prem-browser-no-convex-smoke.ts",
-    "check:on-prem-parity": "NODE_OPTIONS=--conditions=react-server tsx --test src/server/app-data/parity-matrix.test.ts src/server/app-data/route-support.test.ts src/server/app-data/no-convex-runtime.test.ts && npm run check:on-prem-convex-boundaries",
+    "check:on-prem-parity": "NODE_OPTIONS=--conditions=react-server tsx --test src/server/app-data/parity-matrix.test.ts src/server/app-data/route-support.test.ts src/server/app-data/no-convex-runtime.test.ts src/server/integrations/convex-workspace-connector.test.ts && npm run check:on-prem-convex-boundaries",
     "test:p1:unit": "NODE_OPTIONS=--require=./scripts/register-server-only.cjs tsx --test src/server/app-api/idempotency.test.ts src/server/database/postgres/transient-errors.test.ts src/server/conversations/PostgresConversationEventNotifier.test.ts src/server/jobs/PostgresJobWorker.test.ts src/server/shared/providers/redis-rate-limiter.test.ts",
     "test:p1:postgres": "npm run app-db:up && npm run app-db:migrate && NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.app-data.local --test src/server/app-data/contracts/postgres-runtime-foundations.test.ts",
     "test:p1:postgres:remote": "npm run app-db:contract:migrate && NODE_OPTIONS=--conditions=react-server tsx --env-file=.env.on-prem-contract-tests.local --test src/server/app-data/contracts/postgres-runtime-foundations.test.ts",
