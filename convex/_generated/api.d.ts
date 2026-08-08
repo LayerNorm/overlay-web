@@ -9,6 +9,8 @@
  */
 
 import type * as admin_administration from "../admin/administration.js";
+import type * as admin_authorization from "../admin/authorization.js";
+import type * as admin_governance from "../admin/governance.js";
 import type * as ai_sandbox_daytona from "../ai/sandbox/daytona.js";
 import type * as ai_sandbox_daytonaReconcile from "../ai/sandbox/daytonaReconcile.js";
 import type * as auth_apiKeys from "../auth/apiKeys.js";
@@ -23,6 +25,13 @@ import type * as billing_stripe from "../billing/stripe.js";
 import type * as billing_stripeSync from "../billing/stripeSync.js";
 import type * as billing_subscriptions from "../billing/subscriptions.js";
 import type * as chat_conversations from "../chat/conversations.js";
+import type * as collaboration_agents from "../collaboration/agents.js";
+import type * as collaboration_channels from "../collaboration/channels.js";
+import type * as collaboration_conversationMigration from "../collaboration/conversationMigration.js";
+import type * as collaboration_directMessages from "../collaboration/directMessages.js";
+import type * as collaboration_events from "../collaboration/events.js";
+import type * as collaboration_sharing from "../collaboration/sharing.js";
+import type * as collaboration_workspaces from "../collaboration/workspaces.js";
 import type * as crons from "../crons.js";
 import type * as email_deliveryRunner from "../email/deliveryRunner.js";
 import type * as email_outbox from "../email/outbox.js";
@@ -33,6 +42,8 @@ import type * as files_storageAdmin from "../files/storageAdmin.js";
 import type * as http from "../http.js";
 import type * as integrations_mcpServers from "../integrations/mcpServers.js";
 import type * as integrations_skills from "../integrations/skills.js";
+import type * as integrations_workspaceConnectors from "../integrations/workspaceConnectors.js";
+import type * as knowledge_bases from "../knowledge/bases.js";
 import type * as knowledge_knowledge from "../knowledge/knowledge.js";
 import type * as knowledge_memories from "../knowledge/memories.js";
 import type * as knowledge_memoryExtractor from "../knowledge/memoryExtractor.js";
@@ -41,6 +52,7 @@ import type * as lib_auth from "../lib/auth.js";
 import type * as lib_authDebug from "../lib/authDebug.js";
 import type * as lib_gatewayCatalogPricing from "../lib/gatewayCatalogPricing.js";
 import type * as lib_logging from "../lib/logging.js";
+import type * as migrations_backfillWorkspaceIds from "../migrations/backfillWorkspaceIds.js";
 import type * as outputs_outputs from "../outputs/outputs.js";
 import type * as platform_gatewayCatalog from "../platform/gatewayCatalog.js";
 import type * as platform_http from "../platform/http.js";
@@ -62,6 +74,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "admin/administration": typeof admin_administration;
+  "admin/authorization": typeof admin_authorization;
+  "admin/governance": typeof admin_governance;
   "ai/sandbox/daytona": typeof ai_sandbox_daytona;
   "ai/sandbox/daytonaReconcile": typeof ai_sandbox_daytonaReconcile;
   "auth/apiKeys": typeof auth_apiKeys;
@@ -76,6 +90,13 @@ declare const fullApi: ApiFromModules<{
   "billing/stripeSync": typeof billing_stripeSync;
   "billing/subscriptions": typeof billing_subscriptions;
   "chat/conversations": typeof chat_conversations;
+  "collaboration/agents": typeof collaboration_agents;
+  "collaboration/channels": typeof collaboration_channels;
+  "collaboration/conversationMigration": typeof collaboration_conversationMigration;
+  "collaboration/directMessages": typeof collaboration_directMessages;
+  "collaboration/events": typeof collaboration_events;
+  "collaboration/sharing": typeof collaboration_sharing;
+  "collaboration/workspaces": typeof collaboration_workspaces;
   crons: typeof crons;
   "email/deliveryRunner": typeof email_deliveryRunner;
   "email/outbox": typeof email_outbox;
@@ -86,6 +107,8 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "integrations/mcpServers": typeof integrations_mcpServers;
   "integrations/skills": typeof integrations_skills;
+  "integrations/workspaceConnectors": typeof integrations_workspaceConnectors;
+  "knowledge/bases": typeof knowledge_bases;
   "knowledge/knowledge": typeof knowledge_knowledge;
   "knowledge/memories": typeof knowledge_memories;
   "knowledge/memoryExtractor": typeof knowledge_memoryExtractor;
@@ -94,6 +117,7 @@ declare const fullApi: ApiFromModules<{
   "lib/authDebug": typeof lib_authDebug;
   "lib/gatewayCatalogPricing": typeof lib_gatewayCatalogPricing;
   "lib/logging": typeof lib_logging;
+  "migrations/backfillWorkspaceIds": typeof migrations_backfillWorkspaceIds;
   "outputs/outputs": typeof outputs_outputs;
   "platform/gatewayCatalog": typeof platform_gatewayCatalog;
   "platform/http": typeof platform_http;

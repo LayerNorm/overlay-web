@@ -135,5 +135,23 @@ export function productEventForLifecycle(event: LifecycleEvent): ProductEvent | 
       }
     case 'api_key.changed':
       return null
+    case 'workspace.invitation_sent':
+      return {
+        name: 'workspace.invitation_sent',
+        properties: event.attributes,
+        userId: event.userId,
+      }
+    case 'workspace.mention':
+      return {
+        name: 'workspace.mention',
+        properties: event.attributes,
+        userId: event.userId,
+      }
+    case 'workspace.dm_received':
+      return {
+        name: 'workspace.dm_received',
+        properties: event.attributes,
+        userId: event.userId,
+      }
   }
 }

@@ -15,6 +15,9 @@ import {
   projects,
   skills,
   userSettings,
+  workspaces,
+  workspacePrincipals,
+  workspaceMemberships,
 } from '@/server/database/postgres/schema'
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
@@ -233,9 +236,7 @@ export class PostgresActConversationRepository implements ActConversationReposit
         updatedSince: args.updatedSince,
         userId: args.userId,
         workspaceId: args.workspaceId,
-        conversationType: args.conversationType,
         linkedAutomationConversationIds,
-        workspaceId: args.workspaceId,
       }))
       .orderBy(desc(conversations.lastModified))
     return rows.map(mapConversationRow)
@@ -259,7 +260,6 @@ export class PostgresActConversationRepository implements ActConversationReposit
           userId: args.userId,
           workspaceId: args.workspaceId,
           linkedAutomationConversationIds,
-          workspaceId: args.workspaceId,
         }),
         eq(conversations.projectId, args.projectId),
       ))
@@ -1136,10 +1136,6 @@ function conversationListWhere(args: {
 }) {
   return and(
     eq(conversations.userId, args.userId),
-    or(isNull(conversations.isAutomation), eq(conversations.isAutomation, false)),
-    args.linkedAutomationConversationIds.length > 0
-      ? notInArray(conversations.id, args.linkedAutomationConversationIds)
-      : undefined,
     or(isNull(conversations.isAutomation), eq(conversations.isAutomation, false)),
     args.linkedAutomationConversationIds.length > 0
       ? notInArray(conversations.id, args.linkedAutomationConversationIds)
