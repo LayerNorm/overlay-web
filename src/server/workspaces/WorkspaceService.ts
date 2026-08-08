@@ -637,6 +637,18 @@ export class WorkspaceService {
     return scope
   }
 
+  async listResourceIdsByWorkspace(args: {
+    actorUserId: string
+    workspaceId: string
+    resourceType: string
+  }): Promise<string[]> {
+    await this.requireActiveMember(args)
+    return await this.repository.listResourceIdsByWorkspace({
+      workspaceId: args.workspaceId,
+      resourceType: args.resourceType,
+    })
+  }
+
   /**
    * Sharing policy is readable by every active member so the Share dialog can
    * present General access honestly, and writable only by owners and admins.

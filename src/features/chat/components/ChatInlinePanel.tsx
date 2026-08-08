@@ -36,6 +36,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { NewChannelDialog } from './NewChannelDialog'
 import { isSameChatSurface } from '@/features/workspaces/lib/workspace-routing'
+import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 
 const panelItemClass =
   'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
@@ -222,6 +223,8 @@ export function ChatInlinePanel({
       window.clearTimeout(timeoutId)
     }
   }, [authLoading, chatView, loadChats, refreshKey, seededChats, user, workspaceId])
+
+  useWorkspaceChanged(useCallback(() => { void loadChats() }, [loadChats]))
 
   useEffect(() => {
     if (isPublicShowcase) return

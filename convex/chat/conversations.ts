@@ -361,12 +361,13 @@ async function cleanupInactiveMessageDeltas(
 export const list = query({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     updatedSince: v.optional(v.number()),
     includeDeleted: v.optional(v.boolean()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -387,6 +388,7 @@ export const list = query({
       .filter((c) => !automationConversationIds.has(c._id))
       .filter((c) => (updatedSince !== undefined ? c.updatedAt > updatedSince : true))
       .filter((c) => (includeDeleted ? true : !c.deletedAt))
+      .filter((c) => (workspaceId !== undefined ? c.workspaceId === workspaceId : true))
       .slice(0, 100)
   },
 })
@@ -395,12 +397,13 @@ export const listByProject = query({
   args: {
     projectId: v.string(),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     updatedSince: v.optional(v.number()),
     includeDeleted: v.optional(v.boolean()),
   },
-  handler: async (ctx, { projectId, userId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
+  handler: async (ctx, { projectId, userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -421,20 +424,21 @@ export const listByProject = query({
       .filter((conversation) => !automationConversationIds.has(conversation._id))
       .filter((conversation) => (updatedSince !== undefined ? conversation.updatedAt > updatedSince : true))
       .filter((conversation) => (includeDeleted ? true : !conversation.deletedAt))
+      .filter((conversation) => (workspaceId !== undefined ? conversation.workspaceId === workspaceId : true))
       .sort((a, b) => (b.lastModified ?? b.createdAt) - (a.lastModified ?? a.createdAt))
   },
 })
 
 export const get = query({
-  args: { conversationId: v.id('conversations'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { conversationId, userId, accessToken, serverSecret }) => {
+  args: { conversationId: v.id('conversations'), userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { conversationId, userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return null
     }
     const conversation = await ctx.db.get(conversationId)
-    return conversation?.userId === userId && !conversation.deletedAt
+    return conversation?.userId === userId && !conversation.deletedAt && (workspaceId === undefined || conversation.workspaceId === workspaceId)
       ? normalizeConversationDoc(conversation)
       : null
   },
@@ -443,6 +447,7 @@ export const get = query({
 export const create = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     clientId: v.optional(v.string()),
@@ -453,7 +458,7 @@ export const create = mutation({
     lastMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
     isAutomation: v.optional(v.boolean()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, clientId, title, projectId, askModelIds, actModelId, lastMode, isAutomation }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, clientId, title, projectId, askModelIds, actModelId, lastMode, isAutomation }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (clientId?.trim()) {
       const existing = await ctx.db
@@ -475,6 +480,7 @@ export const create = mutation({
     const now = Date.now()
     return await ctx.db.insert('conversations', {
       userId,
+      workspaceId,
       clientId: clientId?.trim() || undefined,
       title,
       projectId,
@@ -492,6 +498,7 @@ export const create = mutation({
 export const update = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     conversationId: v.id('conversations'),
@@ -501,10 +508,10 @@ export const update = mutation({
     actModelId: v.optional(v.string()),
     lastMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, conversationId, title, projectId, askModelIds, actModelId, lastMode }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, conversationId, title, projectId, askModelIds, actModelId, lastMode }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const conversation = await ctx.db.get(conversationId)
-    if (!conversation || conversation.userId !== userId || conversation.deletedAt) {
+    if (!conversation || conversation.userId !== userId || conversation.deletedAt || (workspaceId !== undefined && conversation.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     if (projectId !== undefined && projectId !== null) {
@@ -525,11 +532,11 @@ export const update = mutation({
 })
 
 export const remove = mutation({
-  args: { conversationId: v.id('conversations'), userId: v.string(), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { conversationId, userId, accessToken, serverSecret }) => {
+  args: { conversationId: v.id('conversations'), userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
+  handler: async (ctx, { conversationId, userId, workspaceId, accessToken, serverSecret }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const conversation = await ctx.db.get(conversationId)
-    if (!conversation || conversation.userId !== userId || conversation.deletedAt) {
+    if (!conversation || conversation.userId !== userId || conversation.deletedAt || (workspaceId !== undefined && conversation.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     const now = Date.now()

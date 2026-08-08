@@ -442,6 +442,16 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
     return row ? clean(row) : null
   }
 
+  async listResourceIdsByWorkspace(args: {
+    workspaceId: string
+    resourceType: string
+  }): Promise<string[]> {
+    return await query<string[]>('listResourceIdsByWorkspaceByServer', {
+      ...args,
+      serverSecret: getInternalApiSecret(),
+    }) ?? []
+  }
+
   async getSharingPolicy(workspaceId: string): Promise<WorkspaceSharingPolicy | null> {
     const row = await query<WorkspaceSharingPolicy | null>('getSharingPolicyByServer', { workspaceId })
     return row ? clean(row) : null

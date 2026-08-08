@@ -18,6 +18,7 @@ export type KnowledgeSearchArgs = {
   query: string
   sourceKind?: 'file' | 'memory'
   userId: string
+  workspaceId?: string
 }
 
 export interface KnowledgeSearchRepository {

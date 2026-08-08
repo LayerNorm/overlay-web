@@ -27,7 +27,7 @@ export class IntegrationService {
     return await this.provider.listCatalog(args)
   }
 
-  async listConnected(args: { accessToken?: string; userId: string }) {
+  async listConnected(args: { accessToken?: string; userId: string; workspaceId?: string }) {
     const connections = await this.provider.listConnections(args)
     const uniqueKeys = [...new Set(connections.map((item) => item.providerKey))]
     const items = (await Promise.all(uniqueKeys.map((providerKey) =>

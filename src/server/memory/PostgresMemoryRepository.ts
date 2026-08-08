@@ -11,13 +11,14 @@ import type { MemoryRecord, MemoryRepository, MemoryWrite } from './MemoryReposi
 export class PostgresMemoryRepository implements MemoryRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
 
-  async get(args: { includeDeleted?: boolean; memoryId: string; userId: string }): Promise<MemoryRecord | null> {
+  async get(args: { includeDeleted?: boolean; memoryId: string; userId: string; workspaceId?: string }): Promise<MemoryRecord | null> {
     const [row] = await this.db
       .select()
       .from(memories)
       .where(and(
         eq(memories.id, args.memoryId),
         eq(memories.userId, args.userId),
+        args.workspaceId ? eq(memories.workspaceId, args.workspaceId) : undefined,
         ...(args.includeDeleted ? [] : [isNull(memories.deletedAt)]),
       ))
       .limit(1)
@@ -31,12 +32,14 @@ export class PostgresMemoryRepository implements MemoryRepository {
     projectId?: string
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<MemoryRecord[]> {
     const rows = await this.db
       .select()
       .from(memories)
       .where(and(
         eq(memories.userId, args.userId),
+        args.workspaceId ? eq(memories.workspaceId, args.workspaceId) : undefined,
         ...(args.includeDeleted ? [] : [isNull(memories.deletedAt)]),
         ...(args.updatedSince !== undefined ? [gt(memories.updatedAt, new Date(args.updatedSince))] : []),
         ...(args.projectId !== undefined ? [eq(memories.projectId, args.projectId)] : []),
@@ -78,6 +81,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
           type: args.type,
           updatedAt: now,
           userId: args.userId,
+          workspaceId: args.workspaceId,
         })
         .onConflictDoNothing()
         .returning()
@@ -117,6 +121,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
   async update(args: Omit<MemoryWrite, 'clientId' | 'userId'> & {
     memoryId: string
     userId: string
+    workspaceId?: string
   }): Promise<MemoryRecord | null> {
     const content = requireContent(args.content)
     const now = new Date()
@@ -151,6 +156,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
         .where(and(
           eq(memories.id, args.memoryId),
           eq(memories.userId, args.userId),
+          args.workspaceId ? eq(memories.workspaceId, args.workspaceId) : undefined,
           isNull(memories.deletedAt),
         ))
         .returning()
@@ -167,7 +173,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
     return row ? toMemoryRecord(row) : null
   }
 
-  async remove(args: { memoryId: string; userId: string }): Promise<{ deletedAt: number; memoryId: string } | null> {
+  async remove(args: { memoryId: string; userId: string; workspaceId?: string }): Promise<{ deletedAt: number; memoryId: string } | null> {
     const deletedAt = new Date()
     const [row] = await this.db.transaction(async (tx) => {
       await tx.delete(knowledgeChunks).where(and(
@@ -181,6 +187,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
         .where(and(
           eq(memories.id, args.memoryId),
           eq(memories.userId, args.userId),
+          args.workspaceId ? eq(memories.workspaceId, args.workspaceId) : undefined,
           isNull(memories.deletedAt),
         ))
         .returning({ id: memories.id })

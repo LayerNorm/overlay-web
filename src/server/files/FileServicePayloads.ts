@@ -87,6 +87,7 @@ export function buildFileListArgs(args: {
   projectId?: string | null
   summary?: boolean
   userId: string
+  workspaceId?: string
 }): Record<string, unknown> & { userId: string } {
   const listArgs: Record<string, unknown> & { userId: string } = { userId: args.userId }
   assignIfPresent(listArgs, 'projectId', args.projectId)
@@ -97,6 +98,7 @@ export function buildFileListArgs(args: {
   assignIfPresent(listArgs, 'outputType', args.outputType)
   if (isFileKind(args.kind)) listArgs.kind = args.kind
   if (args.summary) listArgs.summary = true
+  assignIfPresent(listArgs, 'workspaceId', args.workspaceId)
   return listArgs
 }
 

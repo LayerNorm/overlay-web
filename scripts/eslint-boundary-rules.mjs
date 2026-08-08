@@ -38,6 +38,7 @@ const SERVER_INFRA_DOMAINS = ['observability']
 
 const LEGACY_COMPONENT_BOUNDARY_DEBT_FILES = [
   'src/components/layout/PageNavbar.tsx',
+  'src/components/layout/AppSidebarInlinePanels.tsx',
   'src/components/providers/GuestGateProvider.tsx',
   'src/components/providers/OnboardingProvider.tsx',
 ]

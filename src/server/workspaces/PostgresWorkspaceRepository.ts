@@ -883,6 +883,19 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
     return result.rows[0] ? resourceScopeFromRow(result.rows[0]) : null
   }
 
+  async listResourceIdsByWorkspace(args: {
+    workspaceId: string
+    resourceType: string
+  }): Promise<string[]> {
+    const result = await this.db.execute<{ resource_id: string }>(sql`
+      SELECT resource_id
+      FROM workspace_resource_scopes
+      WHERE workspace_id = ${args.workspaceId}
+        AND resource_type = ${args.resourceType}
+    `)
+    return result.rows.map((row) => row.resource_id)
+  }
+
   async getSharingPolicy(workspaceId: string): Promise<WorkspaceSharingPolicy | null> {
     const result = await this.db.execute<SharingPolicyRow>(sql`
       SELECT ${sharingPolicyColumns}

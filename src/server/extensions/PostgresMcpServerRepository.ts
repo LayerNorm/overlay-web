@@ -28,21 +28,25 @@ export class PostgresMcpServerRepository implements McpServerRepository {
     private readonly cipher = McpCredentialCipher.fromEnvironment(),
   ) {}
 
-  async list(args: { userId: string; projectId?: string }): Promise<McpServerSummary[]> {
+  async list(args: { userId: string; projectId?: string; workspaceId?: string }): Promise<McpServerSummary[]> {
     const rows = await this.selectServers(args)
     return rows.map(mapSummary)
   }
 
-  async listEnabled(args: { userId: string; projectId?: string }): Promise<McpServerRecord[]> {
+  async listEnabled(args: { userId: string; projectId?: string; workspaceId?: string }): Promise<McpServerRecord[]> {
     const rows = await this.selectServers(args, true)
     return rows.map((row) => this.mapRecord(row))
   }
 
-  async get(args: { mcpServerId: string; userId: string }): Promise<McpServerRecord | null> {
+  async get(args: { mcpServerId: string; userId: string; workspaceId?: string }): Promise<McpServerRecord | null> {
     const [row] = await this.db
       .select()
       .from(mcpServers)
-      .where(and(eq(mcpServers.id, args.mcpServerId), eq(mcpServers.userId, args.userId)))
+      .where(and(
+        eq(mcpServers.id, args.mcpServerId),
+        eq(mcpServers.userId, args.userId),
+        args.workspaceId ? eq(mcpServers.workspaceId, args.workspaceId) : undefined,
+      ))
       .limit(1)
     return row ? this.mapRecord(row) : null
   }
@@ -65,6 +69,7 @@ export class PostgresMcpServerRepository implements McpServerRepository {
       transport: args.transport,
       url: args.url,
       userId: args.userId,
+      workspaceId: args.workspaceId,
     })
     return id
   }
@@ -94,15 +99,23 @@ export class PostgresMcpServerRepository implements McpServerRepository {
         ...(args.toolPolicies !== undefined ? { toolPolicies: args.toolPolicies } : {}),
         updatedAt: new Date(),
       })
-      .where(and(eq(mcpServers.id, args.mcpServerId), eq(mcpServers.userId, args.userId)))
+      .where(and(
+        eq(mcpServers.id, args.mcpServerId),
+        eq(mcpServers.userId, args.userId),
+        args.workspaceId ? eq(mcpServers.workspaceId, args.workspaceId) : undefined,
+      ))
       .returning({ id: mcpServers.id })
     if (rows.length === 0) throw new Error('Unauthorized')
   }
 
-  async remove(args: { mcpServerId: string; userId: string }): Promise<void> {
+  async remove(args: { mcpServerId: string; userId: string; workspaceId?: string }): Promise<void> {
     const rows = await this.db
       .delete(mcpServers)
-      .where(and(eq(mcpServers.id, args.mcpServerId), eq(mcpServers.userId, args.userId)))
+      .where(and(
+        eq(mcpServers.id, args.mcpServerId),
+        eq(mcpServers.userId, args.userId),
+        args.workspaceId ? eq(mcpServers.workspaceId, args.workspaceId) : undefined,
+      ))
       .returning({ id: mcpServers.id })
     if (rows.length === 0) throw new Error('Unauthorized')
   }
@@ -275,7 +288,7 @@ export class PostgresMcpServerRepository implements McpServerRepository {
   }
 
   private async selectServers(
-    args: { userId: string; projectId?: string },
+    args: { userId: string; projectId?: string; workspaceId?: string },
     enabledOnly = false,
   ): Promise<McpServerRow[]> {
     return await this.db
@@ -285,6 +298,7 @@ export class PostgresMcpServerRepository implements McpServerRepository {
         eq(mcpServers.userId, args.userId),
         args.projectId ? eq(mcpServers.projectId, args.projectId) : isNull(mcpServers.projectId),
         enabledOnly ? eq(mcpServers.enabled, true) : undefined,
+        args.workspaceId ? eq(mcpServers.workspaceId, args.workspaceId) : undefined,
       ))
       .orderBy(desc(mcpServers.updatedAt))
       .limit(200)

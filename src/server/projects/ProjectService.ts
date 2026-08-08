@@ -23,6 +23,7 @@ export class ProjectService {
   getProject(args: {
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord | null> {
     return this.repository.getProject(args)
   }
@@ -31,6 +32,7 @@ export class ProjectService {
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord[]> {
     return this.repository.listProjects(args)
   }
@@ -41,6 +43,7 @@ export class ProjectService {
     name?: string
     parentId?: string | null
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord> {
     const name = requiredName(args.name)
     return await this.mapRepositoryErrors(() => this.repository.createProject({
@@ -49,6 +52,7 @@ export class ProjectService {
       name,
       parentId: normalizeParentId(args.parentId),
       userId: args.userId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }))
   }
 
@@ -58,6 +62,7 @@ export class ProjectService {
     parentId?: string | null
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord> {
     const project = await this.mapRepositoryErrors(() => this.repository.updateProject({
       instructions: args.instructions === undefined
@@ -67,6 +72,7 @@ export class ProjectService {
       parentId: args.parentId === undefined ? undefined : normalizeParentId(args.parentId),
       projectId: args.projectId,
       userId: args.userId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }))
     if (!project) throw new ProjectServiceError('Not found', 404)
     return project
@@ -75,6 +81,7 @@ export class ProjectService {
   async deleteProjectTree(args: {
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<DeleteProjectTreeResult> {
     const result = await this.mapRepositoryErrors(() => this.repository.deleteProjectTree(args))
     if (!result) throw new ProjectServiceError('Not found', 404)

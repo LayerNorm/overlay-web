@@ -38,6 +38,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       const project = await projectService.getProject({
         projectId,
         userId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
       })
       if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
       return NextResponse.json(project)
@@ -49,6 +50,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     const projects = await projectService.listProjects({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
       ...(includeDeleted !== undefined ? { includeDeleted } : {}),
     })
@@ -71,6 +73,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const { name, parentId, instructions, clientId } = body
     const project = await projectService.createProject({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       clientId: clientId?.trim() || undefined,
       name,
       instructions: instructions?.trim() || undefined,
@@ -100,6 +103,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const project = await projectService.updateProject({
       projectId,
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       name,
       instructions,
       parentId,
@@ -128,6 +132,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     const result = await projectService.deleteProjectTree({
       projectId,
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json({
       success: true,

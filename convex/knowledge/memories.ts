@@ -27,6 +27,7 @@ function normalizeMemoryDoc<T extends {
 export const list = query({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     updatedSince: v.optional(v.number()),
@@ -35,7 +36,7 @@ export const list = query({
     conversationId: v.optional(v.string()),
     noteId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, updatedSince, includeDeleted, projectId, conversationId, noteId }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, updatedSince, includeDeleted, projectId, conversationId, noteId }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -53,12 +54,14 @@ export const list = query({
       .filter((memory) => (projectId !== undefined ? memory.projectId === projectId : true))
       .filter((memory) => (conversationId !== undefined ? memory.conversationId === conversationId : true))
       .filter((memory) => (noteId !== undefined ? memory.noteId === noteId : true))
+      .filter((memory) => (workspaceId !== undefined ? memory.workspaceId === workspaceId : true))
   },
 })
 
 export const add = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     clientId: v.optional(v.string()),
@@ -119,6 +122,7 @@ export const add = mutation({
     const now = Date.now()
     const memoryId = await ctx.db.insert('memories', {
       userId: args.userId,
+      workspaceId: args.workspaceId,
       clientId: args.clientId?.trim() || undefined,
       content: args.content,
       source: args.source,
@@ -142,6 +146,7 @@ export const add = mutation({
 export const update = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     memoryId: v.id('memories'),
@@ -165,10 +170,10 @@ export const update = mutation({
     tags: v.optional(v.array(v.string())),
     actor: v.optional(v.union(v.literal('user'), v.literal('agent'))),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, memoryId, ...updates }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, memoryId, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const existing = await ctx.db.get(memoryId)
-    if (!existing || existing.userId !== userId || existing.deletedAt) {
+    if (!existing || existing.userId !== userId || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     const MAX_MEMORY_BYTES = 50 * 1024
@@ -195,14 +200,15 @@ export const update = mutation({
 export const remove = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     memoryId: v.id('memories'),
   },
-  handler: async (ctx, { userId, accessToken, serverSecret, memoryId }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, memoryId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const existing = await ctx.db.get(memoryId)
-    if (!existing || existing.userId !== userId || existing.deletedAt) {
+    if (!existing || existing.userId !== userId || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {

@@ -149,6 +149,7 @@ export class FileService {
     projectId?: string | null
     summary?: boolean
     userId: string
+    workspaceId?: string
   }): Promise<unknown> {
     if (args.fileId) {
       const file = await this.deps.repository.getFile({
@@ -167,6 +168,7 @@ export class FileService {
   async createFile(args: {
     body: Record<string, unknown>
     userId: string
+    workspaceId?: string
   }): Promise<{ id: unknown; ids?: string[]; parts?: number }> {
     const createRequest = parseCreateFileRequest(args.body, args.userId)
     let id: unknown
@@ -207,6 +209,7 @@ export class FileService {
   async updateFile(args: {
     body: Record<string, unknown>
     userId: string
+    workspaceId?: string
   }): Promise<{ success: true }> {
     await this.deps.repository.updateFile(buildUpdateFileArgs(args.body, args.userId))
     return { success: true }
@@ -215,6 +218,7 @@ export class FileService {
   async deleteFile(args: {
     fileId?: string | null
     userId: string
+    workspaceId?: string
   }): Promise<{ success: true }> {
     if (!args.fileId) serviceError({ error: 'fileId required' }, 400)
     const r2Entries = await this.deps.repository.getR2KeysForSubtree({

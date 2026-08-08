@@ -19,6 +19,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       request.nextUrl.searchParams.get('includeRuns') === 'true'
     const result = await automationService.getAutomations({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       automationId,
       projectId,
       includeDeleted,
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const { auth } = context
     const result = await automationService.createAutomation({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       body,
     })
     return NextResponse.json(result)
@@ -57,6 +59,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const { auth } = context
     const result = await automationService.updateAutomation({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       body,
     })
     return NextResponse.json(result)
@@ -79,6 +82,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     const result = await automationService.deleteAutomation({
       automationId: body.automationId || request.nextUrl.searchParams.get('automationId'),
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json(result)
   } catch (error) {

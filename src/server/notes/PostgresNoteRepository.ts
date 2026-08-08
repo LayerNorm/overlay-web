@@ -13,6 +13,7 @@ export class PostgresNoteRepository implements NoteRepository {
   async getNote(args: {
     noteId: string
     userId: string
+    workspaceId?: string
   }): Promise<NoteRecord | null> {
     const [row] = await this.db
       .select()
@@ -21,6 +22,7 @@ export class PostgresNoteRepository implements NoteRepository {
         eq(notes.id, args.noteId),
         eq(notes.userId, args.userId),
         isNull(notes.deletedAt),
+        args.workspaceId ? eq(notes.workspaceId, args.workspaceId) : undefined,
       ))
       .limit(1)
     return row ? noteRowToRecord(row) : null
@@ -30,6 +32,7 @@ export class PostgresNoteRepository implements NoteRepository {
     userId: string
     projectId?: string
     includeDeleted?: boolean
+    workspaceId?: string
   }): Promise<NoteRecord[]> {
     const rows = await this.db
       .select()
@@ -38,6 +41,7 @@ export class PostgresNoteRepository implements NoteRepository {
         eq(notes.userId, args.userId),
         ...(args.projectId !== undefined ? [eq(notes.projectId, args.projectId)] : []),
         ...(args.includeDeleted ? [] : [isNull(notes.deletedAt)]),
+        args.workspaceId ? eq(notes.workspaceId, args.workspaceId) : undefined,
       ))
       .orderBy(desc(notes.updatedAt))
     return rows.map(noteRowToRecord)
@@ -50,6 +54,7 @@ export class PostgresNoteRepository implements NoteRepository {
     projectId?: string
     tags?: string[]
     clientId?: string
+    workspaceId?: string
   }): Promise<{ id: string; note: NoteRecord | null }> {
     const now = new Date()
     const id = `note_${randomUUID()}`
@@ -70,6 +75,7 @@ export class PostgresNoteRepository implements NoteRepository {
           projectId: args.projectId,
           createdAt: now,
           updatedAt: now,
+          workspaceId: args.workspaceId,
         })
         .onConflictDoUpdate({
           target: [notes.userId, notes.clientId],
@@ -99,6 +105,7 @@ export class PostgresNoteRepository implements NoteRepository {
     projectId?: string | null
     tags?: string[]
     expectedUpdatedAt?: number
+    workspaceId?: string
   }): Promise<NoteRecord | null> {
     const set: Partial<typeof notes.$inferInsert> = {
       updatedAt: new Date(),
@@ -122,6 +129,7 @@ export class PostgresNoteRepository implements NoteRepository {
           eq(notes.id, args.noteId),
           eq(notes.userId, args.userId),
           isNull(notes.deletedAt),
+          args.workspaceId ? eq(notes.workspaceId, args.workspaceId) : undefined,
           args.expectedUpdatedAt === undefined
             ? undefined
             : eq(notes.updatedAt, new Date(args.expectedUpdatedAt)),
@@ -138,6 +146,7 @@ export class PostgresNoteRepository implements NoteRepository {
   async deleteNote(args: {
     noteId: string
     userId: string
+    workspaceId?: string
   }): Promise<{ noteId: string; deletedAt: number } | null> {
     const deletedAt = new Date()
     const [row] = await this.db
@@ -150,6 +159,7 @@ export class PostgresNoteRepository implements NoteRepository {
         eq(notes.id, args.noteId),
         eq(notes.userId, args.userId),
         isNull(notes.deletedAt),
+        args.workspaceId ? eq(notes.workspaceId, args.workspaceId) : undefined,
       ))
       .returning({ id: notes.id })
     return row ? { noteId: row.id, deletedAt: deletedAt.getTime() } : null

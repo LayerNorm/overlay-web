@@ -1494,6 +1494,25 @@ export const getResourceWorkspaceByServer = query({
   },
 })
 
+export const listResourceIdsByWorkspaceByServer = query({
+  args: {
+    serverSecret: v.string(),
+    workspaceId: v.string(),
+    resourceType: v.string(),
+  },
+  returns: v.array(v.string()),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db
+      .query('workspaceResourceScopes')
+      .withIndex('by_workspaceId_resource', (q) =>
+        q.eq('workspaceId', args.workspaceId).eq('resourceType', args.resourceType),
+      )
+      .collect()
+    return rows.map((row) => row.resourceId)
+  },
+})
+
 const rolloutStage = v.union(v.literal('dogfood'), v.literal('invited'), v.literal('general'))
 const sharingPolicyValidator = v.object({
   workspaceId: v.string(),

@@ -255,6 +255,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       const fileName = `overlay-image-${Date.now()}.png`
       outputId = await outputService.create({
           userId: auth.userId,
+          workspaceId: context.workspace.workspace.id,
           type: 'image',
           source: 'image_generation',
           status: 'pending',

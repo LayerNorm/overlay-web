@@ -82,13 +82,21 @@ export async function GET(
     const connected = await integrations.listConnected({
       userId: context.auth.userId,
       accessToken: context.auth.accessToken,
+      workspaceId: context.workspace.workspace.id,
     })
+    const mappings = await getOverlayServerContext().appData.repositories.workspaceConnectors.listByWorkspace({
+      workspaceId: context.workspace.workspace.id,
+      userId: context.auth.userId,
+    })
+    const mappedProviderKeys = new Set(mappings.map((mapping) => mapping.providerKey))
+    const filteredConnections = connected.connections.filter((connection) => mappedProviderKeys.has(connection.providerKey))
+    const filteredItems = connected.items.filter((item) => mappedProviderKeys.has(item.providerKey))
     return NextResponse.json({
       provider: integrations.id,
       providerCapabilities: integrations.capabilities,
-      connected: [...new Set(connected.connections.map((item) => item.providerKey))],
-      data: connected.items,
-      items: connected.items,
+      connected: [...new Set(filteredConnections.map((item) => item.providerKey))],
+      data: filteredItems,
+      items: filteredItems,
       hasMore: false,
     })
   } catch (error) {
@@ -112,10 +120,16 @@ export async function POST(
       accessToken: context.auth.accessToken,
       callbackOrigin: resolveCallbackOrigin(request),
       providerKey,
+      workspaceId: context.workspace.workspace.id,
     }
 
     if (body.action === 'disconnect') {
       await integrations.disconnect(connectionContext)
+      await getOverlayServerContext().appData.repositories.workspaceConnectors.remove({
+        workspaceId: context.workspace.workspace.id,
+        userId: context.auth.userId,
+        providerKey,
+      })
       return NextResponse.json({
         success: true,
         provider: integrations.id,
@@ -123,7 +137,16 @@ export async function POST(
       })
     }
 
-    return NextResponse.json(await integrations.connect(connectionContext))
+    const result = await integrations.connect(connectionContext)
+    if (result.connectionId) {
+      await getOverlayServerContext().appData.repositories.workspaceConnectors.insert({
+        workspaceId: context.workspace.workspace.id,
+        userId: context.auth.userId,
+        providerKey,
+        connectedAccountId: result.connectionId,
+      })
+    }
+    return NextResponse.json(result)
   } catch (error) {
     logger.error('[Integrations] POST failed:', error)
     return NextResponse.json({

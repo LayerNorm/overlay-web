@@ -38,10 +38,11 @@ export type MemoryWrite = {
   turnId?: string
   type?: MemoryType
   userId: string
+  workspaceId?: string
 }
 
 export interface MemoryRepository {
-  get(args: { includeDeleted?: boolean; memoryId: string; userId: string }): Promise<MemoryRecord | null>
+  get(args: { includeDeleted?: boolean; memoryId: string; userId: string; workspaceId?: string }): Promise<MemoryRecord | null>
   list(args: {
     conversationId?: string
     includeDeleted?: boolean
@@ -49,11 +50,13 @@ export interface MemoryRepository {
     projectId?: string
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<MemoryRecord[]>
   create(args: MemoryWrite): Promise<MemoryRecord>
   update(args: Omit<MemoryWrite, 'clientId' | 'userId'> & {
     memoryId: string
     userId: string
+    workspaceId?: string
   }): Promise<MemoryRecord | null>
-  remove(args: { memoryId: string; userId: string }): Promise<{ deletedAt: number; memoryId: string } | null>
+  remove(args: { memoryId: string; userId: string; workspaceId?: string }): Promise<{ deletedAt: number; memoryId: string } | null>
 }

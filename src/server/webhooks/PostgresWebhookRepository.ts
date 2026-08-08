@@ -21,11 +21,14 @@ import type {
 export class PostgresWebhookRepository implements WebhookRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
 
-  async list(args: { userId: string }): Promise<WebhookSubscriptionRecord[]> {
+  async list(args: { userId: string; workspaceId?: string }): Promise<WebhookSubscriptionRecord[]> {
     const rows = await this.db
       .select()
       .from(webhookSubscriptions)
-      .where(eq(webhookSubscriptions.userId, args.userId))
+      .where(and(
+        eq(webhookSubscriptions.userId, args.userId),
+        args.workspaceId ? eq(webhookSubscriptions.workspaceId, args.workspaceId) : undefined,
+      ))
       .orderBy(desc(webhookSubscriptions.updatedAt))
     return rows.map((row) => ({
       _id: row.id,
@@ -52,6 +55,7 @@ export class PostgresWebhookRepository implements WebhookRepository {
       updatedAt: now,
       url: args.url.trim(),
       userId: args.userId,
+      workspaceId: args.workspaceId,
     })
     return { id, secret }
   }
@@ -69,6 +73,7 @@ export class PostgresWebhookRepository implements WebhookRepository {
       .where(and(
         eq(webhookSubscriptions.id, args.subscriptionId),
         eq(webhookSubscriptions.userId, args.userId),
+        args.workspaceId ? eq(webhookSubscriptions.workspaceId, args.workspaceId) : undefined,
       ))
       .returning({ id: webhookSubscriptions.id })
     return rows.length > 0
@@ -82,6 +87,7 @@ export class PostgresWebhookRepository implements WebhookRepository {
       .where(and(
         eq(webhookSubscriptions.id, args.subscriptionId),
         eq(webhookSubscriptions.userId, args.userId),
+        args.workspaceId ? eq(webhookSubscriptions.workspaceId, args.workspaceId) : undefined,
       ))
       .returning({ id: webhookSubscriptions.id })
     return rows.length > 0 ? secret : null
@@ -93,6 +99,7 @@ export class PostgresWebhookRepository implements WebhookRepository {
       .where(and(
         eq(webhookSubscriptions.id, args.subscriptionId),
         eq(webhookSubscriptions.userId, args.userId),
+        args.workspaceId ? eq(webhookSubscriptions.workspaceId, args.workspaceId) : undefined,
       ))
       .returning({ id: webhookSubscriptions.id })
     return rows.length > 0
@@ -224,6 +231,6 @@ export class PostgresWebhookRepository implements WebhookRepository {
 }
 
 function normalizeOptional(value: string | undefined): string | null {
-  const normalized = value?.trim()
-  return normalized || null
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : null
 }

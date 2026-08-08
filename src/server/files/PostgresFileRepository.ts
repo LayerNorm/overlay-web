@@ -56,6 +56,7 @@ export class PostgresFileRepository implements FileRepository {
   async getFile(args: {
     fileId: string
     userId: string
+    workspaceId?: string
   }): Promise<FileRecord | null> {
     const [row] = await this.db
       .select()
@@ -64,6 +65,7 @@ export class PostgresFileRepository implements FileRepository {
         eq(files.id, args.fileId),
         eq(files.userId, args.userId),
         isNull(files.deletedAt),
+        args.workspaceId ? eq(files.workspaceId, args.workspaceId) : undefined,
       ))
       .limit(1)
     return row ? normalizeFile(row) : null
@@ -72,6 +74,7 @@ export class PostgresFileRepository implements FileRepository {
   async getFileByLegacyOutputId(args: {
     outputId: string
     userId: string
+    workspaceId?: string
   }): Promise<FileRecord | null> {
     const [row] = await this.db
       .select()
@@ -80,12 +83,13 @@ export class PostgresFileRepository implements FileRepository {
         eq(files.legacyOutputId, args.outputId),
         eq(files.userId, args.userId),
         isNull(files.deletedAt),
+        args.workspaceId ? eq(files.workspaceId, args.workspaceId) : undefined,
       ))
       .limit(1)
     return row ? normalizeFile(row) : null
   }
 
-  async listFiles(args: Record<string, unknown> & { userId: string }): Promise<unknown[]> {
+  async listFiles(args: Record<string, unknown> & { userId: string; workspaceId?: string }): Promise<unknown[]> {
     const filters = [
       eq(files.userId, args.userId),
       args.includeDeleted === true ? undefined : isNull(files.deletedAt),
@@ -98,6 +102,7 @@ export class PostgresFileRepository implements FileRepository {
       typeof args.conversationId === 'string' ? eq(files.conversationId, args.conversationId) : undefined,
       typeof args.outputType === 'string' ? eq(files.outputType, args.outputType) : undefined,
       isFileKind(args.kind) ? eq(files.kind, args.kind) : undefined,
+      args.workspaceId ? eq(files.workspaceId, args.workspaceId) : undefined,
     ].filter(Boolean)
 
     const rows = await this.db
@@ -111,7 +116,7 @@ export class PostgresFileRepository implements FileRepository {
       : rows.map(normalizeFile)
   }
 
-  async createFile(args: Record<string, unknown> & { userId: string }): Promise<string | null> {
+  async createFile(args: Record<string, unknown> & { userId: string; workspaceId?: string }): Promise<string | null> {
     return await this.db.transaction(async (tx) => {
       await lockFileHierarchy(tx, args.userId)
       await this.assertParentAndProject(tx, {
@@ -172,6 +177,7 @@ export class PostgresFileRepository implements FileRepository {
         projectId: stringValue(args.projectId),
         createdAt: now,
         updatedAt,
+        workspaceId: args.workspaceId,
       })
       if (indexable && !canonicalDuplicate) {
         await enqueueKnowledgeReindexJob(tx, {
@@ -185,7 +191,7 @@ export class PostgresFileRepository implements FileRepository {
     })
   }
 
-  async createFileWithStorage(args: Record<string, unknown> & { userId: string }): Promise<string | null> {
+  async createFileWithStorage(args: Record<string, unknown> & { userId: string; workspaceId?: string }): Promise<string | null> {
     const r2Key = requiredString(args.r2Key, 'r2Key')
     if (!isOwnedFileR2Key(args.userId, r2Key)) throw new Error('Invalid storage key')
     return await this.db.transaction(async (tx) => {
@@ -233,6 +239,7 @@ export class PostgresFileRepository implements FileRepository {
         projectId: stringValue(args.projectId),
         createdAt: now,
         updatedAt: now,
+        workspaceId: args.workspaceId,
       })
       await tx
         .update(r2UploadIntents)
@@ -255,6 +262,7 @@ export class PostgresFileRepository implements FileRepository {
     r2Key: string
     sourceSizeBytes: number
     userId: string
+    workspaceId?: string
   }): Promise<string[]> {
     if (!isOwnedFileR2Key(args.userId, args.r2Key)) throw new Error('Invalid storage key')
     if (args.parts.length === 0) throw new Error('Extracted document requires at least one part')
@@ -293,6 +301,7 @@ export class PostgresFileRepository implements FileRepository {
           projectId: args.projectId,
           createdAt: now,
           updatedAt: now,
+          workspaceId: args.workspaceId,
         })
         if (!canonicalDuplicate) {
           await enqueueKnowledgeReindexJob(tx, {
@@ -308,7 +317,7 @@ export class PostgresFileRepository implements FileRepository {
     })
   }
 
-  async updateFile(args: Record<string, unknown> & { fileId: string; userId: string }): Promise<void> {
+  async updateFile(args: Record<string, unknown> & { fileId: string; userId: string; workspaceId?: string }): Promise<void> {
     await this.db.transaction(async (tx) => {
       await lockFileHierarchy(tx, args.userId)
       const [existing] = await tx
@@ -318,6 +327,7 @@ export class PostgresFileRepository implements FileRepository {
           eq(files.id, args.fileId),
           eq(files.userId, args.userId),
           isNull(files.deletedAt),
+          args.workspaceId ? eq(files.workspaceId, args.workspaceId) : undefined,
         ))
         .limit(1)
       if (!existing) throw new Error('Unauthorized')
@@ -394,6 +404,7 @@ export class PostgresFileRepository implements FileRepository {
           eq(files.id, args.fileId),
           eq(files.userId, args.userId),
           isNull(files.deletedAt),
+          args.workspaceId ? eq(files.workspaceId, args.workspaceId) : undefined,
         ))
         .returning()
       if (updated?.indexStatus === 'pending') {
@@ -417,6 +428,7 @@ export class PostgresFileRepository implements FileRepository {
   async removeFile(args: {
     fileId: string
     userId: string
+    workspaceId?: string
   }): Promise<void> {
     await this.db.transaction(async (tx) => {
       await lockFileHierarchy(tx, args.userId)
@@ -444,6 +456,7 @@ export class PostgresFileRepository implements FileRepository {
             eq(files.id, row.id),
             eq(files.userId, args.userId),
             isNull(files.deletedAt),
+            args.workspaceId ? eq(files.workspaceId, args.workspaceId) : undefined,
           ))
         await tx.delete(knowledgeChunks).where(and(
           eq(knowledgeChunks.sourceKind, 'file'),
@@ -840,7 +853,11 @@ export class PostgresFileRepository implements FileRepository {
   private async getSubtreeRows(db: FileDb, args: {
     fileId: string
     userId: string
+    workspaceId?: string
   }): Promise<Array<FileRow & { depth: number }>> {
+    const workspaceFilter = args.workspaceId
+      ? sql`AND workspace_id = ${args.workspaceId}`
+      : sql``
     const result = await db.execute(sql`
       WITH RECURSIVE subtree AS (
         SELECT *, 0 AS depth
@@ -848,12 +865,14 @@ export class PostgresFileRepository implements FileRepository {
         WHERE id = ${args.fileId}
           AND user_id = ${args.userId}
           AND deleted_at IS NULL
+          ${workspaceFilter}
         UNION ALL
         SELECT child.*, subtree.depth + 1 AS depth
         FROM files child
         JOIN subtree ON child.parent_id = subtree.id
         WHERE child.user_id = ${args.userId}
           AND child.deleted_at IS NULL
+          ${workspaceFilter}
       )
       SELECT *
       FROM subtree
@@ -978,6 +997,7 @@ function fileRowFromRaw(row: Record<string, unknown>): FileRow & { depth: number
     createdAt: requiredDateFromRaw(row.created_at),
     updatedAt: requiredDateFromRaw(row.updated_at),
     deletedAt: dateFromRaw(row.deleted_at),
+    workspaceId: nullableString(row.workspace_id),
     shareToken: nullableString(row.share_token),
     shareVisibility: row.share_visibility as FileRow['shareVisibility'],
     sharedAt: dateFromRaw(row.shared_at),

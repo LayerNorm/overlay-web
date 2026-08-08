@@ -64,6 +64,9 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
     const projectFilter = args.projectId
       ? sql`AND (chunk.project_id IS NULL OR chunk.project_id = ${args.projectId})`
       : sql``
+    const workspaceFilter = args.workspaceId
+      ? sql`AND chunk.workspace_id = ${args.workspaceId}`
+      : sql``
     const vectorLiteral = JSON.stringify(queryVector)
     const vectorRows = await this.deps.db.execute<SearchRow & { similarity: number }>(sql`
       SELECT
@@ -83,6 +86,7 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
         AND embedding.model_version = ${this.deps.embeddings.identity.modelVersion}
         ${sourceFilter}
         ${projectFilter}
+        ${workspaceFilter}
         ${args.minVecScore !== undefined
           ? sql`AND 1 - (embedding.embedding <=> ${vectorLiteral}::vector) >= ${args.minVecScore}`
           : sql``}
@@ -106,6 +110,7 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
       WHERE chunk.user_id = ${args.userId}
         ${sourceFilter}
         ${projectFilter}
+        ${workspaceFilter}
         AND to_tsvector('simple', coalesce(chunk.title, '') || ' ' || chunk.text)
           @@ websearch_to_tsquery('simple', ${query})
       ORDER BY lexical_score DESC, chunk.id
