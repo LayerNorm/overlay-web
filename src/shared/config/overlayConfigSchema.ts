@@ -51,7 +51,7 @@ export const OverlaySandboxProviderSchema = z.enum(['daytona', 'e2b', 'local-fir
 export const OverlayWebSearchProviderSchema = z.enum(['ai-gateway', 'perplexity', 'tavily', 'none'])
 export const OverlayAnalyticsProviderSchema = z.enum(['posthog', 'none'])
 export const OverlayErrorReportingProviderSchema = z.enum(['sentry', 'none'])
-export const OverlayEmailProviderSchema = z.enum(['ses', 'smtp', 'none'])
+export const OverlayEmailProviderSchema = z.enum(['resend', 'ses', 'smtp', 'none'])
 export const OverlaySecretsProviderSchema = z.enum(['env', 'workos-vault', 'aws-secrets-manager', 'vault', 'none'])
 export const OverlayRateLimitProviderSchema = z.enum(['convex', 'redis', 'memory', 'none'])
 export const OverlayRateLimitFailureModeSchema = z.enum(['deny', 'memory'])
@@ -331,6 +331,11 @@ export const OverlayRuntimeConfigSchema = z
         provider: OverlayEmailProviderSchema.default('none'),
         from: OptionalStringSchema,
         replyTo: OptionalStringSchema,
+        resend: z
+          .object({
+            apiKey: OptionalStringSchema,
+          })
+          .default({}),
         ses: z
           .object({
             accessKeyId: OptionalStringSchema,
@@ -471,6 +476,15 @@ export const OverlayRuntimeConfigSchema = z
           path: ['email', 'from'],
           message: 'email.from is required when transactional email is enabled',
         })
+      }
+      if (selectedProviders.email === 'resend') {
+        if (!config.email?.resend?.apiKey) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['email', 'resend', 'apiKey'],
+            message: 'email.resend.apiKey is required when email.provider is resend',
+          })
+        }
       }
       if (selectedProviders.email === 'ses') {
         for (const [key, value] of [
@@ -943,6 +957,9 @@ export function redactOverlayRuntimeConfig(config: OverlayRuntimeConfig) {
           provider: config.email.provider,
           from: config.email.from,
           replyTo: config.email.replyTo,
+          resend: {
+            hasApiKey: Boolean(config.email.resend?.apiKey),
+          },
           ses: {
             region: config.email.ses.region,
             configurationSetName: config.email.ses.configurationSetName,

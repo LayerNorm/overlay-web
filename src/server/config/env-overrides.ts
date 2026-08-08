@@ -215,6 +215,9 @@ function emailConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
   const provider = readEnv(env, 'OVERLAY_EMAIL_PROVIDER') ?? readEnv(env, 'EMAIL_PROVIDER')
   const from = readEnv(env, 'OVERLAY_EMAIL_FROM')
   const replyTo = readEnv(env, 'OVERLAY_EMAIL_REPLY_TO')
+  const resend = compactObject({
+    apiKey: readEnv(env, 'RESEND_API_KEY') ?? readEnv(env, 'OVERLAY_EMAIL_RESEND_API_KEY'),
+  })
   const ses = compactObject({
     accessKeyId: readEnv(env, 'OVERLAY_EMAIL_SES_ACCESS_KEY_ID'),
     secretAccessKey: readEnv(env, 'OVERLAY_EMAIL_SES_SECRET_ACCESS_KEY'),
@@ -229,13 +232,14 @@ function emailConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
     username: readEnv(env, 'OVERLAY_EMAIL_SMTP_USERNAME'),
     password: readEnv(env, 'OVERLAY_EMAIL_SMTP_PASSWORD'),
   })
-  if (!provider && !from && !replyTo && Object.keys(ses).length === 0 && Object.keys(smtp).length === 0) {
+  if (!provider && !from && !replyTo && Object.keys(resend).length === 0 && Object.keys(ses).length === 0 && Object.keys(smtp).length === 0) {
     return null
   }
   return compactObject({
     provider,
     from,
     replyTo,
+    resend: Object.keys(resend).length > 0 ? resend : undefined,
     ses: Object.keys(ses).length > 0 ? ses : undefined,
     smtp: Object.keys(smtp).length > 0 ? smtp : undefined,
   })

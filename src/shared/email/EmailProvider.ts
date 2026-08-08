@@ -1,4 +1,4 @@
-export type EmailProviderName = 'ses' | 'smtp' | 'none'
+export type EmailProviderName = 'resend' | 'ses' | 'smtp' | 'none'
 
 export type TransactionalEmail = {
   from: string

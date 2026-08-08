@@ -12,7 +12,20 @@ export async function createEmailProvider(config: OverlayRuntimeConfig): Promise
   const selected = config.providers.email?.provider ?? config.email?.provider ?? 'none'
   if (selected === 'none') return new NoOpEmailProvider()
   if (!config.email) throw new Error('Email configuration is required')
-  const { createEmailClient, ses, smtp } = await loadEmailSdk()
+  const { createEmailClient, resend, ses, smtp } = await loadEmailSdk()
+
+  if (selected === 'resend') {
+    const options = config.email.resend
+    if (!options?.apiKey) throw new Error('Resend API key is required')
+    return new EmailSdkProvider('resend', createEmailClient({
+      adapters: [resend({
+        apiKey: options.apiKey,
+      })],
+      defaultAdapter: 'resend',
+      retry: { maxAttempts: 1 },
+      telemetry: false,
+    }))
+  }
 
   if (selected === 'ses') {
     const options = config.email.ses
@@ -65,7 +78,7 @@ type SdkClient = {
 
 class EmailSdkProvider implements EmailProvider {
   constructor(
-    readonly name: 'ses' | 'smtp',
+    readonly name: 'resend' | 'ses' | 'smtp',
     private readonly client: SdkClient,
   ) {}
 
