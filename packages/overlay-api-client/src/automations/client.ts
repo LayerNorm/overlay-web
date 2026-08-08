@@ -95,6 +95,14 @@ export class AutomationsClient {
     )
   }
 
+  /** Start the durable scheduler for an enabled automation. */
+  startSchedulerResponse(automationId: string, init?: MutationRequestInit) {
+    return this.http.request(
+      `/api/v1/automations/${encodeURIComponent(automationId)}/start-scheduler`,
+      this.http.jsonRequest({}, { ...init, method: 'POST' }),
+    )
+  }
+
   test(body: AutomationTestRequest, init?: RequestInit) {
     return this.http.json<AutomationTestResponse>(
       '/api/v1/automations/test',

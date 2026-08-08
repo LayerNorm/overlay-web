@@ -400,6 +400,7 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 
 **Scheduler cancellation lifecycle:**
 - Added `schedulerWorkflowRunId` field to the `automations` table (Postgres migration 0045) and Convex schema. The `start-scheduler` route stores the workflow run ID after starting the scheduler.
+- Enabling an existing scheduled automation calls the start-scheduler route after persistence. This records a fresh scheduler run on the current deployment; saving an already-enabled automation does not create a duplicate scheduler.
 - `deleteAutomation` and `pauseAutomation` (and `updateAutomation` with `enabled: false`) now cancel the scheduler workflow via `getRun(workflowRunId).cancel()` before modifying the record, then clear the stored ID.
 - `deleteAutomation` also calls `requestActiveRunCancellation` to cancel any active individual runs (queued or running).
 - Added a workflow-level safety net: the scheduling loop calls a new `check-status` action on the execute endpoint before each iteration. If the automation is disabled or deleted (e.g. after a deployment restart where the cancel call was lost), the workflow exits gracefully instead of continuing to execute.
