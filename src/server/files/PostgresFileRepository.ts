@@ -74,6 +74,7 @@ export class PostgresFileRepository implements FileRepository {
   async getFileByLegacyOutputId(args: {
     outputId: string
     userId: string
+    workspaceId?: string
   }): Promise<FileRecord | null> {
     const [row] = await this.db
       .select()
@@ -82,6 +83,7 @@ export class PostgresFileRepository implements FileRepository {
         eq(files.legacyOutputId, args.outputId),
         eq(files.userId, args.userId),
         isNull(files.deletedAt),
+        args.workspaceId ? eq(files.workspaceId, args.workspaceId) : undefined,
       ))
       .limit(1)
     return row ? normalizeFile(row) : null

@@ -193,7 +193,10 @@ export class PostgresAutomationRepository implements AutomationRepository {
           nextRunAt,
           updatedAt: new Date(now),
         })
-        .where(eq(automations.id, args.automationId))
+        .where(and(
+          eq(automations.id, args.automationId),
+          args.workspaceId ? eq(automations.workspaceId, args.workspaceId) : undefined,
+        ))
       await tx
         .update(automationTriggers)
         .set({

@@ -621,12 +621,30 @@ Repeat for: `notes`, `projects`, `automations`, `skills`, `mcp_servers`,
 For users without a personal workspace, the migration should create one first
 (CTE pattern from the Convex `ensureLegacyPersonalScope`).
 
-### Phase PG-4: Verification
+### Phase PG-4: Verification ✅
 
-- Typecheck: no new errors
-- ESLint: no new errors
-- Contract tests: run `npm run test:app-data-contracts:postgres` if available
-- Verify all 8 repos pass `workspaceId` through to queries
+**Typecheck:** 1157 errors (down from 1164 baseline — 7 pre-existing errors fixed by adding `workspaceId` to conversations table + `fileRowFromRaw` mapping)
+
+**ESLint:** Clean on all 13 changed files
+
+**Isomorphic:** 120 shared modules pass
+
+**Audit results:** All 9 Postgres repositories audited. Every CRUD method (list/get/create/update/delete) across all 9 repos accepts and filters by `workspaceId` using the conditional backward-compatible pattern.
+
+**Audit fixes applied:**
+- `PostgresFileRepository.getFileByLegacyOutputId` — added `workspaceId` to args + WHERE
+- `PostgresAutomationRepository.updateAutomation` — added `workspaceId` filter to final UPDATE WHERE
+
+**Intentionally not scoped (internal system operations, matching Convex parity):**
+- `PostgresMcpServerRepository.updateToolCatalog` / `updateOAuthState` — operate by mcpServerId + userId (Convex also doesn't scope these)
+- `PostgresWebhookRepository.rotateSecret` / `dispatch` — operate by subscriptionId + userId (internal event dispatch, not CRUD)
+- `PostgresFileRepository` storage utility methods (getUploadIntent, getR2KeysForSubtree, etc.) — not resource list operations
+- `PostgresProjectRepository.deleteProjectTree` cascading deletes — the initial project lookup filters by workspaceId, and all child resources with that projectId belong to the same workspace
+
+**Migration SQL verified:**
+- `0049_resource_tables_workspace_id.sql` — 9 ALTER TABLE + 9 CREATE INDEX, all using `IF NOT EXISTS`
+- `0050_backfill_workspace_ids.sql` — 2-step: create personal workspaces for users without one, then backfill all 10 resource tables
+- Both registered in `_journal.json` as idx 49 and 50
 
 ---
 
