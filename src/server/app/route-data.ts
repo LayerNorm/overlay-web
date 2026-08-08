@@ -24,6 +24,7 @@ import * as notesService from '@/server/app-api/v1/notes/route'
 import * as memoryService from '@/server/app-api/v1/memory/route'
 import * as bootstrapService from '@/server/app-api/v1/bootstrap/route'
 import * as integrationsService from '@/server/app-api/v1/integrations/route'
+import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 
 const INITIAL_CHAT_LIST_LIMIT = 24
 
@@ -58,9 +59,13 @@ async function callAppApi<T>(path: string, service: BffDomainService, fallback: 
   await connection()
   const headerList = await headers()
   const cookie = headerList.get('cookie')
+  const workspaceId = headerList.get(ACTIVE_WORKSPACE_HEADER)?.trim()
   const url = new URL(path, originFromHeaders(headerList))
   const request = new NextRequest(url, {
-    headers: cookie ? { cookie } : undefined,
+    headers: {
+      ...(cookie ? { cookie } : {}),
+      ...(workspaceId ? { [ACTIVE_WORKSPACE_HEADER]: workspaceId } : {}),
+    },
   })
   const response = await handleBffRoute(request, {}, service)
   if (!response.ok) return fallback

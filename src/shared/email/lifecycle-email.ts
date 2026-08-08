@@ -80,8 +80,12 @@ function contentForEvent(event: LifecycleEmailEvent, appUrl: string): {
     }
     case 'workspace.invitation_sent': {
       const workspaceName = stringAttribute(event.attributes.workspaceName) ?? 'a workspace'
+      const invitationId = stringAttribute(event.resource.id)
+      const invitationUrl = invitationId
+        ? new URL(`/app/invitations/${encodeURIComponent(invitationId)}`, appUrl).toString()
+        : appUrl
       return {
-        appUrl,
+        appUrl: invitationUrl,
         subject: `You've been invited to ${workspaceName} on Overlay`,
         heading: `You're invited to ${workspaceName}`,
         body: `You've been invited to join ${workspaceName} on Overlay. Sign in with the email address that received this invitation to accept.`,

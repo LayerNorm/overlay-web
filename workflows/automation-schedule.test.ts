@@ -16,10 +16,6 @@ function createTestInput(overrides: Partial<AutomationScheduleWorkflowInput> = {
     instructions: '1. Check inbox\n2. Summarize mail\n3. Send digest',
     schedule: { kind: 'daily', hourUTC: 9, minuteUTC: 0 },
     baseUrl: 'http://localhost:3000',
-    serviceAuthHeader: 'x-overlay-service-auth',
-    serviceToken: 'token-prepare',
-    actServiceToken: 'token-act',
-    finalizeServiceToken: 'token-finalize',
     ...overrides,
   }
 }
@@ -124,10 +120,9 @@ test('AutomationScheduleWorkflowInput includes all required fields', () => {
   assert.equal(typeof input.name, 'string')
   assert.equal(typeof input.instructions, 'string')
   assert.equal(typeof input.baseUrl, 'string')
-  assert.equal(typeof input.serviceAuthHeader, 'string')
-  assert.equal(typeof input.serviceToken, 'string')
-  assert.equal(typeof input.actServiceToken, 'string')
-  assert.equal(typeof input.finalizeServiceToken, 'string')
+  assert.equal('serviceToken' in input, false)
+  assert.equal('actServiceToken' in input, false)
+  assert.equal('finalizeServiceToken' in input, false)
   assert.equal(typeof input.schedule, 'object')
 })
 

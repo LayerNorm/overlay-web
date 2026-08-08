@@ -95,6 +95,76 @@ test('suppressed users are audited and never sent', async () => {
   assert.equal(audit.events[0]?.outcome, 'denied')
 })
 
+test('workspace invitations are sent to the invited address with an acceptance link', async () => {
+  const sent: Array<{ html?: string; text: string; to: string }> = []
+  const delivery = new EmailOutboxDelivery({
+    audit: new AuditService(new CapturingAuditRepository()),
+    config: emailConfig(),
+    provider: {
+      name: 'ses',
+      send: async (message) => {
+        sent.push({ html: message.html, text: message.text, to: message.to })
+        return { provider: 'ses', status: 'sent' }
+      },
+    },
+    recipients: { getEmail: async () => 'inviter@example.com' },
+    suppressions: new MemorySuppressions(),
+  })
+
+  await delivery.deliver({
+    attempts: 1,
+    id: 'email_invitation_1',
+    maxAttempts: 8,
+    payload: {
+      attributes: {
+        invitedEmail: 'new.member@example.com',
+        workspaceName: 'Acme',
+      },
+      idempotencyKey: 'workspace.invitation_sent:invite_1',
+      name: 'workspace.invitation_sent',
+      resource: { id: 'invite_1', type: 'workspace_invitation' },
+      userId: 'inviter_user_id',
+    },
+    topic: LIFECYCLE_EMAIL_OUTBOX_TOPIC,
+  })
+
+  assert.equal(sent[0]?.to, 'new.member@example.com')
+  assert.match(sent[0]?.text ?? '', /\/app\/invitations\/invite_1/)
+  assert.match(sent[0]?.html ?? '', /\/app\/invitations\/invite_1/)
+})
+
+test('an invited address bounce never suppresses the inviter account', async () => {
+  const suppressions = new MemorySuppressions()
+  const delivery = new EmailOutboxDelivery({
+    audit: new AuditService(new CapturingAuditRepository()),
+    config: emailConfig(),
+    provider: {
+      name: 'ses',
+      send: async () => {
+        throw new Error('Email rejected because destination is on the suppression list')
+      },
+    },
+    recipients: { getEmail: async () => 'inviter@example.com' },
+    suppressions,
+  })
+
+  await assert.rejects(delivery.deliver({
+    attempts: 1,
+    id: 'email_invitation_bounce_1',
+    maxAttempts: 8,
+    payload: {
+      attributes: { invitedEmail: 'bounced.member@example.com', workspaceName: 'Acme' },
+      idempotencyKey: 'workspace.invitation_sent:invite_bounce_1',
+      name: 'workspace.invitation_sent',
+      resource: { id: 'invite_bounce_1', type: 'workspace_invitation' },
+      userId: 'inviter_user_id',
+    },
+    topic: LIFECYCLE_EMAIL_OUTBOX_TOPIC,
+  }))
+
+  assert.equal(await suppressions.get('inviter_user_id'), null)
+})
+
 function emailConfig() {
   return parseOverlayRuntimeConfig({
     ...DEFAULT_OVERLAY_RUNTIME_CONFIG,

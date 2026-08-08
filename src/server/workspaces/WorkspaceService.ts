@@ -476,20 +476,32 @@ export class WorkspaceService {
       expiresAt,
       now,
     })
-    await this.lifecycleEvents?.publish({
-      attributes: {
-        workspaceId: actor.workspace.id,
-        workspaceName: actor.workspace.name,
-        invitedEmail: email,
-        invitedByPrincipalId: actor.principal.id,
-        role: args.role,
-      },
-      idempotencyKey: `workspace.invitation_sent:${invitation.id}`,
-      name: 'workspace.invitation_sent',
-      resource: { id: invitation.id, type: 'workspace_invitation' },
-      userId: args.actorUserId,
+    await this.publishInvitationSent({
+      actorUserId: args.actorUserId,
+      invitation,
+      workspaceName: actor.workspace.name,
     })
     return invitation
+  }
+
+  private async publishInvitationSent(args: {
+    actorUserId: string
+    invitation: WorkspaceInvitation
+    workspaceName: string
+  }): Promise<void> {
+    await this.lifecycleEvents?.publish({
+      attributes: {
+        workspaceId: args.invitation.workspaceId,
+        workspaceName: args.workspaceName,
+        invitedEmail: args.invitation.email,
+        invitedByPrincipalId: args.invitation.invitedByPrincipalId,
+        role: args.invitation.role,
+      },
+      idempotencyKey: `workspace.invitation_sent:${args.invitation.id}`,
+      name: 'workspace.invitation_sent',
+      resource: { id: args.invitation.id, type: 'workspace_invitation' },
+      userId: args.actorUserId,
+    })
   }
 
   async acceptInvitation(args: {
@@ -572,7 +584,7 @@ export class WorkspaceService {
       throw new WorkspaceServiceError('Invitation can no longer be resent', 409, 'conflict')
     }
     const now = this.now()
-    return await this.repository.createInvitationReplacingPending({
+    const invitation = await this.repository.createInvitationReplacingPending({
       id: this.id(),
       workspaceId: actor.workspace.id,
       email: existing.email,
@@ -581,6 +593,12 @@ export class WorkspaceService {
       expiresAt: now + (this.options.invitationTtlMs ?? 7 * 24 * 60 * 60 * 1_000),
       now,
     })
+    await this.publishInvitationSent({
+      actorUserId: args.actorUserId,
+      invitation,
+      workspaceName: actor.workspace.name,
+    })
+    return invitation
   }
 
   async addResourceGuest(args: {

@@ -244,19 +244,32 @@ export const getDeliveryInternal = internalQuery({
   handler: async (ctx, args) => {
     const outbox = await ctx.db.get(args.outboxId)
     if (!outbox || outbox.status !== 'publishing') return null
-    const payload = JSON.parse(outbox.payloadJson) as { userId?: unknown }
+    const payload = JSON.parse(outbox.payloadJson) as {
+      attributes?: unknown
+      name?: unknown
+      userId?: unknown
+    }
     const userId = typeof payload.userId === 'string' ? payload.userId : ''
     if (!userId) return null
+    const attributes = payload.attributes && typeof payload.attributes === 'object' && !Array.isArray(payload.attributes)
+      ? payload.attributes as Record<string, unknown>
+      : {}
+    const invitationRecipient = payload.name === 'workspace.invitation_sent'
+      && typeof attributes.invitedEmail === 'string'
+      ? attributes.invitedEmail.trim().toLowerCase()
+      : ''
     const [user, suppression] = await Promise.all([
       ctx.db.query('subscriptions').withIndex('by_userId', (q) => q.eq('userId', userId)).unique(),
-      ctx.db.query('emailSuppressions').withIndex('by_userId', (q) => q.eq('userId', userId)).unique(),
+      invitationRecipient
+        ? Promise.resolve(null)
+        : ctx.db.query('emailSuppressions').withIndex('by_userId', (q) => q.eq('userId', userId)).unique(),
     ])
     return {
       attempts: outbox.attempts,
       eventId: outbox.eventId,
       outboxId: outbox._id,
       payloadJson: outbox.payloadJson,
-      recipient: user?.email,
+      recipient: invitationRecipient || user?.email,
       suppression: suppression
         ? { reason: suppression.reason, source: suppression.source }
         : undefined,

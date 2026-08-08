@@ -127,6 +127,26 @@ test('connector policy rejects direct connection attempts server-side', async ()
   assert.deepEqual(fixture.connected, ['gmail'])
 })
 
+test('catalog configuration failures return actionable, sanitized errors', async () => {
+  const fixture = integrations()
+  fixture.service.listCatalog = async () => {
+    throw new Error('Composio rejected the configured API key (HTTP 401). Rotate COMPOSIO_API_KEY and retry.')
+  }
+
+  const response = await GET(
+    new NextRequest('https://overlay.test/api/v1/integrations?action=search'),
+    context,
+    { service: fixture.service },
+  )
+
+  assert.equal(response.status, 502)
+  assert.deepEqual(await response.json(), {
+    connected: [],
+    items: [],
+    error: 'Composio rejected the configured API key (HTTP 401). Rotate COMPOSIO_API_KEY and retry.',
+  })
+})
+
 function integration(providerKey: string, name: string) {
   return {
     authenticationState: 'not_connected' as const,

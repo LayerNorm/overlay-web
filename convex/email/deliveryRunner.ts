@@ -1,6 +1,7 @@
 'use node'
 
 import { createEmailClient } from '@opencoredev/email-sdk'
+import { resend } from '@opencoredev/email-sdk/resend'
 import { ses } from '@opencoredev/email-sdk/ses'
 import { smtp } from '@opencoredev/email-sdk/smtp'
 import { v } from 'convex/values'
@@ -95,7 +96,9 @@ async function markFailed(
     error: summarizeError(error),
     outboxId,
     provider: emailProviderName(),
-    suppress: isProviderSuppression(error),
+    // Invitation failures belong to the invited address. Never suppress the
+    // inviter's account because an external invitee bounced or complained.
+    suppress: event.name !== 'workspace.invitation_sent' && isProviderSuppression(error),
     template: event.name,
     userId: event.userId,
   })
@@ -103,6 +106,30 @@ async function markFailed(
 
 function createProvider(): EmailProvider {
   const name = emailProviderName()
+  if (name === 'resend') {
+    const client = createEmailClient({
+      adapters: [resend({
+        apiKey: requiredEnvEither('RESEND_API_KEY', 'OVERLAY_EMAIL_RESEND_API_KEY'),
+      })],
+      defaultAdapter: 'resend',
+      retry: { maxAttempts: 1 },
+      telemetry: false,
+    })
+    return {
+      name,
+      send: async (message) => {
+        const result = await client.send({
+          from: message.from,
+          to: message.to,
+          subject: message.subject,
+          text: message.text,
+          html: message.html,
+          replyTo: message.replyTo,
+        }, { idempotencyKey: message.idempotencyKey })
+        return { provider: name, providerMessageId: result.id, status: 'sent' }
+      },
+    }
+  }
   if (name === 'ses') {
     const client = createEmailClient({
       adapters: [ses({
@@ -165,10 +192,10 @@ function createProvider(): EmailProvider {
   throw new Error('Transactional email provider is disabled')
 }
 
-function emailProviderName(): 'ses' | 'smtp' | 'none' {
+function emailProviderName(): 'resend' | 'ses' | 'smtp' | 'none' {
   const value = process.env.OVERLAY_EMAIL_PROVIDER?.trim().toLowerCase() || 'none'
-  if (value === 'ses' || value === 'smtp' || value === 'none') return value
-  throw new Error('OVERLAY_EMAIL_PROVIDER must be ses, smtp, or none')
+  if (value === 'resend' || value === 'ses' || value === 'smtp' || value === 'none') return value
+  throw new Error('OVERLAY_EMAIL_PROVIDER must be resend, ses, smtp, or none')
 }
 
 function parseEvent(payloadJson: string): LifecycleEmailEvent {
@@ -179,6 +206,7 @@ function parseEvent(payloadJson: string): LifecycleEmailEvent {
     'topup.succeeded',
     'automation.failed',
     'api_key.changed',
+    'workspace.invitation_sent',
   ]
   if (!allowed.includes(String(value.name))) throw new Error('Unsupported lifecycle email event')
   return {
@@ -204,6 +232,12 @@ function requiredString(value: unknown, label: string): string {
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim()
   if (!value) throw new Error(`${name} is required`)
+  return value
+}
+
+function requiredEnvEither(primary: string, fallback: string): string {
+  const value = process.env[primary]?.trim() || process.env[fallback]?.trim()
+  if (!value) throw new Error(`${primary} or ${fallback} is required`)
   return value
 }
 

@@ -114,6 +114,25 @@ test('Composio adapter satisfies the shared integration-provider contract', asyn
   })
 })
 
+test('Composio catalog distinguishes missing and rejected configuration from an empty result', async () => {
+  const missing = new ComposioIntegrationProvider({
+    apiKeyResolver: async () => null,
+  })
+  await assert.rejects(
+    () => missing.listCatalog({ userId: 'user-1', limit: 20 }),
+    /COMPOSIO_API_KEY/,
+  )
+
+  const rejected = new ComposioIntegrationProvider({
+    apiKeyResolver: async () => 'rejected-key',
+    fetcher: async () => json({ message: 'invalid key' }, 401),
+  })
+  await assert.rejects(
+    () => rejected.listCatalog({ userId: 'user-1', limit: 20 }),
+    /rejected the configured API key \(HTTP 401\)/,
+  )
+})
+
 test('Executor adapter satisfies the shared integration-provider contract and executes by exact tool address', async () => {
   let disconnected = false
   const fetcher: typeof fetch = async (input, init) => {

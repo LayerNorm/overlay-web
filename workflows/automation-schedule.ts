@@ -20,7 +20,8 @@
 
 import { sleep, RetryableError, FatalError, createHook } from "workflow"
 import type { AutomationSchedule } from "../src/shared/automations/schedule"
-import { computeNextRunAt, msUntilNextRun } from "../src/shared/automations/schedule"
+import { msUntilNextRun } from "../src/shared/automations/schedule"
+import { freshAutomationServiceAuth } from './automation-service-auth'
 
 export type AutomationScheduleWorkflowInput = {
   automationId: string
@@ -41,10 +42,6 @@ export type AutomationScheduleWorkflowInput = {
   /** Timeout in ms for approval. If not approved within this time, the run is skipped. */
   approvalTimeoutMs?: number
   baseUrl: string
-  serviceAuthHeader: string
-  serviceToken: string
-  actServiceToken: string
-  finalizeServiceToken: string
   workspaceId?: string
   /** The automation_runs record ID — used to sync run status back to the database. */
   runId?: string
@@ -69,7 +66,6 @@ export async function automationScheduleWorkflow(input: AutomationScheduleWorkfl
   }
 
   // Scheduled loop — sleep until next run, execute, repeat
-  let runCount = 0
   for (;;) {
     // Compute sleep duration until next scheduled run
     const now = Date.now()
@@ -97,7 +93,6 @@ export async function automationScheduleWorkflow(input: AutomationScheduleWorkfl
 
     // Execute the automation run
     await executeAutomationRun(input)
-    runCount += 1
   }
 }
 
@@ -150,11 +145,12 @@ async function executeAutomationRun(input: AutomationScheduleWorkflowInput): Pro
   // Mark the run as started in the automation_runs table
   if (input.runId) {
     try {
+      const auth = await freshAutomationServiceAuth(input.userId, 'POST', executePath)
       await fetch(`${input.baseUrl}${executePath}`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          [input.serviceAuthHeader]: input.serviceToken,
+          [auth.header]: auth.token,
         },
         body: JSON.stringify({
           action: 'mark-started',
@@ -164,19 +160,24 @@ async function executeAutomationRun(input: AutomationScheduleWorkflowInput): Pro
           ...(input.conversationId ? { conversationId: input.conversationId } : {}),
         }),
       })
-    } catch (markStartedError) {
+    } catch {
       // Non-fatal — the run will still execute, just with a stale status
     }
   }
 
   let response: Response
   try {
+    const auth = await freshAutomationServiceAuth(
+      input.userId,
+      'POST',
+      '/api/v1/conversations/act',
+    )
     response = await fetch(`${input.baseUrl}/api/v1/conversations/act`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         'Idempotency-Key': `automation:${input.automationId}:${turnId}`,
-        [input.serviceAuthHeader]: input.actServiceToken,
+        [auth.header]: auth.token,
         ...(input.workspaceId ? { 'x-overlay-workspace-id': input.workspaceId } : {}),
       },
       body: JSON.stringify({
@@ -239,7 +240,7 @@ async function executeAutomationRun(input: AutomationScheduleWorkflowInput): Pro
 
 /**
  * Mark the automation run as succeeded or failed via the execute endpoint.
- * Uses the finalizeServiceToken (PATCH /api/v1/automations/execute).
+ * Mints a fresh PATCH credential immediately before the request.
  */
 async function markRunFinalized(
   input: AutomationScheduleWorkflowInput,
@@ -248,11 +249,12 @@ async function markRunFinalized(
 ): Promise<void> {
   const executePath = '/api/v1/automations/execute'
   try {
+    const auth = await freshAutomationServiceAuth(input.userId, 'PATCH', executePath)
     await fetch(`${input.baseUrl}${executePath}`, {
       method: 'PATCH',
       headers: {
         'content-type': 'application/json',
-        [input.serviceAuthHeader]: input.finalizeServiceToken,
+        [auth.header]: auth.token,
       },
       body: JSON.stringify({
         runId: input.runId,
@@ -275,13 +277,16 @@ async function markRunFinalized(
 async function checkAutomationStatus(
   input: AutomationScheduleWorkflowInput,
 ): Promise<{ enabled: boolean; deleted: boolean }> {
+  "use step"
+
   const executePath = '/api/v1/automations/execute'
   try {
+    const auth = await freshAutomationServiceAuth(input.userId, 'POST', executePath)
     const response = await fetch(`${input.baseUrl}${executePath}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        [input.serviceAuthHeader]: input.serviceToken,
+        [auth.header]: auth.token,
       },
       body: JSON.stringify({
         action: 'check-status',

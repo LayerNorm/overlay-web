@@ -19,6 +19,7 @@
  */
 
 import { RetryableError, FatalError } from "workflow"
+import { freshAutomationServiceAuth } from './automation-service-auth'
 
 export type AutomationRunWorkflowInput = {
   runId: string
@@ -33,10 +34,6 @@ export type AutomationRunWorkflowInput = {
   turnId: string
   scheduledFor: number
   baseUrl: string
-  serviceAuthHeader: string
-  serviceToken: string
-  actServiceToken: string
-  finalizeServiceToken: string
   workspaceId?: string
 }
 
@@ -52,8 +49,6 @@ export async function automationRunWorkflow(input: AutomationRunWorkflowInput) {
   // Step 3: Finalize — settle generating messages
   await finalizeRun({
     baseUrl: input.baseUrl,
-    serviceAuthHeader: input.serviceAuthHeader,
-    finalizeServiceToken: input.finalizeServiceToken,
     conversationId: prepared.conversationId,
     userId: input.userId,
     turnId: input.turnId,
@@ -78,11 +73,16 @@ async function prepareExecution(input: AutomationRunWorkflowInput): Promise<{
   }
 
   // Create a new conversation for this automation run via the internal API.
+  const auth = await freshAutomationServiceAuth(
+    input.userId,
+    'POST',
+    '/api/v1/automations/execute',
+  )
   const response = await fetch(`${input.baseUrl}/api/v1/automations/execute`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      [input.serviceAuthHeader]: input.serviceToken,
+      [auth.header]: auth.token,
     },
     body: JSON.stringify({
       automationId: input.automationId,
@@ -145,12 +145,17 @@ async function executeActTurn(input: AutomationRunWorkflowInput & {
 }): Promise<{ ok: true }> {
   "use step"
 
+  const auth = await freshAutomationServiceAuth(
+    input.userId,
+    'POST',
+    '/api/v1/conversations/act',
+  )
   const response = await fetch(`${input.baseUrl}/api/v1/conversations/act`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'Idempotency-Key': `automation:${input.runId}:${input.turnId}`,
-      [input.serviceAuthHeader]: input.actServiceToken,
+      [auth.header]: auth.token,
       ...(input.workspaceId ? { 'x-overlay-workspace-id': input.workspaceId } : {}),
     },
     body: JSON.stringify({
@@ -204,14 +209,17 @@ async function executeActTurn(input: AutomationRunWorkflowInput & {
 
 async function finalizeRun(input: {
   baseUrl: string
-  serviceAuthHeader: string
-  finalizeServiceToken: string
   conversationId: string
   userId: string
   turnId: string
 }): Promise<{ ok: true }> {
   "use step"
 
+  const auth = await freshAutomationServiceAuth(
+    input.userId,
+    'PATCH',
+    '/api/v1/automations/execute',
+  )
   // Settle generating messages — this is idempotent. If the turn was already
   // settled by the act route, this is a no-op.
   const response = await fetch(
@@ -220,7 +228,7 @@ async function finalizeRun(input: {
       method: 'PATCH',
       headers: {
         'content-type': 'application/json',
-        [input.serviceAuthHeader]: input.finalizeServiceToken,
+        [auth.header]: auth.token,
       },
       body: JSON.stringify({
         conversationId: input.conversationId,

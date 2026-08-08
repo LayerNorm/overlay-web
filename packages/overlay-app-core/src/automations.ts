@@ -174,6 +174,31 @@ export function automationStatus(automation: Pick<AutomationSummary, 'enabled' |
     : { label: 'Paused', tone: 'paused' }
 }
 
+export function formatAutomationRunError(value: string | null | undefined): string | null {
+  const raw = value?.trim()
+  if (!raw) return null
+
+  let message = raw
+  if (raw.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(raw) as { error?: unknown; message?: unknown }
+      const candidate = typeof parsed.message === 'string'
+        ? parsed.message
+        : typeof parsed.error === 'string'
+          ? parsed.error
+          : null
+      if (candidate?.trim()) message = candidate.trim()
+    } catch {
+      // Preserve non-JSON provider text verbatim.
+    }
+  }
+
+  if (/^unauthorized$/i.test(message) || /returned 401/i.test(message)) {
+    return 'Automation authorization failed before execution. Retry the run; if it fails again, ask an administrator to check the automation service credentials.'
+  }
+  return message
+}
+
 export function applyAutomationRename<T extends Pick<AutomationSummary, '_id' | 'name'>>(
   automations: readonly T[],
   automationId: string,

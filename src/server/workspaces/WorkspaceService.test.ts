@@ -6,6 +6,7 @@ import type {
 } from '@overlay/workspace-contracts'
 import type { WorkspaceRepository } from './WorkspaceRepository'
 import { WorkspaceService, WorkspaceServiceError } from './WorkspaceService'
+import { LifecycleEventPublisher } from '@/server/lifecycle-events'
 
 function access(overrides: {
   userId?: string
@@ -175,6 +176,58 @@ test('invitation acceptance preserves expired, email mismatch, and consumed stat
     }),
     (error) => assertServiceError(error, 'invitation_invalid')
       && (error as WorkspaceServiceError).statusCode === 409,
+  )
+})
+
+test('resending an invitation publishes a fresh delivery event for the replacement', async () => {
+  const actor = access({ workspaceId: 'workspace_org', role: 'owner' })
+  const events: unknown[] = []
+  const existing = {
+    id: 'invite_old',
+    workspaceId: actor.workspace.id,
+    email: 'new.member@example.com',
+    role: 'member' as const,
+    status: 'pending' as const,
+    invitedByPrincipalId: actor.principal.id,
+    expiresAt: 100,
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const replacement = { ...existing, id: 'invite_new', expiresAt: 200, updatedAt: 50 }
+  const service = new WorkspaceService(repository({
+    async getAccess() {
+      return actor
+    },
+    async getInvitation() {
+      return existing
+    },
+    async createInvitationReplacingPending() {
+      return replacement
+    },
+  }), {
+    createId: () => 'invite_new',
+    now: () => 50,
+    invitationTtlMs: 150,
+    lifecycleEvents: new LifecycleEventPublisher({
+      eventBus: {
+        async publish(_topic, payload) { events.push(payload) },
+        subscribe() { return () => {} },
+      },
+    }),
+  })
+
+  const result = await service.resendInvitation({
+    actorUserId: 'user_1',
+    workspaceId: actor.workspace.id,
+    invitationId: existing.id,
+  })
+
+  assert.equal(result.id, 'invite_new')
+  assert.equal(events.length, 1)
+  assert.equal((events[0] as { idempotencyKey?: string }).idempotencyKey, 'workspace.invitation_sent:invite_new')
+  assert.equal(
+    (events[0] as { attributes?: { invitedEmail?: string } }).attributes?.invitedEmail,
+    'new.member@example.com',
   )
 })
 

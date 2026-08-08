@@ -42,6 +42,13 @@ interface IntegrationsRouteDependencies {
   workspaceConnectors?: WorkspaceConnectorRepository
 }
 
+function catalogErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : ''
+  return /^Composio (?:is not configured|rejected the configured API key|catalog is unavailable)/.test(message)
+    ? message
+    : 'Failed to load integrations'
+}
+
 export async function GET(
   request: NextRequest,
   context: AppApiRouteContext,
@@ -105,7 +112,11 @@ export async function GET(
     })
   } catch (error) {
     logger.error('[Integrations] GET failed:', error)
-    return NextResponse.json({ connected: [], items: [], error: 'Failed to load integrations' }, { status: 502 })
+    return NextResponse.json({
+      connected: [],
+      items: [],
+      error: catalogErrorMessage(error),
+    }, { status: 502 })
   }
 }
 

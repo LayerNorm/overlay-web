@@ -13,6 +13,7 @@ import {
   defaultAutomationGraph,
   defaultAutomationGraphSource,
   extractAutomationInstructionSteps,
+  formatAutomationRunError,
   getAutomationDisplayName,
   graphSourceFromAutomationGraph,
   normalizeAutomationDetailTab,
@@ -414,4 +415,14 @@ test('manuallyEdited graph survives round-trip through editor draft', () => {
   assert.ok(draft.graph)
   assert.equal(draft.graph!.manuallyEdited, true, 'draft should preserve manuallyEdited flag')
   assert.ok(draft.graph!.nodes.some((n) => n.id === 'custom'), 'custom node should survive')
+})
+
+test('formatAutomationRunError extracts JSON errors and explains authorization failures', () => {
+  assert.equal(
+    formatAutomationRunError('{"error":"Unauthorized"}'),
+    'Automation authorization failed before execution. Retry the run; if it fails again, ask an administrator to check the automation service credentials.',
+  )
+  assert.equal(formatAutomationRunError('{"message":"Provider timed out"}'), 'Provider timed out')
+  assert.equal(formatAutomationRunError('Plain failure'), 'Plain failure')
+  assert.equal(formatAutomationRunError(null), null)
 })
