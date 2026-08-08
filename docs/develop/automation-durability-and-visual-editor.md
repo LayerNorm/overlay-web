@@ -52,7 +52,7 @@ Functions invoked by Workflows are billed at existing Fluid Compute rates. Key l
 
 3. **TypeScript plugin** — added `workflow` plugin to `tsconfig.json` for IntelliSense and type-checking of `"use workflow"` / `"use step"` directives.
 
-4. **Spike workflow** — `workflows/spike.ts` created with two `"use step"` functions and a `sleep("30s")` between them. Trigger via `POST /api/v1/workflows/spike`. Inspect with `npx workflow web`.
+4. **Spike workflow** — a temporary workflow with two `"use step"` functions and a `sleep("30s")` was used to verify the SDK locally. The development-only source and public trigger were removed in Phase 0; product execution uses the authorized automation routes.
 
 5. **Typecheck passes** — `npx tsc --noEmit` completes with zero errors including all workflow files.
 
@@ -131,16 +131,18 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 
 **Goal:** Prove Workflow SDK is viable in our stack. Clear kill criterion.
 
+**Status:** Viability verified; the temporary spike is not part of the shipped API.
+
 **Deliverables:**
 - Add `workflow` + `@ai-sdk/workflow` to `package.json`
 - Compose `withWorkflow` with existing `withBundleAnalyzer(withSentryConfig(...))` in `next.config.ts`
 - Fix proxy matcher in `src/proxy.ts` to exclude `.well-known/workflow/`
-- Trivial workflow: `workflows/spike.ts` with `sleep("30s")` between two `"use step"` functions
+- Trivial two-step workflow with `sleep("30s")` between steps (temporary verification only)
 - Document `@workflow/world-postgres` viability for on-prem
 
 **Kill criterion:** If `withWorkflow` + `withSentryConfig` conflict irreconcilably, or `world-postgres` cannot meet on-prem requirements, stop and evaluate alternatives.
 
-**Gate:** Spike workflow runs locally, suspends/resumes across dev server restart, `npx workflow web` shows the run.
+**Gate:** Viability was verified locally. No public spike endpoint is shipped; production workflow starts must use an authenticated, authorized product route.
 
 ---
 

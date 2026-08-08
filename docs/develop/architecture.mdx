@@ -55,10 +55,9 @@ Uploaded files and generated assets are stored through server-mediated flows. R2
 
 ## Convex
 
-Development commonly uses a separate dev deployment from production. After editing `convex/`, push both deployments:
-
-```bash
-npm run convex:push:all
-```
-
-Do not pass `.env.local` to production Convex deploy commands; that can point deploys at the dev slug.
+Development commonly uses a separate dev deployment from production. Follow
+[Worktree Staging QA](/develop/worktree-staging-qa) and
+[Convex Workflow](/develop/convex-workflow) for the deployment lane that matches
+the current revision. Never push Convex from a feature worktree, and never use
+the all-deployments command as a shortcut around the staging/production
+boundary.
