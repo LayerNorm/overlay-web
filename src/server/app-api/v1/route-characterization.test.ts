@@ -12,6 +12,8 @@ import {
   ComposioIntegrationProvider,
   IntegrationService,
 } from '@/server/integrations'
+import type { WorkspaceConnectorRepository } from '@/server/integrations/WorkspaceConnectorRepository'
+import type { AuthorizationService } from '@/server/authorization/AuthorizationService'
 
 const originalNextPhase = process.env.NEXT_PHASE
 const originalInternalApiSecret = process.env.INTERNAL_API_SECRET
@@ -131,6 +133,49 @@ function composioIntegrationService() {
   return new IntegrationService(new ComposioIntegrationProvider({
     apiKeyResolver: async () => 'test-composio-key',
   }))
+}
+
+function workspaceConnectorRepositoryFixture(): WorkspaceConnectorRepository {
+  return {
+    listByWorkspace: async () => [{
+      _id: 'mapping_1',
+      workspaceId: 'ws_personal_user_1',
+      userId: 'user_1',
+      providerKey: 'gmail',
+      connectedAccountId: 'ca_gmail',
+      createdAt: 0,
+      updatedAt: 0,
+    }],
+    insert: async () => 'mapping_1',
+    remove: async () => undefined,
+    removeByUser: async () => 0,
+  }
+}
+
+function permissiveAuthorizationService(): AuthorizationService {
+  return {
+    resolveSubject: async (userId: string) => ({
+      userId,
+      groupIds: [],
+      roleIds: [],
+      capabilities: [],
+      isDeploymentOwner: false,
+    }),
+    checkResolvedCatalogResourceAccess: async ({ capability, resourceId, resourceType }) => ({
+      allowed: true,
+      capability,
+      resourceId,
+      resourceType,
+      requiredAction: 'view',
+      reason: 'resource_unrestricted',
+    }),
+    checkResolvedCapability: (_subject, capability) => ({
+      allowed: true,
+      capability,
+      reason: 'capability_granted',
+    }),
+    filterCatalogResourceIds: async ({ resourceIds }) => [...resourceIds],
+  } as unknown as AuthorizationService
 }
 
 async function readJson(response: Response): Promise<unknown> {
@@ -470,7 +515,10 @@ test('integrations default list reads Composio v3 connected accounts by user id'
   const response = await route.GET(
     request('/api/v1/integrations'),
     testContext,
-    { service: composioIntegrationService() },
+    {
+      service: composioIntegrationService(),
+      workspaceConnectors: workspaceConnectorRepositoryFixture(),
+    },
   )
 
   assert.equal(response.status, 200)
@@ -746,6 +794,7 @@ test('conversations act preserves premium gating response shape for free users',
       }),
     }),
     context(),
+    { authorizationService: permissiveAuthorizationService() },
   )
 
   assert.equal(response.status, 403)
@@ -799,6 +848,7 @@ test('conversations act swallows user-message persistence failure before later f
       }),
     }),
     context(),
+    { authorizationService: permissiveAuthorizationService() },
   )
 
   assert.equal(sawUserMessagePersist, true)

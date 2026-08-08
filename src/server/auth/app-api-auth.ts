@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
-import { connection, type NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
 import { consumeServiceAuthReplayNonce } from '@/server/auth/service-auth-replay'
@@ -47,7 +47,6 @@ export async function resolveAuthenticatedAppUser(
   const cached = getCachedAuthenticatedAppUser(request, options.requiredApiKeyScopes)
   if (cached) return cached
 
-  await connection()
   const ctx = getOverlayServerContext()
   const session = await ctx.auth.getSession(request)
   if (session) {

@@ -8,6 +8,8 @@
 
 **Phase 1 follow-up (2026-08-07):** Postgres mode now makes an explicit product decision to gate workspace/collaboration and connector surfaces until provider-neutral repositories exist. All API exports are classified, Postgres no longer constructs the Convex connector repository, Convex connector handlers require active workspace membership, and the connector mapping has a compound lookup index. Full Postgres connector parity remains deferred to the later parity phase.
 
+**Phase 2 follow-up (2026-08-08):** The five characterization regressions were repaired without weakening route security: integration tests inject a connector repository, billing auth no longer calls Next's ambient `connection()` for explicit requests, conversation-act tests inject authorization and preserve the 403 premium gate, and user-message persistence failures no longer mask a later history-preparation failure. Documentation navigation, command references, stale phase framing, and OpenAPI's two MCP OAuth operations were reconciled. The required characterization, release-safety, tenancy, on-prem parity, docs-health, typecheck, targeted lint, and production-build checks now pass locally; the full repository lint still reports pre-existing errors outside this phase, and the optional live Convex connector contract remains skipped without deployment credentials.
+
 ## Scope and method
 
 This is a source and verification audit of the integrated repository, not a claim about a live deployment. The working tree was clean before the audit. The active branch is one commit ahead of `origin/staging`; the accumulated work compared with `origin/main` changes **760 files** (`+84,212 / -2,483` lines). The largest areas of change are `src/server` (+34,549), `src/features` (+10,830), workspace/collaboration Convex code (+4,411), migrations (+2,554), and the public app/API layer (+2,491).
@@ -34,12 +36,12 @@ The focused path is subtraction first: remove the two unsafe endpoints, restore 
 | `npm run check:shared-isomorphic` | Pass | 120 shared modules meet the isomorphic import rule. |
 | `npm run check:vendor-boundaries` | Pass | No vendor SDK imports were found in routes/features. |
 | `npm run check:domain-service-boundaries` | Pass | Checked files still delegate to domain services. |
-| `npm run check:tenant-boundaries` | **Fail** | `workspaceConnectors` lacks a documented tenancy decision. |
-| `npm run test:release-safety` | **Fail** | `/api/v1/workflows/spike` bypasses the BFF security contract. |
-| `npm run test:route-characterization` | **Fail: 5/69** | Integration behavior, billing test harness, and two conversation-act expectations drifted. |
-| `npm run check:on-prem-parity` | **Fail: 2/20** | Parity matrix drift plus 78 unclassified `/api/v1` exports. |
-| `npm run docs:health` | **Fail** | Stale docs/plans, missing scripts, and OpenAPI drift. |
-| `npx tsc --noEmit` | Blocked | Current worktree is missing `resend` and `@aws-sdk/client-sesv2` in `node_modules`; `npm ci --dry-run` succeeds, so the lockfile itself is installable. |
+| `npm run check:tenant-boundaries` | Pass | The connector mapping has an explicit tenancy/provider decision. |
+| `npm run test:release-safety` | Pass | Unsafe development routes are absent and public-route controls pass. |
+| `npm run test:route-characterization` | **Pass: 69/69** | Integration, billing, and conversation-act response contracts are restored. |
+| `npm run check:on-prem-parity` | Pass | Provider capability and route-support matrices pass; the optional live Convex contract is skipped without credentials. |
+| `npm run docs:health` | Pass | Navigation, command references, public wording, and OpenAPI inventory are reconciled. |
+| `npx tsc --noEmit` | Pass | Dependencies are present in this worktree and direct TypeScript compilation succeeds. |
 | Targeted ESLint on risky new files | Pass | Formatting/type-style checks do not catch the architectural issues. |
 | `npx next typegen` | Pass | No route-type collision was found. |
 | Chat/file boundary checks | Pass | The focused chat transcript and file route boundaries remain intact. |

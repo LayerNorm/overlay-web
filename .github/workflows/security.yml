@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - master
+      - staging
   workflow_dispatch:
 
 permissions:
@@ -156,6 +157,15 @@ jobs:
 
       - name: Verify migration and endpoint safety rails
         run: npm run check:config && npm run test:release-safety
+
+      - name: Verify tenant boundary guard
+        run: npm run check:tenant-boundaries
+
+      - name: Verify on-prem parity matrix
+        run: npm run check:on-prem-parity
+
+      - name: Verify public documentation health
+        run: npm run docs:health
 
       - name: Audit production dependencies
         run: npm run security:audit
