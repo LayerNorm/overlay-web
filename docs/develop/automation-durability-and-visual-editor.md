@@ -394,6 +394,7 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 
 **Environment note:**
 - `OVERLAY_DATABASE_URL` and `BETTER_AUTH_DATABASE_URL` are set on the Vercel project as encrypted Production env vars. `vercel env pull` returns empty-string values for these, but runtime logs confirm the Postgres connection is live (`databaseConnected: true`, SSL warnings from pg-connection-string). This is a Vercel CLI secret-decryption quirk; the runtime values are populated correctly. Do not rely on `vercel env pull` for verifying these secrets — check runtime logs or the `/api/v1/automations` health instead.
+- Convex-backed automation callbacks sign with `INTERNAL_SERVICE_AUTH_SECRET`; the app runtime and its matching Convex deployment must hold the same environment-specific value. A mismatch fails closed with an HMAC signature error. Keep this secret distinct from `INTERNAL_API_SECRET`.
 
 **Convex path parity fix:**
 - `AutomationService.markRunCompleted` was passing `conversationId: args.conversationId ?? ''` (empty string). Convex's `v.optional(v.id('conversations'))` validator rejects empty strings — they are not valid Convex IDs. Fixed to pass `undefined` instead. Added defensive `|| undefined` guards in `ConvexAutomationRepository` for both `markManualRunStarted` and `markManualRunCompleted`.
