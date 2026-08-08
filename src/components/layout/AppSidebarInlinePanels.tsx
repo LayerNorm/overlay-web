@@ -495,6 +495,7 @@ export function KnowledgeInlinePanel({
   }, [])
 
   useEffect(() => { void loadKnowledgeBases() }, [loadKnowledgeBases])
+  useWorkspaceChanged(loadKnowledgeBases)
 
   return (
     <SidebarResourceList>
