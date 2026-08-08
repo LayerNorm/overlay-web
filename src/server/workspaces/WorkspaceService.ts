@@ -27,6 +27,16 @@ import {
   parseDeploymentRolloutStage,
 } from '@/shared/workspaces/collaboration-rollout'
 import type { WorkspaceRepository } from './WorkspaceRepository'
+import type { LifecycleEventPublisher } from '@/server/lifecycle-events/LifecycleEventPublisher'
+
+type WorkspaceServiceOptions = {
+  createId?: () => string
+  now?: () => number
+  invitationTtlMs?: number
+  /** Overrides OVERLAY_COLLABORATION_ROLLOUT, mostly for tests. */
+  deploymentRolloutStage?: WorkspaceRolloutStage
+  lifecycleEvents?: LifecycleEventPublisher
+}
 
 export class WorkspaceServiceError extends Error {
   constructor(
@@ -47,16 +57,14 @@ export class WorkspaceServiceError extends Error {
 }
 
 export class WorkspaceService {
+  private readonly lifecycleEvents: WorkspaceServiceOptions['lifecycleEvents']
+
   constructor(
     private readonly repository: WorkspaceRepository,
-    private readonly options: {
-      createId?: () => string
-      now?: () => number
-      invitationTtlMs?: number
-      /** Overrides OVERLAY_COLLABORATION_ROLLOUT, mostly for tests. */
-      deploymentRolloutStage?: WorkspaceRolloutStage
-    } = {},
-  ) {}
+    private readonly options: WorkspaceServiceOptions = {},
+  ) {
+    this.lifecycleEvents = options.lifecycleEvents
+  }
 
   async ensurePersonalWorkspace(args: {
     userId: string
@@ -454,7 +462,7 @@ export class WorkspaceService {
     const expiresAt = args.expiresAt
       ?? now + (this.options.invitationTtlMs ?? 7 * 24 * 60 * 60 * 1_000)
     if (expiresAt <= now) throw validation('Invitation expiry must be in the future')
-    return await this.repository.createInvitationReplacingPending({
+    const invitation = await this.repository.createInvitationReplacingPending({
       id: this.id(),
       workspaceId: actor.workspace.id,
       email,
@@ -463,6 +471,20 @@ export class WorkspaceService {
       expiresAt,
       now,
     })
+    await this.lifecycleEvents?.publish({
+      attributes: {
+        workspaceId: actor.workspace.id,
+        workspaceName: actor.workspace.name,
+        invitedEmail: email,
+        invitedByPrincipalId: actor.principal.id,
+        role: args.role,
+      },
+      idempotencyKey: `workspace.invitation_sent:${invitation.id}`,
+      name: 'workspace.invitation_sent',
+      resource: { id: invitation.id, type: 'workspace_invitation' },
+      userId: args.actorUserId,
+    })
+    return invitation
   }
 
   async acceptInvitation(args: {

@@ -7,6 +7,9 @@ export type LifecycleEmailEvent = {
     | 'topup.succeeded'
     | 'automation.failed'
     | 'api_key.changed'
+    | 'workspace.invitation_sent'
+    | 'workspace.mention'
+    | 'workspace.dm_received'
   resource: Record<string, unknown>
   userId: string
 }
@@ -73,6 +76,36 @@ function contentForEvent(event: LifecycleEmailEvent, appUrl: string): {
         subject: `Overlay API key ${action}`,
         heading: `API key ${action}`,
         body: 'An API key on your Overlay account changed. If this was not you, revoke active keys and contact your administrator immediately.',
+      }
+    }
+    case 'workspace.invitation_sent': {
+      const workspaceName = stringAttribute(event.attributes.workspaceName) ?? 'a workspace'
+      return {
+        appUrl,
+        subject: `You've been invited to ${workspaceName} on Overlay`,
+        heading: `You're invited to ${workspaceName}`,
+        body: `You've been invited to join ${workspaceName} on Overlay. Sign in with the email address that received this invitation to accept.`,
+      }
+    }
+    case 'workspace.mention': {
+      const workspaceName = stringAttribute(event.attributes.workspaceName) ?? 'your workspace'
+      const mentionedBy = stringAttribute(event.attributes.mentionedByDisplayName) ?? 'Someone'
+      const conversationTitle = stringAttribute(event.attributes.conversationTitle) ?? 'a conversation'
+      return {
+        appUrl,
+        subject: `${mentionedBy} mentioned you in ${conversationTitle}`,
+        heading: `${mentionedBy} mentioned you`,
+        body: `${mentionedBy} mentioned you in ${conversationTitle} in ${workspaceName}. Open Overlay to view the message.`,
+      }
+    }
+    case 'workspace.dm_received': {
+      const fromName = stringAttribute(event.attributes.fromDisplayName) ?? 'Someone'
+      const workspaceName = stringAttribute(event.attributes.workspaceName) ?? 'your workspace'
+      return {
+        appUrl,
+        subject: `${fromName} sent you a message on Overlay`,
+        heading: `${fromName} started a conversation`,
+        body: `${fromName} sent you a direct message in ${workspaceName}. Open Overlay to read and reply.`,
       }
     }
   }

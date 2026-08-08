@@ -210,7 +210,7 @@ export function createOverlayServerContext(
   const workspaceRepository = isPostgres && postgresDb
     ? new PostgresWorkspaceRepository(postgresDb)
     : new ConvexWorkspaceRepository()
-  const workspaceService = new WorkspaceService(workspaceRepository)
+  const workspaceService = new WorkspaceService(workspaceRepository, { lifecycleEvents })
 
   const authorizationRepositories: AuthorizationRepositories = isPostgres && postgresDb
     ? createPostgresAuthorizationRepositories(postgresDb)

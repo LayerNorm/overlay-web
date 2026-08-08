@@ -12,6 +12,9 @@ export type LifecycleEventName =
   | 'automation.succeeded'
   | 'automation.failed'
   | 'api_key.changed'
+  | 'workspace.invitation_sent'
+  | 'workspace.mention'
+  | 'workspace.dm_received'
 
 type LifecycleEventBase<TName extends LifecycleEventName, TResource, TAttributes> = {
   attributes: TAttributes
@@ -68,6 +71,40 @@ type ApiKeyChangedLifecycleEvent = LifecycleEventBase<'api_key.changed', {
     action: 'created' | 'revoked' | 'rotated'
   }>
 
+type WorkspaceInvitationSentLifecycleEvent = LifecycleEventBase<'workspace.invitation_sent', {
+    id: string
+    type: 'workspace_invitation'
+  }, {
+    workspaceId: string
+    workspaceName: string
+    invitedEmail: string
+    invitedByPrincipalId: string
+    role: string
+  }>
+
+type WorkspaceMentionLifecycleEvent = LifecycleEventBase<'workspace.mention', {
+    id: string
+    type: 'workspace_mention'
+  }, {
+    workspaceId: string
+    workspaceName: string
+    conversationId: string
+    conversationTitle: string
+    mentionedByPrincipalId: string
+    mentionedByDisplayName: string
+  }>
+
+type WorkspaceDmReceivedLifecycleEvent = LifecycleEventBase<'workspace.dm_received', {
+    id: string
+    type: 'workspace_dm'
+  }, {
+    workspaceId: string
+    workspaceName: string
+    conversationId: string
+    fromPrincipalId: string
+    fromDisplayName: string
+  }>
+
 export type LifecycleEvent =
   | UserCreatedLifecycleEvent
   | SubscriptionChangedLifecycleEvent
@@ -75,6 +112,9 @@ export type LifecycleEvent =
   | AutomationLifecycleEvent<'automation.succeeded'>
   | AutomationLifecycleEvent<'automation.failed'>
   | ApiKeyChangedLifecycleEvent
+  | WorkspaceInvitationSentLifecycleEvent
+  | WorkspaceMentionLifecycleEvent
+  | WorkspaceDmReceivedLifecycleEvent
 
 export type LifecycleEventInput =
   | Omit<UserCreatedLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
@@ -83,6 +123,9 @@ export type LifecycleEventInput =
   | Omit<AutomationLifecycleEvent<'automation.succeeded'>, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
   | Omit<AutomationLifecycleEvent<'automation.failed'>, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
   | Omit<ApiKeyChangedLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
+  | Omit<WorkspaceInvitationSentLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
+  | Omit<WorkspaceMentionLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
+  | Omit<WorkspaceDmReceivedLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
 
 const lifecycleEventDestinations: Record<LifecycleEventName, readonly LifecycleEventDestination[]> = {
   'user.created': ['analytics', 'audit', 'email', 'metrics', 'notification'],
@@ -91,6 +134,9 @@ const lifecycleEventDestinations: Record<LifecycleEventName, readonly LifecycleE
   'automation.succeeded': ['analytics', 'audit', 'metrics', 'notification'],
   'automation.failed': ['analytics', 'audit', 'email', 'metrics', 'notification'],
   'api_key.changed': ['audit', 'email', 'metrics', 'notification'],
+  'workspace.invitation_sent': ['analytics', 'audit', 'email', 'metrics', 'notification'],
+  'workspace.mention': ['analytics', 'audit', 'email', 'metrics', 'notification'],
+  'workspace.dm_received': ['analytics', 'audit', 'email', 'metrics', 'notification'],
 }
 
 export function destinationsForLifecycleEvent(

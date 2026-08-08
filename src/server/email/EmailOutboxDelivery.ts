@@ -106,6 +106,9 @@ function parseLifecycleEmailEvent(value: Record<string, unknown>): LifecycleEmai
     'topup.succeeded',
     'automation.failed',
     'api_key.changed',
+    'workspace.invitation_sent',
+    'workspace.mention',
+    'workspace.dm_received',
   ].includes(String(name))) {
     throw new Error('Unsupported lifecycle email event')
   }
