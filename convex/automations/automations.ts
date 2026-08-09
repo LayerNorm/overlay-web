@@ -624,7 +624,19 @@ export const attachSourceConversationByServer = mutation({
     ) {
       throw new Error('Unauthorized')
     }
-    if (!automation.sourceConversationId) {
+    if (automation.workspaceId && conversation.workspaceId !== automation.workspaceId) {
+      throw new Error('Unauthorized')
+    }
+    const currentSource = automation.sourceConversationId
+      ? await ctx.db.get(automation.sourceConversationId)
+      : null
+    const currentSourceIsValid = Boolean(
+      currentSource
+      && currentSource.userId === args.userId
+      && !currentSource.deletedAt
+      && (!automation.workspaceId || currentSource.workspaceId === automation.workspaceId),
+    )
+    if (!currentSourceIsValid) {
       await ctx.db.patch(args.automationId, {
         sourceConversationId: args.conversationId,
         updatedAt: Date.now(),

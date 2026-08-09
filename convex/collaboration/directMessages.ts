@@ -4,6 +4,7 @@ import { mutation, query } from '../_generated/server'
 import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { validateServerSecret } from '../lib/auth'
+import { recordConversationEvent } from './events'
 
 type CollaborationCtx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
 
@@ -125,6 +126,179 @@ async function participantViews(
   return await Promise.all(rows.sort((a, b) => a.joinedAt - b.joinedAt).map((row) => participantView(ctx, row)))
 }
 
+export const getAccessibleConversation = query({
+  args: {
+    actorUserId: v.string(),
+    conversationId: v.id('conversations'),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const access = await canAccess(ctx, args)
+    const conversation = access.allowed ? access.conversation : null
+    if (!conversation) return null
+    return {
+      _id: conversation._id,
+      userId: conversation.userId,
+      clientId: conversation.clientId,
+      title: conversation.title,
+      lastModified: conversation.lastModified,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt ?? conversation.lastModified,
+      deletedAt: conversation.deletedAt,
+      lastMode: conversation.lastMode,
+      askModelIds: conversation.askModelIds,
+      actModelId: conversation.actModelId,
+      projectId: conversation.projectId,
+      shareVisibility: conversation.shareVisibility,
+      shareToken: conversation.shareToken,
+      isAutomation: conversation.isAutomation,
+      conversationType: conversation.conversationType ?? 'personal',
+      workspaceId: conversation.workspaceId,
+    }
+  },
+})
+
+export const listAccessibleConversations = query({
+  args: {
+    actorUserId: v.string(),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const actor = await requireActor(ctx, args)
+    const participantRows = await ctx.db.query('conversationParticipants')
+      .withIndex('by_workspaceId_principalId_status', (q) => (
+        q.eq('workspaceId', args.workspaceId).eq('principalId', actor.principalId).eq('status', 'active')
+      ))
+      .collect()
+    const shared = new Set(participantRows.filter((row) => !row.archivedAt).map((row) => String(row.conversationId)))
+    const rows = await ctx.db.query('conversations')
+      .withIndex('by_workspaceId_conversationType_lastModified', (q) => q.eq('workspaceId', args.workspaceId))
+      .collect()
+    return rows.filter((conversation) => (
+      !conversation.deletedAt
+      && !conversation.projectId
+      && !conversation.isAutomation
+      && (
+        ((conversation.conversationType ?? 'personal') === 'personal' && conversation.userId === args.actorUserId)
+        || shared.has(String(conversation._id))
+      )
+    )).sort((left, right) => right.lastModified - left.lastModified).map((conversation) => ({
+      _id: conversation._id,
+      userId: conversation.userId,
+      clientId: conversation.clientId,
+      title: conversation.title,
+      lastModified: conversation.lastModified,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt ?? conversation.lastModified,
+      deletedAt: conversation.deletedAt,
+      lastMode: conversation.lastMode,
+      askModelIds: conversation.askModelIds,
+      actModelId: conversation.actModelId,
+      projectId: conversation.projectId,
+      shareVisibility: conversation.shareVisibility,
+      shareToken: conversation.shareToken,
+      isAutomation: conversation.isAutomation,
+      conversationType: conversation.conversationType ?? 'personal',
+      workspaceId: conversation.workspaceId,
+    }))
+  },
+})
+
+export const listMessages = query({
+  args: {
+    actorUserId: v.string(),
+    beforeCreatedAt: v.optional(v.number()),
+    conversationId: v.id('conversations'),
+    limit: v.number(),
+    mainOnly: v.optional(v.boolean()),
+    messageId: v.optional(v.id('conversationMessages')),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireConversationAccess(ctx, args)
+    const rows = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId_createdAt', (q) => {
+        const conversationRows = q.eq('conversationId', args.conversationId)
+        return args.beforeCreatedAt === undefined
+          ? conversationRows
+          : conversationRows.lt('createdAt', args.beforeCreatedAt)
+      })
+      .order('desc')
+      .take(500)
+    return rows
+      .filter((message) => args.messageId === undefined || message._id === args.messageId)
+      .filter((message) => args.threadRootMessageId === undefined || message.threadRootMessageId === args.threadRootMessageId)
+      .filter((message) => args.mainOnly !== true || !message.threadRootMessageId)
+      .slice(0, Math.max(1, Math.min(100, Math.floor(args.limit))))
+      .reverse()
+  },
+})
+
+export const addMessage = mutation({
+  args: {
+    actorUserId: v.string(),
+    clientNonce: v.optional(v.string()),
+    content: v.string(),
+    conversationId: v.id('conversations'),
+    parts: v.optional(v.array(v.any())),
+    replySnippet: v.optional(v.string()),
+    replyToTurnId: v.optional(v.string()),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
+    turnId: v.string(),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const access = await requireConversationAccess(ctx, args)
+    if ((access.conversation.conversationType ?? 'personal') === 'personal') {
+      throw new Error('COLLABORATION_CONVERSATION_REQUIRED')
+    }
+    if (args.threadRootMessageId) {
+      await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
+    }
+    if (args.clientNonce) {
+      const existing = await ctx.db.query('conversationMessages')
+        .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
+        .collect()
+      const match = existing.find((message) => message.clientNonce === args.clientNonce)
+      if (match) return match._id
+    }
+    const now = Date.now()
+    const messageId = await ctx.db.insert('conversationMessages', {
+      conversationId: args.conversationId,
+      userId: args.actorUserId,
+      authorKind: 'human',
+      authorPrincipalId: access.actor.principalId,
+      turnId: args.turnId,
+      role: 'user',
+      mode: 'act',
+      content: args.content,
+      contentType: 'text',
+      parts: args.parts,
+      replyToTurnId: args.replyToTurnId,
+      replySnippet: args.replySnippet,
+      clientNonce: args.clientNonce,
+      threadRootMessageId: args.threadRootMessageId,
+      status: 'completed',
+      createdAt: now,
+      updatedAt: now,
+    })
+    await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'message.created',
+      messageId,
+    })
+    return messageId
+  },
+})
+
 export const createDirectMessage = mutation({
   args: {
     actorUserId: v.string(),
@@ -241,6 +415,13 @@ export const createDirectMessage = mutation({
       resourceId: conversationId,
       createdAt: now,
       updatedAt: now,
+    })
+    await recordConversationEvent(ctx, {
+      conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'conversation.created',
+      payload: { conversationType: 'dm' },
     })
     return {
       conversationId,

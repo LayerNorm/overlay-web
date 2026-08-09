@@ -665,6 +665,13 @@ Compatibility routes without a workspace path segment (including `/app/settings`
 - Legacy personal knowledge bases without a resource binding are claimed lazily by the Personal workspace. Existing bindings are never moved.
 - Legacy Composio accounts without any workspace mapping are claimed lazily by the Personal workspace. Provider keys already mapped to any workspace are never copied across workspaces.
 
+### Participant-scoped workspace conversations ✅
+
+- Personal chats remain owner-scoped. Direct messages and channels resolve through the collaboration repository, which authorizes active conversation participants for metadata, lists, history, sends, and durable event cursors.
+- Conversation navigation derives the destination from `conversationType`; opening a DM or channel from All or Activity cannot fall through to the personal-chat renderer.
+- Room sends persist the acting principal, use a client nonce for retry-safe delivery, and emit durable conversation events. Other participants refresh their room lists and message history from those events without a full page reload.
+- Postgres message author fields and the composite keys for reactions, pins, and saved messages must match migrations `0032`–`0034`; keep the Drizzle schema aligned with those migrations.
+
 ---
 
 ## Risks and Mitigations

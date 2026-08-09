@@ -124,3 +124,25 @@ test('Phase 7 keeps one contract for web, desktop, and mobile surfaces', async (
   assert.match(client, /\/api\/v1\/search/)
   assert.match(client, /x-overlay-workspace-id/)
 })
+
+test('workspace rooms route to the collaboration experience and use participant-scoped persistence', async () => {
+  const [boundary, router, inlinePanel, conversationsRoute, messageRoute, activity] = await Promise.all([
+    readFile(`${root}/src/features/chat/components/ChatSuspenseBoundary.tsx`, 'utf8'),
+    readFile(`${root}/src/features/chat/components/ConversationExperienceRouter.tsx`, 'utf8'),
+    readFile(`${root}/src/features/chat/components/ChatInlinePanel.tsx`, 'utf8'),
+    readFile(`${root}/src/server/app-api/v1/conversations/route.ts`, 'utf8'),
+    readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
+    readFile(`${root}/src/features/chat/components/ChatActivityView.tsx`, 'utf8'),
+  ])
+  assert.match(boundary, /ConversationExperienceRouter/)
+  assert.match(router, /view'\) === 'dms'/)
+  assert.match(router, /view'\) === 'channels'/)
+  assert.match(inlinePanel, /chat\.conversationType === 'channel'/)
+  assert.match(inlinePanel, /view: targetView/)
+  assert.match(conversationsRoute, /listAccessibleConversations/)
+  assert.match(conversationsRoute, /conversationCollaboration\.listMessages/)
+  assert.match(messageRoute, /conversationCollaboration\.addMessage/)
+  assert.match(messageRoute, /recordMessageActivity/)
+  assert.match(activity, /conversationType === 'channel'/)
+  assert.match(activity, /conversationType === 'dm'/)
+})

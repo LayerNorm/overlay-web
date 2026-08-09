@@ -227,6 +227,41 @@ export function ChatInlinePanel({
   useWorkspaceChanged(useCallback(() => { void loadChats() }, [loadChats]))
 
   useEffect(() => {
+    if (!workspaceId || isPublicShowcase || !user) return
+    const controller = new AbortController()
+    let cancelled = false
+    const run = async () => {
+      try {
+        let { cursor } = await overlayAppClient.conversations.events(undefined, {
+          signal: controller.signal,
+        })
+        while (!cancelled) {
+          const result = await overlayAppClient.conversations.events(cursor, {
+            signal: controller.signal,
+          })
+          if (cancelled) return
+          cursor = result.cursor
+          if (result.events.some((event) => (
+            event.type === 'conversation.created'
+            || event.type === 'conversation.updated'
+            || event.type === 'conversation.deleted'
+          ))) {
+            await loadChats({ cancelled })
+          }
+        }
+      } catch {
+        // Navigation and workspace switches abort the long poll. The next
+        // mounted panel starts with a fresh durable cursor and full list load.
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [isPublicShowcase, loadChats, user, workspaceId])
+
+  useEffect(() => {
     if (isPublicShowcase) return
     if (!user) return
 
@@ -386,10 +421,17 @@ export function ChatInlinePanel({
                 onClick={() => {
                   if (isDeleting) return
                   if (isEditing) return
-                  rememberLastChatForView(workspaceId, chatView, chat._id)
+                  const targetView = chat.conversationType === 'channel'
+                    ? 'channels'
+                    : chat.conversationType === 'dm'
+                      ? 'dms'
+                      : chatView === 'all'
+                        ? 'personal'
+                        : chatView
+                  rememberLastChatForView(workspaceId, targetView, chat._id)
                   const href = `${baseHref}?${new URLSearchParams({
                     ...(isPublicShowcase ? { showcase: '1' } : {}),
-                    view: chatView,
+                    view: targetView,
                     id: chat._id,
                   }).toString()}`
                   // Soft-navigate on the same chat surface so Next does not
@@ -444,7 +486,7 @@ export function ChatInlinePanel({
                     {unread > 9 ? '9+' : unread}
                   </span>
                 ) : null}
-                {isPublicShowcase ? null : isEditing ? (
+                {isPublicShowcase || chat.conversationType === 'dm' || chat.conversationType === 'channel' ? null : isEditing ? (
                   <button
                     type="button"
                     onMouseDown={(event) => {

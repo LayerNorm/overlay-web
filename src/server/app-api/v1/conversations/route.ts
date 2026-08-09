@@ -68,11 +68,18 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const beforeCreatedAtParam = searchParams.get('beforeCreatedAt')
     const beforeCreatedAt = beforeCreatedAtParam ? Number(beforeCreatedAtParam) : undefined
     const compactToolPayloads = readBooleanParam(searchParams.get('compactToolPayloads')) === true
+    const mainOnly = readBooleanParam(searchParams.get('mainOnly')) === true
+    const messageId = searchParams.get('messageId')?.trim() || undefined
+    const threadRootMessageId = searchParams.get('threadRootMessageId')?.trim() || undefined
 
     if (conversationId && !includeMessages) {
       const conv = await repository.getConversationById({
         conversationId: conversationId as Id<'conversations'>,
         userId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
+      }) ?? await appData.repositories.conversationCollaboration.getAccessibleConversation({
+        actorUserId: auth.userId,
+        conversationId,
         workspaceId: context.workspace.workspace.id,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -84,11 +91,26 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         conversationId: conversationId as Id<'conversations'>,
         userId: auth.userId,
         workspaceId: context.workspace.workspace.id,
+      }) ?? await appData.repositories.conversationCollaboration.getAccessibleConversation({
+        actorUserId: auth.userId,
+        conversationId,
+        workspaceId: context.workspace.workspace.id,
       })
       if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
       let messages: ConversationMessageRow[]
-      if (messageLimit) {
+      if ((conv.conversationType ?? 'personal') !== 'personal') {
+        messages = await appData.repositories.conversationCollaboration.listMessages({
+          actorUserId: auth.userId,
+          conversationId,
+          workspaceId: context.workspace.workspace.id,
+          limit: messageLimit ?? 100,
+          ...(Number.isFinite(beforeCreatedAt) ? { beforeCreatedAt } : {}),
+          ...(mainOnly ? { mainOnly: true } : {}),
+          ...(messageId ? { messageId } : {}),
+          ...(threadRootMessageId ? { threadRootMessageId } : {}),
+        })
+      } else if (messageLimit) {
         try {
           messages = await repository.getRecentMessages({
             conversationId: conversationId as Id<'conversations'>,
@@ -139,12 +161,25 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json(list)
     }
 
-    const list = await repository.listConversations({
-      userId: auth.userId,
-      workspaceId: context.workspace.workspace.id,
-      ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
-      ...(includeDeleted !== undefined ? { includeDeleted } : {}),
-    })
+    const [personal, accessible] = await Promise.all([
+      repository.listConversations({
+        userId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
+        ...(Number.isFinite(updatedSince) ? { updatedSince } : {}),
+        ...(includeDeleted !== undefined ? { includeDeleted } : {}),
+      }),
+      appData.repositories.conversationCollaboration.listAccessibleConversations({
+        actorUserId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
+      }),
+    ])
+    const list = [
+      ...personal,
+      ...accessible.filter((conversation) => (
+        (conversation.conversationType ?? 'personal') !== 'personal'
+        && !personal.some((item) => item._id === conversation._id)
+      )),
+    ].sort((left, right) => right.lastModified - left.lastModified)
 
     return NextResponse.json(list)
   } catch (error) {
@@ -297,6 +332,12 @@ function serializeConversationMessage(message: ConversationMessageRow) {
     ...(message.replySnippet ? { replySnippet: message.replySnippet } : {}),
     ...(message.routedModelId ? { routedModelId: message.routedModelId } : {}),
     ...(message.status ? { status: message.status } : {}),
+    ...(message.authorKind ? { authorKind: message.authorKind } : {}),
+    ...(message.authorPrincipalId ? { authorPrincipalId: message.authorPrincipalId } : {}),
+    ...(message.clientNonce ? { clientNonce: message.clientNonce } : {}),
+    ...(message.editedAt ? { editedAt: message.editedAt } : {}),
+    ...(message.deletedAt ? { deletedAt: message.deletedAt } : {}),
+    ...(message.threadRootMessageId ? { threadRootMessageId: message.threadRootMessageId } : {}),
   }
 }
 

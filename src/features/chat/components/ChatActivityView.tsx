@@ -74,12 +74,23 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
   const unreadCount = notifications.filter((notification) => !notification.readAt).length
 
   async function openNotification(notification: WorkspaceNotification) {
+    const conversationPromise = notification.conversationId
+      ? overlayAppClient.conversations.get<{
+          conversationType?: 'personal' | 'dm' | 'channel'
+        }>({ conversationId: notification.conversationId }).catch(() => null)
+      : Promise.resolve(null)
     if (!notification.readAt) {
-      await overlayAppClient.conversations.markNotificationsRead([notification.id]).catch(() => undefined)
+      void overlayAppClient.conversations.markNotificationsRead([notification.id]).catch(() => undefined)
       setNotifications((current) => current.map((row) => row.id === notification.id ? { ...row, readAt: Date.now() } : row))
     }
     if (!notification.conversationId) return
-    const query = new URLSearchParams({ view: 'all', id: notification.conversationId })
+    const conversation = await conversationPromise
+    const view = conversation?.conversationType === 'channel'
+      ? 'channels'
+      : conversation?.conversationType === 'dm'
+        ? 'dms'
+        : 'personal'
+    const query = new URLSearchParams({ view, id: notification.conversationId })
     if (notification.messageId) query.set('message', notification.messageId)
     router.push(`${baseHref}?${query.toString()}`)
   }

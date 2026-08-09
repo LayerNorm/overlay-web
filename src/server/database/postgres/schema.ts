@@ -52,6 +52,13 @@ export const messageStatus = pgEnum('overlay_message_status', [
   'error',
 ])
 
+export const messageAuthorKind = pgEnum('overlay_message_author_kind', [
+  'human',
+  'agent',
+  'model',
+  'system',
+])
+
 export const shareVisibility = pgEnum('overlay_share_visibility', [
   'private',
   'public',
@@ -648,8 +655,10 @@ export const conversationMessages = pgTable('conversation_messages', {
   replySnippet: text('reply_snippet'),
   routedModelId: text('routed_model_id'),
   status: messageStatus('status'),
-  authorKind: text('author_kind'),
+  authorKind: messageAuthorKind('author_kind').notNull(),
   authorPrincipalId: text('author_principal_id'),
+  clientNonce: text('client_nonce'),
+  threadRootMessageId: text('thread_root_message_id'),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   editedAt: timestamp('edited_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }),
@@ -662,6 +671,10 @@ export const conversationMessages = pgTable('conversation_messages', {
   index('conversation_messages_status_updated_at_idx').on(table.status, table.updatedAt),
   index('conversation_messages_turn_id_idx').on(table.turnId),
   index('conversation_messages_author_principal_id_idx').on(table.authorPrincipalId),
+  uniqueIndex('conversation_messages_conversation_client_nonce_idx')
+    .on(table.conversationId, table.clientNonce),
+  index('conversation_messages_thread_root_created_at_idx')
+    .on(table.threadRootMessageId, table.createdAt),
 ])
 
 export const conversationMessageDeltas = pgTable('conversation_message_deltas', {
@@ -1728,7 +1741,6 @@ export const conversationThreadFollows = pgTable('conversation_thread_follows', 
 ])
 
 export const conversationMessageReactions = pgTable('conversation_message_reactions', {
-  id: text('id').primaryKey(),
   conversationId: text('conversation_id')
     .notNull()
     .references(() => conversations.id, { onDelete: 'cascade' }),
@@ -1740,14 +1752,13 @@ export const conversationMessageReactions = pgTable('conversation_message_reacti
   emoji: text('emoji').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
-  uniqueIndex('conversation_message_reactions_message_principal_emoji_idx').on(table.messageId, table.principalId, table.emoji),
+  primaryKey({ columns: [table.messageId, table.principalId, table.emoji] }),
   index('conversation_message_reactions_conversation_idx').on(table.conversationId),
   index('conversation_message_reactions_workspace_idx').on(table.workspaceId),
   index('conversation_message_reactions_message_idx').on(table.messageId),
 ])
 
 export const conversationPins = pgTable('conversation_pins', {
-  id: text('id').primaryKey(),
   conversationId: text('conversation_id')
     .notNull()
     .references(() => conversations.id, { onDelete: 'cascade' }),
@@ -1758,13 +1769,12 @@ export const conversationPins = pgTable('conversation_pins', {
   pinnedByPrincipalId: text('pinned_by_principal_id').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
-  uniqueIndex('conversation_pins_conversation_message_idx').on(table.conversationId, table.messageId),
+  primaryKey({ columns: [table.conversationId, table.messageId] }),
   index('conversation_pins_conversation_idx').on(table.conversationId),
   index('conversation_pins_workspace_idx').on(table.workspaceId),
 ])
 
 export const conversationSavedMessages = pgTable('conversation_saved_messages', {
-  id: text('id').primaryKey(),
   conversationId: text('conversation_id')
     .notNull()
     .references(() => conversations.id, { onDelete: 'cascade' }),
@@ -1775,6 +1785,6 @@ export const conversationSavedMessages = pgTable('conversation_saved_messages', 
   principalId: text('principal_id').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
-  uniqueIndex('conversation_saved_messages_conversation_message_principal_idx').on(table.conversationId, table.messageId, table.principalId),
+  primaryKey({ columns: [table.messageId, table.principalId] }),
   index('conversation_saved_messages_workspace_principal_idx').on(table.workspaceId, table.principalId),
 ])

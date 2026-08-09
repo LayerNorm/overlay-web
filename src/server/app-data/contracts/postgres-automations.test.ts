@@ -10,9 +10,11 @@ import {
   conversations,
   projects,
   users,
+  workspaces,
 } from '@/server/database/postgres/schema'
 import { PostgresActConversationRepository } from '@/server/conversations/PostgresActConversationRepository'
 import { PostgresAutomationRepository } from '@/server/automations/PostgresAutomationRepository'
+import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspaceRepository'
 
 const connectionString = process.env.OVERLAY_DATABASE_URL?.trim()
 
@@ -29,28 +31,37 @@ test(
     const db = createOverlayPostgresDb(pool)
     const userId = `p6_user_${randomUUID()}`
     const foreignUserId = `p6_foreign_${randomUUID()}`
+    const workspaceId = `p6_workspace_${randomUUID()}`
+    const principalId = `p6_principal_${randomUUID()}`
     const projectId = `p6_project_${randomUUID()}`
-    const conversationId = `p6_conversation_${randomUUID()}`
     const conversationsRepository = new PostgresActConversationRepository(db)
+    const workspacesRepository = new PostgresWorkspaceRepository(db)
     const repository = new PostgresAutomationRepository(db, conversationsRepository)
+    let conversationId = ''
 
     try {
       await db.insert(users).values([
         { email: `${userId}@example.test`, id: userId },
         { email: `${foreignUserId}@example.test`, id: foreignUserId },
       ])
-      await db.insert(projects).values({ id: projectId, name: 'P6 project', userId })
-      await db.insert(conversations).values({
+      await workspacesRepository.ensurePersonalWorkspace({
+        workspaceId,
+        slug: workspaceId,
+        principalId,
+        userId,
+        displayName: 'P6 owner',
+        now: Date.now(),
+      })
+      await db.insert(projects).values({ id: projectId, name: 'P6 project', userId, workspaceId })
+      conversationId = await conversationsRepository.createConversation({
         actModelId: 'openai/gpt-4.1',
         askModelIds: ['openai/gpt-4.1'],
-        createdAt: new Date(),
-        id: conversationId,
-        lastMode: 'act',
-        lastModified: new Date(),
+        createdByPrincipalId: principalId,
+        conversationType: 'personal',
         projectId,
         title: 'Automation conversation',
-        updatedAt: new Date(),
         userId,
+        workspaceId,
       })
 
       let automationId = ''
@@ -65,8 +76,9 @@ test(
           sourceConversationId: conversationId,
           timezone: 'America/Los_Angeles',
           userId,
+          workspaceId,
         })
-        const [automation] = await repository.listAutomations({ userId })
+        const [automation] = await repository.listAutomations({ userId, workspaceId })
         assert.equal(automation?._id, automationId)
         assert.equal(automation?.projectId, projectId)
         assert.equal(automation?.concurrencyPolicy, 'queue')
@@ -155,6 +167,30 @@ test(
         assert.ok(run?.completedAt)
       })
 
+      await t.test('stale source conversations are repaired inside the active workspace', async () => {
+        const replacementConversationId = await conversationsRepository.createConversation({
+          actModelId: 'openai/gpt-4.1',
+          askModelIds: ['openai/gpt-4.1'],
+          createdByPrincipalId: principalId,
+          conversationType: 'personal',
+          title: 'Replacement automation conversation',
+          userId,
+          workspaceId,
+        })
+        await db.update(conversations)
+          .set({ deletedAt: new Date() })
+          .where(eq(conversations.id, conversationId))
+        await repository.attachSourceConversation({
+          automationId,
+          conversationId: replacementConversationId,
+          userId,
+        })
+        assert.equal(
+          (await repository.getAutomation({ automationId, userId, workspaceId }))?.sourceConversationId,
+          replacementConversationId,
+        )
+      })
+
       await t.test('soft delete hides the automation and disables its trigger', async () => {
         await repository.removeAutomation({ automationId, userId })
         assert.equal(await repository.getAutomation({ automationId, userId }), null)
@@ -167,6 +203,7 @@ test(
         assert.equal(trigger?.nextFireAt, null)
       })
     } finally {
+      await db.delete(workspaces).where(eq(workspaces.id, workspaceId))
       await db.delete(users).where(eq(users.id, userId))
       await db.delete(users).where(eq(users.id, foreignUserId))
       await pool.end()

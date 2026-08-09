@@ -191,6 +191,12 @@ test('Postgres direct messages are participant-scoped and realtime-ready', {
       workspaceId,
       conversationId: created.conversationId as never,
     }), true)
+    assert.equal((await collaboration.listAccessibleConversations({
+      actorUserId: memberUserId,
+      workspaceId,
+    })).some((conversation) => (
+      conversation._id === created.conversationId && conversation.conversationType === 'dm'
+    )), true)
     assert.deepEqual((await conversations.getConversationMessages({
       workspaceId,
       conversationId: created.conversationId as never,
@@ -198,12 +204,38 @@ test('Postgres direct messages are participant-scoped and realtime-ready', {
     })).filter((message) => message.content === 'Source context'), [])
 
     const clientNonce = `${scope}_nonce`
+    const collaborationMessageId = await collaboration.addMessage({
+      actorUserId: memberUserId,
+      workspaceId,
+      conversationId: created.conversationId,
+      clientNonce,
+      turnId: `${scope}_collaboration_member_turn`,
+      content: 'Hello through the shared room contract',
+    })
+    assert.equal(await collaboration.addMessage({
+      actorUserId: memberUserId,
+      workspaceId,
+      conversationId: created.conversationId,
+      clientNonce,
+      turnId: `${scope}_collaboration_member_turn_retry`,
+      content: 'Duplicate should not persist',
+    }), collaborationMessageId)
+    const ownerVisibleMessages = await collaboration.listMessages({
+      actorUserId: ownerUserId,
+      workspaceId,
+      conversationId: created.conversationId,
+      limit: 100,
+      mainOnly: true,
+    })
+    assert.equal(ownerVisibleMessages.find((message) => message._id === collaborationMessageId)?.authorPrincipalId, memberPrincipalId)
+
+    const legacyClientNonce = `${scope}_legacy_nonce`
     const messageId = await conversations.addMessage({
       workspaceId,
       conversationId: created.conversationId as never,
       userId: memberUserId,
       authorPrincipalId: memberPrincipalId,
-      clientNonce,
+      clientNonce: legacyClientNonce,
       turnId: `${scope}_member_turn`,
       role: 'user',
       mode: 'act',
@@ -216,7 +248,7 @@ test('Postgres direct messages are participant-scoped and realtime-ready', {
       conversationId: created.conversationId as never,
       userId: memberUserId,
       authorPrincipalId: memberPrincipalId,
-      clientNonce,
+      clientNonce: legacyClientNonce,
       turnId: `${scope}_member_turn_retry`,
       role: 'user',
       mode: 'act',
@@ -300,10 +332,11 @@ test('Postgres direct messages are participant-scoped and realtime-ready', {
       conversationId: created.conversationId,
       messageId: messageId!,
     }), true)
-    const tombstone = (await conversations.getConversationMessages({
+    const tombstone = (await collaboration.listMessages({
+      actorUserId: ownerUserId,
       workspaceId,
-      conversationId: created.conversationId as never,
-      userId: ownerUserId,
+      conversationId: created.conversationId,
+      limit: 100,
     })).find((message) => message._id === messageId)
     assert.equal(tombstone?.content, '')
     assert.ok(tombstone?.deletedAt)

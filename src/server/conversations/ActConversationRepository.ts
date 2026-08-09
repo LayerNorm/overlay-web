@@ -76,7 +76,9 @@ export type ConversationMessageRow = {
   clientNonce?: string
   deletedAt?: number
   authorPrincipalId?: string
-  authorKind?: 'user' | 'agent' | 'system'
+  authorKind?: 'human' | 'agent' | 'model' | 'system'
+  editedAt?: number
+  threadRootMessageId?: string
 }
 
 export type ActUsageEvent = {
@@ -206,7 +208,7 @@ export interface ActConversationRepository {
     userId: string
     variantIndex?: number
     workspaceId?: string
-    authorKind?: 'user' | 'agent' | 'system'
+    authorKind?: 'human' | 'agent' | 'model' | 'system'
     authorPrincipalId?: string
     clientNonce?: string
     threadRootMessageId?: string
