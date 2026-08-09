@@ -190,6 +190,8 @@ export default function AppSidebar({
   )
 
   const [pendingNav, setPendingNav] = useState<{ href: string; fromPath: string } | null>(null)
+  const currentRouteKey = `${pathname}?${currentSearchParams.toString()}`
+  const [pendingSecondaryNav, setPendingSecondaryNav] = useState<{ id: string; fromRouteKey: string } | null>(null)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [mobileView, setMobileView] = useState<'nav' | 'panel'>('nav')
@@ -290,6 +292,9 @@ export default function AppSidebar({
 
   const effectivePendingHref =
     pendingNav && pathname === pendingNav.fromPath ? pendingNav.href : null
+  const effectivePendingSecondaryNavId = pendingSecondaryNav?.fromRouteKey === currentRouteKey
+    ? pendingSecondaryNav.id
+    : null
   const hideTemporaryChatChrome = temporaryChatUiHidden && (
     pathname.startsWith('/app/chat') ||
     (pathname.startsWith('/app/w/') && resolveWorkspaceSurface(pathname) === 'chat')
@@ -657,6 +662,10 @@ export default function AppSidebar({
     router.push(destination)
   }
 
+  function beginSecondaryNavigation(id: string) {
+    setPendingSecondaryNav({ id, fromRouteKey: currentRouteKey })
+  }
+
   function handleMobileNavSelect(item: (typeof navItems)[number]) {
     if (gateNavItem(item) !== 'ok' || !item.href) return
     const active = navItemActive(item)
@@ -736,8 +745,11 @@ export default function AppSidebar({
       return {
         items: chatItems,
         activeId: chatsView,
+        pendingId: effectivePendingSecondaryNavId,
         onSelect: async (next) => {
           closeMobileDrawer()
+          if (next === chatsView) return
+          beginSecondaryNavigation(next)
           if (next === 'activity') {
             router.push(activeWorkspaceId
               ? buildWorkspaceHref(activeWorkspaceId, '/app/activity')
@@ -777,8 +789,11 @@ export default function AppSidebar({
       return {
         items: filesInlineItems,
         activeId: filesView,
+        pendingId: effectivePendingSecondaryNavId,
         onSelect: (next) => {
           closeMobileDrawer()
+          if (next === filesView) return
+          beginSecondaryNavigation(next)
           const params = new URLSearchParams(currentSearchParams.toString())
           if (publicShowcase) params.set('showcase', '1')
           if (next === 'all') params.delete('view')
@@ -794,8 +809,11 @@ export default function AppSidebar({
       return {
         items: availableToolsInlineItems,
         activeId: toolsView,
+        pendingId: effectivePendingSecondaryNavId,
         onSelect: (next) => {
           closeMobileDrawer()
+          if (next === toolsView) return
+          beginSecondaryNavigation(next)
           router.push(`/app/tools?${new URLSearchParams({
             ...(publicShowcase ? { showcase: '1' } : {}),
             view: next,
@@ -812,7 +830,11 @@ export default function AppSidebar({
           href: sectionHref ?? `/app/settings?section=${id}`,
         })),
         activeId: settingsSection,
-        onSelect: () => closeMobileDrawer(),
+        pendingId: effectivePendingSecondaryNavId,
+        onSelect: (next) => {
+          if (next !== settingsSection) beginSecondaryNavigation(next)
+          closeMobileDrawer()
+        },
       }
     }
     return undefined
@@ -989,6 +1011,7 @@ export default function AppSidebar({
       icon: ShieldCheck,
       active: adminOpen,
       pending: effectivePendingHref === '/app/admin',
+      href: navItemDestination('/app/admin'),
       onSelect: () => {
         if (adminOpen) return
         setPendingNav({ href: '/app/admin', fromPath: pathname })
@@ -998,6 +1021,9 @@ export default function AppSidebar({
   }
   navItems.forEach((item, navIdx) => {
     const shortcut = navIdx < 9 ? navIdx + 1 : null
+    const canOpenDestinationInNewTab = Boolean(item.href)
+      && !primaryNavActionByItemId.has(item.id)
+      && (!isGuestConfirmed || publicShowcase || item.href === '/app/chat')
     railItems.push({
       id: item.id,
       label: item.label,
@@ -1005,6 +1031,7 @@ export default function AppSidebar({
       disabled: item.disabled,
       active: navItemActive(item),
       pending: Boolean(item.href && effectivePendingHref === item.href),
+      href: canOpenDestinationInNewTab && item.href ? navItemDestination(item.href) : undefined,
       badgeCount: item.href === '/app/chat' ? cumulativeChatUnread : 0,
       title: shortcut ? `${item.label} · ⌥${shortcut}` : item.label,
       dataTour: item.href === '/app/chat'

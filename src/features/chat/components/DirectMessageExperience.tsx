@@ -174,14 +174,16 @@ export function DirectMessageExperience({
     && appDataCapabilities.provider === 'convex'
     && appDataCapabilities.requiresConvexClient
     && appDataCapabilities.supportsRealtime
-  // BFF event long-poll is the Postgres transport and a Convex fallback when
-  // the browser subscription is offline (token mint delay, transient JWKS
-  // failure). On Convex, ConvexRoomMessageSubscription remains primary.
+  const convexRoomSubscriptionEnabled = convexLiveSyncEnabled
+    && Boolean(authUser?.id && convexAccessToken && activeWorkspaceId)
+  // A Convex WebSocket subscription and BFF long-poll must never reconcile the
+  // same optimistic row concurrently: that produces a second visible swap
+  // after send. Long-poll remains the fallback until Convex auth is ready.
   const roomEventSyncEnabled = !showcase
     && appDataCapabilities.supportsRealtime
     && (
       appDataCapabilities.provider === 'postgres'
-      || appDataCapabilities.provider === 'convex'
+      || (appDataCapabilities.provider === 'convex' && !convexRoomSubscriptionEnabled)
     )
   const router = useRouter()
   const [participants, setParticipants] = useState<ConversationParticipant[]>(
@@ -839,9 +841,9 @@ export function DirectMessageExperience({
           ? { replyToTurnId: options.reply.replyToTurnId, replySnippet: options.reply.snippet }
           : {}),
       })
-      await loadMessages()
+      if (!convexRoomSubscriptionEnabled) await loadMessages()
       if (invokedAgents.length) {
-        const humanMessageId = messagesRef.current.find((message) => (
+        const humanMessageId = saved.messageId ?? messagesRef.current.find((message) => (
           message.clientNonce === clientNonce
         ))?.id
         if (humanMessageId) {
@@ -940,7 +942,7 @@ export function DirectMessageExperience({
       // The reply is still persisted server-side; the next poll picks it up.
     } finally {
       setStreamingAgentReplies({})
-      await loadMessages().catch(() => undefined)
+      if (!convexRoomSubscriptionEnabled) await loadMessages().catch(() => undefined)
     }
   }
 
@@ -1328,7 +1330,7 @@ export function DirectMessageExperience({
 
   return (
     <>
-      {convexLiveSyncEnabled && authUser?.id && convexAccessToken && activeWorkspaceId ? (
+      {convexRoomSubscriptionEnabled && authUser?.id && convexAccessToken && activeWorkspaceId ? (
         <ConvexRoomMessageSubscription
           accessToken={convexAccessToken}
           actorUserId={authUser.id}

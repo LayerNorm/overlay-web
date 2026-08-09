@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import Link from 'next/link'
 import type { LucideIcon } from 'lucide-react'
 import { Loader2 } from 'lucide-react'
 import { SidebarShell } from '@overlay/ui/primitives'
@@ -13,6 +14,8 @@ export interface PrimaryRailItem {
   pending?: boolean
   disabled?: boolean
   badgeCount?: number
+  /** Real destinations stay anchors so modifier-click can open a new tab. */
+  href?: string
   title?: string
   dataTour?: string
   onSelect: () => void
@@ -25,17 +28,8 @@ function RailButton({
   item: PrimaryRailItem
   expanded: boolean
 }) {
-  const { label, icon: Icon, active, pending, disabled, badgeCount, title, dataTour, onSelect } = item
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      disabled={disabled}
-      title={title ?? label}
-      aria-label={disabled ? `${label} (coming soon)` : label}
-      aria-current={active ? 'page' : undefined}
-      data-tour={dataTour}
-      className={`relative flex h-9 w-full items-center rounded-md transition-colors ${
+  const { label, icon: Icon, active, pending, disabled, badgeCount, href, title, dataTour, onSelect } = item
+  const className = `relative flex h-9 w-full items-center rounded-md transition-colors ${
         expanded ? 'gap-2.5 px-3' : 'justify-center px-0'
       } ${
         disabled
@@ -43,8 +37,9 @@ function RailButton({
           : active
             ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
             : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-      }`}
-    >
+      }`
+  const content = (
+    <>
       {pending ? (
         <Loader2 size={14} className="shrink-0 animate-spin text-[var(--muted)]" aria-hidden />
       ) : (
@@ -61,6 +56,41 @@ function RailButton({
           {badgeCount > 9 ? '9+' : badgeCount}
         </span>
       ) : null}
+    </>
+  )
+
+  if (href && !disabled) {
+    return (
+      <Link
+        href={href}
+        onClick={(event) => {
+          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+          event.preventDefault()
+          onSelect()
+        }}
+        title={title ?? label}
+        aria-label={label}
+        aria-current={active ? 'page' : undefined}
+        data-tour={dataTour}
+        className={className}
+      >
+        {content}
+      </Link>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      disabled={disabled}
+      title={title ?? label}
+      aria-label={disabled ? `${label} (coming soon)` : label}
+      aria-current={active ? 'page' : undefined}
+      data-tour={dataTour}
+      className={className}
+    >
+      {content}
     </button>
   )
 }

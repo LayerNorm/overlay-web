@@ -562,6 +562,7 @@ export function InlineNavChildren({
   id,
   items,
   activeId,
+  pendingId,
   onSelect,
   className = 'mt-1 space-y-0.5 pl-7',
 }: {
@@ -570,6 +571,7 @@ export function InlineNavChildren({
   /** Empty when the section is open but not the current route, so an expanded
    * dropdown never implies a selection the person did not make. */
   activeId: string
+  pendingId?: string | null
   /** Also fires for href items on link click, so callers can close chrome. */
   onSelect: (id: string) => void
   /** Container override — the default indents children under a nav row. */
@@ -587,7 +589,9 @@ export function InlineNavChildren({
         }`
         const content = (
           <>
-            {item.icon ? <item.icon size={15} className="shrink-0" aria-hidden /> : null}
+            {pendingId === item.id ? (
+              <Loader2 size={15} className="shrink-0 animate-spin" aria-label={`Loading ${item.label}`} />
+            ) : item.icon ? <item.icon size={15} className="shrink-0" aria-hidden /> : null}
             <span className="flex-1 text-left">{item.label}</span>
             {item.badgeCount ? (
               <span
@@ -602,7 +606,15 @@ export function InlineNavChildren({
         )
         if (item.href && !item.locked) {
           return (
-            <Link key={item.id} href={item.href} onClick={() => onSelect(item.id)} className={itemClass}>
+            <Link
+              key={item.id}
+              href={item.href}
+              onClick={(event) => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+                onSelect(item.id)
+              }}
+              className={itemClass}
+            >
               {content}
             </Link>
           )
