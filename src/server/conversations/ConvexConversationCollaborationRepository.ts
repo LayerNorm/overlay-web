@@ -90,6 +90,28 @@ implements ConversationCollaborationRepository {
     return id
   }
 
+  async addAgentMessage(args: {
+    actorUserId: string
+    authorPrincipalId: string
+    clientNonce: string
+    content: string
+    conversationId: string
+    modelId: string
+    threadRootMessageId?: string
+    tokens?: { input: number; output: number }
+    turnId: string
+    workspaceId: string
+  }) {
+    const id = await convex.mutation<string>('collaboration/directMessages:addAgentMessage', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      threadRootMessageId: args.threadRootMessageId as Id<'conversationMessages'> | undefined,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!id) throw new Error('Failed to save collaboration agent message')
+    return id
+  }
+
   async getConversationEventCursor(args: { actorUserId: string; workspaceId: string }) {
     return await convex.query<number>('collaboration/directMessages:getConversationEventCursor', {
       ...args,

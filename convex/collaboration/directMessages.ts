@@ -373,6 +373,86 @@ export const addMessage = mutation({
   },
 })
 
+/** Persists a streamed workspace-agent reply after validating both the human
+ * invoker's room access and the agent's active participation in that room. */
+export const addAgentMessage = mutation({
+  args: {
+    actorUserId: v.string(),
+    authorPrincipalId: v.string(),
+    clientNonce: v.string(),
+    content: v.string(),
+    conversationId: v.id('conversations'),
+    modelId: v.string(),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
+    tokens: v.optional(v.object({ input: v.number(), output: v.number() })),
+    turnId: v.string(),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const access = await requireConversationAccess(ctx, args)
+    if ((access.conversation.conversationType ?? 'personal') === 'personal') {
+      throw new Error('COLLABORATION_CONVERSATION_REQUIRED')
+    }
+    const [participant, principal] = await Promise.all([
+      ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', (q) => (
+          q.eq('conversationId', args.conversationId).eq('principalId', args.authorPrincipalId)
+        ))
+        .unique(),
+      ctx.db.query('workspacePrincipals')
+        .withIndex('by_principalId', (q) => q.eq('principalId', args.authorPrincipalId))
+        .unique(),
+    ])
+    if (
+      participant?.status !== 'active'
+      || participant.principalType !== 'agent'
+      || principal?.type !== 'agent'
+      || principal.workspaceId !== args.workspaceId
+      || principal.archivedAt
+    ) {
+      throw new Error('AGENT_PARTICIPANT_REQUIRED')
+    }
+    if (args.threadRootMessageId) {
+      await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
+    }
+    const existing = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
+      .collect()
+    const match = existing.find((message) => message.clientNonce === args.clientNonce)
+    if (match) return match._id
+
+    const now = Date.now()
+    const messageId = await ctx.db.insert('conversationMessages', {
+      conversationId: args.conversationId,
+      userId: args.actorUserId,
+      authorKind: 'agent',
+      authorPrincipalId: args.authorPrincipalId,
+      turnId: args.turnId,
+      role: 'assistant',
+      mode: 'act',
+      content: args.content,
+      contentType: 'text',
+      modelId: args.modelId,
+      tokens: args.tokens,
+      clientNonce: args.clientNonce,
+      threadRootMessageId: args.threadRootMessageId,
+      status: 'completed',
+      createdAt: now,
+      updatedAt: now,
+    })
+    await ctx.db.patch(args.conversationId, { lastMode: 'act', lastModified: now, updatedAt: now })
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'message.created',
+      messageId,
+    })
+    return messageId
+  },
+})
+
 export const createDirectMessage = mutation({
   args: {
     actorUserId: v.string(),
