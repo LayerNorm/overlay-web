@@ -422,20 +422,43 @@ export function DirectMessageExperience({
     }
   }, [conversationId, hasMoreMessages, loadingOlderMessages, showcase])
 
+  const clearCollaborationNotifications = useCallback(async () => {
+    if (showcase) return
+    try {
+      const { notifications } = await overlayAppClient.conversations.notifications({
+        unreadOnly: true,
+        limit: 100,
+      })
+      const unreadIds = notifications
+        .filter((notification) => notification.conversationId === conversationId)
+        .map((notification) => notification.id)
+      if (unreadIds.length > 0) {
+        await overlayAppClient.conversations.markNotificationsRead(unreadIds)
+      }
+    } catch {
+      // Badge clear is best-effort; the room transcript still works.
+    }
+    window.dispatchEvent(new CustomEvent('overlay:collaboration-read', {
+      detail: { conversationId },
+    }))
+  }, [conversationId, showcase])
+
   const markVisibleRead = useCallback(async () => {
     if (showcase || document.visibilityState !== 'visible') return
-    const node = listRef.current
-    if (!node || node.scrollHeight - node.scrollTop - node.clientHeight > 96) return
     if (readMarkInFlightRef.current) return
     readMarkInFlightRef.current = true
     try {
+      // Opening a room should clear unread immediately (Slack-style). Do not
+      // wait for the transcript to settle at the bottom — that race left
+      // badges stuck after the user switched into a DM or channel.
       await overlayAppClient.conversations.updateParticipantState(conversationId, { markRead: true })
       setUnreadBoundarySequence(null)
       setNewMessageCount(0)
+      await clearCollaborationNotifications()
     } finally {
       readMarkInFlightRef.current = false
     }
-  }, [conversationId, showcase])
+  }, [clearCollaborationNotifications, conversationId, showcase])
 
   const loadPresence = useCallback(async () => {
     const result = await overlayAppClient.conversations.presence(conversationId)
