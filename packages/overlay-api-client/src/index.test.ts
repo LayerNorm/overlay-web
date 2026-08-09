@@ -203,6 +203,22 @@ test('automation run history unwraps the standardized paginated envelope', async
   assert.deepEqual(runs, [{ _id: 'run_1', status: 'completed', scheduledFor: 123 }])
 })
 
+test('JSON helpers reject HTTP errors instead of treating error payloads as resource data', async () => {
+  const client = createOverlayAppClient({
+    baseUrl: 'https://example.test',
+    fetch: async () => Response.json({ error: 'Forbidden' }, { status: 403 }),
+  })
+
+  await assert.rejects(
+    client.sharing.get({
+      workspaceId: 'workspace_acme',
+      resourceType: 'conversation',
+      resourceId: 'conversation_product',
+    }),
+    /Forbidden/,
+  )
+})
+
 test('webhook helpers unwrap standardized lists and parse mutation payloads', async () => {
   const client = createOverlayAppClient({
     baseUrl: 'https://example.test',

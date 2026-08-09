@@ -55,11 +55,22 @@ async function mergeHeaders(
 }
 
 export async function parseJson<T>(response: Response): Promise<T> {
-  return (await response.json()) as T
+  const value = await response.json().catch(() => null) as unknown
+  if (!response.ok) {
+    const detail = value && typeof value === 'object'
+      ? ('error' in value && typeof value.error === 'string'
+          ? value.error
+          : 'message' in value && typeof value.message === 'string'
+            ? value.message
+            : null)
+      : null
+    throw new Error(detail ?? `Request failed (${response.status})`)
+  }
+  return value as T
 }
 
 export async function parseJsonData<T>(response: Response): Promise<T> {
-  const value = await response.json()
+  const value = await parseJson<unknown>(response)
   return (isPaginatedEnvelope(value) ? value.data : value) as T
 }
 

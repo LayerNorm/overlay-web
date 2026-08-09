@@ -3,16 +3,23 @@ import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { mutation, query } from '../_generated/server'
 import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
-import { validateServerSecret } from '../lib/auth'
+import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from './events'
 
 type CollaborationCtx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
 
 async function requireActor(
   ctx: CollaborationCtx,
-  args: { actorUserId: string; workspaceId: string; serverSecret?: string },
+  args: {
+    accessToken?: string
+    actorUserId: string
+    workspaceId: string
+    serverSecret?: string
+  },
 ) {
-  if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+  if (!validateServerSecret(args.serverSecret)) {
+    await requireAccessToken(args.accessToken ?? '', args.actorUserId)
+  }
   const principal = await ctx.db.query('workspacePrincipals')
     .withIndex('by_workspaceId_userId', (q) => (
       q.eq('workspaceId', args.workspaceId).eq('userId', args.actorUserId)
@@ -34,6 +41,7 @@ async function canAccess(
   ctx: CollaborationCtx,
   args: {
     actorUserId: string
+    accessToken?: string
     conversationId: Id<'conversations'>
     workspaceId: string
     serverSecret?: string
@@ -64,6 +72,7 @@ async function requireConversationAccess(
   ctx: CollaborationCtx,
   args: {
     actorUserId: string
+    accessToken?: string
     conversationId: Id<'conversations'>
     workspaceId: string
     serverSecret?: string
@@ -235,6 +244,61 @@ export const listMessages = query({
       .filter((message) => args.mainOnly !== true || !message.threadRootMessageId)
       .slice(0, Math.max(1, Math.min(100, Math.floor(args.limit))))
       .reverse()
+  },
+})
+
+/**
+ * Browser-facing room transcript subscription. Convex re-runs this query when
+ * any indexed message it depends on changes, so workspace participants receive
+ * new messages without polling the Next.js BFF.
+ */
+export const watchRoomMessages = query({
+  args: {
+    accessToken: v.string(),
+    actorUserId: v.string(),
+    conversationId: v.id('conversations'),
+    limit: v.number(),
+    mainOnly: v.optional(v.boolean()),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
+    workspaceId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    try {
+      await requireConversationAccess(ctx, args)
+    } catch (error) {
+      // A stale/refreshing browser token must not throw through React's route
+      // boundary. Returning no update is fail-closed and keeps the last valid
+      // transcript mounted while ConvexAuthProvider refreshes authentication.
+      if (error instanceof Error && [
+        'Unauthorized',
+        'WORKSPACE_ACCESS_DENIED',
+        'CONVERSATION_ACCESS_DENIED',
+      ].includes(error.message)) return []
+      throw error
+    }
+    const rows = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
+      .order('desc')
+      .take(500)
+    return rows
+      .filter((message) => args.threadRootMessageId === undefined || message.threadRootMessageId === args.threadRootMessageId)
+      .filter((message) => args.mainOnly !== true || !message.threadRootMessageId)
+      .slice(0, Math.max(1, Math.min(100, Math.floor(args.limit))))
+      .reverse()
+      .map((message) => ({
+        id: message._id,
+        turnId: message.turnId,
+        authorKind: message.authorKind ?? (message.role === 'assistant' ? 'model' : 'human'),
+        authorPrincipalId: message.authorPrincipalId,
+        content: message.content,
+        parts: message.parts,
+        createdAt: message.createdAt,
+        editedAt: message.editedAt,
+        deletedAt: message.deletedAt,
+        clientNonce: message.clientNonce,
+        threadRootMessageId: message.threadRootMessageId,
+        status: message.status,
+      }))
   },
 })
 

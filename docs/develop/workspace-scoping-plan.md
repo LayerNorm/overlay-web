@@ -669,9 +669,10 @@ Compatibility routes without a workspace path segment (including `/app/settings`
 
 - Personal chats remain owner-scoped. Direct messages and channels resolve through the collaboration repository, which authorizes active conversation participants for metadata, lists, history, sends, and durable event cursors.
 - Conversation navigation derives the destination from `conversationType`; opening a DM or channel from All or Activity cannot fall through to the personal-chat renderer.
-- Room sends persist the acting principal, use a client nonce for retry-safe delivery, and emit durable conversation events. Other participants refresh their room lists and message history from those events without a full page reload.
-- Realtime event long-polls and presence heartbeats use dedicated rate-limit buckets; event clients honor `Retry-After` with capped exponential backoff. Presence, reactions, pins, and saved state are non-critical room enrichments and must never prevent membership plus message history from rendering.
+- Room sends persist the acting principal and use a client nonce for retry-safe delivery. On the Convex provider, active participants subscribe to the authorized `watchRoomMessages` query, so main-room and open-thread messages update through Convex's WebSocket-backed reactive query without a page reload.
+- The Postgres conversation-event poller is mounted only for the Postgres provider; it must never run beside Convex subscriptions. Postgres realtime transport parity remains a separate follow-up. Presence heartbeats, reactions, pins, and saved state are non-critical room enrichments and must never prevent membership plus message history from rendering.
 - Collaboration response arrays are validated before entering React state. A throttled or malformed auxiliary response keeps the last valid room state instead of reaching transcript `.filter` calls or the route error boundary.
+- API-client JSON helpers reject non-2xx responses before typed payload consumers can read them. For example, an unauthorized sharing response becomes an inline dialog error rather than malformed state that crashes the chat route.
 - Postgres message author fields and the composite keys for reactions, pins, and saved messages must match migrations `0032`–`0034`; keep the Drizzle schema aligned with those migrations.
 
 ---
