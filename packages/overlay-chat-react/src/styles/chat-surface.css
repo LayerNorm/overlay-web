@@ -232,6 +232,13 @@
   word-break: break-word;
 }
 
+:where(.overlay-chat-surface) .room-message-self-bubble .markdown-content,
+:where(.overlay-chat-surface) .room-message-self-bubble .markdown-content a,
+:where(.overlay-chat-surface) .room-message-self-bubble .markdown-content h5,
+:where(.overlay-chat-surface) .room-message-self-bubble .markdown-content h6 {
+  color: var(--room-message-self-text);
+}
+
 :where(.overlay-chat-surface) .reasoning-markdown .markdown-content {
   font-size: 0.8125rem;
   line-height: 1.55;
