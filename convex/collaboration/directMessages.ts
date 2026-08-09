@@ -251,6 +251,12 @@ export const listMessages = query({
  * Browser-facing room transcript subscription. Convex re-runs this query when
  * any indexed message it depends on changes, so workspace participants receive
  * new messages without polling the Next.js BFF.
+ *
+ * Auth failures return `{ ok: false }` (not an empty message list) so the
+ * client keeps the last valid transcript. The Convex deployment must have
+ * `WORKOS_CLIENT_ID` / `DEV_WORKOS_CLIENT_ID` (JWKS is public) so browser
+ * WorkOS access tokens can be verified here — without those env vars every
+ * subscription fails closed and rooms never go live.
  */
 export const watchRoomMessages = query({
   args: {
@@ -267,20 +273,22 @@ export const watchRoomMessages = query({
       await requireConversationAccess(ctx, args)
     } catch (error) {
       // A stale/refreshing browser token must not throw through React's route
-      // boundary. Returning no update is fail-closed and keeps the last valid
-      // transcript mounted while ConvexAuthProvider refreshes authentication.
+      // boundary. Returning ok:false keeps the last valid transcript mounted
+      // while ConvexAuthProvider refreshes authentication.
       if (error instanceof Error && [
         'Unauthorized',
         'WORKSPACE_ACCESS_DENIED',
         'CONVERSATION_ACCESS_DENIED',
-      ].includes(error.message)) return []
+      ].includes(error.message)) {
+        return { ok: false as const, messages: [] as Array<Record<string, unknown>> }
+      }
       throw error
     }
     const rows = await ctx.db.query('conversationMessages')
       .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
       .order('desc')
       .take(500)
-    return rows
+    const messages = rows
       .filter((message) => args.threadRootMessageId === undefined || message.threadRootMessageId === args.threadRootMessageId)
       .filter((message) => args.mainOnly !== true || !message.threadRootMessageId)
       .slice(0, Math.max(1, Math.min(100, Math.floor(args.limit))))
@@ -299,6 +307,7 @@ export const watchRoomMessages = query({
         threadRootMessageId: message.threadRootMessageId,
         status: message.status,
       }))
+    return { ok: true as const, messages }
   },
 })
 

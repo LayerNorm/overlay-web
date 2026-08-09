@@ -6,6 +6,29 @@ import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import type { RoomMessageRecord } from './room-message-view'
 
+type WatchRoomMessagesResult = {
+  ok: boolean
+  messages: RoomMessageRecord[]
+}
+
+function asWatchResult(value: unknown): WatchRoomMessagesResult | undefined {
+  if (value === undefined) return undefined
+  // Backward-compatible: older Convex deploys returned a bare array.
+  if (Array.isArray(value)) {
+    return { ok: true, messages: value as RoomMessageRecord[] }
+  }
+  if (
+    value
+    && typeof value === 'object'
+    && 'ok' in value
+    && 'messages' in value
+    && Array.isArray((value as WatchRoomMessagesResult).messages)
+  ) {
+    return value as WatchRoomMessagesResult
+  }
+  return undefined
+}
+
 export function ConvexRoomMessageSubscription({
   accessToken,
   actorUserId,
@@ -28,11 +51,11 @@ export function ConvexRoomMessageSubscription({
     limit: 100,
     workspaceId,
   }
-  const mainMessages = useQuery(api.collaboration.directMessages.watchRoomMessages, {
+  const mainResult = asWatchResult(useQuery(api.collaboration.directMessages.watchRoomMessages, {
     ...commonArgs,
     mainOnly: true,
-  }) as RoomMessageRecord[] | undefined
-  const threadMessages = useQuery(
+  }))
+  const threadResult = asWatchResult(useQuery(
     api.collaboration.directMessages.watchRoomMessages,
     threadRootMessageId
       ? {
@@ -40,15 +63,17 @@ export function ConvexRoomMessageSubscription({
           threadRootMessageId: threadRootMessageId as Id<'conversationMessages'>,
         }
       : 'skip',
-  ) as RoomMessageRecord[] | undefined
+  ))
 
   useEffect(() => {
-    if (!Array.isArray(mainMessages)) return
+    // Auth failures return ok:false — leave the last good transcript alone.
+    if (!mainResult?.ok) return
+    const threadMessages = threadResult?.ok ? threadResult.messages : []
     onMessages([
-      ...mainMessages,
-      ...(Array.isArray(threadMessages) ? threadMessages : []),
+      ...mainResult.messages,
+      ...threadMessages,
     ])
-  }, [mainMessages, onMessages, threadMessages])
+  }, [mainResult, onMessages, threadResult])
 
   return null
 }
