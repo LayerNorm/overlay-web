@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { shouldReloadActiveConversation } from './postgres-conversation-event-policy'
+import {
+  conversationEventRetryDelayMs,
+  shouldReloadActiveConversation,
+} from './postgres-conversation-event-policy'
 
 test('local stream lifecycle events do not replace the visible message during reconciliation grace', () => {
   assert.equal(shouldReloadActiveConversation({
@@ -29,4 +32,12 @@ test('conversation metadata events refresh the list without replacing active mes
     localStreamGraceUntil: 0,
     now: 9_000,
   }), false)
+})
+
+test('event polling honors Retry-After and otherwise backs off exponentially', () => {
+  assert.equal(conversationEventRetryDelayMs({ attempt: 1 }), 1_000)
+  assert.equal(conversationEventRetryDelayMs({ attempt: 4 }), 8_000)
+  assert.equal(conversationEventRetryDelayMs({ attempt: 20 }), 30_000)
+  assert.equal(conversationEventRetryDelayMs({ attempt: 2, retryAfterSeconds: 7 }), 7_000)
+  assert.equal(conversationEventRetryDelayMs({ attempt: 2, retryAfterSeconds: 90 }), 30_000)
 })

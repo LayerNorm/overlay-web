@@ -62,3 +62,33 @@ test('bootstrap read routes get dedicated buckets so they cannot starve each oth
     )
   }
 })
+
+test('realtime conversation reads use dedicated buckets instead of starving room loads', () => {
+  const realtimeRoutes = [
+    {
+      method: 'GET',
+      pathname: '/api/v1/conversations/events',
+      expectedBucket: 'conversations:events:user',
+    },
+    {
+      method: 'GET',
+      pathname: '/api/v1/conversations/conversation_1/presence',
+      expectedBucket: 'conversations:presence-read:user',
+    },
+    {
+      method: 'PATCH',
+      pathname: '/api/v1/conversations/conversation_1/presence',
+      expectedBucket: 'conversations:presence-write:user',
+    },
+  ]
+
+  for (const route of realtimeRoutes) {
+    const rules = getEndpointRateLimitSpecs({
+      ip: '203.0.113.5',
+      method: route.method,
+      pathname: route.pathname,
+      userId: 'user_1',
+    })
+    assert.ok(rules.some((rule) => rule.bucket === route.expectedBucket))
+  }
+})

@@ -318,7 +318,10 @@ export function RoomMessageItem({
           <div className={`flex min-w-0 max-w-[min(92%,36rem)] flex-col gap-2 sm:max-w-[75%] ${mine ? 'items-end' : 'items-start'}`}>
             {attachments}
             {editing ? editor : message.text ? (
-              <UserMessageBubble className={`max-w-full ${mine ? 'ml-auto' : 'mr-auto'}`}>
+              <UserMessageBubble
+                tone={mine ? 'room-self' : 'default'}
+                className={`max-w-full ${mine ? 'ml-auto' : 'mr-auto rounded-bl-sm rounded-br-2xl'}`}
+              >
                 <SafeHumanMarkdown text={message.text} isStreaming={false} mentions={message.mentions} />
               </UserMessageBubble>
             ) : null}

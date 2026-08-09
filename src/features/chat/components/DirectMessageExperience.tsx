@@ -148,6 +148,11 @@ function roomDayLabel(timestamp: number): string {
   })
 }
 
+function requireArray<T>(value: T[] | undefined, label: string): T[] {
+  if (!Array.isArray(value)) throw new Error(`${label} returned an invalid response`)
+  return value
+}
+
 export function DirectMessageExperience({
   conversationId,
   showcase = false,
@@ -283,11 +288,15 @@ export function DirectMessageExperience({
 
   const loadParticipants = useCallback(async () => {
     const result = await overlayAppClient.conversations.participants(conversationId)
-    setParticipants(result.participants)
+    const nextParticipants = requireArray(result.participants, 'Conversation participants')
+    if (typeof result.currentPrincipalId !== 'string' || !result.currentPrincipalId) {
+      throw new Error('Conversation participants returned an invalid principal')
+    }
+    setParticipants(nextParticipants)
     setCurrentPrincipalId(result.currentPrincipalId)
     if (!unreadBoundaryInitializedRef.current) {
       unreadBoundaryInitializedRef.current = true
-      const current = result.participants.find((participant) => participant.principalId === result.currentPrincipalId)
+      const current = nextParticipants.find((participant) => participant.principalId === result.currentPrincipalId)
       setUnreadBoundarySequence(current?.lastReadSequence ?? null)
     }
   }, [conversationId])
@@ -412,7 +421,7 @@ export function DirectMessageExperience({
 
   const loadPresence = useCallback(async () => {
     const result = await overlayAppClient.conversations.presence(conversationId)
-    setPresence(result.presence)
+    setPresence(requireArray(result.presence, 'Conversation presence'))
   }, [conversationId])
 
   const loadCollaboration = useCallback(async () => {
@@ -422,11 +431,12 @@ export function DirectMessageExperience({
       overlayAppClient.conversations.savedMessages(),
       conversationType === 'channel' ? overlayAppClient.conversations.channels() : Promise.resolve({ channels: [] }),
     ])
-    setReactions(reactionResult.reactions)
-    setPins(pinResult.pins)
-    setSavedMessages(savedResult.savedMessages)
+    setReactions(requireArray(reactionResult.reactions, 'Conversation reactions'))
+    setPins(requireArray(pinResult.pins, 'Conversation pins'))
+    setSavedMessages(requireArray(savedResult.savedMessages, 'Saved messages'))
     if (conversationType === 'channel') {
-      setChannel(channelResult.channels.find((item) => item.conversationId === conversationId) ?? null)
+      const channels = requireArray(channelResult.channels, 'Workspace channels')
+      setChannel(channels.find((item) => item.conversationId === conversationId) ?? null)
     }
   }, [conversationId, conversationType])
 
@@ -440,7 +450,7 @@ export function DirectMessageExperience({
       if (events.some((event) => event.conversationId === conversationId && (
         event.type === 'reaction.changed' || event.type === 'pin.changed'
       ))) {
-        void loadCollaboration()
+        void loadCollaboration().catch(() => undefined)
       }
     },
     reloadActiveConversation: loadMessages,
@@ -450,7 +460,10 @@ export function DirectMessageExperience({
     if (showcase) return
     let cancelled = false
     const initialLoadTimer = window.setTimeout(() => {
-      void Promise.all([loadParticipants(), loadMessages(), loadPresence(), loadCollaboration()])
+      // Presence, reactions, pins, and saved state enrich a room, but must not
+      // decide whether its critical transcript can open.
+      void Promise.allSettled([loadPresence(), loadCollaboration()])
+      void Promise.all([loadParticipants(), loadMessages()])
         .catch(() => {
           if (!cancelled) setNotice('This conversation is unavailable.')
         })
@@ -460,17 +473,23 @@ export function DirectMessageExperience({
     }, 0)
     const sessionId = sessionIdRef.current ?? crypto.randomUUID()
     sessionIdRef.current = sessionId
-    void overlayAppClient.conversations.updatePresence(conversationId, { status: 'online', sessionId })
-    const presenceTimer = window.setInterval(() => void loadPresence().catch(() => undefined), 3_000)
+    void overlayAppClient.conversations
+      .updatePresence(conversationId, { status: 'online', sessionId })
+      .catch(() => undefined)
+    const presenceTimer = window.setInterval(() => void loadPresence().catch(() => undefined), 15_000)
     const heartbeatTimer = window.setInterval(() => {
-      void overlayAppClient.conversations.updatePresence(conversationId, { status: 'online', sessionId })
+      void overlayAppClient.conversations
+        .updatePresence(conversationId, { status: 'online', sessionId })
+        .catch(() => undefined)
     }, 45_000)
     return () => {
       cancelled = true
       window.clearTimeout(initialLoadTimer)
       window.clearInterval(presenceTimer)
       window.clearInterval(heartbeatTimer)
-      void overlayAppClient.conversations.updatePresence(conversationId, { status: 'offline', sessionId })
+      void overlayAppClient.conversations
+        .updatePresence(conversationId, { status: 'offline', sessionId })
+        .catch(() => undefined)
     }
   }, [conversationId, loadCollaboration, loadMessages, loadParticipants, loadPresence, showcase])
 
@@ -895,7 +914,7 @@ export function DirectMessageExperience({
         status: 'online',
         typing: Boolean(text.trim()),
         sessionId: sessionIdRef.current ?? undefined,
-      })
+      }).catch(() => undefined)
     }
   }
 
@@ -934,7 +953,7 @@ export function DirectMessageExperience({
       emoji,
       enabled: !current?.reactedByCurrentPrincipal,
     })
-    setReactions(result.reactions)
+    setReactions(requireArray(result.reactions, 'Conversation reactions'))
   }
 
   async function togglePinned(messageId: string) {
@@ -945,7 +964,7 @@ export function DirectMessageExperience({
     }
     await overlayAppClient.conversations.setPinned(conversationId, { messageId, pinned: !pinned })
     const result = await overlayAppClient.conversations.pins(conversationId)
-    setPins(result.pins)
+    setPins(requireArray(result.pins, 'Conversation pins'))
   }
 
   /**
@@ -974,7 +993,7 @@ export function DirectMessageExperience({
     }
     await overlayAppClient.conversations.setSaved({ conversationId, messageId, saved: !saved })
     const result = await overlayAppClient.conversations.savedMessages()
-    setSavedMessages(result.savedMessages)
+    setSavedMessages(requireArray(result.savedMessages, 'Saved messages'))
   }
 
   async function saveEdit(messageId: string) {

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
+  conversationEventRetryDelayMs,
   LOCAL_STREAM_RECONCILIATION_GRACE_MS,
   shouldReloadActiveConversation,
 } from '@/shared/chat/postgres-conversation-event-policy'
@@ -49,6 +50,7 @@ export function usePostgresConversationEvents({
     let activeReloadQueued = false
     let activeReloadQueuedEventTypes: string[] = []
     let localStreamGraceUntil = 0
+    let consecutiveFailures = 0
 
     const scheduleListReload = () => {
       if (listReloadTimer) return
@@ -100,6 +102,7 @@ export function usePostgresConversationEvents({
 
     const consume = async () => {
       while (!stopped) {
+        let retryAfterSeconds: number | undefined
         try {
           const httpResponse = await overlayAppClient.conversations.eventsResponse(cursor, {
             cache: 'no-store',
@@ -107,6 +110,8 @@ export function usePostgresConversationEvents({
             signal: controller.signal,
           })
           if (!httpResponse.ok) {
+            const retryAfter = Number(httpResponse.headers.get('Retry-After'))
+            retryAfterSeconds = Number.isFinite(retryAfter) ? retryAfter : undefined
             throw new Error(`Conversation event poll failed with HTTP ${httpResponse.status}`)
           }
           const response = await httpResponse.json() as ConversationEventResponse
@@ -114,7 +119,9 @@ export function usePostgresConversationEvents({
             throw new Error('Conversation event poll returned an invalid payload')
           }
           if (stopped) return
+          consecutiveFailures = 0
           cursor = response.cursor
+          callbacksRef.current.onEvents?.(response.events)
           if (response.events.length === 0) continue
           scheduleListReload()
           const activeChatId = activeChatIdRef.current
@@ -129,10 +136,16 @@ export function usePostgresConversationEvents({
           }
         } catch (error) {
           if (stopped || controller.signal.aborted) return
+          consecutiveFailures += 1
+          const retryDelayMs = conversationEventRetryDelayMs({
+            attempt: consecutiveFailures,
+            retryAfterSeconds,
+          })
           console.warn('[chat-sync] Postgres conversation event poll failed; retrying', {
             error: error instanceof Error ? error.message : String(error),
+            retryDelayMs,
           })
-          await delay(1_000)
+          await delay(retryDelayMs, controller.signal)
         }
       }
     }
@@ -147,6 +160,15 @@ export function usePostgresConversationEvents({
   }, [activeChatIdRef, enabled])
 }
 
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds))
+function delay(milliseconds: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(finish, milliseconds)
+    function finish() {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', finish)
+      resolve()
+    }
+    signal.addEventListener('abort', finish, { once: true })
+    if (signal.aborted) finish()
+  })
 }

@@ -34,6 +34,13 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'conversations:list:ip', limit: 600, windowMs: TEN_MINUTES },
     { bucket: 'conversations:list:user', limit: 300, windowMs: TEN_MINUTES },
   ],
+  // One long-poll is held for up to 15 seconds per open app tab. Keep this
+  // traffic out of the shared API bucket so realtime sync cannot starve room
+  // history, presence, or other app reads.
+  'GET /api/v1/conversations/events': [
+    { bucket: 'conversations:events:ip', limit: 1_200, windowMs: TEN_MINUTES },
+    { bucket: 'conversations:events:user', limit: 600, windowMs: TEN_MINUTES },
+  ],
   'GET /api/v1/chat-suggestions': [
     { bucket: 'helper:chat-suggestions:ip', limit: 120, windowMs: TEN_MINUTES },
     { bucket: 'helper:chat-suggestions:user', limit: 30, windowMs: TEN_MINUTES },
@@ -135,6 +142,22 @@ type DynamicEndpointRateLimit = {
 }
 
 const DYNAMIC_ENDPOINT_RATE_LIMITS: DynamicEndpointRateLimit[] = [
+  {
+    method: 'GET',
+    pattern: /^\/api\/v1\/conversations\/[^/]+\/presence$/,
+    limits: [
+      { bucket: 'conversations:presence-read:ip', limit: 600, windowMs: TEN_MINUTES },
+      { bucket: 'conversations:presence-read:user', limit: 300, windowMs: TEN_MINUTES },
+    ],
+  },
+  {
+    method: 'PATCH',
+    pattern: /^\/api\/v1\/conversations\/[^/]+\/presence$/,
+    limits: [
+      { bucket: 'conversations:presence-write:ip', limit: 600, windowMs: TEN_MINUTES },
+      { bucket: 'conversations:presence-write:user', limit: 300, windowMs: TEN_MINUTES },
+    ],
+  },
   {
     method: 'GET',
     pattern: /^\/api\/v1\/outputs\/[^/]+\/content$/,

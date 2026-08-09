@@ -68,6 +68,7 @@ test('a member’s own message reuses the personal chat user bubble, attributed 
   // Even your own message says who wrote it: an anonymous bubble in a shared
   // room reads as first person no matter who sent it.
   assert.match(html, />You</)
+  assert.match(html, /room-message-self-bubble/)
   // Own messages can be edited and deleted, never reported.
   assert.match(html, /aria-label="Edit message"/)
   assert.match(html, /aria-label="Delete message"/)
@@ -83,6 +84,8 @@ test('another member’s message is attributed to them and never rendered as you
   assert.match(html, /Maya Chen/)
   assert.doesNotMatch(html, />You</)
   assert.match(html, /justify-start/)
+  assert.doesNotMatch(html, /room-message-self-bubble/)
+  assert.match(html, /rounded-bl-sm/)
   assert.match(html, /aria-label="Report message"/)
   assert.doesNotMatch(html, /aria-label="Edit message"/)
 })
