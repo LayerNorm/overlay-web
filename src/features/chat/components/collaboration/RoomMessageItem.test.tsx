@@ -75,7 +75,7 @@ test('a member’s own message reuses the personal chat user bubble, attributed 
   assert.doesNotMatch(html, /aria-label="Report message"/)
 })
 
-test('another member’s message is attributed to them and never rendered as yours', () => {
+test('another member’s message is flat Slack-style (no bubble) and attributed to them', () => {
   const html = render(record({
     id: 'message_2',
     authorPrincipalId: 'principal_maya',
@@ -83,11 +83,52 @@ test('another member’s message is attributed to them and never rendered as you
   }))
   assert.match(html, /Maya Chen/)
   assert.doesNotMatch(html, />You</)
-  assert.match(html, /justify-start/)
   assert.doesNotMatch(html, /room-message-self-bubble/)
-  assert.match(html, /rounded-bl-sm/)
+  assert.doesNotMatch(html, /chat-user-bubble/)
   assert.match(html, /aria-label="Report message"/)
   assert.doesNotMatch(html, /aria-label="Edit message"/)
+  assert.match(html, /data-testid="thread-teaser"/)
+  assert.match(html, /1 reply/)
+})
+
+test('thread teaser surfaces the latest reply preview under received messages', () => {
+  const html = renderToStaticMarkup(
+    <RoomMessageItem
+      message={toRoomMessageView({
+        message: record({
+          id: 'message_root',
+          authorPrincipalId: 'principal_maya',
+          content: 'Root',
+        }),
+        currentPrincipalId: ME,
+        authorName: 'Maya Chen',
+      })}
+      reactions={[]}
+      replyCount={3}
+      threadTeaser={{ authorName: 'Rahul', text: 'I can take this today', createdAt: Date.now() }}
+      pinned={false}
+      saved={false}
+      editing={false}
+      editingContent=""
+      onEditingContentChange={() => undefined}
+      onSaveEdit={() => undefined}
+      onCancelEdit={() => undefined}
+      onStartEdit={() => undefined}
+      onDelete={() => undefined}
+      onReport={() => undefined}
+      onToggleReaction={() => undefined}
+      onTogglePinned={() => undefined}
+      onToggleSaved={() => undefined}
+      onOpenThread={() => undefined}
+      onQuoteReply={() => undefined}
+      onRetrySend={() => undefined}
+      onOpenAttachmentPreview={() => undefined}
+      onCopyPermalink={() => undefined}
+    />,
+  )
+  assert.match(html, /3 replies/)
+  assert.match(html, /Rahul/)
+  assert.match(html, /I can take this today/)
 })
 
 test('an unattributed message is never claimed as yours', () => {
