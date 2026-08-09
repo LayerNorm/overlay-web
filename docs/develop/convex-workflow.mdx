@@ -32,3 +32,15 @@ For the full worktree, staging QA, and promotion process, see [Worktree Staging 
 ## Import boundary
 
 Convex code may import browser-safe shared modules from `src/shared`. Convex must not import `src/server`, because server-only modules can break Convex bundling.
+
+## Browser auth for reactive queries
+
+Convex **queries and mutations cannot call `fetch()`**. WorkOS / Better Auth JWKS verification therefore cannot run inside `watchRoomMessages` or other browser `useQuery` handlers.
+
+Browser→Convex subscriptions must use short-lived **HS256** tokens:
+
+1. Next BFF `GET /api/auth/convex-token` mints a token with `INTERNAL_API_SECRET` (`mintBrowserConvexAccessToken`).
+2. `ConvexAuthProvider` passes that token into Convex client queries.
+3. Convex `requireAccessToken` verifies HS256 with `crypto.subtle` only (`verifyBrowserConvexAccessToken`).
+
+`INTERNAL_API_SECRET` must match between the Next app env and the Convex deployment. Do not send the raw WorkOS access token into reactive queries.
