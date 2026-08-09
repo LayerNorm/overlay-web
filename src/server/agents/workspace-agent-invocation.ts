@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { streamText } from 'ai'
+import type { Id } from '../../../convex/_generated/dataModel'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
@@ -12,13 +13,6 @@ export type WorkspaceAgentDelta = {
   agentPrincipalId: string
   agentName: string
   delta: string
-}
-
-export class WorkspaceAgentInvocationError extends Error {
-  constructor(message = 'The mentioned agent could not respond') {
-    super(message)
-    this.name = 'WorkspaceAgentInvocationError'
-  }
 }
 
 export async function invokeWorkspaceAgentsForHumanMessage(args: {
@@ -39,21 +33,16 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
   signal?: AbortSignal
 }): Promise<void> {
   const server = getOverlayServerContext()
-  const collaboration = server.appData.repositories.conversationCollaboration
+  const conversationId = args.conversationId as Id<'conversations'>
   const [conversation, participants, history, directory] = await Promise.all([
-    collaboration.getAccessibleConversation({
-      actorUserId: args.actorUserId,
-      conversationId: args.conversationId,
-      workspaceId: args.workspaceId,
+    server.appData.repositories.conversations.getConversationById({
+      conversationId, userId: args.actorUserId,
     }),
-    collaboration.listParticipants({
+    server.appData.repositories.conversationCollaboration.listParticipants({
       actorUserId: args.actorUserId, conversationId: args.conversationId, workspaceId: args.workspaceId,
     }),
-    collaboration.listMessages({
-      actorUserId: args.actorUserId,
-      conversationId: args.conversationId,
-      limit: 100,
-      workspaceId: args.workspaceId,
+    server.appData.repositories.conversations.getConversationMessages({
+      conversationId, userId: args.actorUserId,
     }),
     server.workspaceAgentService.list({ actorUserId: args.actorUserId, workspaceId: args.workspaceId }),
   ])
@@ -75,16 +64,11 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
   })
   if (principalIds.length === 0) return
   const agentsByPrincipal = new Map(directory.agents.map((agent) => [agent.principalId, agent]))
-  let completedResponses = 0
-  let alreadyCompletedResponses = 0
   for (const principalId of principalIds) {
     const agent = agentsByPrincipal.get(principalId)
     if (!agent || agent.archivedAt) continue
     const invocationNonce = `agent:${args.messageId}:${agent.id}`
-    if (history.some((message) => message.clientNonce === invocationNonce)) {
-      alreadyCompletedResponses += 1
-      continue
-    }
+    if (history.some((message) => message.clientNonce === invocationNonce)) continue
     let reservationId: string | null = null
     try {
       const entitlementService = new ActEntitlementService({
@@ -175,20 +159,24 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         reservationId = null
         continue
       }
-      const responseId = await collaboration.addAgentMessage({
-        actorUserId: args.actorUserId,
-        conversationId: args.conversationId,
+      const responseId = await server.appData.repositories.conversations.addMessage({
+        conversationId,
+        userId: args.actorUserId,
         workspaceId: args.workspaceId,
+        authorKind: 'agent',
         authorPrincipalId: agent.principalId,
         clientNonce: invocationNonce,
         threadRootMessageId: args.threadRootMessageId,
         turnId: `agent_${args.messageId}_${agent.id}`,
+        role: 'assistant',
+        mode: 'act',
         content,
+        contentType: 'text',
         modelId: agent.modelId,
         tokens: usageTokens(usage),
+        skipMemoryExtraction: true,
       })
       if (!responseId) logger.warn('[workspace-agent] response was not persisted', { agentId: agent.id })
-      else completedResponses += 1
       const tokens = usageTokens(usage) ?? { input: 0, output: 0 }
       const recorded = await server.chatUsagePolicy.recordFinishedUsage({
         forceFreeTierLimits: !paid,
@@ -213,9 +201,6 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         workspaceId: args.workspaceId,
       })
     }
-  }
-  if (completedResponses === 0 && alreadyCompletedResponses === 0) {
-    throw new WorkspaceAgentInvocationError()
   }
 }
 
