@@ -18,11 +18,95 @@ import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { Id } from '../../../convex/_generated/dataModel'
 import type { ConversationCollaborationRepository } from './ConversationCollaborationRepository'
+import type {
+  ConversationEventRow,
+  ConversationListRow,
+  ConversationMessageRow,
+} from './ActConversationRepository'
 
 export class ConvexConversationCollaborationRepository
 implements ConversationCollaborationRepository {
   private get serverSecret() {
     return getInternalApiSecret()
+  }
+
+  async getAccessibleConversation(args: {
+    actorUserId: string
+    conversationId: string
+    workspaceId: string
+  }) {
+    return await convex.query<ConversationListRow | null>('collaboration/directMessages:getAccessibleConversation', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      serverSecret: this.serverSecret,
+    })
+  }
+
+  async listAccessibleConversations(args: { actorUserId: string; workspaceId: string }) {
+    return await convex.query<ConversationListRow[]>('collaboration/directMessages:listAccessibleConversations', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }) ?? []
+  }
+
+  async listMessages(args: {
+    actorUserId: string
+    beforeCreatedAt?: number
+    conversationId: string
+    limit: number
+    mainOnly?: boolean
+    messageId?: string
+    threadRootMessageId?: string
+    workspaceId: string
+  }) {
+    return await convex.query<ConversationMessageRow[]>('collaboration/directMessages:listMessages', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      messageId: args.messageId as Id<'conversationMessages'> | undefined,
+      threadRootMessageId: args.threadRootMessageId as Id<'conversationMessages'> | undefined,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true }) ?? []
+  }
+
+  async addMessage(args: {
+    actorUserId: string
+    clientNonce?: string
+    content: string
+    conversationId: string
+    parts?: Array<Record<string, unknown>>
+    replySnippet?: string
+    replyToTurnId?: string
+    threadRootMessageId?: string
+    turnId: string
+    workspaceId: string
+  }) {
+    const id = await convex.mutation<string>('collaboration/directMessages:addMessage', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      threadRootMessageId: args.threadRootMessageId as Id<'conversationMessages'> | undefined,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!id) throw new Error('Failed to save collaboration message')
+    return id
+  }
+
+  async getConversationEventCursor(args: { actorUserId: string; workspaceId: string }) {
+    return await convex.query<number>('collaboration/directMessages:getConversationEventCursor', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }) ?? 0
+  }
+
+  async listConversationEvents(args: {
+    actorUserId: string
+    afterSequence: number
+    limit: number
+    workspaceId: string
+  }): Promise<ConversationEventRow[]> {
+    return await convex.query<ConversationEventRow[]>('collaboration/directMessages:listConversationEvents', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }) ?? []
   }
 
   async createChannel(args: {

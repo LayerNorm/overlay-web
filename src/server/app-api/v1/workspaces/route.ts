@@ -17,8 +17,15 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
       service.listForUser(context.auth.userId),
       service.resolveActiveWorkspace(context.auth.userId),
     ])
+    const workspaces = await Promise.all(accesses.map(async (access) => {
+      const members = await service.listMembers({
+        actorUserId: context.auth.userId,
+        workspaceId: access.workspace.id,
+      })
+      return toWorkspaceSummary(access, { memberCount: members.length })
+    }))
     const response: WorkspaceListResponse = {
-      workspaces: accesses.map((access) => toWorkspaceSummary(access)),
+      workspaces,
       activeWorkspaceId: active.workspace.id,
     }
     return NextResponse.json(response)

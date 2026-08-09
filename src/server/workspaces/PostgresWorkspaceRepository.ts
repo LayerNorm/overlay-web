@@ -29,6 +29,7 @@ import type {
   OwnershipTransferResult,
   WorkspaceRepository,
 } from './WorkspaceRepository'
+import { buildWorkspaceSharingPolicyUpsert } from './workspace-sharing-policy-sql'
 
 type DateValue = Date | string
 type WorkspaceRow = Omit<Workspace, 'createdAt' | 'updatedAt' | 'archivedAt'> & {
@@ -883,6 +884,19 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
     return result.rows[0] ? resourceScopeFromRow(result.rows[0]) : null
   }
 
+  async listResourceIdsByWorkspace(args: {
+    workspaceId: string
+    resourceType: string
+  }): Promise<string[]> {
+    const result = await this.db.execute<{ resource_id: string }>(sql`
+      SELECT resource_id
+      FROM workspace_resource_scopes
+      WHERE workspace_id = ${args.workspaceId}
+        AND resource_type = ${args.resourceType}
+    `)
+    return result.rows.map((row) => row.resource_id)
+  }
+
   async getSharingPolicy(workspaceId: string): Promise<WorkspaceSharingPolicy | null> {
     const result = await this.db.execute<SharingPolicyRow>(sql`
       SELECT ${sharingPolicyColumns}
@@ -894,48 +908,9 @@ export class PostgresWorkspaceRepository implements WorkspaceRepository {
   }
 
   async setSharingPolicy(input: SetWorkspaceSharingPolicyInput): Promise<WorkspaceSharingPolicy> {
-    // COALESCE keeps every unspecified field at its stored value, so a patch of
-    // one policy field never silently resets the others.
-    const result = await this.db.execute<SharingPolicyRow>(sql`
-      INSERT INTO workspace_sharing_policies (
-        workspace_id, public_links_enabled, member_can_create_channels,
-        member_can_create_agents, member_can_invite, guest_expiration_days,
-        allowed_agent_harnesses, agent_run_budget_cents, channel_retention_days,
-        legal_hold, data_residency, rollout_stage,
-        updated_by_principal_id, created_at, updated_at
-      ) VALUES (
-        ${input.workspaceId},
-        ${input.patch.publicLinksEnabled ?? true},
-        ${input.patch.memberCanCreateChannels ?? true},
-        ${input.patch.memberCanCreateAgents ?? true},
-        ${input.patch.memberCanInvite ?? false},
-        ${input.patch.guestExpirationDays ?? null},
-        ${input.patch.allowedAgentHarnesses ? textArray(input.patch.allowedAgentHarnesses) : sql`NULL`},
-        ${input.patch.agentRunBudgetCents ?? null},
-        ${input.patch.channelRetentionDays ?? null},
-        ${input.patch.legalHold ?? false},
-        ${input.patch.dataResidency ?? null},
-        ${input.patch.rolloutStage ?? 'general'},
-        ${input.updatedByPrincipalId}, ${new Date(input.now)}, ${new Date(input.now)}
-      )
-      ON CONFLICT (workspace_id) DO UPDATE SET
-        public_links_enabled = COALESCE(${input.patch.publicLinksEnabled ?? null}, workspace_sharing_policies.public_links_enabled),
-        member_can_create_channels = COALESCE(${input.patch.memberCanCreateChannels ?? null}, workspace_sharing_policies.member_can_create_channels),
-        member_can_create_agents = COALESCE(${input.patch.memberCanCreateAgents ?? null}, workspace_sharing_policies.member_can_create_agents),
-        member_can_invite = COALESCE(${input.patch.memberCanInvite ?? null}, workspace_sharing_policies.member_can_invite),
-        guest_expiration_days = ${'guestExpirationDays' in input.patch ? sql`${input.patch.guestExpirationDays ?? null}` : sql`workspace_sharing_policies.guest_expiration_days`},
-        allowed_agent_harnesses = ${'allowedAgentHarnesses' in input.patch
-          ? (input.patch.allowedAgentHarnesses ? textArray(input.patch.allowedAgentHarnesses) : sql`NULL`)
-          : sql`workspace_sharing_policies.allowed_agent_harnesses`},
-        agent_run_budget_cents = ${'agentRunBudgetCents' in input.patch ? sql`${input.patch.agentRunBudgetCents ?? null}` : sql`workspace_sharing_policies.agent_run_budget_cents`},
-        channel_retention_days = ${'channelRetentionDays' in input.patch ? sql`${input.patch.channelRetentionDays ?? null}` : sql`workspace_sharing_policies.channel_retention_days`},
-        legal_hold = COALESCE(${input.patch.legalHold ?? null}, workspace_sharing_policies.legal_hold),
-        data_residency = ${'dataResidency' in input.patch ? sql`${input.patch.dataResidency ?? null}` : sql`workspace_sharing_policies.data_residency`},
-        rollout_stage = COALESCE(${input.patch.rolloutStage ?? null}, workspace_sharing_policies.rollout_stage),
-        updated_by_principal_id = excluded.updated_by_principal_id,
-        updated_at = excluded.updated_at
-      RETURNING ${sharingPolicyColumns}
-    `)
+    const result = await this.db.execute<SharingPolicyRow>(
+      buildWorkspaceSharingPolicyUpsert(input, sharingPolicyColumns),
+    )
     const row = result.rows[0]
     if (!row) throw new Error('WORKSPACE_SHARING_POLICY_UPSERT_FAILED')
     return sharingPolicyFromRow(row)

@@ -17,6 +17,7 @@ import type {
   ChatModel,
   GenerationMode,
   ImageModel,
+  ReasoningLevel,
   VideoModel,
   VideoSubMode,
 } from '@overlay/chat-core'
@@ -115,7 +116,6 @@ export interface ChatExperienceHeaderProps {
   onBeginHeaderChatRename?: () => void
   showRenameButton: boolean
   projectName?: string | null
-  contextNavigation?: ReactNode
   showAutomationChatTab: boolean
   appMode: 'chat' | 'automate'
   isTemporaryChat: boolean
@@ -124,7 +124,6 @@ export interface ChatExperienceHeaderProps {
   onGenerationModeChange: (mode: GenerationMode) => void
   generationMode: GenerationMode
   renderExportMenu: () => ReactNode
-  collaborationAction?: ReactNode
   modelPickerRef: RefObject<HTMLDivElement | null>
   videoSubModePickerRef: RefObject<HTMLDivElement | null>
   modelPickerListScrollRef: RefObject<HTMLDivElement | null>
@@ -167,6 +166,8 @@ export interface ChatExperienceHeaderProps {
   onToggleTextModel: (modelId: string) => void
   onTextModelSelectionModeChange: (mode: AskModelSelectionMode) => void
   hasAutomationContext: boolean
+  reasoning?: ReasoningLevel
+  onReasoningChange?: (level: ReasoningLevel | undefined) => void
 }
 
 export function ChatExperienceHeader({
@@ -183,7 +184,6 @@ export function ChatExperienceHeader({
   onBeginHeaderChatRename,
   showRenameButton,
   projectName,
-  contextNavigation,
   showAutomationChatTab,
   appMode,
   isTemporaryChat,
@@ -192,7 +192,6 @@ export function ChatExperienceHeader({
   onGenerationModeChange,
   generationMode,
   renderExportMenu,
-  collaborationAction,
   modelPickerRef,
   videoSubModePickerRef,
   modelPickerListScrollRef,
@@ -235,6 +234,8 @@ export function ChatExperienceHeader({
   onToggleTextModel,
   onTextModelSelectionModeChange,
   hasAutomationContext,
+  reasoning,
+  onReasoningChange,
 }: ChatExperienceHeaderProps) {
   return (
     <AppScreenHeader className={`px-3 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:px-4 md:py-0 ${hideHeader ? 'hidden' : ''}`}>
@@ -308,23 +309,27 @@ export function ChatExperienceHeader({
               <>
                 {hoveredModelId && modelQualitiesPos ? (
                   <div
-                    aria-hidden
-                    className="pointer-events-none fixed z-[100] hidden w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
+                    className="fixed z-[100] hidden w-56 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
                     style={{
                       left: modelQualitiesPos.x,
                       top: modelQualitiesPos.y,
                       transform: 'translate(calc(-100% - 8px), -50%)',
                     }}
+                    onMouseEnter={() => onHoveredModelChange(hoveredModelId, modelQualitiesPos)}
+                    onMouseLeave={() => onHoveredModelChange(null, null)}
                   >
                     <Suspense fallback={null}>
-                      <ModelQualitiesPanel model={resolveModel(hoveredModelId)} />
+                      <ModelQualitiesPanel
+                        model={resolveModel(hoveredModelId)}
+                        reasoning={reasoning}
+                        onReasoningChange={onReasoningChange}
+                      />
                     </Suspense>
                   </div>
                 ) : null}
                 <div
                   data-tour="model-picker"
                   className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
-                  onMouseLeave={() => onHoveredModelChange(null, null)}
                 >
                   <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
                     {textModelsLoading && !isFreeTier ? <PremiumModelsLoadingRows /> : null}
@@ -403,7 +408,6 @@ export function ChatExperienceHeader({
 
       {appMode === 'automate' || !showAutomationChatTab ? null : (
       <div className="flex w-full min-w-0 flex-col gap-2 md:min-w-0 md:flex-1 md:flex-row md:items-center md:justify-end md:gap-2">
-        {contextNavigation ? <div className="shrink-0">{contextNavigation}</div> : null}
         {generationMode === 'video' ? (
           <div ref={videoSubModePickerRef} className="relative w-full min-w-0 md:w-auto">
             <button
@@ -453,23 +457,27 @@ export function ChatExperienceHeader({
               <>
                 {generationMode === 'text' && hoveredModelId && modelQualitiesPos ? (
                   <div
-                    aria-hidden
-                    className="pointer-events-none fixed z-[100] hidden w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
+                    className="fixed z-[100] hidden w-56 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
                     style={{
                       left: modelQualitiesPos.x,
                       top: modelQualitiesPos.y,
                       transform: 'translate(calc(-100% - 8px), -50%)',
                     }}
+                    onMouseEnter={() => onHoveredModelChange(hoveredModelId, modelQualitiesPos)}
+                    onMouseLeave={() => onHoveredModelChange(null, null)}
                   >
                     <Suspense fallback={null}>
-                      <ModelQualitiesPanel model={resolveModel(hoveredModelId)} />
+                      <ModelQualitiesPanel
+                        model={resolveModel(hoveredModelId)}
+                        reasoning={reasoning}
+                        onReasoningChange={onReasoningChange}
+                      />
                     </Suspense>
                   </div>
                 ) : null}
                 <div
                   data-tour="model-picker"
                   className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
-                  onMouseLeave={() => onHoveredModelChange(null, null)}
                 >
                   <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
                     {generationMode === 'text' && textModelsLoading && !isFreeTier ? (
@@ -647,6 +655,7 @@ export function ChatExperienceHeader({
                       </div>
                     </div>
                   ) : null}
+
                 </div>
               </>
             ) : null}
@@ -664,7 +673,6 @@ export function ChatExperienceHeader({
                 onClick={onTemporaryChatToggle}
               />
             ) : null}
-            {collaborationAction}
             {renderExportMenu()}
           </div>
         </div>
@@ -681,7 +689,6 @@ export function ChatExperienceHeader({
               onClick={onTemporaryChatToggle}
             />
           ) : null}
-          {collaborationAction}
           {renderExportMenu()}
         </div>
       </div>

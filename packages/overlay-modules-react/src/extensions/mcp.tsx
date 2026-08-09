@@ -28,7 +28,6 @@ import { useState,type MouseEvent } from 'react'
 
 import { Field } from './shared'
 import { AppScreenBody } from '../shell'
-import { Select } from '@overlay/ui/primitives'
 
 export type McpDialogMutationOutcome = boolean | void | McpMutationResult
 
@@ -38,6 +37,12 @@ export interface McpServerDialogProps {
   onSave: (values: McpServerFormValues) => Promise<McpDialogMutationOutcome>
   onDelete: (server: McpServerSummary) => Promise<McpDialogMutationOutcome>
   onTest: (values: McpServerFormValues) => Promise<McpTestResultState>
+  /**
+   * Saves the server if needed, then starts the OAuth flow. OAuth needs a persisted record to hang
+   * tokens off, so the dialog never asks the user to save first — it does both behind one button.
+   */
+  onConnectOAuth?: (values: McpServerFormValues) => Promise<McpMutationResult>
+  onDisconnectOAuth?: (server: McpServerSummary) => Promise<McpMutationResult>
 }
 
 function readMutationOutcome(outcome: McpDialogMutationOutcome): { ok: boolean; error?: string } {
@@ -45,7 +50,15 @@ function readMutationOutcome(outcome: McpDialogMutationOutcome): { ok: boolean; 
   return { ok: outcome !== false }
 }
 
-export function McpServerDialog({ state, onClose, onSave, onDelete, onTest }: McpServerDialogProps) {
+export function McpServerDialog({
+  state,
+  onClose,
+  onSave,
+  onDelete,
+  onTest,
+  onConnectOAuth,
+  onDisconnectOAuth,
+}: McpServerDialogProps) {
   const isEdit = state.mode === 'edit'
   const initial = state.server
   const [values, setValues] = useState<McpServerFormValues>(() => mcpServerToFormValues(initial))
@@ -55,6 +68,9 @@ export function McpServerDialog({ state, onClose, onSave, onDelete, onTest }: Mc
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<McpTestResultState | null>(null)
   const [mutationError, setMutationError] = useState<string | null>(null)
+  const [connecting, setConnecting] = useState(false)
+  const isOAuth = values.authType === 'oauth'
+  const oauthStatus = initial?.oauthStatus
 
   const update = <Key extends keyof McpServerFormValues>(key: Key, value: McpServerFormValues[Key]) => {
     setValues((current) => ({ ...current, [key]: value }))
@@ -111,6 +127,37 @@ export function McpServerDialog({ state, onClose, onSave, onDelete, onTest }: Mc
     }
   }
 
+  async function handleConnectOAuth() {
+    if (connecting || !onConnectOAuth) return
+    if (!values.name.trim() || !values.url.trim()) {
+      setMutationError('Add a name and URL before connecting.')
+      return
+    }
+    setConnecting(true)
+    setMutationError(null)
+    try {
+      const result = await onConnectOAuth(values)
+      if (!result.ok) setMutationError(result.error || 'Could not start the OAuth flow.')
+    } catch {
+      setMutationError('Could not start the OAuth flow.')
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  async function handleDisconnectOAuth() {
+    if (connecting || !onDisconnectOAuth || !initial) return
+    setConnecting(true)
+    setMutationError(null)
+    try {
+      const result = await onDisconnectOAuth(initial)
+      if (!result.ok) setMutationError(result.error || 'Could not disconnect this server.')
+      else onClose()
+    } finally {
+      setConnecting(false)
+    }
+  }
+
   return (
     <div className="overlay-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4" onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <div className="overlay-dialog-in flex w-full max-w-xl flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl" style={{ maxHeight: 'calc(100vh - 80px)' }}>
@@ -127,7 +174,7 @@ export function McpServerDialog({ state, onClose, onSave, onDelete, onTest }: Mc
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Transport">
-              <Select value={values.transport} onChange={(event) => update('transport', event.target.value as McpTransport)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]"><option value="streamable-http">Streamable HTTP</option><option value="sse">SSE</option></Select>
+              <select value={values.transport} onChange={(event) => update('transport', event.target.value as McpTransport)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]"><option value="streamable-http">Streamable HTTP</option><option value="sse">SSE</option></select>
             </Field>
             <Field label="Timeout (ms)">
               <input type="number" value={values.timeoutMs} onChange={(event) => update('timeoutMs', event.target.value === '' ? '' : Number(event.target.value))} placeholder="30000" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" />
@@ -138,15 +185,49 @@ export function McpServerDialog({ state, onClose, onSave, onDelete, onTest }: Mc
             <p className="text-[10px] text-[var(--muted-light)]">HTTPS required in production. HTTP allowed for localhost only.</p>
           </Field>
           <Field label="Authentication">
-            <Select value={values.authType} onChange={(event) => update('authType', event.target.value as McpAuthType)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]"><option value="none">None</option><option value="bearer">Bearer Token</option><option value="header">Custom Header</option></Select>
+            <select value={values.authType} onChange={(event) => update('authType', event.target.value as McpAuthType)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]"><option value="none">None</option><option value="bearer">Bearer Token</option><option value="header">Custom Header</option><option value="oauth">OAuth (sign in with browser)</option></select>
           </Field>
           <Field label="Tool execution policy">
-            <Select value={values.defaultToolPolicy} onChange={(event) => update('defaultToolPolicy', event.target.value as McpToolPolicyMode)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]">
+            <select value={values.defaultToolPolicy} onChange={(event) => update('defaultToolPolicy', event.target.value as McpToolPolicyMode)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]">
               <option value="allow">Allow tools</option>
               <option value="approval_required">Require approval</option>
               <option value="deny">Deny tools</option>
-            </Select>
+            </select>
           </Field>
+          {isOAuth ? (
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-[var(--foreground)]">
+                    {oauthStatus === 'connected'
+                      ? 'Connected'
+                      : oauthStatus === 'needs_reauth'
+                        ? 'Needs reconnect'
+                        : 'Not connected'}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-[var(--muted)]">
+                    {oauthStatus === 'connected'
+                      ? 'Overlay holds an authorized session for this server.'
+                      : 'Opens the server’s sign-in page in a new tab. No API key needed.'}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {oauthStatus === 'connected' && onDisconnectOAuth ? (
+                    <button type="button" onClick={() => void handleDisconnectOAuth()} disabled={connecting} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50">
+                      Disconnect
+                    </button>
+                  ) : null}
+                  <button type="button" onClick={() => void handleConnectOAuth()} disabled={connecting || !onConnectOAuth} className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50">
+                    {connecting ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
+                    {connecting ? 'Opening…' : oauthStatus === 'connected' ? 'Reconnect' : 'Connect'}
+                  </button>
+                </div>
+              </div>
+              {initial?.oauthError ? (
+                <p className="mt-2 text-[11px] text-red-400">{initial.oauthError}</p>
+              ) : null}
+            </div>
+          ) : null}
           {values.authType === 'bearer' ? (
             <Field label="Bearer Token">
               <input type="password" value={values.bearerToken} onChange={(event) => update('bearerToken', event.target.value)} placeholder="Bearer token" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" />
@@ -163,9 +244,16 @@ export function McpServerDialog({ state, onClose, onSave, onDelete, onTest }: Mc
             </div>
           ) : null}
           {testResult ? (
-            <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs ${testResult.ok ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400' : 'border border-red-500/20 bg-red-500/10 text-red-400'}`}>
-              {testResult.ok ? <Check size={12} /> : <AlertCircle size={12} />}
-              <span>{testResult.message}</span>
+            <div className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${testResult.ok ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400' : 'border border-red-500/20 bg-red-500/10 text-red-400'}`}>
+              {testResult.ok ? <Check size={12} className="mt-0.5 shrink-0" /> : <AlertCircle size={12} className="mt-0.5 shrink-0" />}
+              <span>
+                {testResult.message}
+                {testResult.requiresAuth && !isOAuth ? (
+                  <button type="button" onClick={() => update('authType', 'oauth')} className="ml-1 underline underline-offset-2">
+                    Switch to OAuth
+                  </button>
+                ) : null}
+              </span>
             </div>
           ) : null}
           {mutationError ? (
@@ -272,8 +360,28 @@ function McpServerCard({
       </div>
       <div className="flex items-center gap-2">
         <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] uppercase text-[var(--muted)]">{server.transport}</span>
-        {server.hasAuth ? <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">Auth</span> : null}
+        {server.hasAuth && server.authType !== 'oauth' ? <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">Auth</span> : null}
+        {server.authType === 'oauth' ? (
+          <span className={`inline-flex rounded border px-1.5 py-0.5 text-[10px] ${
+            server.oauthStatus === 'connected'
+              ? 'border-[var(--border)] text-[var(--muted)]'
+              : 'border-red-500/30 text-red-400'
+          }`}>
+            {server.oauthStatus === 'connected'
+              ? 'OAuth'
+              : server.oauthStatus === 'needs_reauth'
+                ? 'Reconnect needed'
+                : 'Not connected'}
+          </span>
+        ) : null}
+        {server.toolCatalogCount ? <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">{server.toolCatalogCount} tools</span> : null}
       </div>
+      {server.toolCatalogError ? (
+        <p title={server.toolCatalogError} className="mt-2 flex items-start gap-1 text-[10px] text-red-400">
+          <AlertCircle size={10} className="mt-0.5 shrink-0" />
+          <span className="line-clamp-2">Tools unavailable: {server.toolCatalogError}</span>
+        </p>
+      ) : null}
       <div className="absolute bottom-3 right-3 hidden items-center gap-1 group-hover:flex">
         <button type="button" onClick={(event) => onToggle(server, event)} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]" title={server.enabled ? 'Disable' : 'Enable'}>{server.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}</button>
         <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(server) }} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]" title="Edit"><Pencil size={13} /></button>

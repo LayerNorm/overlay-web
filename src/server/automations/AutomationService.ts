@@ -1,6 +1,8 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
+import type { LifecycleEventPublisher } from '@/server/lifecycle-events'
+import { withObservabilityContext } from '@/server/observability/context'
 import { runActTurnForScheduledAutomation, type ScheduledAutomationTurn } from '@/server/agent/run-act-turn'
 import { emitAutomationFailed, emitAutomationFinished } from '@/server/shared/webhooks'
 import type {
@@ -8,6 +10,7 @@ import type {
   AutomationRepository,
   AutomationSchedule,
 } from './AutomationRepository'
+import type { AutomationSummary } from '@overlay/app-core'
 import {
   AutomationEntitlementError,
   type AutomationEntitlementPolicy,
@@ -58,6 +61,7 @@ export type AutomationServiceDeps = {
   events?: AutomationServiceEvents
   entitlementPolicy: AutomationEntitlementPolicy
   executor?: AutomationExecutor
+  lifecycleEvents?: () => LifecycleEventPublisher
   repository: AutomationRepository
 }
 
@@ -73,6 +77,7 @@ type CreateAutomationBody = {
   projectId?: string
   modelId?: string
   graphSource?: string
+  graph?: AutomationSummary['graph']
   sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
 }
@@ -92,6 +97,7 @@ type UpdateAutomationBody = {
   projectId?: string
   modelId?: string
   graphSource?: string
+  graph?: AutomationSummary['graph']
   sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
 }
@@ -112,6 +118,21 @@ function summarizeError(error: unknown): string {
 
 function scheduleTooFrequent(schedule: AutomationSchedule | undefined): boolean {
   return schedule?.kind === 'interval' && (schedule.intervalMinutes ?? 60) < MIN_INTERVAL_MINUTES
+}
+
+/**
+ * Defensive: LLMs or other API clients may pass the schedule as a stringified
+ * JSON string instead of a JSON object. Parse it back to an object if needed.
+ */
+function normalizeScheduleValue(schedule: unknown): AutomationSchedule {
+  if (typeof schedule === 'string') {
+    try {
+      return JSON.parse(schedule) as AutomationSchedule
+    } catch (_error) {
+      throw new Error('Invalid schedule: expected an object, received a string that is not valid JSON')
+    }
+  }
+  return schedule as AutomationSchedule
 }
 
 function stableScheduleKey(schedule: AutomationSchedule | undefined): string {
@@ -248,6 +269,7 @@ export class AutomationService {
     includeRuns?: boolean
     projectId?: string
     userId: string
+    workspaceId?: string
   }): Promise<unknown> {
     if (args.automationId && args.includeRuns) {
       return await this.deps.repository.listRuns({
@@ -259,6 +281,7 @@ export class AutomationService {
       const automation = await this.deps.repository.getAutomation({
         automationId: args.automationId,
         userId: args.userId,
+        workspaceId: args.workspaceId,
       })
       if (!automation) serviceError({ error: 'Not found' }, 404)
       return automation
@@ -267,18 +290,21 @@ export class AutomationService {
       userId: args.userId,
       includeDeleted: args.includeDeleted,
       projectId: args.projectId,
+      workspaceId: args.workspaceId,
     })
   }
 
   async createAutomation(args: {
     body: CreateAutomationBody
     userId: string
+    workspaceId?: string
   }): Promise<{ success: true; id: unknown }> {
     const { body } = args
     if (!body.name?.trim() || !body.description?.trim() || !body.instructions?.trim() || !body.schedule) {
       serviceError({ error: 'name, description, instructions, and schedule are required' }, 400)
     }
-    this.assertScheduleAllowed(body.schedule)
+    const schedule = normalizeScheduleValue(body.schedule)
+    this.assertScheduleAllowed(schedule)
     await this.assertProjectAllowsAutomation(body.projectId, args.userId)
     if (body.enabled !== false) {
       await this.assertCanEnable(args.userId)
@@ -290,13 +316,15 @@ export class AutomationService {
       description: body.description,
       instructions: body.instructions,
       enabled: body.enabled,
-      schedule: body.schedule,
+      schedule,
       timezone: body.timezone,
       projectId: body.projectId,
       modelId: body.modelId,
       graphSource: body.graphSource,
+      graph: body.graph,
       sourceConversationId: body.sourceConversationId,
       concurrencyPolicy: body.concurrencyPolicy,
+      workspaceId: args.workspaceId,
     })
     if (!id) throw new Error('Automation create returned no id')
     return { success: true, id }
@@ -305,6 +333,7 @@ export class AutomationService {
   async updateAutomation(args: {
     body: UpdateAutomationBody
     userId: string
+    workspaceId?: string
   }): Promise<{ success: true }> {
     const { body } = args
     if (body.action === 'cancel-run') {
@@ -328,13 +357,14 @@ export class AutomationService {
     if (!body.automationId) {
       serviceError({ error: 'automationId required' }, 400)
     }
-    this.assertScheduleAllowed(body.schedule)
+    const schedule = body.schedule ? normalizeScheduleValue(body.schedule) : body.schedule
+    this.assertScheduleAllowed(schedule)
     if (body.action === 'resume' || body.enabled === true) {
       await this.assertCanEnable(args.userId)
     }
 
     const automationId = body.automationId
-    const idArgs = { automationId, userId: args.userId }
+    const idArgs = { automationId, userId: args.userId, workspaceId: args.workspaceId }
     const existingAutomation = await this.deps.repository.getAutomation(idArgs)
     if (
       body.action === 'resume'
@@ -347,22 +377,29 @@ export class AutomationService {
       )
     }
     if (body.action === 'pause') {
+      // Cancel any active scheduler workflow before pausing
+      await this.cancelSchedulerWorkflow(idArgs)
       await this.deps.repository.pauseAutomation(idArgs)
     } else if (body.action === 'resume') {
       await this.deps.repository.resumeAutomation(idArgs)
     } else {
       const before = existingAutomation
+      // If the update disables the automation, cancel its scheduler workflow
+      if (body.enabled === false && before?.schedulerWorkflowRunId) {
+        await this.cancelSchedulerWorkflow(idArgs)
+      }
       await this.deps.repository.updateAutomation({
         ...idArgs,
         name: body.name,
         description: body.description,
         instructions: body.instructions,
         enabled: body.enabled,
-        schedule: body.schedule,
+        schedule,
         timezone: body.timezone,
         projectId: body.projectId,
         modelId: body.modelId,
         graphSource: body.graphSource,
+        graph: body.graph,
         sourceConversationId: body.sourceConversationId,
         concurrencyPolicy: body.concurrencyPolicy,
       })
@@ -372,7 +409,7 @@ export class AutomationService {
           description: body.description,
           instructions: body.instructions,
           enabled: body.enabled,
-          schedule: body.schedule,
+          schedule,
           timezone: body.timezone,
           modelId: body.modelId,
         }, args.userId)
@@ -384,6 +421,7 @@ export class AutomationService {
   async deleteAutomation(args: {
     automationId?: string | null
     userId: string
+    workspaceId?: string
   }): Promise<{ success: true; linkedConversationIds: string[] }> {
     if (!args.automationId) {
       serviceError({ error: 'automationId required' }, 400)
@@ -392,6 +430,7 @@ export class AutomationService {
     const automation = await this.deps.repository.getAutomation({
       automationId,
       userId: args.userId,
+      workspaceId: args.workspaceId,
     })
     const isDraftPlaceholder =
       automation?.enabled === false &&
@@ -403,9 +442,27 @@ export class AutomationService {
       isDraftPlaceholder ? automation?.sourceConversationId : undefined,
     ].filter((id, index, ids): id is string => Boolean(id && ids.indexOf(id) === index))
 
+    // Cancel any active scheduler workflow before deleting the automation
+    if (automation?.schedulerWorkflowRunId) {
+      await this.cancelSchedulerWorkflow({
+        automationId,
+        userId: args.userId,
+      })
+    }
+
+    // Cancel any active individual runs (queued or running)
+    if (this.deps.repository.requestActiveRunCancellation) {
+      await this.deps.repository.requestActiveRunCancellation({
+        automationId,
+      }).catch((error) => {
+        logger.warn('[automations DELETE] Failed to cancel active runs', error)
+      })
+    }
+
     await this.deps.repository.removeAutomation({
       automationId,
       userId: args.userId,
+      workspaceId: args.workspaceId,
     })
 
     for (const conversationId of linkedConversationIds) {
@@ -457,18 +514,23 @@ export class AutomationService {
       if (!runId) {
         throw new Error('Automation manual run create returned no id')
       }
+      const executionRunId = runId
+      const executionAutomationId = automationId
 
       await this.deps.repository.markManualRunStarted({
-        runId,
+        runId: executionRunId,
         userId: args.userId,
         conversationId,
         turnId,
         now: this.clock.now(),
       })
 
-      const result = await this.executor({
-        automationId,
-        runId,
+      const result = await withObservabilityContext({
+        provider: 'automation',
+        runId: executionRunId,
+      }, async () => await this.executor({
+        automationId: executionAutomationId,
+        runId: executionRunId,
         userId: args.userId,
         name,
         description: automation.description || '',
@@ -479,7 +541,7 @@ export class AutomationService {
         turnId,
         scheduledFor,
         baseUrl: args.baseUrl,
-      })
+      }))
 
       await this.deps.repository.markManualRunCompleted({
         runId,
@@ -493,6 +555,13 @@ export class AutomationService {
         automationId,
         runId,
         conversationId: result.conversationId,
+      })
+      await this.publishAutomationLifecycleEvent({
+        automationId,
+        execution: 'manual',
+        name: 'automation.succeeded',
+        runId,
+        userId: args.userId,
       })
 
       return { success: true, runId, conversationId: result.conversationId }
@@ -516,6 +585,7 @@ export class AutomationService {
     let userId: string | undefined
     try {
       if (!args.runId) serviceError({ error: 'runId required' }, 400)
+      const executionRunId = args.runId
       const payload = await this.deps.repository.getRunForExecution({ runId: args.runId })
       if (!payload || payload.run.status !== 'running') {
         serviceError({ error: 'Automation run is not executable' }, 409)
@@ -530,9 +600,12 @@ export class AutomationService {
       const turnId = run.turnId || `automation-${args.runId}-${this.clock.now()}`
       const conversationId = run.conversationId || automation.sourceConversationId || automation.conversationId
 
-      const result = await this.executor({
+      const result = await withObservabilityContext({
+        provider: 'automation',
+        runId: executionRunId,
+      }, async () => await this.executor({
         automationId: automation._id,
-        runId: args.runId,
+        runId: executionRunId,
         userId: automation.userId,
         name: automation.name || automation.title || 'Untitled automation',
         description: automation.description || '',
@@ -543,13 +616,20 @@ export class AutomationService {
         turnId,
         scheduledFor: run.scheduledFor,
         baseUrl: args.baseUrl,
-      })
+      }))
 
       this.events.finished({
         userId: automation.userId,
         automationId: automation._id,
         runId: args.runId,
         conversationId: result.conversationId,
+      })
+      await this.publishAutomationLifecycleEvent({
+        automationId: automation._id,
+        execution: 'scheduled',
+        name: 'automation.succeeded',
+        runId: args.runId,
+        userId: automation.userId,
       })
 
       return { success: true, conversationId: result.conversationId }
@@ -561,9 +641,140 @@ export class AutomationService {
           runId: args.runId,
           error: summarizeError(error).slice(0, 1000),
         })
+        await this.publishAutomationLifecycleEvent({
+          automationId,
+          execution: 'scheduled',
+          failureClass: classifyAutomationFailure(error),
+          name: 'automation.failed',
+          runId: args.runId,
+          userId,
+        })
       }
       throw error
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Durable execution helpers — used by the POST /api/v1/automations/{id}/run
+  // route to start a workflow-based automation run.
+  // -------------------------------------------------------------------------
+
+  async createManualRunForDurableExecution(args: {
+    automationId: string
+    userId: string
+  }): Promise<string | null> {
+    return await this.deps.repository.createManualRun({
+      automationId: args.automationId,
+      userId: args.userId,
+      scheduledFor: this.clock.now(),
+    })
+  }
+
+  async getAutomationForExecution(args: {
+    automationId: string
+    userId: string
+  }) {
+    return await this.deps.repository.getAutomation({
+      automationId: args.automationId,
+      userId: args.userId,
+    })
+  }
+
+  async attachSourceConversation(args: {
+    automationId: string
+    conversationId: string
+    userId: string
+  }): Promise<void> {
+    await this.deps.repository.attachSourceConversation(args)
+  }
+
+  async updateRunWorkflowRunId(args: {
+    runId: string
+    workflowRunId: string
+  }): Promise<void> {
+    await this.deps.repository.updateRunWorkflowRunId?.(args)
+  }
+
+  async updateSchedulerWorkflowRunId(args: {
+    automationId: string
+    schedulerWorkflowRunId: string | null
+  }): Promise<void> {
+    await this.deps.repository.updateSchedulerWorkflowRunId?.(args)
+  }
+
+  /**
+   * Cancel the long-lived scheduler workflow for an automation.
+   * Called when the automation is deleted or paused. Best-effort — if the
+   * workflow run ID is missing or the workflow is already gone, this is a no-op.
+   */
+  async cancelSchedulerWorkflow(args: {
+    automationId: string
+    userId: string
+  }): Promise<void> {
+    const automation = await this.deps.repository.getAutomation({
+      automationId: args.automationId,
+      userId: args.userId,
+    })
+    const workflowRunId = automation?.schedulerWorkflowRunId
+    if (!workflowRunId) return
+
+    try {
+      const { getRun } = await import('workflow/api')
+      await getRun(workflowRunId).cancel()
+    } catch (error) {
+      logger.warn('[automations] Failed to cancel scheduler workflow', { automationId: args.automationId, workflowRunId, error })
+    }
+
+    // Clear the stored workflow run ID regardless of whether cancellation succeeded
+    await this.deps.repository.updateSchedulerWorkflowRunId?.({
+      automationId: args.automationId,
+      schedulerWorkflowRunId: null,
+    }).catch((error) => {
+      logger.warn('[automations] Failed to clear schedulerWorkflowRunId', { automationId: args.automationId, error })
+    })
+  }
+
+  async markRunStarted(args: {
+    runId: string
+    userId: string
+    conversationId?: string
+    turnId?: string
+  }): Promise<void> {
+    await this.deps.repository.markManualRunStarted({
+      runId: args.runId,
+      userId: args.userId,
+      conversationId: args.conversationId,
+      turnId: args.turnId ?? `automation-${args.runId}-${Date.now()}`,
+      now: this.clock.now(),
+    })
+  }
+
+  async markRunCompleted(args: {
+    runId: string
+    userId: string
+    conversationId?: string
+  }): Promise<void> {
+    await this.deps.repository.markManualRunCompleted({
+      runId: args.runId,
+      userId: args.userId,
+      // Pass undefined (not '') so Convex's v.optional(v.id()) validator
+      // accepts it. An empty string is not a valid Convex ID and will throw.
+      conversationId: args.conversationId || undefined,
+      now: this.clock.now(),
+    })
+  }
+
+  async markRunFailed(args: {
+    runId: string
+    userId: string
+    error: string
+  }): Promise<void> {
+    await this.deps.repository.markManualRunFailed({
+      runId: args.runId,
+      userId: args.userId,
+      error: args.error,
+      now: this.clock.now(),
+    })
   }
 
   private assertScheduleAllowed(schedule: AutomationSchedule | undefined): void {
@@ -635,6 +846,53 @@ export class AutomationService {
         runId: args.runId,
         error: message,
       })
+      await this.publishAutomationLifecycleEvent({
+        automationId: args.automationId,
+        execution: 'manual',
+        failureClass: classifyAutomationFailure(args.error),
+        name: 'automation.failed',
+        runId: args.runId,
+        userId: args.userId,
+      })
     }
   }
+
+  private async publishAutomationLifecycleEvent(args: {
+    automationId: string
+    execution: 'manual' | 'scheduled'
+    failureClass?: 'authorization' | 'provider' | 'transient' | 'unknown' | 'validation'
+    name: 'automation.failed' | 'automation.succeeded'
+    runId: string
+    userId: string
+  }): Promise<void> {
+    await this.deps.lifecycleEvents?.().publish({
+      attributes: {
+        execution: args.execution,
+        ...(args.failureClass ? { failureClass: args.failureClass } : {}),
+      },
+      idempotencyKey: `${args.name}:${args.runId}`,
+      name: args.name,
+      resource: {
+        automationId: args.automationId,
+        id: args.runId,
+        type: 'automation_run',
+      },
+      userId: args.userId,
+    })
+  }
+}
+
+function classifyAutomationFailure(
+  error: unknown,
+): 'authorization' | 'provider' | 'transient' | 'unknown' | 'validation' {
+  if (error instanceof AutomationServiceError) {
+    if (error.statusCode === 401 || error.statusCode === 403) return 'authorization'
+    if (error.statusCode >= 400 && error.statusCode < 500) return 'validation'
+  }
+  if (error instanceof Error) {
+    const name = error.name.toLowerCase()
+    if (name.includes('timeout') || name.includes('network')) return 'transient'
+    if (name.includes('provider') || name.includes('gateway')) return 'provider'
+  }
+  return 'unknown'
 }

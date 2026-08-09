@@ -43,34 +43,6 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'app-shell',
   },
   {
-    id: 'workspaces',
-    methods: '*',
-    prefixes: ['/api/v1/workspaces', '/api/v1/workspace-invitations'],
-    status: 'supported',
-    feature: 'workspaces',
-  },
-  {
-    id: 'workspace-agents',
-    methods: '*',
-    prefixes: ['/api/v1/agents'],
-    status: 'supported',
-    feature: 'workspace-agents',
-  },
-  {
-    id: 'workspace-sharing',
-    methods: '*',
-    prefixes: ['/api/v1/shares'],
-    status: 'supported',
-    feature: 'workspace-sharing',
-  },
-  {
-    id: 'workspace-search',
-    methods: ['GET'],
-    prefixes: ['/api/v1/search'],
-    status: 'supported',
-    feature: 'workspace-search',
-  },
-  {
     id: 'discovery',
     methods: ['GET'],
     paths: ['/api/v1/discovery'],
@@ -88,8 +60,9 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'integrations',
     methods: '*',
     paths: ['/api/v1/integrations'],
-    status: 'supported',
+    status: 'unsupported',
     feature: 'integrations',
+    reason: 'Postgres mode does not yet include connector account state or external integration execution.',
   },
   {
     id: 'auth-api-keys',
@@ -117,9 +90,6 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     methods: '*',
     prefixes: [
       '/api/v1/conversations/events',
-      '/api/v1/conversations/direct-messages',
-      '/api/v1/conversations/notifications',
-      '/api/v1/conversations',
       '/api/v1/conversations/message',
       '/api/v1/conversations/share',
       '/api/v1/conversations/stop',
@@ -160,8 +130,9 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     id: 'chat-extension-plan',
     methods: '*',
     prefixes: ['/api/v1/conversations/act/extension-plan'],
-    status: 'supported',
+    status: 'unsupported',
     feature: 'integrations',
+    reason: 'Postgres mode does not expose connector-backed chat extensions.',
   },
   {
     id: 'settings',
@@ -203,6 +174,13 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     feature: 'outputs',
   },
   {
+    id: 'workflows',
+    methods: '*',
+    prefixes: ['/api/v1/workflows'],
+    status: 'supported',
+    feature: 'automations',
+  },
+  {
     id: 'generation-usage-and-outputs',
     methods: '*',
     prefixes: [
@@ -230,13 +208,6 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     prefixes: ['/api/v1/knowledge', '/api/v1/memory'],
     status: 'supported',
     feature: 'vector-search',
-  },
-  {
-    id: 'knowledge-bases',
-    methods: '*',
-    prefixes: ['/api/v1/knowledge-bases'],
-    status: 'supported',
-    feature: 'knowledge-bases',
   },
   {
     id: 'mcp-and-skills',
@@ -272,6 +243,25 @@ export const POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES: readonly AppDataRouteSupport
     prefixes: ['/api/v1/extensions'],
     status: 'unsupported',
     feature: 'extensions',
+  },
+  {
+    id: 'workspace-collaboration-gated',
+    methods: '*',
+    prefixes: [
+      // These surfaces are shipped for Convex but do not have Postgres
+      // repositories yet. Keep this rule after supported conversation routes
+      // so the core Postgres chat contract remains available.
+      '/api/v1/agents',
+      '/api/v1/conversations',
+      '/api/v1/knowledge-bases',
+      '/api/v1/search',
+      '/api/v1/shares',
+      '/api/v1/workspace-invitations',
+      '/api/v1/workspaces',
+    ],
+    status: 'unsupported',
+    feature: 'workspace-collaboration',
+    reason: 'Postgres mode gates workspace and collaboration surfaces until provider-neutral repositories and authorization contracts are available.',
   },
 ]
 

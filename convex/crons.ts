@@ -10,8 +10,13 @@ crons.interval(
   internal.ai.sandbox.daytonaReconcile.runMinuteTick,
 )
 
+// NOTE: This cron is the legacy scheduling path. When the
+// OVERLAY_FEATURE_DURABLE_AUTOMATIONS feature flag is enabled, scheduling
+// moves to the sleep()-based workflow (workflows/automation-schedule.ts)
+// and this cron becomes a no-op. Once the feature flag is removed in Step 7,
+// this cron entry should be deleted entirely.
 crons.interval(
-  'automation scheduler',
+  'automation_scheduler_legacy',
   { minutes: 1 },
   internal.automations.automationRunner.runMinuteTick,
 )
@@ -63,6 +68,12 @@ crons.interval(
   'outbound webhook delivery',
   { minutes: 1 },
   internal.webhooks.deliveryRunner.runMinuteTick,
+)
+
+crons.interval(
+  'transactional email delivery',
+  { minutes: 1 },
+  internal.email.deliveryRunner.runMinuteTick,
 )
 
 export default crons

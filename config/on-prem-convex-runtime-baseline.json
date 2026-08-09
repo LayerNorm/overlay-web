@@ -52,6 +52,13 @@
     "src/app/api/v1/agents/[agentId]/route.ts",
     "src/app/api/v1/agents/route.ts",
     "src/app/api/v1/api-keys/route.ts",
+    "src/app/api/v1/automations/[id]/approve/route.ts",
+    "src/app/api/v1/automations/[id]/cancel-scheduler/route.ts",
+    "src/app/api/v1/automations/[id]/events/route.ts",
+    "src/app/api/v1/automations/[id]/run/route.ts",
+    "src/app/api/v1/automations/[id]/start-scheduler/route.ts",
+    "src/app/api/v1/automations/[id]/stream/route.ts",
+    "src/app/api/v1/automations/execute/route.ts",
     "src/app/api/v1/automations/route.ts",
     "src/app/api/v1/automations/run/route.ts",
     "src/app/api/v1/automations/test/route.ts",
@@ -108,6 +115,8 @@
     "src/app/api/v1/knowledge-bases/route.ts",
     "src/app/api/v1/knowledge-bases/share-directory/route.ts",
     "src/app/api/v1/knowledge/search/route.ts",
+    "src/app/api/v1/mcps/oauth/callback/route.ts",
+    "src/app/api/v1/mcps/oauth/route.ts",
     "src/app/api/v1/mcps/route.ts",
     "src/app/api/v1/mcps/test/route.ts",
     "src/app/api/v1/memory/route.ts",
@@ -167,7 +176,7 @@
     },
     {
       "cadence": "{ minutes: 1 }",
-      "name": "automation scheduler",
+      "name": "automation_scheduler_legacy",
       "target": "internal.automations.automationRunner.runMinuteTick"
     },
     {
@@ -199,6 +208,11 @@
       "cadence": "{ minutes: 2 }",
       "name": "stale generating message cleanup",
       "target": "internal.chat.conversations.runStaleGeneratingCleanup"
+    },
+    {
+      "cadence": "{ minutes: 1 }",
+      "name": "transactional email delivery",
+      "target": "internal.email.deliveryRunner.runMinuteTick"
     },
     {
       "cadence": "{ minutes: 5 }",
@@ -249,8 +263,9 @@
     "src/server/chat-suggestions/ConvexChatSuggestionRepository.ts",
     "src/server/conversations/ConvexActConversationRepository.ts",
     "src/server/conversations/ConvexConversationCollaborationRepository.ts",
-    "src/server/database/convex.ts",
     "src/server/database/lazy-convex.ts",
+    "src/server/email/ConvexEmailSuppressionRepository.ts",
+    "src/server/email/index.ts",
     "src/server/extensions/ConvexMcpServerRepository.ts",
     "src/server/extensions/ConvexSkillRepository.ts",
     "src/server/extensions/index.ts",
@@ -261,6 +276,10 @@
     "src/server/governance/index.ts",
     "src/server/idempotency/ConvexIdempotencyRepository.ts",
     "src/server/idempotency/index.ts",
+    "src/server/integrations/ConvexWorkspaceConnectorRepository.ts",
+    "src/server/integrations/index.ts",
+    "src/server/jobs/ConvexOutboxRepository.ts",
+    "src/server/jobs/index.ts",
     "src/server/knowledge-bases/ConvexCanonicalKnowledgeIndexQueue.ts",
     "src/server/knowledge-bases/ConvexKnowledgeBaseRepositories.ts",
     "src/server/knowledge-bases/index.ts",
@@ -293,6 +312,7 @@
     "convex/automations/automationRunner.ts",
     "convex/automations/automations.ts",
     "convex/chat/conversations.ts",
+    "convex/email/deliveryRunner.ts",
     "convex/files/files.ts",
     "convex/knowledge/bases.ts",
     "convex/knowledge/memories.ts",

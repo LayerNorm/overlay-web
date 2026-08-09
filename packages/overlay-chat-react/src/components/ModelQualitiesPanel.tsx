@@ -1,6 +1,12 @@
 import { BrainCircuit, Check, DollarSign, ShieldCheck, X, Zap } from 'lucide-react'
 import type { ComponentType, ReactNode } from 'react'
+import type { ReasoningLevel } from '@overlay/chat-core'
+import { ListboxSelect } from '@overlay/ui/primitives'
 import type { ChatModelIndicatorModel } from './ModelIndicators'
+
+const PROVIDER_DEFAULT_REASONING: readonly { value: ReasoningLevel; label: string }[] = [
+  { value: 'provider-default', label: 'Default' },
+]
 
 function MetricRow({
   icon: Icon,
@@ -12,7 +18,7 @@ function MetricRow({
   value: ReactNode
 }) {
   return (
-    <div className="flex items-center justify-between gap-3">
+    <div className="flex min-h-6 items-center justify-between gap-3 py-0.5">
       <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)]">
         <Icon size={11} strokeWidth={1.75} className="shrink-0 text-[var(--muted-light)]" />
         <span>{label}</span>
@@ -26,12 +32,27 @@ function MetricRow({
 
 export function ModelQualitiesPanel({
   model,
+  reasoning,
+  onReasoningChange,
 }: {
   model: ChatModelIndicatorModel | null | undefined
+  reasoning?: ReasoningLevel
+  onReasoningChange?: (level: ReasoningLevel | undefined) => void
 }) {
   if (!model) return null
+  const reasoningLevels = model.supportsReasoning
+    ? (model.reasoningLevels ?? PROVIDER_DEFAULT_REASONING).map((level) => ({
+        value: level.value as ReasoningLevel,
+        label: level.label,
+      }))
+    : []
+  const selectedReasoning = reasoning ?? 'provider-default'
+  const selectedLevel = reasoningLevels.some(({ value }) => value === selectedReasoning)
+    ? selectedReasoning
+    : reasoningLevels[0]?.value ?? 'provider-default'
+
   return (
-    <div className="pointer-events-none flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
       <MetricRow
         icon={BrainCircuit}
         label="Intelligence"
@@ -56,6 +77,24 @@ export function ModelQualitiesPanel({
           </span>
         }
       />
+      {reasoningLevels.length > 0 && onReasoningChange ? (
+        <div className="flex min-h-6 items-center justify-between gap-3 py-0.5">
+          <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)]">
+            <BrainCircuit size={11} strokeWidth={1.75} className="shrink-0 text-[var(--muted-light)]" />
+            <span>Reasoning</span>
+          </div>
+          <ListboxSelect
+            aria-label="Reasoning effort"
+            value={selectedLevel}
+            options={reasoningLevels}
+            onChange={(next) => onReasoningChange(next === 'provider-default' ? undefined : next)}
+            portal
+            className="w-[8.25rem] shrink-0"
+            buttonClassName="h-6 bg-[var(--surface-subtle)] py-0 pl-2 pr-2 text-[11px] text-[var(--foreground)] hover:bg-[var(--border)]"
+            menuClassName="w-full min-w-[8.25rem] rounded-lg py-0.5"
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

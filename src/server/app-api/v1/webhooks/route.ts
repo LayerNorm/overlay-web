@@ -36,9 +36,10 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         limit: Number.isFinite(rawLimit) ? rawLimit : undefined,
         subscriptionId: request.nextUrl.searchParams.get('subscriptionId') || undefined,
         userId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
       }))
     }
-    return NextResponse.json(await repository.list({ userId: auth.userId }))
+    return NextResponse.json(await repository.list({ userId: auth.userId, workspaceId: context.workspace.workspace.id }))
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to fetch webhook subscriptions' }, { status: 500 })
   }
@@ -66,6 +67,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     const created = await getOverlayServerContext().appData.repositories.webhooks.create({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       url: parsed.data.url,
       events,
       description: parsed.data.description,
@@ -104,6 +106,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       const nextDeliveryId = await repository.redriveDelivery({
         deliveryId,
         userId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
       })
       if (!nextDeliveryId) {
         return NextResponse.json({ error: 'Dead-letter delivery not found' }, { status: 404 })
@@ -115,7 +118,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     }
 
     if (action === 'rotate-secret') {
-      const secret = await repository.rotateSecret({ subscriptionId, userId: auth.userId })
+      const secret = await repository.rotateSecret({ subscriptionId, userId: auth.userId, workspaceId: context.workspace.workspace.id })
       if (!secret) {
         return NextResponse.json({ error: 'Webhook subscription not found' }, { status: 404 })
       }
@@ -136,6 +139,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
 
     const updated = await repository.update({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       subscriptionId,
       url: typeof url === 'string' ? url : undefined,
       events: normalizedEvents ?? undefined,
@@ -177,6 +181,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
 
     const removed = await getOverlayServerContext().appData.repositories.webhooks.remove({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       subscriptionId,
     })
 

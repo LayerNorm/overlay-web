@@ -4,11 +4,28 @@ import { createHash } from 'node:crypto'
 import { logger } from '@/server/observability/logger'
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
+
+/**
+ * Tool approval function for MCP tools. Uses the v7 `toolApproval` API
+ * (replaces deprecated per-tool `needsApproval`). The function form allows
+ * dynamic approval decisions based on the tool call's input — e.g.
+ * `call_mcp_tool` needs to inspect `serverId`/`toolName` to resolve policy.
+ */
+export type McpToolApprovalFn = (options: {
+  toolCall: { toolName: string; input: Record<string, unknown> }
+}) => 'user-approval' | undefined
 import { jsonSchemaToZod } from './mcp-schema-to-zod'
 import { fireAndForgetRecordToolInvocation } from './tools/record-tool-invocation'
 import { validatePublicNetworkUrl } from '@/server/security/ssrf'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import type { McpServerRepository, McpToolPolicyMode } from '@/server/extensions'
+import type {
+  McpAuthType,
+  McpOAuthClient,
+  McpOAuthStatus,
+  McpOAuthTokens,
+  McpServerRepository,
+  McpToolPolicyMode,
+} from '@/server/extensions'
 import { resolveMcpToolPolicy } from '@/server/extensions'
 
 // Dynamic import of MCP SDK (ESM)
@@ -58,7 +75,7 @@ export interface McpServerConfig {
   transport: 'sse' | 'streamable-http'
   url: string
   enabled: boolean
-  authType: 'none' | 'bearer' | 'header'
+  authType: McpAuthType
   authConfig?: {
     bearerToken?: string
     headerName?: string
@@ -69,6 +86,15 @@ export interface McpServerConfig {
   defaultToolPolicy: McpToolPolicyMode
   toolPolicies: Record<string, McpToolPolicyMode>
   toolCatalog?: McpToolCatalogEntry[]
+  toolCatalogError?: string
+  /** Present only for authType 'oauth'; supplied by the repository, never by the client. */
+  oauthTokens?: McpOAuthTokens
+  oauthClient?: McpOAuthClient
+  oauthStatus?: McpOAuthStatus
+  oauthIssuer?: string
+  oauthScope?: string
+  oauthResource?: string
+  oauthTokenVersion?: number
 }
 
 function getMcpRepository(): McpServerRepository {
@@ -156,6 +182,39 @@ function buildAuthHeaders(config: McpServerConfig): Record<string, string> {
   return headers
 }
 
+/**
+ * Builds the SDK auth provider for an OAuth-backed server. It is deliberately non-interactive:
+ * there is no browser during a chat turn, so a flow that needs consent throws
+ * McpOAuthInteractionRequiredError instead of hanging, and the server is flagged for reconnection.
+ */
+async function createRuntimeAuthProvider(config: McpServerConfig) {
+  if (config.authType !== 'oauth') return undefined
+  const { McpOAuthProvider } = await import('@/server/extensions/McpOAuthProvider')
+  const { ensureFreshMcpOAuthTokens, mcpOAuthRedirectUri } = await import('./mcp-oauth')
+  const { getBaseUrl } = await import('@/server/web/app-url')
+  const baseUrl = getBaseUrl()
+
+  // Refresh ahead of expiry so a long tool call does not die mid-flight; the transport still
+  // handles a surprise 401 through the same provider.
+  const tokens = await ensureFreshMcpOAuthTokens({
+    baseUrl,
+    server: config as unknown as Parameters<typeof ensureFreshMcpOAuthTokens>[0]['server'],
+  }).catch((_error) => config.oauthTokens)
+
+  return new McpOAuthProvider({
+    clientUri: baseUrl,
+    initialClient: config.oauthClient,
+    initialTokens: tokens ?? config.oauthTokens,
+    initialTokenVersion: config.oauthTokenVersion,
+    mcpServerId: config._id,
+    redirectUri: mcpOAuthRedirectUri(baseUrl),
+    repository: getMcpRepository(),
+    scope: config.oauthScope,
+    serverName: config.name,
+    userId: config.userId,
+  })
+}
+
 async function createMcpTransportAndClient(config: McpServerConfig) {
   const {
     Client,
@@ -168,18 +227,21 @@ async function createMcpTransportAndClient(config: McpServerConfig) {
   const url = validation.url
   const headers = buildAuthHeaders(config)
   const timeoutMs = config.timeoutMs ?? 30_000
+  const authProvider = await createRuntimeAuthProvider(config)
 
   let transport: { start(): Promise<void>; close(): Promise<void>; send(message: unknown): Promise<void> } | undefined
 
   if (config.transport === 'sse') {
     transport = new SSEClientTransport(url, {
+      authProvider,
       requestInit: { headers },
       eventSourceInit: { headers } as EventSourceInit,
-    } as import('@modelcontextprotocol/sdk/client/sse.js').SSEClientTransportOptions)
+    } as unknown as import('@modelcontextprotocol/sdk/client/sse.js').SSEClientTransportOptions)
   } else {
     transport = new StreamableHTTPClientTransport(url, {
+      authProvider,
       requestInit: { headers },
-    } as import('@modelcontextprotocol/sdk/client/streamableHttp.js').StreamableHTTPClientTransportOptions)
+    } as unknown as import('@modelcontextprotocol/sdk/client/streamableHttp.js').StreamableHTTPClientTransportOptions)
   }
 
   const client = new Client(
@@ -253,6 +315,22 @@ export async function discoverToolsCatalogForServer(
   }
 }
 
+/**
+ * Convex rejects any field name starting with `$`, so a tool whose JSON Schema declares
+ * `$schema`/`$ref`/`$defs` would fail the whole catalog write and leave the server with no
+ * cached tools. Those keys are metadata that jsonSchemaToZod ignores, so drop them.
+ */
+export function stripReservedSchemaKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((entry) => stripReservedSchemaKeys(entry))
+  if (!value || typeof value !== 'object') return value
+  const result: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (key.startsWith('$')) continue
+    result[key] = stripReservedSchemaKeys(entry)
+  }
+  return result
+}
+
 export async function persistMcpServerToolCatalog(args: {
   mcpServerId: string
   userId: string
@@ -264,7 +342,12 @@ export async function persistMcpServerToolCatalog(args: {
   await getMcpRepository().updateToolCatalog({
     mcpServerId: args.mcpServerId,
     userId: args.userId,
-    tools: args.tools,
+    tools: args.tools.map((entry) => ({
+      ...entry,
+      ...(entry.inputSchema === undefined
+        ? {}
+        : { inputSchema: stripReservedSchemaKeys(entry.inputSchema) }),
+    })),
     catalogError: args.catalogError,
   })
 }
@@ -334,7 +417,7 @@ export async function createMcpLazyMetaTools(args: {
   modelId?: string
   projectId?: string
   enabledServerIds?: readonly string[]
-}): Promise<ToolSet> {
+}): Promise<{ tools: ToolSet; toolApproval?: McpToolApprovalFn; toolsContext?: Record<string, unknown> }> {
   const configs = await listRuntimeMcpServers({
     userId: args.userId,
     projectId: args.projectId,
@@ -342,7 +425,7 @@ export async function createMcpLazyMetaTools(args: {
   })
 
   if (!configs || configs.length === 0) {
-    return {}
+    return { tools: {} }
   }
 
   const configById = new Map(configs.map((config) => [config._id, config]))
@@ -376,8 +459,13 @@ export async function createMcpLazyMetaTools(args: {
       if (catalogEntries.length === 0) {
         return JSON.stringify({
           results: [],
+          servers: scoped.map((config) => ({
+            serverId: config._id,
+            serverName: config.name,
+            catalogError: config.toolCatalogError,
+          })),
           message:
-            'No cached MCP tool catalog for the selected server(s). Ask the user to test the connection in MCP settings to refresh the catalog.',
+            'No cached MCP tool catalog for the selected server(s). You can still call call_mcp_tool with one of the serverId values above if you know the exact tool name; otherwise ask the user to test the connection in MCP settings to refresh the catalog.',
         })
       }
 
@@ -403,14 +491,24 @@ export async function createMcpLazyMetaTools(args: {
       toolName: z.string().describe('Exact MCP tool name from search_mcp_tools'),
       arguments: z.record(z.string(), z.unknown()).optional().describe('Tool arguments object'),
     }),
-    needsApproval: ({ serverId, toolName }) => {
-      const config = configById.get(serverId)
-      return config ? resolveMcpToolPolicy(config, toolName) === 'approval_required' : false
-    },
-    execute: async ({ serverId, toolName, arguments: toolArgs }) => {
+    // v7: typed tool context — runtime metadata validated per-tool.
+    // Replaces ad-hoc closure capture of request-scoped values.
+    contextSchema: z.object({
+      userId: z.string(),
+      conversationId: z.string().optional(),
+      turnId: z.string().optional(),
+      modelId: z.string().optional(),
+    }),
+    execute: async ({ serverId, toolName, arguments: toolArgs }, options) => {
+      // v7: context is passed via toolsContext at the agent level and made
+      // available in options.context. Cast to our expected shape.
+      const context = (options?.context ?? undefined) as { userId?: string; conversationId?: string; turnId?: string; modelId?: string } | undefined
       const config = configById.get(serverId)
       if (!config) {
-        throw new Error('MCP server not found or not enabled')
+        const available = configs.map((entry) => `${entry.name}=${entry._id}`).join(', ')
+        throw new Error(
+          `No enabled MCP server with id "${serverId}". serverId must be the id from search_mcp_tools, not a name or URL. Enabled servers: ${available || 'none'}`,
+        )
       }
       const catalog = config.toolCatalog ?? []
       const catalogHit = catalog.some((entry) => entry.name === toolName)
@@ -446,12 +544,12 @@ export async function createMcpLazyMetaTools(args: {
           errorMessage: result.isError ? 'Tool returned error flag' : undefined,
         })
         void fireAndForgetRecordToolInvocation({
-          userId: args.userId,
+          userId: context?.userId ?? args.userId,
           toolName: toolId,
           mode: 'act',
-          modelId: args.modelId,
-          conversationId: args.conversationId,
-          turnId: args.turnId,
+          modelId: context?.modelId ?? args.modelId,
+          conversationId: context?.conversationId ?? args.conversationId,
+          turnId: context?.turnId ?? args.turnId,
           success: !result.isError,
           durationMs: Date.now() - start,
           error: result.isError ? 'Tool returned error flag' : undefined,
@@ -469,12 +567,12 @@ export async function createMcpLazyMetaTools(args: {
           errorMessage: err instanceof Error ? err.message : String(err),
         }).catch((_error) => undefined)
         void fireAndForgetRecordToolInvocation({
-          userId: args.userId,
+          userId: context?.userId ?? args.userId,
           toolName: toolId,
           mode: 'act',
-          modelId: args.modelId,
-          conversationId: args.conversationId,
-          turnId: args.turnId,
+          modelId: context?.modelId ?? args.modelId,
+          conversationId: context?.conversationId ?? args.conversationId,
+          turnId: context?.turnId ?? args.turnId,
           success: false,
           durationMs: Date.now() - start,
           error: err instanceof Error ? err.message : String(err),
@@ -484,10 +582,63 @@ export async function createMcpLazyMetaTools(args: {
     },
   })
 
-  return {
-    search_mcp_tools: searchMcpTools,
-    call_mcp_tool: callMcpToolMeta,
+  // v7 toolApproval: moved from per-tool `needsApproval` to the agent-level
+  // `toolApproval` configuration. The approval decision for `call_mcp_tool`
+  // depends on the tool's input (serverId/toolName), so we use a function that
+  // resolves the MCP server's policy at call time.
+  const toolApproval: McpToolApprovalFn = ({ toolCall }) => {
+    if (toolCall.toolName !== 'call_mcp_tool') return undefined
+    const { serverId, toolName } = toolCall.input as { serverId?: string; toolName?: string }
+    if (!serverId || !toolName) return undefined
+    const config = configById.get(serverId)
+    return config && resolveMcpToolPolicy(config, toolName) === 'approval_required'
+      ? 'user-approval'
+      : undefined
   }
+
+  // v7: toolsContext provides request-scoped runtime metadata to tools
+  // that declare a `contextSchema`. This replaces closure capture for
+  // values that vary per request (userId, conversationId, turnId, modelId).
+  const toolsContext = {
+    userId: args.userId,
+    ...(args.conversationId ? { conversationId: args.conversationId } : {}),
+    ...(args.turnId ? { turnId: args.turnId } : {}),
+    ...(args.modelId ? { modelId: args.modelId } : {}),
+  }
+
+  return {
+    tools: {
+      search_mcp_tools: searchMcpTools,
+      call_mcp_tool: callMcpToolMeta,
+    },
+    toolApproval,
+    toolsContext,
+  }
+}
+
+/**
+ * Turns an authorization failure into something the agent can relay and the user can act on.
+ * Without this the model sees a bare transport error and — as happened before OAuth existed —
+ * invents explanations like "the server is not enabled" for a server that is plainly connected.
+ */
+async function describeMcpAuthFailure(config: McpServerConfig, error: unknown): Promise<unknown> {
+  if (config.authType !== 'oauth') return error
+  const { McpOAuthInteractionRequiredError } = await import('@/server/extensions/McpOAuthProvider')
+  if (error instanceof McpOAuthInteractionRequiredError) return error
+
+  const message = error instanceof Error ? error.message : String(error)
+  if (!/\b401\b|unauthor|invalid_token|invalid_grant/i.test(message)) return error
+
+  await getMcpRepository().updateOAuthState({
+    error: 'The stored OAuth session was rejected by the server',
+    mcpServerId: config._id,
+    status: 'needs_reauth',
+    userId: config.userId,
+  }).catch((_error) => undefined)
+
+  return new Error(
+    `${config.name} rejected the stored OAuth session. Ask the user to reconnect ${config.name} in MCP settings, then retry.`,
+  )
 }
 
 async function callMcpTool(
@@ -507,7 +658,7 @@ async function callMcpTool(
     return result as { isError?: boolean; content: unknown }
   } catch (err) {
     logger.error(`[MCP] Tool ${toolName} on server ${config.name} failed: ${err instanceof Error ? err.message : String(err)}`)
-    throw err
+    throw await describeMcpAuthFailure(config, err)
   } finally {
     try {
       await client.close()
@@ -600,7 +751,11 @@ async function discoverToolsForServer(config: McpServerConfig): Promise<ToolSet>
       toolSet[toolId] = tool({
         description: descriptionParts.join(' '),
         inputSchema: zodSchema as z.ZodTypeAny,
-        needsApproval: policyDecision === 'approval_required',
+        // v7: per-tool `needsApproval` removed — approval is now configured at
+        // the agent level via `toolApproval`. This eager tool-set path is only
+        // used by `prewarmMcpTools` (cache warmer); the act route uses the lazy
+        // meta-tools path (`createMcpLazyMetaTools`) which returns a
+        // `toolApproval` function.
         execute: async (input) => {
           const start = Date.now()
           try {

@@ -502,6 +502,18 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   { path: '/api/v1/mcps/test', methods: { POST: capability('mcp.use') } },
+  // The callback is authorized by its single-use, user-bound OAuth state (or the
+  // sealed desktop confirmation cookie), because an identity provider redirect
+  // cannot reliably carry an Overlay session. Starting and disconnecting still
+  // require the ordinary MCP capability.
+  {
+    path: '/api/v1/mcps/oauth/callback',
+    methods: { GET: publicPolicy(), POST: publicPolicy() },
+  },
+  {
+    path: '/api/v1/mcps/oauth',
+    methods: { POST: capability('mcp.use'), DELETE: capability('mcp.use') },
+  },
   {
     path: '/api/v1/memory',
     methods: {
@@ -593,6 +605,34 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/automations/test', methods: {
     POST: resource('automation', 'execute', {}, 'automations.use'),
   } },
+  { path: '/api/v1/automations/execute', methods: {
+    POST: capability('automations.use'),
+    PATCH: capability('automations.use'),
+  } },
+  {
+    path: '/api/v1/automations/:id/run',
+    methods: { POST: capability('automations.use') },
+  },
+  {
+    path: '/api/v1/automations/:id/approve',
+    methods: { POST: capability('automations.use') },
+  },
+  {
+    path: '/api/v1/automations/:id/start-scheduler',
+    methods: { POST: capability('automations.use') },
+  },
+  {
+    path: '/api/v1/automations/:id/cancel-scheduler',
+    methods: { POST: capability('automations.use') },
+  },
+  {
+    path: '/api/v1/automations/:runId/stream',
+    methods: { GET: capability('automations.use') },
+  },
+  {
+    path: '/api/v1/automations/:runId/events',
+    methods: { GET: capability('automations.use') },
+  },
   {
     path: '/api/v1/api-keys',
     methods: {

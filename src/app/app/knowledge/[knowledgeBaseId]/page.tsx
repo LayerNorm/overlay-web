@@ -1,11 +1,14 @@
 import { Suspense } from 'react'
 import dynamic from 'next/dynamic'
 import { notFound, redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 import { getOverlaySession } from '@/server/auth/session'
 import { getOverlayCapabilities } from '@/server/capabilities'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { KnowledgeBaseServiceError, KNOWLEDGE_BASE_RESOURCE_TYPE } from '@/server/knowledge-bases'
+import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
 import { KnowledgeRouteSkeleton } from '../../_components/AppRouteSkeletons'
+import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 
 // TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
 // See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
@@ -30,7 +33,10 @@ async function KnowledgeBaseWorkspaceContent({
   try {
     data = await loadKnowledgeBaseWorkspace({ knowledgeBaseId, userId })
   } catch (error) {
-    if (error instanceof KnowledgeBaseServiceError && error.statusCode === 404) notFound()
+    if (
+      (error instanceof KnowledgeBaseServiceError && error.statusCode === 404)
+      || (error instanceof WorkspaceServiceError && error.statusCode === 404)
+    ) notFound()
     throw error
   }
   return <KnowledgeBaseWorkspace {...data} initialSelectedSourceId={selectedSourceId} />
@@ -44,6 +50,14 @@ async function loadKnowledgeBaseWorkspace({
   userId: string
 }) {
   const server = getOverlayServerContext()
+  const requestedWorkspaceId = (await headers()).get(ACTIVE_WORKSPACE_HEADER)?.trim() || undefined
+  const workspace = await server.workspaceService.resolveActiveWorkspace(userId, requestedWorkspaceId)
+  await server.workspaceService.assertResourceWorkspace({
+    actorUserId: userId,
+    workspaceId: workspace.workspace.id,
+    resourceType: KNOWLEDGE_BASE_RESOURCE_TYPE,
+    resourceId: knowledgeBaseId,
+  })
   const knowledgeBase = await server.knowledgeBaseService.getKnowledgeBase({ knowledgeBaseId, userId })
   const [sourceDetails, editDecision, shareDecision] = await Promise.all([
       server.knowledgeBaseService.listSources({ knowledgeBaseId, userId }),

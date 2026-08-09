@@ -1,7 +1,8 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import type {
+  AutomationGraph,
   AutomationSaveState,
   AutomationSchedule,
   AutomationTestState,
@@ -9,8 +10,12 @@ import type {
 } from '@overlay/app-core'
 import { MIN_AUTOMATION_INTERVAL_MINUTES, WEEKDAY_LABELS } from '@overlay/app-core/automations'
 import { SettingsCard, SettingsToggle } from '@overlay/modules-react/settings'
-import { AutomationGraphCanvas } from './graph-canvas'
+import { AutomationGraphPreview } from './graph-canvas'
 import { Select } from '@overlay/ui/primitives'
+
+const AutomationGraphCanvas = lazy(() =>
+  import('./reactflow-canvas').then((mod) => ({ default: mod.AutomationGraphCanvas })),
+)
 
 export interface AutomationModelOption {
   id: string
@@ -29,12 +34,14 @@ export interface AutomationEditorFormProps {
   dayOfWeek: number
   dayOfMonth: number
   graphSource: string
+  graph?: AutomationGraph
   modelId: string
   timeZoneOptions: readonly AutomationTimeZoneOption[]
   modelOptions: readonly AutomationModelOption[]
   saveState: AutomationSaveState
   testState: AutomationTestState
   testMessage?: string | null
+  onGraphChange?: (graph: AutomationGraph) => void
   onNameChange: (value: string) => void
   onDescriptionChange: (value: string) => void
   onInstructionsChange: (value: string) => void
@@ -64,12 +71,14 @@ export function AutomationEditorForm({
   dayOfWeek,
   dayOfMonth,
   graphSource,
+  graph,
   modelId,
   timeZoneOptions,
   modelOptions,
   saveState,
   testState,
   testMessage,
+  onGraphChange,
   onNameChange,
   onDescriptionChange,
   onInstructionsChange,
@@ -244,7 +253,17 @@ export function AutomationEditorForm({
         </SettingsCard>
 
         <SettingsCard title="Flow">
-          <AutomationGraphCanvas source={graphSource} />
+          {graph && graph.nodes.length > 0 ? (
+            <Suspense
+              fallback={
+                <div className="h-80 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]" />
+              }
+            >
+              <AutomationGraphCanvas graph={graph} onGraphChange={onGraphChange} />
+            </Suspense>
+          ) : (
+            <AutomationGraphPreview source={graphSource} />
+          )}
         </SettingsCard>
 
         <SettingsCard title="Test">

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { redactSecrets } from '@/shared/security/sentry-sanitize'
+import { getObservabilityContext } from './context'
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
@@ -17,18 +18,33 @@ const SENSITIVE_KEY_PARTS = [
   'access',
   'api',
   'authorization',
+  'body',
   'cookie',
+  'content',
+  'document',
   'email',
+  'error',
+  'input',
+  'instruction',
+  'ip',
   'jwt',
   'key',
+  'name',
+  'output',
   'password',
+  'prompt',
+  'query',
+  'reason',
   'secret',
   'session',
   'sub',
   'token',
+  'useragent',
   'userid',
   'user_id',
 ]
+
+const SENSITIVE_KEY_EXACT = new Set(['text'])
 
 function configuredLogLevel(): LogLevel {
   const raw = process.env.LOG_LEVEL?.trim().toLowerCase()
@@ -46,7 +62,7 @@ function isRecord(value: unknown): value is LogContext {
 
 function shouldRedactKey(key: string): boolean {
   const normalized = key.toLowerCase().replaceAll('-', '_')
-  return SENSITIVE_KEY_PARTS.some((part) => normalized.includes(part))
+  return SENSITIVE_KEY_EXACT.has(normalized) || SENSITIVE_KEY_PARTS.some((part) => normalized.includes(part))
 }
 
 function redactLogString(value: string): string {
@@ -60,10 +76,12 @@ function sanitizeForLog(value: unknown, seen = new WeakMap<object, unknown>()): 
   if (typeof value === 'number' || typeof value === 'boolean' || value == null) return value
   if (typeof value === 'bigint') return value.toString()
   if (value instanceof Error) {
+    const code = 'code' in value && typeof value.code === 'string'
+      ? value.code.slice(0, 128)
+      : undefined
     return {
-      name: value.name,
-      message: redactLogString(value.message),
-      stack: value.stack ? redactLogString(value.stack) : undefined,
+      ...(code ? { code: redactLogString(code) } : {}),
+      name: redactLogString(value.name),
     }
   }
   if (Array.isArray(value)) return value.map((item) => sanitizeForLog(item, seen))
@@ -81,17 +99,25 @@ function serializePayload(payload: LogContext): string {
   return JSON.stringify(sanitizeForLog(payload))
 }
 
+function sanitizeLogArgument(value: unknown): unknown {
+  // Positional strings have no field name to classify, so they could be user
+  // content. Error instances still retain a safe type and optional code.
+  if (typeof value === 'string' || Array.isArray(value)) return '[REDACTED]'
+  return sanitizeForLog(value)
+}
+
 function write(level: LogLevel, message: string, ...args: unknown[]): void {
   if (!shouldLog(level)) return
   const payload: LogContext = {
     level,
     message: redactLogString(message),
+    observability: getObservabilityContext(),
     timestamp: new Date().toISOString(),
   }
   if (args.length === 1 && isRecord(args[0])) {
     payload.context = sanitizeForLog(args[0])
   } else if (args.length > 0) {
-    payload.context = sanitizeForLog(args)
+    payload.context = args.map(sanitizeLogArgument)
   }
 
   if (level === 'error') {

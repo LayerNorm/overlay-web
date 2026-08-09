@@ -15,11 +15,14 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
     "plugins": [
       {
         "name": "next"
+      },
+      {
+        "name": "workflow"
       }
     ],
     "paths": {
@@ -34,6 +37,9 @@
       ],
       "@/features/*": [
         "./src/features/*"
+      ],
+      "@/workflows/*": [
+        "./workflows/*"
       ],
       "@overlay/api-client": [
         "./packages/overlay-api-client/src/index.ts"

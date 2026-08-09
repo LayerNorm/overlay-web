@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthorizedResourceUserId, getGrantedResources, type AppApiRouteContext } from '@/server/app-api/bff-context'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { isKnownOutputType } from '@/shared/tools/output-types'
 import { outputService } from '@/server/outputs/http'
 
@@ -15,17 +15,11 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const type = rawType && isKnownOutputType(rawType) ? rawType : null
     const outputs = await outputService.list({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       conversationId: request.nextUrl.searchParams.get('conversationId'),
       type,
     })
-    const granted = await Promise.all(getGrantedResources(context).map(({ ownerUserId, resourceId }) => (
-      outputService.get({ outputId: resourceId, userId: ownerUserId })
-    )))
-    return NextResponse.json([...outputs, ...granted.filter((output) => (
-      output && (!type || output.type === type) &&
-      (!request.nextUrl.searchParams.get('conversationId') ||
-        output.conversationId === request.nextUrl.searchParams.get('conversationId'))
-    ))])
+    return NextResponse.json(outputs)
   } catch (error) {
     logger.error('[Outputs API] list failed:', error)
     return NextResponse.json({ error: 'Failed to fetch outputs' }, { status: 500 })
@@ -45,7 +39,8 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const result = await outputService.share({
       origin: originForShareUrl(request),
       outputId: body.outputId,
-      userId: getAuthorizedResourceUserId(context),
+      userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
       visibility: body.visibility,
     })
     return NextResponse.json(result)
@@ -60,7 +55,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
   try {
     const outputId = request.nextUrl.searchParams.get('outputId')
     if (!outputId) return NextResponse.json({ error: 'outputId required' }, { status: 400 })
-    await outputService.delete({ outputId, userId: getAuthorizedResourceUserId(context) })
+    await outputService.delete({ outputId, userId: context.auth.userId, workspaceId: context.workspace.workspace.id })
     return NextResponse.json({ success: true })
   } catch (error) {
     logger.error('[Outputs API] delete failed:', error)

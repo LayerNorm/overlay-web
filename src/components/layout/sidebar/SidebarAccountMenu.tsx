@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { LogOut, Sparkles, User } from 'lucide-react'
+import { LogOut, Settings, Sparkles } from 'lucide-react'
 import { CollapsibleSection } from '@overlay/ui/primitives'
 import { PROFILE_APP_LINKS } from './sidebarNavigation'
 import { StorageBar, UsageBar, type SidebarEntitlements } from './SidebarUsageMeters'
@@ -68,12 +68,12 @@ export function SidebarAccountMenu({
       ) : null}
       <div className="border-t border-[var(--border)]">
         <Link
-          href="/account"
+          href="/app/settings"
           onClick={onAccountClick}
           className={`flex w-full items-center gap-2 px-3 ${itemPaddingClass} text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]`}
         >
-          <User size={13} />
-          Account
+          <Settings size={13} />
+          Settings
         </Link>
       </div>
       <div className="border-t border-[var(--border)]">

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createHash, randomUUID } from 'node:crypto'
-import { and, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm'
+import { and, desc, eq, gt, ilike, inArray, isNull, lt, or } from 'drizzle-orm'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
@@ -37,10 +37,179 @@ import type {
 } from '@overlay/workspace-contracts'
 import type { ConversationCollaborationRepository } from './ConversationCollaborationRepository'
 import { emitPostgresConversationEvent as emitConversationEvent } from './PostgresConversationEvents'
+import type {
+  ConversationEventRow,
+  ConversationListRow,
+  ConversationMessageRow,
+} from './ActConversationRepository'
 
 export class PostgresConversationCollaborationRepository
 implements ConversationCollaborationRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
+
+  async getAccessibleConversation(args: {
+    actorUserId: string
+    conversationId: string
+    workspaceId: string
+  }): Promise<ConversationListRow | null> {
+    if (!await this.canAccessConversation(args)) return null
+    const [row] = await this.db.select().from(conversations).where(and(
+      eq(conversations.id, args.conversationId),
+      eq(conversations.workspaceId, args.workspaceId),
+      isNull(conversations.deletedAt),
+    )).limit(1)
+    return row ? mapAccessibleConversation(row) : null
+  }
+
+  async listAccessibleConversations(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<ConversationListRow[]> {
+    const ids = await this.listAccessibleConversationIds(args)
+    if (ids.length === 0) return []
+    const rows = await this.db.select().from(conversations).where(and(
+      inArray(conversations.id, ids),
+      eq(conversations.workspaceId, args.workspaceId),
+      isNull(conversations.deletedAt),
+      isNull(conversations.projectId),
+    )).orderBy(desc(conversations.lastModified))
+    return rows.filter((row) => !row.isAutomation).map(mapAccessibleConversation)
+  }
+
+  async listMessages(args: {
+    actorUserId: string
+    beforeCreatedAt?: number
+    conversationId: string
+    limit: number
+    mainOnly?: boolean
+    messageId?: string
+    threadRootMessageId?: string
+    workspaceId: string
+  }): Promise<ConversationMessageRow[]> {
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    const before = args.beforeCreatedAt && Number.isFinite(args.beforeCreatedAt)
+      ? new Date(args.beforeCreatedAt)
+      : undefined
+    const rows = await this.db.select().from(conversationMessages).where(and(
+      eq(conversationMessages.conversationId, args.conversationId),
+      before ? lt(conversationMessages.createdAt, before) : undefined,
+      args.messageId ? eq(conversationMessages.id, args.messageId) : undefined,
+      args.threadRootMessageId
+        ? eq(conversationMessages.threadRootMessageId, args.threadRootMessageId)
+        : undefined,
+      args.mainOnly === true ? isNull(conversationMessages.threadRootMessageId) : undefined,
+    )).orderBy(desc(conversationMessages.createdAt))
+      .limit(Math.max(1, Math.min(100, Math.floor(args.limit))))
+    return rows.reverse().map(mapCollaborationMessage)
+  }
+
+  async addMessage(args: {
+    actorUserId: string
+    clientNonce?: string
+    content: string
+    conversationId: string
+    parts?: Array<Record<string, unknown>>
+    replySnippet?: string
+    replyToTurnId?: string
+    threadRootMessageId?: string
+    turnId: string
+    workspaceId: string
+  }): Promise<string> {
+    const actor = await this.requireActor(args)
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    const [conversation] = await this.db.select({ conversationType: conversations.conversationType })
+      .from(conversations)
+      .where(and(
+        eq(conversations.id, args.conversationId),
+        eq(conversations.workspaceId, args.workspaceId),
+        isNull(conversations.deletedAt),
+      )).limit(1)
+    if (!conversation || conversation.conversationType === 'personal') {
+      throw new Error('COLLABORATION_CONVERSATION_REQUIRED')
+    }
+    if (args.threadRootMessageId) {
+      await this.requireConversationMessage({
+        conversationId: args.conversationId,
+        messageId: args.threadRootMessageId,
+      })
+    }
+    if (args.clientNonce) {
+      const [existing] = await this.db.select({ id: conversationMessages.id })
+        .from(conversationMessages)
+        .where(and(
+          eq(conversationMessages.conversationId, args.conversationId),
+          eq(conversationMessages.clientNonce, args.clientNonce),
+        )).limit(1)
+      if (existing) return existing.id
+    }
+    const id = `message_${randomUUID()}`
+    const now = new Date()
+    await this.db.transaction(async (tx) => {
+      await tx.insert(conversationMessages).values({
+        id,
+        conversationId: args.conversationId,
+        userId: args.actorUserId,
+        turnId: args.turnId,
+        role: 'user',
+        mode: 'act',
+        content: args.content,
+        contentType: 'text',
+        parts: args.parts,
+        replyToTurnId: args.replyToTurnId,
+        replySnippet: args.replySnippet,
+        status: 'completed',
+        authorKind: 'human',
+        authorPrincipalId: actor.id,
+        clientNonce: args.clientNonce,
+        threadRootMessageId: args.threadRootMessageId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await tx.update(conversations).set({ lastModified: now, updatedAt: now })
+        .where(eq(conversations.id, args.conversationId))
+      await emitConversationEvent(tx, {
+        conversationId: args.conversationId,
+        messageId: id,
+        type: 'message.created',
+        userId: args.actorUserId,
+      })
+    })
+    return id
+  }
+
+  async getConversationEventCursor(args: { actorUserId: string; workspaceId: string }): Promise<number> {
+    const ids = await this.listAccessibleConversationIds(args)
+    if (ids.length === 0) return 0
+    const [row] = await this.db.select({ sequence: conversationEvents.sequence })
+      .from(conversationEvents)
+      .where(inArray(conversationEvents.conversationId, ids))
+      .orderBy(desc(conversationEvents.sequence))
+      .limit(1)
+    return row?.sequence ?? 0
+  }
+
+  async listConversationEvents(args: {
+    actorUserId: string
+    afterSequence: number
+    limit: number
+    workspaceId: string
+  }): Promise<ConversationEventRow[]> {
+    const ids = await this.listAccessibleConversationIds(args)
+    if (ids.length === 0) return []
+    const rows = await this.db.select().from(conversationEvents).where(and(
+      inArray(conversationEvents.conversationId, ids),
+      gt(conversationEvents.sequence, args.afterSequence),
+    )).orderBy(conversationEvents.sequence)
+      .limit(Math.max(1, Math.min(200, Math.floor(args.limit))))
+    return rows.map((row) => ({
+      sequence: row.sequence,
+      conversationId: row.conversationId,
+      type: row.type as ConversationEventRow['type'],
+      messageId: row.messageId ?? undefined,
+      payload: row.payload ?? undefined,
+      createdAt: row.createdAt.getTime(),
+    }))
+  }
 
   async createChannel(args: {
     actorUserId: string
@@ -1192,6 +1361,57 @@ function mapParticipant(
   }
 }
 
+function mapAccessibleConversation(
+  row: typeof conversations.$inferSelect,
+): ConversationListRow {
+  return {
+    _id: row.id,
+    userId: row.userId,
+    clientId: row.clientId ?? undefined,
+    title: row.title,
+    lastModified: row.lastModified.getTime(),
+    createdAt: row.createdAt.getTime(),
+    updatedAt: (row.updatedAt ?? row.lastModified).getTime(),
+    deletedAt: row.deletedAt?.getTime(),
+    lastMode: row.lastMode,
+    askModelIds: row.askModelIds,
+    actModelId: row.actModelId,
+    projectId: row.projectId ?? undefined,
+    shareVisibility: row.shareVisibility ?? undefined,
+    shareToken: row.shareToken,
+    isAutomation: row.isAutomation ?? undefined,
+    conversationType: row.conversationType,
+    workspaceId: row.workspaceId ?? undefined,
+  }
+}
+
+function mapCollaborationMessage(
+  row: typeof conversationMessages.$inferSelect,
+): ConversationMessageRow {
+  return {
+    _id: row.id,
+    turnId: row.turnId,
+    role: row.role,
+    mode: row.mode,
+    content: row.content,
+    contentType: row.contentType,
+    parts: row.parts as Array<Record<string, unknown>> | undefined,
+    modelId: row.modelId ?? undefined,
+    variantIndex: row.variantIndex ?? undefined,
+    createdAt: row.createdAt.getTime(),
+    replyToTurnId: row.replyToTurnId ?? undefined,
+    replySnippet: row.replySnippet ?? undefined,
+    routedModelId: row.routedModelId ?? undefined,
+    status: row.status ?? undefined,
+    clientNonce: row.clientNonce ?? undefined,
+    deletedAt: row.deletedAt?.getTime(),
+    editedAt: row.editedAt?.getTime(),
+    authorKind: row.authorKind as ConversationMessageRow['authorKind'],
+    authorPrincipalId: row.authorPrincipalId ?? undefined,
+    threadRootMessageId: row.threadRootMessageId ?? undefined,
+  }
+}
+
 function mapPresence(
   row: typeof workspacePresence.$inferSelect,
   now: Date,
@@ -1201,7 +1421,7 @@ function mapPresence(
   return {
     workspaceId: row.workspaceId,
     principalId: row.principalId,
-    sessionId: row.sessionId,
+    sessionId: row.sessionId ?? undefined,
     conversationId: row.conversationId ?? undefined,
     status: stale ? 'offline' : row.status,
     typing: !stale && (overrides.typing ?? Boolean(row.typingExpiresAt && row.typingExpiresAt > now)),
@@ -1248,11 +1468,11 @@ function mapChannel(
   if (!row.channelSlug || !row.channelVisibility) throw new Error('Invalid channel record')
   return {
     conversationId: row.id,
-    workspaceId: row.workspaceId,
+    workspaceId: row.workspaceId ?? '',
     name: row.title,
     slug: row.channelSlug,
     topic: row.channelTopic ?? undefined,
-    visibility: row.channelVisibility,
+    visibility: (row.channelVisibility as 'public' | 'private') ?? 'private',
     participantCount,
     createdAt: row.createdAt.getTime(),
     updatedAt: (row.updatedAt ?? row.lastModified).getTime(),

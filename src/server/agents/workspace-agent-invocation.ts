@@ -36,23 +36,23 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
   const conversationId = args.conversationId as Id<'conversations'>
   const [conversation, participants, history, directory] = await Promise.all([
     server.appData.repositories.conversations.getConversationById({
-      conversationId, userId: args.actorUserId, workspaceId: args.workspaceId,
+      conversationId, userId: args.actorUserId,
     }),
     server.appData.repositories.conversationCollaboration.listParticipants({
       actorUserId: args.actorUserId, conversationId: args.conversationId, workspaceId: args.workspaceId,
     }),
     server.appData.repositories.conversations.getConversationMessages({
-      conversationId, userId: args.actorUserId, workspaceId: args.workspaceId,
+      conversationId, userId: args.actorUserId,
     }),
     server.workspaceAgentService.list({ actorUserId: args.actorUserId, workspaceId: args.workspaceId }),
   ])
-  if (!conversation || conversation.conversationType === 'personal') return
+  if (!conversation || (conversation.conversationType ?? 'personal') === 'personal') return
   const threadRoot = args.threadRootMessageId
     ? history.find((message) => message._id === args.threadRootMessageId)
     : undefined
   const principalIds = resolveMentionFirstInvocations({
     authorKind: 'human',
-    conversationType: conversation.conversationType,
+    conversationType: conversation.conversationType ?? 'personal',
     participants: participants.map((participant) => ({
       principalId: participant.principalId,
       principalType: participant.principalType,

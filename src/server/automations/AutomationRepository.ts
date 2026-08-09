@@ -34,8 +34,10 @@ export type CreateAutomationInput = {
   projectId?: string
   modelId?: string
   graphSource?: string
+  graph?: AutomationSummary['graph']
   sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
+  workspaceId?: string
 }
 
 export type UpdateAutomationInput = Partial<Omit<CreateAutomationInput, 'userId'>> & {
@@ -48,6 +50,7 @@ export interface AutomationRepository {
     includeDeleted?: boolean
     projectId?: string
     userId: string
+    workspaceId?: string
   }): Promise<AutomationRecord[]>
   listRuns(args: {
     automationId: string
@@ -56,6 +59,7 @@ export interface AutomationRepository {
   getAutomation(args: {
     automationId: string
     userId: string
+    workspaceId?: string
   }): Promise<AutomationForUpdateNote | null>
   getAutomationRunTarget(args: {
     automationId: string
@@ -63,6 +67,11 @@ export interface AutomationRepository {
   }): Promise<AutomationRunTarget | null>
   createAutomation(args: CreateAutomationInput): Promise<string>
   updateAutomation(args: UpdateAutomationInput): Promise<void>
+  attachSourceConversation(args: {
+    automationId: string
+    conversationId: string
+    userId: string
+  }): Promise<void>
   pauseAutomation(args: {
     automationId: string
     userId: string
@@ -74,6 +83,7 @@ export interface AutomationRepository {
   removeAutomation(args: {
     automationId: string
     userId: string
+    workspaceId?: string
   }): Promise<void>
   requestRunCancellation(args: {
     runId: string
@@ -81,8 +91,7 @@ export interface AutomationRepository {
   }): Promise<boolean>
   requestActiveRunCancellation?(args: {
     automationId: string
-    userId: string
-  }): Promise<number>
+  }): Promise<string[]>
   retryRun(args: {
     runId: string
     userId: string
@@ -110,7 +119,7 @@ export interface AutomationRepository {
     userId: string
   }): Promise<void>
   markManualRunCompleted(args: {
-    conversationId: string
+    conversationId?: string
     now: number
     runId: string
     userId: string
@@ -124,4 +133,12 @@ export interface AutomationRepository {
   getRunForExecution(args: {
     runId: string
   }): Promise<AutomationExecutionPayload | null>
+  updateRunWorkflowRunId?(args: {
+    runId: string
+    workflowRunId: string
+  }): Promise<void>
+  updateSchedulerWorkflowRunId?(args: {
+    automationId: string
+    schedulerWorkflowRunId: string | null
+  }): Promise<void>
 }

@@ -1,6 +1,11 @@
 {
   "runtimeLicenseExceptions": [
     {
+      "package": "@opencoredev/email-sdk",
+      "licenses": ["AGPL-3.0-only"],
+      "reason": "Transactional email adapter SDK. Its AGPL license is compatible with Overlay's AGPL product distribution; commercial distributions must continue to follow Overlay's existing licensing review."
+    },
+    {
       "package": "@img/sharp-libvips-*",
       "licenses": ["LGPL-3.0-or-later"],
       "reason": "Native libvips binaries used by sharp/Next image processing. Review LGPL obligations before bundling enterprise images."

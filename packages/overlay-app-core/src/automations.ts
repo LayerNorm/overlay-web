@@ -1,4 +1,12 @@
-import type { AutomationSchedule, AutomationSummary } from './contracts'
+import type {
+  AutomationGraph,
+  AutomationGraphEdge,
+  AutomationGraphNode,
+  AutomationGraphNodeKind,
+  AutomationSchedule,
+  AutomationSummary,
+} from './contracts'
+import { AUTOMATION_GRAPH_VERSION } from './contracts'
 
 export const AUTOMATIONS_UPDATED_EVENT = 'overlay:automations-updated'
 
@@ -32,6 +40,7 @@ export interface AutomationEditorDraft {
   dayOfWeek: number
   dayOfMonth: number
   graphSource: string
+  graph?: AutomationGraph
   modelId: string
 }
 
@@ -47,6 +56,7 @@ export interface CreateAutomationRequest {
   projectId?: string
   modelId?: string
   graphSource?: string
+  graph?: AutomationGraph
   sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
 }
@@ -72,6 +82,7 @@ export interface UpdateAutomationRequest {
   projectId?: string
   modelId?: string
   graphSource?: string
+  graph?: AutomationGraph
   concurrencyPolicy?: 'skip' | 'queue'
 }
 
@@ -90,6 +101,10 @@ export interface AutomationRunResponse {
   conversationId?: string
   error?: string
   message?: string
+  /** Present when the run was triggered via the durable workflow path. */
+  workflowRunId?: string
+  durable?: boolean
+  runId?: string
 }
 
 export interface AutomationTestRequest {
@@ -159,6 +174,31 @@ export function automationStatus(automation: Pick<AutomationSummary, 'enabled' |
     : { label: 'Paused', tone: 'paused' }
 }
 
+export function formatAutomationRunError(value: string | null | undefined): string | null {
+  const raw = value?.trim()
+  if (!raw) return null
+
+  let message = raw
+  if (raw.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(raw) as { error?: unknown; message?: unknown }
+      const candidate = typeof parsed.message === 'string'
+        ? parsed.message
+        : typeof parsed.error === 'string'
+          ? parsed.error
+          : null
+      if (candidate?.trim()) message = candidate.trim()
+    } catch {
+      // Preserve non-JSON provider text verbatim.
+    }
+  }
+
+  if (/^unauthorized$/i.test(message) || /returned 401/i.test(message)) {
+    return 'Automation authorization failed before execution. Retry the run; if it fails again, ask an administrator to check the automation service credentials.'
+  }
+  return message
+}
+
 export function applyAutomationRename<T extends Pick<AutomationSummary, '_id' | 'name'>>(
   automations: readonly T[],
   automationId: string,
@@ -194,34 +234,233 @@ export function extractAutomationInstructionSteps(instructions: string): string[
 }
 
 export function graphSourceFromAutomationInstructions(
-  automation: Pick<AutomationSummary, 'instructions' | 'instructionsMarkdown'>,
+  automation: Pick<AutomationSummary, 'instructions' | 'instructionsMarkdown' | 'schedule'>,
 ): string {
-  const steps = extractAutomationInstructionSteps(getAutomationInstructions(automation))
-  if (steps.length === 0) return ''
-  const nodes = steps.map((step, index) => {
-    const nodeId = `step${index + 1}`
-    const label = mermaidLabel(step).slice(0, 96)
-    return `  ${nodeId}["${index + 1}. ${label}"]`
-  })
-  const edges = steps.slice(1).map((_, index) => `  step${index + 1} --> step${index + 2}`)
-  return ['flowchart TD', ...nodes, ...edges].join('\n')
+  const graph = automationGraphFromInstructions(automation)
+  return graph ? graphSourceFromAutomationGraph(graph) : ''
 }
 
 export function defaultAutomationGraphSource(
   automation: Pick<AutomationSummary, 'name' | 'title' | 'instructions' | 'instructionsMarkdown' | 'schedule' | 'modelId'>,
   defaultModelId = 'default',
 ): string {
-  const instructionGraph = graphSourceFromAutomationInstructions(automation)
+  const graph = defaultAutomationGraph(automation, defaultModelId)
+  return graphSourceFromAutomationGraph(graph)
+}
+
+// ---------------------------------------------------------------------------
+// AutomationGraph conversion functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Build an `AutomationGraph` from instruction text.
+ * Produces a linear chain of `prompt` nodes + a trailing `output` node.
+ * Returns `null` if there are no instruction steps.
+ */
+export function automationGraphFromInstructions(
+  automation: Pick<AutomationSummary, 'instructions' | 'instructionsMarkdown' | 'schedule'>,
+): AutomationGraph | null {
+  const steps = extractAutomationInstructionSteps(getAutomationInstructions(automation))
+  if (steps.length === 0) return null
+
+  const nodes: AutomationGraphNode[] = [
+    {
+      id: 'trigger',
+      kind: 'trigger' as AutomationGraphNodeKind,
+      label: `${automation.schedule?.kind ?? 'schedule'} trigger`,
+      config: { schedule: automation.schedule },
+    },
+    ...steps.map((step, index) => ({
+      id: `step${index + 1}`,
+      kind: 'prompt' as AutomationGraphNodeKind,
+      label: `${index + 1}. ${mermaidLabel(step).slice(0, 96)}`,
+      config: { text: step },
+    })),
+  ]
+  nodes.push({
+    id: 'output',
+    kind: 'output',
+    label: 'Write result to automation chat',
+    config: { outputKind: 'chat' },
+  })
+
+  const edges: AutomationGraphEdge[] = [
+    { from: 'trigger', to: 'step1' },
+    ...steps.map((_, index) => ({
+      from: `step${index + 1}`,
+      to: index < steps.length - 1 ? `step${index + 2}` : 'output',
+    })),
+  ]
+
+  return { version: AUTOMATION_GRAPH_VERSION, nodes, edges }
+}
+
+/**
+ * Build a default `AutomationGraph` from automation metadata when instructions
+ * don't produce steps. Includes a trigger node, a prompt node, and an output node.
+ */
+export function defaultAutomationGraph(
+  automation: Pick<AutomationSummary, 'name' | 'title' | 'instructions' | 'instructionsMarkdown' | 'schedule' | 'modelId'>,
+  defaultModelId = 'default',
+): AutomationGraph {
+  const instructionGraph = automationGraphFromInstructions(automation)
   if (instructionGraph) return instructionGraph
+
   const name = mermaidLabel(getAutomationDisplayName(automation))
-  const schedule = automation.schedule?.kind ? automation.schedule.kind : 'schedule'
+  const scheduleKind = automation.schedule?.kind ?? 'schedule'
   const model = automation.modelId || defaultModelId
-  return [
-    'flowchart TD',
-    `  trigger["${schedule} trigger"] --> instructions["${name} instructions"]`,
-    `  instructions --> model["Run with ${model}"]`,
-    '  model --> output["Write result to automation chat"]',
-  ].join('\n')
+
+  return {
+    version: AUTOMATION_GRAPH_VERSION,
+    nodes: [
+      {
+        id: 'trigger',
+        kind: 'trigger',
+        label: `${scheduleKind} trigger`,
+        config: { schedule: automation.schedule },
+      },
+      {
+        id: 'instructions',
+        kind: 'prompt',
+        label: `${name} instructions`,
+        config: { modelId: model },
+      },
+      {
+        id: 'output',
+        kind: 'output',
+        label: 'Write result to automation chat',
+        config: { outputKind: 'chat' },
+      },
+    ],
+    edges: [
+      { from: 'trigger', to: 'instructions' },
+      { from: 'instructions', to: 'output' },
+    ],
+  }
+}
+
+/**
+ * Convert an `AutomationGraph` to the legacy Mermaid `graphSource` string.
+ * This is the derived projection used for backward compatibility.
+ */
+export function graphSourceFromAutomationGraph(graph: AutomationGraph): string {
+  if (graph.nodes.length === 0) return ''
+  const nodeLines = graph.nodes.map((node) => {
+    const label = mermaidLabel(node.label).slice(0, 96)
+    return `  ${node.id}["${label}"]`
+  })
+  const edgeLines = graph.edges.map((edge) => `  ${edge.from} --> ${edge.to}`)
+  return ['flowchart TD', ...nodeLines, ...edgeLines].join('\n')
+}
+
+/**
+ * Migrate a legacy `graphSource` Mermaid string to an `AutomationGraph`.
+ * Infers node kinds: nodes named "trigger" become `trigger`, "output" becomes
+ * `output`, everything else becomes `prompt`. This is a best-effort migration —
+ * the structured graph should be the source of truth going forward.
+ */
+export function automationGraphFromGraphSource(graphSource: string): AutomationGraph | null {
+  if (!graphSource.trim()) return null
+
+  const lines = graphSource.split('\n').map((line) => line.trim()).filter(Boolean)
+  const headerIndex = lines.findIndex((line) => /^(flowchart|graph)\s+(TD|TB|BT|LR|RL)\b/i.test(line))
+  if (headerIndex < 0) return null
+
+  const nodeMap = new Map<string, { id: string; label: string }>()
+  const edges: AutomationGraphEdge[] = []
+  const bodyLines = lines.slice(headerIndex + 1)
+
+  for (const line of bodyLines) {
+    // Edge with inline node labels: trigger["label"] --> instructions["label"]
+    const labeledEdgeMatch = line.match(
+      /^([A-Za-z][\w-]*)\s*\[\s*"([^"]*)"\s*\]\s*-->\s*([A-Za-z][\w-]*)\s*\[\s*"([^"]*)"\s*\]\s*$/,
+    )
+    if (labeledEdgeMatch) {
+      const [, from, fromLabel, to, toLabel] = labeledEdgeMatch
+      nodeMap.set(from, { id: from, label: fromLabel.replace(/\\"/g, '"').replace(/\\n/g, ' ').trim() })
+      nodeMap.set(to, { id: to, label: toLabel.replace(/\\"/g, '"').replace(/\\n/g, ' ').trim() })
+      edges.push({ from, to })
+      continue
+    }
+
+    // Edge with label on left only: trigger["label"] --> instructions
+    const leftLabeledEdgeMatch = line.match(
+      /^([A-Za-z][\w-]*)\s*\[\s*"([^"]*)"\s*\]\s*-->\s*([A-Za-z][\w-]*)\s*$/,
+    )
+    if (leftLabeledEdgeMatch) {
+      const [, from, fromLabel, to] = leftLabeledEdgeMatch
+      nodeMap.set(from, { id: from, label: fromLabel.replace(/\\"/g, '"').replace(/\\n/g, ' ').trim() })
+      if (!nodeMap.has(to)) nodeMap.set(to, { id: to, label: to })
+      edges.push({ from, to })
+      continue
+    }
+
+    // Edge with label on right only: trigger --> instructions["label"]
+    const rightLabeledEdgeMatch = line.match(
+      /^([A-Za-z][\w-]*)\s*-->\s*([A-Za-z][\w-]*)\s*\[\s*"([^"]*)"\s*\]\s*$/,
+    )
+    if (rightLabeledEdgeMatch) {
+      const [, from, to, toLabel] = rightLabeledEdgeMatch
+      if (!nodeMap.has(from)) nodeMap.set(from, { id: from, label: from })
+      nodeMap.set(to, { id: to, label: toLabel.replace(/\\"/g, '"').replace(/\\n/g, ' ').trim() })
+      edges.push({ from, to })
+      continue
+    }
+
+    // Simple edge: from --> to
+    const edgeMatch = line.match(/^([A-Za-z][\w-]*)\s*-->\s*([A-Za-z][\w-]*)\s*$/)
+    if (edgeMatch) {
+      const [, from, to] = edgeMatch
+      edges.push({ from, to })
+      if (!nodeMap.has(from)) nodeMap.set(from, { id: from, label: from })
+      if (!nodeMap.has(to)) nodeMap.set(to, { id: to, label: to })
+      continue
+    }
+
+    // Node definition with quoted label: id["label"]
+    const quotedMatch = line.match(/^([A-Za-z][\w-]*)\s*\[\s*"([^"]*)"\s*\]\s*$/)
+    if (quotedMatch) {
+      const [, id, label] = quotedMatch
+      nodeMap.set(id, { id, label: label.replace(/\\"/g, '"').replace(/\\n/g, ' ').trim() })
+      continue
+    }
+
+    // Node definition with optional unquoted label: id[label] or id
+    const plainMatch = line.match(/^([A-Za-z][\w-]*)\s*(?:\[\s*([^\]]+)\s*\])?\s*$/)
+    if (plainMatch) {
+      const [, id, label] = plainMatch
+      nodeMap.set(id, { id, label: (label ?? id).replace(/\\"/g, '"').replace(/\\n/g, ' ').trim() })
+    }
+  }
+
+  if (nodeMap.size === 0) return null
+
+  const nodes: AutomationGraphNode[] = [...nodeMap.values()].slice(0, 12).map(({ id, label }) => {
+    const lowerId = id.toLowerCase()
+    let kind: AutomationGraphNodeKind = 'prompt'
+    if (lowerId === 'trigger' || lowerId.startsWith('trigger')) kind = 'trigger'
+    else if (lowerId === 'output' || lowerId.startsWith('output')) kind = 'output'
+    return { id, kind, label, config: {} }
+  })
+
+  return { version: AUTOMATION_GRAPH_VERSION, nodes, edges }
+}
+
+/**
+ * Resolve the effective `AutomationGraph` for an automation.
+ * Uses the persisted `graph` if present, otherwise migrates from `graphSource`,
+ * otherwise builds from instructions, otherwise builds the default.
+ */
+export function resolveAutomationGraph(
+  automation: Pick<AutomationSummary, 'graph' | 'graphSource' | 'instructions' | 'instructionsMarkdown' | 'name' | 'title' | 'schedule' | 'modelId'>,
+  defaultModelId = 'default',
+): AutomationGraph {
+  if (automation.graph) return automation.graph
+  if (automation.graphSource) {
+    const migrated = automationGraphFromGraphSource(automation.graphSource)
+    if (migrated) return migrated
+  }
+  return defaultAutomationGraph(automation, defaultModelId)
 }
 
 function supportedTimeZones(): string[] {
@@ -427,6 +666,7 @@ export function automationEditorDraftFromDetail(
   const schedule = automation.schedule ?? { kind: 'daily' as const, hourUTC: 14, minuteUTC: 0 }
   const timezone = safeTimeZone(automation.timezone)
   const localFields = localFieldsFromSchedule(schedule, timezone)
+  const graph = resolveAutomationGraph(automation, defaultModelId)
   return {
     name: getAutomationDisplayName(automation),
     description: automation.description ?? '',
@@ -438,7 +678,8 @@ export function automationEditorDraftFromDetail(
     time: localFields.time,
     dayOfWeek: localFields.dayOfWeek,
     dayOfMonth: localFields.dayOfMonth,
-    graphSource: automation.graphSource || defaultAutomationGraphSource(automation, defaultModelId),
+    graphSource: graphSourceFromAutomationGraph(graph),
+    graph,
     modelId: automation.modelId ?? defaultModelId,
   }
 }
@@ -448,10 +689,15 @@ export function buildAutomationUpdateRequest(input: {
   draft: AutomationEditorDraft
 }): UpdateAutomationRequest {
   const instructionsChanged = input.draft.instructions.trim() !== getAutomationInstructions(input.automation).trim()
-  const graphSource = instructionsChanged
-    ? graphSourceFromAutomationInstructions({ ...input.automation, instructions: input.draft.instructions }) ||
-      defaultAutomationGraphSource({ ...input.automation, instructions: input.draft.instructions, modelId: input.draft.modelId })
-    : input.draft.graphSource
+  // When the user has manually edited the graph in the visual editor, the graph
+  // is the source of truth — don't regenerate from instructions even if they changed.
+  // Only regenerate from instructions when the graph hasn't been manually edited.
+  const graph = instructionsChanged && !input.draft.graph?.manuallyEdited
+    ? resolveAutomationGraph(
+        { ...input.automation, instructions: input.draft.instructions, modelId: input.draft.modelId },
+        input.draft.modelId,
+      )
+    : input.draft.graph ?? resolveAutomationGraph(input.automation, input.draft.modelId)
   return {
     automationId: input.automation._id,
     name: input.draft.name,
@@ -467,7 +713,7 @@ export function buildAutomationUpdateRequest(input: {
       timeZone: input.draft.timezone,
     }),
     timezone: input.draft.timezone,
-    graphSource,
+    graph,
     modelId: input.draft.modelId,
   }
 }
@@ -485,6 +731,7 @@ export function applyAutomationUpdate(
     schedule: request.schedule ?? automation.schedule,
     timezone: request.timezone ?? automation.timezone,
     graphSource: request.graphSource ?? automation.graphSource,
+    graph: request.graph ?? automation.graph,
     modelId: request.modelId ?? automation.modelId,
   }
 }

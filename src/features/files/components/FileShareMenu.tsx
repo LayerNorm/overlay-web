@@ -100,18 +100,6 @@ export function FileShareMenu({
             <div className="border-t border-[var(--border)] bg-[var(--surface-subtle)] py-1">
               <button
                 type="button"
-                onClick={() => {
-                  setShareDialogOpen(true)
-                  setShowMenu(false)
-                  setShowShareSubmenu(false)
-                }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-muted)] transition-colors"
-              >
-                <Share2 size={14} />
-                <span>People, teams, and rooms</span>
-              </button>
-              <button
-                type="button"
                 onClick={() => void updateShareVisibility('private')}
                 disabled={shareBusy}
                 className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-muted)] transition-colors disabled:opacity-50"
@@ -151,8 +139,8 @@ export function FileShareMenu({
         isOpen: shareDialogOpen,
         onClose: () => setShareDialogOpen(false),
         resource:
-          fileId
-            ? { id: fileId, type: 'file', title: title || 'Shared file', url: shareUrl ?? undefined }
+          shareUrl
+            ? { id: fileId, type: 'file', title: title || 'Shared file', url: shareUrl }
             : null,
       })}
     </div>

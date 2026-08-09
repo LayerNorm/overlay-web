@@ -108,7 +108,9 @@ if (!projects.includes('ProjectDetail')) violations.push('public projects must u
 if (projects.includes('ProjectsModuleShell')) violations.push('public projects must not render a second project sidebar')
 
 const automations = read('src/features/showcase/PublicShowcaseAutomationsView.tsx')
-if (!automations.includes('AutomationGraphCanvas')) violations.push('public automations must use the production automation graph')
+if (!automations.includes('AutomationGraphCanvas') && !automations.includes('AutomationGraphPreview')) {
+  violations.push('public automations must use the production automation graph')
+}
 
 const tools = read('src/features/showcase/PublicShowcaseToolsView.tsx')
 if (!tools.includes('IntegrationsPanel')) violations.push('public extensions must use the production integrations panel')

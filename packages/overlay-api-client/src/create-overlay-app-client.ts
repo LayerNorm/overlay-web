@@ -1,9 +1,10 @@
 import { AccountClient } from './auth/account-client'
-import { AdminAuthorizationClient } from './admin-authorization/client'
-import { AdminGovernanceClient } from './admin-governance/client'
 import { BillingClient } from './auth/billing-client'
 import { SubscriptionClient } from './auth/subscription-client'
 import { TopUpsClient } from './auth/topups-client'
+import { AdminAuthorizationClient } from './admin-authorization/client'
+import { AdminGovernanceClient } from './admin-governance/client'
+import { AgentsClient } from './agents/client'
 import { AutomationRunsClient } from './automation-runs/client'
 import { AutomationsClient } from './automations/client'
 import { BootstrapClient } from './bootstrap/client'
@@ -20,12 +21,10 @@ import { OnboardingClient } from './onboarding/client'
 import { OutputsClient } from './outputs/client'
 import { ProjectsClient } from './projects/client'
 import { SettingsClient } from './settings/client'
+import { SharingClient } from './sharing/client'
 import { SkillsClient } from './skills/client'
 import { WebhooksClient } from './webhooks/client'
 import { WorkspacesClient } from './workspaces/client'
-import { AgentsClient } from './agents/client'
-import { SearchClient } from './search/client'
-import { SharingClient } from './sharing/client'
 import { createHttpContext } from './shared/http'
 import type { CreateOverlayAppClientOptions } from './shared/types'
 
@@ -35,8 +34,6 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
   return {
     request: http.request,
     json: http.json,
-    adminAuthorization: new AdminAuthorizationClient(http),
-    adminGovernance: new AdminGovernanceClient(http),
     bootstrap: new BootstrapClient(http),
     discovery: new DiscoveryClient(http),
     conversations: new ConversationsClient(http),
@@ -46,7 +43,6 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     notes: new NotesClient(http),
     projects: new ProjectsClient(http),
     integrations: new IntegrationsClient(http),
-    knowledgeBases: new KnowledgeBasesClient(http),
     skills: new SkillsClient(http),
     mcpServers: new McpServersClient(http),
     automations: new AutomationsClient(http),
@@ -59,10 +55,12 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     chat: new ChatAuxClient(http),
     automationRuns: new AutomationRunsClient(http),
     webhooks: new WebhooksClient(http),
+    adminAuthorization: new AdminAuthorizationClient(http),
+    adminGovernance: new AdminGovernanceClient(http),
+    sharing: new SharingClient(http),
+    knowledgeBases: new KnowledgeBasesClient(http),
     workspaces: new WorkspacesClient(http),
     agents: new AgentsClient(http),
-    search: new SearchClient(http),
-    sharing: new SharingClient(http),
   }
 }
 

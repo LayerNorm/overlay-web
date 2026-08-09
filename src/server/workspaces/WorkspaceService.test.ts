@@ -6,6 +6,7 @@ import type {
 } from '@overlay/workspace-contracts'
 import type { WorkspaceRepository } from './WorkspaceRepository'
 import { WorkspaceService, WorkspaceServiceError } from './WorkspaceService'
+import { LifecycleEventPublisher } from '@/server/lifecycle-events'
 
 function access(overrides: {
   userId?: string
@@ -100,6 +101,46 @@ test('resolveActiveWorkspace persists a usable fallback and rejects inaccessible
   )
 })
 
+test('legacy resources are claimed only by Personal and existing bindings never move', async () => {
+  const bindings = new Map<string, string>([['already_bound', 'workspace_acme']])
+  const bound: string[] = []
+  const personal = access({ workspaceId: 'workspace_personal' })
+  const service = new WorkspaceService(repository({
+    async getAccess() { return personal },
+    async getResourceWorkspace({ resourceId }) {
+      const workspaceId = bindings.get(resourceId)
+      return workspaceId
+        ? { workspaceId, resourceType: 'knowledge_base', resourceId, createdAt: 1, updatedAt: 1 }
+        : null
+    },
+    async bindResource(input) {
+      bindings.set(input.resourceId, input.workspaceId)
+      bound.push(input.resourceId)
+      return { ...input, createdAt: input.now, updatedAt: input.now }
+    },
+  }), { now: () => 10 })
+
+  assert.deepEqual(await service.bindUnscopedResourcesToPersonalWorkspace({
+    actorUserId: 'user_1',
+    workspaceId: personal.workspace.id,
+    resourceType: 'knowledge_base',
+    resourceIds: ['legacy_one', 'already_bound', 'legacy_one'],
+  }), ['legacy_one'])
+  assert.deepEqual(bound, ['legacy_one'])
+  assert.equal(bindings.get('already_bound'), 'workspace_acme')
+
+  const organization = access({ workspaceId: 'workspace_acme' })
+  const organizationService = new WorkspaceService(repository({
+    async getAccess() { return organization },
+  }))
+  assert.deepEqual(await organizationService.bindUnscopedResourcesToPersonalWorkspace({
+    actorUserId: 'user_1',
+    workspaceId: organization.workspace.id,
+    resourceType: 'knowledge_base',
+    resourceIds: ['unbound'],
+  }), [])
+})
+
 test('workspace management is role-gated and final-owner failures remain explicit', async () => {
   const memberAccess = access({ workspaceId: 'workspace_org', role: 'member' })
   const ownerAccess = access({ workspaceId: 'workspace_org', role: 'owner' })
@@ -175,6 +216,58 @@ test('invitation acceptance preserves expired, email mismatch, and consumed stat
     }),
     (error) => assertServiceError(error, 'invitation_invalid')
       && (error as WorkspaceServiceError).statusCode === 409,
+  )
+})
+
+test('resending an invitation publishes a fresh delivery event for the replacement', async () => {
+  const actor = access({ workspaceId: 'workspace_org', role: 'owner' })
+  const events: unknown[] = []
+  const existing = {
+    id: 'invite_old',
+    workspaceId: actor.workspace.id,
+    email: 'new.member@example.com',
+    role: 'member' as const,
+    status: 'pending' as const,
+    invitedByPrincipalId: actor.principal.id,
+    expiresAt: 100,
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const replacement = { ...existing, id: 'invite_new', expiresAt: 200, updatedAt: 50 }
+  const service = new WorkspaceService(repository({
+    async getAccess() {
+      return actor
+    },
+    async getInvitation() {
+      return existing
+    },
+    async createInvitationReplacingPending() {
+      return replacement
+    },
+  }), {
+    createId: () => 'invite_new',
+    now: () => 50,
+    invitationTtlMs: 150,
+    lifecycleEvents: new LifecycleEventPublisher({
+      eventBus: {
+        async publish(_topic, payload) { events.push(payload) },
+        subscribe() { return () => {} },
+      },
+    }),
+  })
+
+  const result = await service.resendInvitation({
+    actorUserId: 'user_1',
+    workspaceId: actor.workspace.id,
+    invitationId: existing.id,
+  })
+
+  assert.equal(result.id, 'invite_new')
+  assert.equal(events.length, 1)
+  assert.equal((events[0] as { idempotencyKey?: string }).idempotencyKey, 'workspace.invitation_sent:invite_new')
+  assert.equal(
+    (events[0] as { attributes?: { invitedEmail?: string } }).attributes?.invitedEmail,
+    'new.member@example.com',
   )
 })
 

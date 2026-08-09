@@ -10,6 +10,8 @@ import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useVisibleReconciliation } from '@/components/useVisibleReconciliation'
 import { NEW_KNOWLEDGE_BASE_EVENT } from '@/shared/workspace/sidebar-events'
+import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 
 export function KnowledgeBaseListView({
   initialKnowledgeBases,
@@ -19,6 +21,7 @@ export function KnowledgeBaseListView({
   userId: string
 }) {
   const router = useRouter()
+  const { activeWorkspace } = useWorkspace()
   const [knowledgeBases, setKnowledgeBases] = useState(initialKnowledgeBases)
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
@@ -46,14 +49,19 @@ export function KnowledgeBaseListView({
     base.kind === 'personal' && base.title === 'My knowledge'
   ))
   const regularFiltered = filtered.filter((base) => base.id !== personalBrain?.id)
-  const showPersonalBrain = !query.trim()
-    || 'my knowledge personal brain'.includes(query.trim().toLowerCase())
+  const showPersonalBrain = activeWorkspace?.kind === 'personal' && (
+    !query.trim() || 'my knowledge personal brain'.includes(query.trim().toLowerCase())
+  )
 
   const reconcileKnowledgeBases = useCallback(async () => {
     const response = await overlayAppClient.knowledgeBases.list()
     setKnowledgeBases(response.knowledgeBases)
   }, [])
   useVisibleReconciliation(reconcileKnowledgeBases)
+  useWorkspaceChanged(useCallback(() => {
+    setKnowledgeBases([])
+    void reconcileKnowledgeBases()
+  }, [reconcileKnowledgeBases]))
 
   async function openPersonalBrain() {
     if (openingPersonal) return

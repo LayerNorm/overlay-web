@@ -184,7 +184,7 @@ export function AppScreenHeader({
   return (
     <header
       className={cn(
-        'flex h-14 min-h-14 shrink-0 flex-col justify-center gap-2 overflow-visible px-3 py-0 sm:px-6 md:h-16 md:min-h-16',
+        'flex min-h-14 shrink-0 flex-col justify-center gap-2 px-3 py-2.5 sm:px-6 md:min-h-16 md:gap-3 md:py-3',
         border ? 'border-b border-[var(--border)]' : null,
         className,
       )}

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { evaluateAppDataSchemaCompatibility } from './schema-compatibility'
+import {
+  APP_DATA_MINIMUM_SCHEMA_VERSION,
+  APP_DATA_SCHEMA_VERSION,
+  evaluateAppDataSchemaCompatibility,
+} from './schema-compatibility'
 
 test('schema compatibility permits a one-release rolling upgrade and rollback window', () => {
   assert.equal(
@@ -44,5 +48,19 @@ test('schema compatibility rejects a database older than the runtime minimum', (
       runtimeMinimumSchemaVersion: 9,
     }).compatible,
     false,
+  )
+})
+
+test('current schema keeps the previous runtime inside the rolling upgrade window', () => {
+  const previousRuntimeMaximum = APP_DATA_SCHEMA_VERSION - 1
+  assert.ok(previousRuntimeMaximum >= APP_DATA_MINIMUM_SCHEMA_VERSION)
+  assert.equal(
+    evaluateAppDataSchemaCompatibility({
+      databaseMinimumRuntimeVersion: APP_DATA_MINIMUM_SCHEMA_VERSION,
+      databaseSchemaVersion: APP_DATA_SCHEMA_VERSION,
+      runtimeMaximumSchemaVersion: previousRuntimeMaximum,
+      runtimeMinimumSchemaVersion: APP_DATA_MINIMUM_SCHEMA_VERSION - 1,
+    }).compatible,
+    true,
   )
 })

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { Session, User } from '@overlay/app-core'
+import type { LifecycleEventPublisher } from '@/server/lifecycle-events'
 
 export type UserAuthProvider = 'workos' | 'better-auth' | 'oidc' | 'none'
 
@@ -22,21 +23,20 @@ export interface UserUpsertResult {
   userId: string
 }
 
-export type UserDirectoryEntry = {
+export interface UserDirectoryEntry {
   id: string
+  name: string
   email: string
-  name?: string
-  profilePictureUrl?: string
 }
 
 export interface UserRepository {
   upsertFromIdentity(input: UserUpsertInput): Promise<UserUpsertResult>
-  listDirectory?(): Promise<UserDirectoryEntry[]>
+  listDirectory(): Promise<UserDirectoryEntry[]>
 }
 
 export interface UserServiceOptions {
   authProvider: UserAuthProvider
-  afterUpsert?: (result: UserUpsertResult) => Promise<void>
+  lifecycleEvents?: LifecycleEventPublisher
   repository: UserRepository
 }
 

@@ -17,6 +17,7 @@ import {
   AccountSubscriptionCard,
   AutomationEditorForm,
   AutomationGraphCanvas,
+  AutomationGraphPreview,
   AutomationsInlineList,
   BillingControlsPanel,
   ExtensionCatalog,
@@ -301,7 +302,7 @@ export function AutomationsInlineListStory() {
 export function AutomationGraphCanvasStory() {
   return (
     <div className="h-[420px] p-4">
-      <AutomationGraphCanvas source={sampleFlowSource} onSourceChange={() => undefined} />
+      <AutomationGraphPreview source={sampleFlowSource} />
     </div>
   )
 }

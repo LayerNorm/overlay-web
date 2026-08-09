@@ -8,9 +8,7 @@ import { useSearchParams } from 'next/navigation'
 import { SHOWCASE_CHAT_SUMMARIES } from '@/features/showcase/showcase-data'
 import {
   PublicShowcaseAutomationsInlinePanel,
-  PublicShowcaseAgentsInlinePanel,
   PublicShowcaseFilesInlinePanel,
-  PublicShowcaseKnowledgeInlinePanel,
   PublicShowcaseProjectsInlinePanel,
 } from '@/features/showcase/PublicShowcaseSidebarPanels'
 import { WorkspaceSwitcher } from '@/features/workspaces/components/WorkspaceSwitcher'
@@ -69,20 +67,24 @@ export function AppShellSidebar() {
         : undefined}
       renderAgentsPanel={({ onNavigate }) => (
         publicShowcase
-          ? <PublicShowcaseAgentsInlinePanel onNavigate={onNavigate} />
-          : <AgentsInlinePanel
-            workspaceId={activeWorkspaceId}
-            baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents') : undefined}
-            onNavigate={onNavigate}
-          />
+          ? undefined
+          : (
+            <AgentsInlinePanel
+              workspaceId={activeWorkspaceId}
+              baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents') : undefined}
+              onNavigate={onNavigate}
+            />
+          )
       )}
       renderKnowledgePanel={({ onNavigate }) => (
         publicShowcase
-          ? <PublicShowcaseKnowledgeInlinePanel onNavigate={onNavigate} />
-          : <KnowledgeInlinePanel
-            baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/knowledge') : undefined}
-            onNavigate={onNavigate}
-          />
+          ? undefined
+          : (
+            <KnowledgeInlinePanel
+              baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/knowledge') : undefined}
+              onNavigate={onNavigate}
+            />
+          )
       )}
     />
   )

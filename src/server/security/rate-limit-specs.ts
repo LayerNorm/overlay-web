@@ -12,6 +12,35 @@ export const CHAT_RATE_LIMITS: RateLimitSpec[] = [
 ]
 
 const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
+  // Bootstrap read routes fire on every app-shell load. Without dedicated
+  // specs they fall through to the shared `api:default:user` bucket
+  // (300/10min), so a burst from one route (e.g. the model-catalog hook's
+  // old 429-retry loop) could lock out the others and prevent the workspace
+  // from opening. Each gets its own per-user bucket so they cannot starve
+  // each other; the limits are generous because these are cheap reads.
+  'GET /api/v1/model-catalog': [
+    { bucket: 'model-catalog:ip', limit: 600, windowMs: TEN_MINUTES },
+    { bucket: 'model-catalog:user', limit: 300, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/settings': [
+    { bucket: 'settings:ip', limit: 600, windowMs: TEN_MINUTES },
+    { bucket: 'settings:user', limit: 300, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/workspaces': [
+    { bucket: 'workspaces:list:ip', limit: 600, windowMs: TEN_MINUTES },
+    { bucket: 'workspaces:list:user', limit: 300, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/conversations': [
+    { bucket: 'conversations:list:ip', limit: 600, windowMs: TEN_MINUTES },
+    { bucket: 'conversations:list:user', limit: 300, windowMs: TEN_MINUTES },
+  ],
+  // One long-poll is held for up to 15 seconds per open app tab. Keep this
+  // traffic out of the shared API bucket so realtime sync cannot starve room
+  // history, presence, or other app reads.
+  'GET /api/v1/conversations/events': [
+    { bucket: 'conversations:events:ip', limit: 1_200, windowMs: TEN_MINUTES },
+    { bucket: 'conversations:events:user', limit: 600, windowMs: TEN_MINUTES },
+  ],
   'GET /api/v1/chat-suggestions': [
     { bucket: 'helper:chat-suggestions:ip', limit: 120, windowMs: TEN_MINUTES },
     { bucket: 'helper:chat-suggestions:user', limit: 30, windowMs: TEN_MINUTES },
@@ -89,6 +118,21 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'files/files:search-text:ip', limit: 120, windowMs: TEN_MINUTES },
     { bucket: 'files/files:search-text:user', limit: 60, windowMs: TEN_MINUTES },
   ],
+  // Each Connect performs discovery and possibly dynamic client registration against a
+  // user-supplied host, so it is deliberately cheap to rate limit and expensive to abuse.
+  'POST /api/v1/mcps/oauth': [
+    { bucket: 'mcps/oauth:start:ip', limit: 30, windowMs: TEN_MINUTES },
+    { bucket: 'mcps/oauth:start:user', limit: 15, windowMs: TEN_MINUTES },
+  ],
+  'DELETE /api/v1/mcps/oauth': [
+    { bucket: 'mcps/oauth:disconnect:ip', limit: 60, windowMs: TEN_MINUTES },
+    { bucket: 'mcps/oauth:disconnect:user', limit: 30, windowMs: TEN_MINUTES },
+  ],
+  // The callback is reachable without an Overlay session (the desktop browser may not have one),
+  // so it is limited by IP only — there is no authenticated user to key on.
+  'GET /api/v1/mcps/oauth/callback': [
+    { bucket: 'mcps/oauth:callback:ip', limit: 60, windowMs: TEN_MINUTES },
+  ],
 }
 
 type DynamicEndpointRateLimit = {
@@ -98,6 +142,22 @@ type DynamicEndpointRateLimit = {
 }
 
 const DYNAMIC_ENDPOINT_RATE_LIMITS: DynamicEndpointRateLimit[] = [
+  {
+    method: 'GET',
+    pattern: /^\/api\/v1\/conversations\/[^/]+\/presence$/,
+    limits: [
+      { bucket: 'conversations:presence-read:ip', limit: 600, windowMs: TEN_MINUTES },
+      { bucket: 'conversations:presence-read:user', limit: 300, windowMs: TEN_MINUTES },
+    ],
+  },
+  {
+    method: 'PATCH',
+    pattern: /^\/api\/v1\/conversations\/[^/]+\/presence$/,
+    limits: [
+      { bucket: 'conversations:presence-write:ip', limit: 600, windowMs: TEN_MINUTES },
+      { bucket: 'conversations:presence-write:user', limit: 300, windowMs: TEN_MINUTES },
+    ],
+  },
   {
     method: 'GET',
     pattern: /^\/api\/v1\/outputs\/[^/]+\/content$/,

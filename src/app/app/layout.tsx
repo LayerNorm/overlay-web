@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
 import type { Metadata } from 'next'
+import { Loader2 } from 'lucide-react'
 import { getOverlaySession } from '@/server/auth/session'
 import { AppShellSidebar } from './_components/AppShellSidebar'
 import { AsyncSessionsProvider } from '@/components/providers/async-sessions-store'
@@ -19,6 +20,7 @@ import { AppConfigurationErrorState } from './_components/AppConfigurationErrorS
 import { AppShellLoadingFallback, ChatRouteSkeleton } from './_components/AppRouteSkeletons'
 import { getSelectedIntegrationProviderId } from '@/server/integrations'
 import { WorkspaceAppBoundary } from '@/features/workspaces/components/WorkspaceAppBoundary'
+import { WorkspaceScopedContentBoundary } from '@/features/workspaces/components/WorkspaceScopedContentBoundary'
 
 export const metadata: Metadata = {
   robots: {
@@ -29,6 +31,17 @@ export const metadata: Metadata = {
 
 function AppMainFallback() {
   return <ChatRouteSkeleton />
+}
+
+function WorkspaceSwitchFallback() {
+  return (
+    <div className="flex min-h-full items-center justify-center text-sm text-muted-foreground">
+      <span className="inline-flex items-center gap-2">
+        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+        Switching workspace…
+      </span>
+    </div>
+  )
 }
 
 async function AppLayoutContent({ children }: { children: React.ReactNode }) {
@@ -78,7 +91,9 @@ async function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     <AppShellSidebar />
                     <main className="app-main flex-1 overflow-auto pt-14 transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:pt-0">
                       <Suspense fallback={<AppMainFallback />}>
-                        <AuthorizationRouteGuard>{children}</AuthorizationRouteGuard>
+                        <WorkspaceScopedContentBoundary fallback={<WorkspaceSwitchFallback />}>
+                          <AuthorizationRouteGuard>{children}</AuthorizationRouteGuard>
+                        </WorkspaceScopedContentBoundary>
                       </Suspense>
                     </main>
                   </OnboardingProvider>

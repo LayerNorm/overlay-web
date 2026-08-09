@@ -80,6 +80,19 @@ export class ConvexAutomationRepository implements AutomationRepository {
     }, { throwOnError: true })
   }
 
+  async attachSourceConversation(args: {
+    automationId: string
+    conversationId: string
+    userId: string
+  }): Promise<void> {
+    await convex.mutation('automations/automations:attachSourceConversationByServer', {
+      automationId: args.automationId as Id<'automations'>,
+      conversationId: args.conversationId as Id<'conversations'>,
+      serverSecret: this.serverSecret,
+      userId: args.userId,
+    }, { throwOnError: true })
+  }
+
   async pauseAutomation(args: {
     automationId: string
     userId: string
@@ -124,22 +137,6 @@ export class ConvexAutomationRepository implements AutomationRepository {
       { throwOnError: true },
     )
     return result?.cancelled ?? false
-  }
-
-  async requestActiveRunCancellation(args: {
-    automationId: string
-    userId: string
-  }): Promise<number> {
-    const result = await convex.mutation<{ cancelled: number }>(
-      'automations/automations:requestActiveRunCancellationByServer',
-      {
-        ...args,
-        automationId: args.automationId as Id<'automations'>,
-        serverSecret: this.serverSecret,
-      },
-      { throwOnError: true },
-    )
-    return result?.cancelled ?? 0
   }
 
   async retryRun(args: { runId: string; userId: string }): Promise<string | null> {
@@ -206,21 +203,22 @@ export class ConvexAutomationRepository implements AutomationRepository {
   }): Promise<void> {
     await convex.mutation('automations/automations:markManualRunStarted', {
       ...args,
-      conversationId: args.conversationId as Id<'conversations'> | undefined,
+      conversationId: (args.conversationId || undefined) as Id<'conversations'> | undefined,
       runId: args.runId as Id<'automationRuns'>,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
   }
 
   async markManualRunCompleted(args: {
-    conversationId: string
+    conversationId?: string
     now: number
     runId: string
     userId: string
   }): Promise<void> {
     await convex.mutation('automations/automations:markManualRunCompleted', {
       ...args,
-      conversationId: args.conversationId as Id<'conversations'>,
+      // Guard against empty strings — Convex's v.optional(v.id()) rejects them.
+      conversationId: (args.conversationId || undefined) as Id<'conversations'> | undefined,
       runId: args.runId as Id<'automationRuns'>,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
@@ -246,5 +244,27 @@ export class ConvexAutomationRepository implements AutomationRepository {
       runId: args.runId as Id<'automationRuns'>,
       serverSecret: this.serverSecret,
     })
+  }
+
+  async updateRunWorkflowRunId(args: {
+    runId: string
+    workflowRunId: string
+  }): Promise<void> {
+    await convex.mutation('automations/automations:updateRunWorkflowRunIdByServer', {
+      runId: args.runId as Id<'automationRuns'>,
+      serverSecret: this.serverSecret,
+      workflowRunId: args.workflowRunId,
+    }, { throwOnError: true })
+  }
+
+  async updateSchedulerWorkflowRunId(args: {
+    automationId: string
+    schedulerWorkflowRunId: string | null
+  }): Promise<void> {
+    await convex.mutation('automations/automations:updateSchedulerWorkflowRunIdByServer', {
+      automationId: args.automationId as Id<'automations'>,
+      serverSecret: this.serverSecret,
+      schedulerWorkflowRunId: args.schedulerWorkflowRunId,
+    }, { throwOnError: true })
   }
 }

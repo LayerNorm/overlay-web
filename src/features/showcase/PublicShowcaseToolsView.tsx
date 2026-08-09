@@ -61,7 +61,7 @@ export function PublicShowcaseToolsView() {
     gate()
   }
 
-  const title = view === 'skills' ? 'Skills' : view === 'mcps' ? 'MCP Servers' : 'Connectors'
+  const title = view === 'skills' ? 'Skills' : view === 'mcps' ? 'MCP Servers' : 'Integrations'
   return (
     <AppScreenShell
       header={(

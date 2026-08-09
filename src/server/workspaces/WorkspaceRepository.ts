@@ -201,6 +201,10 @@ export interface WorkspaceRepository {
     resourceType: string
     resourceId: string
   }): Promise<WorkspaceResourceScope | null>
+  listResourceIdsByWorkspace(args: {
+    workspaceId: string
+    resourceType: string
+  }): Promise<string[]>
 
   getSharingPolicy(workspaceId: string): Promise<WorkspaceSharingPolicy | null>
   setSharingPolicy(input: SetWorkspaceSharingPolicyInput): Promise<WorkspaceSharingPolicy>

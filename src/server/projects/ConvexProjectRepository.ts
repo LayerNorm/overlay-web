@@ -17,63 +17,61 @@ export class ConvexProjectRepository implements ProjectRepository {
   async getProject(args: {
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord | null> {
     return await convex.query<ProjectRecord | null>('projects/projects:get', {
       projectId: args.projectId as Id<'projects'>,
       userId: args.userId,
       serverSecret: this.serverSecret,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
   }
 
   async listProjects(args: {
-    includeArchived?: boolean
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord[]> {
     return await convex.query<ProjectRecord[]>('projects/projects:list', {
       userId: args.userId,
       serverSecret: this.serverSecret,
       updatedSince: args.updatedSince,
-      includeArchived: args.includeArchived,
       includeDeleted: args.includeDeleted,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }) ?? []
   }
 
   async createProject(args: {
     clientId?: string
     instructions?: string
-    knowledgeBaseId?: string | null
     name: string
     parentId?: string | null
-    settings?: Record<string, unknown>
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord> {
     const id = await convex.mutation<Id<'projects'>>('projects/projects:create', {
       userId: args.userId,
       serverSecret: this.serverSecret,
       clientId: args.clientId,
       instructions: args.instructions,
-      knowledgeBaseId: args.knowledgeBaseId ?? undefined,
       name: args.name,
       parentId: args.parentId ?? undefined,
-      settings: args.settings,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }, { throwOnError: true })
     if (!id) throw new Error('Failed to create project')
-    const project = await this.getProject({ projectId: id, userId: args.userId })
+    const project = await this.getProject({ projectId: id, userId: args.userId, ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}) })
     if (!project) throw new Error('Failed to create project')
     return project
   }
 
   async updateProject(args: {
-    archivedAt?: number | null
     instructions?: string | null
-    knowledgeBaseId?: string | null
     name?: string
     parentId?: string | null
     projectId: string
-    settings?: Record<string, unknown>
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord | null> {
     const existing = await this.getProject(args)
     if (!existing) return null
@@ -81,12 +79,10 @@ export class ConvexProjectRepository implements ProjectRepository {
       projectId: args.projectId as Id<'projects'>,
       userId: args.userId,
       serverSecret: this.serverSecret,
-      archivedAt: args.archivedAt,
       instructions: args.instructions,
-      knowledgeBaseId: args.knowledgeBaseId,
       name: args.name,
       parentId: args.parentId,
-      settings: args.settings,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     }, { throwOnError: true })
     return await this.getProject(args)
   }
@@ -94,12 +90,14 @@ export class ConvexProjectRepository implements ProjectRepository {
   async deleteProjectTree(args: {
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<DeleteProjectTreeResult | null> {
     const root = await this.getProject(args)
     if (!root) return null
     const allProjects = await this.listProjects({
       includeDeleted: true,
       userId: args.userId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
     const deletedIds = collectDescendants(allProjects, args.projectId)
     for (const projectId of [...deletedIds].reverse()) {
@@ -107,6 +105,7 @@ export class ConvexProjectRepository implements ProjectRepository {
         projectId: projectId as Id<'projects'>,
         userId: args.userId,
         serverSecret: this.serverSecret,
+        ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
       }, { throwOnError: true })
     }
     return {

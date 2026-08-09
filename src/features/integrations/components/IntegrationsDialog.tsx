@@ -79,7 +79,10 @@ export function IntegrationsDialog({
         cursor: cursor || undefined,
       })
       if (reqId !== requestSeqRef.current) return
-      if (!res.ok) throw new Error('Failed to load integrations')
+      if (!res.ok) {
+        const failure = await res.json().catch(() => null) as { error?: string; message?: string } | null
+        throw new Error(failure?.message || failure?.error || 'Failed to load integrations')
+      }
       const data = await res.json()
       const pageItems = Array.isArray(data?.items) ? data.items as PickerItem[] : []
 

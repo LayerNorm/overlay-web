@@ -154,6 +154,13 @@ export const createChannel = mutation({
       createdAt: now,
       updatedAt: now,
     })
+    await recordConversationEvent(ctx, {
+      conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'conversation.created',
+      payload: { conversationType: 'channel', slug, visibility: args.visibility },
+    })
     return {
       conversationId,
       workspaceId: args.workspaceId,
@@ -253,6 +260,7 @@ export const setReaction = mutation({
             actorPrincipalId: actor.principalId,
             title: `${actor.displayName} reacted ${emoji}`,
             body: undefined,
+            eventSequence: Date.now(),
             createdAt: Date.now(),
           })
         }

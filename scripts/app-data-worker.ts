@@ -9,12 +9,6 @@ import { createPostgresRuntime } from '../src/server/jobs/postgres-runtime'
 import { PostgresRuntimeHealthService } from '../src/server/jobs/PostgresRuntimeHealthService'
 import { createObjectStoreForRuntime } from '../src/server/bootstrap'
 import { getOverlayRuntimeConfigSync } from '../src/server/config'
-import {
-  AuthorizationService,
-  createAuthorizationCapabilityPolicy,
-  createPostgresAuthorizationRepositories,
-} from '../src/server/authorization'
-import { getOverlayCapabilitiesSync } from '../src/server/capabilities'
 
 void main()
 
@@ -41,10 +35,6 @@ async function main(): Promise<void> {
   const db = createOverlayPostgresDb(pool)
   const runtimeConfig = getOverlayRuntimeConfigSync()
   const runtime = createPostgresRuntime({
-    authorizationService: new AuthorizationService({
-      capabilityPolicy: createAuthorizationCapabilityPolicy(getOverlayCapabilitiesSync()),
-      repositories: createPostgresAuthorizationRepositories(db),
-    }),
     db,
     leaseMs,
     objectStore: lazyObjectStore(),
@@ -94,9 +84,12 @@ async function main(): Promise<void> {
         }
 
         let workerResult: string = 'idle'
+        let emailResult: string = 'idle'
         if (mode !== 'scheduler') {
           workerResult = await runtime.worker.runOnce(now)
           if (workerResult !== 'idle') console.log(JSON.stringify({ event: 'job_result', result: workerResult }))
+          emailResult = await runtime.emailOutboxWorker?.runOnce(now) ?? 'idle'
+          if (emailResult !== 'idle') console.log(JSON.stringify({ event: 'email_outbox_result', result: emailResult }))
         }
         if (outageStartedAt !== undefined) {
           console.log(JSON.stringify({
@@ -110,7 +103,7 @@ async function main(): Promise<void> {
           lastHealthLog = 0
         }
         consecutiveFailures = 0
-        if (!once && workerResult === 'idle') await sleep(pollMs)
+        if (!once && workerResult === 'idle' && emailResult === 'idle') await sleep(pollMs)
       } catch (error) {
         if (once) throw error
         consecutiveFailures += 1

@@ -13,6 +13,7 @@ import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { VideoSubMode } from '@/shared/ai/gateway/model-types'
+import type { ReasoningLevel } from '@overlay/chat-core'
 import {
   beginTtftClientTurn,
 } from '@/shared/chat/ttft-client-debug'
@@ -62,7 +63,6 @@ export function useChatSendController({
   completeSession,
   effectiveGenType,
   embedProjectId,
-  knowledgeBaseId,
   emptyRuntimeRef,
   ensureConversationRuntime,
   inputRef,
@@ -89,6 +89,7 @@ export function useChatSendController({
   replyContext,
   requireAuth,
   resetComposerToolIds,
+  reasoning,
   selectedActModel,
   selectedImageModels,
   selectedModels,
@@ -130,7 +131,6 @@ export function useChatSendController({
   completeSession: CompleteSession
   effectiveGenType: 'image' | 'video' | null
   embedProjectId: string | null
-  knowledgeBaseId?: string
   emptyRuntimeRef: MutableRefObject<ConversationRuntime>
   ensureConversationRuntime: (
     chatId: string,
@@ -155,7 +155,7 @@ export function useChatSendController({
   pendingScrollChatIdRef: MutableRefObject<string | null>
   pendingScrollTurnIdRef: MutableRefObject<string | null>
   persistActiveRuntimeUiState: () => void
-  refreshSelectedAutomation: (options?: { showLoading?: boolean }) => Promise<void>
+  refreshSelectedAutomation: (options?: { showLoading?: boolean; conversationId?: string }) => Promise<void>
   replaceConversationRuntime: (
     chatId: string,
     uiSnapshot: ConversationUiState,
@@ -165,6 +165,7 @@ export function useChatSendController({
   replyContext: ReplyContext
   requireAuth: (reason: 'send') => void
   resetComposerToolIds: (temporary: boolean) => void
+  reasoning?: ReasoningLevel
   selectedActModel: string
   selectedImageModels: string[]
   selectedModels: string[]
@@ -244,7 +245,6 @@ export function useChatSendController({
       askModelSelectionMode,
       clearTransientComposerState,
       embedProjectId,
-      knowledgeBaseId,
       emptyRuntime: emptyRuntimeRef.current,
       ensureConversationRuntime,
       invalidateLoadChatRequest,
@@ -272,7 +272,6 @@ export function useChatSendController({
     askModelSelectionMode,
     clearTransientComposerState,
     embedProjectId,
-    knowledgeBaseId,
     emptyRuntimeRef,
     ensureConversationRuntime,
     invalidateLoadChatRequest,
@@ -420,7 +419,6 @@ export function useChatSendController({
       completeSessionForStream,
       createNewChat,
       embedProjectId,
-      knowledgeBaseId,
       emptyRuntime: emptyRuntimeRef.current,
       ensureConversationRuntime,
       isFirstMessage,
@@ -434,6 +432,7 @@ export function useChatSendController({
       refreshSelectedAutomation,
       replyContext: replyCtxSnapshot,
       selectedActModelSnapshot: snapshot.selectedActModelSnapshot,
+      reasoning,
       setComposerNotice,
       setIsFirstMessage,
       setRuntimeHydrationVersion,
@@ -456,7 +455,6 @@ export function useChatSendController({
     createNewChat,
     effectiveGenType,
     embedProjectId,
-    knowledgeBaseId,
     emptyRuntimeRef,
     ensureConversationRuntime,
     inputRef,
@@ -481,6 +479,7 @@ export function useChatSendController({
     replyContext,
     requireAuth,
     resetComposerToolIds,
+    reasoning,
     selectedActModel,
     selectedImageModels,
     selectedModels,

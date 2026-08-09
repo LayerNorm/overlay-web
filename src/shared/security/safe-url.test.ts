@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 // @ts-expect-error Node's strip-types test runner loads the adjacent TS module directly.
-import { redactUrlForTelemetry, safeHttpUrl, sameOriginPathUrl } from './safe-url.ts'
+import { redactUrlForTelemetry, routeForTelemetry, safeHttpUrl, sameOriginPathUrl } from './safe-url.ts'
 
 test('safeHttpUrl only allows http and https URLs', () => {
   assert.equal(safeHttpUrl('https://example.com/a'), 'https://example.com/a')
@@ -14,6 +14,12 @@ test('safeHttpUrl only allows http and https URLs', () => {
 test('redactUrlForTelemetry removes sensitive query values and fragments', () => {
   const redacted = redactUrlForTelemetry('https://getoverlay.io/auth/callback?code=abc&state=def&ok=1#frag')
   assert.equal(redacted, 'https://getoverlay.io/auth/callback?code=%5Bredacted%5D&state=%5Bredacted%5D&ok=1')
+})
+
+test('routeForTelemetry redacts identifier-shaped route segments', () => {
+  assert.equal(routeForTelemetry('/app/files/file_123'), '/app/files/:id')
+  assert.equal(routeForTelemetry('/share/c/verylongprivate_share_token_123'), '/share/c/:id')
+  assert.equal(routeForTelemetry('/app/pricing'), '/app/pricing')
 })
 
 test('sameOriginPathUrl rejects network-path and external URLs', () => {

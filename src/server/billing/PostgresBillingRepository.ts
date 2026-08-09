@@ -46,6 +46,9 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       budgetRemainingCents: number | string
       budgetTotalCents: number | string
       budgetUsedCents: number | string
+      allowanceTotalCents: number | string
+      allowanceUsedCents: number | string
+      topUpBalanceCents: number | string
       email: string | null
       planKind: 'free' | 'paid'
       status: 'active' | 'canceled' | 'past_due' | 'trialing'
@@ -55,6 +58,9 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
              subscription.plan_kind AS "planKind", subscription.status,
              (COALESCE(budget.included_micros, 0) + COALESCE(budget.granted_micros, 0)) / ${MICROS_PER_CENT}::numeric AS "budgetTotalCents",
              COALESCE(budget.used_micros, 0) / ${MICROS_PER_CENT}::numeric AS "budgetUsedCents",
+             (COALESCE(budget.included_micros, 0) + COALESCE(budget.institutional_grant_micros, 0)) / ${MICROS_PER_CENT}::numeric AS "allowanceTotalCents",
+             COALESCE(budget.allowance_used_micros, 0) / ${MICROS_PER_CENT}::numeric AS "allowanceUsedCents",
+             COALESCE(budget.top_up_balance_micros, 0) / ${MICROS_PER_CENT}::numeric AS "topUpBalanceCents",
              GREATEST(0, COALESCE(budget.included_micros, 0) + COALESCE(budget.granted_micros, 0) - COALESCE(budget.used_micros, 0) - COALESCE(budget.reserved_micros, 0)) / ${MICROS_PER_CENT}::numeric AS "budgetRemainingCents"
       FROM billing_subscriptions subscription
       LEFT JOIN usage_budget_accounts budget ON budget.user_id = subscription.user_id
@@ -68,6 +74,10 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       budgetRemainingCents: Number(row.budgetRemainingCents),
       budgetTotalCents: Number(row.budgetTotalCents),
       budgetUsedCents: Number(row.budgetUsedCents),
+      allowanceTotalCents: Number(row.allowanceTotalCents),
+      allowanceUsedCents: Number(row.allowanceUsedCents),
+      allowancePercentUsed: percentageUsed(Number(row.allowanceUsedCents), Number(row.allowanceTotalCents)),
+      topUpBalanceCents: Number(row.topUpBalanceCents),
     }))
   }
 
@@ -78,15 +88,33 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     if (!Number.isFinite(args.amountCents) || args.amountCents === 0) {
       throw new Error('amountCents must be a non-zero number')
     }
-    await this.db.execute(sql`
-      INSERT INTO usage_budget_accounts (user_id, mode, granted_micros)
-      VALUES (${args.userId}, 'budgeted', ${Math.max(0, args.amountCents * MICROS_PER_CENT)})
+    const updated = await this.db.execute(sql`
+      INSERT INTO usage_budget_accounts (user_id, mode, institutional_grant_micros, granted_micros)
+      VALUES (
+        ${args.userId}, 'budgeted', ${Math.max(0, args.amountCents * MICROS_PER_CENT)},
+        ${Math.max(0, args.amountCents * MICROS_PER_CENT)}
+      )
       ON CONFLICT (user_id) DO UPDATE SET
         mode = 'budgeted',
-        granted_micros = GREATEST(0, usage_budget_accounts.granted_micros + ${args.amountCents * MICROS_PER_CENT}),
+        institutional_grant_micros = GREATEST(
+          0,
+          usage_budget_accounts.institutional_grant_micros + ${args.amountCents * MICROS_PER_CENT}
+        ),
+        granted_micros = GREATEST(
+          0,
+          usage_budget_accounts.institutional_grant_micros + ${args.amountCents * MICROS_PER_CENT}
+        ) + usage_budget_accounts.top_up_purchased_micros,
         version = usage_budget_accounts.version + 1,
         updated_at = now()
+      WHERE usage_budget_accounts.included_micros + GREATEST(
+        0,
+        usage_budget_accounts.institutional_grant_micros + ${args.amountCents * MICROS_PER_CENT}
+      ) >= usage_budget_accounts.allowance_used_micros
+      RETURNING user_id
     `)
+    if (updated.rowCount !== 1) {
+      throw new Error('Administrative grant cannot be reduced below consumed allowance')
+    }
     const record = (await this.listAdministrativeUsage({ userId: args.userId, limit: 1 }))[0]
     if (!record) throw new Error('Billing subscription not found')
     return record
@@ -96,6 +124,9 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     const result = await this.db.execute<SubscriptionRow & {
       grantedMicros: number | string
       includedMicros: number | string
+      institutionalGrantMicros: number | string
+      allowanceUsedMicros: number | string
+      topUpBalanceMicros: number | string
       reservedMicros: number | string
       usedMicros: number | string
     }>(sql`
@@ -112,6 +143,9 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
              subscription.off_session_consent_at AS "offSessionConsentAt",
              subscription.current_period_end AS "currentPeriodEnd",
              COALESCE(budget.included_micros, 0) AS "includedMicros",
+             COALESCE(budget.institutional_grant_micros, 0) AS "institutionalGrantMicros",
+             COALESCE(budget.allowance_used_micros, 0) AS "allowanceUsedMicros",
+             COALESCE(budget.top_up_balance_micros, 0) AS "topUpBalanceMicros",
              COALESCE(budget.granted_micros, 0) AS "grantedMicros",
              COALESCE(budget.used_micros, 0) AS "usedMicros",
              COALESCE(budget.reserved_micros, 0) AS "reservedMicros"
@@ -125,6 +159,8 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     const totalCents = toCents(row.includedMicros) + toCents(row.grantedMicros)
     const usedCents = toCents(row.usedMicros)
     const reservedCents = toCents(row.reservedMicros)
+    const allowanceTotalCents = toCents(row.includedMicros) + toCents(row.institutionalGrantMicros)
+    const allowanceUsedCents = toCents(row.allowanceUsedMicros)
     return {
       tier: row.tier,
       planKind: row.planKind,
@@ -133,6 +169,10 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       budgetUsedCents: usedCents,
       budgetTotalCents: totalCents,
       budgetRemainingCents: Math.max(0, totalCents - usedCents - reservedCents),
+      allowanceTotalCents,
+      allowanceUsedCents,
+      allowancePercentUsed: percentageUsed(allowanceUsedCents, allowanceTotalCents),
+      topUpBalanceCents: Math.max(0, toCents(row.topUpBalanceMicros) - Math.max(0, reservedCents - Math.max(0, allowanceTotalCents - allowanceUsedCents))),
       autoTopUpEnabled: row.autoTopUpEnabled,
       autoTopUpAmountCents: Number(row.autoTopUpAmountCents),
       autoTopUpConsentGranted: Boolean(row.offSessionConsentAt),
@@ -177,7 +217,20 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     const provider = textValue(args.provider) ?? 'stripe'
     const customerId = textValue(args.stripeCustomerId ?? args.providerCustomerId)
     const subscriptionId = textValue(args.stripeSubscriptionId ?? args.providerSubscriptionId)
+    const incomingPeriodStart = dateValue(args.currentPeriodStart)
+    const includedMicros = (numberValue(args.planAmountCents) ?? 0) * MICROS_PER_CENT
     await this.db.transaction(async (tx) => {
+      const previous = await tx.execute<{ currentPeriodStart: Date | string | null }>(sql`
+        SELECT current_period_start AS "currentPeriodStart"
+        FROM billing_subscriptions
+        WHERE user_id = ${args.userId}
+        FOR UPDATE
+      `)
+      const priorPeriodStart = previous.rows[0]?.currentPeriodStart
+      const periodChanged = Boolean(
+        priorPeriodStart && incomingPeriodStart &&
+        new Date(priorPeriodStart).getTime() !== incomingPeriodStart.getTime(),
+      )
       if (customerId || subscriptionId) {
         const conflict = await tx.execute<{ userId: string }>(sql`
           SELECT user_id AS "userId"
@@ -210,7 +263,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
           ${numberValue(args.planAmountCents) ?? 0}, ${numberValue(args.markupBasisPoints) ?? null},
           ${statusValue(args.status)}, ${booleanValue(args.autoTopUpEnabled) ?? false},
           ${numberValue(args.autoTopUpAmountCents) ?? 0}, ${dateValue(args.offSessionConsentAt)},
-          ${dateValue(args.currentPeriodStart)}, ${dateValue(args.currentPeriodEnd)},
+          ${incomingPeriodStart}, ${dateValue(args.currentPeriodEnd)},
           ${dateValue(args.providerEventCreatedAt)}, now()
         )
         ON CONFLICT (user_id) DO UPDATE SET
@@ -238,11 +291,62 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
            OR billing_subscriptions.provider_event_created_at IS NULL
            OR EXCLUDED.provider_event_created_at >= billing_subscriptions.provider_event_created_at
       `)
-      await tx.execute(sql`
-        INSERT INTO usage_budget_accounts (user_id, mode)
-        VALUES (${args.userId}, 'budgeted')
-        ON CONFLICT (user_id) DO UPDATE SET mode = 'budgeted', updated_at = now()
+      if (periodChanged) {
+        const activeReservations = await tx.execute<{ count: number | string }>(sql`
+          SELECT COUNT(*)::integer AS count
+          FROM usage_reservations
+          WHERE user_id = ${args.userId}
+            AND status IN ('reserved', 'reconcile_required')
+        `)
+        if (Number(activeReservations.rows[0]?.count ?? 0) > 0) {
+          throw new Error('Cannot roll over a usage period while reservations are active')
+        }
+      }
+      const budgetUpdate = await tx.execute(sql`
+        INSERT INTO usage_budget_accounts (user_id, mode, included_micros)
+        VALUES (${args.userId}, 'budgeted', ${includedMicros})
+        ON CONFLICT (user_id) DO UPDATE SET
+          mode = 'budgeted',
+          included_micros = EXCLUDED.included_micros,
+          allowance_used_micros = CASE
+            WHEN ${periodChanged} THEN 0
+            ELSE LEAST(
+              usage_budget_accounts.used_micros,
+              EXCLUDED.included_micros + usage_budget_accounts.institutional_grant_micros
+            )
+          END,
+          used_micros = CASE
+            WHEN ${periodChanged} THEN 0
+            ELSE usage_budget_accounts.used_micros
+          END,
+          top_up_purchased_micros = CASE
+            WHEN ${periodChanged} THEN usage_budget_accounts.top_up_balance_micros
+            ELSE usage_budget_accounts.top_up_purchased_micros
+          END,
+          top_up_balance_micros = CASE
+            WHEN ${periodChanged} THEN usage_budget_accounts.top_up_balance_micros
+            ELSE usage_budget_accounts.top_up_purchased_micros - GREATEST(
+              0,
+              usage_budget_accounts.used_micros - EXCLUDED.included_micros -
+                usage_budget_accounts.institutional_grant_micros
+            )
+          END,
+          granted_micros = CASE
+            WHEN ${periodChanged} THEN
+              usage_budget_accounts.institutional_grant_micros + usage_budget_accounts.top_up_balance_micros
+            ELSE usage_budget_accounts.granted_micros
+          END,
+          version = usage_budget_accounts.version + 1,
+          updated_at = now()
+        WHERE ${periodChanged} OR
+          usage_budget_accounts.used_micros + usage_budget_accounts.reserved_micros <=
+            EXCLUDED.included_micros + usage_budget_accounts.institutional_grant_micros +
+              usage_budget_accounts.top_up_purchased_micros
+        RETURNING user_id
       `)
+      if (budgetUpdate.rowCount !== 1) {
+        throw new Error('Subscription change would remove already consumed or reserved credits')
+      }
     })
     return { userId: args.userId }
   }
@@ -289,14 +393,20 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     userId: string
   }): Promise<{ id: string; granted: boolean }> {
     return await this.db.transaction(async (tx) => {
-      const existing = await tx.execute<{ id: string; status: string }>(sql`
-        SELECT id, status
+      const existing = await tx.execute<{ amountCents: number; id: string; status: string; userId: string }>(sql`
+        SELECT id, status, amount_cents AS "amountCents", user_id AS "userId"
         FROM billing_top_ups
         WHERE (${args.stripeCheckoutSessionId ?? null}::text IS NOT NULL AND provider_checkout_session_id = ${args.stripeCheckoutSessionId ?? null})
            OR (${args.stripePaymentIntentId ?? null}::text IS NOT NULL AND provider_payment_intent_id = ${args.stripePaymentIntentId ?? null})
         FOR UPDATE
       `)
       const row = existing.rows[0]
+      if (row && row.userId !== args.userId) {
+        throw new Error('Top-up provider reference already belongs to another user')
+      }
+      if (row && Number(row.amountCents) !== args.amountCents) {
+        throw new Error('Top-up provider reference was reused with a different amount')
+      }
       const id = row?.id ?? `billing_topup_${randomUUID()}`
       const grant = args.status === 'succeeded' && row?.status !== 'succeeded'
       const persistedStatus = row?.status === 'succeeded' ? 'succeeded' : args.status
@@ -321,12 +431,17 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
         `)
       }
       if (grant) {
+        const amountMicros = args.amountCents * MICROS_PER_CENT
         await tx.execute(sql`
-          INSERT INTO usage_budget_accounts (user_id, mode, granted_micros)
-          VALUES (${args.userId}, 'budgeted', ${args.amountCents * MICROS_PER_CENT})
+          INSERT INTO usage_budget_accounts (
+            user_id, mode, top_up_purchased_micros, top_up_balance_micros, granted_micros
+          )
+          VALUES (${args.userId}, 'budgeted', ${amountMicros}, ${amountMicros}, ${amountMicros})
           ON CONFLICT (user_id) DO UPDATE
           SET mode = 'budgeted',
-              granted_micros = usage_budget_accounts.granted_micros + EXCLUDED.granted_micros,
+              top_up_purchased_micros = usage_budget_accounts.top_up_purchased_micros + ${amountMicros},
+              top_up_balance_micros = usage_budget_accounts.top_up_balance_micros + ${amountMicros},
+              granted_micros = usage_budget_accounts.granted_micros + ${amountMicros},
               version = usage_budget_accounts.version + 1,
               updated_at = now()
         `)
@@ -449,6 +564,11 @@ export class PostgresBillingProviderEventRepository implements BillingProviderEv
 
 function toCents(value: number | string): number {
   return Number(value) / MICROS_PER_CENT
+}
+
+function percentageUsed(used: number, total: number): number {
+  if (total <= 0) return 0
+  return Math.min(100, Math.max(0, used / total * 100))
 }
 
 function textValue(value: unknown): string | undefined {

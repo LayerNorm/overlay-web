@@ -19,19 +19,6 @@ npm run dev
 
 `npm run dev:with-convex` pushes development Convex before starting Next.js. Use it only from the dedicated `staging` worktree, where the current revision is the shared staging release candidate.
 
-When `staging` includes `convex/` changes, push that exact revision before QA:
-
-```bash
-cd ~/Downloads/overlay-mono/overlay-landing-staging
-git pull --ff-only origin staging
-npm run convex:push:dev
-```
-
-The staging website must point at that same development deployment
-(`NEXT_PUBLIC_CONVEX_URL` on the `overlay-web-staging` Vercel project). Details
-and the env checklist live in
-[Worktree Staging QA](/develop/worktree-staging-qa#pair-staging-web-with-development-convex).
-
 ## Production backend
 
 Use the production script only from the clean canonical `main` worktree after the matching main web deployment is live:

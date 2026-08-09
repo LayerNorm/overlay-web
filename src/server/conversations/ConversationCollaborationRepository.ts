@@ -18,8 +18,54 @@ import type {
   WorkspaceNotificationPreferences,
   ConversationThreadFollow,
 } from '@overlay/workspace-contracts'
+import type {
+  ConversationEventRow,
+  ConversationListRow,
+  ConversationMessageRow,
+} from './ActConversationRepository'
 
 export interface ConversationCollaborationRepository {
+  getAccessibleConversation(args: {
+    actorUserId: string
+    conversationId: string
+    workspaceId: string
+  }): Promise<ConversationListRow | null>
+  listAccessibleConversations(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<ConversationListRow[]>
+  listMessages(args: {
+    actorUserId: string
+    beforeCreatedAt?: number
+    conversationId: string
+    limit: number
+    mainOnly?: boolean
+    messageId?: string
+    threadRootMessageId?: string
+    workspaceId: string
+  }): Promise<ConversationMessageRow[]>
+  addMessage(args: {
+    actorUserId: string
+    clientNonce?: string
+    content: string
+    conversationId: string
+    parts?: Array<Record<string, unknown>>
+    replySnippet?: string
+    replyToTurnId?: string
+    threadRootMessageId?: string
+    turnId: string
+    workspaceId: string
+  }): Promise<string>
+  getConversationEventCursor(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<number>
+  listConversationEvents(args: {
+    actorUserId: string
+    afterSequence: number
+    limit: number
+    workspaceId: string
+  }): Promise<ConversationEventRow[]>
   createChannel(args: ChannelCreateInput & {
     actorUserId: string
     workspaceId: string

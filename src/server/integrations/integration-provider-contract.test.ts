@@ -87,14 +87,6 @@ test('Composio adapter satisfies the shared integration-provider contract', asyn
       list: async () => ({ items: [{ id: 'account-1' }] }),
       delete: async () => { disconnected = true },
     },
-    tools: {
-      execute: async () => ({
-        data: { messages: [] },
-        error: null,
-        successful: true,
-        logId: 'execution-1',
-      }),
-    },
   }
   const fetcher: typeof fetch = async (input) => {
     const url = String(input)
@@ -120,17 +112,25 @@ test('Composio adapter satisfies the shared integration-provider contract', asyn
     disconnected: () => disconnected,
     overlayManagesDisconnect: true,
   })
-  const result = await new ComposioIntegrationProvider({
-    fetcher,
-    apiKeyResolver: async () => 'test-key',
-    sdkFactory: async () => sdk,
-  }).execute({
-    args: { maxResults: 10 },
-    toolId: 'GMAIL_FETCH_EMAILS',
-    userId: 'user-1',
+})
+
+test('Composio catalog distinguishes missing and rejected configuration from an empty result', async () => {
+  const missing = new ComposioIntegrationProvider({
+    apiKeyResolver: async () => null,
   })
-  assert.equal(result.status, 'completed')
-  assert.deepEqual(result.output, { messages: [] })
+  await assert.rejects(
+    () => missing.listCatalog({ userId: 'user-1', limit: 20 }),
+    /COMPOSIO_API_KEY/,
+  )
+
+  const rejected = new ComposioIntegrationProvider({
+    apiKeyResolver: async () => 'rejected-key',
+    fetcher: async () => json({ message: 'invalid key' }, 401),
+  })
+  await assert.rejects(
+    () => rejected.listCatalog({ userId: 'user-1', limit: 20 }),
+    /rejected the configured API key \(HTTP 401\)/,
+  )
 })
 
 test('Executor adapter satisfies the shared integration-provider contract and executes by exact tool address', async () => {

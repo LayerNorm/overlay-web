@@ -27,10 +27,6 @@ export interface OverlayToolsOptions {
   includePaidOnlyOverlayTools?: boolean
   /** When `false`, hides memory mutation tools and restricts knowledge search to files for this turn. */
   memoryEnabled?: boolean
-  /**
-   * Knowledge bases in scope for this turn, from an explicit `@` mention or the
-   * conversation's project. Used to default `knowledgeBaseId` when the model
-   * omits it, and to steer the account-wide search tools toward the scoped ones.
-   */
+  /** Knowledge base ids activated for the current turn. */
   activeKnowledgeBaseIds?: readonly string[]
 }

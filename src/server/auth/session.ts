@@ -41,7 +41,10 @@ export async function getOverlaySession(
   request?: Request,
   options: { refresh?: boolean } = {},
 ): Promise<AuthSession | null> {
-  await connection()
+  // Route handlers already have an explicit request and can resolve auth
+  // without opting into dynamic rendering. Keep the connection boundary for
+  // server components that derive their request from ambient headers/cookies.
+  if (!request) await connection()
   const sessionRequest = request ?? await requestFromCurrentHeaders()
   const auth = getOverlayServerContext().auth
   const session = options.refresh && auth.refreshSession

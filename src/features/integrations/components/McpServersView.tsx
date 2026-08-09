@@ -27,6 +27,7 @@ import {
 import { AppScreenShell } from '@overlay/modules-react/shell'
 import { ExtensionPageHeader, McpServerDialog, McpServersPanel } from '@overlay/modules-react/extensions'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 
 interface DialogState {
   mode: 'create' | 'edit'
@@ -60,6 +61,16 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
     void loadServers()
   }, [loadServers])
 
+  useWorkspaceChanged(loadServers)
+
+  // The OAuth flow completes in another tab, so refresh when the user comes back to see the
+  // updated connection status without a manual reload.
+  useEffect(() => {
+    const onFocus = () => { void loadServers() }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [loadServers])
+
   const filteredServers = useMemo(
     () => filterMcpServers(servers, searchQuery),
     [servers, searchQuery],
@@ -83,6 +94,75 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
     if (!res.ok) return failure(res, 'Could not add this MCP server.')
     const { id } = (await res.json()) as { id: string }
     setServers((prev) => upsertMcpServerSummary(prev, createMcpSummaryFromForm(id, values)))
+    dispatchMcpsChanged()
+    return { ok: true }
+  }
+
+  /**
+   * OAuth needs a persisted server to attach tokens to, so Connect saves first when the dialog is
+   * in create mode. The blank tab is opened before any await so Safari/Chrome treat the navigation
+   * as user-initiated rather than a blocked popup — same approach as the connectors view.
+   */
+  async function handleConnectOAuth(values: McpServerFormValues): Promise<McpMutationResult> {
+    const oauthTab = window.open('about:blank', '_blank')
+    try {
+      let mcpServerId = dialog?.mode === 'edit' ? dialog.server?._id : undefined
+
+      if (!mcpServerId) {
+        const created = await overlayAppClient.mcpServers.createResponse(createMcpCreateRequest(values))
+        if (!created.ok) {
+          oauthTab?.close()
+          return failure(created, 'Could not save this MCP server.')
+        }
+        const { id } = (await created.json()) as { id: string }
+        mcpServerId = id
+        setServers((prev) => upsertMcpServerSummary(prev, createMcpSummaryFromForm(id, values)))
+        setDialog({ mode: 'edit', server: createMcpSummaryFromForm(id, values) })
+        dispatchMcpsChanged()
+      } else {
+        const updated = await overlayAppClient.mcpServers.updateResponse(
+          createMcpUpdateRequest(mcpServerId, values),
+        )
+        if (!updated.ok) {
+          oauthTab?.close()
+          return failure(updated, 'Could not save this MCP server.')
+        }
+      }
+
+      const started = await overlayAppClient.mcpServers.startOAuthResponse({
+        mcpServerId,
+        returnTo: '/app/tools?view=mcps&mcpOAuth=connected',
+      })
+      const data = await started.json().catch(() => null) as
+        { redirectUrl?: string; alreadyConnected?: boolean; error?: unknown } | null
+
+      if (!started.ok) {
+        oauthTab?.close()
+        return { ok: false, error: formatMcpMutationError(data, 'Could not start the OAuth flow.') }
+      }
+      if (data?.alreadyConnected) {
+        oauthTab?.close()
+        await loadServers()
+        return { ok: true }
+      }
+      if (!data?.redirectUrl) {
+        oauthTab?.close()
+        return { ok: false, error: 'The server did not return an authorization URL.' }
+      }
+
+      if (oauthTab) oauthTab.location.href = data.redirectUrl
+      else window.open(data.redirectUrl, '_blank')
+      return { ok: true }
+    } catch {
+      oauthTab?.close()
+      return { ok: false, error: 'Could not start the OAuth flow.' }
+    }
+  }
+
+  async function handleDisconnectOAuth(server: McpServerSummary): Promise<McpMutationResult> {
+    const res = await overlayAppClient.mcpServers.disconnectOAuthResponse({ mcpServerId: server._id })
+    if (!res.ok) return failure(res, 'Could not disconnect this server.')
+    await loadServers()
     dispatchMcpsChanged()
     return { ok: true }
   }
@@ -159,6 +239,8 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
           onSave={handleSaveServer}
           onDelete={handleDeleteServer}
           onTest={handleTestServer}
+          onConnectOAuth={handleConnectOAuth}
+          onDisconnectOAuth={handleDisconnectOAuth}
         />
       ) : null}
     </AppScreenShell>

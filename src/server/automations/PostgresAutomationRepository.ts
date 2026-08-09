@@ -28,7 +28,6 @@ import type {
   UpdateAutomationInput,
 } from './AutomationRepository'
 import { AUTOMATION_EXECUTE_JOB } from './PostgresAutomationRunCoordinator'
-import { durableJobAuthorization } from '@/server/jobs/DurableJobAuthorization'
 
 type AutomationRow = typeof automations.$inferSelect
 type AutomationRunRow = typeof automationRuns.$inferSelect
@@ -46,6 +45,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
     includeDeleted?: boolean
     projectId?: string
     userId: string
+    workspaceId?: string
   }): Promise<AutomationRecord[]> {
     const rows = await this.db
       .select()
@@ -54,6 +54,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
         eq(automations.userId, args.userId),
         args.includeDeleted ? undefined : isNull(automations.deletedAt),
         args.projectId ? eq(automations.projectId, args.projectId) : undefined,
+        args.workspaceId ? eq(automations.workspaceId, args.workspaceId) : undefined,
       ))
       .orderBy(desc(automations.updatedAt))
       .limit(200)
@@ -75,7 +76,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
     return rows.map(({ run }) => mapRun(run))
   }
 
-  async getAutomation(args: { automationId: string; userId: string }): Promise<AutomationRecord | null> {
+  async getAutomation(args: { automationId: string; userId: string; workspaceId?: string }): Promise<AutomationRecord | null> {
     const [row] = await this.db
       .select()
       .from(automations)
@@ -83,6 +84,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
         eq(automations.id, args.automationId),
         eq(automations.userId, args.userId),
         isNull(automations.deletedAt),
+        args.workspaceId ? eq(automations.workspaceId, args.workspaceId) : undefined,
       ))
       .limit(1)
     return row ? mapAutomation(row) : null
@@ -113,6 +115,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
         description: args.description?.trim() ?? '',
         enabled,
         graphSource: normalizeOptional(args.graphSource),
+        graph: args.graph ?? null,
         id,
         instructions: args.instructions.trim(),
         modelId: normalizeOptional(args.modelId),
@@ -124,6 +127,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
         timezone: args.timezone?.trim() || 'UTC',
         updatedAt: new Date(now),
         userId: args.userId,
+        workspaceId: args.workspaceId,
       })
       await tx.insert(automationTriggers).values({
         automationId: id,
@@ -148,6 +152,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
           eq(automations.id, args.automationId),
           eq(automations.userId, args.userId),
           isNull(automations.deletedAt),
+          args.workspaceId ? eq(automations.workspaceId, args.workspaceId) : undefined,
         ))
         .limit(1)
       if (!current) throw new Error('Unauthorized')
@@ -175,6 +180,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
           ...(args.description !== undefined ? { description: args.description.trim() } : {}),
           ...(args.enabled !== undefined ? { enabled: args.enabled } : {}),
           ...(args.graphSource !== undefined ? { graphSource: normalizeOptional(args.graphSource) } : {}),
+          ...(args.graph !== undefined ? { graph: args.graph ?? null } : {}),
           ...(args.instructions !== undefined ? { instructions: args.instructions.trim() } : {}),
           ...(args.modelId !== undefined ? { modelId: normalizeOptional(args.modelId) } : {}),
           ...(args.name !== undefined ? { name: args.name.trim() || current.name } : {}),
@@ -187,7 +193,10 @@ export class PostgresAutomationRepository implements AutomationRepository {
           nextRunAt,
           updatedAt: new Date(now),
         })
-        .where(eq(automations.id, args.automationId))
+        .where(and(
+          eq(automations.id, args.automationId),
+          args.workspaceId ? eq(automations.workspaceId, args.workspaceId) : undefined,
+        ))
       await tx
         .update(automationTriggers)
         .set({
@@ -203,6 +212,56 @@ export class PostgresAutomationRepository implements AutomationRepository {
     })
   }
 
+  async attachSourceConversation(args: {
+    automationId: string
+    conversationId: string
+    userId: string
+  }): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await assertConversationAccess(tx, {
+        conversationId: args.conversationId,
+        userId: args.userId,
+      })
+      const [automation] = await tx.select().from(automations).where(and(
+        eq(automations.id, args.automationId),
+        eq(automations.userId, args.userId),
+        isNull(automations.deletedAt),
+      )).limit(1)
+      if (!automation) throw new Error('Unauthorized')
+      const [target] = await tx.select({ workspaceId: conversations.workspaceId })
+        .from(conversations)
+        .where(and(
+          eq(conversations.id, args.conversationId),
+          eq(conversations.userId, args.userId),
+          isNull(conversations.deletedAt),
+        )).limit(1)
+      if (!target || (automation.workspaceId && target.workspaceId !== automation.workspaceId)) {
+        throw new Error('Unauthorized')
+      }
+      const [currentSource] = automation.sourceConversationId
+        ? await tx.select({ id: conversations.id, workspaceId: conversations.workspaceId })
+          .from(conversations)
+          .where(and(
+            eq(conversations.id, automation.sourceConversationId),
+            eq(conversations.userId, args.userId),
+            isNull(conversations.deletedAt),
+          )).limit(1)
+        : []
+      if (currentSource && (!automation.workspaceId || currentSource.workspaceId === automation.workspaceId)) return
+      await tx
+        .update(automations)
+        .set({
+          sourceConversationId: args.conversationId,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(automations.id, args.automationId),
+          eq(automations.userId, args.userId),
+          isNull(automations.deletedAt),
+        ))
+    })
+  }
+
   async pauseAutomation(args: { automationId: string; userId: string }): Promise<void> {
     await this.setEnabled({ ...args, enabled: false })
   }
@@ -211,7 +270,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
     await this.setEnabled({ ...args, enabled: true })
   }
 
-  async removeAutomation(args: { automationId: string; userId: string }): Promise<void> {
+  async removeAutomation(args: { automationId: string; userId: string; workspaceId?: string }): Promise<void> {
     const now = new Date()
     await this.db.transaction(async (tx) => {
       const rows = await tx
@@ -221,6 +280,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
           eq(automations.id, args.automationId),
           eq(automations.userId, args.userId),
           isNull(automations.deletedAt),
+          args.workspaceId ? eq(automations.workspaceId, args.workspaceId) : undefined,
         ))
         .returning({ id: automations.id })
       if (rows.length === 0) throw new Error('Unauthorized')
@@ -243,39 +303,6 @@ export class PostgresAutomationRepository implements AutomationRepository {
       ))
       .returning({ id: automationRuns.id })
     return rows.length > 0
-  }
-
-  async requestActiveRunCancellation(args: {
-    automationId: string
-    userId: string
-  }): Promise<number> {
-    const now = new Date()
-    return await this.db.transaction(async (tx) => {
-      const queued = await tx
-        .update(automationRuns)
-        .set({
-          cancellationRequestedAt: now,
-          completedAt: now,
-          status: 'cancelled',
-          updatedAt: now,
-        })
-        .where(and(
-          eq(automationRuns.automationId, args.automationId),
-          eq(automationRuns.userId, args.userId),
-          eq(automationRuns.status, 'queued'),
-        ))
-        .returning({ id: automationRuns.id })
-      const running = await tx
-        .update(automationRuns)
-        .set({ cancellationRequestedAt: now, status: 'cancel_requested', updatedAt: now })
-        .where(and(
-          eq(automationRuns.automationId, args.automationId),
-          eq(automationRuns.userId, args.userId),
-          eq(automationRuns.status, 'running'),
-        ))
-        .returning({ id: automationRuns.id })
-      return queued.length + running.length
-    })
   }
 
   async retryRun(args: { runId: string; userId: string }): Promise<string | null> {
@@ -312,10 +339,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
         dedupeKey: `automation-run:${runId}`,
         id: jobId,
         maxAttempts: 5,
-        payload: {
-          runId,
-          ...durableJobAuthorization(args.userId, ['automations.use', 'models.use']),
-        },
+        payload: { runId },
         priority: 10,
         type: AUTOMATION_EXECUTE_JOB,
       })
@@ -404,7 +428,7 @@ export class PostgresAutomationRepository implements AutomationRepository {
   }
 
   async markManualRunCompleted(args: {
-    conversationId: string
+    conversationId?: string
     now: number
     runId: string
     userId: string
@@ -437,6 +461,26 @@ export class PostgresAutomationRepository implements AutomationRepository {
           run: { ...mapRun(row.run), userId: row.run.userId },
         }
       : null
+  }
+
+  async updateRunWorkflowRunId(args: {
+    runId: string
+    workflowRunId: string
+  }): Promise<void> {
+    await this.db
+      .update(automationRuns)
+      .set({ workflowRunId: args.workflowRunId, updatedAt: new Date() })
+      .where(eq(automationRuns.id, args.runId))
+  }
+
+  async updateSchedulerWorkflowRunId(args: {
+    automationId: string
+    schedulerWorkflowRunId: string | null
+  }): Promise<void> {
+    await this.db
+      .update(automations)
+      .set({ schedulerWorkflowRunId: args.schedulerWorkflowRunId, updatedAt: new Date() })
+      .where(eq(automations.id, args.automationId))
   }
 
   private async setEnabled(args: {
@@ -545,9 +589,11 @@ function mapAutomation(row: AutomationRow): AutomationRecord {
     projectId: row.projectId ?? undefined,
     modelId: row.modelId ?? undefined,
     graphSource: row.graphSource ?? undefined,
+    graph: row.graph ?? undefined,
     sourceConversationId: row.sourceConversationId ?? undefined,
     conversationId: row.conversationId ?? undefined,
     concurrencyPolicy: row.concurrencyPolicy,
+    schedulerWorkflowRunId: row.schedulerWorkflowRunId ?? undefined,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
     deletedAt: row.deletedAt?.getTime(),
@@ -567,6 +613,7 @@ function mapRun(row: AutomationRunRow): AutomationRunSummary {
     turnId: row.turnId ?? undefined,
     error: row.error ?? undefined,
     triggerSource: row.triggerSource,
+    workflowRunId: row.workflowRunId ?? undefined,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
   }

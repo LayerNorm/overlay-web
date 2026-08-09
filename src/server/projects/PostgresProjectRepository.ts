@@ -33,6 +33,7 @@ export class PostgresProjectRepository implements ProjectRepository {
   async getProject(args: {
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord | null> {
     const [row] = await this.db
       .select()
@@ -41,16 +42,17 @@ export class PostgresProjectRepository implements ProjectRepository {
         eq(projects.id, args.projectId),
         eq(projects.userId, args.userId),
         isNull(projects.deletedAt),
+        args.workspaceId ? eq(projects.workspaceId, args.workspaceId) : undefined,
       ))
       .limit(1)
     return row ? mapProjectRow(row) : null
   }
 
   async listProjects(args: {
-    includeArchived?: boolean
     includeDeleted?: boolean
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord[]> {
     const updatedSince = finiteDate(args.updatedSince)
     const rows = await this.db
@@ -59,8 +61,8 @@ export class PostgresProjectRepository implements ProjectRepository {
       .where(and(
         eq(projects.userId, args.userId),
         args.includeDeleted ? undefined : isNull(projects.deletedAt),
-        args.includeArchived ? undefined : isNull(projects.archivedAt),
         updatedSince ? gt(projects.updatedAt, updatedSince) : undefined,
+        args.workspaceId ? eq(projects.workspaceId, args.workspaceId) : undefined,
       ))
       .orderBy(asc(projects.createdAt))
     return rows.map(mapProjectRow)
@@ -69,11 +71,10 @@ export class PostgresProjectRepository implements ProjectRepository {
   async createProject(args: {
     clientId?: string
     instructions?: string
-    knowledgeBaseId?: string | null
     name: string
     parentId?: string | null
-    settings?: Record<string, unknown>
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord> {
     return await this.db.transaction(async (tx) => {
       await lockProjectHierarchy(tx, args.userId)
@@ -85,11 +86,10 @@ export class PostgresProjectRepository implements ProjectRepository {
         clientId: normalizeOptional(args.clientId),
         name: args.name,
         instructions: normalizeOptional(args.instructions),
-        knowledgeBaseId: normalizeOptional(args.knowledgeBaseId),
         parentId: normalizeOptional(args.parentId),
-        settings: args.settings ?? {},
         createdAt: now,
         updatedAt: now,
+        workspaceId: args.workspaceId,
       }
       if (values.clientId) {
         const [existing] = await tx
@@ -115,9 +115,7 @@ export class PostgresProjectRepository implements ProjectRepository {
             .update(projects)
             .set({
               deletedAt: null,
-              archivedAt: null,
               instructions: values.instructions,
-              knowledgeBaseId: values.knowledgeBaseId,
               name: values.name,
               parentId: values.parentId,
               updatedAt: now,
@@ -139,14 +137,12 @@ export class PostgresProjectRepository implements ProjectRepository {
   }
 
   async updateProject(args: {
-    archivedAt?: number | null
     instructions?: string | null
-    knowledgeBaseId?: string | null
     name?: string
     parentId?: string | null
     projectId: string
-    settings?: Record<string, unknown>
     userId: string
+    workspaceId?: string
   }): Promise<ProjectRecord | null> {
     return await this.db.transaction(async (tx) => {
       await lockProjectHierarchy(tx, args.userId)
@@ -170,22 +166,16 @@ export class PostgresProjectRepository implements ProjectRepository {
       const [row] = await tx
         .update(projects)
         .set({
-          ...(args.archivedAt !== undefined
-            ? { archivedAt: args.archivedAt === null ? null : new Date(args.archivedAt) }
-            : {}),
           ...(args.instructions !== undefined ? { instructions: args.instructions } : {}),
-          ...(args.knowledgeBaseId !== undefined
-            ? { knowledgeBaseId: normalizeOptional(args.knowledgeBaseId) }
-            : {}),
           ...(args.name !== undefined ? { name: args.name } : {}),
           ...(args.parentId !== undefined ? { parentId: normalizeOptional(args.parentId) } : {}),
-          ...(args.settings !== undefined ? { settings: args.settings } : {}),
           updatedAt: new Date(),
         })
         .where(and(
           eq(projects.id, args.projectId),
           eq(projects.userId, args.userId),
           isNull(projects.deletedAt),
+          args.workspaceId ? eq(projects.workspaceId, args.workspaceId) : undefined,
         ))
         .returning()
       return row ? mapProjectRow(row) : null
@@ -195,13 +185,17 @@ export class PostgresProjectRepository implements ProjectRepository {
   async deleteProjectTree(args: {
     projectId: string
     userId: string
+    workspaceId?: string
   }): Promise<DeleteProjectTreeResult | null> {
     return await this.db.transaction(async (tx) => {
       await lockProjectHierarchy(tx, args.userId)
       const allProjects = await tx
         .select()
         .from(projects)
-        .where(eq(projects.userId, args.userId))
+        .where(and(
+          eq(projects.userId, args.userId),
+          args.workspaceId ? eq(projects.workspaceId, args.workspaceId) : undefined,
+        ))
       const root = allProjects.find((project) => (
         project.id === args.projectId && !project.deletedAt
       ))
@@ -376,12 +370,9 @@ function mapProjectRow(row: ProjectRow): ProjectRecord {
     clientId: row.clientId ?? undefined,
     name: row.name,
     instructions: row.instructions ?? undefined,
-    knowledgeBaseId: row.knowledgeBaseId ?? undefined,
     parentId: row.parentId ?? undefined,
-    settings: row.settings ?? {},
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
-    archivedAt: row.archivedAt?.getTime(),
     deletedAt: row.deletedAt?.getTime(),
   }
 }
@@ -404,7 +395,6 @@ async function assertValidParent(
     .where(and(
       eq(projects.id, args.parentId),
       eq(projects.userId, args.userId),
-      isNull(projects.archivedAt),
       isNull(projects.deletedAt),
     ))
     .limit(1)
@@ -423,7 +413,7 @@ function validateParentChange(
   }
   const byId = new Map(allProjects.map((project) => [project.id, project]))
   const parent = byId.get(args.parentId)
-  if (!parent || parent.userId !== args.userId || parent.archivedAt || parent.deletedAt) {
+  if (!parent || parent.userId !== args.userId || parent.deletedAt) {
     throw new ProjectRepositoryError('Invalid parent project', 'invalid_parent')
   }
   const seen = new Set<string>([args.projectId])

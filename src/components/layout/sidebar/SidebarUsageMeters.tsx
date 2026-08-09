@@ -12,6 +12,10 @@ export interface SidebarEntitlements {
   budgetUsedCents?: number
   budgetTotalCents?: number
   budgetRemainingCents?: number
+  allowanceTotalCents?: number
+  allowanceUsedCents?: number
+  allowancePercentUsed?: number
+  topUpBalanceCents?: number
   dailyUsage: { ask: number; write: number; agent: number }
   overlayStorageBytesUsed: number
   overlayStorageBytesLimit: number
@@ -24,17 +28,17 @@ export function UsageBar({ entitlements }: { entitlements: SidebarEntitlements |
 
   const { tier } = entitlements
   const planKind = entitlements.planKind ?? (tier === 'free' ? 'free' : 'paid')
-  const budgetUsedCents = entitlements.budgetUsedCents ?? entitlements.creditsUsed ?? 0
-  const budgetTotalCents =
-    entitlements.budgetTotalCents ??
+  const allowanceUsedCents = entitlements.allowanceUsedCents ?? entitlements.budgetUsedCents ?? entitlements.creditsUsed ?? 0
+  const allowanceTotalCents =
+    entitlements.allowanceTotalCents ?? entitlements.budgetTotalCents ??
     (typeof entitlements.creditsTotal === 'number' ? Math.max(0, entitlements.creditsTotal * 100) : 0)
 
   if (planKind === 'free') {
     return <p className="text-[11px] text-[var(--muted-light)]">Auto model messages are unlimited. Premium models and budgeted tools are unavailable on this plan.</p>
   }
 
-  if (budgetTotalCents <= 0) return <p className="text-[11px] text-[#aaa]">No budget limit set</p>
-  const usedPctRaw = Math.min(100, (budgetUsedCents / budgetTotalCents) * 100)
+  if (allowanceTotalCents <= 0) return <p className="text-[11px] text-[#aaa]">No allowance limit set</p>
+  const usedPctRaw = entitlements.allowancePercentUsed ?? Math.min(100, (allowanceUsedCents / allowanceTotalCents) * 100)
   const remainingPctRaw = Math.max(0, 100 - usedPctRaw)
   const exhausted = remainingPctRaw <= 0
   const warning = usedPctRaw >= 80
@@ -42,15 +46,10 @@ export function UsageBar({ entitlements }: { entitlements: SidebarEntitlements |
 
   return (
     <UsageMeterBar
-      percent={remainingPctRaw}
+      percent={usedPctRaw}
       tone={tone}
       primaryLabel={
-        <>
-          {remainingPctRaw.toFixed(1)}% remaining
-          <span className="text-[10px] opacity-70">
-            {' '}· ${(budgetUsedCents / 100).toFixed(2)} / ${(budgetTotalCents / 100).toFixed(2)}
-          </span>
-        </>
+        <>{usedPctRaw.toFixed(1)}% allowance used</>
       }
       trailingIcon={exhausted ? <AlertCircle size={11} /> : undefined}
     />

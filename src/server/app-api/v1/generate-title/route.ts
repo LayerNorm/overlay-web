@@ -62,7 +62,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       result = await generateObject({
         model,
         schema: titleSchema,
-        system:
+        instructions:
           'You write short, precise chat titles. Capture the actual topic, not the first words.',
         temperature: 0.2,
         maxOutputTokens: 80,

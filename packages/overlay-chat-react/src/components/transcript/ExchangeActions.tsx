@@ -1,4 +1,4 @@
-import { BookOpen, Brain, GitBranch, Reply, RotateCw, Trash2 } from 'lucide-react'
+import { BookOpen, GitBranch, Reply, RotateCw, Trash2 } from 'lucide-react'
 import type { WebSourceItem } from '../../lib/web-sources'
 import { FlashCopyIconButton } from '../DraftReviewModal'
 
@@ -10,7 +10,6 @@ export interface ExchangeActionsProps {
   onDeleteTurn: () => void
   onReply: () => void
   onBranch?: () => void
-  onSaveToKnowledge?: () => void
   turnIdForActions: string | null
   actionsLocked: boolean
   webSources: readonly WebSourceItem[]
@@ -30,7 +29,6 @@ export function ExchangeActions({
   onDeleteTurn,
   onReply,
   onBranch,
-  onSaveToKnowledge,
   turnIdForActions,
   actionsLocked,
   webSources,
@@ -93,18 +91,6 @@ export function ExchangeActions({
           title="Branch chat from here"
         >
           <GitBranch size={14} strokeWidth={1.75} />
-        </button>
-      ) : null}
-      {onSaveToKnowledge ? (
-        <button
-          type="button"
-          onClick={onSaveToKnowledge}
-          disabled={actionsLocked || isExiting || copyPlainText.length === 0}
-          className="rounded-md p-1.5 text-[var(--muted)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30"
-          aria-label="Save response to My knowledge"
-          title="Save to My knowledge"
-        >
-          <Brain size={14} strokeWidth={1.75} />
         </button>
       ) : null}
       {webSources.length > 0 && onOpenSources ? (

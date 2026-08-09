@@ -1,7 +1,7 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { ToolLoopAgent, stepCountIs, tool, type ToolSet } from '@/server/ai/sdk'
+import { ToolLoopAgent, isStepCount, tool, type ToolSet } from '@/server/ai/sdk'
 import { z } from 'zod'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -352,8 +352,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           model,
           instructions,
           tools,
-          stopWhen: stepCountIs(20),
-          onStepFinish: async ({ text }) => {
+          stopWhen: isStepCount(20),
+          onStepEnd: async ({ text }) => {
             emitText(text)
           },
         })
@@ -369,10 +369,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
         emitText(result.text)
 
-	        const totalUsage = result.totalUsage
-	        const totalInputTokens = totalUsage?.inputTokens ?? 0
-	        const totalOutputTokens = totalUsage?.outputTokens ?? 0
-	        const cachedTokens = totalUsage?.inputTokenDetails?.cacheReadTokens ?? 0
+	        const usage = result.usage
+	        const totalInputTokens = usage?.inputTokens ?? 0
+	        const totalOutputTokens = usage?.outputTokens ?? 0
+	        const cachedTokens = usage?.inputTokenDetails?.cacheReadTokens ?? 0
 	        const providerCostUsd = await calculateLanguageModelTokenCostOrNull(
 	          effectiveModelId,
 	          totalInputTokens,

@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - master
+      - staging
   workflow_dispatch:
 
 permissions:
@@ -106,14 +107,14 @@ jobs:
         run: echo "Skipping dependency review because GitHub dependency graph is disabled for this repository."
 
   dependency-audit:
-    name: Lockfile, Lint, Complexity, Typecheck, and Audit
+    name: Required Quality and Security Gates
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # actions/checkout v4
 
-      - name: Initialize desktop submodule for boundary checks
-        run: git submodule update --init --depth=1 overlay-desktop
+      - name: Check out desktop transcript contract
+        run: git submodule update --init --depth 1 overlay-desktop
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # actions/setup-node v4
@@ -143,6 +144,28 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Build
+        env:
+          INTERNAL_API_SECRET: test-internal-secret
+          NEXT_PUBLIC_CONVEX_URL: https://fixture.convex.cloud
+          OVERLAY_DEPLOYMENT_ENV: test
+        run: npm run build
+
+      - name: Verify core route contracts
+        run: npm run test:route-characterization
+
+      - name: Verify migration and endpoint safety rails
+        run: npm run check:config && npm run test:release-safety
+
+      - name: Verify tenant boundary guard
+        run: npm run check:tenant-boundaries
+
+      - name: Verify on-prem parity matrix
+        run: npm run check:on-prem-parity
+
+      - name: Verify public documentation health
+        run: npm run docs:health
 
       - name: Audit production dependencies
         run: npm run security:audit

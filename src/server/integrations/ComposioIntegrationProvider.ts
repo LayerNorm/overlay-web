@@ -68,18 +68,6 @@ export interface ComposioSdkFacade {
     list(args: { userIds: string[]; toolkitSlugs: string[] }): Promise<{ items?: unknown[] }>
     delete(id: string): Promise<unknown>
   }
-  tools: {
-    execute(toolId: string, args: {
-      arguments: Record<string, unknown>
-      dangerouslySkipVersionCheck?: boolean
-      userId: string
-    }): Promise<{
-      data: Record<string, unknown>
-      error: string | null
-      successful: boolean
-      logId?: string
-    }>
-  }
 }
 
 export interface ComposioIntegrationProviderOptions {
@@ -90,12 +78,7 @@ export interface ComposioIntegrationProviderOptions {
 }
 
 async function loadComposioSdk(apiKey: string): Promise<ComposioSdkFacade> {
-  let sdkModule: {
-    Composio: new (args: {
-      apiKey: string
-      autoUploadDownloadFiles?: boolean
-    }) => ComposioSdkFacade
-  }
+  let sdkModule: { Composio: new (args: { apiKey: string }) => ComposioSdkFacade }
   try {
     sdkModule = await import('@composio/core') as unknown as typeof sdkModule
   } catch (_error) {
@@ -104,7 +87,7 @@ async function loadComposioSdk(apiKey: string): Promise<ComposioSdkFacade> {
     ).href
     sdkModule = await import(/* webpackIgnore: true */ url) as unknown as typeof sdkModule
   }
-  return new sdkModule.Composio({ apiKey, autoUploadDownloadFiles: true })
+  return new sdkModule.Composio({ apiKey })
 }
 
 async function resolveApiKey(accessToken?: string): Promise<string | null> {
@@ -185,7 +168,9 @@ export class ComposioIntegrationProvider implements IntegrationProvider {
 
   async listCatalog(query: Parameters<IntegrationProvider['listCatalog']>[0]) {
     const apiKey = await this.apiKeyResolver(query.accessToken)
-    if (!apiKey) return { items: [], nextCursor: null, hasMore: false }
+    if (!apiKey) {
+      throw new Error('Composio is not configured. Add COMPOSIO_API_KEY to the server environment or WorkOS Vault.')
+    }
     const connections = await this.listConnections(query)
     const connected = new Map(connections.map((item) => [item.providerKey, item]))
     const url = new URL(`${COMPOSIO_API_BASE_URL}/toolkits`)
@@ -193,7 +178,12 @@ export class ComposioIntegrationProvider implements IntegrationProvider {
     if (query.cursor) url.searchParams.set('cursor', query.cursor)
     url.searchParams.set('limit', String(query.limit))
     const response = await this.fetcher(url, { headers: { 'x-api-key': apiKey }, cache: 'no-store' })
-    if (!response.ok) return { items: [], nextCursor: null, hasMore: false }
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`Composio rejected the configured API key (HTTP ${response.status}). Rotate COMPOSIO_API_KEY and retry.`)
+      }
+      throw new Error(`Composio catalog is unavailable (HTTP ${response.status}). Try again shortly.`)
+    }
     const data = await response.json() as {
       items?: ComposioToolkitRecord[]
       nextCursor?: string
@@ -285,37 +275,10 @@ export class ComposioIntegrationProvider implements IntegrationProvider {
     return await this.toolSetFactory(args)
   }
 
-  async execute(request: Parameters<IntegrationProvider['execute']>[0]) {
-    const apiKey = await this.apiKeyResolver()
-    if (!apiKey) return { status: 'failed' as const, error: 'Composio not configured' }
-    try {
-      const composio = await this.sdkFactory(apiKey)
-      const result = await composio.tools.execute(request.toolId, {
-        arguments: isRecord(request.args) ? request.args : {},
-        dangerouslySkipVersionCheck: true,
-        userId: request.userId,
-      })
-      if (!result.successful) {
-        return {
-          status: 'failed' as const,
-          error: result.error ?? 'Composio tool execution failed',
-          executionId: result.logId,
-        }
-      }
-      return {
-        status: 'completed' as const,
-        output: result.data,
-        executionId: result.logId,
-      }
-    } catch (error) {
-      return {
-        status: 'failed' as const,
-        error: error instanceof Error ? error.message : String(error),
-      }
+  async execute() {
+    return {
+      status: 'failed' as const,
+      error: 'Composio tools execute through the generated ToolSet',
     }
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }

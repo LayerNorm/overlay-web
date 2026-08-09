@@ -236,9 +236,10 @@ export async function proxy(request: NextRequest) {
       cspPolicy,
     )
 
-  // /app/account is an implementation detail; the canonical URL is /account.
+  // /app/account is a legacy implementation route; account settings are canonical under /app/settings.
   if (pathname === '/app/account') {
-    const destination = new URL('/account' + request.nextUrl.search, request.url)
+    const destination = new URL('/app/settings' + request.nextUrl.search, request.url)
+    destination.searchParams.set('section', 'account')
     return applyBrowserSecurityHeaders(
       NextResponse.redirect(destination),
       cspHeaderName,
@@ -365,9 +366,10 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Render the account page inside the app shell while keeping /account canonical.
+  // Preserve /account as a compatibility alias for the account settings section.
   if (pathname === '/account') {
-    const destination = new URL('/app/account' + request.nextUrl.search, request.url)
+    const destination = new URL('/app/settings' + request.nextUrl.search, request.url)
+    destination.searchParams.set('section', 'account')
     return applyBrowserSecurityHeaders(
       NextResponse.rewrite(destination, {
         request: {
@@ -383,5 +385,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)']
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|\\.well-known/workflow/).*)']
 }

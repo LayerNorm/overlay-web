@@ -1,15 +1,10 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { normalizeIntegrationProviderKey } from '@overlay/app-core'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import type { AuthorizationService } from '@/server/authorization'
-import {
-  authorizeCatalogResource,
-  filterCatalogResources,
-} from '@/server/authorization'
 import { getBaseUrl } from '@/server/web/app-url'
 import { getIntegrationProvider, IntegrationService } from '@/server/integrations'
+import type { WorkspaceConnectorRepository } from '@/server/integrations/WorkspaceConnectorRepository'
 
 function getAllowedAppOrigins(): string[] {
   const values = [process.env.NEXT_PUBLIC_APP_URL, process.env.DEV_NEXT_PUBLIC_APP_URL, getBaseUrl()]
@@ -43,8 +38,15 @@ function service() {
 }
 
 interface IntegrationsRouteDependencies {
-  authorization?: AuthorizationService
   service?: IntegrationService
+  workspaceConnectors?: WorkspaceConnectorRepository
+}
+
+function catalogErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : ''
+  return /^Composio (?:is not configured|rejected the configured API key|catalog is unavailable)/.test(message)
+    ? message
+    : 'Failed to load integrations'
 }
 
 export async function GET(
@@ -54,8 +56,6 @@ export async function GET(
 ) {
   try {
     const integrations = dependencies.service ?? service()
-    const authorization = dependencies.authorization
-      ?? getOverlayServerContext().authorizationService
     const { searchParams } = request.nextUrl
     const action = searchParams.get('action')
 
@@ -77,19 +77,11 @@ export async function GET(
         cursor: searchParams.get('cursor') || undefined,
         limit: Math.min(Math.max(Number.isFinite(parsedLimit) ? parsedLimit : 20, 1), 100),
       })
-      const items = await filterCatalogResources({
-        authorization,
-        capability: 'integrations.use',
-        context,
-        getId: (item) => normalizeIntegrationProviderKey(item.providerKey),
-        resourceType: 'connector',
-        values: page.items,
-      })
       return NextResponse.json({
         provider: integrations.id,
         providerCapabilities: integrations.capabilities,
-        data: items,
-        items,
+        data: page.items,
+        items: page.items,
         nextCursor: page.nextCursor,
         hasMore: page.hasMore,
         syncCursor: page.syncCursor,
@@ -99,32 +91,51 @@ export async function GET(
     const connected = await integrations.listConnected({
       userId: context.auth.userId,
       accessToken: context.auth.accessToken,
+      workspaceId: context.workspace.workspace.id,
     })
-    const allowedItems = await filterCatalogResources({
-      authorization,
-      capability: 'integrations.use',
-      context,
-      getId: (item) => normalizeIntegrationProviderKey(item.providerKey),
-      resourceType: 'connector',
-      values: connected.items,
+    const workspaceConnectors = dependencies.workspaceConnectors
+      ?? getOverlayServerContext().appData.repositories.workspaceConnectors
+    let mappings = await workspaceConnectors.listByWorkspace({
+      workspaceId: context.workspace.workspace.id,
+      userId: context.auth.userId,
     })
-    const allowedProviderKeys = new Set(allowedItems
-      .map(({ providerKey }) => normalizeIntegrationProviderKey(providerKey)))
+    if (context.workspace.workspace.kind === 'personal') {
+      const allMappings = await workspaceConnectors.listByUser({ userId: context.auth.userId })
+      const assignedProviderKeys = new Set(allMappings.map(({ providerKey }) => providerKey))
+      const legacyConnections = [...new Map(connected.connections
+        .filter(({ providerKey }) => !assignedProviderKeys.has(providerKey))
+        .map((connection) => [connection.providerKey, connection])).values()]
+      await Promise.all(legacyConnections.map((connection) => workspaceConnectors.insert({
+        workspaceId: context.workspace.workspace.id,
+        userId: context.auth.userId,
+        providerKey: connection.providerKey,
+        connectedAccountId: connection.id,
+      })))
+      if (legacyConnections.length > 0) {
+        mappings = await workspaceConnectors.listByWorkspace({
+          workspaceId: context.workspace.workspace.id,
+          userId: context.auth.userId,
+        })
+      }
+    }
+    const mappedProviderKeys = new Set(mappings.map((mapping) => mapping.providerKey))
+    const filteredConnections = connected.connections.filter((connection) => mappedProviderKeys.has(connection.providerKey))
+    const filteredItems = connected.items.filter((item) => mappedProviderKeys.has(item.providerKey))
     return NextResponse.json({
       provider: integrations.id,
       providerCapabilities: integrations.capabilities,
-      connected: [...new Set(connected.connections
-        .map((item) => item.providerKey)
-        .filter((providerKey) => allowedProviderKeys.has(
-          normalizeIntegrationProviderKey(providerKey),
-        )))],
-      data: allowedItems,
-      items: allowedItems,
+      connected: [...new Set(filteredConnections.map((item) => item.providerKey))],
+      data: filteredItems,
+      items: filteredItems,
       hasMore: false,
     })
   } catch (error) {
     logger.error('[Integrations] GET failed:', error)
-    return NextResponse.json({ connected: [], items: [], error: 'Failed to load integrations' }, { status: 502 })
+    return NextResponse.json({
+      connected: [],
+      items: [],
+      error: catalogErrorMessage(error),
+    }, { status: 502 })
   }
 }
 
@@ -135,28 +146,26 @@ export async function POST(
 ) {
   try {
     const body = await request.json() as { action?: string; providerKey?: string; toolkit?: string }
-    const providerKey = normalizeIntegrationProviderKey(body.providerKey ?? body.toolkit ?? '')
+    const providerKey = (body.providerKey ?? body.toolkit)?.trim().toLowerCase()
     if (!providerKey) return NextResponse.json({ error: 'providerKey required' }, { status: 400 })
-    const authorization = dependencies.authorization
-      ?? getOverlayServerContext().authorizationService
-    const denied = await authorizeCatalogResource({
-      authorization,
-      capability: 'integrations.use',
-      context,
-      resourceId: providerKey,
-      resourceType: 'connector',
-    })
-    if (denied) return denied
     const integrations = dependencies.service ?? service()
     const connectionContext = {
       userId: context.auth.userId,
       accessToken: context.auth.accessToken,
       callbackOrigin: resolveCallbackOrigin(request),
       providerKey,
+      workspaceId: context.workspace.workspace.id,
     }
 
     if (body.action === 'disconnect') {
       await integrations.disconnect(connectionContext)
+      const workspaceConnectors = dependencies.workspaceConnectors
+        ?? getOverlayServerContext().appData.repositories.workspaceConnectors
+      await workspaceConnectors.remove({
+        workspaceId: context.workspace.workspace.id,
+        userId: context.auth.userId,
+        providerKey,
+      })
       return NextResponse.json({
         success: true,
         provider: integrations.id,
@@ -164,7 +173,18 @@ export async function POST(
       })
     }
 
-    return NextResponse.json(await integrations.connect(connectionContext))
+    const result = await integrations.connect(connectionContext)
+    if (result.connectionId) {
+      const workspaceConnectors = dependencies.workspaceConnectors
+        ?? getOverlayServerContext().appData.repositories.workspaceConnectors
+      await workspaceConnectors.insert({
+        workspaceId: context.workspace.workspace.id,
+        userId: context.auth.userId,
+        providerKey,
+        connectedAccountId: result.connectionId,
+      })
+    }
+    return NextResponse.json(result)
   } catch (error) {
     logger.error('[Integrations] POST failed:', error)
     return NextResponse.json({

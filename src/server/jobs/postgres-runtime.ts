@@ -58,19 +58,19 @@ import {
   type ScheduledAutomationTurn,
 } from '@/server/agent/run-act-turn'
 import { PostgresUsageRepository } from '@/server/usage'
-import type { AuthorizationService } from '@/server/authorization'
-import { authorizeDurableJob } from './DurableJobAuthorization'
-import {
-  CANONICAL_KNOWLEDGE_INDEX_JOB,
-  PostgresCanonicalKnowledgeIndexService,
-} from '@/server/knowledge-bases/PostgresCanonicalKnowledgeIndex'
 import { ServerProviderUsageMeter } from '@/server/billing/ServerProviderUsageMeter'
+import { AuditService, PostgresAuditRepository } from '@/server/admin'
+import { createLazyEmailProvider } from '@/server/email/createLazyEmailProvider'
+import { EmailOutboxDelivery } from '@/server/email/EmailOutboxDelivery'
+import { PostgresEmailRecipientRepository } from '@/server/email/EmailRecipientRepository'
+import { PostgresEmailSuppressionRepository } from '@/server/email/PostgresEmailSuppressionRepository'
+import { PostgresOutboxRepository } from './PostgresOutboxRepository'
+import { PostgresOutboxWorker } from './PostgresOutboxWorker'
 
 export function createPostgresRuntime(args: {
   db: OverlayPostgresDb
   leaseMs: number
   automationExecutor?: (input: ScheduledAutomationTurn) => Promise<{ conversationId: string }>
-  authorizationService?: AuthorizationService
   daytonaReconciler?: Pick<PostgresDaytonaReconciliationService, 'reconcile'>
   embeddingProvider?: EmbeddingProvider
   memoryExtractionProvider?: MemoryExtractionProvider
@@ -114,14 +114,6 @@ export function createPostgresRuntime(args: {
     })
     return knowledgeIndex
   }
-  let canonicalKnowledgeIndex: PostgresCanonicalKnowledgeIndexService | null = null
-  const getCanonicalKnowledgeIndex = () => {
-    canonicalKnowledgeIndex ??= new PostgresCanonicalKnowledgeIndexService({
-      db: args.db,
-      embeddings: args.embeddingProvider ?? createEmbeddingProvider(runtimeConfig()),
-    })
-    return canonicalKnowledgeIndex
-  }
   let memoryExtraction: MemoryExtractionService | null = null
   const getMemoryExtraction = () => {
     memoryExtraction ??= new MemoryExtractionService({
@@ -154,14 +146,6 @@ export function createPostgresRuntime(args: {
       [AUTOMATION_SCHEDULE_DUE_JOB]: async () => await automationRuns.enqueueDueRuns(),
       [AUTOMATION_EXECUTE_JOB]: async (job) => {
         const runId = requiredStringPayload(job.payload.runId, 'runId')
-        const authorization = await requireUserJobAuthorization(job, args.authorizationService)
-        if (!authorization.allowed) {
-          await automationRuns.denyRunForAuthorization({
-            error: authorizationError(authorization),
-            runId,
-          })
-          return { runId, status: 'authorization_denied' }
-        }
         const started = await automationRuns.startAttempt({
           attemptNumber: job.attempts,
           jobId: job.id,
@@ -173,38 +157,24 @@ export function createPostgresRuntime(args: {
           const input = await automationRuns.getExecutionInput(runId)
           if (!input) throw new Error(`Automation run ${runId} is not executable`)
           const result = await automationExecutor(input)
-          const completion = await automationRuns.completeAttempt({
+          await automationRuns.completeAttempt({
             attemptNumber: job.attempts,
             conversationId: result.conversationId,
             result,
             runId,
           })
-          return { ...result, runId, status: completion }
+          return { ...result, runId, status: 'succeeded' }
         } catch (error) {
-          const failure = await automationRuns.failAttempt({
+          await automationRuns.failAttempt({
             attemptNumber: job.attempts,
             error: error instanceof Error ? error.stack ?? error.message : String(error),
             runId,
             terminal: job.attempts >= job.maxAttempts,
           })
-          if (failure === 'cancelled' || failure === 'terminal') {
-            return { runId, status: failure }
-          }
           throw error
         }
       },
-      [WEBHOOK_DELIVERY_JOB]: async (job) => {
-        const deliveryId = requiredStringPayload(job.payload.deliveryId, 'deliveryId')
-        const authorization = await requireUserJobAuthorization(job, args.authorizationService)
-        if (!authorization.allowed) {
-          await webhookDeliveries.denyForAuthorization({
-            deliveryId,
-            error: authorizationError(authorization),
-          })
-          return { deliveryId, status: 'authorization_denied' }
-        }
-        return await webhookDeliveries.deliver(job)
-      },
+      [WEBHOOK_DELIVERY_JOB]: async (job) => await webhookDeliveries.deliver(job),
       [DAYTONA_RECONCILE_JOB]: async () => {
         const config = runtimeConfig()
         if (!config.features.sandboxes || config.providers.sandbox?.provider !== 'daytona') {
@@ -212,36 +182,18 @@ export function createPostgresRuntime(args: {
         }
         return await getDaytonaReconciler().reconcile()
       },
-      [KNOWLEDGE_REINDEX_JOB]: async (job) => {
-        const authorization = await requireUserJobAuthorization(job, args.authorizationService)
-        if (!authorization.allowed) return { status: 'authorization_denied' }
-        return await getKnowledgeIndex().reindex({
-          expectedContentHash: stringPayload(job.payload.contentHash),
-          sourceId: requiredStringPayload(job.payload.sourceId, 'sourceId'),
-          sourceKind: sourceKindPayload(job.payload.sourceKind),
-          userId: requiredStringPayload(job.payload.userId, 'userId'),
-        })
-      },
-      [CANONICAL_KNOWLEDGE_INDEX_JOB]: async (job) => {
-        const authorization = await requireUserJobAuthorization(job, args.authorizationService)
-        if (!authorization.allowed) return { status: 'authorization_denied' }
-        return await getCanonicalKnowledgeIndex().index({
-          contentHash: requiredStringPayload(job.payload.contentHash, 'contentHash'),
-          sourceId: requiredStringPayload(job.payload.sourceId, 'sourceId'),
-          sourceVersionId: requiredStringPayload(job.payload.sourceVersionId, 'sourceVersionId'),
-          userId: requiredStringPayload(job.payload.userId, 'userId'),
-        })
-      },
-      [MEMORY_EXTRACT_TURN_JOB]: async (job) => {
-        const authorization = await requireUserJobAuthorization(job, args.authorizationService)
-        if (!authorization.allowed) return { status: 'authorization_denied' }
-        return await getMemoryExtraction().extractTurn({
-          conversationId: requiredStringPayload(job.payload.conversationId, 'conversationId'),
-          messageId: requiredStringPayload(job.payload.messageId, 'messageId'),
-          turnId: requiredStringPayload(job.payload.turnId, 'turnId'),
-          userId: requiredStringPayload(job.payload.userId, 'userId'),
-        })
-      },
+      [KNOWLEDGE_REINDEX_JOB]: async (job) => await getKnowledgeIndex().reindex({
+        expectedContentHash: stringPayload(job.payload.contentHash),
+        sourceId: requiredStringPayload(job.payload.sourceId, 'sourceId'),
+        sourceKind: sourceKindPayload(job.payload.sourceKind),
+        userId: requiredStringPayload(job.payload.userId, 'userId'),
+      }),
+      [MEMORY_EXTRACT_TURN_JOB]: async (job) => await getMemoryExtraction().extractTurn({
+        conversationId: requiredStringPayload(job.payload.conversationId, 'conversationId'),
+        messageId: requiredStringPayload(job.payload.messageId, 'messageId'),
+        turnId: requiredStringPayload(job.payload.turnId, 'turnId'),
+        userId: requiredStringPayload(job.payload.userId, 'userId'),
+      }),
       'knowledge.maintenance': async () => {
         const config = runtimeConfig()
         if (!isPostgresKnowledgeRuntimeEnabled(config)) {
@@ -265,23 +217,33 @@ export function createPostgresRuntime(args: {
     workerId: args.workerId,
   })
 
-  return { automationRuns, jobs, scheduler, worker }
+  const emailOutboxWorker = createEmailOutboxWorker(args)
+
+  return { automationRuns, emailOutboxWorker, jobs, scheduler, worker }
 }
 
-async function requireUserJobAuthorization(
-  job: Parameters<typeof authorizeDurableJob>[0]['job'],
-  authorizationService?: AuthorizationService,
-) {
-  if (!authorizationService) {
-    return { allowed: true, deniedCapabilities: [] }
-  }
-  return await authorizeDurableJob({ authorization: authorizationService, job })
-}
-
-function authorizationError(result: Awaited<ReturnType<typeof requireUserJobAuthorization>>): string {
-  return result.reason === 'authorization_metadata_missing'
-    ? 'Durable job authorization metadata is missing'
-    : `Authorization revoked before execution: ${result.deniedCapabilities.join(', ')}`
+function createEmailOutboxWorker(args: {
+  db: OverlayPostgresDb
+  leaseMs: number
+  runtimeConfig?: OverlayRuntimeConfig
+  workerId: string
+}): PostgresOutboxWorker | null {
+  const config = args.runtimeConfig
+  const providerName = config?.providers.email?.provider ?? config?.email?.provider ?? 'none'
+  if (!config || config.features.transactionalEmail === false || providerName === 'none') return null
+  const delivery = new EmailOutboxDelivery({
+    audit: new AuditService(new PostgresAuditRepository(args.db)),
+    config,
+    provider: createLazyEmailProvider(config),
+    recipients: new PostgresEmailRecipientRepository(args.db),
+    suppressions: new PostgresEmailSuppressionRepository(args.db),
+  })
+  return new PostgresOutboxWorker({
+    leaseMs: args.leaseMs,
+    publisher: delivery.publisher(),
+    repository: new PostgresOutboxRepository(args.db),
+    workerId: `${args.workerId}:email`,
+  })
 }
 
 function stringPayload(value: unknown): string | undefined {

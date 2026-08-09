@@ -50,45 +50,6 @@ Request bodies:
 
 Valid roles are `admin`, `auditor`, `billing_admin`, and `support`.
 
-## Roll out capability enforcement
-
-Overlay creates immutable system roles for administrative compatibility and a
-`[System] Default member` role for ordinary product access. New users receive
-the default role after their identity is persisted. Existing users must be
-migrated before switching enforcement on:
-
-```bash
-NODE_OPTIONS=--conditions=react-server \
-npx tsx scripts/migrate-administrative-authorization.ts
-```
-
-The command reports how many existing users received a baseline assignment.
-Run it once against each deployment database. It is idempotent.
-
-Start a deployment in observation mode:
-
-```bash
-OVERLAY_AUTHORIZATION_ENFORCEMENT_MODE=observe
-```
-
-In observation mode, Overlay evaluates and logs missing capabilities without
-blocking requests or hiding UI. Review the logs, create any custom roles and
-groups, assign them, and revoke the default Member assignment from users who
-must be restricted. A user with any explicit role is not automatically given
-the default role again. An empty custom role can therefore represent a
-suspended account.
-
-After the observation window is clean, switch every web, worker, and scheduler
-process together:
-
-```bash
-OVERLAY_AUTHORIZATION_ENFORCEMENT_MODE=enforce
-```
-
-Denied mutations create redacted `authorization.request.denied` audit events.
-API-key scopes remain an additional restriction: a valid key must have both the
-required API-key scope and the owning user's effective Overlay capability.
-
 ## Read audit events
 
 Auditors and admins can list audit events:
@@ -121,9 +82,6 @@ Before handing the deployment to end users:
 
 - [ ] The first admin is granted and has signed in.
 - [ ] Additional admin roles are granted and documented.
-- [ ] Existing users were migrated to the default Member role.
-- [ ] Custom restricted roles were tested in observation mode.
-- [ ] Web, worker, and scheduler processes use the same enforcement mode.
 - [ ] Audit logging is enabled and reachable.
 - [ ] Usage and budget controls are understood by the finance/IT contact.
 - [ ] The [Enterprise Security Launch Checklist](./enterprise-security-launch-checklist) is complete.

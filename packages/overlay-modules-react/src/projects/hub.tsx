@@ -6,12 +6,10 @@ ProjectFileSummary,
 ProjectHubTab
 } from '@overlay/app-core'
 import { projectRouteViewForFile } from '@overlay/app-core'
-import { BookOpen,ChevronDown,FileText,FolderOpen,FolderPlus,Loader2,MessageSquare,Pencil,Plus,Settings,Upload } from 'lucide-react'
-import React from 'react'
+import { BookOpen,ChevronDown,FileText,FolderOpen,FolderPlus,Loader2,MessageSquare,Pencil,Plus,Upload } from 'lucide-react'
 import { type ChangeEvent,type ReactNode,type RefObject } from 'react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '../shell'
 import { FileTypeIcon } from '../shared/file-type-icon'
-import { SegmentedControl } from '@overlay/ui'
 
 export interface ProjectHubHeaderProps {
   projectName: string
@@ -38,7 +36,7 @@ export function ProjectHubHeader({
 }: ProjectHubHeaderProps) {
   return (
     <AppScreenHeader className="px-3 py-2.5 md:px-4 md:py-0">
-      <div className="flex w-full min-w-0 items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         <FolderOpen size={16} className="shrink-0 text-[var(--muted)]" />
         {editingName ? (
           <input
@@ -62,6 +60,7 @@ export function ProjectHubHeader({
           <div className="group/project-head flex min-w-0 items-center gap-1">
             <h1
               className="min-w-0 truncate text-sm font-medium text-[var(--foreground)]"
+              style={{ fontFamily: 'var(--font-serif)' }}
             >
               {projectName || 'Project'}
             </h1>
@@ -78,29 +77,6 @@ export function ProjectHubHeader({
         {actions}
       </div>
     </AppScreenHeader>
-  )
-}
-
-const PROJECT_HUB_MODES = [
-  { value: 'chat' as const, label: 'Chat', icon: MessageSquare },
-  { value: 'files' as const, label: 'Files', icon: FileText },
-  { value: 'settings' as const, label: 'Settings', icon: Settings },
-]
-
-export function ProjectHubModeControl({
-  activeTab,
-  onTabChange,
-}: {
-  activeTab: ProjectHubTab
-  onTabChange: (tab: ProjectHubTab) => void
-}) {
-  return (
-    <SegmentedControl
-      value={activeTab}
-      options={PROJECT_HUB_MODES}
-      onChange={onTabChange}
-      ariaLabel="Project views"
-    />
   )
 }
 
@@ -232,11 +208,7 @@ export interface ProjectHubTabsProps {
   instructionsLoaded: boolean
   savingInstructions?: boolean
   instructionsSavedAt?: number | null
-  fileActions?: ReactNode
-  renderFileAction?: (file: ProjectFileSummary) => ReactNode
-  agentSettings?: ReactNode
-  knowledgeBaseSettings?: ReactNode
-  lifecycleSettings?: ReactNode
+  onTabChange: (tab: ProjectHubTab) => void
   onOpenChat: (id: string) => void
   onOpenFile: (file: ProjectFileSummary) => void
   onInstructionsChange: (value: string) => void
@@ -251,20 +223,34 @@ export function ProjectHubTabs({
   instructionsLoaded,
   savingInstructions,
   instructionsSavedAt,
-  fileActions,
-  renderFileAction,
-  agentSettings,
-  knowledgeBaseSettings,
-  lifecycleSettings,
+  onTabChange,
   onOpenChat,
   onOpenFile,
   onInstructionsChange,
 }: ProjectHubTabsProps) {
+  const tabBtnClass = (active: boolean) =>
+    `inline-flex items-center rounded-md px-3 py-1.5 text-xs transition-colors ${
+      active
+        ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+        : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+    }`
+
   return (
     <div className="flex flex-col gap-3">
-      {activeTab === 'chat' && (
+      <div className="flex items-center gap-1">
+        <button type="button" onClick={() => onTabChange('chats')} className={tabBtnClass(activeTab === 'chats')}>
+          Chats
+        </button>
+        <button type="button" onClick={() => onTabChange('files')} className={tabBtnClass(activeTab === 'files')}>
+          Files
+        </button>
+        <button type="button" onClick={() => onTabChange('instructions')} className={tabBtnClass(activeTab === 'instructions')}>
+          Instructions
+        </button>
+      </div>
+
+      {activeTab === 'chats' && (
         <div>
-          {chats.length > 0 ? <p className="mb-1 px-1 text-[11px] font-medium text-[var(--muted)]">Recent chats</p> : null}
           {listsLoading ? (
             <div className="flex justify-center py-6 text-[var(--muted)]"><Loader2 size={16} className="animate-spin" /></div>
           ) : chats.length === 0 ? (
@@ -290,13 +276,6 @@ export function ProjectHubTabs({
 
       {activeTab === 'files' && (
         <div>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-medium text-[var(--foreground)]">Project files</h2>
-              <p className="mt-1 text-xs text-[var(--muted)]">Working materials scoped to this project.</p>
-            </div>
-            {fileActions}
-          </div>
           {listsLoading ? (
             <div className="flex justify-center py-6 text-[var(--muted)]"><Loader2 size={16} className="animate-spin" /></div>
           ) : files.length === 0 ? (
@@ -305,21 +284,18 @@ export function ProjectHubTabs({
             <ul className="divide-y divide-[var(--border)]">
               {files.map((file) => (
                 <li key={file._id}>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onOpenFile(file)}
-                      className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left text-sm text-[var(--foreground)] transition-colors hover:opacity-80"
-                    >
-                      {projectRouteViewForFile(file) === 'note' ? (
-                        <BookOpen size={13} className="shrink-0 text-[var(--muted-light)]" />
-                      ) : (
-                        <FileTypeIcon file={file} size={13} className="text-[var(--muted-light)]" />
-                      )}
-                      <span className="min-w-0 flex-1 truncate">{file.name || 'Untitled'}</span>
-                    </button>
-                    {renderFileAction?.(file)}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onOpenFile(file)}
+                    className="flex w-full items-center gap-2 py-2 text-left text-sm text-[var(--foreground)] transition-colors hover:opacity-80"
+                  >
+                    {projectRouteViewForFile(file) === 'note' ? (
+                      <BookOpen size={13} className="shrink-0 text-[var(--muted-light)]" />
+                    ) : (
+                      <FileTypeIcon file={file} size={13} className="text-[var(--muted-light)]" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate">{file.name || 'Untitled'}</span>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -327,42 +303,22 @@ export function ProjectHubTabs({
         </div>
       )}
 
-      {activeTab === 'settings' && (
-        <div className="flex max-w-2xl flex-col">
-          <section className="pb-6">
-            <div className="mb-4">
-              <h2 className="text-sm font-medium text-[var(--foreground)]">Instructions</h2>
-              <p className="mt-1 text-xs text-[var(--muted)]">
-                Set context and customize how Overlay responds in this project.
-              </p>
-            </div>
-            <textarea
-              value={instructions}
-              disabled={!instructionsLoaded}
-              onChange={(event) => onInstructionsChange(event.target.value)}
-              placeholder={instructionsLoaded ? 'Project instructions…' : 'Loading…'}
-              rows={8}
-              className="w-full resize-y rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
-            />
-            <div className="flex h-4 items-center pt-1 text-[11px] text-[var(--muted-light)]">
-              {savingInstructions ? 'Saving…' : instructionsSavedAt ? 'Saved' : ''}
-            </div>
-          </section>
-          {agentSettings ? (
-            <section className="border-t border-[var(--border)] py-6">
-              {agentSettings}
-            </section>
-          ) : null}
-          {knowledgeBaseSettings ? (
-            <section className="border-t border-[var(--border)] py-6">
-              {knowledgeBaseSettings}
-            </section>
-          ) : null}
-          {lifecycleSettings ? (
-            <section className="border-t border-[var(--border)] py-6">
-              {lifecycleSettings}
-            </section>
-          ) : null}
+      {activeTab === 'instructions' && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-[var(--muted)]">
+            Set context and customize how Overlay responds in this project.
+          </p>
+          <textarea
+            value={instructions}
+            disabled={!instructionsLoaded}
+            onChange={(event) => onInstructionsChange(event.target.value)}
+            placeholder={instructionsLoaded ? 'Project instructions…' : 'Loading…'}
+            rows={8}
+            className="w-full resize-y rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+          />
+          <div className="flex h-4 items-center text-[11px] text-[var(--muted-light)]">
+            {savingInstructions ? 'Saving…' : instructionsSavedAt ? 'Saved' : ''}
+          </div>
         </div>
       )}
     </div>

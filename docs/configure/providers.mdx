@@ -15,7 +15,7 @@ Use `none` plus the matching feature flag when a provider family must be disable
 | Billing | `stripe`, `none` | `stripe` supports subscriptions, top-ups, portal sessions, and webhooks. Use `none` for private deployments. |
 | Object storage | `r2`, `s3`, `none` | `r2` is the hosted default. `s3` covers AWS S3 and compatible enterprise object stores. Keep compatible stores under `s3`; set `storage.s3.forcePathStyle=true` only when required. |
 | Models | `openrouter`, `ai-gateway`, `openai`, `anthropic`, `groq`, `none` | All listed model providers have active routing paths except `none`, which intentionally disables generation. |
-| Database | `convex`, `postgres` | `convex` is the hosted/default app-data provider. `postgres` supports users, chat, projects, files, notes, generated outputs, memory, knowledge retrieval, durable scheduled automations, billing controls, skills, MCP servers, and integration execution audits. Provider-owned connector credentials remain in Composio or Executor. |
+| Database | `convex`, `postgres` | `convex` is the hosted/default app-data provider. `postgres` supports users, chat, projects, files, notes, generated outputs, memory, knowledge retrieval, durable scheduled automations, billing controls, skills, and MCP servers. Connector account state and integration execution remain gated until the Postgres parity phase. |
 
 ## Enterprise Provider Families
 

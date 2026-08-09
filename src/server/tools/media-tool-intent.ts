@@ -99,7 +99,7 @@ export async function classifyMediaToolIntentForTurn(params: {
     const result = await generateObject({
       model,
       schema: mediaIntentSchema,
-      system:
+      instructions:
         'You are a strict tool-authorization classifier. Return only the schema. Prefer none when the request is not clearly asking to create or edit visual media now.',
       prompt,
       temperature: 0,

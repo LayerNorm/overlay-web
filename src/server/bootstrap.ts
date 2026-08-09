@@ -14,8 +14,13 @@ import {
 import { NoOpBillingProvider } from '@/server/billing/providers/noop-billing-provider'
 import { StripeBillingProvider } from '@/server/billing/providers/stripe-billing-provider'
 import { getOverlayRuntimeConfigSync, OverlayConfigError } from '@/server/config'
+import { logger } from '@/server/observability/logger'
+import { createPostHogLifecycleSink } from '@/server/observability/posthog-server'
+import { createOpenTelemetryLifecycleSink } from '@/server/observability/open-telemetry'
 import { ConvexRateLimiter } from '@/server/shared/providers/convex-rate-limiter'
 import { InMemoryEventBus } from '@/server/shared/providers/in-memory-event-bus'
+import { LifecycleEventPublisher, createLifecycleAuditSink } from '@/server/lifecycle-events'
+import { createEmailLifecycleSink } from '@/server/email'
 import { InMemoryRateLimiter } from '@/server/shared/providers/in-memory-rate-limiter'
 import {
   RedisRateLimiter,
@@ -27,10 +32,7 @@ import { InMemoryVectorStore } from '@/server/storage/providers/in-memory-vector
 import { NoOpObjectStore } from '@/server/storage/providers/noop-object-store'
 import { R2ObjectStore } from '@/server/storage/providers/r2-object-store'
 import { S3CompatibleObjectStore } from '@/server/storage/providers/s3-compatible-object-store'
-import {
-  applyAppDataCapabilitiesToOverlayCapabilities,
-  type AppDataCapabilities,
-} from '@/server/app-data/capabilities'
+import type { AppDataCapabilities } from '@/server/app-data/capabilities'
 import { createAppDataContext, type AppDataContext } from '@/server/app-data/repositories'
 import { createActUsagePolicy, type ActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import {
@@ -38,43 +40,58 @@ import {
   type GenerationUsagePolicy,
 } from '@/server/outputs/GenerationUsagePolicy'
 import { UserService, type UserAuthProvider } from '@/server/users'
-import {
-  AuthorizationAdministrationService,
-  AuthorizationService,
-  FixedRoleAuthorizationBridge,
-  createAuthorizationCapabilityPolicy,
-} from '@/server/authorization'
 import type { NoteRepository } from '@/server/notes'
-import { ProjectKnowledgeTransferService } from '@/server/projects/ProjectKnowledgeTransferService'
 import { MemoryService } from '@/server/memory'
 import {
   KnowledgeSearchService,
   PostgresKnowledgeSearchRepository,
   UnavailableKnowledgeSearchRepository,
   createEmbeddingProvider,
-  type EmbeddingModelIdentity,
 } from '@/server/knowledge'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
-import {
-  ConvexCanonicalKnowledgeIndexQueue,
-  IntegrationKnowledgeSourceFetcher,
-  KnowledgeBaseService,
-  KnowledgeSourceFetcherRegistry,
-  type KnowledgeSourceFetcher,
-  UrlKnowledgeSourceFetcher,
-  KnowledgeBaseRetrievalService,
-  KnowledgeSourceIngestionService,
-  PostgresCanonicalKnowledgeIndexQueue,
-} from '@/server/knowledge-bases'
-import {
-  getIntegrationProvider,
-} from '@/server/integrations'
-import { GovernanceService, WorkspaceGovernanceService } from '@/server/governance'
-import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
-import { WorkspaceAgentService } from '@/server/agents'
-import { WorkspaceSharingService } from '@/server/sharing'
-import { WorkspaceSearchService } from '@/server/search'
 import { ServerProviderUsageMeter } from '@/server/billing/ServerProviderUsageMeter'
+import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
+import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspaceRepository'
+import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
+import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
+import { PostgresWorkspaceAgentRepository } from '@/server/agents/PostgresWorkspaceAgentRepository'
+import { ConvexWorkspaceAgentRepository } from '@/server/agents/ConvexWorkspaceAgentRepository'
+import { WorkspaceSharingService } from '@/server/sharing/WorkspaceSharingService'
+import { PostgresWorkspaceSharingRepository } from '@/server/sharing/PostgresWorkspaceSharingRepository'
+import { ConvexWorkspaceSharingRepository } from '@/server/sharing/ConvexWorkspaceSharingRepository'
+import { WorkspaceSearchService } from '@/server/search/WorkspaceSearchService'
+import { WorkspaceGovernanceService } from '@/server/governance/WorkspaceGovernanceService'
+import { GovernanceService } from '@/server/governance/GovernanceService'
+import { PostgresGovernanceRepository } from '@/server/governance/PostgresGovernanceRepository'
+import { ConvexGovernanceRepository } from '@/server/governance/ConvexGovernanceRepository'
+import {
+  AuthorizationService,
+} from '@/server/authorization/AuthorizationService'
+import { FixedRoleAuthorizationBridge } from '@/server/authorization/FixedRoleAuthorizationBridge'
+import { AuthorizationAdministrationService } from '@/server/authorization/AuthorizationAdministrationService'
+import { createPostgresAuthorizationRepositories } from '@/server/authorization/PostgresAuthorizationRepositories'
+import { createConvexAuthorizationRepositories } from '@/server/authorization/ConvexAuthorizationRepositories'
+import type { AuthorizationRepositories } from '@overlay/authz-contracts'
+import type { AuthorizationCapability } from '@overlay/authz-contracts'
+import {
+  PostgresConversationCollaborationRepository,
+} from '@/server/conversations/PostgresConversationCollaborationRepository'
+import {
+  ConvexConversationCollaborationRepository,
+} from '@/server/conversations/ConvexConversationCollaborationRepository'
+import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
+import {
+  KnowledgeBaseService,
+  KnowledgeSourceIngestionService,
+  KnowledgeBaseRetrievalService,
+  createPostgresKnowledgeBaseRepositories,
+  createConvexKnowledgeBaseRepositories,
+  PostgresCanonicalKnowledgeIndexQueue,
+  ConvexCanonicalKnowledgeIndexQueue,
+  KnowledgeSourceFetcherRegistry,
+} from '@/server/knowledge-bases'
+import { ProjectKnowledgeTransferService } from '@/server/projects/ProjectKnowledgeTransferService'
+import { ProjectSharingService } from '@/server/projects/ProjectSharingService'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import { AnthropicGateway } from '@overlay/llm-gateway/anthropic'
 import { GroqGateway } from '@overlay/llm-gateway/groq'
@@ -96,27 +113,30 @@ export interface OverlayServerContext extends OverlayProviderContext {
   appData: AppDataContext
   appDataCapabilities: AppDataCapabilities
   administrativeService: AdministrativeService
-  authorizationAdministrationService: AuthorizationAdministrationService
-  fixedRoleAuthorizationBridge: FixedRoleAuthorizationBridge
-  authorizationService: AuthorizationService
   auditService: AuditService
   chatUsagePolicy: ActUsagePolicy
   generationUsagePolicy: GenerationUsagePolicy
-  governanceService: GovernanceService
   memoryService: MemoryService
   knowledgeSearchService: KnowledgeSearchService
-  knowledgeBaseService: KnowledgeBaseService
-  knowledgeBaseRetrievalService: KnowledgeBaseRetrievalService
-  knowledgeSourceIngestionService: KnowledgeSourceIngestionService
-  projectKnowledgeTransferService: ProjectKnowledgeTransferService
   noteRepository: NoteRepository
   apiKeyService: ApiKeyService
+  lifecycleEvents: LifecycleEventPublisher
   userService: UserService
   workspaceService: WorkspaceService
+  workspaceGovernanceService: WorkspaceGovernanceService
   workspaceAgentService: WorkspaceAgentService
   workspaceSharingService: WorkspaceSharingService
   workspaceSearchService: WorkspaceSearchService
-  workspaceGovernanceService: WorkspaceGovernanceService
+  knowledgeSourceIngestionService: KnowledgeSourceIngestionService
+  knowledgeBaseRetrievalService: KnowledgeBaseRetrievalService
+  knowledgeBaseService: KnowledgeBaseService
+  authorizationService: AuthorizationService
+  governanceService: GovernanceService
+  fixedRoleAuthorizationBridge: FixedRoleAuthorizationBridge
+  authorizationAdministrationService: AuthorizationAdministrationService
+  conversationCollaboration: ConversationCollaborationRepository
+  projectKnowledgeTransferService: ProjectKnowledgeTransferService
+  projectSharingService: ProjectSharingService
 }
 
 export interface CreateOverlayServerContextOptions {
@@ -156,159 +176,171 @@ export function createOverlayServerContext(
   })
   const memoryService = new MemoryService(appData.repositories.memories)
   const auditService = new AuditService(appData.repositories.audit)
-  const authorizationService = new AuthorizationService({
-    repositories: appData.repositories.authorization,
-    capabilityPolicy: createAuthorizationCapabilityPolicy(
-      applyAppDataCapabilitiesToOverlayCapabilities(
-        resolveOverlayCapabilities(runtimeConfig),
-        appData.capabilities,
-      ),
-    ),
-  })
-  const fixedRoleAuthorizationBridge = new FixedRoleAuthorizationBridge(
-    appData.repositories.authorization,
-  )
-  const workspaceService = new WorkspaceService(appData.repositories.workspaces)
-  const workspaceAgentService = new WorkspaceAgentService(
-    appData.repositories.workspaceAgents,
-    workspaceService,
-  )
-  const workspaceSharingService = new WorkspaceSharingService({
-    agents: appData.repositories.workspaceAgents,
-    collaboration: appData.repositories.conversationCollaboration,
-    conversations: appData.repositories.conversations,
-    repository: appData.repositories.workspaceSharing,
-    resourceOwners: appData.repositories.authorization.resourceOwners,
-    workspaceRepository: appData.repositories.workspaces,
-    workspaces: workspaceService,
-  })
-  const workspaceSearchService = new WorkspaceSearchService({
-    agents: appData.repositories.workspaceAgents,
-    collaboration: appData.repositories.conversationCollaboration,
-    conversations: appData.repositories.conversations,
-    sharing: workspaceSharingService,
-    workspaces: workspaceService,
-    sources: {
-      files: async ({ userId }) => await appData.repositories.files.listFiles({
-        userId,
-        limit: 200,
-        summary: true,
-      }) as Array<{ _id?: string; name?: string; updatedAt?: number }>,
-      projects: async ({ userId }) => await appData.repositories.projects.listProjects({ userId }),
-      knowledgeBases: async ({ userId }) => await appData.repositories.knowledgeBases.bases
-        .listForOwner(userId),
-      automations: async ({ userId }) => await appData.repositories.automations
-        .listAutomations({ userId }),
+  const eventBus = appConfig.eventBus ?? new InMemoryEventBus()
+  const lifecycleEvents = new LifecycleEventPublisher({
+    enabled: () => runtimeConfig?.features.lifecycleEvents !== false,
+    eventBus,
+    onDeliveryFailure: ({ destination, eventName }) => {
+      logger.warn('Lifecycle event delivery failed', { destination, eventName })
     },
-    // Titles for shared resources are read with the owner's identity only after
-    // the sharing service has already authorized the actor.
-    loaders: {
-      file: async ({ resourceId, ownerUserId }) => {
-        const file = await appData.repositories.files.getFile({
-          fileId: resourceId,
-          userId: ownerUserId,
-        }) as { name?: string; updatedAt?: number } | null
-        return file ? { title: file.name ?? 'Untitled', updatedAt: file.updatedAt } : null
-      },
-      project: async ({ resourceId, ownerUserId }) => {
-        const project = await appData.repositories.projects.getProject({
-          projectId: resourceId,
-          userId: ownerUserId,
-        })
-        return project ? { title: project.name, updatedAt: project.updatedAt } : null
-      },
-      knowledge_base: async ({ resourceId }) => {
-        const base = await appData.repositories.knowledgeBases.bases.get(resourceId)
-        return base ? { title: base.title, updatedAt: base.updatedAt } : null
-      },
-      automation: async ({ resourceId, ownerUserId }) => {
-        const automation = await appData.repositories.automations.getAutomation({
-          automationId: resourceId,
-          userId: ownerUserId,
-        })
-        return automation ? { title: automation.name ?? 'Untitled automation' } : null
-      },
-    },
-  })
-  const collaborationRateLimiter = appConfig.rateLimiter ?? createRateLimiter(runtimeConfig)
-  const workspaceGovernanceService = new WorkspaceGovernanceService({
-    audit: appData.repositories.audit,
-    rateLimiter: collaborationRateLimiter,
-    repository: appData.repositories.workspaces,
-    workspaces: workspaceService,
-    appDataProvider: appData.capabilities.provider,
-    requiresConvexClient: appData.capabilities.requiresConvexClient,
+    sinks: [
+      createLifecycleAuditSink(auditService),
+      createPostHogLifecycleSink(),
+      createOpenTelemetryLifecycleSink(),
+      ...(transactionalEmailEnabled(runtimeConfig)
+        ? [createEmailLifecycleSink(appData.repositories.outbox)]
+        : []),
+    ],
   })
   const userService = new UserService({
     authProvider: selectedAuthProviderForUserService(runtimeConfig),
-    afterUpsert: async ({ userId }) => {
-      await Promise.all([
-        fixedRoleAuthorizationBridge.ensureDefaultUserRole(userId),
-        workspaceService.ensurePersonalWorkspace({ userId }),
-      ])
-    },
+    lifecycleEvents,
     repository: appData.repositories.users,
   })
   const administrativeService = new AdministrativeService({
     audit: auditService,
     repository: appData.repositories.administration,
-    authorization: authorizationService,
-    compatibility: fixedRoleAuthorizationBridge,
   })
+  const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
+
+  // ── Workspace, authorization, and collaboration services ────────────────
+  const isPostgres = appData.capabilities.provider === 'postgres'
+  const postgresDb = appData.postgres?.db ?? null
+
+  const workspaceRepository = isPostgres && postgresDb
+    ? new PostgresWorkspaceRepository(postgresDb)
+    : new ConvexWorkspaceRepository()
+  const workspaceService = new WorkspaceService(workspaceRepository, { lifecycleEvents })
+
+  const authorizationRepositories: AuthorizationRepositories = isPostgres && postgresDb
+    ? createPostgresAuthorizationRepositories(postgresDb)
+    : createConvexAuthorizationRepositories()
+
+  const fixedRoleAuthorizationBridge = new FixedRoleAuthorizationBridge(authorizationRepositories)
+
+  const authorizationService = new AuthorizationService({
+    repositories: authorizationRepositories,
+    isDeploymentOwner: (_userId: string) => {
+      // Deployment owners bypass capability checks. Until a dedicated
+      // administrative principals table is wired, treat no one as a deployment
+      // owner by default — the capability policy still apply.
+      return false
+    },
+  })
+
+  const assertCapability = async (userId: string, capability: AuthorizationCapability) => {
+    await authorizationService.assertCapability({ userId, capability })
+  }
+
+  const governanceRepository = isPostgres && postgresDb
+    ? new PostgresGovernanceRepository(postgresDb)
+    : new ConvexGovernanceRepository()
+
+  const governanceService = new GovernanceService({
+    assertCapability,
+    audit: auditService,
+    authorization: authorizationRepositories,
+    repository: governanceRepository,
+  })
+
   const authorizationAdministrationService = new AuthorizationAdministrationService({
-    assertCapability: (userId, capability) =>
-      administrativeService.assertCapability(userId, capability),
+    assertCapability,
     audit: auditService,
     prepareAuthorization: () => fixedRoleAuthorizationBridge.ensureSystemRoles(),
-    repositories: appData.repositories.authorization,
+    repositories: authorizationRepositories,
   })
-  const governanceService = new GovernanceService({
-    assertCapability: (userId, capability) =>
-      administrativeService.assertCapability(userId, capability),
-    audit: auditService,
-    authorization: appData.repositories.authorization,
-    repository: appData.repositories.governance,
+
+  const conversationCollaboration: ConversationCollaborationRepository = isPostgres && postgresDb
+    ? new PostgresConversationCollaborationRepository(postgresDb)
+    : new ConvexConversationCollaborationRepository()
+
+  const workspaceAgentRepository = isPostgres && postgresDb
+    ? new PostgresWorkspaceAgentRepository(postgresDb)
+    : new ConvexWorkspaceAgentRepository()
+  const workspaceAgentService = new WorkspaceAgentService(workspaceAgentRepository, workspaceService)
+
+  const workspaceSharingRepository = isPostgres && postgresDb
+    ? new PostgresWorkspaceSharingRepository(postgresDb)
+    : new ConvexWorkspaceSharingRepository()
+  const workspaceSharingService = new WorkspaceSharingService({
+    agents: workspaceAgentRepository,
+    collaboration: conversationCollaboration,
+    conversations: appData.repositories.conversations,
+    repository: workspaceSharingRepository,
+    resourceOwners: authorizationRepositories.resourceOwners,
+    workspaceRepository,
+    workspaces: workspaceService,
   })
+
+  const workspaceSearchService = new WorkspaceSearchService({
+    agents: workspaceAgentRepository,
+    collaboration: conversationCollaboration,
+    conversations: appData.repositories.conversations,
+    sharing: workspaceSharingService,
+    sources: {
+      files: async () => [],
+      projects: async () => [],
+      knowledgeBases: async () => [],
+      automations: async () => [],
+    },
+    loaders: {},
+    workspaces: workspaceService,
+  })
+
+  const workspaceGovernanceService = new WorkspaceGovernanceService({
+    audit: appData.repositories.audit,
+    rateLimiter: appConfig.rateLimiter ?? createRateLimiter(runtimeConfig),
+    repository: workspaceRepository,
+    workspaces: workspaceService,
+    appDataProvider: appData.capabilities.provider,
+    requiresConvexClient: !isPostgres,
+  })
+
+  const knowledgeBaseRepositories = isPostgres && postgresDb
+    ? createPostgresKnowledgeBaseRepositories(postgresDb)
+    : createConvexKnowledgeBaseRepositories()
+
   const knowledgeBaseService = new KnowledgeBaseService({
     authorization: authorizationService,
-    authorizationRepositories: appData.repositories.authorization,
+    authorizationRepositories,
     audit: auditService,
-    embeddingIdentity: resolveEmbeddingIdentity(appData, runtimeConfig),
-    repositories: appData.repositories.knowledgeBases,
-    users: appData.repositories.users,
     governance: governanceService,
+    repositories: knowledgeBaseRepositories,
+    users: appData.repositories.users,
   })
-  const canonicalIndexQueue = appData.capabilities.provider === 'postgres'
-    ? new PostgresCanonicalKnowledgeIndexQueue(requiredPostgres(appData).db)
+
+  const canonicalIndexQueue = isPostgres && postgresDb
+    ? new PostgresCanonicalKnowledgeIndexQueue(postgresDb)
     : new ConvexCanonicalKnowledgeIndexQueue()
-  const knowledgeSourceFetchers: KnowledgeSourceFetcher[] = [new UrlKnowledgeSourceFetcher()]
-  const integrationProvider = runtimeConfig?.providers.integrations?.provider ??
-    (runtimeConfig?.features.integrations === false ? 'none' : 'composio')
-  if (runtimeConfig && integrationProvider === 'composio') {
-    const execute = (request: Parameters<ReturnType<typeof getIntegrationProvider>['execute']>[0]) =>
-      getIntegrationProvider().execute(request)
-    knowledgeSourceFetchers.push(
-      new IntegrationKnowledgeSourceFetcher('connector', execute),
-      new IntegrationKnowledgeSourceFetcher('drive', execute),
-    )
-  }
+
   const knowledgeSourceIngestionService = new KnowledgeSourceIngestionService({
     authorization: authorizationService,
     bases: knowledgeBaseService,
-    fetchers: new KnowledgeSourceFetcherRegistry(knowledgeSourceFetchers),
+    fetchers: new KnowledgeSourceFetcherRegistry([]),
     indexQueue: canonicalIndexQueue,
-    repositories: appData.repositories.knowledgeBases,
+    repositories: knowledgeBaseRepositories,
   })
+
+  const knowledgeBaseRetrievalService = new KnowledgeBaseRetrievalService({
+    bases: knowledgeBaseService,
+    search: knowledgeSearchService,
+  })
+
   const projectKnowledgeTransferService = new ProjectKnowledgeTransferService({
     bases: knowledgeBaseService,
     files: appData.repositories.files,
     ingestion: knowledgeSourceIngestionService,
-    notes: appData.repositories.notes,
+    notes: {
+      createNote: async (args) => appData.repositories.notes.createNote(args),
+    },
   })
-  const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
-  const knowledgeBaseRetrievalService = new KnowledgeBaseRetrievalService({
-    bases: knowledgeBaseService,
-    search: knowledgeSearchService,
+
+  const projectSharingService = new ProjectSharingService({
+    authorization: authorizationService,
+    authorizationRepositories,
+    projects: appData.repositories.projects,
+    users: appData.repositories.users,
+    audit: auditService,
   })
 
   return {
@@ -321,38 +353,36 @@ export function createOverlayServerContext(
     objectStore: appConfig.objectStore ?? createObjectStoreForRuntime(runtimeConfig),
     vectorStore: appConfig.vectorStore ?? createVectorStore(runtimeConfig),
     llmGateway: appConfig.llmGateway ?? createLlmGateway(runtimeConfig),
-    rateLimiter: collaborationRateLimiter,
-    eventBus: appConfig.eventBus ?? new InMemoryEventBus(),
+    rateLimiter: appConfig.rateLimiter ?? createRateLimiter(runtimeConfig),
+    eventBus,
     appData,
     appDataCapabilities: appData.capabilities,
     administrativeService,
-    authorizationAdministrationService,
-    fixedRoleAuthorizationBridge,
-    authorizationService,
     auditService,
     chatUsagePolicy,
     generationUsagePolicy,
-    governanceService,
     memoryService,
-    knowledgeBaseService,
-    knowledgeBaseRetrievalService,
-    knowledgeSourceIngestionService,
-    projectKnowledgeTransferService,
     knowledgeSearchService,
     noteRepository: appData.repositories.notes,
     apiKeyService: new ApiKeyService(appData.repositories.apiKeys),
+    lifecycleEvents,
     userService,
     workspaceService,
+    workspaceGovernanceService,
     workspaceAgentService,
     workspaceSharingService,
     workspaceSearchService,
-    workspaceGovernanceService,
+    knowledgeSourceIngestionService,
+    knowledgeBaseRetrievalService,
+    knowledgeBaseService,
+    authorizationService,
+    governanceService,
+    fixedRoleAuthorizationBridge,
+    authorizationAdministrationService,
+    conversationCollaboration,
+    projectKnowledgeTransferService,
+    projectSharingService,
   }
-}
-
-function requiredPostgres(appData: AppDataContext): NonNullable<AppDataContext['postgres']> {
-  if (!appData.postgres) throw new Error('Postgres application data context is unavailable')
-  return appData.postgres
 }
 
 function createKnowledgeSearchService(
@@ -371,26 +401,6 @@ function createKnowledgeSearchService(
     embeddings: createEmbeddingProvider(runtimeConfig),
     usageMeter: new ServerProviderUsageMeter(appData.repositories.usage),
   }))
-}
-
-/**
- * Current embedding identity, when the runtime actually embeds locally. Convex
- * manages embeddings centrally and does not expose an identity, so drift
- * detection is only meaningful on the Postgres path.
- */
-function resolveEmbeddingIdentity(
-  appData: AppDataContext,
-  runtimeConfig: OverlayRuntimeConfig | null,
-): EmbeddingModelIdentity | undefined {
-  if (appData.capabilities.provider !== 'postgres') return undefined
-  if (!runtimeConfig || !appData.capabilities.supportsVectorSearch) return undefined
-  try {
-    return createEmbeddingProvider(runtimeConfig).identity
-  } catch (_error) {
-    // A misconfigured embeddings provider must not stop the server from booting;
-    // diagnostics simply omit drift information.
-    return undefined
-  }
 }
 
 let defaultServerContext: OverlayServerContext | null = null
@@ -606,6 +616,7 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
   const modelProvider = selectedProvider(config, 'models', config.llm.gatewayProvider)
   const vectorSearchProvider = selectedProvider(config, 'vectorSearch', capabilities.vectorSearch ? 'convex' : 'none')
   const rateLimitProvider = selectedProvider(config, 'rateLimit', config.app.deploymentEnvironment === 'onprem' ? 'memory' : 'convex')
+  const emailProvider = selectedProvider(config, 'email', config.email?.provider ?? 'none')
 
   if (authProvider === 'workos') {
     const clientId = config.auth.workos.clientId ??
@@ -676,10 +687,29 @@ function assertSelectedProviderConfig(config: OverlayRuntimeConfig): void {
       issues.push('rateLimit.redis requires a TCP URL or REST URL/token pair')
     }
   }
+  if (config.features.transactionalEmail !== false && emailProvider !== 'none') {
+    if (!config.email?.from) issues.push('email.from is required when transactional email is enabled')
+    if (emailProvider === 'resend') {
+      if (!config.email?.resend?.apiKey) issues.push('email.resend.apiKey is required')
+    }
+    if (emailProvider === 'ses') {
+      if (!config.email?.ses.accessKeyId) issues.push('email.ses.accessKeyId is required')
+      if (!config.email?.ses.secretAccessKey) issues.push('email.ses.secretAccessKey is required')
+      if (!config.email?.ses.region) issues.push('email.ses.region is required')
+    }
+    if (emailProvider === 'smtp' && !config.email?.smtp.host) {
+      issues.push('email.smtp.host is required')
+    }
+  }
 
   if (issues.length > 0) {
     throw new OverlayConfigError('Overlay provider configuration is invalid', issues)
   }
+}
+
+function transactionalEmailEnabled(config: OverlayRuntimeConfig | null): config is OverlayRuntimeConfig {
+  if (!config || config.features.transactionalEmail === false) return false
+  return selectedProvider(config, 'email', config.email?.provider ?? 'none') !== 'none'
 }
 
 function runtimeCapabilities(config: OverlayRuntimeConfig): CapabilityCheck {

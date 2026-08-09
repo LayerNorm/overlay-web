@@ -2,6 +2,20 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { UserRepository, UserUpsertInput, UserUpsertResult } from './types'
 import { UserService } from './UserService'
+import { LifecycleEventPublisher, LIFECYCLE_EVENT_TOPIC } from '@/server/lifecycle-events'
+import type { EventBus } from '@overlay/app-core'
+
+class CapturingEventBus implements EventBus {
+  readonly events: Array<{ payload: unknown; topic: string }> = []
+
+  async publish(topic: string, payload: unknown): Promise<void> {
+    this.events.push({ topic, payload })
+  }
+
+  subscribe(): () => void {
+    return () => {}
+  }
+}
 
 class CapturingUserRepository implements UserRepository {
   readonly inputs: UserUpsertInput[] = []
@@ -70,6 +84,34 @@ test('UserService keeps providers separate for the same email', async () => {
   assert.equal(repository.inputs[1].identity.subject, 'better_456')
 })
 
+test('UserService publishes a metadata-only lifecycle event only for a new user', async () => {
+  const repository = new CapturingUserRepository()
+  const eventBus = new CapturingEventBus()
+  const service = new UserService({
+    authProvider: 'workos',
+    lifecycleEvents: new LifecycleEventPublisher({ eventBus }),
+    repository,
+  })
+
+  await service.upsertFromSession({ user: { id: 'user_123', email: 'person@example.com' } })
+  await service.upsertFromSession({ user: { id: 'user_123', email: 'person@example.com' } })
+
+  assert.equal(eventBus.events.length, 1)
+  assert.equal(eventBus.events[0]?.topic, LIFECYCLE_EVENT_TOPIC)
+  assert.deepEqual(eventBus.events[0]?.payload, {
+    attributes: { authProvider: 'workos' },
+    classification: 'operational',
+    destinations: ['analytics', 'audit', 'email', 'metrics', 'notification'],
+    eventId: (eventBus.events[0]?.payload as { eventId: string }).eventId,
+    idempotencyKey: 'user.created:workos:user_123',
+    name: 'user.created',
+    occurredAt: (eventBus.events[0]?.payload as { occurredAt: number }).occurredAt,
+    resource: { id: 'user_123', type: 'user' },
+    schemaVersion: 1,
+    userId: 'user_123',
+  })
+})
+
 test('UserService rejects sessions without a stable user id or email', async () => {
   const repository = new CapturingUserRepository()
   const service = new UserService({ authProvider: 'workos', repository })
@@ -87,20 +129,4 @@ test('UserService rejects sessions without a stable user id or email', async () 
     /valid email/,
   )
   assert.equal(repository.inputs.length, 0)
-})
-
-test('UserService applies post-upsert provisioning to the persisted user id', async () => {
-  const repository = new CapturingUserRepository()
-  const provisioned: string[] = []
-  const service = new UserService({
-    authProvider: 'workos',
-    repository,
-    afterUpsert: async ({ userId }) => { provisioned.push(userId) },
-  })
-
-  await service.upsertFromSession({
-    user: { id: 'user_member', email: 'member@example.com' },
-  })
-
-  assert.deepEqual(provisioned, ['user_member'])
 })

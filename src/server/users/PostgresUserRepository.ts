@@ -124,21 +124,19 @@ export class PostgresUserRepository implements UserRepository {
   }
 
   async listDirectory(): Promise<UserDirectoryEntry[]> {
-    return await this.db
+    const rows = await this.db
       .select({
         id: users.id,
-        email: users.email,
         name: users.name,
-        profilePictureUrl: users.profilePictureUrl,
+        email: users.email,
       })
       .from(users)
-      .orderBy(users.email, users.id)
-      .then((rows) => rows.map((row) => ({
-        id: row.id,
-        email: row.email,
-        name: row.name ?? undefined,
-        profilePictureUrl: row.profilePictureUrl ?? undefined,
-      })))
+      .orderBy(users.name)
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name ?? row.email,
+      email: row.email,
+    }))
   }
 }
 

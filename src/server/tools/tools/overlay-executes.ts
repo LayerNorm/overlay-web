@@ -383,6 +383,23 @@ export async function executeDraftAutomationFromChat(
   }
 }
 
+/**
+ * Normalize a schedule input that may have been stringified by the LLM.
+ * If the input is a string, parse it as JSON. If it's already an object,
+ * return it as-is. If parsing fails, return the original value so the
+ * downstream validation can produce a meaningful error.
+ */
+function normalizeScheduleInput(schedule: unknown): unknown {
+  if (typeof schedule === 'string') {
+    try {
+      return JSON.parse(schedule)
+    } catch {
+      return schedule
+    }
+  }
+  return schedule
+}
+
 export async function executeCreateAutomation(
   options: OverlayToolsOptions,
   input: {
@@ -400,10 +417,14 @@ export async function executeCreateAutomation(
 ) {
   try {
     const automationId = options.automationId?.trim()
+    // Defensive: LLMs sometimes stringify the schedule object instead of
+    // passing it as a JSON object. Parse it back to an object if needed.
+    const schedule = normalizeScheduleInput(input.schedule)
     const res = await callInternalApi(
       '/api/v1/automations',
       {
         ...input,
+        schedule,
         ...(automationId ? { automationId } : {}),
         projectId: input.projectId ?? options.projectId,
         sourceConversationId: input.sourceConversationId ?? options.conversationId,
@@ -445,9 +466,10 @@ export async function executeUpdateAutomation(
   },
 ) {
   try {
+    const schedule = input.schedule ? normalizeScheduleInput(input.schedule) : input.schedule
     const res = await callInternalApi(
       '/api/v1/automations',
-      { ...input, ...toolAuthBody(options) },
+      { ...input, schedule, ...toolAuthBody(options) },
       options.accessToken,
       options.baseUrl,
       { method: 'PATCH', forwardCookie: options.forwardCookie },
@@ -569,7 +591,6 @@ export async function executeGenerateVideo(
         videoSubMode,
         imageUrl: imageUrl ?? referenceVideoUrl,
         conversationId: options.conversationId,
-        projectId: options.projectId,
         turnId: options.turnId,
         ...toolAuthBody(options),
       },

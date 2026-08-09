@@ -51,7 +51,7 @@ export type ActLatestUserPersistence = {
 export type ActAssistantFinishEvent = {
   steps: StepResult<ToolSet>[]
   text: string
-  totalUsage?: {
+  usage?: {
     inputTokens?: number
     outputTokens?: number
   }
@@ -120,24 +120,20 @@ export class ActMessagePersistenceService {
     attachmentNames?: string[]
   }): Promise<void> {
     if (args.skip || !args.conversationId || !args.latestUserContent) return
-    try {
-      await this.deps.repository.addMessage({
-        conversationId: args.conversationId,
-        userId: args.userId,
-        turnId: args.turnId,
-        role: 'user',
-        mode: 'act',
-        content: args.latestUserText || args.latestUserContent,
-        contentType: 'text',
-        parts: sanitizeMessagePartsForPersistence(args.latestUserParts, {
-          attachmentNames: args.attachmentNames,
-        }) as Array<Record<string, unknown>>,
-        modelId: args.modelId,
-        skipMemoryExtraction: args.skipMemoryExtraction,
-      })
-    } catch (err) {
-      logger.error('[conversations/act] Failed to save user message:', summarizeErrorForLog(err))
-    }
+    await this.deps.repository.addMessage({
+      conversationId: args.conversationId,
+      userId: args.userId,
+      turnId: args.turnId,
+      role: 'user',
+      mode: 'act',
+      content: args.latestUserText || args.latestUserContent,
+      contentType: 'text',
+      parts: sanitizeMessagePartsForPersistence(args.latestUserParts, {
+        attachmentNames: args.attachmentNames,
+      }) as Array<Record<string, unknown>>,
+      modelId: args.modelId,
+      skipMemoryExtraction: args.skipMemoryExtraction,
+    })
   }
 
   async persistAssistantFinish(args: {
@@ -160,9 +156,9 @@ export class ActMessagePersistenceService {
     userId: string
   }): Promise<void> {
     if (!args.conversationId) return
-    const totalUsage = args.event.totalUsage
-    const totalInputTokens = totalUsage?.inputTokens ?? 0
-    const totalOutputTokens = totalUsage?.outputTokens ?? 0
+    const usage = args.event.usage
+    const totalInputTokens = usage?.inputTokens ?? 0
+    const totalOutputTokens = usage?.outputTokens ?? 0
 
     try {
       let assistantPersistence = buildAssistantPersistenceFromSteps(

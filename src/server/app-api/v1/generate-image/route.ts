@@ -19,7 +19,6 @@ import {
   getBudgetTotals,
   isPaidPlan,
 } from '@/server/billing/billing-runtime'
-import { authorizeCatalogResource, filterCatalogResources } from '@/server/authorization'
 
 export const maxDuration = 120
 
@@ -27,7 +26,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const bodyResult = await readValidatedJson(request, context, GenerateImageRequest)
     if (!bodyResult.ok) return bodyResult.response
-    const { prompt, modelId, aspectRatio, conversationId, projectId, turnId, imageUrl, temporaryChat } = bodyResult.data
+    const { prompt, modelId, aspectRatio, conversationId, turnId, imageUrl, temporaryChat } = bodyResult.data
 
     const { auth } = context
 
@@ -36,18 +35,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 })
     }
 
-    const { authorizationService, generationUsagePolicy } = getOverlayServerContext()
-
-    if (modelId) {
-      const denied = await authorizeCatalogResource({
-        authorization: authorizationService,
-        capability: 'models.use',
-        context,
-        resourceId: modelId,
-        resourceType: 'model',
-      })
-      if (denied) return denied
-    }
+    const { generationUsagePolicy } = getOverlayServerContext()
 
     // ── Subscription enforcement ──────────────────────────────────────────────
     const entitlements = await generationUsagePolicy.getEntitlements({ userId: auth.userId })
@@ -83,10 +71,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     // ── Model selection: when user picks a model, use only that model ─────────
     // Fall back through all models only when no model is specified
-    // Two independent gates, both required: the server model policy bounds what
-    // the plan may use, then resource authorization bounds what this subject may
-    // use. An explicitly requested model is refused by name so the caller learns
-    // which gate rejected it.
     if (modelId && !authorizedModelIds.image.has(modelId)) {
       return NextResponse.json(
         {
@@ -96,19 +80,11 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         { status: 403 },
       )
     }
-    const candidatePriorityList = modelId
+    const priorityList = modelId
       ? [modelId]
       : IMAGE_MODELS.map((m) => m.id).filter((candidateId) =>
           authorizedModelIds.image.has(candidateId),
         )
-    const priorityList = await filterCatalogResources({
-      authorization: authorizationService,
-      capability: 'models.use',
-      context,
-      getId: (candidateId) => candidateId,
-      resourceType: 'model',
-      values: candidatePriorityList,
-    })
     const priceEntries = await Promise.all(
       priorityList.map(async (candidateId) => [
         candidateId,
@@ -279,6 +255,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       const fileName = `overlay-image-${Date.now()}.png`
       outputId = await outputService.create({
           userId: auth.userId,
+          workspaceId: context.workspace.workspace.id,
           type: 'image',
           source: 'image_generation',
           status: 'pending',
@@ -287,7 +264,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           fileName,
           mimeType: 'image/png',
           ...(conversationId ? { conversationId } : {}),
-          ...(projectId ? { projectId } : {}),
           ...(turnId ? { turnId } : {}),
       })
 

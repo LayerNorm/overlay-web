@@ -18,7 +18,6 @@ import {
   getBudgetTotals,
   isPaidPlan,
 } from '@/server/billing/billing-runtime'
-import { authorizeCatalogResource, filterCatalogResources } from '@/server/authorization'
 
 export const maxDuration = 300
 
@@ -29,7 +28,7 @@ function sseChunk(data: Record<string, unknown>): string {
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   const bodyResult = await readValidatedJson(request, context, GenerateVideoRequest)
   if (!bodyResult.ok) return bodyResult.response
-  const { prompt, modelId, aspectRatio, duration, conversationId, projectId, turnId, videoSubMode, imageUrl, temporaryChat } = bodyResult.data
+  const { prompt, modelId, aspectRatio, duration, conversationId, turnId, videoSubMode, imageUrl, temporaryChat } = bodyResult.data
 
   const { auth } = context
 
@@ -38,29 +37,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     return new Response('Prompt is required', { status: 400 })
   }
   const effectiveSubMode: VideoSubMode = videoSubMode ?? 'text-to-video'
-  const { authorizationService, generationUsagePolicy } = getOverlayServerContext()
-  if (modelId) {
-    const denied = await authorizeCatalogResource({
-      authorization: authorizationService,
-      capability: 'models.use',
-      context,
-      resourceId: modelId,
-      resourceType: 'model',
-    })
-    if (denied) return denied
-  }
-  const allowedModels = await filterCatalogResources({
-    authorization: authorizationService,
-    capability: 'models.use',
-    context,
-    getId: (candidateId) => candidateId,
-    resourceType: 'model',
-    values: getVideoModelsBySubMode(effectiveSubMode).map((model) => model.id),
-  })
+  const allowedModels = getVideoModelsBySubMode(effectiveSubMode).map((m) => m.id)
   const selectedModelId = modelId ?? allowedModels[0]
   if (!selectedModelId || !allowedModels.includes(selectedModelId)) {
     return new Response('Unsupported video model for this mode', { status: 400 })
   }
+
+  const { generationUsagePolicy } = getOverlayServerContext()
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -202,6 +185,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           try {
             outputId = await outputService.create({
                 userId: auth.userId,
+                workspaceId: context.workspace.workspace.id,
                 type: 'video',
                 source: 'video_generation',
                 status: 'pending',
@@ -210,7 +194,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
                 fileName: `overlay-video-${Date.now()}.mp4`,
                 mimeType: 'video/mp4',
                 ...(conversationId ? { conversationId } : {}),
-                ...(projectId ? { projectId } : {}),
                 ...(turnId ? { turnId } : {}),
             })
           } catch (err) {

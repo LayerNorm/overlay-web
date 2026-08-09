@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, t
 import type { ReadonlyURLSearchParams } from 'next/navigation'
 import { normalizeAutomationDetailTab } from '@overlay/app-core/automations'
 import type { AutomationDetail } from '@overlay/app-core'
-import { resolveChatBasePath } from '@/features/workspaces/lib/workspace-routing'
 import { resetRuntimeState } from './conversation-runtime-utils'
 import type { ConversationRuntime, ConversationUiState } from '../chat-interface/types'
 
@@ -74,33 +73,29 @@ export function useChatRouteController({
     const replaceUrl = (href: string) => {
       window.history.replaceState(null, '', href)
     }
-    // Prefer the live browser path so first-message URL sync does not strip
-    // `/app/w/:workspaceId` and force a full App Router remount.
-    const livePathname = typeof window !== 'undefined' ? window.location.pathname : null
     if (mode === 'automate') {
-      const basePath = resolveChatBasePath(livePathname) === '/app/automations'
-        ? resolveChatBasePath(livePathname)
-        : '/app/automations'
       const params = new URLSearchParams()
       if (chatId) params.set('id', chatId)
-      const automationId = searchParams?.get('automationId')
+      const liveSearchParams = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
+        : null
+      const automationId = automationIdParam ?? liveSearchParams?.get('automationId')
       if (automationId) params.set('automationId', automationId)
-      const tab = normalizeAutomationDetailTab(searchParams?.get('tab'))
+      const tab = normalizeAutomationDetailTab(
+        liveSearchParams?.get('tab') ?? searchParams?.get('tab'),
+      )
       if (tab !== 'chat') params.set('tab', tab)
       const query = params.toString()
-      replaceUrl(`${basePath}${query ? `?${query}` : ''}`)
+      replaceUrl(`/app/automations${query ? `?${query}` : ''}`)
       return
     }
-    const basePath = resolveChatBasePath(livePathname)
+    const basePath = '/app/chat'
     const params = new URLSearchParams()
     if (searchParams?.get('showcase') === '1') params.set('showcase', '1')
-    const view = searchParams?.get('view')
-      ?? (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('view') : null)
-    if (view) params.set('view', view)
     if (chatId) params.set('id', chatId)
     const query = params.toString()
     replaceUrl(query ? `${basePath}?${query}` : basePath)
-  }, [hideSidebar, mode, searchParams])
+  }, [automationIdParam, hideSidebar, mode, searchParams])
 
   const resetToBlankChatSurface = useCallback((options: { temporary: boolean }) => {
     invalidateLoadChatRequestRef.current?.()
@@ -194,9 +189,13 @@ export function useChatRouteController({
 
   useEffect(() => {
     if (!chatPrefsHydrated) return
+    // Automation URLs can contain a legacy or stale conversation id. The
+    // automation detail loader validates its linked conversation before the
+    // canonical automationConversationId effect below is allowed to hydrate it.
+    if (mode === 'automate' && automationIdParam) return
     if (!idParam || activeChatIdRef.current === idParam) return
     void loadChatRef.current?.(idParam)
-  }, [activeChatIdRef, chatPrefsHydrated, idParam])
+  }, [activeChatIdRef, automationIdParam, chatPrefsHydrated, idParam, mode])
 
   useEffect(() => {
     function handleChatRouteSelected(event: Event) {
@@ -214,10 +213,21 @@ export function useChatRouteController({
     void loadChatRef.current?.(automationConversationId)
   }, [activeChatIdRef, automationConversationId, mode])
 
+  useEffect(() => {
+    if (mode !== 'automate' || !automationIdParam || !selectedAutomation) return
+    if (automationConversationId || !activeChatIdRef.current) return
+    resetToBlankChatSurface({ temporary: false })
+  }, [
+    activeChatIdRef,
+    automationConversationId,
+    automationIdParam,
+    mode,
+    resetToBlankChatSurface,
+    selectedAutomation,
+  ])
+
   const replaceActiveChatRoute = useCallback(() => {
-    if (hideSidebar) return
-    const livePathname = typeof window !== 'undefined' ? window.location.pathname : null
-    routerReplace(resolveChatBasePath(livePathname))
+    if (!hideSidebar) routerReplace('/app/chat')
   }, [hideSidebar, routerReplace])
 
   return {

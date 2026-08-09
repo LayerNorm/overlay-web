@@ -15,10 +15,7 @@ const PACK_MAX_PER_SOURCE = 3
 
 type SearchRow = {
   chunk_index: number
-  start_offset: number | null
   id: string
-  knowledge_source_id: string | null
-  knowledge_source_version_id: string | null
   project_id: string | null
   source_id: string
   source_kind: 'file' | 'memory'
@@ -36,7 +33,6 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
   async hybridSearch(args: KnowledgeSearchArgs): Promise<HybridSearchResult> {
     const query = args.query.trim()
     if (!query) return { chunks: [] }
-    if (args.canonicalSourceIds?.length === 0) return { chunks: [] }
     const kVec = normalizeLimit(args.kVec, 48, 256)
     const kLex = normalizeLimit(args.kLex, 48, 1024)
     const maxChunks = normalizeLimit(args.m, 12, 50)
@@ -68,23 +64,17 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
     const projectFilter = args.projectId
       ? sql`AND (chunk.project_id IS NULL OR chunk.project_id = ${args.projectId})`
       : sql``
-    const canonicalSourceFilter = args.canonicalSourceIds
-      ? sql`AND chunk.knowledge_source_id IN (${sql.join(
-          args.canonicalSourceIds.map((sourceId) => sql`${sourceId}`),
-          sql`, `,
-        )})`
+    const workspaceFilter = args.workspaceId
+      ? sql`AND chunk.workspace_id = ${args.workspaceId}`
       : sql``
     const vectorLiteral = JSON.stringify(queryVector)
     const vectorRows = await this.deps.db.execute<SearchRow & { similarity: number }>(sql`
       SELECT
         chunk.id,
-        chunk.knowledge_source_id,
-        chunk.knowledge_source_version_id,
         chunk.project_id,
         chunk.source_kind,
         chunk.source_id,
         chunk.chunk_index,
-        chunk.start_offset,
         chunk.text,
         chunk.title,
         1 - (embedding.embedding <=> ${vectorLiteral}::vector) AS similarity
@@ -96,7 +86,7 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
         AND embedding.model_version = ${this.deps.embeddings.identity.modelVersion}
         ${sourceFilter}
         ${projectFilter}
-        ${canonicalSourceFilter}
+        ${workspaceFilter}
         ${args.minVecScore !== undefined
           ? sql`AND 1 - (embedding.embedding <=> ${vectorLiteral}::vector) >= ${args.minVecScore}`
           : sql``}
@@ -106,13 +96,10 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
     const lexicalRows = await this.deps.db.execute<SearchRow & { lexical_score: number }>(sql`
       SELECT
         chunk.id,
-        chunk.knowledge_source_id,
-        chunk.knowledge_source_version_id,
         chunk.project_id,
         chunk.source_kind,
         chunk.source_id,
         chunk.chunk_index,
-        chunk.start_offset,
         chunk.text,
         chunk.title,
         ts_rank_cd(
@@ -123,7 +110,7 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
       WHERE chunk.user_id = ${args.userId}
         ${sourceFilter}
         ${projectFilter}
-        ${canonicalSourceFilter}
+        ${workspaceFilter}
         AND to_tsvector('simple', coalesce(chunk.title, '') || ' ' || chunk.text)
           @@ websearch_to_tsquery('simple', ${query})
       ORDER BY lexical_score DESC, chunk.id
@@ -172,9 +159,6 @@ function packChunks(rows: SearchRow[], scores: Map<string, number>, maxChunks: n
       score: scores.get(row.id) ?? 0,
       sourceId: row.source_id,
       sourceKind: row.source_kind,
-      knowledgeSourceId: row.knowledge_source_id ?? undefined,
-      knowledgeSourceVersionId: row.knowledge_source_version_id ?? undefined,
-      startOffset: row.start_offset ?? undefined,
       text: row.text,
       title: row.title ?? undefined,
     })

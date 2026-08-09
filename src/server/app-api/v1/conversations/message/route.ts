@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   buildPersistedMessageContent,
@@ -8,8 +8,6 @@ import {
 } from '@/server/chat/chat-message-persistence'
 import { normalizeGeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
-import { invokeWorkspaceAgentsForHumanMessage } from '@/server/agents/workspace-agent-invocation'
-import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -29,16 +27,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       replySnippet?: string
       accessToken?: string
       userId?: string
-      clientNonce?: string
-      threadRootMessageId?: string
       mentionedPrincipalIds?: string[]
-      /**
-       * The caller is watching the agent reply stream, so it triggers the
-       * invocation itself. Skipping it here keeps a mentioned agent from
-       * running twice for one message.
-       */
+      threadRootMessageId?: string
+      clientNonce?: string
       deferAgentReply?: boolean
     }
+    const { auth } = context
 
 
     const normalizedParts = sanitizeMessagePartsForPersistence(body.parts, {
@@ -60,84 +54,104 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const contentType = body.contentType ?? 'text'
     const modelId = body.modelId ?? body.model
     const server = getOverlayServerContext()
-    const hasChannelBroadcast = /(^|\s)@channel(?=\s|$)/i.test(normalizedContent)
-    const hasHereBroadcast = /(^|\s)@here(?=\s|$)/i.test(normalizedContent)
-    if (body.role === 'user' && (hasChannelBroadcast || hasHereBroadcast)) {
-      const conversation = await server.appData.repositories.conversations.getConversationById({
-        conversationId: body.conversationId as Id<'conversations'>,
-        userId: getAuthorizedResourceUserId(context),
-        workspaceId: context.workspace.workspace.id,
-      })
-      if (conversation?.conversationType === 'channel' && hasChannelBroadcast) {
-        const participants = await server.appData.repositories.conversationCollaboration.listParticipants({
-          actorUserId: context.auth.userId,
+    const workspaceId = context.workspace.workspace.id
+    const conversation = await server.appData.repositories.conversations.getConversationById({
+      conversationId: body.conversationId as Id<'conversations'>,
+      userId: auth.userId,
+      workspaceId,
+    }) ?? await server.appData.repositories.conversationCollaboration.getAccessibleConversation({
+      actorUserId: auth.userId,
+      conversationId: body.conversationId,
+      workspaceId,
+    })
+    if (!conversation) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+    }
+    const isCollaborationConversation = (conversation.conversationType ?? 'personal') !== 'personal'
+    const messageId = isCollaborationConversation
+      ? await server.appData.repositories.conversationCollaboration.addMessage({
+          actorUserId: auth.userId,
           conversationId: body.conversationId,
-          workspaceId: context.workspace.workspace.id,
+          workspaceId,
+          turnId,
+          content: normalizedContent,
+          parts: normalizedParts,
+          clientNonce: body.clientNonce?.trim() || undefined,
+          threadRootMessageId: body.threadRootMessageId?.trim() || undefined,
+          ...(body.replyToTurnId?.trim()
+            ? { replyToTurnId: body.replyToTurnId.trim(), replySnippet: body.replySnippet?.trim() }
+            : {}),
         })
-        if (participants.find((participant) => participant.principalId === context.workspace.principal.id)?.role !== 'moderator') {
-          return NextResponse.json({ error: '@channel requires channel moderator access' }, { status: 403 })
+      : await server.appData.repositories.conversations.addMessage({
+          conversationId: body.conversationId as Id<'conversations'>,
+          userId: auth.userId,
+          workspaceId,
+          turnId,
+          role: body.role,
+          mode,
+          content: normalizedContent,
+          contentType,
+          parts: normalizedParts,
+          modelId,
+          variantIndex: body.variantIndex,
+          ...(body.replyToTurnId?.trim()
+            ? { replyToTurnId: body.replyToTurnId.trim(), replySnippet: body.replySnippet?.trim() }
+            : {}),
+        })
+
+    // Record message activity and publish workspace.mention lifecycle events for
+    // human @-mentions in workspace conversations (DMs and channels).
+    const mentionedPrincipalIds = Array.isArray(body.mentionedPrincipalIds)
+      ? body.mentionedPrincipalIds.filter((value): value is string => typeof value === 'string')
+      : []
+    if (isCollaborationConversation && messageId) {
+      const workspaceName = context.workspace.workspace.name
+      const actorPrincipalId = context.workspace.principal.id
+      const actorDisplayName = context.workspace.principal.displayName
+      const conversationId = body.conversationId
+
+      try {
+        await server.appData.repositories.conversationCollaboration.recordMessageActivity({
+          actorUserId: auth.userId,
+          workspaceId,
+          conversationId,
+          messageId: String(messageId),
+          body: normalizedContent,
+          mentionedPrincipalIds,
+          ...(body.threadRootMessageId?.trim() ? { threadRootMessageId: body.threadRootMessageId.trim() } : {}),
+        })
+      } catch (error) {
+        logger.warn('[conversations/message POST] recordMessageActivity failed', { error })
+      }
+
+      const conversationTitle = conversation.title || 'a conversation'
+
+      for (const mentionedPrincipalId of mentionedPrincipalIds) {
+        try {
+          const principal = await server.workspaceService.resolvePrincipal(mentionedPrincipalId)
+          if (!principal?.userId || principal.type !== 'human') continue
+          await server.lifecycleEvents.publish({
+            attributes: {
+              workspaceId,
+              workspaceName,
+              conversationId,
+              conversationTitle,
+              mentionedByPrincipalId: actorPrincipalId,
+              mentionedByDisplayName: actorDisplayName,
+            },
+            idempotencyKey: `workspace.mention:${messageId}:${mentionedPrincipalId}`,
+            name: 'workspace.mention',
+            resource: { id: String(messageId), type: 'workspace_mention' },
+            userId: principal.userId,
+          })
+        } catch (error) {
+          logger.warn('[conversations/message POST] Failed to publish mention lifecycle event', { error })
         }
       }
     }
-    // Abuse limits are keyed by workspace, then by the sending principal (guests
-    // harder than members), then by the room.
-    if (body.role === 'user') {
-      await server.workspaceGovernanceService.assertWithinLimits({
-        action: 'message.send',
-        scope: {
-          workspaceId: context.workspace.workspace.id,
-          principalId: context.workspace.principal.id,
-          conversationId: body.conversationId,
-          guest: context.workspace.membership.role === 'guest',
-        },
-      })
-    }
-    const messageId = await server.appData.repositories.conversations.addMessage({
-      conversationId: body.conversationId as Id<'conversations'>,
-      userId: context.auth.userId,
-      workspaceId: context.workspace.workspace.id,
-      authorKind: body.role === 'user' ? 'human' : 'model',
-      authorPrincipalId: body.role === 'user' ? context.workspace.principal.id : undefined,
-      clientNonce: body.clientNonce?.trim() || undefined,
-      threadRootMessageId: body.threadRootMessageId?.trim(),
-      turnId,
-      role: body.role,
-      mode,
-      content: normalizedContent,
-      contentType,
-      parts: normalizedParts,
-      modelId,
-      variantIndex: body.variantIndex,
-      ...(body.replyToTurnId?.trim()
-        ? { replyToTurnId: body.replyToTurnId.trim(), replySnippet: body.replySnippet?.trim() }
-        : {}),
-    })
-    if (messageId && body.role === 'user') {
-      await server.appData.repositories.conversationCollaboration.recordMessageActivity({
-        actorUserId: context.auth.userId,
-        workspaceId: context.workspace.workspace.id,
-        conversationId: body.conversationId,
-        messageId,
-        body: normalizedContent,
-        mentionedPrincipalIds: body.mentionedPrincipalIds,
-        threadRootMessageId: body.threadRootMessageId?.trim(),
-      })
-      if (body.deferAgentReply !== true) await invokeWorkspaceAgentsForHumanMessage({
-        accessToken: context.auth.accessToken,
-        actorUserId: context.auth.userId,
-        workspaceId: context.workspace.workspace.id,
-        conversationId: body.conversationId,
-        messageId,
-        mentionedPrincipalIds: body.mentionedPrincipalIds,
-        threadRootMessageId: body.threadRootMessageId?.trim(),
-      })
-    }
 
-    return NextResponse.json({ success: true, conversationId: body.conversationId, turnId })
+    return NextResponse.json({ success: true, conversationId: body.conversationId, turnId, messageId })
   } catch (e) {
-    if (e instanceof WorkspaceServiceError) {
-      return NextResponse.json({ error: e.message }, { status: e.statusCode })
-    }
     logger.error('[conversations/message POST]', e)
     const msg = e instanceof Error ? e.message : 'Failed to save message'
     return NextResponse.json({ error: msg }, { status: 500 })
@@ -152,6 +166,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
       accessToken?: string
       userId?: string
     }
+    const { auth } = context
     const conversationId = body.conversationId?.trim()
     const turnId = body.turnId?.trim()
     if (!conversationId || !turnId) {
@@ -161,7 +176,7 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     try {
       await getOverlayServerContext().appData.repositories.conversations.deleteTurn({
         conversationId: conversationId as Id<'conversations'>,
-        userId: getAuthorizedResourceUserId(context),
+        userId: auth.userId,
         turnId,
       })
     } catch (err) {
@@ -190,6 +205,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       accessToken?: string
       userId?: string
     }
+    const { auth } = context
     const conversationId = body.conversationId?.trim()
     const messageId = body.messageId?.trim()
     const partId = body.partId?.trim()
@@ -205,7 +221,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       const updated = await getOverlayServerContext().appData.repositories.conversations.updateMessageUiPart({
         conversationId: conversationId as Id<'conversations'>,
         messageId: messageId as Id<'conversationMessages'>,
-        userId: getAuthorizedResourceUserId(context),
+        userId: auth.userId,
         partId,
         data: data as unknown as Record<string, unknown>,
       })

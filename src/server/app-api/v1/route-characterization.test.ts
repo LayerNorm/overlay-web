@@ -12,6 +12,8 @@ import {
   ComposioIntegrationProvider,
   IntegrationService,
 } from '@/server/integrations'
+import type { WorkspaceConnectorRepository } from '@/server/integrations/WorkspaceConnectorRepository'
+import type { AuthorizationService } from '@/server/authorization/AuthorizationService'
 
 const originalNextPhase = process.env.NEXT_PHASE
 const originalInternalApiSecret = process.env.INTERNAL_API_SECRET
@@ -94,36 +96,36 @@ function context(): AppApiRouteContext {
     parsedJson: {},
     parsedQuery: {},
     appDataCapabilities: TEST_CONVEX_APP_DATA_CAPABILITIES,
+    requestFingerprint: 'fixture-request-fingerprint',
+    requestIdempotencyKey: 'fixture-idempotency-key',
     workspace: {
       workspace: {
-        id: 'workspace_1',
+        id: 'ws_personal_user_1',
         kind: 'personal',
         name: 'Personal',
-        slug: 'personal-user-1',
+        slug: 'personal-user_1',
         status: 'active',
-        createdAt: 1,
-        updatedAt: 1,
+        createdAt: 0,
+        updatedAt: 0,
       },
       principal: {
         id: 'principal_1',
-        workspaceId: 'workspace_1',
+        workspaceId: 'ws_personal_user_1',
         type: 'human',
-        userId: 'user_1',
         displayName: 'Test User',
-        createdAt: 1,
-        updatedAt: 1,
+        createdAt: 0,
+        updatedAt: 0,
       },
       membership: {
-        workspaceId: 'workspace_1',
+        membershipId: 'membership_1',
+        workspaceId: 'ws_personal_user_1',
         principalId: 'principal_1',
         role: 'owner',
         status: 'active',
-        joinedAt: 1,
-        updatedAt: 1,
+        joinedAt: 0,
+        updatedAt: 0,
       },
     },
-    requestFingerprint: 'fixture-request-fingerprint',
-    requestIdempotencyKey: 'fixture-idempotency-key',
   }
 }
 
@@ -131,6 +133,53 @@ function composioIntegrationService() {
   return new IntegrationService(new ComposioIntegrationProvider({
     apiKeyResolver: async () => 'test-composio-key',
   }))
+}
+
+function workspaceConnectorRepositoryFixture(): WorkspaceConnectorRepository {
+  const rows = [{
+    _id: 'mapping_1',
+    workspaceId: 'ws_personal_user_1',
+    userId: 'user_1',
+    providerKey: 'gmail',
+    connectedAccountId: 'ca_gmail',
+    createdAt: 0,
+    updatedAt: 0,
+  }]
+  return {
+    listByWorkspace: async () => [{
+      ...rows[0]!,
+    }],
+    listByUser: async () => rows,
+    insert: async () => 'mapping_1',
+    remove: async () => undefined,
+    removeByUser: async () => 0,
+  }
+}
+
+function permissiveAuthorizationService(): AuthorizationService {
+  return {
+    resolveSubject: async (userId: string) => ({
+      userId,
+      groupIds: [],
+      roleIds: [],
+      capabilities: [],
+      isDeploymentOwner: false,
+    }),
+    checkResolvedCatalogResourceAccess: async ({ capability, resourceId, resourceType }) => ({
+      allowed: true,
+      capability,
+      resourceId,
+      resourceType,
+      requiredAction: 'view',
+      reason: 'resource_unrestricted',
+    }),
+    checkResolvedCapability: (_subject, capability) => ({
+      allowed: true,
+      capability,
+      reason: 'capability_granted',
+    }),
+    filterCatalogResourceIds: async ({ resourceIds }) => [...resourceIds],
+  } as unknown as AuthorizationService
 }
 
 async function readJson(response: Response): Promise<unknown> {
@@ -470,7 +519,10 @@ test('integrations default list reads Composio v3 connected accounts by user id'
   const response = await route.GET(
     request('/api/v1/integrations'),
     testContext,
-    { service: composioIntegrationService() },
+    {
+      service: composioIntegrationService(),
+      workspaceConnectors: workspaceConnectorRepositoryFixture(),
+    },
   )
 
   assert.equal(response.status, 200)
@@ -508,6 +560,65 @@ test('integrations default list reads Composio v3 connected accounts by user id'
     providerCapabilities: COMPOSIO_INTEGRATION_CAPABILITIES,
     hasMore: false,
   })
+})
+
+test('integrations claim only orphaned legacy connections for the Personal workspace', async () => {
+  const mappings: Awaited<ReturnType<WorkspaceConnectorRepository['listByUser']>> = [{
+    _id: 'mapping_github',
+    workspaceId: 'ws_acme',
+    userId: 'user_1',
+    providerKey: 'github',
+    connectedAccountId: 'ca_github',
+    createdAt: 0,
+    updatedAt: 0,
+  }]
+  const inserted: string[] = []
+  const workspaceConnectors: WorkspaceConnectorRepository = {
+    async listByWorkspace({ workspaceId }) {
+      return mappings.filter((row) => row.workspaceId === workspaceId)
+    },
+    async listByUser() { return mappings },
+    async insert(input) {
+      inserted.push(input.providerKey)
+      mappings.push({ _id: `mapping_${input.providerKey}`, ...input, createdAt: 1, updatedAt: 1 })
+      return `mapping_${input.providerKey}`
+    },
+    async remove() {},
+    async removeByUser() { return 0 },
+  }
+  const integration = (providerKey: string, id: string) => ({
+    id,
+    provider: 'composio',
+    providerKey,
+    userId: 'user_1',
+    authenticationState: 'connected' as const,
+  })
+  const route = await import('./integrations/route')
+  const response = await route.GET(request('/api/v1/integrations'), context(), {
+    service: {
+      id: 'composio',
+      capabilities: COMPOSIO_INTEGRATION_CAPABILITIES,
+      async listConnected() {
+        return {
+          connections: [
+            integration('gmail', 'ca_gmail'),
+            integration('gmail', 'ca_gmail_duplicate'),
+            integration('github', 'ca_github'),
+          ],
+          items: [
+            { providerKey: 'gmail', slug: 'gmail' },
+            { providerKey: 'github', slug: 'github' },
+          ],
+        }
+      },
+    } as IntegrationService,
+    workspaceConnectors,
+  })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(inserted, ['gmail'])
+  assert.deepEqual((await readJson(response)).connected, ['gmail'])
+  assert.equal(mappings.find(({ providerKey }) => providerKey === 'github')?.workspaceId, 'ws_acme')
 })
 
 test('automations create/update/test/run preserve validation and auth error shapes', async (t) => {
@@ -746,6 +857,7 @@ test('conversations act preserves premium gating response shape for free users',
       }),
     }),
     context(),
+    { authorizationService: permissiveAuthorizationService() },
   )
 
   assert.equal(response.status, 403)
@@ -799,6 +911,7 @@ test('conversations act swallows user-message persistence failure before later f
       }),
     }),
     context(),
+    { authorizationService: permissiveAuthorizationService() },
   )
 
   assert.equal(sawUserMessagePersist, true)

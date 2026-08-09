@@ -21,6 +21,7 @@ export const billingCheckoutService = new BillingCheckoutService({
   repository: billingRepository,
   baseUrl: getBillingBaseUrl,
   billingProvider: () => getOverlayServerContext().billing,
+  lifecycleEvents: () => getOverlayServerContext().lifecycleEvents,
 })
 
 function getBillingBaseUrl(): string {

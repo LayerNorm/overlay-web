@@ -63,6 +63,10 @@ export interface Entitlements {
   budgetUsedCents?: number
   budgetTotalCents?: number
   budgetRemainingCents?: number
+  allowanceTotalCents?: number
+  allowanceUsedCents?: number
+  allowancePercentUsed?: number
+  topUpBalanceCents?: number
   autoTopUpEnabled?: boolean
   topUpAmountCents?: number
   autoTopUpAmountCents?: number
@@ -109,14 +113,7 @@ export type AssistantVisualSegment =
   | { kind: 'browser'; block: ToolVisualBlock; originIndex: number }
   | { kind: 'tools'; items: ToolGroupItem[]; originIndex: number }
 
-export type MentionType =
-  | 'file'
-  | 'knowledge'
-  | 'connector'
-  | 'automation'
-  | 'skill'
-  | 'mcp'
-  | 'chat'
+export type MentionType = 'file' | 'connector' | 'automation' | 'skill' | 'mcp' | 'chat'
 
 export interface ChatMessageMention {
   type: MentionType
@@ -285,6 +282,8 @@ export interface VideoModel {
   defaultAspectRatio?: string
 }
 
+export type ReasoningLevel = 'provider-default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+
 export interface ChatModelPreferences {
   modelId?: string
   askModelIds?: string[]
@@ -292,6 +291,8 @@ export interface ChatModelPreferences {
   imageModelId?: string
   videoModelId?: string
   generationMode?: GenerationMode
+  /** v7: reasoning effort level for reasoning-capable models. */
+  reasoning?: ReasoningLevel
 }
 
 export type BrowserScope = 'active-tab' | 'current-window'

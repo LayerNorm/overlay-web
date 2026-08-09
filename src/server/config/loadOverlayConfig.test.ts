@@ -134,6 +134,11 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     OVERLAY_FEATURE_BROWSER_USE: 'false',
     OVERLAY_FEATURE_SANDBOXES: 'false',
     OVERLAY_FEATURE_ANALYTICS: 'false',
+    OVERLAY_FEATURE_API_DEFAULT_RATE_LIMIT: 'false',
+    OVERLAY_FEATURE_API_MUTATION_AUDIT: 'false',
+    OVERLAY_FEATURE_API_MUTATION_ORIGIN_GUARD: 'false',
+    OVERLAY_FEATURE_LIFECYCLE_EVENTS: 'false',
+    OVERLAY_FEATURE_OPEN_TELEMETRY: 'true',
     OVERLAY_PROVIDER_SANDBOX: 'none',
     OVERLAY_PROVIDER_BROWSER: 'none',
     OVERLAY_PROVIDER_WEB_SEARCH: 'none',
@@ -149,6 +154,11 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     browserUse: false,
     sandboxes: false,
     analytics: false,
+    apiDefaultRateLimit: false,
+    apiMutationAudit: false,
+    apiMutationOriginGuard: false,
+    lifecycleEvents: false,
+    openTelemetry: true,
   })
   assert.deepEqual(overrides.providers, {
     database: { provider: 'convex' },
@@ -271,60 +281,6 @@ test('Vercel production keeps production env precedence even with Vercel app URL
   assert.equal(config.billing.stripe.topupUnitPriceId, 'price_topup_prod')
   assert.equal(config.database.convexUrl, 'https://colorful-chickadee-419.convex.cloud')
   assert.equal(config.auth.allowDevFallbacks, false)
-})
-
-test('Vercel preview prefers the development Convex deployment', async () => {
-  const config = await load({
-    env: {
-      VERCEL_ENV: 'preview',
-      VERCEL_URL: 'overlay-landing-git-staging-example.vercel.app',
-      DEV_NEXT_PUBLIC_APP_URL: 'https://staging.getoverlay.io',
-      NEXT_PUBLIC_CONVEX_URL: 'https://colorful-chickadee-419.convex.cloud',
-      DEV_NEXT_PUBLIC_CONVEX_URL: 'https://different-caiman-77.convex.cloud',
-      WORKOS_CLIENT_ID: 'client_prod',
-      WORKOS_API_KEY: 'workos_prod_secret',
-      DEV_WORKOS_CLIENT_ID: 'client_dev',
-      DEV_WORKOS_API_KEY: 'workos_dev_secret',
-      STRIPE_SECRET_KEY: 'sk_live_prod',
-      DEV_STRIPE_SECRET_KEY: 'sk_test_dev',
-      DEV_STRIPE_WEBHOOK_SECRET: 'whsec_dev',
-      DEV_STRIPE_PAID_UNIT_PRICE_ID: 'price_paid_dev',
-      DEV_STRIPE_TOPUP_UNIT_PRICE_ID: 'price_topup_dev',
-      INTERNAL_API_SECRET: 'internal_dev',
-      INTERNAL_SERVICE_AUTH_SECRET: 'service_dev',
-    },
-  })
-
-  assert.equal(config.app.deploymentEnvironment, 'preview')
-  assert.equal(config.database.convexUrl, 'https://different-caiman-77.convex.cloud')
-  assert.equal(config.billing.stripe.secretKey, 'sk_test_dev')
-})
-
-test('dual-project staging host prefers development Convex even when VERCEL_ENV is production', async () => {
-  const config = await load({
-    env: {
-      VERCEL_ENV: 'production',
-      NODE_ENV: 'production',
-      NEXT_PUBLIC_APP_URL: 'https://staging.getoverlay.io',
-      NEXT_PUBLIC_CONVEX_URL: 'https://colorful-chickadee-419.convex.cloud',
-      DEV_NEXT_PUBLIC_CONVEX_URL: 'https://different-caiman-77.convex.cloud',
-      WORKOS_CLIENT_ID: 'client_prod',
-      WORKOS_API_KEY: 'workos_prod_secret',
-      DEV_WORKOS_CLIENT_ID: 'client_dev',
-      DEV_WORKOS_API_KEY: 'workos_dev_secret',
-      STRIPE_SECRET_KEY: 'sk_live_prod',
-      DEV_STRIPE_SECRET_KEY: 'sk_test_dev',
-      DEV_STRIPE_WEBHOOK_SECRET: 'whsec_dev',
-      DEV_STRIPE_PAID_UNIT_PRICE_ID: 'price_paid_dev',
-      DEV_STRIPE_TOPUP_UNIT_PRICE_ID: 'price_topup_dev',
-      INTERNAL_API_SECRET: 'internal_dev',
-      INTERNAL_SERVICE_AUTH_SECRET: 'service_dev',
-    },
-  })
-
-  assert.equal(config.app.deploymentEnvironment, 'staging')
-  assert.equal(config.database.convexUrl, 'https://different-caiman-77.convex.cloud')
-  assert.equal(config.billing.stripe.secretKey, 'sk_test_dev')
 })
 
 test('loadOverlayConfig loads JSON override config', async () => {

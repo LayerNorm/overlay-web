@@ -8,11 +8,13 @@ import type {
   BillingProviderEventRepository,
   BillingWebhookRepository,
 } from './BillingProviderEventRepository'
+import type { LifecycleEventPublisher } from '@/server/lifecycle-events'
 
 export class StripeWebhookService {
   constructor(private readonly deps: {
     billing: BillingRepository & BillingWebhookRepository
     events: BillingProviderEventRepository
+    lifecycleEvents?: LifecycleEventPublisher
   }) {}
 
   async handle(args: { event: Stripe.Event; rawBody: string }): Promise<{
@@ -46,7 +48,7 @@ export class StripeWebhookService {
 
   private async applyEvent(event: Stripe.Event): Promise<boolean> {
     if (event.type === 'checkout.session.completed') {
-      return await this.applyCheckout(event.data.object as Stripe.Checkout.Session)
+      return await this.applyCheckout(event.data.object as Stripe.Checkout.Session, event.id)
     }
     if (
       event.type === 'customer.subscription.created' ||
@@ -57,12 +59,13 @@ export class StripeWebhookService {
         event.data.object as Stripe.Subscription,
         event.type === 'customer.subscription.deleted',
         event.created,
+        event.id,
       )
     }
     return false
   }
 
-  private async applyCheckout(session: Stripe.Checkout.Session): Promise<boolean> {
+  private async applyCheckout(session: Stripe.Checkout.Session, eventId: string): Promise<boolean> {
     const metadata = session.metadata ?? {}
     const userId = await this.resolveUserId({
       metadataUserId: metadata.userId,
@@ -82,6 +85,13 @@ export class StripeWebhookService {
         stripeCheckoutSessionId: session.id,
         stripeCustomerId: idValue(session.customer),
         stripePaymentIntentId: idValue(session.payment_intent),
+        userId,
+      })
+      await this.publishLifecycleEvent({
+        attributes: { provider: 'stripe', source: 'manual' },
+        idempotencyKey: `topup.succeeded:stripe:${eventId}`,
+        name: 'topup.succeeded',
+        resource: { id: session.id, type: 'billing_topup' },
         userId,
       })
       return true
@@ -104,6 +114,18 @@ export class StripeWebhookService {
         offSessionConsentAt: positiveInteger(metadata.offSessionConsentAt),
         status: 'active',
       })
+      await this.publishLifecycleEvent({
+        attributes: {
+          changeSource: 'provider_webhook',
+          planKind: 'paid',
+          provider: 'stripe',
+          status: 'active',
+        },
+        idempotencyKey: `subscription.changed:stripe:${eventId}`,
+        name: 'subscription.changed',
+        resource: { id: idValue(session.subscription) ?? session.id, type: 'subscription' },
+        userId,
+      })
       return true
     }
     return false
@@ -113,6 +135,7 @@ export class StripeWebhookService {
     subscription: Stripe.Subscription,
     deleted: boolean,
     eventCreatedSeconds: number,
+    eventId: string,
   ): Promise<boolean> {
     const metadata = subscription.metadata ?? {}
     const customerId = idValue(subscription.customer)
@@ -145,7 +168,25 @@ export class StripeWebhookService {
       currentPeriodEnd: periodEnd,
       providerEventCreatedAt: unixSecondsToMillis(eventCreatedSeconds),
     })
+    await this.publishLifecycleEvent({
+      attributes: {
+        changeSource: 'provider_webhook',
+        planKind: deleted ? 'free' : 'paid',
+        provider: 'stripe',
+        status: deleted ? 'canceled' : normalizeSubscriptionStatus(subscription.status),
+      },
+      idempotencyKey: `subscription.changed:stripe:${eventId}`,
+      name: 'subscription.changed',
+      resource: { id: subscription.id, type: 'subscription' },
+      userId,
+    })
     return true
+  }
+
+  private async publishLifecycleEvent(
+    event: Parameters<LifecycleEventPublisher['publish']>[0],
+  ): Promise<void> {
+    await this.deps.lifecycleEvents?.publish(event)
   }
 
   private async resolveUserId(args: {

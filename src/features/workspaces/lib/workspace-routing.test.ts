@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   buildWorkspaceHref,
+  isWorkspaceNavigationPending,
   isSameChatSurface,
   readWorkspaceIdFromPath,
   resolveChatBasePath,
@@ -32,4 +33,27 @@ test('chat base path preserves the canonical workspace route', () => {
   assert.equal(resolveChatBasePath('/app/automations'), '/app/automations')
   assert.equal(isSameChatSurface('/app/w/ws_1/chat', '/app/w/ws_1/chat'), true)
   assert.equal(isSameChatSurface('/app/w/ws_1/chat', '/app/chat'), false)
+})
+
+test('workspace navigation resolves compatibility routes from active workspace state', () => {
+  assert.equal(isWorkspaceNavigationPending({
+    activeWorkspaceId: 'workspace-b',
+    pendingWorkspaceId: 'workspace-b',
+    routeWorkspaceId: null,
+  }), false)
+  assert.equal(isWorkspaceNavigationPending({
+    activeWorkspaceId: 'workspace-a',
+    pendingWorkspaceId: 'workspace-b',
+    routeWorkspaceId: null,
+  }), true)
+  assert.equal(isWorkspaceNavigationPending({
+    activeWorkspaceId: 'workspace-b',
+    pendingWorkspaceId: 'workspace-b',
+    routeWorkspaceId: 'workspace-a',
+  }), true)
+  assert.equal(isWorkspaceNavigationPending({
+    activeWorkspaceId: 'workspace-b',
+    pendingWorkspaceId: 'workspace-b',
+    routeWorkspaceId: 'workspace-b',
+  }), false)
 })

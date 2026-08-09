@@ -4,7 +4,6 @@ import {
   bigint,
   boolean,
   check,
-  foreignKey,
   index,
   integer,
   jsonb,
@@ -14,10 +13,9 @@ import {
   text,
   timestamp,
   uniqueIndex,
-  unique,
   vector,
 } from 'drizzle-orm/pg-core'
-import type { AutomationSchedule } from '@overlay/app-core'
+import type { AutomationGraph, AutomationSchedule } from '@overlay/app-core'
 
 export const overlayAppDataMetadata = pgTable('overlay_app_data_metadata', {
   key: text('key').primaryKey(),
@@ -54,22 +52,16 @@ export const messageStatus = pgEnum('overlay_message_status', [
   'error',
 ])
 
-export const shareVisibility = pgEnum('overlay_share_visibility', [
-  'private',
-  'public',
-])
-
-export const conversationType = pgEnum('overlay_conversation_type', [
-  'personal',
-  'dm',
-  'channel',
-])
-
 export const messageAuthorKind = pgEnum('overlay_message_author_kind', [
   'human',
   'agent',
   'model',
   'system',
+])
+
+export const shareVisibility = pgEnum('overlay_share_visibility', [
+  'private',
+  'public',
 ])
 
 export const fileType = pgEnum('overlay_file_type', [
@@ -113,35 +105,6 @@ export const memoryActor = pgEnum('overlay_memory_actor', [
 export const knowledgeSourceKind = pgEnum('overlay_knowledge_source_kind', [
   'file',
   'memory',
-])
-
-export const knowledgeBaseKind = pgEnum('overlay_knowledge_base_kind', [
-  'personal',
-  'organization',
-])
-
-export const knowledgeBaseStatus = pgEnum('overlay_knowledge_base_status', [
-  'active',
-  'archived',
-])
-
-export const canonicalKnowledgeSourceKind = pgEnum('overlay_canonical_knowledge_source_kind', [
-  'file',
-  'note',
-  'memory',
-  'text',
-  'url',
-  'connector',
-  'drive',
-])
-
-export const canonicalKnowledgeSourceStatus = pgEnum('overlay_knowledge_source_status', [
-  'pending',
-  'extracting',
-  'indexing',
-  'ready',
-  'failed',
-  'deleting',
 ])
 
 export const memoryExtractionStatus = pgEnum('overlay_memory_extraction_status', [
@@ -284,6 +247,60 @@ export const auditOutcome = pgEnum('overlay_audit_outcome', [
   'failure',
 ])
 
+export const mcpTransport = pgEnum('overlay_mcp_transport', [
+  'sse',
+  'streamable-http',
+])
+
+export const mcpAuthType = pgEnum('overlay_mcp_auth_type', [
+  'none',
+  'bearer',
+  'header',
+  'oauth',
+])
+
+export const mcpOAuthStatus = pgEnum('overlay_mcp_oauth_status', [
+  'pending',
+  'connected',
+  'needs_reauth',
+])
+
+export const mcpOAuthSurface = pgEnum('overlay_mcp_oauth_surface', [
+  'web',
+  'desktop',
+])
+
+export const mcpToolPolicy = pgEnum('overlay_mcp_tool_policy', [
+  'allow',
+  'approval_required',
+  'deny',
+])
+
+export const mcpExecutionStatus = pgEnum('overlay_mcp_execution_status', [
+  'succeeded',
+  'failed',
+  'denied',
+])
+
+export const canonicalKnowledgeSourceKind = pgEnum('overlay_canonical_knowledge_source_kind', [
+  'file',
+  'note',
+  'memory',
+  'text',
+  'url',
+  'connector',
+  'drive',
+])
+
+export const knowledgeSourceStatus = pgEnum('overlay_knowledge_source_status', [
+  'pending',
+  'extracting',
+  'indexing',
+  'ready',
+  'failed',
+  'deleting',
+])
+
 export const workspaceKind = pgEnum('overlay_workspace_kind', [
   'personal',
   'organization',
@@ -312,38 +329,6 @@ export const workspaceMembershipStatus = pgEnum('overlay_workspace_membership_st
   'suspended',
 ])
 
-export const workspaceInvitationStatus = pgEnum('overlay_workspace_invitation_status', [
-  'pending',
-  'accepted',
-  'expired',
-  'cancelled',
-  'replaced',
-])
-
-export const workspaceResourceGuestStatus = pgEnum('overlay_workspace_resource_guest_status', [
-  'pending',
-  'active',
-  'expired',
-  'revoked',
-])
-
-export const workspaceResourceGuestAccessRole = pgEnum(
-  'overlay_workspace_resource_guest_access_role',
-  ['viewer', 'editor'],
-)
-
-export const workspaceShareTargetType = pgEnum('overlay_workspace_share_target_type', [
-  'principal',
-  'team',
-  'room',
-])
-
-export const workspaceShareAccessRole = pgEnum('overlay_workspace_share_access_role', [
-  'viewer',
-  'operator',
-  'editor',
-])
-
 export const conversationParticipantRole = pgEnum('overlay_conversation_participant_role', [
   'member',
   'moderator',
@@ -369,10 +354,10 @@ export const workspacePresenceStatus = pgEnum('overlay_workspace_presence_status
 export const workspaceNotificationType = pgEnum('overlay_workspace_notification_type', [
   'message',
   'mention',
-  'thread',
-  'reaction',
   'invitation',
   'participant',
+  'thread',
+  'reaction',
 ])
 
 export const workspaceNotificationPreferenceMode = pgEnum('overlay_workspace_notification_preference_mode', [
@@ -381,32 +366,20 @@ export const workspaceNotificationPreferenceMode = pgEnum('overlay_workspace_not
   'off',
 ])
 
-export const channelVisibility = pgEnum('overlay_channel_visibility', [
-  'public',
-  'private',
+export const conversationType = pgEnum('overlay_conversation_type', [
+  'personal',
+  'dm',
+  'channel',
 ])
 
-export const mcpTransport = pgEnum('overlay_mcp_transport', [
-  'sse',
-  'streamable-http',
-])
-
-export const mcpAuthType = pgEnum('overlay_mcp_auth_type', [
-  'none',
-  'bearer',
-  'header',
-])
-
-export const mcpToolPolicy = pgEnum('overlay_mcp_tool_policy', [
-  'allow',
-  'approval_required',
-  'deny',
-])
-
-export const mcpExecutionStatus = pgEnum('overlay_mcp_execution_status', [
-  'succeeded',
-  'failed',
-  'denied',
+export const conversationEventType = pgEnum('overlay_conversation_event_type', [
+  'message',
+  'mention',
+  'thread',
+  'reaction',
+  'participant',
+  'pin.changed',
+  'reaction.changed',
 ])
 
 export const users = pgTable('users', {
@@ -438,555 +411,6 @@ export const authIdentities = pgTable('auth_identities', {
   primaryKey({ columns: [table.provider, table.subject] }),
   index('auth_identities_user_id_idx').on(table.userId),
   index('auth_identities_email_idx').on(table.email),
-])
-
-export const workspaces = pgTable('workspaces', {
-  id: text('id').primaryKey(),
-  kind: workspaceKind('kind').notNull(),
-  name: text('name').notNull(),
-  slug: text('slug').notNull(),
-  status: workspaceStatus('status').default('active').notNull(),
-  personalOwnerUserId: text('personal_owner_user_id')
-    .references(() => users.id, { onDelete: 'restrict' }),
-  createdByPrincipalId: text('created_by_principal_id'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  archivedAt: timestamp('archived_at', { withTimezone: true }),
-}, (table) => [
-  uniqueIndex('workspaces_slug_idx').on(sql`lower(${table.slug})`),
-  uniqueIndex('workspaces_personal_owner_idx')
-    .on(table.personalOwnerUserId)
-    .where(sql`${table.kind} = 'personal'`),
-  index('workspaces_status_updated_idx').on(table.status, table.updatedAt),
-  check(
-    'workspaces_personal_owner_check',
-    sql`(${table.kind} = 'personal' AND ${table.personalOwnerUserId} IS NOT NULL)
-      OR (${table.kind} = 'organization' AND ${table.personalOwnerUserId} IS NULL)`,
-  ),
-  check(
-    'workspaces_archive_state_check',
-    sql`(${table.status} = 'archived') = (${table.archivedAt} IS NOT NULL)`,
-  ),
-])
-
-export const workspacePrincipals = pgTable('workspace_principals', {
-  id: text('id').primaryKey(),
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  type: workspacePrincipalType('type').notNull(),
-  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
-  agentId: text('agent_id'),
-  serviceId: text('service_id'),
-  displayName: text('display_name').notNull(),
-  email: text('email'),
-  createdByPrincipalId: text('created_by_principal_id'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  archivedAt: timestamp('archived_at', { withTimezone: true }),
-}, (table) => [
-  unique('workspace_principals_workspace_id_id_unique').on(table.workspaceId, table.id),
-  uniqueIndex('workspace_principals_human_idx')
-    .on(table.workspaceId, table.userId)
-    .where(sql`${table.type} = 'human'`),
-  uniqueIndex('workspace_principals_agent_idx')
-    .on(table.workspaceId, table.agentId)
-    .where(sql`${table.type} = 'agent'`),
-  uniqueIndex('workspace_principals_service_idx')
-    .on(table.workspaceId, table.serviceId)
-    .where(sql`${table.type} = 'service'`),
-  index('workspace_principals_workspace_type_idx').on(table.workspaceId, table.type, table.archivedAt),
-  check(
-    'workspace_principals_identity_check',
-    sql`(${table.type} = 'human'
-          AND ${table.agentId} IS NULL AND ${table.serviceId} IS NULL
-          AND (${table.userId} IS NOT NULL OR ${table.archivedAt} IS NOT NULL))
-      OR (${table.type} = 'agent' AND ${table.userId} IS NULL
-          AND ${table.agentId} IS NOT NULL AND ${table.serviceId} IS NULL)
-      OR (${table.type} = 'service' AND ${table.userId} IS NULL
-          AND ${table.agentId} IS NULL AND ${table.serviceId} IS NOT NULL)`,
-  ),
-])
-
-export const workspaceMemberships = pgTable('workspace_memberships', {
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  principalId: text('principal_id').notNull(),
-  role: workspaceMembershipRole('role').notNull(),
-  status: workspaceMembershipStatus('status').default('active').notNull(),
-  invitedByPrincipalId: text('invited_by_principal_id'),
-  joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.workspaceId, table.principalId] }),
-  foreignKey({
-    columns: [table.workspaceId, table.principalId],
-    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
-    name: 'workspace_memberships_principal_fk',
-  }).onDelete('cascade'),
-  index('workspace_memberships_principal_idx').on(table.principalId),
-  index('workspace_memberships_workspace_role_status_idx').on(
-    table.workspaceId,
-    table.role,
-    table.status,
-  ),
-])
-
-export const userWorkspacePreferences = pgTable('user_workspace_preferences', {
-  userId: text('user_id')
-    .primaryKey()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  activeWorkspaceId: text('active_workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  index('user_workspace_preferences_workspace_idx').on(table.activeWorkspaceId),
-])
-
-export const workspaceTeams = pgTable('workspace_teams', {
-  id: text('id').primaryKey(),
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  description: text('description'),
-  createdByPrincipalId: text('created_by_principal_id').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  archivedAt: timestamp('archived_at', { withTimezone: true }),
-}, (table) => [
-  unique('workspace_teams_workspace_id_id_unique').on(table.workspaceId, table.id),
-  uniqueIndex('workspace_teams_active_name_idx')
-    .on(table.workspaceId, sql`lower(${table.name})`)
-    .where(sql`${table.archivedAt} IS NULL`),
-  index('workspace_teams_workspace_updated_idx').on(table.workspaceId, table.updatedAt),
-])
-
-export const workspaceTeamMembers = pgTable('workspace_team_members', {
-  teamId: text('team_id').notNull(),
-  workspaceId: text('workspace_id').notNull(),
-  principalId: text('principal_id').notNull(),
-  principalType: workspacePrincipalType('principal_type').notNull(),
-  addedByPrincipalId: text('added_by_principal_id'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.teamId, table.principalId] }),
-  foreignKey({
-    columns: [table.workspaceId, table.teamId],
-    foreignColumns: [workspaceTeams.workspaceId, workspaceTeams.id],
-    name: 'workspace_team_members_team_fk',
-  }).onDelete('cascade'),
-  foreignKey({
-    columns: [table.workspaceId, table.principalId],
-    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
-    name: 'workspace_team_members_principal_fk',
-  }).onDelete('cascade'),
-  index('workspace_team_members_principal_idx').on(table.workspaceId, table.principalId),
-  check(
-    'workspace_team_members_principal_type_check',
-    sql`${table.principalType} IN ('human', 'agent')`,
-  ),
-])
-
-export const workspaceInvitations = pgTable('workspace_invitations', {
-  id: text('id').primaryKey(),
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  email: text('email').notNull(),
-  role: workspaceMembershipRole('role').notNull(),
-  status: workspaceInvitationStatus('status').default('pending').notNull(),
-  invitedByPrincipalId: text('invited_by_principal_id').notNull(),
-  acceptedByPrincipalId: text('accepted_by_principal_id'),
-  replacedByInvitationId: text('replaced_by_invitation_id')
-    .references((): AnyPgColumn => workspaceInvitations.id, { onDelete: 'set null' }),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
-  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
-  replacedAt: timestamp('replaced_at', { withTimezone: true }),
-}, (table) => [
-  uniqueIndex('workspace_invitations_pending_email_idx')
-    .on(table.workspaceId, sql`lower(${table.email})`)
-    .where(sql`${table.status} = 'pending'`),
-  index('workspace_invitations_workspace_status_idx').on(
-    table.workspaceId,
-    table.status,
-    table.createdAt,
-  ),
-  index('workspace_invitations_expiry_idx').on(table.status, table.expiresAt),
-  check('workspace_invitations_role_check', sql`${table.role} <> 'owner'`),
-])
-
-export const workspaceResourceGuests = pgTable('workspace_resource_guests', {
-  id: text('id').primaryKey(),
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  resourceType: text('resource_type').notNull(),
-  resourceId: text('resource_id').notNull(),
-  principalId: text('principal_id').notNull(),
-  accessRole: workspaceResourceGuestAccessRole('access_role').notNull(),
-  status: workspaceResourceGuestStatus('status').default('pending').notNull(),
-  grantedByPrincipalId: text('granted_by_principal_id').notNull(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  revokedAt: timestamp('revoked_at', { withTimezone: true }),
-}, (table) => [
-  foreignKey({
-    columns: [table.workspaceId, table.principalId],
-    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
-    name: 'workspace_resource_guests_principal_fk',
-  }).onDelete('cascade'),
-  uniqueIndex('workspace_resource_guests_active_idx')
-    .on(table.workspaceId, table.resourceType, table.resourceId, table.principalId)
-    .where(sql`${table.status} IN ('pending', 'active')`),
-  index('workspace_resource_guests_resource_idx').on(
-    table.workspaceId,
-    table.resourceType,
-    table.resourceId,
-    table.status,
-  ),
-  index('workspace_resource_guests_principal_idx').on(
-    table.workspaceId,
-    table.principalId,
-    table.status,
-  ),
-])
-
-export const workspaceResourceScopes = pgTable('workspace_resource_scopes', {
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  resourceType: text('resource_type').notNull(),
-  resourceId: text('resource_id').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({
-    columns: [table.resourceType, table.resourceId],
-    name: 'workspace_resource_scopes_pk',
-  }),
-  index('workspace_resource_scopes_workspace_idx').on(
-    table.workspaceId,
-    table.resourceType,
-    table.resourceId,
-  ),
-  // Referenced by workspace_resource_grants so a grant can never claim a
-  // different workspace than the resource is bound to.
-  unique('workspace_resource_scopes_workspace_resource_unique').on(
-    table.workspaceId,
-    table.resourceType,
-    table.resourceId,
-  ),
-])
-
-export const workspaceResourceGrants = pgTable('workspace_resource_grants', {
-  id: text('id').primaryKey(),
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  resourceType: text('resource_type').notNull(),
-  resourceId: text('resource_id').notNull(),
-  targetType: workspaceShareTargetType('target_type').notNull(),
-  targetId: text('target_id').notNull(),
-  accessRole: workspaceShareAccessRole('access_role').notNull(),
-  grantedByPrincipalId: text('granted_by_principal_id')
-    .notNull()
-    .references(() => workspacePrincipals.id, { onDelete: 'restrict' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  foreignKey({
-    columns: [table.workspaceId, table.resourceType, table.resourceId],
-    foreignColumns: [
-      workspaceResourceScopes.workspaceId,
-      workspaceResourceScopes.resourceType,
-      workspaceResourceScopes.resourceId,
-    ],
-    name: 'workspace_resource_grants_scope_fk',
-  }).onDelete('cascade'),
-  unique('workspace_resource_grants_target_unique').on(
-    table.workspaceId,
-    table.resourceType,
-    table.resourceId,
-    table.targetType,
-    table.targetId,
-  ),
-  index('workspace_resource_grants_resource_idx').on(
-    table.workspaceId,
-    table.resourceType,
-    table.resourceId,
-  ),
-  index('workspace_resource_grants_target_idx').on(
-    table.workspaceId,
-    table.targetType,
-    table.targetId,
-    table.resourceType,
-  ),
-  check(
-    'workspace_resource_grants_type_check',
-    sql`${table.resourceType} IN ('conversation', 'file', 'project', 'knowledge_base', 'automation', 'agent')`,
-  ),
-])
-
-export const workspaceSharingPolicies = pgTable('workspace_sharing_policies', {
-  workspaceId: text('workspace_id')
-    .primaryKey()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  publicLinksEnabled: boolean('public_links_enabled').default(true).notNull(),
-  memberCanCreateChannels: boolean('member_can_create_channels').default(true).notNull(),
-  memberCanCreateAgents: boolean('member_can_create_agents').default(true).notNull(),
-  memberCanInvite: boolean('member_can_invite').default(false).notNull(),
-  guestExpirationDays: integer('guest_expiration_days'),
-  allowedAgentHarnesses: text('allowed_agent_harnesses').array(),
-  agentRunBudgetCents: integer('agent_run_budget_cents'),
-  channelRetentionDays: integer('channel_retention_days'),
-  legalHold: boolean('legal_hold').default(false).notNull(),
-  dataResidency: text('data_residency'),
-  rolloutStage: text('rollout_stage').default('general').notNull(),
-  updatedByPrincipalId: text('updated_by_principal_id'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  check(
-    'workspace_sharing_policies_rollout_stage_check',
-    sql`${table.rolloutStage} IN ('dogfood', 'invited', 'general')`,
-  ),
-  foreignKey({
-    columns: [table.workspaceId, table.updatedByPrincipalId],
-    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
-    name: 'workspace_sharing_policies_principal_fk',
-  }).onDelete('set null'),
-])
-
-export const workspaceIdentityMappings = pgTable('workspace_identity_mappings', {
-  id: text('id').primaryKey(),
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  principalId: text('principal_id').notNull(),
-  directory: text('directory').notNull(),
-  externalId: text('external_id').notNull(),
-  externalGroupIds: text('external_group_ids').array().default(sql`'{}'::text[]`).notNull(),
-  status: text('status').default('active').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  deprovisionedAt: timestamp('deprovisioned_at', { withTimezone: true }),
-}, (table) => [
-  foreignKey({
-    columns: [table.workspaceId, table.principalId],
-    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
-    name: 'workspace_identity_mappings_principal_fk',
-  }).onDelete('cascade'),
-  uniqueIndex('workspace_identity_mappings_external_idx')
-    .on(table.workspaceId, table.directory, table.externalId),
-  index('workspace_identity_mappings_principal_idx').on(table.workspaceId, table.principalId),
-  check('workspace_identity_mappings_status_check', sql`${table.status} IN ('active', 'deprovisioned')`),
-])
-
-export const workspaceAuditExports = pgTable('workspace_audit_exports', {
-  id: text('id').primaryKey(),
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  requestedByPrincipalId: text('requested_by_principal_id').notNull(),
-  fromRecordedAt: timestamp('from_recorded_at', { withTimezone: true }),
-  toRecordedAt: timestamp('to_recorded_at', { withTimezone: true }).notNull(),
-  eventCount: integer('event_count').default(0).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  foreignKey({
-    columns: [table.workspaceId, table.requestedByPrincipalId],
-    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
-    name: 'workspace_audit_exports_principal_fk',
-  }).onDelete('cascade'),
-  index('workspace_audit_exports_workspace_idx').on(table.workspaceId, table.createdAt),
-])
-
-export const knowledgeBases = pgTable('knowledge_bases', {
-  id: text('id').primaryKey(),
-  ownerUserId: text('owner_user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  title: text('title').notNull(),
-  description: text('description'),
-  kind: knowledgeBaseKind('kind').default('personal').notNull(),
-  status: knowledgeBaseStatus('status').default('active').notNull(),
-  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  archivedAt: timestamp('archived_at', { withTimezone: true }),
-}, (table) => [
-  index('knowledge_bases_owner_status_updated_idx').on(table.ownerUserId, table.status, table.updatedAt),
-  index('knowledge_bases_kind_status_idx').on(table.kind, table.status),
-])
-
-export const knowledgeSources = pgTable('knowledge_sources', {
-  id: text('id').primaryKey(),
-  ownerUserId: text('owner_user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  kind: canonicalKnowledgeSourceKind('kind').notNull(),
-  sourceRef: text('source_ref'),
-  title: text('title').notNull(),
-  mimeType: text('mime_type'),
-  contentHash: text('content_hash'),
-  status: canonicalKnowledgeSourceStatus('status').default('pending').notNull(),
-  statusMessage: text('status_message'),
-  metadata: jsonb('metadata').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
-  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  deletedAt: timestamp('deleted_at', { withTimezone: true }),
-}, (table) => [
-  index('knowledge_sources_owner_status_updated_idx').on(table.ownerUserId, table.status, table.updatedAt),
-  uniqueIndex('knowledge_sources_owner_ref_active_idx')
-    .on(table.ownerUserId, table.kind, table.sourceRef)
-    .where(sql`${table.sourceRef} IS NOT NULL AND ${table.deletedAt} IS NULL`),
-])
-
-export const knowledgeSourceVersions = pgTable('knowledge_source_versions', {
-  id: text('id').primaryKey(),
-  sourceId: text('source_id')
-    .notNull()
-    .references(() => knowledgeSources.id, { onDelete: 'cascade' }),
-  version: integer('version').notNull(),
-  contentHash: text('content_hash').notNull(),
-  status: canonicalKnowledgeSourceStatus('status').default('pending').notNull(),
-  metadata: jsonb('metadata').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  uniqueIndex('knowledge_source_versions_source_version_idx').on(table.sourceId, table.version),
-  uniqueIndex('knowledge_source_versions_source_hash_idx').on(table.sourceId, table.contentHash),
-])
-
-export const knowledgeBaseSources = pgTable('knowledge_base_sources', {
-  knowledgeBaseId: text('knowledge_base_id')
-    .notNull()
-    .references(() => knowledgeBases.id, { onDelete: 'cascade' }),
-  sourceId: text('source_id')
-    .notNull()
-    .references(() => knowledgeSources.id, { onDelete: 'cascade' }),
-  addedBy: text('added_by').references(() => users.id, { onDelete: 'set null' }),
-  enabled: boolean('enabled').default(true).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.knowledgeBaseId, table.sourceId] }),
-  index('knowledge_base_sources_source_idx').on(table.sourceId, table.knowledgeBaseId),
-])
-
-export const authorizationRoles = pgTable('authorization_roles', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  description: text('description'),
-  capabilities: text('capabilities').array().default(sql`'{}'::text[]`).notNull(),
-  isSystem: boolean('is_system').default(false).notNull(),
-  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  archivedAt: timestamp('archived_at', { withTimezone: true }),
-}, (table) => [
-  uniqueIndex('authorization_roles_name_idx').on(sql`lower(${table.name})`),
-  index('authorization_roles_archived_at_idx').on(table.archivedAt),
-])
-
-export const authorizationGroups = pgTable('authorization_groups', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  description: text('description'),
-  source: text('source').default('local').notNull(),
-  externalId: text('external_id'),
-  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  archivedAt: timestamp('archived_at', { withTimezone: true }),
-}, (table) => [
-  uniqueIndex('authorization_groups_name_idx').on(sql`lower(${table.name})`),
-  uniqueIndex('authorization_groups_external_idx').on(table.source, table.externalId),
-  index('authorization_groups_archived_at_idx').on(table.archivedAt),
-  check('authorization_groups_source_check', sql`${table.source} IN ('local', 'external')`),
-])
-
-export const authorizationGroupMemberships = pgTable('authorization_group_memberships', {
-  groupId: text('group_id')
-    .notNull()
-    .references(() => authorizationGroups.id, { onDelete: 'cascade' }),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  source: text('source').default('local').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.groupId, table.userId] }),
-  index('authorization_group_memberships_user_idx').on(table.userId),
-  check('authorization_group_memberships_source_check', sql`${table.source} IN ('local', 'external')`),
-])
-
-export const authorizationUserRoles = pgTable('authorization_user_roles', {
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  roleId: text('role_id')
-    .notNull()
-    .references(() => authorizationRoles.id, { onDelete: 'cascade' }),
-  assignedBy: text('assigned_by').references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.userId, table.roleId] }),
-  index('authorization_user_roles_role_idx').on(table.roleId),
-])
-
-export const authorizationGroupRoles = pgTable('authorization_group_roles', {
-  groupId: text('group_id')
-    .notNull()
-    .references(() => authorizationGroups.id, { onDelete: 'cascade' }),
-  roleId: text('role_id')
-    .notNull()
-    .references(() => authorizationRoles.id, { onDelete: 'cascade' }),
-  assignedBy: text('assigned_by').references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.groupId, table.roleId] }),
-  index('authorization_group_roles_role_idx').on(table.roleId),
-])
-
-export const authorizationResourceGrants = pgTable('authorization_resource_grants', {
-  id: text('id').primaryKey(),
-  resourceType: text('resource_type').notNull(),
-  resourceId: text('resource_id').notNull(),
-  principalType: text('principal_type').notNull(),
-  principalId: text('principal_id').notNull(),
-  accessRole: text('access_role').notNull(),
-  grantedBy: text('granted_by').references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  uniqueIndex('authorization_resource_grants_principal_idx').on(
-    table.resourceType,
-    table.resourceId,
-    table.principalType,
-    table.principalId,
-  ),
-  index('authorization_resource_grants_resource_idx').on(table.resourceType, table.resourceId),
-  index('authorization_resource_grants_principal_lookup_idx').on(
-    table.principalType,
-    table.principalId,
-    table.resourceType,
-  ),
-  check(
-    'authorization_resource_grants_principal_type_check',
-    sql`${table.principalType} IN ('user', 'group', 'role')`,
-  ),
-  check(
-    'authorization_resource_grants_access_role_check',
-    sql`${table.accessRole} IN ('viewer', 'editor', 'owner')`,
-  ),
 ])
 
 export const userSettings = pgTable('user_settings', {
@@ -1038,21 +462,17 @@ export const projects = pgTable('projects', {
   clientId: text('client_id'),
   name: text('name').notNull(),
   instructions: text('instructions'),
-  knowledgeBaseId: text('knowledge_base_id')
-    .references((): AnyPgColumn => knowledgeBases.id, { onDelete: 'set null' }),
   parentId: text('parent_id').references((): AnyPgColumn => projects.id, { onDelete: 'set null' }),
-  settings: jsonb('settings').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  archivedAt: timestamp('archived_at', { withTimezone: true }),
+  workspaceId: text('workspace_id'),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 }, (table) => [
   index('projects_user_id_idx').on(table.userId),
   uniqueIndex('projects_user_id_client_id_idx').on(table.userId, table.clientId),
   index('projects_user_id_updated_at_idx').on(table.userId, table.updatedAt),
-  index('projects_knowledge_base_id_idx').on(table.knowledgeBaseId),
-  index('projects_user_id_archived_at_idx').on(table.userId, table.archivedAt),
   index('projects_parent_id_idx').on(table.parentId),
+  index('projects_workspace_id_idx').on(table.workspaceId),
   check('projects_parent_not_self_check', sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`),
 ])
 
@@ -1067,11 +487,13 @@ export const skills = pgTable('skills', {
   instructions: text('instructions').notNull(),
   enabled: boolean('enabled').default(true).notNull(),
   version: integer('version').default(1).notNull(),
+  workspaceId: text('workspace_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('skills_user_updated_idx').on(table.userId, table.updatedAt),
   index('skills_project_updated_idx').on(table.projectId, table.updatedAt),
+  index('skills_workspace_id_idx').on(table.workspaceId),
 ])
 
 export const mcpServers = pgTable('mcp_servers', {
@@ -1087,6 +509,19 @@ export const mcpServers = pgTable('mcp_servers', {
   enabled: boolean('enabled').default(true).notNull(),
   authType: mcpAuthType('auth_type').default('none').notNull(),
   encryptedAuthConfig: text('encrypted_auth_config'),
+  // OAuth: only non-secret columns are surfaced by list APIs. Tokens and the client secret
+  // stay sealed with McpCredentialCipher and never leave the server.
+  oauthStatus: mcpOAuthStatus('oauth_status'),
+  encryptedOauthTokens: text('encrypted_oauth_tokens'),
+  encryptedOauthClient: text('encrypted_oauth_client'),
+  oauthClientId: text('oauth_client_id'),
+  oauthIssuer: text('oauth_issuer'),
+  oauthScope: text('oauth_scope'),
+  oauthResource: text('oauth_resource'),
+  oauthConnectedAt: timestamp('oauth_connected_at', { withTimezone: true }),
+  oauthError: text('oauth_error'),
+  /** Bumped on every token write so concurrent refreshes can compare-and-set. */
+  oauthTokenVersion: integer('oauth_token_version').default(0).notNull(),
   timeoutMs: integer('timeout_ms'),
   defaultToolPolicy: mcpToolPolicy('default_tool_policy').default('allow').notNull(),
   toolPolicies: jsonb('tool_policies')
@@ -1099,12 +534,40 @@ export const mcpServers = pgTable('mcp_servers', {
     .notNull(),
   toolCatalogUpdatedAt: timestamp('tool_catalog_updated_at', { withTimezone: true }),
   toolCatalogError: text('tool_catalog_error'),
+  workspaceId: text('workspace_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('mcp_servers_user_updated_idx').on(table.userId, table.updatedAt),
   index('mcp_servers_user_enabled_idx').on(table.userId, table.enabled),
   index('mcp_servers_project_updated_idx').on(table.projectId, table.updatedAt),
+  index('mcp_servers_workspace_id_idx').on(table.workspaceId),
+])
+
+/**
+ * Pending MCP OAuth authorizations. One row per in-flight Connect, consumed exactly once by the
+ * callback and bound to (user_id, mcp_server_id) so a stolen `state` cannot land tokens in another
+ * account. The PKCE verifier is encrypted at rest like every other MCP secret.
+ */
+export const mcpOAuthSessions = pgTable('mcp_oauth_sessions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  mcpServerId: text('mcp_server_id')
+    .notNull()
+    .references(() => mcpServers.id, { onDelete: 'cascade' }),
+  encryptedCodeVerifier: text('encrypted_code_verifier').notNull(),
+  surface: mcpOAuthSurface('surface').default('web').notNull(),
+  returnTo: text('return_to'),
+  /** Hash of the web session cookie, when the flow started from an authenticated browser. */
+  sessionBindingHash: text('session_binding_hash'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('mcp_oauth_sessions_user_idx').on(table.userId),
+  index('mcp_oauth_sessions_server_idx').on(table.mcpServerId),
+  index('mcp_oauth_sessions_expires_idx').on(table.expiresAt),
 ])
 
 export const mcpToolExecutions = pgTable('mcp_tool_executions', {
@@ -1133,13 +596,6 @@ export const mcpToolExecutions = pgTable('mcp_tool_executions', {
 
 export const conversations = pgTable('conversations', {
   id: text('id').primaryKey(),
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  conversationType: conversationType('conversation_type').default('personal').notNull(),
-  createdByPrincipalId: text('created_by_principal_id')
-    .notNull()
-    .references(() => workspacePrincipals.id, { onDelete: 'restrict' }),
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
@@ -1157,80 +613,25 @@ export const conversations = pgTable('conversations', {
   shareVisibility: shareVisibility('share_visibility'),
   sharedAt: timestamp('shared_at', { withTimezone: true }),
   isAutomation: boolean('is_automation'),
+  conversationType: conversationType('conversation_type').default('personal').notNull(),
+  workspaceId: text('workspace_id'),
+  createdByPrincipalId: text('created_by_principal_id'),
   dmIdentityKey: text('dm_identity_key'),
   channelSlug: text('channel_slug'),
-  channelVisibility: channelVisibility('channel_visibility'),
+  channelVisibility: text('channel_visibility'),
   channelTopic: text('channel_topic'),
 }, (table) => [
   index('conversations_user_id_idx').on(table.userId),
-  uniqueIndex('conversations_workspace_id_client_id_idx').on(table.workspaceId, table.clientId),
-  index('conversations_workspace_type_last_modified_idx').on(
-    table.workspaceId,
-    table.conversationType,
-    table.lastModified,
-  ),
+  uniqueIndex('conversations_user_id_client_id_idx').on(table.userId, table.clientId),
   index('conversations_user_id_last_modified_idx').on(table.userId, table.lastModified),
   index('conversations_user_id_updated_at_idx').on(table.userId, table.updatedAt),
   index('conversations_deleted_at_created_at_idx').on(table.deletedAt, table.createdAt),
   index('conversations_project_id_idx').on(table.projectId),
   uniqueIndex('conversations_share_token_idx').on(table.shareToken),
-  uniqueIndex('conversations_workspace_dm_identity_idx')
-    .on(table.workspaceId, table.dmIdentityKey)
-    .where(sql`${table.dmIdentityKey} IS NOT NULL AND ${table.deletedAt} IS NULL`),
-  uniqueIndex('conversations_workspace_channel_slug_idx')
-    .on(table.workspaceId, table.channelSlug)
-    .where(sql`${table.conversationType} = 'channel' AND ${table.deletedAt} IS NULL`),
-  check(
-    'conversations_channel_shape_check',
-    sql`(${table.conversationType} <> 'channel' AND ${table.channelSlug} IS NULL AND ${table.channelVisibility} IS NULL)
-      OR (${table.conversationType} = 'channel' AND ${table.channelSlug} IS NOT NULL AND ${table.channelVisibility} IS NOT NULL)`,
-  ),
-])
-
-export const knowledgeBaseConversations = pgTable('knowledge_base_conversations', {
-  conversationId: text('conversation_id')
-    .notNull()
-    .references(() => conversations.id, { onDelete: 'cascade' }),
-  knowledgeBaseId: text('knowledge_base_id')
-    .notNull()
-    .references(() => knowledgeBases.id, { onDelete: 'cascade' }),
-  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.conversationId, table.knowledgeBaseId] }),
-  index('knowledge_base_conversations_base_created_idx').on(table.knowledgeBaseId, table.createdAt),
-  index('knowledge_base_conversations_conversation_created_idx')
-    .on(table.conversationId, table.createdAt),
-])
-
-export const projectKnowledgeBases = pgTable('project_knowledge_bases', {
-  projectId: text('project_id')
-    .notNull()
-    .references(() => projects.id, { onDelete: 'cascade' }),
-  knowledgeBaseId: text('knowledge_base_id')
-    .notNull()
-    .references(() => knowledgeBases.id, { onDelete: 'cascade' }),
-  attachedBy: text('attached_by').references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.projectId, table.knowledgeBaseId] }),
-  index('project_knowledge_bases_base_created_idx').on(table.knowledgeBaseId, table.createdAt),
-  index('project_knowledge_bases_project_created_idx').on(table.projectId, table.createdAt),
-])
-
-export const knowledgeBaseGroupDefaults = pgTable('knowledge_base_group_defaults', {
-  groupId: text('group_id')
-    .notNull()
-    .references(() => authorizationGroups.id, { onDelete: 'cascade' }),
-  knowledgeBaseId: text('knowledge_base_id')
-    .notNull()
-    .references(() => knowledgeBases.id, { onDelete: 'cascade' }),
-  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.groupId, table.knowledgeBaseId] }),
-  index('knowledge_base_group_defaults_base_idx').on(table.knowledgeBaseId, table.createdAt),
-  index('knowledge_base_group_defaults_group_idx').on(table.groupId, table.createdAt),
+  index('conversations_workspace_id_idx').on(table.workspaceId),
+  index('conversations_workspace_type_last_modified_idx').on(table.workspaceId, table.conversationType, table.lastModified),
+  uniqueIndex('conversations_workspace_dm_identity_key_idx').on(table.workspaceId, table.dmIdentityKey),
+  uniqueIndex('conversations_workspace_channel_slug_idx').on(table.workspaceId, table.channelSlug),
 ])
 
 export const conversationMessages = pgTable('conversation_messages', {
@@ -1241,9 +642,6 @@ export const conversationMessages = pgTable('conversation_messages', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
-  authorKind: messageAuthorKind('author_kind').notNull(),
-  authorPrincipalId: text('author_principal_id')
-    .references(() => workspacePrincipals.id, { onDelete: 'cascade' }),
   turnId: text('turn_id').notNull(),
   role: messageRole('role').notNull(),
   mode: chatMode('mode').notNull(),
@@ -1257,12 +655,13 @@ export const conversationMessages = pgTable('conversation_messages', {
   replySnippet: text('reply_snippet'),
   routedModelId: text('routed_model_id'),
   status: messageStatus('status'),
-  updatedAt: timestamp('updated_at', { withTimezone: true }),
+  authorKind: messageAuthorKind('author_kind').notNull(),
+  authorPrincipalId: text('author_principal_id'),
   clientNonce: text('client_nonce'),
-  editedAt: timestamp('edited_at', { withTimezone: true }),
+  threadRootMessageId: text('thread_root_message_id'),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
-  threadRootMessageId: text('thread_root_message_id')
-    .references((): AnyPgColumn => conversationMessages.id, { onDelete: 'cascade' }),
+  editedAt: timestamp('edited_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('conversation_messages_conversation_id_idx').on(table.conversationId),
@@ -1271,233 +670,11 @@ export const conversationMessages = pgTable('conversation_messages', {
   index('conversation_messages_conversation_status_updated_at_idx').on(table.conversationId, table.status, table.updatedAt),
   index('conversation_messages_status_updated_at_idx').on(table.status, table.updatedAt),
   index('conversation_messages_turn_id_idx').on(table.turnId),
-  index('conversation_messages_thread_root_created_idx').on(table.threadRootMessageId, table.createdAt),
+  index('conversation_messages_author_principal_id_idx').on(table.authorPrincipalId),
   uniqueIndex('conversation_messages_conversation_client_nonce_idx')
-    .on(table.conversationId, table.clientNonce)
-    .where(sql`${table.clientNonce} IS NOT NULL`),
-  check(
-    'conversation_messages_author_identity_check',
-    sql`(${table.authorKind} IN ('human', 'agent') AND ${table.authorPrincipalId} IS NOT NULL)
-      OR (${table.authorKind} IN ('model', 'system'))`,
-  ),
-])
-
-export const conversationMessageReactions = pgTable('conversation_message_reactions', {
-  conversationId: text('conversation_id')
-    .notNull()
-    .references(() => conversations.id, { onDelete: 'cascade' }),
-  messageId: text('message_id')
-    .notNull()
-    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  principalId: text('principal_id').notNull(),
-  emoji: text('emoji').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.messageId, table.principalId, table.emoji] }),
-  foreignKey({
-    columns: [table.workspaceId, table.principalId],
-    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
-    name: 'conversation_message_reactions_principal_fk',
-  }).onDelete('cascade'),
-  index('conversation_message_reactions_conversation_idx').on(table.conversationId, table.createdAt),
-  check('conversation_message_reactions_emoji_check', sql`char_length(${table.emoji}) BETWEEN 1 AND 32`),
-])
-
-export const conversationPins = pgTable('conversation_pins', {
-  conversationId: text('conversation_id')
-    .notNull()
-    .references(() => conversations.id, { onDelete: 'cascade' }),
-  messageId: text('message_id')
-    .notNull()
-    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  pinnedByPrincipalId: text('pinned_by_principal_id').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.conversationId, table.messageId] }),
-  foreignKey({
-    columns: [table.workspaceId, table.pinnedByPrincipalId],
-    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
-    name: 'conversation_pins_principal_fk',
-  }).onDelete('cascade'),
-])
-
-export const conversationSavedMessages = pgTable('conversation_saved_messages', {
-  conversationId: text('conversation_id')
-    .notNull()
-    .references(() => conversations.id, { onDelete: 'cascade' }),
-  messageId: text('message_id')
-    .notNull()
-    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  principalId: text('principal_id').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.messageId, table.principalId] }),
-  foreignKey({
-    columns: [table.workspaceId, table.principalId],
-    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
-    name: 'conversation_saved_messages_principal_fk',
-  }).onDelete('cascade'),
-  index('conversation_saved_messages_principal_idx').on(
-    table.workspaceId,
-    table.principalId,
-    table.createdAt,
-  ),
-])
-
-export const conversationParticipants = pgTable('conversation_participants', {
-  conversationId: text('conversation_id')
-    .notNull()
-    .references(() => conversations.id, { onDelete: 'cascade' }),
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  principalId: text('principal_id').notNull(),
-  principalType: workspacePrincipalType('principal_type').notNull(),
-  role: conversationParticipantRole('role').default('member').notNull(),
-  status: conversationParticipantStatus('status').default('active').notNull(),
-  notificationLevel: conversationNotificationLevel('notification_level').default('all').notNull(),
-  joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  removedAt: timestamp('removed_at', { withTimezone: true }),
-  lastReadAt: timestamp('last_read_at', { withTimezone: true }),
-  lastReadSequence: bigint('last_read_sequence', { mode: 'number' }),
-  markedUnreadAt: timestamp('marked_unread_at', { withTimezone: true }),
-  archivedAt: timestamp('archived_at', { withTimezone: true }),
-}, (table) => [
-  primaryKey({ columns: [table.conversationId, table.principalId] }),
-  foreignKey({
-    columns: [table.workspaceId, table.principalId],
-    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
-    name: 'conversation_participants_principal_fk',
-  }).onDelete('cascade'),
-  index('conversation_participants_principal_status_idx').on(
-    table.workspaceId,
-    table.principalId,
-    table.status,
-  ),
-  index('conversation_participants_conversation_status_idx').on(
-    table.conversationId,
-    table.status,
-  ),
-  check(
-    'conversation_participants_principal_type_check',
-    sql`${table.principalType} IN ('human', 'agent')`,
-  ),
-  check(
-    'conversation_participants_state_check',
-    sql`(${table.status} = 'active' AND ${table.removedAt} IS NULL)
-      OR (${table.status} = 'removed' AND ${table.removedAt} IS NOT NULL)`,
-  ),
-])
-
-export const workspacePresence = pgTable('workspace_presence', {
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  principalId: text('principal_id').notNull(),
-  sessionId: text('session_id').notNull().default('legacy'),
-  conversationId: text('conversation_id')
-    .references(() => conversations.id, { onDelete: 'set null' }),
-  status: workspacePresenceStatus('status').default('online').notNull(),
-  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
-  typingExpiresAt: timestamp('typing_expires_at', { withTimezone: true }),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.workspaceId, table.principalId, table.sessionId] }),
-  foreignKey({
-    columns: [table.workspaceId, table.principalId],
-    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
-    name: 'workspace_presence_principal_fk',
-  }).onDelete('cascade'),
-  index('workspace_presence_conversation_idx').on(table.conversationId, table.updatedAt),
-  index('workspace_presence_principal_idx').on(table.workspaceId, table.principalId, table.updatedAt),
-])
-
-export const workspaceNotifications = pgTable('workspace_notifications', {
-  id: text('id').primaryKey(),
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  recipientPrincipalId: text('recipient_principal_id').notNull(),
-  type: workspaceNotificationType('type').notNull(),
-  conversationId: text('conversation_id')
-    .references(() => conversations.id, { onDelete: 'cascade' }),
-  messageId: text('message_id')
-    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
-  actorPrincipalId: text('actor_principal_id'),
-  threadRootMessageId: text('thread_root_message_id')
-    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
-  eventSequence: bigint('event_sequence', { mode: 'number' }),
-  mentionScope: text('mention_scope'),
-  title: text('title').notNull(),
-  body: text('body'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  readAt: timestamp('read_at', { withTimezone: true }),
-}, (table) => [
-  foreignKey({
-    columns: [table.workspaceId, table.recipientPrincipalId],
-    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
-    name: 'workspace_notifications_recipient_fk',
-  }).onDelete('cascade'),
-  index('workspace_notifications_recipient_unread_idx').on(
-    table.workspaceId,
-    table.recipientPrincipalId,
-    table.readAt,
-    table.createdAt,
-  ),
-  index('workspace_notifications_conversation_idx').on(table.conversationId, table.createdAt),
-])
-
-export const conversationThreadFollows = pgTable('conversation_thread_follows', {
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  conversationId: text('conversation_id')
-    .notNull()
-    .references(() => conversations.id, { onDelete: 'cascade' }),
-  threadRootMessageId: text('thread_root_message_id')
-    .notNull()
-    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
-  principalId: text('principal_id').notNull(),
-  followedAt: timestamp('followed_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.threadRootMessageId, table.principalId] }),
-  foreignKey({
-    columns: [table.workspaceId, table.principalId],
-    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
-    name: 'conversation_thread_follows_principal_fk',
-  }).onDelete('cascade'),
-  index('conversation_thread_follows_principal_idx').on(table.workspaceId, table.principalId, table.followedAt),
-  index('conversation_thread_follows_thread_idx').on(table.conversationId, table.threadRootMessageId),
-])
-
-export const workspaceNotificationPreferences = pgTable('workspace_notification_preferences', {
-  workspaceId: text('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  principalId: text('principal_id').notNull(),
-  dmMessages: workspaceNotificationPreferenceMode('dm_messages').default('activity').notNull(),
-  mentions: workspaceNotificationPreferenceMode('mentions').default('banner').notNull(),
-  threadReplies: workspaceNotificationPreferenceMode('thread_replies').default('activity').notNull(),
-  reactions: workspaceNotificationPreferenceMode('reactions').default('activity').notNull(),
-  channelMessages: workspaceNotificationPreferenceMode('channel_messages').default('activity').notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.workspaceId, table.principalId] }),
-  foreignKey({
-    columns: [table.workspaceId, table.principalId],
-    foreignColumns: [workspacePrincipals.workspaceId, workspacePrincipals.id],
-    name: 'workspace_notification_preferences_principal_fk',
-  }).onDelete('cascade'),
+    .on(table.conversationId, table.clientNonce),
+  index('conversation_messages_thread_root_created_at_idx')
+    .on(table.threadRootMessageId, table.createdAt),
 ])
 
 export const conversationMessageDeltas = pgTable('conversation_message_deltas', {
@@ -1577,6 +754,7 @@ export const notes = pgTable('notes', {
   content: text('content').default('').notNull(),
   tags: jsonb('tags').$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
   projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
+  workspaceId: text('workspace_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -1585,6 +763,7 @@ export const notes = pgTable('notes', {
   uniqueIndex('notes_user_id_client_id_idx').on(table.userId, table.clientId),
   index('notes_user_id_updated_at_idx').on(table.userId, table.updatedAt),
   index('notes_project_id_idx').on(table.projectId),
+  index('notes_workspace_id_idx').on(table.workspaceId),
 ])
 
 export const memories = pgTable('memories', {
@@ -1609,6 +788,7 @@ export const memories = pgTable('memories', {
   indexedAt: timestamp('indexed_at', { withTimezone: true }),
   indexError: text('index_error'),
   embeddingModelVersion: text('embedding_model_version'),
+  workspaceId: text('workspace_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -1622,6 +802,7 @@ export const memories = pgTable('memories', {
   index('memories_conversation_id_idx').on(table.conversationId),
   index('memories_note_id_idx').on(table.noteId),
   index('memories_index_status_idx').on(table.indexStatus, table.updatedAt),
+  index('memories_workspace_id_idx').on(table.workspaceId),
 ])
 
 export const knowledgeChunks = pgTable('knowledge_chunks', {
@@ -1629,13 +810,12 @@ export const knowledgeChunks = pgTable('knowledge_chunks', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id'),
   projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
   sourceKind: knowledgeSourceKind('source_kind').notNull(),
   sourceId: text('source_id').notNull(),
-  knowledgeSourceId: text('knowledge_source_id')
-    .references(() => knowledgeSources.id, { onDelete: 'cascade' }),
-  knowledgeSourceVersionId: text('knowledge_source_version_id')
-    .references(() => knowledgeSourceVersions.id, { onDelete: 'cascade' }),
+  knowledgeSourceId: text('knowledge_source_id'),
+  knowledgeSourceVersionId: text('knowledge_source_version_id'),
   chunkIndex: integer('chunk_index').notNull(),
   startOffset: integer('start_offset').notNull(),
   text: text('text').notNull(),
@@ -1648,8 +828,8 @@ export const knowledgeChunks = pgTable('knowledge_chunks', {
   index('knowledge_chunks_user_source_idx').on(table.userId, table.sourceKind),
   index('knowledge_chunks_user_project_idx').on(table.userId, table.projectId),
   index('knowledge_chunks_source_idx').on(table.sourceKind, table.sourceId),
-  index('knowledge_chunks_canonical_source_idx').on(table.knowledgeSourceId, table.chunkIndex),
-  index('knowledge_chunks_source_version_idx').on(table.knowledgeSourceVersionId),
+  index('knowledge_chunks_knowledge_source_id_idx').on(table.knowledgeSourceId),
+  index('knowledge_chunks_workspace_id_idx').on(table.workspaceId),
 ])
 
 export const knowledgeChunkEmbeddings = pgTable('knowledge_chunk_embeddings', {
@@ -1757,6 +937,7 @@ export const files = pgTable('files', {
   shareToken: text('share_token'),
   shareVisibility: shareVisibility('share_visibility'),
   sharedAt: timestamp('shared_at', { withTimezone: true }),
+  workspaceId: text('workspace_id'),
 }, (table) => [
   index('files_user_id_idx').on(table.userId),
   index('files_user_id_content_hash_idx').on(table.userId, table.contentHash),
@@ -1769,6 +950,7 @@ export const files = pgTable('files', {
   index('files_r2_key_idx').on(table.r2Key),
   index('files_output_expiry_idx').on(table.kind, table.outputStatus, table.expiresAt),
   uniqueIndex('files_share_token_idx').on(table.shareToken),
+  index('files_workspace_id_idx').on(table.workspaceId),
   check('files_parent_not_self_check', sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`),
   check('files_duplicate_not_self_check', sql`${table.duplicateOfFileId} IS NULL OR ${table.duplicateOfFileId} <> ${table.id}`),
 ])
@@ -1834,11 +1016,14 @@ export const automations = pgTable('automations', {
   lastError: text('last_error'),
   modelId: text('model_id'),
   graphSource: text('graph_source'),
+  graph: jsonb('graph').$type<AutomationGraph>(),
   sourceConversationId: text('source_conversation_id')
     .references(() => conversations.id, { onDelete: 'set null' }),
   conversationId: text('conversation_id')
     .references(() => conversations.id, { onDelete: 'set null' }),
   concurrencyPolicy: automationConcurrencyPolicy('concurrency_policy').default('skip').notNull(),
+  schedulerWorkflowRunId: text('scheduler_workflow_run_id'),
+  workspaceId: text('workspace_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -1847,6 +1032,7 @@ export const automations = pgTable('automations', {
   index('automations_user_id_enabled_idx').on(table.userId, table.enabled),
   index('automations_project_id_idx').on(table.projectId),
   index('automations_due_idx').on(table.enabled, table.nextRunAt),
+  index('automations_workspace_id_idx').on(table.workspaceId),
 ])
 
 export const automationTriggers = pgTable('automation_triggers', {
@@ -1880,6 +1066,7 @@ export const automationRuns = pgTable('automation_runs', {
   scheduledFor: timestamp('scheduled_for', { withTimezone: true }).notNull(),
   idempotencyKey: text('idempotency_key').notNull(),
   jobId: text('job_id'),
+  workflowRunId: text('workflow_run_id'),
   conversationId: text('conversation_id')
     .references(() => conversations.id, { onDelete: 'set null' }),
   turnId: text('turn_id'),
@@ -1929,11 +1116,13 @@ export const webhookSubscriptions = pgTable('webhook_subscriptions', {
   events: jsonb('events').$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
   enabled: boolean('enabled').default(true).notNull(),
   description: text('description'),
+  workspaceId: text('workspace_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('webhook_subscriptions_user_id_updated_at_idx').on(table.userId, table.updatedAt),
   index('webhook_subscriptions_user_id_enabled_idx').on(table.userId, table.enabled),
+  index('webhook_subscriptions_workspace_id_idx').on(table.workspaceId),
 ])
 
 export const webhookDeliveries = pgTable('webhook_deliveries', {
@@ -2062,6 +1251,25 @@ export const outboxEvents = pgTable('outbox_events', {
   uniqueIndex('outbox_events_dedupe_key_idx').on(table.dedupeKey),
 ])
 
+export const emailSuppressions = pgTable('email_suppressions', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  reason: text('reason')
+    .$type<'bounce' | 'complaint' | 'manual' | 'provider_suppression'>()
+    .notNull(),
+  source: text('source').$type<'admin' | 'provider'>().notNull(),
+  suppressedAt: timestamp('suppressed_at', { withTimezone: true }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('email_suppressions_suppressed_at_idx').on(table.suppressedAt),
+  check(
+    'email_suppressions_reason_check',
+    sql`${table.reason} IN ('bounce', 'complaint', 'manual', 'provider_suppression')`,
+  ),
+  check('email_suppressions_source_check', sql`${table.source} IN ('admin', 'provider')`),
+])
+
 export const scheduledTasks = pgTable('scheduled_tasks', {
   id: text('id').primaryKey(),
   jobType: text('job_type').notNull(),
@@ -2093,6 +1301,11 @@ export const usageBudgetAccounts = pgTable('usage_budget_accounts', {
     .references(() => users.id, { onDelete: 'cascade' }),
   mode: usageBudgetMode('mode').default('unlimited').notNull(),
   includedMicros: bigint('included_micros', { mode: 'number' }).default(0).notNull(),
+  institutionalGrantMicros: bigint('institutional_grant_micros', { mode: 'number' }).default(0).notNull(),
+  allowanceUsedMicros: bigint('allowance_used_micros', { mode: 'number' }).default(0).notNull(),
+  topUpPurchasedMicros: bigint('top_up_purchased_micros', { mode: 'number' }).default(0).notNull(),
+  topUpBalanceMicros: bigint('top_up_balance_micros', { mode: 'number' }).default(0).notNull(),
+  // Legacy combined grant total. Retained until every client has migrated.
   grantedMicros: bigint('granted_micros', { mode: 'number' }).default(0).notNull(),
   usedMicros: bigint('used_micros', { mode: 'number' }).default(0).notNull(),
   reservedMicros: bigint('reserved_micros', { mode: 'number' }).default(0).notNull(),
@@ -2102,6 +1315,11 @@ export const usageBudgetAccounts = pgTable('usage_budget_accounts', {
 }, (table) => [
   check('usage_budget_accounts_non_negative_check', sql`
     ${table.includedMicros} >= 0 AND
+    ${table.institutionalGrantMicros} >= 0 AND
+    ${table.allowanceUsedMicros} >= 0 AND
+    ${table.topUpPurchasedMicros} >= 0 AND
+    ${table.topUpBalanceMicros} >= 0 AND
+    ${table.topUpBalanceMicros} <= ${table.topUpPurchasedMicros} AND
     ${table.grantedMicros} >= 0 AND
     ${table.usedMicros} >= 0 AND
     ${table.reservedMicros} >= 0
@@ -2303,4 +1521,270 @@ export const auditEvents = pgTable('audit_events', {
   index('audit_events_actor_created_idx').on(table.actorUserId, table.createdAt),
   index('audit_events_action_created_idx').on(table.action, table.createdAt),
   index('audit_events_resource_idx').on(table.resourceType, table.resourceId, table.createdAt),
+])
+
+// ────────────────────────────────────────────────────────────────────────────
+// Knowledge source tables
+// ────────────────────────────────────────────────────────────────────────────
+
+export const knowledgeSources = pgTable('knowledge_sources', {
+  id: text('id').primaryKey(),
+  ownerUserId: text('owner_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  kind: canonicalKnowledgeSourceKind('kind').notNull(),
+  sourceRef: text('source_ref'),
+  title: text('title').notNull(),
+  mimeType: text('mime_type'),
+  contentHash: text('content_hash'),
+  status: knowledgeSourceStatus('status').default('pending').notNull(),
+  statusMessage: text('status_message'),
+  metadata: jsonb('metadata').$type<{ content?: string }>().default(sql`'{}'::jsonb`).notNull(),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (table) => [
+  index('knowledge_sources_owner_status_updated_idx').on(table.ownerUserId, table.status, table.updatedAt),
+  uniqueIndex('knowledge_sources_owner_ref_active_idx')
+    .on(table.ownerUserId, table.kind, table.sourceRef)
+    .where(sql`${table.sourceRef} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+])
+
+export const knowledgeSourceVersions = pgTable('knowledge_source_versions', {
+  id: text('id').primaryKey(),
+  sourceId: text('source_id')
+    .notNull()
+    .references(() => knowledgeSources.id, { onDelete: 'cascade' }),
+  version: integer('version').notNull(),
+  contentHash: text('content_hash').notNull(),
+  status: knowledgeSourceStatus('status').default('pending').notNull(),
+  metadata: jsonb('metadata').$type<{ content?: string }>().default(sql`'{}'::jsonb`).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('knowledge_source_versions_source_version_idx').on(table.sourceId, table.version),
+  uniqueIndex('knowledge_source_versions_source_hash_idx').on(table.sourceId, table.contentHash),
+])
+
+// ────────────────────────────────────────────────────────────────────────────
+// Workspace tables
+// ────────────────────────────────────────────────────────────────────────────
+
+export const workspaces = pgTable('workspaces', {
+  id: text('id').primaryKey(),
+  kind: workspaceKind('kind').notNull(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull(),
+  status: workspaceStatus('status').default('active').notNull(),
+  personalOwnerUserId: text('personal_owner_user_id').references(() => users.id, { onDelete: 'restrict' }),
+  createdByPrincipalId: text('created_by_principal_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+}, (table) => [
+  uniqueIndex('workspaces_slug_idx').on(sql`lower("slug")`),
+  uniqueIndex('workspaces_personal_owner_idx').on(table.personalOwnerUserId).where(sql`"kind" = 'personal'`),
+  index('workspaces_status_updated_idx').on(table.status, table.updatedAt),
+])
+
+export const workspacePrincipals = pgTable('workspace_principals', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  type: workspacePrincipalType('type').notNull(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  agentId: text('agent_id'),
+  serviceId: text('service_id'),
+  displayName: text('display_name').notNull(),
+  email: text('email'),
+  createdByPrincipalId: text('created_by_principal_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+}, (table) => [
+  uniqueIndex('workspace_principals_human_idx').on(table.workspaceId, table.userId).where(sql`"type" = 'human'`),
+  uniqueIndex('workspace_principals_agent_idx').on(table.workspaceId, table.agentId).where(sql`"type" = 'agent'`),
+  uniqueIndex('workspace_principals_service_idx').on(table.workspaceId, table.serviceId).where(sql`"type" = 'service'`),
+  index('workspace_principals_workspace_type_idx').on(table.workspaceId, table.type, table.archivedAt),
+])
+
+export const workspaceMemberships = pgTable('workspace_memberships', {
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  principalId: text('principal_id').notNull(),
+  role: workspaceMembershipRole('role').notNull(),
+  status: workspaceMembershipStatus('status').default('active').notNull(),
+  invitedByPrincipalId: text('invited_by_principal_id'),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.workspaceId, table.principalId] }),
+  index('workspace_memberships_principal_idx').on(table.principalId),
+  index('workspace_memberships_workspace_role_status_idx').on(table.workspaceId, table.role, table.status),
+])
+
+export const workspaceResourceScopes = pgTable('workspace_resource_scopes', {
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  resourceType: text('resource_type').notNull(),
+  resourceId: text('resource_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.resourceType, table.resourceId] }),
+  index('workspace_resource_scopes_workspace_idx').on(table.workspaceId, table.resourceType, table.resourceId),
+])
+
+// ────────────────────────────────────────────────────────────────────────────
+// Conversation collaboration tables
+// ────────────────────────────────────────────────────────────────────────────
+
+export const conversationParticipants = pgTable('conversation_participants', {
+  conversationId: text('conversation_id')
+    .notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  principalId: text('principal_id').notNull(),
+  principalType: workspacePrincipalType('principal_type').notNull(),
+  role: conversationParticipantRole('role').notNull().default('member'),
+  status: conversationParticipantStatus('status').notNull().default('active'),
+  notificationLevel: conversationNotificationLevel('notification_level').notNull().default('all'),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  removedAt: timestamp('removed_at', { withTimezone: true }),
+  lastReadAt: timestamp('last_read_at', { withTimezone: true }),
+  lastReadSequence: integer('last_read_sequence'),
+  markedUnreadAt: timestamp('marked_unread_at', { withTimezone: true }),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+}, (table) => [
+  primaryKey({ columns: [table.conversationId, table.principalId] }),
+  index('conversation_participants_principal_status_idx').on(table.workspaceId, table.principalId, table.status),
+  index('conversation_participants_conversation_status_idx').on(table.conversationId, table.status),
+])
+
+export const workspacePresence = pgTable('workspace_presence', {
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  principalId: text('principal_id').notNull(),
+  conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'set null' }),
+  status: workspacePresenceStatus('status').notNull().default('online'),
+  sessionId: text('session_id'),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
+  typingExpiresAt: timestamp('typing_expires_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.workspaceId, table.principalId] }),
+  index('workspace_presence_conversation_idx').on(table.conversationId, table.updatedAt),
+  index('workspace_presence_session_id_idx').on(table.sessionId),
+])
+
+export const workspaceNotifications = pgTable('workspace_notifications', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  recipientPrincipalId: text('recipient_principal_id').notNull(),
+  type: workspaceNotificationType('type').notNull(),
+  conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }),
+  messageId: text('message_id').references(() => conversationMessages.id, { onDelete: 'cascade' }),
+  threadRootMessageId: text('thread_root_message_id').references(() => conversationMessages.id, { onDelete: 'cascade' }),
+  actorPrincipalId: text('actor_principal_id'),
+  title: text('title').notNull(),
+  body: text('body'),
+  eventSequence: bigint('event_sequence', { mode: 'number' }),
+  mentionScope: text('mention_scope'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  readAt: timestamp('read_at', { withTimezone: true }),
+}, (table) => [
+  index('workspace_notifications_recipient_unread_idx').on(table.workspaceId, table.recipientPrincipalId, table.readAt),
+  index('workspace_notifications_conversation_idx').on(table.conversationId),
+])
+
+export const workspaceNotificationPreferences = pgTable('workspace_notification_preferences', {
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  principalId: text('principal_id').notNull(),
+  dmMessages: workspaceNotificationPreferenceMode('dm_messages').default('activity').notNull(),
+  mentions: workspaceNotificationPreferenceMode('mentions').default('banner').notNull(),
+  threadReplies: workspaceNotificationPreferenceMode('thread_replies').default('activity').notNull(),
+  reactions: workspaceNotificationPreferenceMode('reactions').default('activity').notNull(),
+  channelMessages: workspaceNotificationPreferenceMode('channel_messages').default('activity').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.workspaceId, table.principalId] }),
+])
+
+export const conversationThreadFollows = pgTable('conversation_thread_follows', {
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  conversationId: text('conversation_id')
+    .notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  threadRootMessageId: text('thread_root_message_id')
+    .notNull()
+    .references(() => conversationMessages.id, { onDelete: 'cascade' }),
+  principalId: text('principal_id').notNull(),
+  followedAt: timestamp('followed_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.threadRootMessageId, table.principalId] }),
+  index('conversation_thread_follows_principal_idx').on(table.workspaceId, table.principalId, table.followedAt),
+  index('conversation_thread_follows_thread_idx').on(table.conversationId, table.threadRootMessageId),
+])
+
+export const conversationMessageReactions = pgTable('conversation_message_reactions', {
+  conversationId: text('conversation_id')
+    .notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  messageId: text('message_id').notNull(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  principalId: text('principal_id').notNull(),
+  emoji: text('emoji').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.messageId, table.principalId, table.emoji] }),
+  index('conversation_message_reactions_conversation_idx').on(table.conversationId),
+  index('conversation_message_reactions_workspace_idx').on(table.workspaceId),
+  index('conversation_message_reactions_message_idx').on(table.messageId),
+])
+
+export const conversationPins = pgTable('conversation_pins', {
+  conversationId: text('conversation_id')
+    .notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  messageId: text('message_id').notNull(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  pinnedByPrincipalId: text('pinned_by_principal_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.conversationId, table.messageId] }),
+  index('conversation_pins_conversation_idx').on(table.conversationId),
+  index('conversation_pins_workspace_idx').on(table.workspaceId),
+])
+
+export const conversationSavedMessages = pgTable('conversation_saved_messages', {
+  conversationId: text('conversation_id')
+    .notNull()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  messageId: text('message_id').notNull(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  principalId: text('principal_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.messageId, table.principalId] }),
+  index('conversation_saved_messages_workspace_principal_idx').on(table.workspaceId, table.principalId),
 ])

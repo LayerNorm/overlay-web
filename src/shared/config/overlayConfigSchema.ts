@@ -51,6 +51,7 @@ export const OverlaySandboxProviderSchema = z.enum(['daytona', 'e2b', 'local-fir
 export const OverlayWebSearchProviderSchema = z.enum(['ai-gateway', 'perplexity', 'tavily', 'none'])
 export const OverlayAnalyticsProviderSchema = z.enum(['posthog', 'none'])
 export const OverlayErrorReportingProviderSchema = z.enum(['sentry', 'none'])
+export const OverlayEmailProviderSchema = z.enum(['resend', 'ses', 'smtp', 'none'])
 export const OverlaySecretsProviderSchema = z.enum(['env', 'workos-vault', 'aws-secrets-manager', 'vault', 'none'])
 export const OverlayRateLimitProviderSchema = z.enum(['convex', 'redis', 'memory', 'none'])
 export const OverlayRateLimitFailureModeSchema = z.enum(['deny', 'memory'])
@@ -71,6 +72,12 @@ const OverlayFeatureFlagsSchema = z
     webSearch: z.boolean().optional(),
     analytics: z.boolean().optional(),
     errorReporting: z.boolean().optional(),
+    apiDefaultRateLimit: z.boolean().optional(),
+    apiMutationAudit: z.boolean().optional(),
+    apiMutationOriginGuard: z.boolean().optional(),
+    lifecycleEvents: z.boolean().optional(),
+    transactionalEmail: z.boolean().optional(),
+    openTelemetry: z.boolean().optional(),
     billing: z.boolean().optional(),
     webhooks: z.boolean().optional(),
     apiKeys: z.boolean().optional(),
@@ -120,6 +127,7 @@ const OverlayProvidersSchema = z
     webSearch: z.object({ provider: OverlayWebSearchProviderSchema.optional() }).strict().optional(),
     analytics: z.object({ provider: OverlayAnalyticsProviderSchema.optional() }).strict().optional(),
     errorReporting: z.object({ provider: OverlayErrorReportingProviderSchema.optional() }).strict().optional(),
+    email: z.object({ provider: OverlayEmailProviderSchema.optional() }).strict().optional(),
     secrets: z.object({ provider: OverlaySecretsProviderSchema.optional() }).strict().optional(),
     rateLimit: z.object({ provider: OverlayRateLimitProviderSchema.optional() }).strict().optional(),
   })
@@ -318,6 +326,37 @@ export const OverlayRuntimeConfigSchema = z
         })
         .default({}),
     }),
+    email: z
+      .object({
+        provider: OverlayEmailProviderSchema.default('none'),
+        from: OptionalStringSchema,
+        replyTo: OptionalStringSchema,
+        resend: z
+          .object({
+            apiKey: OptionalStringSchema,
+          })
+          .default({}),
+        ses: z
+          .object({
+            accessKeyId: OptionalStringSchema,
+            secretAccessKey: OptionalStringSchema,
+            sessionToken: OptionalStringSchema,
+            region: OptionalStringSchema,
+            configurationSetName: OptionalStringSchema,
+          })
+          .default({}),
+        smtp: z
+          .object({
+            host: OptionalStringSchema,
+            port: z.number().int().positive().max(65_535).default(465),
+            secure: z.boolean().default(true),
+            username: OptionalStringSchema,
+            password: OptionalStringSchema,
+          })
+          .default({}),
+      })
+      .strict()
+      .optional(),
     storage: z.object({
       provider: OverlayStorageProviderSchema,
       publicUrlPolicy: OverlayPublicUrlPolicySchema.default('presigned'),
@@ -425,8 +464,69 @@ export const OverlayRuntimeConfigSchema = z
       webSearch: config.providers.webSearch?.provider ?? (effectiveCapabilities.webSearch ? 'ai-gateway' : 'none'),
       analytics: config.providers.analytics?.provider ?? (effectiveCapabilities.analytics ? 'posthog' : 'none'),
       errorReporting: config.providers.errorReporting?.provider ?? (effectiveCapabilities.errorReporting ? 'sentry' : 'none'),
+      email: config.providers.email?.provider ?? config.email?.provider ?? 'none',
       secrets: config.providers.secrets?.provider ?? 'env',
       rateLimit: config.providers.rateLimit?.provider ?? (config.app.deploymentEnvironment === 'onprem' ? 'memory' : 'convex'),
+    }
+
+    if (effectiveCapabilities.transactionalEmail && selectedProviders.email !== 'none') {
+      if (!config.email?.from) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['email', 'from'],
+          message: 'email.from is required when transactional email is enabled',
+        })
+      }
+      if (selectedProviders.email === 'resend') {
+        if (!config.email?.resend?.apiKey) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['email', 'resend', 'apiKey'],
+            message: 'email.resend.apiKey is required when email.provider is resend',
+          })
+        }
+      }
+      if (selectedProviders.email === 'ses') {
+        for (const [key, value] of [
+          ['accessKeyId', config.email?.ses.accessKeyId],
+          ['secretAccessKey', config.email?.ses.secretAccessKey],
+          ['region', config.email?.ses.region],
+        ] as const) {
+          if (!value) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['email', 'ses', key],
+              message: `email.ses.${key} is required when email.provider is ses`,
+            })
+          }
+        }
+      }
+      if (selectedProviders.email === 'smtp') {
+        if (!config.email?.smtp.host) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['email', 'smtp', 'host'],
+            message: 'email.smtp.host is required when email.provider is smtp',
+          })
+        }
+        if (Boolean(config.email?.smtp.username) !== Boolean(config.email?.smtp.password)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['email', 'smtp'],
+            message: 'SMTP username and password must be configured together',
+          })
+        }
+        if (
+          ['production', 'onprem'].includes(config.app.deploymentEnvironment) &&
+          config.email?.smtp.secure === false
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['email', 'smtp', 'secure'],
+            message: 'Production and on-prem SMTP must use TLS',
+          })
+        }
+      }
     }
 
     for (const [key, value] of Object.entries(config.app.publicEnv)) {
@@ -577,6 +677,7 @@ export const OverlayRuntimeConfigSchema = z
       assertExternalProcessorAllowed(ctx, config, 'webSearch', selectedProviders.webSearch, effectiveCapabilities.webSearch, ['providers', 'webSearch', 'provider'])
       assertExternalProcessorAllowed(ctx, config, 'analytics', selectedProviders.analytics, effectiveCapabilities.analytics, ['providers', 'analytics', 'provider'])
       assertExternalProcessorAllowed(ctx, config, 'errorReporting', selectedProviders.errorReporting, effectiveCapabilities.errorReporting, ['providers', 'errorReporting', 'provider'])
+      assertExternalProcessorAllowed(ctx, config, 'email', selectedProviders.email, effectiveCapabilities.transactionalEmail, ['providers', 'email', 'provider'])
     }
 
     if (config.billing.provider === 'none' && effectiveCapabilities.billing) {
@@ -851,6 +952,30 @@ export function redactOverlayRuntimeConfig(config: OverlayRuntimeConfig) {
         hasPortalConfigurationId: Boolean(config.billing.stripe.portalConfigurationId),
       },
     },
+    email: config.email
+      ? {
+          provider: config.email.provider,
+          from: config.email.from,
+          replyTo: config.email.replyTo,
+          resend: {
+            hasApiKey: Boolean(config.email.resend?.apiKey),
+          },
+          ses: {
+            region: config.email.ses.region,
+            configurationSetName: config.email.ses.configurationSetName,
+            hasAccessKeyId: Boolean(config.email.ses.accessKeyId),
+            hasSecretAccessKey: Boolean(config.email.ses.secretAccessKey),
+            hasSessionToken: Boolean(config.email.ses.sessionToken),
+          },
+          smtp: {
+            host: config.email.smtp.host,
+            port: config.email.smtp.port,
+            secure: config.email.smtp.secure,
+            hasUsername: Boolean(config.email.smtp.username),
+            hasPassword: Boolean(config.email.smtp.password),
+          },
+        }
+      : undefined,
     storage: {
       provider: config.storage.provider,
       publicUrlPolicy: config.storage.publicUrlPolicy,

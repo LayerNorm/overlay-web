@@ -2,8 +2,8 @@ import { logger } from '@/server/observability/logger'
 import { after, NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { readValidatedJson } from '@/server/app-api/validated-input'
-import { convertToModelMessages, generateText, stepCountIs, ToolLoopAgent, type UIMessage } from '@/server/ai/sdk'
-import type { LanguageModelV3 } from '@/server/ai/provider-types'
+import { convertToModelMessages, createUIMessageStreamResponse, generateText, isStepCount, toUIMessageStream, ToolLoopAgent, type ToolApprovalConfiguration, type UIMessage } from '@/server/ai/sdk'
+import type { LanguageModel } from '@/server/ai/provider-types'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import {
   getLanguageModel,
@@ -11,8 +11,10 @@ import {
   getOpenRouterLanguageModelCapturingRoutedModel,
 } from '@/server/ai/model-runtime'
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
+import { isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
 import { getChatModelFallbackCandidates } from '@/shared/ai/gateway/model-fallbacks'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
+import { uploadFilePartsForModel } from '@/server/ai/file-upload'
 import {
   FREE_TIER_AUTO_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
@@ -22,6 +24,7 @@ import { normalizeChatToolRequestIds } from '@/shared/chat/tool-requests'
 import { MAX_TOOL_STEPS_ACT } from '@/server/tools/tools/policy'
 import { OVERLAY_TOOL_IDS } from '@overlay/tools-core'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
+import { automationService } from '@/server/automations/http'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildSecondarySystemPromptExtension } from '@/server/agent/operator-system-prompt'
 import {
@@ -46,6 +49,7 @@ import {
   actMessagePersistenceService,
   actUsageBudgetService,
 } from '@/server/conversations/http'
+import type { ActEntitlementService } from '@/server/conversations/ActEntitlementService'
 import {
   classifyMediaToolIntentForTurn,
   mayNeedMediaGenerationTools,
@@ -83,12 +87,22 @@ import {
   filterCatalogResources,
 } from '@/server/authorization'
 import type { AuthorizationCapability } from '@overlay/authz-contracts'
+import type { AuthorizationService } from '@/server/authorization/AuthorizationService'
 import { normalizeIntegrationProviderKey } from '@overlay/app-core'
 import { readProjectSettings } from '@/shared/projects/project-settings'
 
 export const maxDuration = 800
 
-export async function POST(request: NextRequest, context: AppApiRouteContext) {
+export interface ActRouteDependencies {
+  authorizationService?: AuthorizationService
+  entitlementService?: Pick<ActEntitlementService, 'gateModelAccess'>
+}
+
+export async function POST(
+  request: NextRequest,
+  context: AppApiRouteContext,
+  dependencies: ActRouteDependencies = {},
+) {
   const requestId = request.headers.get('x-request-id')?.trim() || crypto.randomUUID()
   let pendingGeneratingMessageId: Id<'conversationMessages'> | undefined
   let budgetReservationId: string | null = null
@@ -155,6 +169,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       /** Parallel multi-model: slot 0 = primary (full tools including Composio). Slots 1+ are compare-only. */
       multiModelSlotIndex: rawMultiModelSlotIndex,
       multiModelTotal: rawMultiModelTotal,
+      reasoning: rawReasoning,
     } = bodyResult.data
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'messages required' }, { status: 400 })
@@ -193,8 +208,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const serverSecret = getInternalApiSecret()
     const requestedToolIds = normalizeChatToolRequestIds(rawRequestedToolIds)
     const memoryEnabled = rawMemoryEnabled !== false
+    const authorizationService = dependencies.authorizationService ?? overlayContext.authorizationService
     const dynamicAuthorization = await authorizeActRequest({
-      authorization: overlayContext.authorizationService,
+      authorization: authorizationService,
       context,
       effectiveModelId,
       memoryEnabled,
@@ -206,7 +222,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       appSettings,
       paid,
       runtimeEntitlements,
-    } = await actEntitlementService.gateModelAccess({
+    } = await (dependencies.entitlementService ?? actEntitlementService).gateModelAccess({
       effectiveModelId,
       userId,
     })
@@ -252,10 +268,23 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       })
       if (_ttftDebug) _tEnsureConversationMs = performance.now() - ensureStartedAt
     }
+    if (automationMode === true && automationId && cid) {
+      await automationService.attachSourceConversation({
+        automationId,
+        conversationId: cid,
+        userId: conversationUserId,
+      }).catch((error) => {
+        logger.warn('[conversations/act] Failed to link automation chat', {
+          automationId,
+          conversationId: cid,
+          error,
+        })
+      })
+    }
     // Bases named on this turn become part of the conversation's grounding and
     // also narrow this turn's retrieval. Access is verified inside the service.
     const turnKnowledgeBaseIds = [
-      ...new Set([...(knowledgeBaseIds ?? []), ...(knowledgeBaseId ? [knowledgeBaseId] : [])]),
+      ...new Set([...(Array.isArray(knowledgeBaseIds) ? knowledgeBaseIds : []), ...(knowledgeBaseId ? [knowledgeBaseId] : [])]),
     ]
     if (cid && turnKnowledgeBaseIds.length > 0) {
       for (const id of turnKnowledgeBaseIds) {
@@ -288,7 +317,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       serverSecret,
     })
     const accountAllowedToolIdsTask = filterCatalogResources({
-      authorization: overlayContext.authorizationService,
+      authorization: authorizationService,
       capability: 'tools.use',
       context,
       getId: (toolId) => toolId,
@@ -297,7 +326,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
     const accountAllowedConnectorIdsTask = toolPreloadTasks.connectedConnectorIdsTask
       .then((connectorIds) => filterCatalogResources({
-        authorization: overlayContext.authorizationService,
+        authorization: authorizationService,
         capability: 'integrations.use',
         context,
         getId: (connectorId) => connectorId,
@@ -317,6 +346,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       attachmentNames,
       skipMemoryExtraction: !memoryEnabled,
       skip: isMultiModelFollowUpSlot,
+    }).catch((error) => {
+      // History loading remains the authoritative preparation failure. A
+      // transient user-message write must not mask a later fatal context error
+      // or turn a recoverable stream start into an unrelated 500 response.
+      logger.warn('[conversations/act] user-message persistence failed', {
+        requestId,
+        error: summarizeErrorForLog(error),
+      })
     })
     const turnContextTask = actContextService.loadTurnContext({
       accessToken,
@@ -469,7 +506,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       !mayNeedMediaGenerationTools(latestUserText) &&
       resolvedMediaToolIntent == null
 
-	    const modelMessages = await convertToModelMessages(messagesForModel)
 	    if (_ttftDebug) _tPrep = performance.now()
 	    // Declared before the primary LLM is chosen so the OpenRouter fetch callback can set it during calls.
 	    let streamedRoutedModelId: string | undefined
@@ -547,20 +583,62 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
 
     const runActStream = async (params: {
-      languageModel: LanguageModelV3
+      languageModel: LanguageModel
       modelId: string
       fallbackNotice?: string
     }) => {
     const attemptModelId = params.modelId
     const attemptModelSupportsZdr = modelSupportsZeroDataRetention(attemptModelId)
+    // Kimi K3 always reasons and the AI SDK provider only exposes max effort.
+    // Do not send a stale persisted `none` value that the provider cannot honor.
+    const effectiveReasoning = isKimiK3ModelId(attemptModelId) && rawReasoning && rawReasoning !== 'provider-default'
+      ? 'xhigh'
+      : rawReasoning
+
+    // v7: Upload large file attachments to the provider's file storage and
+    // add provider references. Falls back to inline when the provider doesn't
+    // support file uploads or no API key is set.
+    await uploadFilePartsForModel(uiMessages as Array<{
+      role: string
+      parts?: Array<{
+        type: string
+        url?: string
+        mediaType?: string
+        fileName?: string
+        filename?: string
+        providerReference?: Record<string, string>
+      }>
+    }>, attemptModelId)
+    // Convert only after uploads so AI SDK v7 sees providerReference on file parts.
+    const modelMessages = await convertToModelMessages(messagesForModel)
+
     const agent = new ToolLoopAgent({
       model: params.languageModel,
       tools,
       ...(attemptModelSupportsZdr
         ? { providerOptions: { gateway: { zeroDataRetention: true } } }
         : {}),
-      stopWhen: stepCountIs(MAX_TOOL_STEPS_ACT),
+      stopWhen: isStepCount(MAX_TOOL_STEPS_ACT),
       instructions: actInstructions,
+      // allowSystemInMessages: context-compaction.ts injects a trusted server-generated
+      // summary as a system message. This is not user input — safe to pass through.
+      allowSystemInMessages: true,
+      // v7: top-level reasoning parameter standardizes reasoning effort across providers.
+      // Only set when the user explicitly chose a level (not 'provider-default').
+      ...(effectiveReasoning && effectiveReasoning !== 'provider-default'
+        ? { reasoning: effectiveReasoning }
+        : {}),
+      // v7: OpenTelemetry traces for AI SDK calls. The functionId groups all
+      // spans for this act turn under a single label.
+      telemetry: {
+        functionId: `act:${attemptModelId}`,
+      },
+      // v7: toolApproval replaces deprecated per-tool needsApproval. The MCP
+      // approval function checks call_mcp_tool's input (serverId/toolName)
+      // against the MCP server's policy at call time.
+      ...(actTooling.toolApproval
+        ? { toolApproval: actTooling.toolApproval as unknown as ToolApprovalConfiguration<typeof tools, unknown> }
+        : {}),
     })
 
     const toolFailuresByCallId = new Map<string, { toolName: string; error: string }>()
@@ -595,7 +673,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           },
         }),
       } : {}),
-      experimental_onToolCallStart: ({ toolCall }) => {
+      onToolExecutionStart: ({ toolCall }) => {
         if (!toolCall) return
         if (_ttftDebug && !_firstToolCallLogged) {
           _firstToolCallLogged = true
@@ -609,9 +687,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           input: summarizeToolInputForLog(input),
         })
       },
-      experimental_onToolCallFinish: ({ toolCall, success, durationMs, output, error }) => {
+      onToolExecutionEnd: ({ toolCall, toolOutput, toolExecutionMs }) => {
         if (!toolCall?.toolName) return
         if (toolCall.toolCallId) finishedToolCallIds.add(toolCall.toolCallId)
+        const success = toolOutput.type === 'tool-result'
+        const output = success ? toolOutput.output : undefined
+        const error = !success ? toolOutput.error : undefined
+        const durationMs = toolExecutionMs
         if (!success && toolCall.toolCallId) {
           toolFailuresByCallId.set(toolCall.toolCallId, {
             toolName: toolCall.toolName,
@@ -655,10 +737,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             })
         }
       },
-      onFinish: async (event) => {
-        const totalUsage = event.totalUsage
-        const totalInputTokens = totalUsage?.inputTokens ?? 0
-        const totalOutputTokens = totalUsage?.outputTokens ?? 0
+      onEnd: async (event) => {
+        const usage = event.usage
+        const totalInputTokens = usage?.inputTokens ?? 0
+        const totalOutputTokens = usage?.outputTokens ?? 0
         // Fallback: if the fetch-interceptor did not capture the model yet, try the step response.
         if (attemptModelId === FREE_TIER_AUTO_MODEL_ID && !streamedRoutedModelId) {
           const rid = event.steps.at(-1)?.response.modelId
@@ -715,7 +797,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     const hasCitations = Object.keys(sourceCitationMap).length > 0
 
-    const _uiResp = result.toUIMessageStreamResponse({
+    const _uiStream = toUIMessageStream({
+      stream: result.stream,
       originalMessages: uiMessages,
       onError: (error: unknown) => {
         logger.error('[conversations/act] stream error', {
@@ -741,6 +824,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         return Object.keys(metadata).length > 0 ? metadata : undefined
       },
     })
+    const _uiResp = createUIMessageStreamResponse({ stream: _uiStream })
     let responseBody: ReadableStream<Uint8Array<ArrayBufferLike>> | null =
       prefixFallbackNoticeAfterStart(_uiResp.body, params.fallbackNotice)
     const responseHeaders = new Headers(_uiResp.headers)
@@ -890,7 +974,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
     }
 
-    const estimatedInputTokens = Math.ceil(JSON.stringify(modelMessages).length / 4) + 2_000
+    const estimatedInputTokens = Math.ceil(JSON.stringify(messagesForModel).length / 4) + 2_000
     const maxOutputTokens = 8_192
     const reserveBudgetForAttempt = async (attemptModelId: string) => {
       streamedRoutedModelId = undefined
@@ -926,7 +1010,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       return { ok: true as const }
     }
 
-    const languageModelForAttempt = async (attemptModelId: string): Promise<LanguageModelV3> => {
+    const languageModelForAttempt = async (attemptModelId: string): Promise<LanguageModel> => {
       if (isNvidiaNimChatModelId(attemptModelId)) {
         const nvidiaKey = await resolveNvidiaApiKey(accessToken)
         if (!nvidiaKey) {

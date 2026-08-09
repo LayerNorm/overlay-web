@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
-import { createGateway, generateText, stepCountIs, tool, type ToolSet } from 'ai'
+import { createGateway, generateText, isStepCount, tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 import {
   getOrCreateGateway,
@@ -266,7 +266,7 @@ async function runInnerGenerateTextWithTool<T extends 'perplexity_search' | 'par
           tools: { [toolName]: providerTool },
           toolChoice: { type: 'tool', toolName },
           prompt,
-          stopWhen: stepCountIs(2),
+          stopWhen: isStepCount(2),
         })
       } catch (error) {
         lastError = error
@@ -335,7 +335,7 @@ async function finalizeGatewaySearch(params: {
   result: Awaited<ReturnType<typeof generateText>>
   toolName: 'perplexity_search' | 'parallel_search'
 }) {
-  const usage = params.result.totalUsage
+  const usage = params.result.usage
   const inputTokens = usage?.inputTokens ?? 0
   const outputTokens = usage?.outputTokens ?? 0
   const cachedTokens = usage?.inputTokenDetails?.cacheReadTokens ?? 0

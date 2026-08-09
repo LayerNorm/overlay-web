@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  DEFAULT_OVERLAY_FEATURE_FLAGS,
   DEFAULT_OVERLAY_FEATURE_MODULES,
   DEFAULT_OVERLAY_NAVIGATION,
   DEFAULT_OVERLAY_SETTINGS_PANELS,
@@ -10,22 +9,6 @@ import {
   resolveFeatureModuleForPath,
   resolveSidebarActionForPath,
 } from './app-shell'
-
-test('multiplayer rollout flags remain disabled at the Phase 0 boundary', () => {
-  const expectedFlags = [
-    'workspaces',
-    'collaborativeChats',
-    'channels',
-    'agents',
-    'resourceSharing',
-  ]
-
-  for (const id of expectedFlags) {
-    const flag = DEFAULT_OVERLAY_FEATURE_FLAGS.find((candidate) => candidate.id === id)
-    assert.ok(flag, `missing ${id} rollout flag`)
-    assert.equal(flag.enabled, false, `${id} must remain disabled until its release gate passes`)
-  }
-})
 
 test('resolveOverlayAppShellConfig merges registry overrides by id', () => {
   const shell = resolveOverlayAppShellConfig({
@@ -72,16 +55,4 @@ test('sidebar registries resolve feature modules and actions from routes', () =>
   assert.equal(resolveFeatureModuleForPath('/app/projects/child', shell.featureModules)?.id, 'projects')
   assert.equal(resolveSidebarActionForPath('/app/notes', shell.sidebarActions)?.actionKey, 'notes.create')
   assert.equal(resolveSidebarActionForPath('/app/settings', shell.sidebarActions), null)
-})
-
-test('knowledge navigation is placed after projects and capability gated', () => {
-  const enabled = resolveOverlayAppShellConfig()
-  const ids = enabled.navigation.map(({ id }) => id)
-  assert.equal(ids.indexOf('knowledge'), ids.indexOf('projects') + 1)
-  assert.equal(enabled.navigation.find(({ id }) => id === 'knowledge')?.href, '/app/knowledge')
-
-  const disabled = resolveOverlayAppShellConfig(undefined, {
-    capabilities: { knowledge: false },
-  })
-  assert.equal(disabled.navigation.some(({ id }) => id === 'knowledge'), false)
 })

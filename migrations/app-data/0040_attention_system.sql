@@ -3,21 +3,32 @@ ALTER TYPE "overlay_workspace_notification_type" ADD VALUE IF NOT EXISTS 'thread
 ALTER TYPE "overlay_workspace_notification_type" ADD VALUE IF NOT EXISTS 'reaction';
 --> statement-breakpoint
 
-CREATE TYPE "overlay_workspace_notification_preference_mode" AS ENUM ('activity', 'banner', 'off');
+DO $$ BEGIN
+ CREATE TYPE "overlay_workspace_notification_preference_mode" AS ENUM ('activity', 'banner', 'off');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
 --> statement-breakpoint
 
 ALTER TABLE "workspace_notifications"
-  ADD COLUMN "thread_root_message_id" text,
-  ADD COLUMN "event_sequence" bigint,
-  ADD COLUMN "mention_scope" text;
+  ADD COLUMN IF NOT EXISTS "thread_root_message_id" text,
+  ADD COLUMN IF NOT EXISTS "event_sequence" bigint,
+  ADD COLUMN IF NOT EXISTS "mention_scope" text;
 --> statement-breakpoint
 
-ALTER TABLE "workspace_notifications"
-  ADD CONSTRAINT "workspace_notifications_thread_root_message_id_conversation_messages_id_fk"
-    FOREIGN KEY ("thread_root_message_id") REFERENCES "conversation_messages"("id") ON DELETE cascade;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'workspace_notifications_thread_root_message_id_conversation_messages_id_fk'
+  ) THEN
+    ALTER TABLE "workspace_notifications"
+      ADD CONSTRAINT "workspace_notifications_thread_root_message_id_conversation_messages_id_fk"
+        FOREIGN KEY ("thread_root_message_id") REFERENCES "conversation_messages"("id") ON DELETE cascade;
+  END IF;
+END $$;
 --> statement-breakpoint
 
-CREATE TABLE "conversation_thread_follows" (
+CREATE TABLE IF NOT EXISTS "conversation_thread_follows" (
   "workspace_id" text NOT NULL,
   "conversation_id" text NOT NULL,
   "thread_root_message_id" text NOT NULL,
@@ -36,14 +47,14 @@ CREATE TABLE "conversation_thread_follows" (
 );
 --> statement-breakpoint
 
-CREATE INDEX "conversation_thread_follows_principal_idx"
+CREATE INDEX IF NOT EXISTS "conversation_thread_follows_principal_idx"
   ON "conversation_thread_follows" ("workspace_id", "principal_id", "followed_at");
 --> statement-breakpoint
-CREATE INDEX "conversation_thread_follows_thread_idx"
+CREATE INDEX IF NOT EXISTS "conversation_thread_follows_thread_idx"
   ON "conversation_thread_follows" ("conversation_id", "thread_root_message_id");
 --> statement-breakpoint
 
-CREATE TABLE "workspace_notification_preferences" (
+CREATE TABLE IF NOT EXISTS "workspace_notification_preferences" (
   "workspace_id" text NOT NULL,
   "principal_id" text NOT NULL,
   "dm_messages" "overlay_workspace_notification_preference_mode" DEFAULT 'activity' NOT NULL,

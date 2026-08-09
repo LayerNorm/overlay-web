@@ -3,7 +3,6 @@
 import { useMemo } from 'react'
 import { Bot } from 'lucide-react'
 import { SettingsActionRow } from '@overlay/modules-react/settings'
-import { Select } from '@overlay/ui/primitives'
 import { getEnabledChatModels } from '@/shared/ai/gateway/model-data'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { resolveDefaultChatModelSelection } from '@/shared/chat/default-chat-model'
@@ -48,21 +47,21 @@ export function DefaultChatModelSetting({
       title="Default model"
       description="Used when you start a new chat. Existing chats keep the model they last used."
       action={
-        <Select
+        <select
           disabled={disabled}
           value={currentActModelId}
           onChange={(event) => {
             const nextActModelId = event.target.value
             onSelect(nextActModelId, [nextActModelId])
           }}
-          className="min-w-44 max-w-full"
+          className="min-w-44 max-w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] disabled:opacity-60"
         >
           {models.map((model) => (
             <option key={model.id} value={model.id}>
               {model.name}
             </option>
           ))}
-        </Select>
+        </select>
       }
     />
   )

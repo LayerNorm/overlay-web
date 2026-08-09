@@ -7,7 +7,7 @@ import 'server-only'
  * Base URL: https://integrate.api.nvidia.com/v1
  */
 import { createOpenAI } from '@ai-sdk/openai'
-import type { LanguageModelV3 } from '@ai-sdk/provider'
+import type { LanguageModelV4 } from '@ai-sdk/provider'
 import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
 import { NVIDIA_NIM_MODEL_IDS } from '@/shared/ai/gateway/model-types'
 
@@ -32,7 +32,7 @@ export async function resolveNvidiaApiKey(accessToken?: string): Promise<string 
 export function createNvidiaNimChatLanguageModel(
   modelId: string,
   apiKey: string,
-): LanguageModelV3 {
+): LanguageModelV4 {
   const nvidia = createOpenAI({
     name: 'nvidia-nim',
     baseURL: NVIDIA_NIM_BASE_URL,

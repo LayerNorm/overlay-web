@@ -13,7 +13,7 @@ const RETRY_DELAYS_MS = [400, 1_200, 3_000] as const
 const MAX_BACKGROUND_RETRY_CYCLES = 3
 
 class CatalogLoadError extends Error {
-  constructor(message: string, readonly status?: number) {
+  constructor(message: string, readonly status?: number, readonly retryAfterMs?: number) {
     super(message)
     this.name = 'CatalogLoadError'
   }
@@ -22,7 +22,13 @@ class CatalogLoadError extends Error {
 function isRetryableCatalogError(value: unknown): boolean {
   if (!(value instanceof CatalogLoadError)) return true
   if (value.status === undefined) return true
-  return value.status === 408 || value.status === 409 || value.status === 425 || value.status === 429 || value.status >= 500
+  // 429 is explicitly non-retryable here: the catalog shares the default
+  // authenticated rate-limit bucket with other bootstrap read routes, so
+  // retrying a 429 against the same exhausted bucket only extends the lockout
+  // for every other route (workspaces, settings, conversations). The server
+  // returns Retry-After; the caller surfaces it instead of hammering.
+  if (value.status === 429) return false
+  return value.status === 408 || value.status === 409 || value.status === 425 || value.status >= 500
 }
 
 function wait(ms: number): Promise<void> {
@@ -31,7 +37,15 @@ function wait(ms: number): Promise<void> {
 
 async function fetchCatalogOnce(force: boolean): Promise<GatewayCatalogModel[]> {
   const response = await fetch(`/api/v1/model-catalog${force ? '?refresh=1' : ''}`, { cache: 'no-store' })
-  if (!response.ok) throw new CatalogLoadError(`Failed to load the AI Gateway model catalog (${response.status})`, response.status)
+  if (!response.ok) {
+    const retryAfterHeader = response.headers.get('retry-after')
+    const retryAfterMs = retryAfterHeader ? Number(retryAfterHeader) * 1000 : undefined
+    throw new CatalogLoadError(
+      `Failed to load the AI Gateway model catalog (${response.status})`,
+      response.status,
+      Number.isFinite(retryAfterMs) ? retryAfterMs : undefined,
+    )
+  }
   const payload = await response.json() as { models?: GatewayCatalogModel[] }
   return payload.models ?? []
 }

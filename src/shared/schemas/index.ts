@@ -1,5 +1,4 @@
 export * from './admin'
-export * from './authorization-admin'
 export * from './automations'
 export * from './chat'
 export * from './common'

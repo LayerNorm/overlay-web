@@ -15,7 +15,7 @@ const MAX_MEMORY_CHUNKS = 20
 export class MemoryService {
   constructor(private readonly repository: MemoryRepository) {}
 
-  get(args: { includeDeleted?: boolean; memoryId: string; userId: string }) {
+  get(args: { includeDeleted?: boolean; memoryId: string; userId: string; workspaceId?: string }) {
     return this.repository.get(args)
   }
 
@@ -26,6 +26,7 @@ export class MemoryService {
     projectId?: string
     updatedSince?: number
     userId: string
+    workspaceId?: string
   }) {
     return this.repository.list(args)
   }
@@ -44,6 +45,7 @@ export class MemoryService {
     turnId?: string
     type?: MemoryType
     userId: string
+    workspaceId?: string
   }): Promise<{ count: number; ids: string[]; memory: MemoryRecord }> {
     const content = validateRouteContent(args.content)
     const chunks = segmentMemoryForIngestion(content)
@@ -79,6 +81,7 @@ export class MemoryService {
     turnId?: string
     type?: MemoryType
     userId: string
+    workspaceId?: string
   }): Promise<MemoryRecord> {
     const existing = await this.repository.get({ memoryId: args.memoryId, userId: args.userId })
     if (!existing) throw new MemoryServiceError('Not found', 404)
@@ -101,7 +104,7 @@ export class MemoryService {
     return memory
   }
 
-  async remove(args: { memoryId: string; userId: string }) {
+  async remove(args: { memoryId: string; userId: string; workspaceId?: string }) {
     const result = await this.repository.remove(args)
     if (!result) throw new MemoryServiceError('Not found', 404)
     return result

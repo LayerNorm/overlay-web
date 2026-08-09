@@ -32,6 +32,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       query: body.query ?? '',
       sourceKind: body.sourceKind,
       userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json(result)
   } catch (error) {

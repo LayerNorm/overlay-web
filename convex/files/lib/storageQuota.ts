@@ -37,6 +37,9 @@ export async function getOrCreateSubscription(ctx: SubscriptionCtx, userId: stri
     tier: 'free',
     status: 'active',
     creditsUsed: 0,
+    allowanceUsedCents: 0,
+    topUpPurchasedCents: 0,
+    topUpBalanceCents: 0,
     overlayStorageBytesUsed: 0,
     ...defaultBillingWindow(now),
   })

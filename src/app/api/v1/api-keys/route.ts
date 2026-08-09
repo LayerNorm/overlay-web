@@ -27,6 +27,7 @@ const createKey: BffDomainService = async (request, context) => {
       scopes: key.scopes,
       expiresAt: key.expiresAt,
     })
+    await publishApiKeyLifecycle(server, context.auth.userId, key.id, 'created')
     return NextResponse.json({ key }, { status: 201 })
   } catch (error) {
     return invalidRequest(error)
@@ -53,6 +54,7 @@ const rotateKey: BffDomainService = async (request, context) => {
       scopes: key.scopes,
       replacesId: requiredString(context, 'id'),
     })
+    await publishApiKeyLifecycle(server, context.auth.userId, key.id, 'rotated')
     return NextResponse.json({ key })
   } catch (error) {
     return invalidRequest(error)
@@ -68,7 +70,10 @@ const revokeKey: BffDomainService = async (_request, context) => {
       revokedReason: optionalString(context.parsedJson.reason) ?? 'revoked_by_user',
       userId: context.auth.userId,
     })
-    if (revoked) await recordApiKeyAudit(server, _request, context, 'api_key.revoke', id)
+    if (revoked) {
+      await recordApiKeyAudit(server, _request, context, 'api_key.revoke', id)
+      await publishApiKeyLifecycle(server, context.auth.userId, id, 'revoked')
+    }
     return revoked
       ? NextResponse.json({ success: true })
       : NextResponse.json({ error: 'API key not found' }, { status: 404 })
@@ -128,6 +133,21 @@ async function canCreateAdminKey(
 ): Promise<boolean> {
   if (!arrayValue(context.parsedJson.scopes).includes('admin')) return false
   return await server.administrativeService.canManageAdministrators(context.auth.userId)
+}
+
+async function publishApiKeyLifecycle(
+  server: ReturnType<typeof getOverlayServerContext>,
+  userId: string,
+  apiKeyId: string,
+  action: 'created' | 'revoked' | 'rotated',
+): Promise<void> {
+  await server.lifecycleEvents.publish({
+    attributes: { action },
+    idempotencyKey: `api_key.changed:${action}:${apiKeyId}`,
+    name: 'api_key.changed',
+    resource: { id: apiKeyId, type: 'api_key' },
+    userId,
+  })
 }
 
 async function recordApiKeyAudit(

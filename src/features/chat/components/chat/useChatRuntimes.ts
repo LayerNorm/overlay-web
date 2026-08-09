@@ -140,11 +140,11 @@ export function useChatRuntimes(activeChatId: string | null) {
   // firing on every token. Tokens still accumulate at full speed in the underlying Chat
   // store; only how often React re-renders the message list is capped. This is the main
   // lever that keeps long conversations responsive during streaming.
-  const chat0 = useChat({ chat: activeRuntime.askChats[0], experimental_throttle: STREAM_THROTTLE_MS })
-  const chat1 = useChat({ chat: activeRuntime.askChats[1], experimental_throttle: STREAM_THROTTLE_MS })
-  const chat2 = useChat({ chat: activeRuntime.askChats[2], experimental_throttle: STREAM_THROTTLE_MS })
-  const chat3 = useChat({ chat: activeRuntime.askChats[3], experimental_throttle: STREAM_THROTTLE_MS })
-  const actChat = useChat({ chat: activeRuntime.actChat, experimental_throttle: STREAM_THROTTLE_MS })
+  const chat0 = useChat({ chat: activeRuntime.askChats[0], throttle: STREAM_THROTTLE_MS })
+  const chat1 = useChat({ chat: activeRuntime.askChats[1], throttle: STREAM_THROTTLE_MS })
+  const chat2 = useChat({ chat: activeRuntime.askChats[2], throttle: STREAM_THROTTLE_MS })
+  const chat3 = useChat({ chat: activeRuntime.askChats[3], throttle: STREAM_THROTTLE_MS })
+  const actChat = useChat({ chat: activeRuntime.actChat, throttle: STREAM_THROTTLE_MS })
   const chat0Ref = useRef(chat0)
   const chat1Ref = useRef(chat1)
   const chat2Ref = useRef(chat2)

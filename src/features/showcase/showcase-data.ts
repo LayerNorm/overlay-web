@@ -8,39 +8,8 @@ import {
   FILE_PARITY_IMAGE_DATA_URL,
   FILE_PARITY_VIDEO_DATA_URL,
 } from '@overlay/app-core/file-parity-fixtures'
-import type { WorkspaceSummary } from '@overlay/workspace-contracts'
 
 export type ShowcaseSurface = 'chat' | 'files' | 'projects' | 'automations' | 'extensions'
-
-export const SHOWCASE_WORKSPACES: WorkspaceSummary[] = [
-  {
-    id: 'showcase-personal',
-    name: 'Divyansh',
-    slug: 'divyansh',
-    kind: 'personal',
-    status: 'active',
-    role: 'owner',
-    memberCount: 1,
-  },
-  {
-    id: 'showcase-acme',
-    name: 'Acme',
-    slug: 'acme',
-    kind: 'organization',
-    status: 'active',
-    role: 'owner',
-    memberCount: 8,
-  },
-  {
-    id: 'showcase-design',
-    name: 'Design partners',
-    slug: 'design-partners',
-    kind: 'organization',
-    status: 'active',
-    role: 'member',
-    memberCount: 14,
-  },
-]
 
 export interface ShowcaseMessage {
   id: string
@@ -128,8 +97,7 @@ export const SHOWCASE_CONVERSATIONS: ShowcaseConversation[] = [
   },
 ]
 
-export const SHOWCASE_CHAT_SUMMARIES = [
-  ...SHOWCASE_CONVERSATIONS.map((conversation, index) => ({
+export const SHOWCASE_CHAT_SUMMARIES = SHOWCASE_CONVERSATIONS.map((conversation, index) => ({
   _id: `showcase-${conversation.id}`,
   title: conversation.title,
   lastModified: Date.parse('2026-07-22T18:00:00.000Z') - index * 60_000,
@@ -138,31 +106,7 @@ export const SHOWCASE_CHAT_SUMMARIES = [
   lastMode: 'act' as const,
   askModelIds: ['openrouter/free'],
   actModelId: 'openrouter/free',
-  conversationType: 'personal' as const,
-  })),
-  {
-    _id: 'showcase-dm',
-    title: 'Maya Chen, Rahul Shah',
-    lastModified: Date.parse('2026-07-29T18:08:00.000Z'),
-    createdAt: Date.parse('2026-07-29T17:00:00.000Z'),
-    updatedAt: Date.parse('2026-07-29T18:08:00.000Z'),
-    lastMode: 'act' as const,
-    askModelIds: ['openrouter/free'],
-    actModelId: 'openrouter/free',
-    conversationType: 'dm' as const,
-  },
-  {
-    _id: 'showcase-channel-product',
-    title: 'product-launch',
-    lastModified: Date.parse('2026-07-29T18:09:00.000Z'),
-    createdAt: Date.parse('2026-07-29T17:00:00.000Z'),
-    updatedAt: Date.parse('2026-07-29T18:09:00.000Z'),
-    lastMode: 'act' as const,
-    askModelIds: ['openrouter/free'],
-    actModelId: 'openrouter/free',
-    conversationType: 'channel' as const,
-  },
-]
+}))
 
 export const SHOWCASE_CHAT_SNAPSHOTS = Object.fromEntries(
   SHOWCASE_CONVERSATIONS.map((conversation) => [
@@ -296,4 +240,9 @@ export const SHOWCASE_SKILLS = [
 export const SHOWCASE_MCPS = [
   ['Browser tools', 'Search, navigate, and extract structured information.'],
   ['Sandbox runtime', 'Run code and inspect generated artifacts in an isolated environment.'],
+] as const
+
+export const SHOWCASE_WORKSPACES = [
+  { id: 'personal', name: 'Personal', slug: 'personal', kind: 'personal' as const, status: 'active' as const, role: 'owner' as const, memberCount: 1 },
+  { id: 'acme', name: 'Acme', slug: 'acme', kind: 'organization' as const, status: 'active' as const, role: 'owner' as const, memberCount: 5 },
 ] as const

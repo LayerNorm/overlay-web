@@ -7,6 +7,6 @@
 [submodule "overlay-chrome"]
 	path = overlay-chrome
 	url = ./overlay-chrome
-[submodule "marketing"]
-	path = marketing
-	url = https://github.com/LayerNorm/marketing.git
+[submodule "overlay-marketing"]
+	path = overlay-marketing
+	url = https://github.com/LayerNorm/overlay-marketing.git

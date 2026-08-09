@@ -18,7 +18,6 @@ export async function assertActivePostgresProject(
     .where(and(
       eq(projects.id, args.projectId),
       eq(projects.userId, args.userId),
-      isNull(projects.archivedAt),
       isNull(projects.deletedAt),
     ))
     .limit(1)

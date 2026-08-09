@@ -22,7 +22,6 @@ import { FlashCopyIconButton, UserMessageBubble } from '@overlay/chat-react'
 import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview } from '@overlay/chat-react'
 import { Textarea } from '@overlay/ui/primitives'
-import { RoomMessageMentions } from './RoomMessageMentions'
 import { SafeHumanMarkdown } from './SafeHumanMarkdown'
 
 export type RoomMessageReaction = {
@@ -197,7 +196,7 @@ export function RoomMessageItem({
         value={editingContent}
         onChange={(event) => onEditingContentChange(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === 'Enter' && !event.shiftKey) {
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
             event.preventDefault()
             onSaveEdit()
           }
@@ -319,10 +318,11 @@ export function RoomMessageItem({
           <div className={`flex min-w-0 max-w-[min(92%,36rem)] flex-col gap-2 sm:max-w-[75%] ${mine ? 'items-end' : 'items-start'}`}>
             {attachments}
             {editing ? editor : message.text ? (
-              <UserMessageBubble className={`max-w-full ${mine ? 'ml-auto' : 'mr-auto'}`}>
-                {message.mentions.length > 0
-                  ? <RoomMessageMentions text={message.text} mentions={message.mentions} />
-                  : <SafeHumanMarkdown text={message.text} />}
+              <UserMessageBubble
+                tone={mine ? 'room-self' : 'default'}
+                className={`max-w-full ${mine ? 'ml-auto' : 'mr-auto rounded-bl-sm rounded-br-2xl'}`}
+              >
+                <SafeHumanMarkdown text={message.text} isStreaming={false} mentions={message.mentions} />
               </UserMessageBubble>
             ) : null}
           </div>

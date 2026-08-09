@@ -26,7 +26,6 @@ import {
   stageInlineCodeFile,
 } from './sandbox-runner'
 import { parseDaytonaRunRequest } from './request'
-import { authorizeCatalogResource } from '@/server/authorization'
 
 export const maxDuration = 300
 
@@ -98,15 +97,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { appData, authorizationService, generationUsagePolicy } = getOverlayServerContext()
-  const denied = await authorizeCatalogResource({
-    authorization: authorizationService,
-    capability: 'tools.use',
-    context,
-    resourceId: 'sandbox',
-    resourceType: 'tool',
-  })
-  if (denied) return denied
+  const { appData, generationUsagePolicy } = getOverlayServerContext()
   let workspaceRun:
     | Awaited<ReturnType<typeof ensureWorkspaceSandbox>>
     | null = null
@@ -197,7 +188,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       checkGlobalBudget: checkGlobalR2Budget,
       command: normalizedCommand,
       conversationId,
-      createOutput: (args) => outputService.create(args as Parameters<typeof outputService.create>[0]),
+      createOutput: (args) => outputService.create({ ...args, workspaceId: context.workspace.workspace.id } as Parameters<typeof outputService.create>[0]),
       deleteObject,
       downloadFile: downloadSandboxFile,
       expectedOutputs,

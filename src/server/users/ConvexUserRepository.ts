@@ -33,8 +33,14 @@ export class ConvexUserRepository implements UserRepository {
 
   async listDirectory(): Promise<UserDirectoryEntry[]> {
     const { convex } = await import('@/server/database/convex')
-    return await convex.query<UserDirectoryEntry[]>('auth/users:listUserDirectoryByServer', {
-      serverSecret: getInternalApiSecret(),
-    }, { throwOnError: true }) ?? []
+    const rows = await convex.query<{ id: string; name: string | null; email: string }[]>(
+      'auth/users:listDirectoryByServer',
+      { serverSecret: getInternalApiSecret() },
+    )
+    return (rows ?? []).map((row) => ({
+      id: row.id,
+      name: row.name ?? row.email,
+      email: row.email,
+    }))
   }
 }

@@ -33,11 +33,12 @@ export type ServerNoteDoc = NoteDoc & {
 }
 
 export interface NoteRepository {
-  getNote(args: { noteId: string; userId: string }): Promise<NoteRecord | null>
+  getNote(args: { noteId: string; userId: string; workspaceId?: string }): Promise<NoteRecord | null>
   listNotes(args: {
     userId: string
     projectId?: string
     includeDeleted?: boolean
+    workspaceId?: string
   }): Promise<NoteRecord[]>
   createNote(args: {
     userId: string
@@ -46,6 +47,7 @@ export interface NoteRepository {
     projectId?: string
     tags?: string[]
     clientId?: string
+    workspaceId?: string
   }): Promise<{ id: string; note: NoteRecord | null }>
   updateNote(args: {
     noteId: string
@@ -55,10 +57,12 @@ export interface NoteRepository {
     projectId?: string | null
     tags?: string[]
     expectedUpdatedAt?: number
+    workspaceId?: string
   }): Promise<NoteRecord | null>
   deleteNote(args: {
     noteId: string
     userId: string
+    workspaceId?: string
   }): Promise<{ noteId: string; deletedAt: number } | null>
 }
 
@@ -111,6 +115,7 @@ export class NoteService {
   async getNote(args: {
     userId: string
     noteId: string
+    workspaceId?: string
   }): Promise<ServerNoteDoc | null> {
     const note = await this.context.noteRepository.getNote(args)
     return note ? noteRecordToDoc(note) : null
@@ -120,6 +125,7 @@ export class NoteService {
     userId: string
     projectId?: string
     includeDeleted?: boolean
+    workspaceId?: string
   }): Promise<ServerNoteDoc[]> {
     const notes = await this.context.noteRepository.listNotes(args)
     return notes.map(noteRecordToDoc)
@@ -137,6 +143,7 @@ export class NoteService {
       projectId: args.projectId,
       tags: args.tags,
       clientId: args.clientId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
     return {
       id: result.id,
@@ -159,6 +166,7 @@ export class NoteService {
       projectId: args.projectId,
       tags: args.tags,
       expectedUpdatedAt: args.expectedUpdatedAt,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
     if (!note) {
       throw new NoteServiceError('Not found', 404)
@@ -173,6 +181,7 @@ export class NoteService {
   async deleteNote(args: {
     userId: string
     noteId: string | null
+    workspaceId?: string
   }): Promise<DeleteNoteResponse> {
     if (!args.noteId) {
       throw new NoteServiceError('noteId required', 400)
@@ -181,6 +190,7 @@ export class NoteService {
     const result = await this.context.noteRepository.deleteNote({
       noteId: args.noteId,
       userId: args.userId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
     if (!result) {
       throw new NoteServiceError('Not found', 404)

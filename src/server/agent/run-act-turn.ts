@@ -85,7 +85,17 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
   conversationId: string
 }> {
   const title = `Automation: ${input.name}`
-  const conversationId = input.conversationId ?? await getOverlayServerContext()
+  const overlayContext = getOverlayServerContext()
+
+  // Resolve the user's active workspace so we can pass it to both
+  // createConversation and the act route. Without this, Convex's
+  // createConversation binds the conversation to the user's personal
+  // workspace, while the BFF's resolveActiveWorkspace may resolve a
+  // different active workspace — causing assertResourceWorkspace to fail.
+  const workspace = await overlayContext.workspaceService.resolveActiveWorkspace(input.userId)
+  const workspaceId = workspace.workspace.id
+
+  const conversationId = input.conversationId ?? await overlayContext
     .appData.repositories.conversations.createConversation({
       userId: input.userId,
       title,
@@ -93,6 +103,8 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
       askModelIds: [input.modelId || DEFAULT_MODEL_ID],
       actModelId: input.modelId || DEFAULT_MODEL_ID,
       lastMode: 'act',
+      isAutomation: true,
+      workspaceId,
     })
 
   if (!conversationId) {
@@ -118,6 +130,7 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
         'content-type': 'application/json',
         'Idempotency-Key': `automation:${input.runId}:${input.turnId}`,
         [getServiceAuthHeaderName()]: serviceToken,
+        'x-overlay-workspace-id': workspaceId,
       },
       body: JSON.stringify({
         messages: [message],

@@ -15,6 +15,7 @@
 /.playwright-cli/
 /.auth/
 /output/playwright/
+.playwright-mcp
 
 # next.js
 /.next/
@@ -91,3 +92,5 @@ agent/memory/*
 .almanac/.capture-*
 .almanac/.bootstrap-*
 .almanac/.ingest-*
+/.swc
+.workflow-data/

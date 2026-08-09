@@ -4,6 +4,12 @@ import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import type { Doc, Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
 import { derivePlanKind } from '../../src/shared/billing/billing-pricing'
+import {
+  computeNextRunAt as sharedComputeNextRunAt,
+  normalizeSchedule as sharedNormalizeSchedule,
+  DEFAULT_SCHEDULE as SHARED_DEFAULT_SCHEDULE,
+  MIN_INTERVAL_MINUTES as SHARED_MIN_INTERVAL_MINUTES,
+} from '../../src/shared/automations/schedule'
 
 const automationSchedule = v.object({
   kind: v.union(
@@ -41,8 +47,8 @@ function clampInteger(value: number, min: number, max: number, fallback: number)
 type AutomationSchedule = NonNullable<Doc<'automations'>['schedule']>
 type AutomationPolicyCtx = MutationCtx | QueryCtx
 
-const DEFAULT_SCHEDULE: AutomationSchedule = { kind: 'daily', hourUTC: 14, minuteUTC: 0 }
-const MIN_INTERVAL_MINUTES = 15
+const DEFAULT_SCHEDULE = SHARED_DEFAULT_SCHEDULE
+const MIN_INTERVAL_MINUTES = SHARED_MIN_INTERVAL_MINUTES
 const MAX_ENABLED_AUTOMATIONS = 25
 const STALE_AUTOMATION_RUN_MS = 15 * 60_000
 const AUTOMATION_POLICY_ERRORS = {
@@ -52,33 +58,7 @@ const AUTOMATION_POLICY_ERRORS = {
 } as const
 
 function normalizeSchedule(schedule: AutomationSchedule): AutomationSchedule {
-  switch (schedule.kind) {
-    case 'interval':
-      return {
-        kind: 'interval',
-        intervalMinutes: clampInteger(schedule.intervalMinutes ?? 60, MIN_INTERVAL_MINUTES, 60 * 24 * 365, 60),
-      }
-    case 'daily':
-      return {
-        kind: 'daily',
-        hourUTC: clampInteger(schedule.hourUTC ?? 9, 0, 23, 9),
-        minuteUTC: clampInteger(schedule.minuteUTC ?? 0, 0, 59, 0),
-      }
-    case 'weekly':
-      return {
-        kind: 'weekly',
-        dayOfWeekUTC: clampInteger(schedule.dayOfWeekUTC ?? 1, 0, 6, 1),
-        hourUTC: clampInteger(schedule.hourUTC ?? 9, 0, 23, 9),
-        minuteUTC: clampInteger(schedule.minuteUTC ?? 0, 0, 59, 0),
-      }
-    case 'monthly':
-      return {
-        kind: 'monthly',
-        dayOfMonthUTC: clampInteger(schedule.dayOfMonthUTC ?? 1, 1, 31, 1),
-        hourUTC: clampInteger(schedule.hourUTC ?? 9, 0, 23, 9),
-        minuteUTC: clampInteger(schedule.minuteUTC ?? 0, 0, 59, 0),
-      }
-  }
+  return sharedNormalizeSchedule(schedule)
 }
 
 function assertSchedulePolicy(schedule: AutomationSchedule): void {
@@ -149,77 +129,8 @@ async function getAutomationRunPolicyViolation(
   return null
 }
 
-function daysInUtcMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
-}
-
 export function computeNextRunAt(scheduleInput: AutomationSchedule, fromMs: number): number {
-  const schedule = normalizeSchedule(scheduleInput)
-  const from = new Date(fromMs)
-
-  if (schedule.kind === 'interval') {
-    return fromMs + (schedule.intervalMinutes ?? 60) * 60_000
-  }
-
-  if (schedule.kind === 'daily') {
-    const candidate = Date.UTC(
-      from.getUTCFullYear(),
-      from.getUTCMonth(),
-      from.getUTCDate(),
-      schedule.hourUTC ?? 9,
-      schedule.minuteUTC ?? 0,
-      0,
-      0,
-    )
-    return candidate > fromMs ? candidate : candidate + 24 * 60 * 60_000
-  }
-
-  if (schedule.kind === 'weekly') {
-    const today = from.getUTCDay()
-    const target = schedule.dayOfWeekUTC ?? 1
-    let dayOffset = (target - today + 7) % 7
-    let candidate = Date.UTC(
-      from.getUTCFullYear(),
-      from.getUTCMonth(),
-      from.getUTCDate() + dayOffset,
-      schedule.hourUTC ?? 9,
-      schedule.minuteUTC ?? 0,
-      0,
-      0,
-    )
-    if (candidate <= fromMs) {
-      dayOffset += 7
-      candidate = Date.UTC(
-        from.getUTCFullYear(),
-        from.getUTCMonth(),
-        from.getUTCDate() + dayOffset,
-        schedule.hourUTC ?? 9,
-        schedule.minuteUTC ?? 0,
-        0,
-        0,
-      )
-    }
-    return candidate
-  }
-
-  const targetDay = schedule.dayOfMonthUTC ?? 1
-  for (let monthOffset = 0; monthOffset < 24; monthOffset += 1) {
-    const year = from.getUTCFullYear()
-    const month = from.getUTCMonth() + monthOffset
-    const day = Math.min(targetDay, daysInUtcMonth(year, month))
-    const candidate = Date.UTC(
-      year,
-      month,
-      day,
-      schedule.hourUTC ?? 9,
-      schedule.minuteUTC ?? 0,
-      0,
-      0,
-    )
-    if (candidate > fromMs) return candidate
-  }
-
-  return fromMs + 30 * 24 * 60 * 60_000
+  return sharedComputeNextRunAt(scheduleInput, fromMs)
 }
 
 async function ensureProjectAccess(
@@ -237,13 +148,14 @@ async function ensureProjectAccess(
 export const list = query({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     includeDeleted: v.optional(v.boolean()),
     projectId: v.optional(v.string()),
   },
   returns: v.array(automationDoc),
-  handler: async (ctx, { userId, accessToken, serverSecret, includeDeleted, projectId }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, includeDeleted, projectId }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -263,6 +175,7 @@ export const list = query({
     return rows
       .filter((row) => row.userId === userId)
       .filter((row) => (includeDeleted ? true : !row.deletedAt))
+      .filter((row) => (workspaceId !== undefined ? row.workspaceId === workspaceId : true))
   },
 })
 
@@ -270,24 +183,26 @@ export const get = query({
   args: {
     automationId: v.id('automations'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
   returns: v.union(automationDoc, v.null()),
-  handler: async (ctx, { automationId, userId, accessToken, serverSecret }) => {
+  handler: async (ctx, { automationId, userId, workspaceId, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return null
     }
     const automation = await ctx.db.get(automationId)
-    return automation && automation.userId === userId && !automation.deletedAt ? automation : null
+    return automation && automation.userId === userId && !automation.deletedAt && (workspaceId === undefined || automation.workspaceId === workspaceId) ? automation : null
   },
 })
 
 export const create = mutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     name: v.string(),
@@ -299,6 +214,7 @@ export const create = mutation({
     projectId: v.optional(v.string()),
     modelId: v.optional(v.string()),
     graphSource: v.optional(v.string()),
+    graph: v.optional(v.any()),
     sourceConversationId: v.optional(v.id('conversations')),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
   },
@@ -322,6 +238,7 @@ export const create = mutation({
     const schedule = normalizeSchedule(args.schedule)
     return await ctx.db.insert('automations', {
       userId: args.userId,
+      workspaceId: args.workspaceId,
       name: args.name.trim() || 'Untitled automation',
       description: args.description?.trim() || '',
       instructions: args.instructions.trim(),
@@ -332,6 +249,7 @@ export const create = mutation({
       projectId: args.projectId,
       modelId: args.modelId?.trim() || undefined,
       graphSource: args.graphSource?.trim() || undefined,
+      graph: args.graph ?? undefined,
       sourceConversationId: args.sourceConversationId,
       concurrencyPolicy: args.concurrencyPolicy ?? 'skip',
       createdAt: now,
@@ -344,6 +262,7 @@ export const update = mutation({
   args: {
     automationId: v.id('automations'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     name: v.optional(v.string()),
@@ -355,14 +274,15 @@ export const update = mutation({
     projectId: v.optional(v.string()),
     modelId: v.optional(v.string()),
     graphSource: v.optional(v.string()),
+    graph: v.optional(v.any()),
     sourceConversationId: v.optional(v.id('conversations')),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
   },
   returns: v.null(),
-  handler: async (ctx, { automationId, userId, accessToken, serverSecret, ...updates }) => {
+  handler: async (ctx, { automationId, userId, workspaceId, accessToken, serverSecret, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const automation = await ctx.db.get(automationId)
-    if (!automation || automation.userId !== userId || automation.deletedAt) {
+    if (!automation || automation.userId !== userId || automation.deletedAt || (workspaceId !== undefined && automation.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
     }
     await ensureProjectAccess(ctx, userId, updates.projectId)
@@ -392,6 +312,7 @@ export const update = mutation({
     if (updates.projectId !== undefined) patch.projectId = updates.projectId || undefined
     if (updates.modelId !== undefined) patch.modelId = updates.modelId.trim() || undefined
     if (updates.graphSource !== undefined) patch.graphSource = updates.graphSource.trim() || undefined
+    if (updates.graph !== undefined) patch.graph = updates.graph ?? undefined
     if (updates.sourceConversationId !== undefined) patch.sourceConversationId = updates.sourceConversationId
     if (updates.concurrencyPolicy !== undefined) patch.concurrencyPolicy = updates.concurrencyPolicy
     if (updates.schedule !== undefined) {
@@ -416,6 +337,7 @@ export const pause = mutation({
   args: {
     automationId: v.id('automations'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
@@ -423,7 +345,7 @@ export const pause = mutation({
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
     const automation = await ctx.db.get(args.automationId)
-    if (!automation || automation.userId !== args.userId || automation.deletedAt) {
+    if (!automation || automation.userId !== args.userId || automation.deletedAt || (args.workspaceId !== undefined && automation.workspaceId !== args.workspaceId)) {
       throw new Error('Unauthorized')
     }
     await ctx.db.patch(args.automationId, {
@@ -439,6 +361,7 @@ export const resume = mutation({
   args: {
     automationId: v.id('automations'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
@@ -446,7 +369,7 @@ export const resume = mutation({
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
     const automation = await ctx.db.get(args.automationId)
-    if (!automation || automation.userId !== args.userId || automation.deletedAt) {
+    if (!automation || automation.userId !== args.userId || automation.deletedAt || (args.workspaceId !== undefined && automation.workspaceId !== args.workspaceId)) {
       throw new Error('Unauthorized')
     }
     const now = Date.now()
@@ -469,6 +392,7 @@ export const remove = mutation({
   args: {
     automationId: v.id('automations'),
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
   },
@@ -476,7 +400,7 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
     const automation = await ctx.db.get(args.automationId)
-    if (!automation || automation.userId !== args.userId || automation.deletedAt) {
+    if (!automation || automation.userId !== args.userId || automation.deletedAt || (args.workspaceId !== undefined && automation.workspaceId !== args.workspaceId)) {
       throw new Error('Unauthorized')
     }
     await ctx.db.patch(args.automationId, {
@@ -533,36 +457,6 @@ export const requestRunCancellationByServer = mutation({
       updatedAt: now,
     })
     return { cancelled: true }
-  },
-})
-
-export const requestActiveRunCancellationByServer = mutation({
-  args: {
-    automationId: v.id('automations'),
-    serverSecret: v.string(),
-    userId: v.string(),
-  },
-  returns: v.object({ cancelled: v.number() }),
-  handler: async (ctx, args) => {
-    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
-    const automation = await ctx.db.get(args.automationId)
-    if (!automation || automation.userId !== args.userId || automation.deletedAt) {
-      return { cancelled: 0 }
-    }
-    const runs = await ctx.db
-      .query('automationRuns')
-      .withIndex('by_automationId_createdAt', (q) => q.eq('automationId', args.automationId))
-      .collect()
-    const now = Date.now()
-    const activeRuns = runs.filter((run) => ['queued', 'running'].includes(run.status))
-    await Promise.all(activeRuns.map(async (run) => {
-      await ctx.db.patch(run._id, {
-        completedAt: run.status === 'queued' ? now : undefined,
-        status: run.status === 'queued' ? 'cancelled' : 'cancel_requested',
-        updatedAt: now,
-      })
-    }))
-    return { cancelled: activeRuns.length }
   },
 })
 
@@ -703,6 +597,88 @@ export const markManualRunFailed = mutation({
       lastRunAt: args.now,
       lastError: args.error,
       updatedAt: args.now,
+    })
+    return null
+  },
+})
+
+export const attachSourceConversationByServer = mutation({
+  args: {
+    automationId: v.id('automations'),
+    conversationId: v.id('conversations'),
+    serverSecret: v.string(),
+    userId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const automation = await ctx.db.get(args.automationId)
+    const conversation = await ctx.db.get(args.conversationId)
+    if (
+      !automation ||
+      automation.userId !== args.userId ||
+      automation.deletedAt ||
+      !conversation ||
+      conversation.userId !== args.userId ||
+      conversation.deletedAt
+    ) {
+      throw new Error('Unauthorized')
+    }
+    if (automation.workspaceId && conversation.workspaceId !== automation.workspaceId) {
+      throw new Error('Unauthorized')
+    }
+    const currentSource = automation.sourceConversationId
+      ? await ctx.db.get(automation.sourceConversationId)
+      : null
+    const currentSourceIsValid = Boolean(
+      currentSource
+      && currentSource.userId === args.userId
+      && !currentSource.deletedAt
+      && (!automation.workspaceId || currentSource.workspaceId === automation.workspaceId),
+    )
+    if (!currentSourceIsValid) {
+      await ctx.db.patch(args.automationId, {
+        sourceConversationId: args.conversationId,
+        updatedAt: Date.now(),
+      })
+    }
+    return null
+  },
+})
+
+export const updateRunWorkflowRunIdByServer = mutation({
+  args: {
+    runId: v.id('automationRuns'),
+    serverSecret: v.string(),
+    workflowRunId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const run = await ctx.db.get(args.runId)
+    if (!run) return null
+    await ctx.db.patch(args.runId, {
+      workflowRunId: args.workflowRunId,
+      updatedAt: Date.now(),
+    })
+    return null
+  },
+})
+
+export const updateSchedulerWorkflowRunIdByServer = mutation({
+  args: {
+    automationId: v.id('automations'),
+    serverSecret: v.string(),
+    schedulerWorkflowRunId: v.union(v.string(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const automation = await ctx.db.get(args.automationId)
+    if (!automation) return null
+    await ctx.db.patch(args.automationId, {
+      schedulerWorkflowRunId: args.schedulerWorkflowRunId ?? undefined,
+      updatedAt: Date.now(),
     })
     return null
   },

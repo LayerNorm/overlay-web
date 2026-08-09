@@ -153,6 +153,7 @@ export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
 export const DEFAULT_OVERLAY_SETTINGS_SECTIONS: readonly OverlaySettingsSection[] = [
   { id: 'general', label: 'General' },
   { id: 'account', label: 'Account' },
+  { id: 'workspace', label: 'Workspace' },
   { id: 'customization', label: 'Customization' },
   { id: 'memories', label: 'Memories', featureFlagId: 'knowledge', requiredCapabilities: ['memory', 'vectorSearch'] },
   { id: 'models', label: 'Models', requiredCapabilities: ['modelRouting'] },
@@ -568,7 +569,7 @@ export function overlayNavigationToDestinations(
     href: '/app/settings',
     subviews: settingsSections.map((section) => section.id),
   })
-  destinations.push({ id: 'account', label: 'Account', href: '/account' })
+  destinations.push({ id: 'account', label: 'Account settings', href: '/app/settings?section=account' })
 
   return destinations
 }

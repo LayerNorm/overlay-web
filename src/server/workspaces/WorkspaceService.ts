@@ -27,6 +27,16 @@ import {
   parseDeploymentRolloutStage,
 } from '@/shared/workspaces/collaboration-rollout'
 import type { WorkspaceRepository } from './WorkspaceRepository'
+import type { LifecycleEventPublisher } from '@/server/lifecycle-events/LifecycleEventPublisher'
+
+type WorkspaceServiceOptions = {
+  createId?: () => string
+  now?: () => number
+  invitationTtlMs?: number
+  /** Overrides OVERLAY_COLLABORATION_ROLLOUT, mostly for tests. */
+  deploymentRolloutStage?: WorkspaceRolloutStage
+  lifecycleEvents?: LifecycleEventPublisher
+}
 
 export class WorkspaceServiceError extends Error {
   constructor(
@@ -47,16 +57,14 @@ export class WorkspaceServiceError extends Error {
 }
 
 export class WorkspaceService {
+  private readonly lifecycleEvents: WorkspaceServiceOptions['lifecycleEvents']
+
   constructor(
     private readonly repository: WorkspaceRepository,
-    private readonly options: {
-      createId?: () => string
-      now?: () => number
-      invitationTtlMs?: number
-      /** Overrides OVERLAY_COLLABORATION_ROLLOUT, mostly for tests. */
-      deploymentRolloutStage?: WorkspaceRolloutStage
-    } = {},
-  ) {}
+    private readonly options: WorkspaceServiceOptions = {},
+  ) {
+    this.lifecycleEvents = options.lifecycleEvents
+  }
 
   async ensurePersonalWorkspace(args: {
     userId: string
@@ -77,6 +85,11 @@ export class WorkspaceService {
 
   async listForUser(userId: string): Promise<WorkspaceAccess[]> {
     return await this.repository.listForUser(required(userId, 'userId'))
+  }
+
+  /** Read-only principal lookup for lifecycle event attribution. */
+  async resolvePrincipal(principalId: string): Promise<WorkspacePrincipal | null> {
+    return await this.repository.getPrincipal(required(principalId, 'principalId'))
   }
 
   async assertAccountDeletionAllowed(userId: string): Promise<void> {
@@ -454,7 +467,7 @@ export class WorkspaceService {
     const expiresAt = args.expiresAt
       ?? now + (this.options.invitationTtlMs ?? 7 * 24 * 60 * 60 * 1_000)
     if (expiresAt <= now) throw validation('Invitation expiry must be in the future')
-    return await this.repository.createInvitationReplacingPending({
+    const invitation = await this.repository.createInvitationReplacingPending({
       id: this.id(),
       workspaceId: actor.workspace.id,
       email,
@@ -462,6 +475,32 @@ export class WorkspaceService {
       invitedByPrincipalId: actor.principal.id,
       expiresAt,
       now,
+    })
+    await this.publishInvitationSent({
+      actorUserId: args.actorUserId,
+      invitation,
+      workspaceName: actor.workspace.name,
+    })
+    return invitation
+  }
+
+  private async publishInvitationSent(args: {
+    actorUserId: string
+    invitation: WorkspaceInvitation
+    workspaceName: string
+  }): Promise<void> {
+    await this.lifecycleEvents?.publish({
+      attributes: {
+        workspaceId: args.invitation.workspaceId,
+        workspaceName: args.workspaceName,
+        invitedEmail: args.invitation.email,
+        invitedByPrincipalId: args.invitation.invitedByPrincipalId,
+        role: args.invitation.role,
+      },
+      idempotencyKey: `workspace.invitation_sent:${args.invitation.id}`,
+      name: 'workspace.invitation_sent',
+      resource: { id: args.invitation.id, type: 'workspace_invitation' },
+      userId: args.actorUserId,
     })
   }
 
@@ -545,7 +584,7 @@ export class WorkspaceService {
       throw new WorkspaceServiceError('Invitation can no longer be resent', 409, 'conflict')
     }
     const now = this.now()
-    return await this.repository.createInvitationReplacingPending({
+    const invitation = await this.repository.createInvitationReplacingPending({
       id: this.id(),
       workspaceId: actor.workspace.id,
       email: existing.email,
@@ -554,6 +593,12 @@ export class WorkspaceService {
       expiresAt: now + (this.options.invitationTtlMs ?? 7 * 24 * 60 * 60 * 1_000),
       now,
     })
+    await this.publishInvitationSent({
+      actorUserId: args.actorUserId,
+      invitation,
+      workspaceName: actor.workspace.name,
+    })
+    return invitation
   }
 
   async addResourceGuest(args: {
@@ -621,6 +666,37 @@ export class WorkspaceService {
     })
   }
 
+  /**
+   * Claims legacy resources that predate workspace scoping for the caller's
+   * Personal workspace. Existing bindings are never moved, which keeps this
+   * safe to run lazily while old accounts are upgraded.
+   */
+  async bindUnscopedResourcesToPersonalWorkspace(args: {
+    actorUserId: string
+    workspaceId: string
+    resourceType: string
+    resourceIds: readonly string[]
+  }): Promise<string[]> {
+    const actor = await this.requireActiveMember(args)
+    if (actor.workspace.kind !== 'personal') return []
+
+    const resourceType = required(args.resourceType, 'resourceType')
+    const bound: string[] = []
+    for (const value of new Set(args.resourceIds)) {
+      const resourceId = required(value, 'resourceId')
+      const existing = await this.repository.getResourceWorkspace({ resourceType, resourceId })
+      if (existing) continue
+      await this.repository.bindResource({
+        workspaceId: actor.workspace.id,
+        resourceType,
+        resourceId,
+        now: this.now(),
+      })
+      bound.push(resourceId)
+    }
+    return bound
+  }
+
   async assertResourceWorkspace(args: {
     actorUserId: string
     workspaceId: string
@@ -635,6 +711,18 @@ export class WorkspaceService {
     if (!scope) throw notFound('Resource scope not found')
     if (scope.workspaceId !== actor.workspace.id) throw notFound('Resource not found')
     return scope
+  }
+
+  async listResourceIdsByWorkspace(args: {
+    actorUserId: string
+    workspaceId: string
+    resourceType: string
+  }): Promise<string[]> {
+    await this.requireActiveMember(args)
+    return await this.repository.listResourceIdsByWorkspace({
+      workspaceId: args.workspaceId,
+      resourceType: args.resourceType,
+    })
   }
 
   /**

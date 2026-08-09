@@ -68,6 +68,7 @@ test('a member’s own message reuses the personal chat user bubble, attributed 
   // Even your own message says who wrote it: an anonymous bubble in a shared
   // room reads as first person no matter who sent it.
   assert.match(html, />You</)
+  assert.match(html, /room-message-self-bubble/)
   // Own messages can be edited and deleted, never reported.
   assert.match(html, /aria-label="Edit message"/)
   assert.match(html, /aria-label="Delete message"/)
@@ -83,6 +84,8 @@ test('another member’s message is attributed to them and never rendered as you
   assert.match(html, /Maya Chen/)
   assert.doesNotMatch(html, />You</)
   assert.match(html, /justify-start/)
+  assert.doesNotMatch(html, /room-message-self-bubble/)
+  assert.match(html, /rounded-bl-sm/)
   assert.match(html, /aria-label="Report message"/)
   assert.doesNotMatch(html, /aria-label="Edit message"/)
 })
@@ -112,6 +115,25 @@ test('agent replies render markdown and tool output through the shared block ren
 test('room members named in a message render as mention chips', () => {
   const html = render(record({ id: 'message_6', content: '@Maya Chen can you take this?' }))
   assert.match(html, /class="mx-0\.5 inline-flex[^"]*"[^>]*>@Maya Chen</)
+})
+
+test('human room messages render safe markdown even when room member metadata is present', () => {
+  const html = render(record({ id: 'message_7', content: '**Launch**\n\n- first\n- second\n\n[Overlay](https://getoverlay.io)' }))
+  assert.match(html, /<strong>Launch<\/strong>/)
+  assert.match(html, /<ul[^>]*>[\s\S]*<li[^>]*>first<\/li>[\s\S]*<li[^>]*>second<\/li>[\s\S]*<\/ul>/)
+  assert.match(html, /href="https:\/\/getoverlay\.io"/)
+  assert.doesNotMatch(html, /\*\*Launch\*\*/)
+})
+
+test('human room messages preserve authored line breaks', () => {
+  const html = render(record({ id: 'message_9', content: 'First line\nSecond line' }))
+  assert.match(html, /whitespace-pre-wrap[^>]*>First line\nSecond line<\/p>/)
+})
+
+test('human room markdown never renders raw HTML or executable links', () => {
+  const html = render(record({ id: 'message_8', content: '<img src=x onerror=alert(1)> [bad](javascript:alert(1))' }))
+  assert.doesNotMatch(html, /<img/)
+  assert.doesNotMatch(html, /javascript:/)
 })
 
 test('collaboration operations sit in the hover action row', () => {

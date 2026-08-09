@@ -50,6 +50,8 @@
   --surface-elevated: #ffffff;
   --surface-muted: #f5f5f5;
   --surface-subtle: #f0f0f0;
+  --room-message-self-bg: #27272a;
+  --room-message-self-text: #fafafa;
   --sidebar-surface: #f5f5f5;
   --glass-bg: rgba(255, 255, 255, 0.7);
   --glass-border: rgba(255, 255, 255, 0.5);
@@ -104,6 +106,8 @@
   --surface-elevated: #111113;
   --surface-muted: #151518;
   --surface-subtle: #1c1c20;
+  --room-message-self-bg: #27272a;
+  --room-message-self-text: #f5f5f5;
   --sidebar-surface: #111113;
   --glass-bg: rgba(17, 17, 19, 0.72);
   --glass-border: rgba(255, 255, 255, 0.08);

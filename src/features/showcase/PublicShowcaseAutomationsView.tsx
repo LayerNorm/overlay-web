@@ -1,7 +1,7 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { AutomationGraphCanvas } from '@overlay/modules-react/automations'
+import { AutomationGraphPreview } from '@overlay/modules-react/automations'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { Button } from '@overlay/ui'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
@@ -36,7 +36,7 @@ export function PublicShowcaseAutomationsView() {
       <AppScreenBody className="overflow-auto" maxWidth="lg">
         <div className="mx-auto w-full max-w-4xl py-6">
           <p className="mb-6 max-w-2xl text-sm leading-6 text-[var(--muted)]">{selected.description}</p>
-          <AutomationGraphCanvas source={flows[selected.id] ?? ''} />
+          <AutomationGraphPreview source={flows[selected.id] ?? ''} />
         </div>
       </AppScreenBody>
     </AppScreenShell>

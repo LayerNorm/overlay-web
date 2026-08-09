@@ -2,6 +2,7 @@ import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
+import type { ReasoningLevel } from '@overlay/chat-core'
 import type {
   AskModelSelectionMode,
   AttachedImage,
@@ -274,6 +275,7 @@ export function buildCommonActBody({
   textHistoryBaseModelId,
   selectedToolIdsSnapshot,
   memoryEnabledSnapshot,
+  reasoning,
 }: {
   chatId: string
   pendingConversationClientId: string | null
@@ -291,22 +293,8 @@ export function buildCommonActBody({
   textHistoryBaseModelId?: string
   selectedToolIdsSnapshot: ChatToolRequestId[]
   memoryEnabledSnapshot: boolean
+  reasoning?: ReasoningLevel
 }) {
-  // Every knowledge mention on this turn is sent. The server narrows retrieval to
-  // these when present, so an explicit mention overrides the project's default
-  // corpus instead of being shadowed by it.
-  const mentionedKnowledgeBaseIds = [...new Set(
-    (userMeta.mentions ?? [])
-      .filter((mention) => mention.type === 'knowledge')
-      .map((mention) => mention.id)
-      .filter((id): id is string => Boolean(id)),
-  )]
-  const effectiveKnowledgeBaseIds = mentionedKnowledgeBaseIds.length > 0
-    ? mentionedKnowledgeBaseIds
-    : knowledgeBaseId
-      ? [knowledgeBaseId]
-      : []
-
   return {
     ...(temporaryChatSnapshot
       ? { temporaryChat: true }
@@ -317,9 +305,6 @@ export function buildCommonActBody({
             askModelIds: textModelsForTurn,
           }
         : { conversationId: chatId }),
-    ...(effectiveKnowledgeBaseIds.length > 0
-      ? { knowledgeBaseIds: effectiveKnowledgeBaseIds }
-      : {}),
     turnId,
     mode: requestMode,
     automationMode: requestMode === 'automate',
@@ -330,5 +315,7 @@ export function buildCommonActBody({
     ...(textHistoryBaseModelId ? { historyBaseModelId: textHistoryBaseModelId } : {}),
     requestedToolIds: selectedToolIdsSnapshot,
     memoryEnabled: memoryEnabledSnapshot,
+    ...(knowledgeBaseId ? { knowledgeBaseId } : {}),
+    ...(reasoning && reasoning !== 'provider-default' ? { reasoning } : {}),
   }
 }

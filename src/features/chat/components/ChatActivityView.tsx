@@ -2,17 +2,16 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AtSign, Bell, BellOff, Check, Inbox, MessageCircle, Settings2, Smile } from 'lucide-react'
+import { AtSign, Bell, BellOff, Check, Inbox, MessageCircle, Smile } from 'lucide-react'
 import type {
   WorkspaceNotification,
   WorkspaceNotificationFilter,
-  WorkspaceNotificationPreferenceMode,
-  WorkspaceNotificationPreferences,
 } from '@overlay/workspace-contracts'
-import { IconButton, SegmentedControl } from '@overlay/ui'
-import { AppScreenHeader, AppScreenShell, AppScreenSidePanel } from '@overlay/modules-react/shell'
+import { SegmentedControl } from '@overlay/ui'
+import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 
 const FILTERS: Array<{ value: WorkspaceNotificationFilter; label: string; icon: typeof Bell }> = [
   { value: 'all', label: 'All', icon: Inbox },
@@ -30,24 +29,6 @@ const EMPTY_LABELS: Record<WorkspaceNotificationFilter, string> = {
   reactions: 'No reactions yet.',
 }
 
-type NotificationPreferenceKey = keyof WorkspaceNotificationPreferences & string
-
-const PREFERENCE_LABELS: Array<{ key: NotificationPreferenceKey; label: string; hint: string }> = [
-  { key: 'dmMessages', label: 'Direct messages', hint: 'Every message in a one-to-one conversation.' },
-  { key: 'mentions', label: 'Mentions', hint: 'When someone @-mentions you directly or in a channel.' },
-  { key: 'threadReplies', label: 'Followed threads', hint: 'Replies in threads you started or joined.' },
-  { key: 'reactions', label: 'Reactions', hint: 'Reactions people add to your messages.' },
-  { key: 'channelMessages', label: 'Channel messages', hint: 'Every message in channels you belong to.' },
-]
-
-const MODES: WorkspaceNotificationPreferenceMode[] = ['activity', 'banner', 'off']
-
-const MODE_LABELS: Record<WorkspaceNotificationPreferenceMode, string> = {
-  activity: 'Activity',
-  banner: 'Banner',
-  off: 'Off',
-}
-
 function notificationIcon(type: WorkspaceNotification['type']) {
   if (type === 'mention') return <AtSign size={13} />
   if (type === 'thread') return <MessageCircle size={13} />
@@ -63,16 +44,17 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
   const router = useRouter()
   const [filter, setFilter] = useState<WorkspaceNotificationFilter>('all')
   const [notifications, setNotifications] = useState<WorkspaceNotification[]>([])
-  const [preferences, setPreferences] = useState<WorkspaceNotificationPreferences | null>(null)
   const [loading, setLoading] = useState(true)
-  const [settingsOpen, setSettingsOpen] = useState(false)
 
-  // Notifications refetch per filter and on a poll; preferences load once, so
-  // they stay out of this callback and never re-trigger the list skeleton.
+  // Notifications refetch per filter and on a poll, so they stay out of the
+  // callback and never re-trigger the list skeleton.
   const load = useCallback(async () => {
     try {
       const activity = await overlayAppClient.conversations.notifications({ filter, limit: 100 })
-      setNotifications(activity.notifications)
+      // `overlayAppClient` intentionally returns parsed error bodies for non-2xx
+      // responses. Treat an unavailable activity endpoint as an empty, retryable
+      // feed instead of letting an error payload crash the chat shell.
+      setNotifications(Array.isArray(activity?.notifications) ? activity.notifications : [])
     } catch {
       setNotifications([])
     } finally {
@@ -87,25 +69,28 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
     return () => window.clearInterval(timer)
   }, [load])
 
-  useEffect(() => {
-    let cancelled = false
-    void overlayAppClient.conversations.notificationPreferences()
-      .then(({ preferences: loaded }) => {
-        if (!cancelled) setPreferences(loaded)
-      })
-      .catch(() => undefined)
-    return () => { cancelled = true }
-  }, [])
+  useWorkspaceChanged(load)
 
   const unreadCount = notifications.filter((notification) => !notification.readAt).length
 
   async function openNotification(notification: WorkspaceNotification) {
+    const conversationPromise = notification.conversationId
+      ? overlayAppClient.conversations.get<{
+          conversationType?: 'personal' | 'dm' | 'channel'
+        }>({ conversationId: notification.conversationId }).catch(() => null)
+      : Promise.resolve(null)
     if (!notification.readAt) {
-      await overlayAppClient.conversations.markNotificationsRead([notification.id]).catch(() => undefined)
+      void overlayAppClient.conversations.markNotificationsRead([notification.id]).catch(() => undefined)
       setNotifications((current) => current.map((row) => row.id === notification.id ? { ...row, readAt: Date.now() } : row))
     }
     if (!notification.conversationId) return
-    const query = new URLSearchParams({ view: 'all', id: notification.conversationId })
+    const conversation = await conversationPromise
+    const view = conversation?.conversationType === 'channel'
+      ? 'channels'
+      : conversation?.conversationType === 'dm'
+        ? 'dms'
+        : 'personal'
+    const query = new URLSearchParams({ view, id: notification.conversationId })
     if (notification.messageId) query.set('message', notification.messageId)
     router.push(`${baseHref}?${query.toString()}`)
   }
@@ -118,13 +103,6 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
     await overlayAppClient.conversations.markNotificationsRead(unreadIds).catch(() => undefined)
   }
 
-  async function cyclePreference(key: NotificationPreferenceKey) {
-    if (!preferences) return
-    const next = MODES[(MODES.indexOf(preferences[key]) + 1) % MODES.length]!
-    const result = await overlayAppClient.conversations.updateNotificationPreferences({ [key]: next })
-    setPreferences(result.preferences)
-  }
-
   return (
     <AppScreenShell
       className="h-full"
@@ -133,57 +111,15 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
           title="Activity"
           subtitle={unreadCount > 0 ? `${unreadCount} unread` : undefined}
           actions={(
-            <>
-              <SegmentedControl
-                value={filter}
-                options={FILTERS}
-                onChange={setFilter}
-                ariaLabel="Activity filters"
-              />
-              <IconButton
-                aria-label="Notification settings"
-                aria-pressed={settingsOpen}
-                onClick={() => setSettingsOpen((open) => !open)}
-              >
-                <Settings2 size={16} />
-              </IconButton>
-            </>
+            <SegmentedControl
+              value={filter}
+              options={FILTERS}
+              onChange={setFilter}
+              ariaLabel="Activity filters"
+            />
           )}
         />
       )}
-      rightPanel={settingsOpen ? (
-        <AppScreenSidePanel
-          title="Notification settings"
-          description="How each kind of update reaches you."
-          onClose={() => setSettingsOpen(false)}
-          closeLabel="Close notification settings"
-        >
-          <div className="space-y-1 p-3">
-            {preferences ? PREFERENCE_LABELS.map(({ key, label, hint }) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => void cyclePreference(key)}
-                className="flex w-full items-start gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-[var(--surface-subtle)]"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block text-xs font-medium text-[var(--foreground)]">{label}</span>
-                  <span className="mt-0.5 block text-[11px] leading-4 text-[var(--muted)]">{hint}</span>
-                </span>
-                <span className="shrink-0 rounded-md border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--foreground)]">
-                  {MODE_LABELS[preferences[key]]}
-                </span>
-              </button>
-            )) : (
-              <p className="px-2 py-4 text-xs text-[var(--muted)]">Loading preferences…</p>
-            )}
-          </div>
-        </AppScreenSidePanel>
-      ) : null}
-      rightPanelOpen={settingsOpen}
-      rightPanelWidth={380}
-      onRightPanelClose={() => setSettingsOpen(false)}
-      rightPanelOverlayLabel="Notification settings"
     >
       <div className="h-full min-h-0 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6">
