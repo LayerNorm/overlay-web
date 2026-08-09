@@ -6,11 +6,9 @@ import {
   AtSign,
   Brain,
   Check,
-  ChevronDown,
   FileText,
   Globe2,
   Image as ImageIcon,
-  MessageSquare,
   MousePointerClick,
   Plus,
   Reply,
@@ -18,7 +16,6 @@ import {
   SquareTerminal,
   Video,
   X,
-  Zap,
   type LucideIcon,
 } from 'lucide-react'
 import { useRef, useState, type MouseEvent, type ReactNode, type RefObject } from 'react'
@@ -261,7 +258,6 @@ function ComposerControls(props: ComposerControlsProps) {
         })}
         {props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
       </div>
-      {props.isTemporaryChat ? null : <ModeMenu {...props} />}
       {props.isActiveLoading ? (
         <DelayedTooltip label="Stop generating" side="top">
           <button
@@ -481,25 +477,3 @@ function GenerationChip({ chip, onClear }: { chip: 'image' | 'video'; onClear: (
   )
 }
 
-function ModeMenu(props: ComposerViewProps) {
-  return (
-    <div ref={props.modeMenuRef} className="relative shrink-0">
-      <button type="button" onClick={() => props.setShowModeMenu((value) => !value)} className={`flex h-9 items-center gap-1 rounded-lg px-2.5 text-xs transition-colors hover:bg-[var(--surface-muted)] ${props.mode === 'automate' ? 'text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}>
-        {props.mode === 'automate' ? <Zap size={12} strokeWidth={1.75} /> : <MessageSquare size={12} strokeWidth={1.75} />}
-        <span>{props.mode === 'automate' ? 'Automate' : 'Chat'}</span>
-        <ChevronDown size={10} className="opacity-60" />
-      </button>
-      {props.showModeMenu && (
-        <div className="overlay-fade-in absolute bottom-full right-0 z-20 mb-2 w-40 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
-          {(['chat', 'automate'] as const).map((item) => (
-            <button key={item} type="button" onClick={() => props.onNavigateMode(item)} className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-[var(--surface-muted)] ${props.mode === item ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'}`}>
-              {item === 'chat' ? <MessageSquare size={13} /> : <Zap size={13} strokeWidth={1.75} />}
-              <span>{item === 'chat' ? 'Chat' : 'Automate'}</span>
-              {props.mode === item && <Check size={11} className="ml-auto" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}

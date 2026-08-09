@@ -138,6 +138,9 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isLoading || !isAuthenticated || !user?.id || checkedRef.current) return
+    // Invitation accept must stay fully interactive; the tour's full-screen
+    // click shield would block "Accept invitation" when targets are missing.
+    if (pathname?.startsWith('/app/invitations')) return
     checkedRef.current = true
 
     const params = new URLSearchParams(window.location.search)
@@ -189,6 +192,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (!isAuthenticated || params.get('tour') !== 'replay') return
+    if (pathname?.startsWith('/app/invitations')) return
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentStep(0)
     setActive(true)
@@ -247,13 +251,18 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     setCurrentStep(prev)
   }, [currentStep, navigateForStep])
 
+  const onInvitationRoute = Boolean(pathname?.startsWith('/app/invitations'))
+  // Never mount the tour over invitation accept — missing tour targets used to
+  // paint a full-screen click shield that made Accept invitation unclickable.
+  const showTourChrome = (active || isClosing) && !onInvitationRoute
+
   return (
     <OnboardingContext.Provider value={{ startTour }}>
       {children}
-      {active && isMobile && (
+      {showTourChrome && isMobile && (
         <MobileWelcomeCard onDismiss={closeTour} />
       )}
-      {(active || isClosing) && !isMobile && (
+      {showTourChrome && !isMobile && (
         <OnboardingTour
           steps={TOUR_STEPS}
           currentStep={currentStep}

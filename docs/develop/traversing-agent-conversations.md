@@ -371,6 +371,264 @@ The first line(s) of a Codex JSONL are `session_meta` events containing:
 Multiple `session_meta` lines may appear if a session was forked — the second line has the
 parent session's metadata.
 
+## Grok Build (pi-coding-agent) sessions
+
+Grok Build (`@earendil-works/pi-coding-agent`, CLI command `grok`) stores sessions as a
+mix of JSONL files and a SQLite search index:
+
+```
+~/.grok/sessions/<url-encoded-cwd>/<session-uuid>/
+```
+
+The URL-encoded cwd uses `%2F` for `/`. For example, a session in
+`/Users/foo/repos/myapp` lives at `~/.grok/sessions/%2FUsers%2Ffoo%2Frepos%2Fmyapp/`.
+
+### Per-session files
+
+| File | Contents |
+|------|----------|
+| `chat_history.jsonl` | Full conversation — one JSON object per line (system, user, assistant messages) |
+| `events.jsonl` | Tool call events and lifecycle events |
+| `updates.jsonl` | Streaming token updates (largest file; skip for summarization) |
+| `summary.json` | Session metadata: title, model, head commit/branch, message counts, last turn summary |
+| `signals.json` | Session statistics: turn count, tool call count, files touched, lines added/removed, context window usage, git commits |
+| `resources_state.json` | Tool parameters and todo list state |
+| `prompts/prompt_N.txt` | Full prompt context for each turn (system + user + tool results concatenated) |
+| `recap_requests/*.json` | Context compaction recaps (when context window fills up) |
+| `hunk_records.jsonl` | File edit hunks applied during the session |
+| `rewind_points.jsonl` | Checkpoint states for rewind/navigation |
+| `terminal/` | Per-command terminal session files |
+| `assets/` | User-provided images saved during the session |
+| `system_prompt.txt` | The system prompt used for this session |
+
+### Session search SQLite
+
+```
+~/.grok/sessions/session_search.sqlite
+```
+
+This database has a `session_docs` table with FTS5 full-text search:
+
+```sql
+CREATE TABLE session_docs (
+  session_id TEXT PRIMARY KEY,
+  cwd TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,   -- Unix epoch seconds
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,         -- concatenated conversation content for search
+  content_hash TEXT NOT NULL,
+  last_indexed_offset INTEGER NOT NULL DEFAULT 0
+);
+```
+
+The `content` column is a text dump of the conversation (user prompts + assistant
+responses), indexed for full-text search via the `session_docs_fts` virtual table.
+
+### `chat_history.jsonl` format
+
+Each line is a JSON object:
+
+```jsonc
+// System message (first line)
+{ "type": "system", "content": "You are Grok 4.5 released by xAI..." }
+
+// User message — content is an array of content blocks
+{
+  "type": "user",
+  "content": [
+    { "type": "text", "text": "<user_info>...</user_info>\n\n<user_query>actual prompt</user_query>" }
+  ],
+  "synthetic_reason": "user_input"  // or "system_reminder", etc.
+}
+
+// Assistant message
+{
+  "type": "assistant",
+  "content": [ { "type": "text", "text": "response text" } ]
+}
+```
+
+**Critical filtering notes:**
+
+- The first ~5 lines are system/setup messages (system prompt, user info, git status,
+  skills list, MCP server info). Skip them when extracting conversation content.
+- User prompts are wrapped in `<user_query>...</user_query>` tags inside the text
+  content block. Extract with regex or string search.
+- Many `type: "user"` messages have `synthetic_reason: "system_reminder"` — these are
+  system-injected context, not human input. Filter for `synthetic_reason` absent or
+  `"user_input"` to get actual user prompts.
+- `content` can be a string or an array of `{ "type": "text", "text": "..." }` blocks.
+  Always handle both.
+
+### `summary.json` format
+
+```jsonc
+{
+  "info": { "id": "uuid", "cwd": "/path/to/worktree" },
+  "session_summary": "Human-readable title",
+  "created_at": "ISO-8601",
+  "updated_at": "ISO-8601",
+  "num_messages": 1612,          // total events
+  "num_chat_messages": 680,      // lines in chat_history.jsonl
+  "current_model_id": "grok-4.5",
+  "head_commit": "abc123...",
+  "head_branch": "codex/workspaces",
+  "git_root_dir": "/path/to/.git/",
+  "git_remotes": ["https://github.com/..."],
+  "last_turn_summary": "Short description of last turn",
+  "agent_name": "grok-build-plan",
+  "reasoning_effort": "high",
+  "sandbox_profile": "off"
+}
+```
+
+### `signals.json` format
+
+Rich session statistics for quick assessment:
+
+```jsonc
+{
+  "turnCount": 7,
+  "userMessageCount": 7,
+  "assistantMessageCount": 126,
+  "toolCallCount": 281,
+  "toolsUsed": ["read_file", "run_terminal_command", "grep", "write", ...],
+  "gitCommitCount": 6,
+  "contextWindowUsage": 63,       // percentage
+  "contextTokensUsed": 319747,
+  "contextWindowTokens": 500000,
+  "agentFilesTouched": 21,
+  "agentLinesAdded": 882,
+  "agentLinesRemoved": 206,
+  "sessionDurationSeconds": 3744,
+  "errorCount": 2,
+  "compactionCount": 0
+}
+```
+
+### Active sessions
+
+`~/.grok/active_sessions.json` lists currently running sessions:
+
+```json
+[
+  {
+    "session_id": "uuid",
+    "pid": 29962,
+    "cwd": "/path/to/worktree",
+    "opened_at": "ISO-8601"
+  }
+]
+```
+
+### Grok Build: query patterns
+
+#### Find a session by title or keyword
+
+```sql
+-- Using the FTS5 search index
+SELECT session_id, title, cwd
+FROM session_docs_fts
+WHERE session_docs_fts MATCH 'realtime chats'
+ORDER BY rank;
+
+-- Or using LIKE on the base table
+SELECT session_id, title, cwd, datetime(updated_at, 'unixepoch', 'localtime') as updated
+FROM session_docs
+WHERE title LIKE '%workspace%' OR content LIKE '%realtime%'
+ORDER BY updated_at DESC;
+```
+
+#### List all sessions for a working directory
+
+```sql
+SELECT session_id, title, datetime(updated_at, 'unixepoch', 'localtime') as updated
+FROM session_docs
+WHERE cwd = '/Users/divyanshlalwani/Downloads/overlay-mono/overlay-landing-workspaces'
+ORDER BY updated_at DESC;
+```
+
+#### Extract user prompts from a session
+
+```bash
+python3 -c "
+import json, re
+path = '~/.grok/sessions/<encoded-cwd>/<uuid>/chat_history.jsonl'
+with open(path) as f:
+    for line in f:
+        obj = json.loads(line)
+        if obj.get('type') != 'user':
+            continue
+        sr = obj.get('synthetic_reason', '')
+        if sr and sr != 'user_input':
+            continue
+        content = obj.get('content', '')
+        if isinstance(content, list):
+            content = ' '.join(c.get('text','') for c in content if c.get('type')=='text')
+        match = re.search(r'<user_query>(.*?)</user_query>', content, re.DOTALL)
+        if match:
+            print(match.group(1).strip()[:500])
+            print('---')
+"
+```
+
+#### Extract assistant responses
+
+```bash
+python3 -c "
+import json
+path = '~/.grok/sessions/<encoded-cwd>/<uuid>/chat_history.jsonl'
+with open(path) as f:
+    for line in f:
+        obj = json.loads(line)
+        if obj.get('type') != 'assistant':
+            continue
+        content = obj.get('content', '')
+        if isinstance(content, list):
+            content = ' '.join(c.get('text','') for c in content if c.get('type')=='text')
+        if content and len(content.strip()) > 10:
+            print(content[:500])
+            print('---')
+"
+```
+
+#### Get session statistics
+
+```bash
+cat ~/.grok/sessions/<encoded-cwd>/<uuid>/signals.json | python3 -m json.tool
+```
+
+#### Get session metadata and current state
+
+```bash
+cat ~/.grok/sessions/<encoded-cwd>/<uuid>/summary.json | python3 -m json.tool
+```
+
+### Grok Build: gotchas
+
+- **URL-encoded paths**: Session directories use URL-encoded cwd (`%2F` for `/`). Always
+  encode the path when constructing the directory path.
+- **`updates.jsonl` is huge**: This file (9+ MB for a 1-hour session) contains streaming
+  token chunks. Never read it for summarization — use `chat_history.jsonl` instead.
+- **`<user_query>` tags**: User prompts are wrapped in `<user_query>` tags inside the
+  content text block. Always extract the inner text, not the full content block.
+- **System-injected user messages**: Many `type: "user"` lines have
+  `synthetic_reason: "system_reminder"` — these are MCP server info, skills lists, or
+  other system context, not human input. Filter by `synthetic_reason`.
+- **`prompt_history.jsonl` at the cwd level**: This file exists at
+  `~/.grok/sessions/<encoded-cwd>/prompt_history.jsonl` (not inside the session
+  directory) and contains prompts for all sessions in that cwd, but content is often
+  empty. Use `chat_history.jsonl` inside the session directory instead.
+- **Images**: User-provided images are saved to `assets/` within the session directory
+  and referenced by path in the user message content.
+- **`recap_requests/`**: When context compaction occurs, recap JSON files are written
+  here. The `last_recap_main_turn` file tracks the last compacted turn number.
+- **Multiple sessions per cwd**: The same cwd can have multiple session directories.
+  Use `summary.json` timestamps or the `session_docs` table to find the right one.
+- **`signals.json` for quick assessment**: Before reading the full conversation, check
+  `signals.json` for `turnCount`, `gitCommitCount`, `agentFilesTouched`, and
+  `contextWindowUsage` to gauge session scope.
+
 ## Workflow: summarize a session
 
 1. **Find the session** — query `sessions` by title keyword or time window.
