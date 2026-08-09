@@ -1,4 +1,5 @@
 import { logAuthDebug, summarizeEnvResolutionForLog, summarizeJwtForLog } from './authDebug'
+import { verifyBrowserConvexAccessToken } from './browserConvexToken'
 
 /** Canonical WorkOS issuer; tokens may use a trailing slash (e.g. AuthKit defaults). */
 const WORKOS_ISSUER_PRIMARY = 'https://api.workos.com'
@@ -305,6 +306,12 @@ async function verifyRs256Signature(
   )
 }
 
+function isConvexFetchForbiddenError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  return error.message.includes("Can't use fetch()")
+    || error.message.includes('fetch() in queries and mutations')
+}
+
 export async function getVerifiedAccessTokenClaims(
   accessToken: string,
 ): Promise<JwtAccessTokenClaims | null> {
@@ -319,6 +326,21 @@ export async function getVerifiedAccessTokenClaims(
   const claims = decodeBase64UrlJson<JwtAccessTokenClaims>(payloadSegment)
   if (!header || !claims) return null
 
+  // Browser Convex subscriptions use HS256 tokens minted by the Next BFF.
+  // Queries/mutations cannot call fetch() for WorkOS JWKS, so this path is the
+  // only browser-auth mechanism that is safe inside reactive Convex queries.
+  if (header.alg === 'HS256') {
+    const browserClaims = await verifyBrowserConvexAccessToken(trimmed)
+    if (!browserClaims) return null
+    return {
+      iss: browserClaims.iss,
+      sub: browserClaims.sub,
+      aud: browserClaims.aud,
+      exp: browserClaims.exp,
+      iat: browserClaims.iat,
+    }
+  }
+
   if (header.alg !== 'RS256' || typeof header.kid !== 'string' || !header.kid.trim()) {
     return null
   }
@@ -327,25 +349,37 @@ export async function getVerifiedAccessTokenClaims(
 
   const signingInput = `${headerSegment}.${payloadSegment}`
 
-  if (!isTrustedWorkOsIssuer(claims.iss)) {
-    return verifyBetterAuthToken(header, claims, signingInput, signatureSegment)
+  try {
+    if (!isTrustedWorkOsIssuer(claims.iss)) {
+      return await verifyBetterAuthToken(header, claims, signingInput, signatureSegment)
+    }
+
+    const audiences = normalizeAudience(claims.aud)
+
+    let verified = false
+    if (audiences.length > 0) {
+      const clientId = selectWorkOsClientId(claims.aud)
+      if (!clientId) return null
+      verified = await verifyTokenAgainstClientId(clientId, header.kid, signingInput, signatureSegment)
+    } else {
+      const clientId = selectWorkOsClientIdForVerification(claims.aud)
+      verified = clientId
+        ? await verifyTokenAgainstClientId(clientId, header.kid, signingInput, signatureSegment)
+        : await verifyTokenAgainstAnyConfiguredClientId(header.kid, signingInput, signatureSegment)
+    }
+
+    return verified ? claims : null
+  } catch (error) {
+    // WorkOS/Better Auth JWKS verification uses fetch(), which Convex forbids
+    // in queries and mutations. Fail closed instead of crashing the client.
+    if (isConvexFetchForbiddenError(error)) {
+      logAuthDebug('WorkOS JWT verification requires fetch; unavailable in Convex queries', {
+        token: summarizeJwtForLog(trimmed),
+      })
+      return null
+    }
+    throw error
   }
-
-  const audiences = normalizeAudience(claims.aud)
-
-  let verified = false
-  if (audiences.length > 0) {
-    const clientId = selectWorkOsClientId(claims.aud)
-    if (!clientId) return null
-    verified = await verifyTokenAgainstClientId(clientId, header.kid, signingInput, signatureSegment)
-  } else {
-    const clientId = selectWorkOsClientIdForVerification(claims.aud)
-    verified = clientId
-      ? await verifyTokenAgainstClientId(clientId, header.kid, signingInput, signatureSegment)
-      : await verifyTokenAgainstAnyConfiguredClientId(header.kid, signingInput, signatureSegment)
-  }
-
-  return verified ? claims : null
 }
 
 export async function debugAccessTokenVerification(

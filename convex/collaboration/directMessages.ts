@@ -253,10 +253,10 @@ export const listMessages = query({
  * new messages without polling the Next.js BFF.
  *
  * Auth failures return `{ ok: false }` (not an empty message list) so the
- * client keeps the last valid transcript. The Convex deployment must have
- * `WORKOS_CLIENT_ID` / `DEV_WORKOS_CLIENT_ID` (JWKS is public) so browser
- * WorkOS access tokens can be verified here — without those env vars every
- * subscription fails closed and rooms never go live.
+ * client keeps the last valid transcript. Browser tokens must be the HS256
+ * tokens from `/api/auth/convex-token` (signed with `INTERNAL_API_SECRET`).
+ * WorkOS JWTs cannot be verified inside Convex queries because JWKS uses
+ * fetch(), which queries forbid.
  */
 export const watchRoomMessages = query({
   args: {
