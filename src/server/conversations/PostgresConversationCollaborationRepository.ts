@@ -177,6 +177,79 @@ implements ConversationCollaborationRepository {
     return id
   }
 
+  async addAgentMessage(args: {
+    actorUserId: string
+    authorPrincipalId: string
+    clientNonce: string
+    content: string
+    conversationId: string
+    modelId: string
+    threadRootMessageId?: string
+    tokens?: { input: number; output: number }
+    turnId: string
+    workspaceId: string
+  }): Promise<string> {
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    const [agent] = await this.db.select({ principalId: workspacePrincipals.id })
+      .from(conversationParticipants)
+      .innerJoin(
+        workspacePrincipals,
+        eq(workspacePrincipals.id, conversationParticipants.principalId),
+      )
+      .where(and(
+        eq(conversationParticipants.conversationId, args.conversationId),
+        eq(conversationParticipants.principalId, args.authorPrincipalId),
+        eq(conversationParticipants.status, 'active'),
+        eq(workspacePrincipals.workspaceId, args.workspaceId),
+        eq(workspacePrincipals.type, 'agent'),
+        isNull(workspacePrincipals.archivedAt),
+      ))
+      .limit(1)
+    if (!agent) throw new Error('AGENT_PARTICIPANT_REQUIRED')
+
+    const [existing] = await this.db.select({ id: conversationMessages.id })
+      .from(conversationMessages)
+      .where(and(
+        eq(conversationMessages.conversationId, args.conversationId),
+        eq(conversationMessages.clientNonce, args.clientNonce),
+      ))
+      .limit(1)
+    if (existing) return existing.id
+
+    const id = `message_${randomUUID()}`
+    const now = new Date()
+    await this.db.transaction(async (tx) => {
+      await tx.insert(conversationMessages).values({
+        id,
+        conversationId: args.conversationId,
+        userId: args.actorUserId,
+        turnId: args.turnId,
+        role: 'assistant',
+        mode: 'act',
+        content: args.content,
+        contentType: 'text',
+        modelId: args.modelId,
+        tokens: args.tokens,
+        status: 'completed',
+        authorKind: 'agent',
+        authorPrincipalId: args.authorPrincipalId,
+        clientNonce: args.clientNonce,
+        threadRootMessageId: args.threadRootMessageId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await tx.update(conversations).set({ lastMode: 'act', lastModified: now, updatedAt: now })
+        .where(eq(conversations.id, args.conversationId))
+      await emitConversationEvent(tx, {
+        conversationId: args.conversationId,
+        messageId: id,
+        type: 'message.created',
+        userId: args.actorUserId,
+      })
+    })
+    return id
+  }
+
   async getConversationEventCursor(args: { actorUserId: string; workspaceId: string }): Promise<number> {
     const ids = await this.listAccessibleConversationIds(args)
     if (ids.length === 0) return 0
