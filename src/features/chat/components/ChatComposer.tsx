@@ -289,7 +289,7 @@ function ComposerControls(props: ComposerControlsProps) {
 function mentionReferenceLabel(props: Pick<ComposerViewProps, 'capabilities' | 'mentionCategories'>): string {
   const { capabilities, mentionCategories } = props
   const targets = [
-    mentionCategories?.some((category) => category.type === 'person') ? 'people and agents' : null,
+    mentionCategories?.some((category) => category.type === 'person') ? 'members' : null,
     capabilities.files ? 'files' : null,
     capabilities.skills ? 'skills' : null,
     capabilities.automations ? 'automations' : null,
@@ -305,7 +305,8 @@ function composerPlaceholder(props: ComposerViewProps): string {
   if (props.mode === 'automate') {
     return 'Describe an automation, use @ to reference available context...'
   }
-  return `Ask anything, use @ to ${mentionReferenceLabel(props).toLowerCase()}...`
+  const referenceLabel = mentionReferenceLabel(props)
+  return `Ask anything, use @ to ${referenceLabel.charAt(0).toLowerCase()}${referenceLabel.slice(1)}...`
 }
 
 function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HTMLInputElement | null> }) {

@@ -1,4 +1,6 @@
 import { Suspense } from 'react'
+
+export const instant = false
 import ChatSuspenseBoundary from '@/features/chat/components/ChatSuspenseBoundary'
 import { getOverlaySession } from '@/server/auth/session'
 import { getInitialChatHistory } from '@/server/app/route-data'

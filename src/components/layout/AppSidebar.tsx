@@ -46,8 +46,17 @@ import dynamic from 'next/dynamic'
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 import type { MentionType } from '@/shared/knowledge/mention-types'
 import { TEMPORARY_CHAT_UI_EVENT, type TemporaryChatUiEventDetail } from '@/shared/chat/temporary-chat-ui'
-import { NEW_CHANNEL_EVENT, NEW_DIRECT_MESSAGE_EVENT } from '@/shared/chat/collaboration-events'
+import {
+  COLLABORATION_NOTIFICATIONS_CHANGED_EVENT,
+  NEW_CHANNEL_EVENT,
+  NEW_DIRECT_MESSAGE_EVENT,
+} from '@/shared/chat/collaboration-events'
 import { getLastChatForView } from '@/shared/chat/last-chat-by-view'
+import {
+  selectConversationForView,
+  type CollaborationChatView,
+} from '@/shared/chat/chat-view-navigation'
+import type { CachedConversation } from '@/shared/chat/chat-list-cache'
 import {
   getSidebarCollapsedSnapshot,
   setStoredSidebarCollapsed,
@@ -200,11 +209,13 @@ export default function AppSidebar({
     else setStoredSidebarCollapsed(next)
   }, [publicShowcase])
   const [chatPanelRefreshKey, setChatPanelRefreshKey] = useState(0)
+  const [collaborationUnreadCount, setCollaborationUnreadCount] = useState(0)
   const [projectsPanelRefreshKey, setProjectsPanelRefreshKey] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const accountMenuPortalRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
+  const chatViewNavigationVersionRef = useRef(0)
   const [accountMenuPosition, setAccountMenuPosition] = useState<{
     left: number
     bottom: number
@@ -318,6 +329,32 @@ export default function AppSidebar({
     if (chatViewParam === 'all') return 'all'
     return 'personal'
   })()
+  const shouldLoadCollaborationUnread = !publicShowcase && Boolean(user) && Boolean(activeWorkspaceId)
+  const cumulativeChatUnread = totalUnread + (shouldLoadCollaborationUnread ? collaborationUnreadCount : 0)
+
+  useEffect(() => {
+    if (publicShowcase || !user || !activeWorkspaceId) {
+      return
+    }
+    let cancelled = false
+    const loadUnread = async () => {
+      try {
+        const result = await overlayAppClient.conversations.notifications({ unreadOnly: true, limit: 100 })
+        if (!cancelled) setCollaborationUnreadCount(Array.isArray(result.notifications) ? result.notifications.length : 0)
+      } catch {
+        // The primary chat navigation stays usable while notification state retries.
+      }
+    }
+    const handleChanged = () => { void loadUnread() }
+    void loadUnread()
+    const timer = window.setInterval(handleChanged, 15_000)
+    window.addEventListener(COLLABORATION_NOTIFICATIONS_CHANGED_EVENT, handleChanged)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+      window.removeEventListener(COLLABORATION_NOTIFICATIONS_CHANGED_EVENT, handleChanged)
+    }
+  }, [activeWorkspaceId, publicShowcase, user])
 
   useEffect(() => {
     // Unread was folded into Activity; rewrite stale deep links.
@@ -676,13 +713,15 @@ export default function AppSidebar({
 
   const panelNav: SecondaryPanelNav | undefined = (() => {
     if (panelKind === 'chat') {
-      const chatItems = publicShowcase
+      const chatItems = (publicShowcase
         ? chatsInlineItems.filter((item) => item.id !== 'activity')
-        : chatsInlineItems
+        : chatsInlineItems).map((item) => (
+          item.id === 'activity' ? { ...item, badgeCount: cumulativeChatUnread } : item
+        ))
       return {
         items: chatItems,
         activeId: chatsView,
-        onSelect: (next) => {
+        onSelect: async (next) => {
           closeMobileDrawer()
           if (next === 'activity') {
             router.push(activeWorkspaceId
@@ -693,11 +732,28 @@ export default function AppSidebar({
           const baseHref = activeWorkspaceId
             ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
             : '/app/chat'
-          const lastChatId = getLastChatForView(activeWorkspaceId, next)
+          const navigationVersion = ++chatViewNavigationVersionRef.current
+          let conversationId: string | null = null
+          if (next === 'dms' || next === 'channels') {
+            try {
+              const page = await overlayAppClient.conversations.getPage<CachedConversation>({
+                limit: 24,
+                view: next as CollaborationChatView,
+              })
+              if (navigationVersion !== chatViewNavigationVersionRef.current) return
+              conversationId = selectConversationForView(
+                page.data,
+                getLastChatForView(activeWorkspaceId, next),
+              )?._id ?? null
+            } catch {
+              // Stay in the selected subview with its empty state. Reusing an
+              // unvalidated id here can mix a DM and channel after a failed fetch.
+            }
+          }
           router.push(`${baseHref}?${new URLSearchParams({
             ...(publicShowcase ? { showcase: '1' } : {}),
             view: next,
-            ...(lastChatId ? { id: lastChatId } : {}),
+            ...(conversationId ? { id: conversationId } : {}),
           }).toString()}`)
         },
       }
@@ -934,7 +990,7 @@ export default function AppSidebar({
       disabled: item.disabled,
       active: navItemActive(item),
       pending: Boolean(item.href && effectivePendingHref === item.href),
-      badgeCount: item.href === '/app/chat' ? totalUnread : 0,
+      badgeCount: item.href === '/app/chat' ? cumulativeChatUnread : 0,
       title: shortcut ? `${item.label} · ⌥${shortcut}` : item.label,
       dataTour: item.href === '/app/chat'
         ? 'nav-chat'
@@ -1069,7 +1125,7 @@ export default function AppSidebar({
             const { href, label, icon: Icon, disabled } = item
             const active = navItemActive(item)
             const isPending = Boolean(href && effectivePendingHref === href)
-            const unreadCount = href === '/app/chat' ? totalUnread : 0
+            const unreadCount = href === '/app/chat' ? cumulativeChatUnread : 0
             const opensPanel = panelKindForNavItem(item) != null
             const rowClass = `group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors ${
               disabled

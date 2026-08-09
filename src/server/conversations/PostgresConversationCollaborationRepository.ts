@@ -177,6 +177,79 @@ implements ConversationCollaborationRepository {
     return id
   }
 
+  async addAgentMessage(args: {
+    actorUserId: string
+    authorPrincipalId: string
+    clientNonce: string
+    content: string
+    conversationId: string
+    modelId: string
+    threadRootMessageId?: string
+    tokens?: { input: number; output: number }
+    turnId: string
+    workspaceId: string
+  }): Promise<string> {
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    const [agent] = await this.db.select({ principalId: workspacePrincipals.id })
+      .from(conversationParticipants)
+      .innerJoin(
+        workspacePrincipals,
+        eq(workspacePrincipals.id, conversationParticipants.principalId),
+      )
+      .where(and(
+        eq(conversationParticipants.conversationId, args.conversationId),
+        eq(conversationParticipants.principalId, args.authorPrincipalId),
+        eq(conversationParticipants.status, 'active'),
+        eq(workspacePrincipals.workspaceId, args.workspaceId),
+        eq(workspacePrincipals.type, 'agent'),
+        isNull(workspacePrincipals.archivedAt),
+      ))
+      .limit(1)
+    if (!agent) throw new Error('AGENT_PARTICIPANT_REQUIRED')
+
+    const [existing] = await this.db.select({ id: conversationMessages.id })
+      .from(conversationMessages)
+      .where(and(
+        eq(conversationMessages.conversationId, args.conversationId),
+        eq(conversationMessages.clientNonce, args.clientNonce),
+      ))
+      .limit(1)
+    if (existing) return existing.id
+
+    const id = `message_${randomUUID()}`
+    const now = new Date()
+    await this.db.transaction(async (tx) => {
+      await tx.insert(conversationMessages).values({
+        id,
+        conversationId: args.conversationId,
+        userId: args.actorUserId,
+        turnId: args.turnId,
+        role: 'assistant',
+        mode: 'act',
+        content: args.content,
+        contentType: 'text',
+        modelId: args.modelId,
+        tokens: args.tokens,
+        status: 'completed',
+        authorKind: 'agent',
+        authorPrincipalId: args.authorPrincipalId,
+        clientNonce: args.clientNonce,
+        threadRootMessageId: args.threadRootMessageId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await tx.update(conversations).set({ lastMode: 'act', lastModified: now, updatedAt: now })
+        .where(eq(conversations.id, args.conversationId))
+      await emitConversationEvent(tx, {
+        conversationId: args.conversationId,
+        messageId: id,
+        type: 'message.created',
+        userId: args.actorUserId,
+      })
+    })
+    return id
+  }
+
   async getConversationEventCursor(args: { actorUserId: string; workspaceId: string }): Promise<number> {
     const ids = await this.listAccessibleConversationIds(args)
     if (ids.length === 0) return 0
@@ -881,18 +954,38 @@ implements ConversationCollaborationRepository {
     const content = args.content.trim()
     if (!content) throw new Error('Message content is required')
     const now = new Date()
-    const rows = await this.db.update(conversationMessages).set({
-      content,
-      editedAt: now,
-      updatedAt: now,
-    }).where(and(
-      eq(conversationMessages.id, args.messageId),
-      eq(conversationMessages.conversationId, args.conversationId),
-      eq(conversationMessages.authorKind, 'human'),
-      eq(conversationMessages.authorPrincipalId, actor.id),
-      isNull(conversationMessages.deletedAt),
-    )).returning({ id: conversationMessages.id })
-    return rows.length > 0
+    return await this.db.transaction(async (tx) => {
+      const [message] = await tx.select({
+        content: conversationMessages.content,
+        editHistory: conversationMessages.editHistory,
+      }).from(conversationMessages).where(and(
+        eq(conversationMessages.id, args.messageId),
+        eq(conversationMessages.conversationId, args.conversationId),
+        eq(conversationMessages.authorKind, 'human'),
+        eq(conversationMessages.authorPrincipalId, actor.id),
+        isNull(conversationMessages.deletedAt),
+      )).limit(1).for('update')
+      if (!message) return false
+      const rows = await tx.update(conversationMessages).set({
+        content,
+        editedAt: now,
+        editHistory: [
+          ...(message.editHistory ?? []),
+          { content: message.content, editedAt: now.getTime() },
+        ],
+        updatedAt: now,
+      }).where(eq(conversationMessages.id, args.messageId)).returning({ id: conversationMessages.id })
+      if (rows.length > 0) {
+        await emitConversationEvent(tx, {
+          conversationId: args.conversationId,
+          messageId: args.messageId,
+          payload: { editedAt: now.getTime() },
+          type: 'message.ui-updated',
+          userId: actor.userId ?? args.actorUserId,
+        })
+      }
+      return rows.length > 0
+    })
   }
 
   async deleteMessage(args: {
@@ -1180,6 +1273,7 @@ implements ConversationCollaborationRepository {
 
   async markNotificationsRead(args: {
     actorUserId: string
+    conversationId?: string
     notificationIds?: string[]
     workspaceId: string
   }): Promise<number> {
@@ -1188,6 +1282,9 @@ implements ConversationCollaborationRepository {
       eq(workspaceNotifications.workspaceId, args.workspaceId),
       eq(workspaceNotifications.recipientPrincipalId, actor.id),
       isNull(workspaceNotifications.readAt),
+      args.conversationId
+        ? eq(workspaceNotifications.conversationId, args.conversationId)
+        : undefined,
       args.notificationIds?.length
         ? inArray(workspaceNotifications.id, args.notificationIds)
         : undefined,
@@ -1406,6 +1503,7 @@ function mapCollaborationMessage(
     clientNonce: row.clientNonce ?? undefined,
     deletedAt: row.deletedAt?.getTime(),
     editedAt: row.editedAt?.getTime(),
+    editHistory: row.editHistory ?? undefined,
     authorKind: row.authorKind as ConversationMessageRow['authorKind'],
     authorPrincipalId: row.authorPrincipalId ?? undefined,
     threadRootMessageId: row.threadRootMessageId ?? undefined,

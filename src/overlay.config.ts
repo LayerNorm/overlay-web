@@ -24,7 +24,12 @@ const baseOverlayAppConfig = defineOverlayAppConfig({
   },
   navigation: [...DEFAULT_OVERLAY_NAVIGATION],
   settingsSections: [...DEFAULT_OVERLAY_SETTINGS_SECTIONS],
-  featureFlags: [...DEFAULT_OVERLAY_FEATURE_FLAGS],
+  featureFlags: DEFAULT_OVERLAY_FEATURE_FLAGS.map((flag) => (
+    flag.id === 'workspaces' || flag.id === 'collaborativeChats' || flag.id === 'channels'
+      || flag.id === 'agents' || flag.id === 'resourceSharing'
+      ? { ...flag, enabled: true }
+      : flag
+  )),
   featureModules: [...DEFAULT_OVERLAY_FEATURE_MODULES],
   sidebarActions: [...DEFAULT_OVERLAY_SIDEBAR_ACTIONS],
   settingsPanels: [...DEFAULT_OVERLAY_SETTINGS_PANELS],
