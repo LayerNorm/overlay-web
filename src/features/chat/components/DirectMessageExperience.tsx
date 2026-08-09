@@ -911,14 +911,20 @@ export function DirectMessageExperience({
         for (const frame of frames) {
           const line = frame.split('\n').find((row) => row.startsWith('data: '))
           if (!line) continue
-          let event: { type?: string; agentPrincipalId?: string; agentName?: string; delta?: string }
+          let event: {
+            type?: string
+            agentPrincipalId?: string
+            agentName?: string
+            delta?: string
+            message?: string
+          }
           try {
             event = JSON.parse(line.slice(6))
           } catch {
             continue
           }
           if (event.type === 'error') {
-            setNotice('The mentioned agent could not respond. Try again.')
+            setNotice(event.message ?? 'The mentioned agent could not respond. Try again.')
             continue
           }
           if (event.type !== 'delta' || !event.delta) continue

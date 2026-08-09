@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { logger } from '@/server/observability/logger'
-import { invokeWorkspaceAgentsForHumanMessage } from '@/server/agents/workspace-agent-invocation'
+import {
+  invokeWorkspaceAgentsForHumanMessage,
+  WorkspaceAgentInvocationError,
+} from '@/server/agents/workspace-agent-invocation'
 import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
 
 /**
@@ -49,7 +52,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           send({ type: 'done' })
         } catch (error) {
           logger.error('[conversations/agent-reply]', error)
-          send({ type: 'error' })
+          if (error instanceof WorkspaceAgentInvocationError) {
+            send({
+              type: 'error',
+              reasonCode: error.reasonCode,
+              message: error.message,
+            })
+          } else {
+            send({ type: 'error' })
+          }
         } finally {
           try {
             controller.close()

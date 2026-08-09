@@ -56,6 +56,18 @@ export interface ConversationCollaborationRepository {
     turnId: string
     workspaceId: string
   }): Promise<string>
+  addAgentMessage(args: {
+    actorUserId: string
+    authorPrincipalId: string
+    clientNonce: string
+    content: string
+    conversationId: string
+    modelId: string
+    threadRootMessageId?: string
+    tokens?: { input: number; output: number }
+    turnId: string
+    workspaceId: string
+  }): Promise<string>
   getConversationEventCursor(args: {
     actorUserId: string
     workspaceId: string

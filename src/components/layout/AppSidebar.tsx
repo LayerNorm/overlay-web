@@ -53,6 +53,11 @@ import {
 } from '@/shared/chat/collaboration-events'
 import { getLastChatForView } from '@/shared/chat/last-chat-by-view'
 import {
+  selectConversationForView,
+  type CollaborationChatView,
+} from '@/shared/chat/chat-view-navigation'
+import type { CachedConversation } from '@/shared/chat/chat-list-cache'
+import {
   getSidebarCollapsedSnapshot,
   setStoredSidebarCollapsed,
   subscribeToSidebarCollapsed,
@@ -210,6 +215,7 @@ export default function AppSidebar({
   const accountMenuPortalRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
+  const chatViewNavigationVersionRef = useRef(0)
   const [accountMenuPosition, setAccountMenuPosition] = useState<{
     left: number
     bottom: number
@@ -715,7 +721,7 @@ export default function AppSidebar({
       return {
         items: chatItems,
         activeId: chatsView,
-        onSelect: (next) => {
+        onSelect: async (next) => {
           closeMobileDrawer()
           if (next === 'activity') {
             router.push(activeWorkspaceId
@@ -726,11 +732,28 @@ export default function AppSidebar({
           const baseHref = activeWorkspaceId
             ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
             : '/app/chat'
-          const lastChatId = getLastChatForView(activeWorkspaceId, next)
+          const navigationVersion = ++chatViewNavigationVersionRef.current
+          let conversationId: string | null = null
+          if (next === 'dms' || next === 'channels') {
+            try {
+              const page = await overlayAppClient.conversations.getPage<CachedConversation>({
+                limit: 24,
+                view: next as CollaborationChatView,
+              })
+              if (navigationVersion !== chatViewNavigationVersionRef.current) return
+              conversationId = selectConversationForView(
+                page.data,
+                getLastChatForView(activeWorkspaceId, next),
+              )?._id ?? null
+            } catch {
+              // Stay in the selected subview with its empty state. Reusing an
+              // unvalidated id here can mix a DM and channel after a failed fetch.
+            }
+          }
           router.push(`${baseHref}?${new URLSearchParams({
             ...(publicShowcase ? { showcase: '1' } : {}),
             view: next,
-            ...(lastChatId ? { id: lastChatId } : {}),
+            ...(conversationId ? { id: conversationId } : {}),
           }).toString()}`)
         },
       }
