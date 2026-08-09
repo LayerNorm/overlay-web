@@ -43,6 +43,7 @@ The `docs/develop/` directory contains living documentation that coding agents *
 | `docs/develop/customization.mdx` | Any change to theming, settings panels, or workspace configuration. |
 | `docs/develop/local-integrations.mdx` | Any change to local integration setup, connector configuration, or OAuth flow. |
 | `docs/develop/automation-durability-and-visual-editor.md` | Any change to the automation graph model, Workflow SDK integration, ReactFlow canvas, or automation run durability. |
+| `docs/develop/traversing-agent-conversations.md` | Any change to how Devin CLI or Codex sessions are stored/queried, or new query patterns for extracting conversation data from `sessions.db` or Codex JSONL files. |
 
 **Rules:**
 1. Read the relevant doc(s) before starting work in a new area.
