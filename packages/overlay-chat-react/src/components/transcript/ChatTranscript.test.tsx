@@ -155,7 +155,7 @@ test('MediaExchange keeps platform-neutral image/video loading behavior', () => 
   )
 
   assert.match(markup, /preload="metadata"/)
-  assert.match(markup, /playsinline=""/)
+  assert.match(markup, /playsInline=""/)
   assert.doesNotMatch(markup, /autoplay/)
 })
 

@@ -119,6 +119,7 @@ export function ChatComposer(props: ChatComposerProps) {
           }`}
         >
           <ComposerAlerts attachmentError={viewProps.attachmentError} composerNotice={viewProps.composerNotice} />
+          {viewProps.beforeComposerContent}
           {viewProps.billingPromptContent}
           {viewProps.isSendBlocked && !viewProps.isActiveLoading ? (
             viewProps.blockedComposerContent
@@ -182,6 +183,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
           onMentionsChange={props.onMentionsChange}
           onPaste={props.onPaste}
           onUploadFile={() => props.docInputRef.current?.click()}
+          mentionCategories={props.mentionCategories}
           placeholder={composerPlaceholder(props)}
           className={undefined}
           onKeyDown={(event) => {
@@ -219,7 +221,7 @@ type ComposerControlsProps = ComposerViewProps & {
 }
 
 function ComposerControls(props: ComposerControlsProps) {
-  const mentionTooltip = mentionReferenceLabel(props.capabilities)
+  const mentionTooltip = mentionReferenceLabel(props)
   return (
     <div className={`mt-2 grid min-h-9 items-center gap-2 ${
       props.isTemporaryChat
@@ -284,8 +286,10 @@ function ComposerControls(props: ComposerControlsProps) {
   )
 }
 
-function mentionReferenceLabel(capabilities: ComposerViewProps['capabilities']): string {
+function mentionReferenceLabel(props: Pick<ComposerViewProps, 'capabilities' | 'mentionCategories'>): string {
+  const { capabilities, mentionCategories } = props
   const targets = [
+    mentionCategories?.some((category) => category.type === 'person') ? 'people and agents' : null,
     capabilities.files ? 'files' : null,
     capabilities.skills ? 'skills' : null,
     capabilities.automations ? 'automations' : null,
@@ -297,10 +301,11 @@ function mentionReferenceLabel(capabilities: ComposerViewProps['capabilities']):
 }
 
 function composerPlaceholder(props: ComposerViewProps): string {
+  if (props.placeholder) return props.placeholder
   if (props.mode === 'automate') {
     return 'Describe an automation, use @ to reference available context...'
   }
-  return `Ask anything, use @ to ${mentionReferenceLabel(props.capabilities).toLowerCase()}...`
+  return `Ask anything, use @ to ${mentionReferenceLabel(props).toLowerCase()}...`
 }
 
 function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HTMLInputElement | null> }) {
@@ -476,4 +481,3 @@ function GenerationChip({ chip, onClear }: { chip: 'image' | 'video'; onClear: (
     </div>
   )
 }
-

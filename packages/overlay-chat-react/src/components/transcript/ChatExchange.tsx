@@ -29,7 +29,6 @@ import {
   SingleToolCallRow,
   ToolCallsCollapsedGroup,
   WebSearchToolBlock,
-  renderInlineMentions,
 } from '../exchange'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { ExchangeActions } from './ExchangeActions'
@@ -107,7 +106,7 @@ export function ChatExchange({
   userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, isStreaming, isTextStreaming, errorMessage,
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, status, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
-  onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue, getModelDisplayName,
+  onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, onContinue, getModelDisplayName,
   generatedUiConnectorActions, onGeneratedUiChange, presentation,
 }: ChatExchangeProps) {
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
@@ -214,8 +213,8 @@ export function ChatExchange({
               </div>
             )}
             {showTextBubble && (
-              <UserMessageBubble className="ml-auto max-w-full">
-                {renderInlineMentions(userBodyText, userMentions)}
+              <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
+                <MarkdownMessage text={userBodyText} isStreaming={false} />
               </UserMessageBubble>
             )}
           </div>

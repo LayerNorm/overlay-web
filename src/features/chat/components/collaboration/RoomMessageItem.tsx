@@ -18,11 +18,12 @@ import {
   X,
 } from 'lucide-react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
-import { FlashCopyIconButton, UserMessageBubble } from '@overlay/chat-react'
-import { renderInlineMentions } from '@overlay/chat-react/exchange'
+import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
+import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
 import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview } from '@overlay/chat-react'
 import { Textarea } from '@overlay/ui/primitives'
+import { MarkdownMessage } from '../MarkdownMessage'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -168,10 +169,10 @@ export function RoomMessageItem({
     </span>
   )
 
-  /** Match personal chat: plain text + mention chips, not markdown headings. */
+  /** Human and agent messages share the same safe GFM renderer. */
   const humanBody = message.text ? (
-    <div className="whitespace-pre-wrap text-[15px] leading-relaxed text-[var(--foreground)]">
-      {renderInlineMentions(message.text, message.mentions)}
+    <div className="text-[15px] leading-relaxed text-[var(--foreground)]">
+      <MarkdownMessage text={message.text} isStreaming={false} />
     </div>
   ) : null
 
@@ -338,7 +339,7 @@ export function RoomMessageItem({
     />
   )
 
-  // ── Sent (yours): right gray bubble + avatar (personal-chat parity) ──
+  // ── Sent (yours): right gray bubble, with no redundant identity chrome. ──
   if (mine && !isAgent) {
     return (
       <div
@@ -347,23 +348,10 @@ export function RoomMessageItem({
       >
         <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
           {toolbar}
-          {grouped ? (
-            <time className="px-1 text-[10px] text-[var(--muted-light)] opacity-0 transition-opacity group-hover/exchange:opacity-100">
-              {timeLabel}
-            </time>
-          ) : (
-            <div className="flex items-center gap-2 px-1">
-              <span className="text-[13px] font-bold text-[var(--foreground)]">You</span>
-              <time className="shrink-0 text-[11px] text-[var(--muted-light)]">{timeLabel}</time>
-              {message.editedAt ? <span className="text-[11px] text-[var(--muted-light)]">edited</span> : null}
-              {message.delivery === 'sending' ? <span className="text-[11px] text-[var(--muted-light)]">sending</span> : null}
-              {pinned ? <Pin size={11} className="shrink-0 text-[var(--muted-light)]" /> : null}
-            </div>
-          )}
           {attachments}
           {editing ? editor : message.text ? (
-            <UserMessageBubble className="ml-auto max-w-full">
-              {renderInlineMentions(message.text, message.mentions)}
+            <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
+              <MarkdownMessage text={message.text} isStreaming={false} />
             </UserMessageBubble>
           ) : null}
           {message.delivery === 'failed' ? (
@@ -374,7 +362,6 @@ export function RoomMessageItem({
           {reactionRow}
           {threadEntry}
         </div>
-        {avatarNode}
       </div>
     )
   }
@@ -388,20 +375,14 @@ export function RoomMessageItem({
       {avatarNode}
       <div className="relative min-w-0 flex-1">
         {toolbar}
-        {grouped ? (
-          <time className="mb-0.5 block text-[11px] text-[var(--muted-light)] opacity-0 transition-opacity group-hover/exchange:opacity-100">
-            {timeLabel}
-          </time>
-        ) : (
-          <div className="mb-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="truncate text-[13px] font-bold text-[var(--foreground)]">
-              {message.authorName}
-            </span>
-            <time className="shrink-0 text-[11px] text-[var(--muted-light)]">{timeLabel}</time>
-            {message.editedAt ? <span className="text-[11px] text-[var(--muted-light)]">edited</span> : null}
-            {pinned ? <Pin size={11} className="shrink-0 text-[var(--muted-light)]" /> : null}
-          </div>
-        )}
+        <div className="mb-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="truncate text-[13px] font-bold text-[var(--foreground)]">
+            {message.authorName}
+          </span>
+          {!grouped ? <time className="shrink-0 text-[11px] text-[var(--muted-light)]">{timeLabel}</time> : null}
+          {message.editedAt ? <span className="text-[11px] text-[var(--muted-light)]">edited</span> : null}
+          {pinned ? <Pin size={11} className="shrink-0 text-[var(--muted-light)]" /> : null}
+        </div>
         {attachments}
         {editing ? editor : isAgent ? (
           <>

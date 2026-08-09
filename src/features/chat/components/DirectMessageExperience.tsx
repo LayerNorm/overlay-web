@@ -54,6 +54,7 @@ import { buildTextTurnPayload } from './chat/chat-send-body-builders'
 import { usePostgresConversationEvents } from './chat/usePostgresConversationEvents'
 import { RoomMessageItem, roomMessageDomId } from './collaboration/RoomMessageItem'
 import { ConvexRoomMessageSubscription } from './collaboration/ConvexRoomMessageSubscription'
+import { takePendingCollaborationMessage } from '../lib/pending-collaboration-message'
 import {
   compareRoomMessageRecords,
   mergeRoomMessages,
@@ -256,6 +257,7 @@ export function DirectMessageExperience({
   const readMarkInFlightRef = useRef(false)
   activeConversationRef.current = conversationId
   const lastTypingSentAt = useRef(0)
+  const pendingCollaborationMessageSentRef = useRef(false)
 
   // ── composer state (identical wiring to the personal chat composer) ─────────
   const [composerNotice, setComposerNotice] = useState<string | null>(null)
@@ -740,9 +742,9 @@ export function DirectMessageExperience({
         id: participant.principalId,
         name: participant.displayName,
         description: participant.principalType === 'agent' ? 'Agent' : 'Member',
-        icon: 'Users',
+        icon: 'UsersRound',
       }))
-    return items.length ? [{ type: 'person', label: 'People', icon: 'Users', items }] : []
+    return items.length ? [{ type: 'person', label: 'People & agents', icon: 'UsersRound', items }] : []
   }, [currentPrincipalId, participants])
 
   function resolveMentionTargets(text: string): string[] {
@@ -863,6 +865,17 @@ export function DirectMessageExperience({
       setAgentResponding(null)
     }
   }
+
+  useEffect(() => {
+    if (showcase || !currentPrincipalId || pendingCollaborationMessageSentRef.current) return
+    const pending = takePendingCollaborationMessage(conversationId)
+    if (!pending) return
+    pendingCollaborationMessageSentRef.current = true
+    void sendMessage(pending.content)
+  // `sendMessage` is intentionally omitted: it is recreated while room state
+  // changes, whereas a pending conversion must be consumed exactly once.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, currentPrincipalId, showcase])
 
   /**
    * Reads the agent's reply as it is written. The server persists the finished
