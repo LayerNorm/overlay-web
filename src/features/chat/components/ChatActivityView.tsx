@@ -12,6 +12,7 @@ import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
+import { dispatchCollaborationNotificationsChanged } from '@/shared/chat/collaboration-events'
 
 const FILTERS: Array<{ value: WorkspaceNotificationFilter; label: string; icon: typeof Bell }> = [
   { value: 'all', label: 'All', icon: Inbox },
@@ -80,7 +81,9 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
         }>({ conversationId: notification.conversationId }).catch(() => null)
       : Promise.resolve(null)
     if (!notification.readAt) {
-      void overlayAppClient.conversations.markNotificationsRead([notification.id]).catch(() => undefined)
+      void overlayAppClient.conversations.markNotificationsRead([notification.id])
+        .then(() => dispatchCollaborationNotificationsChanged())
+        .catch(() => undefined)
       setNotifications((current) => current.map((row) => row.id === notification.id ? { ...row, readAt: Date.now() } : row))
     }
     if (!notification.conversationId) return
@@ -100,7 +103,9 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
     if (unreadIds.length === 0) return
     const readAt = Date.now()
     setNotifications((current) => current.map((row) => row.readAt ? row : { ...row, readAt }))
-    await overlayAppClient.conversations.markNotificationsRead(unreadIds).catch(() => undefined)
+    await overlayAppClient.conversations.markNotificationsRead(unreadIds)
+      .then(() => dispatchCollaborationNotificationsChanged())
+      .catch(() => undefined)
   }
 
   return (

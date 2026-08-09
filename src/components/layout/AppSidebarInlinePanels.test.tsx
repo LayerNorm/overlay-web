@@ -58,6 +58,19 @@ test('a locked subview is inert rather than a dead link', () => {
   assert.match(html, /cursor-default/)
 })
 
+test('activity shows the cumulative unread badge', () => {
+  const html = renderToStaticMarkup(
+    <InlineNavChildren
+      items={[{ id: 'activity', label: 'Activity', badgeCount: 12 }]}
+      activeId=""
+      onSelect={() => undefined}
+    />,
+  )
+  assert.match(html, /Activity/)
+  assert.match(html, /9\+/)
+  assert.match(html, /aria-label="12 unread"/)
+})
+
 test('items with an href render as links so they support open-in-new-tab', () => {
   const html = renderToStaticMarkup(
     <InlineNavChildren

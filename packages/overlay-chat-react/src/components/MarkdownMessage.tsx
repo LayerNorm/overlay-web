@@ -15,6 +15,12 @@ import { markdownRehypePlugins, markdownRehypePluginsStreaming, markdownRemarkPl
 import { createBaseMdComponents, extractLinkText } from './markdown/renderers'
 import { splitStreamingMarkdown, useSmoothStreamedText } from './markdown/streaming'
 import { recordRender, timeSync } from '../lib/perf-debug'
+import {
+  createMentionRemarkPlugin,
+  isMentionHref,
+  mentionChipClass,
+  type ChatMessageMention,
+} from './markdown/mentions'
 
 interface Props {
   text: string
@@ -31,6 +37,8 @@ interface Props {
   suppressTypingIndicator?: boolean
   /** Prefix for /app/* markdown links (extension host). */
   appBaseUrl?: string | null
+  /** Known mentions render as the same distinct pills used by the composer. */
+  mentions?: ChatMessageMention[]
   /**
    * 'token' (default): render the full normalized text through one ReactMarkdown pass
    *   every update, with a shim that closes open structures so partial markdown still
@@ -56,6 +64,7 @@ function MarkdownMessageImpl({
   suppressTypingIndicator = false,
   streamingMode = 'token',
   appBaseUrl = null,
+  mentions,
   onOpenAttachmentPreview,
 }: Props) {
   recordRender(isStreaming ? 'MarkdownMessage(streaming)' : 'MarkdownMessage')
@@ -97,6 +106,10 @@ function MarkdownMessageImpl({
         a(props: any) {
           const href = props.href
           const linkText = extractLinkText(props.children as ReactNode).trim()
+
+          if (isMentionHref(href)) {
+            return <span className={mentionChipClass}>{props.children}</span>
+          }
 
           // Multi-citation chip: `#overlay-webcite-multi-1-2-3`
           if (typeof href === 'string' && href.startsWith('#overlay-webcite-multi-')) {
@@ -175,6 +188,10 @@ function MarkdownMessageImpl({
     },
     [webSources, appBaseUrl, onOpenAttachmentPreview],
   )
+  const activeRemarkPlugins = useMemo(
+    () => [...markdownRemarkPlugins, createMentionRemarkPlugin(mentions)],
+    [mentions],
+  )
   // Smooth pacer: while streaming in token mode, reveal the normalized text one
   // character at a time at a steady rate. When not streaming (or in chunk mode),
   // this returns `normalizedDisplay` immediately so historical renders are untouched.
@@ -233,7 +250,7 @@ function MarkdownMessageImpl({
     return (
       <div className={`markdown-content${isStreaming ? ' markdown-content--streaming' : ''}`}>
         <ReactMarkdown
-          remarkPlugins={markdownRemarkPlugins}
+          remarkPlugins={activeRemarkPlugins}
           rehypePlugins={activeRehypePlugins}
           components={mdRenderComponents}
         >
@@ -248,7 +265,7 @@ function MarkdownMessageImpl({
       {completedBlocks.map((block, index) => (
         <div key={`md-block-${index}`} className="md-block-appear">
           <ReactMarkdown
-            remarkPlugins={markdownRemarkPlugins}
+            remarkPlugins={activeRemarkPlugins}
             rehypePlugins={markdownRehypePlugins}
             components={mdRenderComponents}
           >
@@ -260,7 +277,7 @@ function MarkdownMessageImpl({
       {trailingBlock ? (
         <div key={`md-block-${completedBlocks.length}`} className="md-block-appear">
           <ReactMarkdown
-            remarkPlugins={markdownRemarkPlugins}
+            remarkPlugins={activeRemarkPlugins}
             rehypePlugins={markdownRehypePlugins}
             components={mdRenderComponents}
           >
@@ -312,6 +329,7 @@ export const MarkdownMessage = memo(MarkdownMessageImpl, (prev, next) => {
     prev.streamingMode === next.streamingMode &&
     prev.suppressTypingIndicator === next.suppressTypingIndicator &&
     prev.appBaseUrl === next.appBaseUrl &&
+    prev.mentions === next.mentions &&
     sameCitations(prev.sourceCitations, next.sourceCitations) &&
     sameWebSources(prev.webSources, next.webSources)
   )

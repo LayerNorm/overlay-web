@@ -55,6 +55,7 @@ import { usePostgresConversationEvents } from './chat/usePostgresConversationEve
 import { RoomMessageItem, roomMessageDomId } from './collaboration/RoomMessageItem'
 import { ConvexRoomMessageSubscription } from './collaboration/ConvexRoomMessageSubscription'
 import { takePendingCollaborationMessage } from '../lib/pending-collaboration-message'
+import { dispatchCollaborationNotificationsChanged } from '@/shared/chat/collaboration-events'
 import {
   compareRoomMessageRecords,
   mergeRoomMessages,
@@ -329,6 +330,7 @@ export function DirectMessageExperience({
         createdAt: number
         eventSequence?: number
         editedAt?: number
+        editHistory?: Array<{ content: string; editedAt: number }>
         deletedAt?: number
         clientNonce?: string
         threadRootMessageId?: string
@@ -352,6 +354,7 @@ export function DirectMessageExperience({
             createdAt: number
             eventSequence?: number
             editedAt?: number
+            editHistory?: Array<{ content: string; editedAt: number }>
             deletedAt?: number
             clientNonce?: string
             threadRootMessageId?: string
@@ -393,6 +396,7 @@ export function DirectMessageExperience({
           createdAt: number
           eventSequence?: number
           editedAt?: number
+          editHistory?: Array<{ content: string; editedAt: number }>
           deletedAt?: number
           clientNonce?: string
           threadRootMessageId?: string
@@ -425,9 +429,13 @@ export function DirectMessageExperience({
     if (readMarkInFlightRef.current) return
     readMarkInFlightRef.current = true
     try {
-      await overlayAppClient.conversations.updateParticipantState(conversationId, { markRead: true })
+      await Promise.all([
+        overlayAppClient.conversations.updateParticipantState(conversationId, { markRead: true }),
+        overlayAppClient.conversations.markConversationNotificationsRead(conversationId),
+      ])
       setUnreadBoundarySequence(null)
       setNewMessageCount(0)
+      dispatchCollaborationNotificationsChanged()
     } finally {
       readMarkInFlightRef.current = false
     }
@@ -689,7 +697,7 @@ export function DirectMessageExperience({
         description: participant.principalType === 'agent' ? 'Agent' : 'Member',
         icon: 'UsersRound',
       }))
-    return items.length ? [{ type: 'person', label: 'People & agents', icon: 'UsersRound', items }] : []
+    return items.length ? [{ type: 'person', label: 'Members', icon: 'UsersRound', items }] : []
   }, [currentPrincipalId, participants])
 
   function resolveMentionTargets(text: string): string[] {
@@ -786,7 +794,7 @@ export function DirectMessageExperience({
       })
       await loadMessages()
       if (invokedAgents.length) {
-        const humanMessageId = messagesRef.current.find((message) => (
+        const humanMessageId = saved.messageId ?? messagesRef.current.find((message) => (
           message.clientNonce === clientNonce
         ))?.id
         if (humanMessageId) {
@@ -801,7 +809,6 @@ export function DirectMessageExperience({
           })
         }
       }
-      void saved
     } catch {
       setMessages((current) => current.map((message) => (
         message.clientNonce === clientNonce ? { ...message, delivery: 'failed' } : message
@@ -846,6 +853,7 @@ export function DirectMessageExperience({
         mentionedPrincipalIds,
         ...(threadRootMessageId ? { threadRootMessageId } : {}),
       })
+      if (!response.ok) throw new Error(`Agent reply failed with status ${response.status}`)
       const reader = response.body?.getReader()
       if (!reader) return
       const decoder = new TextDecoder()
@@ -866,6 +874,10 @@ export function DirectMessageExperience({
           } catch {
             continue
           }
+          if (event.type === 'error') {
+            setNotice('The mentioned agent could not respond. Try again.')
+            continue
+          }
           if (event.type !== 'delta' || !event.delta) continue
           const principalId = event.agentPrincipalId ?? fallbackAgent?.principalId ?? 'agent'
           const next = (accumulated.get(principalId) ?? '') + event.delta
@@ -882,7 +894,9 @@ export function DirectMessageExperience({
         }
       }
     } catch {
-      // The reply is still persisted server-side; the next poll picks it up.
+      // The reply may still be persisted server-side; the next live update
+      // picks it up, while the sender gets an actionable failure state.
+      setNotice('The mentioned agent could not respond. Try again.')
     } finally {
       setStreamingAgentReplies({})
       await loadMessages().catch(() => undefined)

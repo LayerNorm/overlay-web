@@ -285,6 +285,16 @@ test('Postgres direct messages are participant-scoped and realtime-ready', {
     assert.equal(notifications.some((notification) => (
       notification.messageId === messageId && notification.type === 'mention'
     )), true)
+    assert.ok(await collaboration.markNotificationsRead({
+      actorUserId: ownerUserId,
+      workspaceId,
+      conversationId: created.conversationId,
+    }) > 0)
+    assert.equal((await collaboration.listNotifications({
+      actorUserId: ownerUserId,
+      workspaceId,
+      unreadOnly: true,
+    })).some((notification) => notification.conversationId === created.conversationId), false)
 
     await collaboration.upsertPresence({
       actorUserId: memberUserId,
@@ -326,6 +336,13 @@ test('Postgres direct messages are participant-scoped and realtime-ready', {
       messageId: messageId!,
       content: 'Edited',
     }), true)
+    const edited = (await collaboration.listMessages({
+      actorUserId: ownerUserId,
+      workspaceId,
+      conversationId: created.conversationId,
+      limit: 100,
+    })).find((message) => message._id === messageId)
+    assert.equal(edited?.editHistory?.[0]?.content, 'Hello owner')
     assert.equal(await collaboration.deleteMessage({
       actorUserId: memberUserId,
       workspaceId,

@@ -289,7 +289,7 @@ function ComposerControls(props: ComposerControlsProps) {
 function mentionReferenceLabel(props: Pick<ComposerViewProps, 'capabilities' | 'mentionCategories'>): string {
   const { capabilities, mentionCategories } = props
   const targets = [
-    mentionCategories?.some((category) => category.type === 'person') ? 'people and agents' : null,
+    mentionCategories?.some((category) => category.type === 'person') ? 'members' : null,
     capabilities.files ? 'files' : null,
     capabilities.skills ? 'skills' : null,
     capabilities.automations ? 'automations' : null,

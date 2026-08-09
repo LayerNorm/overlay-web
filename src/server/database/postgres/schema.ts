@@ -661,6 +661,7 @@ export const conversationMessages = pgTable('conversation_messages', {
   threadRootMessageId: text('thread_root_message_id'),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   editedAt: timestamp('edited_at', { withTimezone: true }),
+  editHistory: jsonb('edit_history').$type<Array<{ content: string; editedAt: number }>>(),
   updatedAt: timestamp('updated_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [

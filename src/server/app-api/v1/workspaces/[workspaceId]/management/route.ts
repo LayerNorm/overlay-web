@@ -25,8 +25,20 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
   try {
     const workspaceId = requiredWorkspaceParam(await context.params, 'workspaceId')
     const view = parseView(context.parsedQuery.view)
-    const service = getOverlayServerContext().workspaceService
-    const access = await service.resolveActiveWorkspace(context.auth.userId, workspaceId)
+    const server = getOverlayServerContext()
+    const service = server.workspaceService
+    let access = await service.resolveActiveWorkspace(context.auth.userId, workspaceId)
+    const account = (await server.appData.repositories.users.listDirectory())
+      .find((user) => user.id === context.auth.userId)
+    if (account) {
+      const principal = await service.syncHumanPrincipalProfile({
+        userId: context.auth.userId,
+        workspaceId,
+        displayName: account.name,
+        email: account.email,
+      })
+      access = { ...access, principal }
+    }
     const canManage = canManageWorkspace(access.membership.role)
     const response = (items: WorkspaceManagementItem[]): WorkspaceManagementResponse => ({
       canManage,

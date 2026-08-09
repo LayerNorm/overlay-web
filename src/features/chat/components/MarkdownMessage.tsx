@@ -36,6 +36,11 @@ import {
   resolveSlugFromName,
   warmIntegrationLogoCache,
 } from '@/shared/integrations/integration-logo-cache'
+import {
+  createMentionRemarkPlugin,
+  isMentionHref,
+  mentionChipClass,
+} from '@overlay/chat-react/markdown-mentions'
 
 const LazySyntaxHighlighter = lazy(() => import('./LazySyntaxHighlighter'))
 
@@ -497,6 +502,10 @@ export function MarkdownMessage({
           const href = props.href
           const linkText = extractLinkText(props.children as ReactNode).trim()
 
+          if (isMentionHref(href)) {
+            return <span className={mentionChipClass}>{props.children}</span>
+          }
+
           // Multi-citation chip: `#overlay-webcite-multi-1-2-3`
           if (typeof href === 'string' && href.startsWith('#overlay-webcite-multi-')) {
             const raw = href.slice('#overlay-webcite-multi-'.length)
@@ -551,6 +560,10 @@ export function MarkdownMessage({
     },
     [webSources],
   )
+  const activeRemarkPlugins = useMemo(
+    () => [...markdownRemarkPlugins, createMentionRemarkPlugin(mentions)],
+    [mentions],
+  )
   // Smooth pacer: while streaming, reveal the normalized text one character at a time.
   // When not streaming, this returns `normalizedDisplay` immediately.
   const pacedDisplay = useSmoothStreamedText(normalizedDisplay, isStreaming, true)
@@ -575,7 +588,7 @@ export function MarkdownMessage({
   return (
     <div className={`markdown-content${isStreaming ? ' markdown-content--streaming' : ''}`}>
       <ReactMarkdown
-        remarkPlugins={markdownRemarkPlugins}
+        remarkPlugins={activeRemarkPlugins}
         rehypePlugins={markdownRehypePlugins}
         components={mdRenderComponents}
       >

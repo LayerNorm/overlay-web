@@ -854,6 +854,10 @@ export default defineSchema({
     updatedAt: v.optional(v.number()),
     clientNonce: v.optional(v.string()),
     editedAt: v.optional(v.number()),
+    editHistory: v.optional(v.array(v.object({
+      content: v.string(),
+      editedAt: v.number(),
+    }))),
     deletedAt: v.optional(v.number()),
     threadRootMessageId: v.optional(v.id('conversationMessages')),
     createdAt: v.number(),

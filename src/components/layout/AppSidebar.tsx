@@ -46,7 +46,11 @@ import dynamic from 'next/dynamic'
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 import type { MentionType } from '@/shared/knowledge/mention-types'
 import { TEMPORARY_CHAT_UI_EVENT, type TemporaryChatUiEventDetail } from '@/shared/chat/temporary-chat-ui'
-import { NEW_CHANNEL_EVENT, NEW_DIRECT_MESSAGE_EVENT } from '@/shared/chat/collaboration-events'
+import {
+  COLLABORATION_NOTIFICATIONS_CHANGED_EVENT,
+  NEW_CHANNEL_EVENT,
+  NEW_DIRECT_MESSAGE_EVENT,
+} from '@/shared/chat/collaboration-events'
 import { getLastChatForView } from '@/shared/chat/last-chat-by-view'
 import {
   getSidebarCollapsedSnapshot,
@@ -200,6 +204,7 @@ export default function AppSidebar({
     else setStoredSidebarCollapsed(next)
   }, [publicShowcase])
   const [chatPanelRefreshKey, setChatPanelRefreshKey] = useState(0)
+  const [collaborationUnreadCount, setCollaborationUnreadCount] = useState(0)
   const [projectsPanelRefreshKey, setProjectsPanelRefreshKey] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const accountMenuPortalRef = useRef<HTMLDivElement>(null)
@@ -318,6 +323,32 @@ export default function AppSidebar({
     if (chatViewParam === 'all') return 'all'
     return 'personal'
   })()
+  const cumulativeChatUnread = totalUnread + collaborationUnreadCount
+
+  useEffect(() => {
+    if (publicShowcase || !user || !activeWorkspaceId) {
+      setCollaborationUnreadCount(0)
+      return
+    }
+    let cancelled = false
+    const loadUnread = async () => {
+      try {
+        const result = await overlayAppClient.conversations.notifications({ unreadOnly: true, limit: 100 })
+        if (!cancelled) setCollaborationUnreadCount(Array.isArray(result.notifications) ? result.notifications.length : 0)
+      } catch {
+        // The primary chat navigation stays usable while notification state retries.
+      }
+    }
+    const handleChanged = () => { void loadUnread() }
+    void loadUnread()
+    const timer = window.setInterval(handleChanged, 15_000)
+    window.addEventListener(COLLABORATION_NOTIFICATIONS_CHANGED_EVENT, handleChanged)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+      window.removeEventListener(COLLABORATION_NOTIFICATIONS_CHANGED_EVENT, handleChanged)
+    }
+  }, [activeWorkspaceId, publicShowcase, user])
 
   useEffect(() => {
     // Unread was folded into Activity; rewrite stale deep links.
@@ -676,9 +707,11 @@ export default function AppSidebar({
 
   const panelNav: SecondaryPanelNav | undefined = (() => {
     if (panelKind === 'chat') {
-      const chatItems = publicShowcase
+      const chatItems = (publicShowcase
         ? chatsInlineItems.filter((item) => item.id !== 'activity')
-        : chatsInlineItems
+        : chatsInlineItems).map((item) => (
+          item.id === 'activity' ? { ...item, badgeCount: cumulativeChatUnread } : item
+        ))
       return {
         items: chatItems,
         activeId: chatsView,
@@ -934,7 +967,7 @@ export default function AppSidebar({
       disabled: item.disabled,
       active: navItemActive(item),
       pending: Boolean(item.href && effectivePendingHref === item.href),
-      badgeCount: item.href === '/app/chat' ? totalUnread : 0,
+      badgeCount: item.href === '/app/chat' ? cumulativeChatUnread : 0,
       title: shortcut ? `${item.label} · ⌥${shortcut}` : item.label,
       dataTour: item.href === '/app/chat'
         ? 'nav-chat'
@@ -1069,7 +1102,7 @@ export default function AppSidebar({
             const { href, label, icon: Icon, disabled } = item
             const active = navItemActive(item)
             const isPending = Boolean(href && effectivePendingHref === href)
-            const unreadCount = href === '/app/chat' ? totalUnread : 0
+            const unreadCount = href === '/app/chat' ? cumulativeChatUnread : 0
             const opensPanel = panelKindForNavItem(item) != null
             const rowClass = `group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors ${
               disabled

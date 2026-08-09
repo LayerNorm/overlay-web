@@ -25,11 +25,15 @@ export async function PATCH(_request: Request, context: AppApiRouteContext) {
   const notificationIds = Array.isArray(context.parsedJson.notificationIds)
     ? context.parsedJson.notificationIds.filter((value): value is string => typeof value === 'string')
     : undefined
+  const conversationId = typeof context.parsedJson.conversationId === 'string'
+    ? context.parsedJson.conversationId.trim() || undefined
+    : undefined
   const updated = await getOverlayServerContext().appData.repositories
     .conversationCollaboration.markNotificationsRead({
       actorUserId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
       notificationIds,
+      conversationId,
     })
   return NextResponse.json({ updated })
 }

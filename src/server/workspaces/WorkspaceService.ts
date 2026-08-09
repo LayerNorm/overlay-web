@@ -92,6 +92,29 @@ export class WorkspaceService {
     return await this.repository.getPrincipal(required(principalId, 'principalId'))
   }
 
+  /** Keeps the workspace principal aligned with the canonical account profile. */
+  async syncHumanPrincipalProfile(args: {
+    userId: string
+    workspaceId: string
+    displayName: string
+    email?: string
+  }): Promise<WorkspacePrincipal> {
+    const access = await this.resolveActiveWorkspace(args.userId, args.workspaceId)
+    if (access.principal.type !== 'human') throw notFound()
+    const displayName = required(args.displayName, 'displayName')
+    const email = normalizeOptionalEmail(args.email)
+    if (access.principal.displayName === displayName && access.principal.email === email) {
+      return access.principal
+    }
+    return await this.repository.updatePrincipal({
+      principalId: access.principal.id,
+      workspaceId: access.workspace.id,
+      displayName,
+      email,
+      now: this.now(),
+    })
+  }
+
   async assertAccountDeletionAllowed(userId: string): Promise<void> {
     const accesses = await this.repository.listForUser(required(userId, 'userId'), {
       includeArchived: true,

@@ -17,6 +17,7 @@
     "./media-slot-output": "./src/components/MediaSlotOutput.tsx",
     "./model-indicators": "./src/components/ModelIndicators.tsx",
     "./model-qualities-panel": "./src/components/ModelQualitiesPanel.tsx",
+    "./markdown-mentions": "./src/components/markdown/mentions.ts",
     "./sources-panel": "./src/components/SourcesPanel.tsx",
     "./user-message-bubble": "./src/components/UserMessageBubble.tsx",
     "./transcript": "./src/components/transcript/index.ts",
