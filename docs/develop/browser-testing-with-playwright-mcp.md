@@ -230,3 +230,11 @@ async () => {
 - **SSO cookies expire.** If `browser_navigate` to staging redirects to a Vercel auth page,
   the Chrome extension's session has expired. Ask the user to refresh the extension by
   opening Chrome and visiting `staging.getoverlay.io` once.
+- **Chrome-extension IndexedDB noise.** Errors like `InvalidStateError: Failed to execute
+  'transaction' on 'IDBDatabase'` from `chrome-extension://…` (often volume / password
+  managers) are not Overlay bugs. Filter console noise to app origins before treating them
+  as regressions.
+- **Convex query auth cannot `fetch()` JWKS.** Browser→Convex room subscriptions must use
+  HS256 tokens from `/api/auth/convex-token`. If console shows
+  `Can't use fetch() in queries and mutations` from `watchRoomMessages`, the browser is
+  still sending a WorkOS JWT or an old client bundle is cached — hard-refresh after deploy.
