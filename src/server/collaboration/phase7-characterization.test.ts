@@ -126,13 +126,15 @@ test('Phase 7 keeps one contract for web, desktop, and mobile surfaces', async (
 })
 
 test('workspace rooms route to the collaboration experience and use participant-scoped persistence', async () => {
-  const [boundary, router, inlinePanel, conversationsRoute, messageRoute, activity] = await Promise.all([
+  const [boundary, router, inlinePanel, conversationsRoute, messageRoute, activity, room, convexRooms] = await Promise.all([
     readFile(`${root}/src/features/chat/components/ChatSuspenseBoundary.tsx`, 'utf8'),
     readFile(`${root}/src/features/chat/components/ConversationExperienceRouter.tsx`, 'utf8'),
     readFile(`${root}/src/features/chat/components/ChatInlinePanel.tsx`, 'utf8'),
     readFile(`${root}/src/server/app-api/v1/conversations/route.ts`, 'utf8'),
     readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
     readFile(`${root}/src/features/chat/components/ChatActivityView.tsx`, 'utf8'),
+    readFile(`${root}/src/features/chat/components/DirectMessageExperience.tsx`, 'utf8'),
+    readFile(`${root}/convex/collaboration/directMessages.ts`, 'utf8'),
   ])
   assert.match(boundary, /ConversationExperienceRouter/)
   assert.match(router, /view'\) === 'dms'/)
@@ -145,4 +147,9 @@ test('workspace rooms route to the collaboration experience and use participant-
   assert.match(messageRoute, /recordMessageActivity/)
   assert.match(activity, /conversationType === 'channel'/)
   assert.match(activity, /conversationType === 'dm'/)
+  assert.match(room, /appDataCapabilities\.provider === 'convex'/)
+  assert.match(room, /enabled: postgresLiveSyncEnabled/)
+  assert.match(room, /ConvexRoomMessageSubscription/)
+  assert.match(convexRooms, /watchRoomMessages/)
+  assert.match(convexRooms, /requireAccessToken/)
 })

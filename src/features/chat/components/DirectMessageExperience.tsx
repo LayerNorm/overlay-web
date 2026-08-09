@@ -42,6 +42,8 @@ import { resolveMentionedPrincipalIds } from '@/shared/mentions/principal-mentio
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
+import { useAuth } from '@/contexts/AuthContext'
 import { ChatComposer } from './ChatComposer'
 import { ChatDropOverlay } from './ChatDropOverlay'
 import { useChatAttachments } from './useChatAttachments'
@@ -51,6 +53,7 @@ import { useChatShellPanels } from './chat/useChatShellPanels'
 import { buildTextTurnPayload } from './chat/chat-send-body-builders'
 import { usePostgresConversationEvents } from './chat/usePostgresConversationEvents'
 import { RoomMessageItem, roomMessageDomId } from './collaboration/RoomMessageItem'
+import { ConvexRoomMessageSubscription } from './collaboration/ConvexRoomMessageSubscription'
 import {
   compareRoomMessageRecords,
   mergeRoomMessages,
@@ -163,7 +166,16 @@ export function DirectMessageExperience({
   conversationType?: 'dm' | 'channel'
 }) {
   const { activeWorkspaceId } = useWorkspace()
-  const { capabilities } = useOverlayCapabilities()
+  const { appDataCapabilities, capabilities } = useOverlayCapabilities()
+  const { user: authUser } = useAuth()
+  const convexAccessToken = useConvexAuthToken()
+  const convexLiveSyncEnabled = !showcase
+    && appDataCapabilities.provider === 'convex'
+    && appDataCapabilities.requiresConvexClient
+    && appDataCapabilities.supportsRealtime
+  const postgresLiveSyncEnabled = !showcase
+    && appDataCapabilities.provider === 'postgres'
+    && appDataCapabilities.supportsRealtime
   const router = useRouter()
   const [participants, setParticipants] = useState<ConversationParticipant[]>(
     showcase ? SHOWCASE_PARTICIPANTS : [],
@@ -440,9 +452,13 @@ export function DirectMessageExperience({
     }
   }, [conversationId, conversationType])
 
+  const applyLiveRoomMessages = useCallback((liveMessages: RoomMessageRecord[]) => {
+    setMessages((current) => mergeRoomMessages(liveMessages, current))
+  }, [])
+
   usePostgresConversationEvents({
     activeChatIdRef: activeConversationRef,
-    enabled: !showcase,
+    enabled: postgresLiveSyncEnabled,
     hasActiveLocalStream: () => Object.keys(streamingAgentReplies).length > 0,
     loadChats: async () => {},
     onRemoteStop: () => {},
@@ -1232,6 +1248,16 @@ export function DirectMessageExperience({
 
   return (
     <>
+      {convexLiveSyncEnabled && authUser?.id && convexAccessToken && activeWorkspaceId ? (
+        <ConvexRoomMessageSubscription
+          accessToken={convexAccessToken}
+          actorUserId={authUser.id}
+          conversationId={conversationId}
+          threadRootMessageId={threadRootId}
+          workspaceId={activeWorkspaceId}
+          onMessages={applyLiveRoomMessages}
+        />
+      ) : null}
       <AppScreenShell
         contentClassName="flex min-h-0"
         rightPanel={rightPanel}
