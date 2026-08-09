@@ -50,6 +50,7 @@ import type * as knowledge_memoryExtractor from "../knowledge/memoryExtractor.js
 import type * as knowledge_memoryExtractorNode from "../knowledge/memoryExtractorNode.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_authDebug from "../lib/authDebug.js";
+import type * as lib_browserConvexToken from "../lib/browserConvexToken.js";
 import type * as lib_gatewayCatalogPricing from "../lib/gatewayCatalogPricing.js";
 import type * as lib_logging from "../lib/logging.js";
 import type * as migrations_backfillWorkspaceIds from "../migrations/backfillWorkspaceIds.js";
@@ -115,6 +116,7 @@ declare const fullApi: ApiFromModules<{
   "knowledge/memoryExtractorNode": typeof knowledge_memoryExtractorNode;
   "lib/auth": typeof lib_auth;
   "lib/authDebug": typeof lib_authDebug;
+  "lib/browserConvexToken": typeof lib_browserConvexToken;
   "lib/gatewayCatalogPricing": typeof lib_gatewayCatalogPricing;
   "lib/logging": typeof lib_logging;
   "migrations/backfillWorkspaceIds": typeof migrations_backfillWorkspaceIds;
