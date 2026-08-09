@@ -101,6 +101,27 @@ test('resolveActiveWorkspace persists a usable fallback and rejects inaccessible
   )
 })
 
+test('syncHumanPrincipalProfile replaces bootstrap ids with the canonical account name', async () => {
+  const current = access({ workspaceId: 'workspace_org', userId: 'user_01KJR9' })
+  let updatedName = ''
+  const service = new WorkspaceService(repository({
+    async getAccess() { return current },
+    async updatePrincipal(args) {
+      updatedName = args.displayName ?? ''
+      return { ...current.principal, displayName: updatedName, email: args.email }
+    },
+  }), { now: () => 10 })
+
+  const principal = await service.syncHumanPrincipalProfile({
+    userId: current.principal.userId!,
+    workspaceId: current.workspace.id,
+    displayName: 'Divyansh Lalwani',
+    email: 'dslalwani@gmail.com',
+  })
+  assert.equal(updatedName, 'Divyansh Lalwani')
+  assert.equal(principal.displayName, 'Divyansh Lalwani')
+})
+
 test('legacy resources are claimed only by Personal and existing bindings never move', async () => {
   const bindings = new Map<string, string>([['already_bound', 'workspace_acme']])
   const bound: string[] = []

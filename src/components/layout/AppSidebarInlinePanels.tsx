@@ -544,6 +544,7 @@ export interface InlineNavItem {
   locked?: boolean
   /** Items with an href render as links so they support open-in-new-tab. */
   href?: string
+  badgeCount?: number
 }
 
 export function InlineNavChildren({
@@ -577,6 +578,14 @@ export function InlineNavChildren({
           <>
             {item.icon ? <item.icon size={15} className="shrink-0" aria-hidden /> : null}
             <span className="flex-1 text-left">{item.label}</span>
+            {item.badgeCount ? (
+              <span
+                className="inline-flex min-w-5 items-center justify-center rounded-full bg-[var(--foreground)] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[var(--background)]"
+                aria-label={`${item.badgeCount} unread`}
+              >
+                {item.badgeCount > 9 ? '9+' : item.badgeCount}
+              </span>
+            ) : null}
             {item.locked ? <span className="text-[10px] text-[var(--muted-light)]">Soon</span> : null}
           </>
         )

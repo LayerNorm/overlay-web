@@ -1258,6 +1258,7 @@ function mapConversationMessageRow(row: typeof conversationMessages.$inferSelect
     clientNonce: row.clientNonce ?? undefined,
     deletedAt: row.deletedAt ? toMillis(row.deletedAt) : undefined,
     editedAt: row.editedAt ? toMillis(row.editedAt) : undefined,
+    editHistory: row.editHistory ?? undefined,
     threadRootMessageId: row.threadRootMessageId ?? undefined,
   }
 }

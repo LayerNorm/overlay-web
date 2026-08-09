@@ -302,6 +302,7 @@ export const watchRoomMessages = query({
         parts: message.parts,
         createdAt: message.createdAt,
         editedAt: message.editedAt,
+        editHistory: message.editHistory,
         deletedAt: message.deletedAt,
         clientNonce: message.clientNonce,
         threadRootMessageId: message.threadRootMessageId,
@@ -972,7 +973,15 @@ export const editMessage = mutation({
       || message.deletedAt
     ) return false
     const now = Date.now()
-    await ctx.db.patch(message._id, { content, editedAt: now, updatedAt: now })
+    await ctx.db.patch(message._id, {
+      content,
+      editedAt: now,
+      editHistory: [
+        ...(message.editHistory ?? []),
+        { content: message.content, editedAt: now },
+      ],
+      updatedAt: now,
+    })
     return true
   },
 })
@@ -1166,6 +1175,7 @@ export const updateNotificationPreferences = mutation({
 export const markNotificationsRead = mutation({
   args: {
     actorUserId: v.string(),
+    conversationId: v.optional(v.id('conversations')),
     notificationIds: v.optional(v.array(v.string())),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
@@ -1179,7 +1189,11 @@ export const markNotificationsRead = mutation({
       )).collect()
     let updated = 0
     for (const row of rows) {
-      if (row.readAt || (ids && !ids.has(row.notificationId))) continue
+      if (
+        row.readAt
+        || (ids && !ids.has(row.notificationId))
+        || (args.conversationId && row.conversationId !== args.conversationId)
+      ) continue
       await ctx.db.patch(row._id, { readAt: Date.now() })
       updated++
     }

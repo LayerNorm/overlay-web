@@ -144,6 +144,15 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
     return row ? principal(row) : null
   }
 
+  async updatePrincipal(args: Parameters<WorkspaceRepository['updatePrincipal']>[0]) {
+    return principal(await requiredMutation<ConvexPrincipal>('updatePrincipalByServer', {
+      principalId: args.principalId,
+      workspaceId: args.workspaceId,
+      displayName: args.displayName,
+      email: args.email,
+    }))
+  }
+
   async listPrincipals(args: Parameters<WorkspaceRepository['listPrincipals']>[0]) {
     const rows = await query<ConvexPrincipal[]>('listPrincipalsByServer', {
       workspaceId: args.workspaceId,

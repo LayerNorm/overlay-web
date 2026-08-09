@@ -396,11 +396,13 @@ implements ConversationCollaborationRepository {
 
   async markNotificationsRead(args: {
     actorUserId: string
+    conversationId?: string
     notificationIds?: string[]
     workspaceId: string
   }) {
     return await convex.mutation<number>('collaboration/directMessages:markNotificationsRead', {
       ...args,
+      conversationId: args.conversationId as Id<'conversations'> | undefined,
       serverSecret: this.serverSecret,
     }, { throwOnError: true }) ?? 0
   }

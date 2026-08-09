@@ -195,6 +195,7 @@ export interface ConversationCollaborationRepository {
   }): Promise<WorkspaceNotification[]>
   markNotificationsRead(args: {
     actorUserId: string
+    conversationId?: string
     notificationIds?: string[]
     workspaceId: string
   }): Promise<number>

@@ -78,6 +78,10 @@ export type ConversationMessageRow = {
   authorPrincipalId?: string
   authorKind?: 'human' | 'agent' | 'model' | 'system'
   editedAt?: number
+  editHistory?: Array<{
+    content: string
+    editedAt: number
+  }>
   threadRootMessageId?: string
 }
 

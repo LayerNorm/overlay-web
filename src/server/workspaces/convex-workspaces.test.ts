@@ -272,6 +272,11 @@ test('Convex workspace repository matches the Phase 1 lifecycle contract', {
         workspaceId: orgWorkspaceId,
         unreadOnly: true,
       })).some((notification) => notification.messageId === String(messageId)), true)
+      assert.ok(await collaboration.markNotificationsRead({
+        actorUserId: ownerUserId,
+        workspaceId: orgWorkspaceId,
+        conversationId: directMessage.conversationId,
+      }) > 0)
       await collaboration.upsertPresence({
         actorUserId: invitedUserId,
         workspaceId: orgWorkspaceId,
@@ -291,6 +296,13 @@ test('Convex workspace repository matches the Phase 1 lifecycle contract', {
         messageId: String(messageId),
         content: 'Edited',
       }), true)
+      const edited = (await collaboration.listMessages({
+        actorUserId: ownerUserId,
+        workspaceId: orgWorkspaceId,
+        conversationId: directMessage.conversationId,
+        limit: 100,
+      })).find((message) => message._id === String(messageId))
+      assert.equal(edited?.editHistory?.[0]?.content, 'Hello from Convex')
       assert.equal(await collaboration.deleteMessage({
         actorUserId: invitedUserId,
         workspaceId: orgWorkspaceId,

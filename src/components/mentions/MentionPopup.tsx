@@ -25,7 +25,7 @@ const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; str
 }
 
 const CATEGORY_ORDER: Array<{ type: MentionType; label: string; icon: string }> = [
-  { type: 'person', label: 'People & agents', icon: 'UsersRound' },
+  { type: 'person', label: 'Members', icon: 'UsersRound' },
   { type: 'file', label: 'Files', icon: 'FileText' },
   { type: 'connector', label: 'Connectors', icon: 'Plug' },
   { type: 'automation', label: 'Automations', icon: 'Zap' },

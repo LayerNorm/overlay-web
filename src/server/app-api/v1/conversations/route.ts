@@ -368,6 +368,7 @@ function serializeConversationMessage(message: ConversationMessageRow) {
     ...(message.authorPrincipalId ? { authorPrincipalId: message.authorPrincipalId } : {}),
     ...(message.clientNonce ? { clientNonce: message.clientNonce } : {}),
     ...(message.editedAt ? { editedAt: message.editedAt } : {}),
+    ...(message.editHistory?.length ? { editHistory: message.editHistory } : {}),
     ...(message.deletedAt ? { deletedAt: message.deletedAt } : {}),
     ...(message.threadRootMessageId ? { threadRootMessageId: message.threadRootMessageId } : {}),
   }
