@@ -5,7 +5,11 @@ import { getLanguageModel } from '@/server/ai/model-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
-import { ActEntitlementService } from '@/server/conversations/ActEntitlementService'
+import {
+  ActConversationServiceError,
+  ActEntitlementService,
+} from '@/server/conversations/ActEntitlementService'
+import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
 import { resolveMentionFirstInvocations } from './mention-policy'
 
 export type WorkspaceAgentDelta = {
@@ -47,6 +51,39 @@ export class WorkspaceAgentInvocationError extends Error {
   }
 }
 
+async function loadAccessibleConversation(args: {
+  actorUserId: string
+  conversationId: string
+  workspaceId: string
+  collaboration: ConversationCollaborationRepository
+  messageId: string
+}): Promise<NonNullable<
+  Awaited<ReturnType<ConversationCollaborationRepository['getAccessibleConversation']>>
+>> {
+  try {
+    const conversation = await args.collaboration.getAccessibleConversation({
+      actorUserId: args.actorUserId,
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+    })
+    if (conversation) return conversation
+    logger.warn('[workspace-agent] room access denied', {
+      conversationId: args.conversationId,
+      reason: 'room_access_denied',
+      workspaceId: args.workspaceId,
+    })
+  } catch (error) {
+    logger.error('[workspace-agent] room access denied', {
+      conversationId: args.conversationId,
+      error,
+      messageId: args.messageId,
+      reason: 'room_access_denied',
+      workspaceId: args.workspaceId,
+    })
+  }
+  throw new WorkspaceAgentInvocationError('room_access_denied')
+}
+
 export async function invokeWorkspaceAgentsForHumanMessage(args: {
   accessToken?: string
   actorUserId: string
@@ -66,23 +103,13 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
 }): Promise<void> {
   const server = getOverlayServerContext()
   const collaboration = server.appData.repositories.conversationCollaboration
-  let conversation
-  try {
-    conversation = await collaboration.getAccessibleConversation({
-      actorUserId: args.actorUserId,
-      conversationId: args.conversationId,
-      workspaceId: args.workspaceId,
-    })
-  } catch (error) {
-    logger.error('[workspace-agent] room access denied', {
-      conversationId: args.conversationId,
-      error,
-      messageId: args.messageId,
-      reason: 'room_access_denied',
-      workspaceId: args.workspaceId,
-    })
-    throw new WorkspaceAgentInvocationError('room_access_denied')
-  }
+  const conversation = await loadAccessibleConversation({
+    actorUserId: args.actorUserId,
+    collaboration,
+    conversationId: args.conversationId,
+    messageId: args.messageId,
+    workspaceId: args.workspaceId,
+  })
   const [participants, history, directory] = await Promise.all([
     collaboration.listParticipants({
       actorUserId: args.actorUserId, conversationId: args.conversationId, workspaceId: args.workspaceId,
@@ -95,14 +122,6 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
     }),
     server.workspaceAgentService.list({ actorUserId: args.actorUserId, workspaceId: args.workspaceId }),
   ])
-  if (!conversation) {
-    logger.warn('[workspace-agent] room access denied', {
-      conversationId: args.conversationId,
-      reason: 'room_access_denied',
-      workspaceId: args.workspaceId,
-    })
-    throw new WorkspaceAgentInvocationError('room_access_denied')
-  }
   if ((conversation.conversationType ?? 'personal') === 'personal') {
     logger.warn('[workspace-agent] room is not a collaboration room', {
       conversationId: args.conversationId,
@@ -292,8 +311,7 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       })
       reservationId = recorded.reservationId
     } catch (error) {
-      const isEntitlementError = error instanceof Error
-        && error.name === 'ActConversationServiceError'
+      const isEntitlementError = error instanceof ActConversationServiceError
       failureReason = isEntitlementError ? 'not_entitled' : failureReason
       lastFailureReason = failureReason
       await server.chatUsagePolicy.releaseReservation({
