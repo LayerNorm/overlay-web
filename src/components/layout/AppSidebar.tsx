@@ -62,6 +62,7 @@ import {
   setStoredSidebarCollapsed,
   subscribeToSidebarCollapsed,
 } from './sidebar/sidebarCollapsedStore'
+import { categorizeCollaborationUnreadNotifications } from '@/shared/chat/notification-badges'
 import { SidebarAccountMenu } from './sidebar/SidebarAccountMenu'
 import { ICON_COMPONENTS, toMentionCategory } from './sidebar/sidebarNavigation'
 import type { SidebarEntitlements } from './sidebar/SidebarUsageMeters'
@@ -209,7 +210,7 @@ export default function AppSidebar({
     else setStoredSidebarCollapsed(next)
   }, [publicShowcase])
   const [chatPanelRefreshKey, setChatPanelRefreshKey] = useState(0)
-  const [collaborationUnreadCount, setCollaborationUnreadCount] = useState(0)
+  const [collaborationUnread, setCollaborationUnread] = useState({ dms: 0, channels: 0, total: 0 })
   const [projectsPanelRefreshKey, setProjectsPanelRefreshKey] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const accountMenuPortalRef = useRef<HTMLDivElement>(null)
@@ -330,7 +331,13 @@ export default function AppSidebar({
     return 'personal'
   })()
   const shouldLoadCollaborationUnread = !publicShowcase && Boolean(user) && Boolean(activeWorkspaceId)
-  const cumulativeChatUnread = totalUnread + (shouldLoadCollaborationUnread ? collaborationUnreadCount : 0)
+  const cumulativeChatUnread = totalUnread + (shouldLoadCollaborationUnread ? collaborationUnread.total : 0)
+  const chatUnreadBadges = {
+    personal: totalUnread,
+    dms: shouldLoadCollaborationUnread ? collaborationUnread.dms : 0,
+    channels: shouldLoadCollaborationUnread ? collaborationUnread.channels : 0,
+    activity: cumulativeChatUnread,
+  }
 
   useEffect(() => {
     if (publicShowcase || !user || !activeWorkspaceId) {
@@ -340,7 +347,17 @@ export default function AppSidebar({
     const loadUnread = async () => {
       try {
         const result = await overlayAppClient.conversations.notifications({ unreadOnly: true, limit: 100 })
-        if (!cancelled) setCollaborationUnreadCount(Array.isArray(result.notifications) ? result.notifications.length : 0)
+        const notifications = Array.isArray(result.notifications) ? result.notifications : []
+        let conversations: CachedConversation[] = []
+        if (notifications.length > 0) {
+          try {
+            const page = await overlayAppClient.conversations.getPage<CachedConversation>({ view: 'all', limit: 100 })
+            conversations = page.data
+          } catch {
+            // Activity remains complete even when the conversation directory is briefly unavailable.
+          }
+        }
+        if (!cancelled) setCollaborationUnread(categorizeCollaborationUnreadNotifications(notifications, conversations))
       } catch {
         // The primary chat navigation stays usable while notification state retries.
       }
@@ -715,9 +732,7 @@ export default function AppSidebar({
     if (panelKind === 'chat') {
       const chatItems = (publicShowcase
         ? chatsInlineItems.filter((item) => item.id !== 'activity')
-        : chatsInlineItems).map((item) => (
-          item.id === 'activity' ? { ...item, badgeCount: cumulativeChatUnread } : item
-        ))
+        : chatsInlineItems).map((item) => ({ ...item, badgeCount: chatUnreadBadges[item.id] }))
       return {
         items: chatItems,
         activeId: chatsView,

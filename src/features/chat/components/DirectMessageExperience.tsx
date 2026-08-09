@@ -744,7 +744,7 @@ export function DirectMessageExperience({
         description: participant.principalType === 'agent' ? 'Agent' : 'Member',
         icon: 'UsersRound',
       }))
-    return items.length ? [{ type: 'person', label: 'People & agents', icon: 'UsersRound', items }] : []
+    return items.length ? [{ type: 'person', label: 'Members', icon: 'UsersRound', items }] : []
   }, [currentPrincipalId, participants])
 
   function resolveMentionTargets(text: string): string[] {
