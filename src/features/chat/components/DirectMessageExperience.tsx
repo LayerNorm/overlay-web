@@ -563,10 +563,24 @@ export function DirectMessageExperience({
     prependScrollRef.current = null
   }, [messages.length])
 
-  useEffect(() => {
+  // Pin to latest after the initial transcript paint (and when stick-to-bottom).
+  // Double rAF waits for layout of markdown/images so open-room no longer starts
+  // mid-history at the top of a long channel.
+  useLayoutEffect(() => {
+    if (loading) return
+    if (!stickToBottomRef.current) return
     const node = listRef.current
-    if (node && stickToBottomRef.current) node.scrollTop = node.scrollHeight
-  }, [messages.length])
+    if (!node) return
+    const pin = () => {
+      node.scrollTop = node.scrollHeight
+    }
+    pin()
+    const frame = window.requestAnimationFrame(() => {
+      pin()
+      window.requestAnimationFrame(pin)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [conversationId, loading, messages.length])
 
   // Restore a half-written message when the room reopens. Storage failures are
   // absorbed by the draft module, so private browsing simply starts empty.
@@ -616,6 +630,18 @@ export function DirectMessageExperience({
       counts.set(root, (counts.get(root) ?? 0) + 1)
     }
     return counts
+  }, [messages])
+
+  /** Latest reply per root for Slack-style thread teasers under the parent row. */
+  const threadTeasers = useMemo(() => {
+    const latest = new Map<string, OptimisticMessage>()
+    for (const message of messages) {
+      const root = message.threadRootMessageId
+      if (!root || message.deletedAt) continue
+      const existing = latest.get(root)
+      if (!existing || message.createdAt >= existing.createdAt) latest.set(root, message)
+    }
+    return latest
   }, [messages])
 
   const participantMentions = useMemo(() => participants.map((participant) => ({
@@ -1111,14 +1137,20 @@ export function DirectMessageExperience({
 
   function renderMessage(message: OptimisticMessage, options?: { inThread?: boolean; grouped?: boolean }) {
     const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
+    const authorName = author?.displayName
+      ?? (message.authorKind === 'agent' || message.authorKind === 'model' ? 'Agent' : 'Someone')
     const view = toRoomMessageView({
       message,
       currentPrincipalId,
-      authorName: author?.displayName
-        ?? (message.authorKind === 'agent' || message.authorKind === 'model' ? 'Agent' : 'Someone'),
+      authorName,
       mentions: participantMentions,
       streaming: message.status === 'generating',
     })
+    const teaserMessage = options?.inThread ? null : threadTeasers.get(message.id) ?? null
+    const teaserAuthor = teaserMessage
+      ? participants.find((participant) => participant.principalId === teaserMessage.authorPrincipalId)?.displayName
+        ?? (teaserMessage.authorKind === 'agent' || teaserMessage.authorKind === 'model' ? 'Agent' : 'Someone')
+      : null
     return (
       <RoomMessageItem
         key={message.id}
@@ -1131,6 +1163,11 @@ export function DirectMessageExperience({
             reactedByCurrentPrincipal: reaction.reactedByCurrentPrincipal,
           }))}
         replyCount={options?.inThread ? 0 : replyCounts.get(message.id) ?? 0}
+        threadTeaser={teaserMessage && teaserAuthor ? {
+          authorName: teaserAuthor,
+          text: teaserMessage.content.trim().slice(0, 120),
+          createdAt: teaserMessage.createdAt,
+        } : null}
         pinned={pins.some((pin) => pin.messageId === message.id)}
         saved={savedMessages.some((row) => (
           row.conversationId === conversationId && row.messageId === message.id
@@ -1186,6 +1223,7 @@ export function DirectMessageExperience({
         }}
         reactions={[]}
         replyCount={0}
+        threadTeaser={null}
         pinned={false}
         saved={false}
         editing={false}
@@ -1442,21 +1480,21 @@ export function DirectMessageExperience({
                 }}
                 className="h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4"
               >
-                <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-5 sm:gap-6">
+                <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col justify-end gap-1 sm:gap-1.5">
                   {hasMoreMessages ? (
                     <button
                       type="button"
                       onClick={() => void loadOlderMessages()}
                       disabled={loadingOlderMessages}
-                      className="mx-auto rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] disabled:opacity-60"
+                      className="mx-auto my-2 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] disabled:opacity-60"
                     >
                       {loadingOlderMessages ? 'Loading older messages…' : 'Load older messages'}
                     </button>
                   ) : null}
                   {loading ? (
-                    <div className="space-y-5" aria-label="Loading messages">
+                    <div className="space-y-3 py-4" aria-label="Loading messages">
                       {[0, 1, 2].map((row) => (
-                        <div key={row} className="h-16 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
+                        <div key={row} className="h-12 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
                       ))}
                     </div>
                   ) : mainMessages.length === 0 ? (
