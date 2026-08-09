@@ -173,9 +173,15 @@ export function DirectMessageExperience({
     && appDataCapabilities.provider === 'convex'
     && appDataCapabilities.requiresConvexClient
     && appDataCapabilities.supportsRealtime
-  const postgresLiveSyncEnabled = !showcase
-    && appDataCapabilities.provider === 'postgres'
+  // BFF event long-poll is the Postgres transport and a Convex fallback when
+  // the browser subscription is offline (token mint delay, transient JWKS
+  // failure). On Convex, ConvexRoomMessageSubscription remains primary.
+  const roomEventSyncEnabled = !showcase
     && appDataCapabilities.supportsRealtime
+    && (
+      appDataCapabilities.provider === 'postgres'
+      || appDataCapabilities.provider === 'convex'
+    )
   const router = useRouter()
   const [participants, setParticipants] = useState<ConversationParticipant[]>(
     showcase ? SHOWCASE_PARTICIPANTS : [],
@@ -458,7 +464,7 @@ export function DirectMessageExperience({
 
   usePostgresConversationEvents({
     activeChatIdRef: activeConversationRef,
-    enabled: postgresLiveSyncEnabled,
+    enabled: roomEventSyncEnabled,
     hasActiveLocalStream: () => Object.keys(streamingAgentReplies).length > 0,
     loadChats: async () => {},
     onRemoteStop: () => {},
