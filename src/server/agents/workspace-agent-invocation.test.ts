@@ -5,10 +5,11 @@ import test from 'node:test'
 const root = process.cwd()
 
 test('workspace agents use participant-scoped room history and persistence', async () => {
-  const [service, contract, convexRoom] = await Promise.all([
+  const [service, contract, convexRoom, route] = await Promise.all([
     readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
     readFile(`${root}/src/server/conversations/ConversationCollaborationRepository.ts`, 'utf8'),
     readFile(`${root}/convex/collaboration/directMessages.ts`, 'utf8'),
+    readFile(`${root}/src/server/app-api/v1/conversations/agent-reply/route.ts`, 'utf8'),
   ])
 
   assert.match(service, /collaboration\.getAccessibleConversation/)
@@ -19,4 +20,8 @@ test('workspace agents use participant-scoped room history and persistence', asy
   assert.match(convexRoom, /export const addAgentMessage/)
   assert.match(convexRoom, /AGENT_PARTICIPANT_REQUIRED/)
   assert.match(convexRoom, /authorKind: 'agent'/)
+  assert.match(service, /reasonCode/)
+  assert.match(service, /no_agent_participant/)
+  assert.match(route, /reasonCode: error\.reasonCode/)
+  assert.match(route, /message: error\.message/)
 })
