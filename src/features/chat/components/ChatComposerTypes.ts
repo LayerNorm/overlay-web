@@ -1,6 +1,6 @@
 import type { ClipboardEventHandler, Dispatch, ReactNode, RefObject, SetStateAction } from 'react'
 import type { GenerationMode } from '@/shared/ai/gateway/model-types'
-import type { MentionItem } from '@/shared/knowledge/mention-types'
+import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-types'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { AttachmentPreview, AttachmentPreviewOpenOptions } from '@overlay/chat-react'
 import type { CapabilityCheck } from '@overlay/app-core'
@@ -23,6 +23,8 @@ export type ChatComposerAttachmentState = {
 }
 export type ChatComposerRuntime = {
   composerNotice: string | null
+  /** Contextual confirmation or warning rendered immediately above the composer. */
+  beforeComposerContent?: ReactNode
   billingPromptContent?: ReactNode
   isSendBlocked: boolean
   isActiveLoading: boolean
@@ -54,7 +56,8 @@ export type ChatComposerSurface = {
   hideModeMenu?: boolean
   hideGenerationModes?: boolean
   placeholder?: string
-  mentionCategories?: Array<{ type: string; label: string; icon: string; items: Array<{ type: string; id: string; name: string; description?: string; icon?: string }> }>
+  /** Additional mention targets, such as workspace people and named agents. */
+  mentionCategories?: MentionCategory[]
 }
 export type ChatComposerProps = {
   mode: 'chat' | 'automate'; emptyState: ChatComposerEmptyState; attachments: ChatComposerAttachmentState

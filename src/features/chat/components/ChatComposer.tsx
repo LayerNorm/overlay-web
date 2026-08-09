@@ -6,11 +6,9 @@ import {
   AtSign,
   Brain,
   Check,
-  ChevronDown,
   FileText,
   Globe2,
   Image as ImageIcon,
-  MessageSquare,
   MousePointerClick,
   Plus,
   Reply,
@@ -18,7 +16,6 @@ import {
   SquareTerminal,
   Video,
   X,
-  Zap,
   type LucideIcon,
 } from 'lucide-react'
 import { useRef, useState, type MouseEvent, type ReactNode, type RefObject } from 'react'
@@ -122,6 +119,7 @@ export function ChatComposer(props: ChatComposerProps) {
           }`}
         >
           <ComposerAlerts attachmentError={viewProps.attachmentError} composerNotice={viewProps.composerNotice} />
+          {viewProps.beforeComposerContent}
           {viewProps.billingPromptContent}
           {viewProps.isSendBlocked && !viewProps.isActiveLoading ? (
             viewProps.blockedComposerContent
@@ -185,6 +183,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
           onMentionsChange={props.onMentionsChange}
           onPaste={props.onPaste}
           onUploadFile={() => props.docInputRef.current?.click()}
+          mentionCategories={props.mentionCategories}
           placeholder={composerPlaceholder(props)}
           className={undefined}
           onKeyDown={(event) => {
@@ -222,7 +221,7 @@ type ComposerControlsProps = ComposerViewProps & {
 }
 
 function ComposerControls(props: ComposerControlsProps) {
-  const mentionTooltip = mentionReferenceLabel(props.capabilities)
+  const mentionTooltip = mentionReferenceLabel(props)
   return (
     <div className={`mt-2 grid min-h-9 items-center gap-2 ${
       props.isTemporaryChat
@@ -261,7 +260,6 @@ function ComposerControls(props: ComposerControlsProps) {
         })}
         {props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
       </div>
-      {props.isTemporaryChat ? null : <ModeMenu {...props} />}
       {props.isActiveLoading ? (
         <DelayedTooltip label="Stop generating" side="top">
           <button
@@ -288,8 +286,10 @@ function ComposerControls(props: ComposerControlsProps) {
   )
 }
 
-function mentionReferenceLabel(capabilities: ComposerViewProps['capabilities']): string {
+function mentionReferenceLabel(props: Pick<ComposerViewProps, 'capabilities' | 'mentionCategories'>): string {
+  const { capabilities, mentionCategories } = props
   const targets = [
+    mentionCategories?.some((category) => category.type === 'person') ? 'people and agents' : null,
     capabilities.files ? 'files' : null,
     capabilities.skills ? 'skills' : null,
     capabilities.automations ? 'automations' : null,
@@ -301,10 +301,11 @@ function mentionReferenceLabel(capabilities: ComposerViewProps['capabilities']):
 }
 
 function composerPlaceholder(props: ComposerViewProps): string {
+  if (props.placeholder) return props.placeholder
   if (props.mode === 'automate') {
     return 'Describe an automation, use @ to reference available context...'
   }
-  return `Ask anything, use @ to ${mentionReferenceLabel(props.capabilities).toLowerCase()}...`
+  return `Ask anything, use @ to ${mentionReferenceLabel(props).toLowerCase()}...`
 }
 
 function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HTMLInputElement | null> }) {
@@ -477,29 +478,6 @@ function GenerationChip({ chip, onClear }: { chip: 'image' | 'video'; onClear: (
         <X size={9} className="absolute opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" />
       </button>
       {chip === 'image' ? 'Image' : 'Video'}
-    </div>
-  )
-}
-
-function ModeMenu(props: ComposerViewProps) {
-  return (
-    <div ref={props.modeMenuRef} className="relative shrink-0">
-      <button type="button" onClick={() => props.setShowModeMenu((value) => !value)} className={`flex h-9 items-center gap-1 rounded-lg px-2.5 text-xs transition-colors hover:bg-[var(--surface-muted)] ${props.mode === 'automate' ? 'text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}>
-        {props.mode === 'automate' ? <Zap size={12} strokeWidth={1.75} /> : <MessageSquare size={12} strokeWidth={1.75} />}
-        <span>{props.mode === 'automate' ? 'Automate' : 'Chat'}</span>
-        <ChevronDown size={10} className="opacity-60" />
-      </button>
-      {props.showModeMenu && (
-        <div className="overlay-fade-in absolute bottom-full right-0 z-20 mb-2 w-40 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
-          {(['chat', 'automate'] as const).map((item) => (
-            <button key={item} type="button" onClick={() => props.onNavigateMode(item)} className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-[var(--surface-muted)] ${props.mode === item ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'}`}>
-              {item === 'chat' ? <MessageSquare size={13} /> : <Zap size={13} strokeWidth={1.75} />}
-              <span>{item === 'chat' ? 'Chat' : 'Automate'}</span>
-              {props.mode === item && <Check size={11} className="ml-auto" />}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

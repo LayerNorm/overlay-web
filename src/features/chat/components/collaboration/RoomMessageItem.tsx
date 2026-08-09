@@ -18,11 +18,12 @@ import {
   X,
 } from 'lucide-react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
-import { FlashCopyIconButton, UserMessageBubble } from '@overlay/chat-react'
+import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
+import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
 import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview } from '@overlay/chat-react'
 import { Textarea } from '@overlay/ui/primitives'
-import { SafeHumanMarkdown } from './SafeHumanMarkdown'
+import { MarkdownMessage } from '../MarkdownMessage'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -34,6 +35,12 @@ export type RoomMessageAttachment = {
   url: string
   name: string
   mediaType?: string
+}
+
+export type RoomThreadTeaser = {
+  authorName: string
+  text: string
+  createdAt: number
 }
 
 export type RoomMessageView = {
@@ -63,6 +70,8 @@ export type RoomMessageItemProps = {
   message: RoomMessageView
   reactions: RoomMessageReaction[]
   replyCount: number
+  /** Latest reply preview for Slack-style thread entry under the message. */
+  threadTeaser?: RoomThreadTeaser | null
   pinned: boolean
   saved: boolean
   editing: boolean
@@ -95,18 +104,22 @@ export function roomMessageDomId(messageId: string): string {
   return `room-message-${messageId}`
 }
 
+function authorInitial(name: string): string {
+  return name.trim().slice(0, 1).toUpperCase() || '?'
+}
+
 /**
- * One message in a shared room. People render as attributed chat bubbles (yours
- * on the right, everyone else's on the left) and agents render through the
- * shared assistant block renderer, so markdown, tool calls, and attachments look
- * the same as they do in personal chat. Collaboration-only operations (thread,
- * react, pin, save, report) sit in the same hover row as the transcript's
- * actions.
+ * One message in a shared room.
+ *
+ * - **Yours:** right-aligned personal-chat bubble (unchanged).
+ * - **Received:** Slack-style flat row (avatar · name · time · body, no bubble).
+ * - **Agents:** full-width assistant blocks with the same meta chrome.
  */
 export function RoomMessageItem({
   message,
   reactions,
   replyCount,
+  threadTeaser = null,
   pinned,
   saved,
   editing,
@@ -139,10 +152,38 @@ export function RoomMessageItem({
     ? 'rounded-xl ring-2 ring-[var(--foreground)] ring-offset-4 ring-offset-[var(--background)]'
     : ''
 
+  const avatarNode = isAgent ? (
+    <span
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white"
+      style={{ backgroundColor: message.authorColor ?? '#64748b' }}
+      aria-hidden
+    >
+      <Bot size={16} strokeWidth={1.75} />
+    </span>
+  ) : (
+    <span
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-[13px] font-semibold text-[var(--foreground)]"
+      aria-hidden
+    >
+      {authorInitial(mine ? 'You' : message.authorName)}
+    </span>
+  )
+
+  /** Human and agent messages share the same safe GFM renderer. */
+  const humanBody = message.text ? (
+    <div className="text-[15px] leading-relaxed text-[var(--foreground)]">
+      <MarkdownMessage text={message.text} isStreaming={false} />
+    </div>
+  ) : null
+
   if (message.deletedAt) {
     return (
-      <div {...rootProps} className={`flex flex-col gap-1 ${mine ? 'items-end' : 'items-start'}`}>
-        <p className="px-1 text-sm italic text-[var(--muted-light)]">Message deleted</p>
+      <div
+        {...rootProps}
+        className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 ${highlightClass}`}
+      >
+        {avatarNode}
+        <p className="self-center text-sm italic text-[var(--muted-light)]">Message deleted</p>
       </div>
     )
   }
@@ -223,9 +264,63 @@ export function RoomMessageItem({
     </div>
   )
 
-  const footer = (
+  const reactionRow = reactions.length > 0 ? (
+    <div className={`flex flex-wrap items-center gap-1 ${mine ? 'justify-end' : ''}`}>
+      {reactions.map((reaction) => (
+        <button
+          key={reaction.emoji}
+          type="button"
+          onClick={() => onToggleReaction(reaction.emoji)}
+          className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[11px] transition-colors ${
+            reaction.reactedByCurrentPrincipal
+              ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]'
+              : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'
+          }`}
+        >
+          <span>{reaction.emoji}</span>
+          <span>{reaction.count}</span>
+        </button>
+      ))}
+    </div>
+  ) : null
+
+  const threadEntry = !mine && replyCount > 0 ? (
+    <button
+      type="button"
+      onClick={onOpenThread}
+      data-testid="thread-teaser"
+      className="group/thread mt-0.5 flex max-w-xl items-start gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-[var(--surface-subtle)]"
+    >
+      <MessageSquareReply size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-[var(--muted)]" />
+      <span className="min-w-0 flex-1">
+        <span className="block text-[12px] font-semibold text-[var(--foreground)]">
+          {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
+        </span>
+        {threadTeaser?.text ? (
+          <span className="mt-0.5 block truncate text-[12px] text-[var(--muted)]">
+            <span className="font-medium text-[var(--foreground)]">{threadTeaser.authorName}</span>
+            {': '}
+            {threadTeaser.text}
+          </span>
+        ) : null}
+      </span>
+    </button>
+  ) : replyCount > 0 ? (
+    <button
+      type="button"
+      onClick={onOpenThread}
+      data-testid="thread-teaser"
+      className={`inline-flex items-center gap-1 text-[11px] font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)] ${mine ? 'self-end' : ''}`}
+    >
+      <MessageSquareReply size={12} strokeWidth={1.75} />
+      {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
+    </button>
+  ) : null
+
+  const toolbar = (
     <RoomMessageToolbar
       alignEnd={mine}
+      floating
       copyText={message.text}
       canEdit={mine}
       canReport={!mine}
@@ -244,136 +339,81 @@ export function RoomMessageItem({
     />
   )
 
-  /**
-   * Every room message names its author. Anonymous bubbles read as first person
-   * even when a teammate wrote them, which is exactly the confusion a shared
-   * room cannot afford.
-   */
-  const meta = grouped ? (
-    <time className={`px-1 text-[10px] text-[var(--muted-light)] opacity-0 transition-opacity group-hover/exchange:opacity-100 ${mine ? 'text-right' : 'text-left'}`}>
-      {timeLabel}
-    </time>
-  ) : (
-    <div className={`flex items-center gap-2 px-1 ${mine ? 'justify-end' : ''}`}>
-      <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-[var(--foreground)]">
-        {isAgent ? (
-          <span
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white"
-            style={{ backgroundColor: message.authorColor ?? '#64748b' }}
-          >
-            <Bot size={11} strokeWidth={1.75} />
-          </span>
-        ) : (
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[10px] text-[var(--muted)]">
-            {message.authorName.slice(0, 1).toUpperCase()}
-          </span>
-        )}
-        <span className="truncate">{mine ? 'You' : message.authorName}</span>
-      </span>
-      <time className="shrink-0 text-[10px] text-[var(--muted-light)]">{timeLabel}</time>
-      {message.editedAt ? <span className="text-[10px] text-[var(--muted-light)]">edited</span> : null}
-      {message.delivery === 'sending' ? <span className="text-[10px] text-[var(--muted-light)]">sending</span> : null}
-      {pinned ? <Pin size={11} className="shrink-0 text-[var(--muted-light)]" /> : null}
-    </div>
-  )
-
-  const reactionRow = (reactions.length > 0 || replyCount > 0) ? (
-    <div className={`flex flex-wrap items-center gap-1.5 px-1 ${mine ? 'justify-end' : ''}`}>
-      {reactions.map((reaction) => (
-        <button
-          key={reaction.emoji}
-          type="button"
-          onClick={() => onToggleReaction(reaction.emoji)}
-          className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[11px] transition-colors ${
-            reaction.reactedByCurrentPrincipal
-              ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]'
-              : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'
-          }`}
-        >
-          <span>{reaction.emoji}</span>
-          <span>{reaction.count}</span>
-        </button>
-      ))}
-      {replyCount > 0 ? (
-        <button
-          type="button"
-          onClick={onOpenThread}
-          className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
-        >
-          <MessageSquareReply size={12} strokeWidth={1.75} />
-          {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
-        </button>
-      ) : null}
-    </div>
-  ) : null
-
-  if (!isAgent) {
+  // ── Sent (yours): right gray bubble, with no redundant identity chrome. ──
+  if (mine && !isAgent) {
     return (
       <div
         {...rootProps}
-        className={`group/exchange relative flex scroll-mt-6 flex-col gap-2 message-appear ${highlightClass}`}
+        className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors hover:bg-[var(--surface-subtle)] ${highlightClass}`}
       >
-        {meta}
-        <div className={`flex min-w-0 ${mine ? 'justify-end' : 'justify-start'}`}>
-          <div className={`flex min-w-0 max-w-[min(92%,36rem)] flex-col gap-2 sm:max-w-[75%] ${mine ? 'items-end' : 'items-start'}`}>
-            {attachments}
-            {editing ? editor : message.text ? (
-              <UserMessageBubble
-                tone={mine ? 'room-self' : 'default'}
-                className={`max-w-full ${mine ? 'ml-auto' : 'mr-auto rounded-bl-sm rounded-br-2xl'}`}
-              >
-                <SafeHumanMarkdown text={message.text} isStreaming={false} mentions={message.mentions} />
-              </UserMessageBubble>
-            ) : null}
-          </div>
+        <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
+          {toolbar}
+          {attachments}
+          {editing ? editor : message.text ? (
+            <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
+              <MarkdownMessage text={message.text} isStreaming={false} />
+            </UserMessageBubble>
+          ) : null}
+          {message.delivery === 'failed' ? (
+            <button type="button" className="text-[11px] font-medium text-red-500 hover:underline" onClick={onRetrySend}>
+              Failed to send · Retry
+            </button>
+          ) : null}
+          {reactionRow}
+          {threadEntry}
         </div>
-        {message.delivery === 'failed' ? (
-          <button
-            type="button"
-            className={`px-1 text-[11px] font-medium text-red-500 hover:underline ${mine ? 'text-right' : 'text-left'}`}
-            onClick={onRetrySend}
-          >
-            Failed to send · Retry
-          </button>
-        ) : null}
-        {reactionRow}
-        {footer}
       </div>
     )
   }
 
+  // ── Received human / agent: Slack flat row with avatar on every message ──
   return (
     <div
       {...rootProps}
-      className={`group/exchange relative flex scroll-mt-6 flex-col gap-2 message-appear ${highlightClass}`}
+      className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors hover:bg-[var(--surface-subtle)] ${highlightClass}`}
     >
-      {meta}
-      {attachments}
-      {editing ? editor : (
-        <AssistantVisualBlocks
-          blocks={message.blocks}
-          blockKeyPrefix={message.id}
-          markdownKeyPrefix={message.id}
-          isStreaming={Boolean(message.streaming)}
-          isTextStreaming={Boolean(message.streaming)}
-          onOpenDraft={NOOP_DRAFT}
-          onCreateAutomationDraft={NOOP_DRAFT}
-          onOpenAttachmentPreview={onOpenAttachmentPreview}
-        />
-      )}
-      {message.streaming && message.blocks.length === 0 ? (
-        <div className="flex items-center gap-1 px-1" aria-label={`${message.authorName} is responding`}>
-          {[0, 1, 2].map((dot) => (
-            <span
-              key={dot}
-              className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--muted-light)]"
-              style={{ animationDelay: `${dot * 120}ms` }}
-            />
-          ))}
+      {avatarNode}
+      <div className="relative min-w-0 flex-1">
+        {toolbar}
+        <div className="mb-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="truncate text-[13px] font-bold text-[var(--foreground)]">
+            {message.authorName}
+          </span>
+          {!grouped ? <time className="shrink-0 text-[11px] text-[var(--muted-light)]">{timeLabel}</time> : null}
+          {message.editedAt ? <span className="text-[11px] text-[var(--muted-light)]">edited</span> : null}
+          {pinned ? <Pin size={11} className="shrink-0 text-[var(--muted-light)]" /> : null}
         </div>
-      ) : null}
-      {reactionRow}
-      {message.streaming ? null : footer}
+        {attachments}
+        {editing ? editor : isAgent ? (
+          <>
+            <AssistantVisualBlocks
+              blocks={message.blocks}
+              blockKeyPrefix={message.id}
+              markdownKeyPrefix={message.id}
+              isStreaming={Boolean(message.streaming)}
+              isTextStreaming={Boolean(message.streaming)}
+              onOpenDraft={NOOP_DRAFT}
+              onCreateAutomationDraft={NOOP_DRAFT}
+              onOpenAttachmentPreview={onOpenAttachmentPreview}
+            />
+            {message.streaming && message.blocks.length === 0 ? (
+              <div className="flex items-center gap-1 py-1" aria-label={`${message.authorName} is responding`}>
+                {[0, 1, 2].map((dot) => (
+                  <span
+                    key={dot}
+                    className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--muted-light)]"
+                    style={{ animationDelay: `${dot * 120}ms` }}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          humanBody
+        )}
+        {reactionRow}
+        {threadEntry}
+      </div>
     </div>
   )
 }
@@ -386,6 +426,7 @@ const QUICK_REACTIONS = [
 
 function RoomMessageToolbar({
   alignEnd,
+  floating,
   copyText,
   canEdit,
   canReport,
@@ -399,10 +440,11 @@ function RoomMessageToolbar({
   onOpenThread,
   onQuoteReply,
   onTogglePinned,
-    onToggleSaved,
-    onCopyPermalink,
+  onToggleSaved,
+  onCopyPermalink,
 }: {
   alignEnd: boolean
+  floating: boolean
   copyText: string
   canEdit: boolean
   canReport: boolean
@@ -423,27 +465,18 @@ function RoomMessageToolbar({
   const buttonClass =
     'rounded-md p-1.5 text-[var(--muted)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30'
 
-  return (
-    <div
-      className={`chat-exchange-actions--hover flex items-center gap-1 px-1 pt-0.5 transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
-        // The row stays put while the picker is open, or choosing an emoji
-        // would mean chasing a control that fades out from under the cursor.
+  const railClass = floating
+    ? `absolute -top-3 right-0 z-20 flex items-center gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-0.5 shadow-md transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
         pickerOpen ? 'opacity-100' : 'opacity-0'
-      } ${alignEnd ? 'justify-end' : ''}`}
-    >
-      <FlashCopyIconButton copyText={copyText} disabled={disabled || copyText.length === 0} ariaLabel="Copy message" />
-      <button
-        type="button"
-        onClick={onCopyPermalink}
-        disabled={disabled}
-        aria-label="Copy message link"
-        title="Copy message link"
-        className={buttonClass}
-      >
-        <Link2 size={14} strokeWidth={1.75} />
-      </button>
+      }`
+    : `chat-exchange-actions--hover flex items-center gap-1 px-1 pt-0.5 transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
+        pickerOpen ? 'opacity-100' : 'opacity-0'
+      } ${alignEnd ? 'justify-end' : ''}`
+
+  return (
+    <div className={railClass}>
       <EmojiPickerButton
-        alignEnd={alignEnd}
+        alignEnd={alignEnd || floating}
         disabled={disabled}
         open={pickerOpen}
         onOpenChange={setPickerOpen}
@@ -455,6 +488,17 @@ function RoomMessageToolbar({
       </button>
       <button type="button" onClick={onQuoteReply} disabled={disabled} className={buttonClass} aria-label="Quote in reply">
         <MessageSquareReply size={14} strokeWidth={1.75} className="rotate-180" />
+      </button>
+      <FlashCopyIconButton copyText={copyText} disabled={disabled || copyText.length === 0} ariaLabel="Copy message" />
+      <button
+        type="button"
+        onClick={onCopyPermalink}
+        disabled={disabled}
+        aria-label="Copy message link"
+        title="Copy message link"
+        className={buttonClass}
+      >
+        <Link2 size={14} strokeWidth={1.75} />
       </button>
       <button
         type="button"

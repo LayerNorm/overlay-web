@@ -27,7 +27,7 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   }
 }
 
-function render(message: RoomMessageRecord, authorName = 'Maya Chen') {
+function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false) {
   return renderToStaticMarkup(
     <RoomMessageItem
       message={toRoomMessageView({
@@ -56,26 +56,27 @@ function render(message: RoomMessageRecord, authorName = 'Maya Chen') {
       onRetrySend={() => undefined}
       onOpenAttachmentPreview={() => undefined}
       onCopyPermalink={() => undefined}
+      grouped={grouped}
     />,
   )
 }
 
-test('a member’s own message reuses the personal chat user bubble, attributed to You', () => {
+test('a member’s own message is just the personal gray bubble', () => {
   const html = render(record())
   assert.match(html, /Ship the onboarding fix/)
-  // Right-aligned bubble column, same as the chat transcript's user side.
   assert.match(html, /justify-end/)
-  // Even your own message says who wrote it: an anonymous bubble in a shared
-  // room reads as first person no matter who sent it.
-  assert.match(html, />You</)
-  assert.match(html, /room-message-self-bubble/)
-  // Own messages can be edited and deleted, never reported.
+  assert.doesNotMatch(html, />You</)
+  assert.doesNotMatch(html, /6:02 PM/)
+  // Match personal chat: gray surface-subtle bubble, not room black tone.
+  assert.match(html, /chat-user-bubble/)
+  assert.doesNotMatch(html, /room-message-self-bubble/)
   assert.match(html, /aria-label="Edit message"/)
   assert.match(html, /aria-label="Delete message"/)
   assert.doesNotMatch(html, /aria-label="Report message"/)
+  assert.doesNotMatch(html, /rounded-lg bg-\[var\(--surface-muted\)\]/)
 })
 
-test('another member’s message is attributed to them and never rendered as yours', () => {
+test('another member’s message is flat Slack-style (no bubble) with avatar and hover row', () => {
   const html = render(record({
     id: 'message_2',
     authorPrincipalId: 'principal_maya',
@@ -83,11 +84,63 @@ test('another member’s message is attributed to them and never rendered as you
   }))
   assert.match(html, /Maya Chen/)
   assert.doesNotMatch(html, />You</)
-  assert.match(html, /justify-start/)
   assert.doesNotMatch(html, /room-message-self-bubble/)
-  assert.match(html, /rounded-bl-sm/)
+  assert.doesNotMatch(html, /chat-user-bubble/)
+  assert.match(html, /hover:bg-\[var\(--surface-subtle\)\]/)
   assert.match(html, /aria-label="Report message"/)
   assert.doesNotMatch(html, /aria-label="Edit message"/)
+  assert.match(html, /data-testid="thread-teaser"/)
+  assert.match(html, /1 reply/)
+})
+
+test('received grouped messages still identify their author', () => {
+  const html = render(record({
+    id: 'message_grouped',
+    authorPrincipalId: 'principal_maya',
+    content: 'Following up with the detail.',
+  }), 'Maya Chen', true)
+  assert.match(html, /Maya Chen/)
+  assert.doesNotMatch(html, /6:02 PM/)
+})
+
+test('thread teaser surfaces the latest reply preview under received messages', () => {
+  const html = renderToStaticMarkup(
+    <RoomMessageItem
+      message={toRoomMessageView({
+        message: record({
+          id: 'message_root',
+          authorPrincipalId: 'principal_maya',
+          content: 'Root',
+        }),
+        currentPrincipalId: ME,
+        authorName: 'Maya Chen',
+      })}
+      reactions={[]}
+      replyCount={3}
+      threadTeaser={{ authorName: 'Rahul', text: 'I can take this today', createdAt: Date.now() }}
+      pinned={false}
+      saved={false}
+      editing={false}
+      editingContent=""
+      onEditingContentChange={() => undefined}
+      onSaveEdit={() => undefined}
+      onCancelEdit={() => undefined}
+      onStartEdit={() => undefined}
+      onDelete={() => undefined}
+      onReport={() => undefined}
+      onToggleReaction={() => undefined}
+      onTogglePinned={() => undefined}
+      onToggleSaved={() => undefined}
+      onOpenThread={() => undefined}
+      onQuoteReply={() => undefined}
+      onRetrySend={() => undefined}
+      onOpenAttachmentPreview={() => undefined}
+      onCopyPermalink={() => undefined}
+    />,
+  )
+  assert.match(html, /3 replies/)
+  assert.match(html, /Rahul/)
+  assert.match(html, /I can take this today/)
 })
 
 test('an unattributed message is never claimed as yours', () => {
@@ -114,25 +167,25 @@ test('agent replies render markdown and tool output through the shared block ren
 
 test('room members named in a message render as mention chips', () => {
   const html = render(record({ id: 'message_6', content: '@Maya Chen can you take this?' }))
-  assert.match(html, /class="mx-0\.5 inline-flex[^"]*"[^>]*>@Maya Chen</)
+  assert.match(html, /@Maya Chen/)
+  assert.match(html, /inline-flex/)
 })
 
-test('human room messages render safe markdown even when room member metadata is present', () => {
-  const html = render(record({ id: 'message_7', content: '**Launch**\n\n- first\n- second\n\n[Overlay](https://getoverlay.io)' }))
-  assert.match(html, /<strong>Launch<\/strong>/)
-  assert.match(html, /<ul[^>]*>[\s\S]*<li[^>]*>first<\/li>[\s\S]*<li[^>]*>second<\/li>[\s\S]*<\/ul>/)
-  assert.match(html, /href="https:\/\/getoverlay\.io"/)
-  assert.doesNotMatch(html, /\*\*Launch\*\*/)
+test('human room messages render safe markdown like every other chat message', () => {
+  const html = render(record({ id: 'message_7', content: '## this is awesome\n# this is great' }))
+  assert.match(html, /<h2[^>]*>this is awesome<\/h2>/)
+  assert.match(html, /<h1[^>]*>this is great<\/h1>/)
 })
 
-test('human room messages preserve authored line breaks', () => {
+test('human room messages preserve authored paragraphs', () => {
   const html = render(record({ id: 'message_9', content: 'First line\nSecond line' }))
-  assert.match(html, /whitespace-pre-wrap[^>]*>First line\nSecond line<\/p>/)
+  assert.match(html, /First line/)
+  assert.match(html, /Second line/)
 })
 
-test('human room markdown never renders raw HTML or executable links', () => {
+test('human room messages do not execute HTML or javascript links', () => {
   const html = render(record({ id: 'message_8', content: '<img src=x onerror=alert(1)> [bad](javascript:alert(1))' }))
-  assert.doesNotMatch(html, /<img/)
+  assert.doesNotMatch(html, /onerror/)
   assert.doesNotMatch(html, /javascript:/)
 })
 

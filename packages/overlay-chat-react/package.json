@@ -18,6 +18,7 @@
     "./model-indicators": "./src/components/ModelIndicators.tsx",
     "./model-qualities-panel": "./src/components/ModelQualitiesPanel.tsx",
     "./sources-panel": "./src/components/SourcesPanel.tsx",
+    "./user-message-bubble": "./src/components/UserMessageBubble.tsx",
     "./transcript": "./src/components/transcript/index.ts",
     "./transcript-scroll": "./src/components/transcript/TranscriptScroll.ts",
     "./chat-surface.css": "./src/styles/chat-surface.css",
