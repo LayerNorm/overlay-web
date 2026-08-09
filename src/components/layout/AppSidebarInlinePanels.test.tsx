@@ -71,6 +71,18 @@ test('activity shows the cumulative unread badge', () => {
   assert.match(html, /aria-label="12 unread"/)
 })
 
+test('a pending secondary subpage replaces its icon with a loading indicator', () => {
+  const html = renderToStaticMarkup(
+    <InlineNavChildren
+      items={[{ id: 'channels', label: 'Channels' }]}
+      activeId=""
+      pendingId="channels"
+      onSelect={() => undefined}
+    />,
+  )
+  assert.match(html, /aria-label="Loading Channels"/)
+})
+
 test('items with an href render as links so they support open-in-new-tab', () => {
   const html = renderToStaticMarkup(
     <InlineNavChildren
