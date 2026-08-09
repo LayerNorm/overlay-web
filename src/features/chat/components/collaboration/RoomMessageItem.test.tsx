@@ -27,7 +27,7 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   }
 }
 
-function render(message: RoomMessageRecord, authorName = 'Maya Chen') {
+function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false) {
   return renderToStaticMarkup(
     <RoomMessageItem
       message={toRoomMessageView({
@@ -56,23 +56,24 @@ function render(message: RoomMessageRecord, authorName = 'Maya Chen') {
       onRetrySend={() => undefined}
       onOpenAttachmentPreview={() => undefined}
       onCopyPermalink={() => undefined}
+      grouped={grouped}
     />,
   )
 }
 
-test('a member’s own message reuses the personal gray bubble, attributed to You', () => {
+test('a member’s own message is just the personal gray bubble', () => {
   const html = render(record())
   assert.match(html, /Ship the onboarding fix/)
   assert.match(html, /justify-end/)
-  assert.match(html, />You</)
+  assert.doesNotMatch(html, />You</)
+  assert.doesNotMatch(html, /6:02 PM/)
   // Match personal chat: gray surface-subtle bubble, not room black tone.
   assert.match(html, /chat-user-bubble/)
   assert.doesNotMatch(html, /room-message-self-bubble/)
   assert.match(html, /aria-label="Edit message"/)
   assert.match(html, /aria-label="Delete message"/)
   assert.doesNotMatch(html, /aria-label="Report message"/)
-  // Every message keeps an avatar, including yours.
-  assert.match(html, /rounded-lg bg-\[var\(--surface-muted\)\]/)
+  assert.doesNotMatch(html, /rounded-lg bg-\[var\(--surface-muted\)\]/)
 })
 
 test('another member’s message is flat Slack-style (no bubble) with avatar and hover row', () => {
@@ -90,6 +91,16 @@ test('another member’s message is flat Slack-style (no bubble) with avatar and
   assert.doesNotMatch(html, /aria-label="Edit message"/)
   assert.match(html, /data-testid="thread-teaser"/)
   assert.match(html, /1 reply/)
+})
+
+test('received grouped messages still identify their author', () => {
+  const html = render(record({
+    id: 'message_grouped',
+    authorPrincipalId: 'principal_maya',
+    content: 'Following up with the detail.',
+  }), 'Maya Chen', true)
+  assert.match(html, /Maya Chen/)
+  assert.doesNotMatch(html, /6:02 PM/)
 })
 
 test('thread teaser surfaces the latest reply preview under received messages', () => {
@@ -160,16 +171,14 @@ test('room members named in a message render as mention chips', () => {
   assert.match(html, /inline-flex/)
 })
 
-test('human room messages stay plain text like personal chat (no markdown headings)', () => {
+test('human room messages render safe markdown like every other chat message', () => {
   const html = render(record({ id: 'message_7', content: '## this is awesome\n# this is great' }))
-  assert.match(html, /## this is awesome/)
-  assert.match(html, /# this is great/)
-  assert.doesNotMatch(html, /<h[1-6]/)
+  assert.match(html, /<h2[^>]*>this is awesome<\/h2>/)
+  assert.match(html, /<h1[^>]*>this is great<\/h1>/)
 })
 
-test('human room messages preserve authored line breaks', () => {
+test('human room messages preserve authored paragraphs', () => {
   const html = render(record({ id: 'message_9', content: 'First line\nSecond line' }))
-  assert.match(html, /whitespace-pre-wrap/)
   assert.match(html, /First line/)
   assert.match(html, /Second line/)
 })
@@ -177,8 +186,7 @@ test('human room messages preserve authored line breaks', () => {
 test('human room messages do not execute HTML or javascript links', () => {
   const html = render(record({ id: 'message_8', content: '<img src=x onerror=alert(1)> [bad](javascript:alert(1))' }))
   assert.doesNotMatch(html, /onerror/)
-  // Plain text may still contain the string; it must not become an executable node.
-  assert.doesNotMatch(html, /<img/)
+  assert.doesNotMatch(html, /javascript:/)
 })
 
 test('collaboration operations sit in the hover action row', () => {

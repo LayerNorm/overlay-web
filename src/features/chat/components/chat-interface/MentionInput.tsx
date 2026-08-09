@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -31,6 +32,8 @@ interface MentionInputProps {
   onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void
   onPaste?: (e: React.ClipboardEvent<HTMLDivElement>) => void
   onUploadFile: () => void
+  /** Workspace-specific targets that supplement the normal resource mentions. */
+  mentionCategories?: MentionCategory[]
   placeholder?: string
   className?: string
   disabled?: boolean
@@ -213,6 +216,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
       onKeyDown,
       onPaste,
       onUploadFile,
+      mentionCategories = [],
       placeholder,
       className,
       disabled,
@@ -234,7 +238,28 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     const buttonInsertedAtRef = useRef(false)
     const [isEditorEmpty, setIsEditorEmpty] = useState(() => isComposerTextEmpty(value))
 
-    const { availableTypes, search, loading } = useMentionData()
+    const {
+      availableTypes: defaultAvailableTypes,
+      search: searchDefaultCategories,
+      loading,
+    } = useMentionData()
+    const availableTypes = useMemo(() => Array.from(new Set([
+      ...defaultAvailableTypes,
+      ...mentionCategories.map((category) => category.type),
+    ])), [defaultAvailableTypes, mentionCategories])
+    const search = useCallback(async (query: string): Promise<MentionCategory[]> => {
+      const defaultCategories = await searchDefaultCategories(query)
+      const normalizedQuery = query.trim().toLocaleLowerCase()
+      const extraCategories = mentionCategories.map((category) => ({
+        ...category,
+        items: normalizedQuery
+          ? category.items.filter((item) => (`${item.name} ${item.description ?? ''}`).toLocaleLowerCase().includes(normalizedQuery))
+          : category.items,
+      })).filter((category) => category.items.length > 0)
+      const byType = new Map(defaultCategories.map((category) => [category.type, category]))
+      for (const category of extraCategories) byType.set(category.type, category)
+      return Array.from(byType.values())
+    }, [mentionCategories, searchDefaultCategories])
 
     // Sync explicit external value commands into the editor (clear on send,
     // populate restored draft after hydration). Normal typing stays local to

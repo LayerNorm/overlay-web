@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import {
   ArrowUp,
@@ -95,7 +95,9 @@ import type {
   ConversationUiState,
 } from './chat-interface/types'
 import type { MentionInputHandle } from './chat-interface/MentionInput'
-import type { MentionItem } from '@/shared/knowledge/mention-types'
+import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-types'
+import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { PersonalMentionConversionPrompt } from './PersonalMentionConversionPrompt'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import type { ConversationLoadSnapshot } from './chat/chatTransport'
 
@@ -170,6 +172,7 @@ export default function ChatExperience({
     revision: gatewayCatalogRevision,
   } = useGatewayModelCatalog({ enabled: !isPublicShowcase })
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
+  const { activeWorkspaceId } = useWorkspace()
   const billingEnabled = capabilities.billing
   const convexLiveSyncEnabled = !isPublicShowcase &&
     appDataCapabilities.requiresConvexClient && appDataCapabilities.supportsRealtime
@@ -501,6 +504,8 @@ export default function ChatExperience({
   const pendingScrollChatIdRef = useRef<string | null>(null)
   const textareaRef = useRef<MentionInputHandle>(null)
   const [mentions, setMentions] = useState<MentionItem[]>([])
+  const [personalMentionConfirmationOpen, setPersonalMentionConfirmationOpen] = useState(false)
+  const [peopleMentionCategories, setPeopleMentionCategories] = useState<MentionCategory[]>([])
   // MentionInput emits a fresh mentions array on every keystroke. Bail out when the
   // value is unchanged so plain typing does not push new state / re-render the whole
   // chat experience on each character.
@@ -514,6 +519,57 @@ export default function ChatExperience({
       return next
     })
   }, [])
+
+  useEffect(() => {
+    if (!activeWorkspaceId || isPublicShowcase) {
+      setPeopleMentionCategories([])
+      return
+    }
+    let cancelled = false
+    void Promise.all([
+      overlayAppClient.workspaces.management(activeWorkspaceId, 'people'),
+      overlayAppClient.workspaces.management(activeWorkspaceId, 'chats-agents'),
+    ]).then(([people, agents]) => {
+      if (cancelled) return
+      const principals = new Map<string, MentionItem>()
+      for (const item of [...people.items, ...agents.items]) {
+        if (
+          item.kind !== 'member' ||
+          !item.principalId ||
+          item.principalId === people.currentPrincipalId ||
+          item.status !== 'active'
+        ) continue
+        principals.set(item.principalId, {
+          type: 'person',
+          id: item.principalId,
+          name: item.name,
+          description: item.principalType === 'agent' ? 'Agent' : 'Workspace member',
+          icon: 'UsersRound',
+        })
+      }
+      const items = [...principals.values()].sort((left, right) => left.name.localeCompare(right.name))
+      setPeopleMentionCategories(items.length ? [{
+        type: 'person',
+        label: 'People & agents',
+        icon: 'UsersRound',
+        items,
+      }] : [])
+    }).catch(() => {
+      if (!cancelled) setPeopleMentionCategories([])
+    })
+    return () => { cancelled = true }
+  }, [activeWorkspaceId, isPublicShowcase])
+
+  const personMentions = useMemo(
+    () => mentions.filter((mention) => mention.type === 'person'),
+    [mentions],
+  )
+
+  useEffect(() => {
+    if (personalMentionConfirmationOpen && personMentions.length === 0) {
+      setPersonalMentionConfirmationOpen(false)
+    }
+  }, [personalMentionConfirmationOpen, personMentions.length])
   const attachMenuRef = useRef<HTMLDivElement>(null)
   const modeMenuRef = useRef<HTMLDivElement>(null)
   const wasStreamingRef = useRef(false)
@@ -1458,8 +1514,12 @@ export default function ChatExperience({
       requireAuth('nav')
       return
     }
+    if (personMentions.length > 0) {
+      setPersonalMentionConfirmationOpen(true)
+      return
+    }
     await handleSend()
-  }, [handleSend, isPublicShowcase, requireAuth])
+  }, [handleSend, isPublicShowcase, personMentions.length, requireAuth])
 
   const focusComposer = useCallback(() => {
     window.setTimeout(() => {
@@ -2017,6 +2077,14 @@ export default function ChatExperience({
               },
               runtime: {
                 composerNotice,
+                beforeComposerContent: personalMentionConfirmationOpen ? (
+                  <PersonalMentionConversionPrompt
+                    draft={inputRef.current ?? input}
+                    mentions={personMentions}
+                    sourceConversationId={activeChatId}
+                    onCancel={() => setPersonalMentionConfirmationOpen(false)}
+                  />
+                ) : undefined,
                 billingPromptContent: budgetTopUpPrompt,
                 isSendBlocked,
                 isActiveLoading,
@@ -2106,6 +2174,9 @@ export default function ChatExperience({
                   router.push(nextMode === 'chat' ? '/app/chat' : '/app/automations')
                   setShowModeMenu(false)
                 },
+              },
+              surface: {
+                mentionCategories: peopleMentionCategories,
               },
               actions: {
                 onStop: stopActiveChat,
