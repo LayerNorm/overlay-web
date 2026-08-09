@@ -916,7 +916,42 @@ export default function ChatExperience({
         cache: 'no-store',
       })
       if (!res.ok) throw new Error('Failed to load automation')
-      setSelectedAutomation(await res.json() as AutomationDetail)
+      const automation = await res.json() as AutomationDetail
+      const candidates = [...new Set([
+        automation.sourceConversationId,
+        automation.conversationId,
+      ].filter((value): value is string => Boolean(value)))]
+      let resolvedConversationId: string | null = null
+      for (const candidate of candidates) {
+        const conversationResponse = await overlayAppClient.conversations.getResponse({
+          conversationId: candidate,
+        }, { cache: 'no-store' }).catch(() => null)
+        if (conversationResponse?.ok) {
+          resolvedConversationId = candidate
+          break
+        }
+      }
+      const validatedAutomation: AutomationDetail = {
+        ...automation,
+        sourceConversationId:
+          resolvedConversationId === automation.sourceConversationId
+            ? automation.sourceConversationId
+            : undefined,
+        conversationId:
+          resolvedConversationId === automation.conversationId
+            ? automation.conversationId
+            : undefined,
+      }
+      setSelectedAutomation(validatedAutomation)
+      const currentId = searchParams?.get('id')
+      if (currentId !== resolvedConversationId) {
+        const params = new URLSearchParams(searchParams?.toString() ?? '')
+        if (resolvedConversationId) params.set('id', resolvedConversationId)
+        else params.delete('id')
+        params.set('automationId', automation._id)
+        const query = params.toString()
+        router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false })
+      }
     } catch {
       setSelectedAutomation(null)
     } finally {

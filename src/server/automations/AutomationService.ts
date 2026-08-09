@@ -324,6 +324,7 @@ export class AutomationService {
       graph: body.graph,
       sourceConversationId: body.sourceConversationId,
       concurrencyPolicy: body.concurrencyPolicy,
+      workspaceId: args.workspaceId,
     })
     if (!id) throw new Error('Automation create returned no id')
     return { success: true, id }
@@ -363,7 +364,7 @@ export class AutomationService {
     }
 
     const automationId = body.automationId
-    const idArgs = { automationId, userId: args.userId }
+    const idArgs = { automationId, userId: args.userId, workspaceId: args.workspaceId }
     const existingAutomation = await this.deps.repository.getAutomation(idArgs)
     if (
       body.action === 'resume'
@@ -429,6 +430,7 @@ export class AutomationService {
     const automation = await this.deps.repository.getAutomation({
       automationId,
       userId: args.userId,
+      workspaceId: args.workspaceId,
     })
     const isDraftPlaceholder =
       automation?.enabled === false &&
@@ -460,6 +462,7 @@ export class AutomationService {
     await this.deps.repository.removeAutomation({
       automationId,
       userId: args.userId,
+      workspaceId: args.workspaceId,
     })
 
     for (const conversationId of linkedConversationIds) {

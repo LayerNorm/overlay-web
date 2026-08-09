@@ -189,9 +189,13 @@ export function useChatRouteController({
 
   useEffect(() => {
     if (!chatPrefsHydrated) return
+    // Automation URLs can contain a legacy or stale conversation id. The
+    // automation detail loader validates its linked conversation before the
+    // canonical automationConversationId effect below is allowed to hydrate it.
+    if (mode === 'automate' && automationIdParam) return
     if (!idParam || activeChatIdRef.current === idParam) return
     void loadChatRef.current?.(idParam)
-  }, [activeChatIdRef, chatPrefsHydrated, idParam])
+  }, [activeChatIdRef, automationIdParam, chatPrefsHydrated, idParam, mode])
 
   useEffect(() => {
     function handleChatRouteSelected(event: Event) {
@@ -208,6 +212,19 @@ export function useChatRouteController({
     if (activeChatIdRef.current === automationConversationId) return
     void loadChatRef.current?.(automationConversationId)
   }, [activeChatIdRef, automationConversationId, mode])
+
+  useEffect(() => {
+    if (mode !== 'automate' || !automationIdParam || !selectedAutomation) return
+    if (automationConversationId || !activeChatIdRef.current) return
+    resetToBlankChatSurface({ temporary: false })
+  }, [
+    activeChatIdRef,
+    automationConversationId,
+    automationIdParam,
+    mode,
+    resetToBlankChatSurface,
+    selectedAutomation,
+  ])
 
   const replaceActiveChatRoute = useCallback(() => {
     if (!hideSidebar) routerReplace('/app/chat')

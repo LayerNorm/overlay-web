@@ -154,6 +154,13 @@ export const createChannel = mutation({
       createdAt: now,
       updatedAt: now,
     })
+    await recordConversationEvent(ctx, {
+      conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'conversation.created',
+      payload: { conversationType: 'channel', slug, visibility: args.visibility },
+    })
     return {
       conversationId,
       workspaceId: args.workspaceId,

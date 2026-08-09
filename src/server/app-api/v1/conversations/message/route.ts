@@ -29,6 +29,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId?: string
       mentionedPrincipalIds?: string[]
       threadRootMessageId?: string
+      clientNonce?: string
+      deferAgentReply?: boolean
     }
     const { auth } = context
 
@@ -52,35 +54,62 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const contentType = body.contentType ?? 'text'
     const modelId = body.modelId ?? body.model
     const server = getOverlayServerContext()
-    const messageId = await server.appData.repositories.conversations.addMessage({
+    const workspaceId = context.workspace.workspace.id
+    const conversation = await server.appData.repositories.conversations.getConversationById({
       conversationId: body.conversationId as Id<'conversations'>,
       userId: auth.userId,
-      turnId,
-      role: body.role,
-      mode,
-      content: normalizedContent,
-      contentType,
-      parts: normalizedParts,
-      modelId,
-      variantIndex: body.variantIndex,
-      ...(body.replyToTurnId?.trim()
-        ? { replyToTurnId: body.replyToTurnId.trim(), replySnippet: body.replySnippet?.trim() }
-        : {}),
+      workspaceId,
+    }) ?? await server.appData.repositories.conversationCollaboration.getAccessibleConversation({
+      actorUserId: auth.userId,
+      conversationId: body.conversationId,
+      workspaceId,
     })
+    if (!conversation) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+    }
+    const isCollaborationConversation = (conversation.conversationType ?? 'personal') !== 'personal'
+    const messageId = isCollaborationConversation
+      ? await server.appData.repositories.conversationCollaboration.addMessage({
+          actorUserId: auth.userId,
+          conversationId: body.conversationId,
+          workspaceId,
+          turnId,
+          content: normalizedContent,
+          parts: normalizedParts,
+          clientNonce: body.clientNonce?.trim() || undefined,
+          threadRootMessageId: body.threadRootMessageId?.trim() || undefined,
+          ...(body.replyToTurnId?.trim()
+            ? { replyToTurnId: body.replyToTurnId.trim(), replySnippet: body.replySnippet?.trim() }
+            : {}),
+        })
+      : await server.appData.repositories.conversations.addMessage({
+          conversationId: body.conversationId as Id<'conversations'>,
+          userId: auth.userId,
+          workspaceId,
+          turnId,
+          role: body.role,
+          mode,
+          content: normalizedContent,
+          contentType,
+          parts: normalizedParts,
+          modelId,
+          variantIndex: body.variantIndex,
+          ...(body.replyToTurnId?.trim()
+            ? { replyToTurnId: body.replyToTurnId.trim(), replySnippet: body.replySnippet?.trim() }
+            : {}),
+        })
 
     // Record message activity and publish workspace.mention lifecycle events for
     // human @-mentions in workspace conversations (DMs and channels).
     const mentionedPrincipalIds = Array.isArray(body.mentionedPrincipalIds)
       ? body.mentionedPrincipalIds.filter((value): value is string => typeof value === 'string')
       : []
-    if (mentionedPrincipalIds.length > 0 && messageId) {
-      const workspaceId = context.workspace.workspace.id
+    if (isCollaborationConversation && messageId) {
       const workspaceName = context.workspace.workspace.name
       const actorPrincipalId = context.workspace.principal.id
       const actorDisplayName = context.workspace.principal.displayName
       const conversationId = body.conversationId
 
-      // Record in-app notifications via the collaboration repository.
       try {
         await server.appData.repositories.conversationCollaboration.recordMessageActivity({
           actorUserId: auth.userId,
@@ -95,18 +124,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         logger.warn('[conversations/message POST] recordMessageActivity failed', { error })
       }
 
-      // Publish lifecycle events for email delivery to mentioned humans.
-      let conversationTitle = 'a conversation'
-      try {
-        const conversation = await server.appData.repositories.conversations.getConversationById({
-          conversationId: conversationId as Id<'conversations'>,
-          userId: auth.userId,
-          workspaceId,
-        })
-        if (conversation?.title) conversationTitle = conversation.title
-      } catch (_error) {
-        // Keep default title if lookup fails.
-      }
+      const conversationTitle = conversation.title || 'a conversation'
 
       for (const mentionedPrincipalId of mentionedPrincipalIds) {
         try {
@@ -132,7 +150,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       }
     }
 
-    return NextResponse.json({ success: true, conversationId: body.conversationId, turnId })
+    return NextResponse.json({ success: true, conversationId: body.conversationId, turnId, messageId })
   } catch (e) {
     logger.error('[conversations/message POST]', e)
     const msg = e instanceof Error ? e.message : 'Failed to save message'

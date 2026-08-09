@@ -222,6 +222,32 @@ export class PostgresAutomationRepository implements AutomationRepository {
         conversationId: args.conversationId,
         userId: args.userId,
       })
+      const [automation] = await tx.select().from(automations).where(and(
+        eq(automations.id, args.automationId),
+        eq(automations.userId, args.userId),
+        isNull(automations.deletedAt),
+      )).limit(1)
+      if (!automation) throw new Error('Unauthorized')
+      const [target] = await tx.select({ workspaceId: conversations.workspaceId })
+        .from(conversations)
+        .where(and(
+          eq(conversations.id, args.conversationId),
+          eq(conversations.userId, args.userId),
+          isNull(conversations.deletedAt),
+        )).limit(1)
+      if (!target || (automation.workspaceId && target.workspaceId !== automation.workspaceId)) {
+        throw new Error('Unauthorized')
+      }
+      const [currentSource] = automation.sourceConversationId
+        ? await tx.select({ id: conversations.id, workspaceId: conversations.workspaceId })
+          .from(conversations)
+          .where(and(
+            eq(conversations.id, automation.sourceConversationId),
+            eq(conversations.userId, args.userId),
+            isNull(conversations.deletedAt),
+          )).limit(1)
+        : []
+      if (currentSource && (!automation.workspaceId || currentSource.workspaceId === automation.workspaceId)) return
       await tx
         .update(automations)
         .set({
@@ -231,7 +257,6 @@ export class PostgresAutomationRepository implements AutomationRepository {
         .where(and(
           eq(automations.id, args.automationId),
           eq(automations.userId, args.userId),
-          isNull(automations.sourceConversationId),
           isNull(automations.deletedAt),
         ))
     })

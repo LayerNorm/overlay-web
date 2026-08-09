@@ -411,6 +411,8 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 - Automations without a linked conversation now show their saved description and instructions instead of a blank chat surface.
 - The first Automate-mode message links the created conversation to the automation's `sourceConversationId`, so subsequent navigation opens the same conversation and keeps the automation context in the URL.
 - The route synchronizer preserves `automationId` from the live browser URL when activating a newly created conversation; this prevents the message from becoming a standalone regular chat.
+- Automation detail loading validates the linked source conversation in the active workspace before selecting it. Missing, deleted, or cross-workspace links are removed from the URL and replaced with a valid automation conversation when one exists, otherwise the editor opens as an empty automation chat instead of displaying a false “chat no longer exists” error.
+- Automation create, read, update, delete, and source-conversation attachment operations carry `workspaceId`. Both providers repair a stale source link atomically while rejecting a target conversation from another workspace.
 
 **Still pending before production rollout:**
 - Run the 24-hour no-drift observation with a scheduled automation after confirming how scheduled iterations should create and report individual `automation_runs` records.

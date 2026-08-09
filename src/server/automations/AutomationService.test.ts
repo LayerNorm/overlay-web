@@ -189,6 +189,7 @@ test('AutomationService.createAutomation parses a stringified schedule before pe
 
   await service.createAutomation({
     userId: 'user_1',
+    workspaceId: 'workspace_1',
     body: {
       name: 'A',
       description: 'D',
@@ -203,6 +204,7 @@ test('AutomationService.createAutomation parses a stringified schedule before pe
     hourUTC: 9,
     minuteUTC: 30,
   })
+  assert.equal(repository.createdAutomations[0]?.workspaceId, 'workspace_1')
 })
 
 test('buildAutomationUpdateNote preserves update note wording', () => {
@@ -236,6 +238,7 @@ test('AutomationService.updateAutomation appends update note best effort', async
 
   await service.updateAutomation({
     userId: 'user_1',
+    workspaceId: 'workspace_1',
     body: {
       automationId: 'automation_1',
       name: 'New name',
@@ -252,6 +255,7 @@ test('AutomationService.updateAutomation parses a stringified schedule before pe
 
   await service.updateAutomation({
     userId: 'user_1',
+    workspaceId: 'workspace_1',
     body: {
       automationId: 'automation_1',
       schedule: JSON.stringify({ kind: 'weekly', dayOfWeekUTC: 2, hourUTC: 10, minuteUTC: 15 }) as never,
@@ -264,6 +268,7 @@ test('AutomationService.updateAutomation parses a stringified schedule before pe
     hourUTC: 10,
     minuteUTC: 15,
   })
+  assert.equal(repository.updatedAutomations[0]?.workspaceId, 'workspace_1')
 })
 
 test('AutomationService exposes durable run cancellation and retry actions', async () => {
@@ -541,7 +546,7 @@ test('AutomationService.markRunCompleted passes the conversationId when provided
 
 test('AutomationService.deleteAutomation cancels the scheduler workflow before deleting', async () => {
   const schedulerUpdates: Array<{ automationId: string; schedulerWorkflowRunId: string | null }> = []
-  let cancelCalled = false
+  const cancelCalled = false
   const repository = createRepository({
     async getAutomation() {
       return {
