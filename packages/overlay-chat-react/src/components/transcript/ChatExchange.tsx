@@ -107,7 +107,7 @@ export function ChatExchange({
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, status, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, onContinue, getModelDisplayName,
-  userMentions, generatedUiConnectorActions, onGeneratedUiChange, presentation,
+  generatedUiConnectorActions, onGeneratedUiChange, presentation,
 }: ChatExchangeProps) {
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
     const showTextBubble = userBodyText.length > 0
@@ -214,7 +214,7 @@ export function ChatExchange({
             )}
             {showTextBubble && (
               <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
-                <MarkdownMessage text={userBodyText} isStreaming={false} mentions={userMentions} />
+                <MarkdownMessage text={userBodyText} isStreaming={false} />
               </UserMessageBubble>
             )}
           </div>

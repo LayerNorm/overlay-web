@@ -63,12 +63,19 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
 
   void browserRouteVersion
   const browserRoute = readBrowserChatRoute()
-  // Prefer the live browser URL after soft navigation; fall back to Next params
-  // for the first paint / SSR where window is not available yet.
-  const { conversationId, view } = resolveSoftChatRoute(browserRoute, {
+  const searchRoute = {
     conversationId: searchConversationId,
     view: searchView,
-  })
+  }
+  // When router.push() fires, useSearchParams updates before
+  // window.location.search. If the two disagree, the Next params are
+  // more recent — use them. Otherwise prefer the browser URL (authoritative
+  // for soft navigation via history.pushState).
+  const browserView = browserRoute?.view ?? null
+  const route = browserView === searchView
+    ? resolveSoftChatRoute(browserRoute, searchRoute)
+    : searchRoute
+  const { conversationId, view } = route
 
   if (view === 'dms' && conversationId) {
     return (

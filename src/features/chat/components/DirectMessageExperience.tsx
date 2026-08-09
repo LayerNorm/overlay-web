@@ -55,7 +55,6 @@ import { usePostgresConversationEvents } from './chat/usePostgresConversationEve
 import { RoomMessageItem, roomMessageDomId } from './collaboration/RoomMessageItem'
 import { ConvexRoomMessageSubscription } from './collaboration/ConvexRoomMessageSubscription'
 import { takePendingCollaborationMessage } from '../lib/pending-collaboration-message'
-import { dispatchCollaborationNotificationsChanged } from '@/shared/chat/collaboration-events'
 import {
   compareRoomMessageRecords,
   mergeRoomMessages,
@@ -336,7 +335,6 @@ export function DirectMessageExperience({
         createdAt: number
         eventSequence?: number
         editedAt?: number
-        editHistory?: Array<{ content: string; editedAt: number }>
         deletedAt?: number
         clientNonce?: string
         threadRootMessageId?: string
@@ -360,7 +358,6 @@ export function DirectMessageExperience({
             createdAt: number
             eventSequence?: number
             editedAt?: number
-            editHistory?: Array<{ content: string; editedAt: number }>
             deletedAt?: number
             clientNonce?: string
             threadRootMessageId?: string
@@ -402,7 +399,6 @@ export function DirectMessageExperience({
           createdAt: number
           eventSequence?: number
           editedAt?: number
-          editHistory?: Array<{ content: string; editedAt: number }>
           deletedAt?: number
           clientNonce?: string
           threadRootMessageId?: string
@@ -431,14 +427,22 @@ export function DirectMessageExperience({
   const clearCollaborationNotifications = useCallback(async () => {
     if (showcase) return
     try {
-      await overlayAppClient.conversations.markConversationNotificationsRead(conversationId)
+      const { notifications } = await overlayAppClient.conversations.notifications({
+        unreadOnly: true,
+        limit: 100,
+      })
+      const unreadIds = notifications
+        .filter((notification) => notification.conversationId === conversationId)
+        .map((notification) => notification.id)
+      if (unreadIds.length > 0) {
+        await overlayAppClient.conversations.markNotificationsRead(unreadIds)
+      }
     } catch {
       // Badge clear is best-effort; the room transcript still works.
     }
     window.dispatchEvent(new CustomEvent('overlay:collaboration-read', {
       detail: { conversationId },
     }))
-    dispatchCollaborationNotificationsChanged()
   }, [conversationId, showcase])
 
   const markVisibleRead = useCallback(async () => {
@@ -740,7 +744,7 @@ export function DirectMessageExperience({
         description: participant.principalType === 'agent' ? 'Agent' : 'Member',
         icon: 'UsersRound',
       }))
-    return items.length ? [{ type: 'person', label: 'Members', icon: 'UsersRound', items }] : []
+    return items.length ? [{ type: 'person', label: 'People & agents', icon: 'UsersRound', items }] : []
   }, [currentPrincipalId, participants])
 
   function resolveMentionTargets(text: string): string[] {
@@ -837,7 +841,7 @@ export function DirectMessageExperience({
       })
       await loadMessages()
       if (invokedAgents.length) {
-        const humanMessageId = saved.messageId ?? messagesRef.current.find((message) => (
+        const humanMessageId = messagesRef.current.find((message) => (
           message.clientNonce === clientNonce
         ))?.id
         if (humanMessageId) {
@@ -852,6 +856,7 @@ export function DirectMessageExperience({
           })
         }
       }
+      void saved
     } catch {
       setMessages((current) => current.map((message) => (
         message.clientNonce === clientNonce ? { ...message, delivery: 'failed' } : message
@@ -896,7 +901,6 @@ export function DirectMessageExperience({
         mentionedPrincipalIds,
         ...(threadRootMessageId ? { threadRootMessageId } : {}),
       })
-      if (!response.ok) throw new Error(`Agent reply failed with status ${response.status}`)
       const reader = response.body?.getReader()
       if (!reader) return
       const decoder = new TextDecoder()
@@ -911,20 +915,10 @@ export function DirectMessageExperience({
         for (const frame of frames) {
           const line = frame.split('\n').find((row) => row.startsWith('data: '))
           if (!line) continue
-          let event: {
-            type?: string
-            agentPrincipalId?: string
-            agentName?: string
-            delta?: string
-            message?: string
-          }
+          let event: { type?: string; agentPrincipalId?: string; agentName?: string; delta?: string }
           try {
             event = JSON.parse(line.slice(6))
           } catch {
-            continue
-          }
-          if (event.type === 'error') {
-            setNotice(event.message ?? 'The mentioned agent could not respond. Try again.')
             continue
           }
           if (event.type !== 'delta' || !event.delta) continue
@@ -943,9 +937,7 @@ export function DirectMessageExperience({
         }
       }
     } catch {
-      // The reply may still be persisted server-side; the next live update
-      // picks it up, while the sender gets an actionable failure state.
-      setNotice('The mentioned agent could not respond. Try again.')
+      // The reply is still persisted server-side; the next poll picks it up.
     } finally {
       setStreamingAgentReplies({})
       await loadMessages().catch(() => undefined)

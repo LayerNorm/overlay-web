@@ -550,7 +550,7 @@ export default function ChatExperience({
       const items = [...principals.values()].sort((left, right) => left.name.localeCompare(right.name))
       setPeopleMentionCategories(items.length ? [{
         type: 'person',
-        label: 'Members',
+        label: 'People & agents',
         icon: 'UsersRound',
         items,
       }] : [])

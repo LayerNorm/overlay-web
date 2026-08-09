@@ -629,6 +629,94 @@ cat ~/.grok/sessions/<encoded-cwd>/<uuid>/summary.json | python3 -m json.tool
   `signals.json` for `turnCount`, `gitCommitCount`, `agentFilesTouched`, and
   `contextWindowUsage` to gauge session scope.
 
+## Windsurf (Cascade) sessions
+
+Windsurf (the VS Code fork by Codeium) stores Cascade conversations as **protobuf
+(`.pb`) binary files** — not SQLite or JSON like the other agents. There is no
+queryable database or text-based format. The `.proto` schema is not publicly
+documented, so conversation content is **not practically traversable** by a coding
+agent without a Windsurf-provided export tool or the proto definition.
+
+### Storage locations
+
+```
+~/.codeium/windsurf/cascade/*.pb          # Main Cascade conversations (one .pb per session)
+~/.codeium/windsurf/cascade/*.pb.archived # Archived sessions (zero-byte placeholders)
+~/.codeium/windsurf/implicit/*.pb         # Shorter/implicit conversations (tool-use side chats)
+~/.codeium/windsurf/memories/*.pb         # Agent memories (UUID-named, protobuf)
+```
+
+Related VS Code state (not conversation content):
+
+| Path | Contents |
+|------|----------|
+| `~/Library/Application Support/Windsurf/User/globalStorage/state.vscdb` | VS Code global state — `chat.ChatSessionStore.index` (session index, often empty), `chat.modelsControl`, `chat.participantNameRegistry` |
+| `~/Library/Application Support/Windsurf/User/workspaceStorage/<hash>/state.vscdb` | Per-workspace UI state (view settings, not conversations) |
+| `~/.codeium/windsurf/database/.../embedding_database.sqlite` | Code embedding index for semantic code search (not conversations) |
+| `~/.codeium/windsurf/skills/` | Installed skills (`.codeium` files) |
+| `~/.codeium/windsurf/mcp_config.json` | MCP server configuration |
+
+### Why Cascade conversations are not traversable
+
+1. **Protobuf without schema**: The `.pb` files are serialized protobuf messages.
+   Without the `.proto` schema definition, you cannot reliably decode fields,
+   distinguish strings from nested messages, or know the wire format.
+2. **No text extraction works**: `grep`, `strings`, raw byte search (`b'Next.js'`),
+   zlib decompression, and naive protobuf field parsing all fail to extract
+   readable conversation text. The content may be compressed or encoded in a
+   nested message structure that requires the schema to navigate.
+3. **No SQLite fallback**: Unlike Devin CLI (`sessions.db`) or Grok Build
+   (`session_search.sqlite`), there is no database with text columns or FTS index.
+4. **`chat.ChatSessionStore.index` is empty**: The global VS Code state key that
+   might index chat sessions contains `{"version":1,"entries":{}}` — no session
+   metadata is stored in the VS Code state database.
+
+### What you can do instead
+
+If you need to recover context from a Windsurf Cascade session:
+
+1. **Open Windsurf and use the UI** — Cascade conversation history is browsable
+   in the Windsurf sidebar. This is the only reliable way to read past sessions.
+2. **Check the Devin CLI session instead** — if the same task was also worked on
+   in a Devin CLI session (common in this workspace), query `sessions.db` instead.
+   The `tartan-fridge` / `dedicated-myrtle` sessions cover the same "Update
+   Next.js to 16.3" work that was done in Windsurf.
+3. **Check git history** — Cascade sessions that made code changes will have
+   commits visible in `git log`. The commit messages and diffs are the durable
+   record of what was done, even if the conversation itself is inaccessible.
+4. **Check `~/.codeium/windsurf/memories/*.pb`** — agent memories are also
+   protobuf but smaller; they may contain summary-level context. Same format
+   limitation applies.
+
+### File listing (for reference)
+
+```bash
+# List Cascade sessions by modification time (newest first)
+ls -lt ~/.codeium/windsurf/cascade/*.pb | head -20
+
+# List implicit conversations
+ls -lt ~/.codeium/windsurf/implicit/*.pb | head -20
+
+# Check VS Code global state for chat-related keys
+sqlite3 ~/Library/Application\ Support/Windsurf/User/globalStorage/state.vscdb \
+  "SELECT key, length(value) FROM ItemTable WHERE key LIKE '%chat%' OR key LIKE '%cascade%';"
+```
+
+### Gotchas
+
+- **`.pb.archived` files are zero-byte**: They are placeholders for deleted/archived
+  sessions. The conversation content is gone.
+- **File size correlates with session length**: A 13 MB `.pb` file is a long session
+  (hundreds of turns); a 100 KB file is a short conversation. Use file size to
+  prioritize which sessions to open in the Windsurf UI.
+- **No session titles in filenames**: Files are UUID-named (`141d17a0-...pb`).
+  There is no way to search by title without opening each file in Windsurf.
+- **`implicit/` vs `cascade/`**: The `implicit/` directory contains shorter
+  conversations — quick prompts, tool-use side chats, and agentic sub-tasks.
+  Main user-driven conversations are in `cascade/`.
+- **Memories are also protobuf**: `~/.codeium/windsurf/memories/*.pb` files use
+  the same opaque format. They are smaller but equally unreadable without the schema.
+
 ## Workflow: summarize a session
 
 1. **Find the session** — query `sessions` by title keyword or time window.
