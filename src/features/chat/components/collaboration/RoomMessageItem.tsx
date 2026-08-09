@@ -19,10 +19,10 @@ import {
 } from 'lucide-react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { FlashCopyIconButton, UserMessageBubble } from '@overlay/chat-react'
+import { renderInlineMentions } from '@overlay/chat-react/exchange'
 import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview } from '@overlay/chat-react'
 import { Textarea } from '@overlay/ui/primitives'
-import { SafeHumanMarkdown } from './SafeHumanMarkdown'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -151,14 +151,38 @@ export function RoomMessageItem({
     ? 'rounded-xl ring-2 ring-[var(--foreground)] ring-offset-4 ring-offset-[var(--background)]'
     : ''
 
+  const avatarNode = isAgent ? (
+    <span
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white"
+      style={{ backgroundColor: message.authorColor ?? '#64748b' }}
+      aria-hidden
+    >
+      <Bot size={16} strokeWidth={1.75} />
+    </span>
+  ) : (
+    <span
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-[13px] font-semibold text-[var(--foreground)]"
+      aria-hidden
+    >
+      {authorInitial(mine ? 'You' : message.authorName)}
+    </span>
+  )
+
+  /** Match personal chat: plain text + mention chips, not markdown headings. */
+  const humanBody = message.text ? (
+    <div className="whitespace-pre-wrap text-[15px] leading-relaxed text-[var(--foreground)]">
+      {renderInlineMentions(message.text, message.mentions)}
+    </div>
+  ) : null
+
   if (message.deletedAt) {
     return (
       <div
         {...rootProps}
-        className={`flex ${mine ? 'justify-end' : 'gap-3'} px-1 py-0.5 ${highlightClass}`}
+        className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 ${highlightClass}`}
       >
-        {!mine ? <span className="w-9 shrink-0" aria-hidden /> : null}
-        <p className="text-sm italic text-[var(--muted-light)]">Message deleted</p>
+        {avatarNode}
+        <p className="self-center text-sm italic text-[var(--muted-light)]">Message deleted</p>
       </div>
     )
   }
@@ -295,7 +319,7 @@ export function RoomMessageItem({
   const toolbar = (
     <RoomMessageToolbar
       alignEnd={mine}
-      floating={!mine}
+      floating
       copyText={message.text}
       canEdit={mine}
       canReport={!mine}
@@ -314,83 +338,61 @@ export function RoomMessageItem({
     />
   )
 
-  // ── Sent (yours): keep right bubble ──────────────────────────────────
+  // ── Sent (yours): right gray bubble + avatar (personal-chat parity) ──
   if (mine && !isAgent) {
     return (
       <div
         {...rootProps}
-        className={`group/exchange relative flex scroll-mt-6 flex-col gap-1.5 message-appear ${highlightClass}`}
+        className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors hover:bg-[var(--surface-subtle)] ${highlightClass}`}
       >
-        {grouped ? (
-          <time className="px-1 text-right text-[10px] text-[var(--muted-light)] opacity-0 transition-opacity group-hover/exchange:opacity-100">
-            {timeLabel}
-          </time>
-        ) : (
-          <div className="flex items-center justify-end gap-2 px-1">
-            <span className="text-xs font-medium text-[var(--foreground)]">You</span>
-            <time className="shrink-0 text-[10px] text-[var(--muted-light)]">{timeLabel}</time>
-            {message.editedAt ? <span className="text-[10px] text-[var(--muted-light)]">edited</span> : null}
-            {message.delivery === 'sending' ? <span className="text-[10px] text-[var(--muted-light)]">sending</span> : null}
-            {pinned ? <Pin size={11} className="shrink-0 text-[var(--muted-light)]" /> : null}
-          </div>
-        )}
-        <div className="flex min-w-0 justify-end">
-          <div className="flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1.5 sm:max-w-[75%]">
-            {attachments}
-            {editing ? editor : message.text ? (
-              <UserMessageBubble tone="room-self" className="ml-auto max-w-full">
-                <SafeHumanMarkdown text={message.text} isStreaming={false} mentions={message.mentions} />
-              </UserMessageBubble>
-            ) : null}
-            {message.delivery === 'failed' ? (
-              <button type="button" className="text-[11px] font-medium text-red-500 hover:underline" onClick={onRetrySend}>
-                Failed to send · Retry
-              </button>
-            ) : null}
-            {reactionRow}
-            {threadEntry}
-            {toolbar}
-          </div>
+        <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
+          {toolbar}
+          {grouped ? (
+            <time className="px-1 text-[10px] text-[var(--muted-light)] opacity-0 transition-opacity group-hover/exchange:opacity-100">
+              {timeLabel}
+            </time>
+          ) : (
+            <div className="flex items-center gap-2 px-1">
+              <span className="text-[13px] font-bold text-[var(--foreground)]">You</span>
+              <time className="shrink-0 text-[11px] text-[var(--muted-light)]">{timeLabel}</time>
+              {message.editedAt ? <span className="text-[11px] text-[var(--muted-light)]">edited</span> : null}
+              {message.delivery === 'sending' ? <span className="text-[11px] text-[var(--muted-light)]">sending</span> : null}
+              {pinned ? <Pin size={11} className="shrink-0 text-[var(--muted-light)]" /> : null}
+            </div>
+          )}
+          {attachments}
+          {editing ? editor : message.text ? (
+            <UserMessageBubble className="ml-auto max-w-full">
+              {renderInlineMentions(message.text, message.mentions)}
+            </UserMessageBubble>
+          ) : null}
+          {message.delivery === 'failed' ? (
+            <button type="button" className="text-[11px] font-medium text-red-500 hover:underline" onClick={onRetrySend}>
+              Failed to send · Retry
+            </button>
+          ) : null}
+          {reactionRow}
+          {threadEntry}
         </div>
+        {avatarNode}
       </div>
     )
   }
 
-  // ── Received human / agent: Slack flat row ───────────────────────────
-  const avatar = isAgent ? (
-    <span
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white"
-      style={{ backgroundColor: message.authorColor ?? '#64748b' }}
-      aria-hidden
-    >
-      <Bot size={16} strokeWidth={1.75} />
-    </span>
-  ) : (
-    <span
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-[13px] font-semibold text-[var(--foreground)]"
-      aria-hidden
-    >
-      {authorInitial(message.authorName)}
-    </span>
-  )
-
+  // ── Received human / agent: Slack flat row with avatar on every message ──
   return (
     <div
       {...rootProps}
-      className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors hover:bg-[var(--surface-subtle)]/80 ${highlightClass} ${grouped ? 'mt-0' : 'mt-0.5'}`}
+      className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors hover:bg-[var(--surface-subtle)] ${highlightClass}`}
     >
-      {grouped ? (
-        <div className="flex w-9 shrink-0 justify-center pt-1">
-          <time className="text-[10px] text-[var(--muted-light)] opacity-0 transition-opacity group-hover/exchange:opacity-100">
-            {timeLabel}
-          </time>
-        </div>
-      ) : (
-        avatar
-      )}
+      {avatarNode}
       <div className="relative min-w-0 flex-1">
         {toolbar}
-        {grouped ? null : (
+        {grouped ? (
+          <time className="mb-0.5 block text-[11px] text-[var(--muted-light)] opacity-0 transition-opacity group-hover/exchange:opacity-100">
+            {timeLabel}
+          </time>
+        ) : (
           <div className="mb-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="truncate text-[13px] font-bold text-[var(--foreground)]">
               {message.authorName}
@@ -425,11 +427,9 @@ export function RoomMessageItem({
               </div>
             ) : null}
           </>
-        ) : message.text ? (
-          <div className="text-[15px] leading-relaxed text-[var(--foreground)]">
-            <SafeHumanMarkdown text={message.text} isStreaming={false} mentions={message.mentions} />
-          </div>
-        ) : null}
+        ) : (
+          humanBody
+        )}
         {reactionRow}
         {threadEntry}
       </div>

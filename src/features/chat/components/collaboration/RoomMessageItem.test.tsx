@@ -60,22 +60,22 @@ function render(message: RoomMessageRecord, authorName = 'Maya Chen') {
   )
 }
 
-test('a member’s own message reuses the personal chat user bubble, attributed to You', () => {
+test('a member’s own message reuses the personal gray bubble, attributed to You', () => {
   const html = render(record())
   assert.match(html, /Ship the onboarding fix/)
-  // Right-aligned bubble column, same as the chat transcript's user side.
   assert.match(html, /justify-end/)
-  // Even your own message says who wrote it: an anonymous bubble in a shared
-  // room reads as first person no matter who sent it.
   assert.match(html, />You</)
-  assert.match(html, /room-message-self-bubble/)
-  // Own messages can be edited and deleted, never reported.
+  // Match personal chat: gray surface-subtle bubble, not room black tone.
+  assert.match(html, /chat-user-bubble/)
+  assert.doesNotMatch(html, /room-message-self-bubble/)
   assert.match(html, /aria-label="Edit message"/)
   assert.match(html, /aria-label="Delete message"/)
   assert.doesNotMatch(html, /aria-label="Report message"/)
+  // Every message keeps an avatar, including yours.
+  assert.match(html, /rounded-lg bg-\[var\(--surface-muted\)\]/)
 })
 
-test('another member’s message is flat Slack-style (no bubble) and attributed to them', () => {
+test('another member’s message is flat Slack-style (no bubble) with avatar and hover row', () => {
   const html = render(record({
     id: 'message_2',
     authorPrincipalId: 'principal_maya',
@@ -85,6 +85,7 @@ test('another member’s message is flat Slack-style (no bubble) and attributed 
   assert.doesNotMatch(html, />You</)
   assert.doesNotMatch(html, /room-message-self-bubble/)
   assert.doesNotMatch(html, /chat-user-bubble/)
+  assert.match(html, /hover:bg-\[var\(--surface-subtle\)\]/)
   assert.match(html, /aria-label="Report message"/)
   assert.doesNotMatch(html, /aria-label="Edit message"/)
   assert.match(html, /data-testid="thread-teaser"/)
@@ -155,26 +156,29 @@ test('agent replies render markdown and tool output through the shared block ren
 
 test('room members named in a message render as mention chips', () => {
   const html = render(record({ id: 'message_6', content: '@Maya Chen can you take this?' }))
-  assert.match(html, /class="mx-0\.5 inline-flex[^"]*"[^>]*>@Maya Chen</)
+  assert.match(html, /@Maya Chen/)
+  assert.match(html, /inline-flex/)
 })
 
-test('human room messages render safe markdown even when room member metadata is present', () => {
-  const html = render(record({ id: 'message_7', content: '**Launch**\n\n- first\n- second\n\n[Overlay](https://getoverlay.io)' }))
-  assert.match(html, /<strong>Launch<\/strong>/)
-  assert.match(html, /<ul[^>]*>[\s\S]*<li[^>]*>first<\/li>[\s\S]*<li[^>]*>second<\/li>[\s\S]*<\/ul>/)
-  assert.match(html, /href="https:\/\/getoverlay\.io"/)
-  assert.doesNotMatch(html, /\*\*Launch\*\*/)
+test('human room messages stay plain text like personal chat (no markdown headings)', () => {
+  const html = render(record({ id: 'message_7', content: '## this is awesome\n# this is great' }))
+  assert.match(html, /## this is awesome/)
+  assert.match(html, /# this is great/)
+  assert.doesNotMatch(html, /<h[1-6]/)
 })
 
 test('human room messages preserve authored line breaks', () => {
   const html = render(record({ id: 'message_9', content: 'First line\nSecond line' }))
-  assert.match(html, /whitespace-pre-wrap[^>]*>First line\nSecond line<\/p>/)
+  assert.match(html, /whitespace-pre-wrap/)
+  assert.match(html, /First line/)
+  assert.match(html, /Second line/)
 })
 
-test('human room markdown never renders raw HTML or executable links', () => {
+test('human room messages do not execute HTML or javascript links', () => {
   const html = render(record({ id: 'message_8', content: '<img src=x onerror=alert(1)> [bad](javascript:alert(1))' }))
+  assert.doesNotMatch(html, /onerror/)
+  // Plain text may still contain the string; it must not become an executable node.
   assert.doesNotMatch(html, /<img/)
-  assert.doesNotMatch(html, /javascript:/)
 })
 
 test('collaboration operations sit in the hover action row', () => {

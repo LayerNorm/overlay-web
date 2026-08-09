@@ -70,7 +70,7 @@ export function AcceptWorkspaceInvitation({
             <span>{error}</span>
           </div>
         ) : null}
-        <div className="mt-6 flex justify-center gap-2">
+        <div className="relative z-10 mt-6 flex justify-center gap-2">
           {requiresSignIn ? (
             <Link
               href={`/auth/sign-in?redirect=${encodeURIComponent(redirect)}`}
@@ -80,9 +80,11 @@ export function AcceptWorkspaceInvitation({
             </Link>
           ) : (
             <Button
+              type="button"
               variant="primary"
               disabled={status === 'accepting'}
               onClick={() => void accept()}
+              data-testid="accept-workspace-invitation"
             >
               {status === 'accepting' ? <Loader2 size={14} className="animate-spin" /> : null}
               Accept invitation

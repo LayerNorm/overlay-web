@@ -20,6 +20,7 @@
     "./sources-panel": "./src/components/SourcesPanel.tsx",
     "./transcript": "./src/components/transcript/index.ts",
     "./transcript-scroll": "./src/components/transcript/TranscriptScroll.ts",
+    "./exchange": "./src/components/exchange/index.ts",
     "./chat-surface.css": "./src/styles/chat-surface.css",
     "./styles.css": "./src/styles/overlay-theme.css"
   },
