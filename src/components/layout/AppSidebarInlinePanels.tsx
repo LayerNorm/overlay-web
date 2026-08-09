@@ -10,7 +10,6 @@ import {
   Bot,
   Brain,
   Hash,
-  Inbox,
   Loader2,
   Mail,
   MessageSquare,
@@ -51,6 +50,10 @@ import { FilesInlineTree, ProjectsInlineTree } from '@overlay/modules-react/proj
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 import { SidebarResourceList } from '@overlay/ui/primitives'
+import {
+  AGENT_DIRECTORY_CHANGED_EVENT,
+  type AgentDirectoryChangedEventDetail,
+} from '@/shared/workspace/sidebar-events'
 
 type Project = ProjectSummary
 type ProjectChat = ProjectChatSummary
@@ -423,24 +426,33 @@ export function AgentsInlinePanel({
   const [loading, setLoading] = useState(true)
   const activeAgentId = searchParams?.get('agent') ?? null
 
-  const loadAgents = useCallback(async () => {
+  const loadAgents = useCallback(async (showLoading = true) => {
     if (!workspaceId) {
       setAgents([])
       setLoading(false)
       return
     }
-    setLoading(true)
+    if (showLoading) setLoading(true)
     try {
       const response = await overlayAppClient.agents.list(workspaceId)
       setAgents(arrayOrEmpty<WorkspaceAgentDirectoryItem>(response.agents))
     } catch {
       setAgents([])
     } finally {
-      setLoading(false)
+      if (showLoading) setLoading(false)
     }
   }, [workspaceId])
 
   useEffect(() => { void loadAgents() }, [loadAgents])
+
+  useEffect(() => {
+    const refreshAgents = (event: Event) => {
+      const changedWorkspaceId = (event as CustomEvent<AgentDirectoryChangedEventDetail>).detail?.workspaceId
+      if (!changedWorkspaceId || changedWorkspaceId === workspaceId) void loadAgents(false)
+    }
+    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
+    return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
+  }, [loadAgents, workspaceId])
 
   return (
     <SidebarResourceList>
@@ -534,7 +546,6 @@ export const chatsInlineItems = [
   { id: 'dms', label: 'Direct Messages', icon: Mail },
   { id: 'channels', label: 'Channels', icon: Hash },
   { id: 'activity', label: 'Activity', icon: Bell },
-  { id: 'all', label: 'All', icon: Inbox },
 ] as const
 
 export interface InlineNavItem {
