@@ -69,10 +69,7 @@ export function ListboxSelect<T extends string>({
   }, [open])
 
   useLayoutEffect(() => {
-    if (!open || !portal) {
-      setMenuPosition(null)
-      return
-    }
+    if (!open || !portal) return
     function updateMenuPosition() {
       const button = buttonRef.current
       const menu = menuRef.current
@@ -177,7 +174,11 @@ export function ListboxSelect<T extends string>({
         aria-describedby={ariaDescribedBy}
         aria-expanded={open}
         aria-haspopup="listbox"
-        onClick={() => !disabled && setOpen((current) => !current)}
+        onClick={() => {
+          if (disabled) return
+          setMenuPosition(null)
+          setOpen((current) => !current)
+        }}
         className={cn(
           'flex min-h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-left text-sm outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--foreground)]',
           disabled

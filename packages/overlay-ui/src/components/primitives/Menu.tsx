@@ -61,10 +61,7 @@ export function FloatingMenu({
   const [position, setPosition] = useState<FloatingMenuPosition | null>(null)
 
   useLayoutEffect(() => {
-    if (!open) {
-      setPosition(null)
-      return
-    }
+    if (!open) return
 
     function updatePosition() {
       const anchor = anchorRef.current
