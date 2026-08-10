@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useWorkspace } from './WorkspaceProvider'
 import { buildWorkspaceHref } from '../lib/workspace-routing'
@@ -149,6 +149,18 @@ export function WorkspaceSwitcher({
     if (!nextOpen) setActionError(null)
   }
 
+  const closeForAccountAction = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const action = target.closest('a, button')
+    if (!action) return
+    const isNavigation = action.tagName === 'A'
+    const isSignOut = action.tagName === 'BUTTON' && action.textContent?.trim() === 'Sign out'
+    if (!isNavigation && !isSignOut) return
+    setOpen(false)
+    onNavigate?.()
+  }, [onNavigate])
+
   return (
     <WorkspaceSwitcherView
       rootRef={rootRef}
@@ -156,7 +168,11 @@ export function WorkspaceSwitcher({
       open={open}
       compact={compact}
       placement={placement}
-      accountMenu={accountMenu}
+      accountMenu={accountMenu ? (
+        <div onClickCapture={closeForAccountAction}>
+          {accountMenu}
+        </div>
+      ) : null}
       userLabel={userLabel}
       status={status}
       workspaces={workspaces}
