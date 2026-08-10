@@ -25,9 +25,23 @@ When billing is disabled, pair `billing.provider="none"` with `capabilities.bill
 
 ## Billing account compatibility
 
-Personal and workspace payment ownership is modeled by a billing account with an explicit `markup_25_v1` pricing version. This keeps the existing 25% markup and current personal subscriptions intact while making a workspace wallet possible without attributing shared usage to one member. The first migration is additive: existing user-keyed subscriptions, balances, top-ups, and usage remain authoritative until a later backfill and controlled cutover.
+Personal and workspace payment ownership is modeled by a billing account with an explicit `markup_25_v1` pricing version. This keeps the existing 25% markup and current personal subscriptions intact while making a workspace wallet possible without attributing shared usage to one member.
 
-Creating a personal billing account is idempotent and creates an empty budgeted balance. It does not create a Stripe customer, subscription, payment, allowance, or top-up. Workspace account creation and funding are intentionally deferred until authorization and member spending-limit rules are in place.
+Creating a personal billing account is idempotent and creates an empty budgeted balance. It does not create a Stripe customer, subscription, payment, allowance, or top-up. The personal-account backfill attaches every existing subscription, top-up, reservation, and usage row while preserving the user-keyed records as the authoritative enforcement and rollback path. New writes populate both identifiers and refresh canonical subscription and balance shadows.
+
+Before switching any read to the account-keyed balance, run the development backfill and require a zero-difference parity report:
+
+```bash
+npm run billing:backfill:personal-accounts -- --apply=true
+```
+
+The command defaults to development and requires both `--target=prod` and `--allow-prod=true` for production. Stripe verification is read-only and requires an environment-appropriate key. It fails unless the local active subscriptions and Stripe active subscriptions are the expected six exact matches by account link, subscription, customer, price, quantity, amount, and status:
+
+```bash
+npm run billing:verify:personal-subscriptions
+```
+
+The compatibility reads still use the personal legacy records. A parity report is a gate, not permission to switch reads automatically.
 
 ## Reservation reconciliation
 

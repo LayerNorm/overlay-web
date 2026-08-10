@@ -120,11 +120,19 @@ test('Postgres billing records and provider events are idempotent and isolated',
     assert.equal((await billing.recordBudgetTopUp(topUp)).granted, true)
     assert.equal((await billing.recordBudgetTopUp(topUp)).granted, false)
     const entitlements = await billing.getEntitlementsByServer({ userId })
-    assert.equal(entitlements?.billingAccountId, undefined)
+    assert.equal(entitlements?.billingAccountId, personalAccount.billingAccountId)
     assert.equal(entitlements?.allowanceTotalCents, 2_500)
     assert.equal(entitlements?.topUpBalanceCents, 500)
     assert.equal(entitlements?.budgetTotalCents, 3_000)
     assert.equal((await billing.listBudgetTopUpsByServer({ userId })).length, 1)
+    const backfill = await billing.backfillPersonalBillingAccountByServer({ userId })
+    assert.equal(backfill.billingAccountId, personalAccount.billingAccountId)
+    assert.equal(backfill.complete, true)
+    const parity = await billing.getPersonalBillingBalanceParityByServer({ userId })
+    assert.equal(parity?.matches, true, parity?.differences.join(', '))
+    const verificationRows = await billing.listSubscriptionVerificationRowsByServer({ limit: 500 })
+    assert.ok(verificationRows.some((row) =>
+      row.userId === userId && row.billingAccountId === personalAccount.billingAccountId))
 
     const reservation = {
       eventId: `${scope}_event`,

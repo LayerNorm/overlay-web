@@ -12,6 +12,8 @@ import {
   type UsageBuckets,
 } from '../../src/shared/billing/usage-buckets'
 import { normalizeUsageReconciliationResolution } from '../../src/shared/billing/usage-reconciliation'
+import { syncPersonalBillingShadows } from '../billing/accountMigration'
+import { ensurePersonalBillingAccount } from '../billing/accountModel'
 
 const usageReconciliationQueueItemValidator = v.object({
   createdAt: v.number(),
@@ -317,6 +319,7 @@ export async function applyUsageEvents(
   events: UsageEvent[],
   options: { chargeCredits?: boolean } = {},
 ): Promise<{ success: true; eventsProcessed: number }> {
+  const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
   const chargeCredits = options.chargeCredits ?? true
   const today = new Date().toISOString().split('T')[0]
 
@@ -401,6 +404,7 @@ export async function applyUsageEvents(
     if (!tokenUsage) {
       const id = await ctx.db.insert('tokenUsage', {
         userId,
+        billingAccountId: billingAccount.billingAccountId,
         email: subscription?.email ?? '',
         billingPeriodStart,
         creditsUsed: 0,
@@ -409,8 +413,19 @@ export async function applyUsageEvents(
         outputTokens: 0,
       })
       tokenUsage = await ctx.db.get(id)
-    } else if (!tokenUsage.email && subscription?.email) {
-      await ctx.db.patch(tokenUsage._id, { email: subscription.email })
+    } else {
+      if (
+        tokenUsage.billingAccountId &&
+        tokenUsage.billingAccountId !== billingAccount.billingAccountId
+      ) {
+        throw new Error('legacy_usage_account_conflict')
+      }
+      if (tokenUsage.billingAccountId !== billingAccount.billingAccountId || (!tokenUsage.email && subscription?.email)) {
+        await ctx.db.patch(tokenUsage._id, {
+          billingAccountId: billingAccount.billingAccountId,
+          ...(!tokenUsage.email && subscription?.email ? { email: subscription.email } : {}),
+        })
+      }
     }
 
     if (tokenUsage) {
@@ -422,6 +437,8 @@ export async function applyUsageEvents(
       })
     }
   }
+
+  await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
 
   return { success: true, eventsProcessed: events.length }
 }
@@ -504,7 +521,9 @@ export const initializeSubscriptionUsageByServer = mutation({
   },
   handler: async (ctx, { serverSecret, userId }) => {
     requireServerSecret(serverSecret)
+    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const subscription = await getOrCreateSubscription(ctx, userId)
+    await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
     return {
       success: true,
       tier: subscription.tier,
@@ -608,6 +627,7 @@ export const recordBatch = mutation({
   },
   handler: async (ctx, { serverSecret, userId, operationId: rawOperationId, forceFreeTierLimits, events }) => {
     requireServerSecret(serverSecret)
+    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const operationId = rawOperationId?.trim()
     if (operationId) {
       const existing = await ctx.db
@@ -624,6 +644,7 @@ export const recordBatch = mutation({
     if (operationId) {
       await ctx.db.insert('usageOperations', {
         userId,
+        billingAccountId: billingAccount.billingAccountId,
         operationId,
         recorded: events.length,
         createdAt: Date.now(),
@@ -641,6 +662,7 @@ export const adjustBudgetByServer = mutation({
   },
   handler: async (ctx, { serverSecret, userId, amountCents }) => {
     requireServerSecret(serverSecret)
+    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
@@ -656,6 +678,7 @@ export const adjustBudgetByServer = mutation({
           Math.min(-safeAmount, subscription.creditsUsed ?? 0),
         ).buckets
     await persistUsageBuckets(ctx, subscription._id, next)
+    await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
     const creditsUsed = roundCreditAmount(next.allowanceUsed + next.topUpPurchased - next.topUpBalance)
     return { success: true, creditsUsed }
   },
@@ -703,6 +726,7 @@ export const adjustAdministrativeBudgetByServer = mutation({
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
+    const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
     const subscription = await getOrCreateSubscription(ctx, args.userId)
     const institutionalGrantCents = Math.max(
       0,
@@ -713,7 +737,11 @@ export const adjustAdministrativeBudgetByServer = mutation({
     if (nextAllowanceTotal + 0.000001 < currentBuckets.allowanceUsed) {
       throw new Error('administrative_grant_below_consumed_allowance')
     }
-    await ctx.db.patch(subscription._id, { institutionalGrantCents })
+    await ctx.db.patch(subscription._id, {
+      billingAccountId: billingAccount.billingAccountId,
+      institutionalGrantCents,
+    })
+    await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
     const planKind = derivePlanKind(subscription)
     const buckets = { ...currentBuckets, allowanceTotal: nextAllowanceTotal }
     const budgetTotalCents = buckets.allowanceTotal + buckets.topUpPurchased
@@ -789,6 +817,7 @@ export const reserveBudgetByServer = mutation({
     expiresAt,
   }) => {
     requireServerSecret(serverSecret)
+    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const normalizedReservationId = reservationId.trim()
     if (!normalizedReservationId) throw new Error('invalid_reservation_id')
 
@@ -798,6 +827,9 @@ export const reserveBudgetByServer = mutation({
       .first()
     if (existing) {
       if (existing.userId !== userId) throw new Error('reservation_user_mismatch')
+      if (existing.billingAccountId && existing.billingAccountId !== billingAccount.billingAccountId) {
+        throw new Error('reservation_billing_account_mismatch')
+      }
       if (
         existing.reservedCents !== roundCreditAmount(Math.max(0, reservedCents)) ||
         existing.kind !== kind ||
@@ -807,6 +839,10 @@ export const reserveBudgetByServer = mutation({
       ) {
         throw new Error('reservation_parameter_mismatch')
       }
+      if (!existing.billingAccountId) {
+        await ctx.db.patch(existing._id, { billingAccountId: billingAccount.billingAccountId })
+      }
+      await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
       return {
         success: true,
         reservationId: existing.reservationId,
@@ -832,6 +868,7 @@ export const reserveBudgetByServer = mutation({
     const now = Date.now()
     await ctx.db.insert('budgetReservations', {
       userId,
+      billingAccountId: billingAccount.billingAccountId,
       reservationId: normalizedReservationId,
       status: 'reserved',
       kind,
@@ -847,6 +884,8 @@ export const reserveBudgetByServer = mutation({
       createdAt: now,
       updatedAt: now,
     })
+
+    await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
 
     return {
       success: true,
@@ -939,6 +978,7 @@ export const resolveBudgetReservationReconciliationByServer = mutation({
   }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
+    const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
     const reservation = await ctx.db
       .query('budgetReservations')
       .withIndex('by_reservationId', (q) => q.eq('reservationId', args.reservationId.trim()))
@@ -1019,6 +1059,7 @@ export const resolveBudgetReservationReconciliationByServer = mutation({
       ? normalized.actualCostCents
       : undefined
     await ctx.db.patch(reservation._id, {
+      billingAccountId: billingAccount.billingAccountId,
       status: expectedStatus,
       ...(finalizedCents === undefined ? {} : { finalizedCents }),
       providerWorkCompleted: normalized.resolution === 'finalize',
@@ -1031,6 +1072,7 @@ export const resolveBudgetReservationReconciliationByServer = mutation({
       reconciliationReason: normalized.evidence.reason,
       updatedAt: now,
     })
+    await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
     return {
       ...(finalizedCents === undefined ? {} : { finalizedCents }),
       idempotent: false,
@@ -1062,16 +1104,20 @@ async function reconcileExpiredBudgetReservations(
   for (const reservation of rows) {
     if ((reservation.expiresAt ?? reservation.createdAt + 30 * 60_000) > now) continue
     if (reservation.providerWorkStarted) {
+      const billingAccount = await ensurePersonalBillingAccount(ctx, reservation.userId)
       await ctx.db.patch(reservation._id, {
+        billingAccountId: billingAccount.billingAccountId,
         status: 'reconcile_required',
         errorMessage: 'reservation_expired_after_provider_work',
         reconciliationAttempts: (reservation.reconciliationAttempts ?? 0) + 1,
         reconciliationLastAttemptAt: now,
         updatedAt: now,
       })
+      await syncPersonalBillingShadows(ctx, reservation.userId, billingAccount.billingAccountId)
       reconcileRequired += 1
       continue
     }
+    const billingAccount = await ensurePersonalBillingAccount(ctx, reservation.userId)
     const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', reservation.userId))
@@ -1088,10 +1134,12 @@ async function reconcileExpiredBudgetReservations(
       )
     }
     await ctx.db.patch(reservation._id, {
+      billingAccountId: billingAccount.billingAccountId,
       status: 'released',
       errorMessage: 'reservation_expired_before_provider_work',
       updatedAt: now,
     })
+    await syncPersonalBillingShadows(ctx, reservation.userId, billingAccount.billingAccountId)
     released += 1
   }
   const queueSample = await ctx.db
@@ -1149,6 +1197,7 @@ export const finalizeBudgetReservationByServer = mutation({
   },
   handler: async (ctx, { serverSecret, userId, reservationId, actualCents, events }) => {
     requireServerSecret(serverSecret)
+    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const reservation = await ctx.db
       .query('budgetReservations')
       .withIndex('by_reservationId', (q) => q.eq('reservationId', reservationId.trim()))
@@ -1166,6 +1215,7 @@ export const finalizeBudgetReservationByServer = mutation({
     if (safeActualCents > reservation.reservedCents + 0.000001) {
       const now = Date.now()
       await ctx.db.patch(reservation._id, {
+        billingAccountId: billingAccount.billingAccountId,
         status: 'reconcile_required',
         providerWorkStarted: true,
         providerWorkCompleted: true,
@@ -1174,6 +1224,7 @@ export const finalizeBudgetReservationByServer = mutation({
         reconciliationLastAttemptAt: now,
         updatedAt: now,
       })
+      await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
       return {
         success: false,
         status: 'reconcile_required' as const,
@@ -1213,12 +1264,15 @@ export const finalizeBudgetReservationByServer = mutation({
     }
 
     await ctx.db.patch(reservation._id, {
+      billingAccountId: billingAccount.billingAccountId,
       status: 'finalized',
       finalizedCents: safeActualCents,
       providerWorkStarted: true,
       providerWorkCompleted: true,
       updatedAt: Date.now(),
     })
+
+    await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
 
     return { success: true, status: 'finalized', finalizedCents: safeActualCents }
   },
@@ -1232,6 +1286,7 @@ export const markBudgetReservationStartedByServer = mutation({
   },
   handler: async (ctx, { serverSecret, userId, reservationId }) => {
     requireServerSecret(serverSecret)
+    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const reservation = await ctx.db
       .query('budgetReservations')
       .withIndex('by_reservationId', (q) => q.eq('reservationId', reservationId.trim()))
@@ -1243,9 +1298,11 @@ export const markBudgetReservationStartedByServer = mutation({
     }
     if (!reservation.providerWorkStarted) {
       await ctx.db.patch(reservation._id, {
+        billingAccountId: billingAccount.billingAccountId,
         providerWorkStarted: true,
         updatedAt: Date.now(),
       })
+      await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
     }
     return { success: true, status: 'reserved' as const }
   },
@@ -1261,6 +1318,7 @@ export const releaseBudgetReservationByServer = mutation({
   },
   handler: async (ctx, { serverSecret, userId, reservationId, providerWorkStarted, reason }) => {
     requireServerSecret(serverSecret)
+    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const reservation = await ctx.db
       .query('budgetReservations')
       .withIndex('by_reservationId', (q) => q.eq('reservationId', reservationId.trim()))
@@ -1274,6 +1332,7 @@ export const releaseBudgetReservationByServer = mutation({
     if (providerWorkStarted || reservation.providerWorkStarted) {
       const now = Date.now()
       await ctx.db.patch(reservation._id, {
+        billingAccountId: billingAccount.billingAccountId,
         status: 'reconcile_required',
         providerWorkStarted: true,
         errorMessage: reason?.slice(0, 2000),
@@ -1281,6 +1340,7 @@ export const releaseBudgetReservationByServer = mutation({
         reconciliationLastAttemptAt: now,
         updatedAt: now,
       })
+      await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
       return { success: true, status: 'reconcile_required' }
     }
 
@@ -1300,10 +1360,12 @@ export const releaseBudgetReservationByServer = mutation({
       )
     }
     await ctx.db.patch(reservation._id, {
+      billingAccountId: billingAccount.billingAccountId,
       status: 'released',
       errorMessage: reason?.slice(0, 2000),
       updatedAt: Date.now(),
     })
+    await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
     return { success: true, status: 'released' }
   },
 })
@@ -1317,6 +1379,7 @@ export const markBudgetReservationReconcileByServer = mutation({
   },
   handler: async (ctx, { serverSecret, userId, reservationId, errorMessage }) => {
     requireServerSecret(serverSecret)
+    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const reservation = await ctx.db
       .query('budgetReservations')
       .withIndex('by_reservationId', (q) => q.eq('reservationId', reservationId.trim()))
@@ -1326,6 +1389,7 @@ export const markBudgetReservationReconcileByServer = mutation({
     if (reservation.status === 'finalized') return { success: true, status: 'finalized' }
     const now = Date.now()
     await ctx.db.patch(reservation._id, {
+      billingAccountId: billingAccount.billingAccountId,
       status: 'reconcile_required',
       providerWorkStarted: true,
       errorMessage: errorMessage?.slice(0, 2000),
@@ -1333,6 +1397,7 @@ export const markBudgetReservationReconcileByServer = mutation({
       reconciliationLastAttemptAt: now,
       updatedAt: now,
     })
+    await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
     return { success: true, status: 'reconcile_required' }
   },
 })
@@ -1375,6 +1440,7 @@ export const resetTokenUsage = internalMutation({
     newPeriodStart: v.string()
   },
   handler: async (ctx, { userId, newPeriodStart }) => {
+    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
@@ -1390,6 +1456,7 @@ export const resetTokenUsage = internalMutation({
     if (!existing) {
       await ctx.db.insert('tokenUsage', {
         userId,
+        billingAccountId: billingAccount.billingAccountId,
         email: subscription?.email ?? '',
         billingPeriodStart: newPeriodStart,
         creditsUsed: 0,
@@ -1397,6 +1464,9 @@ export const resetTokenUsage = internalMutation({
         cachedInputTokens: 0,
         outputTokens: 0
       })
+    } else if (existing.billingAccountId !== billingAccount.billingAccountId) {
+      if (existing.billingAccountId) throw new Error('legacy_usage_account_conflict')
+      await ctx.db.patch(existing._id, { billingAccountId: billingAccount.billingAccountId })
     }
 
     return { success: true, periodStart: newPeriodStart }
@@ -1445,8 +1515,10 @@ export const recordToolInvocation = mutation({
       accessToken: args.accessToken,
       serverSecret: args.serverSecret,
     })
+    const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
     await ctx.db.insert('toolInvocations', {
       userId: args.userId,
+      billingAccountId: billingAccount.billingAccountId,
       toolId: args.toolId.slice(0, 256),
       mode: args.mode,
       modelId: args.modelId?.slice(0, 256),

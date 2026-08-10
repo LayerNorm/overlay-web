@@ -52,7 +52,7 @@ New clients should start from this route and reuse existing API contracts before
 
 Stripe is the hosted billing provider for subscriptions, top-ups, auto top-up preferences, customer portal sessions, and webhook events. Private deployments can disable billing with runtime config. Convex is the durable entitlement/usage source of truth after webhook processing.
 
-Billing ownership is represented separately from user identity by an additive `BillingAccount` contract. An account has exactly one scope owner: a user for `personal`, or a workspace for `workspace`. `markup_25_v1` explicitly preserves the current 25% markup policy. New personal accounts start with an empty `budgeted` balance so account creation never grants spend implicitly. During the compatibility migration, the existing user-keyed subscription, top-up, and usage records remain authoritative; optional `billingAccountId` fields and the new account/subscription/balance tables are not read for enforcement until backfill and dual-read are implemented.
+Billing ownership is represented separately from user identity by an additive `BillingAccount` contract. An account has exactly one scope owner: a user for `personal`, or a workspace for `workspace`. `markup_25_v1` explicitly preserves the current 25% markup policy. New personal accounts start with an empty `budgeted` balance so account creation never grants spend implicitly. The compatibility migration creates one personal account per user, attaches legacy billing and usage rows, and dual-writes user and account identifiers plus canonical subscription/balance shadows. User-keyed records remain the enforcement and rollback source until balance parity and exact Stripe-subscription verification pass; the migration never switches reads automatically.
 
 Usage reservations have an evidence-gated recovery path. Work that expires before a provider starts is released automatically. Work that may have reached a provider is quarantined as `reconcile_required`; it must be finalized or released with a durable provider or internal-operation evidence reference. The five-minute Convex cron and Postgres worker expose queue depth and oldest age but never guess an ambiguous charge.
 
@@ -60,6 +60,7 @@ Important code:
 
 - `src/shared/billing/billing-pricing.ts`
 - `src/shared/billing/billing-account.ts`
+- `src/shared/billing/billing-account-migration.ts`
 - `src/server/billing/billing-runtime.ts`
 - `src/server/billing/stripe-billing.ts`
 - `src/server/billing/BillingCustomerService.ts`
@@ -67,12 +68,15 @@ Important code:
 - `src/server/billing/providers/stripe-billing-provider.ts`
 - `convex/billing/subscriptions.ts`
 - `convex/billing/accounts.ts`
+- `convex/billing/accountMigration.ts`
 - `convex/platform/usage.ts`
 - `convex/billing/stripe.ts`
 - `convex/billing/stripeSync.ts`
 - `src/shared/billing/usage-reconciliation.ts`
 - `src/server/usage/UsageRepository.ts`
 - `scripts/usage-reconciliation-audit.ts`
+- `scripts/personal-billing-account-backfill.ts`
+- `scripts/stripe-personal-account-verification.ts`
 
 ## Storage
 

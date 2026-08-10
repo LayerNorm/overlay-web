@@ -19,6 +19,10 @@ import {
   type UsageBuckets,
 } from '@/shared/billing/usage-buckets'
 import { normalizeUsageReconciliationResolution } from '@/shared/billing/usage-reconciliation'
+import {
+  CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS,
+  CURRENT_BILLING_ACCOUNT_PRICING_VERSION,
+} from '@/shared/billing/billing-account'
 
 const MICROS_PER_CENT = 10_000
 const DEFAULT_RESERVATION_TTL_MS = 30 * 60_000
@@ -26,6 +30,7 @@ const UNLIMITED_TOTAL_MICROS = Number.MAX_SAFE_INTEGER
 
 type BudgetAccountRow = {
   allowanceUsedMicros: number | string
+  billingAccountId: string
   grantedMicros: number | string
   includedMicros: number | string
   institutionalGrantMicros: number | string
@@ -38,6 +43,7 @@ type BudgetAccountRow = {
 
 type ReservationRow = {
   actualMicros: number | string | null
+  billingAccountId: string | null
   kind: string
   metadata: Record<string, unknown>
   modelId: string | null
@@ -118,10 +124,10 @@ export class PostgresUsageRepository implements UsageRepository {
       const now = new Date()
       await tx.execute(sql`
         INSERT INTO usage_reservations (
-          id, user_id, kind, model_id, reserved_micros, status, metadata,
+          id, user_id, billing_account_id, kind, model_id, reserved_micros, status, metadata,
           expires_at, created_at, updated_at
         ) VALUES (
-          ${args.reservationId}, ${args.userId}, ${args.kind}, ${args.modelId ?? null},
+          ${args.reservationId}, ${args.userId}, ${account.billingAccountId}, ${args.kind}, ${args.modelId ?? null},
           ${reservedMicros}, 'reserved', ${JSON.stringify({
             ...(args.metadata ?? {}),
             operationId: args.operationId,
@@ -139,10 +145,12 @@ export class PostgresUsageRepository implements UsageRepository {
       `)
       await insertTransaction(tx, {
         amountMicros: reservedMicros,
+        billingAccountId: account.billingAccountId,
         reservationId: args.reservationId,
         type: 'reserve',
         userId: args.userId,
       })
+      await syncCanonicalBalance(tx, args.userId, account.billingAccountId)
 
       return {
         ok: true,
@@ -200,16 +208,19 @@ export class PostgresUsageRepository implements UsageRepository {
       })
       await insertTransaction(tx, {
         amountMicros: actualMicros,
+        billingAccountId: account.billingAccountId,
         reservationId: args.reservationId,
         type: 'finalize',
         userId: args.userId,
       })
       await insertEvents(tx, {
+        billingAccountId: account.billingAccountId,
         events: args.events ?? [],
         operationId: args.reservationId,
         reservationId: args.reservationId,
         userId: args.userId,
       })
+      await syncCanonicalBalance(tx, args.userId, account.billingAccountId)
       void account
       return { status: 'finalized' }
     })
@@ -240,7 +251,7 @@ export class PostgresUsageRepository implements UsageRepository {
     userId: string
   }): Promise<{ status: UsageReservationStatus }> {
     return await this.db.transaction(async (tx) => {
-      await lockOrCreateAccount(tx, args.userId)
+      const account = await lockOrCreateAccount(tx, args.userId)
       const reservation = await requireReservation(tx, args.reservationId, args.userId)
       if (reservation.status !== 'reserved') return { status: reservation.status }
       if (args.providerWorkStarted || reservation.providerWorkStarted) {
@@ -264,10 +275,12 @@ export class PostgresUsageRepository implements UsageRepository {
       `)
       await insertTransaction(tx, {
         amountMicros: -reservedMicros,
+        billingAccountId: account.billingAccountId,
         reservationId: args.reservationId,
         type: 'release',
         userId: args.userId,
       })
+      await syncCanonicalBalance(tx, args.userId, account.billingAccountId)
       return { status: 'released' }
     })
   }
@@ -412,10 +425,12 @@ export class PostgresUsageRepository implements UsageRepository {
         `)
         await insertTransaction(tx, {
           amountMicros: -reservedMicros,
+          billingAccountId: account.billingAccountId,
           reservationId: args.reservationId,
           type: 'release',
           userId: args.userId,
         })
+        await syncCanonicalBalance(tx, args.userId, account.billingAccountId)
         return { idempotent: false, status: 'released' }
       }
 
@@ -441,10 +456,12 @@ export class PostgresUsageRepository implements UsageRepository {
       })
       await insertTransaction(tx, {
         amountMicros: actualMicros!,
+        billingAccountId: account.billingAccountId,
         reservationId: args.reservationId,
         type: 'finalize',
         userId: args.userId,
       })
+      await syncCanonicalBalance(tx, args.userId, account.billingAccountId)
       return {
         finalizedCents: normalized.actualCostCents!,
         idempotent: false,
@@ -461,7 +478,10 @@ export class PostgresUsageRepository implements UsageRepository {
   }): Promise<{ recorded: number }> {
     return await this.db.transaction(async (tx) => {
       const account = await lockOrCreateAccount(tx, args.userId)
-      const inserted = await insertEvents(tx, args)
+      const inserted = await insertEvents(tx, {
+        ...args,
+        billingAccountId: account.billingAccountId,
+      })
       const totalMicros = inserted.reduce((total, event) => total + event.billableMicros, 0)
       if (totalMicros > 0) {
         if (
@@ -474,11 +494,13 @@ export class PostgresUsageRepository implements UsageRepository {
         for (const event of inserted) {
           await insertTransaction(tx, {
             amountMicros: event.billableMicros,
+            billingAccountId: account.billingAccountId,
             eventId: event.id,
             type: 'finalize',
             userId: args.userId,
           })
         }
+        await syncCanonicalBalance(tx, args.userId, account.billingAccountId)
       }
       return { recorded: inserted.length }
     })
@@ -548,14 +570,77 @@ export class PostgresUsageRepository implements UsageRepository {
   }
 }
 
-async function lockOrCreateAccount(tx: Transaction, userId: string): Promise<BudgetAccountRow> {
+async function ensurePersonalBillingAccountId(tx: Transaction, userId: string): Promise<string> {
   await tx.execute(sql`
-    INSERT INTO usage_budget_accounts (user_id, mode)
-    VALUES (${userId}, 'unlimited')
-    ON CONFLICT (user_id) DO NOTHING
+    INSERT INTO billing_accounts (
+      id, scope, owner_user_id, status, primary_billing_contact_user_id,
+      pricing_version, markup_basis_points
+    ) VALUES (
+      ${`ba_${randomUUID().replaceAll('-', '')}`}, 'personal', ${userId}, 'active', ${userId},
+      ${CURRENT_BILLING_ACCOUNT_PRICING_VERSION},
+      ${CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS}
+    )
+    ON CONFLICT DO NOTHING
+  `)
+  const result = await tx.execute<{ billingAccountId: string }>(sql`
+    SELECT id AS "billingAccountId"
+    FROM billing_accounts
+    WHERE scope = 'personal' AND owner_user_id = ${userId}
+    LIMIT 1
+    FOR UPDATE
+  `)
+  const billingAccountId = result.rows[0]?.billingAccountId
+  if (!billingAccountId) throw new Error('personal_billing_account_missing')
+  await tx.execute(sql`
+    INSERT INTO billing_account_balances (billing_account_id, mode)
+    VALUES (${billingAccountId}, 'budgeted')
+    ON CONFLICT (billing_account_id) DO NOTHING
+  `)
+  return billingAccountId
+}
+
+async function syncCanonicalBalance(
+  tx: Transaction,
+  userId: string,
+  billingAccountId: string,
+): Promise<void> {
+  await tx.execute(sql`
+    INSERT INTO billing_account_balances (
+      billing_account_id, mode, included_micros, institutional_grant_micros,
+      allowance_used_micros, top_up_purchased_micros, top_up_balance_micros,
+      used_micros, reserved_micros, version, updated_at
+    )
+    SELECT
+      ${billingAccountId}, mode, included_micros, institutional_grant_micros,
+      allowance_used_micros, top_up_purchased_micros, top_up_balance_micros,
+      used_micros, reserved_micros, version, updated_at
+    FROM usage_budget_accounts
+    WHERE user_id = ${userId}
+    ON CONFLICT (billing_account_id) DO UPDATE SET
+      mode = EXCLUDED.mode,
+      included_micros = EXCLUDED.included_micros,
+      institutional_grant_micros = EXCLUDED.institutional_grant_micros,
+      allowance_used_micros = EXCLUDED.allowance_used_micros,
+      top_up_purchased_micros = EXCLUDED.top_up_purchased_micros,
+      top_up_balance_micros = EXCLUDED.top_up_balance_micros,
+      used_micros = EXCLUDED.used_micros,
+      reserved_micros = EXCLUDED.reserved_micros,
+      version = EXCLUDED.version,
+      updated_at = EXCLUDED.updated_at
+  `)
+}
+
+async function lockOrCreateAccount(tx: Transaction, userId: string): Promise<BudgetAccountRow> {
+  const billingAccountId = await ensurePersonalBillingAccountId(tx, userId)
+  await tx.execute(sql`
+    INSERT INTO usage_budget_accounts (user_id, billing_account_id, mode)
+    VALUES (${userId}, ${billingAccountId}, 'unlimited')
+    ON CONFLICT (user_id) DO UPDATE SET
+      billing_account_id = COALESCE(usage_budget_accounts.billing_account_id, EXCLUDED.billing_account_id)
   `)
   const result = await tx.execute<BudgetAccountRow>(sql`
     SELECT
+      billing_account_id AS "billingAccountId",
       mode,
       included_micros AS "includedMicros",
       institutional_grant_micros AS "institutionalGrantMicros",
@@ -571,12 +656,15 @@ async function lockOrCreateAccount(tx: Transaction, userId: string): Promise<Bud
   `)
   const account = result.rows[0]
   if (!account) throw new Error(`Usage budget account could not be created for ${userId}`)
+  if (account.billingAccountId !== billingAccountId) {
+    throw new Error('personal_billing_account_link_mismatch')
+  }
   return account
 }
 
 async function selectReservationForUpdate(tx: Transaction, id: string): Promise<ReservationRow | null> {
   const result = await tx.execute<ReservationRow>(sql`
-    SELECT user_id AS "userId", kind, model_id AS "modelId",
+    SELECT user_id AS "userId", billing_account_id AS "billingAccountId", kind, model_id AS "modelId",
            reserved_micros AS "reservedMicros", actual_micros AS "actualMicros",
            provider_work_started AS "providerWorkStarted",
            provider_work_completed AS "providerWorkCompleted",
@@ -641,6 +729,7 @@ async function updateReservationReconcile(
 }
 
 async function insertEvents(tx: Transaction, args: {
+  billingAccountId: string
   events: UsageEvent[]
   operationId: string
   reservationId?: string
@@ -655,11 +744,11 @@ async function insertEvents(tx: Transaction, args: {
       : dollarsToMicros(event.providerCostUsd)
     const result = await tx.execute<{ id: string }>(sql`
       INSERT INTO usage_events (
-        id, user_id, reservation_id, operation_id, kind, model_id,
+        id, user_id, billing_account_id, reservation_id, operation_id, kind, model_id,
         input_tokens, output_tokens, cached_tokens, provider_cost_micros,
         billable_cost_micros, metadata, occurred_at
       ) VALUES (
-        ${id}, ${args.userId}, ${args.reservationId ?? null}, ${args.operationId},
+        ${id}, ${args.userId}, ${args.billingAccountId}, ${args.reservationId ?? null}, ${args.operationId},
         ${event.kind}, ${event.modelId ?? null}, ${event.inputTokens ?? null},
         ${event.outputTokens ?? null}, ${event.cachedTokens ?? null},
         ${providerCostMicros}, ${billableMicros},
@@ -678,6 +767,7 @@ async function insertEvents(tx: Transaction, args: {
 
 async function insertTransaction(tx: Transaction, args: {
   amountMicros: number
+  billingAccountId: string
   eventId?: string
   reservationId?: string
   type: 'reserve' | 'finalize' | 'release' | 'adjustment'
@@ -685,9 +775,9 @@ async function insertTransaction(tx: Transaction, args: {
 }): Promise<void> {
   await tx.execute(sql`
     INSERT INTO usage_budget_transactions (
-      id, user_id, reservation_id, event_id, type, amount_micros
+      id, user_id, billing_account_id, reservation_id, event_id, type, amount_micros
     ) VALUES (
-      ${randomUUID()}, ${args.userId}, ${args.reservationId ?? null},
+      ${randomUUID()}, ${args.userId}, ${args.billingAccountId}, ${args.reservationId ?? null},
       ${args.eventId ?? null}, ${args.type}, ${args.amountMicros}
     )
   `)

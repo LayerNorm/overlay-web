@@ -4,17 +4,34 @@ import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { BillingAccountRecord } from '@/shared/billing/billing-account'
 import type {
+  BillingBalanceParityReport,
+  BillingSubscriptionVerificationRow,
+} from '@/shared/billing/billing-account-migration'
+import type {
   BillingEntitlementsRecord,
   BillingRepository,
   BillingSubscriptionRecord,
   BudgetTopUpRecord,
   AdministrativeUsageRecord,
+  PersonalBillingBackfillResult,
 } from './BillingRepository'
 import type { BillingWebhookRepository } from './BillingProviderEventRepository'
 
 export class ConvexBillingRepository implements BillingRepository, BillingWebhookRepository {
   private get serverSecret(): string {
     return getInternalApiSecret()
+  }
+
+  async backfillPersonalBillingAccountByServer(args: {
+    userId: string
+  }): Promise<PersonalBillingBackfillResult> {
+    const result = await convex.mutation<PersonalBillingBackfillResult>(
+      'billing/accountMigration:backfillPersonalByUserByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+    if (!result) throw new Error('Failed to backfill personal billing account')
+    return result
   }
 
   async ensurePersonalBillingAccount(args: { userId: string }): Promise<BillingAccountRecord> {
@@ -55,6 +72,26 @@ export class ConvexBillingRepository implements BillingRepository, BillingWebhoo
       { ...args, serverSecret: this.serverSecret },
       { throwOnError: true },
     )
+  }
+
+  async getPersonalBillingBalanceParityByServer(args: {
+    userId: string
+  }): Promise<BillingBalanceParityReport | null> {
+    return await convex.query<BillingBalanceParityReport | null>(
+      'billing/accountMigration:getPersonalBalanceParityByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+  }
+
+  async listSubscriptionVerificationRowsByServer(args: {
+    limit?: number
+  } = {}): Promise<BillingSubscriptionVerificationRow[]> {
+    return await convex.query<BillingSubscriptionVerificationRow[]>(
+      'billing/accountMigration:listSubscriptionVerificationRowsByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    ) ?? []
   }
 
   async listAdministrativeUsage(args: {

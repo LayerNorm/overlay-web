@@ -1,6 +1,25 @@
 import 'server-only'
 
 import type { BillingAccountRecord } from '@/shared/billing/billing-account'
+import type {
+  BillingBalanceParityReport,
+  BillingSubscriptionVerificationRow,
+} from '@/shared/billing/billing-account-migration'
+
+export type PersonalBillingBackfillResult = {
+  attached: {
+    budgetReservations: number
+    budgetTopUps: number
+    daytonaUsageLedger: number
+    subscriptions: number
+    tokenUsage: number
+    toolInvocations: number
+    usageOperations: number
+  }
+  billingAccountId: string
+  complete: boolean
+  userId: string
+}
 
 export type BillingEntitlementsRecord = {
   billingAccountId?: string
@@ -76,6 +95,9 @@ export type AdministrativeUsageRecord = {
 }
 
 export interface BillingRepository {
+  backfillPersonalBillingAccountByServer(args: {
+    userId: string
+  }): Promise<PersonalBillingBackfillResult>
   ensurePersonalBillingAccount(args: {
     userId: string
   }): Promise<BillingAccountRecord>
@@ -88,6 +110,12 @@ export interface BillingRepository {
   getWorkspaceBillingAccountByWorkspaceIdByServer(args: {
     workspaceId: string
   }): Promise<BillingAccountRecord | null>
+  getPersonalBillingBalanceParityByServer(args: {
+    userId: string
+  }): Promise<BillingBalanceParityReport | null>
+  listSubscriptionVerificationRowsByServer(args?: {
+    limit?: number
+  }): Promise<BillingSubscriptionVerificationRow[]>
   listAdministrativeUsage(args?: {
     limit?: number
     userId?: string

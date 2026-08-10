@@ -9,12 +9,19 @@ import {
   assertBillingAccountOwnership,
   type BillingAccountRecord,
 } from '@/shared/billing/billing-account'
+import {
+  compareBillingBalanceSnapshots,
+  type BillingBalanceParityReport,
+  type BillingBalanceSnapshot,
+  type BillingSubscriptionVerificationRow,
+} from '@/shared/billing/billing-account-migration'
 import type {
   BillingEntitlementsRecord,
   BillingRepository,
   BillingSubscriptionRecord,
   BudgetTopUpRecord,
   AdministrativeUsageRecord,
+  PersonalBillingBackfillResult,
 } from './BillingRepository'
 import type {
   BillingProviderEventRepository,
@@ -55,6 +62,8 @@ type BillingAccountRow = {
   workspaceId: string | null
 }
 
+type Transaction = Parameters<Parameters<OverlayPostgresDb['transaction']>[0]>[0]
+
 export class PostgresBillingRepository implements BillingRepository, BillingWebhookRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
 
@@ -62,25 +71,34 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     const userId = args.userId.trim()
     if (!userId) throw new Error('billing_account_user_required')
     return await this.db.transaction(async (tx) => {
-      await tx.execute(sql`
-        INSERT INTO billing_accounts (
-          id, scope, owner_user_id, status, primary_billing_contact_user_id,
-          pricing_version, markup_basis_points
-        ) VALUES (
-          ${`ba_${randomUUID().replaceAll('-', '')}`}, 'personal', ${userId}, 'active', ${userId},
-          ${CURRENT_BILLING_ACCOUNT_PRICING_VERSION},
-          ${CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS}
-        )
-        ON CONFLICT DO NOTHING
-      `)
-      const account = await selectPersonalBillingAccount(tx, userId)
-      if (!account) throw new Error('Personal billing account could not be created')
-      await tx.execute(sql`
-        INSERT INTO billing_account_balances (billing_account_id, mode)
-        VALUES (${account.billingAccountId}, 'budgeted')
-        ON CONFLICT (billing_account_id) DO NOTHING
-      `)
+      const account = await ensurePersonalAccount(tx, userId)
       return billingAccountRecord(account)
+    })
+  }
+
+  async backfillPersonalBillingAccountByServer(args: {
+    userId: string
+  }): Promise<PersonalBillingBackfillResult> {
+    const userId = args.userId.trim()
+    if (!userId) throw new Error('billing_account_user_required')
+    return await this.db.transaction(async (tx) => {
+      const account = await ensurePersonalAccount(tx, userId)
+      const billingAccountId = account.billingAccountId
+      const attachedUsageEvents = await attachByUser(tx, 'usage_events', userId, billingAccountId)
+      const attachedUsageTransactions = await attachByUser(tx, 'usage_budget_transactions', userId, billingAccountId)
+      const attached = {
+        budgetReservations: await attachByUser(tx, 'usage_reservations', userId, billingAccountId),
+        budgetTopUps: await attachByUser(tx, 'billing_top_ups', userId, billingAccountId),
+        daytonaUsageLedger: 0,
+        subscriptions: await attachByUser(tx, 'billing_subscriptions', userId, billingAccountId),
+        tokenUsage: 0,
+        toolInvocations: 0,
+        usageOperations: attachedUsageEvents + attachedUsageTransactions,
+      }
+      await attachByUser(tx, 'usage_budget_accounts', userId, billingAccountId)
+      await syncCanonicalSubscriptionFromLegacy(tx, userId, billingAccountId)
+      await syncCanonicalBalanceFromLegacy(tx, userId, billingAccountId)
+      return { attached, billingAccountId, complete: true, userId }
     })
   }
 
@@ -111,6 +129,96 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       LIMIT 1
     `)
     return result.rows[0] ? billingAccountRecord(result.rows[0]) : null
+  }
+
+  async getPersonalBillingBalanceParityByServer(args: {
+    userId: string
+  }): Promise<BillingBalanceParityReport | null> {
+    const result = await this.db.execute<{
+      billingAccountId: string
+      canonicalAllowanceUsedMicros: number | string
+      canonicalIncludedMicros: number | string
+      canonicalInstitutionalGrantMicros: number | string
+      canonicalMode: 'budgeted' | 'unlimited'
+      canonicalReservedMicros: number | string
+      canonicalTopUpBalanceMicros: number | string
+      canonicalTopUpPurchasedMicros: number | string
+      canonicalUsedMicros: number | string
+      legacyAllowanceUsedMicros: number | string
+      legacyIncludedMicros: number | string
+      legacyInstitutionalGrantMicros: number | string
+      legacyMode: 'budgeted' | 'unlimited'
+      legacyReservedMicros: number | string
+      legacyTopUpBalanceMicros: number | string
+      legacyTopUpPurchasedMicros: number | string
+      legacyUsedMicros: number | string
+    }>(sql`
+      SELECT
+        account.id AS "billingAccountId",
+        COALESCE(legacy.mode, 'budgeted') AS "legacyMode",
+        COALESCE(legacy.included_micros, 0) AS "legacyIncludedMicros",
+        COALESCE(legacy.institutional_grant_micros, 0) AS "legacyInstitutionalGrantMicros",
+        COALESCE(legacy.allowance_used_micros, 0) AS "legacyAllowanceUsedMicros",
+        COALESCE(legacy.top_up_purchased_micros, 0) AS "legacyTopUpPurchasedMicros",
+        COALESCE(legacy.top_up_balance_micros, 0) AS "legacyTopUpBalanceMicros",
+        COALESCE(legacy.used_micros, 0) AS "legacyUsedMicros",
+        COALESCE(legacy.reserved_micros, 0) AS "legacyReservedMicros",
+        canonical.mode AS "canonicalMode",
+        canonical.included_micros AS "canonicalIncludedMicros",
+        canonical.institutional_grant_micros AS "canonicalInstitutionalGrantMicros",
+        canonical.allowance_used_micros AS "canonicalAllowanceUsedMicros",
+        canonical.top_up_purchased_micros AS "canonicalTopUpPurchasedMicros",
+        canonical.top_up_balance_micros AS "canonicalTopUpBalanceMicros",
+        canonical.used_micros AS "canonicalUsedMicros",
+        canonical.reserved_micros AS "canonicalReservedMicros"
+      FROM billing_accounts account
+      JOIN billing_account_balances canonical ON canonical.billing_account_id = account.id
+      LEFT JOIN usage_budget_accounts legacy ON legacy.user_id = account.owner_user_id
+      WHERE account.scope = 'personal' AND account.owner_user_id = ${args.userId.trim()}
+      LIMIT 1
+    `)
+    const row = result.rows[0]
+    if (!row) return null
+    const legacy = balanceSnapshot(row.billingAccountId, 'legacy', row)
+    const canonical = balanceSnapshot(row.billingAccountId, 'canonical', row)
+    return compareBillingBalanceSnapshots({ canonical, legacy, userId: args.userId.trim() })
+  }
+
+  async listSubscriptionVerificationRowsByServer(args: {
+    limit?: number
+  } = {}): Promise<BillingSubscriptionVerificationRow[]> {
+    const limit = Math.min(Math.max(Math.floor(args.limit ?? 100), 1), 500)
+    const result = await this.db.execute<{
+      billingAccountId: string | null
+      planAmountCents: number
+      providerCustomerId: string | null
+      providerPriceId: string | null
+      providerQuantity: number | null
+      providerSubscriptionId: string | null
+      status: BillingSubscriptionVerificationRow['status']
+      userId: string
+    }>(sql`
+      SELECT user_id AS "userId", billing_account_id AS "billingAccountId",
+             provider_customer_id AS "providerCustomerId",
+             provider_subscription_id AS "providerSubscriptionId",
+             provider_price_id AS "providerPriceId", provider_quantity AS "providerQuantity",
+             plan_amount_cents AS "planAmountCents", status
+      FROM billing_subscriptions
+      ORDER BY user_id ASC
+      LIMIT ${limit}
+    `)
+    return result.rows.map((row) => ({
+      ...(row.billingAccountId === null ? {} : { billingAccountId: row.billingAccountId }),
+      planAmountCents: Number(row.planAmountCents),
+      ...(row.providerCustomerId === null ? {} : { providerCustomerId: row.providerCustomerId }),
+      ...(row.providerPriceId === null ? {} : { providerPriceId: row.providerPriceId }),
+      ...(row.providerQuantity === null ? {} : { providerQuantity: Number(row.providerQuantity) }),
+      ...(row.providerSubscriptionId === null
+        ? {}
+        : { providerSubscriptionId: row.providerSubscriptionId }),
+      status: row.status,
+      userId: row.userId,
+    }))
   }
 
   async listAdministrativeUsage(args: {
@@ -164,33 +272,41 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     if (!Number.isFinite(args.amountCents) || args.amountCents === 0) {
       throw new Error('amountCents must be a non-zero number')
     }
-    const updated = await this.db.execute(sql`
-      INSERT INTO usage_budget_accounts (user_id, mode, institutional_grant_micros, granted_micros)
-      VALUES (
-        ${args.userId}, 'budgeted', ${Math.max(0, args.amountCents * MICROS_PER_CENT)},
-        ${Math.max(0, args.amountCents * MICROS_PER_CENT)}
-      )
-      ON CONFLICT (user_id) DO UPDATE SET
-        mode = 'budgeted',
-        institutional_grant_micros = GREATEST(
+    await this.db.transaction(async (tx) => {
+      const account = await ensurePersonalAccount(tx, args.userId)
+      const updated = await tx.execute(sql`
+        INSERT INTO usage_budget_accounts (
+          user_id, billing_account_id, mode, institutional_grant_micros, granted_micros
+        )
+        VALUES (
+          ${args.userId}, ${account.billingAccountId}, 'budgeted',
+          ${Math.max(0, args.amountCents * MICROS_PER_CENT)},
+          ${Math.max(0, args.amountCents * MICROS_PER_CENT)}
+        )
+        ON CONFLICT (user_id) DO UPDATE SET
+          billing_account_id = EXCLUDED.billing_account_id,
+          mode = 'budgeted',
+          institutional_grant_micros = GREATEST(
+            0,
+            usage_budget_accounts.institutional_grant_micros + ${args.amountCents * MICROS_PER_CENT}
+          ),
+          granted_micros = GREATEST(
+            0,
+            usage_budget_accounts.institutional_grant_micros + ${args.amountCents * MICROS_PER_CENT}
+          ) + usage_budget_accounts.top_up_purchased_micros,
+          version = usage_budget_accounts.version + 1,
+          updated_at = now()
+        WHERE usage_budget_accounts.included_micros + GREATEST(
           0,
           usage_budget_accounts.institutional_grant_micros + ${args.amountCents * MICROS_PER_CENT}
-        ),
-        granted_micros = GREATEST(
-          0,
-          usage_budget_accounts.institutional_grant_micros + ${args.amountCents * MICROS_PER_CENT}
-        ) + usage_budget_accounts.top_up_purchased_micros,
-        version = usage_budget_accounts.version + 1,
-        updated_at = now()
-      WHERE usage_budget_accounts.included_micros + GREATEST(
-        0,
-        usage_budget_accounts.institutional_grant_micros + ${args.amountCents * MICROS_PER_CENT}
-      ) >= usage_budget_accounts.allowance_used_micros
-      RETURNING user_id
-    `)
-    if (updated.rowCount !== 1) {
-      throw new Error('Administrative grant cannot be reduced below consumed allowance')
-    }
+        ) >= usage_budget_accounts.allowance_used_micros
+        RETURNING user_id
+      `)
+      if (updated.rowCount !== 1) {
+        throw new Error('Administrative grant cannot be reduced below consumed allowance')
+      }
+      await syncCanonicalBalanceFromLegacy(tx, args.userId, account.billingAccountId)
+    })
     const record = (await this.listAdministrativeUsage({ userId: args.userId, limit: 1 }))[0]
     if (!record) throw new Error('Billing subscription not found')
     return record
@@ -274,21 +390,25 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     topUpAmountCents: number
     userId: string
   }): Promise<{ success: boolean; error?: string }> {
-    const result = await this.db.execute(sql`
-      UPDATE billing_subscriptions
-      SET auto_top_up_enabled = ${args.autoTopUpEnabled},
-          auto_top_up_amount_cents = ${args.topUpAmountCents},
-          off_session_consent_at = CASE
-            WHEN ${args.grantOffSessionConsent} THEN COALESCE(off_session_consent_at, now())
-            WHEN NOT ${args.autoTopUpEnabled} THEN NULL
-            ELSE off_session_consent_at
-          END,
-          updated_at = now()
-      WHERE user_id = ${args.userId}
-    `)
-    return result.rowCount === 1
-      ? { success: true }
-      : { success: false, error: 'Subscription not found' }
+    return await this.db.transaction(async (tx) => {
+      const account = await ensurePersonalAccount(tx, args.userId)
+      const result = await tx.execute(sql`
+        UPDATE billing_subscriptions
+        SET billing_account_id = ${account.billingAccountId},
+            auto_top_up_enabled = ${args.autoTopUpEnabled},
+            auto_top_up_amount_cents = ${args.topUpAmountCents},
+            off_session_consent_at = CASE
+              WHEN ${args.grantOffSessionConsent} THEN COALESCE(off_session_consent_at, now())
+              WHEN NOT ${args.autoTopUpEnabled} THEN NULL
+              ELSE off_session_consent_at
+            END,
+            updated_at = now()
+        WHERE user_id = ${args.userId}
+      `)
+      if (result.rowCount !== 1) return { success: false, error: 'Subscription not found' }
+      await syncCanonicalSubscriptionFromLegacy(tx, args.userId, account.billingAccountId)
+      return { success: true }
+    })
   }
 
   async upsertSubscription(args: Record<string, unknown> & { userId: string }): Promise<{ userId: string }> {
@@ -298,6 +418,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     const incomingPeriodStart = dateValue(args.currentPeriodStart)
     const includedMicros = (numberValue(args.planAmountCents) ?? 0) * MICROS_PER_CENT
     await this.db.transaction(async (tx) => {
+      const account = await ensurePersonalAccount(tx, args.userId)
       const previous = await tx.execute<{ currentPeriodStart: Date | string | null }>(sql`
         SELECT current_period_start AS "currentPeriodStart"
         FROM billing_subscriptions
@@ -327,13 +448,13 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       }
       await tx.execute(sql`
         INSERT INTO billing_subscriptions (
-          user_id, email, name, provider, provider_customer_id, provider_subscription_id,
+          user_id, billing_account_id, email, name, provider, provider_customer_id, provider_subscription_id,
           provider_price_id, provider_quantity, tier, plan_kind, plan_version,
           plan_amount_cents, markup_basis_points, status, auto_top_up_enabled,
           auto_top_up_amount_cents, off_session_consent_at, current_period_start,
           current_period_end, provider_event_created_at, updated_at
         ) VALUES (
-          ${args.userId}, ${textValue(args.email) ?? null}, ${textValue(args.name) ?? null},
+          ${args.userId}, ${account.billingAccountId}, ${textValue(args.email) ?? null}, ${textValue(args.name) ?? null},
           ${provider}, ${customerId ?? null}, ${subscriptionId ?? null},
           ${textValue(args.stripePriceId ?? args.providerPriceId) ?? null},
           ${numberValue(args.stripeQuantity ?? args.providerQuantity) ?? null},
@@ -345,6 +466,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
           ${dateValue(args.providerEventCreatedAt)}, now()
         )
         ON CONFLICT (user_id) DO UPDATE SET
+          billing_account_id = EXCLUDED.billing_account_id,
           email = COALESCE(EXCLUDED.email, billing_subscriptions.email),
           name = COALESCE(EXCLUDED.name, billing_subscriptions.name),
           provider = EXCLUDED.provider,
@@ -381,9 +503,10 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
         }
       }
       const budgetUpdate = await tx.execute(sql`
-        INSERT INTO usage_budget_accounts (user_id, mode, included_micros)
-        VALUES (${args.userId}, 'budgeted', ${includedMicros})
+        INSERT INTO usage_budget_accounts (user_id, billing_account_id, mode, included_micros)
+        VALUES (${args.userId}, ${account.billingAccountId}, 'budgeted', ${includedMicros})
         ON CONFLICT (user_id) DO UPDATE SET
+          billing_account_id = EXCLUDED.billing_account_id,
           mode = 'budgeted',
           included_micros = EXCLUDED.included_micros,
           allowance_used_micros = CASE
@@ -425,6 +548,8 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       if (budgetUpdate.rowCount !== 1) {
         throw new Error('Subscription change would remove already consumed or reserved credits')
       }
+      await syncCanonicalSubscriptionFromLegacy(tx, args.userId, account.billingAccountId)
+      await syncCanonicalBalanceFromLegacy(tx, args.userId, account.billingAccountId)
     })
     return { userId: args.userId }
   }
@@ -473,6 +598,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     userId: string
   }): Promise<{ id: string; granted: boolean }> {
     return await this.db.transaction(async (tx) => {
+      const account = await ensurePersonalAccount(tx, args.userId)
       const existing = await tx.execute<{ amountCents: number; id: string; status: string; userId: string }>(sql`
         SELECT id, status, amount_cents AS "amountCents", user_id AS "userId"
         FROM billing_top_ups
@@ -493,7 +619,8 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       if (row) {
         await tx.execute(sql`
           UPDATE billing_top_ups
-          SET status = ${persistedStatus},
+          SET billing_account_id = ${account.billingAccountId},
+              status = ${persistedStatus},
               error_message = ${args.errorMessage ?? null},
               updated_at = now()
           WHERE id = ${id} AND user_id = ${args.userId}
@@ -501,10 +628,10 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       } else {
         await tx.execute(sql`
           INSERT INTO billing_top_ups (
-            id, user_id, amount_cents, source, status, provider_checkout_session_id,
+            id, user_id, billing_account_id, amount_cents, source, status, provider_checkout_session_id,
             provider_customer_id, provider_payment_intent_id, error_message
           ) VALUES (
-            ${id}, ${args.userId}, ${args.amountCents}, ${args.source}, ${args.status},
+            ${id}, ${args.userId}, ${account.billingAccountId}, ${args.amountCents}, ${args.source}, ${args.status},
             ${args.stripeCheckoutSessionId ?? null}, ${args.stripeCustomerId ?? null},
             ${args.stripePaymentIntentId ?? null}, ${args.errorMessage ?? null}
           )
@@ -514,11 +641,12 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
         const amountMicros = args.amountCents * MICROS_PER_CENT
         await tx.execute(sql`
           INSERT INTO usage_budget_accounts (
-            user_id, mode, top_up_purchased_micros, top_up_balance_micros, granted_micros
+            user_id, billing_account_id, mode, top_up_purchased_micros, top_up_balance_micros, granted_micros
           )
-          VALUES (${args.userId}, 'budgeted', ${amountMicros}, ${amountMicros}, ${amountMicros})
+          VALUES (${args.userId}, ${account.billingAccountId}, 'budgeted', ${amountMicros}, ${amountMicros}, ${amountMicros})
           ON CONFLICT (user_id) DO UPDATE
-          SET mode = 'budgeted',
+          SET billing_account_id = EXCLUDED.billing_account_id,
+              mode = 'budgeted',
               top_up_purchased_micros = usage_budget_accounts.top_up_purchased_micros + ${amountMicros},
               top_up_balance_micros = usage_budget_accounts.top_up_balance_micros + ${amountMicros},
               granted_micros = usage_budget_accounts.granted_micros + ${amountMicros},
@@ -526,6 +654,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
               updated_at = now()
         `)
       }
+      await syncCanonicalBalanceFromLegacy(tx, args.userId, account.billingAccountId)
       return { id, granted: grant }
     })
   }
@@ -584,6 +713,159 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
 }
 
 type BillingAccountExecutor = Pick<OverlayPostgresDb, 'execute'>
+
+type LegacyBillingTable =
+  | 'billing_subscriptions'
+  | 'billing_top_ups'
+  | 'usage_budget_accounts'
+  | 'usage_budget_transactions'
+  | 'usage_events'
+  | 'usage_reservations'
+
+async function ensurePersonalAccount(
+  tx: Transaction,
+  userId: string,
+): Promise<BillingAccountRow> {
+  await tx.execute(sql`
+    INSERT INTO billing_accounts (
+      id, scope, owner_user_id, status, primary_billing_contact_user_id,
+      pricing_version, markup_basis_points
+    ) VALUES (
+      ${`ba_${randomUUID().replaceAll('-', '')}`}, 'personal', ${userId}, 'active', ${userId},
+      ${CURRENT_BILLING_ACCOUNT_PRICING_VERSION},
+      ${CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS}
+    )
+    ON CONFLICT DO NOTHING
+  `)
+  const account = await selectPersonalBillingAccount(tx, userId)
+  if (!account) throw new Error('Personal billing account could not be created')
+  await tx.execute(sql`
+    INSERT INTO billing_account_balances (billing_account_id, mode)
+    VALUES (${account.billingAccountId}, 'budgeted')
+    ON CONFLICT (billing_account_id) DO NOTHING
+  `)
+  return account
+}
+
+async function attachByUser(
+  tx: Transaction,
+  table: LegacyBillingTable,
+  userId: string,
+  billingAccountId: string,
+): Promise<number> {
+  const tableSql = legacyBillingTableSql(table)
+  const result = await tx.execute(sql`
+    UPDATE ${tableSql}
+    SET billing_account_id = ${billingAccountId}
+    WHERE user_id = ${userId} AND billing_account_id IS NULL
+  `)
+  return result.rowCount ?? 0
+}
+
+function legacyBillingTableSql(table: LegacyBillingTable) {
+  switch (table) {
+    case 'billing_subscriptions': return sql.raw('billing_subscriptions')
+    case 'billing_top_ups': return sql.raw('billing_top_ups')
+    case 'usage_budget_accounts': return sql.raw('usage_budget_accounts')
+    case 'usage_budget_transactions': return sql.raw('usage_budget_transactions')
+    case 'usage_events': return sql.raw('usage_events')
+    case 'usage_reservations': return sql.raw('usage_reservations')
+  }
+}
+
+async function syncCanonicalSubscriptionFromLegacy(
+  tx: Transaction,
+  userId: string,
+  billingAccountId: string,
+): Promise<void> {
+  await tx.execute(sql`
+    INSERT INTO billing_account_subscriptions (
+      billing_account_id, provider, provider_customer_id, provider_subscription_id,
+      provider_price_id, provider_quantity, plan_kind, plan_version, plan_amount_cents,
+      markup_basis_points, status, auto_top_up_enabled, auto_top_up_amount_cents,
+      off_session_consent_at, current_period_start, current_period_end,
+      provider_event_created_at, created_at, updated_at
+    )
+    SELECT
+      ${billingAccountId}, provider, provider_customer_id, provider_subscription_id,
+      provider_price_id, provider_quantity, plan_kind, 'variable_v2', plan_amount_cents,
+      COALESCE(markup_basis_points, ${CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS}),
+      status, auto_top_up_enabled, auto_top_up_amount_cents,
+      off_session_consent_at, current_period_start, current_period_end,
+      provider_event_created_at, created_at, updated_at
+    FROM billing_subscriptions
+    WHERE user_id = ${userId}
+    ON CONFLICT (billing_account_id) DO UPDATE SET
+      provider = EXCLUDED.provider,
+      provider_customer_id = EXCLUDED.provider_customer_id,
+      provider_subscription_id = EXCLUDED.provider_subscription_id,
+      provider_price_id = EXCLUDED.provider_price_id,
+      provider_quantity = EXCLUDED.provider_quantity,
+      plan_kind = EXCLUDED.plan_kind,
+      plan_version = EXCLUDED.plan_version,
+      plan_amount_cents = EXCLUDED.plan_amount_cents,
+      markup_basis_points = EXCLUDED.markup_basis_points,
+      status = EXCLUDED.status,
+      auto_top_up_enabled = EXCLUDED.auto_top_up_enabled,
+      auto_top_up_amount_cents = EXCLUDED.auto_top_up_amount_cents,
+      off_session_consent_at = EXCLUDED.off_session_consent_at,
+      current_period_start = EXCLUDED.current_period_start,
+      current_period_end = EXCLUDED.current_period_end,
+      provider_event_created_at = EXCLUDED.provider_event_created_at,
+      updated_at = EXCLUDED.updated_at
+  `)
+}
+
+async function syncCanonicalBalanceFromLegacy(
+  tx: Transaction,
+  userId: string,
+  billingAccountId: string,
+): Promise<void> {
+  await tx.execute(sql`
+    INSERT INTO billing_account_balances (
+      billing_account_id, mode, included_micros, institutional_grant_micros,
+      allowance_used_micros, top_up_purchased_micros, top_up_balance_micros,
+      used_micros, reserved_micros, version, updated_at
+    )
+    SELECT
+      ${billingAccountId}, mode, included_micros, institutional_grant_micros,
+      allowance_used_micros, top_up_purchased_micros, top_up_balance_micros,
+      used_micros, reserved_micros, version, updated_at
+    FROM usage_budget_accounts
+    WHERE user_id = ${userId}
+    ON CONFLICT (billing_account_id) DO UPDATE SET
+      mode = EXCLUDED.mode,
+      included_micros = EXCLUDED.included_micros,
+      institutional_grant_micros = EXCLUDED.institutional_grant_micros,
+      allowance_used_micros = EXCLUDED.allowance_used_micros,
+      top_up_purchased_micros = EXCLUDED.top_up_purchased_micros,
+      top_up_balance_micros = EXCLUDED.top_up_balance_micros,
+      used_micros = EXCLUDED.used_micros,
+      reserved_micros = EXCLUDED.reserved_micros,
+      version = EXCLUDED.version,
+      updated_at = EXCLUDED.updated_at
+  `)
+}
+
+function balanceSnapshot(
+  billingAccountId: string,
+  prefix: 'legacy' | 'canonical',
+  row: Record<string, unknown>,
+): BillingBalanceSnapshot {
+  const mode = row[`${prefix}Mode`]
+  if (mode !== 'budgeted' && mode !== 'unlimited') throw new Error('Invalid billing balance mode')
+  return {
+    allowanceUsedMicros: Number(row[`${prefix}AllowanceUsedMicros`]),
+    billingAccountId,
+    includedMicros: Number(row[`${prefix}IncludedMicros`]),
+    institutionalGrantMicros: Number(row[`${prefix}InstitutionalGrantMicros`]),
+    mode,
+    reservedMicros: Number(row[`${prefix}ReservedMicros`]),
+    topUpBalanceMicros: Number(row[`${prefix}TopUpBalanceMicros`]),
+    topUpPurchasedMicros: Number(row[`${prefix}TopUpPurchasedMicros`]),
+    usedMicros: Number(row[`${prefix}UsedMicros`]),
+  }
+}
 
 async function selectPersonalBillingAccount(
   executor: BillingAccountExecutor,

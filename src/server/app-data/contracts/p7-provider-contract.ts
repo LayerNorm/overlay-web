@@ -82,6 +82,7 @@ export async function runP7ProviderContract(
       const before = await backend.billing.getSubscriptionByUserIdByServer({ userId })
       assert.equal(before?.status, 'active')
       assert.equal(before?.planKind, 'paid')
+      assert.ok(before?.billingAccountId)
 
       const topUp = {
         amountCents: 1_000,
@@ -108,6 +109,14 @@ export async function runP7ProviderContract(
       assert.equal(entitlements!.allowanceUsedCents, 0)
       assert.equal(entitlements!.allowancePercentUsed, 0)
       assert.equal(entitlements!.topUpBalanceCents, 1_000)
+      assert.equal(entitlements!.billingAccountId, before?.billingAccountId)
+      const backfill = await backend.billing.backfillPersonalBillingAccountByServer({ userId })
+      assert.equal(backfill.billingAccountId, before?.billingAccountId)
+      assert.equal(backfill.complete, true)
+      const parity = await backend.billing.getPersonalBillingBalanceParityByServer({ userId })
+      assert.equal(parity?.matches, true, parity?.differences.join(', '))
+      assert.ok((await backend.billing.listSubscriptionVerificationRowsByServer({ limit: 500 }))
+        .some((row) => row.userId === userId && row.billingAccountId === before?.billingAccountId))
     })
 
     await t.test(`${backend.provider} usage reserve/finalize/release and idempotency`, async () => {

@@ -157,6 +157,7 @@ export default defineSchema({
     fileBandwidthBytesUsed: v.optional(v.number()),
     fileBandwidthPeriodStart: v.optional(v.number()),
   }).index('by_userId', ['userId'])
+    .index('by_userId_billingAccountId', ['userId', 'billingAccountId'])
     .index('by_billingAccountId', ['billingAccountId'])
     .index('by_email', ['email'])
     .index('by_stripeCustomerId', ['stripeCustomerId']),
@@ -183,6 +184,7 @@ export default defineSchema({
     errorMessage: v.optional(v.string()),
   })
     .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_userId_billingAccountId', ['userId', 'billingAccountId'])
     .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
     .index('by_userId_billingPeriodStart', ['userId', 'billingPeriodStart'])
     .index('by_paymentIntentId', ['stripePaymentIntentId'])
@@ -291,6 +293,7 @@ export default defineSchema({
     cachedInputTokens: v.number(),
     outputTokens: v.number()
   }).index('by_userId_period', ['userId', 'billingPeriodStart'])
+    .index('by_userId_billingAccountId', ['userId', 'billingAccountId'])
     .index('by_billingAccountId_period', ['billingAccountId', 'billingPeriodStart']),
 
   budgetReservations: defineTable({
@@ -338,6 +341,7 @@ export default defineSchema({
   })
     .index('by_reservationId', ['reservationId'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_userId_billingAccountId', ['userId', 'billingAccountId'])
     .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
     .index('by_status_createdAt', ['status', 'createdAt'])
     .index('by_status_expiresAt', ['status', 'expiresAt'])
@@ -352,6 +356,7 @@ export default defineSchema({
   })
     .index('by_operationId', ['operationId'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_userId_billingAccountId', ['userId', 'billingAccountId'])
     .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt']),
 
   administrativePrincipals: defineTable({
@@ -487,6 +492,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_userId_billingAccountId', ['userId', 'billingAccountId'])
     .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
     .index('by_sandboxId_createdAt', ['sandboxId', 'createdAt']),
 
@@ -517,6 +523,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_userId_billingAccountId', ['userId', 'billingAccountId'])
     .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
     .index('by_userId_toolId', ['userId', 'toolId'])
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
