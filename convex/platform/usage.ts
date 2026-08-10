@@ -276,6 +276,7 @@ async function buildEntitlements(ctx: EntitlementCtx, userId: string) {
   }
 
   return {
+    billingAccountId: subscription?.billingAccountId,
     tier,
     planKind,
     planAmountCents,
@@ -475,6 +476,7 @@ export const getEntitlementsInternal = internalQuery({
       : { allowanceTotal: 0, allowanceUsed: 0, topUpPurchased: 0, topUpBalance: 0 }
     const budgetTotalCents = buckets.allowanceTotal + buckets.topUpPurchased
     return {
+      billingAccountId: subscription?.billingAccountId,
       tier,
       planKind,
       planAmountCents,

@@ -23,6 +23,12 @@ stripe listen --forward-to localhost:3000/api/webhooks/stripe
 
 When billing is disabled, pair `billing.provider="none"` with `capabilities.billing=false`.
 
+## Billing account compatibility
+
+Personal and workspace payment ownership is modeled by a billing account with an explicit `markup_25_v1` pricing version. This keeps the existing 25% markup and current personal subscriptions intact while making a workspace wallet possible without attributing shared usage to one member. The first migration is additive: existing user-keyed subscriptions, balances, top-ups, and usage remain authoritative until a later backfill and controlled cutover.
+
+Creating a personal billing account is idempotent and creates an empty budgeted balance. It does not create a Stripe customer, subscription, payment, allowance, or top-up. Workspace account creation and funding are intentionally deferred until authorization and member spending-limit rules are in place.
+
 ## Reservation reconciliation
 
 The usage ledger automatically releases expired reservations only when provider work never started. Provider-started reservations are quarantined until authoritative evidence establishes whether to finalize the measured cost or release the reservation.

@@ -2,6 +2,7 @@ import 'server-only'
 
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import type { BillingAccountRecord } from '@/shared/billing/billing-account'
 import type {
   BillingEntitlementsRecord,
   BillingRepository,
@@ -14,6 +15,46 @@ import type { BillingWebhookRepository } from './BillingProviderEventRepository'
 export class ConvexBillingRepository implements BillingRepository, BillingWebhookRepository {
   private get serverSecret(): string {
     return getInternalApiSecret()
+  }
+
+  async ensurePersonalBillingAccount(args: { userId: string }): Promise<BillingAccountRecord> {
+    const account = await convex.mutation<BillingAccountRecord>(
+      'billing/accounts:ensurePersonalByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+    if (!account) throw new Error('Failed to ensure personal billing account')
+    return account
+  }
+
+  async getBillingAccountByIdByServer(args: {
+    billingAccountId: string
+  }): Promise<BillingAccountRecord | null> {
+    return await convex.query<BillingAccountRecord | null>(
+      'billing/accounts:getByIdByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+  }
+
+  async getPersonalBillingAccountByUserIdByServer(args: {
+    userId: string
+  }): Promise<BillingAccountRecord | null> {
+    return await convex.query<BillingAccountRecord | null>(
+      'billing/accounts:getPersonalByUserIdByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+  }
+
+  async getWorkspaceBillingAccountByWorkspaceIdByServer(args: {
+    workspaceId: string
+  }): Promise<BillingAccountRecord | null> {
+    return await convex.query<BillingAccountRecord | null>(
+      'billing/accounts:getWorkspaceByWorkspaceIdByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
   }
 
   async listAdministrativeUsage(args: {

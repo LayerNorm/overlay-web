@@ -36,6 +36,72 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_key', ['key']),
 
+  billingAccounts: defineTable({
+    billingAccountId: v.string(),
+    scope: v.union(v.literal('personal'), v.literal('workspace')),
+    userId: v.optional(v.string()),
+    workspaceId: v.optional(v.string()),
+    status: v.union(v.literal('active'), v.literal('suspended'), v.literal('closed')),
+    primaryBillingContactUserId: v.optional(v.string()),
+    pricingVersion: v.literal('markup_25_v1'),
+    markupBasisPoints: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    closedAt: v.optional(v.number()),
+  })
+    .index('by_billingAccountId', ['billingAccountId'])
+    .index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_status_updatedAt', ['status', 'updatedAt']),
+
+  billingAccountSubscriptions: defineTable({
+    billingAccountId: v.string(),
+    provider: v.string(),
+    providerCustomerId: v.optional(v.string()),
+    providerSubscriptionId: v.optional(v.string()),
+    providerPriceId: v.optional(v.string()),
+    providerQuantity: v.optional(v.number()),
+    planKind: v.union(v.literal('free'), v.literal('paid')),
+    planVersion: v.literal('variable_v2'),
+    planAmountCents: v.number(),
+    markupBasisPoints: v.number(),
+    status: v.union(
+      v.literal('active'),
+      v.literal('canceled'),
+      v.literal('past_due'),
+      v.literal('trialing'),
+    ),
+    autoTopUpEnabled: v.boolean(),
+    autoTopUpAmountCents: v.number(),
+    offSessionConsentAt: v.optional(v.number()),
+    currentPeriodStart: v.optional(v.number()),
+    currentPeriodEnd: v.optional(v.number()),
+    providerEventCreatedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_billingAccountId', ['billingAccountId'])
+    .index('by_providerCustomerId', ['providerCustomerId'])
+    .index('by_providerSubscriptionId', ['providerSubscriptionId'])
+    .index('by_status_updatedAt', ['status', 'updatedAt']),
+
+  billingAccountBalances: defineTable({
+    billingAccountId: v.string(),
+    mode: v.union(v.literal('unlimited'), v.literal('budgeted')),
+    includedMicros: v.number(),
+    institutionalGrantMicros: v.number(),
+    allowanceUsedMicros: v.number(),
+    topUpPurchasedMicros: v.number(),
+    topUpBalanceMicros: v.number(),
+    usedMicros: v.number(),
+    reservedMicros: v.number(),
+    version: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_billingAccountId', ['billingAccountId'])
+    .index('by_mode_updatedAt', ['mode', 'updatedAt']),
+
   // Single source of truth for a user's subscription, tier, and current-period credit spend.
   // creditsUsed is the live accumulator (in cents, may include fractional cents)
   // mutated on every usage event.
@@ -43,6 +109,7 @@ export default defineSchema({
   // the webhook; on free tier they are set to now/+30d at account creation.
   subscriptions: defineTable({
     userId: v.string(),
+    billingAccountId: v.optional(v.string()),
     email: v.optional(v.string()),
     name: v.optional(v.string()),
     stripeCustomerId: v.optional(v.string()),
@@ -90,11 +157,13 @@ export default defineSchema({
     fileBandwidthBytesUsed: v.optional(v.number()),
     fileBandwidthPeriodStart: v.optional(v.number()),
   }).index('by_userId', ['userId'])
+    .index('by_billingAccountId', ['billingAccountId'])
     .index('by_email', ['email'])
     .index('by_stripeCustomerId', ['stripeCustomerId']),
 
   budgetTopUps: defineTable({
     userId: v.string(),
+    billingAccountId: v.optional(v.string()),
     stripeCustomerId: v.optional(v.string()),
     stripeCheckoutSessionId: v.optional(v.string()),
     stripePaymentIntentId: v.optional(v.string()),
@@ -114,6 +183,7 @@ export default defineSchema({
     errorMessage: v.optional(v.string()),
   })
     .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
     .index('by_userId_billingPeriodStart', ['userId', 'billingPeriodStart'])
     .index('by_paymentIntentId', ['stripePaymentIntentId'])
     .index('by_checkoutSessionId', ['stripeCheckoutSessionId']),
@@ -212,6 +282,7 @@ export default defineSchema({
   // Never read for enforcement — use subscriptions.creditsUsed for that.
   tokenUsage: defineTable({
     userId: v.string(),
+    billingAccountId: v.optional(v.string()),
     email: v.string(), // denormalized from subscriptions for easy dashboard filtering
     billingPeriodStart: v.string(), // ISO date string
     creditsUsed: v.optional(v.number()), // cents accumulated this period (audit copy, may be fractional)
@@ -219,10 +290,12 @@ export default defineSchema({
     inputTokens: v.number(),
     cachedInputTokens: v.number(),
     outputTokens: v.number()
-  }).index('by_userId_period', ['userId', 'billingPeriodStart']),
+  }).index('by_userId_period', ['userId', 'billingPeriodStart'])
+    .index('by_billingAccountId_period', ['billingAccountId', 'billingPeriodStart']),
 
   budgetReservations: defineTable({
     userId: v.string(),
+    billingAccountId: v.optional(v.string()),
     reservationId: v.string(),
     status: v.union(
       v.literal('reserved'),
@@ -265,18 +338,21 @@ export default defineSchema({
   })
     .index('by_reservationId', ['reservationId'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
     .index('by_status_createdAt', ['status', 'createdAt'])
     .index('by_status_expiresAt', ['status', 'expiresAt'])
     .index('by_status_updatedAt', ['status', 'updatedAt']),
 
   usageOperations: defineTable({
     userId: v.string(),
+    billingAccountId: v.optional(v.string()),
     operationId: v.string(),
     recorded: v.number(),
     createdAt: v.number(),
   })
     .index('by_operationId', ['operationId'])
-    .index('by_userId_createdAt', ['userId', 'createdAt']),
+    .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt']),
 
   administrativePrincipals: defineTable({
     userId: v.string(),
@@ -388,6 +464,7 @@ export default defineSchema({
 
   daytonaUsageLedger: defineTable({
     userId: v.string(),
+    billingAccountId: v.optional(v.string()),
     sandboxId: v.string(),
     tier: v.union(v.literal('pro'), v.literal('max')),
     resourceProfile: v.union(v.literal('pro'), v.literal('max')),
@@ -410,11 +487,13 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
     .index('by_sandboxId_createdAt', ['sandboxId', 'createdAt']),
 
   /** One row per tool invocation (audit / cost-class tracking for chat tools). */
   toolInvocations: defineTable({
     userId: v.string(),
+    billingAccountId: v.optional(v.string()),
     toolId: v.string(),
     mode: v.union(v.literal('ask'), v.literal('act')),
     modelId: v.optional(v.string()),
@@ -438,6 +517,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_userId_createdAt', ['userId', 'createdAt'])
+    .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
     .index('by_userId_toolId', ['userId', 'toolId'])
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
     .index('by_turnId_createdAt', ['turnId', 'createdAt']),

@@ -45,6 +45,38 @@ export async function runP7ProviderContract(
   const apiKeys = new ApiKeyService(backend.apiKeys)
 
   try {
+    await t.test(`${backend.provider} personal billing accounts are idempotent and explicitly priced`, async () => {
+      const concurrent = await Promise.all(Array.from({ length: 8 }, () =>
+        backend.billing.ensurePersonalBillingAccount({ userId })))
+      assert.equal(new Set(concurrent.map((account) => account.billingAccountId)).size, 1)
+      const first = concurrent[0]!
+      const replay = await backend.billing.ensurePersonalBillingAccount({ userId })
+
+      assert.equal(replay.billingAccountId, first.billingAccountId)
+      assert.equal(first.scope, 'personal')
+      assert.equal(first.userId, userId)
+      assert.equal(first.workspaceId, undefined)
+      assert.equal(first.status, 'active')
+      assert.equal(first.pricingVersion, 'markup_25_v1')
+      assert.equal(first.markupBasisPoints, 2_500)
+      assert.deepEqual(
+        await backend.billing.getBillingAccountByIdByServer({
+          billingAccountId: first.billingAccountId,
+        }),
+        first,
+      )
+      assert.deepEqual(
+        await backend.billing.getPersonalBillingAccountByUserIdByServer({ userId }),
+        first,
+      )
+      assert.equal(
+        await backend.billing.getWorkspaceBillingAccountByWorkspaceIdByServer({
+          workspaceId: `${scope}_missing_workspace`,
+        }),
+        null,
+      )
+    })
+
     await t.test(`${backend.provider} subscription, top-up, and entitlement calculation`, async () => {
       await seedPaidSubscription(backend.billing, userId, scope)
       const before = await backend.billing.getSubscriptionByUserIdByServer({ userId })

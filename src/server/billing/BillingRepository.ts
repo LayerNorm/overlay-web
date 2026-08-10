@@ -1,6 +1,9 @@
 import 'server-only'
 
+import type { BillingAccountRecord } from '@/shared/billing/billing-account'
+
 export type BillingEntitlementsRecord = {
+  billingAccountId?: string
   tier: 'free' | 'pro' | 'max'
   planKind: 'free' | 'paid'
   planAmountCents: number
@@ -30,6 +33,7 @@ export type BillingEntitlementsRecord = {
 }
 
 export type BillingSubscriptionRecord = {
+  billingAccountId?: string
   userId?: string
   email?: string
   stripeCustomerId?: string
@@ -47,6 +51,7 @@ export type BillingSubscriptionRecord = {
 
 export type BudgetTopUpRecord = {
   _id: string
+  billingAccountId?: string
   amountCents: number
   source: 'manual' | 'auto'
   status: 'pending' | 'succeeded' | 'failed' | 'canceled'
@@ -71,6 +76,18 @@ export type AdministrativeUsageRecord = {
 }
 
 export interface BillingRepository {
+  ensurePersonalBillingAccount(args: {
+    userId: string
+  }): Promise<BillingAccountRecord>
+  getBillingAccountByIdByServer(args: {
+    billingAccountId: string
+  }): Promise<BillingAccountRecord | null>
+  getPersonalBillingAccountByUserIdByServer(args: {
+    userId: string
+  }): Promise<BillingAccountRecord | null>
+  getWorkspaceBillingAccountByWorkspaceIdByServer(args: {
+    workspaceId: string
+  }): Promise<BillingAccountRecord | null>
   listAdministrativeUsage(args?: {
     limit?: number
     userId?: string

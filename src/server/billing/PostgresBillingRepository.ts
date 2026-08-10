@@ -3,6 +3,12 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
+import {
+  CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS,
+  CURRENT_BILLING_ACCOUNT_PRICING_VERSION,
+  assertBillingAccountOwnership,
+  type BillingAccountRecord,
+} from '@/shared/billing/billing-account'
 import type {
   BillingEntitlementsRecord,
   BillingRepository,
@@ -21,6 +27,7 @@ const MICROS_PER_CENT = 10_000
 type SubscriptionRow = {
   autoTopUpAmountCents: number
   autoTopUpEnabled: boolean
+  billingAccountId: string | null
   currentPeriodEnd: Date | string | null
   currentPeriodStart: Date | string | null
   email: string | null
@@ -34,8 +41,77 @@ type SubscriptionRow = {
   userId: string
 }
 
+type BillingAccountRow = {
+  billingAccountId: string
+  closedAt: Date | string | null
+  createdAt: Date | string
+  markupBasisPoints: number
+  ownerUserId: string | null
+  pricingVersion: 'markup_25_v1'
+  primaryBillingContactUserId: string | null
+  scope: 'personal' | 'workspace'
+  status: 'active' | 'suspended' | 'closed'
+  updatedAt: Date | string
+  workspaceId: string | null
+}
+
 export class PostgresBillingRepository implements BillingRepository, BillingWebhookRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
+
+  async ensurePersonalBillingAccount(args: { userId: string }): Promise<BillingAccountRecord> {
+    const userId = args.userId.trim()
+    if (!userId) throw new Error('billing_account_user_required')
+    return await this.db.transaction(async (tx) => {
+      await tx.execute(sql`
+        INSERT INTO billing_accounts (
+          id, scope, owner_user_id, status, primary_billing_contact_user_id,
+          pricing_version, markup_basis_points
+        ) VALUES (
+          ${`ba_${randomUUID().replaceAll('-', '')}`}, 'personal', ${userId}, 'active', ${userId},
+          ${CURRENT_BILLING_ACCOUNT_PRICING_VERSION},
+          ${CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS}
+        )
+        ON CONFLICT DO NOTHING
+      `)
+      const account = await selectPersonalBillingAccount(tx, userId)
+      if (!account) throw new Error('Personal billing account could not be created')
+      await tx.execute(sql`
+        INSERT INTO billing_account_balances (billing_account_id, mode)
+        VALUES (${account.billingAccountId}, 'budgeted')
+        ON CONFLICT (billing_account_id) DO NOTHING
+      `)
+      return billingAccountRecord(account)
+    })
+  }
+
+  async getBillingAccountByIdByServer(args: {
+    billingAccountId: string
+  }): Promise<BillingAccountRecord | null> {
+    const result = await this.db.execute<BillingAccountRow>(sql`
+      ${billingAccountSelect()}
+      WHERE account.id = ${args.billingAccountId.trim()}
+      LIMIT 1
+    `)
+    return result.rows[0] ? billingAccountRecord(result.rows[0]) : null
+  }
+
+  async getPersonalBillingAccountByUserIdByServer(args: {
+    userId: string
+  }): Promise<BillingAccountRecord | null> {
+    const account = await selectPersonalBillingAccount(this.db, args.userId.trim())
+    return account ? billingAccountRecord(account) : null
+  }
+
+  async getWorkspaceBillingAccountByWorkspaceIdByServer(args: {
+    workspaceId: string
+  }): Promise<BillingAccountRecord | null> {
+    const result = await this.db.execute<BillingAccountRow>(sql`
+      ${billingAccountSelect()}
+      WHERE account.scope = 'workspace' AND account.workspace_id = ${args.workspaceId.trim()}
+      LIMIT 1
+    `)
+    return result.rows[0] ? billingAccountRecord(result.rows[0]) : null
+  }
 
   async listAdministrativeUsage(args: {
     limit?: number
@@ -131,6 +207,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       usedMicros: number | string
     }>(sql`
       SELECT subscription.user_id AS "userId",
+             subscription.billing_account_id AS "billingAccountId",
              subscription.email,
              subscription.provider_customer_id AS "providerCustomerId",
              subscription.provider_subscription_id AS "providerSubscriptionId",
@@ -162,6 +239,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     const allowanceTotalCents = toCents(row.includedMicros) + toCents(row.institutionalGrantMicros)
     const allowanceUsedCents = toCents(row.allowanceUsedMicros)
     return {
+      billingAccountId: row.billingAccountId ?? undefined,
       tier: row.tier,
       planKind: row.planKind,
       planAmountCents: Number(row.planAmountCents),
@@ -354,6 +432,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
   async listBudgetTopUpsByServer(args: { userId: string }): Promise<BudgetTopUpRecord[]> {
     const result = await this.db.execute<{
       amountCents: number
+      billingAccountId: string | null
       createdAt: Date | string
       errorMessage: string | null
       id: string
@@ -362,7 +441,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       stripePaymentIntentId: string | null
       updatedAt: Date | string
     }>(sql`
-      SELECT id, amount_cents AS "amountCents", source, status,
+      SELECT id, billing_account_id AS "billingAccountId", amount_cents AS "amountCents", source, status,
              provider_payment_intent_id AS "stripePaymentIntentId",
              created_at AS "createdAt", updated_at AS "updatedAt", error_message AS "errorMessage"
       FROM billing_top_ups
@@ -372,6 +451,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     `)
     return result.rows.map((row) => ({
       _id: row.id,
+      billingAccountId: row.billingAccountId ?? undefined,
       amountCents: Number(row.amountCents),
       source: row.source,
       status: row.status,
@@ -471,6 +551,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
   private async getSubscription(userId: string): Promise<BillingSubscriptionRecord | null> {
     const result = await this.db.execute<SubscriptionRow>(sql`
       SELECT user_id AS "userId", email,
+             billing_account_id AS "billingAccountId",
              provider_customer_id AS "providerCustomerId",
              provider_subscription_id AS "providerSubscriptionId",
              tier, plan_kind AS "planKind", plan_amount_cents AS "planAmountCents",
@@ -484,6 +565,7 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     const row = result.rows[0]
     if (!row) return null
     return {
+      billingAccountId: row.billingAccountId ?? undefined,
       userId: row.userId,
       email: row.email ?? undefined,
       stripeCustomerId: row.providerCustomerId ?? undefined,
@@ -498,6 +580,65 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       currentPeriodStart: row.currentPeriodStart ? millisValue(row.currentPeriodStart) : undefined,
       currentPeriodEnd: row.currentPeriodEnd ? millisValue(row.currentPeriodEnd) : undefined,
     }
+  }
+}
+
+type BillingAccountExecutor = Pick<OverlayPostgresDb, 'execute'>
+
+async function selectPersonalBillingAccount(
+  executor: BillingAccountExecutor,
+  userId: string,
+): Promise<BillingAccountRow | null> {
+  if (!userId) return null
+  const result = await executor.execute<BillingAccountRow>(sql`
+    ${billingAccountSelect()}
+    WHERE account.scope = 'personal' AND account.owner_user_id = ${userId}
+    LIMIT 1
+  `)
+  return result.rows[0] ?? null
+}
+
+function billingAccountSelect() {
+  return sql`
+    SELECT
+      account.id AS "billingAccountId",
+      account.scope,
+      account.owner_user_id AS "ownerUserId",
+      account.workspace_id AS "workspaceId",
+      account.status,
+      account.primary_billing_contact_user_id AS "primaryBillingContactUserId",
+      account.pricing_version AS "pricingVersion",
+      account.markup_basis_points AS "markupBasisPoints",
+      account.created_at AS "createdAt",
+      account.updated_at AS "updatedAt",
+      account.closed_at AS "closedAt"
+    FROM billing_accounts account
+  `
+}
+
+function billingAccountRecord(row: BillingAccountRow): BillingAccountRecord {
+  if (row.pricingVersion !== CURRENT_BILLING_ACCOUNT_PRICING_VERSION) {
+    throw new Error(`Unsupported billing account pricing version: ${row.pricingVersion}`)
+  }
+  assertBillingAccountOwnership({
+    scope: row.scope,
+    ...(row.ownerUserId === null ? {} : { userId: row.ownerUserId }),
+    ...(row.workspaceId === null ? {} : { workspaceId: row.workspaceId }),
+  })
+  return {
+    billingAccountId: row.billingAccountId,
+    ...(row.closedAt === null ? {} : { closedAt: millisValue(row.closedAt) }),
+    createdAt: millisValue(row.createdAt),
+    markupBasisPoints: Number(row.markupBasisPoints),
+    pricingVersion: row.pricingVersion,
+    ...(row.primaryBillingContactUserId === null
+      ? {}
+      : { primaryBillingContactUserId: row.primaryBillingContactUserId }),
+    scope: row.scope,
+    status: row.status,
+    updatedAt: millisValue(row.updatedAt),
+    ...(row.ownerUserId === null ? {} : { userId: row.ownerUserId }),
+    ...(row.workspaceId === null ? {} : { workspaceId: row.workspaceId }),
   }
 }
 

@@ -33,6 +33,54 @@ test('Postgres billing records and provider events are idempotent and isolated',
       { id: userId, email: `${scope}@example.com`, emailVerified: true, name: 'Billing User' },
       { id: otherUserId, email: `${scope}-other@example.com`, emailVerified: true, name: 'Other User' },
     ])
+    const personalAccount = await billing.ensurePersonalBillingAccount({ userId })
+    assert.equal((await billing.ensurePersonalBillingAccount({ userId })).billingAccountId, personalAccount.billingAccountId)
+    const balance = await db.execute<{
+      includedMicros: number | string
+      mode: 'budgeted' | 'unlimited'
+      reservedMicros: number | string
+      topUpBalanceMicros: number | string
+      usedMicros: number | string
+    }>(sql`
+      SELECT mode,
+             included_micros AS "includedMicros",
+             top_up_balance_micros AS "topUpBalanceMicros",
+             used_micros AS "usedMicros",
+             reserved_micros AS "reservedMicros"
+      FROM billing_account_balances
+      WHERE billing_account_id = ${personalAccount.billingAccountId}
+    `)
+    assert.deepEqual(balance.rows.map((row) => ({
+      includedMicros: Number(row.includedMicros),
+      mode: row.mode,
+      reservedMicros: Number(row.reservedMicros),
+      topUpBalanceMicros: Number(row.topUpBalanceMicros),
+      usedMicros: Number(row.usedMicros),
+    })), [{
+      includedMicros: 0,
+      mode: 'budgeted',
+      reservedMicros: 0,
+      topUpBalanceMicros: 0,
+      usedMicros: 0,
+    }])
+    await assert.rejects(
+      db.execute(sql`
+        INSERT INTO billing_accounts (id, scope, pricing_version, markup_basis_points)
+        VALUES (${`${scope}_invalid_owner`}, 'personal', 'markup_25_v1', 2500)
+      `),
+      (error: unknown) =>
+        (error as { cause?: { constraint?: string } }).cause?.constraint ===
+        'billing_accounts_owner_check',
+    )
+    await assert.rejects(
+      db.execute(sql`
+        INSERT INTO billing_accounts (id, scope, owner_user_id, pricing_version, markup_basis_points)
+        VALUES (${`${scope}_invalid_price`}, 'personal', ${otherUserId}, 'future_price', 2500)
+      `),
+      (error: unknown) =>
+        (error as { cause?: { constraint?: string } }).cause?.constraint ===
+        'billing_accounts_pricing_version_check',
+    )
     await billing.upsertSubscription({
       userId,
       email: `${scope}@example.com`,
@@ -72,7 +120,10 @@ test('Postgres billing records and provider events are idempotent and isolated',
     assert.equal((await billing.recordBudgetTopUp(topUp)).granted, true)
     assert.equal((await billing.recordBudgetTopUp(topUp)).granted, false)
     const entitlements = await billing.getEntitlementsByServer({ userId })
-    assert.equal(entitlements?.budgetTotalCents, 500)
+    assert.equal(entitlements?.billingAccountId, undefined)
+    assert.equal(entitlements?.allowanceTotalCents, 2_500)
+    assert.equal(entitlements?.topUpBalanceCents, 500)
+    assert.equal(entitlements?.budgetTotalCents, 3_000)
     assert.equal((await billing.listBudgetTopUpsByServer({ userId })).length, 1)
 
     const reservation = {
