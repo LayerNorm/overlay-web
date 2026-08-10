@@ -11,6 +11,38 @@ import {
   refundUsageAllocation,
   type UsageBuckets,
 } from '../../src/shared/billing/usage-buckets'
+import { normalizeUsageReconciliationResolution } from '../../src/shared/billing/usage-reconciliation'
+
+const usageReconciliationQueueItemValidator = v.object({
+  createdAt: v.number(),
+  errorMessage: v.optional(v.string()),
+  kind: v.union(
+    v.literal('ask'),
+    v.literal('write'),
+    v.literal('agent'),
+    v.literal('embedding'),
+    v.literal('transcription'),
+    v.literal('generation'),
+    v.literal('sandbox'),
+  ),
+  modelId: v.optional(v.string()),
+  providerWorkCompleted: v.boolean(),
+  providerWorkStarted: v.boolean(),
+  reconciliationAttempts: v.number(),
+  reconciliationLastAttemptAt: v.optional(v.number()),
+  reservationId: v.string(),
+  reservedCents: v.number(),
+  updatedAt: v.number(),
+  userId: v.string(),
+})
+
+const usageReconciliationSweepResultValidator = v.object({
+  oldestReconciliationUpdatedAt: v.optional(v.number()),
+  pendingReconciliation: v.number(),
+  reconcileRequired: v.number(),
+  reconciliationQueueTruncated: v.boolean(),
+  released: v.number(),
+})
 
 function getPastWeekDates(): string[] {
   const dates: string[] = []
@@ -830,6 +862,7 @@ export const reconcileExpiredBudgetReservationsByServer = mutation({
     limit: v.optional(v.number()),
     now: v.optional(v.number()),
   },
+  returns: usageReconciliationSweepResultValidator,
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     return await reconcileExpiredBudgetReservations(ctx, args)
@@ -841,18 +874,186 @@ export const reconcileExpiredBudgetReservationsInternal = internalMutation({
     limit: v.optional(v.number()),
     now: v.optional(v.number()),
   },
+  returns: usageReconciliationSweepResultValidator,
   handler: async (ctx, args) => await reconcileExpiredBudgetReservations(ctx, args),
+})
+
+export const listBudgetReservationReconciliationByServer = query({
+  args: {
+    serverSecret: v.string(),
+    limit: v.optional(v.number()),
+    updatedBefore: v.optional(v.number()),
+  },
+  returns: v.array(usageReconciliationQueueItemValidator),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const limit = Math.min(Math.max(args.limit ?? 100, 1), 1_000)
+    const rows = await ctx.db
+      .query('budgetReservations')
+      .withIndex('by_status_updatedAt', (q) => {
+        const statusQuery = q.eq('status', 'reconcile_required')
+        return args.updatedBefore === undefined
+          ? statusQuery
+          : statusQuery.lte('updatedAt', args.updatedBefore)
+      })
+      .order('asc')
+      .take(limit)
+    return rows.map((row) => ({
+      createdAt: row.createdAt,
+      ...(row.errorMessage === undefined ? {} : { errorMessage: row.errorMessage }),
+      kind: row.kind,
+      ...(row.modelId === undefined ? {} : { modelId: row.modelId }),
+      providerWorkCompleted: row.providerWorkCompleted ?? false,
+      providerWorkStarted: row.providerWorkStarted ?? false,
+      reconciliationAttempts: row.reconciliationAttempts ?? 0,
+      ...(row.reconciliationLastAttemptAt === undefined
+        ? {}
+        : { reconciliationLastAttemptAt: row.reconciliationLastAttemptAt }),
+      reservationId: row.reservationId,
+      reservedCents: row.reservedCents,
+      updatedAt: row.updatedAt,
+      userId: row.userId,
+    }))
+  },
+})
+
+export const resolveBudgetReservationReconciliationByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    reservationId: v.string(),
+    resolution: v.union(v.literal('finalize'), v.literal('release')),
+    actualCents: v.optional(v.number()),
+    evidence: v.object({
+      reason: v.string(),
+      reference: v.string(),
+      source: v.string(),
+    }),
+  },
+  returns: v.object({
+    finalizedCents: v.optional(v.number()),
+    idempotent: v.boolean(),
+    status: v.union(v.literal('finalized'), v.literal('released')),
+  }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const reservation = await ctx.db
+      .query('budgetReservations')
+      .withIndex('by_reservationId', (q) => q.eq('reservationId', args.reservationId.trim()))
+      .first()
+    if (!reservation) throw new Error('reservation_not_found')
+    if (reservation.userId !== args.userId) throw new Error('reservation_user_mismatch')
+
+    const safeActualCents = args.actualCents === undefined
+      ? undefined
+      : roundCreditAmount(Math.max(0, args.actualCents))
+    const normalized = normalizeUsageReconciliationResolution({
+      actualCostCents: safeActualCents,
+      evidence: args.evidence,
+      reservedCents: reservation.reservedCents,
+      resolution: args.resolution,
+    })
+    const expectedStatus: 'finalized' | 'released' = normalized.resolution === 'finalize'
+      ? 'finalized'
+      : 'released'
+    if (reservation.reconciliationResolvedAt !== undefined) {
+      const sameResolution =
+        reservation.status === expectedStatus &&
+        reservation.reconciliationResolution === expectedStatus &&
+        reservation.reconciliationEvidenceSource === normalized.evidence.source &&
+        reservation.reconciliationEvidenceReference === normalized.evidence.reference &&
+        reservation.reconciliationReason === normalized.evidence.reason &&
+        (expectedStatus === 'released' ||
+          (reservation.finalizedCents ?? reservation.reservedCents) === normalized.actualCostCents)
+      if (!sameResolution) throw new Error('reconciliation_resolution_conflict')
+      return {
+        ...(reservation.finalizedCents === undefined ? {} : { finalizedCents: reservation.finalizedCents }),
+        idempotent: true,
+        status: expectedStatus,
+      }
+    }
+    if (reservation.status !== 'reconcile_required') {
+      throw new Error(`reservation_not_reconcilable:${reservation.status}`)
+    }
+
+    const subscription = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .first()
+    if (!subscription) throw new Error('subscription_not_found')
+
+    const refundCents = normalized.resolution === 'release'
+      ? reservation.reservedCents
+      : roundCreditAmount(reservation.reservedCents - (normalized.actualCostCents ?? 0))
+    if (refundCents > 0) {
+      const buckets = await getUsageBuckets(ctx, subscription)
+      let refundAllocation
+      if (reservation.reservedAllowanceCents !== undefined) {
+        if (normalized.resolution === 'release') {
+          refundAllocation = {
+            allowance: reservation.reservedAllowanceCents,
+            topUp: reservation.reservedTopUpCents ?? 0,
+          }
+        } else {
+          const actualAllowance = Math.min(normalized.actualCostCents ?? 0, reservation.reservedAllowanceCents)
+          const actualTopUp = Math.max(0, (normalized.actualCostCents ?? 0) - actualAllowance)
+          refundAllocation = {
+            allowance: reservation.reservedAllowanceCents - actualAllowance,
+            topUp: (reservation.reservedTopUpCents ?? 0) - actualTopUp,
+          }
+        }
+      } else {
+        refundAllocation = refundAllocationFor(buckets, refundCents)
+      }
+      await persistUsageBuckets(
+        ctx,
+        subscription._id,
+        refundUsageAllocation(buckets, refundAllocation, refundCents).buckets,
+      )
+    }
+
+    const now = Date.now()
+    const finalizedCents = normalized.resolution === 'finalize'
+      ? normalized.actualCostCents
+      : undefined
+    await ctx.db.patch(reservation._id, {
+      status: expectedStatus,
+      ...(finalizedCents === undefined ? {} : { finalizedCents }),
+      providerWorkCompleted: normalized.resolution === 'finalize',
+      reconciliationAttempts: (reservation.reconciliationAttempts ?? 0) + 1,
+      reconciliationLastAttemptAt: now,
+      reconciliationResolvedAt: now,
+      reconciliationResolution: expectedStatus,
+      reconciliationEvidenceSource: normalized.evidence.source,
+      reconciliationEvidenceReference: normalized.evidence.reference,
+      reconciliationReason: normalized.evidence.reason,
+      updatedAt: now,
+    })
+    return {
+      ...(finalizedCents === undefined ? {} : { finalizedCents }),
+      idempotent: false,
+      status: expectedStatus,
+    }
+  },
 })
 
 async function reconcileExpiredBudgetReservations(
   ctx: MutationCtx,
   args: { limit?: number; now?: number },
-): Promise<{ reconcileRequired: number; released: number }> {
+): Promise<{
+  oldestReconciliationUpdatedAt?: number
+  pendingReconciliation: number
+  reconcileRequired: number
+  reconciliationQueueTruncated: boolean
+  released: number
+}> {
   const now = args.now ?? Date.now()
   const limit = Math.min(Math.max(args.limit ?? 100, 1), 1000)
   const rows = await ctx.db
     .query('budgetReservations')
-    .withIndex('by_status_createdAt', (q) => q.eq('status', 'reserved'))
+    .withIndex('by_status_expiresAt', (q) =>
+      q.eq('status', 'reserved').lte('expiresAt', now),
+    )
     .take(limit)
   let reconcileRequired = 0
   let released = 0
@@ -862,6 +1063,8 @@ async function reconcileExpiredBudgetReservations(
       await ctx.db.patch(reservation._id, {
         status: 'reconcile_required',
         errorMessage: 'reservation_expired_after_provider_work',
+        reconciliationAttempts: (reservation.reconciliationAttempts ?? 0) + 1,
+        reconciliationLastAttemptAt: now,
         updatedAt: now,
       })
       reconcileRequired += 1
@@ -889,7 +1092,30 @@ async function reconcileExpiredBudgetReservations(
     })
     released += 1
   }
-  return { reconcileRequired, released }
+  const queueSample = await ctx.db
+    .query('budgetReservations')
+    .withIndex('by_status_updatedAt', (q) => q.eq('status', 'reconcile_required'))
+    .order('asc')
+    .take(1_001)
+  const reconciliationQueueTruncated = queueSample.length > 1_000
+  const pendingReconciliation = Math.min(queueSample.length, 1_000)
+  const oldestReconciliationUpdatedAt = queueSample[0]?.updatedAt
+  if (pendingReconciliation > 0) {
+    console.warn('[UsageReconciliation] Reservations require provider evidence', {
+      oldestAgeMs: oldestReconciliationUpdatedAt === undefined
+        ? undefined
+        : Math.max(0, now - oldestReconciliationUpdatedAt),
+      pendingReconciliation,
+      reconciliationQueueTruncated,
+    })
+  }
+  return {
+    ...(oldestReconciliationUpdatedAt === undefined ? {} : { oldestReconciliationUpdatedAt }),
+    pendingReconciliation,
+    reconcileRequired,
+    reconciliationQueueTruncated,
+    released,
+  }
 }
 
 export const finalizeBudgetReservationByServer = mutation({
@@ -936,12 +1162,15 @@ export const finalizeBudgetReservationByServer = mutation({
 
     const safeActualCents = roundCreditAmount(Math.max(0, actualCents))
     if (safeActualCents > reservation.reservedCents + 0.000001) {
+      const now = Date.now()
       await ctx.db.patch(reservation._id, {
         status: 'reconcile_required',
         providerWorkStarted: true,
         providerWorkCompleted: true,
         errorMessage: 'actual_cost_exceeds_reservation',
-        updatedAt: Date.now(),
+        reconciliationAttempts: (reservation.reconciliationAttempts ?? 0) + 1,
+        reconciliationLastAttemptAt: now,
+        updatedAt: now,
       })
       return {
         success: false,
@@ -1041,11 +1270,14 @@ export const releaseBudgetReservationByServer = mutation({
     }
 
     if (providerWorkStarted || reservation.providerWorkStarted) {
+      const now = Date.now()
       await ctx.db.patch(reservation._id, {
         status: 'reconcile_required',
         providerWorkStarted: true,
         errorMessage: reason?.slice(0, 2000),
-        updatedAt: Date.now(),
+        reconciliationAttempts: (reservation.reconciliationAttempts ?? 0) + 1,
+        reconciliationLastAttemptAt: now,
+        updatedAt: now,
       })
       return { success: true, status: 'reconcile_required' }
     }
@@ -1090,11 +1322,14 @@ export const markBudgetReservationReconcileByServer = mutation({
     if (!reservation) return { success: true, status: 'missing' }
     if (reservation.userId !== userId) throw new Error('reservation_user_mismatch')
     if (reservation.status === 'finalized') return { success: true, status: 'finalized' }
+    const now = Date.now()
     await ctx.db.patch(reservation._id, {
       status: 'reconcile_required',
       providerWorkStarted: true,
       errorMessage: errorMessage?.slice(0, 2000),
-      updatedAt: Date.now(),
+      reconciliationAttempts: (reservation.reconciliationAttempts ?? 0) + 1,
+      reconciliationLastAttemptAt: now,
+      updatedAt: now,
     })
     return { success: true, status: 'reconcile_required' }
   },

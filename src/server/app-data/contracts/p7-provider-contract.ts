@@ -220,6 +220,88 @@ export async function runP7ProviderContract(
       assert.ok(reconciled.released >= 1)
     })
 
+    await t.test(`${backend.provider} resolves quarantined reservations only with replay-safe evidence`, async () => {
+      const releaseId = `${scope}_evidence_release`
+      await backend.usage.reserve({
+        entitlements: await requireEntitlements(backend.usage, userId),
+        kind: 'generation',
+        ...reservationSecurityContext(releaseId),
+        reservationId: releaseId,
+        reservedCents: 25,
+        userId,
+      })
+      await backend.usage.markStarted({ reservationId: releaseId, userId })
+      await backend.usage.release({
+        reason: 'simulated provider timeout',
+        reservationId: releaseId,
+        userId,
+      })
+      const queue = await backend.usage.listReconciliationQueue({ limit: 100 })
+      assert.ok(queue.some((item) => item.reservationId === releaseId))
+
+      const evidence = {
+        reason: 'Provider confirms the request was never accepted.',
+        reference: `${scope}_provider_request_missing`,
+        source: 'provider-api',
+      }
+      assert.deepEqual(await backend.usage.resolveReconciliation({
+        evidence,
+        reservationId: releaseId,
+        resolution: 'release',
+        userId,
+      }), { idempotent: false, status: 'released' })
+      assert.deepEqual(await backend.usage.resolveReconciliation({
+        evidence,
+        reservationId: releaseId,
+        resolution: 'release',
+        userId,
+      }), { idempotent: true, status: 'released' })
+      await assert.rejects(backend.usage.resolveReconciliation({
+        actualCostCents: 20,
+        evidence,
+        reservationId: releaseId,
+        resolution: 'finalize',
+        userId,
+      }), /reconciliation_resolution_conflict/)
+
+      const finalizeId = `${scope}_evidence_finalize`
+      await backend.usage.reserve({
+        entitlements: await requireEntitlements(backend.usage, userId),
+        kind: 'generation',
+        ...reservationSecurityContext(finalizeId),
+        reservationId: finalizeId,
+        reservedCents: 25,
+        userId,
+      })
+      await backend.usage.markStarted({ reservationId: finalizeId, userId })
+      await backend.usage.release({
+        reason: 'simulated response loss',
+        reservationId: finalizeId,
+        userId,
+      })
+      const finalized = await backend.usage.resolveReconciliation({
+        actualCostCents: 20,
+        evidence: {
+          reason: 'Provider usage record confirms the completed request.',
+          reference: `${scope}_provider_usage_record`,
+          source: 'provider-api',
+        },
+        reservationId: finalizeId,
+        resolution: 'finalize',
+        userId,
+      })
+      assert.deepEqual(finalized, {
+        finalizedCents: 20,
+        idempotent: false,
+        status: 'finalized',
+      })
+      assert.equal(
+        (await backend.usage.listReconciliationQueue({ limit: 100 }))
+          .some((item) => item.reservationId === finalizeId || item.reservationId === releaseId),
+        false,
+      )
+    })
+
     await t.test(`${backend.provider} deduplicates provider events and rejects payload changes`, async () => {
       const event = {
         eventId: `${scope}_stripe_event`,
@@ -316,7 +398,7 @@ async function seedPaidSubscription(billing: BillingRepository, userId: string, 
     currentPeriodEnd: Date.now() + 30 * 24 * 60 * 60 * 1000,
     currentPeriodStart: Date.now(),
     email: `${scope}@example.test`,
-    planAmountCents: 0,
+    planAmountCents: 800,
     planKind: 'paid',
     status: 'active',
     tier: 'pro',

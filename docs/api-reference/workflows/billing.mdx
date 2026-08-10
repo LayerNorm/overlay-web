@@ -22,3 +22,15 @@ stripe listen --forward-to localhost:3000/api/webhooks/stripe
 ```
 
 When billing is disabled, pair `billing.provider="none"` with `capabilities.billing=false`.
+
+## Reservation reconciliation
+
+The usage ledger automatically releases expired reservations only when provider work never started. Provider-started reservations are quarantined until authoritative evidence establishes whether to finalize the measured cost or release the reservation.
+
+Inspect the development queue without mutating it:
+
+```bash
+npm run billing:audit:reconciliation
+```
+
+The audit defaults to the development Convex deployment. Production inspection requires an explicit `--target=prod --allow-prod=true` invocation of the underlying script. Resolution is server-only, requires a non-empty evidence source, evidence reference, and reason, and is idempotent for exact replays. A conflicting second resolution fails closed.

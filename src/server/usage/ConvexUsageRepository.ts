@@ -5,6 +5,8 @@ import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import type {
   UsageEvent,
+  UsageReconciliationQueueItem,
+  UsageReconciliationSweepResult,
   UsageRepository,
   UsageReservationResult,
   UsageReservationStatus,
@@ -148,6 +150,44 @@ export class ConvexUsageRepository implements UsageRepository {
     return { status: result.status === 'missing' ? 'reconcile_required' : result.status }
   }
 
+  async listReconciliationQueue(args: {
+    limit?: number
+    updatedBefore?: number
+  } = {}): Promise<UsageReconciliationQueueItem[]> {
+    return await convex.query<UsageReconciliationQueueItem[]>(
+      'platform/usage:listBudgetReservationReconciliationByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    ) ?? []
+  }
+
+  async resolveReconciliation(args: {
+    actualCostCents?: number
+    evidence: { reason: string; reference: string; source: string }
+    reservationId: string
+    resolution: 'finalize' | 'release'
+    userId: string
+  }): Promise<{
+    finalizedCents?: number
+    idempotent: boolean
+    status: 'finalized' | 'released'
+  }> {
+    const result = await convex.mutation<{
+      finalizedCents?: number
+      idempotent: boolean
+      status: 'finalized' | 'released'
+    }>('platform/usage:resolveBudgetReservationReconciliationByServer', {
+      actualCents: args.actualCostCents,
+      evidence: args.evidence,
+      reservationId: args.reservationId,
+      resolution: args.resolution,
+      serverSecret: this.serverSecret,
+      userId: args.userId,
+    }, { throwOnError: true })
+    if (!result) throw new Error('Failed to resolve usage reservation reconciliation')
+    return result
+  }
+
   async recordBatch(args: {
     events: UsageEvent[]
     forceFreeTierLimits?: boolean
@@ -168,8 +208,8 @@ export class ConvexUsageRepository implements UsageRepository {
   async reconcileExpired(args: {
     limit?: number
     now?: number
-  } = {}): Promise<{ reconcileRequired: number; released: number }> {
-    const result = await convex.mutation<{ reconcileRequired: number; released: number }>(
+  } = {}): Promise<UsageReconciliationSweepResult> {
+    const result = await convex.mutation<UsageReconciliationSweepResult>(
       'platform/usage:reconcileExpiredBudgetReservationsByServer',
       { ...args, serverSecret: this.serverSecret },
       { throwOnError: true },

@@ -52,6 +52,8 @@ New clients should start from this route and reuse existing API contracts before
 
 Stripe is the hosted billing provider for subscriptions, top-ups, auto top-up preferences, customer portal sessions, and webhook events. Private deployments can disable billing with runtime config. Convex is the durable entitlement/usage source of truth after webhook processing.
 
+Usage reservations have an evidence-gated recovery path. Work that expires before a provider starts is released automatically. Work that may have reached a provider is quarantined as `reconcile_required`; it must be finalized or released with a durable provider or internal-operation evidence reference. The five-minute Convex cron and Postgres worker expose queue depth and oldest age but never guess an ambiguous charge.
+
 Important code:
 
 - `src/shared/billing/billing-pricing.ts`
@@ -64,6 +66,9 @@ Important code:
 - `convex/platform/usage.ts`
 - `convex/billing/stripe.ts`
 - `convex/billing/stripeSync.ts`
+- `src/shared/billing/usage-reconciliation.ts`
+- `src/server/usage/UsageRepository.ts`
+- `scripts/usage-reconciliation-audit.ts`
 
 ## Storage
 

@@ -1,6 +1,10 @@
 import 'server-only'
 
 import type { Entitlements } from '@/shared/app/app-contracts'
+import type {
+  UsageReconciliationEvidence,
+  UsageReconciliationResolution,
+} from '@/shared/billing/usage-reconciliation'
 
 export type UsageSpendKind =
   | 'ask'
@@ -49,6 +53,29 @@ export type UsageReservationResult =
       requiredCents: number
     }
 
+export type UsageReconciliationQueueItem = {
+  createdAt: number
+  errorMessage?: string
+  kind: UsageSpendKind
+  modelId?: string
+  providerWorkCompleted: boolean
+  providerWorkStarted: boolean
+  reconciliationAttempts: number
+  reconciliationLastAttemptAt?: number
+  reservationId: string
+  reservedCents: number
+  updatedAt: number
+  userId: string
+}
+
+export type UsageReconciliationSweepResult = {
+  oldestReconciliationUpdatedAt?: number
+  pendingReconciliation: number
+  reconcileRequired: number
+  reconciliationQueueTruncated: boolean
+  released: number
+}
+
 export interface UsageRepository {
   getEntitlements(args: { userId: string }): Promise<Entitlements | null>
   reserve(args: {
@@ -84,6 +111,21 @@ export interface UsageRepository {
     reservationId: string
     userId: string
   }): Promise<{ status: UsageReservationStatus }>
+  listReconciliationQueue(args?: {
+    limit?: number
+    updatedBefore?: number
+  }): Promise<UsageReconciliationQueueItem[]>
+  resolveReconciliation(args: {
+    actualCostCents?: number
+    evidence: UsageReconciliationEvidence
+    reservationId: string
+    resolution: UsageReconciliationResolution
+    userId: string
+  }): Promise<{
+    finalizedCents?: number
+    idempotent: boolean
+    status: Extract<UsageReservationStatus, 'finalized' | 'released'>
+  }>
   recordBatch(args: {
     events: UsageEvent[]
     forceFreeTierLimits?: boolean
@@ -93,5 +135,5 @@ export interface UsageRepository {
   reconcileExpired(args?: {
     limit?: number
     now?: number
-  }): Promise<{ reconcileRequired: number; released: number }>
+  }): Promise<UsageReconciliationSweepResult>
 }

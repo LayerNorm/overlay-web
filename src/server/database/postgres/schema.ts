@@ -1339,9 +1339,17 @@ export const usageReservations = pgTable('usage_reservations', {
   actualMicros: bigint('actual_micros', { mode: 'number' }),
   status: usageReservationStatus('status').default('reserved').notNull(),
   providerWorkStarted: boolean('provider_work_started').default(false).notNull(),
+  providerWorkCompleted: boolean('provider_work_completed').default(false).notNull(),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
   reason: text('reason'),
   error: text('error'),
+  reconciliationAttempts: integer('reconciliation_attempts').default(0).notNull(),
+  reconciliationLastAttemptAt: timestamp('reconciliation_last_attempt_at', { withTimezone: true }),
+  reconciliationResolvedAt: timestamp('reconciliation_resolved_at', { withTimezone: true }),
+  reconciliationResolution: text('reconciliation_resolution'),
+  reconciliationEvidenceSource: text('reconciliation_evidence_source'),
+  reconciliationEvidenceReference: text('reconciliation_evidence_reference'),
+  reconciliationReason: text('reconciliation_reason'),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   finalizedAt: timestamp('finalized_at', { withTimezone: true }),
   releasedAt: timestamp('released_at', { withTimezone: true }),
@@ -1350,6 +1358,11 @@ export const usageReservations = pgTable('usage_reservations', {
 }, (table) => [
   index('usage_reservations_user_created_idx').on(table.userId, table.createdAt),
   index('usage_reservations_status_expires_idx').on(table.status, table.expiresAt),
+  index('usage_reservations_status_updated_idx').on(table.status, table.updatedAt),
+  check('usage_reservations_reconciliation_resolution_check', sql`
+    ${table.reconciliationResolution} IS NULL OR
+    ${table.reconciliationResolution} IN ('finalized', 'released')
+  `),
 ])
 
 export const usageEvents = pgTable('usage_events', {

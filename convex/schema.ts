@@ -249,13 +249,25 @@ export default defineSchema({
     providerWorkStarted: v.optional(v.boolean()),
     providerWorkCompleted: v.optional(v.boolean()),
     errorMessage: v.optional(v.string()),
+    reconciliationAttempts: v.optional(v.number()),
+    reconciliationLastAttemptAt: v.optional(v.number()),
+    reconciliationResolvedAt: v.optional(v.number()),
+    reconciliationResolution: v.optional(v.union(
+      v.literal('finalized'),
+      v.literal('released'),
+    )),
+    reconciliationEvidenceSource: v.optional(v.string()),
+    reconciliationEvidenceReference: v.optional(v.string()),
+    reconciliationReason: v.optional(v.string()),
     expiresAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index('by_reservationId', ['reservationId'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
-    .index('by_status_createdAt', ['status', 'createdAt']),
+    .index('by_status_createdAt', ['status', 'createdAt'])
+    .index('by_status_expiresAt', ['status', 'expiresAt'])
+    .index('by_status_updatedAt', ['status', 'updatedAt']),
 
   usageOperations: defineTable({
     userId: v.string(),

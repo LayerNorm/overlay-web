@@ -6,6 +6,8 @@ import type { Entitlements } from '@/shared/app/app-contracts'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import type {
   UsageEvent,
+  UsageReconciliationQueueItem,
+  UsageReconciliationSweepResult,
   UsageRepository,
   UsageReservationResult,
   UsageReservationStatus,
@@ -16,6 +18,7 @@ import {
   topUpBalanceAfterReservations,
   type UsageBuckets,
 } from '@/shared/billing/usage-buckets'
+import { normalizeUsageReconciliationResolution } from '@/shared/billing/usage-reconciliation'
 
 const MICROS_PER_CENT = 10_000
 const DEFAULT_RESERVATION_TTL_MS = 30 * 60_000
@@ -38,7 +41,15 @@ type ReservationRow = {
   kind: string
   metadata: Record<string, unknown>
   modelId: string | null
+  providerWorkCompleted: boolean
   providerWorkStarted: boolean
+  reconciliationAttempts: number
+  reconciliationEvidenceReference: string | null
+  reconciliationEvidenceSource: string | null
+  reconciliationLastAttemptAt: Date | null
+  reconciliationReason: string | null
+  reconciliationResolution: 'finalized' | 'released' | null
+  reconciliationResolvedAt: Date | null
   reservedMicros: number | string
   status: UsageReservationStatus
   userId: string
@@ -164,14 +175,20 @@ export class PostgresUsageRepository implements UsageRepository {
 
       const reservedMicros = Number(reservation.reservedMicros)
       if (actualMicros > reservedMicros) {
-        await updateReservationReconcile(tx, args.reservationId, 'actual_cost_exceeds_reservation')
+        await updateReservationReconcile(
+          tx,
+          args.reservationId,
+          'actual_cost_exceeds_reservation',
+          true,
+        )
         return { status: 'reconcile_required' as const, error: 'actual_cost_exceeds_reservation' }
       }
       const now = new Date()
       await tx.execute(sql`
         UPDATE usage_reservations
         SET status = 'finalized', actual_micros = ${actualMicros},
-            provider_work_started = true, finalized_at = ${now}, updated_at = ${now}, error = NULL
+            provider_work_started = true, provider_work_completed = true,
+            finalized_at = ${now}, updated_at = ${now}, error = NULL
         WHERE id = ${args.reservationId}
       `)
       await applyFinalizedSpend(tx, {
@@ -270,6 +287,172 @@ export class PostgresUsageRepository implements UsageRepository {
     })
   }
 
+  async listReconciliationQueue(args: {
+    limit?: number
+    updatedBefore?: number
+  } = {}): Promise<UsageReconciliationQueueItem[]> {
+    const limit = Math.min(Math.max(args.limit ?? 100, 1), 1_000)
+    const updatedBefore = new Date(args.updatedBefore ?? Date.now())
+    const result = await this.db.execute<{
+      createdAt: Date | string
+      errorMessage: string | null
+      kind: UsageEvent['kind']
+      modelId: string | null
+      providerWorkCompleted: boolean
+      providerWorkStarted: boolean
+      reconciliationAttempts: number
+      reconciliationLastAttemptAt: Date | string | null
+      reservationId: string
+      reservedMicros: number | string
+      updatedAt: Date | string
+      userId: string
+    }>(sql`
+      SELECT
+        id AS "reservationId",
+        user_id AS "userId",
+        kind,
+        model_id AS "modelId",
+        reserved_micros AS "reservedMicros",
+        provider_work_started AS "providerWorkStarted",
+        provider_work_completed AS "providerWorkCompleted",
+        error AS "errorMessage",
+        reconciliation_attempts AS "reconciliationAttempts",
+        reconciliation_last_attempt_at AS "reconciliationLastAttemptAt",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM usage_reservations
+      WHERE status = 'reconcile_required' AND updated_at <= ${updatedBefore}
+      ORDER BY updated_at ASC
+      LIMIT ${limit}
+    `)
+    return result.rows.map((row) => ({
+      createdAt: databaseTimestampToMillis(row.createdAt),
+      ...(row.errorMessage === null ? {} : { errorMessage: row.errorMessage }),
+      kind: row.kind,
+      ...(row.modelId === null ? {} : { modelId: row.modelId }),
+      providerWorkCompleted: row.providerWorkCompleted,
+      providerWorkStarted: row.providerWorkStarted,
+      reconciliationAttempts: row.reconciliationAttempts,
+      ...(row.reconciliationLastAttemptAt === null
+        ? {}
+        : { reconciliationLastAttemptAt: databaseTimestampToMillis(row.reconciliationLastAttemptAt) }),
+      reservationId: row.reservationId,
+      reservedCents: microsToCents(Number(row.reservedMicros)),
+      updatedAt: databaseTimestampToMillis(row.updatedAt),
+      userId: row.userId,
+    }))
+  }
+
+  async resolveReconciliation(args: {
+    actualCostCents?: number
+    evidence: { reason: string; reference: string; source: string }
+    reservationId: string
+    resolution: 'finalize' | 'release'
+    userId: string
+  }): Promise<{
+    finalizedCents?: number
+    idempotent: boolean
+    status: 'finalized' | 'released'
+  }> {
+    return await this.db.transaction(async (tx) => {
+      const account = await lockOrCreateAccount(tx, args.userId)
+      const reservation = await requireReservation(tx, args.reservationId, args.userId)
+      const reservedMicros = Number(reservation.reservedMicros)
+      const normalized = normalizeUsageReconciliationResolution({
+        actualCostCents: args.actualCostCents,
+        evidence: args.evidence,
+        reservedCents: microsToCents(reservedMicros),
+        resolution: args.resolution,
+      })
+      const expectedStatus = normalized.resolution === 'finalize' ? 'finalized' : 'released'
+      const actualMicros = normalized.actualCostCents === undefined
+        ? undefined
+        : centsToMicros(normalized.actualCostCents)
+
+      if (reservation.reconciliationResolvedAt !== null) {
+        const sameResolution =
+          reservation.status === expectedStatus &&
+          reservation.reconciliationResolution === expectedStatus &&
+          reservation.reconciliationEvidenceSource === normalized.evidence.source &&
+          reservation.reconciliationEvidenceReference === normalized.evidence.reference &&
+          reservation.reconciliationReason === normalized.evidence.reason &&
+          (expectedStatus === 'released' || Number(reservation.actualMicros) === actualMicros)
+        if (!sameResolution) throw new Error('reconciliation_resolution_conflict')
+        return {
+          ...(reservation.actualMicros === null
+            ? {}
+            : { finalizedCents: microsToCents(Number(reservation.actualMicros)) }),
+          idempotent: true,
+          status: expectedStatus,
+        }
+      }
+      if (reservation.status !== 'reconcile_required') {
+        throw new Error(`reservation_not_reconcilable:${reservation.status}`)
+      }
+
+      const now = new Date()
+      if (normalized.resolution === 'release') {
+        await tx.execute(sql`
+          UPDATE usage_reservations
+          SET status = 'released', provider_work_completed = false,
+              reason = ${normalized.evidence.reason}, released_at = ${now}, updated_at = ${now},
+              reconciliation_attempts = reconciliation_attempts + 1,
+              reconciliation_last_attempt_at = ${now}, reconciliation_resolved_at = ${now},
+              reconciliation_resolution = 'released',
+              reconciliation_evidence_source = ${normalized.evidence.source},
+              reconciliation_evidence_reference = ${normalized.evidence.reference},
+              reconciliation_reason = ${normalized.evidence.reason}
+          WHERE id = ${args.reservationId}
+        `)
+        await tx.execute(sql`
+          UPDATE usage_budget_accounts
+          SET reserved_micros = GREATEST(0, reserved_micros - ${reservedMicros}),
+              version = version + 1, updated_at = ${now}
+          WHERE user_id = ${args.userId}
+        `)
+        await insertTransaction(tx, {
+          amountMicros: -reservedMicros,
+          reservationId: args.reservationId,
+          type: 'release',
+          userId: args.userId,
+        })
+        return { idempotent: false, status: 'released' }
+      }
+
+      await tx.execute(sql`
+        UPDATE usage_reservations
+        SET status = 'finalized', actual_micros = ${actualMicros!},
+            provider_work_started = true, provider_work_completed = true,
+            finalized_at = ${now}, updated_at = ${now}, error = NULL,
+            reconciliation_attempts = reconciliation_attempts + 1,
+            reconciliation_last_attempt_at = ${now}, reconciliation_resolved_at = ${now},
+            reconciliation_resolution = 'finalized',
+            reconciliation_evidence_source = ${normalized.evidence.source},
+            reconciliation_evidence_reference = ${normalized.evidence.reference},
+            reconciliation_reason = ${normalized.evidence.reason}
+        WHERE id = ${args.reservationId}
+      `)
+      await applyFinalizedSpend(tx, {
+        account,
+        actualMicros: actualMicros!,
+        reservedMicros,
+        updatedAt: now,
+        userId: args.userId,
+      })
+      await insertTransaction(tx, {
+        amountMicros: actualMicros!,
+        reservationId: args.reservationId,
+        type: 'finalize',
+        userId: args.userId,
+      })
+      return {
+        finalizedCents: normalized.actualCostCents!,
+        idempotent: false,
+        status: 'finalized',
+      }
+    })
+  }
+
   async recordBatch(args: {
     events: UsageEvent[]
     forceFreeTierLimits?: boolean
@@ -304,7 +487,7 @@ export class PostgresUsageRepository implements UsageRepository {
   async reconcileExpired(args: {
     limit?: number
     now?: number
-  } = {}): Promise<{ reconcileRequired: number; released: number }> {
+  } = {}): Promise<UsageReconciliationSweepResult> {
     const limit = Math.min(Math.max(args.limit ?? 100, 1), 1_000)
     const now = new Date(args.now ?? Date.now())
     const candidates = await this.db.execute<{
@@ -342,7 +525,26 @@ export class PostgresUsageRepository implements UsageRepository {
         }
       }
     }
-    return { reconcileRequired, released }
+    const queue = await this.db.execute<{
+      count: number
+      oldestUpdatedAt: Date | string | null
+    }>(sql`
+      SELECT count(*)::int AS count, min(updated_at) AS "oldestUpdatedAt"
+      FROM usage_reservations
+      WHERE status = 'reconcile_required'
+    `)
+    const pendingReconciliation = Number(queue.rows[0]?.count ?? 0)
+    const oldestUpdatedAt = queue.rows[0]?.oldestUpdatedAt
+    const oldestReconciliationUpdatedAt = oldestUpdatedAt === null || oldestUpdatedAt === undefined
+      ? undefined
+      : databaseTimestampToMillis(oldestUpdatedAt)
+    return {
+      ...(oldestReconciliationUpdatedAt === undefined ? {} : { oldestReconciliationUpdatedAt }),
+      pendingReconciliation,
+      reconcileRequired,
+      reconciliationQueueTruncated: false,
+      released,
+    }
   }
 }
 
@@ -376,7 +578,16 @@ async function selectReservationForUpdate(tx: Transaction, id: string): Promise<
   const result = await tx.execute<ReservationRow>(sql`
     SELECT user_id AS "userId", kind, model_id AS "modelId",
            reserved_micros AS "reservedMicros", actual_micros AS "actualMicros",
-           provider_work_started AS "providerWorkStarted", metadata, status
+           provider_work_started AS "providerWorkStarted",
+           provider_work_completed AS "providerWorkCompleted",
+           reconciliation_attempts AS "reconciliationAttempts",
+           reconciliation_last_attempt_at AS "reconciliationLastAttemptAt",
+           reconciliation_resolved_at AS "reconciliationResolvedAt",
+           reconciliation_resolution AS "reconciliationResolution",
+           reconciliation_evidence_source AS "reconciliationEvidenceSource",
+           reconciliation_evidence_reference AS "reconciliationEvidenceReference",
+           reconciliation_reason AS "reconciliationReason",
+           metadata, status
     FROM usage_reservations
     WHERE id = ${id}
     FOR UPDATE
@@ -413,11 +624,18 @@ function assertReservationIdentity(
   }
 }
 
-async function updateReservationReconcile(tx: Transaction, id: string, error?: string): Promise<void> {
+async function updateReservationReconcile(
+  tx: Transaction,
+  id: string,
+  error?: string,
+  providerWorkCompleted = false,
+): Promise<void> {
   await tx.execute(sql`
     UPDATE usage_reservations
     SET status = 'reconcile_required', provider_work_started = true,
-        error = ${error ?? null}, updated_at = now()
+        provider_work_completed = ${providerWorkCompleted},
+        error = ${error ?? null}, reconciliation_attempts = reconciliation_attempts + 1,
+        reconciliation_last_attempt_at = now(), updated_at = now()
     WHERE id = ${id}
   `)
 }
@@ -609,4 +827,10 @@ function dollarsToMicros(value: number): number {
 
 function microsToCents(value: number): number {
   return value / MICROS_PER_CENT
+}
+
+function databaseTimestampToMillis(value: Date | string): number {
+  const millis = value instanceof Date ? value.getTime() : Date.parse(value)
+  if (!Number.isFinite(millis)) throw new Error('Invalid database timestamp')
+  return millis
 }
