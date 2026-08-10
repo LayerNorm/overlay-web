@@ -941,17 +941,20 @@ export default function AppSidebar({
     </Link>
   )
 
+  function closeAccountMenus() {
+    setAccountMenuOpen(false)
+    closeMobileDrawer()
+    window.dispatchEvent(new CustomEvent('overlay:account-menu-action'))
+  }
+
   const accountMenuContent = (
     <SidebarAccountMenu
       billingEnabled={billingEnabled}
       entitlements={entitlements}
       demoHref={!publicShowcase && user ? ROOT_SHOWCASE_DESTINATION : undefined}
-      onAccountClick={() => {
-        setAccountMenuOpen(false)
-        closeMobileDrawer()
-      }}
+      onAccountClick={closeAccountMenus}
       onSignOut={() => {
-        setAccountMenuOpen(false)
+        closeAccountMenus()
         void handleSignOut()
       }}
     />
