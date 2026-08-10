@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import type { Doc } from '../_generated/dataModel'
 import { mutation, query, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireAccessToken, requireServerSecret, validateServerSecret } from '../lib/auth'
 import { logAuthDebug, summarizeJwtForLog } from '../lib/authDebug'
@@ -44,6 +45,24 @@ const usageReconciliationSweepResultValidator = v.object({
   reconcileRequired: v.number(),
   reconciliationQueueTruncated: v.boolean(),
   released: v.number(),
+})
+
+const usageReservationStatusValidator = v.union(
+  v.literal('reserved'),
+  v.literal('finalized'),
+  v.literal('released'),
+  v.literal('reconcile_required'),
+  v.literal('expired'),
+)
+
+const workspaceReservationResultValidator = v.object({
+  budgetRemainingCents: v.number(),
+  budgetTotalCents: v.number(),
+  budgetUsedCents: v.number(),
+  idempotent: v.boolean(),
+  reservationId: v.string(),
+  reservedCents: v.number(),
+  status: usageReservationStatusValidator,
 })
 
 function getPastWeekDates(): string[] {
@@ -897,6 +916,130 @@ export const reserveBudgetByServer = mutation({
   },
 })
 
+export const reserveWorkspaceBudgetByServer = mutation({
+  args: {
+    billingAccountId: v.string(),
+    expiresAt: v.optional(v.number()),
+    kind: v.union(
+      v.literal('ask'), v.literal('write'), v.literal('agent'), v.literal('embedding'),
+      v.literal('transcription'), v.literal('generation'), v.literal('sandbox'),
+    ),
+    modelId: v.optional(v.string()),
+    operationId: v.string(),
+    requestFingerprint: v.string(),
+    reservationId: v.string(),
+    reservedCents: v.number(),
+    serverSecret: v.string(),
+    spendSubjectId: v.string(),
+    spendSubjectKind: v.union(v.literal('member'), v.literal('programmatic')),
+    userId: v.string(),
+    workspaceId: v.string(),
+  },
+  returns: workspaceReservationResultValidator,
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const billingAccountId = args.billingAccountId.trim()
+    const reservationId = args.reservationId.trim()
+    const spendSubjectId = args.spendSubjectId.trim()
+    const userId = args.userId.trim()
+    const workspaceId = args.workspaceId.trim()
+    if (!billingAccountId || !reservationId || !spendSubjectId || !userId || !workspaceId) {
+      throw new Error('workspace_reservation_identity_required')
+    }
+    const safeReservedCents = roundCreditAmount(Math.max(0, args.reservedCents))
+    const account = await ctx.db.query('billingAccounts')
+      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId))
+      .unique()
+    if (!account || account.scope !== 'workspace' || account.workspaceId !== workspaceId) {
+      throw new Error('workspace_billing_account_mismatch')
+    }
+    const balance = await ctx.db.query('billingAccountBalances')
+      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId))
+      .unique()
+    if (!balance) throw new Error('workspace_billing_balance_missing')
+    const existing = await ctx.db.query('budgetReservations')
+      .withIndex('by_reservationId', (q) => q.eq('reservationId', reservationId))
+      .unique()
+    if (existing) {
+      if (
+        existing.userId !== userId || existing.billingAccountId !== billingAccountId ||
+        existing.spendSubjectKind !== args.spendSubjectKind || existing.spendSubjectId !== spendSubjectId ||
+        existing.reservedCents !== safeReservedCents || existing.kind !== args.kind ||
+        existing.modelId !== args.modelId || existing.operationId !== args.operationId ||
+        existing.requestFingerprint !== args.requestFingerprint
+      ) throw new Error('reservation_parameter_mismatch')
+      return {
+        ...workspaceBalanceSummary(balance),
+        idempotent: true,
+        reservationId,
+        reservedCents: existing.reservedCents,
+        status: existing.status,
+      }
+    }
+    if (account.status !== 'active') {
+      throw new Error('workspace_billing_account_inactive')
+    }
+    const availableMicros = balance.mode === 'unlimited'
+      ? Number.MAX_SAFE_INTEGER
+      : Math.max(0, balance.includedMicros + balance.institutionalGrantMicros + balance.topUpPurchasedMicros - balance.usedMicros - balance.reservedMicros)
+    const reservedMicros = Math.round(safeReservedCents * 10_000)
+    if (availableMicros < reservedMicros) throw new Error('insufficient_budget')
+    const limit = await ctx.db.query('billingAccountSpendLimits')
+      .withIndex('by_account_subject', (q) => q
+        .eq('billingAccountId', billingAccountId)
+        .eq('subjectKind', args.spendSubjectKind)
+        .eq('subjectId', spendSubjectId))
+      .unique()
+    const now = Date.now()
+    if (limit) {
+      const availableLimit = now >= limit.periodStart && now < limit.periodEnd
+        ? Math.max(0, limit.limitMicros - limit.usedMicros - limit.reservedMicros)
+        : 0
+      if (availableLimit < reservedMicros) throw new Error('spend_limit_exceeded')
+    }
+    await ctx.db.insert('budgetReservations', {
+      billingAccountId,
+      createdAt: now,
+      expiresAt: args.expiresAt ?? now + 30 * 60_000,
+      kind: args.kind,
+      modelId: args.modelId,
+      operationId: args.operationId,
+      providerWorkCompleted: false,
+      providerWorkStarted: false,
+      requestFingerprint: args.requestFingerprint,
+      reservationId,
+      reservedCents: safeReservedCents,
+      spendSubjectId,
+      spendSubjectKind: args.spendSubjectKind,
+      status: 'reserved',
+      updatedAt: now,
+      userId,
+    })
+    await ctx.db.patch(balance._id, {
+      reservedMicros: balance.reservedMicros + reservedMicros,
+      updatedAt: now,
+      version: balance.version + 1,
+    })
+    if (limit) {
+      await ctx.db.patch(limit._id, {
+        reservedMicros: limit.reservedMicros + reservedMicros,
+        updatedAt: now,
+        version: limit.version + 1,
+      })
+    }
+    return {
+      ...workspaceBalanceSummary({
+        ...balance,
+        reservedMicros: balance.reservedMicros + reservedMicros,
+      }),
+      idempotent: false,
+      reservationId,
+      reservedCents: safeReservedCents,
+      status: 'reserved' as const,
+    }
+  },
+})
+
 export const reconcileExpiredBudgetReservationsByServer = mutation({
   args: {
     serverSecret: v.string(),
@@ -978,7 +1121,6 @@ export const resolveBudgetReservationReconciliationByServer = mutation({
   }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
     const reservation = await ctx.db
       .query('budgetReservations')
       .withIndex('by_reservationId', (q) => q.eq('reservationId', args.reservationId.trim()))
@@ -1017,6 +1159,47 @@ export const resolveBudgetReservationReconciliationByServer = mutation({
     if (reservation.status !== 'reconcile_required') {
       throw new Error(`reservation_not_reconcilable:${reservation.status}`)
     }
+
+    const workspaceLedger = await workspaceReservationLedger(ctx, reservation)
+    if (workspaceLedger) {
+      const reservedMicros = Math.round(reservation.reservedCents * 10_000)
+      const finalizedCents = normalized.resolution === 'finalize' ? normalized.actualCostCents : undefined
+      if (normalized.resolution === 'release') {
+        await releaseWorkspaceLedger(ctx, {
+          balance: workspaceLedger.balance,
+          limit: workspaceLedger.limit,
+          reservedMicros,
+        })
+      } else {
+        await finalizeWorkspaceLedger(ctx, {
+          actualMicros: Math.round((normalized.actualCostCents ?? 0) * 10_000),
+          balance: workspaceLedger.balance,
+          limit: workspaceLedger.limit,
+          reservedMicros,
+        })
+      }
+      const now = Date.now()
+      await ctx.db.patch(reservation._id, {
+        status: expectedStatus,
+        ...(finalizedCents === undefined ? {} : { finalizedCents }),
+        providerWorkCompleted: normalized.resolution === 'finalize',
+        reconciliationAttempts: (reservation.reconciliationAttempts ?? 0) + 1,
+        reconciliationLastAttemptAt: now,
+        reconciliationResolvedAt: now,
+        reconciliationResolution: expectedStatus,
+        reconciliationEvidenceSource: normalized.evidence.source,
+        reconciliationEvidenceReference: normalized.evidence.reference,
+        reconciliationReason: normalized.evidence.reason,
+        updatedAt: now,
+      })
+      return {
+        ...(finalizedCents === undefined ? {} : { finalizedCents }),
+        idempotent: false,
+        status: expectedStatus,
+      }
+    }
+
+    const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
 
     const subscription = await ctx.db
       .query('subscriptions')
@@ -1081,6 +1264,123 @@ export const resolveBudgetReservationReconciliationByServer = mutation({
   },
 })
 
+async function workspaceReservationLedger(
+  ctx: MutationCtx,
+  reservation: Doc<'budgetReservations'>,
+): Promise<{
+  balance: Doc<'billingAccountBalances'>
+  limit: Doc<'billingAccountSpendLimits'> | null
+} | null> {
+  const workspaceTagged = Boolean(reservation.spendSubjectKind || reservation.spendSubjectId)
+  if (!reservation.billingAccountId) {
+    if (workspaceTagged) throw new Error('workspace_billing_account_missing')
+    return null
+  }
+  const account = await ctx.db.query('billingAccounts')
+    .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', reservation.billingAccountId!))
+    .unique()
+  if (!account) {
+    if (workspaceTagged) throw new Error('workspace_billing_account_missing')
+    return null
+  }
+  if (account.scope !== 'workspace') {
+    if (workspaceTagged) throw new Error('workspace_billing_account_mismatch')
+    return null
+  }
+  const balance = await ctx.db.query('billingAccountBalances')
+    .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', reservation.billingAccountId!))
+    .unique()
+  if (!balance) throw new Error('workspace_billing_balance_missing')
+  const limit = reservation.spendSubjectKind && reservation.spendSubjectId
+    ? await ctx.db.query('billingAccountSpendLimits')
+        .withIndex('by_account_subject', (q) => q
+          .eq('billingAccountId', reservation.billingAccountId!)
+          .eq('subjectKind', reservation.spendSubjectKind!)
+          .eq('subjectId', reservation.spendSubjectId!))
+        .unique()
+    : null
+  return { balance, limit }
+}
+
+function workspaceBalanceSummary(balance: {
+  includedMicros: number
+  institutionalGrantMicros: number
+  mode: 'budgeted' | 'unlimited'
+  reservedMicros: number
+  topUpPurchasedMicros: number
+  usedMicros: number
+}) {
+  const totalMicros = balance.mode === 'unlimited'
+    ? Number.MAX_SAFE_INTEGER
+    : balance.includedMicros + balance.institutionalGrantMicros + balance.topUpPurchasedMicros
+  const remainingMicros = balance.mode === 'unlimited'
+    ? Number.MAX_SAFE_INTEGER
+    : Math.max(0, totalMicros - balance.usedMicros - balance.reservedMicros)
+  return {
+    budgetRemainingCents: roundCreditAmount(remainingMicros / 10_000),
+    budgetTotalCents: roundCreditAmount(totalMicros / 10_000),
+    budgetUsedCents: roundCreditAmount(balance.usedMicros / 10_000),
+  }
+}
+
+async function finalizeWorkspaceLedger(
+  ctx: MutationCtx,
+  args: {
+    actualMicros: number
+    balance: Doc<'billingAccountBalances'>
+    limit: Doc<'billingAccountSpendLimits'> | null
+    reservedMicros: number
+  },
+): Promise<void> {
+  const allowanceRemaining = Math.max(
+    0,
+    args.balance.includedMicros + args.balance.institutionalGrantMicros - args.balance.allowanceUsedMicros,
+  )
+  const allowanceCharge = Math.min(args.actualMicros, allowanceRemaining)
+  const topUpCharge = Math.max(0, args.actualMicros - allowanceCharge)
+  if (topUpCharge > args.balance.topUpBalanceMicros) throw new Error('workspace_billing_allocation_invalid')
+  const now = Date.now()
+  await ctx.db.patch(args.balance._id, {
+    allowanceUsedMicros: args.balance.allowanceUsedMicros + allowanceCharge,
+    reservedMicros: Math.max(0, args.balance.reservedMicros - args.reservedMicros),
+    topUpBalanceMicros: args.balance.topUpBalanceMicros - topUpCharge,
+    updatedAt: now,
+    usedMicros: args.balance.usedMicros + args.actualMicros,
+    version: args.balance.version + 1,
+  })
+  if (args.limit) {
+    await ctx.db.patch(args.limit._id, {
+      reservedMicros: Math.max(0, args.limit.reservedMicros - args.reservedMicros),
+      updatedAt: now,
+      usedMicros: args.limit.usedMicros + args.actualMicros,
+      version: args.limit.version + 1,
+    })
+  }
+}
+
+async function releaseWorkspaceLedger(
+  ctx: MutationCtx,
+  args: {
+    balance: Doc<'billingAccountBalances'>
+    limit: Doc<'billingAccountSpendLimits'> | null
+    reservedMicros: number
+  },
+): Promise<void> {
+  const now = Date.now()
+  await ctx.db.patch(args.balance._id, {
+    reservedMicros: Math.max(0, args.balance.reservedMicros - args.reservedMicros),
+    updatedAt: now,
+    version: args.balance.version + 1,
+  })
+  if (args.limit) {
+    await ctx.db.patch(args.limit._id, {
+      reservedMicros: Math.max(0, args.limit.reservedMicros - args.reservedMicros),
+      updatedAt: now,
+      version: args.limit.version + 1,
+    })
+  }
+}
+
 async function reconcileExpiredBudgetReservations(
   ctx: MutationCtx,
   args: { limit?: number; now?: number },
@@ -1104,25 +1404,35 @@ async function reconcileExpiredBudgetReservations(
   for (const reservation of rows) {
     if ((reservation.expiresAt ?? reservation.createdAt + 30 * 60_000) > now) continue
     if (reservation.providerWorkStarted) {
-      const billingAccount = await ensurePersonalBillingAccount(ctx, reservation.userId)
+      const workspaceLedger = await workspaceReservationLedger(ctx, reservation)
+      const billingAccount = workspaceLedger ? null : await ensurePersonalBillingAccount(ctx, reservation.userId)
       await ctx.db.patch(reservation._id, {
-        billingAccountId: billingAccount.billingAccountId,
+        billingAccountId: workspaceLedger ? reservation.billingAccountId! : billingAccount!.billingAccountId,
         status: 'reconcile_required',
         errorMessage: 'reservation_expired_after_provider_work',
         reconciliationAttempts: (reservation.reconciliationAttempts ?? 0) + 1,
         reconciliationLastAttemptAt: now,
         updatedAt: now,
       })
-      await syncPersonalBillingShadows(ctx, reservation.userId, billingAccount.billingAccountId)
+      if (billingAccount) {
+        await syncPersonalBillingShadows(ctx, reservation.userId, billingAccount.billingAccountId)
+      }
       reconcileRequired += 1
       continue
     }
-    const billingAccount = await ensurePersonalBillingAccount(ctx, reservation.userId)
-    const subscription = await ctx.db
+    const workspaceLedger = await workspaceReservationLedger(ctx, reservation)
+    const billingAccount = workspaceLedger ? null : await ensurePersonalBillingAccount(ctx, reservation.userId)
+    const subscription = workspaceLedger ? null : await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', reservation.userId))
       .first()
-    if (subscription && reservation.reservedCents > 0) {
+    if (workspaceLedger && reservation.reservedCents > 0) {
+      await releaseWorkspaceLedger(ctx, {
+        balance: workspaceLedger.balance,
+        limit: workspaceLedger.limit,
+        reservedMicros: Math.round(reservation.reservedCents * 10_000),
+      })
+    } else if (subscription && reservation.reservedCents > 0) {
       const buckets = await getUsageBuckets(ctx, subscription)
       const allocation = reservation.reservedAllowanceCents !== undefined
         ? { allowance: reservation.reservedAllowanceCents, topUp: reservation.reservedTopUpCents ?? 0 }
@@ -1134,12 +1444,14 @@ async function reconcileExpiredBudgetReservations(
       )
     }
     await ctx.db.patch(reservation._id, {
-      billingAccountId: billingAccount.billingAccountId,
+      billingAccountId: workspaceLedger ? reservation.billingAccountId! : billingAccount!.billingAccountId,
       status: 'released',
       errorMessage: 'reservation_expired_before_provider_work',
       updatedAt: now,
     })
-    await syncPersonalBillingShadows(ctx, reservation.userId, billingAccount.billingAccountId)
+    if (billingAccount) {
+      await syncPersonalBillingShadows(ctx, reservation.userId, billingAccount.billingAccountId)
+    }
     released += 1
   }
   const queueSample = await ctx.db
@@ -1197,7 +1509,6 @@ export const finalizeBudgetReservationByServer = mutation({
   },
   handler: async (ctx, { serverSecret, userId, reservationId, actualCents, events }) => {
     requireServerSecret(serverSecret)
-    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const reservation = await ctx.db
       .query('budgetReservations')
       .withIndex('by_reservationId', (q) => q.eq('reservationId', reservationId.trim()))
@@ -1210,12 +1521,17 @@ export const finalizeBudgetReservationByServer = mutation({
     if (reservation.status !== 'reserved' && reservation.status !== 'reconcile_required') {
       throw new Error(`reservation_not_finalizable:${reservation.status}`)
     }
+    const workspaceLedger = await workspaceReservationLedger(ctx, reservation)
+    const billingAccount = workspaceLedger ? null : await ensurePersonalBillingAccount(ctx, userId)
+    const billingAccountId = workspaceLedger
+      ? reservation.billingAccountId!
+      : billingAccount!.billingAccountId
 
     const safeActualCents = roundCreditAmount(Math.max(0, actualCents))
     if (safeActualCents > reservation.reservedCents + 0.000001) {
       const now = Date.now()
       await ctx.db.patch(reservation._id, {
-        billingAccountId: billingAccount.billingAccountId,
+        billingAccountId,
         status: 'reconcile_required',
         providerWorkStarted: true,
         providerWorkCompleted: true,
@@ -1224,13 +1540,32 @@ export const finalizeBudgetReservationByServer = mutation({
         reconciliationLastAttemptAt: now,
         updatedAt: now,
       })
-      await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
+      if (billingAccount) await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
       return {
         success: false,
         status: 'reconcile_required' as const,
         error: 'actual_cost_exceeds_reservation',
       }
     }
+    if (workspaceLedger) {
+      const reservedMicros = Math.round(reservation.reservedCents * 10_000)
+      const actualMicros = Math.round(safeActualCents * 10_000)
+      await finalizeWorkspaceLedger(ctx, {
+        actualMicros,
+        balance: workspaceLedger.balance,
+        limit: workspaceLedger.limit,
+        reservedMicros,
+      })
+      await ctx.db.patch(reservation._id, {
+        status: 'finalized',
+        finalizedCents: safeActualCents,
+        providerWorkStarted: true,
+        providerWorkCompleted: true,
+        updatedAt: Date.now(),
+      })
+      return { success: true, status: 'finalized' as const, finalizedCents: safeActualCents }
+    }
+    if (!billingAccount) throw new Error('personal_billing_account_missing')
     const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
@@ -1286,7 +1621,6 @@ export const markBudgetReservationStartedByServer = mutation({
   },
   handler: async (ctx, { serverSecret, userId, reservationId }) => {
     requireServerSecret(serverSecret)
-    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const reservation = await ctx.db
       .query('budgetReservations')
       .withIndex('by_reservationId', (q) => q.eq('reservationId', reservationId.trim()))
@@ -1297,12 +1631,14 @@ export const markBudgetReservationStartedByServer = mutation({
       return { success: true, status: reservation.status }
     }
     if (!reservation.providerWorkStarted) {
+      const workspaceLedger = await workspaceReservationLedger(ctx, reservation)
+      const billingAccount = workspaceLedger ? null : await ensurePersonalBillingAccount(ctx, userId)
       await ctx.db.patch(reservation._id, {
-        billingAccountId: billingAccount.billingAccountId,
+        billingAccountId: workspaceLedger ? reservation.billingAccountId! : billingAccount!.billingAccountId,
         providerWorkStarted: true,
         updatedAt: Date.now(),
       })
-      await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
+      if (billingAccount) await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
     }
     return { success: true, status: 'reserved' as const }
   },
@@ -1318,7 +1654,6 @@ export const releaseBudgetReservationByServer = mutation({
   },
   handler: async (ctx, { serverSecret, userId, reservationId, providerWorkStarted, reason }) => {
     requireServerSecret(serverSecret)
-    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const reservation = await ctx.db
       .query('budgetReservations')
       .withIndex('by_reservationId', (q) => q.eq('reservationId', reservationId.trim()))
@@ -1328,11 +1663,14 @@ export const releaseBudgetReservationByServer = mutation({
     if (reservation.status !== 'reserved') {
       return { success: true, status: reservation.status }
     }
+    const workspaceLedger = await workspaceReservationLedger(ctx, reservation)
+    const billingAccount = workspaceLedger ? null : await ensurePersonalBillingAccount(ctx, userId)
+    const billingAccountId = workspaceLedger ? reservation.billingAccountId! : billingAccount!.billingAccountId
 
     if (providerWorkStarted || reservation.providerWorkStarted) {
       const now = Date.now()
       await ctx.db.patch(reservation._id, {
-        billingAccountId: billingAccount.billingAccountId,
+        billingAccountId,
         status: 'reconcile_required',
         providerWorkStarted: true,
         errorMessage: reason?.slice(0, 2000),
@@ -1340,15 +1678,21 @@ export const releaseBudgetReservationByServer = mutation({
         reconciliationLastAttemptAt: now,
         updatedAt: now,
       })
-      await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
+      if (billingAccount) await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
       return { success: true, status: 'reconcile_required' }
     }
 
-    const subscription = await ctx.db
+    const subscription = workspaceLedger ? null : await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
-    if (subscription && reservation.reservedCents > 0) {
+    if (workspaceLedger && reservation.reservedCents > 0) {
+      await releaseWorkspaceLedger(ctx, {
+        balance: workspaceLedger.balance,
+        limit: workspaceLedger.limit,
+        reservedMicros: Math.round(reservation.reservedCents * 10_000),
+      })
+    } else if (subscription && reservation.reservedCents > 0) {
       const buckets = await getUsageBuckets(ctx, subscription)
       const allocation = reservation.reservedAllowanceCents !== undefined
         ? { allowance: reservation.reservedAllowanceCents, topUp: reservation.reservedTopUpCents ?? 0 }
@@ -1360,12 +1704,12 @@ export const releaseBudgetReservationByServer = mutation({
       )
     }
     await ctx.db.patch(reservation._id, {
-      billingAccountId: billingAccount.billingAccountId,
+      billingAccountId,
       status: 'released',
       errorMessage: reason?.slice(0, 2000),
       updatedAt: Date.now(),
     })
-    await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
+    if (billingAccount) await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
     return { success: true, status: 'released' }
   },
 })
@@ -1379,7 +1723,6 @@ export const markBudgetReservationReconcileByServer = mutation({
   },
   handler: async (ctx, { serverSecret, userId, reservationId, errorMessage }) => {
     requireServerSecret(serverSecret)
-    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const reservation = await ctx.db
       .query('budgetReservations')
       .withIndex('by_reservationId', (q) => q.eq('reservationId', reservationId.trim()))
@@ -1387,9 +1730,11 @@ export const markBudgetReservationReconcileByServer = mutation({
     if (!reservation) return { success: true, status: 'missing' }
     if (reservation.userId !== userId) throw new Error('reservation_user_mismatch')
     if (reservation.status === 'finalized') return { success: true, status: 'finalized' }
+    const workspaceLedger = await workspaceReservationLedger(ctx, reservation)
+    const billingAccount = workspaceLedger ? null : await ensurePersonalBillingAccount(ctx, userId)
     const now = Date.now()
     await ctx.db.patch(reservation._id, {
-      billingAccountId: billingAccount.billingAccountId,
+      billingAccountId: workspaceLedger ? reservation.billingAccountId! : billingAccount!.billingAccountId,
       status: 'reconcile_required',
       providerWorkStarted: true,
       errorMessage: errorMessage?.slice(0, 2000),
@@ -1397,7 +1742,7 @@ export const markBudgetReservationReconcileByServer = mutation({
       reconciliationLastAttemptAt: now,
       updatedAt: now,
     })
-    await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
+    if (billingAccount) await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
     return { success: true, status: 'reconcile_required' }
   },
 })

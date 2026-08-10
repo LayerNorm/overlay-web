@@ -5,6 +5,7 @@ import { assertBillingAccountOwnership } from '../../src/shared/billing/billing-
 import {
   billingAccountValidator,
   ensurePersonalBillingAccount,
+  ensureWorkspaceBillingAccount,
   toBillingAccountRecord,
   uniquePersonalAccount,
 } from './accountModel'
@@ -69,5 +70,18 @@ export const ensurePersonalByServer = mutation({
     const userId = args.userId.trim()
     if (!userId) throw new Error('billing_account_user_required')
     return toBillingAccountRecord(await ensurePersonalBillingAccount(ctx, userId))
+  },
+})
+
+export const ensureWorkspaceByServer = mutation({
+  args: {
+    primaryBillingContactUserId: v.string(),
+    serverSecret: v.string(),
+    workspaceId: v.string(),
+  },
+  returns: billingAccountValidator,
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    return toBillingAccountRecord(await ensureWorkspaceBillingAccount(ctx, args))
   },
 })

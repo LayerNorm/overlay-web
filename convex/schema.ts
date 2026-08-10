@@ -102,6 +102,22 @@ export default defineSchema({
     .index('by_billingAccountId', ['billingAccountId'])
     .index('by_mode_updatedAt', ['mode', 'updatedAt']),
 
+  billingAccountSpendLimits: defineTable({
+    billingAccountId: v.string(),
+    subjectKind: v.union(v.literal('member'), v.literal('programmatic')),
+    subjectId: v.string(),
+    limitMicros: v.number(),
+    usedMicros: v.number(),
+    reservedMicros: v.number(),
+    periodStart: v.number(),
+    periodEnd: v.number(),
+    version: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_account_subject', ['billingAccountId', 'subjectKind', 'subjectId'])
+    .index('by_account_updatedAt', ['billingAccountId', 'updatedAt']),
+
   // Single source of truth for a user's subscription, tier, and current-period credit spend.
   // creditsUsed is the live accumulator (in cents, may include fractional cents)
   // mutated on every usage event.
@@ -299,6 +315,8 @@ export default defineSchema({
   budgetReservations: defineTable({
     userId: v.string(),
     billingAccountId: v.optional(v.string()),
+    spendSubjectKind: v.optional(v.union(v.literal('member'), v.literal('programmatic'))),
+    spendSubjectId: v.optional(v.string()),
     reservationId: v.string(),
     status: v.union(
       v.literal('reserved'),
@@ -343,6 +361,7 @@ export default defineSchema({
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_userId_billingAccountId', ['userId', 'billingAccountId'])
     .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
+    .index('by_billingAccountId_status_createdAt', ['billingAccountId', 'status', 'createdAt'])
     .index('by_status_createdAt', ['status', 'createdAt'])
     .index('by_status_expiresAt', ['status', 'expiresAt'])
     .index('by_status_updatedAt', ['status', 'updatedAt']),

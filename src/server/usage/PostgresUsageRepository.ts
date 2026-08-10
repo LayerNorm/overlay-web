@@ -23,6 +23,10 @@ import {
   CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS,
   CURRENT_BILLING_ACCOUNT_PRICING_VERSION,
 } from '@/shared/billing/billing-account'
+import {
+  assertBillingSpendSubject,
+  type ResolvedBillingPayer,
+} from '@/shared/billing/billing-payer'
 
 const MICROS_PER_CENT = 10_000
 const DEFAULT_RESERVATION_TTL_MS = 30 * 60_000
@@ -47,6 +51,8 @@ type ReservationRow = {
   kind: string
   metadata: Record<string, unknown>
   modelId: string | null
+  spendSubjectId: string | null
+  spendSubjectKind: 'member' | 'programmatic' | null
   providerWorkCompleted: boolean
   providerWorkStarted: boolean
   reconciliationAttempts: number
@@ -59,6 +65,14 @@ type ReservationRow = {
   reservedMicros: number | string
   status: UsageReservationStatus
   userId: string
+}
+
+type SpendLimitRow = {
+  limitMicros: number | string
+  periodEnd: Date | string
+  periodStart: Date | string
+  reservedMicros: number | string
+  usedMicros: number | string
 }
 
 type Transaction = Parameters<Parameters<OverlayPostgresDb['transaction']>[0]>[0]
@@ -166,6 +180,115 @@ export class PostgresUsageRepository implements UsageRepository {
     })
   }
 
+  async reserveWorkspace(args: {
+    expiresAt?: number
+    kind: UsageEvent['kind']
+    metadata?: Record<string, unknown>
+    modelId?: string
+    operationId: string
+    payer: ResolvedBillingPayer & { scope: 'workspace' }
+    requestFingerprint: string
+    reservationId: string
+    reservedCents: number
+    userId: string
+  }): Promise<UsageReservationResult> {
+    assertBillingSpendSubject(args.payer.subject)
+    const reservedMicros = centsToMicros(args.reservedCents)
+    return await this.db.transaction(async (tx) => {
+      const account = await lockWorkspaceAccount(tx, args.payer.billingAccountId, args.payer.workspaceId)
+      const existing = await selectReservationForUpdate(tx, args.reservationId)
+      if (existing) {
+        assertReservationIdentity(existing, {
+          billingAccountId: account.billingAccountId,
+          kind: args.kind,
+          modelId: args.modelId,
+          operationId: args.operationId,
+          requestFingerprint: args.requestFingerprint,
+          reservedMicros,
+          spendSubjectId: args.payer.subject.id,
+          spendSubjectKind: args.payer.subject.kind,
+          userId: args.userId,
+        })
+        return {
+          ok: true,
+          entitlements: entitlementsFromAccount(account),
+          replayed: true,
+          reservationId: existing.status === 'released' || existing.status === 'expired'
+            ? null
+            : args.reservationId,
+          reservedCents: microsToCents(Number(existing.reservedMicros)),
+          status: existing.status,
+        }
+      }
+      const availableMicros = availableMicrosFor(account)
+      if (account.mode === 'budgeted' && availableMicros < reservedMicros) {
+        return insufficientReservation('insufficient_budget', account, args.reservedCents, availableMicros)
+      }
+      const limit = await lockSpendLimit(tx, args.payer.billingAccountId, args.payer.subject)
+      if (limit) {
+        const nowMs = Date.now()
+        const activePeriod = nowMs >= databaseTimestampToMillis(limit.periodStart)
+          && nowMs < databaseTimestampToMillis(limit.periodEnd)
+        const remainingLimitMicros = activePeriod
+          ? Math.max(0, Number(limit.limitMicros) - Number(limit.usedMicros) - Number(limit.reservedMicros))
+          : 0
+        if (remainingLimitMicros < reservedMicros) {
+          return insufficientReservation('spend_limit_exceeded', account, args.reservedCents, remainingLimitMicros)
+        }
+      }
+
+      const now = new Date()
+      await tx.execute(sql`
+        INSERT INTO usage_reservations (
+          id, user_id, billing_account_id, spend_subject_kind, spend_subject_id,
+          kind, model_id, reserved_micros, status, metadata, expires_at, created_at, updated_at
+        ) VALUES (
+          ${args.reservationId}, ${args.userId}, ${account.billingAccountId},
+          ${args.payer.subject.kind}, ${args.payer.subject.id}, ${args.kind}, ${args.modelId ?? null},
+          ${reservedMicros}, 'reserved', ${JSON.stringify({
+            ...(args.metadata ?? {}),
+            operationId: args.operationId,
+            requestFingerprint: args.requestFingerprint,
+          })}::jsonb, ${new Date(args.expiresAt ?? Date.now() + DEFAULT_RESERVATION_TTL_MS)}, ${now}, ${now}
+        )
+      `)
+      await tx.execute(sql`
+        UPDATE billing_account_balances
+        SET reserved_micros = reserved_micros + ${reservedMicros},
+            version = version + 1, updated_at = ${now}
+        WHERE billing_account_id = ${account.billingAccountId}
+      `)
+      if (limit) {
+        await tx.execute(sql`
+          UPDATE billing_account_spend_limits
+          SET reserved_micros = reserved_micros + ${reservedMicros},
+              version = version + 1, updated_at = ${now}
+          WHERE billing_account_id = ${account.billingAccountId}
+            AND subject_kind = ${args.payer.subject.kind}
+            AND subject_id = ${args.payer.subject.id}
+        `)
+      }
+      await insertTransaction(tx, {
+        amountMicros: reservedMicros,
+        billingAccountId: account.billingAccountId,
+        reservationId: args.reservationId,
+        type: 'reserve',
+        userId: args.userId,
+      })
+      return {
+        ok: true,
+        entitlements: entitlementsFromAccount({
+          ...account,
+          reservedMicros: Number(account.reservedMicros) + reservedMicros,
+        }),
+        replayed: false,
+        reservationId: args.reservationId,
+        reservedCents: args.reservedCents,
+        status: 'reserved',
+      }
+    })
+  }
+
   async finalize(args: {
     actualCostCents: number
     events?: UsageEvent[]
@@ -174,7 +297,6 @@ export class PostgresUsageRepository implements UsageRepository {
   }): Promise<{ status: UsageReservationStatus }> {
     const actualMicros = centsToMicros(args.actualCostCents)
     const outcome: { error?: string; status: UsageReservationStatus } = await this.db.transaction(async (tx) => {
-      const account = await lockOrCreateAccount(tx, args.userId)
       const reservation = await requireReservation(tx, args.reservationId, args.userId)
       if (reservation.status === 'finalized') return { status: 'finalized' }
       if (reservation.status !== 'reserved' && reservation.status !== 'reconcile_required') {
@@ -191,6 +313,40 @@ export class PostgresUsageRepository implements UsageRepository {
         )
         return { status: 'reconcile_required' as const, error: 'actual_cost_exceeds_reservation' }
       }
+      const workspaceAccount = await lockWorkspaceAccountForReservation(tx, reservation)
+      if (workspaceAccount) {
+        const now = new Date()
+        await tx.execute(sql`
+          UPDATE usage_reservations
+          SET status = 'finalized', actual_micros = ${actualMicros},
+              provider_work_started = true, provider_work_completed = true,
+              finalized_at = ${now}, updated_at = ${now}, error = NULL
+          WHERE id = ${args.reservationId}
+        `)
+        await applyWorkspaceFinalizedSpend(tx, {
+          account: workspaceAccount,
+          actualMicros,
+          reservation,
+          reservedMicros,
+          updatedAt: now,
+        })
+        await insertTransaction(tx, {
+          amountMicros: actualMicros,
+          billingAccountId: workspaceAccount.billingAccountId,
+          reservationId: args.reservationId,
+          type: 'finalize',
+          userId: args.userId,
+        })
+        await insertEvents(tx, {
+          billingAccountId: workspaceAccount.billingAccountId,
+          events: args.events ?? [],
+          operationId: args.reservationId,
+          reservationId: args.reservationId,
+          userId: args.userId,
+        })
+        return { status: 'finalized' }
+      }
+      const account = await lockOrCreateAccount(tx, args.userId)
       const now = new Date()
       await tx.execute(sql`
         UPDATE usage_reservations
@@ -251,7 +407,6 @@ export class PostgresUsageRepository implements UsageRepository {
     userId: string
   }): Promise<{ status: UsageReservationStatus }> {
     return await this.db.transaction(async (tx) => {
-      const account = await lockOrCreateAccount(tx, args.userId)
       const reservation = await requireReservation(tx, args.reservationId, args.userId)
       if (reservation.status !== 'reserved') return { status: reservation.status }
       if (args.providerWorkStarted || reservation.providerWorkStarted) {
@@ -261,6 +416,29 @@ export class PostgresUsageRepository implements UsageRepository {
 
       const reservedMicros = Number(reservation.reservedMicros)
       const now = new Date()
+      const workspaceAccount = await lockWorkspaceAccountForReservation(tx, reservation)
+      if (workspaceAccount) {
+        await tx.execute(sql`
+          UPDATE usage_reservations
+          SET status = 'released', reason = ${args.reason ?? null}, released_at = ${now}, updated_at = ${now}
+          WHERE id = ${args.reservationId}
+        `)
+        await releaseWorkspaceReservation(tx, {
+          account: workspaceAccount,
+          reservation,
+          reservedMicros,
+          updatedAt: now,
+        })
+        await insertTransaction(tx, {
+          amountMicros: -reservedMicros,
+          billingAccountId: workspaceAccount.billingAccountId,
+          reservationId: args.reservationId,
+          type: 'release',
+          userId: args.userId,
+        })
+        return { status: 'released' }
+      }
+      const account = await lockOrCreateAccount(tx, args.userId)
       await tx.execute(sql`
         UPDATE usage_reservations
         SET status = 'released', reason = ${args.reason ?? null}, released_at = ${now}, updated_at = ${now}
@@ -368,8 +546,9 @@ export class PostgresUsageRepository implements UsageRepository {
     status: 'finalized' | 'released'
   }> {
     return await this.db.transaction(async (tx) => {
-      const account = await lockOrCreateAccount(tx, args.userId)
       const reservation = await requireReservation(tx, args.reservationId, args.userId)
+      const workspaceAccount = await lockWorkspaceAccountForReservation(tx, reservation)
+      const account = workspaceAccount ?? await lockOrCreateAccount(tx, args.userId)
       const reservedMicros = Number(reservation.reservedMicros)
       const normalized = normalizeUsageReconciliationResolution({
         actualCostCents: args.actualCostCents,
@@ -417,12 +596,21 @@ export class PostgresUsageRepository implements UsageRepository {
               reconciliation_reason = ${normalized.evidence.reason}
           WHERE id = ${args.reservationId}
         `)
-        await tx.execute(sql`
-          UPDATE usage_budget_accounts
-          SET reserved_micros = GREATEST(0, reserved_micros - ${reservedMicros}),
-              version = version + 1, updated_at = ${now}
-          WHERE user_id = ${args.userId}
-        `)
+        if (workspaceAccount) {
+          await releaseWorkspaceReservation(tx, {
+            account: workspaceAccount,
+            reservation,
+            reservedMicros,
+            updatedAt: now,
+          })
+        } else {
+          await tx.execute(sql`
+            UPDATE usage_budget_accounts
+            SET reserved_micros = GREATEST(0, reserved_micros - ${reservedMicros}),
+                version = version + 1, updated_at = ${now}
+            WHERE user_id = ${args.userId}
+          `)
+        }
         await insertTransaction(tx, {
           amountMicros: -reservedMicros,
           billingAccountId: account.billingAccountId,
@@ -430,7 +618,7 @@ export class PostgresUsageRepository implements UsageRepository {
           type: 'release',
           userId: args.userId,
         })
-        await syncCanonicalBalance(tx, args.userId, account.billingAccountId)
+        if (!workspaceAccount) await syncCanonicalBalance(tx, args.userId, account.billingAccountId)
         return { idempotent: false, status: 'released' }
       }
 
@@ -447,13 +635,23 @@ export class PostgresUsageRepository implements UsageRepository {
             reconciliation_reason = ${normalized.evidence.reason}
         WHERE id = ${args.reservationId}
       `)
-      await applyFinalizedSpend(tx, {
-        account,
-        actualMicros: actualMicros!,
-        reservedMicros,
-        updatedAt: now,
-        userId: args.userId,
-      })
+      if (workspaceAccount) {
+        await applyWorkspaceFinalizedSpend(tx, {
+          account: workspaceAccount,
+          actualMicros: actualMicros!,
+          reservation,
+          reservedMicros,
+          updatedAt: now,
+        })
+      } else {
+        await applyFinalizedSpend(tx, {
+          account,
+          actualMicros: actualMicros!,
+          reservedMicros,
+          updatedAt: now,
+          userId: args.userId,
+        })
+      }
       await insertTransaction(tx, {
         amountMicros: actualMicros!,
         billingAccountId: account.billingAccountId,
@@ -461,7 +659,7 @@ export class PostgresUsageRepository implements UsageRepository {
         type: 'finalize',
         userId: args.userId,
       })
-      await syncCanonicalBalance(tx, args.userId, account.billingAccountId)
+      if (!workspaceAccount) await syncCanonicalBalance(tx, args.userId, account.billingAccountId)
       return {
         finalizedCents: normalized.actualCostCents!,
         idempotent: false,
@@ -662,6 +860,80 @@ async function lockOrCreateAccount(tx: Transaction, userId: string): Promise<Bud
   return account
 }
 
+async function lockWorkspaceAccount(
+  tx: Transaction,
+  billingAccountId: string,
+  expectedWorkspaceId?: string,
+  requireActive = true,
+): Promise<BudgetAccountRow> {
+  const result = await tx.execute<BudgetAccountRow & {
+    status: 'active' | 'suspended' | 'closed'
+    workspaceId: string
+  }>(sql`
+    SELECT balance.billing_account_id AS "billingAccountId", balance.mode,
+           balance.included_micros AS "includedMicros",
+           balance.institutional_grant_micros AS "institutionalGrantMicros",
+           balance.allowance_used_micros AS "allowanceUsedMicros",
+           balance.top_up_purchased_micros AS "topUpPurchasedMicros",
+           balance.top_up_balance_micros AS "topUpBalanceMicros",
+           balance.institutional_grant_micros + balance.top_up_purchased_micros AS "grantedMicros",
+           balance.used_micros AS "usedMicros", balance.reserved_micros AS "reservedMicros",
+           account.workspace_id AS "workspaceId", account.status
+    FROM billing_accounts account
+    JOIN billing_account_balances balance ON balance.billing_account_id = account.id
+    WHERE account.id = ${billingAccountId.trim()}
+      AND account.scope = 'workspace'
+    FOR UPDATE OF balance
+  `)
+  const account = result.rows[0]
+  if (!account) throw new Error('workspace_billing_account_missing')
+  if (expectedWorkspaceId && account.workspaceId !== expectedWorkspaceId) {
+    throw new Error('workspace_billing_account_mismatch')
+  }
+  if (requireActive && account.status !== 'active') throw new Error('workspace_billing_account_inactive')
+  return account
+}
+
+async function lockSpendLimit(
+  tx: Transaction,
+  billingAccountId: string,
+  subject: ResolvedBillingPayer['subject'],
+): Promise<SpendLimitRow | null> {
+  const result = await tx.execute<SpendLimitRow>(sql`
+    SELECT limit_micros AS "limitMicros", used_micros AS "usedMicros",
+           reserved_micros AS "reservedMicros", period_start AS "periodStart",
+           period_end AS "periodEnd"
+    FROM billing_account_spend_limits
+    WHERE billing_account_id = ${billingAccountId}
+      AND subject_kind = ${subject.kind} AND subject_id = ${subject.id}
+    FOR UPDATE
+  `)
+  return result.rows[0] ?? null
+}
+
+async function lockWorkspaceAccountForReservation(
+  tx: Transaction,
+  reservation: ReservationRow,
+): Promise<BudgetAccountRow | null> {
+  const workspaceTagged = Boolean(reservation.spendSubjectKind || reservation.spendSubjectId)
+  if (!reservation.billingAccountId) {
+    if (workspaceTagged) throw new Error('workspace_billing_account_missing')
+    return null
+  }
+  const scope = await tx.execute<{ scope: 'personal' | 'workspace' }>(sql`
+    SELECT scope FROM billing_accounts WHERE id = ${reservation.billingAccountId}
+  `)
+  if (!scope.rows[0]) {
+    if (workspaceTagged) throw new Error('workspace_billing_account_missing')
+    return null
+  }
+  if (scope.rows[0].scope !== 'workspace') {
+    if (workspaceTagged) throw new Error('workspace_billing_account_mismatch')
+    return null
+  }
+  return await lockWorkspaceAccount(tx, reservation.billingAccountId, undefined, false)
+}
+
 async function selectReservationForUpdate(tx: Transaction, id: string): Promise<ReservationRow | null> {
   const result = await tx.execute<ReservationRow>(sql`
     SELECT user_id AS "userId", billing_account_id AS "billingAccountId", kind, model_id AS "modelId",
@@ -675,6 +947,7 @@ async function selectReservationForUpdate(tx: Transaction, id: string): Promise<
            reconciliation_evidence_source AS "reconciliationEvidenceSource",
            reconciliation_evidence_reference AS "reconciliationEvidenceReference",
            reconciliation_reason AS "reconciliationReason",
+           spend_subject_kind AS "spendSubjectKind", spend_subject_id AS "spendSubjectId",
            metadata, status
     FROM usage_reservations
     WHERE id = ${id}
@@ -692,16 +965,22 @@ async function requireReservation(tx: Transaction, id: string, userId: string): 
 function assertReservationIdentity(
   row: ReservationRow,
   expected: {
+    billingAccountId?: string
     kind: string
     modelId?: string
     operationId: string
     requestFingerprint: string
     reservedMicros: number
+    spendSubjectId?: string
+    spendSubjectKind?: 'member' | 'programmatic'
     userId: string
   },
 ): void {
   if (
     row.userId !== expected.userId ||
+    (expected.billingAccountId !== undefined && row.billingAccountId !== expected.billingAccountId) ||
+    (row.spendSubjectId ?? undefined) !== expected.spendSubjectId ||
+    (row.spendSubjectKind ?? undefined) !== expected.spendSubjectKind ||
     Number(row.reservedMicros) !== expected.reservedMicros ||
     row.kind !== expected.kind ||
     (row.modelId ?? undefined) !== expected.modelId ||
@@ -709,6 +988,21 @@ function assertReservationIdentity(
     row.metadata?.requestFingerprint !== expected.requestFingerprint
   ) {
     throw new Error('Usage reservation id was reused with different parameters')
+  }
+}
+
+function insufficientReservation(
+  code: 'insufficient_budget' | 'spend_limit_exceeded',
+  account: BudgetAccountRow,
+  requiredCents: number,
+  remainingMicros: number,
+): Extract<UsageReservationResult, { ok: false }> {
+  return {
+    ok: false,
+    code,
+    entitlements: entitlementsFromAccount(account),
+    remainingCents: microsToCents(Math.max(0, remainingMicros)),
+    requiredCents,
   }
 }
 
@@ -871,6 +1165,62 @@ async function applyFinalizedSpend(tx: Transaction, args: {
         updated_at = ${args.updatedAt}
     WHERE user_id = ${args.userId}
   `)
+}
+
+async function applyWorkspaceFinalizedSpend(tx: Transaction, args: {
+  account: BudgetAccountRow
+  actualMicros: number
+  reservation: ReservationRow
+  reservedMicros: number
+  updatedAt: Date
+}): Promise<void> {
+  const next = args.account.mode === 'unlimited'
+    ? null
+    : allocateUsageCharge(bucketsFromAccount(args.account), args.actualMicros)
+  await tx.execute(sql`
+    UPDATE billing_account_balances
+    SET reserved_micros = GREATEST(0, reserved_micros - ${args.reservedMicros}),
+        used_micros = used_micros + ${args.actualMicros},
+        allowance_used_micros = ${next?.buckets.allowanceUsed ?? Number(args.account.allowanceUsedMicros)},
+        top_up_balance_micros = ${next?.buckets.topUpBalance ?? Number(args.account.topUpBalanceMicros)},
+        version = version + 1, updated_at = ${args.updatedAt}
+    WHERE billing_account_id = ${args.account.billingAccountId}
+  `)
+  if (args.reservation.spendSubjectKind && args.reservation.spendSubjectId) {
+    await tx.execute(sql`
+      UPDATE billing_account_spend_limits
+      SET reserved_micros = GREATEST(0, reserved_micros - ${args.reservedMicros}),
+          used_micros = used_micros + ${args.actualMicros},
+          version = version + 1, updated_at = ${args.updatedAt}
+      WHERE billing_account_id = ${args.account.billingAccountId}
+        AND subject_kind = ${args.reservation.spendSubjectKind}
+        AND subject_id = ${args.reservation.spendSubjectId}
+    `)
+  }
+}
+
+async function releaseWorkspaceReservation(tx: Transaction, args: {
+  account: BudgetAccountRow
+  reservation: ReservationRow
+  reservedMicros: number
+  updatedAt: Date
+}): Promise<void> {
+  await tx.execute(sql`
+    UPDATE billing_account_balances
+    SET reserved_micros = GREATEST(0, reserved_micros - ${args.reservedMicros}),
+        version = version + 1, updated_at = ${args.updatedAt}
+    WHERE billing_account_id = ${args.account.billingAccountId}
+  `)
+  if (args.reservation.spendSubjectKind && args.reservation.spendSubjectId) {
+    await tx.execute(sql`
+      UPDATE billing_account_spend_limits
+      SET reserved_micros = GREATEST(0, reserved_micros - ${args.reservedMicros}),
+          version = version + 1, updated_at = ${args.updatedAt}
+      WHERE billing_account_id = ${args.account.billingAccountId}
+        AND subject_kind = ${args.reservation.spendSubjectKind}
+        AND subject_id = ${args.reservation.spendSubjectId}
+    `)
+  }
 }
 
 async function applyDirectSpend(tx: Transaction, args: {

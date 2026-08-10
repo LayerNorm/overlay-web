@@ -3,6 +3,7 @@ import 'server-only'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { Entitlements } from '@/shared/app/app-contracts'
+import type { ResolvedBillingPayer } from '@/shared/billing/billing-payer'
 import type {
   UsageEvent,
   UsageReconciliationQueueItem,
@@ -77,6 +78,69 @@ export class ConvexUsageRepository implements UsageRepository {
       reservationId: args.reservationId,
       reservedCents: args.reservedCents,
       status: result.status,
+    }
+  }
+
+  async reserveWorkspace(args: {
+    expiresAt?: number
+    kind: UsageEvent['kind']
+    metadata?: Record<string, unknown>
+    modelId?: string
+    operationId: string
+    payer: ResolvedBillingPayer & { scope: 'workspace' }
+    requestFingerprint: string
+    reservationId: string
+    reservedCents: number
+    userId: string
+  }): Promise<UsageReservationResult> {
+    try {
+      const result = await convex.mutation<{
+        budgetRemainingCents: number
+        budgetTotalCents: number
+        budgetUsedCents: number
+        idempotent: boolean
+        reservationId: string
+        reservedCents: number
+        status: UsageReservationStatus
+      }>('platform/usage:reserveWorkspaceBudgetByServer', {
+        billingAccountId: args.payer.billingAccountId,
+        expiresAt: args.expiresAt,
+        kind: args.kind,
+        modelId: args.modelId,
+        operationId: args.operationId,
+        requestFingerprint: args.requestFingerprint,
+        reservationId: args.reservationId,
+        reservedCents: args.reservedCents,
+        serverSecret: this.serverSecret,
+        spendSubjectId: args.payer.subject.id,
+        spendSubjectKind: args.payer.subject.kind,
+        userId: args.userId,
+        workspaceId: args.payer.workspaceId ?? '',
+      }, { throwOnError: true })
+      if (!result) throw new Error('Failed to reserve workspace usage budget')
+      return {
+        ok: true,
+        entitlements: workspaceEntitlements(result),
+        replayed: result.idempotent,
+        reservationId: result.status === 'released' || result.status === 'expired' ? null : result.reservationId,
+        reservedCents: result.reservedCents,
+        status: result.status,
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const code = /spend_limit_exceeded/.test(message) ? 'spend_limit_exceeded' : 'insufficient_budget'
+      if (!/spend_limit_exceeded|insufficient_budget/.test(message)) throw error
+      return {
+        ok: false,
+        code,
+        entitlements: workspaceEntitlements({
+          budgetRemainingCents: 0,
+          budgetTotalCents: 0,
+          budgetUsedCents: 0,
+        }),
+        remainingCents: 0,
+        requiredCents: args.reservedCents,
+      }
     }
   }
 
@@ -216,6 +280,23 @@ export class ConvexUsageRepository implements UsageRepository {
     )
     if (!result) throw new Error('Failed to reconcile expired usage reservations')
     return result
+  }
+}
+
+function workspaceEntitlements(balance: {
+  budgetRemainingCents: number
+  budgetTotalCents: number
+  budgetUsedCents: number
+}): Entitlements {
+  return {
+    budgetRemainingCents: Math.max(0, balance.budgetRemainingCents),
+    budgetTotalCents: Math.max(0, balance.budgetTotalCents),
+    budgetUsedCents: Math.max(0, balance.budgetUsedCents),
+    creditsTotal: Math.max(0, balance.budgetTotalCents) / 100,
+    creditsUsed: Math.max(0, balance.budgetUsedCents) / 100,
+    dailyUsage: { agent: 0, ask: 0, write: 0 },
+    planKind: 'paid',
+    tier: 'max',
   }
 }
 

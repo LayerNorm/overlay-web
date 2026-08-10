@@ -149,7 +149,7 @@ export const getPersonalBalanceParityByServer = query({
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', args.userId.trim()))
       .unique()
-    const reservations = await activeReservationSummary(ctx, args.userId.trim())
+    const reservations = await activeReservationSummary(ctx, account.billingAccountId)
     if (reservations.truncated) throw new Error('billing_parity_reservations_truncated')
     const canonical = await ctx.db
       .query('billingAccountBalances')
@@ -223,7 +223,7 @@ export async function syncPersonalBillingShadows(
     ctx,
     billingAccountId,
     subscription,
-    await activeReservationSummary(ctx, userId),
+    await activeReservationSummary(ctx, billingAccountId),
   )
 }
 
@@ -263,7 +263,7 @@ async function attachLegacyRows(
       await ctx.db.patch(row._id, { billingAccountId })
     }
   }
-  const reservations = await activeReservationSummary(ctx, userId)
+  const reservations = await activeReservationSummary(ctx, billingAccountId)
   return {
     attached: {
       budgetReservations: Math.min(budgetReservations.length, ATTACH_BATCH_SIZE),
@@ -339,9 +339,9 @@ async function syncCanonicalBalance(
   })
 }
 
-async function activeReservationSummary(ctx: QueryCtx | MutationCtx, userId: string) {
+async function activeReservationSummary(ctx: QueryCtx | MutationCtx, billingAccountId: string) {
   const rows = await ctx.db.query('budgetReservations')
-    .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
+    .withIndex('by_billingAccountId_createdAt', (q) => q.eq('billingAccountId', billingAccountId))
     .take(1_001)
   return {
     reservedCents: rows.reduce((sum, row) => (

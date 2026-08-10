@@ -50,6 +50,7 @@ import {
 } from '@/server/knowledge'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
 import { ServerProviderUsageMeter } from '@/server/billing/ServerProviderUsageMeter'
+import { BillingPayerResolver } from '@/server/billing/BillingPayerResolver'
 import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspaceRepository'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
@@ -116,6 +117,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   auditService: AuditService
   chatUsagePolicy: ActUsagePolicy
   generationUsagePolicy: GenerationUsagePolicy
+  billingPayerResolver: BillingPayerResolver
   memoryService: MemoryService
   knowledgeSearchService: KnowledgeSearchService
   noteRepository: NoteRepository
@@ -211,6 +213,13 @@ export function createOverlayServerContext(
     ? new PostgresWorkspaceRepository(postgresDb)
     : new ConvexWorkspaceRepository()
   const workspaceService = new WorkspaceService(workspaceRepository, { lifecycleEvents })
+  const billingPayerResolver = new BillingPayerResolver({
+    billing: appData.repositories.billing,
+    workspaceWalletsEnabled: () => appConfig.featureFlags?.some((flag) => (
+      flag.id === 'workspaceWallets' && flag.enabled
+    )) ?? false,
+    workspaces: workspaceService,
+  })
 
   const authorizationRepositories: AuthorizationRepositories = isPostgres && postgresDb
     ? createPostgresAuthorizationRepositories(postgresDb)
@@ -361,6 +370,7 @@ export function createOverlayServerContext(
     auditService,
     chatUsagePolicy,
     generationUsagePolicy,
+    billingPayerResolver,
     memoryService,
     knowledgeSearchService,
     noteRepository: appData.repositories.notes,

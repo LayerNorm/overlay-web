@@ -1399,6 +1399,31 @@ export const billingAccountBalances = pgTable('billing_account_balances', {
   index('billing_account_balances_mode_updated_idx').on(table.mode, table.updatedAt),
 ])
 
+export const billingAccountSpendLimits = pgTable('billing_account_spend_limits', {
+  billingAccountId: text('billing_account_id')
+    .notNull()
+    .references(() => billingAccounts.id, { onDelete: 'cascade' }),
+  subjectKind: text('subject_kind').notNull(),
+  subjectId: text('subject_id').notNull(),
+  limitMicros: bigint('limit_micros', { mode: 'number' }).notNull(),
+  usedMicros: bigint('used_micros', { mode: 'number' }).default(0).notNull(),
+  reservedMicros: bigint('reserved_micros', { mode: 'number' }).default(0).notNull(),
+  periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
+  periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
+  version: integer('version').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.billingAccountId, table.subjectKind, table.subjectId], name: 'billing_account_spend_limits_pk' }),
+  check('billing_account_spend_limits_subject_kind_check', sql`${table.subjectKind} IN ('member', 'programmatic')`),
+  check('billing_account_spend_limits_non_negative_check', sql`
+    ${table.limitMicros} >= 0 AND ${table.usedMicros} >= 0 AND ${table.reservedMicros} >= 0 AND
+    ${table.usedMicros} + ${table.reservedMicros} <= ${table.limitMicros}
+  `),
+  check('billing_account_spend_limits_period_check', sql`${table.periodEnd} > ${table.periodStart}`),
+  index('billing_account_spend_limits_account_updated_idx').on(table.billingAccountId, table.updatedAt),
+])
+
 export const usageBudgetAccounts = pgTable('usage_budget_accounts', {
   billingAccountId: text('billing_account_id')
     .references(() => billingAccounts.id, { onDelete: 'set null' }),
@@ -1443,6 +1468,8 @@ export const usageReservations = pgTable('usage_reservations', {
     .references(() => users.id, { onDelete: 'cascade' }),
   billingAccountId: text('billing_account_id')
     .references(() => billingAccounts.id, { onDelete: 'set null' }),
+  spendSubjectKind: text('spend_subject_kind'),
+  spendSubjectId: text('spend_subject_id'),
   kind: text('kind').notNull(),
   modelId: text('model_id'),
   reservedMicros: bigint('reserved_micros', { mode: 'number' }).notNull(),
@@ -1470,6 +1497,12 @@ export const usageReservations = pgTable('usage_reservations', {
   index('usage_reservations_status_expires_idx').on(table.status, table.expiresAt),
   index('usage_reservations_status_updated_idx').on(table.status, table.updatedAt),
   index('usage_reservations_billing_account_created_idx').on(table.billingAccountId, table.createdAt),
+  index('usage_reservations_billing_account_status_created_idx')
+    .on(table.billingAccountId, table.status, table.createdAt),
+  check('usage_reservations_spend_subject_check', sql`
+    (${table.spendSubjectKind} IS NULL AND ${table.spendSubjectId} IS NULL) OR
+    (${table.spendSubjectKind} IN ('member', 'programmatic') AND ${table.spendSubjectId} IS NOT NULL)
+  `),
   check('usage_reservations_reconciliation_resolution_check', sql`
     ${table.reconciliationResolution} IS NULL OR
     ${table.reconciliationResolution} IN ('finalized', 'released')

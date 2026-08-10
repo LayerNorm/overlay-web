@@ -15,6 +15,11 @@ import {
   type BillingBalanceSnapshot,
   type BillingSubscriptionVerificationRow,
 } from '@/shared/billing/billing-account-migration'
+import {
+  assertBillingSpendSubject,
+  type BillingAccountSpendLimitRecord,
+  type BillingSpendSubject,
+} from '@/shared/billing/billing-payer'
 import type {
   BillingEntitlementsRecord,
   BillingRepository,
@@ -62,6 +67,20 @@ type BillingAccountRow = {
   workspaceId: string | null
 }
 
+type BillingSpendLimitRow = {
+  billingAccountId: string
+  createdAt: Date | string
+  limitMicros: number | string
+  periodEnd: Date | string
+  periodStart: Date | string
+  reservedMicros: number | string
+  subjectId: string
+  subjectKind: 'member' | 'programmatic'
+  updatedAt: Date | string
+  usedMicros: number | string
+  version: number
+}
+
 type Transaction = Parameters<Parameters<OverlayPostgresDb['transaction']>[0]>[0]
 
 export class PostgresBillingRepository implements BillingRepository, BillingWebhookRepository {
@@ -72,6 +91,37 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     if (!userId) throw new Error('billing_account_user_required')
     return await this.db.transaction(async (tx) => {
       const account = await ensurePersonalAccount(tx, userId)
+      return billingAccountRecord(account)
+    })
+  }
+
+  async ensureWorkspaceBillingAccount(args: {
+    primaryBillingContactUserId: string
+    workspaceId: string
+  }): Promise<BillingAccountRecord> {
+    const workspaceId = args.workspaceId.trim()
+    const primaryBillingContactUserId = args.primaryBillingContactUserId.trim()
+    if (!workspaceId) throw new Error('billing_account_workspace_required')
+    if (!primaryBillingContactUserId) throw new Error('billing_account_contact_required')
+    return await this.db.transaction(async (tx) => {
+      await tx.execute(sql`
+        INSERT INTO billing_accounts (
+          id, scope, workspace_id, status, primary_billing_contact_user_id,
+          pricing_version, markup_basis_points
+        ) VALUES (
+          ${`ba_${randomUUID().replaceAll('-', '')}`}, 'workspace', ${workspaceId}, 'active',
+          ${primaryBillingContactUserId}, ${CURRENT_BILLING_ACCOUNT_PRICING_VERSION},
+          ${CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS}
+        )
+        ON CONFLICT DO NOTHING
+      `)
+      const account = await selectWorkspaceBillingAccount(tx, workspaceId)
+      if (!account) throw new Error('Workspace billing account could not be created')
+      await tx.execute(sql`
+        INSERT INTO billing_account_balances (billing_account_id, mode)
+        VALUES (${account.billingAccountId}, 'budgeted')
+        ON CONFLICT (billing_account_id) DO NOTHING
+      `)
       return billingAccountRecord(account)
     })
   }
@@ -219,6 +269,78 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       status: row.status,
       userId: row.userId,
     }))
+  }
+
+  async getBillingAccountSpendLimitByServer(args: {
+    billingAccountId: string
+    subject: BillingSpendSubject
+  }): Promise<BillingAccountSpendLimitRecord | null> {
+    assertBillingSpendSubject(args.subject)
+    const result = await this.db.execute<BillingSpendLimitRow>(sql`
+      ${billingSpendLimitSelect()}
+      WHERE billing_account_id = ${args.billingAccountId.trim()}
+        AND subject_kind = ${args.subject.kind}
+        AND subject_id = ${args.subject.id.trim()}
+      LIMIT 1
+    `)
+    return result.rows[0] ? billingSpendLimitRecord(result.rows[0]) : null
+  }
+
+  async upsertBillingAccountSpendLimit(args: {
+    billingAccountId: string
+    limitCents: number
+    periodEnd: number
+    periodStart: number
+    subject: BillingSpendSubject
+  }): Promise<BillingAccountSpendLimitRecord> {
+    assertBillingSpendSubject(args.subject)
+    if (!Number.isFinite(args.limitCents) || args.limitCents < 0) throw new Error('billing_spend_limit_invalid')
+    if (!Number.isFinite(args.periodStart) || !Number.isFinite(args.periodEnd) || args.periodEnd <= args.periodStart) {
+      throw new Error('billing_spend_limit_period_invalid')
+    }
+    const result = await this.db.execute<BillingSpendLimitRow>(sql`
+      INSERT INTO billing_account_spend_limits (
+        billing_account_id, subject_kind, subject_id, limit_micros,
+        period_start, period_end
+      )
+      SELECT ${args.billingAccountId.trim()}, ${args.subject.kind}, ${args.subject.id.trim()},
+             ${Math.round(args.limitCents * MICROS_PER_CENT)},
+             ${new Date(args.periodStart)}, ${new Date(args.periodEnd)}
+      FROM billing_accounts
+      WHERE id = ${args.billingAccountId.trim()} AND status = 'active'
+      ON CONFLICT (billing_account_id, subject_kind, subject_id) DO UPDATE SET
+        limit_micros = EXCLUDED.limit_micros,
+        used_micros = CASE
+          WHEN billing_account_spend_limits.period_start = EXCLUDED.period_start
+           AND billing_account_spend_limits.period_end = EXCLUDED.period_end
+          THEN billing_account_spend_limits.used_micros ELSE 0 END,
+        reserved_micros = CASE
+          WHEN billing_account_spend_limits.period_start = EXCLUDED.period_start
+           AND billing_account_spend_limits.period_end = EXCLUDED.period_end
+          THEN billing_account_spend_limits.reserved_micros ELSE 0 END,
+        period_start = EXCLUDED.period_start,
+        period_end = EXCLUDED.period_end,
+        version = billing_account_spend_limits.version + 1,
+        updated_at = now()
+      WHERE CASE
+        WHEN billing_account_spend_limits.period_start = EXCLUDED.period_start
+         AND billing_account_spend_limits.period_end = EXCLUDED.period_end
+        THEN billing_account_spend_limits.used_micros + billing_account_spend_limits.reserved_micros
+        ELSE billing_account_spend_limits.reserved_micros END <= EXCLUDED.limit_micros
+        AND (
+          (billing_account_spend_limits.period_start = EXCLUDED.period_start
+           AND billing_account_spend_limits.period_end = EXCLUDED.period_end)
+          OR billing_account_spend_limits.reserved_micros = 0
+        )
+      RETURNING billing_account_id AS "billingAccountId", subject_kind AS "subjectKind",
+                subject_id AS "subjectId", limit_micros AS "limitMicros",
+                used_micros AS "usedMicros", reserved_micros AS "reservedMicros",
+                period_start AS "periodStart", period_end AS "periodEnd", version,
+                created_at AS "createdAt", updated_at AS "updatedAt"
+    `)
+    const row = result.rows[0]
+    if (!row) throw new Error('billing_spend_limit_below_committed_or_account_inactive')
+    return billingSpendLimitRecord(row)
   }
 
   async listAdministrativeUsage(args: {
@@ -878,6 +1000,45 @@ async function selectPersonalBillingAccount(
     LIMIT 1
   `)
   return result.rows[0] ?? null
+}
+
+async function selectWorkspaceBillingAccount(
+  executor: BillingAccountExecutor,
+  workspaceId: string,
+): Promise<BillingAccountRow | null> {
+  if (!workspaceId) return null
+  const result = await executor.execute<BillingAccountRow>(sql`
+    ${billingAccountSelect()}
+    WHERE account.scope = 'workspace' AND account.workspace_id = ${workspaceId}
+    LIMIT 1
+  `)
+  return result.rows[0] ?? null
+}
+
+function billingSpendLimitSelect() {
+  return sql`
+    SELECT billing_account_id AS "billingAccountId", subject_kind AS "subjectKind",
+           subject_id AS "subjectId", limit_micros AS "limitMicros",
+           used_micros AS "usedMicros", reserved_micros AS "reservedMicros",
+           period_start AS "periodStart", period_end AS "periodEnd", version,
+           created_at AS "createdAt", updated_at AS "updatedAt"
+    FROM billing_account_spend_limits
+  `
+}
+
+function billingSpendLimitRecord(row: BillingSpendLimitRow): BillingAccountSpendLimitRecord {
+  return {
+    billingAccountId: row.billingAccountId,
+    createdAt: millisValue(row.createdAt),
+    limitCents: Number(row.limitMicros) / MICROS_PER_CENT,
+    periodEnd: millisValue(row.periodEnd),
+    periodStart: millisValue(row.periodStart),
+    reservedCents: Number(row.reservedMicros) / MICROS_PER_CENT,
+    subject: { id: row.subjectId, kind: row.subjectKind },
+    updatedAt: millisValue(row.updatedAt),
+    usedCents: Number(row.usedMicros) / MICROS_PER_CENT,
+    version: row.version,
+  }
 }
 
 function billingAccountSelect() {

@@ -54,6 +54,8 @@ Stripe is the hosted billing provider for subscriptions, top-ups, auto top-up pr
 
 Billing ownership is represented separately from user identity by an additive `BillingAccount` contract. An account has exactly one scope owner: a user for `personal`, or a workspace for `workspace`. `markup_25_v1` explicitly preserves the current 25% markup policy. New personal accounts start with an empty `budgeted` balance so account creation never grants spend implicitly. The compatibility migration creates one personal account per user, attaches legacy billing and usage rows, and dual-writes user and account identifiers plus canonical subscription/balance shadows. User-keyed records remain the enforcement and rollback source until balance parity and exact Stripe-subscription verification pass; the migration never switches reads automatically.
 
+`BillingPayerResolver` separates workspace authorization from payment selection. The `workspaceWallets` feature flag defaults off and makes the resolver select the personal path. When enabled, organization calls that adopt the resolver require an active workspace account and have no personal fallback. Existing spend call sites remain personal until explicitly migrated in a later rollout phase. Workspace reservations update the account-keyed balance and an optional `member` or `programmatic` fixed-period limit atomically; the original personal reservation method remains unchanged for rollback.
+
 Usage reservations have an evidence-gated recovery path. Work that expires before a provider starts is released automatically. Work that may have reached a provider is quarantined as `reconcile_required`; it must be finalized or released with a durable provider or internal-operation evidence reference. The five-minute Convex cron and Postgres worker expose queue depth and oldest age but never guess an ambiguous charge.
 
 Important code:
@@ -65,10 +67,12 @@ Important code:
 - `src/server/billing/stripe-billing.ts`
 - `src/server/billing/BillingCustomerService.ts`
 - `src/server/billing/BillingCheckoutService.ts`
+- `src/server/billing/BillingPayerResolver.ts`
 - `src/server/billing/providers/stripe-billing-provider.ts`
 - `convex/billing/subscriptions.ts`
 - `convex/billing/accounts.ts`
 - `convex/billing/accountMigration.ts`
+- `convex/billing/spendLimits.ts`
 - `convex/platform/usage.ts`
 - `convex/billing/stripe.ts`
 - `convex/billing/stripeSync.ts`

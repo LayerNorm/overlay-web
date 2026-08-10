@@ -54,6 +54,39 @@ export async function ensurePersonalBillingAccount(
   return created
 }
 
+export async function ensureWorkspaceBillingAccount(
+  ctx: MutationCtx,
+  args: { primaryBillingContactUserId: string; workspaceId: string },
+): Promise<Doc<'billingAccounts'>> {
+  const workspaceId = args.workspaceId.trim()
+  const primaryBillingContactUserId = args.primaryBillingContactUserId.trim()
+  if (!workspaceId) throw new Error('billing_account_workspace_required')
+  if (!primaryBillingContactUserId) throw new Error('billing_account_contact_required')
+  const existing = await uniqueWorkspaceAccount(ctx, workspaceId)
+  if (existing) {
+    await ensureEmptyBalance(ctx, existing.billingAccountId)
+    return existing
+  }
+  const now = Date.now()
+  const account: Omit<Doc<'billingAccounts'>, '_creationTime' | '_id'> = {
+    billingAccountId: `ba_${crypto.randomUUID().replaceAll('-', '')}`,
+    createdAt: now,
+    markupBasisPoints: CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS,
+    pricingVersion: CURRENT_BILLING_ACCOUNT_PRICING_VERSION,
+    primaryBillingContactUserId,
+    scope: 'workspace',
+    status: 'active',
+    updatedAt: now,
+    workspaceId,
+  }
+  assertBillingAccountOwnership(account)
+  const id = await ctx.db.insert('billingAccounts', account)
+  await ensureEmptyBalance(ctx, account.billingAccountId)
+  const created = await ctx.db.get(id)
+  if (!created) throw new Error('billing_account_creation_failed')
+  return created
+}
+
 export async function uniquePersonalAccount(
   ctx: QueryCtx | MutationCtx,
   rawUserId: string,
@@ -65,6 +98,22 @@ export async function uniquePersonalAccount(
     .withIndex('by_userId', (q) => q.eq('userId', userId))
     .take(2)
   if (rows.length > 1) throw new Error('duplicate_personal_billing_accounts')
+  const account = rows[0]
+  if (!account) return null
+  assertBillingAccountOwnership(account)
+  return account
+}
+
+export async function uniqueWorkspaceAccount(
+  ctx: QueryCtx | MutationCtx,
+  rawWorkspaceId: string,
+): Promise<Doc<'billingAccounts'> | null> {
+  const workspaceId = rawWorkspaceId.trim()
+  if (!workspaceId) return null
+  const rows = await ctx.db.query('billingAccounts')
+    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
+    .take(2)
+  if (rows.length > 1) throw new Error('duplicate_workspace_billing_accounts')
   const account = rows[0]
   if (!account) return null
   assertBillingAccountOwnership(account)

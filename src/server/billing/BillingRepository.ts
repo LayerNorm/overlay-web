@@ -2,6 +2,10 @@ import 'server-only'
 
 import type { BillingAccountRecord } from '@/shared/billing/billing-account'
 import type {
+  BillingAccountSpendLimitRecord,
+  BillingSpendSubject,
+} from '@/shared/billing/billing-payer'
+import type {
   BillingBalanceParityReport,
   BillingSubscriptionVerificationRow,
 } from '@/shared/billing/billing-account-migration'
@@ -101,6 +105,10 @@ export interface BillingRepository {
   ensurePersonalBillingAccount(args: {
     userId: string
   }): Promise<BillingAccountRecord>
+  ensureWorkspaceBillingAccount(args: {
+    primaryBillingContactUserId: string
+    workspaceId: string
+  }): Promise<BillingAccountRecord>
   getBillingAccountByIdByServer(args: {
     billingAccountId: string
   }): Promise<BillingAccountRecord | null>
@@ -116,6 +124,17 @@ export interface BillingRepository {
   listSubscriptionVerificationRowsByServer(args?: {
     limit?: number
   }): Promise<BillingSubscriptionVerificationRow[]>
+  getBillingAccountSpendLimitByServer(args: {
+    billingAccountId: string
+    subject: BillingSpendSubject
+  }): Promise<BillingAccountSpendLimitRecord | null>
+  upsertBillingAccountSpendLimit(args: {
+    billingAccountId: string
+    limitCents: number
+    periodEnd: number
+    periodStart: number
+    subject: BillingSpendSubject
+  }): Promise<BillingAccountSpendLimitRecord>
   listAdministrativeUsage(args?: {
     limit?: number
     userId?: string

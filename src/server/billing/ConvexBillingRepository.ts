@@ -8,6 +8,10 @@ import type {
   BillingSubscriptionVerificationRow,
 } from '@/shared/billing/billing-account-migration'
 import type {
+  BillingAccountSpendLimitRecord,
+  BillingSpendSubject,
+} from '@/shared/billing/billing-payer'
+import type {
   BillingEntitlementsRecord,
   BillingRepository,
   BillingSubscriptionRecord,
@@ -41,6 +45,19 @@ export class ConvexBillingRepository implements BillingRepository, BillingWebhoo
       { throwOnError: true },
     )
     if (!account) throw new Error('Failed to ensure personal billing account')
+    return account
+  }
+
+  async ensureWorkspaceBillingAccount(args: {
+    primaryBillingContactUserId: string
+    workspaceId: string
+  }): Promise<BillingAccountRecord> {
+    const account = await convex.mutation<BillingAccountRecord>(
+      'billing/accounts:ensureWorkspaceByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+    if (!account) throw new Error('Failed to ensure workspace billing account')
     return account
   }
 
@@ -92,6 +109,33 @@ export class ConvexBillingRepository implements BillingRepository, BillingWebhoo
       { ...args, serverSecret: this.serverSecret },
       { throwOnError: true },
     ) ?? []
+  }
+
+  async getBillingAccountSpendLimitByServer(args: {
+    billingAccountId: string
+    subject: BillingSpendSubject
+  }): Promise<BillingAccountSpendLimitRecord | null> {
+    return await convex.query<BillingAccountSpendLimitRecord | null>(
+      'billing/spendLimits:getByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+  }
+
+  async upsertBillingAccountSpendLimit(args: {
+    billingAccountId: string
+    limitCents: number
+    periodEnd: number
+    periodStart: number
+    subject: BillingSpendSubject
+  }): Promise<BillingAccountSpendLimitRecord> {
+    const limit = await convex.mutation<BillingAccountSpendLimitRecord>(
+      'billing/spendLimits:upsertByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+    if (!limit) throw new Error('Failed to update billing account spend limit')
+    return limit
   }
 
   async listAdministrativeUsage(args: {

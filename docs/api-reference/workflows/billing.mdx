@@ -43,6 +43,12 @@ npm run billing:verify:personal-subscriptions
 
 The compatibility reads still use the personal legacy records. A parity report is a gate, not permission to switch reads automatically.
 
+## Workspace reservation foundation
+
+`workspaceWallets` is off by default. With the flag off, the payer resolver returns the existing personal account and the legacy personal reservation method remains the rollback path. With the flag on, an organization request routed through the payer resolver must resolve to an active workspace billing account; a missing, suspended, or mismatched workspace account fails closed and never spends a member's personal balance. Existing spend call sites stay on the personal path until a later rollout phase explicitly adopts the resolver.
+
+Workspace reservations use the account-keyed balance and optionally a fixed-period subject limit. Subjects are either `member` for human-attributed spend or `programmatic` for shared agents, automations, and service callers. Reservation creation locks the workspace balance and subject limit in one transaction. Finalize, release, expiry, and evidence-based reconciliation update the workspace balance and subject counters together. Wallet creation grants no credits; funding remains an explicit later operation.
+
 ## Reservation reconciliation
 
 The usage ledger automatically releases expired reservations only when provider work never started. Provider-started reservations are quarantined until authoritative evidence establishes whether to finalize the measured cost or release the reservation.
@@ -54,3 +60,8 @@ npm run billing:audit:reconciliation
 ```
 
 The audit defaults to the development Convex deployment. Production inspection requires an explicit `--target=prod --allow-prod=true` invocation of the underlying script. Resolution is server-only, requires a non-empty evidence source, evidence reference, and reason, and is idempotent for exact replays. A conflicting second resolution fails closed.
+
+## Post-plan maintenance queue
+
+- [ ] Fix the unrelated on-prem Convex inventory mismatch in the existing chat and auth files.
+- [ ] Fix the unrelated conversation smoke-test index mismatch.

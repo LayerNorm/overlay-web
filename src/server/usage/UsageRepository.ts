@@ -5,6 +5,7 @@ import type {
   UsageReconciliationEvidence,
   UsageReconciliationResolution,
 } from '@/shared/billing/usage-reconciliation'
+import type { ResolvedBillingPayer } from '@/shared/billing/billing-payer'
 
 export type UsageSpendKind =
   | 'ask'
@@ -47,7 +48,7 @@ export type UsageReservationResult =
     }
   | {
       ok: false
-      code: 'insufficient_budget'
+      code: 'insufficient_budget' | 'spend_limit_exceeded'
       entitlements: Entitlements
       remainingCents: number
       requiredCents: number
@@ -85,6 +86,18 @@ export interface UsageRepository {
     metadata?: Record<string, unknown>
     modelId?: string
     operationId: string
+    requestFingerprint: string
+    reservationId: string
+    reservedCents: number
+    userId: string
+  }): Promise<UsageReservationResult>
+  reserveWorkspace(args: {
+    expiresAt?: number
+    kind: UsageSpendKind
+    metadata?: Record<string, unknown>
+    modelId?: string
+    operationId: string
+    payer: ResolvedBillingPayer & { scope: 'workspace' }
     requestFingerprint: string
     reservationId: string
     reservedCents: number
