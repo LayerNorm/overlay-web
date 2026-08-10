@@ -513,9 +513,10 @@ export function DirectMessageExperience({
       // decide whether its critical transcript can open.
       void Promise.allSettled([loadPresence(), loadCollaboration()])
       void Promise.all([loadParticipants(), loadMessages()])
-        .catch(() => {
-          if (!cancelled) setNotice('This conversation is unavailable.')
-        })
+        // A room can receive its transcript through the realtime transport
+        // while one of these initial BFF reads is transiently unavailable.
+        // Do not turn that recoverable race into a false access failure.
+        .catch(() => undefined)
         .finally(() => {
           if (!cancelled) setLoading(false)
         })

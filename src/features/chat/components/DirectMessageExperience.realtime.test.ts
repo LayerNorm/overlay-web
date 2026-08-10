@@ -9,4 +9,5 @@ test('Convex room sends use one reconciliation transport', async () => {
   assert.match(source, /appDataCapabilities\.provider === 'convex' && !convexRoomSubscriptionEnabled/)
   assert.match(source, /if \(!convexRoomSubscriptionEnabled\) await loadMessages\(\)/)
   assert.match(source, /const humanMessageId = saved\.messageId/)
+  assert.doesNotMatch(source, /setNotice\('This conversation is unavailable\.'\)/)
 })
