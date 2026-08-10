@@ -30,7 +30,6 @@ import { getExtensionComponent } from '@/extensions/registry'
 import dynamic from 'next/dynamic'
 import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
 import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
-import { ApiKeySettings } from '@/features/settings/components/ApiKeySettings'
 import { WorkspaceSettingsPanel } from '@/features/workspaces/components/WorkspaceSettingsPanel'
 
 const MemoriesView = dynamic(
@@ -57,7 +56,7 @@ const IMPLEMENTED_SECTION_IDS = new Set<string>([
 export default function SettingsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { capabilities, appDataCapabilities } = useOverlayCapabilities()
+  const { capabilities } = useOverlayCapabilities()
   const appShell = useMemo(
     () => resolveOverlayAppShellConfig(overlayAppConfig, { capabilities }),
     [capabilities],
@@ -195,10 +194,7 @@ export default function SettingsPage() {
           )}
 
           {!isLoading && section === 'account' && (
-            <div className="space-y-5">
-              <AccountPageContent embedded />
-              {appDataCapabilities.supportsApiKeys ? <ApiKeySettings /> : null}
-            </div>
+            <AccountPageContent embedded />
           )}
 
           {!isLoading && section === 'workspace' && (

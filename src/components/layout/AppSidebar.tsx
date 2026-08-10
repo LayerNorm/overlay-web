@@ -3,8 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore, Suspense } from 'react'
-import { createPortal } from 'react-dom'
+import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore, Suspense } from 'react'
 import {
   CreditCard, FileText, House, LayoutDashboard, MessageSquare, ScrollText, User,
   ChevronUp, Loader2, Menu, X, Settings, ChevronLeft, ChevronRight, ShieldCheck,
@@ -22,6 +21,7 @@ import {
   SidebarShell,
   SidebarNav,
   SidebarSection,
+  FloatingMenu,
 } from '@overlay/ui/primitives'
 import {
   AgentsInlinePanel,
@@ -215,14 +215,9 @@ export default function AppSidebar({
   const [collaborationUnread, setCollaborationUnread] = useState({ dms: 0, channels: 0, total: 0 })
   const [projectsPanelRefreshKey, setProjectsPanelRefreshKey] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
-  const accountMenuPortalRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
   const chatViewNavigationVersionRef = useRef(0)
-  const [accountMenuPosition, setAccountMenuPosition] = useState<{
-    left: number
-    bottom: number
-  } | null>(null)
   const sidebarActions = useMemo(
     () => appShell.sidebarActions.filter((action) => (
       publicShowcase || !user || allows(getSidebarActionAuthorizationRequirement(action.actionKey))
@@ -255,7 +250,6 @@ export default function AppSidebar({
   } = useAppSidebarActions({
     user,
     pathname,
-    searchParams: currentSearchParams,
     isFreeTier: sidebarIsFreeTier,
     requireAuth,
     onCloseMobileMenu: () => {
@@ -484,46 +478,6 @@ export default function AppSidebar({
     workspaceSurface,
     resolveWorkspaceSurface,
   ])
-
-  useEffect(() => {
-    if (!accountMenuOpen) return
-    function handleClick(e: MouseEvent) {
-      const target = e.target as Node
-      const insideDesktop = menuRef.current?.contains(target) ?? false
-      const insidePortal = accountMenuPortalRef.current?.contains(target) ?? false
-      const insideMobile = mobileMenuRef.current?.contains(target) ?? false
-      if (!insideDesktop && !insidePortal && !insideMobile) {
-        setAccountMenuOpen(false)
-      }
-    }
-    document.addEventListener('click', handleClick)
-    return () => document.removeEventListener('click', handleClick)
-  }, [accountMenuOpen])
-
-  useLayoutEffect(() => {
-    if (!accountMenuOpen || workspace) return
-    function updatePosition() {
-      const root = menuRef.current
-      if (!root) return
-      const rect = root.getBoundingClientRect()
-      const width = 256
-      const left = Math.min(
-        Math.max(8, rect.left),
-        Math.max(8, window.innerWidth - width - 8),
-      )
-      setAccountMenuPosition({
-        left,
-        bottom: Math.max(8, window.innerHeight - rect.top + 6),
-      })
-    }
-    updatePosition()
-    window.addEventListener('resize', updatePosition)
-    window.addEventListener('scroll', updatePosition, true)
-    return () => {
-      window.removeEventListener('resize', updatePosition)
-      window.removeEventListener('scroll', updatePosition, true)
-    }
-  }, [accountMenuOpen, workspace])
 
   useEffect(() => {
     if (!mobileAccountOpen) return
@@ -1058,23 +1012,17 @@ export default function AppSidebar({
 
   const railFooterItems: PrimaryRailItem[] = showcaseRailFooterItems
 
-  const desktopAccountMenu = accountMenuOpen && !workspace && typeof document !== 'undefined'
-    ? createPortal(
-      <div
-        ref={accountMenuPortalRef}
-        className="overlay-fade-in fixed z-[10080] w-64 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
-        style={{
-          left: accountMenuPosition?.left ?? 8,
-          bottom: accountMenuPosition?.bottom ?? 8,
-          visibility: accountMenuPosition ? 'visible' : 'hidden',
-        }}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        {accountMenuContent}
-      </div>,
-      document.body,
-    )
-    : null
+  const desktopAccountMenu = !workspace ? (
+    <FloatingMenu
+      anchorRef={menuRef}
+      open={accountMenuOpen}
+      onOpenChange={setAccountMenuOpen}
+      side="top"
+      className="w-64"
+    >
+      {accountMenuContent}
+    </FloatingMenu>
+  ) : null
 
   const desktopAccountSlot = (
     <div ref={menuRef} className="relative">

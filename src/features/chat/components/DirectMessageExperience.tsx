@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
+import { FloatingMenu, MenuItem } from '@overlay/ui/primitives'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { AttachmentPreviewDialog } from '@overlay/chat-react'
@@ -202,6 +203,7 @@ export function DirectMessageExperience({
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const menuTriggerRef = useRef<HTMLButtonElement>(null)
   const [roomPanel, setRoomPanel] = useState<RoomPanelKind | null>(null)
   const [addPeopleOpen, setAddPeopleOpen] = useState(false)
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
@@ -1434,6 +1436,7 @@ export function DirectMessageExperience({
                   {participants.length}
                 </button>
                 <button
+                  ref={menuTriggerRef}
                   type="button"
                   aria-label="Conversation options"
                   onClick={() => setMenuOpen((open) => !open)}
@@ -1441,27 +1444,40 @@ export function DirectMessageExperience({
                 >
                   <MoreHorizontal size={15} />
                 </button>
-                {menuOpen ? (
-                  <div className="absolute right-0 top-10 z-30 w-48 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-1 shadow-xl">
+                <FloatingMenu
+                  anchorRef={menuTriggerRef}
+                  open={menuOpen}
+                  onOpenChange={setMenuOpen}
+                  align="end"
+                  className="w-48 p-1"
+                >
                     <MenuButton
                       icon={currentParticipant?.notificationLevel === 'muted' ? Bell : BellOff}
                       label={currentParticipant?.notificationLevel === 'muted' ? 'Unmute' : 'Mute'}
-                      onClick={() => void updateState({
-                        notificationLevel: currentParticipant?.notificationLevel === 'muted' ? 'all' : 'muted',
-                      }, currentParticipant?.notificationLevel === 'muted' ? 'Notifications on' : 'Conversation muted')}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        void updateState({
+                          notificationLevel: currentParticipant?.notificationLevel === 'muted' ? 'all' : 'muted',
+                        }, currentParticipant?.notificationLevel === 'muted' ? 'Notifications on' : 'Conversation muted')
+                      }}
                     />
                     <MenuButton
                       icon={Bell}
                       label="Mark unread"
-                      onClick={() => void updateState({ markUnread: true }, 'Marked unread')}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        void updateState({ markUnread: true }, 'Marked unread')
+                      }}
                     />
                     <MenuButton
                       icon={Archive}
                       label="Archive"
-                      onClick={() => void updateState({ archived: true }, 'Conversation archived')}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        void updateState({ archived: true }, 'Conversation archived')
+                      }}
                     />
-                  </div>
-                ) : null}
+                </FloatingMenu>
               </div>
             )}
           />
@@ -1722,13 +1738,13 @@ function MenuButton({
   onClick(): void
 }) {
   return (
-    <button
+    <MenuItem
       type="button"
       onClick={onClick}
-      className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+      className="h-8 rounded-md px-2"
     >
       <Icon size={13} />
       {label}
-    </button>
+    </MenuItem>
   )
 }
