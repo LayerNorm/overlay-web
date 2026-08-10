@@ -10,6 +10,12 @@ import type {
   WorkspaceListResponse,
   WorkspaceManagementResponse,
   WorkspaceManagementView,
+  WorkspaceBillingCheckoutInput,
+  WorkspaceBillingCheckoutResponse,
+  WorkspaceBillingSummaryResponse,
+  WorkspaceBillingTopUpInput,
+  WorkspaceBillingVerificationInput,
+  WorkspaceBillingVerificationResponse,
   WorkspaceMemberMutationInput,
   WorkspaceMemberMutationResponse,
   WorkspaceSharingPolicyResponse,
@@ -43,6 +49,52 @@ export class WorkspacesClient {
     return this.http.json<WorkspaceCreateResponse>(
       '/api/v1/workspaces',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
+    )
+  }
+
+  billing(workspaceId: string, init?: RequestInit) {
+    return this.http.json<WorkspaceBillingSummaryResponse>(
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing`,
+      workspaceInit(workspaceId, init),
+    )
+  }
+
+  initializeBilling(workspaceId: string, init?: RequestInit) {
+    return this.http.json<WorkspaceBillingSummaryResponse>(
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing`,
+      workspaceInit(workspaceId, { ...init, method: 'POST' }),
+    )
+  }
+
+  createBillingCheckout(workspaceId: string, body: WorkspaceBillingCheckoutInput, init?: RequestInit) {
+    return this.http.json<WorkspaceBillingCheckoutResponse>(
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/checkout`,
+      this.http.jsonRequest(body, { ...workspaceInit(workspaceId, init), method: 'POST' }),
+    )
+  }
+
+  createBillingTopUp(workspaceId: string, body: WorkspaceBillingTopUpInput, init?: RequestInit) {
+    return this.http.json<WorkspaceBillingCheckoutResponse>(
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/top-ups`,
+      this.http.jsonRequest(body, { ...workspaceInit(workspaceId, init), method: 'POST' }),
+    )
+  }
+
+  createBillingPortal(workspaceId: string, init?: RequestInit) {
+    return this.http.json<WorkspaceBillingCheckoutResponse>(
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/portal`,
+      workspaceInit(workspaceId, { ...init, method: 'POST' }),
+    )
+  }
+
+  verifyBillingCheckout(
+    workspaceId: string,
+    body: WorkspaceBillingVerificationInput,
+    init?: RequestInit,
+  ) {
+    return this.http.json<WorkspaceBillingVerificationResponse>(
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/verify`,
+      this.http.jsonRequest(body, { ...workspaceInit(workspaceId, init), method: 'POST' }),
     )
   }
 

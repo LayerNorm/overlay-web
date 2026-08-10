@@ -42,6 +42,45 @@ test('workspace reservations atomically enforce account and subject limits witho
       primaryBillingContactUserId: userId,
       workspaceId,
     })
+    const periodStartMs = Date.now()
+    await billing.upsertBillingAccountSubscription({
+      billingAccountId: account.billingAccountId,
+      stripeCustomerId: `${scope}_customer`,
+      stripeSubscriptionId: `${scope}_subscription`,
+      stripePriceId: `${scope}_price`,
+      stripeQuantity: 8,
+      planKind: 'paid',
+      planAmountCents: 800,
+      status: 'active',
+      currentPeriodStart: periodStartMs,
+      currentPeriodEnd: periodStartMs + 30 * 24 * 60 * 60_000,
+      providerEventCreatedAt: 200_000,
+    })
+    const stale = await billing.upsertBillingAccountSubscription({
+      billingAccountId: account.billingAccountId,
+      planKind: 'paid',
+      planAmountCents: 800,
+      status: 'past_due',
+      providerEventCreatedAt: 100_000,
+    })
+    assert.equal(stale.applied, false)
+    assert.equal((await billing.getBillingAccountSubscriptionByServer({
+      billingAccountId: account.billingAccountId,
+    }))?.status, 'active')
+    const topUp = {
+      actorUserId: userId,
+      billingAccountId: account.billingAccountId,
+      amountCents: 800,
+      source: 'manual' as const,
+      status: 'succeeded' as const,
+      stripeCheckoutSessionId: `${scope}_checkout`,
+      stripePaymentIntentId: `${scope}_payment_intent`,
+    }
+    assert.equal((await billing.recordBillingAccountTopUp(topUp)).granted, true)
+    assert.equal((await billing.recordBillingAccountTopUp(topUp)).granted, false)
+    assert.equal((await billing.getBillingAccountEntitlementsByServer({
+      billingAccountId: account.billingAccountId,
+    }))?.topUpBalanceCents, 800)
     await db.execute(sql`
       UPDATE billing_account_balances
       SET included_micros = 10000000, updated_at = now()

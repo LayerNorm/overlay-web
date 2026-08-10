@@ -22,6 +22,7 @@ import {
 } from '@/shared/billing/billing-payer'
 import type {
   BillingEntitlementsRecord,
+  BillingAccountEntitlementsRecord,
   BillingRepository,
   BillingSubscriptionRecord,
   BudgetTopUpRecord,
@@ -179,6 +180,116 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       LIMIT 1
     `)
     return result.rows[0] ? billingAccountRecord(result.rows[0]) : null
+  }
+
+  async getBillingAccountSubscriptionByServer(args: {
+    billingAccountId: string
+  }): Promise<BillingSubscriptionRecord | null> {
+    const result = await this.db.execute<{
+      autoTopUpAmountCents: number
+      autoTopUpEnabled: boolean
+      billingAccountId: string
+      currentPeriodEnd: Date | string | null
+      currentPeriodStart: Date | string | null
+      offSessionConsentAt: Date | string | null
+      planAmountCents: number
+      planKind: 'free' | 'paid'
+      providerCustomerId: string | null
+      providerSubscriptionId: string | null
+      status: 'active' | 'canceled' | 'past_due' | 'trialing'
+    }>(sql`
+      SELECT billing_account_id AS "billingAccountId",
+             provider_customer_id AS "providerCustomerId",
+             provider_subscription_id AS "providerSubscriptionId",
+             plan_kind AS "planKind", plan_amount_cents AS "planAmountCents", status,
+             auto_top_up_enabled AS "autoTopUpEnabled",
+             auto_top_up_amount_cents AS "autoTopUpAmountCents",
+             off_session_consent_at AS "offSessionConsentAt",
+             current_period_start AS "currentPeriodStart",
+             current_period_end AS "currentPeriodEnd"
+      FROM billing_account_subscriptions
+      WHERE billing_account_id = ${args.billingAccountId.trim()}
+      LIMIT 1
+    `)
+    const row = result.rows[0]
+    if (!row) return null
+    return {
+      billingAccountId: row.billingAccountId,
+      stripeCustomerId: row.providerCustomerId ?? undefined,
+      stripeSubscriptionId: row.providerSubscriptionId ?? undefined,
+      tier: row.planKind === 'paid' ? 'pro' : 'free',
+      planKind: row.planKind,
+      planAmountCents: Number(row.planAmountCents),
+      status: row.status,
+      autoTopUpEnabled: row.autoTopUpEnabled,
+      autoTopUpAmountCents: Number(row.autoTopUpAmountCents),
+      offSessionConsentAt: row.offSessionConsentAt ? millisValue(row.offSessionConsentAt) : undefined,
+      currentPeriodStart: row.currentPeriodStart ? millisValue(row.currentPeriodStart) : undefined,
+      currentPeriodEnd: row.currentPeriodEnd ? millisValue(row.currentPeriodEnd) : undefined,
+    }
+  }
+
+  async getBillingAccountEntitlementsByServer(args: {
+    billingAccountId: string
+  }): Promise<BillingAccountEntitlementsRecord | null> {
+    const result = await this.db.execute<{
+      allowanceUsedMicros: number | string
+      billingAccountId: string
+      currentPeriodEnd: Date | string | null
+      includedMicros: number | string
+      institutionalGrantMicros: number | string
+      planAmountCents: number | null
+      planKind: 'free' | 'paid' | null
+      reservedMicros: number | string
+      status: 'active' | 'canceled' | 'past_due' | 'trialing' | null
+      topUpBalanceMicros: number | string
+      usedMicros: number | string
+    }>(sql`
+      SELECT balance.billing_account_id AS "billingAccountId",
+             balance.included_micros AS "includedMicros",
+             balance.institutional_grant_micros AS "institutionalGrantMicros",
+             balance.allowance_used_micros AS "allowanceUsedMicros",
+             balance.top_up_balance_micros AS "topUpBalanceMicros",
+             balance.used_micros AS "usedMicros", balance.reserved_micros AS "reservedMicros",
+             subscription.plan_kind AS "planKind", subscription.plan_amount_cents AS "planAmountCents",
+             subscription.status, subscription.current_period_end AS "currentPeriodEnd"
+      FROM billing_account_balances balance
+      JOIN billing_accounts account ON account.id = balance.billing_account_id
+      LEFT JOIN billing_account_subscriptions subscription
+        ON subscription.billing_account_id = balance.billing_account_id
+      WHERE balance.billing_account_id = ${args.billingAccountId.trim()} AND account.status = 'active'
+      LIMIT 1
+    `)
+    const row = result.rows[0]
+    if (!row) return null
+    const included = Number(row.includedMicros) / MICROS_PER_CENT
+    const grant = Number(row.institutionalGrantMicros) / MICROS_PER_CENT
+    const topUp = Number(row.topUpBalanceMicros) / MICROS_PER_CENT
+    const used = Number(row.usedMicros) / MICROS_PER_CENT
+    const reserved = Number(row.reservedMicros) / MICROS_PER_CENT
+    const total = included + grant + topUp
+    return {
+      billingAccountId: row.billingAccountId,
+      tier: row.planKind === 'paid' ? 'pro' : 'free',
+      planKind: row.planKind ?? 'free',
+      planAmountCents: Number(row.planAmountCents ?? 0),
+      status: row.status ?? 'active',
+      budgetUsedCents: used,
+      budgetTotalCents: total,
+      budgetRemainingCents: Math.max(0, total - used - reserved),
+      allowanceTotalCents: included + grant,
+      allowanceUsedCents: Number(row.allowanceUsedMicros) / MICROS_PER_CENT,
+      allowancePercentUsed: included + grant > 0
+        ? Math.min(100, (Number(row.allowanceUsedMicros) / MICROS_PER_CENT) / (included + grant) * 100)
+        : 0,
+      topUpBalanceCents: topUp,
+      autoTopUpEnabled: false,
+      autoTopUpAmountCents: 0,
+      autoTopUpConsentGranted: false,
+      creditsUsed: used,
+      creditsTotal: total,
+      billingPeriodEnd: row.currentPeriodEnd ? new Date(row.currentPeriodEnd).toISOString() : undefined,
+    }
   }
 
   async getPersonalBillingBalanceParityByServer(args: {
@@ -676,6 +787,94 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     return { userId: args.userId }
   }
 
+  async upsertBillingAccountSubscription(
+    args: Record<string, unknown> & { billingAccountId: string },
+  ): Promise<{ billingAccountId: string; applied: boolean }> {
+    const billingAccountId = args.billingAccountId.trim()
+    if (!billingAccountId) throw new Error('billing_account_id_required')
+    const provider = textValue(args.provider) ?? 'stripe'
+    const customerId = textValue(args.stripeCustomerId ?? args.providerCustomerId)
+    const subscriptionId = textValue(args.stripeSubscriptionId ?? args.providerSubscriptionId)
+    const planAmountCents = numberValue(args.planAmountCents) ?? 0
+    const incomingEventAt = dateValue(args.providerEventCreatedAt)
+    return await this.db.transaction(async (tx) => {
+      const account = await tx.execute<{ status: string }>(sql`
+        SELECT status FROM billing_accounts WHERE id = ${billingAccountId} FOR UPDATE
+      `)
+      if (!account.rows[0]) throw new Error('billing_account_not_found')
+      if (account.rows[0].status !== 'active') throw new Error('billing_account_inactive')
+      const previous = await tx.execute<{ currentPeriodStart: Date | string | null }>(sql`
+        SELECT current_period_start AS "currentPeriodStart"
+        FROM billing_account_subscriptions
+        WHERE billing_account_id = ${billingAccountId}
+        FOR UPDATE
+      `)
+      const incomingPeriodStart = dateValue(args.currentPeriodStart)
+      const previousPeriodStart = previous.rows[0]?.currentPeriodStart
+      const periodChanged = Boolean(
+        incomingPeriodStart && previousPeriodStart
+        && incomingPeriodStart.getTime() - new Date(previousPeriodStart).getTime() >= 60 * 60 * 1000,
+      )
+      const result = await tx.execute(sql`
+        INSERT INTO billing_account_subscriptions (
+          billing_account_id, provider, provider_customer_id, provider_subscription_id,
+          provider_price_id, provider_quantity, plan_kind, plan_version, plan_amount_cents,
+          markup_basis_points, status, auto_top_up_enabled, auto_top_up_amount_cents,
+          off_session_consent_at, current_period_start, current_period_end,
+          provider_event_created_at, updated_at
+        ) VALUES (
+          ${billingAccountId}, ${provider}, ${customerId ?? null}, ${subscriptionId ?? null},
+          ${textValue(args.stripePriceId ?? args.providerPriceId) ?? null},
+          ${numberValue(args.stripeQuantity ?? args.providerQuantity) ?? null},
+          ${planKindValue(args.planKind)}, 'variable_v2', ${planAmountCents},
+          ${numberValue(args.markupBasisPoints) ?? CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS},
+          ${statusValue(args.status)}, ${booleanValue(args.autoTopUpEnabled) ?? false},
+          ${numberValue(args.autoTopUpAmountCents) ?? 0}, ${dateValue(args.offSessionConsentAt)},
+          ${incomingPeriodStart}, ${dateValue(args.currentPeriodEnd)},
+          ${incomingEventAt}, now()
+        )
+        ON CONFLICT (billing_account_id) DO UPDATE SET
+          provider = EXCLUDED.provider,
+          provider_customer_id = COALESCE(EXCLUDED.provider_customer_id, billing_account_subscriptions.provider_customer_id),
+          provider_subscription_id = COALESCE(EXCLUDED.provider_subscription_id, billing_account_subscriptions.provider_subscription_id),
+          provider_price_id = COALESCE(EXCLUDED.provider_price_id, billing_account_subscriptions.provider_price_id),
+          provider_quantity = COALESCE(EXCLUDED.provider_quantity, billing_account_subscriptions.provider_quantity),
+          plan_kind = EXCLUDED.plan_kind, plan_amount_cents = EXCLUDED.plan_amount_cents,
+          markup_basis_points = EXCLUDED.markup_basis_points, status = EXCLUDED.status,
+          auto_top_up_enabled = EXCLUDED.auto_top_up_enabled,
+          auto_top_up_amount_cents = EXCLUDED.auto_top_up_amount_cents,
+          off_session_consent_at = COALESCE(EXCLUDED.off_session_consent_at, billing_account_subscriptions.off_session_consent_at),
+          current_period_start = COALESCE(EXCLUDED.current_period_start, billing_account_subscriptions.current_period_start),
+          current_period_end = COALESCE(EXCLUDED.current_period_end, billing_account_subscriptions.current_period_end),
+          provider_event_created_at = COALESCE(EXCLUDED.provider_event_created_at, billing_account_subscriptions.provider_event_created_at),
+          updated_at = now()
+        WHERE EXCLUDED.provider_event_created_at IS NULL
+           OR billing_account_subscriptions.provider_event_created_at IS NULL
+           OR EXCLUDED.provider_event_created_at >= billing_account_subscriptions.provider_event_created_at
+        RETURNING billing_account_id
+      `)
+      if (result.rowCount === 1) {
+        const balanceUpdate = await tx.execute(sql`
+          UPDATE billing_account_balances SET
+            mode = 'budgeted', included_micros = ${planAmountCents * MICROS_PER_CENT},
+            allowance_used_micros = CASE WHEN ${periodChanged} THEN 0 ELSE allowance_used_micros END,
+            used_micros = CASE WHEN ${periodChanged} THEN 0 ELSE used_micros END,
+            top_up_purchased_micros = CASE WHEN ${periodChanged} THEN top_up_balance_micros ELSE top_up_purchased_micros END,
+            version = version + 1, updated_at = now()
+          WHERE billing_account_id = ${billingAccountId}
+            AND (NOT ${periodChanged} OR reserved_micros = 0)
+            AND used_micros + reserved_micros <=
+              ${planAmountCents * MICROS_PER_CENT} + institutional_grant_micros +
+                CASE WHEN ${periodChanged} THEN top_up_balance_micros ELSE top_up_purchased_micros END
+        `)
+        if (balanceUpdate.rowCount !== 1) {
+          throw new Error('Subscription change would remove already consumed or reserved credits')
+        }
+      }
+      return { billingAccountId, applied: result.rowCount === 1 }
+    })
+  }
+
   async listBudgetTopUpsByServer(args: { userId: string }): Promise<BudgetTopUpRecord[]> {
     const result = await this.db.execute<{
       amountCents: number
@@ -779,6 +978,91 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
       await syncCanonicalBalanceFromLegacy(tx, args.userId, account.billingAccountId)
       return { id, granted: grant }
     })
+  }
+
+  async recordBillingAccountTopUp(args: {
+    actorUserId: string
+    amountCents: number
+    billingAccountId: string
+    source: 'manual' | 'auto'
+    status: 'pending' | 'succeeded' | 'failed' | 'canceled'
+    stripeCheckoutSessionId?: string
+    stripeCustomerId?: string
+    stripePaymentIntentId?: string
+    errorMessage?: string
+  }): Promise<{ id: string; granted: boolean }> {
+    if (!Number.isSafeInteger(args.amountCents) || args.amountCents <= 0) throw new Error('invalid_top_up_amount')
+    return await this.db.transaction(async (tx) => {
+      const existing = await tx.execute<{
+        amountCents: number
+        billingAccountId: string | null
+        id: string
+        status: string
+      }>(sql`
+        SELECT id, status, amount_cents AS "amountCents", billing_account_id AS "billingAccountId"
+        FROM billing_top_ups
+        WHERE (${args.stripeCheckoutSessionId ?? null}::text IS NOT NULL AND provider_checkout_session_id = ${args.stripeCheckoutSessionId ?? null})
+           OR (${args.stripePaymentIntentId ?? null}::text IS NOT NULL AND provider_payment_intent_id = ${args.stripePaymentIntentId ?? null})
+        FOR UPDATE
+      `)
+      const row = existing.rows[0]
+      if (row?.billingAccountId && row.billingAccountId !== args.billingAccountId) {
+        throw new Error('Top-up provider reference already belongs to another billing account')
+      }
+      if (row && Number(row.amountCents) !== args.amountCents) {
+        throw new Error('Top-up provider reference was reused with a different amount')
+      }
+      const id = row?.id ?? `billing_topup_${randomUUID()}`
+      const granted = args.status === 'succeeded' && row?.status !== 'succeeded'
+      const persistedStatus = row?.status === 'succeeded' ? 'succeeded' : args.status
+      if (row) {
+        await tx.execute(sql`
+          UPDATE billing_top_ups SET status = ${persistedStatus}, error_message = ${args.errorMessage ?? null}, updated_at = now()
+          WHERE id = ${id} AND billing_account_id = ${args.billingAccountId}
+        `)
+      } else {
+        await tx.execute(sql`
+          INSERT INTO billing_top_ups (
+            id, user_id, billing_account_id, amount_cents, source, status,
+            provider_checkout_session_id, provider_customer_id, provider_payment_intent_id, error_message
+          ) VALUES (
+            ${id}, ${args.actorUserId}, ${args.billingAccountId}, ${args.amountCents}, ${args.source}, ${args.status},
+            ${args.stripeCheckoutSessionId ?? null}, ${args.stripeCustomerId ?? null},
+            ${args.stripePaymentIntentId ?? null}, ${args.errorMessage ?? null}
+          )
+        `)
+      }
+      if (granted) {
+        const amountMicros = args.amountCents * MICROS_PER_CENT
+        const update = await tx.execute(sql`
+          UPDATE billing_account_balances SET
+            top_up_purchased_micros = top_up_purchased_micros + ${amountMicros},
+            top_up_balance_micros = top_up_balance_micros + ${amountMicros},
+            version = version + 1, updated_at = now()
+          WHERE billing_account_id = ${args.billingAccountId}
+        `)
+        if (update.rowCount !== 1) throw new Error('billing_account_balance_missing')
+      }
+      return { id, granted }
+    })
+  }
+
+  async resolveBillingAccountIdByProviderReference(args: {
+    provider: string
+    providerCustomerId?: string
+    providerSubscriptionId?: string
+  }): Promise<string | null> {
+    const result = await this.db.execute<{ billingAccountId: string }>(sql`
+      SELECT billing_account_id AS "billingAccountId"
+      FROM billing_account_subscriptions
+      WHERE provider = ${args.provider}
+        AND (
+          (${args.providerCustomerId ?? null}::text IS NOT NULL AND provider_customer_id = ${args.providerCustomerId ?? null})
+          OR (${args.providerSubscriptionId ?? null}::text IS NOT NULL AND provider_subscription_id = ${args.providerSubscriptionId ?? null})
+        )
+      LIMIT 1
+    `)
+    return result.rows[0]?.billingAccountId ?? null
   }
 
   async resolveUserIdByProviderReference(args: {

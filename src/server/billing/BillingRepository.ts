@@ -72,6 +72,10 @@ export type BillingSubscriptionRecord = {
   currentPeriodEnd?: number
 }
 
+export type BillingAccountEntitlementsRecord = BillingEntitlementsRecord & {
+  billingAccountId: string
+}
+
 export type BudgetTopUpRecord = {
   _id: string
   billingAccountId?: string
@@ -118,6 +122,12 @@ export interface BillingRepository {
   getWorkspaceBillingAccountByWorkspaceIdByServer(args: {
     workspaceId: string
   }): Promise<BillingAccountRecord | null>
+  getBillingAccountEntitlementsByServer(args: {
+    billingAccountId: string
+  }): Promise<BillingAccountEntitlementsRecord | null>
+  getBillingAccountSubscriptionByServer(args: {
+    billingAccountId: string
+  }): Promise<BillingSubscriptionRecord | null>
   getPersonalBillingBalanceParityByServer(args: {
     userId: string
   }): Promise<BillingBalanceParityReport | null>
@@ -162,6 +172,9 @@ export interface BillingRepository {
   upsertSubscription(args: Record<string, unknown> & {
     userId: string
   }): Promise<unknown>
+  upsertBillingAccountSubscription(args: Record<string, unknown> & {
+    billingAccountId: string
+  }): Promise<unknown>
   listBudgetTopUpsByServer(args: {
     userId: string
   }): Promise<BudgetTopUpRecord[]>
@@ -175,4 +188,20 @@ export interface BillingRepository {
     errorMessage?: string
     userId: string
   }): Promise<unknown>
+  recordBillingAccountTopUp(args: {
+    actorUserId: string
+    amountCents: number
+    billingAccountId: string
+    source: 'manual' | 'auto'
+    status: 'pending' | 'succeeded' | 'failed' | 'canceled'
+    stripeCheckoutSessionId?: string
+    stripeCustomerId?: string
+    stripePaymentIntentId?: string
+    errorMessage?: string
+  }): Promise<unknown>
+  resolveBillingAccountIdByProviderReference(args: {
+    provider: string
+    providerCustomerId?: string
+    providerSubscriptionId?: string
+  }): Promise<string | null>
 }

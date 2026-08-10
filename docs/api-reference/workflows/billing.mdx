@@ -47,6 +47,8 @@ The compatibility reads still use the personal legacy records. A parity report i
 
 `workspaceWallets` is off by default. With the flag off, the payer resolver returns the existing personal account and the legacy personal reservation method remains the rollback path. With the flag on, an organization request routed through the payer resolver must resolve to an active workspace billing account; a missing, suspended, or mismatched workspace account fails closed and never spends a member's personal balance. Existing spend call sites stay on the personal path until a later rollout phase explicitly adopts the resolver.
 
+Workspace owners and admins use the authenticated `/api/v1/workspaces/:workspaceId/billing` API family to initialize a wallet, read credit usage, and open Stripe subscription, top-up, portal, or checkout-verification flows. Overlay creates one Stripe customer per workspace billing account. Stripe metadata binds payments to the account and workspace; the initiating admin is an audit actor, not the payment owner. Duplicate webhook deliveries are idempotent and older subscription events cannot overwrite newer account state.
+
 Workspace reservations use the account-keyed balance and optionally a fixed-period subject limit. Subjects are either `member` for human-attributed spend or `programmatic` for shared agents, automations, and service callers. Reservation creation locks the workspace balance and subject limit in one transaction. Finalize, release, expiry, and evidence-based reconciliation update the workspace balance and subject counters together. Wallet creation grants no credits; funding remains an explicit later operation.
 
 ## Reservation reconciliation

@@ -7,6 +7,7 @@ import {
   canUsePaidBudgetFeatures,
   createFreeEntitlements,
   evaluateQuota,
+  StripeBillingProvider,
 } from './index'
 import type { Entitlements, UsageArgs } from './index'
 
@@ -84,4 +85,94 @@ describe('@overlay/billing', () => {
 
     assert.equal(decision.allowed, true)
   })
+})
+
+it('creates and reuses one Stripe customer for workspace checkout', async () => {
+  const checkoutParams: Record<string, unknown>[] = []
+  const customerCreates: Record<string, unknown>[] = []
+  let state: { stripeCustomerId?: string } = {}
+  const provider = new StripeBillingProvider({
+    stripe: {
+      checkout: { sessions: { async create(params) {
+        checkoutParams.push(params)
+        return { id: `cs_${checkoutParams.length}`, url: 'https://stripe.test/checkout' }
+      } } },
+      billingPortal: { sessions: { async create() {
+        return { id: 'bps_1', url: 'https://stripe.test/portal' }
+      } } },
+      customers: {
+        async create(params) {
+          customerCreates.push(params)
+          return { id: 'cus_workspace' }
+        },
+        async retrieve(customerId) { return { id: customerId } },
+      },
+    },
+    baseUrl: 'https://overlay.test',
+    paidPlanPriceId: 'price_paid',
+    normalizePlanAmountCents: (value) => value,
+    normalizeTopUpAmountCents: (value) => value,
+    getBillingAccountSubscriptionState: async () => state,
+    syncBillingAccountCustomer: async (value) => { state = value },
+  })
+
+  const args = {
+    userId: 'admin_1',
+    billingAccountId: 'ba_workspace',
+    workspaceId: 'workspace_1',
+    email: 'admin@example.com',
+    kind: 'paid_plan' as const,
+    planAmountCents: 800,
+    topUpAmountCents: 800,
+  }
+  await provider.createCheckoutSession(args)
+  await provider.createCheckoutSession(args)
+
+  assert.equal(customerCreates.length, 1)
+  assert.equal(checkoutParams[0]?.customer, 'cus_workspace')
+  assert.equal(checkoutParams[1]?.customer, 'cus_workspace')
+  assert.equal((checkoutParams[0]?.metadata as Record<string, string>).billingAccountId, 'ba_workspace')
+  assert.equal((checkoutParams[0]?.metadata as Record<string, string>).workspaceId, 'workspace_1')
+})
+
+it('verifies checkout ownership by billing account instead of workspace admin', async () => {
+  const provider = new StripeBillingProvider({
+    stripe: {
+      checkout: { sessions: {
+        async create() { return { id: 'unused', url: 'https://stripe.test' } },
+        async retrieve() {
+          return {
+            id: 'cs_workspace',
+            url: null,
+            status: 'complete',
+            mode: 'payment',
+            payment_status: 'paid',
+            currency: 'usd',
+            amount_total: 800,
+            metadata: {
+              kind: 'budget_topup',
+              userId: 'admin_1',
+              billingAccountId: 'ba_other',
+              workspaceId: 'workspace_1',
+            },
+          }
+        },
+      } },
+      billingPortal: { sessions: { async create() {
+        return { id: 'unused', url: 'https://stripe.test' }
+      } } },
+    },
+    baseUrl: 'https://overlay.test',
+  })
+
+  await assert.rejects(
+    provider.verifyCheckoutSession({
+      sessionId: 'cs_workspace',
+      userId: 'admin_1',
+      billingAccountId: 'ba_workspace',
+      workspaceId: 'workspace_1',
+      kind: 'budget_topup',
+    }),
+    /Session mismatch/,
+  )
 })

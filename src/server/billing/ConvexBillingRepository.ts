@@ -13,6 +13,7 @@ import type {
 } from '@/shared/billing/billing-payer'
 import type {
   BillingEntitlementsRecord,
+  BillingAccountEntitlementsRecord,
   BillingRepository,
   BillingSubscriptionRecord,
   BudgetTopUpRecord,
@@ -86,6 +87,26 @@ export class ConvexBillingRepository implements BillingRepository, BillingWebhoo
   }): Promise<BillingAccountRecord | null> {
     return await convex.query<BillingAccountRecord | null>(
       'billing/accounts:getWorkspaceByWorkspaceIdByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+  }
+
+  async getBillingAccountEntitlementsByServer(args: {
+    billingAccountId: string
+  }): Promise<BillingAccountEntitlementsRecord | null> {
+    return await convex.query<BillingAccountEntitlementsRecord | null>(
+      'billing/accountSubscriptions:getEntitlementsByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+  }
+
+  async getBillingAccountSubscriptionByServer(args: {
+    billingAccountId: string
+  }): Promise<BillingSubscriptionRecord | null> {
+    return await convex.query<BillingSubscriptionRecord | null>(
+      'billing/accountSubscriptions:getByServer',
       { ...args, serverSecret: this.serverSecret },
       { throwOnError: true },
     )
@@ -219,6 +240,15 @@ export class ConvexBillingRepository implements BillingRepository, BillingWebhoo
     })
   }
 
+  async upsertBillingAccountSubscription(args: Record<string, unknown> & {
+    billingAccountId: string
+  }): Promise<unknown> {
+    return await convex.mutation('billing/accountSubscriptions:upsertByServer', {
+      ...args,
+      serverSecret: this.serverSecret,
+    })
+  }
+
   async listBudgetTopUpsByServer(args: {
     userId: string
   }): Promise<BudgetTopUpRecord[]> {
@@ -245,6 +275,35 @@ export class ConvexBillingRepository implements BillingRepository, BillingWebhoo
       ...args,
       serverSecret: this.serverSecret,
     })
+  }
+
+  async recordBillingAccountTopUp(args: {
+    actorUserId: string
+    amountCents: number
+    billingAccountId: string
+    source: 'manual' | 'auto'
+    status: 'pending' | 'succeeded' | 'failed' | 'canceled'
+    stripeCheckoutSessionId?: string
+    stripeCustomerId?: string
+    stripePaymentIntentId?: string
+    errorMessage?: string
+  }): Promise<unknown> {
+    return await convex.mutation('billing/accountSubscriptions:recordTopUpByServer', {
+      ...args,
+      serverSecret: this.serverSecret,
+    })
+  }
+
+  async resolveBillingAccountIdByProviderReference(args: {
+    provider: string
+    providerCustomerId?: string
+    providerSubscriptionId?: string
+  }): Promise<string | null> {
+    return await convex.query<string | null>(
+      'billing/accountSubscriptions:resolveAccountIdByProviderReferenceByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
   }
 
   async resolveUserIdByProviderReference(args: {

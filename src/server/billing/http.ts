@@ -7,6 +7,7 @@ import { publicEnv } from '@/shared/env/public-env'
 import { DEFAULT_APP_URL, normalizeAppBaseUrl } from '@/shared/web/normalize-app-url'
 import { BillingCheckoutService } from './BillingCheckoutService'
 import { BillingCustomerService, BillingServiceError } from './BillingCustomerService'
+import { WorkspaceBillingService } from './WorkspaceBillingService'
 import type { BillingRepository } from './BillingRepository'
 
 const billingRepository = repositoryProxy<BillingRepository>(
@@ -22,6 +23,13 @@ export const billingCheckoutService = new BillingCheckoutService({
   baseUrl: getBillingBaseUrl,
   billingProvider: () => getOverlayServerContext().billing,
   lifecycleEvents: () => getOverlayServerContext().lifecycleEvents,
+})
+
+export const workspaceBillingService = new WorkspaceBillingService({
+  repository: billingRepository,
+  baseUrl: getBillingBaseUrl,
+  billingProvider: () => getOverlayServerContext().billing,
+  workspaces: repositoryProxy(() => getOverlayServerContext().workspaceService),
 })
 
 function getBillingBaseUrl(): string {
