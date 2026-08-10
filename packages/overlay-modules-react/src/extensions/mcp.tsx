@@ -25,6 +25,7 @@ X,
 Zap
 } from 'lucide-react'
 import { useState,type MouseEvent } from 'react'
+import { ListboxSelect } from '@overlay/ui/primitives'
 
 import { Field } from './shared'
 import { AppScreenBody } from '../shell'
@@ -174,7 +175,7 @@ export function McpServerDialog({
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Transport">
-              <select value={values.transport} onChange={(event) => update('transport', event.target.value as McpTransport)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]"><option value="streamable-http">Streamable HTTP</option><option value="sse">SSE</option></select>
+              <ListboxSelect value={values.transport} onChange={(value) => update('transport', value as McpTransport)} className="w-full" buttonClassName="min-h-10 bg-[var(--surface-muted)]" options={[{ value: 'streamable-http', label: 'Streamable HTTP' }, { value: 'sse', label: 'SSE' }]} />
             </Field>
             <Field label="Timeout (ms)">
               <input type="number" value={values.timeoutMs} onChange={(event) => update('timeoutMs', event.target.value === '' ? '' : Number(event.target.value))} placeholder="30000" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" />
@@ -185,14 +186,10 @@ export function McpServerDialog({
             <p className="text-[10px] text-[var(--muted-light)]">HTTPS required in production. HTTP allowed for localhost only.</p>
           </Field>
           <Field label="Authentication">
-            <select value={values.authType} onChange={(event) => update('authType', event.target.value as McpAuthType)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]"><option value="none">None</option><option value="bearer">Bearer Token</option><option value="header">Custom Header</option><option value="oauth">OAuth (sign in with browser)</option></select>
+            <ListboxSelect value={values.authType} onChange={(value) => update('authType', value as McpAuthType)} className="w-full" buttonClassName="min-h-10 bg-[var(--surface-muted)]" options={[{ value: 'none', label: 'None' }, { value: 'bearer', label: 'Bearer Token' }, { value: 'header', label: 'Custom Header' }, { value: 'oauth', label: 'OAuth (sign in with browser)' }]} />
           </Field>
           <Field label="Tool execution policy">
-            <select value={values.defaultToolPolicy} onChange={(event) => update('defaultToolPolicy', event.target.value as McpToolPolicyMode)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]">
-              <option value="allow">Allow tools</option>
-              <option value="approval_required">Require approval</option>
-              <option value="deny">Deny tools</option>
-            </select>
+            <ListboxSelect value={values.defaultToolPolicy} onChange={(value) => update('defaultToolPolicy', value as McpToolPolicyMode)} className="w-full" buttonClassName="min-h-10 bg-[var(--surface-muted)]" options={[{ value: 'allow', label: 'Allow tools' }, { value: 'approval_required', label: 'Require approval' }, { value: 'deny', label: 'Deny tools' }]} />
           </Field>
           {isOAuth ? (
             <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3">

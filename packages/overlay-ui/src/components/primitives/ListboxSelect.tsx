@@ -7,6 +7,8 @@ import { cn } from '../../utils/cn'
 export interface ListboxOption<T extends string> {
   value: T
   label: string
+  /** Optional visual grouping, rendered as a non-selectable menu heading. */
+  group?: string
 }
 
 export interface ListboxSelectProps<T extends string> {
@@ -17,7 +19,10 @@ export interface ListboxSelectProps<T extends string> {
   className?: string
   buttonClassName?: string
   menuClassName?: string
+  id?: string
+  name?: string
   'aria-label'?: string
+  'aria-describedby'?: string
   /** When true, renders the dropdown menu in a React portal. */
   portal?: boolean
 }
@@ -30,7 +35,10 @@ export function ListboxSelect<T extends string>({
   className,
   buttonClassName,
   menuClassName,
+  id,
+  name,
   'aria-label': ariaLabel,
+  'aria-describedby': ariaDescribedBy,
 }: ListboxSelectProps<T>) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -55,20 +63,33 @@ export function ListboxSelect<T extends string>({
     }
   }, [open])
 
+  const groupedOptions = options.reduce<Array<{ group?: string; options: ListboxOption<T>[] }>>((groups, option) => {
+    const last = groups.at(-1)
+    if (last && last.group === option.group) {
+      last.options.push(option)
+    } else {
+      groups.push({ group: option.group, options: [option] })
+    }
+    return groups
+  }, [])
+
   return (
     <div ref={rootRef} className={cn('relative min-w-0', className)}>
+      {name ? <input type="hidden" name={name} value={value} /> : null}
       <button
+        id={id}
         type="button"
         disabled={disabled}
         aria-label={ariaLabel}
+        aria-describedby={ariaDescribedBy}
         aria-expanded={open}
         aria-haspopup="listbox"
         onClick={() => !disabled && setOpen((current) => !current)}
         className={cn(
-          'flex w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-xs',
+          'flex min-h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-left text-sm outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--foreground)]',
           disabled
             ? 'cursor-not-allowed text-[var(--muted-light)]'
-            : 'text-[var(--muted)] hover:bg-[var(--border)]',
+            : 'text-[var(--foreground)] hover:bg-[var(--surface-muted)]',
           buttonClassName,
         )}
       >
@@ -83,29 +104,38 @@ export function ListboxSelect<T extends string>({
           )}
           role="listbox"
         >
-          {options.map((option) => {
-            const active = option.value === value
-            return (
-              <button
-                key={option.value}
-                type="button"
-                role="option"
-                aria-selected={active}
-                className={cn(
-                  'flex w-full items-center px-3 py-2 text-left text-xs transition-colors',
-                  active
-                    ? 'bg-[var(--surface-muted)] font-medium text-[var(--foreground)]'
-                    : 'text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]',
-                )}
-                onClick={() => {
-                  onChange(option.value)
-                  setOpen(false)
-                }}
-              >
-                {option.label}
-              </button>
-            )
-          })}
+          {groupedOptions.map(({ group, options: optionsInGroup }) => (
+            <div key={group ?? '__ungrouped'}>
+              {group ? (
+                <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">
+                  {group}
+                </p>
+              ) : null}
+              {optionsInGroup.map((option) => {
+                const active = option.value === value
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    className={cn(
+                      'flex w-full items-center px-3 py-2 text-left text-sm transition-colors',
+                      active
+                        ? 'bg-[var(--surface-muted)] font-medium text-[var(--foreground)]'
+                        : 'text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]',
+                    )}
+                    onClick={() => {
+                      onChange(option.value)
+                      setOpen(false)
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
+          ))}
         </div>
       ) : null}
     </div>
