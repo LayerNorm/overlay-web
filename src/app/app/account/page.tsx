@@ -5,7 +5,7 @@
 import { useState, useEffect, Suspense, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { RefreshCw, ArrowRight } from 'lucide-react'
+import { Download, MonitorDown, RefreshCw, ArrowRight } from 'lucide-react'
 import { AccountBillingPanel } from '@/features/billing/components/AccountBillingPanel'
 import { DeleteAccountSection } from '@/features/account/components/DeleteAccountSection'
 import { useAccountBillingState } from '@/features/account/hooks/useAccountBillingState'
@@ -357,63 +357,53 @@ export function AccountPageContent({ embedded = false }: { embedded?: boolean })
           />
         ) : (
           <div className="space-y-5">
-            <div className="grid gap-5">
-              <AccountProfileCard
-                panelClass={panel}
-                headingClass={t.h}
-                mutedClass={t.muted}
-                dark={isLandingDark}
-                name={user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}
-                email={user?.email}
-                actions={
-                  <div className="flex flex-col gap-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                      <button
-                        onClick={handleSignOut}
-                        disabled={signingOut}
-                        className="w-full rounded-lg px-4 py-2 text-sm font-medium text-[var(--danger)] transition-colors hover:bg-[var(--surface-muted)] disabled:opacity-50 sm:w-auto"
-                      >
-                        {signingOut ? 'Signing out...' : 'Sign out'}
-                      </button>
-                      <DeleteAccountSection isLandingDark={isLandingDark} />
-                    </div>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                      <button
-                        onClick={handleOpenInApp}
-                        disabled={actionLoading === 'openApp'}
-                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition-colors hover:bg-[var(--surface-muted)] disabled:opacity-50"
-                      >
-                        {actionLoading === 'openApp' ? (
-                          <>
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                            Opening...
-                          </>
-                        ) : (
-                          <>
-                            Open in desktop app
-                            <ArrowRight className="h-4 w-4" />
-                          </>
-                        )}
-                      </button>
-                      <Link
-                        href="/download"
-                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition-colors hover:bg-[var(--surface-muted)]"
-                      >
-                        Download for macOS
-                        <ArrowRight className="h-4 w-4" />
-                      </Link>
-                      <Link
-                        href="/app/chat"
-                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--button-primary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-primary-text)] transition-opacity hover:opacity-90"
-                      >
-                        Open web app
-                        <ArrowRight className="h-4 w-4" />
-                      </Link>
-                    </div>
-                  </div>
-                }
-              />
-            </div>
+            <AccountProfileCard
+              panelClass={panel}
+              headingClass={t.h}
+              mutedClass={t.muted}
+              dark={isLandingDark}
+              name={user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}
+              email={user?.email}
+              actions={
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={handleSignOut}
+                    disabled={signingOut}
+                    className="rounded-md px-2 py-1.5 text-xs font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+                  >
+                    {signingOut ? 'Signing out…' : 'Sign out'}
+                  </button>
+                  <DeleteAccountSection isLandingDark={isLandingDark} />
+                </div>
+              }
+            />
+
+            <section className={`${panel} flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between`}>
+              <div>
+                <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
+                  <MonitorDown size={16} strokeWidth={1.8} />
+                  Desktop app
+                </div>
+                <p className={`mt-1 text-sm ${t.muted}`}>Open your existing desktop session, or download the macOS app.</p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  onClick={handleOpenInApp}
+                  disabled={actionLoading === 'openApp'}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-3 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition-colors hover:bg-[var(--surface-muted)] disabled:opacity-50"
+                >
+                  {actionLoading === 'openApp' ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                  {actionLoading === 'openApp' ? 'Opening…' : 'Open app'}
+                </button>
+                <Link
+                  href="/download"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-3 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition-colors hover:bg-[var(--surface-muted)]"
+                >
+                  <Download className="h-4 w-4" />
+                  Download
+                </Link>
+              </div>
+            </section>
 
             <AccountBillingPanel
               actionLoading={actionLoading}
