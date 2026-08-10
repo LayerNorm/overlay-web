@@ -26,7 +26,7 @@ import {
   SettingsPageShell,
   ThemePresetRow,
 } from '@overlay/modules-react/settings'
-import { getExtensionComponent } from '@/extensions/registry'
+import { renderExtensionComponent } from '@/extensions/registry'
 import dynamic from 'next/dynamic'
 import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
 import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
@@ -92,9 +92,9 @@ export default function SettingsPage() {
     () => resolveSettingsPanel(settingsPanels, section),
     [section, settingsPanels],
   )
-  const ExtensionSettingsPanel = useMemo(
-    () => getExtensionComponent(registeredPanel?.componentKey),
-    [registeredPanel?.componentKey],
+  const extensionSettingsPanel = renderExtensionComponent(
+    registeredPanel?.componentKey,
+    { settingsPanel: registeredPanel ?? undefined },
   )
 
   useEffect(() => {
@@ -271,11 +271,9 @@ export default function SettingsPage() {
             </SettingsCard>
           )}
 
-          {!isLoading && !IMPLEMENTED_SECTION_IDS.has(section) && ExtensionSettingsPanel ? (
-            <ExtensionSettingsPanel settingsPanel={registeredPanel ?? undefined} />
-          ) : null}
+          {!isLoading && !IMPLEMENTED_SECTION_IDS.has(section) ? extensionSettingsPanel : null}
 
-          {!isLoading && !IMPLEMENTED_SECTION_IDS.has(section) && !ExtensionSettingsPanel && (
+          {!isLoading && !IMPLEMENTED_SECTION_IDS.has(section) && !extensionSettingsPanel && (
             <SettingsCard title={registeredPanel?.label ?? sectionLabel}>
               <p>
                 {registeredPanel
