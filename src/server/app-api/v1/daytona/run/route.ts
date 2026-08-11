@@ -3,6 +3,10 @@ import type { Sandbox } from '@daytona/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 import { getBillingProgrammaticSubjectId, getTrustedAutomationBillingSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import {
+  acquireConcurrentRequestSlot,
+  concurrentRequestLimitResponse,
+} from '@/server/security/concurrent-request-limiter'
+import {
   downloadSandboxFile,
   ensureWorkspaceSandbox,
   executeSandboxCommand,
@@ -95,6 +99,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   }
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Per-user concurrent request limit. Sandbox tasks can run for up to 300
+  // seconds; without a concurrency cap, a user could fire multiple parallel
+  // sandbox executions and consume significant resources.
+  const concurrencySlot = acquireConcurrentRequestSlot(userId, {
+    bucket: 'daytona-run',
+    maxConcurrent: 2,
+    maxDurationMs: 360_000, // 6 minutes (covers maxDuration=300s + buffer)
+  })
+  if (!concurrencySlot) {
+    return concurrentRequestLimitResponse('daytona-run')
   }
 
   const { appData, generationUsagePolicy } = getOverlayServerContext()
@@ -237,5 +253,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         markProviderBudgetReconcile: (args) => generationUsagePolicy.markForReconcile(args),
       },
     })
+    concurrencySlot?.release()
   }
 }

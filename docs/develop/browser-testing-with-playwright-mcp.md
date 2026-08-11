@@ -12,7 +12,7 @@ for this repo, and the gotchas we have hit.
 
 ## Why a real browser?
 
-Local `npm run dev` + `curl` only proves the server responded. It does not prove:
+`curl` only proves the server responded. It does not prove:
 
 - The page actually rendered (React hydrated, no client crash).
 - The static shell painted before the dynamic content streamed in (PPR / Cache Components).
@@ -24,6 +24,26 @@ Local `npm run dev` + `curl` only proves the server responded. It does not prove
 The Playwright MCP server gives the agent a headed Chromium instance it can drive through the
 same tools a human tester would use: navigate, click, type, read the accessibility snapshot,
 read console messages, and evaluate JavaScript in the page.
+
+## Where to test: staging, not `npm run dev`
+
+**Do not run `npm run dev` for browser QA.** The Next.js dev server is a single-process
+Node instance that compiles routes on-demand. On this repo it consumes a large amount of
+memory and will slow or freeze the user's machine when a headed Chromium is running
+alongside it. This is not a theoretical concern — it has happened repeatedly in practice.
+
+**Always test on staging instead.** The staging deployment at
+`https://staging.getoverlay.io` is a production-equivalent Vercel build that uses the
+shared dev Convex backend. It is the correct environment for agent-driven browser QA:
+
+1. Merge your feature branch to `staging` and push.
+2. Wait for the Vercel deployment to reach `READY`.
+3. Run Playwright MCP tools against `https://staging.getoverlay.io`.
+
+If you need to verify a route that has not been merged to staging yet, coordinate with the
+user — do not spin up a local dev server without explicit permission. The user has
+explicitly asked that agents never run `npm run dev` for testing because it freezes their
+machine.
 
 ## Installation
 
@@ -115,7 +135,8 @@ profile via the Playwright MCP browser extension, reusing their SSO cookies. Thi
 the extension token is required in the env block.
 
 If you are testing a local dev server (`http://localhost:PORT`), the extension flag is not
-needed — there is no SSO. But it does not hurt to leave it on.
+needed — there is no SSO. But agents should not run local dev servers for QA; always use
+staging. The extension flag does not hurt to leave on regardless.
 
 ## Tool reference
 
@@ -137,29 +158,23 @@ The server exposes these tools (names may vary slightly by version; always call 
 
 ## Workflow patterns
 
-### 1. Local dev server QA
+### 1. Staging QA (default — always use staging)
 
-After starting `npm run dev` (or `./scripts/dev-setup.sh <port>`) in a background shell:
-
-1. `browser_navigate` to `http://localhost:PORT/route-under-test`.
-2. `browser_snapshot` (or `browser_find` for a specific string) to confirm the page rendered.
-3. `browser_console_messages` with `level: "error"` to check for new errors.
-4. If testing interactivity, `browser_click` elements by their `ref` from the snapshot.
-5. For PPR / Cache Components: use `browser_evaluate` to `fetch()` the route and check
-   whether the static shell text is present in the raw HTML before hydration.
-
-### 2. Staging QA after a push
-
-After merging to `staging` and pushing:
+After merging your feature branch to `staging` and pushing:
 
 1. Wait for the Vercel deployment to reach `READY` (use the Vercel MCP or poll the API).
 2. `browser_navigate` to `https://staging.getoverlay.io/route`. The Chrome extension's SSO
    cookies let the browser through Vercel Deployment Protection.
-3. Verify rendering, console, headers, and interactivity as above.
-4. For authenticated routes, the user's session cookie is already present. For
+3. `browser_snapshot` (or `browser_find` for a specific string) to confirm the page rendered.
+4. `browser_console_messages` with `level: "error"` to check for new errors.
+5. If testing interactivity, `browser_click` elements by their `ref` from the snapshot.
+6. For authenticated routes, the user's session cookie is already present. For
    unauthenticated tests, use `browser_evaluate` to call `fetch('/api/auth/sign-out')` first.
 
-### 3. Verifying PPR static shells
+**Never use `npm run dev` for browser QA.** It freezes the user's machine. Always test on
+staging. If you need to verify a route before merging to staging, ask the user first.
+
+### 2. Verifying PPR static shells
 
 Cache Components + Partial Prefetching means the static shell should be in the HTML before
 the dynamic content streams in. To verify:
@@ -180,7 +195,7 @@ async () => {
 If `hasLoadingShell` is `true` and `hasDynamicContent` is `false`, PPR is working — the
 static shell is served from the CDN and the dynamic content streams in via Suspense.
 
-### 4. Verifying `<Activity>` UI state preservation
+### 3. Verifying `<Activity>` UI state preservation
 
 Next.js `<Activity>` preserves UI state (sidebar collapse, open panels) across navigations
 when Cache Components is enabled. To test:
@@ -192,7 +207,7 @@ when Cache Components is enabled. To test:
 5. `browser_click` back to "Chats".
 6. `browser_find` "Expand sidebar" — if found, the collapsed state was preserved.
 
-### 5. Checking security headers
+### 4. Checking security headers
 
 ```javascript
 // browser_evaluate
@@ -219,14 +234,15 @@ async () => {
   out when checking for new errors.
 - **Dev server validation insights are dev-only.** Next.js Cache Components shows
   instant-navigation validation warnings in the dev overlay and console. These do not appear
-  in production (staging). Check both environments — dev for insights, staging for real
-  behavior.
+  in production (staging). Since agents should not run `npm run dev`, this is informational
+  only — staging is the source of truth for real behavior.
 - **`browser_click` requires a `target` ref.** The `element` parameter is a human-readable
   description for permission; the `target` must be the exact ref string from the snapshot
   (e.g. `f12e10`).
-- **Killed dev servers leave stale console errors.** If you kill a localhost dev server and
-  then navigate to staging, the browser console still shows WebSocket connection failures
-  from the dead localhost. These are not staging errors — filter by URL.
+- **Killed dev servers leave stale console errors.** If a localhost dev server was
+  previously running and has been killed, the browser console may still show WebSocket
+  connection failures from the dead localhost. These are not staging errors — filter by URL.
+  (This should not happen if agents follow the rule of only testing on staging.)
 - **SSO cookies expire.** If `browser_navigate` to staging redirects to a Vercel auth page,
   the Chrome extension's session has expired. Ask the user to refresh the extension by
   opening Chrome and visiting `staging.getoverlay.io` once.

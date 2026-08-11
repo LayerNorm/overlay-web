@@ -16,6 +16,10 @@ import {
   getBudgetTotals,
   isPaidPlan,
 } from '@/server/billing/billing-runtime'
+import {
+  acquireConcurrentRequestSlot,
+  concurrentRequestLimitResponse,
+} from '@/server/security/concurrent-request-limiter'
 
 export const maxDuration = 300
 
@@ -31,6 +35,7 @@ function parseUsd(value: string | number | null | undefined): number {
 }
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
+  let concurrencySlot: { release: () => void } | null = null
   try {
     const { task, sessionId, keepAlive, model, proxyCountryCode, conversationId, turnId }: {
       task?: string
@@ -48,6 +53,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       context,
       getTrustedAutomationBillingSubjectId(context),
     )
+
+    // Per-user concurrent request limit. Browser tasks can run for up to 300
+    // seconds; without a concurrency cap, a user could fire multiple parallel
+    // tasks and consume significant resources.
+    concurrencySlot = acquireConcurrentRequestSlot(auth.userId, {
+      bucket: 'browser-task',
+      maxConcurrent: 2,
+      maxDurationMs: 360_000, // 6 minutes (covers maxDuration=300s + buffer)
+    })
+    if (!concurrencySlot) {
+      return concurrentRequestLimitResponse('browser-task')
+    }
 
     const requestedSessionId = sessionId?.trim()
     if (requestedSessionId) {
@@ -252,5 +269,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     logger.error('[Browser Task API] Error:', error)
     const message = error instanceof Error ? error.message : 'Browser task failed'
     return NextResponse.json({ error: 'browser_task_failed', message }, { status: 500 })
+  } finally {
+    concurrencySlot?.release()
   }
 }

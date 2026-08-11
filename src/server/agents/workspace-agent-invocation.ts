@@ -133,7 +133,7 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
   const threadRoot = args.threadRootMessageId
     ? history.find((message) => message._id === args.threadRootMessageId)
     : undefined
-  const principalIds = resolveMentionFirstInvocations({
+  const resolvedPrincipalIds = resolveMentionFirstInvocations({
     authorKind: 'human',
     conversationType: conversation.conversationType ?? 'personal',
     participants: participants.map((participant) => ({
@@ -145,6 +145,7 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       ? threadRoot.authorPrincipalId
       : undefined,
   })
+  const principalIds = resolvedPrincipalIds
   if (principalIds.length === 0) {
     logger.warn('[workspace-agent] no agent participant resolved', {
       conversationId: args.conversationId,
@@ -153,11 +154,25 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
     })
     throw new WorkspaceAgentInvocationError('no_agent_participant')
   }
+  // Cap the number of agents that can be invoked per message to prevent
+  // cost amplification from mass-mentioning agents. Each agent gets its own
+  // budget reservation, so without a cap a user could mention many agents
+  // and consume significant tokens in a single message.
+  const MAX_AGENTS_PER_MESSAGE = 5
+  if (principalIds.length > MAX_AGENTS_PER_MESSAGE) {
+    logger.warn('[workspace-agent] too many agents mentioned, capping', {
+      conversationId: args.conversationId,
+      count: principalIds.length,
+      limit: MAX_AGENTS_PER_MESSAGE,
+      workspaceId: args.workspaceId,
+    })
+  }
+  const cappedPrincipalIds = principalIds.slice(0, MAX_AGENTS_PER_MESSAGE)
   const agentsByPrincipal = new Map(directory.agents.map((agent) => [agent.principalId, agent]))
   let completedResponses = 0
   let alreadyCompletedResponses = 0
   let lastFailureReason: WorkspaceAgentInvocationReasonCode | undefined
-  for (const principalId of principalIds) {
+  for (const principalId of cappedPrincipalIds) {
     const agent = agentsByPrincipal.get(principalId)
     if (!agent || agent.archivedAt) {
       lastFailureReason = 'no_agent_participant'

@@ -169,6 +169,25 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
     programmaticSubjectId?: string
   }): Promise<ActBudgetReservationResult> {
     if (!this.deps.accountAllUsage && (!args.paid || !isPremiumModel(args.modelId))) {
+      // Free-tier and non-premium paths skip the paid budget reservation, but
+      // we still enforce a pre-check against the user's remaining credits so
+      // that a free-tier user who has exhausted their allocation is blocked
+      // BEFORE the provider call — not after usage is recorded.
+      if (args.entitlements.planKind === 'free' || args.entitlements.tier === 'free') {
+        const remainingCredits = (args.entitlements.creditsTotal ?? 0) - (args.entitlements.creditsUsed ?? 0)
+        if (remainingCredits <= 0) {
+          return {
+            ok: false,
+            failure: {
+              payload: {
+                error: 'free_tier_limit_exceeded',
+                message: 'Your free tier usage limit has been reached. Upgrade to a paid plan for more usage.',
+              },
+              statusCode: 402,
+            },
+          }
+        }
+      }
       return { ok: true, reservationId: null }
     }
     const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
