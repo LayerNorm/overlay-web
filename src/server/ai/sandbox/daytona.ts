@@ -386,6 +386,24 @@ export async function ensureWorkspaceSandbox(params: {
       autoArchiveInterval: profile.autoArchiveMinutes,
       autoDeleteInterval: -1,
       volumes: [{ volumeId: volume.id, mountPath: WORKSPACE_MOUNT_PATH }] satisfies VolumeMount[],
+      // Restrict outbound network to package registries and common API endpoints.
+      // This prevents sandboxes from being used for cryptocurrency mining, port
+      // scanning internal networks, data exfiltration, or DDoS participation.
+      domainAllowList: [
+        'registry.npmjs.org',
+        'registry.yarnpkg.com',
+        '*.npmjs.org',
+        'pypi.org',
+        'files.pythonhosted.org',
+        'github.com',
+        'raw.githubusercontent.com',
+        'objects.githubusercontent.com',
+        'codeload.github.com',
+        'api.openai.com',
+        'api.anthropic.com',
+        'generativelanguage.googleapis.com',
+        'api.x.ai',
+      ].join(','),
     } satisfies CreateSandboxFromSnapshotParams
 
     try {

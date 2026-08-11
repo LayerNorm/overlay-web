@@ -111,7 +111,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       budget = getBudgetTotals(currentEntitlements)
     }
     const remainingVariableBudgetUsd = Math.max(0, budget.remainingCents / 100 / 1.25 - BROWSER_USE_TASK_INIT_USD)
-    if (budget.remainingCents <= taskInitCents || remainingVariableBudgetUsd <= 0) {
+    // Cap per-task cost to limit the number of browser actions a single task
+    // can perform. Without this, a task with a large remaining budget could
+    // run hundreds of browser iterations even though each is individually cheap.
+    const MAX_BROWSER_TASK_VARIABLE_USD = 2.00
+    const cappedVariableBudgetUsd = Math.min(remainingVariableBudgetUsd, MAX_BROWSER_TASK_VARIABLE_USD)
+    if (budget.remainingCents <= taskInitCents || cappedVariableBudgetUsd <= 0) {
       return NextResponse.json(
         buildInsufficientCreditsPayload(currentEntitlements, 'Not enough budget remaining to start a browser task.'),
         { status: 402 },
@@ -122,7 +127,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId: auth.userId,
       entitlements: currentEntitlements,
       idempotencyKey: context.requestIdempotencyKey,
-      providerCostUsd: BROWSER_USE_TASK_INIT_USD + remainingVariableBudgetUsd,
+      providerCostUsd: BROWSER_USE_TASK_INIT_USD + cappedVariableBudgetUsd,
       kind: 'generation',
       modelId: `browser-use/${model ?? 'auto'}`,
       operationId: 'agent.browser-task',
@@ -149,7 +154,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         ...(typeof keepAlive === 'boolean' ? { keepAlive } : {}),
         ...(model ? { model } : {}),
         ...(normalizedProxyCountryCode ? { proxyCountryCode: normalizedProxyCountryCode } : {}),
-        maxCostUsd: remainingVariableBudgetUsd,
+        maxCostUsd: cappedVariableBudgetUsd,
       })
     } catch (err) {
       await generationUsagePolicy.release({
@@ -236,7 +241,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         browserUsd: browserCostUsd.toFixed(4),
         reportedTotalUsd: reportedVariableCostUsd.toFixed(4),
         billedCents: costCents,
-        maxCostUsd: remainingVariableBudgetUsd.toFixed(4),
+        maxCostUsd: cappedVariableBudgetUsd.toFixed(4),
         remainingCreditsCents:
           updated
             ? (updated.budgetRemainingCents ?? updated.creditsTotal * 100 - updated.creditsUsed)

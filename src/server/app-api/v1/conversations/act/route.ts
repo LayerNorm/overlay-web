@@ -2,6 +2,10 @@ import { logger } from '@/server/observability/logger'
 import { after, NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { readValidatedJson } from '@/server/app-api/validated-input'
+import {
+  acquireConcurrentRequestSlot,
+  concurrentRequestLimitResponse,
+} from '@/server/security/concurrent-request-limiter'
 import { convertToModelMessages, createUIMessageStreamResponse, generateText, isStepCount, toUIMessageStream, ToolLoopAgent, type ToolApprovalConfiguration, type UIMessage } from '@/server/ai/sdk'
 import type { LanguageModel } from '@/server/ai/provider-types'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -117,6 +121,7 @@ export async function POST(
   let actWebhookConversationId: Id<'conversations'> | undefined
   let actWebhookTurnId: string | undefined
   let actWebhookSkip = false
+  let concurrencySlot: { release: () => void } | null = null
   try {
     const {
       ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
@@ -198,6 +203,13 @@ export async function POST(
     )
     currentUserId = userId
     currentResourceUserId = conversationUserId
+    // C-10: Limit concurrent in-flight act requests per user to prevent
+    // resource exhaustion. Each request can run for up to 800 seconds;
+    // without this, a user could fire 60 concurrent requests instantly.
+    concurrencySlot = acquireConcurrentRequestSlot(userId, { bucket: 'act' })
+    if (!concurrencySlot) {
+      return concurrentRequestLimitResponse('act')
+    }
     const accessToken = auth.accessToken || undefined
 	    const streamPersistence = resolveActStreamPersistence({
 	      requestedMode: streamPersistenceMode,
@@ -672,6 +684,10 @@ export async function POST(
         ? { providerOptions: { gateway: { zeroDataRetention: true } } }
         : {}),
       stopWhen: isStepCount(MAX_TOOL_STEPS_ACT),
+      // Defense-in-depth: cap output tokens per step to match the budget
+      // reservation's maxOutputTokens estimate. Prevents a single step from
+      // consuming far more tokens than the reservation accounted for.
+      maxOutputTokens: 8_192,
       instructions: actInstructions,
       // allowSystemInMessages: context-compaction.ts injects a trusted server-generated
       // summary as a system message. This is not user input — safe to pass through.
@@ -1021,6 +1037,16 @@ export async function POST(
         headers: responseHeaders,
       })
     }
+    // Release the concurrency slot when the stream ends or is cancelled.
+    if (responseBody) {
+      const releaseSlot = concurrencySlot
+      concurrencySlot = null // transfer ownership to the stream wrapper
+      const releaseTransform = new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) { controller.enqueue(chunk) },
+        flush() { releaseSlot?.release() },
+      })
+      responseBody = responseBody.pipeThrough(releaseTransform)
+    }
     return new Response(responseBody, {
       status: _uiResp.status,
       headers: responseHeaders,
@@ -1102,7 +1128,7 @@ export async function POST(
       paid,
       onlyAllowZdrModels: paid && appSettings?.onlyAllowZdrModels === true,
     })
-    return await runActModelAttempts<Response>({
+    const _actResponse = await runActModelAttempts<Response>({
       attemptModelIds,
       reserveBudgetForAttempt,
       onFallback: (from, to, failedAttempts) => {
@@ -1150,6 +1176,9 @@ export async function POST(
         })
       },
     })
+    concurrencySlot?.release()
+    concurrencySlot = null
+    return _actResponse
 	  } catch (error) {
     const serviceResponse = actConversationErrorResponse(error)
     if (serviceResponse) {
@@ -1173,6 +1202,7 @@ export async function POST(
 	      }).catch((releaseErr) => logger.error('[conversations/act] Failed to release budget reservation:', summarizeErrorForLog(releaseErr)))
 	      budgetReservationId = null
 	    }
+    concurrencySlot?.release()
 	    await actGeneratingMessageService.fail({
       conversationId: actWebhookConversationId,
       emitWebhook: !actWebhookSkip,
