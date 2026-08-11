@@ -17,6 +17,10 @@ import type { AutomationSchedule } from './AutomationRepository'
 export const AUTOMATION_SCHEDULE_DUE_JOB = 'automation.schedule-due'
 export const AUTOMATION_EXECUTE_JOB = 'automation.execute'
 
+// Per-user concurrent automation run limit. Prevents a single user from
+// flooding the Postgres job queue with expensive workflow executions.
+const MAX_ACTIVE_RUNS_PER_USER = 10
+
 type DueAutomation = {
   automationId: string
   concurrencyPolicy: 'queue' | 'skip'
@@ -57,6 +61,7 @@ export class PostgresAutomationRunCoordinator {
       `)
       let enqueued = 0
       let skipped = 0
+      const userActiveRunCount = new Map<string, number>()
       for (const item of due.rows) {
         const scheduledFor = dateValue(item.nextFireAt)
         const idempotencyKey = `schedule:${item.automationId}:${scheduledFor.getTime()}`
@@ -64,6 +69,13 @@ export class PostgresAutomationRunCoordinator {
           normalizeAutomationSchedule(item.schedule as AutomationSchedule),
           Math.max(now.getTime(), scheduledFor.getTime()),
         ))
+        // Per-user concurrency cap: skip enqueuing if the user already has
+        // too many active (queued/running) automation runs.
+        const activeForUser = userActiveRunCount.get(item.userId) ?? 0
+        if (activeForUser >= MAX_ACTIVE_RUNS_PER_USER) {
+          skipped += 1
+          continue
+        }
         const [active] = item.concurrencyPolicy === 'skip'
           ? await tx
               .select({ id: automationRuns.id })
@@ -120,6 +132,7 @@ export class PostgresAutomationRunCoordinator {
               type: AUTOMATION_EXECUTE_JOB,
             })
             enqueued += 1
+            userActiveRunCount.set(item.userId, activeForUser + 1)
           }
         }
         await tx

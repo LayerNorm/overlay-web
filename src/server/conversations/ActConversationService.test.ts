@@ -7,7 +7,7 @@ import { ActConversationServiceError, ActEntitlementService } from './ActEntitle
 import { ActGeneratingMessageService } from './ActGeneratingMessageService'
 import { ActMessagePersistenceService, type ActAssistantFinishEvent } from './ActMessagePersistenceService'
 import { ActUsageBudgetService } from './ActUsageBudgetService'
-import { UnlimitedUsagePolicy } from './ActUsagePolicy'
+import { isFreeTierAllocationExhausted, UnlimitedUsagePolicy } from './ActUsagePolicy'
 import type { Id } from '../../../convex/_generated/dataModel'
 
 const freeEntitlements = {
@@ -360,4 +360,48 @@ test('unlimited usage policy exposes explicit paid entitlements and no-op accoun
     reservationId: null,
     userId: 'user_1',
   }), { finalized: false, reservationId: null })
+})
+
+test('free-tier allocation check does not block a plan with no credit allowance', () => {
+  // Free plans carry creditsTotal 0 (no subscription => empty usage buckets),
+  // so a credits-only check matched every free user on their first message.
+  assert.equal(isFreeTierAllocationExhausted({
+    creditsTotal: 0,
+    creditsUsed: 0,
+    dailyUsage: { ask: 0, write: 0, agent: 0 },
+    dailyLimits: { ask: 15, write: 15, agent: 15 },
+  }), false)
+})
+
+test('free-tier allocation check blocks once every daily bucket is spent', () => {
+  assert.equal(isFreeTierAllocationExhausted({
+    creditsTotal: 0,
+    creditsUsed: 0,
+    dailyUsage: { ask: 15, write: 15, agent: 15 },
+    dailyLimits: { ask: 15, write: 15, agent: 15 },
+  }), true)
+})
+
+test('free-tier allocation check still enforces an exhausted credit allowance', () => {
+  assert.equal(isFreeTierAllocationExhausted({
+    creditsTotal: 500,
+    creditsUsed: 500,
+    dailyUsage: { ask: 0, write: 0, agent: 0 },
+    dailyLimits: { ask: 15, write: 15, agent: 15 },
+  }), true)
+  assert.equal(isFreeTierAllocationExhausted({
+    creditsTotal: 500,
+    creditsUsed: 100,
+    dailyUsage: { ask: 0, write: 0, agent: 0 },
+    dailyLimits: { ask: 15, write: 15, agent: 15 },
+  }), false)
+})
+
+test('free-tier allocation check ignores unmetered (paid) daily limits', () => {
+  assert.equal(isFreeTierAllocationExhausted({
+    creditsTotal: 0,
+    creditsUsed: 0,
+    dailyUsage: { ask: 99, write: 99, agent: 99 },
+    dailyLimits: { ask: Infinity, write: Infinity, agent: Infinity },
+  }), false)
 })

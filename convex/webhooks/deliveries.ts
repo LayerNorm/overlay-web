@@ -143,6 +143,21 @@ export const redriveByServer = mutation({
     if (!source || source.userId !== args.userId || source.status !== 'dead') {
       return { deliveryId: null }
     }
+    // Cap redrive attempts to prevent DDoS amplification. Count existing
+    // deliveries that share the same base event ID (original or redriven).
+    const MAX_REDRIVES_PER_DELIVERY = 3
+    const baseEventId = source.eventId.split(':redrive:')[0]
+    const relatedDeliveries = await ctx.db
+      .query('webhookDeliveries')
+      .withIndex('by_subscriptionId_eventId', (q) => q.eq('subscriptionId', source.subscriptionId))
+      .filter((q) => q.eq(q.field('userId'), args.userId))
+      .collect()
+    const redriveCount = relatedDeliveries.filter((d) =>
+      d.eventId.split(':redrive:')[0] === baseEventId,
+    ).length
+    if (redriveCount > MAX_REDRIVES_PER_DELIVERY) {
+      return { deliveryId: null }
+    }
     const now = Date.now()
     const deliveryId = await ctx.db.insert('webhookDeliveries', {
       attemptCount: 0,

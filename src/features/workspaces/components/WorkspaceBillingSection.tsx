@@ -166,11 +166,11 @@ export function WorkspaceBillingSection({
           {summary.canManage && summary.rollout.checkoutEnabled ? (
             <div className="grid gap-3 lg:grid-cols-2">
               <BillingActionCard title="Monthly workspace credits" description="Choose a recurring allowance from $8 to $200. Existing personal subscriptions are untouched.">
-                <Select aria-label="Workspace monthly plan" value={String(planAmountCents)} onChange={(event) => setPlanAmountCents(Number(event.target.value))}>{AMOUNTS.map((amount) => <option key={amount} value={amount}>${amount / 100}/month</option>)}</Select>
+                <Select aria-label="Workspace monthly plan" value={String(planAmountCents)} onChange={(event) => setPlanAmountCents(Number(event.target.value))}>{AMOUNTS.map((amount) => <option key={amount} value={amount}>{`$${amount / 100}/month`}</option>)}</Select>
                 <Button size="sm" disabled={busy !== null} onClick={() => void run('checkout', () => client.createBillingCheckout(workspace.id, { planAmountCents, topUpAmountCents, autoTopUpEnabled: false }))}>{busy === 'checkout' ? <Loader2 size={13} className="animate-spin" /> : <CreditCard size={13} />}{summary.subscription.planKind === 'paid' ? 'Change plan' : 'Subscribe'}</Button>
               </BillingActionCard>
               <BillingActionCard title="One-time top-up" description="Add credits directly to this workspace. Personal-wallet transfers are not supported.">
-                <Select aria-label="Workspace top-up" value={String(topUpAmountCents)} onChange={(event) => setTopUpAmountCents(Number(event.target.value))}>{AMOUNTS.map((amount) => <option key={amount} value={amount}>${amount / 100} in credits</option>)}</Select>
+                <Select aria-label="Workspace top-up" value={String(topUpAmountCents)} onChange={(event) => setTopUpAmountCents(Number(event.target.value))}>{AMOUNTS.map((amount) => <option key={amount} value={amount}>{`$${amount / 100} in credits`}</option>)}</Select>
                 <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void run('topup', () => client.createBillingTopUp(workspace.id, { amountCents: topUpAmountCents }))}>{busy === 'topup' ? <Loader2 size={13} className="animate-spin" /> : null}Add credits</Button>
               </BillingActionCard>
             </div>

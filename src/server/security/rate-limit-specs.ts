@@ -174,6 +174,22 @@ const DYNAMIC_ENDPOINT_RATE_LIMITS: DynamicEndpointRateLimit[] = [
       { bucket: 'r2-download:file:user', limit: 300, windowMs: TEN_MINUTES },
     ],
   },
+  {
+    method: 'POST',
+    pattern: /^\/api\/v1\/knowledge-bases\/[^/]+\/reindex$/,
+    limits: [
+      { bucket: 'knowledge-reindex:ip', limit: 20, windowMs: ONE_HOUR },
+      { bucket: 'knowledge-reindex:user', limit: 10, windowMs: ONE_HOUR },
+    ],
+  },
+  {
+    method: 'PATCH',
+    pattern: /^\/api\/v1\/webhooks$/,
+    limits: [
+      { bucket: 'webhook-redrive:ip', limit: 30, windowMs: TEN_MINUTES },
+      { bucket: 'webhook-redrive:user', limit: 15, windowMs: TEN_MINUTES },
+    ],
+  },
 ]
 
 function keyForBucket(bucket: string, userId: string, ip: string): string {
