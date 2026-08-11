@@ -639,7 +639,7 @@ export async function createSession(session: AuthSession): Promise<void> {
   cookieStore.set(SESSION_COOKIE_NAME, signedCookie, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: 'strict',
     maxAge: SESSION_MAX_AGE,
     path: '/',
   })

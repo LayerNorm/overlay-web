@@ -1,6 +1,9 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from 'next/link'
 import { Download } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeSanitize from 'rehype-sanitize'
 import type { SharedFile } from '@/app/share/f/[token]/page'
 
 function formatBytes(bytes: number | null): string {
@@ -20,10 +23,11 @@ function PreviewBody({ file, token }: { file: SharedFile; token: string }) {
 
   if (file.kind === 'note' && file.content) {
     return (
-      <article
-        className="prose prose-neutral max-w-none rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-6 py-6 text-[var(--foreground)] dark:prose-invert"
-        dangerouslySetInnerHTML={{ __html: file.content }}
-      />
+      <article className="prose prose-neutral max-w-none rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-6 py-6 text-[var(--foreground)] dark:prose-invert">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+          {file.content}
+        </ReactMarkdown>
+      </article>
     )
   }
 
