@@ -1,7 +1,7 @@
 import { logger } from '@/server/observability/logger'
 import type { Sandbox } from '@daytona/sdk'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getBillingProgrammaticSubjectId, getTrustedAutomationBillingSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import {
   downloadSandboxFile,
   ensureWorkspaceSandbox,
@@ -105,6 +105,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   let meteringEndedAt: number | null = null
   const budgetReservation = await reserveDaytonaRunBudget({
     userId,
+    workspaceId: context.workspace.workspace.id,
+    programmaticSubjectId: getBillingProgrammaticSubjectId(context, getTrustedAutomationBillingSubjectId(context)),
     idempotencyKey: context.requestIdempotencyKey,
     maxDurationSeconds: maxDuration,
     operationId: 'sandbox.daytona-run',
@@ -122,6 +124,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     return NextResponse.json(budgetReservation.payload, { status: budgetReservation.status })
   }
   const sandboxBudgetReservationId = budgetReservation.reservationId
+  const sandboxBillingAccountId = budgetReservation.billingAccountId
 
   try {
     await generationUsagePolicy.markStarted({
@@ -222,12 +225,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     )
   } finally {
     await finalizeDaytonaRunMetering({
+      billingAccountId: sandboxBillingAccountId,
       workspaceRun,
       meteringStartedAt,
       meteringEndedAt,
       reservationId: sandboxBudgetReservationId,
       userId,
       deps: {
+        finalizeProviderBudgetReservation: (args) => generationUsagePolicy.finalize(args),
         releaseProviderBudgetReservation: (args) => generationUsagePolicy.release(args),
         markProviderBudgetReconcile: (args) => generationUsagePolicy.markForReconcile(args),
       },

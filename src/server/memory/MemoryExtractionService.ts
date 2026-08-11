@@ -22,6 +22,8 @@ export class MemoryExtractionService {
   }) {}
 
   async extractTurn(args: {
+    billingActorUserId?: string
+    billingSpendSubjectId?: string
     conversationId: string
     messageId: string
     turnId: string
@@ -88,7 +90,11 @@ export class MemoryExtractionService {
               targetText: turn.targetText,
             }),
             usageEvent: { inputTokens: estimatedInputTokens, outputTokens: 1_200 },
-            userId: args.userId,
+            userId: args.billingActorUserId ?? args.userId,
+            workspaceId: turn.workspaceId,
+            programmaticSubjectId: args.billingSpendSubjectId?.trim()
+              ? args.billingSpendSubjectId
+              : `memory-extract:${args.conversationId}`,
           })
         : await extract()
       const candidates = extracted.filter((candidate) => (

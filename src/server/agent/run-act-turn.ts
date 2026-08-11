@@ -94,7 +94,6 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
   // different active workspace — causing assertResourceWorkspace to fail.
   const workspace = await overlayContext.workspaceService.resolveActiveWorkspace(input.userId)
   const workspaceId = workspace.workspace.id
-
   const conversationId = input.conversationId ?? await overlayContext
     .appData.repositories.conversations.createConversation({
       userId: input.userId,
@@ -140,6 +139,7 @@ export async function runActTurnForScheduledAutomation(input: ScheduledAutomatio
         modelId: input.modelId || DEFAULT_MODEL_ID,
         userId: input.userId,
         automationExecution: true,
+        automationId: input.automationId,
         actAbortTimeoutMs: SCHEDULED_AUTOMATION_ACT_ABORT_TIMEOUT_MS,
         // Forward any @mention tokens embedded in the saved instructions so the act
         // route's mention-context resolver can inject the same lightweight metadata

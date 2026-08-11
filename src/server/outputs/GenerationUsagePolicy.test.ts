@@ -19,6 +19,7 @@ test('unlimited generation usage policy explicitly permits provider work without
   assert.equal(entitlements.planKind, 'paid')
   assert.deepEqual(reservation, {
     ok: true,
+    billingAccountId: null,
     reservationId: null,
     reservedCents: 0,
     entitlements,

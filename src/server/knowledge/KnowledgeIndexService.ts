@@ -53,6 +53,8 @@ export class KnowledgeIndexService {
             }),
             usageEvent: { inputTokens: estimatedInputTokens },
             userId: args.userId,
+            workspaceId: source.workspaceId,
+            programmaticSubjectId: `knowledge-index:${args.sourceKind}:${args.sourceId}`,
           })
         : await embed()
       await this.deps.repository.replaceSource({

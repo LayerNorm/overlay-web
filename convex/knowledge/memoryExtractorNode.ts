@@ -96,12 +96,27 @@ function getExtractorModel(modelId: string) {
 
 export const extractFromTurn = internalAction({
   args: {
+    billingAccountId: v.optional(v.string()),
+    billingActorUserId: v.optional(v.string()),
+    billingSpendSubjectId: v.optional(v.string()),
+    billingSpendSubjectKind: v.optional(v.union(v.literal("member"), v.literal("programmatic"))),
     conversationId: v.id("conversations"),
     turnId: v.string(),
     userId: v.string(),
     isPaid: v.optional(v.boolean()),
+    workspaceId: v.optional(v.string()),
   },
-  handler: async (ctx, { conversationId, turnId, userId, isPaid }) => {
+  handler: async (ctx, {
+    billingAccountId,
+    billingActorUserId,
+    billingSpendSubjectId,
+    billingSpendSubjectKind,
+    conversationId,
+    turnId,
+    userId,
+    isPaid,
+    workspaceId,
+  }) => {
     try {
       // 1. Fetch message + context
       const messages = (await ctx.runQuery(
@@ -192,24 +207,53 @@ export const extractFromTurn = internalAction({
       const requestFingerprint = createHash("sha256")
         .update(`${conversationId}:${turnId}:${prompt}`)
         .digest("hex");
+      const billingUserId = billingActorUserId?.trim() || userId;
+      let resolvedBillingAccountId = billingAccountId?.trim() || undefined;
+      if (!resolvedBillingAccountId && workspaceId && process.env.OVERLAY_FEATURE_WORKSPACE_WALLETS === "1") {
+        const payer = await ctx.runQuery(internal.knowledge.knowledge.resolveKnowledgeBillingPayer, {
+          userId: billingUserId,
+          workspaceId,
+        });
+        if (payer.scope === "workspace") resolvedBillingAccountId = payer.billingAccountId;
+      }
+      if (resolvedBillingAccountId && !workspaceId) {
+        throw new Error("workspace_billing_payer_incomplete");
+      }
+      const resolvedSpendSubjectId = billingSpendSubjectId?.trim() || billingUserId;
+      const resolvedSpendSubjectKind = billingSpendSubjectKind ?? "member";
       const reservationId = estimatedCostUsd > 0
         ? `memory_${createHash("sha256")
-            .update(`${userId}:memory.extract-turn:${requestFingerprint}`)
+            .update(`${billingUserId}:${resolvedBillingAccountId ?? "personal"}:memory.extract-turn:${requestFingerprint}`)
             .digest("hex")
             .slice(0, 40)}`
         : null;
       if (reservationId && serverSecret) {
         try {
-          const reservation = await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
-            serverSecret,
-            userId,
-            reservationId,
-            kind: "generation",
-            modelId,
-            operationId: "memory.extract-turn",
-            requestFingerprint,
-            reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
-          });
+          const reservation = resolvedBillingAccountId
+            ? await ctx.runMutation(api.platform.usage.reserveWorkspaceBudgetByServer, {
+                billingAccountId: resolvedBillingAccountId,
+                serverSecret,
+                userId: billingUserId,
+                workspaceId: workspaceId!,
+                spendSubjectId: resolvedSpendSubjectId,
+                spendSubjectKind: resolvedSpendSubjectKind,
+                reservationId,
+                kind: "generation",
+                modelId,
+                operationId: "memory.extract-turn",
+                requestFingerprint,
+                reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
+              })
+            : await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
+                serverSecret,
+                userId: billingUserId,
+                reservationId,
+                kind: "generation",
+                modelId,
+                operationId: "memory.extract-turn",
+                requestFingerprint,
+                reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
+              });
           if (reservation.idempotent || reservation.status !== "reserved") {
             return {
               extracted: 0,
@@ -237,7 +281,7 @@ export const extractFromTurn = internalAction({
         if (reservationId && serverSecret) {
           await ctx.runMutation(api.platform.usage.markBudgetReservationStartedByServer, {
             serverSecret,
-            userId,
+            userId: billingUserId,
             reservationId,
           });
         }
@@ -252,7 +296,7 @@ export const extractFromTurn = internalAction({
         if (reservationId && serverSecret) {
           await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
             serverSecret,
-            userId,
+            userId: billingUserId,
             reservationId,
             errorMessage: err instanceof Error ? err.message : "memory_extraction_failed",
           }).catch(() => {});
@@ -268,7 +312,7 @@ export const extractFromTurn = internalAction({
         if (actualCostUsd === null) {
           await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
             serverSecret,
-            userId,
+            userId: billingUserId,
             reservationId,
             errorMessage: `pricing_missing:${modelId}`,
           }).catch(() => {});
@@ -276,7 +320,7 @@ export const extractFromTurn = internalAction({
           const costCents = applyMarkupToDollars({ providerCostUsd: actualCostUsd });
           await ctx.runMutation(api.platform.usage.finalizeBudgetReservationByServer, {
             serverSecret,
-            userId,
+            userId: billingUserId,
             reservationId,
             actualCents: costCents,
             events: [{
@@ -291,7 +335,7 @@ export const extractFromTurn = internalAction({
           }).catch(async (err) => {
             await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
               serverSecret,
-              userId,
+              userId: billingUserId,
               reservationId,
               errorMessage: err instanceof Error ? err.message : "finalize_failed",
             }).catch(() => {});

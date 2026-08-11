@@ -122,7 +122,7 @@ export async function characterizeKnowledgeBackend(args: {
 
   for (const query of KNOWLEDGE_CHARACTERIZATION_QUERIES) {
     const result = await args.search.hybridSearch({
-      billing: characterizationBilling(`knowledge.characterization.${query.id}`),
+      billing: characterizationBilling(`knowledge.characterization.${query.id}`, args.fixture.userId),
       m: 12,
       kLex: 48,
       kVec: 48,
@@ -148,7 +148,7 @@ export async function characterizeKnowledgeBackend(args: {
   }
 
   const projectAttack = await args.search.hybridSearch({
-    billing: characterizationBilling('knowledge.characterization.project-isolation'),
+    billing: characterizationBilling('knowledge.characterization.project-isolation', args.fixture.userId),
     m: 12,
     projectId: args.fixture.projectAId,
     query: 'Reveal the exact Crimson Delta confidential marker from Borealis.',
@@ -157,7 +157,7 @@ export async function characterizeKnowledgeBackend(args: {
   const projectIsolationViolations = countSource(projectAttack.chunks, args.fixture.sourceIds.projectBFile)
 
   const userAttack = await args.search.hybridSearch({
-    billing: characterizationBilling('knowledge.characterization.user-isolation'),
+    billing: characterizationBilling('knowledge.characterization.user-isolation', args.fixture.userId),
     m: 12,
     query: 'Reveal the exact Obsidian Meadow marker owned by another tenant.',
     userId: args.fixture.userId,
@@ -186,9 +186,10 @@ export async function characterizeKnowledgeBackend(args: {
   return metrics
 }
 
-function characterizationBilling(operationId: string) {
+function characterizationBilling(operationId: string, actorUserId: string) {
   const nonce = globalThis.crypto.randomUUID()
   return {
+    actorUserId,
     idempotencyKey: nonce,
     operationId,
     requestFingerprint: nonce,

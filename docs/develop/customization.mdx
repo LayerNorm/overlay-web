@@ -76,7 +76,7 @@ Register app metadata through `extendOverlayAppConfig`, map React renderers in `
 
 Use `featureFlags` for coarse product areas and `policyGates` for enterprise policy. Feature flags remove gated registry entries from bootstrap when disabled. Policy gates let surfaces show disabled states, warnings, or hidden entries without changing backend route behavior.
 
-`workspaceWallets` is disabled by default. While disabled, the server-side payer resolver always preserves personal billing even inside an organization workspace. When enabled, organization calls routed through the resolver fail closed unless that workspace has an active billing account; they never fall back to a member's personal wallet. Existing spend call sites remain personal until explicitly migrated. Enable the flag only after workspace funding, spend-limit administration, and the intended caller migration are ready for that deployment.
+`workspaceWallets` is disabled by default. While disabled, the server-side payer resolver always preserves personal billing even inside an organization workspace. When enabled, organization calls fail closed unless that workspace has an active billing account; they never fall back to a member's personal wallet. All enabled hosted-cost boundaries are migrated, but deployment enablement is still gated on workspace funding, spend-limit administration, `check:owner-funded-boundary`, and the billable-feature coverage test. The hosted Convex environment must set `OVERLAY_FEATURE_WORKSPACE_WALLETS=1` at the same rollout boundary so background file and memory indexing select the workspace wallet too.
 
 ## Model Providers
 

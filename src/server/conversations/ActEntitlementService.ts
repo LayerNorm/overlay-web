@@ -5,7 +5,7 @@ import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import {
   buildInsufficientCreditsPayload,
   canUsePaidBudgetFeatures,
-  ensureBudgetAvailable,
+  ensurePayerBudgetAvailable,
   getBudgetTotals,
   isPaidPlan,
 } from '@/server/billing/billing-runtime'
@@ -43,9 +43,11 @@ export class ActEntitlementService {
   async gateModelAccess(args: {
     effectiveModelId: string
     userId: string
+    workspaceId?: string
+    programmaticSubjectId?: string
   }): Promise<ActModelGateResult> {
     const [entitlements, appSettings] = await Promise.all([
-      this.getEntitlements({ userId: args.userId }),
+      this.getEntitlements(args),
       this.deps.repository.getAppSettings({ userId: args.userId }),
     ])
 
@@ -61,10 +63,12 @@ export class ActEntitlementService {
     const effectiveModelSupportsZdr = modelSupportsZeroDataRetention(args.effectiveModelId)
 
     if (isPaidPlan(runtimeEntitlements) && budget.remainingCents <= 0) {
-      const autoTopUp = await ensureBudgetAvailable({
+      const autoTopUp = await ensurePayerBudgetAvailable({
         userId: args.userId,
         entitlements: runtimeEntitlements,
         minimumRequiredCents: 1,
+        programmaticSubjectId: args.programmaticSubjectId,
+        workspaceId: args.workspaceId,
       })
       runtimeEntitlements = autoTopUp.entitlements
     }
@@ -100,7 +104,7 @@ export class ActEntitlementService {
       )
     }
 
-    const refreshedEntitlements = await this.getEntitlements({ userId: args.userId })
+    const refreshedEntitlements = await this.getEntitlements(args)
 
     if (!refreshedEntitlements) {
       serviceError(
@@ -140,6 +144,8 @@ export class ActEntitlementService {
 
   private async getEntitlements(args: {
     userId: string
+    workspaceId?: string
+    programmaticSubjectId?: string
   }): Promise<Entitlements | null> {
     return await (this.deps.usagePolicy ?? this.deps.repository).getEntitlements(args)
   }

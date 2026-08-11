@@ -5,13 +5,19 @@ export type BillingSpendSubject = {
   kind: BillingSpendSubjectKind
 }
 
-export type ResolvedBillingPayer = {
-  billingAccountId: string
-  scope: 'personal' | 'workspace'
-  subject: BillingSpendSubject
-  userId?: string
-  workspaceId?: string
-}
+export type ResolvedBillingPayer =
+  | {
+      billingAccountId: string
+      scope: 'personal'
+      subject: BillingSpendSubject
+      userId: string
+    }
+  | {
+      billingAccountId: string
+      scope: 'workspace'
+      subject: BillingSpendSubject
+      workspaceId: string
+    }
 
 export type BillingAccountSpendLimitRecord = {
   billingAccountId: string

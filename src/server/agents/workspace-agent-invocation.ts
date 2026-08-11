@@ -183,7 +183,9 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       })
       const { paid, runtimeEntitlements } = await entitlementService.gateModelAccess({
         effectiveModelId: agent.modelId,
+        programmaticSubjectId: `agent:${agent.id}`,
         userId: args.actorUserId,
+        workspaceId: args.workspaceId,
       })
       const estimatedInputTokens = Math.ceil(JSON.stringify(history.slice(-24)).length / 4) + 1_000
       const reservation = await server.chatUsagePolicy.reserveForAttempt({
@@ -201,7 +203,9 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
           'workspace-agent-invocation',
           invocationNonce,
         ),
+        programmaticSubjectId: `agent:${agent.id}`,
         userId: args.actorUserId,
+        workspaceId: args.workspaceId,
       })
       if (!reservation.ok) {
         failureReason = 'usage_limited'

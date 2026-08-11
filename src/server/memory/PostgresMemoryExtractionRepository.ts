@@ -15,6 +15,7 @@ export type MemoryExtractionTurn = {
   projectId?: string
   targetText: string
   turnId: string
+  workspaceId?: string
 }
 
 export class PostgresMemoryExtractionRepository {
@@ -26,7 +27,10 @@ export class PostgresMemoryExtractionRepository {
     turnId: string
     userId: string
   }): Promise<MemoryExtractionTurn | null> {
-    const [conversation] = await this.db.select({ projectId: conversations.projectId })
+    const [conversation] = await this.db.select({
+      projectId: conversations.projectId,
+      workspaceId: conversations.workspaceId,
+    })
       .from(conversations)
       .where(and(
         eq(conversations.id, args.conversationId),
@@ -54,6 +58,7 @@ export class PostgresMemoryExtractionRepository {
       projectId: conversation.projectId ?? undefined,
       targetText: messageText(target),
       turnId: target.turnId,
+      workspaceId: conversation.workspaceId ?? undefined,
     }
   }
 

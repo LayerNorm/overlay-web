@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import {
   action,
+  type ActionCtx,
   internalAction,
   internalMutation,
   internalQuery,
@@ -33,6 +34,105 @@ const EMBEDDING_MODEL = 'openai/text-embedding-3-small'
 const EMBEDDING_DIM = 1536
 const GATEWAY_EMBED_URL =
   process.env.AI_GATEWAY_EMBED_URL?.trim() || 'https://ai-gateway.vercel.sh/v1/embeddings'
+
+type KnowledgeBillingPayer =
+  | { scope: 'personal' }
+  | { billingAccountId: string; scope: 'workspace'; workspaceId: string }
+
+export const resolveKnowledgeBillingPayer = internalQuery({
+  args: {
+    userId: v.string(),
+    workspaceId: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<KnowledgeBillingPayer> => {
+    if (process.env.OVERLAY_FEATURE_WORKSPACE_WALLETS !== '1' || !args.workspaceId) {
+      return { scope: 'personal' }
+    }
+    const workspace = await ctx.db.query('workspaces')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId!))
+      .unique()
+    if (!workspace || workspace.kind !== 'organization') return { scope: 'personal' }
+    const account = await ctx.db.query('billingAccounts')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId!))
+      .unique()
+    if (!account) throw new Error('workspace_wallet_not_configured')
+    if (account.status !== 'active') throw new Error('billing_account_inactive')
+    return {
+      billingAccountId: account.billingAccountId,
+      scope: 'workspace',
+      workspaceId: args.workspaceId,
+    }
+  },
+})
+
+async function reserveKnowledgeProviderBudget(ctx: ActionCtx, args: {
+  billingAccountId?: string
+  idempotencyKey: string
+  kind: 'embedding'
+  modelId: string
+  operationId: string
+  programmaticSubjectId?: string
+  requestFingerprint: string
+  reservedCents: number
+  serverSecret: string
+  spendSubjectId?: string
+  spendSubjectKind?: 'member' | 'programmatic'
+  userId: string
+  workspaceId?: string
+}) {
+  const hasExplicitWorkspacePayer = Boolean(
+    args.billingAccountId || args.spendSubjectId || args.spendSubjectKind,
+  )
+  if (hasExplicitWorkspacePayer && (
+    !args.billingAccountId || !args.spendSubjectId || !args.spendSubjectKind || !args.workspaceId
+  )) {
+    throw new Error('workspace_billing_payer_incomplete')
+  }
+  const payer: KnowledgeBillingPayer = hasExplicitWorkspacePayer
+    ? {
+        billingAccountId: args.billingAccountId!,
+        scope: 'workspace',
+        workspaceId: args.workspaceId!,
+      }
+    : await ctx.runQuery(internal.knowledge.knowledge.resolveKnowledgeBillingPayer, {
+        userId: args.userId,
+        workspaceId: args.workspaceId,
+      })
+  const reservationId = `embedding_${(await sha256Hex([
+    args.userId,
+    payer.scope === 'workspace' ? payer.billingAccountId : 'personal',
+    args.operationId,
+    args.idempotencyKey,
+    args.requestFingerprint,
+    args.modelId,
+  ].join(':'))).slice(0, 40)}`
+  const reservation = payer.scope === 'workspace'
+    ? await ctx.runMutation(api.platform.usage.reserveWorkspaceBudgetByServer, {
+        billingAccountId: payer.billingAccountId,
+        kind: args.kind,
+        modelId: args.modelId,
+        operationId: args.operationId,
+        requestFingerprint: args.requestFingerprint,
+        reservationId,
+        reservedCents: args.reservedCents,
+        serverSecret: args.serverSecret,
+        spendSubjectId: args.spendSubjectId ?? (args.programmaticSubjectId?.trim() || args.userId),
+        spendSubjectKind: args.spendSubjectKind ?? (args.programmaticSubjectId?.trim() ? 'programmatic' : 'member'),
+        userId: args.userId,
+        workspaceId: payer.workspaceId,
+      })
+    : await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
+        kind: args.kind,
+        modelId: args.modelId,
+        operationId: args.operationId,
+        requestFingerprint: args.requestFingerprint,
+        reservationId,
+        reservedCents: args.reservedCents,
+        serverSecret: args.serverSecret,
+        userId: args.userId,
+      })
+  return { reservation, reservationId }
+}
 
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
@@ -121,6 +221,7 @@ export const purgeKnowledgeSource = internalMutation({
 export const replaceKnowledgeSource = internalMutation({
   args: {
     userId: v.string(),
+    workspaceId: v.optional(v.string()),
     projectId: v.optional(v.string()),
     sourceKind: v.union(v.literal('file'), v.literal('memory')),
     sourceId: v.string(),
@@ -150,6 +251,7 @@ export const replaceKnowledgeSource = internalMutation({
     for (const seg of args.segments) {
       const chunkId = await ctx.db.insert('knowledgeChunks', {
         userId: args.userId,
+        workspaceId: args.workspaceId,
         projectId: args.projectId,
         sourceKind: args.sourceKind,
         sourceId: args.sourceId,
@@ -184,6 +286,7 @@ export const getFileForReindex = internalQuery({
     return {
       kind: 'ok' as const,
       userId: f.userId,
+      workspaceId: f.workspaceId,
       projectId: f.projectId,
       name: f.name,
       content,
@@ -196,7 +299,7 @@ export const getMemoryForReindex = internalQuery({
   handler: async (ctx, { memoryId }) => {
     const m = await ctx.db.get(memoryId)
     if (!m || m.deletedAt) return null
-    return { userId: m.userId, projectId: m.projectId, content: m.content }
+    return { userId: m.userId, workspaceId: m.workspaceId, projectId: m.projectId, content: m.content }
   },
 })
 
@@ -304,21 +407,22 @@ export const reindexFileInternal = internalAction({
     const estimatedCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, estimatedTokens)
     if (estimatedCostUsd === null) return
     const requestFingerprint = await sha256Hex(`file:${fileId}:${content}`)
-    const reservationId = `embedding_${(await sha256Hex(
-      `${userId}:knowledge.reindex-file:${requestFingerprint}`,
-    )).slice(0, 40)}`
+    let reservationId: string
     try {
-      const reservation = await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
-        serverSecret,
-        userId,
-        reservationId,
+      const reserved = await reserveKnowledgeProviderBudget(ctx, {
+        idempotencyKey: `file:${fileId}`,
         kind: 'embedding',
         modelId: EMBEDDING_MODEL,
         operationId: 'knowledge.reindex-file',
+        programmaticSubjectId: `knowledge-index:file:${fileId}`,
         requestFingerprint,
         reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
+        serverSecret,
+        userId,
+        workspaceId: meta.workspaceId,
       })
-      if (reservation.idempotent) return
+      reservationId = reserved.reservationId
+      if (reserved.reservation.idempotent) return
     } catch {
       return
     }
@@ -340,6 +444,7 @@ export const reindexFileInternal = internalAction({
       }
       await ctx.runMutation(internal.knowledge.knowledge.replaceKnowledgeSource, {
         userId,
+        workspaceId: meta.workspaceId,
         projectId,
         sourceKind: 'file',
         sourceId: fileId,
@@ -397,7 +502,7 @@ export const reindexCanonicalSourceInternal = internalAction({
     sourceVersionId: v.string(),
     userId: v.string(),
   },
-  handler: async (_ctx, _args) => {
+  handler: async () => {
     // Stub: canonical source reindexing is performed by the Postgres-backed
     // indexing service. This internal action exists so the BFF can schedule it
     // via the Convex scheduler without a TypeScript error against the generated
@@ -439,21 +544,22 @@ export const reindexMemoryInternal = internalAction({
     const estimatedCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, estimatedTokens)
     if (estimatedCostUsd === null) return
     const requestFingerprint = await sha256Hex(`memory:${memoryId}:${meta.content}`)
-    const reservationId = `embedding_${(await sha256Hex(
-      `${meta.userId}:knowledge.reindex-memory:${requestFingerprint}`,
-    )).slice(0, 40)}`
+    let reservationId: string
     try {
-      const reservation = await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
-        serverSecret,
-        userId: meta.userId,
-        reservationId,
+      const reserved = await reserveKnowledgeProviderBudget(ctx, {
+        idempotencyKey: `memory:${memoryId}`,
         kind: 'embedding',
         modelId: EMBEDDING_MODEL,
         operationId: 'knowledge.reindex-memory',
+        programmaticSubjectId: `knowledge-index:memory:${memoryId}`,
         requestFingerprint,
         reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
+        serverSecret,
+        userId: meta.userId,
+        workspaceId: meta.workspaceId,
       })
-      if (reservation.idempotent) return
+      reservationId = reserved.reservationId
+      if (reserved.reservation.idempotent) return
     } catch {
       return
     }
@@ -469,6 +575,7 @@ export const reindexMemoryInternal = internalAction({
       promptTokens = embedded.promptTokens
       await ctx.runMutation(internal.knowledge.knowledge.replaceKnowledgeSource, {
         userId: meta.userId,
+        workspaceId: meta.workspaceId,
         projectId: meta.projectId,
         sourceKind: 'memory',
         sourceId: memoryId,
@@ -564,9 +671,14 @@ function packChunksForContext(
 export const hybridSearch = action({
   args: {
     userId: v.string(),
+    billingUserId: v.string(),
+    billingAccountId: v.optional(v.string()),
     serverSecret: v.string(),
     idempotencyKey: v.string(),
     operationId: v.string(),
+    programmaticSubjectId: v.optional(v.string()),
+    spendSubjectId: v.optional(v.string()),
+    spendSubjectKind: v.optional(v.union(v.literal('member'), v.literal('programmatic'))),
     requestFingerprint: v.string(),
     query: v.string(),
     projectId: v.optional(v.string()),
@@ -594,26 +706,26 @@ export const hybridSearch = action({
       throw new Error('pricing_missing: embedding model')
     }
     const serverSecret = args.serverSecret
-    const reservationId = `embedding_${(await sha256Hex([
-      args.userId,
-      args.operationId,
-      args.idempotencyKey,
-      args.requestFingerprint,
-      EMBEDDING_MODEL,
-    ].join(':'))).slice(0, 40)}`
+    let reservationId: string
     try {
-      const reservation = await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
-        serverSecret,
-        userId: args.userId,
-        reservationId,
+      const reserved = await reserveKnowledgeProviderBudget(ctx, {
+        billingAccountId: args.billingAccountId,
+        idempotencyKey: args.idempotencyKey,
         kind: 'embedding',
         modelId: EMBEDDING_MODEL,
         operationId: args.operationId,
+        programmaticSubjectId: args.programmaticSubjectId,
         requestFingerprint: args.requestFingerprint,
         reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
+        serverSecret,
+        spendSubjectId: args.spendSubjectId,
+        spendSubjectKind: args.spendSubjectKind,
+        userId: args.billingUserId,
+        workspaceId: args.workspaceId,
       })
-      if (reservation.idempotent || reservation.status !== 'reserved') {
-        throw new Error(`provider_operation_already_reserved:${reservation.status}`)
+      reservationId = reserved.reservationId
+      if (reserved.reservation.idempotent || reserved.reservation.status !== 'reserved') {
+        throw new Error(`provider_operation_already_reserved:${reserved.reservation.status}`)
       }
     } catch {
       throw new Error('background_budget_exhausted')
@@ -624,7 +736,7 @@ export const hybridSearch = action({
     try {
       await ctx.runMutation(api.platform.usage.markBudgetReservationStartedByServer, {
         serverSecret,
-        userId: args.userId,
+        userId: args.billingUserId,
         reservationId,
       })
       const embedded = await embedViaGateway([q])
@@ -633,7 +745,7 @@ export const hybridSearch = action({
     } catch (err) {
       await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
         serverSecret,
-        userId: args.userId,
+        userId: args.billingUserId,
         reservationId,
         errorMessage: err instanceof Error ? err.message : 'embedding_search_failed',
       }).catch(() => {})
@@ -647,7 +759,7 @@ export const hybridSearch = action({
       if (actualCostUsd === null) {
         await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
           serverSecret,
-          userId: args.userId,
+          userId: args.billingUserId,
           reservationId,
           errorMessage: `pricing_missing:${EMBEDDING_MODEL}`,
         }).catch(() => {})
@@ -655,7 +767,7 @@ export const hybridSearch = action({
         const costCents = applyMarkupToDollars({ providerCostUsd: actualCostUsd })
         await ctx.runMutation(api.platform.usage.finalizeBudgetReservationByServer, {
           serverSecret,
-          userId: args.userId,
+          userId: args.billingUserId,
           reservationId,
           actualCents: costCents,
           events: [{
@@ -670,7 +782,7 @@ export const hybridSearch = action({
         }).catch(async (err) => {
           await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
             serverSecret,
-            userId: args.userId,
+            userId: args.billingUserId,
             reservationId,
             errorMessage: err instanceof Error ? err.message : 'finalize_failed',
           }).catch(() => {})

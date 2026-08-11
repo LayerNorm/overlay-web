@@ -27,6 +27,8 @@ export type DaytonaWorkspaceRecord = {
 export type DaytonaWorkspaceUpsert = Omit<DaytonaWorkspaceRecord, '_id' | 'createdAt' | 'updatedAt'>
 
 export type DaytonaUsageAccrual = {
+  billingAccountId?: string
+  deferUsageCharge?: boolean
   userId: string
   sandboxId: string
   tier: DaytonaWorkspaceTier
@@ -49,7 +51,7 @@ export interface DaytonaWorkspaceRepository {
     | { success: false; skipped: 'stale_workspace' }
   >
   accrueUsage(args: DaytonaUsageAccrual): Promise<
-    | { success: true; durationSeconds: number; costUsd: number; costCents: number }
+    | { success: true; durationSeconds: number; providerCostUsd: number; costUsd: number; costCents: number }
     | { success: false; skipped: 'missing_workspace' | 'stale_meter_window' }
     | null
   >

@@ -96,12 +96,16 @@ test('reserveDaytonaRunBudget reserves sandbox budget with current entitlement s
       getBudgetTotals: (() => ({ remainingCents: 25 })) as never,
       reserveProviderBudget: (async (args: Record<string, unknown>) => {
         reserveCalls.push(args)
-        return { ok: true, reservationId: 'reservation_1' }
+        return { ok: true, billingAccountId: 'ba_workspace_1', reservationId: 'reservation_1' }
       }) as never,
     },
   })
 
-  assert.deepEqual(result, { ok: true, reservationId: 'reservation_1' })
+  assert.deepEqual(result, {
+    ok: true,
+    billingAccountId: 'ba_workspace_1',
+    reservationId: 'reservation_1',
+  })
   assert.equal(reserveCalls.length, 1)
   assert.equal(reserveCalls[0]?.userId, 'user_1')
   assert.equal(reserveCalls[0]?.kind, 'sandbox')
@@ -109,27 +113,46 @@ test('reserveDaytonaRunBudget reserves sandbox budget with current entitlement s
   assert.equal(typeof reserveCalls[0]?.providerCostUsd, 'number')
 })
 
-test('finalizeDaytonaRunMetering releases budget when metered spend is accrued', async () => {
-  const releases: Array<Record<string, unknown>> = []
+test('finalizeDaytonaRunMetering records runtime without charging twice and finalizes the payer reservation', async () => {
+  const accruals: Array<Record<string, unknown>> = []
+  const finalizations: Array<Record<string, unknown>> = []
 
   await finalizeDaytonaRunMetering({
-    workspaceRun: { workspace: { id: 'workspace_1' }, sandbox: { id: 'sandbox_1' } } as never,
+    billingAccountId: 'ba_workspace_1',
+    workspaceRun: {
+      repository: {},
+      workspace: { id: 'workspace_1' },
+      sandbox: { id: 'sandbox_1' },
+    } as never,
     meteringStartedAt: 100,
     meteringEndedAt: 200,
     reservationId: 'reservation_1',
     userId: 'user_1',
     deps: {
-      accrueWorkspaceSpend: (async () => ({ success: true })) as never,
-      releaseProviderBudgetReservation: (async (args: Record<string, unknown>) => {
-        releases.push(args)
+      accrueWorkspaceSpend: (async (args: Record<string, unknown>) => {
+        accruals.push(args)
+        return { success: true, durationSeconds: 0.1, providerCostUsd: 0.01 }
+      }) as never,
+      finalizeProviderBudgetReservation: (async (args: Record<string, unknown>) => {
+        finalizations.push(args)
+        return { status: 'finalized' }
       }) as never,
     },
   })
 
-  assert.deepEqual(releases, [{
+  assert.equal(accruals[0]?.billingAccountId, 'ba_workspace_1')
+  assert.equal(accruals[0]?.deferUsageCharge, true)
+  assert.deepEqual(finalizations, [{
+    actualProviderCostUsd: 0.01,
+    events: [{
+      type: 'sandbox',
+      modelId: 'daytona/pro',
+      cost: 1.25,
+      durationSeconds: 0.1,
+      timestamp: 200,
+    }],
     userId: 'user_1',
     reservationId: 'reservation_1',
-    reason: 'daytona_actual_usage_accrued',
   }])
 })
 
@@ -140,6 +163,7 @@ test('finalizeDaytonaRunMetering preserves reconcile and no-meter fallback paths
   const releases: Array<Record<string, unknown>> = []
   try {
     await finalizeDaytonaRunMetering({
+      billingAccountId: 'ba_workspace_1',
       workspaceRun: { workspace: { id: 'workspace_1' }, sandbox: { id: 'sandbox_1' } } as never,
       meteringStartedAt: 100,
       meteringEndedAt: 200,
@@ -156,6 +180,25 @@ test('finalizeDaytonaRunMetering preserves reconcile and no-meter fallback paths
     })
 
     await finalizeDaytonaRunMetering({
+      billingAccountId: 'ba_workspace_1',
+      workspaceRun: { workspace: { id: 'workspace_1' }, sandbox: { id: 'sandbox_1' } } as never,
+      meteringStartedAt: 100,
+      meteringEndedAt: 200,
+      reservationId: 'reservation_stale',
+      userId: 'user_1',
+      deps: {
+        accrueWorkspaceSpend: (async () => ({
+          success: false,
+          skipped: 'stale_meter_window',
+        })) as never,
+        markProviderBudgetReconcile: (async (args: Record<string, unknown>) => {
+          reconciles.push(args)
+        }) as never,
+      },
+    })
+
+    await finalizeDaytonaRunMetering({
+      billingAccountId: 'ba_workspace_1',
       workspaceRun: null,
       meteringStartedAt: null,
       meteringEndedAt: null,
@@ -175,6 +218,10 @@ test('finalizeDaytonaRunMetering preserves reconcile and no-meter fallback paths
     userId: 'user_1',
     reservationId: 'reservation_1',
     errorMessage: 'metering failed',
+  }, {
+    userId: 'user_1',
+    reservationId: 'reservation_stale',
+    errorMessage: 'daytona_metering_stale_meter_window',
   }])
   assert.deepEqual(releases, [{
     userId: 'user_1',

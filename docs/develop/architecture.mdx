@@ -56,6 +56,8 @@ Billing ownership is represented separately from user identity by an additive `B
 
 `BillingPayerResolver` separates workspace authorization from payment selection. The `workspaceWallets` feature flag defaults off and makes the resolver select the personal path. When enabled, organization calls that adopt the resolver require an active workspace account and have no personal fallback. Workspace reservations update the account-keyed balance and an optional `member` or `programmatic` fixed-period limit atomically; the original personal reservation method remains unchanged for rollback.
 
+All enabled hosted-cost boundaries now pass the resource workspace plus a member or programmatic subject into the resolver. This includes shared chat and named agents, Postgres and Convex knowledge embeddings, browser/Daytona, hosted media and transcription, gateway search, and automation/API execution. Scheduled automations use `automation:{id}` and API keys use `api-key:{id}`. Vercel Workflow overhead is a separate 20-event estimate charged at the provider event rate plus `markup_25_v1`. Integrations, functions, and MCP execution are bounded to 12 tool steps per agent turn and 50,000 response characters; file ingestion is bounded to 20 requests per user per hour plus the plan storage cap. `src/server/billing/billable-feature-coverage.ts` is the launch inventory and its test fails when a category lacks metering or a concrete quota.
+
 Workspace Stripe ownership is account-keyed, never admin-keyed. Owners and admins may initialize the account and open checkout, top-up, verification, and portal flows, but Stripe metadata and durable subscription state bind to `billingAccountId` plus `workspaceId`; `userId` is retained only as the initiating actor. Both the Next/Postgres webhook and hosted Convex webhook preserve the personal metadata path, deduplicate event IDs, and reject stale subscription state with `providerEventCreatedAt`.
 
 Usage reservations have an evidence-gated recovery path. Work that expires before a provider starts is released automatically. Work that may have reached a provider is quarantined as `reconcile_required`; it must be finalized or released with a durable provider or internal-operation evidence reference. The five-minute Convex cron and Postgres worker expose queue depth and oldest age but never guess an ambiguous charge.
@@ -70,6 +72,8 @@ Important code:
 - `src/server/billing/BillingCustomerService.ts`
 - `src/server/billing/BillingCheckoutService.ts`
 - `src/server/billing/BillingPayerResolver.ts`
+- `src/server/billing/billable-feature-coverage.ts`
+- `src/server/billing/automation-workflow-billing.ts`
 - `src/server/billing/WorkspaceBillingService.ts`
 - `src/server/billing/providers/stripe-billing-provider.ts`
 - `convex/billing/subscriptions.ts`

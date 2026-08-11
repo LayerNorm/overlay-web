@@ -192,6 +192,7 @@ async function executeAutomationRun(input: AutomationScheduleWorkflowInput): Pro
         modelId: input.modelId,
         userId: input.userId,
         automationExecution: true,
+        automationId: input.automationId,
         actAbortTimeoutMs: 720_000,
       }),
     })

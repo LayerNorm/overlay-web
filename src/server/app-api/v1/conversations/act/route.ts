@@ -80,7 +80,10 @@ import {
   prepareActTooling,
   preloadActExternalToolTasks,
 } from './tooling'
-import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
+import {
+  getAuthorizedResourceUserId,
+  getBillingProgrammaticSubjectId,
+} from '@/server/app-api/bff-context'
 import {
   authorizeCapability,
   authorizeCatalogResource,
@@ -90,6 +93,8 @@ import type { AuthorizationCapability } from '@overlay/authz-contracts'
 import type { AuthorizationService } from '@/server/authorization/AuthorizationService'
 import { normalizeIntegrationProviderKey } from '@overlay/app-core'
 import { readProjectSettings } from '@/shared/projects/project-settings'
+import { meterAutomationWorkflowRun } from '@/server/billing/automation-workflow-billing'
+import { resolveBillingPayer } from '@/server/billing/billing-runtime'
 
 export const maxDuration = 800
 
@@ -181,6 +186,16 @@ export async function POST(
     const { auth } = context
     const userId = auth.userId
     const conversationUserId = getAuthorizedResourceUserId(context)
+    const billingWorkspaceId = context.workspace.workspace.id
+    const mentionedAgent = rawMentions?.find((mention) => mention.type === 'agent')
+    const billingProgrammaticSubjectId = getBillingProgrammaticSubjectId(
+      context,
+      automationExecution === true && auth.authType === 'service' && automationId
+        ? `automation:${automationId}`
+        : mentionedAgent
+          ? `agent:${mentionedAgent.id}`
+          : undefined,
+    )
     currentUserId = userId
     currentResourceUserId = conversationUserId
     const accessToken = auth.accessToken || undefined
@@ -224,7 +239,30 @@ export async function POST(
       runtimeEntitlements,
     } = await (dependencies.entitlementService ?? actEntitlementService).gateModelAccess({
       effectiveModelId,
+      programmaticSubjectId: billingProgrammaticSubjectId,
       userId,
+      workspaceId: billingWorkspaceId,
+    })
+    if (automationExecution === true) {
+      const workflowMeter = await meterAutomationWorkflowRun({
+        entitlements: runtimeEntitlements,
+        idempotencyKey: context.requestIdempotencyKey,
+        programmaticSubjectId: billingProgrammaticSubjectId ?? `automation:${automationId ?? turnId}`,
+        requestFingerprint: context.requestFingerprint,
+        userId,
+        workspaceId: billingWorkspaceId,
+      })
+      if (!workflowMeter.ok) {
+        return NextResponse.json(
+          { ...workflowMeter.payload, error: workflowMeter.code },
+          { status: workflowMeter.status },
+        )
+      }
+    }
+    const resolvedBillingPayer = await resolveBillingPayer({
+      programmaticSubjectId: billingProgrammaticSubjectId,
+      userId,
+      workspaceId: billingWorkspaceId,
     })
     const authorizedModelIds = await resolveAuthorizedModelIds({
       entitlements: runtimeEntitlements,
@@ -345,6 +383,12 @@ export async function POST(
       latestUserParts,
       attachmentNames,
       skipMemoryExtraction: !memoryEnabled,
+      billingActorUserId: userId,
+      billingAccountId: resolvedBillingPayer.scope === 'workspace'
+        ? resolvedBillingPayer.billingAccountId
+        : undefined,
+      billingSpendSubjectId: resolvedBillingPayer.subject.id,
+      billingSpendSubjectKind: resolvedBillingPayer.subject.kind,
       skip: isMultiModelFollowUpSlot,
     }).catch((error) => {
       // History loading remains the authoritative preparation failure. A
@@ -366,11 +410,14 @@ export async function POST(
       mentionedKnowledgeBaseIds: turnKnowledgeBaseIds,
       requestIdempotencyKey: context.requestIdempotencyKey!,
       requestFingerprint: context.requestFingerprint,
+      billingProgrammaticSubjectId,
+      billingUserId: userId,
       serverSecret,
       // The resource owner, not the caller: a shared conversation loads its
       // owner's context while billing still follows the authenticated caller.
       userId: conversationUserId,
       externalContextEnabled: !isPostgresAppData,
+      workspaceId: billingWorkspaceId,
     })
 
     const structuredMediaToolIntent = normalizeStructuredMediaToolIntent(mediaToolIntent)
@@ -386,7 +433,9 @@ export async function POST(
         entitlements: runtimeEntitlements,
         idempotencyKey: context.requestIdempotencyKey,
         operationId: 'conversation.act.media-intent',
+        programmaticSubjectId: billingProgrammaticSubjectId,
         requestFingerprint: context.requestFingerprint,
+        workspaceId: billingWorkspaceId,
       })
     })()
 
@@ -445,6 +494,8 @@ export async function POST(
           paid,
           requestFingerprint: context.requestFingerprint,
           userId,
+          workspaceId: billingWorkspaceId,
+          programmaticSubjectId: billingProgrammaticSubjectId,
         })
         if (!summaryReservation.ok) {
           throw new Error(String(summaryReservation.failure.payload.error ?? 'context_summary_budget_denied'))
@@ -545,6 +596,8 @@ export async function POST(
 	        serverSecret,
 	        turnId: tid,
 	        userId,
+	        workspaceId: billingWorkspaceId,
+	        billingProgrammaticSubjectId,
 	      }),
 	    ])
     pendingGeneratingMessageId = generatingMessageId
@@ -987,7 +1040,9 @@ export async function POST(
         estimatedInputTokens,
         maxOutputTokens,
         operationId: 'conversation.act',
+        programmaticSubjectId: billingProgrammaticSubjectId,
         requestFingerprint: context.requestFingerprint,
+        workspaceId: billingWorkspaceId,
       })
       if (!reservation.ok) {
         const errorCode = typeof reservation.failure.payload.error === 'string'

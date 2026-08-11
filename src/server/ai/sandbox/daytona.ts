@@ -531,6 +531,8 @@ export async function refreshWorkspaceActivity(input: EnsuredDaytonaWorkspace): 
 }
 
 export async function accrueWorkspaceSpend(params: {
+  billingAccountId?: string
+  deferUsageCharge?: boolean
   repository: DaytonaWorkspaceRepository
   workspace: DaytonaWorkspaceRecord
   sandbox: Sandbox
@@ -538,11 +540,13 @@ export async function accrueWorkspaceSpend(params: {
   endedAt: number
   reason: DaytonaUsageReason
 }): Promise<
-  | { success: true; durationSeconds: number; costUsd: number; costCents: number }
+  | { success: true; durationSeconds: number; providerCostUsd: number; costUsd: number; costCents: number }
   | { success: false; skipped: 'missing_workspace' | 'stale_meter_window' }
   | null
 > {
   return await params.repository.accrueUsage({
+      billingAccountId: params.billingAccountId,
+      deferUsageCharge: params.deferUsageCharge,
       userId: params.workspace.userId,
       sandboxId: params.sandbox.id,
       tier: params.workspace.tier,

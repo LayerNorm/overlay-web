@@ -309,6 +309,8 @@ export const recordUsageLedger = mutation({
 async function accrueUsage(
   ctx: MutationCtx,
   args: {
+    billingAccountId?: string
+    deferUsageCharge?: boolean
     userId: string
     sandboxId: string
     tier: 'pro' | 'max'
@@ -322,7 +324,15 @@ async function accrueUsage(
     reason: 'start' | 'task' | 'stop' | 'archive' | 'resize' | 'reconcile'
   },
 ) {
-  const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
+  const billingAccount = args.billingAccountId
+    ? await ctx.db
+        .query('billingAccounts')
+        .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', args.billingAccountId!))
+        .unique()
+    : await ensurePersonalBillingAccount(ctx, args.userId)
+  if (!billingAccount || billingAccount.status !== 'active') {
+    throw new Error('daytona_billing_account_not_active')
+  }
   const workspace = await ctx.db
     .query('daytonaWorkspaces')
     .withIndex('by_sandboxId', (q) => q.eq('sandboxId', args.sandboxId))
@@ -371,11 +381,13 @@ async function accrueUsage(
       createdAt: Date.now(),
     })
 
-    await applyUsageEvents(ctx, args.userId, [{
-      type: 'sandbox',
-      cost: costCents,
-      timestamp: args.endedAt,
-    }])
+    if (!args.deferUsageCharge) {
+      await applyUsageEvents(ctx, args.userId, [{
+        type: 'sandbox',
+        cost: costCents,
+        timestamp: args.endedAt,
+      }])
+    }
 
     const updatedAt = Date.now()
     await ctx.db.patch(workspace._id, {
@@ -386,6 +398,7 @@ async function accrueUsage(
     return {
       success: true as const,
       durationSeconds: roundCurrencyAmount(durationSeconds),
+      providerCostUsd: providerCost.costUsd,
       costUsd,
       costCents,
       updatedAt,
@@ -395,6 +408,7 @@ async function accrueUsage(
   return {
     success: true as const,
     durationSeconds: roundCurrencyAmount(durationSeconds),
+    providerCostUsd: providerCost.costUsd,
     costUsd,
     costCents,
     updatedAt: workspace.updatedAt,
@@ -403,6 +417,8 @@ async function accrueUsage(
 
 export const accrueUsageInternal = internalMutation({
   args: {
+    billingAccountId: v.optional(v.string()),
+    deferUsageCharge: v.optional(v.boolean()),
     userId: v.string(),
     sandboxId: v.string(),
     tier: v.union(v.literal('pro'), v.literal('max')),
@@ -430,6 +446,8 @@ export const accrueUsageInternal = internalMutation({
 export const accrueUsageByServer = mutation({
   args: {
     serverSecret: v.string(),
+    billingAccountId: v.optional(v.string()),
+    deferUsageCharge: v.optional(v.boolean()),
     userId: v.string(),
     sandboxId: v.string(),
     tier: v.union(v.literal('pro'), v.literal('max')),

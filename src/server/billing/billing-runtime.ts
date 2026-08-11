@@ -93,11 +93,13 @@ export function createRequestBoundBudgetReservationId(params: {
   operationId: string
   requestFingerprint: string
   userId: string
+  payerDiscriminator?: string
 }): string {
   const digest = createHash('sha256')
     .update([
       'overlay-usage-reservation:v1',
       params.userId,
+      params.payerDiscriminator ?? '',
       params.operationId,
       params.idempotencyKey,
       params.requestFingerprint,
@@ -117,22 +119,31 @@ export async function reserveProviderBudget(params: {
   operationId: string
   requestFingerprint: string
   reservationId?: string
+  workspaceId?: string
+  programmaticSubjectId?: string
 }) {
   const reservedCents = billableBudgetCentsFromProviderUsd(params.providerCostUsd)
   if (reservedCents <= 0) {
     return {
       ok: true,
+      billingAccountId: null,
       reservationId: null,
       reservedCents: 0,
       entitlements: params.entitlements,
     } as const
   }
 
-  const budget = await ensureBudgetAvailable({
-    userId: params.userId,
-    entitlements: params.entitlements,
-    minimumRequiredCents: Math.max(1, Math.ceil(reservedCents)),
-  })
+  const payerContext = await resolveProviderBillingContext(params)
+  const budget = payerContext.payer.scope === 'workspace'
+    ? {
+        entitlements: payerContext.entitlements,
+        remainingCents: getBudgetTotals(payerContext.entitlements).remainingCents,
+      }
+    : await ensureBudgetAvailable({
+        userId: params.userId,
+        entitlements: payerContext.entitlements,
+        minimumRequiredCents: Math.max(1, Math.ceil(reservedCents)),
+      })
 
   if (!isPaidPlan(budget.entitlements) || budget.remainingCents + 0.000001 < reservedCents) {
     logBudgetSecurityEvent('owner_funded_budget_declined', params, {
@@ -154,6 +165,7 @@ export async function reserveProviderBudget(params: {
     params.idempotencyKey
       ? createRequestBoundBudgetReservationId({
           discriminator: `${params.kind}:${params.modelId ?? ''}`,
+          payerDiscriminator: payerContext.payer.billingAccountId,
           idempotencyKey: params.idempotencyKey,
           operationId: params.operationId,
           requestFingerprint: params.requestFingerprint,
@@ -163,7 +175,20 @@ export async function reserveProviderBudget(params: {
   )
   let result
   try {
-    result = await (await usageRepository()).reserve({
+    const repository = await usageRepository()
+    const payer = payerContext.payer
+    result = payer.scope === 'workspace'
+      ? await repository.reserveWorkspace({
+          kind: params.kind,
+          modelId: params.modelId,
+          operationId: params.operationId,
+          payer,
+          requestFingerprint: params.requestFingerprint,
+          reservationId,
+          reservedCents,
+          userId: params.userId,
+        })
+      : await repository.reserve({
       entitlements: budget.entitlements,
       kind: params.kind,
       modelId: params.modelId,
@@ -211,10 +236,78 @@ export async function reserveProviderBudget(params: {
 
   return {
     ok: true,
+    billingAccountId: payerContext.payer.billingAccountId,
     reservationId,
     reservedCents,
     entitlements: budget.entitlements,
   } as const
+}
+
+export async function getPayerEntitlements(params: {
+  fallbackEntitlements?: Entitlements
+  programmaticSubjectId?: string
+  userId: string
+  workspaceId?: string
+}): Promise<Entitlements | null> {
+  const payer = await resolveBillingPayer(params)
+  const { getOverlayServerContext } = await import('@/server/bootstrap')
+  const server = getOverlayServerContext()
+  if (payer.scope === 'workspace') {
+    return await server.appData.repositories.billing.getBillingAccountEntitlementsByServer({
+      billingAccountId: payer.billingAccountId,
+    }) as Entitlements | null
+  }
+  return params.fallbackEntitlements
+    ?? await server.appData.repositories.usage.getEntitlements({ userId: params.userId })
+}
+
+export async function resolveBillingPayer(params: {
+  programmaticSubjectId?: string
+  userId: string
+  workspaceId?: string
+}) {
+  const { getOverlayServerContext } = await import('@/server/bootstrap')
+  const server = getOverlayServerContext()
+  return await server.billingPayerResolver.resolve(params)
+}
+
+export async function ensurePayerBudgetAvailable(params: {
+  entitlements: Entitlements
+  minimumRequiredCents?: number
+  programmaticSubjectId?: string
+  userId: string
+  workspaceId?: string
+}): Promise<{ entitlements: Entitlements; remainingCents: number }> {
+  const payerContext = await resolveProviderBillingContext(params)
+  if (payerContext.payer.scope === 'workspace') {
+    return {
+      entitlements: payerContext.entitlements,
+      remainingCents: getBudgetTotals(payerContext.entitlements).remainingCents,
+    }
+  }
+  return await ensureBudgetAvailable({
+    entitlements: payerContext.entitlements,
+    minimumRequiredCents: params.minimumRequiredCents,
+    userId: params.userId,
+  })
+}
+
+async function resolveProviderBillingContext(params: {
+  entitlements: Entitlements
+  programmaticSubjectId?: string
+  userId: string
+  workspaceId?: string
+}) {
+  const { getOverlayServerContext } = await import('@/server/bootstrap')
+  const server = getOverlayServerContext()
+  const payer = await server.billingPayerResolver.resolve(params)
+  const entitlements = payer.scope === 'workspace'
+    ? await server.appData.repositories.billing.getBillingAccountEntitlementsByServer({
+        billingAccountId: payer.billingAccountId,
+      }) as Entitlements | null
+    : params.entitlements
+  if (!entitlements) throw new Error('billing_payer_entitlements_not_found')
+  return { entitlements, payer }
 }
 
 function logBudgetSecurityEvent(

@@ -6,6 +6,7 @@ import { isPremiumModel } from '@/server/ai/pricing'
 import {
   billableBudgetCentsFromProviderUsd,
   finalizeProviderBudgetReservation,
+  getPayerEntitlements,
   markProviderBudgetReconcile,
   markProviderBudgetStarted,
   releaseProviderBudgetReservation,
@@ -30,6 +31,8 @@ export type ActBudgetReservationResult =
 export interface ActUsagePolicy {
   getEntitlements(args: {
     userId: string
+    workspaceId?: string
+    programmaticSubjectId?: string
   }): Promise<Entitlements | null>
   reserveForAttempt(args: {
     entitlements: Entitlements
@@ -41,6 +44,8 @@ export interface ActUsagePolicy {
     paid: boolean
     requestFingerprint: string
     userId: string
+    workspaceId?: string
+    programmaticSubjectId?: string
   }): Promise<ActBudgetReservationResult>
   recordFinishedUsage(args: {
     forceFreeTierLimits: boolean
@@ -143,8 +148,11 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
 
   async getEntitlements(args: {
     userId: string
+    workspaceId?: string
+    programmaticSubjectId?: string
   }): Promise<Entitlements | null> {
-    return await this.deps.repository.getEntitlements(args)
+    const personal = await this.deps.repository.getEntitlements({ userId: args.userId })
+    return await getPayerEntitlements({ ...args, fallbackEntitlements: personal ?? undefined })
   }
 
   async reserveForAttempt(args: {
@@ -157,6 +165,8 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
     paid: boolean
     requestFingerprint: string
     userId: string
+    workspaceId?: string
+    programmaticSubjectId?: string
   }): Promise<ActBudgetReservationResult> {
     if (!this.deps.accountAllUsage && (!args.paid || !isPremiumModel(args.modelId))) {
       return { ok: true, reservationId: null }
@@ -188,6 +198,8 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
       modelId: args.modelId,
       operationId: args.operationId,
       requestFingerprint: args.requestFingerprint,
+      workspaceId: args.workspaceId,
+      programmaticSubjectId: args.programmaticSubjectId,
     })
     if (!reservation.ok) {
       return {

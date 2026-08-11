@@ -3,16 +3,21 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 import type { OverlayToolsOptions } from './types'
 import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/server/auth/service-auth'
+import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 
 export function toolAuthBody(options: OverlayToolsOptions): {
   userId: string
   accessToken?: string
   serverSecret?: string
+  automationId?: string
+  workspaceId?: string
 } {
   return {
     userId: options.userId,
     accessToken: options.accessToken,
     serverSecret: options.serverSecret,
+    automationId: options.automationId,
+    workspaceId: options.workspaceId,
   }
 }
 
@@ -31,7 +36,7 @@ export async function callInternalApi(
   const method = opts?.method ?? 'POST'
   const forwardCookie = opts?.forwardCookie
   const url = baseUrl ? `${baseUrl}${path}` : path
-  const { serverSecret, ...serializedBody } = body
+  const { serverSecret, workspaceId, ...serializedBody } = body
   const serviceAuthHeader =
     typeof serverSecret === 'string' && serverSecret && typeof body.userId === 'string'
       ? await buildServiceAuthToken({
@@ -46,6 +51,9 @@ export async function callInternalApi(
       'Content-Type': 'application/json',
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...(serviceAuthHeader ? { [getServiceAuthHeaderName()]: serviceAuthHeader } : {}),
+      ...(typeof workspaceId === 'string' && workspaceId.trim()
+        ? { [ACTIVE_WORKSPACE_HEADER]: workspaceId.trim() }
+        : {}),
       ...(forwardCookie ? { Cookie: forwardCookie } : {}),
       'Idempotency-Key': randomUUID(),
     },
