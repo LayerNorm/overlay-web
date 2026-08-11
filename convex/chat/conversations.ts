@@ -1203,17 +1203,36 @@ export const runStaleGeneratingCleanup = internalMutation({
     const thresholdMs = 5 * 60 * 1000
     const cutoff = Date.now() - thresholdMs
 
+    // Convex caps a mutation at 4096 document reads and aborts the whole
+    // transaction when it is exceeded. Deltas per message are unbounded (a long
+    // stream writes hundreds), so a 50-message batch reading every delta blew
+    // the cap, rolled the batch back, and finalized nothing — leaving the very
+    // messages with the most deltas stuck in `generating` while the cron retried
+    // and failed identically forever.
+    //
+    // Bound both dimensions so the worst case fits the budget and every run
+    // makes progress. Reading only the first slice of deltas can truncate the
+    // salvaged content, which is an acceptable trade for a generation that was
+    // already interrupted; `runOrphanDeltaCleanup` sweeps whatever is left once
+    // the message is no longer `generating`.
+    const STALE_MESSAGE_BATCH = 10
+    const DELTAS_PER_MESSAGE_LIMIT = 300
+
     const stale = await ctx.db
       .query('conversationMessages')
       .withIndex('by_status_updatedAt', (q) =>
         q.eq('status', 'generating').lt('updatedAt', cutoff)
       )
-      .take(50)
+      .take(STALE_MESSAGE_BATCH)
 
     let finalizedCount = 0
     let deletedDeltas = 0
     for (const message of stale) {
-      const deltas = await getMessageDeltas(ctx, message._id)
+      const deltas = await ctx.db
+        .query('conversationMessageDeltas')
+        .withIndex('by_messageId', (q) => q.eq('messageId', message._id))
+        .order('asc')
+        .take(DELTAS_PER_MESSAGE_LIMIT)
       const hydrated = applyStreamingDeltas(message, deltas)
       const hasContent = (hydrated.content?.trim()?.length ?? 0) > 0
       const fallbackText = 'generation_interrupted_server_timeout'

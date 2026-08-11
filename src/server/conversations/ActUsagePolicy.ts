@@ -135,6 +135,45 @@ export class UnlimitedUsagePolicy implements ActUsagePolicy {
   }): Promise<void> {}
 }
 
+/**
+ * Whether a free plan has spent whatever allocation it actually carries.
+ *
+ * Accounts differ in which allocation governs them, so check the one that is
+ * configured rather than assuming credits:
+ *  - a credit allowance (creditsTotal > 0) is exhausted by creditsUsed
+ *  - otherwise the plan is metered by daily ask/write/agent counts
+ *
+ * The daily arm only reports exhaustion when every metered bucket is spent.
+ * `reserveForAttempt` is not told which bucket an attempt belongs to, so a
+ * narrower rule would block attempts against buckets that still have room.
+ * That makes this a deliberate under-block: it never rejects a request that
+ * should succeed, but a user who has spent only some buckets still reaches the
+ * post-call accounting path. Tightening it means threading the attempt kind
+ * through the policy.
+ */
+export function isFreeTierAllocationExhausted(entitlements: Pick<
+  Entitlements,
+  'creditsTotal' | 'creditsUsed' | 'dailyUsage' | 'dailyLimits'
+>): boolean {
+  const creditsTotal = entitlements.creditsTotal ?? 0
+  if (creditsTotal > 0) {
+    return creditsTotal - (entitlements.creditsUsed ?? 0) <= 0
+  }
+
+  const usage = entitlements.dailyUsage
+  const limits = entitlements.dailyLimits
+  if (!usage || !limits) return false
+
+  const buckets = ['ask', 'write', 'agent'] as const
+  const metered = buckets.filter((bucket) => {
+    const limit = Number(limits[bucket])
+    return Number.isFinite(limit) && limit > 0
+  })
+  if (metered.length === 0) return false
+
+  return metered.every((bucket) => (usage[bucket] ?? 0) >= Number(limits[bucket]))
+}
+
 export class BillingBackedActUsagePolicy implements ActUsagePolicy {
   constructor(private readonly deps: {
     repository: UsageRepository | Pick<ActConversationRepository, 'getEntitlements' | 'recordUsageBatch'>
@@ -159,6 +198,31 @@ export class BillingBackedActUsagePolicy implements ActUsagePolicy {
     userId: string
   }): Promise<ActBudgetReservationResult> {
     if (!this.deps.accountAllUsage && (!args.paid || !isPremiumModel(args.modelId))) {
+      // Free-tier and non-premium paths skip the paid budget reservation, but a
+      // free-tier user who has exhausted their allocation must still be blocked
+      // BEFORE the provider call — not after usage is recorded.
+      //
+      // Free plans carry no credit allocation: with no subscription the usage
+      // buckets are empty, so creditsTotal is always 0 (convex/platform/usage.ts
+      // and createFreeEntitlements both hardcode it). Checking
+      // creditsTotal - creditsUsed <= 0 therefore matched EVERY free user on
+      // their first message. Free plans are metered by daily counts instead
+      // (ask/write/agent, 15 each), so enforce whichever allocation the account
+      // actually has.
+      if (args.entitlements.planKind === 'free' || args.entitlements.tier === 'free') {
+        if (isFreeTierAllocationExhausted(args.entitlements)) {
+          return {
+            ok: false,
+            failure: {
+              payload: {
+                error: 'free_tier_limit_exceeded',
+                message: 'Your free tier usage limit has been reached. Upgrade to a paid plan for more usage.',
+              },
+              statusCode: 402,
+            },
+          }
+        }
+      }
       return { ok: true, reservationId: null }
     }
     const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
