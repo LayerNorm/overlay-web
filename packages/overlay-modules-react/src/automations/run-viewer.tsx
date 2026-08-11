@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { lazy, Suspense } from 'react'
 import type { AutomationGraph, AutomationRunSummary } from '@overlay/app-core'
 import { Select } from '@overlay/ui/primitives'
@@ -39,14 +39,16 @@ export function AutomationRunViewer({
     workflowRunId && liveEnabled ? 'live' : 'replay',
   )
 
-  // Sync selectedRunId and mode when a new workflowRunId arrives (e.g. after
-  // the user clicks "Test automation" and the durable run starts).
-  useEffect(() => {
-    if (workflowRunId) {
-      setSelectedRunId(workflowRunId)
-      if (liveEnabled) setMode('live')
-    }
-  }, [workflowRunId, liveEnabled])
+  // Select and go live when a new workflowRunId arrives (e.g. the user clicked
+  // "Test automation" and the durable run started). Adjusted during render rather
+  // than in an effect: an effect would paint the previous run first and then
+  // immediately re-render, and react-hooks/set-state-in-effect rejects it.
+  const [syncedWorkflowRunId, setSyncedWorkflowRunId] = useState(workflowRunId ?? null)
+  if (workflowRunId && workflowRunId !== syncedWorkflowRunId) {
+    setSyncedWorkflowRunId(workflowRunId)
+    setSelectedRunId(workflowRunId)
+    if (liveEnabled) setMode('live')
+  }
 
   const isLive = mode === 'live' && selectedRunId === workflowRunId
 
