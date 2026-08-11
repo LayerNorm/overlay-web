@@ -413,6 +413,11 @@ async function billingRepository() {
   return getOverlayServerContext().appData.repositories.billing
 }
 
+async function billingCapabilityEnabled(): Promise<boolean> {
+  const { getOverlayCapabilities } = await import('@/server/capabilities')
+  return (await getOverlayCapabilities()).billing
+}
+
 function toUsageEvent(event: ProviderUsageEvent): UsageEvent {
   return {
     cachedTokens: event.cachedTokens,
@@ -440,6 +445,19 @@ export async function ensureBudgetAvailable(params: {
       remainingCents: current.remainingCents,
       autoTopUpApplied: false,
       autoTopUpReason: 'not_needed',
+    } as const
+  }
+
+  // Auto top-up reaches Stripe directly rather than through the configured
+  // billing provider, so the NoOpBillingProvider substituted when the billing
+  // capability is off does not cover it. Without this gate a billing-disabled
+  // deployment throws on the missing Stripe secret and fails the whole request.
+  if (!(await billingCapabilityEnabled())) {
+    return {
+      entitlements: params.entitlements,
+      remainingCents: current.remainingCents,
+      autoTopUpApplied: false,
+      autoTopUpReason: 'billing_disabled',
     } as const
   }
 
