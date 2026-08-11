@@ -67,8 +67,10 @@ export class KnowledgeBaseRetrievalService {
     accessToken?: string
     /** Metered search: the caller's billing context is passed through. */
     billing: {
+      actorUserId: string
       idempotencyKey: string
       operationId: string
+      programmaticSubjectId?: string
       requestFingerprint: string
     }
     /** Force coverage across sources; inferred from the query when omitted. */
@@ -77,6 +79,7 @@ export class KnowledgeBaseRetrievalService {
     limit?: number
     query: string
     userId: string
+    workspaceId?: string
   }): Promise<KnowledgeBaseSearchResult> {
     const requested = dedupe(args.knowledgeBaseIds).slice(0, MAX_KNOWLEDGE_BASES_PER_TURN)
     if (requested.length === 0) return emptyResult([])
@@ -111,6 +114,7 @@ export class KnowledgeBaseRetrievalService {
       m: Math.min(MAX_CANDIDATES, limit * CANDIDATE_MULTIPLIER),
       query: args.query,
       userId: args.userId,
+      workspaceId: args.workspaceId,
     })
 
     const selected = selectFairly({

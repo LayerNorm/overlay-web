@@ -4,7 +4,9 @@ import { accrueWorkspaceSpend } from '@/server/ai/sandbox/daytona'
 import { computeDaytonaRuntimeCost, getDaytonaResourceProfile } from '@/server/ai/sandbox/daytona-pricing'
 import {
   buildInsufficientCreditsPayload,
+  billableBudgetCentsFromProviderUsd,
   ensureBudgetAvailable,
+  finalizeProviderBudgetReservation,
   getBudgetTotals,
   isPaidPlan,
   markProviderBudgetReconcile,
@@ -20,15 +22,22 @@ type DaytonaBudgetDeps = {
     userId: string
     entitlements: Entitlements
     minimumRequiredCents?: number
+    programmaticSubjectId?: string
+    workspaceId?: string
   }): Promise<{ entitlements: Entitlements; remainingCents: number }>
   getBudgetTotals: typeof getBudgetTotals
-  getEntitlementsByServer(params: { userId: string }): Promise<Entitlements | null>
+  getEntitlementsByServer(params: {
+    programmaticSubjectId?: string
+    userId: string
+    workspaceId?: string
+  }): Promise<Entitlements | null>
   isPaidPlan: typeof isPaidPlan
   reserveProviderBudget: typeof reserveProviderBudget
 }
 
 type DaytonaMeteringDeps = {
   accrueWorkspaceSpend: typeof accrueWorkspaceSpend
+  finalizeProviderBudgetReservation: typeof finalizeProviderBudgetReservation
   markProviderBudgetReconcile: typeof markProviderBudgetReconcile
   releaseProviderBudgetReservation: typeof releaseProviderBudgetReservation
 }
@@ -43,6 +52,7 @@ const defaultBudgetDeps: DaytonaBudgetDeps = {
 
 const defaultMeteringDeps: DaytonaMeteringDeps = {
   accrueWorkspaceSpend,
+  finalizeProviderBudgetReservation,
   markProviderBudgetReconcile,
   releaseProviderBudgetReservation,
 }
@@ -50,6 +60,7 @@ const defaultMeteringDeps: DaytonaMeteringDeps = {
 export type DaytonaBudgetReservationResult =
   | {
     ok: true
+    billingAccountId: string | null
     reservationId: string | null
   }
   | {
@@ -64,11 +75,15 @@ export async function reserveDaytonaRunBudget(params: {
   maxDurationSeconds: number
   operationId: string
   requestFingerprint: string
+  programmaticSubjectId?: string
   userId: string
+  workspaceId?: string
 }): Promise<DaytonaBudgetReservationResult> {
   const deps = { ...defaultBudgetDeps, ...params.deps }
   let currentEntitlements = await deps.getEntitlementsByServer({
+    programmaticSubjectId: params.programmaticSubjectId,
     userId: params.userId,
+    workspaceId: params.workspaceId,
   })
 
   if (!currentEntitlements) {
@@ -92,6 +107,8 @@ export async function reserveDaytonaRunBudget(params: {
       userId: params.userId,
       entitlements: currentEntitlements,
       minimumRequiredCents: 1,
+      programmaticSubjectId: params.programmaticSubjectId,
+      workspaceId: params.workspaceId,
     })
     currentEntitlements = autoTopUp.entitlements
     budget = deps.getBudgetTotals(currentEntitlements)
@@ -113,6 +130,8 @@ export async function reserveDaytonaRunBudget(params: {
     modelId: 'daytona/pro',
     operationId: params.operationId,
     requestFingerprint: params.requestFingerprint,
+    programmaticSubjectId: params.programmaticSubjectId,
+    workspaceId: params.workspaceId,
   })
   if (!sandboxReservation.ok) {
     return {
@@ -121,10 +140,15 @@ export async function reserveDaytonaRunBudget(params: {
       status: sandboxReservation.status,
     }
   }
-  return { ok: true, reservationId: sandboxReservation.reservationId }
+  return {
+    ok: true,
+    billingAccountId: sandboxReservation.billingAccountId,
+    reservationId: sandboxReservation.reservationId,
+  }
 }
 
 export async function finalizeDaytonaRunMetering(params: {
+  billingAccountId: string | null
   deps?: Partial<DaytonaMeteringDeps>
   meteringEndedAt: number | null
   meteringStartedAt: number | null
@@ -143,6 +167,8 @@ export async function finalizeDaytonaRunMetering(params: {
   ) {
     try {
       const meteringResult = await deps.accrueWorkspaceSpend({
+        billingAccountId: params.billingAccountId ?? undefined,
+        deferUsageCharge: true,
         repository: params.workspaceRun.repository,
         workspace: params.workspaceRun.workspace,
         sandbox: params.workspaceRun.sandbox,
@@ -151,11 +177,29 @@ export async function finalizeDaytonaRunMetering(params: {
         reason: 'task',
       })
       if (reservationId && meteringResult?.success) {
-        await deps.releaseProviderBudgetReservation({
+        const costCents = billableBudgetCentsFromProviderUsd(meteringResult.providerCostUsd)
+        await deps.finalizeProviderBudgetReservation({
+          actualProviderCostUsd: meteringResult.providerCostUsd,
+          events: [{
+            type: 'sandbox',
+            modelId: 'daytona/pro',
+            cost: costCents,
+            durationSeconds: meteringResult.durationSeconds,
+            timestamp: params.meteringEndedAt,
+          }],
           userId: params.userId,
           reservationId,
-          reason: 'daytona_actual_usage_accrued',
-        }).catch((_error) => undefined)
+        })
+        reservationId = null
+      } else if (reservationId) {
+        const meteringFailure = meteringResult && !meteringResult.success
+          ? meteringResult.skipped
+          : 'missing_result'
+        await deps.markProviderBudgetReconcile({
+          userId: params.userId,
+          reservationId,
+          errorMessage: `daytona_metering_${meteringFailure}`,
+        })
         reservationId = null
       }
     } catch (meteringError) {

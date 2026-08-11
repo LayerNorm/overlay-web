@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { getAuthorizedResourceUserId, type AppApiRouteContext } from '@/server/app-api/bff-context'
+import {
+  getAuthorizedResourceUserId,
+  getBillingProgrammaticSubjectId,
+  getTrustedAutomationBillingSubjectId,
+  type AppApiRouteContext,
+} from '@/server/app-api/bff-context'
 import { knowledgeBaseErrorResponse, requiredKnowledgeBaseId } from '../../errors'
 
 export async function POST(_request: NextRequest, context: AppApiRouteContext) {
@@ -17,14 +22,17 @@ export async function POST(_request: NextRequest, context: AppApiRouteContext) {
     return NextResponse.json(await getOverlayServerContext().knowledgeBaseRetrievalService.search({
       accessToken: context.auth.accessToken,
       billing: {
+        actorUserId: context.auth.userId,
         idempotencyKey: context.requestIdempotencyKey!,
         operationId: 'knowledge-base.search',
+        programmaticSubjectId: getBillingProgrammaticSubjectId(context, getTrustedAutomationBillingSubjectId(context)),
         requestFingerprint: context.requestFingerprint,
       },
       knowledgeBaseIds,
       limit: body.limit,
       query: body.query,
       userId: getAuthorizedResourceUserId(context),
+      workspaceId: context.workspace.workspace.id,
     }))
   } catch (error) {
     return knowledgeBaseErrorResponse('search', error)

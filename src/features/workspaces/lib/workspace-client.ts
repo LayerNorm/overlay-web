@@ -58,6 +58,7 @@ export const workspaceClient: WorkspaceClient = {
 
 export const workspaceManagementLoader: WorkspaceManagementLoader = {
   async load(workspaceId, tab, signal) {
+    if (tab === 'billing') throw new Error('Billing uses the dedicated workspace billing endpoint')
     const query = new URLSearchParams({ view: tab })
     return await readJson(await fetch(
       `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/management?${query.toString()}`,
@@ -90,6 +91,61 @@ async function workspaceMutation<T>(
 
 export const workspaceManagementClient: WorkspaceManagementClient = {
   ...workspaceManagementLoader,
+
+  async billing(workspaceId, signal) {
+    return await readJson(await fetch(
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing`,
+      {
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId },
+        signal,
+      },
+    ))
+  },
+
+  async initializeBilling(workspaceId) {
+    return await workspaceMutation(
+      workspaceId,
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing`,
+      'POST',
+    )
+  },
+
+  async createBillingCheckout(workspaceId, input) {
+    return await workspaceMutation(
+      workspaceId,
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/checkout`,
+      'POST',
+      input,
+    )
+  },
+
+  async createBillingTopUp(workspaceId, input) {
+    return await workspaceMutation(
+      workspaceId,
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/top-ups`,
+      'POST',
+      input,
+    )
+  },
+
+  async createBillingPortal(workspaceId) {
+    return await workspaceMutation(
+      workspaceId,
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/portal`,
+      'POST',
+    )
+  },
+
+  async verifyBillingCheckout(workspaceId, input) {
+    return await workspaceMutation(
+      workspaceId,
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/verify`,
+      'POST',
+      input,
+    )
+  },
 
   async sharingPolicy(workspaceId, signal) {
     return await readJson(await fetch(

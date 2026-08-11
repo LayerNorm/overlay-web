@@ -50,6 +50,12 @@ import {
 } from '@/server/knowledge'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
 import { ServerProviderUsageMeter } from '@/server/billing/ServerProviderUsageMeter'
+import { BillingPayerResolver } from '@/server/billing/BillingPayerResolver'
+import {
+  resolveWorkspaceBillingRollout,
+  workspaceBillingRolloutConfigFromEnv,
+  workspaceBillingRolloutEnabled,
+} from '@/shared/billing/workspace-billing-rollout'
 import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { PostgresWorkspaceRepository } from '@/server/workspaces/PostgresWorkspaceRepository'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
@@ -116,6 +122,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   auditService: AuditService
   chatUsagePolicy: ActUsagePolicy
   generationUsagePolicy: GenerationUsagePolicy
+  billingPayerResolver: BillingPayerResolver
   memoryService: MemoryService
   knowledgeSearchService: KnowledgeSearchService
   noteRepository: NoteRepository
@@ -211,6 +218,14 @@ export function createOverlayServerContext(
     ? new PostgresWorkspaceRepository(postgresDb)
     : new ConvexWorkspaceRepository()
   const workspaceService = new WorkspaceService(workspaceRepository, { lifecycleEvents })
+  const workspaceBillingRollout = workspaceBillingRolloutConfigFromEnv(process.env)
+  const billingPayerResolver = new BillingPayerResolver({
+    billing: appData.repositories.billing,
+    workspaceWalletsEnabled: (workspaceId) => workspaceId
+      ? resolveWorkspaceBillingRollout(workspaceBillingRollout, workspaceId).eligible
+      : workspaceBillingRolloutEnabled(workspaceBillingRollout),
+    workspaces: workspaceService,
+  })
 
   const authorizationRepositories: AuthorizationRepositories = isPostgres && postgresDb
     ? createPostgresAuthorizationRepositories(postgresDb)
@@ -361,6 +376,7 @@ export function createOverlayServerContext(
     auditService,
     chatUsagePolicy,
     generationUsagePolicy,
+    billingPayerResolver,
     memoryService,
     knowledgeSearchService,
     noteRepository: appData.repositories.notes,

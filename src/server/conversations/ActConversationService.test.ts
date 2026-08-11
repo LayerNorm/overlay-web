@@ -165,6 +165,7 @@ test('act context service keeps auto retrieval enabled when external provider co
   })
 
   const context = await service.loadTurnContext({
+    billingUserId: 'user_1',
     conversationId: 'conversation_1' as Id<'conversations'>,
     externalContextEnabled: false,
     indexedAttachments: [],
@@ -179,6 +180,7 @@ test('act context service keeps auto retrieval enabled when external provider co
 
   assert.deepEqual(retrievalArgs, {
     billing: {
+      actorUserId: 'user_1',
       idempotencyKey: 'act-test-idempotency',
       operationId: 'conversation.act.auto-retrieval',
       requestFingerprint: 'act-test-fingerprint',

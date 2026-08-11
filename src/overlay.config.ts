@@ -28,6 +28,8 @@ const baseOverlayAppConfig = defineOverlayAppConfig({
     flag.id === 'workspaces' || flag.id === 'collaborativeChats' || flag.id === 'channels'
       || flag.id === 'agents' || flag.id === 'resourceSharing'
       ? { ...flag, enabled: true }
+      : flag.id === 'workspaceWallets'
+        ? { ...flag, enabled: ['1', 'true', 'yes', 'on'].includes(process.env.OVERLAY_FEATURE_WORKSPACE_WALLETS?.trim().toLowerCase() ?? '') }
       : flag
   )),
   featureModules: [...DEFAULT_OVERLAY_FEATURE_MODULES],

@@ -51,7 +51,9 @@ export async function classifyMediaToolIntentForTurn(params: {
   entitlements: Entitlements
   idempotencyKey?: string | null
   operationId: string
+  programmaticSubjectId?: string
   requestFingerprint: string
+  workspaceId?: string
 }): Promise<MediaToolIntent> {
   const text = params.userText?.trim()
   if (!text) return null
@@ -86,7 +88,9 @@ export async function classifyMediaToolIntentForTurn(params: {
     kind: 'generation',
     modelId: MEDIA_INTENT_MODEL,
     operationId: params.operationId,
+    programmaticSubjectId: params.programmaticSubjectId,
     requestFingerprint: params.requestFingerprint,
+    workspaceId: params.workspaceId,
   })
   if (!reservation.ok) return null
 

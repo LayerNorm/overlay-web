@@ -7,6 +7,8 @@ import {
   derivePlanKind,
   planAmountCentsToQuantity,
 } from '../../src/shared/billing/billing-pricing'
+import { syncPersonalBillingShadows } from './accountMigration'
+import { ensurePersonalBillingAccount } from './accountModel'
 
 // Minimum gap between two period-start timestamps that counts as a genuine
 // rollover. Anything smaller is treated as the same billing cycle (repeated
@@ -288,6 +290,8 @@ export const upsertSubscription = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
 
+    const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
+
     const now = Date.now()
     const thirtyDays = 30 * 24 * 60 * 60 * 1000
 
@@ -297,7 +301,7 @@ export const upsertSubscription = mutation({
       .first()
 
     if (existing) {
-      const updateData: Record<string, unknown> = {}
+      const updateData: Record<string, unknown> = { billingAccountId: billingAccount.billingAccountId }
       if (args.email !== undefined) updateData.email = args.email
       if (args.name !== undefined) updateData.name = args.name
       if (args.stripeCustomerId !== undefined) updateData.stripeCustomerId = args.stripeCustomerId
@@ -354,10 +358,12 @@ export const upsertSubscription = mutation({
       }
 
       await ctx.db.patch(existing._id, updateData)
+      await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
       return existing._id
     } else {
-      return await ctx.db.insert('subscriptions', {
+      const subscriptionId = await ctx.db.insert('subscriptions', {
         userId: args.userId,
+        billingAccountId: billingAccount.billingAccountId,
         email: args.email,
         name: args.name,
         stripeCustomerId: args.stripeCustomerId || '',
@@ -384,6 +390,8 @@ export const upsertSubscription = mutation({
         autoTopUpAmountCents: args.autoTopUpAmountCents,
         offSessionConsentAt: args.offSessionConsentAt,
       })
+      await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
+      return subscriptionId
     }
   }
 })
@@ -400,13 +408,14 @@ export const updateStatus = internalMutation({
     )
   },
   handler: async (ctx, { userId, status }) => {
+    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
 
     if (subscription) {
-      const patch: Record<string, unknown> = { status }
+      const patch: Record<string, unknown> = { status, billingAccountId: billingAccount.billingAccountId }
       if (status === 'canceled') {
         patch.tier = 'free'
         patch.planKind = 'free'
@@ -414,6 +423,7 @@ export const updateStatus = internalMutation({
         patch.stripeQuantity = undefined
       }
       await ctx.db.patch(subscription._id, patch)
+      await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
       return { success: true }
     }
 
@@ -429,6 +439,8 @@ export const downgradeToFree = mutation({
   },
   handler: async (ctx, { serverSecret, userId }) => {
     requireServerSecret(serverSecret)
+
+    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
 
     const subscription = await ctx.db
       .query('subscriptions')
@@ -446,6 +458,7 @@ export const downgradeToFree = mutation({
       }
       const topUpBalanceCents = await topUpBalanceForRollover(ctx, subscription)
       await ctx.db.patch(subscription._id, {
+        billingAccountId: billingAccount.billingAccountId,
         tier: 'free',
         planKind: 'free',
         planVersion: 'variable_v2',
@@ -459,6 +472,7 @@ export const downgradeToFree = mutation({
         currentPeriodStart: now,
         currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000
       })
+      await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
       return { success: true }
     }
 
@@ -515,6 +529,7 @@ export const upsertFromStripeInternal = internalMutation({
     currentPeriodEnd: v.number()
   },
   handler: async (ctx, args) => {
+    const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
     // Reject if this stripeCustomerId already maps to a different userId.
     // This prevents a single attacker's Stripe customer from being cross-linked
     // to multiple Convex accounts via manipulated webhook metadata.
@@ -570,6 +585,7 @@ export const upsertFromStripeInternal = internalMutation({
           })
 
       await ctx.db.patch(existing._id, {
+        billingAccountId: billingAccount.billingAccountId,
         email: args.email,
         name: args.name,
         stripeCustomerId: args.stripeCustomerId,
@@ -586,10 +602,12 @@ export const upsertFromStripeInternal = internalMutation({
         creditsUsed: periodRolled ? 0 : (existing.creditsUsed ?? 0),
         ...rebalancedUsage,
       })
+      await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
       return existing._id
     } else {
-      return await ctx.db.insert('subscriptions', {
+      const subscriptionId = await ctx.db.insert('subscriptions', {
         userId: args.userId,
+        billingAccountId: billingAccount.billingAccountId,
         email: args.email,
         name: args.name,
         stripeCustomerId: args.stripeCustomerId,
@@ -616,6 +634,8 @@ export const upsertFromStripeInternal = internalMutation({
         topUpBalanceCents: 0,
         overlayStorageBytesUsed: 0,
       })
+      await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
+      return subscriptionId
     }
   }
 })
@@ -634,7 +654,9 @@ export const migrateToCreditsOnSubscription = internalMutation({
     let migrated = 0
 
     for (const sub of allSubscriptions) {
+      const billingAccount = await ensurePersonalBillingAccount(ctx, sub.userId)
       const updates: Record<string, unknown> = {}
+      updates.billingAccountId = billingAccount.billingAccountId
 
       // Ensure period timestamps are always populated
       const periodStart = sub.currentPeriodStart && sub.currentPeriodStart > 0
@@ -683,6 +705,7 @@ export const migrateToCreditsOnSubscription = internalMutation({
         await ctx.db.patch(sub._id, updates)
         migrated++
       }
+      await syncPersonalBillingShadows(ctx, sub.userId, billingAccount.billingAccountId)
     }
 
     return { migrated, total: allSubscriptions.length }
@@ -700,6 +723,8 @@ export const updateBillingPreferencesByServer = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
 
+    const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
+
     const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
@@ -710,6 +735,7 @@ export const updateBillingPreferencesByServer = mutation({
     }
 
     const patch: Record<string, unknown> = {
+      billingAccountId: billingAccount.billingAccountId,
       autoTopUpEnabled: args.autoTopUpEnabled,
       autoTopUpAmountCents: args.topUpAmountCents ?? subscription.autoTopUpAmountCents ?? 1_000,
     }
@@ -718,6 +744,7 @@ export const updateBillingPreferencesByServer = mutation({
     }
 
     await ctx.db.patch(subscription._id, patch)
+    await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
     return { success: true as const }
   },
 })
@@ -730,6 +757,7 @@ export const updateBillingPreferencesInternal = internalMutation({
     grantOffSessionConsent: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
     const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
@@ -740,6 +768,7 @@ export const updateBillingPreferencesInternal = internalMutation({
     }
 
     const patch: Record<string, unknown> = {
+      billingAccountId: billingAccount.billingAccountId,
       autoTopUpEnabled: args.autoTopUpEnabled,
       autoTopUpAmountCents: args.topUpAmountCents ?? subscription.autoTopUpAmountCents ?? 1_000,
     }
@@ -748,6 +777,7 @@ export const updateBillingPreferencesInternal = internalMutation({
     }
 
     await ctx.db.patch(subscription._id, patch)
+    await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
     return { success: true as const }
   },
 })
@@ -767,6 +797,7 @@ export const recordBudgetTopUpByServer = mutation({
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
+    const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
     const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
@@ -799,6 +830,7 @@ export const recordBudgetTopUpByServer = mutation({
     const grant = status === 'succeeded' && existing?.status !== 'succeeded'
     const payload = {
       userId: args.userId,
+      billingAccountId: billingAccount.billingAccountId,
       stripeCustomerId: args.stripeCustomerId,
       stripeCheckoutSessionId: args.stripeCheckoutSessionId,
       stripePaymentIntentId: args.stripePaymentIntentId,
@@ -820,10 +852,12 @@ export const recordBudgetTopUpByServer = mutation({
         billingPeriodEnd: existing.billingPeriodEnd,
       })
       if (grant) await grantTopUpBalance(ctx, subscription, normalizedAmount)
+      await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
       return existing._id
     }
     const id = await ctx.db.insert('budgetTopUps', payload)
     if (grant) await grantTopUpBalance(ctx, subscription, normalizedAmount)
+    await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
     return id
   },
 })
@@ -841,6 +875,7 @@ export const recordBudgetTopUpInternal = internalMutation({
     errorMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
     const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
@@ -873,6 +908,7 @@ export const recordBudgetTopUpInternal = internalMutation({
     const grant = status === 'succeeded' && existing?.status !== 'succeeded'
     const payload = {
       userId: args.userId,
+      billingAccountId: billingAccount.billingAccountId,
       stripeCustomerId: args.stripeCustomerId,
       stripeCheckoutSessionId: args.stripeCheckoutSessionId,
       stripePaymentIntentId: args.stripePaymentIntentId,
@@ -894,10 +930,12 @@ export const recordBudgetTopUpInternal = internalMutation({
         billingPeriodEnd: existing.billingPeriodEnd,
       })
       if (grant) await grantTopUpBalance(ctx, subscription, normalizedAmount)
+      await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
       return existing._id
     }
     const id = await ctx.db.insert('budgetTopUps', payload)
     if (grant) await grantTopUpBalance(ctx, subscription, normalizedAmount)
+    await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
     return id
   },
 })

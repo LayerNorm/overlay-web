@@ -721,6 +721,10 @@ export const upsertContextSummary = mutation({
 
 export const addMessage = mutation({
   args: {
+    billingAccountId: v.optional(v.string()),
+    billingActorUserId: v.optional(v.string()),
+    billingSpendSubjectId: v.optional(v.string()),
+    billingSpendSubjectKind: v.optional(v.union(v.literal('member'), v.literal('programmatic'))),
     conversationId: v.id('conversations'),
     userId: v.string(),
     accessToken: v.optional(v.string()),
@@ -820,7 +824,12 @@ export const addMessage = mutation({
 	        }
 
 	        await ctx.scheduler.runAfter(0, internal.knowledge.memoryExtractorNode.extractFromTurn, {
+	          billingAccountId: args.billingAccountId,
+	          billingActorUserId: args.billingActorUserId,
+	          billingSpendSubjectId: args.billingSpendSubjectId,
+	          billingSpendSubjectKind: args.billingSpendSubjectKind,
 	          conversationId: args.conversationId,
+          workspaceId: conversation.workspaceId,
           turnId: args.turnId,
           userId: args.userId,
           isPaid,

@@ -6,7 +6,7 @@ import { getLanguageModel } from '@/server/ai/model-runtime'
 import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/shared/chat/chat-suggestions-defaults'
 import { getOverlaySession } from '@/server/auth/session'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getBillingProgrammaticSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { ChatSuggestionRepository } from '@/server/chat-suggestions/ChatSuggestionRepository'
 import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
@@ -71,10 +71,16 @@ async function generateStartersWithLLM(args: {
   accessToken: string
   day: string
   firstName: string
+  programmaticSubjectId?: string
   userId: string
+  workspaceId: string
 }): Promise<string[] | null> {
   const server = getOverlayServerContext()
-  const entitlements = await server.generationUsagePolicy.getEntitlements({ userId: args.userId })
+  const entitlements = await server.generationUsagePolicy.getEntitlements({
+    programmaticSubjectId: args.programmaticSubjectId,
+    userId: args.userId,
+    workspaceId: args.workspaceId,
+  })
   if (!entitlements) return null
   const authorized = await resolveAuthorizedModelIds({ entitlements })
   if (!authorized.chat.has(FREE_TIER_AUTO_MODEL_ID)) return null
@@ -113,7 +119,9 @@ Reply with ONLY valid JSON (no markdown fences) in this exact shape:
     operationId: 'chat.suggestions',
     providerCostUsd: estimatedProviderCostUsd,
     requestFingerprint,
+    programmaticSubjectId: args.programmaticSubjectId,
     userId: args.userId,
+    workspaceId: args.workspaceId,
   })
   if (!reservation.ok) return null
 
@@ -243,9 +251,11 @@ function scheduleRefreshForNewDay(args: {
   userId: string
   accessToken: string
   firstName: string
+  programmaticSubjectId?: string
   today: string
+  workspaceId: string
 }) {
-  const { repository, userId, accessToken, firstName, today } = args
+  const { repository, userId, accessToken, firstName, programmaticSubjectId, today, workspaceId } = args
   after(async () => {
     try {
       const trimmed = firstName.trim()
@@ -262,7 +272,9 @@ function scheduleRefreshForNewDay(args: {
         accessToken,
         day: today,
         firstName: trimmed,
+        programmaticSubjectId,
         userId,
+        workspaceId,
       })
       if (generated && generated.length === 4) {
         await persistStarters({ repository, userId, prompts: generated, day: today })
@@ -281,6 +293,8 @@ export async function GET(request: Request, context: AppApiRouteContext) {
     }
 
     const userId = context.auth.userId
+    const workspaceId = context.workspace.workspace.id
+    const programmaticSubjectId = getBillingProgrammaticSubjectId(context)
 
     const repository = getOverlayServerContext().appData.repositories.chatSuggestions
     const today = utcDateKey()
@@ -300,7 +314,9 @@ export async function GET(request: Request, context: AppApiRouteContext) {
         userId,
         accessToken: context.auth.accessToken || session.accessToken,
         firstName,
+        programmaticSubjectId,
         today,
+        workspaceId,
       })
       return NextResponse.json({ prompts, stale: true })
     }
@@ -318,7 +334,9 @@ export async function GET(request: Request, context: AppApiRouteContext) {
         accessToken: context.auth.accessToken || session.accessToken,
         day: today,
         firstName,
+        programmaticSubjectId,
         userId,
+        workspaceId,
       })
     } catch (err) {
       logger.warn('[chat-suggestions] generation failed', err)

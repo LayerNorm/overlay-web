@@ -426,6 +426,10 @@ export class PostgresActConversationRepository implements ActConversationReposit
   }
 
   async addMessage(args: {
+    billingAccountId?: string
+    billingActorUserId?: string
+    billingSpendSubjectId?: string
+    billingSpendSubjectKind?: 'member' | 'programmatic'
     conversationId: ConversationId
     content: string
     contentType: 'text' | 'image' | 'video'
@@ -542,6 +546,10 @@ export class PostgresActConversationRepository implements ActConversationReposit
         this.options.memoryExtractionEnabled !== false
       ) {
         await enqueueMemoryExtractionJob(tx, {
+          billingActorUserId: args.billingActorUserId,
+          billingSpendSubjectId: args.billingSpendSubjectKind === 'programmatic'
+            ? args.billingSpendSubjectId
+            : undefined,
           conversationId: args.conversationId,
           messageId: id,
           turnId: args.turnId,

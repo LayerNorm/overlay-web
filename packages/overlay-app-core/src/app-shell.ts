@@ -96,6 +96,12 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
     description: 'Unified sharing with people, agents, teams, rooms, and resource guests.',
     enabled: false,
   },
+  {
+    id: 'workspaceWallets',
+    label: 'Workspace wallets',
+    description: 'Workspace-funded usage with member and programmatic spending limits.',
+    enabled: false,
+  },
 ] as const
 
 export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [

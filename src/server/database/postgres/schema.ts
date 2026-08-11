@@ -202,6 +202,17 @@ export const usageTransactionType = pgEnum('overlay_usage_transaction_type', [
   'adjustment',
 ])
 
+export const billingAccountScope = pgEnum('overlay_billing_account_scope', [
+  'personal',
+  'workspace',
+])
+
+export const billingAccountStatus = pgEnum('overlay_billing_account_status', [
+  'active',
+  'suspended',
+  'closed',
+])
+
 export const billingSubscriptionStatus = pgEnum('overlay_billing_subscription_status', [
   'active',
   'canceled',
@@ -1296,7 +1307,126 @@ export const modelCatalogSnapshots = pgTable('model_catalog_snapshots', {
   index('model_catalog_snapshots_fetched_at_idx').on(table.fetchedAt),
 ])
 
+export const billingAccounts = pgTable('billing_accounts', {
+  id: text('id').primaryKey(),
+  scope: billingAccountScope('scope').notNull(),
+  ownerUserId: text('owner_user_id').references(() => users.id, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id').references((): AnyPgColumn => workspaces.id, { onDelete: 'cascade' }),
+  status: billingAccountStatus('status').default('active').notNull(),
+  primaryBillingContactUserId: text('primary_billing_contact_user_id')
+    .references(() => users.id, { onDelete: 'set null' }),
+  pricingVersion: text('pricing_version').default('markup_25_v1').notNull(),
+  markupBasisPoints: integer('markup_basis_points').default(2_500).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+}, (table) => [
+  check('billing_accounts_owner_check', sql`
+    (${table.scope} = 'personal' AND ${table.ownerUserId} IS NOT NULL AND ${table.workspaceId} IS NULL) OR
+    (${table.scope} = 'workspace' AND ${table.workspaceId} IS NOT NULL AND ${table.ownerUserId} IS NULL)
+  `),
+  check('billing_accounts_markup_non_negative_check', sql`${table.markupBasisPoints} >= 0`),
+  check('billing_accounts_pricing_version_check', sql`${table.pricingVersion} = 'markup_25_v1'`),
+  uniqueIndex('billing_accounts_personal_owner_idx')
+    .on(table.ownerUserId)
+    .where(sql`${table.scope} = 'personal'`),
+  uniqueIndex('billing_accounts_workspace_idx')
+    .on(table.workspaceId)
+    .where(sql`${table.scope} = 'workspace'`),
+  index('billing_accounts_status_updated_idx').on(table.status, table.updatedAt),
+])
+
+export const billingAccountSubscriptions = pgTable('billing_account_subscriptions', {
+  billingAccountId: text('billing_account_id')
+    .primaryKey()
+    .references(() => billingAccounts.id, { onDelete: 'cascade' }),
+  provider: text('provider').default('stripe').notNull(),
+  providerCustomerId: text('provider_customer_id'),
+  providerSubscriptionId: text('provider_subscription_id'),
+  providerPriceId: text('provider_price_id'),
+  providerQuantity: integer('provider_quantity'),
+  planKind: text('plan_kind').default('free').notNull(),
+  planVersion: text('plan_version').default('variable_v2').notNull(),
+  planAmountCents: integer('plan_amount_cents').default(0).notNull(),
+  markupBasisPoints: integer('markup_basis_points').default(2_500).notNull(),
+  status: billingSubscriptionStatus('status').default('active').notNull(),
+  autoTopUpEnabled: boolean('auto_top_up_enabled').default(false).notNull(),
+  autoTopUpAmountCents: integer('auto_top_up_amount_cents').default(0).notNull(),
+  offSessionConsentAt: timestamp('off_session_consent_at', { withTimezone: true }),
+  currentPeriodStart: timestamp('current_period_start', { withTimezone: true }),
+  currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
+  providerEventCreatedAt: timestamp('provider_event_created_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  check('billing_account_subscriptions_plan_kind_check', sql`${table.planKind} IN ('free', 'paid')`),
+  check('billing_account_subscriptions_plan_version_check', sql`${table.planVersion} = 'variable_v2'`),
+  check('billing_account_subscriptions_amount_check', sql`${table.planAmountCents} >= 0`),
+  check('billing_account_subscriptions_markup_check', sql`${table.markupBasisPoints} >= 0`),
+  uniqueIndex('billing_account_subscriptions_provider_customer_idx')
+    .on(table.provider, table.providerCustomerId),
+  uniqueIndex('billing_account_subscriptions_provider_subscription_idx')
+    .on(table.provider, table.providerSubscriptionId),
+  index('billing_account_subscriptions_status_updated_idx').on(table.status, table.updatedAt),
+])
+
+export const billingAccountBalances = pgTable('billing_account_balances', {
+  billingAccountId: text('billing_account_id')
+    .primaryKey()
+    .references(() => billingAccounts.id, { onDelete: 'cascade' }),
+  mode: usageBudgetMode('mode').default('budgeted').notNull(),
+  includedMicros: bigint('included_micros', { mode: 'number' }).default(0).notNull(),
+  institutionalGrantMicros: bigint('institutional_grant_micros', { mode: 'number' }).default(0).notNull(),
+  allowanceUsedMicros: bigint('allowance_used_micros', { mode: 'number' }).default(0).notNull(),
+  topUpPurchasedMicros: bigint('top_up_purchased_micros', { mode: 'number' }).default(0).notNull(),
+  topUpBalanceMicros: bigint('top_up_balance_micros', { mode: 'number' }).default(0).notNull(),
+  usedMicros: bigint('used_micros', { mode: 'number' }).default(0).notNull(),
+  reservedMicros: bigint('reserved_micros', { mode: 'number' }).default(0).notNull(),
+  version: integer('version').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  check('billing_account_balances_non_negative_check', sql`
+    ${table.includedMicros} >= 0 AND
+    ${table.institutionalGrantMicros} >= 0 AND
+    ${table.allowanceUsedMicros} >= 0 AND
+    ${table.topUpPurchasedMicros} >= 0 AND
+    ${table.topUpBalanceMicros} >= 0 AND
+    ${table.topUpBalanceMicros} <= ${table.topUpPurchasedMicros} AND
+    ${table.usedMicros} >= 0 AND
+    ${table.reservedMicros} >= 0
+  `),
+  index('billing_account_balances_mode_updated_idx').on(table.mode, table.updatedAt),
+])
+
+export const billingAccountSpendLimits = pgTable('billing_account_spend_limits', {
+  billingAccountId: text('billing_account_id')
+    .notNull()
+    .references(() => billingAccounts.id, { onDelete: 'cascade' }),
+  subjectKind: text('subject_kind').notNull(),
+  subjectId: text('subject_id').notNull(),
+  limitMicros: bigint('limit_micros', { mode: 'number' }).notNull(),
+  usedMicros: bigint('used_micros', { mode: 'number' }).default(0).notNull(),
+  reservedMicros: bigint('reserved_micros', { mode: 'number' }).default(0).notNull(),
+  periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
+  periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
+  version: integer('version').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.billingAccountId, table.subjectKind, table.subjectId], name: 'billing_account_spend_limits_pk' }),
+  check('billing_account_spend_limits_subject_kind_check', sql`${table.subjectKind} IN ('member', 'programmatic')`),
+  check('billing_account_spend_limits_non_negative_check', sql`
+    ${table.limitMicros} >= 0 AND ${table.usedMicros} >= 0 AND ${table.reservedMicros} >= 0 AND
+    ${table.usedMicros} + ${table.reservedMicros} <= ${table.limitMicros}
+  `),
+  check('billing_account_spend_limits_period_check', sql`${table.periodEnd} > ${table.periodStart}`),
+  index('billing_account_spend_limits_account_updated_idx').on(table.billingAccountId, table.updatedAt),
+])
+
 export const usageBudgetAccounts = pgTable('usage_budget_accounts', {
+  billingAccountId: text('billing_account_id')
+    .references(() => billingAccounts.id, { onDelete: 'set null' }),
   userId: text('user_id')
     .primaryKey()
     .references(() => users.id, { onDelete: 'cascade' }),
@@ -1326,6 +1456,9 @@ export const usageBudgetAccounts = pgTable('usage_budget_accounts', {
     ${table.reservedMicros} >= 0
   `),
   index('usage_budget_accounts_mode_idx').on(table.mode),
+  uniqueIndex('usage_budget_accounts_billing_account_idx')
+    .on(table.billingAccountId)
+    .where(sql`${table.billingAccountId} IS NOT NULL`),
 ])
 
 export const usageReservations = pgTable('usage_reservations', {
@@ -1333,15 +1466,27 @@ export const usageReservations = pgTable('usage_reservations', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  billingAccountId: text('billing_account_id')
+    .references(() => billingAccounts.id, { onDelete: 'set null' }),
+  spendSubjectKind: text('spend_subject_kind'),
+  spendSubjectId: text('spend_subject_id'),
   kind: text('kind').notNull(),
   modelId: text('model_id'),
   reservedMicros: bigint('reserved_micros', { mode: 'number' }).notNull(),
   actualMicros: bigint('actual_micros', { mode: 'number' }),
   status: usageReservationStatus('status').default('reserved').notNull(),
   providerWorkStarted: boolean('provider_work_started').default(false).notNull(),
+  providerWorkCompleted: boolean('provider_work_completed').default(false).notNull(),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
   reason: text('reason'),
   error: text('error'),
+  reconciliationAttempts: integer('reconciliation_attempts').default(0).notNull(),
+  reconciliationLastAttemptAt: timestamp('reconciliation_last_attempt_at', { withTimezone: true }),
+  reconciliationResolvedAt: timestamp('reconciliation_resolved_at', { withTimezone: true }),
+  reconciliationResolution: text('reconciliation_resolution'),
+  reconciliationEvidenceSource: text('reconciliation_evidence_source'),
+  reconciliationEvidenceReference: text('reconciliation_evidence_reference'),
+  reconciliationReason: text('reconciliation_reason'),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   finalizedAt: timestamp('finalized_at', { withTimezone: true }),
   releasedAt: timestamp('released_at', { withTimezone: true }),
@@ -1350,6 +1495,18 @@ export const usageReservations = pgTable('usage_reservations', {
 }, (table) => [
   index('usage_reservations_user_created_idx').on(table.userId, table.createdAt),
   index('usage_reservations_status_expires_idx').on(table.status, table.expiresAt),
+  index('usage_reservations_status_updated_idx').on(table.status, table.updatedAt),
+  index('usage_reservations_billing_account_created_idx').on(table.billingAccountId, table.createdAt),
+  index('usage_reservations_billing_account_status_created_idx')
+    .on(table.billingAccountId, table.status, table.createdAt),
+  check('usage_reservations_spend_subject_check', sql`
+    (${table.spendSubjectKind} IS NULL AND ${table.spendSubjectId} IS NULL) OR
+    (${table.spendSubjectKind} IN ('member', 'programmatic') AND ${table.spendSubjectId} IS NOT NULL)
+  `),
+  check('usage_reservations_reconciliation_resolution_check', sql`
+    ${table.reconciliationResolution} IS NULL OR
+    ${table.reconciliationResolution} IN ('finalized', 'released')
+  `),
 ])
 
 export const usageEvents = pgTable('usage_events', {
@@ -1357,6 +1514,8 @@ export const usageEvents = pgTable('usage_events', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  billingAccountId: text('billing_account_id')
+    .references(() => billingAccounts.id, { onDelete: 'set null' }),
   reservationId: text('reservation_id')
     .references(() => usageReservations.id, { onDelete: 'set null' }),
   operationId: text('operation_id').notNull(),
@@ -1374,6 +1533,7 @@ export const usageEvents = pgTable('usage_events', {
   index('usage_events_user_occurred_idx').on(table.userId, table.occurredAt),
   index('usage_events_operation_idx').on(table.operationId),
   index('usage_events_reservation_idx').on(table.reservationId),
+  index('usage_events_billing_account_occurred_idx').on(table.billingAccountId, table.occurredAt),
 ])
 
 export const usageBudgetTransactions = pgTable('usage_budget_transactions', {
@@ -1381,6 +1541,8 @@ export const usageBudgetTransactions = pgTable('usage_budget_transactions', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  billingAccountId: text('billing_account_id')
+    .references(() => billingAccounts.id, { onDelete: 'set null' }),
   reservationId: text('reservation_id')
     .references(() => usageReservations.id, { onDelete: 'set null' }),
   eventId: text('event_id')
@@ -1392,12 +1554,15 @@ export const usageBudgetTransactions = pgTable('usage_budget_transactions', {
 }, (table) => [
   index('usage_budget_transactions_user_created_idx').on(table.userId, table.createdAt),
   index('usage_budget_transactions_reservation_idx').on(table.reservationId),
+  index('usage_budget_transactions_billing_account_created_idx').on(table.billingAccountId, table.createdAt),
 ])
 
 export const billingSubscriptions = pgTable('billing_subscriptions', {
   userId: text('user_id')
     .primaryKey()
     .references(() => users.id, { onDelete: 'cascade' }),
+  billingAccountId: text('billing_account_id')
+    .references(() => billingAccounts.id, { onDelete: 'set null' }),
   email: text('email'),
   name: text('name'),
   provider: text('provider').default('stripe').notNull(),
@@ -1423,6 +1588,9 @@ export const billingSubscriptions = pgTable('billing_subscriptions', {
   uniqueIndex('billing_subscriptions_provider_customer_idx').on(table.provider, table.providerCustomerId),
   uniqueIndex('billing_subscriptions_provider_subscription_idx').on(table.provider, table.providerSubscriptionId),
   index('billing_subscriptions_status_idx').on(table.status),
+  uniqueIndex('billing_subscriptions_billing_account_idx')
+    .on(table.billingAccountId)
+    .where(sql`${table.billingAccountId} IS NOT NULL`),
 ])
 
 export const billingTopUps = pgTable('billing_top_ups', {
@@ -1430,6 +1598,8 @@ export const billingTopUps = pgTable('billing_top_ups', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  billingAccountId: text('billing_account_id')
+    .references(() => billingAccounts.id, { onDelete: 'set null' }),
   amountCents: integer('amount_cents').notNull(),
   source: billingTopUpSource('source').notNull(),
   status: billingTopUpStatus('status').notNull(),
@@ -1443,6 +1613,7 @@ export const billingTopUps = pgTable('billing_top_ups', {
 }, (table) => [
   check('billing_top_ups_positive_amount_check', sql`${table.amountCents} > 0`),
   index('billing_top_ups_user_created_idx').on(table.userId, table.createdAt),
+  index('billing_top_ups_billing_account_created_idx').on(table.billingAccountId, table.createdAt),
   uniqueIndex('billing_top_ups_checkout_session_idx').on(table.provider, table.providerCheckoutSessionId),
   uniqueIndex('billing_top_ups_payment_intent_idx').on(table.provider, table.providerPaymentIntentId),
 ])

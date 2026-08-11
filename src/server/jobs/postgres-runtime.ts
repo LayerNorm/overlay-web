@@ -189,6 +189,8 @@ export function createPostgresRuntime(args: {
         userId: requiredStringPayload(job.payload.userId, 'userId'),
       }),
       [MEMORY_EXTRACT_TURN_JOB]: async (job) => await getMemoryExtraction().extractTurn({
+        billingActorUserId: stringPayload(job.payload.billingActorUserId),
+        billingSpendSubjectId: stringPayload(job.payload.billingSpendSubjectId),
         conversationId: requiredStringPayload(job.payload.conversationId, 'conversationId'),
         messageId: requiredStringPayload(job.payload.messageId, 'messageId'),
         turnId: requiredStringPayload(job.payload.turnId, 'turnId'),

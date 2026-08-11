@@ -1,6 +1,32 @@
 import 'server-only'
 
+import type { BillingAccountRecord } from '@/shared/billing/billing-account'
+import type {
+  BillingAccountSpendLimitRecord,
+  BillingSpendSubject,
+} from '@/shared/billing/billing-payer'
+import type {
+  BillingBalanceParityReport,
+  BillingSubscriptionVerificationRow,
+} from '@/shared/billing/billing-account-migration'
+
+export type PersonalBillingBackfillResult = {
+  attached: {
+    budgetReservations: number
+    budgetTopUps: number
+    daytonaUsageLedger: number
+    subscriptions: number
+    tokenUsage: number
+    toolInvocations: number
+    usageOperations: number
+  }
+  billingAccountId: string
+  complete: boolean
+  userId: string
+}
+
 export type BillingEntitlementsRecord = {
+  billingAccountId?: string
   tier: 'free' | 'pro' | 'max'
   planKind: 'free' | 'paid'
   planAmountCents: number
@@ -30,6 +56,7 @@ export type BillingEntitlementsRecord = {
 }
 
 export type BillingSubscriptionRecord = {
+  billingAccountId?: string
   userId?: string
   email?: string
   stripeCustomerId?: string
@@ -45,8 +72,13 @@ export type BillingSubscriptionRecord = {
   currentPeriodEnd?: number
 }
 
+export type BillingAccountEntitlementsRecord = BillingEntitlementsRecord & {
+  billingAccountId: string
+}
+
 export type BudgetTopUpRecord = {
   _id: string
+  billingAccountId?: string
   amountCents: number
   source: 'manual' | 'auto'
   status: 'pending' | 'succeeded' | 'failed' | 'canceled'
@@ -71,6 +103,48 @@ export type AdministrativeUsageRecord = {
 }
 
 export interface BillingRepository {
+  backfillPersonalBillingAccountByServer(args: {
+    userId: string
+  }): Promise<PersonalBillingBackfillResult>
+  ensurePersonalBillingAccount(args: {
+    userId: string
+  }): Promise<BillingAccountRecord>
+  ensureWorkspaceBillingAccount(args: {
+    primaryBillingContactUserId: string
+    workspaceId: string
+  }): Promise<BillingAccountRecord>
+  getBillingAccountByIdByServer(args: {
+    billingAccountId: string
+  }): Promise<BillingAccountRecord | null>
+  getPersonalBillingAccountByUserIdByServer(args: {
+    userId: string
+  }): Promise<BillingAccountRecord | null>
+  getWorkspaceBillingAccountByWorkspaceIdByServer(args: {
+    workspaceId: string
+  }): Promise<BillingAccountRecord | null>
+  getBillingAccountEntitlementsByServer(args: {
+    billingAccountId: string
+  }): Promise<BillingAccountEntitlementsRecord | null>
+  getBillingAccountSubscriptionByServer(args: {
+    billingAccountId: string
+  }): Promise<BillingSubscriptionRecord | null>
+  getPersonalBillingBalanceParityByServer(args: {
+    userId: string
+  }): Promise<BillingBalanceParityReport | null>
+  listSubscriptionVerificationRowsByServer(args?: {
+    limit?: number
+  }): Promise<BillingSubscriptionVerificationRow[]>
+  getBillingAccountSpendLimitByServer(args: {
+    billingAccountId: string
+    subject: BillingSpendSubject
+  }): Promise<BillingAccountSpendLimitRecord | null>
+  upsertBillingAccountSpendLimit(args: {
+    billingAccountId: string
+    limitCents: number
+    periodEnd: number
+    periodStart: number
+    subject: BillingSpendSubject
+  }): Promise<BillingAccountSpendLimitRecord>
   listAdministrativeUsage(args?: {
     limit?: number
     userId?: string
@@ -98,6 +172,9 @@ export interface BillingRepository {
   upsertSubscription(args: Record<string, unknown> & {
     userId: string
   }): Promise<unknown>
+  upsertBillingAccountSubscription(args: Record<string, unknown> & {
+    billingAccountId: string
+  }): Promise<unknown>
   listBudgetTopUpsByServer(args: {
     userId: string
   }): Promise<BudgetTopUpRecord[]>
@@ -111,4 +188,20 @@ export interface BillingRepository {
     errorMessage?: string
     userId: string
   }): Promise<unknown>
+  recordBillingAccountTopUp(args: {
+    actorUserId: string
+    amountCents: number
+    billingAccountId: string
+    source: 'manual' | 'auto'
+    status: 'pending' | 'succeeded' | 'failed' | 'canceled'
+    stripeCheckoutSessionId?: string
+    stripeCustomerId?: string
+    stripePaymentIntentId?: string
+    errorMessage?: string
+  }): Promise<unknown>
+  resolveBillingAccountIdByProviderReference(args: {
+    provider: string
+    providerCustomerId?: string
+    providerSubscriptionId?: string
+  }): Promise<string | null>
 }

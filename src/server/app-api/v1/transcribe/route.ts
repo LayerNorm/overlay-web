@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getBillingProgrammaticSubjectId, getTrustedAutomationBillingSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
 import {
@@ -20,10 +20,12 @@ const TRANSCRIPTION_MODEL = 'groq/whisper-large-v3-turbo'
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
+    const workspaceId = context.workspace.workspace.id
+    const programmaticSubjectId = getBillingProgrammaticSubjectId(context, getTrustedAutomationBillingSubjectId(context))
 
 
     const serverContext = getOverlayServerContext()
-    const entitlements = await serverContext.generationUsagePolicy.getEntitlements({ userId: auth.userId })
+    const entitlements = await serverContext.generationUsagePolicy.getEntitlements({ programmaticSubjectId, userId: auth.userId, workspaceId })
     if (!entitlements) return NextResponse.json({ error: 'Could not verify subscription.' }, { status: 401 })
     if (!isPaidPlan(entitlements)) {
       return NextResponse.json(
@@ -60,9 +62,11 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         kind: 'transcription',
         modelId: TRANSCRIPTION_MODEL,
         operationId: 'audio.transcribe',
+        programmaticSubjectId,
         providerCostUsd: transcriptionProviderCostUsd(MAX_RESERVED_TRANSCRIPTION_SECONDS),
         requestFingerprint: context.requestFingerprint,
         userId: auth.userId,
+        workspaceId,
       })
       if (!reservation.ok) {
         return NextResponse.json(

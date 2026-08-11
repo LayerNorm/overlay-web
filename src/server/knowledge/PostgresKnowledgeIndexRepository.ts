@@ -19,6 +19,7 @@ export type KnowledgeIndexSource = {
   sourceKind: 'file' | 'memory'
   title?: string
   userId: string
+  workspaceId?: string
 }
 
 export type KnowledgeIndexedChunk = {
@@ -49,6 +50,7 @@ export class PostgresKnowledgeIndexRepository {
           name: files.name,
           projectId: files.projectId,
           userId: files.userId,
+          workspaceId: files.workspaceId,
         })
         .from(files)
         .where(and(
@@ -67,6 +69,7 @@ export class PostgresKnowledgeIndexRepository {
         sourceKind: 'file',
         title: row.name,
         userId: row.userId,
+        workspaceId: row.workspaceId ?? undefined,
       }
     }
 
@@ -88,6 +91,7 @@ export class PostgresKnowledgeIndexRepository {
       sourceKind: 'memory',
       title: 'Memory',
       userId: row.userId,
+      workspaceId: row.workspaceId ?? undefined,
     }
   }
 
@@ -118,6 +122,7 @@ export class PostgresKnowledgeIndexRepository {
           title: args.source.title,
           updatedAt: now,
           userId: args.source.userId,
+          workspaceId: args.source.workspaceId,
         })
         await tx.insert(knowledgeChunkEmbeddings).values({
           chunkId,

@@ -5,6 +5,10 @@ import type { UsageEvent, UsageRepository, UsageSpendKind } from '@/server/usage
 import {
   billableBudgetCentsFromProviderUsd,
   createRequestBoundBudgetReservationId,
+  finalizeProviderBudgetReservation,
+  markProviderBudgetStarted,
+  releaseProviderBudgetReservation,
+  reserveProviderBudget,
 } from './billing-runtime'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
@@ -22,9 +26,53 @@ export class ServerProviderUsageMeter {
     requestFingerprint: string
     usageEvent?: Omit<UsageEvent, 'costCents' | 'kind' | 'modelId' | 'occurredAt'>
     userId: string
+    workspaceId?: string
+    programmaticSubjectId?: string
   }): Promise<T> {
     const entitlements = await this.usage.getEntitlements({ userId: args.userId })
     if (!entitlements) throw new Error('provider_usage_identity_not_found')
+    if (args.workspaceId) {
+      const reservation = await reserveProviderBudget({
+        entitlements,
+        idempotencyKey: args.idempotencyKey,
+        kind: args.kind,
+        modelId: args.modelId,
+        operationId: args.operationId,
+        programmaticSubjectId: args.programmaticSubjectId,
+        providerCostUsd: args.providerCostUsd,
+        requestFingerprint: args.requestFingerprint,
+        userId: args.userId,
+        workspaceId: args.workspaceId,
+      })
+      if (!reservation.ok) throw new Error(reservation.code)
+      let providerWorkStarted = false
+      try {
+        await markProviderBudgetStarted({ reservationId: reservation.reservationId, userId: args.userId })
+        providerWorkStarted = true
+        const value = await args.execute()
+        await finalizeProviderBudgetReservation({
+          actualProviderCostUsd: args.providerCostUsd,
+          events: [{
+            ...args.usageEvent,
+            cost: billableBudgetCentsFromProviderUsd(args.providerCostUsd),
+            modelId: args.modelId,
+            timestamp: Date.now(),
+            type: args.kind,
+          }],
+          reservationId: reservation.reservationId,
+          userId: args.userId,
+        })
+        return value
+      } catch (error) {
+        await releaseProviderBudgetReservation({
+          providerWorkStarted,
+          reason: error instanceof Error ? error.message : 'provider_operation_failed',
+          reservationId: reservation.reservationId,
+          userId: args.userId,
+        }).catch((_error) => undefined)
+        throw error
+      }
+    }
     const reservedCents = billableBudgetCentsFromProviderUsd(args.providerCostUsd)
     const reservationId = createRequestBoundBudgetReservationId({
       discriminator: `${args.kind}:${args.modelId}`,

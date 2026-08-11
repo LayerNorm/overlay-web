@@ -1,6 +1,10 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import {
+  getBillingProgrammaticSubjectId,
+  getTrustedAutomationBillingSubjectId,
+  type AppApiRouteContext,
+} from '@/server/app-api/bff-context'
 import { BrowserUse } from 'browser-use-sdk/v3'
 import type { ProxyCountryCode } from 'browser-use-sdk/v3'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -39,6 +43,11 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     } = await request.json()
 
     const { auth } = context
+    const workspaceId = context.workspace.workspace.id
+    const programmaticSubjectId = getBillingProgrammaticSubjectId(
+      context,
+      getTrustedAutomationBillingSubjectId(context),
+    )
 
     const requestedSessionId = sessionId?.trim()
     if (requestedSessionId) {
@@ -71,7 +80,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
 
     const { generationUsagePolicy } = getOverlayServerContext()
-    const entitlements = await generationUsagePolicy.getEntitlements({ userId: auth.userId })
+    const entitlements = await generationUsagePolicy.getEntitlements({ programmaticSubjectId, userId: auth.userId, workspaceId })
 
     if (!entitlements) {
       return NextResponse.json(
@@ -95,6 +104,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         userId: auth.userId,
         entitlements: currentEntitlements,
         minimumRequiredCents: taskInitCents + 1,
+        programmaticSubjectId,
+        workspaceId,
       })
       currentEntitlements = autoTopUp.entitlements
       budget = getBudgetTotals(currentEntitlements)
@@ -115,7 +126,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       kind: 'generation',
       modelId: `browser-use/${model ?? 'auto'}`,
       operationId: 'agent.browser-task',
+      programmaticSubjectId,
       requestFingerprint: context.requestFingerprint,
+      workspaceId,
     })
     if (!reservation.ok) {
       return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })
@@ -183,7 +196,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       }).catch((_error) => undefined)
     })
 
-    const updated = await generationUsagePolicy.getEntitlements({ userId: auth.userId })
+    const updated = await generationUsagePolicy.getEntitlements({ programmaticSubjectId, userId: auth.userId, workspaceId })
 
     const outputText = typeof result.output === 'string'
       ? result.output

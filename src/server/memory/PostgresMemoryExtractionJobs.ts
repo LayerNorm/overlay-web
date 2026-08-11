@@ -11,6 +11,8 @@ type Transaction = Parameters<Parameters<OverlayPostgresDb['transaction']>[0]>[0
 type JobDb = OverlayPostgresDb | Transaction
 
 export async function enqueueMemoryExtractionJob(db: JobDb, args: {
+  billingActorUserId?: string
+  billingSpendSubjectId?: string
   conversationId: string
   messageId: string
   turnId: string

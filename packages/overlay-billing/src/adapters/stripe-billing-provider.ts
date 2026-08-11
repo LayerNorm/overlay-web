@@ -68,6 +68,7 @@ export interface StripeBillingClient {
     }
   }
   customers?: {
+    create?(params: Record<string, unknown>, options?: { idempotencyKey?: string }): Promise<StripeCustomer>
     list?(params: Record<string, unknown>): Promise<{ data: StripeCustomer[] }>
     retrieve(customerId: string): Promise<string | StripeCustomer>
   }
@@ -96,6 +97,8 @@ export interface StripeBillingProviderOptions {
   portalConfigurationId?: MaybeGetter<string | null | undefined>
   getEntitlements?: (userId: string) => Promise<Entitlements | null>
   getSubscriptionState?: (userId: string) => Promise<StripeSubscriptionState | null>
+  getBillingAccountEntitlements?: (billingAccountId: string) => Promise<Entitlements | null>
+  getBillingAccountSubscriptionState?: (billingAccountId: string) => Promise<StripeSubscriptionState | null>
   recordUsage?: (args: UsageArgs) => Promise<void>
   cancelSubscription?: (subscriptionId: string) => Promise<void>
   createFreeEntitlements?: () => Entitlements
@@ -107,6 +110,10 @@ export interface StripeBillingProviderOptions {
   topUpQuantityForAmountCents?: (amountCents: number) => number
   syncSubscriptionCustomer?: (args: StripeSubscriptionState & {
     userId: string
+    stripeCustomerId: string
+  }) => Promise<void>
+  syncBillingAccountCustomer?: (args: StripeSubscriptionState & {
+    billingAccountId: string
     stripeCustomerId: string
   }) => Promise<void>
 }
@@ -242,6 +249,9 @@ export class StripeBillingProvider implements BillingProvider {
     const metadata = {
       ...baseMetadata,
       userId: args.userId,
+      actorUserId: args.userId,
+      ...(args.billingAccountId ? { billingAccountId: args.billingAccountId } : {}),
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
       kind: 'paid_plan',
       planKind: 'paid',
       planVersion: 'variable_v2',
@@ -253,6 +263,7 @@ export class StripeBillingProvider implements BillingProvider {
       ...(args.email ? { email: args.email } : {}),
     }
 
+    const customerId = await this.ensureCheckoutCustomer(args)
     const session = await this.options.stripe.checkout.sessions.create({
       billing_address_collection: 'auto',
       line_items: [{ price: priceId, quantity }],
@@ -263,7 +274,7 @@ export class StripeBillingProvider implements BillingProvider {
       cancel_url: args.cancelUrl ?? `${this.baseUrl()}/pricing?canceled=true`,
       metadata,
       subscription_data: { metadata },
-      ...(args.email ? { customer_email: args.email } : {}),
+      ...(customerId ? { customer: customerId } : args.email ? { customer_email: args.email } : {}),
       allow_promotion_codes: true,
     })
 
@@ -279,8 +290,10 @@ export class StripeBillingProvider implements BillingProvider {
       throw new Error('Unsupported top-up amount')
     }
 
-    const entitlements = await this.getEntitlements(args.userId)
-    if (entitlements.planKind !== 'paid') {
+    const entitlements = args.billingAccountId
+      ? await this.options.getBillingAccountEntitlements?.(args.billingAccountId)
+      : await this.getEntitlements(args.userId)
+    if (entitlements?.planKind !== 'paid') {
       throw new Error('Top-ups require an active paid plan')
     }
 
@@ -295,11 +308,15 @@ export class StripeBillingProvider implements BillingProvider {
       ...toStripeMetadata(args.metadata),
       kind: 'budget_topup',
       userId: args.userId,
+      actorUserId: args.userId,
+      ...(args.billingAccountId ? { billingAccountId: args.billingAccountId } : {}),
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
       amountCents: String(amountCents),
       stripeQuantity: String(quantity),
       autoTopUpEnabled: String(Boolean(args.autoTopUpEnabled)),
     }
 
+    const customerId = await this.ensureCheckoutCustomer(args)
     const session = await this.options.stripe.checkout.sessions.create({
       mode: 'payment',
       billing_address_collection: 'auto',
@@ -308,7 +325,7 @@ export class StripeBillingProvider implements BillingProvider {
         args.successUrl ??
         `${this.baseUrl()}/account?topup_success=true&topup_session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: args.cancelUrl ?? `${this.baseUrl()}/account?topup_canceled=true`,
-      ...(args.email ? { customer_email: args.email } : {}),
+      ...(customerId ? { customer: customerId } : args.email ? { customer_email: args.email } : {}),
       metadata,
       payment_intent_data: { metadata },
       allow_promotion_codes: false,
@@ -322,14 +339,16 @@ export class StripeBillingProvider implements BillingProvider {
 
   private async resolvePortalCustomerId(args: PortalSessionArgs): Promise<string | undefined> {
     if (args.sessionId) {
-      const customerId = await this.resolveVerifiedCustomerIdFromCheckoutSession(args.sessionId, args.userId)
+      const customerId = await this.resolveVerifiedCustomerIdFromCheckoutSession(args.sessionId, args)
       if (!customerId) {
         throw new Error('Checkout session does not belong to the authenticated user.')
       }
       return customerId
     }
 
-    const subscription = await this.options.getSubscriptionState?.(args.userId)
+    const subscription = args.billingAccountId
+      ? await this.options.getBillingAccountSubscriptionState?.(args.billingAccountId)
+      : await this.options.getSubscriptionState?.(args.userId)
     let customerId = await this.resolveExistingCustomerId(subscription?.stripeCustomerId)
     const subscriptionId = subscription?.stripeSubscriptionId
 
@@ -346,7 +365,18 @@ export class StripeBillingProvider implements BillingProvider {
       customerId = await this.findCustomerIdByEmail(args.email || subscription?.email)
     }
 
-    if (customerId && !subscription?.stripeCustomerId) {
+    if (customerId && !subscription?.stripeCustomerId && args.billingAccountId) {
+      await this.options.syncBillingAccountCustomer?.({
+        billingAccountId: args.billingAccountId,
+        email: args.email || subscription?.email,
+        planAmountCents: subscription?.planAmountCents,
+        planKind: subscription?.planKind,
+        status: subscription?.status,
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: subscriptionId,
+        tier: subscription?.tier,
+      })
+    } else if (customerId && !subscription?.stripeCustomerId) {
       await this.options.syncSubscriptionCustomer?.({
         userId: args.userId,
         email: args.email || subscription?.email,
@@ -399,7 +429,7 @@ export class StripeBillingProvider implements BillingProvider {
       expand: ['subscription'],
     })
 
-    if (checkoutSession.metadata?.userId !== args.userId) {
+    if (!this.checkoutSessionBelongsToPayer(checkoutSession, args)) {
       throw new Error('Session mismatch')
     }
     if (
@@ -462,7 +492,7 @@ export class StripeBillingProvider implements BillingProvider {
     args: CheckoutSessionVerificationArgs,
   ): Promise<CheckoutSessionVerificationResult> {
     const checkoutSession = await this.resolveCheckoutSession(args)
-    if (checkoutSession.metadata?.userId !== args.userId) {
+    if (!this.checkoutSessionBelongsToPayer(checkoutSession, args)) {
       throw new Error('Session mismatch')
     }
     if (checkoutSession.metadata?.kind !== 'budget_topup') {
@@ -514,14 +544,14 @@ export class StripeBillingProvider implements BillingProvider {
       throw new Error('Invalid session ID')
     }
 
-    const fallbackSession = await this.findLatestPaidTopUpSession(args.userId)
+    const fallbackSession = await this.findLatestPaidTopUpSession(args)
     if (!fallbackSession) {
       throw new Error('No completed top-up checkout session found for this user')
     }
     return fallbackSession
   }
 
-  private async findLatestPaidTopUpSession(userId: string): Promise<StripeCheckoutSession | null> {
+  private async findLatestPaidTopUpSession(args: CheckoutSessionVerificationArgs): Promise<StripeCheckoutSession | null> {
     if (!this.options.stripe.checkout.sessions.list) {
       throw new Error('Stripe checkout session listing is not available')
     }
@@ -531,7 +561,7 @@ export class StripeBillingProvider implements BillingProvider {
       page.data
         .filter((session) =>
           session.metadata?.kind === 'budget_topup' &&
-          session.metadata?.userId === userId &&
+          this.checkoutSessionBelongsToPayer(session, args) &&
           session.payment_status === 'paid' &&
           session.status === 'complete',
         )
@@ -551,10 +581,10 @@ export class StripeBillingProvider implements BillingProvider {
 
   private async resolveVerifiedCustomerIdFromCheckoutSession(
     sessionId: string,
-    userId: string,
+    args: Pick<PortalSessionArgs, 'billingAccountId' | 'userId' | 'workspaceId'>,
   ): Promise<string | undefined> {
     const checkoutSession = await this.retrieveCheckoutSession(sessionId)
-    if (checkoutSession.metadata?.userId !== userId) {
+    if (!this.checkoutSessionBelongsToPayer(checkoutSession, args)) {
       return undefined
     }
     return await this.resolveExistingCustomerId(getId(checkoutSession.customer))
@@ -610,6 +640,49 @@ export class StripeBillingProvider implements BillingProvider {
     } catch {
       return undefined
     }
+  }
+
+  private checkoutSessionBelongsToPayer(
+    checkoutSession: StripeCheckoutSession,
+    args: Pick<CheckoutSessionVerificationArgs, 'billingAccountId' | 'userId' | 'workspaceId'>,
+  ): boolean {
+    const metadata = checkoutSession.metadata ?? {}
+    if (args.billingAccountId) {
+      return metadata.billingAccountId === args.billingAccountId
+        && (!args.workspaceId || metadata.workspaceId === args.workspaceId)
+    }
+    return !metadata.billingAccountId && metadata.userId === args.userId
+  }
+
+  private async ensureCheckoutCustomer(args: CheckoutArgs): Promise<string | undefined> {
+    if (!args.billingAccountId) return undefined
+    const subscription = await this.options.getBillingAccountSubscriptionState?.(args.billingAccountId)
+    const existing = await this.resolveExistingCustomerId(subscription?.stripeCustomerId)
+    if (existing) return existing
+    if (!this.options.stripe.customers?.create) {
+      throw new Error('Stripe customer creation is not available')
+    }
+    const customer = await this.options.stripe.customers.create(
+      {
+        ...(args.email ? { email: args.email } : {}),
+        metadata: {
+          billingAccountId: args.billingAccountId,
+          ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+        },
+      },
+      { idempotencyKey: `overlay_billing_customer_${args.billingAccountId}` },
+    )
+    await this.options.syncBillingAccountCustomer?.({
+      billingAccountId: args.billingAccountId,
+      email: args.email ?? subscription?.email,
+      planAmountCents: subscription?.planAmountCents,
+      planKind: subscription?.planKind ?? 'free',
+      status: subscription?.status ?? 'active',
+      stripeCustomerId: customer.id,
+      stripeSubscriptionId: subscription?.stripeSubscriptionId,
+      tier: subscription?.tier ?? 'free',
+    })
+    return customer.id
   }
 
   private baseUrl(): string {

@@ -67,39 +67,48 @@ export class StripeWebhookService {
 
   private async applyCheckout(session: Stripe.Checkout.Session, eventId: string): Promise<boolean> {
     const metadata = session.metadata ?? {}
-    const userId = await this.resolveUserId({
+    const payer = await this.resolvePayer({
+      metadataBillingAccountId: metadata.billingAccountId,
       metadataUserId: metadata.userId,
+      metadataWorkspaceId: metadata.workspaceId,
       providerCustomerId: idValue(session.customer),
       providerSubscriptionId: idValue(session.subscription),
     })
-    if (!userId) throw new Error('Stripe checkout event is not linked to an Overlay user')
+    if (!payer) throw new Error('Stripe checkout event is not linked to an Overlay billing account')
 
     if (metadata.kind === 'budget_topup') {
       if (session.payment_status !== 'paid') return false
       const amountCents = positiveInteger(session.amount_total ?? metadata.amountCents)
       if (!amountCents) throw new Error('Stripe top-up event has no positive amount')
-      await this.deps.billing.recordBudgetTopUp({
+      const topUp = {
         amountCents,
-        source: 'manual',
-        status: 'succeeded',
+        source: 'manual' as const,
+        status: 'succeeded' as const,
         stripeCheckoutSessionId: session.id,
         stripeCustomerId: idValue(session.customer),
         stripePaymentIntentId: idValue(session.payment_intent),
-        userId,
-      })
+      }
+      if (payer.scope === 'workspace') {
+        await this.deps.billing.recordBillingAccountTopUp({
+          ...topUp,
+          actorUserId: payer.actorUserId,
+          billingAccountId: payer.billingAccountId,
+        })
+      } else {
+        await this.deps.billing.recordBudgetTopUp({ ...topUp, userId: payer.userId })
+      }
       await this.publishLifecycleEvent({
         attributes: { provider: 'stripe', source: 'manual' },
         idempotencyKey: `topup.succeeded:stripe:${eventId}`,
         name: 'topup.succeeded',
         resource: { id: session.id, type: 'billing_topup' },
-        userId,
+        userId: payer.actorUserId,
       })
       return true
     }
 
     if (metadata.kind === 'paid_plan') {
-      await this.deps.billing.upsertSubscription({
-        userId,
+      const subscriptionUpdate = {
         email: metadata.email ?? session.customer_details?.email ?? undefined,
         stripeCustomerId: idValue(session.customer),
         stripeSubscriptionId: idValue(session.subscription),
@@ -113,7 +122,15 @@ export class StripeWebhookService {
         autoTopUpAmountCents: positiveInteger(metadata.topUpAmountCents) ?? 0,
         offSessionConsentAt: positiveInteger(metadata.offSessionConsentAt),
         status: 'active',
-      })
+      }
+      if (payer.scope === 'workspace') {
+        await this.deps.billing.upsertBillingAccountSubscription({
+          ...subscriptionUpdate,
+          billingAccountId: payer.billingAccountId,
+        })
+      } else {
+        await this.deps.billing.upsertSubscription({ ...subscriptionUpdate, userId: payer.userId })
+      }
       await this.publishLifecycleEvent({
         attributes: {
           changeSource: 'provider_webhook',
@@ -124,7 +141,7 @@ export class StripeWebhookService {
         idempotencyKey: `subscription.changed:stripe:${eventId}`,
         name: 'subscription.changed',
         resource: { id: idValue(session.subscription) ?? session.id, type: 'subscription' },
-        userId,
+        userId: payer.actorUserId,
       })
       return true
     }
@@ -139,18 +156,19 @@ export class StripeWebhookService {
   ): Promise<boolean> {
     const metadata = subscription.metadata ?? {}
     const customerId = idValue(subscription.customer)
-    const userId = await this.resolveUserId({
+    const payer = await this.resolvePayer({
+      metadataBillingAccountId: metadata.billingAccountId,
       metadataUserId: metadata.userId,
+      metadataWorkspaceId: metadata.workspaceId,
       providerCustomerId: customerId,
       providerSubscriptionId: subscription.id,
     })
-    if (!userId) throw new Error('Stripe subscription event is not linked to an Overlay user')
+    if (!payer) throw new Error('Stripe subscription event is not linked to an Overlay billing account')
     const item = subscription.items.data[0]
     const quantity = item?.quantity ?? positiveInteger(metadata.stripeQuantity) ?? 1
     const periodStart = unixSecondsToMillis(item?.current_period_start)
     const periodEnd = unixSecondsToMillis(item?.current_period_end)
-    await this.deps.billing.upsertSubscription({
-      userId,
+    const subscriptionUpdate = {
       email: metadata.email,
       stripeCustomerId: customerId,
       stripeSubscriptionId: subscription.id,
@@ -167,7 +185,15 @@ export class StripeWebhookService {
       currentPeriodStart: periodStart,
       currentPeriodEnd: periodEnd,
       providerEventCreatedAt: unixSecondsToMillis(eventCreatedSeconds),
-    })
+    }
+    if (payer.scope === 'workspace') {
+      await this.deps.billing.upsertBillingAccountSubscription({
+        ...subscriptionUpdate,
+        billingAccountId: payer.billingAccountId,
+      })
+    } else {
+      await this.deps.billing.upsertSubscription({ ...subscriptionUpdate, userId: payer.userId })
+    }
     await this.publishLifecycleEvent({
       attributes: {
         changeSource: 'provider_webhook',
@@ -178,7 +204,7 @@ export class StripeWebhookService {
       idempotencyKey: `subscription.changed:stripe:${eventId}`,
       name: 'subscription.changed',
       resource: { id: subscription.id, type: 'subscription' },
-      userId,
+      userId: payer.actorUserId,
     })
     return true
   }
@@ -211,6 +237,47 @@ export class StripeWebhookService {
       providerCustomerId: args.providerCustomerId,
       providerSubscriptionId: args.providerSubscriptionId,
     })
+  }
+
+  private async resolvePayer(args: {
+    metadataBillingAccountId?: string
+    metadataUserId?: string
+    metadataWorkspaceId?: string
+    providerCustomerId?: string
+    providerSubscriptionId?: string
+  }): Promise<
+    | { actorUserId: string; billingAccountId: string; scope: 'workspace' }
+    | { actorUserId: string; scope: 'personal'; userId: string }
+    | null
+  > {
+    const linkedAccountId = await this.deps.billing.resolveBillingAccountIdByProviderReference({
+      provider: 'stripe',
+      providerCustomerId: args.providerCustomerId,
+      providerSubscriptionId: args.providerSubscriptionId,
+    })
+    const metadataAccountId = args.metadataBillingAccountId?.trim()
+    const billingAccountId = metadataAccountId || linkedAccountId
+    if (metadataAccountId && linkedAccountId && metadataAccountId !== linkedAccountId) {
+      throw new Error('Stripe provider reference belongs to a different Overlay billing account')
+    }
+    if (billingAccountId) {
+      const account = await this.deps.billing.getBillingAccountByIdByServer({ billingAccountId })
+      if (!account) throw new Error('Stripe billing account does not exist')
+      if (account.scope === 'workspace') {
+        if (args.metadataWorkspaceId && account.workspaceId !== args.metadataWorkspaceId) {
+          throw new Error('Stripe workspace metadata does not match the billing account')
+        }
+        const actorUserId = args.metadataUserId?.trim()
+          || account.primaryBillingContactUserId?.trim()
+        if (!actorUserId) throw new Error('Stripe workspace event has no billing actor')
+        return { actorUserId, billingAccountId, scope: 'workspace' }
+      }
+      if (account.userId) {
+        return { actorUserId: account.userId, scope: 'personal', userId: account.userId }
+      }
+    }
+    const userId = await this.resolveUserId(args)
+    return userId ? { actorUserId: userId, scope: 'personal', userId } : null
   }
 }
 
