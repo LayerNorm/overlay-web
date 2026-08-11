@@ -6,6 +6,6 @@
   "type": "module",
   "workspaces": [],
   "dependencies": {
-    "deepsec": "^1.1.11"
+    "deepsec": "^2.3.4"
   }
 }
