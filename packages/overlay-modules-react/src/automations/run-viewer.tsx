@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { lazy, Suspense } from 'react'
 import type { AutomationGraph, AutomationRunSummary } from '@overlay/app-core'
-import { SettingsCard } from '@overlay/modules-react/settings'
 import { Select } from '@overlay/ui/primitives'
 import { useRunStatus, useReplayStatus } from './run-viewer-hooks'
 
@@ -21,6 +20,11 @@ export interface AutomationRunViewerProps {
   workflowRunId?: string | null
   runs?: AutomationRunSummary[]
   liveEnabled?: boolean
+  /**
+   * Edit handler for the idle canvas. Supplying it makes this the single flow
+   * surface — the editor no longer renders a second canvas of the same graph.
+   */
+  onGraphChange?: (graph: AutomationGraph) => void
 }
 
 export function AutomationRunViewer({
@@ -28,6 +32,7 @@ export function AutomationRunViewer({
   workflowRunId,
   runs,
   liveEnabled = true,
+  onGraphChange,
 }: AutomationRunViewerProps) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(workflowRunId ?? null)
   const [mode, setMode] = useState<'live' | 'replay'>(
@@ -45,8 +50,9 @@ export function AutomationRunViewer({
 
   const isLive = mode === 'live' && selectedRunId === workflowRunId
 
+  // Renders bare: the editor wraps this in its own "Flow" card, and nesting a
+  // SettingsCard inside one produced a card within a card.
   return (
-    <SettingsCard title="Run Visualization">
       <div className="space-y-4">
         {/* Mode selector + run selector */}
         <div className="flex flex-wrap items-center gap-3">
@@ -57,7 +63,7 @@ export function AutomationRunViewer({
               disabled={!workflowRunId}
               className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
                 mode === 'live'
-                  ? 'bg-[var(--foreground)] text-[var(--surface-elevated)]'
+                  ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
                   : 'border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--foreground)] hover:bg-[var(--border)]'
               } disabled:opacity-40`}
             >
@@ -68,7 +74,7 @@ export function AutomationRunViewer({
               onClick={() => setMode('replay')}
               className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
                 mode === 'replay'
-                  ? 'bg-[var(--foreground)] text-[var(--surface-elevated)]'
+                  ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
                   : 'border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--foreground)] hover:bg-[var(--border)]'
               }`}
             >
@@ -109,7 +115,7 @@ export function AutomationRunViewer({
             ) : selectedRunId ? (
               <ReplayCanvas graph={graph} workflowRunId={selectedRunId} />
             ) : (
-              <AutomationGraphCanvas graph={graph} readOnly />
+              <AutomationGraphCanvas graph={graph} onGraphChange={onGraphChange} readOnly={!onGraphChange} />
             )}
           </Suspense>
         ) : (
@@ -118,7 +124,6 @@ export function AutomationRunViewer({
           </div>
         )}
       </div>
-    </SettingsCard>
   )
 }
 
@@ -222,7 +227,7 @@ function ReplayCanvas({ graph, workflowRunId }: { graph: AutomationGraph; workfl
               onClick={() => setCurrentIndex(i + 1)}
               className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
                 i < currentIndex
-                  ? 'bg-[var(--foreground)] text-[var(--surface-elevated)]'
+                  ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
                   : 'bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)]'
               }`}
               title={`${event.eventType}${event.stepName ? `: ${event.stepName}` : ''}`}

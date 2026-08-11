@@ -46,6 +46,9 @@ export function ModelQualitiesPanel({
         label: level.label,
       }))
     : []
+  // The reasoning control takes whatever width the label leaves rather than a fixed
+  // 8.25rem: the hover panel is w-56 (200px of content), so a shrink-0 control plus
+  // the label added up to ~219px and spilled past the panel's right edge.
   const selectedReasoning = reasoning ?? 'provider-default'
   const selectedLevel = reasoningLevels.some(({ value }) => value === selectedReasoning)
     ? selectedReasoning
@@ -78,8 +81,8 @@ export function ModelQualitiesPanel({
         }
       />
       {reasoningLevels.length > 0 && onReasoningChange ? (
-        <div className="flex min-h-6 items-center justify-between gap-3 py-0.5">
-          <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)]">
+        <div className="flex min-h-6 min-w-0 items-center justify-between gap-2 py-0.5">
+          <div className="flex shrink-0 items-center gap-1.5 text-[11px] text-[var(--muted)]">
             <BrainCircuit size={11} strokeWidth={1.75} className="shrink-0 text-[var(--muted-light)]" />
             <span>Reasoning</span>
           </div>
@@ -89,9 +92,9 @@ export function ModelQualitiesPanel({
             options={reasoningLevels}
             onChange={(next) => onReasoningChange(next === 'provider-default' ? undefined : next)}
             portal
-            className="w-[8.25rem] shrink-0"
-            buttonClassName="h-6 bg-[var(--surface-subtle)] py-0 pl-2 pr-2 text-[11px] text-[var(--foreground)] hover:bg-[var(--border)]"
-            menuClassName="w-full min-w-[8.25rem] rounded-lg py-0.5"
+            className="min-w-0 max-w-[8.25rem] flex-1"
+            buttonClassName="h-6 w-full bg-[var(--surface-subtle)] py-0 pl-2 pr-2 text-[11px] text-[var(--foreground)] hover:bg-[var(--border)]"
+            menuClassName="min-w-[8.25rem] rounded-lg py-0.5"
           />
         </div>
       ) : null}

@@ -166,7 +166,7 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
                     </span>
                     {notification.readAt
                       ? <Check size={13} className="mt-2 shrink-0 text-[var(--muted-light)]" />
-                      : <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--foreground)]" aria-label="Unread" />}
+                      : <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted)]" aria-label="Unread" />}
                   </button>
                 </li>
               ))}

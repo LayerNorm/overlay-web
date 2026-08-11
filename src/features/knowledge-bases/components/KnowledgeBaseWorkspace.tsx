@@ -778,7 +778,7 @@ function SourceRow({
       data-testid={`knowledge-source-${detail.source.id}`}
     >
       {canEdit ? (
-        <button type="button" aria-label={`${detail.membership.enabled ? 'Exclude' : 'Include'} ${detail.source.title}`} onClick={() => onToggle(!detail.membership.enabled)} className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${detail.membership.enabled ? 'border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]' : 'border-[var(--border)]'}`}>
+        <button type="button" aria-label={`${detail.membership.enabled ? 'Exclude' : 'Include'} ${detail.source.title}`} onClick={() => onToggle(!detail.membership.enabled)} className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${detail.membership.enabled ? 'border-[var(--muted)] bg-[var(--muted)] text-[var(--background)]' : 'border-[var(--border)]'}`}>
           {detail.membership.enabled ? <Check size={12} /> : null}
         </button>
       ) : null}

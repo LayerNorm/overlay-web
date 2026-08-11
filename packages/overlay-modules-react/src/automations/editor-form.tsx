@@ -57,6 +57,12 @@ export interface AutomationEditorFormProps {
   onSave: () => void
   onTest: () => void
   renderInstructionsEditor: (props: { value: string; onChange: (value: string) => void }) => ReactNode
+  /**
+   * Single flow surface. The host supplies the run viewer here so the editable
+   * canvas and the live/replay canvas are one diagram rather than two copies of
+   * the same graph stacked down the page.
+   */
+  renderFlow?: () => ReactNode
 }
 
 export function AutomationEditorForm({
@@ -93,6 +99,7 @@ export function AutomationEditorForm({
   onSave,
   onTest,
   renderInstructionsEditor,
+  renderFlow,
 }: AutomationEditorFormProps) {
   const scheduleKindOptions: readonly { value: AutomationSchedule['kind']; label: string }[] = [
     { value: 'interval', label: 'Interval' },
@@ -253,7 +260,7 @@ export function AutomationEditorForm({
         </SettingsCard>
 
         <SettingsCard title="Flow">
-          {graph && graph.nodes.length > 0 ? (
+          {renderFlow ? renderFlow() : graph && graph.nodes.length > 0 ? (
             <Suspense
               fallback={
                 <div className="h-80 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]" />
