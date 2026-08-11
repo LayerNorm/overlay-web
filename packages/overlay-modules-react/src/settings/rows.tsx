@@ -20,7 +20,7 @@ export function SettingsToggle({ checked, disabled, onChange }: SettingsTogglePr
       onClick={onChange}
       className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${
         checked
-          ? 'border-[var(--foreground)] bg-[var(--foreground)]'
+          ? 'border-[var(--muted)] bg-[var(--muted)]'
           : 'border-[var(--border)] bg-[var(--surface-subtle)]'
       } ${disabled ? 'cursor-wait opacity-70' : ''}`}
     >

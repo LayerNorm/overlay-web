@@ -595,7 +595,7 @@ export function InlineNavChildren({
             <span className="flex-1 text-left">{item.label}</span>
             {item.badgeCount ? (
               <span
-                className="inline-flex min-w-5 items-center justify-center rounded-full bg-[var(--foreground)] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[var(--background)]"
+                className="inline-flex min-w-5 items-center justify-center rounded-full bg-[var(--surface-muted)] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[var(--foreground)]"
                 aria-label={`${item.badgeCount} unread`}
               >
                 {item.badgeCount > 9 ? '9+' : item.badgeCount}

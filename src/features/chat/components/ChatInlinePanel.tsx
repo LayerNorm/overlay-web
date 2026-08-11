@@ -500,7 +500,7 @@ export function ChatInlinePanel({
                   <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--muted)]" />
                 ) : null}
                 {unread > 0 ? (
-                  <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[9px] font-medium text-[var(--background)]">
+                  <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[9px] font-medium text-[var(--foreground)]">
                     {unread > 9 ? '9+' : unread}
                   </span>
                 ) : null}

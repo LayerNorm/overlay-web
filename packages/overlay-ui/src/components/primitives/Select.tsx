@@ -87,7 +87,11 @@ export function Select({
       value={selectedValue}
       options={options}
       disabled={disabled}
-      className={className}
+      // Callers wrote these classes for a native <select>, which is a single
+      // element that is both the box and the control, so they belong on the
+      // button. Passing them to the wrapper as well painted the border, background
+      // and padding twice — a visible box inside a box on every migrated select.
+      // The wrapper stays layout-only; the button is already w-full inside it.
       buttonClassName={className}
       aria-label={props['aria-label']}
       aria-describedby={props['aria-describedby']}

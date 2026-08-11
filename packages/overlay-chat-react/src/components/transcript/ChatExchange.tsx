@@ -278,7 +278,9 @@ export function ChatExchange({
             const onlyTools = seg.items.every((it): it is ToolVisualBlock => it.kind === 'tool')
             if (onlyTools && seg.items.length === 1) {
               const t = seg.items[0] as ToolVisualBlock
-              const draft = getDraftFromToolBlock(t)
+              // See AssistantVisualBlocks: hold the draft card back until the turn
+              // finishes so it does not flicker in and collapse as tool calls regroup.
+              const draft = isStreaming ? null : getDraftFromToolBlock(t)
               if (draft) {
                 const isAutomationDraft = draft.kind === 'automation'
                 return (

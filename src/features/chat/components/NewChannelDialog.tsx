@@ -146,7 +146,7 @@ export function NewChannelDialog({
                   <button key={principalId} type="button" onClick={() => setSelected((current) => active ? current.filter((id) => id !== principalId) : [...current, principalId])} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-[var(--surface-subtle)]">
                     <Icon size={13} className="text-[var(--muted)]" />
                     <span className="min-w-0 flex-1 truncate text-xs">{item.name}</span>
-                    <span className={`flex h-4 w-4 items-center justify-center rounded border ${active ? 'border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]' : 'border-[var(--border)]'}`}>{active ? <Check size={10} /> : null}</span>
+                    <span className={`flex h-4 w-4 items-center justify-center rounded border ${active ? 'border-[var(--muted)] bg-[var(--muted)] text-[var(--background)]' : 'border-[var(--border)]'}`}>{active ? <Check size={10} /> : null}</span>
                   </button>
                 )
               })}

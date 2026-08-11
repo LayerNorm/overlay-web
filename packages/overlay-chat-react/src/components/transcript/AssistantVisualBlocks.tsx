@@ -119,7 +119,12 @@ export function AssistantVisualBlocks({
           const onlyTools = seg.items.every((it): it is ToolVisualBlock => it.kind === 'tool')
           if (onlyTools && seg.items.length === 1) {
             const t = seg.items[0] as ToolVisualBlock
-            const draft = getDraftFromToolBlock(t)
+            // Only promote a draft to its card once the turn is finished. Mid-stream
+            // this segment is a lone tool block, so the card mounts, then unmounts the
+            // moment the next tool call regroups the segment, then remounts at the end
+            // — reading as a card that flickers in and collapses. While streaming, let
+            // it render as an ordinary tool block instead.
+            const draft = isStreaming ? null : getDraftFromToolBlock(t)
             if (draft) {
               const isAutomationDraft = draft.kind === 'automation'
               return (
