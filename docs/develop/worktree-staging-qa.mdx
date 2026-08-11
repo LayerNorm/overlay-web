@@ -69,6 +69,21 @@ git push origin staging
 
 Do not force-push `staging`. If a release candidate must be removed, create a revert commit so staging history stays auditable.
 
+### Do not push the feature branch
+
+Push only `staging` to origin. Do **not** push the feature branch (e.g. `agent/my-feature` or `codex/my-feature`) to origin at this stage. Vercel builds every pushed branch, so pushing both `staging` and the feature branch triggers two concurrent deployments — wasting build minutes and creating duplicate preview URLs for the same code. The feature branch is already preserved in the merge commit; staging is the only branch that needs to reach origin for QA.
+
+```bash
+# Correct: push only staging
+cd ~/Downloads/overlay-mono/overlay-landing-staging
+git push origin staging
+
+# Wrong: do not push the feature branch
+# git push origin agent/my-feature  # triggers a redundant Vercel build
+```
+
+If the feature branch must be pushed later (e.g. for a PR), do it after staging QA passes, and be aware it will trigger its own Vercel preview build.
+
 ## Push Convex for staging QA
 
 If and only if the staged change includes `convex/` changes, deploy the exact staging revision to the shared development deployment before testing the staging website:
