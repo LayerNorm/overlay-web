@@ -204,7 +204,6 @@ export function useAccountBillingState({
 
         if (entitlementsResponse.ok) {
           const data = await entitlementsResponse.json()
-          console.log('[Account] Received entitlements:', data)
           setEntitlements(data)
         } else {
           const errBody = await entitlementsResponse.json().catch(() => ({})) as { error?: string }

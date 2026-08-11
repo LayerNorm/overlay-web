@@ -76,7 +76,9 @@ Register app metadata through `extendOverlayAppConfig`, map React renderers in `
 
 Use `featureFlags` for coarse product areas and `policyGates` for enterprise policy. Feature flags remove gated registry entries from bootstrap when disabled. Policy gates let surfaces show disabled states, warnings, or hidden entries without changing backend route behavior.
 
-`workspaceWallets` is disabled by default. While disabled, the server-side payer resolver always preserves personal billing even inside an organization workspace. When enabled, organization calls fail closed unless that workspace has an active billing account; they never fall back to a member's personal wallet. All enabled hosted-cost boundaries are migrated, but deployment enablement is still gated on workspace funding, spend-limit administration, `check:owner-funded-boundary`, and the billable-feature coverage test. The hosted Convex environment must set `OVERLAY_FEATURE_WORKSPACE_WALLETS=1` at the same rollout boundary so background file and memory indexing select the workspace wallet too.
+`workspaceWallets` is disabled by default. It requires `OVERLAY_FEATURE_WORKSPACE_WALLETS=1` plus `OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE=internal|selected|general`. `internal` enables only `OVERLAY_WORKSPACE_BILLING_INTERNAL_WORKSPACE_IDS`; `selected` adds `OVERLAY_WORKSPACE_BILLING_SELECTED_WORKSPACE_IDS`; `general` enables every organization workspace. Non-selected workspaces preserve personal compatibility. A selected organization workspace requires its own active, funded account and never falls back to a member's personal wallet. Next.js and hosted Convex use the same rollout parser so background indexing cannot diverge from interactive work.
+
+The workspace Billing tab is visible throughout rollout. It shows rollout status before eligibility, wallet setup for selected owners/admins, separate allowance and top-up balances, recurring checkout, one-time direct workspace top-ups, the Stripe portal, and an owner/admin margin and reconciliation report. Members are read-only. Personal-wallet transfers and member contributions are intentionally absent.
 
 ## Model Providers
 

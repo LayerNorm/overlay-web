@@ -90,6 +90,7 @@ export type UsageEvent = {
   inputTokens?: number
   outputTokens?: number
   cachedTokens?: number
+  providerCostUsd?: number
   cost: number
   durationSeconds?: number
   timestamp: number
@@ -638,6 +639,7 @@ export const recordBatch = mutation({
         inputTokens: v.optional(v.number()),
         outputTokens: v.optional(v.number()),
         cachedTokens: v.optional(v.number()),
+        providerCostUsd: v.optional(v.number()),
         cost: v.number(),
         durationSeconds: v.optional(v.number()),
         timestamp: v.number()
@@ -1501,6 +1503,7 @@ export const finalizeBudgetReservationByServer = mutation({
         inputTokens: v.optional(v.number()),
         outputTokens: v.optional(v.number()),
         cachedTokens: v.optional(v.number()),
+        providerCostUsd: v.optional(v.number()),
         cost: v.number(),
         durationSeconds: v.optional(v.number()),
         timestamp: v.number(),
@@ -1528,6 +1531,9 @@ export const finalizeBudgetReservationByServer = mutation({
       : billingAccount!.billingAccountId
 
     const safeActualCents = roundCreditAmount(Math.max(0, actualCents))
+    const providerCostMicros = events?.some((event) => event.providerCostUsd !== undefined)
+      ? Math.round(events.reduce((total, event) => total + Math.max(0, event.providerCostUsd ?? 0), 0) * 1_000_000)
+      : undefined
     if (safeActualCents > reservation.reservedCents + 0.000001) {
       const now = Date.now()
       await ctx.db.patch(reservation._id, {
@@ -1559,6 +1565,7 @@ export const finalizeBudgetReservationByServer = mutation({
       await ctx.db.patch(reservation._id, {
         status: 'finalized',
         finalizedCents: safeActualCents,
+        ...(providerCostMicros === undefined ? {} : { providerCostMicros }),
         providerWorkStarted: true,
         providerWorkCompleted: true,
         updatedAt: Date.now(),
@@ -1602,6 +1609,7 @@ export const finalizeBudgetReservationByServer = mutation({
       billingAccountId: billingAccount.billingAccountId,
       status: 'finalized',
       finalizedCents: safeActualCents,
+      ...(providerCostMicros === undefined ? {} : { providerCostMicros }),
       providerWorkStarted: true,
       providerWorkCompleted: true,
       updatedAt: Date.now(),
@@ -1610,6 +1618,54 @@ export const finalizeBudgetReservationByServer = mutation({
     await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
 
     return { success: true, status: 'finalized', finalizedCents: safeActualCents }
+  },
+})
+
+export const getBillingAccountOperationalReportByServer = query({
+  args: {
+    billingAccountId: v.string(),
+    now: v.optional(v.number()),
+    periodStart: v.number(),
+    reconciliationSlaMs: v.number(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const now = args.now ?? Date.now()
+    const finalized = await ctx.db.query('budgetReservations')
+      .withIndex('by_billingAccountId_status_createdAt', (q) => q
+        .eq('billingAccountId', args.billingAccountId)
+        .eq('status', 'finalized')
+        .gte('createdAt', args.periodStart))
+      .collect()
+    const inPeriod = finalized.filter((row) => row.createdAt <= now)
+    const retailCostCents = inPeriod.reduce((total, row) => total + (row.finalizedCents ?? 0), 0)
+    const providerCostMicros = inPeriod.reduce((total, row) => total + (row.providerCostMicros ?? 0), 0)
+    const covered = inPeriod.filter((row) => row.providerCostMicros !== undefined).length
+    const reconciliation = await ctx.db.query('budgetReservations')
+      .withIndex('by_billingAccountId_status_createdAt', (q) => q
+        .eq('billingAccountId', args.billingAccountId)
+        .eq('status', 'reconcile_required'))
+      .collect()
+    const oldestUpdatedAt = reconciliation.reduce<number | undefined>((oldest, row) => (
+      oldest === undefined || row.updatedAt < oldest ? row.updatedAt : oldest
+    ), undefined)
+    const actualProviderCostCents = providerCostMicros / 10_000
+    return {
+      actualProviderCostCents,
+      costCoveragePercent: inPeriod.length > 0 ? Math.round((covered / inPeriod.length) * 10_000) / 100 : 100,
+      meteredReservations: inPeriod.length,
+      oldestReconciliationAgeMs: oldestUpdatedAt === undefined ? 0 : Math.max(0, now - oldestUpdatedAt),
+      periodEnd: now,
+      periodStart: args.periodStart,
+      realizedMarginPercent: retailCostCents > 0
+        ? Math.round(((retailCostCents - actualProviderCostCents) / retailCostCents) * 10_000) / 100
+        : null,
+      retailCostCents,
+      retailCredits: Math.round(retailCostCents * 10),
+      staleReconciliationReservations: reconciliation.filter((row) => row.updatedAt <= now - args.reconciliationSlaMs).length,
+      reconciliationReservations: reconciliation.length,
+    }
   },
 })
 

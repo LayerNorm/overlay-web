@@ -9,6 +9,10 @@ import { z } from "zod";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { calculateGatewayLanguageModelCostOrNull } from '../lib/gatewayCatalogPricing'
 import { applyMarkupToDollars } from "../../src/shared/billing/billing-pricing";
+import {
+  resolveWorkspaceBillingRollout,
+  workspaceBillingRolloutConfigFromEnv,
+} from "../../src/shared/billing/workspace-billing-rollout";
 
 const GATEWAY_CHAT_URL =
   process.env.AI_GATEWAY_URL?.trim() ||
@@ -209,7 +213,10 @@ export const extractFromTurn = internalAction({
         .digest("hex");
       const billingUserId = billingActorUserId?.trim() || userId;
       let resolvedBillingAccountId = billingAccountId?.trim() || undefined;
-      if (!resolvedBillingAccountId && workspaceId && process.env.OVERLAY_FEATURE_WORKSPACE_WALLETS === "1") {
+      if (!resolvedBillingAccountId && workspaceId && resolveWorkspaceBillingRollout(
+        workspaceBillingRolloutConfigFromEnv(process.env),
+        workspaceId,
+      ).eligible) {
         const payer = await ctx.runQuery(internal.knowledge.knowledge.resolveKnowledgeBillingPayer, {
           userId: billingUserId,
           workspaceId,
@@ -329,6 +336,7 @@ export const extractFromTurn = internalAction({
               inputTokens,
               outputTokens,
               cachedTokens: 0,
+              providerCostUsd: actualCostUsd,
               cost: costCents,
               timestamp: Date.now(),
             }],

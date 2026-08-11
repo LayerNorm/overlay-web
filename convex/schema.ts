@@ -340,6 +340,7 @@ export default defineSchema({
     reservedAllowanceCents: v.optional(v.number()),
     reservedTopUpCents: v.optional(v.number()),
     finalizedCents: v.optional(v.number()),
+    providerCostMicros: v.optional(v.number()),
     providerWorkStarted: v.optional(v.boolean()),
     providerWorkCompleted: v.optional(v.boolean()),
     errorMessage: v.optional(v.string()),

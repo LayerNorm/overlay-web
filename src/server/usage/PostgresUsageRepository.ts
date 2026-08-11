@@ -6,6 +6,7 @@ import type { Entitlements } from '@/shared/app/app-contracts'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import type {
   UsageEvent,
+  BillingUsageOperationalReport,
   UsageReconciliationQueueItem,
   UsageReconciliationSweepResult,
   UsageRepository,
@@ -79,6 +80,69 @@ type Transaction = Parameters<Parameters<OverlayPostgresDb['transaction']>[0]>[0
 
 export class PostgresUsageRepository implements UsageRepository {
   constructor(private readonly db: OverlayPostgresDb) {}
+
+  async getBillingAccountOperationalReport(args: {
+    billingAccountId: string
+    now?: number
+    periodStart: number
+    reconciliationSlaMs: number
+  }): Promise<BillingUsageOperationalReport> {
+    const now = args.now ?? Date.now()
+    const [margin, reconciliation] = await Promise.all([
+      this.db.execute<{
+        actualProviderCostMicros: number | string
+        covered: number | string
+        metered: number | string
+        retailCostMicros: number | string
+      }>(sql`
+        SELECT
+          COALESCE(sum(provider_cost_micros), 0) AS "actualProviderCostMicros",
+          count(provider_cost_micros)::int AS covered,
+          count(*)::int AS metered,
+          COALESCE(sum(billable_cost_micros), 0) AS "retailCostMicros"
+        FROM usage_events
+        WHERE billing_account_id = ${args.billingAccountId}
+          AND occurred_at >= ${new Date(args.periodStart)}
+          AND occurred_at <= ${new Date(now)}
+      `),
+      this.db.execute<{
+        oldestUpdatedAt: Date | string | null
+        pending: number | string
+        stale: number | string
+      }>(sql`
+        SELECT
+          min(updated_at) AS "oldestUpdatedAt",
+          count(*)::int AS pending,
+          count(*) FILTER (WHERE updated_at <= ${new Date(now - args.reconciliationSlaMs)})::int AS stale
+        FROM usage_reservations
+        WHERE billing_account_id = ${args.billingAccountId}
+          AND status = 'reconcile_required'
+      `),
+    ])
+    const marginRow = margin.rows[0]
+    const reconciliationRow = reconciliation.rows[0]
+    const actualProviderCostMicros = Number(marginRow?.actualProviderCostMicros ?? 0)
+    const retailCostMicros = Number(marginRow?.retailCostMicros ?? 0)
+    const meteredReservations = Number(marginRow?.metered ?? 0)
+    const covered = Number(marginRow?.covered ?? 0)
+    const oldestUpdatedAt = reconciliationRow?.oldestUpdatedAt
+    const oldestMs = oldestUpdatedAt ? databaseTimestampToMillis(oldestUpdatedAt) : now
+    return {
+      actualProviderCostCents: microsToCents(actualProviderCostMicros),
+      costCoveragePercent: meteredReservations > 0 ? Math.round((covered / meteredReservations) * 10_000) / 100 : 100,
+      meteredReservations,
+      oldestReconciliationAgeMs: oldestUpdatedAt ? Math.max(0, now - oldestMs) : 0,
+      periodEnd: now,
+      periodStart: args.periodStart,
+      realizedMarginPercent: retailCostMicros > 0
+        ? Math.round(((retailCostMicros - actualProviderCostMicros) / retailCostMicros) * 10_000) / 100
+        : null,
+      retailCostCents: microsToCents(retailCostMicros),
+      retailCredits: Math.round(microsToCents(retailCostMicros) * 10),
+      staleReconciliationReservations: Number(reconciliationRow?.stale ?? 0),
+      reconciliationReservations: Number(reconciliationRow?.pending ?? 0),
+    }
+  }
 
   async getEntitlements(args: { userId: string }): Promise<Entitlements | null> {
     return await this.db.transaction(async (tx) => {

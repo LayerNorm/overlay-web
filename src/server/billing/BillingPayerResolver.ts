@@ -24,7 +24,7 @@ export class BillingPayerResolutionError extends Error {
 export class BillingPayerResolver {
   constructor(private readonly deps: {
     billing: BillingRepository
-    workspaceWalletsEnabled: () => boolean
+    workspaceWalletsEnabled: (workspaceId?: string) => boolean
     workspaces: Pick<WorkspaceService, 'resolveActiveWorkspace'>
   }) {}
 
@@ -41,6 +41,9 @@ export class BillingPayerResolver {
 
     const access = await this.deps.workspaces.resolveActiveWorkspace(userId, args.workspaceId)
     if (access.workspace.kind !== 'organization') {
+      return personalPayer(await this.deps.billing.ensurePersonalBillingAccount({ userId }), subject, userId)
+    }
+    if (!this.deps.workspaceWalletsEnabled(access.workspace.id)) {
       return personalPayer(await this.deps.billing.ensurePersonalBillingAccount({ userId }), subject, userId)
     }
     const account = await this.deps.billing.getWorkspaceBillingAccountByWorkspaceIdByServer({

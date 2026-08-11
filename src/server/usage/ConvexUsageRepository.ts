@@ -6,6 +6,7 @@ import type { Entitlements } from '@/shared/app/app-contracts'
 import type { ResolvedBillingPayer } from '@/shared/billing/billing-payer'
 import type {
   UsageEvent,
+  BillingUsageOperationalReport,
   UsageReconciliationQueueItem,
   UsageReconciliationSweepResult,
   UsageRepository,
@@ -16,6 +17,21 @@ import type {
 export class ConvexUsageRepository implements UsageRepository {
   private get serverSecret(): string {
     return getInternalApiSecret()
+  }
+
+  async getBillingAccountOperationalReport(args: {
+    billingAccountId: string
+    now?: number
+    periodStart: number
+    reconciliationSlaMs: number
+  }): Promise<BillingUsageOperationalReport> {
+    const result = await convex.query<BillingUsageOperationalReport>(
+      'platform/usage:getBillingAccountOperationalReportByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+    if (!result) throw new Error('Failed to load billing usage operational report')
+    return result
   }
 
   async getEntitlements(args: { userId: string }): Promise<Entitlements | null> {
@@ -308,6 +324,7 @@ function toConvexEvent(event: UsageEvent) {
     inputTokens: event.inputTokens,
     modelId: event.modelId,
     outputTokens: event.outputTokens,
+    providerCostUsd: event.providerCostUsd,
     timestamp: event.occurredAt,
     type: event.kind,
   }

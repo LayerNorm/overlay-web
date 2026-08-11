@@ -3,6 +3,7 @@ import test from 'node:test'
 import type { BillingProvider, CheckoutArgs, CheckoutSessionVerificationArgs } from '@overlay/app-core'
 import type { WorkspaceAccess } from '@overlay/workspace-contracts'
 import type { BillingRepository } from './BillingRepository'
+import type { UsageRepository } from '@/server/usage/UsageRepository'
 import { BillingServiceError } from './BillingCustomerService'
 import { WorkspaceBillingService } from './WorkspaceBillingService'
 
@@ -81,6 +82,24 @@ function fixture(args: {
     baseUrl: () => 'https://overlay.test',
     billingProvider: () => args.provider ?? provider(),
     repository: args.repository ?? repository(),
+    rollout: () => ({ checkoutEnabled: true, eligible: true, stage: 'general' }),
+    usage: {
+      async getBillingAccountOperationalReport() {
+        return {
+          actualProviderCostCents: 0,
+          costCoveragePercent: 100,
+          meteredReservations: 0,
+          oldestReconciliationAgeMs: 0,
+          periodEnd: 2,
+          periodStart: 1,
+          realizedMarginPercent: null,
+          retailCostCents: 0,
+          retailCredits: 0,
+          staleReconciliationReservations: 0,
+          reconciliationReservations: 0,
+        }
+      },
+    } as UsageRepository,
     workspaces: { resolveActiveWorkspace: async () => access(args.role) },
   })
 }

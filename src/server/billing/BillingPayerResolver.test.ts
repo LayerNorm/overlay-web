@@ -61,6 +61,15 @@ test('enabled organization wallets fail closed and preserve programmatic attribu
   })
 })
 
+test('controlled rollout preserves personal billing outside the selected workspace', async () => {
+  const resolver = new BillingPayerResolver({
+    billing: billingRepository({ personal, workspace }),
+    workspaceWalletsEnabled: (workspaceId) => workspaceId === undefined || workspaceId === 'workspace_internal',
+    workspaces: { resolveActiveWorkspace: async () => organizationAccess('member') },
+  })
+  assert.equal((await resolver.resolve({ userId: 'user_1', workspaceId: 'workspace_1' })).scope, 'personal')
+})
+
 test('only workspace managers can initialize wallets or configure limits', async () => {
   const forbidden = new BillingPayerResolver({
     billing: billingRepository({ personal, workspace }),

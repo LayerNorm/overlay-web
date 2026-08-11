@@ -169,10 +169,15 @@ export type WorkspaceBillingSubscription = {
 }
 
 export type WorkspaceBillingSummaryResponse = {
-  billingAccountId: string
   workspaceId: string
   canManage: boolean
+  initialized: boolean
   pricingVersion: 'markup_25_v1'
+  rollout: {
+    stage: 'off' | 'internal' | 'selected' | 'general'
+    eligible: boolean
+    checkoutEnabled: boolean
+  }
   credits: {
     total: number
     used: number
@@ -181,6 +186,18 @@ export type WorkspaceBillingSummaryResponse = {
     topUpBalance: number
   }
   subscription: WorkspaceBillingSubscription
+  observability?: {
+    actualProviderCostCents: number
+    costCoveragePercent: number
+    meteredReservations: number
+    oldestReconciliationAgeMs: number
+    periodEnd: number
+    periodStart: number
+    realizedMarginPercent: number | null
+    reconciliationReservations: number
+    retailCredits: number
+    staleReconciliationReservations: number
+  }
 }
 
 export type WorkspaceBillingCheckoutInput = {

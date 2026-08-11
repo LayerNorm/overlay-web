@@ -11,12 +11,16 @@ import {
   quantityToPlanAmountCents,
 } from '@/shared/billing/billing-pricing'
 import type { BillingRepository } from './BillingRepository'
+import type { UsageRepository } from '@/server/usage/UsageRepository'
+import type { WorkspaceBillingRolloutDecision } from '@/shared/billing/workspace-billing-rollout'
 import { BillingServiceError } from './BillingCustomerService'
 
 type Deps = {
   baseUrl: () => string
   billingProvider: () => BillingProvider
   repository: BillingRepository
+  rollout: (workspaceId: string) => WorkspaceBillingRolloutDecision
+  usage: UsageRepository
   workspaces: Pick<WorkspaceService, 'resolveActiveWorkspace'>
 }
 
@@ -25,6 +29,7 @@ export class WorkspaceBillingService {
 
   async initialize(args: { actorUserId: string; workspaceId: string }) {
     const access = await this.requireManager(args)
+    this.requireRollout(access.workspace.id)
     await this.deps.repository.ensureWorkspaceBillingAccount({
       primaryBillingContactUserId: args.actorUserId,
       workspaceId: access.workspace.id,
@@ -38,7 +43,9 @@ export class WorkspaceBillingService {
     const account = await this.deps.repository.getWorkspaceBillingAccountByWorkspaceIdByServer({
       workspaceId: access.workspace.id,
     })
-    if (!account) this.fail('Workspace wallet is not initialized.', 404)
+    const rollout = this.deps.rollout(access.workspace.id)
+    const canManage = canManageWorkspace(access.membership.role)
+    if (!account) return emptySummary(access.workspace.id, canManage, rollout)
     const [entitlements, subscription] = await Promise.all([
       this.deps.repository.getBillingAccountEntitlementsByServer({ billingAccountId: account.billingAccountId }),
       this.deps.repository.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId }),
@@ -46,11 +53,20 @@ export class WorkspaceBillingService {
     const totalCents = entitlements?.budgetTotalCents ?? 0
     const usedCents = entitlements?.budgetUsedCents ?? 0
     const remainingCents = entitlements?.budgetRemainingCents ?? 0
+    const periodStart = subscription?.currentPeriodStart ?? Date.now() - 30 * 24 * 60 * 60_000
+    const observability = canManage
+      ? await this.deps.usage.getBillingAccountOperationalReport({
+          billingAccountId: account.billingAccountId,
+          periodStart,
+          reconciliationSlaMs: 15 * 60_000,
+        })
+      : undefined
     return {
-      billingAccountId: account.billingAccountId,
       workspaceId: access.workspace.id,
-      canManage: canManageWorkspace(access.membership.role),
+      canManage,
+      initialized: true,
       pricingVersion: account.pricingVersion,
+      rollout,
       credits: {
         total: centsToBillingCredits(totalCents),
         used: centsToBillingCredits(usedCents),
@@ -64,6 +80,18 @@ export class WorkspaceBillingService {
         ...(subscription?.status ? { status: subscription.status } : {}),
         ...(subscription?.currentPeriodEnd ? { currentPeriodEnd: subscription.currentPeriodEnd } : {}),
       },
+      ...(observability ? { observability: {
+        actualProviderCostCents: observability.actualProviderCostCents,
+        costCoveragePercent: observability.costCoveragePercent,
+        meteredReservations: observability.meteredReservations,
+        oldestReconciliationAgeMs: observability.oldestReconciliationAgeMs,
+        periodEnd: observability.periodEnd,
+        periodStart: observability.periodStart,
+        realizedMarginPercent: observability.realizedMarginPercent,
+        reconciliationReservations: observability.reconciliationReservations,
+        retailCredits: observability.retailCredits,
+        staleReconciliationReservations: observability.staleReconciliationReservations,
+      } } : {}),
     }
   }
 
@@ -75,7 +103,7 @@ export class WorkspaceBillingService {
     topUpAmountCents: number
     workspaceId: string
   }): Promise<{ url: string | null }> {
-    const { account, workspaceId } = await this.requireAccountManager(args)
+    const { account, workspaceId } = await this.requireEligibleAccountManager(args)
     if (!Number.isSafeInteger(args.planAmountCents)
       || clampPaidPlanAmountCents(args.planAmountCents) !== args.planAmountCents) {
       this.fail('Unsupported subscription amount.', 400)
@@ -90,8 +118,8 @@ export class WorkspaceBillingService {
       planAmountCents: args.planAmountCents,
       topUpAmountCents: args.topUpAmountCents,
       autoTopUpEnabled: Boolean(args.autoTopUpEnabled),
-      successUrl: `${this.deps.baseUrl()}/settings/workspace?billing_success=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${this.deps.baseUrl()}/settings/workspace?billing_canceled=true`,
+      successUrl: `${this.deps.baseUrl()}/app/settings?section=workspace&workspace_tab=billing&workspace_billing_success=true&workspace_session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${this.deps.baseUrl()}/app/settings?section=workspace&workspace_tab=billing&workspace_billing_canceled=true`,
     })
     return { url: result.url }
   }
@@ -102,7 +130,7 @@ export class WorkspaceBillingService {
     amountCents: number
     workspaceId: string
   }): Promise<{ url: string | null }> {
-    const { account, workspaceId } = await this.requireAccountManager(args)
+    const { account, workspaceId } = await this.requireEligibleAccountManager(args)
     if (!isValidTopUpAmount(args.amountCents)) this.fail('Unsupported top-up amount.', 400)
     const result = await this.deps.billingProvider().createCheckoutSession({
       userId: args.actorUserId,
@@ -111,8 +139,8 @@ export class WorkspaceBillingService {
       email: args.actorEmail,
       kind: 'budget_topup',
       topUpAmountCents: clampTopUpAmountCents(args.amountCents),
-      successUrl: `${this.deps.baseUrl()}/settings/workspace?topup_success=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${this.deps.baseUrl()}/settings/workspace?topup_canceled=true`,
+      successUrl: `${this.deps.baseUrl()}/app/settings?section=workspace&workspace_tab=billing&workspace_topup_success=true&workspace_session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${this.deps.baseUrl()}/app/settings?section=workspace&workspace_tab=billing&workspace_topup_canceled=true`,
     })
     return { url: result.url }
   }
@@ -130,7 +158,7 @@ export class WorkspaceBillingService {
       billingAccountId: account.billingAccountId,
       workspaceId,
       email: args.actorEmail,
-      returnUrl: `${this.deps.baseUrl()}/settings/workspace`,
+      returnUrl: `${this.deps.baseUrl()}/app/settings?section=workspace&workspace_tab=billing`,
     })
     return { url: result.url }
   }
@@ -207,7 +235,43 @@ export class WorkspaceBillingService {
     return { account, workspaceId: access.workspace.id }
   }
 
+  private async requireEligibleAccountManager(args: { actorUserId: string; workspaceId: string }) {
+    const result = await this.requireAccountManager(args)
+    this.requireRollout(result.workspaceId)
+    return result
+  }
+
+  private requireRollout(workspaceId: string): WorkspaceBillingRolloutDecision {
+    const rollout = this.deps.rollout(workspaceId)
+    if (!rollout.eligible || !rollout.checkoutEnabled) {
+      this.fail('Workspace billing is not enabled for this workspace yet.', 403)
+    }
+    return rollout
+  }
+
   private fail(message: string, statusCode: number): never {
     throw new BillingServiceError({ error: message }, statusCode)
+  }
+}
+
+function emptySummary(
+  workspaceId: string,
+  canManage: boolean,
+  rollout: WorkspaceBillingRolloutDecision,
+): WorkspaceBillingSummaryResponse {
+  return {
+    workspaceId,
+    canManage,
+    initialized: false,
+    pricingVersion: 'markup_25_v1',
+    rollout,
+    credits: {
+      total: 0,
+      used: 0,
+      remaining: 0,
+      allowancePercentUsed: 0,
+      topUpBalance: 0,
+    },
+    subscription: { planKind: 'free', planAmountCents: 0 },
   }
 }

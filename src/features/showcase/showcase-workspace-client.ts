@@ -161,6 +161,43 @@ export function createShowcaseWorkspaceManagementClient(
   let showcasePublicLinksEnabled = true
 
   return {
+    async billing(workspaceId) {
+      const workspace = workspaceById.get(workspaceId)
+      if (!workspace) throw new Error('Workspace not found or you no longer have access.')
+      const initialized = workspace.kind === 'organization'
+      return {
+        workspaceId,
+        canManage: workspace.role === 'owner' || workspace.role === 'admin',
+        initialized,
+        pricingVersion: 'markup_25_v1' as const,
+        rollout: initialized
+          ? { checkoutEnabled: true, eligible: true, stage: 'internal' as const }
+          : { checkoutEnabled: false, eligible: false, stage: 'off' as const },
+        credits: initialized
+          ? { total: 28_000, used: 8_400, remaining: 19_600, allowancePercentUsed: 32, topUpBalance: 8_000 }
+          : { total: 0, used: 0, remaining: 0, allowancePercentUsed: 0, topUpBalance: 0 },
+        subscription: initialized
+          ? { planKind: 'paid' as const, planAmountCents: 2_000, status: 'active' as const }
+          : { planKind: 'free' as const, planAmountCents: 0 },
+        ...(initialized ? { observability: {
+          actualProviderCostCents: 672,
+          costCoveragePercent: 100,
+          meteredReservations: 41,
+          oldestReconciliationAgeMs: 0,
+          periodEnd: Date.now(),
+          periodStart: Date.now() - 14 * 24 * 60 * 60_000,
+          realizedMarginPercent: 20,
+          reconciliationReservations: 0,
+          retailCredits: 8_400,
+          staleReconciliationReservations: 0,
+        } } : {}),
+      }
+    },
+    async initializeBilling(workspaceId) { return await this.billing(workspaceId) },
+    async createBillingCheckout() { return { url: null } },
+    async createBillingTopUp() { return { url: null } },
+    async createBillingPortal() { return { url: null } },
+    async verifyBillingCheckout(_workspaceId, input) { return { success: true as const, amountCents: 0, kind: input.kind } },
     async load(workspaceId, tab) {
       return response(workspaceId, tab)
     },

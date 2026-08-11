@@ -77,7 +77,27 @@ export type UsageReconciliationSweepResult = {
   released: number
 }
 
+export type BillingUsageOperationalReport = {
+  actualProviderCostCents: number
+  costCoveragePercent: number
+  meteredReservations: number
+  oldestReconciliationAgeMs: number
+  periodEnd: number
+  periodStart: number
+  realizedMarginPercent: number | null
+  retailCostCents: number
+  retailCredits: number
+  staleReconciliationReservations: number
+  reconciliationReservations: number
+}
+
 export interface UsageRepository {
+  getBillingAccountOperationalReport(args: {
+    billingAccountId: string
+    now?: number
+    periodStart: number
+    reconciliationSlaMs: number
+  }): Promise<BillingUsageOperationalReport>
   getEntitlements(args: { userId: string }): Promise<Entitlements | null>
   reserve(args: {
     entitlements: Entitlements

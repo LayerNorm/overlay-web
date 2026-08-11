@@ -12,6 +12,10 @@ import { validateServerSecret } from '../lib/auth'
 import { calculateGatewayEmbeddingModelCostOrNull } from '../lib/gatewayCatalogPricing'
 import { applyMarkupToDollars } from '../../src/shared/billing/billing-pricing'
 import {
+  resolveWorkspaceBillingRollout,
+  workspaceBillingRolloutConfigFromEnv,
+} from '../../src/shared/billing/workspace-billing-rollout'
+import {
   KNOWLEDGE_CHUNK_CHARS,
   KNOWLEDGE_CHUNK_OVERLAP,
   chunkKnowledgeText,
@@ -45,7 +49,10 @@ export const resolveKnowledgeBillingPayer = internalQuery({
     workspaceId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<KnowledgeBillingPayer> => {
-    if (process.env.OVERLAY_FEATURE_WORKSPACE_WALLETS !== '1' || !args.workspaceId) {
+    if (!args.workspaceId || !resolveWorkspaceBillingRollout(
+      workspaceBillingRolloutConfigFromEnv(process.env),
+      args.workspaceId,
+    ).eligible) {
       return { scope: 'personal' }
     }
     const workspace = await ctx.db.query('workspaces')
@@ -478,6 +485,7 @@ export const reindexFileInternal = internalAction({
           inputTokens: totalTokens || estimatedTokens,
           outputTokens: 0,
           cachedTokens: 0,
+          providerCostUsd: actualCostUsd,
           cost: costCents,
           timestamp: Date.now(),
         }],
@@ -609,6 +617,7 @@ export const reindexMemoryInternal = internalAction({
           inputTokens: promptTokens || estimatedTokens,
           outputTokens: 0,
           cachedTokens: 0,
+          providerCostUsd: actualCostUsd,
           cost: costCents,
           timestamp: Date.now(),
         }],
@@ -776,6 +785,7 @@ export const hybridSearch = action({
             inputTokens: actualTokens,
             outputTokens: 0,
             cachedTokens: 0,
+            providerCostUsd: actualCostUsd,
             cost: costCents,
             timestamp: Date.now(),
           }],

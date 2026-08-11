@@ -31,7 +31,9 @@ import dynamic from 'next/dynamic'
 import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
 import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
 import { ApiKeySettings } from '@/features/settings/components/ApiKeySettings'
-import { WorkspaceSettingsPanel } from '@/features/workspaces/components/WorkspaceSettingsPanel'
+import { isWorkspaceSettingsTab, WorkspaceSettingsPanel } from '@/features/workspaces/components/WorkspaceSettingsPanel'
+import { createShowcaseWorkspaceManagementClient } from '@/features/showcase/showcase-workspace-client'
+import { SHOWCASE_WORKSPACES } from '@/features/showcase/showcase-data'
 
 const MemoriesView = dynamic(
   () => import('@/features/knowledge/components/MemoriesView'),
@@ -68,11 +70,16 @@ export default function SettingsPage() {
   const sectionIds = useMemo(() => new Set<string>(sections.map((s) => s.id)), [sections])
   const rawSection = searchParams?.get('section') ?? defaultSectionId
   const section = sectionIds.has(rawSection) ? rawSection : defaultSectionId
+  const publicShowcase = searchParams?.get('showcase') === '1'
+  const showcaseWorkspaceManagementClient = useMemo(
+    () => createShowcaseWorkspaceManagementClient(SHOWCASE_WORKSPACES),
+    [],
+  )
 
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) router.replace('/app/chat?signin=nav')
-  }, [authLoading, isAuthenticated, router])
+    if (!publicShowcase && !authLoading && !isAuthenticated) router.replace('/app/chat?signin=nav')
+  }, [authLoading, isAuthenticated, publicShowcase, router])
 
   const {
     settings,
@@ -203,7 +210,10 @@ export default function SettingsPage() {
 
           {!isLoading && section === 'workspace' && (
             <WorkspaceSettingsPanel
-              client={undefined}
+              client={publicShowcase ? showcaseWorkspaceManagementClient : undefined}
+              initialTab={isWorkspaceSettingsTab(searchParams?.get('workspace_tab'))
+                ? searchParams?.get('workspace_tab') as Parameters<typeof WorkspaceSettingsPanel>[0]['initialTab']
+                : undefined}
             />
           )}
 
