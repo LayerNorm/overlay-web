@@ -17,13 +17,36 @@ function toValue(value: SelectProps['value']): string | undefined {
 type OptionNodeProps = { value?: unknown; children?: ReactNode }
 type OptionGroupNodeProps = { label?: unknown; children?: ReactNode }
 
+/**
+ * JSX like `<option>${amount / 100}/month</option>` gives `children` the array
+ * `['$', 8, '/month']`. `String(...)` on that joins with commas — "$,8,/month" —
+ * so flatten to text the way the DOM would instead of coercing the array.
+ */
+function optionLabelFromChildren(children: ReactNode): string {
+  const parts: string[] = []
+  const visit = (node: ReactNode) => {
+    if (node === null || node === undefined || typeof node === 'boolean') return
+    if (typeof node === 'string' || typeof node === 'number') {
+      parts.push(String(node))
+      return
+    }
+    if (Array.isArray(node)) {
+      node.forEach(visit)
+      return
+    }
+    if (isValidElement<{ children?: ReactNode }>(node)) visit(node.props.children)
+  }
+  visit(children)
+  return parts.join('')
+}
+
 function optionsFromChildren(children: ReactNode): ListboxOption<string>[] {
   const options: ListboxOption<string>[] = []
   const appendOptions = (nodes: ReactNode, group?: string) => {
     Children.forEach(nodes, (node) => {
       if (!isValidElement<OptionNodeProps>(node) || node.type !== 'option') return
       const value = String(node.props.value ?? '')
-      options.push({ value, label: String(node.props.children ?? value), group })
+      options.push({ value, label: optionLabelFromChildren(node.props.children) || value, group })
     })
   }
   Children.forEach(children, (child) => {
