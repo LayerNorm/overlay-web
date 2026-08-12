@@ -507,7 +507,7 @@ export default function ChatExperience({
   const textareaRef = useRef<MentionInputHandle>(null)
   const [mentions, setMentions] = useState<MentionItem[]>([])
   const [personalMentionConfirmationOpen, setPersonalMentionConfirmationOpen] = useState(false)
-  const [peopleMentionCategories, setPeopleMentionCategories] = useState<MentionCategory[]>([])
+  const [mentionCategories, setMentionCategories] = useState<MentionCategory[]>([])
   // MentionInput emits a fresh mentions array on every keystroke. Bail out when the
   // value is unchanged so plain typing does not push new state / re-render the whole
   // chat experience on each character.
@@ -524,15 +524,23 @@ export default function ChatExperience({
 
   useEffect(() => {
     if (!activeWorkspaceId || isPublicShowcase) {
-      setPeopleMentionCategories([])
+      setMentionCategories([])
       return
     }
     let cancelled = false
-    void Promise.all([
+    void Promise.allSettled([
       overlayAppClient.workspaces.management(activeWorkspaceId, 'people'),
       overlayAppClient.workspaces.management(activeWorkspaceId, 'chats-agents'),
-    ]).then(([people, agents]) => {
+      overlayAppClient.knowledgeBases.list(),
+    ]).then(([peopleResult, agentsResult, knowledgeResult]) => {
       if (cancelled) return
+      const people = peopleResult.status === 'fulfilled'
+        ? peopleResult.value
+        : { items: [], currentPrincipalId: undefined }
+      const agents = agentsResult.status === 'fulfilled' ? agentsResult.value : { items: [] }
+      const knowledgeBases = knowledgeResult.status === 'fulfilled'
+        ? knowledgeResult.value.knowledgeBases
+        : []
       const principals = new Map<string, MentionItem>()
       for (const item of [...people.items, ...agents.items]) {
         if (
@@ -550,14 +558,31 @@ export default function ChatExperience({
         })
       }
       const items = [...principals.values()].sort((left, right) => left.name.localeCompare(right.name))
-      setPeopleMentionCategories(items.length ? [{
-        type: 'person',
-        label: 'Members',
-        icon: 'UsersRound',
-        items,
-      }] : [])
+      const bases = knowledgeBases
+        .map((base) => ({
+          type: 'knowledge' as const,
+          id: base.id,
+          name: base.title,
+          description: base.description || `${base.kind} knowledge base`,
+          icon: 'BookOpen',
+        }))
+        .sort((left, right) => left.name.localeCompare(right.name))
+      setMentionCategories([
+        ...(items.length ? [{
+          type: 'person' as const,
+          label: 'Members',
+          icon: 'UsersRound',
+          items,
+        }] : []),
+        ...(bases.length ? [{
+          type: 'knowledge' as const,
+          label: 'Knowledge Bases',
+          icon: 'BookOpen',
+          items: bases,
+        }] : []),
+      ])
     }).catch(() => {
-      if (!cancelled) setPeopleMentionCategories([])
+      if (!cancelled) setMentionCategories([])
     })
     return () => { cancelled = true }
   }, [activeWorkspaceId, isPublicShowcase])
@@ -2180,7 +2205,7 @@ export default function ChatExperience({
                 },
               },
               surface: {
-                mentionCategories: peopleMentionCategories,
+                mentionCategories,
               },
               actions: {
                 onStop: stopActiveChat,

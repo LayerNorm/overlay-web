@@ -312,6 +312,15 @@ export function buildCommonActBody({
     ...(indexedFileNames.length > 0 ? { indexedFileNames, indexedAttachments } : {}),
     ...(replyContext?.bodyForModel ? { replyContextForModel: replyContext.bodyForModel } : {}),
     ...(userMeta.mentions && userMeta.mentions.length > 0 ? { mentions: userMeta.mentions } : {}),
+    ...(userMeta.mentions?.some((mention) => mention.type === 'knowledge')
+      ? {
+          knowledgeBaseIds: [...new Set(
+            userMeta.mentions
+              .filter((mention) => mention.type === 'knowledge')
+              .map((mention) => mention.id),
+          )],
+        }
+      : {}),
     ...(textHistoryBaseModelId ? { historyBaseModelId: textHistoryBaseModelId } : {}),
     requestedToolIds: selectedToolIdsSnapshot,
     memoryEnabled: memoryEnabledSnapshot,
