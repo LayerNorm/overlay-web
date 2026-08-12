@@ -955,6 +955,64 @@ export const listBudgetTopUpsByServer = query({
   },
 })
 
+/**
+ * Reverses a succeeded top-up when Stripe reports a refund or lost dispute.
+ * Debits the top-up balance so the user cannot spend the refunded credits.
+ * If the user has already spent past the new balance, the balance goes to
+ * zero (not negative) — the spend is already consumed, but further usage is
+ * blocked until the user tops up again.
+ */
+export const reverseTopUpByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    stripePaymentIntentId: v.string(),
+    refundAmountCents: v.number(),
+    reason: v.string(),
+  },
+  returns: v.object({ reversed: v.boolean() }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    if (!Number.isSafeInteger(args.refundAmountCents) || args.refundAmountCents <= 0) {
+      throw new Error('invalid_refund_amount')
+    }
+    const existing = await ctx.db
+      .query('budgetTopUps')
+      .withIndex('by_paymentIntentId', (q) => q.eq('stripePaymentIntentId', args.stripePaymentIntentId))
+      .unique()
+    if (!existing) return { reversed: false }
+    if (existing.userId !== args.userId) {
+      throw new Error('Top-up provider reference belongs to another user')
+    }
+    if (existing.status !== 'succeeded') return { reversed: false }
+
+    const alreadyRefunded = Math.max(0, existing.refundedAmountCents ?? 0)
+    const maxRefundable = existing.amountCents - alreadyRefunded
+    const refundAmount = Math.min(args.refundAmountCents, maxRefundable)
+    if (refundAmount <= 0) return { reversed: false }
+
+    const subscription = await ctx.db
+      .query('subscriptions')
+      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .first()
+    if (subscription) {
+      const newBalance = Math.max(0, (subscription.topUpBalanceCents ?? 0) - refundAmount)
+      const newPurchased = Math.max(0, (subscription.topUpPurchasedCents ?? 0) - refundAmount)
+      await ctx.db.patch(subscription._id, {
+        topUpBalanceCents: newBalance,
+        topUpPurchasedCents: newPurchased,
+      })
+    }
+    await ctx.db.patch(existing._id, {
+      status: 'refunded',
+      refundedAmountCents: alreadyRefunded + refundAmount,
+      updatedAt: Date.now(),
+      errorMessage: args.reason,
+    })
+    return { reversed: true }
+  },
+})
+
 // Webhook event deduplication. Returns true if this is the first time we've
 // seen the event; returns false if it's a duplicate (and the caller should
 // skip its side-effects entirely). Also enforces a freshness window — events

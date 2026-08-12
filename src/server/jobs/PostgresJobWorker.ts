@@ -4,6 +4,7 @@ import type {
   DurableJobHandler,
   DurableJobRepository,
 } from './DurableJobRepository'
+import { sanitizeJobError } from './sanitize-job-error'
 
 export class PostgresJobWorker {
   constructor(private readonly options: {
@@ -54,7 +55,7 @@ export class PostgresJobWorker {
       return completed ? 'succeeded' : 'lost_lease'
     } catch (error) {
       return await this.options.repository.fail({
-        error: error instanceof Error ? error.stack ?? error.message : String(error),
+        error: sanitizeJobError(error),
         jobId: job.id,
         retryDelayMs: retryDelayMs(job.attempts),
         workerId: this.options.workerId,

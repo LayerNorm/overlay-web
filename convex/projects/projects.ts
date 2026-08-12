@@ -2,6 +2,7 @@ import { v } from 'convex/values'
 import { mutation, query, type MutationCtx } from '../_generated/server'
 import type { Doc, Id } from '../_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
+import { assertWorkspaceMembership } from '../lib/workspaceMembership'
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -67,6 +68,7 @@ export const create = mutation({
   },
   handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, clientId, name, instructions, parentId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
+    await assertWorkspaceMembership(ctx, { userId, workspaceId })
     if (clientId?.trim()) {
       const existing = await ctx.db
         .query('projects')

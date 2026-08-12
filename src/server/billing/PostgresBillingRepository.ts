@@ -1047,6 +1047,81 @@ export class PostgresBillingRepository implements BillingRepository, BillingWebh
     })
   }
 
+  async reverseTopUp(args: {
+    userId: string
+    billingAccountId?: string
+    stripePaymentIntentId: string
+    refundAmountCents: number
+    reason: string
+  }): Promise<{ reversed: boolean }> {
+    if (!Number.isSafeInteger(args.refundAmountCents) || args.refundAmountCents <= 0) {
+      throw new Error('invalid_refund_amount')
+    }
+    return await this.db.transaction(async (tx) => {
+      const existing = await tx.execute<{
+        id: string
+        status: string
+        amountCents: number
+        refundedAmountCents: number | null
+        userId: string
+        billingAccountId: string | null
+      }>(sql`
+        SELECT id, status, amount_cents AS "amountCents",
+               refunded_amount_cents AS "refundedAmountCents",
+               user_id AS "userId", billing_account_id AS "billingAccountId"
+        FROM billing_top_ups
+        WHERE provider_payment_intent_id = ${args.stripePaymentIntentId}
+        FOR UPDATE
+      `)
+      const row = existing.rows[0]
+      if (!row) return { reversed: false }
+      if (args.billingAccountId && row.billingAccountId !== args.billingAccountId) {
+        throw new Error('Top-up provider reference belongs to another billing account')
+      }
+      if (!args.billingAccountId && row.userId !== args.userId) {
+        throw new Error('Top-up provider reference belongs to another user')
+      }
+      if (row.status !== 'succeeded') return { reversed: false }
+
+      const alreadyRefunded = Math.max(0, Number(row.refundedAmountCents ?? 0))
+      const maxRefundable = Number(row.amountCents) - alreadyRefunded
+      const refundAmount = Math.min(args.refundAmountCents, maxRefundable)
+      if (refundAmount <= 0) return { reversed: false }
+
+      const refundMicros = refundAmount * MICROS_PER_CENT
+      if (args.billingAccountId) {
+        const update = await tx.execute(sql`
+          UPDATE billing_account_balances SET
+            top_up_purchased_micros = GREATEST(0, top_up_purchased_micros - ${refundMicros}),
+            top_up_balance_micros = GREATEST(0, top_up_balance_micros - ${refundMicros}),
+            version = version + 1, updated_at = now()
+          WHERE billing_account_id = ${args.billingAccountId}
+        `)
+        if (update.rowCount !== 1) throw new Error('billing_account_balance_missing')
+      } else {
+        await tx.execute(sql`
+          UPDATE usage_budget_accounts SET
+            top_up_purchased_micros = GREATEST(0, top_up_purchased_micros - ${refundMicros}),
+            top_up_balance_micros = GREATEST(0, top_up_balance_micros - ${refundMicros}),
+            granted_micros = GREATEST(0, granted_micros - ${refundMicros}),
+            version = version + 1, updated_at = now()
+          WHERE user_id = ${args.userId}
+        `)
+        const account = await ensurePersonalAccount(tx, args.userId)
+        await syncCanonicalBalanceFromLegacy(tx, args.userId, account.billingAccountId)
+      }
+      await tx.execute(sql`
+        UPDATE billing_top_ups SET
+          status = 'refunded',
+          refunded_amount_cents = ${alreadyRefunded + refundAmount},
+          error_message = ${args.reason},
+          updated_at = now()
+        WHERE id = ${row.id}
+      `)
+      return { reversed: true }
+    })
+  }
+
   async resolveBillingAccountIdByProviderReference(args: {
     provider: string
     providerCustomerId?: string

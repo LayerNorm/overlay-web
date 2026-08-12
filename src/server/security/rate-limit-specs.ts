@@ -48,6 +48,7 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
   'POST /api/v1/browser-task': [
     { bucket: 'browser-task:ip', limit: 20, windowMs: TEN_MINUTES },
     { bucket: 'browser-task:user', limit: 10, windowMs: TEN_MINUTES },
+    { bucket: 'browser-task:workspace', limit: 20, windowMs: TEN_MINUTES },
   ],
   'POST /api/v1/knowledge/search': [
     { bucket: 'knowledge/knowledge:search:ip', limit: 120, windowMs: TEN_MINUTES },
@@ -68,10 +69,12 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
   'POST /api/v1/generate-image': [
     { bucket: 'generation:image:ip', limit: 30, windowMs: TEN_MINUTES },
     { bucket: 'generation:image:user', limit: 15, windowMs: TEN_MINUTES },
+    { bucket: 'generation:image:workspace', limit: 30, windowMs: TEN_MINUTES },
   ],
   'POST /api/v1/daytona/run': [
     { bucket: 'sandbox:daytona:ip', limit: 20, windowMs: TEN_MINUTES },
     { bucket: 'sandbox:daytona:user', limit: 10, windowMs: TEN_MINUTES },
+    { bucket: 'sandbox:daytona:workspace', limit: 20, windowMs: TEN_MINUTES },
   ],
   'POST /api/v1/generate-title': [
     { bucket: 'helper:title:ip', limit: 120, windowMs: TEN_MINUTES },
@@ -97,6 +100,7 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
   'POST /api/v1/generate-video': [
     { bucket: 'generation:video:ip', limit: 20, windowMs: TEN_MINUTES },
     { bucket: 'generation:video:user', limit: 10, windowMs: TEN_MINUTES },
+    { bucket: 'generation:video:workspace', limit: 20, windowMs: TEN_MINUTES },
   ],
   'POST /api/v1/files/ingest-document': [
     { bucket: 'files/files:ingest-document:ip', limit: 40, windowMs: ONE_HOUR },
@@ -192,9 +196,10 @@ const DYNAMIC_ENDPOINT_RATE_LIMITS: DynamicEndpointRateLimit[] = [
   },
 ]
 
-function keyForBucket(bucket: string, userId: string, ip: string): string {
+function keyForBucket(bucket: string, userId: string, ip: string, workspaceId?: string): string {
   if (bucket.endsWith(':ip')) return ip
   if (bucket.endsWith(':user')) return userId
+  if (bucket.endsWith(':workspace')) return workspaceId ?? userId
   if (bucket.endsWith(':global')) return 'global'
   return userId
 }
@@ -206,6 +211,7 @@ export function getEndpointRateLimitSpecs(args: {
   organizationId?: string
   pathname: string
   userId: string
+  workspaceId?: string
 }): RateLimitSpec[] {
   const method = args.method.toUpperCase()
   const pathname = args.pathname.replace(/\/+$/, '') || '/'
@@ -238,6 +244,6 @@ export function getEndpointRateLimitSpecs(args: {
     : []
   return [...(templates ?? []), ...ownerFundedLimits].map((template: RateLimitSpec) => ({
     ...template,
-    key: template.key ?? keyForBucket(template.bucket, args.userId, args.ip),
+    key: template.key ?? keyForBucket(template.bucket, args.userId, args.ip, args.workspaceId),
   }))
 }

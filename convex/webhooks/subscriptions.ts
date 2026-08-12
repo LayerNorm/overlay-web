@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import { requireAccessToken, requireServerSecret, validateServerSecret } from '../lib/auth'
+import { assertWorkspaceMembership } from '../lib/workspaceMembership'
 
 const eventTypesValidator = v.array(v.string())
 
@@ -104,6 +105,7 @@ export const create = mutation({
   }),
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
+    await assertWorkspaceMembership(ctx, { userId: args.userId, workspaceId: args.workspaceId })
 
     const now = Date.now()
     const secret = crypto.randomUUID()
