@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { AtSign, Bell, BellOff, Check, Inbox, MessageCircle, Smile } from 'lucide-react'
 import type {
   WorkspaceNotification,
@@ -13,6 +13,11 @@ import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 import { dispatchCollaborationNotificationsChanged } from '@/shared/chat/collaboration-events'
+import { conversationActivityLabel } from '@/shared/chat/conversation-activity-state'
+import {
+  buildWorkspaceHref,
+  readWorkspaceIdFromPath,
+} from '@/features/workspaces/lib/workspace-routing'
 
 const FILTERS: Array<{ value: WorkspaceNotificationFilter; label: string; icon: typeof Bell }> = [
   { value: 'all', label: 'All', icon: Inbox },
@@ -43,6 +48,7 @@ function notificationIcon(type: WorkspaceNotification['type']) {
  */
 export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string }) {
   const router = useRouter()
+  const pathname = usePathname() ?? ''
   const [filter, setFilter] = useState<WorkspaceNotificationFilter>('all')
   const [notifications, setNotifications] = useState<WorkspaceNotification[]>([])
   const [loading, setLoading] = useState(true)
@@ -87,6 +93,14 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
       setNotifications((current) => current.map((row) => row.id === notification.id ? { ...row, readAt: Date.now() } : row))
     }
     if (!notification.conversationId) return
+    if (notification.conversationState === 'archived') {
+      const workspaceId = readWorkspaceIdFromPath(pathname)
+      const archivedBase = workspaceId
+        ? buildWorkspaceHref(workspaceId, '/app/archived')
+        : '/app/archived'
+      router.push(`${archivedBase}?id=${encodeURIComponent(notification.conversationId)}`)
+      return
+    }
     const conversation = await conversationPromise
     const view = conversation?.conversationType === 'channel'
       ? 'channels'
@@ -162,6 +176,9 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
                       ) : null}
                       <time className="mt-1 block text-[11px] text-[var(--muted-light)]">
                         {new Date(notification.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                        {conversationActivityLabel(notification.conversationState)
+                          ? ` · ${conversationActivityLabel(notification.conversationState)}`
+                          : ''}
                       </time>
                     </span>
                     {notification.readAt

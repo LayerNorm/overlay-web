@@ -711,11 +711,38 @@ export default function AppSidebar({
           closeMobileDrawer()
           if (next === chatsView) return
           beginSecondaryNavigation(next)
-          if (next === 'activity' || next === 'archived') {
-            const surface = next === 'activity' ? '/app/activity' : '/app/archived'
+          if (next === 'activity') {
             router.push(activeWorkspaceId
-              ? buildWorkspaceHref(activeWorkspaceId, surface)
-              : surface)
+              ? buildWorkspaceHref(activeWorkspaceId, '/app/activity')
+              : '/app/activity')
+            return
+          }
+          if (next === 'archived') {
+            const surface = activeWorkspaceId
+              ? buildWorkspaceHref(activeWorkspaceId, '/app/archived')
+              : '/app/archived'
+            try {
+              const response = await fetch('/api/v1/conversations?archived=true', {
+                cache: 'no-store',
+                credentials: 'same-origin',
+              })
+              if (response.ok) {
+                const body = await response.json() as unknown
+                const conversations = Array.isArray(body)
+                  ? body as Array<{ _id?: string }>
+                  : (body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)
+                    ? (body as { data: Array<{ _id?: string }> }).data
+                    : [])
+                const mostRecentId = conversations[0]?._id
+                if (mostRecentId) {
+                  router.push(`${surface}?id=${encodeURIComponent(mostRecentId)}`)
+                  return
+                }
+              }
+            } catch {
+              // Empty archived surface is still the right destination.
+            }
+            router.push(surface)
             return
           }
           const baseHref = activeWorkspaceId

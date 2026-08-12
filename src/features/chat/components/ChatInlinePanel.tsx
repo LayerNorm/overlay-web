@@ -79,7 +79,24 @@ export function ChatInlinePanel({
   const [newDirectMessageOpen, setNewDirectMessageOpen] = useState(false)
   const [newChannelOpen, setNewChannelOpen] = useState(false)
   const [collaborationUnread, setCollaborationUnread] = useState<Record<string, number>>({})
-  const activeId = searchParams?.get('id') ?? null
+  const [browserRouteVersion, setBrowserRouteVersion] = useState(0)
+  useEffect(() => {
+    function bumpBrowserRoute() {
+      setBrowserRouteVersion((value) => value + 1)
+    }
+    window.addEventListener('overlay:chat-route-selected', bumpBrowserRoute)
+    window.addEventListener('popstate', bumpBrowserRoute)
+    return () => {
+      window.removeEventListener('overlay:chat-route-selected', bumpBrowserRoute)
+      window.removeEventListener('popstate', bumpBrowserRoute)
+    }
+  }, [])
+  void browserRouteVersion
+  const searchActiveId = searchParams?.get('id') ?? null
+  const browserActiveId = typeof window === 'undefined'
+    ? null
+    : new URLSearchParams(window.location.search).get('id')
+  const activeId = browserActiveId ?? searchActiveId
   const chatView = (() => {
     const value = searchParams?.get('view')
     if (value === 'dms' || value === 'channels' || value === 'all') return value
@@ -365,15 +382,26 @@ export function ChatInlinePanel({
       removeActiveChat(archivedChatId)
       clearLastChatForView(workspaceId, chatView, archivedChatId)
       if (activeId !== archivedChatId) return
-      const nextChat = getCachedChatList()?.find((candidate) => {
+      const nextChat = (getCachedChatList() ?? []).find((candidate) => {
         if (candidate._id === archivedChatId) return false
         if (chatView === 'personal') return (candidate.conversationType ?? 'personal') === 'personal'
         if (chatView === 'dms') return candidate.conversationType === 'dm'
         if (chatView === 'channels') return candidate.conversationType === 'channel'
         return true
       })
-      if (nextChat) openChat(nextChat)
-      else router.push(`${baseHref}?${new URLSearchParams({ view: chatView }).toString()}`)
+      if (nextChat) {
+        openChat(nextChat)
+        return
+      }
+      const emptyHref = `${baseHref}?${new URLSearchParams({ view: chatView }).toString()}`
+      if (isSameChatSurface(pathname, baseHref)) {
+        window.history.pushState(null, '', emptyHref)
+        window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
+          detail: { chatId: null, view: chatView },
+        }))
+      } else {
+        router.push(emptyHref)
+      }
     }
     window.addEventListener(CHAT_CREATED_EVENT, handleChatUpserted)
     window.addEventListener(CHAT_MODIFIED_EVENT, handleChatUpserted)
@@ -425,11 +453,11 @@ export function ChatInlinePanel({
   async function archiveChat(chat: Conversation, event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
     setEditingChatId(null)
+    dispatchChatArchived({
+      chat: { ...chat, archivedAt: Date.now() },
+    })
     try {
       await overlayAppClient.conversations.updateParticipantState(chat._id, { archived: true })
-      dispatchChatArchived({
-        chat: { ...chat, archivedAt: Date.now() },
-      })
     } catch {
       void loadChats()
     }

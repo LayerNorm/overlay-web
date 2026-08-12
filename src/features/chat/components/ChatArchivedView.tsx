@@ -1,11 +1,20 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Archive, Loader2, RotateCcw, Trash2 } from 'lucide-react'
+import { usePathname, useSearchParams } from 'next/navigation'
+import dynamic from 'next/dynamic'
+import { Archive, Loader2 } from 'lucide-react'
 import { Button, EmptyState } from '@overlay/ui/primitives'
 import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import {
+  CHAT_ARCHIVED_EVENT,
+  type ChatArchivedDetail,
+} from '@/shared/chat/chat-title'
+
+const ChatExperience = dynamic(() => import('./ChatExperience'))
+const DirectMessageExperience = dynamic(
+  () => import('./DirectMessageExperience').then((module) => ({ default: module.DirectMessageExperience })),
+)
 
 type ArchivedConversation = {
   _id: string
@@ -20,16 +29,36 @@ type ViewState =
   | { status: 'error'; message: string }
   | { status: 'ready'; conversations: ArchivedConversation[] }
 
+function unwrapList<T>(body: unknown): T[] {
+  if (Array.isArray(body)) return body as T[]
+  if (body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)) {
+    return (body as { data: T[] }).data
+  }
+  return []
+}
+
+function readSelectedId(searchId: string | null): string | null {
+  if (typeof window === 'undefined') return searchId
+  return new URLSearchParams(window.location.search).get('id') ?? searchId
+}
+
 /**
- * Conversations the actor archived. These are exactly the rows the main
- * conversations list subtracts, so this is the only surface that can reach them
- * again — restore puts one back, delete removes it for good.
+ * Archived chats open as the conversation itself. The sidebar list is the
+ * index; this page is only ever empty-state or the most recently archived
+ * (or explicitly selected) chat.
  */
-export function ChatArchivedView() {
-  const router = useRouter()
+export function ChatArchivedView({
+  userId,
+  firstName,
+}: {
+  userId: string | null
+  firstName?: string
+}) {
+  const pathname = usePathname() ?? ''
+  const searchParams = useSearchParams()
+  const searchId = searchParams?.get('id') ?? null
   const [state, setState] = useState<ViewState>({ status: 'loading' })
-  const [busyId, setBusyId] = useState<string | null>(null)
-  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [routeVersion, setRouteVersion] = useState(0)
   const archivedHeader = <AppScreenHeader title="Archived" />
 
   const load = useCallback(async () => {
@@ -40,13 +69,7 @@ export function ChatArchivedView() {
         credentials: 'same-origin',
       })
       if (!response.ok) throw new Error('Could not load archived conversations.')
-      const body = await response.json() as unknown
-      const conversations = Array.isArray(body)
-        ? body as ArchivedConversation[]
-        : (body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)
-            ? (body as { data: ArchivedConversation[] }).data
-            : [])
-      setState({ status: 'ready', conversations })
+      setState({ status: 'ready', conversations: unwrapList<ArchivedConversation>(await response.json()) })
     } catch (error) {
       setState({
         status: 'error',
@@ -59,37 +82,62 @@ export function ChatArchivedView() {
     void load()
   }, [load])
 
-  async function restore(conversationId: string) {
-    setBusyId(conversationId)
-    try {
-      await overlayAppClient.conversations.updateParticipantState(conversationId, { archived: false })
-      await load()
-    } finally {
-      setBusyId(null)
+  useEffect(() => {
+    function bumpRoute() {
+      setRouteVersion((value) => value + 1)
     }
-  }
+    function handleChatArchived(event: Event) {
+      const archived = (event as CustomEvent<ChatArchivedDetail>).detail?.chat
+      if (!archived?._id) return
+      setState((current) => {
+        if (current.status !== 'ready') return current
+        if (current.conversations.some((conversation) => conversation._id === archived._id)) return current
+        return {
+          status: 'ready',
+          conversations: [{
+            _id: archived._id,
+            title: archived.title,
+            conversationType: archived.conversationType,
+            lastModified: archived.lastModified,
+            archivedAt: archived.archivedAt,
+          }, ...current.conversations],
+        }
+      })
+      bumpRoute()
+    }
+    window.addEventListener('overlay:chat-route-selected', bumpRoute)
+    window.addEventListener(CHAT_ARCHIVED_EVENT, handleChatArchived)
+    window.addEventListener('popstate', bumpRoute)
+    return () => {
+      window.removeEventListener('overlay:chat-route-selected', bumpRoute)
+      window.removeEventListener(CHAT_ARCHIVED_EVENT, handleChatArchived)
+      window.removeEventListener('popstate', bumpRoute)
+    }
+  }, [])
 
-  async function deleteForever(conversationId: string) {
-    setBusyId(conversationId)
-    try {
-      const response = await fetch(
-        `/api/v1/conversations?conversationId=${encodeURIComponent(conversationId)}`,
-        { method: 'DELETE', credentials: 'same-origin' },
-      )
-      if (!response.ok) throw new Error('Failed to delete conversation')
-      setConfirmingId(null)
-      await load()
-    } finally {
-      setBusyId(null)
-    }
-  }
+  void routeVersion
+  const selectedId = readSelectedId(searchId)
+
+  useEffect(() => {
+    if (state.status !== 'ready' || state.conversations.length === 0) return
+    const selected = state.conversations.find((conversation) => conversation._id === selectedId)
+      ?? state.conversations[0]
+    if (!selected || selected._id === selectedId) return
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
+    params.set('id', selected._id)
+    const next = `${pathname}?${params.toString()}`
+    window.history.replaceState(null, '', next)
+    window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
+      detail: { chatId: selected._id },
+    }))
+  }, [pathname, selectedId, state])
 
   if (state.status === 'loading') {
     return (
       <AppScreenShell className="h-full" header={archivedHeader}>
         <div className="flex h-full min-h-72 items-center justify-center text-sm text-[var(--muted)]">
           <Loader2 size={16} className="mr-2 animate-spin" />
-          Loading archived chats…
+          Loading archived chat…
         </div>
       </AppScreenShell>
     )
@@ -122,69 +170,39 @@ export function ChatArchivedView() {
     )
   }
 
+  const selected = state.conversations.find((conversation) => conversation._id === selectedId)
+  if (!selected) {
+    return (
+      <AppScreenShell className="h-full" header={archivedHeader}>
+        <div className="flex h-full min-h-72 items-center justify-center text-sm text-[var(--muted)]">
+          <Loader2 size={16} className="mr-2 animate-spin" />
+          Opening archived chat…
+        </div>
+      </AppScreenShell>
+    )
+  }
+  if (selected.conversationType === 'channel') {
+    return (
+      <DirectMessageExperience
+        key={`archived-channel:${selected._id}`}
+        conversationId={selected._id}
+        conversationType="channel"
+      />
+    )
+  }
+  if (selected.conversationType === 'dm') {
+    return (
+      <DirectMessageExperience
+        key={`archived-dm:${selected._id}`}
+        conversationId={selected._id}
+      />
+    )
+  }
   return (
-    <AppScreenShell className="h-full" header={archivedHeader}>
-      <div className="h-full min-h-0 overflow-y-auto px-4 py-6">
-        <div className="mx-auto w-full max-w-3xl">
-          <ul className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
-          {state.conversations.map((conversation) => (
-            <li key={conversation._id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-              <button
-                type="button"
-                className="min-w-0 flex-1 text-left"
-                onClick={() => router.push(`/app/chat?id=${encodeURIComponent(conversation._id)}`)}
-              >
-                <p className="truncate text-sm text-[var(--foreground)]">
-                  {conversation.title?.trim() || 'Untitled conversation'}
-                </p>
-                <p className="mt-1 text-xs text-[var(--muted)]">
-                  {conversation.conversationType === 'channel' ? 'Channel' : 'Direct message'}
-                  {conversation.archivedAt
-                    ? ` · archived ${new Date(conversation.archivedAt).toLocaleDateString()}`
-                    : ''}
-                </p>
-              </button>
-              <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={busyId === conversation._id}
-                  onClick={() => void restore(conversation._id)}
-                >
-                  <RotateCcw size={13} />
-                  Restore
-                </Button>
-                {confirmingId === conversation._id ? (
-                  <>
-                    <Button
-                      size="sm"
-                      disabled={busyId === conversation._id}
-                      onClick={() => void deleteForever(conversation._id)}
-                    >
-                      {busyId === conversation._id ? <Loader2 size={13} className="animate-spin" /> : null}
-                      Delete forever
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setConfirmingId(null)}>
-                      Cancel
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`Delete ${conversation.title?.trim() || 'conversation'} permanently`}
-                    disabled={busyId === conversation._id}
-                    onClick={() => setConfirmingId(conversation._id)}
-                  >
-                    <Trash2 size={13} />
-                  </Button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-    </AppScreenShell>
+    <ChatExperience
+      userId={userId}
+      firstName={firstName}
+      hideSidebar
+    />
   )
 }
