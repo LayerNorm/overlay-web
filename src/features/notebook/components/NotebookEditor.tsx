@@ -3,7 +3,13 @@
 import dynamic from 'next/dynamic'
 import NextImage from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useMemo } from 'react'
+import {
+  readStoredPanelPresentation,
+  storePanelPresentation,
+  toRightPanelMode,
+  type PanelPresentation,
+} from '@/shared/ui/panel-presentation'
+import { useCallback, useMemo, useState } from 'react'
 import {
   KNOWLEDGE_ENTITY_MUTATION_EVENT,
   createKnowledgeMutationPublisher,
@@ -57,6 +63,13 @@ export default function NotebookEditor({
     [],
   )
   const initialModelId = useMemo(() => readStoredActModelId(), [])
+
+  // Shared with the chat sources panel so both surfaces present the same way.
+  const [panelPresentation, setPanelPresentationState] = useState(readStoredPanelPresentation)
+  const setPanelPresentation = useCallback((presentation: PanelPresentation) => {
+    setPanelPresentationState(presentation)
+    storePanelPresentation(presentation)
+  }, [])
 
   const repository = useMemo<NotebookEditorRepository>(() => ({
     list: (signal) => overlayAppClient.notes.get<NoteDoc[]>({ limit: 100 }, { signal }),
@@ -112,6 +125,8 @@ export default function NotebookEditor({
         credentials: 'same-origin',
         signal,
       })}
+      agentPanelMode={toRightPanelMode(panelPresentation)}
+      onAgentPanelModeChange={(mode) => setPanelPresentation(mode === 'docked' ? 'sidebar' : 'floating')}
       models={models}
       initialModelId={initialModelId}
       onModelChange={(modelId) => {

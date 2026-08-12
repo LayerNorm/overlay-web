@@ -132,7 +132,13 @@ export function AppScreenShell({
               rightPanelVisible
                 ? cn('translate-x-0 opacity-100', rightPanelClassName)
                 : floatingRightPanel
-                  ? 'pointer-events-none translate-x-[calc(100%+0.5rem)] opacity-0'
+                  // A floating panel reads as an overlay laid over the page, so it
+                  // fades straight in and out. It used to slide in from the right
+                  // as well, which borrowed the docked panel's motion and made the
+                  // two modes look like the same thing arriving differently.
+                  ? 'pointer-events-none opacity-0'
+                  // Docked is a column that genuinely takes space, so it keeps the
+                  // slide and width collapse.
                   : 'translate-x-full opacity-0 lg:w-0 lg:translate-x-0 lg:border-l-0',
             )}
             style={rightPanelStyle}

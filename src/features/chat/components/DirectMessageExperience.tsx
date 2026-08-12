@@ -306,6 +306,8 @@ export function DirectMessageExperience({
     closeSourcesPanel,
     openAttachmentPreview,
     openFilePreview,
+    panelPresentation,
+    setPanelPresentation,
     setAttachmentPreviewMode,
     sourcesPanel,
   } = useChatPanels()
@@ -1148,6 +1150,8 @@ export function DirectMessageExperience({
     attachmentPreviewMode,
     closeAttachmentPreview,
     closeSourcesPanel,
+    panelPresentation,
+    setPanelPresentation,
     setAttachmentPreviewMode,
     sourcesPanel,
     renderAttachmentViewer,
