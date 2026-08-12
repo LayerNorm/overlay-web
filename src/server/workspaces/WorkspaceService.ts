@@ -475,12 +475,26 @@ export class WorkspaceService {
     const actor = await this.requireActiveMember(args)
     const now = this.now()
     const email = normalizeEmail(args.email)
-    const principals = await this.repository.listPrincipals({
-      workspaceId: actor.workspace.id,
-      includeArchived: false,
-      type: 'human',
-    })
-    if (principals.some((principal) => principal.email?.toLowerCase() === email)) {
+    // A removed member's principal row may still exist (we only delete the
+    // membership on removal, not the principal). To allow re-inviting a
+    // removed person, the duplicate check must verify an *active* membership,
+    // not just that a non-archived principal exists.
+    const [principals, memberships] = await Promise.all([
+      this.repository.listPrincipals({
+        workspaceId: actor.workspace.id,
+        includeArchived: false,
+        type: 'human',
+      }),
+      this.repository.listMemberships({
+        workspaceId: actor.workspace.id,
+        status: 'active',
+      }),
+    ])
+    const activePrincipalIds = new Set(memberships.map((membership) => membership.principalId))
+    if (principals.some((principal) =>
+      principal.email?.toLowerCase() === email
+      && activePrincipalIds.has(principal.id)
+    )) {
       throw new WorkspaceServiceError(
         'This person is already a workspace member',
         409,

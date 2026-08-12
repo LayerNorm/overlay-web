@@ -2,27 +2,19 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Archive, Bell, Loader2 } from 'lucide-react'
-import { SidebarResourceList } from '@overlay/ui/primitives'
+import { Archive, Bell, Hash, Loader2, MessageSquare, UsersRound } from 'lucide-react'
+import { SidebarResourceList, SidebarResourceRow } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { dispatchCollaborationNotificationsChanged } from '@/shared/chat/collaboration-events'
 
 /**
- * Sidebar lists for the Chats subviews that are not conversation lists.
+ * Sidebar lists for the Chats subviews that are not conversation list.
  *
  * Activity and Archived are their own routes, but the secondary panel kept
  * rendering the chat list underneath them, so selecting either left the sidebar
  * showing something unrelated to the page beside it.
  */
 
-const rowClass =
-  'group flex h-7 w-full items-center gap-2 rounded-md px-2.5 py-0 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-
-/**
- * The conversations list endpoint returns a bare array for some queries and a
- * paginated `{ data }` envelope for others (and that has drifted across merges).
- * Accept either so the archived list does not silently read as empty when the
- * response happens to be wrapped.
- */
 function unwrapList<T>(body: unknown): T[] {
   if (Array.isArray(body)) return body as T[]
   if (body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)) {
@@ -47,6 +39,13 @@ type ActivityNotification = {
   createdAt?: number
   readAt?: number | null
   conversationId?: string
+  messageId?: string
+}
+
+function viewForConversationType(conversationType?: string): 'personal' | 'dms' | 'channels' {
+  if (conversationType === 'channel') return 'channels'
+  if (conversationType === 'dm') return 'dms'
+  return 'personal'
 }
 
 export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void }) {
@@ -67,6 +66,29 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
     return () => { cancelled = true }
   }, [])
 
+  async function openNotification(item: ActivityNotification) {
+    onNavigate?.()
+    if (!item.conversationId) return
+    if (!item.readAt) {
+      void overlayAppClient.conversations.markNotificationsRead([item.id])
+        .then(() => dispatchCollaborationNotificationsChanged())
+        .catch(() => undefined)
+      setItems((current) => current?.map((row) => row.id === item.id ? { ...row, readAt: Date.now() } : row) ?? null)
+    }
+    let view: 'personal' | 'dms' | 'channels' = 'personal'
+    try {
+      const conversation = await overlayAppClient.conversations.get<{
+        conversationType?: 'personal' | 'dm' | 'channel'
+      }>({ conversationId: item.conversationId }).catch(() => null)
+      view = viewForConversationType(conversation?.conversationType)
+    } catch {
+      // Fall back to personal so we still route somewhere usable.
+    }
+    const query = new URLSearchParams({ view, id: item.conversationId })
+    if (item.messageId) query.set('message', item.messageId)
+    router.push(`/app/chat?${query.toString()}`)
+  }
+
   if (items === null) {
     return <PanelState icon={<Loader2 size={15} className="animate-spin" />} message="Loading activity…" />
   }
@@ -77,23 +99,19 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
   return (
     <SidebarResourceList>
       {items.map((item) => (
-        <button
+        <SidebarResourceRow
           key={item.id}
-          type="button"
-          className={rowClass}
-          onClick={() => {
-            onNavigate?.()
-            if (item.conversationId) router.push(`/app/chat?id=${encodeURIComponent(item.conversationId)}`)
-          }}
+          onClick={() => void openNotification(item)}
+          className="cursor-pointer"
         >
           <Bell size={12} className="shrink-0" aria-hidden />
-          <span className="min-w-0 flex-1 truncate text-[var(--foreground)]">
+          <span className="min-w-0 flex-1 truncate">
             {item.title?.trim() || 'Notification'}
           </span>
           {!item.readAt ? (
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted)]" aria-label="Unread" />
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted)]" aria-label="Unread" />
           ) : null}
-        </button>
+        </SidebarResourceRow>
       ))}
     </SidebarResourceList>
   )
@@ -133,22 +151,32 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
 
   return (
     <SidebarResourceList>
-      {items.map((conversation) => (
-        <button
-          key={conversation._id}
-          type="button"
-          className={rowClass}
-          onClick={() => {
-            onNavigate?.()
-            router.push(`/app/chat?id=${encodeURIComponent(conversation._id)}`)
-          }}
-        >
-          <Archive size={12} className="shrink-0" aria-hidden />
-          <span className="min-w-0 flex-1 truncate text-[var(--foreground)]">
-            {conversation.title?.trim() || 'Untitled conversation'}
-          </span>
-        </button>
-      ))}
+      {items.map((conversation) => {
+        const view = viewForConversationType(conversation.conversationType)
+        return (
+          <SidebarResourceRow
+            key={conversation._id}
+            onClick={() => {
+              onNavigate?.()
+              const query = new URLSearchParams({ view, id: conversation._id })
+              router.push(`/app/chat?${query.toString()}`)
+            }}
+            className="cursor-pointer"
+          >
+            {conversation.conversationType === 'channel' ? (
+              <Hash size={12} className="shrink-0" aria-hidden />
+            ) : conversation.conversationType === 'dm' ? (
+              <UsersRound size={12} className="shrink-0" aria-hidden />
+            ) : (
+              <MessageSquare size={12} className="shrink-0" aria-hidden />
+            )}
+            <span className="min-w-0 flex-1 truncate">
+              {conversation.title?.trim() || 'Untitled conversation'}
+            </span>
+            <Archive size={11} className="shrink-0 opacity-40" aria-hidden />
+          </SidebarResourceRow>
+        )
+      })}
     </SidebarResourceList>
   )
 }

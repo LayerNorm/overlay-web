@@ -456,3 +456,72 @@ test('resource scopes fail closed across workspace boundaries', async () => {
     (error) => assertServiceError(error, 'not_found'),
   )
 })
+
+test('invite rejects an active member but allows re-inviting a removed member', async () => {
+  const actor = access({ workspaceId: 'workspace_org', role: 'owner' })
+  const activeMember = {
+    id: 'principal_user_2',
+    workspaceId: actor.workspace.id,
+    type: 'human' as const,
+    userId: 'user_2',
+    email: 'removed@example.com',
+    displayName: 'Removed Member',
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const activeMembership = {
+    workspaceId: actor.workspace.id,
+    principalId: 'principal_user_2',
+    role: 'member' as const,
+    status: 'active' as const,
+    joinedAt: 1,
+    updatedAt: 1,
+  }
+  const invitation = {
+    id: 'invite_new',
+    workspaceId: actor.workspace.id,
+    email: 'removed@example.com',
+    role: 'member' as const,
+    status: 'pending' as const,
+    invitedByPrincipalId: actor.principal.id,
+    expiresAt: 200,
+    createdAt: 50,
+    updatedAt: 50,
+  }
+
+  // Active member: principal exists AND has an active membership → reject.
+  const serviceWithActiveMember = new WorkspaceService(repository({
+    async getAccess() { return actor },
+    async listPrincipals() { return [activeMember] },
+    async listMemberships() { return [activeMembership] },
+    async createInvitationReplacingPending() {
+      throw new Error('must not invite an active member')
+    },
+  }), { now: () => 50, createId: () => 'invite_new' })
+
+  await assert.rejects(
+    () => serviceWithActiveMember.invite({
+      actorUserId: 'user_1',
+      workspaceId: actor.workspace.id,
+      email: 'removed@example.com',
+      role: 'member',
+    }),
+    (error) => assertServiceError(error, 'conflict'),
+  )
+
+  // Removed member: principal still exists but no active membership → allow.
+  const serviceWithRemovedMember = new WorkspaceService(repository({
+    async getAccess() { return actor },
+    async listPrincipals() { return [activeMember] },
+    async listMemberships() { return [] },
+    async createInvitationReplacingPending() { return invitation },
+  }), { now: () => 50, createId: () => 'invite_new' })
+
+  const result = await serviceWithRemovedMember.invite({
+    actorUserId: 'user_1',
+    workspaceId: actor.workspace.id,
+    email: 'removed@example.com',
+    role: 'member',
+  })
+  assert.equal(result.id, 'invite_new')
+})

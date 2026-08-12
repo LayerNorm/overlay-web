@@ -80,3 +80,22 @@ export function SidebarResourceSection({
 export function SidebarResourceList({ children }: { children: ReactNode }) {
   return <div className="space-y-0.5">{children}</div>
 }
+
+export interface SidebarResourceRowProps extends HTMLAttributes<HTMLDivElement> {
+  active?: boolean
+}
+
+export function SidebarResourceRow({ active = false, className, children, ...props }: SidebarResourceRowProps) {
+  return (
+    <div
+      className={cn(
+        'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]',
+        active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : undefined,
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </div>
+  )
+}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Archive, Loader2, RotateCcw, Trash2 } from 'lucide-react'
 import { Button, EmptyState } from '@overlay/ui/primitives'
+import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 type ArchivedConversation = {
@@ -29,6 +30,7 @@ export function ChatArchivedView() {
   const [state, setState] = useState<ViewState>({ status: 'loading' })
   const [busyId, setBusyId] = useState<string | null>(null)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const archivedHeader = <AppScreenHeader title="Archived" />
 
   const load = useCallback(async () => {
     setState({ status: 'loading' })
@@ -38,8 +40,6 @@ export function ChatArchivedView() {
         credentials: 'same-origin',
       })
       if (!response.ok) throw new Error('Could not load archived conversations.')
-      // The list endpoint returns a bare array for some queries and a paginated
-      // `{ data }` envelope for others; accept either so archived never reads empty.
       const body = await response.json() as unknown
       const conversations = Array.isArray(body)
         ? body as ArchivedConversation[]
@@ -86,46 +86,47 @@ export function ChatArchivedView() {
 
   if (state.status === 'loading') {
     return (
-      <div className="flex h-full min-h-72 items-center justify-center text-sm text-[var(--muted)]">
-        <Loader2 size={16} className="mr-2 animate-spin" />
-        Loading archived chats…
-      </div>
+      <AppScreenShell className="h-full" header={archivedHeader}>
+        <div className="flex h-full min-h-72 items-center justify-center text-sm text-[var(--muted)]">
+          <Loader2 size={16} className="mr-2 animate-spin" />
+          Loading archived chats…
+        </div>
+      </AppScreenShell>
     )
   }
 
   if (state.status === 'error') {
     return (
-      <EmptyState
-        className="h-full min-h-72 px-6 py-12"
-        icon={<Archive size={28} />}
-        title="Archived chats are unavailable"
-        description={state.message}
-        action={<Button size="sm" onClick={() => void load()}>Try again</Button>}
-      />
+      <AppScreenShell className="h-full" header={archivedHeader}>
+        <EmptyState
+          className="h-full min-h-72 px-6 py-12"
+          icon={<Archive size={28} />}
+          title="Archived chats are unavailable"
+          description={state.message}
+          action={<Button size="sm" onClick={() => void load()}>Try again</Button>}
+        />
+      </AppScreenShell>
     )
   }
 
   if (state.conversations.length === 0) {
     return (
-      <EmptyState
-        className="h-full min-h-72 px-6 py-12"
-        icon={<Archive size={28} />}
-        title="Nothing archived"
-        description="Archived direct messages and channels are kept here. Archive one from its conversation menu."
-      />
+      <AppScreenShell className="h-full" header={archivedHeader}>
+        <EmptyState
+          className="h-full min-h-72 px-6 py-12"
+          icon={<Archive size={28} />}
+          title="Nothing archived"
+          description="Archived direct messages and channels are kept here. Archive one from its conversation menu."
+        />
+      </AppScreenShell>
     )
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
-      <div className="mx-auto w-full max-w-3xl">
-        <div className="mb-4">
-          <h1 className="text-sm font-medium text-[var(--foreground)]">Archived</h1>
-          <p className="mt-1 text-xs text-[var(--muted)]">
-            Hidden from your chat list. Restoring puts a conversation back; deleting cannot be undone.
-          </p>
-        </div>
-        <ul className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
+    <AppScreenShell className="h-full" header={archivedHeader}>
+      <div className="h-full min-h-0 overflow-y-auto px-4 py-6">
+        <div className="mx-auto w-full max-w-3xl">
+          <ul className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
           {state.conversations.map((conversation) => (
             <li key={conversation._id} className="flex flex-wrap items-center justify-between gap-3 py-3">
               <button
@@ -184,5 +185,6 @@ export function ChatArchivedView() {
         </ul>
       </div>
     </div>
+    </AppScreenShell>
   )
 }
