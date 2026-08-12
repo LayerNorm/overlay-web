@@ -16,6 +16,20 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 const rowClass =
   'flex w-full items-start gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
 
+/**
+ * The conversations list endpoint returns a bare array for some queries and a
+ * paginated `{ data }` envelope for others (and that has drifted across merges).
+ * Accept either so the archived list does not silently read as empty when the
+ * response happens to be wrapped.
+ */
+function unwrapList<T>(body: unknown): T[] {
+  if (Array.isArray(body)) return body as T[]
+  if (body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)) {
+    return (body as { data: T[] }).data
+  }
+  return []
+}
+
 function PanelState({ icon, message }: { icon: React.ReactNode; message: string }) {
   return (
     <div className="flex flex-col items-center gap-2 px-3 py-8 text-center text-xs text-[var(--muted)]">
@@ -71,19 +85,13 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
             if (item.conversationId) router.push(`/app/chat?id=${encodeURIComponent(item.conversationId)}`)
           }}
         >
+          <Bell size={13} className="mt-0.5 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--foreground)]">
+            {item.title?.trim() || 'Notification'}
+          </span>
           {!item.readAt ? (
             <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted)]" aria-label="Unread" />
-          ) : (
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0" aria-hidden />
-          )}
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] text-[var(--foreground)]">
-              {item.title?.trim() || 'Notification'}
-            </span>
-            {item.body?.trim() ? (
-              <span className="mt-0.5 block truncate text-[11px] text-[var(--muted)]">{item.body}</span>
-            ) : null}
-          </span>
+          ) : null}
         </button>
       ))}
     </div>
@@ -107,8 +115,7 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
         credentials: 'same-origin',
       })
       if (!response.ok) throw new Error('failed')
-      const conversations = await response.json() as ArchivedConversation[]
-      setItems(Array.isArray(conversations) ? conversations : [])
+      setItems(unwrapList<ArchivedConversation>(await response.json()))
     } catch {
       setItems([])
     }
