@@ -43,6 +43,7 @@ import { resolveMentionedPrincipalIds } from '@/shared/mentions/principal-mentio
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
 import { dispatchChatArchived } from '@/shared/chat/chat-title'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
+import { buildWorkspaceHref } from '@/features/workspaces/lib/workspace-routing'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
 import { useAuth } from '@/contexts/AuthContext'
@@ -1476,19 +1477,28 @@ export function DirectMessageExperience({
                     />
                     <MenuButton
                       icon={Archive}
-                      label="Archive"
+                      label={currentParticipant?.archivedAt ? 'Restore' : 'Archive'}
                       onClick={() => {
                         setMenuOpen(false)
-                        void updateState({ archived: true }, 'Conversation archived').then(() => {
-                          dispatchChatArchived({
-                            chat: {
-                              _id: conversationId,
-                              title,
-                              lastModified: Date.now(),
-                              conversationType,
-                            },
-                          })
-                        }).catch(() => undefined)
+                        if (currentParticipant?.archivedAt) {
+                          void updateState({ archived: false }, 'Conversation restored').then(() => {
+                            const view = conversationType === 'channel' ? 'channels' : 'dms'
+                            const chatBase = activeWorkspaceId
+                              ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
+                              : '/app/chat'
+                            router.push(`${chatBase}?${new URLSearchParams({ view, id: conversationId }).toString()}`)
+                          }).catch(() => undefined)
+                          return
+                        }
+                        dispatchChatArchived({
+                          chat: {
+                            _id: conversationId,
+                            title,
+                            lastModified: Date.now(),
+                            conversationType,
+                          },
+                        })
+                        void updateState({ archived: true }, 'Conversation archived').catch(() => undefined)
                       }}
                     />
                 </FloatingMenu>

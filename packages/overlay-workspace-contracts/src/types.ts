@@ -404,6 +404,8 @@ export type WorkspaceNotification = {
   body?: string
   createdAt: number
   readAt?: number
+  /** Set when the related conversation is archived for this actor or deleted. */
+  conversationState?: 'archived' | 'deleted'
 }
 
 export type WorkspaceNotificationFilter = 'all' | 'unread' | 'mentions' | 'threads' | 'reactions'

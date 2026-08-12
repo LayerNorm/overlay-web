@@ -37,6 +37,7 @@ import type {
 } from '@overlay/workspace-contracts'
 import type { ConversationCollaborationRepository } from './ConversationCollaborationRepository'
 import { emitPostgresConversationEvent as emitConversationEvent } from './PostgresConversationEvents'
+import { resolveConversationActivityState } from '@/shared/chat/conversation-activity-state'
 import type {
   ConversationEventRow,
   ConversationListRow,
@@ -771,18 +772,51 @@ implements ConversationCollaborationRepository {
         .limit(1)
       readSequence = Math.min(requestedReadSequence ?? Number.MAX_SAFE_INTEGER, event?.sequence ?? 0)
     }
-    const [row] = await this.db.update(conversationParticipants).set({
+    const patch = {
       ...(args.notificationLevel ? { notificationLevel: args.notificationLevel } : {}),
       ...(args.archived !== undefined ? { archivedAt: args.archived ? now : null } : {}),
       ...(args.markRead ? { lastReadAt: now, lastReadSequence: readSequence ?? 0, markedUnreadAt: null } : {}),
       ...(readSequence !== undefined && !args.markRead ? { lastReadSequence: readSequence } : {}),
       ...(args.markUnread ? { markedUnreadAt: now } : {}),
       updatedAt: now,
-    }).where(and(
+    }
+    let [row] = await this.db.update(conversationParticipants).set(patch).where(and(
       eq(conversationParticipants.conversationId, args.conversationId),
       eq(conversationParticipants.principalId, actor.id),
       eq(conversationParticipants.status, 'active'),
     )).returning()
+    if (!row) {
+      const [conversation] = await this.db.select({
+        conversationType: conversations.conversationType,
+        userId: conversations.userId,
+      }).from(conversations).where(and(
+        eq(conversations.id, args.conversationId),
+        eq(conversations.workspaceId, args.workspaceId),
+        isNull(conversations.deletedAt),
+      )).limit(1)
+      if (!conversation || conversation.conversationType !== 'personal' || conversation.userId !== args.actorUserId) {
+        throw new Error('CONVERSATION_ACCESS_DENIED')
+      }
+      await this.db.insert(conversationParticipants).values({
+        conversationId: args.conversationId,
+        workspaceId: args.workspaceId,
+        principalId: actor.id,
+        principalType: actor.type === 'agent' ? 'agent' : 'human',
+        role: 'moderator',
+        status: 'active',
+        notificationLevel: 'all',
+        joinedAt: now,
+        updatedAt: now,
+      }).onConflictDoUpdate({
+        target: [conversationParticipants.conversationId, conversationParticipants.principalId],
+        set: { status: 'active', removedAt: null, updatedAt: now },
+      })
+      ;[row] = await this.db.update(conversationParticipants).set(patch).where(and(
+        eq(conversationParticipants.conversationId, args.conversationId),
+        eq(conversationParticipants.principalId, actor.id),
+        eq(conversationParticipants.status, 'active'),
+      )).returning()
+    }
     if (!row) throw new Error('CONVERSATION_ACCESS_DENIED')
     return mapParticipant(row, actor)
   }
@@ -1295,7 +1329,39 @@ implements ConversationCollaborationRepository {
       args.filter === 'reactions' ? eq(workspaceNotifications.type, 'reaction') : undefined,
     )).orderBy(desc(workspaceNotifications.createdAt))
       .limit(Math.max(1, Math.min(100, args.limit ?? 50)))
-    return rows.map(mapNotification)
+    const notifications = rows.map(mapNotification)
+    const conversationIds = [...new Set(
+      notifications
+        .map((notification) => notification.conversationId)
+        .filter((id): id is string => Boolean(id)),
+    )]
+    if (conversationIds.length === 0) return notifications
+
+    const [conversationRows, participantRows] = await Promise.all([
+      this.db.select({
+        id: conversations.id,
+        deletedAt: conversations.deletedAt,
+      }).from(conversations).where(inArray(conversations.id, conversationIds)),
+      this.db.select({
+        conversationId: conversationParticipants.conversationId,
+        archivedAt: conversationParticipants.archivedAt,
+      }).from(conversationParticipants).where(and(
+        inArray(conversationParticipants.conversationId, conversationIds),
+        eq(conversationParticipants.principalId, actor.id),
+      )),
+    ])
+    const conversationById = new Map(conversationRows.map((row) => [row.id, row]))
+    const archivedAtById = new Map(participantRows.map((row) => [row.conversationId, row.archivedAt]))
+    return notifications.map((notification) => {
+      if (!notification.conversationId) return notification
+      const conversationState = resolveConversationActivityState({
+        archivedAt: archivedAtById.get(notification.conversationId)?.getTime(),
+        conversation: conversationById.has(notification.conversationId)
+          ? { deletedAt: conversationById.get(notification.conversationId)?.deletedAt?.getTime() }
+          : null,
+      })
+      return conversationState ? { ...notification, conversationState } : notification
+    })
   }
 
   async markNotificationsRead(args: {

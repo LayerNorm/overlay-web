@@ -13,7 +13,12 @@ const ChatArchivedView = dynamic(
 async function ArchivedRouteContent() {
   const session = await getOverlaySession()
   if (!session) redirect('/app/chat?signin=nav')
-  return <ChatArchivedView />
+  return (
+    <ChatArchivedView
+      userId={session.user.id}
+      firstName={session.user.firstName ?? undefined}
+    />
+  )
 }
 
 export default function ArchivedPage() {

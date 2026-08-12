@@ -5,6 +5,7 @@ import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from './events'
+import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
 
 type CollaborationCtx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
 
@@ -818,9 +819,37 @@ export const updateParticipantState = mutation({
   },
   handler: async (ctx, args) => {
     const access = await requireConversationAccess(ctx, args)
-    const participant = access.participant
-    if (!participant) throw new Error('CONVERSATION_ACCESS_DENIED')
+    let participant = access.participant
     const now = Date.now()
+    if (!participant) {
+      // Personal chats are owned by userId and never created a participant
+      // row. Archive (and other per-actor state) still needs one.
+      if ((access.conversation.conversationType ?? 'personal') !== 'personal') {
+        throw new Error('CONVERSATION_ACCESS_DENIED')
+      }
+      const existing = await ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', (q) => (
+          q.eq('conversationId', args.conversationId).eq('principalId', access.actor.principalId)
+        )).unique()
+      if (existing) {
+        participant = existing
+      } else {
+        const id = await ctx.db.insert('conversationParticipants', {
+          conversationId: args.conversationId,
+          workspaceId: args.workspaceId,
+          principalId: access.actor.principalId,
+          principalType: 'human',
+          role: 'moderator',
+          status: 'active',
+          notificationLevel: 'all',
+          joinedAt: now,
+          updatedAt: now,
+        })
+        const created = await ctx.db.get(id)
+        if (!created) throw new Error('CONVERSATION_ACCESS_DENIED')
+        participant = created
+      }
+    }
     const requestedReadSequence = Number.isSafeInteger(args.readSequence) && (args.readSequence ?? 0) >= 0
       ? args.readSequence
       : undefined
@@ -1165,13 +1194,32 @@ export const listNotifications = query({
       .withIndex('by_workspaceId_recipientPrincipalId_createdAt', (q) => (
         q.eq('workspaceId', args.workspaceId).eq('recipientPrincipalId', actor.principalId)
       )).order('desc').take(Math.max(1, Math.min(100, args.limit ?? 50)))
-    return rows.filter((row) => {
+    const notifications = rows.filter((row) => {
       if ((args.unreadOnly || args.filter === 'unread') && row.readAt) return false
       if (args.filter === 'mentions' && row.type !== 'mention') return false
       if (args.filter === 'threads' && row.type !== 'thread') return false
       if (args.filter === 'reactions' && row.type !== 'reaction') return false
       return true
-    }).map((row) => ({
+    })
+    const conversationIds = [...new Set(
+      notifications
+        .map((row) => row.conversationId)
+        .filter((id): id is NonNullable<typeof id> => Boolean(id)),
+    )]
+    const conversationStateById = new Map<string, 'archived' | 'deleted'>()
+    await Promise.all(conversationIds.map(async (conversationId) => {
+      const conversation = await ctx.db.get(conversationId)
+      const participant = await ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', (q) => (
+          q.eq('conversationId', conversationId).eq('principalId', actor.principalId)
+        )).unique()
+      const state = resolveConversationActivityState({
+        archivedAt: participant?.archivedAt,
+        conversation: conversation ? { deletedAt: conversation.deletedAt } : null,
+      })
+      if (state) conversationStateById.set(String(conversationId), state)
+    }))
+    return notifications.map((row) => ({
       id: row.notificationId,
       workspaceId: row.workspaceId,
       recipientPrincipalId: row.recipientPrincipalId,
@@ -1186,6 +1234,9 @@ export const listNotifications = query({
       body: row.body,
       createdAt: row.createdAt,
       readAt: row.readAt,
+      conversationState: row.conversationId
+        ? conversationStateById.get(String(row.conversationId))
+        : undefined,
     }))
   },
 })
