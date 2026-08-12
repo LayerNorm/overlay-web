@@ -6,6 +6,12 @@ export interface AppSidebarNavigateContext {
 
 export interface AppSidebarChatPanelContext extends AppSidebarNavigateContext {
   refreshKey: number
+  /**
+   * Which Chats subview is selected. Activity and Archived are their own lists,
+   * not the chat list — without this the panel rendered conversations no matter
+   * which nav item was chosen.
+   */
+  view: string
 }
 
 export interface AppSidebarWorkspaceAdapter {
