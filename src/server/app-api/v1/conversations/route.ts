@@ -162,7 +162,16 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json(list)
     }
 
-    const [personal, accessible] = await Promise.all([
+    // Archived view. These are exactly the rows the default list subtracts.
+    if (request.nextUrl.searchParams.get('archived') === 'true') {
+      const list = await appData.repositories.conversationCollaboration.listArchivedConversations({
+        actorUserId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
+      })
+      return NextResponse.json(list)
+    }
+
+    const [personal, accessible, archived] = await Promise.all([
       repository.listConversations({
         userId: auth.userId,
         workspaceId: context.workspace.workspace.id,
@@ -173,11 +182,21 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         actorUserId: auth.userId,
         workspaceId: context.workspace.workspace.id,
       }),
+      appData.repositories.conversationCollaboration.listArchivedConversations({
+        actorUserId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
+      }),
     ])
+    // `listAccessibleConversations` already drops archived rows, but `personal`
+    // keys off conversations.userId and knows nothing about participant state.
+    // A DM or channel the actor created therefore came back through that branch
+    // and survived the dedupe below, which is why archiving looked like a no-op.
+    const archivedIds = new Set(archived.map((conversation) => String(conversation._id)))
     const list = [
-      ...personal,
+      ...personal.filter((conversation) => !archivedIds.has(String(conversation._id))),
       ...accessible.filter((conversation) => (
         (conversation.conversationType ?? 'personal') !== 'personal'
+        && !archivedIds.has(String(conversation._id))
         && !personal.some((item) => item._id === conversation._id)
       )),
     ]

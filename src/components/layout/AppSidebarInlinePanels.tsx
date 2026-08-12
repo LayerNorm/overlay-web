@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
 import {
+  Archive,
   Bell,
   BookOpen,
   Bot,
@@ -546,6 +547,7 @@ export const chatsInlineItems = [
   { id: 'dms', label: 'Direct Messages', icon: Mail },
   { id: 'channels', label: 'Channels', icon: Hash },
   { id: 'activity', label: 'Activity', icon: Bell },
+  { id: 'archived', label: 'Archived', icon: Archive },
 ] as const
 
 export interface InlineNavItem {

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createHash, randomUUID } from 'node:crypto'
-import { and, desc, eq, gt, ilike, inArray, isNull, lt, or } from 'drizzle-orm'
+import { and, desc, eq, gt, ilike, inArray, isNotNull, isNull, lt, or } from 'drizzle-orm'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
@@ -66,6 +66,33 @@ implements ConversationCollaborationRepository {
     workspaceId: string
   }): Promise<ConversationListRow[]> {
     const ids = await this.listAccessibleConversationIds(args)
+    if (ids.length === 0) return []
+    const rows = await this.db.select().from(conversations).where(and(
+      inArray(conversations.id, ids),
+      eq(conversations.workspaceId, args.workspaceId),
+      isNull(conversations.deletedAt),
+      isNull(conversations.projectId),
+    )).orderBy(desc(conversations.lastModified))
+    return rows.filter((row) => !row.isAutomation).map(mapAccessibleConversation)
+  }
+
+  async listArchivedConversations(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<ConversationListRow[]> {
+    const actor = await this.requireActor(args)
+    const archived = await this.db
+      .select({ id: conversationParticipants.conversationId })
+      .from(conversationParticipants)
+      .innerJoin(conversations, eq(conversations.id, conversationParticipants.conversationId))
+      .where(and(
+        eq(conversationParticipants.workspaceId, args.workspaceId),
+        eq(conversationParticipants.principalId, actor.id),
+        eq(conversationParticipants.status, 'active'),
+        isNotNull(conversationParticipants.archivedAt),
+        isNull(conversations.deletedAt),
+      ))
+    const ids = archived.map((row) => row.id)
     if (ids.length === 0) return []
     const rows = await this.db.select().from(conversations).where(and(
       inArray(conversations.id, ids),

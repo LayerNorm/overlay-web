@@ -49,6 +49,13 @@ implements ConversationCollaborationRepository {
     }) ?? []
   }
 
+  async listArchivedConversations(args: { actorUserId: string; workspaceId: string }) {
+    return await convex.query<ConversationListRow[]>('collaboration/directMessages:listArchivedConversations', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }) ?? []
+  }
+
   async listMessages(args: {
     actorUserId: string
     beforeCreatedAt?: number
