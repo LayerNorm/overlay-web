@@ -754,7 +754,11 @@ export default function AppSidebar({
         pendingId: effectivePendingSecondaryNavId,
         onSelect: (next) => {
           closeMobileDrawer()
-          if (next === filesView) return
+          // With a file or folder open the category row is still "current", so a
+          // plain equality check swallowed the click and nothing happened. Selecting
+          // the category you are already in is how you get back out to its list.
+          const hasOpenItem = currentSearchParams.has('file') || currentSearchParams.has('folder')
+          if (next === filesView && !hasOpenItem) return
           beginSecondaryNavigation(next)
           const params = new URLSearchParams(currentSearchParams.toString())
           if (publicShowcase) params.set('showcase', '1')
