@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { OutboxPublisher, OutboxRepository } from './OutboxRepository'
+import { sanitizeJobError } from './sanitize-job-error'
 
 export class PostgresOutboxWorker {
   constructor(private readonly options: {
@@ -36,7 +37,7 @@ export class PostgresOutboxWorker {
       return published ? 'published' : 'lost_lease'
     } catch (error) {
       return await this.options.repository.markFailed({
-        error: error instanceof Error ? error.stack ?? error.message : String(error),
+        error: sanitizeJobError(error),
         eventId: event.id,
         retryDelayMs: retryDelayMs(event.attempts),
         workerId: this.options.workerId,

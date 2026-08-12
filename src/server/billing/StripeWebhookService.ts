@@ -62,6 +62,12 @@ export class StripeWebhookService {
         event.id,
       )
     }
+    if (event.type === 'charge.refunded') {
+      return await this.applyRefund(event.data.object as Stripe.Charge, event.id)
+    }
+    if (event.type === 'charge.dispute.closed') {
+      return await this.applyDisputeClosed(event.data.object as Stripe.Dispute, event.id)
+    }
     return false
   }
 
@@ -206,6 +212,89 @@ export class StripeWebhookService {
       resource: { id: subscription.id, type: 'subscription' },
       userId: payer.actorUserId,
     })
+    return true
+  }
+
+  /**
+   * Reverses a succeeded top-up when Stripe reports a refund. This prevents
+   * the classic prepaid-credits fraud: top up → spend → chargeback → keep
+   * usage. The refund amount is debited from the user's or workspace's
+   * top-up balance; if they already spent it, the balance floors at zero
+   * (further usage is blocked until they top up again).
+   */
+  private async applyRefund(charge: Stripe.Charge, eventId: string): Promise<boolean> {
+    const paymentIntentId = idValue(charge.payment_intent)
+    if (!paymentIntentId) return false
+    const refundAmountCents = charge.amount_refunded
+    if (!refundAmountCents || refundAmountCents <= 0) return false
+
+    const payer = await this.resolvePayer({
+      providerCustomerId: idValue(charge.customer),
+    })
+    if (!payer) return false
+
+    const reason = `Stripe refund ${eventId}`
+    if (payer.scope === 'workspace') {
+      await this.deps.billing.reverseTopUp({
+        billingAccountId: payer.billingAccountId,
+        refundAmountCents,
+        reason,
+        stripePaymentIntentId: paymentIntentId,
+        userId: payer.actorUserId,
+      })
+    } else {
+      await this.deps.billing.reverseTopUp({
+        refundAmountCents,
+        reason,
+        stripePaymentIntentId: paymentIntentId,
+        userId: payer.userId,
+      })
+    }
+    return true
+  }
+
+  /**
+   * Handles a closed dispute. When the dispute is lost (chargeback won by the
+   * customer), the funds are pulled back from Overlay — we reverse the
+   * top-up just like a refund. When the dispute is won, no action is needed.
+   */
+  private async applyDisputeClosed(dispute: Stripe.Dispute, eventId: string): Promise<boolean> {
+    if (dispute.status !== 'lost') return false
+    const paymentIntentId = idValue(dispute.payment_intent)
+    if (!paymentIntentId) return false
+    const chargeAmountCents = dispute.amount
+
+    // The Dispute object doesn't carry a customer field directly. The charge
+    // may be expanded or just an ID; if expanded, use its customer to resolve
+    // the payer. If not, we cannot resolve the payer here — the subsequent
+    // charge.refunded event (Stripe emits one when the dispute is lost) will
+    // handle the reversal.
+    const charge = typeof dispute.charge === 'object' ? dispute.charge : null
+    const customerId = charge ? idValue(charge.customer) : undefined
+    if (!customerId) return false
+
+    const payer = await this.resolvePayer({
+      providerCustomerId: customerId,
+    })
+    if (!payer) return false
+
+    const reason = `Stripe dispute lost ${eventId}`
+    if (payer.scope === 'workspace') {
+      await this.deps.billing.reverseTopUp({
+        billingAccountId: payer.billingAccountId,
+        refundAmountCents: chargeAmountCents,
+        reason,
+        stripePaymentIntentId: paymentIntentId,
+        userId: payer.actorUserId,
+      })
+    } else {
+      await this.deps.billing.reverseTopUp({
+        refundAmountCents: chargeAmountCents,
+        reason,
+        stripePaymentIntentId: paymentIntentId,
+        userId: payer.userId,
+      })
+    }
     return true
   }
 

@@ -4,6 +4,13 @@ import { internalAction } from '../_generated/server'
 
 const textEncoder = new TextEncoder()
 
+/**
+ * Maximum time to wait for a user-registered webhook endpoint to respond.
+ * Without this, a slow or hostile endpoint holds a Convex action open for the
+ * full action timeout (~10 minutes), exhausting the delivery pipeline.
+ */
+const WEBHOOK_DELIVERY_TIMEOUT_MS = 30_000
+
 function summarizeError(error: unknown): string {
   if (error instanceof Error) return error.message
   if (typeof error === 'string') return error
@@ -81,6 +88,7 @@ export const deliverOne = internalAction({
           'X-Overlay-Signature': `sha256=${signature}`,
         },
         body: job.payloadJson,
+        signal: AbortSignal.timeout(WEBHOOK_DELIVERY_TIMEOUT_MS),
       })
     } catch (error) {
       await ctx.runMutation(internal.webhooks.deliveries.markAttemptFailed, {

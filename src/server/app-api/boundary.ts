@@ -3,6 +3,9 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { getApiBoundarySchema, queryParamsToObject } from '@/shared/schemas/api-boundary'
 
+/** Maximum request body size for BFF API routes (10 MB). */
+const MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024
+
 export type ParsedApiBoundaryInput = {
   error: NextResponse | null
   parsedQuery: Record<string, unknown>
@@ -39,6 +42,20 @@ async function readOptionalJsonBody(request: NextRequest): Promise<unknown> {
 }
 
 export async function parseApiBoundaryInput(request: NextRequest): Promise<ParsedApiBoundaryInput> {
+  // Reject oversized request bodies early to prevent DoS via large payloads.
+  const contentLength = request.headers.get('content-length')
+  if (contentLength && parseInt(contentLength, 10) > MAX_REQUEST_BODY_BYTES) {
+    return {
+      error: NextResponse.json(
+        { error: 'request_too_large', message: 'Request body exceeds the maximum allowed size.' },
+        { status: 413 },
+      ),
+      parsedQuery: {},
+      parsedJson: {},
+      parsedFormData: null,
+    }
+  }
+
   const schema = getApiBoundarySchema(request.nextUrl.pathname, request.method)
   const parsed: ParsedApiBoundaryInput = {
     error: null,

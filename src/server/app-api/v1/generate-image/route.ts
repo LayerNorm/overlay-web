@@ -193,6 +193,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         )
       }
       const costCents = billableBudgetCentsFromProviderUsd(costDollars)
+      // Validate that the actual cost does not exceed the reserved amount by more
+      // than a small tolerance. If it does (e.g. pricing changed between reservation
+      // and finalization), mark for manual reconciliation instead of overcharging.
+      if (costDollars > maxProviderCostUsd * 1.1) {
+        logger.warn(`[GenerateImage] ⚠️  Actual cost $${costDollars.toFixed(4)} exceeds reserved max $${maxProviderCostUsd.toFixed(4)} by >10% — marking for reconcile`)
+        await generationUsagePolicy.markForReconcile({
+          userId: auth.userId,
+          reservationId: reservation.reservationId,
+          errorMessage: `cost_exceeds_reservation:actual=${costDollars},reserved=${maxProviderCostUsd}`,
+        }).catch((reconcileError) => logger.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
+        // Still finalize with the reserved amount to avoid overcharging
+      }
       logger.info(`[GenerateImage] 💰 Cost: model=${finalModelId} | provider=$${costDollars.toFixed(4)} billed=${costCents}¢`)
       if (costCents > 0 || reservation.reservationId) {
         try {

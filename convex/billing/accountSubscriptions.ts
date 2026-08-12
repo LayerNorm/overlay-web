@@ -301,6 +301,57 @@ export const recordTopUpByServer = mutation({
   },
 })
 
+/**
+ * Reverses a succeeded workspace top-up when Stripe reports a refund or lost
+ * dispute. Debits the billing account balance so the credits cannot be spent.
+ */
+export const reverseTopUpByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    billingAccountId: v.string(),
+    stripePaymentIntentId: v.string(),
+    refundAmountCents: v.number(),
+    reason: v.string(),
+  },
+  returns: v.object({ reversed: v.boolean() }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    if (!Number.isSafeInteger(args.refundAmountCents) || args.refundAmountCents <= 0) {
+      throw new Error('invalid_refund_amount')
+    }
+    const existing = await ctx.db
+      .query('budgetTopUps')
+      .withIndex('by_paymentIntentId', (q) => q.eq('stripePaymentIntentId', args.stripePaymentIntentId))
+      .unique()
+    if (!existing) return { reversed: false }
+    if (existing.billingAccountId !== args.billingAccountId) {
+      throw new Error('Top-up provider reference belongs to another billing account')
+    }
+    if (existing.status !== 'succeeded') return { reversed: false }
+
+    const alreadyRefunded = Math.max(0, existing.refundedAmountCents ?? 0)
+    const maxRefundable = existing.amountCents - alreadyRefunded
+    const refundAmount = Math.min(args.refundAmountCents, maxRefundable)
+    if (refundAmount <= 0) return { reversed: false }
+
+    const balance = await ensureEmptyBalance(ctx, args.billingAccountId)
+    const debitMicros = refundAmount * 10_000
+    await ctx.db.patch(balance._id, {
+      topUpPurchasedMicros: Math.max(0, balance.topUpPurchasedMicros - debitMicros),
+      topUpBalanceMicros: Math.max(0, balance.topUpBalanceMicros - debitMicros),
+      updatedAt: Date.now(),
+      version: balance.version + 1,
+    })
+    await ctx.db.patch(existing._id, {
+      status: 'refunded',
+      refundedAmountCents: alreadyRefunded + refundAmount,
+      updatedAt: Date.now(),
+      errorMessage: args.reason,
+    })
+    return { reversed: true }
+  },
+})
+
 export const resolveAccountIdByProviderReferenceByServer = query({
   args: {
     provider: v.string(),

@@ -21,6 +21,24 @@ type BackendRateLimitRule = {
 export class ConvexRateLimiter implements RateLimiter {
   private readonly fallback = new InMemoryRateLimiter()
 
+  // Buckets protecting expensive operations (provider calls, sandboxes, etc.)
+  // must fail-closed when the distributed backend is unavailable — a per-process
+  // in-memory limiter is insufficient on multi-instance serverless deployments.
+  private static readonly FAIL_CLOSED_PREFIXES = [
+    'owner-funded:',
+    'browser-task:',
+    'sandbox:daytona:',
+    'generation:image:',
+    'generation:video:',
+    'transcribe:',
+    'knowledge-reindex:',
+    'webhook-redrive:',
+  ]
+
+  private static shouldFailClosed(bucket: string): boolean {
+    return ConvexRateLimiter.FAIL_CLOSED_PREFIXES.some((prefix) => bucket.startsWith(prefix))
+  }
+
   async check(scope: string, limits: RateLimitSpec[]): Promise<RateLimitResult> {
     const optimistic: RateLimitResult = {
       allowed: true,
@@ -85,15 +103,15 @@ export class ConvexRateLimiter implements RateLimiter {
         },
         'warning',
       )
-      if (limits.some((limit) => limit.bucket.startsWith('owner-funded:'))) {
+      if (limits.some((limit) => ConvexRateLimiter.shouldFailClosed(limit.bucket))) {
         return {
           allowed: false,
           retryAfterSeconds: 60,
           decisions: limits.map((limit) => ({
             bucket: limit.bucket,
-            allowed: !limit.bucket.startsWith('owner-funded:'),
+            allowed: !ConvexRateLimiter.shouldFailClosed(limit.bucket),
             remaining: 0,
-            retryAfterSeconds: limit.bucket.startsWith('owner-funded:') ? 60 : 0,
+            retryAfterSeconds: ConvexRateLimiter.shouldFailClosed(limit.bucket) ? 60 : 0,
           })),
         }
       }

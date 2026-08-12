@@ -3,6 +3,28 @@ import { mutation, query } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import type { Id } from '../_generated/dataModel'
 
+/** Basic URL format validation at creation time. Full SSRF validation
+ *  (DNS resolution, private IP blocking) runs at connection time in mcp-tools.ts. */
+function validateMcpUrl(raw: string): void {
+  const trimmed = raw.trim()
+  if (!trimmed) throw new Error('URL is required')
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    throw new Error('Invalid MCP server URL')
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error('MCP server URL must use HTTP or HTTPS')
+  }
+  // Reject obvious local/metadata endpoints — full DNS-based SSRF check runs at connection time
+  const host = parsed.hostname.toLowerCase()
+  if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '::1' || host === '[::1]' ||
+      host === '169.254.169.254' || host.endsWith('.localhost') || host.endsWith('.internal')) {
+    throw new Error('Local and metadata hostnames are not allowed for MCP server URLs')
+  }
+}
+
 async function authorizeUserAccess(params: {
   accessToken?: string
   serverSecret?: string
@@ -136,6 +158,7 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
+    validateMcpUrl(args.url)
     if (args.projectId) {
       const project = await ctx.db.get(args.projectId as Id<'projects'>)
       if (!project || project.userId !== args.userId || project.deletedAt) {
@@ -192,6 +215,7 @@ export const update = mutation({
   },
   handler: async (ctx, { mcpServerId, userId, workspaceId, accessToken, serverSecret, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
+    if (updates.url !== undefined) validateMcpUrl(updates.url)
     const server = await ctx.db.get(mcpServerId)
     if (!server || server.userId !== userId || (workspaceId !== undefined && server.workspaceId !== workspaceId)) {
       throw new Error('Unauthorized')
