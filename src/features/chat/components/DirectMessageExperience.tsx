@@ -41,6 +41,7 @@ import { ShareDialog } from '@/components/share/ShareDialog'
 import { AttachResourceDialog } from '@/components/share/AttachResourceDialog'
 import { resolveMentionedPrincipalIds } from '@/shared/mentions/principal-mentions'
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
+import { dispatchChatArchived } from '@/shared/chat/chat-title'
 import { useWorkspace } from '@/features/workspaces/components/WorkspaceProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
@@ -1478,7 +1479,16 @@ export function DirectMessageExperience({
                       label="Archive"
                       onClick={() => {
                         setMenuOpen(false)
-                        void updateState({ archived: true }, 'Conversation archived')
+                        void updateState({ archived: true }, 'Conversation archived').then(() => {
+                          dispatchChatArchived({
+                            chat: {
+                              _id: conversationId,
+                              title,
+                              lastModified: Date.now(),
+                              conversationType,
+                            },
+                          })
+                        }).catch(() => undefined)
                       }}
                     />
                 </FloatingMenu>

@@ -2,18 +2,20 @@
 
 import { useState, useCallback, useEffect, type MouseEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { MessageSquare, Check, Hash, Pencil, Trash2, UsersRound } from 'lucide-react'
+import { Archive, MessageSquare, Check, Hash, Pencil, UsersRound } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import {
+  CHAT_ARCHIVED_EVENT,
   CHAT_CREATED_EVENT,
   CHAT_DELETED_EVENT,
   CHAT_MODIFIED_EVENT,
   CHAT_TITLE_UPDATED_EVENT,
-  dispatchChatDeleted,
+  dispatchChatArchived,
   dispatchChatCreated,
   dispatchChatTitleUpdated,
   sanitizeChatTitle,
+  type ChatArchivedDetail,
   type ChatCreatedDetail,
   type ChatDeletedDetail,
   type ChatTitleUpdatedDetail,
@@ -31,17 +33,13 @@ import {
 } from '@/shared/chat/chat-list-cache'
 import { clearLastChatForView, rememberLastChatForView } from '@/shared/chat/last-chat-by-view'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { SidebarResourceList } from '@overlay/ui/primitives'
+import { SidebarResourceList, SidebarResourceRow } from '@overlay/ui/primitives'
 import { useAuth } from '@/contexts/AuthContext'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { NewChannelDialog } from './NewChannelDialog'
 import { isSameChatSurface } from '@/features/workspaces/lib/workspace-routing'
 import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 
-const panelItemClass =
-  'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-const inlineConfirmDeleteButtonClass =
-  'ml-1 inline-flex h-5 shrink-0 items-center rounded-full bg-red-500/15 px-2 text-[11px] font-medium leading-none text-red-500 transition-colors hover:bg-red-500/25'
 
 type Conversation = {
   _id: string
@@ -78,7 +76,6 @@ export function ChatInlinePanel({
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
-  const [pendingDeleteChatId, setPendingDeleteChatId] = useState<string | null>(null)
   const [newDirectMessageOpen, setNewDirectMessageOpen] = useState(false)
   const [newChannelOpen, setNewChannelOpen] = useState(false)
   const [collaborationUnread, setCollaborationUnread] = useState<Record<string, number>>({})
@@ -89,6 +86,33 @@ export function ChatInlinePanel({
     return 'personal'
   })()
   setActiveChatListView(chatView)
+
+  const openChat = useCallback((chat: Conversation) => {
+    const targetView = chat.conversationType === 'channel'
+      ? 'channels'
+      : chat.conversationType === 'dm'
+        ? 'dms'
+        : chatView === 'all'
+          ? 'personal'
+          : chatView
+    rememberLastChatForView(workspaceId, targetView, chat._id)
+    const href = `${baseHref}?${new URLSearchParams({
+      ...(isPublicShowcase ? { showcase: '1' } : {}),
+      view: targetView,
+      id: chat._id,
+    }).toString()}`
+    // Soft-navigate on the same chat surface so Next does not remount the app
+    // shell (and WorkspaceProvider) on every switch.
+    if (isSameChatSurface(pathname, baseHref)) {
+      window.history.pushState(null, '', href)
+      window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
+        detail: { chatId: chat._id, view: targetView },
+      }))
+    } else {
+      router.push(href)
+    }
+    onNavigate?.()
+  }, [baseHref, chatView, isPublicShowcase, onNavigate, pathname, router, workspaceId])
 
   useEffect(() => {
     const openDialog = () => {
@@ -317,34 +341,56 @@ export function ChatInlinePanel({
       })
     }
 
+    function removeActiveChat(chatId: string) {
+      removeCachedChat(chatId)
+      setDeletingChatIds((prev) => (
+        prev.includes(chatId) ? prev : [...prev, chatId]
+      ))
+      window.setTimeout(() => {
+        setChats((prev) => prev.filter((chat) => chat._id !== chatId))
+        setDeletingChatIds((prev) => prev.filter((id) => id !== chatId))
+      }, 180)
+    }
+
     function handleChatDeleted(event: Event) {
       const { detail } = event as CustomEvent<ChatDeletedDetail>
       if (!detail?.chatId) return
-      const deletedChatId = detail.chatId
-      removeCachedChat(deletedChatId)
-      setDeletingChatIds((prev) => (
-        prev.includes(deletedChatId) ? prev : [...prev, deletedChatId]
-      ))
-      window.setTimeout(() => {
-        setChats((prev) => prev.filter((chat) => chat._id !== deletedChatId))
-        setDeletingChatIds((prev) => prev.filter((id) => id !== deletedChatId))
-      }, 180)
+      removeActiveChat(detail.chatId)
+    }
+
+    function handleChatArchived(event: Event) {
+      const { detail } = event as CustomEvent<ChatArchivedDetail>
+      const archivedChatId = detail?.chat?._id
+      if (!archivedChatId) return
+      removeActiveChat(archivedChatId)
+      clearLastChatForView(workspaceId, chatView, archivedChatId)
+      if (activeId !== archivedChatId) return
+      const nextChat = getCachedChatList()?.find((candidate) => {
+        if (candidate._id === archivedChatId) return false
+        if (chatView === 'personal') return (candidate.conversationType ?? 'personal') === 'personal'
+        if (chatView === 'dms') return candidate.conversationType === 'dm'
+        if (chatView === 'channels') return candidate.conversationType === 'channel'
+        return true
+      })
+      if (nextChat) openChat(nextChat)
+      else router.push(`${baseHref}?${new URLSearchParams({ view: chatView }).toString()}`)
     }
     window.addEventListener(CHAT_CREATED_EVENT, handleChatUpserted)
     window.addEventListener(CHAT_MODIFIED_EVENT, handleChatUpserted)
     window.addEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
     window.addEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
+    window.addEventListener(CHAT_ARCHIVED_EVENT, handleChatArchived)
     return () => {
       window.removeEventListener(CHAT_CREATED_EVENT, handleChatUpserted)
       window.removeEventListener(CHAT_MODIFIED_EVENT, handleChatUpserted)
       window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleChatTitleUpdated)
       window.removeEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
+      window.removeEventListener(CHAT_ARCHIVED_EVENT, handleChatArchived)
     }
-  }, [isPublicShowcase, user])
+  }, [activeId, baseHref, chatView, isPublicShowcase, openChat, pathname, router, user, workspaceId])
 
   function beginRename(chat: Conversation, event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
-    setPendingDeleteChatId(null)
     setEditingChatId(chat._id)
     setEditingTitle(chat.title)
   }
@@ -376,20 +422,16 @@ export function ChatInlinePanel({
     }
   }
 
-  function requestDeleteChat(chat: Conversation, event: MouseEvent) {
+  async function archiveChat(chat: Conversation, event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
     setEditingChatId(null)
-    setPendingDeleteChatId(chat._id)
-  }
-
-  async function confirmDeleteChatAction(chatId: string, event: MouseEvent) {
-    event.stopPropagation()
-    setPendingDeleteChatId(null)
-    dispatchChatDeleted({ chatId })
-    await overlayAppClient.conversations.deleteResponse({ conversationId: chatId })
-    clearLastChatForView(workspaceId, chatView, chatId)
-    if (activeId === chatId) {
-      router.push(`${baseHref}?${new URLSearchParams({ view: chatView }).toString()}`)
+    try {
+      await overlayAppClient.conversations.updateParticipantState(chat._id, { archived: true })
+      dispatchChatArchived({
+        chat: { ...chat, archivedAt: Date.now() },
+      })
+    } catch {
+      void loadChats()
     }
   }
 
@@ -427,46 +469,17 @@ export function ChatInlinePanel({
             const active = activeId === chat._id
             const isEditing = editingChatId === chat._id
             const isDeleting = deletingChatIds.includes(chat._id)
-            const isConfirmingDelete = pendingDeleteChatId === chat._id
             return (
-              <div
+              <SidebarResourceRow
                 key={chat._id}
-                onMouseLeave={() => {
-                  if (isConfirmingDelete) setPendingDeleteChatId(null)
-                }}
+                active={active}
                 onClick={() => {
-                  if (isDeleting) return
-                  if (isEditing) return
-                  const targetView = chat.conversationType === 'channel'
-                    ? 'channels'
-                    : chat.conversationType === 'dm'
-                      ? 'dms'
-                      : chatView === 'all'
-                        ? 'personal'
-                        : chatView
-                  rememberLastChatForView(workspaceId, targetView, chat._id)
-                  const href = `${baseHref}?${new URLSearchParams({
-                    ...(isPublicShowcase ? { showcase: '1' } : {}),
-                    view: targetView,
-                    id: chat._id,
-                  }).toString()}`
-                  // Soft-navigate on the same chat surface so Next does not
-                  // remount the app shell (and WorkspaceProvider) on every switch.
-                  // Include view so ConversationExperienceRouter can open the
-                  // right DM/channel room without waiting on useSearchParams.
-                  if (isSameChatSurface(pathname, baseHref)) {
-                    window.history.pushState(null, '', href)
-                    window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
-                      detail: { chatId: chat._id, view: targetView },
-                    }))
-                  } else {
-                    router.push(href)
-                  }
-                  onNavigate?.()
+                  if (isDeleting || isEditing) return
+                  openChat(chat)
                 }}
-                className={`${panelItemClass} cursor-pointer overflow-hidden transition-all duration-200 ${
+                className={`cursor-pointer overflow-hidden transition-all duration-200 ${
                   isDeleting ? 'max-h-0 -translate-y-1 opacity-0' : 'max-h-7 opacity-100'
-                } ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+                }`}
               >
                 {chat.conversationType === 'channel' ? (
                   <Hash size={12} className="shrink-0" />
@@ -504,7 +517,7 @@ export function ChatInlinePanel({
                     {unread > 9 ? '9+' : unread}
                   </span>
                 ) : null}
-                {isPublicShowcase || chat.conversationType === 'dm' || chat.conversationType === 'channel' ? null : isEditing ? (
+                {isPublicShowcase ? null : isEditing ? (
                   <button
                     type="button"
                     onMouseDown={(event) => {
@@ -519,38 +532,27 @@ export function ChatInlinePanel({
                   </button>
                 ) : (
                   <>
-                    {isConfirmingDelete ? (
+                    {chat.conversationType === 'dm' || chat.conversationType === 'channel' ? null : (
                       <button
                         type="button"
-                        onClick={(event) => void confirmDeleteChatAction(chat._id, event)}
-                        className={inlineConfirmDeleteButtonClass}
-                        aria-label="Confirm delete chat"
+                        onClick={(event) => beginRename(chat, event)}
+                        className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+                        aria-label="Rename chat"
                       >
-                        Confirm
+                        <Pencil size={11} />
                       </button>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={(event) => beginRename(chat, event)}
-                          className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                          aria-label="Rename chat"
-                        >
-                          <Pencil size={11} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(event) => requestDeleteChat(chat, event)}
-                          className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
-                          aria-label="Delete chat"
-                        >
-                          <Trash2 size={11} />
-                        </button>
-                      </>
                     )}
+                    <button
+                      type="button"
+                      onClick={(event) => void archiveChat(chat, event)}
+                      className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+                      aria-label="Archive chat"
+                    >
+                      <Archive size={11} />
+                    </button>
                   </>
                 )}
-              </div>
+              </SidebarResourceRow>
             )
           })}
           {hasMore ? (
