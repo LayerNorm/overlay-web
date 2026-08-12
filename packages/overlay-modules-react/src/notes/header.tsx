@@ -48,7 +48,11 @@ export function NotebookHeader({
   onTitleKeyDown,
   onToggleAgentPanel,
 }: NotebookHeaderProps) {
-  const headerClassName = compact ? 'h-11 min-h-11 gap-0 px-0 py-0' : 'px-6'
+  // AppScreenHeader's base padding is `px-3 sm:px-6` and cn() concatenates rather
+  // than merges, so a bare `px-0` loses to `sm:px-6` on anything desktop-width.
+  // The responsive variant has to be cancelled too, or the row keeps 24px of dead
+  // space before the back button on top of its own px-3.
+  const headerClassName = compact ? 'h-11 min-h-11 gap-0 px-0 py-0 sm:px-0' : 'px-6'
   const headerStyle = compact ? { height: 44, minHeight: 44, padding: 0 } : undefined
 
   if (!activeNote && loading) {
@@ -79,7 +83,7 @@ export function NotebookHeader({
   }
 
   return (
-    <AppScreenHeader className={compact ? headerClassName : 'px-0 py-0'} style={headerStyle}>
+    <AppScreenHeader className={compact ? headerClassName : 'px-0 py-0 sm:px-0'} style={headerStyle}>
       <div className={`flex flex-1 items-center justify-between gap-2 px-3 ${compact ? 'h-11' : ''}`}>
         {leading}
         {!hideBackButton ? (
