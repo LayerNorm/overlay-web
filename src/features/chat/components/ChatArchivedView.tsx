@@ -38,8 +38,15 @@ export function ChatArchivedView() {
         credentials: 'same-origin',
       })
       if (!response.ok) throw new Error('Could not load archived conversations.')
-      const conversations = await response.json() as ArchivedConversation[]
-      setState({ status: 'ready', conversations: Array.isArray(conversations) ? conversations : [] })
+      // The list endpoint returns a bare array for some queries and a paginated
+      // `{ data }` envelope for others; accept either so archived never reads empty.
+      const body = await response.json() as unknown
+      const conversations = Array.isArray(body)
+        ? body as ArchivedConversation[]
+        : (body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)
+            ? (body as { data: ArchivedConversation[] }).data
+            : [])
+      setState({ status: 'ready', conversations })
     } catch (error) {
       setState({
         status: 'error',
@@ -79,7 +86,7 @@ export function ChatArchivedView() {
 
   if (state.status === 'loading') {
     return (
-      <div className="flex min-h-72 flex-1 items-center justify-center text-sm text-[var(--muted)]">
+      <div className="flex h-full min-h-72 items-center justify-center text-sm text-[var(--muted)]">
         <Loader2 size={16} className="mr-2 animate-spin" />
         Loading archived chats…
       </div>
@@ -89,7 +96,7 @@ export function ChatArchivedView() {
   if (state.status === 'error') {
     return (
       <EmptyState
-        className="min-h-72 px-6 py-12"
+        className="h-full min-h-72 px-6 py-12"
         icon={<Archive size={28} />}
         title="Archived chats are unavailable"
         description={state.message}
@@ -101,7 +108,7 @@ export function ChatArchivedView() {
   if (state.conversations.length === 0) {
     return (
       <EmptyState
-        className="min-h-72 px-6 py-12"
+        className="h-full min-h-72 px-6 py-12"
         icon={<Archive size={28} />}
         title="Nothing archived"
         description="Archived direct messages and channels are kept here. Archive one from its conversation menu."
