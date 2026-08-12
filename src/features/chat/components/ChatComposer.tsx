@@ -291,6 +291,7 @@ function mentionReferenceLabel(props: Pick<ComposerViewProps, 'capabilities' | '
   const targets = [
     mentionCategories?.some((category) => category.type === 'person') ? 'members' : null,
     capabilities.files ? 'files' : null,
+    capabilities.knowledge ? 'knowledge bases' : null,
     capabilities.skills ? 'skills' : null,
     capabilities.automations ? 'automations' : null,
     capabilities.mcpServers ? 'MCP servers' : null,

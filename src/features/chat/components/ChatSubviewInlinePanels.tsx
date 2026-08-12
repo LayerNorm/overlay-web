@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Archive, Bell, Loader2 } from 'lucide-react'
+import { SidebarResourceList } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
 /**
@@ -14,7 +15,15 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
  */
 
 const rowClass =
-  'flex w-full items-start gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+  'group flex h-7 w-full items-center gap-2 rounded-md px-2.5 py-0 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+
+function unwrapList<T>(body: unknown): T[] {
+  if (Array.isArray(body)) return body as T[]
+  if (body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)) {
+    return (body as { data: T[] }).data
+  }
+  return []
+}
 
 function PanelState({ icon, message }: { icon: React.ReactNode; message: string }) {
   return (
@@ -60,7 +69,7 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
   }
 
   return (
-    <div className="space-y-0.5 px-1">
+    <SidebarResourceList>
       {items.map((item) => (
         <button
           key={item.id}
@@ -71,22 +80,16 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
             if (item.conversationId) router.push(`/app/chat?id=${encodeURIComponent(item.conversationId)}`)
           }}
         >
+          <Bell size={12} className="shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1 truncate text-[var(--foreground)]">
+            {item.title?.trim() || 'Notification'}
+          </span>
           {!item.readAt ? (
             <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted)]" aria-label="Unread" />
-          ) : (
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0" aria-hidden />
-          )}
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] text-[var(--foreground)]">
-              {item.title?.trim() || 'Notification'}
-            </span>
-            {item.body?.trim() ? (
-              <span className="mt-0.5 block truncate text-[11px] text-[var(--muted)]">{item.body}</span>
-            ) : null}
-          </span>
+          ) : null}
         </button>
       ))}
-    </div>
+    </SidebarResourceList>
   )
 }
 
@@ -107,8 +110,7 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
         credentials: 'same-origin',
       })
       if (!response.ok) throw new Error('failed')
-      const conversations = await response.json() as ArchivedConversation[]
-      setItems(Array.isArray(conversations) ? conversations : [])
+      setItems(unwrapList<ArchivedConversation>(await response.json()))
     } catch {
       setItems([])
     }
@@ -124,7 +126,7 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
   }
 
   return (
-    <div className="space-y-0.5 px-1">
+    <SidebarResourceList>
       {items.map((conversation) => (
         <button
           key={conversation._id}
@@ -135,12 +137,12 @@ export function ArchivedInlinePanel({ onNavigate }: { onNavigate?: () => void })
             router.push(`/app/chat?id=${encodeURIComponent(conversation._id)}`)
           }}
         >
-          <Archive size={13} className="mt-0.5 shrink-0" aria-hidden />
-          <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--foreground)]">
+          <Archive size={12} className="shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1 truncate text-[var(--foreground)]">
             {conversation.title?.trim() || 'Untitled conversation'}
           </span>
         </button>
       ))}
-    </div>
+    </SidebarResourceList>
   )
 }
