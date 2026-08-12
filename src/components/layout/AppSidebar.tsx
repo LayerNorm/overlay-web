@@ -304,7 +304,10 @@ export default function AppSidebar({
   // Activity is its own page but stays under the Chats secondary panel, so the
   // subnavigation it was selected from remains visible beside it.
   const activityOpen = pathname.startsWith('/app/activity') || (canonicalWorkspaceRoute && workspaceSurface === 'activity')
-  const chatOpen = activityOpen || pathname.startsWith('/app/chat') || (canonicalWorkspaceRoute && workspaceSurface === 'chat')
+  // Archived is its own page but belongs to the Chats panel too, so selecting it
+  // keeps the same subnavigation beside it.
+  const archivedOpen = pathname.startsWith('/app/archived') || (canonicalWorkspaceRoute && workspaceSurface === 'archived')
+  const chatOpen = activityOpen || archivedOpen || pathname.startsWith('/app/chat') || (canonicalWorkspaceRoute && workspaceSurface === 'chat')
   const adminOpen = pathname.startsWith('/app/admin') || (canonicalWorkspaceRoute && workspaceSurface === 'admin')
   const showAdminNavigation = can('administration.access') && !publicShowcase && Boolean(user)
   const automationsOpen = pathname.startsWith('/app/automations') || (canonicalWorkspaceRoute && workspaceSurface === 'automations')
@@ -324,6 +327,7 @@ export default function AppSidebar({
   const chatViewParam = currentSearchParams.get('view')
   const chatsView = (() => {
     if (activityOpen) return 'activity'
+    if (archivedOpen) return 'archived'
     if (chatViewParam === 'dms') return 'dms'
     if (chatViewParam === 'channels') return 'channels'
     if (chatViewParam === 'all') return 'all'
@@ -331,11 +335,14 @@ export default function AppSidebar({
   })()
   const shouldLoadCollaborationUnread = !publicShowcase && Boolean(user) && Boolean(activeWorkspaceId)
   const cumulativeChatUnread = totalUnread + (shouldLoadCollaborationUnread ? collaborationUnread.total : 0)
-  const chatUnreadBadges = {
+  const chatUnreadBadges: Record<(typeof chatsInlineItems)[number]['id'], number> = {
     personal: totalUnread,
     dms: shouldLoadCollaborationUnread ? collaborationUnread.dms : 0,
     channels: shouldLoadCollaborationUnread ? collaborationUnread.channels : 0,
     activity: cumulativeChatUnread,
+    // Archived chats are deliberately out of the unread count: they were put
+    // away, so surfacing a badge would pull attention back to them.
+    archived: 0,
   }
 
   useEffect(() => {
@@ -510,8 +517,8 @@ export default function AppSidebar({
   }
 
   const contextualAction = resolveSidebarActionForPath(
-    // Activity lives under the Chats secondary panel, so keep New chat + search.
-    activityOpen || chatsView === 'activity'
+    // Activity and Archived live under the Chats secondary panel, so keep New chat + search.
+    activityOpen || archivedOpen || chatsView === 'activity' || chatsView === 'archived'
       ? '/app/chat'
       : canonicalWorkspaceRoute
         ? `/app/${workspaceSurface}`
@@ -694,7 +701,7 @@ export default function AppSidebar({
   const panelNav: SecondaryPanelNav | undefined = (() => {
     if (panelKind === 'chat') {
       const chatItems = (publicShowcase
-        ? chatsInlineItems.filter((item) => item.id !== 'activity')
+        ? chatsInlineItems.filter((item) => item.id !== 'activity' && item.id !== 'archived')
         : chatsInlineItems).map((item) => ({ ...item, badgeCount: chatUnreadBadges[item.id] }))
       return {
         items: chatItems,
@@ -704,10 +711,11 @@ export default function AppSidebar({
           closeMobileDrawer()
           if (next === chatsView) return
           beginSecondaryNavigation(next)
-          if (next === 'activity') {
+          if (next === 'activity' || next === 'archived') {
+            const surface = next === 'activity' ? '/app/activity' : '/app/archived'
             router.push(activeWorkspaceId
-              ? buildWorkspaceHref(activeWorkspaceId, '/app/activity')
-              : '/app/activity')
+              ? buildWorkspaceHref(activeWorkspaceId, surface)
+              : surface)
             return
           }
           const baseHref = activeWorkspaceId

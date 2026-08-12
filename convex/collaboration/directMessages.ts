@@ -215,6 +215,66 @@ export const listAccessibleConversations = query({
   },
 })
 
+/**
+ * Conversations the actor archived, newest first.
+ *
+ * Serves two callers. The conversations list subtracts these ids: archiving
+ * writes `archivedAt` on the participant row, but the personal branch of that
+ * list keys off `conversations.userId` and never consulted it, so anything the
+ * actor created came straight back and archiving looked like a no-op. The
+ * Archived view reads the same rows to show what was put away.
+ */
+export const listArchivedConversations = query({
+  args: {
+    actorUserId: v.string(),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const actor = await requireActor(ctx, args)
+    const participantRows = await ctx.db.query('conversationParticipants')
+      .withIndex('by_workspaceId_principalId_status', (q) => (
+        q.eq('workspaceId', args.workspaceId).eq('principalId', actor.principalId).eq('status', 'active')
+      ))
+      .collect()
+    const archived = new Map(
+      participantRows
+        .filter((row) => row.archivedAt)
+        .map((row) => [String(row.conversationId), row.archivedAt as number]),
+    )
+    if (archived.size === 0) return []
+
+    const rows = await Promise.all(
+      [...archived.keys()].map((id) => ctx.db.get(id as Id<'conversations'>)),
+    )
+    return rows
+      .filter((conversation): conversation is Doc<'conversations'> => (
+        !!conversation && !conversation.deletedAt
+      ))
+      .map((conversation) => ({
+        _id: conversation._id,
+        userId: conversation.userId,
+        clientId: conversation.clientId,
+        title: conversation.title,
+        lastModified: conversation.lastModified,
+        createdAt: conversation.createdAt,
+        updatedAt: conversation.updatedAt ?? conversation.lastModified,
+        deletedAt: conversation.deletedAt,
+        lastMode: conversation.lastMode,
+        askModelIds: conversation.askModelIds,
+        actModelId: conversation.actModelId,
+        projectId: conversation.projectId,
+        shareVisibility: conversation.shareVisibility,
+        shareToken: conversation.shareToken,
+        isAutomation: conversation.isAutomation,
+        conversationType: conversation.conversationType ?? 'personal',
+        workspaceId: conversation.workspaceId,
+        archivedAt: archived.get(String(conversation._id)),
+      }))
+      .sort((left, right) => (right.archivedAt ?? 0) - (left.archivedAt ?? 0))
+  },
+})
+
 export const listMessages = query({
   args: {
     actorUserId: v.string(),
