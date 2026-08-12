@@ -234,7 +234,11 @@ export function AutomationEditorPanel({
         </Suspense>
       )}
       />
-      <section className="mx-auto w-full max-w-4xl border-t border-[var(--border)] pt-6">
+      {/* Matches the form's own `px-4` container above. Without the padding this
+          section ran to the window edges while the cards stayed inset, and the
+          border-t drew a full-width rule that nothing else in the page uses —
+          the cards already separate the sections. */}
+      <section className="mx-auto w-full max-w-4xl px-4">
         <div className="mb-3 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-semibold text-[var(--foreground)]">Run history</h2>
