@@ -67,8 +67,19 @@ export type ChatComposerProps = {
 }
 export type ComposerViewProps = { mode: 'chat' | 'automate' }
   & ChatComposerEmptyState & ChatComposerAttachmentState & ChatComposerRuntime & ChatComposerInputState
-  & ChatComposerToolState & ChatComposerModeState & ChatComposerActions & ChatComposerSurface
+  & ChatComposerToolState & ChatComposerModeState & ChatComposerActions
+  & ChatComposerSurface
 
 export function toComposerViewProps(props: ChatComposerProps): ComposerViewProps {
-  return { mode: props.mode, ...props.emptyState, ...props.attachments, ...props.runtime, ...props.inputState, ...props.toolState, ...props.modeState, ...props.actions, ...props.surface }
+  return {
+    mode: props.mode,
+    ...props.emptyState,
+    ...props.attachments,
+    ...props.runtime,
+    ...props.inputState,
+    ...props.toolState,
+    ...props.modeState,
+    ...props.actions,
+    ...props.surface,
+  }
 }

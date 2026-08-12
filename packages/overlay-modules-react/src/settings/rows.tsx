@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import type { ThemePresetId } from '@overlay/app-core'
+import { ListboxSelect } from '@overlay/ui/primitives'
 
 export interface SettingsToggleProps {
   checked: boolean
@@ -19,7 +20,7 @@ export function SettingsToggle({ checked, disabled, onChange }: SettingsTogglePr
       onClick={onChange}
       className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${
         checked
-          ? 'border-[var(--foreground)] bg-[var(--foreground)]'
+          ? 'border-[var(--muted)] bg-[var(--muted)]'
           : 'border-[var(--border)] bg-[var(--surface-subtle)]'
       } ${disabled ? 'cursor-wait opacity-70' : ''}`}
     >
@@ -126,18 +127,13 @@ export function ThemePresetRow({
             />
           </div>
         ) : null}
-        <select
+        <ListboxSelect
           disabled={disabled}
           value={value}
-          onChange={(event) => onChange(event.target.value as ThemePresetId)}
-          className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] disabled:opacity-60"
-        >
-          {presets.map((preset) => (
-            <option key={preset.id} value={preset.id}>
-              {preset.name}
-            </option>
-          ))}
-        </select>
+          onChange={(nextValue) => onChange(nextValue as ThemePresetId)}
+          options={presets.map((preset) => ({ value: preset.id, label: preset.name }))}
+          className="w-40"
+        />
       </div>
     </div>
   )

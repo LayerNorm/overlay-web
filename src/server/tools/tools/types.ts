@@ -15,6 +15,7 @@ export interface OverlayToolsOptions {
   conversationId?: string
   turnId?: string
   automationId?: string
+  workspaceId?: string
   projectId?: string
   baseUrl?: string
   allowedToolIds?: readonly string[]

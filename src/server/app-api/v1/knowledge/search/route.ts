@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getBillingProgrammaticSubjectId, getTrustedAutomationBillingSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { KnowledgeSearchServiceError } from '@/server/knowledge'
 
@@ -20,8 +20,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const result = await getOverlayServerContext().knowledgeSearchService.hybridSearch({
       accessToken: context.auth.accessToken,
       billing: {
+        actorUserId: context.auth.userId,
         idempotencyKey: context.requestIdempotencyKey!,
         operationId: 'knowledge.hybrid-search',
+        programmaticSubjectId: getBillingProgrammaticSubjectId(context, getTrustedAutomationBillingSubjectId(context)),
         requestFingerprint: context.requestFingerprint,
       },
       kLex: body.kLex,

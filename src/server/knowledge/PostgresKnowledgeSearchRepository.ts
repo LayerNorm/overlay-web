@@ -50,10 +50,12 @@ export class PostgresKnowledgeSearchRepository implements KnowledgeSearchReposit
           kind: 'embedding',
           modelId: pricingModelId,
           operationId: args.billing.operationId,
+          programmaticSubjectId: args.billing.programmaticSubjectId,
           providerCostUsd,
           requestFingerprint: args.billing.requestFingerprint,
           usageEvent: { inputTokens: estimatedInputTokens },
-          userId: args.userId,
+          userId: args.billing.actorUserId,
+          workspaceId: args.workspaceId,
         })
       : await embed()
     if (!queryVector) throw new Error('Embedding provider returned no query vector')

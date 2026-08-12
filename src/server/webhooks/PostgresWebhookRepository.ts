@@ -166,6 +166,24 @@ export class PostgresWebhookRepository implements WebhookRepository {
         ))
         .limit(1)
       if (!source) return null
+      // Cap redrive attempts to prevent DDoS amplification. Count existing
+      // redrive deliveries that share the same base event ID.
+      const MAX_REDRIVES_PER_DELIVERY = 3
+      const baseEventId = source.eventId.split(':redrive:')[0]
+      const existingRedrives = await tx
+        .select({ eventId: webhookDeliveries.eventId })
+        .from(webhookDeliveries)
+        .where(and(
+          eq(webhookDeliveries.subscriptionId, source.subscriptionId),
+          eq(webhookDeliveries.userId, args.userId),
+        ))
+      const redriveCount = existingRedrives.filter((r) => {
+        const rowBase = r.eventId.split(':redrive:')[0]
+        return rowBase === baseEventId
+      }).length
+      if (redriveCount > MAX_REDRIVES_PER_DELIVERY) {
+        return null
+      }
       const deliveryId = `webhook_delivery_${randomUUID()}`
       const jobId = randomUUID()
       await tx.insert(webhookDeliveries).values({

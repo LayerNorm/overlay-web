@@ -123,6 +123,7 @@ export class PostgresDaytonaWorkspaceRepository implements DaytonaWorkspaceRepos
       return {
         success: true as const,
         durationSeconds,
+        providerCostUsd: cost.costUsd,
         costUsd: cost.costUsd,
         costCents: Math.round(cost.costUsd * 100),
       }

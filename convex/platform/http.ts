@@ -54,6 +54,29 @@ registerRoutes(http, components.stripe, {
       const subscription = event.data.object
 
       const userId = subscription.metadata?.userId
+      const billingAccountId = subscription.metadata?.billingAccountId
+
+      if (billingAccountId) {
+        const plan = extractPlanFromSubscription(subscription)
+        const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
+        await ctx.runMutation(internal.billing.accountSubscriptions.upsertFromStripeInternal, {
+          billingAccountId,
+          stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
+          stripeSubscriptionId: subscription.id,
+          stripePriceId: plan.stripePriceId,
+          stripeQuantity: plan.stripeQuantity,
+          planKind: plan.planKind,
+          planAmountCents: plan.planAmountCents,
+          autoTopUpEnabled: readBooleanMetadata(subscription.metadata?.autoTopUpEnabled),
+          autoTopUpAmountCents: readNumberMetadata(subscription.metadata?.topUpAmountCents),
+          offSessionConsentAt: readNumberMetadata(subscription.metadata?.offSessionConsentAt),
+          status: mapSubscriptionStatus(subscription.status),
+          currentPeriodStart,
+          currentPeriodEnd,
+          providerEventCreatedAt: event.created * 1000,
+        })
+        return
+      }
 
       if (!userId) {
         console.error('[Stripe Webhook] Missing userId in subscription metadata')
@@ -95,6 +118,29 @@ registerRoutes(http, components.stripe, {
       if (!(await recordAndCheckEvent(ctx, event))) return
       const subscription = event.data.object
       const userId = subscription.metadata?.userId
+      const billingAccountId = subscription.metadata?.billingAccountId
+
+      if (billingAccountId) {
+        const plan = extractPlanFromSubscription(subscription)
+        const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
+        await ctx.runMutation(internal.billing.accountSubscriptions.upsertFromStripeInternal, {
+          billingAccountId,
+          stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
+          stripeSubscriptionId: subscription.id,
+          stripePriceId: plan.stripePriceId,
+          stripeQuantity: plan.stripeQuantity,
+          planKind: plan.planKind,
+          planAmountCents: plan.planAmountCents,
+          autoTopUpEnabled: readBooleanMetadata(subscription.metadata?.autoTopUpEnabled),
+          autoTopUpAmountCents: readNumberMetadata(subscription.metadata?.topUpAmountCents),
+          offSessionConsentAt: readNumberMetadata(subscription.metadata?.offSessionConsentAt),
+          status: mapSubscriptionStatus(subscription.status),
+          currentPeriodStart,
+          currentPeriodEnd,
+          providerEventCreatedAt: event.created * 1000,
+        })
+        return
+      }
 
       if (!userId) {
         console.error('[Stripe Webhook] Missing userId in subscription metadata')
@@ -137,8 +183,25 @@ registerRoutes(http, components.stripe, {
       const subscription = event.data.object
 
       const userId = subscription.metadata?.userId
+      const billingAccountId = subscription.metadata?.billingAccountId
 
-      if (userId) {
+      if (billingAccountId) {
+        const plan = extractPlanFromSubscription(subscription)
+        const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
+        await ctx.runMutation(internal.billing.accountSubscriptions.upsertFromStripeInternal, {
+          billingAccountId,
+          stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
+          stripeSubscriptionId: subscription.id,
+          stripePriceId: plan.stripePriceId,
+          stripeQuantity: plan.stripeQuantity,
+          planKind: 'free',
+          planAmountCents: 0,
+          status: 'canceled',
+          currentPeriodStart,
+          currentPeriodEnd,
+          providerEventCreatedAt: event.created * 1000,
+        })
+      } else if (userId) {
         await ctx.runMutation(internal.billing.subscriptions.updateStatus, {
           userId,
           status: 'canceled'
@@ -156,8 +219,17 @@ registerRoutes(http, components.stripe, {
       const userId =
         invoice.parent?.subscription_details?.metadata?.userId ??
         invoice.metadata?.userId
+      const billingAccountId =
+        invoice.parent?.subscription_details?.metadata?.billingAccountId ??
+        invoice.metadata?.billingAccountId
 
-      if (userId) {
+      if (billingAccountId) {
+        await ctx.runMutation(internal.billing.accountSubscriptions.upsertFromStripeInternal, {
+          billingAccountId,
+          status: 'past_due',
+          providerEventCreatedAt: event.created * 1000,
+        })
+      } else if (userId) {
         await ctx.runMutation(internal.billing.subscriptions.updateStatus, {
           userId,
           status: 'past_due'
@@ -170,7 +242,11 @@ registerRoutes(http, components.stripe, {
       if (!(await recordAndCheckEvent(ctx, event))) return
       const session = event.data.object
       console.log(`[Stripe Webhook] Checkout completed: ${session.id}, mode: ${session.mode}`)
-      if (session.metadata?.kind === 'budget_topup' && session.payment_status === 'paid' && session.metadata.userId) {
+      if (
+        session.metadata?.kind === 'budget_topup'
+        && session.payment_status === 'paid'
+        && session.metadata.userId
+      ) {
         // Derive the top-up amount from Stripe's authoritative paid total, NOT
         // from client-set metadata. `session.amount_total` is what Stripe
         // actually charged; `metadata.amountCents` is advisory and untrusted.
@@ -199,21 +275,32 @@ registerRoutes(http, components.stripe, {
           )
         }
 
-        await ctx.runMutation(internal.billing.subscriptions.recordBudgetTopUpInternal, {
-          userId: session.metadata.userId,
-          amountCents: authoritativeAmountCents,
-          source: 'manual',
-          stripeCustomerId: typeof session.customer === 'string' ? session.customer : undefined,
-          stripeCheckoutSessionId: session.id,
-          stripePaymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : undefined,
-          status: 'succeeded',
-        })
-        await ctx.runMutation(internal.billing.subscriptions.updateBillingPreferencesInternal, {
-          userId: session.metadata.userId,
-          autoTopUpEnabled: session.metadata.autoTopUpEnabled === 'true',
-          topUpAmountCents: authoritativeAmountCents,
-          grantOffSessionConsent: session.metadata.autoTopUpEnabled === 'true',
-        })
+        if (session.metadata.billingAccountId) {
+          await ctx.runMutation(internal.billing.accountSubscriptions.recordTopUpInternal, {
+            actorUserId: session.metadata.userId,
+            billingAccountId: session.metadata.billingAccountId,
+            amountCents: authoritativeAmountCents,
+            stripeCustomerId: typeof session.customer === 'string' ? session.customer : undefined,
+            stripeCheckoutSessionId: session.id,
+            stripePaymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : undefined,
+          })
+        } else {
+          await ctx.runMutation(internal.billing.subscriptions.recordBudgetTopUpInternal, {
+            userId: session.metadata.userId,
+            amountCents: authoritativeAmountCents,
+            source: 'manual',
+            stripeCustomerId: typeof session.customer === 'string' ? session.customer : undefined,
+            stripeCheckoutSessionId: session.id,
+            stripePaymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : undefined,
+            status: 'succeeded',
+          })
+          await ctx.runMutation(internal.billing.subscriptions.updateBillingPreferencesInternal, {
+            userId: session.metadata.userId,
+            autoTopUpEnabled: session.metadata.autoTopUpEnabled === 'true',
+            topUpAmountCents: authoritativeAmountCents,
+            grantOffSessionConsent: session.metadata.autoTopUpEnabled === 'true',
+          })
+        }
       }
     }
   },

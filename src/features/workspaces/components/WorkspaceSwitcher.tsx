@@ -64,6 +64,14 @@ export function WorkspaceSwitcher({
     }
   }, [open])
 
+  useEffect(() => {
+    function closeForAccountAction() {
+      setOpen(false)
+    }
+    window.addEventListener('overlay:account-menu-action', closeForAccountAction)
+    return () => window.removeEventListener('overlay:account-menu-action', closeForAccountAction)
+  }, [])
+
   useLayoutEffect(() => {
     if (!open || !portalMenu) return
     function updatePosition() {

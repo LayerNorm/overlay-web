@@ -161,6 +161,68 @@ export type WorkspaceListResponse = {
   activeWorkspaceId: string
 }
 
+export type WorkspaceBillingSubscription = {
+  planKind: 'free' | 'paid'
+  planAmountCents: number
+  status?: 'active' | 'canceled' | 'past_due' | 'trialing'
+  currentPeriodEnd?: number
+}
+
+export type WorkspaceBillingSummaryResponse = {
+  workspaceId: string
+  canManage: boolean
+  initialized: boolean
+  pricingVersion: 'markup_25_v1'
+  rollout: {
+    stage: 'off' | 'internal' | 'selected' | 'general'
+    eligible: boolean
+    checkoutEnabled: boolean
+  }
+  credits: {
+    total: number
+    used: number
+    remaining: number
+    allowancePercentUsed: number
+    topUpBalance: number
+  }
+  subscription: WorkspaceBillingSubscription
+  observability?: {
+    actualProviderCostCents: number
+    costCoveragePercent: number
+    meteredReservations: number
+    oldestReconciliationAgeMs: number
+    periodEnd: number
+    periodStart: number
+    realizedMarginPercent: number | null
+    reconciliationReservations: number
+    retailCredits: number
+    staleReconciliationReservations: number
+  }
+}
+
+export type WorkspaceBillingCheckoutInput = {
+  planAmountCents: number
+  topUpAmountCents: number
+  autoTopUpEnabled?: boolean
+}
+
+export type WorkspaceBillingTopUpInput = {
+  amountCents: number
+}
+
+export type WorkspaceBillingCheckoutResponse = { url: string | null }
+
+export type WorkspaceBillingVerificationInput = {
+  kind: 'paid_plan' | 'budget_topup'
+  sessionId: string
+}
+
+export type WorkspaceBillingVerificationResponse = {
+  success: true
+  amountCents: number
+  kind: 'paid_plan' | 'budget_topup'
+}
+
 export type WorkspaceCreateInput = {
   name: string
   slug?: string

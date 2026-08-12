@@ -107,7 +107,7 @@ export function ChatExchange({
   exchModelList, selectedTab, onTabSelect, isLoadingTabs, responseInProgress, status, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, onContinue, getModelDisplayName,
-  userMentions, generatedUiConnectorActions, onGeneratedUiChange, presentation,
+  generatedUiConnectorActions, onGeneratedUiChange, presentation,
 }: ChatExchangeProps) {
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
     const showTextBubble = userBodyText.length > 0
@@ -214,7 +214,7 @@ export function ChatExchange({
             )}
             {showTextBubble && (
               <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
-                <MarkdownMessage text={userBodyText} isStreaming={false} mentions={userMentions} />
+                <MarkdownMessage text={userBodyText} isStreaming={false} />
               </UserMessageBubble>
             )}
           </div>
@@ -278,7 +278,9 @@ export function ChatExchange({
             const onlyTools = seg.items.every((it): it is ToolVisualBlock => it.kind === 'tool')
             if (onlyTools && seg.items.length === 1) {
               const t = seg.items[0] as ToolVisualBlock
-              const draft = getDraftFromToolBlock(t)
+              // See AssistantVisualBlocks: hold the draft card back until the turn
+              // finishes so it does not flicker in and collapse as tool calls regroup.
+              const draft = isStreaming ? null : getDraftFromToolBlock(t)
               if (draft) {
                 const isAutomationDraft = draft.kind === 'automation'
                 return (

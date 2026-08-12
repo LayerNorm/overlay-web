@@ -1,6 +1,10 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import {
+  getBillingProgrammaticSubjectId,
+  getTrustedAutomationBillingSubjectId,
+  type AppApiRouteContext,
+} from '@/server/app-api/bff-context'
 import { BrowserUse } from 'browser-use-sdk/v3'
 import type { ProxyCountryCode } from 'browser-use-sdk/v3'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -12,6 +16,10 @@ import {
   getBudgetTotals,
   isPaidPlan,
 } from '@/server/billing/billing-runtime'
+import {
+  acquireConcurrentRequestSlot,
+  concurrentRequestLimitResponse,
+} from '@/server/security/concurrent-request-limiter'
 
 export const maxDuration = 300
 
@@ -27,6 +35,7 @@ function parseUsd(value: string | number | null | undefined): number {
 }
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
+  let concurrencySlot: { release: () => void } | null = null
   try {
     const { task, sessionId, keepAlive, model, proxyCountryCode, conversationId, turnId }: {
       task?: string
@@ -39,6 +48,23 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     } = await request.json()
 
     const { auth } = context
+    const workspaceId = context.workspace.workspace.id
+    const programmaticSubjectId = getBillingProgrammaticSubjectId(
+      context,
+      getTrustedAutomationBillingSubjectId(context),
+    )
+
+    // Per-user concurrent request limit. Browser tasks can run for up to 300
+    // seconds; without a concurrency cap, a user could fire multiple parallel
+    // tasks and consume significant resources.
+    concurrencySlot = acquireConcurrentRequestSlot(auth.userId, {
+      bucket: 'browser-task',
+      maxConcurrent: 2,
+      maxDurationMs: 360_000, // 6 minutes (covers maxDuration=300s + buffer)
+    })
+    if (!concurrencySlot) {
+      return concurrentRequestLimitResponse('browser-task')
+    }
 
     const requestedSessionId = sessionId?.trim()
     if (requestedSessionId) {
@@ -71,7 +97,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
 
     const { generationUsagePolicy } = getOverlayServerContext()
-    const entitlements = await generationUsagePolicy.getEntitlements({ userId: auth.userId })
+    const entitlements = await generationUsagePolicy.getEntitlements({ programmaticSubjectId, userId: auth.userId, workspaceId })
 
     if (!entitlements) {
       return NextResponse.json(
@@ -95,12 +121,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         userId: auth.userId,
         entitlements: currentEntitlements,
         minimumRequiredCents: taskInitCents + 1,
+        programmaticSubjectId,
+        workspaceId,
       })
       currentEntitlements = autoTopUp.entitlements
       budget = getBudgetTotals(currentEntitlements)
     }
     const remainingVariableBudgetUsd = Math.max(0, budget.remainingCents / 100 / 1.25 - BROWSER_USE_TASK_INIT_USD)
-    if (budget.remainingCents <= taskInitCents || remainingVariableBudgetUsd <= 0) {
+    // Cap per-task cost to limit the number of browser actions a single task
+    // can perform. Without this, a task with a large remaining budget could
+    // run hundreds of browser iterations even though each is individually cheap.
+    const MAX_BROWSER_TASK_VARIABLE_USD = 2.00
+    const cappedVariableBudgetUsd = Math.min(remainingVariableBudgetUsd, MAX_BROWSER_TASK_VARIABLE_USD)
+    if (budget.remainingCents <= taskInitCents || cappedVariableBudgetUsd <= 0) {
       return NextResponse.json(
         buildInsufficientCreditsPayload(currentEntitlements, 'Not enough budget remaining to start a browser task.'),
         { status: 402 },
@@ -111,11 +144,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId: auth.userId,
       entitlements: currentEntitlements,
       idempotencyKey: context.requestIdempotencyKey,
-      providerCostUsd: BROWSER_USE_TASK_INIT_USD + remainingVariableBudgetUsd,
+      providerCostUsd: BROWSER_USE_TASK_INIT_USD + cappedVariableBudgetUsd,
       kind: 'generation',
       modelId: `browser-use/${model ?? 'auto'}`,
       operationId: 'agent.browser-task',
+      programmaticSubjectId,
       requestFingerprint: context.requestFingerprint,
+      workspaceId,
     })
     if (!reservation.ok) {
       return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })
@@ -136,7 +171,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         ...(typeof keepAlive === 'boolean' ? { keepAlive } : {}),
         ...(model ? { model } : {}),
         ...(normalizedProxyCountryCode ? { proxyCountryCode: normalizedProxyCountryCode } : {}),
-        maxCostUsd: remainingVariableBudgetUsd,
+        maxCostUsd: cappedVariableBudgetUsd,
       })
     } catch (err) {
       await generationUsagePolicy.release({
@@ -183,7 +218,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       }).catch((_error) => undefined)
     })
 
-    const updated = await generationUsagePolicy.getEntitlements({ userId: auth.userId })
+    const updated = await generationUsagePolicy.getEntitlements({ programmaticSubjectId, userId: auth.userId, workspaceId })
 
     const outputText = typeof result.output === 'string'
       ? result.output
@@ -223,7 +258,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         browserUsd: browserCostUsd.toFixed(4),
         reportedTotalUsd: reportedVariableCostUsd.toFixed(4),
         billedCents: costCents,
-        maxCostUsd: remainingVariableBudgetUsd.toFixed(4),
+        maxCostUsd: cappedVariableBudgetUsd.toFixed(4),
         remainingCreditsCents:
           updated
             ? (updated.budgetRemainingCents ?? updated.creditsTotal * 100 - updated.creditsUsed)
@@ -234,5 +269,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     logger.error('[Browser Task API] Error:', error)
     const message = error instanceof Error ? error.message : 'Browser task failed'
     return NextResponse.json({ error: 'browser_task_failed', message }, { status: 500 })
+  } finally {
+    concurrencySlot?.release()
   }
 }

@@ -215,6 +215,66 @@ export const listAccessibleConversations = query({
   },
 })
 
+/**
+ * Conversations the actor archived, newest first.
+ *
+ * Serves two callers. The conversations list subtracts these ids: archiving
+ * writes `archivedAt` on the participant row, but the personal branch of that
+ * list keys off `conversations.userId` and never consulted it, so anything the
+ * actor created came straight back and archiving looked like a no-op. The
+ * Archived view reads the same rows to show what was put away.
+ */
+export const listArchivedConversations = query({
+  args: {
+    actorUserId: v.string(),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const actor = await requireActor(ctx, args)
+    const participantRows = await ctx.db.query('conversationParticipants')
+      .withIndex('by_workspaceId_principalId_status', (q) => (
+        q.eq('workspaceId', args.workspaceId).eq('principalId', actor.principalId).eq('status', 'active')
+      ))
+      .collect()
+    const archived = new Map(
+      participantRows
+        .filter((row) => row.archivedAt)
+        .map((row) => [String(row.conversationId), row.archivedAt as number]),
+    )
+    if (archived.size === 0) return []
+
+    const rows = await Promise.all(
+      [...archived.keys()].map((id) => ctx.db.get(id as Id<'conversations'>)),
+    )
+    return rows
+      .filter((conversation): conversation is Doc<'conversations'> => (
+        !!conversation && !conversation.deletedAt
+      ))
+      .map((conversation) => ({
+        _id: conversation._id,
+        userId: conversation.userId,
+        clientId: conversation.clientId,
+        title: conversation.title,
+        lastModified: conversation.lastModified,
+        createdAt: conversation.createdAt,
+        updatedAt: conversation.updatedAt ?? conversation.lastModified,
+        deletedAt: conversation.deletedAt,
+        lastMode: conversation.lastMode,
+        askModelIds: conversation.askModelIds,
+        actModelId: conversation.actModelId,
+        projectId: conversation.projectId,
+        shareVisibility: conversation.shareVisibility,
+        shareToken: conversation.shareToken,
+        isAutomation: conversation.isAutomation,
+        conversationType: conversation.conversationType ?? 'personal',
+        workspaceId: conversation.workspaceId,
+        archivedAt: archived.get(String(conversation._id)),
+      }))
+      .sort((left, right) => (right.archivedAt ?? 0) - (left.archivedAt ?? 0))
+  },
+})
+
 export const listMessages = query({
   args: {
     actorUserId: v.string(),
@@ -251,6 +311,12 @@ export const listMessages = query({
  * Browser-facing room transcript subscription. Convex re-runs this query when
  * any indexed message it depends on changes, so workspace participants receive
  * new messages without polling the Next.js BFF.
+ *
+ * Auth failures return `{ ok: false }` (not an empty message list) so the
+ * client keeps the last valid transcript. Browser tokens must be the HS256
+ * tokens from `/api/auth/convex-token` (signed with `INTERNAL_API_SECRET`).
+ * WorkOS JWTs cannot be verified inside Convex queries because JWKS uses
+ * fetch(), which queries forbid.
  */
 export const watchRoomMessages = query({
   args: {
@@ -267,20 +333,22 @@ export const watchRoomMessages = query({
       await requireConversationAccess(ctx, args)
     } catch (error) {
       // A stale/refreshing browser token must not throw through React's route
-      // boundary. Returning no update is fail-closed and keeps the last valid
-      // transcript mounted while ConvexAuthProvider refreshes authentication.
+      // boundary. Returning ok:false keeps the last valid transcript mounted
+      // while ConvexAuthProvider refreshes authentication.
       if (error instanceof Error && [
         'Unauthorized',
         'WORKSPACE_ACCESS_DENIED',
         'CONVERSATION_ACCESS_DENIED',
-      ].includes(error.message)) return []
+      ].includes(error.message)) {
+        return { ok: false as const, messages: [] as Array<Record<string, unknown>> }
+      }
       throw error
     }
     const rows = await ctx.db.query('conversationMessages')
       .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
       .order('desc')
       .take(500)
-    return rows
+    const messages = rows
       .filter((message) => args.threadRootMessageId === undefined || message.threadRootMessageId === args.threadRootMessageId)
       .filter((message) => args.mainOnly !== true || !message.threadRootMessageId)
       .slice(0, Math.max(1, Math.min(100, Math.floor(args.limit))))
@@ -300,6 +368,7 @@ export const watchRoomMessages = query({
         threadRootMessageId: message.threadRootMessageId,
         status: message.status,
       }))
+    return { ok: true as const, messages }
   },
 })
 
@@ -353,6 +422,86 @@ export const addMessage = mutation({
       updatedAt: now,
     })
     await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'message.created',
+      messageId,
+    })
+    return messageId
+  },
+})
+
+/** Persists a streamed workspace-agent reply after validating both the human
+ * invoker's room access and the agent's active participation in that room. */
+export const addAgentMessage = mutation({
+  args: {
+    actorUserId: v.string(),
+    authorPrincipalId: v.string(),
+    clientNonce: v.string(),
+    content: v.string(),
+    conversationId: v.id('conversations'),
+    modelId: v.string(),
+    threadRootMessageId: v.optional(v.id('conversationMessages')),
+    tokens: v.optional(v.object({ input: v.number(), output: v.number() })),
+    turnId: v.string(),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const access = await requireConversationAccess(ctx, args)
+    if ((access.conversation.conversationType ?? 'personal') === 'personal') {
+      throw new Error('COLLABORATION_CONVERSATION_REQUIRED')
+    }
+    const [participant, principal] = await Promise.all([
+      ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', (q) => (
+          q.eq('conversationId', args.conversationId).eq('principalId', args.authorPrincipalId)
+        ))
+        .unique(),
+      ctx.db.query('workspacePrincipals')
+        .withIndex('by_principalId', (q) => q.eq('principalId', args.authorPrincipalId))
+        .unique(),
+    ])
+    if (
+      participant?.status !== 'active'
+      || participant.principalType !== 'agent'
+      || principal?.type !== 'agent'
+      || principal.workspaceId !== args.workspaceId
+      || principal.archivedAt
+    ) {
+      throw new Error('AGENT_PARTICIPANT_REQUIRED')
+    }
+    if (args.threadRootMessageId) {
+      await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
+    }
+    const existing = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
+      .collect()
+    const match = existing.find((message) => message.clientNonce === args.clientNonce)
+    if (match) return match._id
+
+    const now = Date.now()
+    const messageId = await ctx.db.insert('conversationMessages', {
+      conversationId: args.conversationId,
+      userId: args.actorUserId,
+      authorKind: 'agent',
+      authorPrincipalId: args.authorPrincipalId,
+      turnId: args.turnId,
+      role: 'assistant',
+      mode: 'act',
+      content: args.content,
+      contentType: 'text',
+      modelId: args.modelId,
+      tokens: args.tokens,
+      clientNonce: args.clientNonce,
+      threadRootMessageId: args.threadRootMessageId,
+      status: 'completed',
+      createdAt: now,
+      updatedAt: now,
+    })
+    await ctx.db.patch(args.conversationId, { lastMode: 'act', lastModified: now, updatedAt: now })
     await recordConversationEvent(ctx, {
       conversationId: args.conversationId,
       workspaceId: args.workspaceId,

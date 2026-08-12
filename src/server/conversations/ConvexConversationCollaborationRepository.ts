@@ -49,6 +49,13 @@ implements ConversationCollaborationRepository {
     }) ?? []
   }
 
+  async listArchivedConversations(args: { actorUserId: string; workspaceId: string }) {
+    return await convex.query<ConversationListRow[]>('collaboration/directMessages:listArchivedConversations', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }) ?? []
+  }
+
   async listMessages(args: {
     actorUserId: string
     beforeCreatedAt?: number
@@ -87,6 +94,28 @@ implements ConversationCollaborationRepository {
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
     if (!id) throw new Error('Failed to save collaboration message')
+    return id
+  }
+
+  async addAgentMessage(args: {
+    actorUserId: string
+    authorPrincipalId: string
+    clientNonce: string
+    content: string
+    conversationId: string
+    modelId: string
+    threadRootMessageId?: string
+    tokens?: { input: number; output: number }
+    turnId: string
+    workspaceId: string
+  }) {
+    const id = await convex.mutation<string>('collaboration/directMessages:addAgentMessage', {
+      ...args,
+      conversationId: args.conversationId as Id<'conversations'>,
+      threadRootMessageId: args.threadRootMessageId as Id<'conversationMessages'> | undefined,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!id) throw new Error('Failed to save collaboration agent message')
     return id
   }
 

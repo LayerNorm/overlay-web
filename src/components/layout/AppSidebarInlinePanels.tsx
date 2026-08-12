@@ -5,12 +5,12 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
 import {
+  Archive,
   Bell,
   BookOpen,
   Bot,
   Brain,
   Hash,
-  Inbox,
   Loader2,
   Mail,
   MessageSquare,
@@ -51,6 +51,10 @@ import { FilesInlineTree, ProjectsInlineTree } from '@overlay/modules-react/proj
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/features/workspaces/lib/use-workspace-changed'
 import { SidebarResourceList } from '@overlay/ui/primitives'
+import {
+  AGENT_DIRECTORY_CHANGED_EVENT,
+  type AgentDirectoryChangedEventDetail,
+} from '@/shared/workspace/sidebar-events'
 
 type Project = ProjectSummary
 type ProjectChat = ProjectChatSummary
@@ -423,24 +427,33 @@ export function AgentsInlinePanel({
   const [loading, setLoading] = useState(true)
   const activeAgentId = searchParams?.get('agent') ?? null
 
-  const loadAgents = useCallback(async () => {
+  const loadAgents = useCallback(async (showLoading = true) => {
     if (!workspaceId) {
       setAgents([])
       setLoading(false)
       return
     }
-    setLoading(true)
+    if (showLoading) setLoading(true)
     try {
       const response = await overlayAppClient.agents.list(workspaceId)
       setAgents(arrayOrEmpty<WorkspaceAgentDirectoryItem>(response.agents))
     } catch {
       setAgents([])
     } finally {
-      setLoading(false)
+      if (showLoading) setLoading(false)
     }
   }, [workspaceId])
 
   useEffect(() => { void loadAgents() }, [loadAgents])
+
+  useEffect(() => {
+    const refreshAgents = (event: Event) => {
+      const changedWorkspaceId = (event as CustomEvent<AgentDirectoryChangedEventDetail>).detail?.workspaceId
+      if (!changedWorkspaceId || changedWorkspaceId === workspaceId) void loadAgents(false)
+    }
+    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
+    return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
+  }, [loadAgents, workspaceId])
 
   return (
     <SidebarResourceList>
@@ -534,7 +547,7 @@ export const chatsInlineItems = [
   { id: 'dms', label: 'Direct Messages', icon: Mail },
   { id: 'channels', label: 'Channels', icon: Hash },
   { id: 'activity', label: 'Activity', icon: Bell },
-  { id: 'all', label: 'All', icon: Inbox },
+  { id: 'archived', label: 'Archived', icon: Archive },
 ] as const
 
 export interface InlineNavItem {
@@ -551,6 +564,7 @@ export function InlineNavChildren({
   id,
   items,
   activeId,
+  pendingId,
   onSelect,
   className = 'mt-1 space-y-0.5 pl-7',
 }: {
@@ -559,6 +573,7 @@ export function InlineNavChildren({
   /** Empty when the section is open but not the current route, so an expanded
    * dropdown never implies a selection the person did not make. */
   activeId: string
+  pendingId?: string | null
   /** Also fires for href items on link click, so callers can close chrome. */
   onSelect: (id: string) => void
   /** Container override — the default indents children under a nav row. */
@@ -576,11 +591,13 @@ export function InlineNavChildren({
         }`
         const content = (
           <>
-            {item.icon ? <item.icon size={15} className="shrink-0" aria-hidden /> : null}
+            {pendingId === item.id ? (
+              <Loader2 size={15} className="shrink-0 animate-spin" aria-label={`Loading ${item.label}`} />
+            ) : item.icon ? <item.icon size={15} className="shrink-0" aria-hidden /> : null}
             <span className="flex-1 text-left">{item.label}</span>
             {item.badgeCount ? (
               <span
-                className="inline-flex min-w-5 items-center justify-center rounded-full bg-[var(--foreground)] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[var(--background)]"
+                className="inline-flex min-w-5 items-center justify-center rounded-full bg-[var(--surface-muted)] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[var(--foreground)]"
                 aria-label={`${item.badgeCount} unread`}
               >
                 {item.badgeCount > 9 ? '9+' : item.badgeCount}
@@ -591,7 +608,15 @@ export function InlineNavChildren({
         )
         if (item.href && !item.locked) {
           return (
-            <Link key={item.id} href={item.href} onClick={() => onSelect(item.id)} className={itemClass}>
+            <Link
+              key={item.id}
+              href={item.href}
+              onClick={(event) => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+                onSelect(item.id)
+              }}
+              className={itemClass}
+            >
               {content}
             </Link>
           )

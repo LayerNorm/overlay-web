@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createHash, randomUUID } from 'node:crypto'
-import { and, desc, eq, gt, ilike, inArray, isNull, lt, or } from 'drizzle-orm'
+import { and, desc, eq, gt, ilike, inArray, isNotNull, isNull, lt, or } from 'drizzle-orm'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { OverlayPostgresDb } from '@/server/database/postgres/client'
 import {
@@ -66,6 +66,33 @@ implements ConversationCollaborationRepository {
     workspaceId: string
   }): Promise<ConversationListRow[]> {
     const ids = await this.listAccessibleConversationIds(args)
+    if (ids.length === 0) return []
+    const rows = await this.db.select().from(conversations).where(and(
+      inArray(conversations.id, ids),
+      eq(conversations.workspaceId, args.workspaceId),
+      isNull(conversations.deletedAt),
+      isNull(conversations.projectId),
+    )).orderBy(desc(conversations.lastModified))
+    return rows.filter((row) => !row.isAutomation).map(mapAccessibleConversation)
+  }
+
+  async listArchivedConversations(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<ConversationListRow[]> {
+    const actor = await this.requireActor(args)
+    const archived = await this.db
+      .select({ id: conversationParticipants.conversationId })
+      .from(conversationParticipants)
+      .innerJoin(conversations, eq(conversations.id, conversationParticipants.conversationId))
+      .where(and(
+        eq(conversationParticipants.workspaceId, args.workspaceId),
+        eq(conversationParticipants.principalId, actor.id),
+        eq(conversationParticipants.status, 'active'),
+        isNotNull(conversationParticipants.archivedAt),
+        isNull(conversations.deletedAt),
+      ))
+    const ids = archived.map((row) => row.id)
     if (ids.length === 0) return []
     const rows = await this.db.select().from(conversations).where(and(
       inArray(conversations.id, ids),
@@ -166,6 +193,79 @@ implements ConversationCollaborationRepository {
         updatedAt: now,
       })
       await tx.update(conversations).set({ lastModified: now, updatedAt: now })
+        .where(eq(conversations.id, args.conversationId))
+      await emitConversationEvent(tx, {
+        conversationId: args.conversationId,
+        messageId: id,
+        type: 'message.created',
+        userId: args.actorUserId,
+      })
+    })
+    return id
+  }
+
+  async addAgentMessage(args: {
+    actorUserId: string
+    authorPrincipalId: string
+    clientNonce: string
+    content: string
+    conversationId: string
+    modelId: string
+    threadRootMessageId?: string
+    tokens?: { input: number; output: number }
+    turnId: string
+    workspaceId: string
+  }): Promise<string> {
+    if (!await this.canAccessConversation(args)) throw new Error('CONVERSATION_ACCESS_DENIED')
+    const [agent] = await this.db.select({ principalId: workspacePrincipals.id })
+      .from(conversationParticipants)
+      .innerJoin(
+        workspacePrincipals,
+        eq(workspacePrincipals.id, conversationParticipants.principalId),
+      )
+      .where(and(
+        eq(conversationParticipants.conversationId, args.conversationId),
+        eq(conversationParticipants.principalId, args.authorPrincipalId),
+        eq(conversationParticipants.status, 'active'),
+        eq(workspacePrincipals.workspaceId, args.workspaceId),
+        eq(workspacePrincipals.type, 'agent'),
+        isNull(workspacePrincipals.archivedAt),
+      ))
+      .limit(1)
+    if (!agent) throw new Error('AGENT_PARTICIPANT_REQUIRED')
+
+    const [existing] = await this.db.select({ id: conversationMessages.id })
+      .from(conversationMessages)
+      .where(and(
+        eq(conversationMessages.conversationId, args.conversationId),
+        eq(conversationMessages.clientNonce, args.clientNonce),
+      ))
+      .limit(1)
+    if (existing) return existing.id
+
+    const id = `message_${randomUUID()}`
+    const now = new Date()
+    await this.db.transaction(async (tx) => {
+      await tx.insert(conversationMessages).values({
+        id,
+        conversationId: args.conversationId,
+        userId: args.actorUserId,
+        turnId: args.turnId,
+        role: 'assistant',
+        mode: 'act',
+        content: args.content,
+        contentType: 'text',
+        modelId: args.modelId,
+        tokens: args.tokens,
+        status: 'completed',
+        authorKind: 'agent',
+        authorPrincipalId: args.authorPrincipalId,
+        clientNonce: args.clientNonce,
+        threadRootMessageId: args.threadRootMessageId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await tx.update(conversations).set({ lastMode: 'act', lastModified: now, updatedAt: now })
         .where(eq(conversations.id, args.conversationId))
       await emitConversationEvent(tx, {
         conversationId: args.conversationId,

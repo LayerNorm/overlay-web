@@ -1,6 +1,7 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { paginateArray } from '@/server/app-api/pagination-core'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   DEFAULT_MODEL_ID,
@@ -161,7 +162,16 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json(list)
     }
 
-    const [personal, accessible] = await Promise.all([
+    // Archived view. These are exactly the rows the default list subtracts.
+    if (request.nextUrl.searchParams.get('archived') === 'true') {
+      const list = await appData.repositories.conversationCollaboration.listArchivedConversations({
+        actorUserId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
+      })
+      return NextResponse.json(list)
+    }
+
+    const [personal, accessible, archived] = await Promise.all([
       repository.listConversations({
         userId: auth.userId,
         workspaceId: context.workspace.workspace.id,
@@ -172,16 +182,57 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
         actorUserId: auth.userId,
         workspaceId: context.workspace.workspace.id,
       }),
+      appData.repositories.conversationCollaboration.listArchivedConversations({
+        actorUserId: auth.userId,
+        workspaceId: context.workspace.workspace.id,
+      }),
     ])
+    // `listAccessibleConversations` already drops archived rows, but `personal`
+    // keys off conversations.userId and knows nothing about participant state.
+    // A DM or channel the actor created therefore came back through that branch
+    // and survived the dedupe below, which is why archiving looked like a no-op.
+    const archivedIds = new Set(archived.map((conversation) => String(conversation._id)))
     const list = [
-      ...personal,
+      ...personal.filter((conversation) => !archivedIds.has(String(conversation._id))),
       ...accessible.filter((conversation) => (
         (conversation.conversationType ?? 'personal') !== 'personal'
+        && !archivedIds.has(String(conversation._id))
         && !personal.some((item) => item._id === conversation._id)
       )),
-    ].sort((left, right) => right.lastModified - left.lastModified)
+    ]
+      .map((conversation) => ({
+        ...conversation,
+        // paginateArray sorts on updatedAt; collaboration rows may only set lastModified.
+        updatedAt: conversation.updatedAt ?? conversation.lastModified ?? conversation.createdAt ?? 0,
+      }))
+      .sort((left, right) => right.lastModified - left.lastModified)
 
-    return NextResponse.json(list)
+    const view = searchParams.get('view')
+    const filtered = view === 'dms'
+      ? list.filter((conversation) => conversation.conversationType === 'dm')
+      : view === 'channels'
+        ? list.filter((conversation) => conversation.conversationType === 'channel')
+        : view === 'all'
+          ? list
+          : list.filter((conversation) => (conversation.conversationType ?? 'personal') === 'personal')
+
+    // Client list cache expects a paginated envelope. Filtering by view before
+    // pagination keeps "Load more" truthful for DMs/channels (client-side type
+    // filters on a mixed page left users with 2 visible rows + a Load more).
+    if (
+      searchParams.has('limit')
+      || searchParams.has('cursor')
+      || searchParams.has('sort')
+      || searchParams.has('order')
+      || searchParams.has('view')
+    ) {
+      const pageQuery = new URLSearchParams(searchParams)
+      if (!pageQuery.has('sort')) pageQuery.set('sort', 'updatedAt')
+      if (!pageQuery.has('order')) pageQuery.set('order', 'desc')
+      return NextResponse.json(paginateArray(filtered, pageQuery))
+    }
+
+    return NextResponse.json(filtered)
   } catch (error) {
     logger.error('[conversations GET]', error)
     return NextResponse.json({ error: 'Failed to fetch conversations' }, { status: 500 })

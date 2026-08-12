@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getBillingProgrammaticSubjectId, getTrustedAutomationBillingSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { readValidatedJson } from '@/server/app-api/validated-input'
 import { experimental_generateVideo as generateVideo } from '@/server/ai/sdk'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -31,6 +31,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   const { prompt, modelId, aspectRatio, duration, conversationId, turnId, videoSubMode, imageUrl, temporaryChat } = bodyResult.data
 
   const { auth } = context
+  const workspaceId = context.workspace.workspace.id
+  const programmaticSubjectId = getBillingProgrammaticSubjectId(context, getTrustedAutomationBillingSubjectId(context))
 
 
   if (!prompt?.trim()) {
@@ -75,7 +77,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
       try {
         // ── Subscription enforcement ────────────────────────────────────────
-        const entitlements = await generationUsagePolicy.getEntitlements({ userId: auth.userId })
+        const entitlements = await generationUsagePolicy.getEntitlements({ programmaticSubjectId, userId: auth.userId, workspaceId })
 
         if (!entitlements) {
           controller.enqueue(
@@ -168,7 +170,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           kind: 'generation',
           modelId: modelId ?? 'video-fallback',
           operationId: 'media.generate-video',
+          programmaticSubjectId,
           requestFingerprint: context.requestFingerprint,
+          workspaceId,
         })
         if (!reservation.ok) {
           controller.enqueue(encode(sseChunk({ type: 'error', ...reservation.payload, error: reservation.code })))

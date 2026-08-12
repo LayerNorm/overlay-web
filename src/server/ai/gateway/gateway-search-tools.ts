@@ -19,8 +19,10 @@ const GATEWAY_SEARCH_MAX_PROVIDER_COST_USD = 0.05
 
 export type GatewaySearchBillingContext = {
   entitlements: Entitlements
+  programmaticSubjectId?: string
   requestFingerprint: string
   userId: string
+  workspaceId?: string
 }
 
 const PERPLEXITY_DEFAULTS = {
@@ -317,7 +319,9 @@ async function reserveGatewaySearch(params: {
       input: params.input,
       proxyModel: params.innerProxyModelId,
     }),
+    programmaticSubjectId: params.billingContext.programmaticSubjectId,
     userId: params.billingContext.userId,
+    workspaceId: params.billingContext.workspaceId,
   })
   if (!reservation.ok) throw new Error(reservation.code)
   await policy.markStarted({

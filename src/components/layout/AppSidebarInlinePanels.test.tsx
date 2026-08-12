@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { InlineNavChildren } from './AppSidebarInlinePanels'
+import { chatsInlineItems, InlineNavChildren } from './AppSidebarInlinePanels'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -11,10 +11,9 @@ const CHAT_VIEWS = [
   { id: 'dms', label: 'Direct Messages' },
   { id: 'channels', label: 'Channels' },
   { id: 'activity', label: 'Activity' },
-  { id: 'all', label: 'All' },
 ]
 
-test('an expanded section lists every subview', () => {
+test('an expanded section lists every visible chat subview without an All shortcut', () => {
   const html = renderToStaticMarkup(
     <InlineNavChildren
       id="sidebar-section-app-chat"
@@ -26,6 +25,7 @@ test('an expanded section lists every subview', () => {
   for (const view of CHAT_VIEWS) assert.match(html, new RegExp(view.label))
   // The container is addressable so the section button can own aria-controls.
   assert.match(html, /id="sidebar-section-app-chat"/)
+  assert.deepEqual(chatsInlineItems.map((item) => item.id), ['personal', 'dms', 'channels', 'activity'])
 })
 
 test('opening a section from elsewhere selects nothing on the person behalf', () => {
@@ -69,6 +69,18 @@ test('activity shows the cumulative unread badge', () => {
   assert.match(html, /Activity/)
   assert.match(html, /9\+/)
   assert.match(html, /aria-label="12 unread"/)
+})
+
+test('a pending secondary subpage replaces its icon with a loading indicator', () => {
+  const html = renderToStaticMarkup(
+    <InlineNavChildren
+      items={[{ id: 'channels', label: 'Channels' }]}
+      activeId=""
+      pendingId="channels"
+      onSelect={() => undefined}
+    />,
+  )
+  assert.match(html, /aria-label="Loading Channels"/)
 })
 
 test('items with an href render as links so they support open-in-new-tab', () => {

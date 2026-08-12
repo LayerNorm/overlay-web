@@ -130,9 +130,25 @@ export function ChatInlinePanel({
     }
     void loadUnread()
     const timer = window.setInterval(() => void loadUnread(), 15_000)
+    function handleCollaborationRead(event: Event) {
+      const conversationId = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId
+      if (!conversationId) {
+        void loadUnread()
+        return
+      }
+      setCollaborationUnread((current) => {
+        if (!(conversationId in current)) return current
+        const next = { ...current }
+        delete next[conversationId]
+        return next
+      })
+      void loadUnread()
+    }
+    window.addEventListener('overlay:collaboration-read', handleCollaborationRead)
     return () => {
       cancelled = true
       window.clearInterval(timer)
+      window.removeEventListener('overlay:collaboration-read', handleCollaborationRead)
     }
   }, [isPublicShowcase, user, workspaceId])
 
@@ -436,10 +452,12 @@ export function ChatInlinePanel({
                   }).toString()}`
                   // Soft-navigate on the same chat surface so Next does not
                   // remount the app shell (and WorkspaceProvider) on every switch.
+                  // Include view so ConversationExperienceRouter can open the
+                  // right DM/channel room without waiting on useSearchParams.
                   if (isSameChatSurface(pathname, baseHref)) {
                     window.history.pushState(null, '', href)
                     window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
-                      detail: { chatId: chat._id },
+                      detail: { chatId: chat._id, view: targetView },
                     }))
                   } else {
                     router.push(href)
@@ -482,7 +500,7 @@ export function ChatInlinePanel({
                   <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--muted)]" />
                 ) : null}
                 {unread > 0 ? (
-                  <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[9px] font-medium text-[var(--background)]">
+                  <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[9px] font-medium text-[var(--foreground)]">
                     {unread > 9 ? '9+' : unread}
                   </span>
                 ) : null}

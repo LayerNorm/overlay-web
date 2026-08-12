@@ -16,6 +16,11 @@ export interface BillingProviderEventRepository {
 }
 
 export interface BillingWebhookRepository {
+  resolveBillingAccountIdByProviderReference(args: {
+    provider: string
+    providerCustomerId?: string
+    providerSubscriptionId?: string
+  }): Promise<string | null>
   resolveUserIdByProviderReference(args: {
     provider: string
     providerCustomerId?: string

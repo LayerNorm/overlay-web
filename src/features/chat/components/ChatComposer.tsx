@@ -305,7 +305,8 @@ function composerPlaceholder(props: ComposerViewProps): string {
   if (props.mode === 'automate') {
     return 'Describe an automation, use @ to reference available context...'
   }
-  return `Ask anything, use @ to ${mentionReferenceLabel(props).toLowerCase()}...`
+  const referenceLabel = mentionReferenceLabel(props)
+  return `Ask anything, use @ to ${referenceLabel.charAt(0).toLowerCase()}${referenceLabel.slice(1)}...`
 }
 
 function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HTMLInputElement | null> }) {
@@ -424,7 +425,7 @@ function AttachMenuButton({
       {icon}
       <span>{label}</span>
       {showSwitch ? (
-        <span className={`ml-auto flex h-4 w-7 items-center rounded-full p-0.5 transition-colors ${active ? 'bg-[var(--foreground)]' : 'bg-[var(--border)]'}`}>
+        <span className={`ml-auto flex h-4 w-7 items-center rounded-full p-0.5 transition-colors ${active ? 'bg-[var(--muted)]' : 'bg-[var(--border)]'}`}>
           <span className={`h-3 w-3 rounded-full bg-[var(--surface-elevated)] transition-transform ${active ? 'translate-x-3' : ''}`} />
         </span>
       ) : checked ? (

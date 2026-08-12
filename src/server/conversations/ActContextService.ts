@@ -86,8 +86,10 @@ export type ActTurnContext = {
 
 type AutoRetrievalBuilder = (args: {
   billing: {
+    actorUserId: string
     idempotencyKey: string
     operationId: string
+    programmaticSubjectId?: string
     requestFingerprint: string
   }
   userMessage: string
@@ -95,6 +97,7 @@ type AutoRetrievalBuilder = (args: {
   accessToken?: string
   projectId?: string
   includeMemories?: boolean
+  workspaceId?: string
 }) => Promise<{
   extension: string
   citations: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
@@ -141,6 +144,8 @@ export class ActContextService {
 
   async loadTurnContext(args: {
     accessToken?: string
+    billingProgrammaticSubjectId?: string
+    billingUserId: string
     conversationId?: Id<'conversations'>
     indexedAttachments: unknown
     indexedFileNames?: string[]
@@ -153,6 +158,7 @@ export class ActContextService {
     requestFingerprint: string
     serverSecret: string
     userId: string
+    workspaceId?: string
   }): Promise<ActTurnContext> {
     const memoryEnabled = args.memoryEnabled !== false
     const externalContextEnabled = args.externalContextEnabled !== false
@@ -230,8 +236,12 @@ export class ActContextService {
         })
         const bundle = await buildAutoRetrievalBundle({
           billing: {
+            actorUserId: args.billingUserId,
             idempotencyKey: args.requestIdempotencyKey,
             operationId: 'conversation.act.auto-retrieval',
+            ...(args.billingProgrammaticSubjectId
+              ? { programmaticSubjectId: args.billingProgrammaticSubjectId }
+              : {}),
             requestFingerprint: args.requestFingerprint,
           },
           userMessage: args.latestUserText ?? '',
@@ -239,6 +249,7 @@ export class ActContextService {
           ...(args.accessToken ? { accessToken: args.accessToken } : {}),
           projectId: conversationProjectId,
           includeMemories: memoryEnabled,
+          ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
         })
         return { extension: bundle.extension, citations: bundle.citations }
       } catch (_error) {

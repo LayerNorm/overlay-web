@@ -108,6 +108,10 @@ export class ActMessagePersistenceService {
   }
 
   async persistUserMessage(args: {
+    billingAccountId?: string
+    billingActorUserId?: string
+    billingSpendSubjectId?: string
+    billingSpendSubjectKind?: 'member' | 'programmatic'
     conversationId?: Id<'conversations'>
     latestUserContent?: string
     latestUserParts?: ActLatestUserPersistence['latestUserParts']
@@ -133,6 +137,10 @@ export class ActMessagePersistenceService {
       }) as Array<Record<string, unknown>>,
       modelId: args.modelId,
       skipMemoryExtraction: args.skipMemoryExtraction,
+      billingAccountId: args.billingAccountId,
+      billingActorUserId: args.billingActorUserId,
+      billingSpendSubjectId: args.billingSpendSubjectId,
+      billingSpendSubjectKind: args.billingSpendSubjectKind,
     })
   }
 

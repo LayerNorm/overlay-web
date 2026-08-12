@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getBillingProgrammaticSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { generateObject } from '@/server/ai/sdk'
 import { z } from 'zod'
 import { getLanguageModel } from '@/server/ai/model-runtime'
@@ -43,12 +43,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
 
     const { auth } = context
+    const workspaceId = context.workspace.workspace.id
+    const programmaticSubjectId = getBillingProgrammaticSubjectId(context)
 
     const fallback = fallbackLabel(text)
 
 
     const entitlements = await getOverlayServerContext().generationUsagePolicy.getEntitlements({
+      programmaticSubjectId,
       userId: auth.userId,
+      workspaceId,
     })
     if (!entitlements || !isPaidPlan(entitlements)) {
       return NextResponse.json({ title: fallback })
@@ -69,7 +73,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       kind: 'generation',
       modelId: TAB_GROUP_MODEL,
       operationId: 'chat.generate-tab-group-label',
+      programmaticSubjectId,
       requestFingerprint: context.requestFingerprint,
+      workspaceId,
     })
     if (!reservation.ok) return NextResponse.json({ title: fallback })
 

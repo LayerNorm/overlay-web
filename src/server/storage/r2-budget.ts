@@ -38,8 +38,8 @@ export async function checkGlobalR2Budget(requiredAdditionalBytes: number): Prom
       serverSecret,
     })) ?? 0
   } catch (err) {
-    logger.error('[R2-Budget] Could not fetch total storage bytes — allowing upload but logging error:', err)
-    return
+    logger.error('[R2-Budget] Could not fetch total storage bytes — blocking upload (fail-closed):', err)
+    throw new Error('r2_budget_check_failed')
   }
 
   const afterBytes = totalUsed + requiredAdditionalBytes

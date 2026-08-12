@@ -1,6 +1,9 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import {
+  getBillingProgrammaticSubjectId,
+  type AppApiRouteContext,
+} from '@/server/app-api/bff-context'
 import { generateObject } from '@/server/ai/sdk'
 import { z } from 'zod'
 import {
@@ -17,7 +20,6 @@ import {
   billableBudgetCentsFromProviderUsd,
   buildInsufficientCreditsPayload,
   canUsePaidBudgetFeatures,
-  ensureBudgetAvailable,
   finalizeProviderBudgetReservation,
   getBudgetTotals,
   isPaidPlan,
@@ -313,8 +315,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const effectiveModelId: string = isLegacyFreeTierDefaultModelId(requestedModelId)
       ? FREE_TIER_DEFAULT_MODEL_ID
       : requestedModelId
-    const entitlements = await getOverlayServerContext().generationUsagePolicy.getEntitlements({
+    const generationUsagePolicy = getOverlayServerContext().generationUsagePolicy
+    const billingProgrammaticSubjectId = getBillingProgrammaticSubjectId(context)
+    const billingWorkspaceId = context.workspace.workspace.id
+    const entitlements = await generationUsagePolicy.getEntitlements({
+      programmaticSubjectId: billingProgrammaticSubjectId,
       userId: auth.userId,
+      workspaceId: billingWorkspaceId,
     })
 
     if (!entitlements) {
@@ -328,10 +335,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const budget = getBudgetTotals(runtimeEntitlements)
 
     if (isPaidPlan(runtimeEntitlements) && budget.remainingCents <= 0) {
-      const autoTopUp = await ensureBudgetAvailable({
+      const autoTopUp = await generationUsagePolicy.ensureBudgetAvailable({
         userId: auth.userId,
         entitlements: runtimeEntitlements,
         minimumRequiredCents: 1,
+        programmaticSubjectId: billingProgrammaticSubjectId,
+        workspaceId: billingWorkspaceId,
       })
       runtimeEntitlements = autoTopUp.entitlements
     }
@@ -431,7 +440,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         kind: 'agent',
         modelId: effectiveModelId,
         operationId: 'conversation.extension-plan',
+        programmaticSubjectId: billingProgrammaticSubjectId,
         requestFingerprint: context.requestFingerprint,
+        workspaceId: billingWorkspaceId,
       })
       if (!reservation.ok) {
         return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })

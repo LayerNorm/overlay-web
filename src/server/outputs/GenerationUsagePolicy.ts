@@ -6,7 +6,8 @@ import type { OverlayRuntimeConfig } from '@/shared/config'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
 import type { UsageRepository } from '@/server/usage'
 import {
-  ensureBudgetAvailable,
+  ensurePayerBudgetAvailable,
+  getPayerEntitlements,
   finalizeProviderBudgetReservation,
   markProviderBudgetStarted,
   markProviderBudgetReconcile,
@@ -20,12 +21,14 @@ type ReservationResult = Awaited<ReturnType<typeof reserveProviderBudget>>
 
 export interface GenerationUsagePolicy {
   readonly mode: 'billing' | 'unlimited'
-  getEntitlements(args: { userId: string }): Promise<Entitlements | null>
+  getEntitlements(args: { userId: string; workspaceId?: string; programmaticSubjectId?: string }): Promise<Entitlements | null>
   ensureBudgetAvailable(args: {
     entitlements: Entitlements
     idempotencyKey?: string | null
     minimumRequiredCents: number
     userId: string
+    workspaceId?: string
+    programmaticSubjectId?: string
   }): Promise<{ entitlements: Entitlements; remainingCents: number }>
   reserve(args: {
     entitlements: Entitlements
@@ -36,6 +39,8 @@ export interface GenerationUsagePolicy {
     providerCostUsd: number
     requestFingerprint: string
     userId: string
+    workspaceId?: string
+    programmaticSubjectId?: string
   }): Promise<ReservationResult>
   finalize(args: {
     actualProviderCostUsd: number
@@ -91,6 +96,7 @@ export class UnlimitedGenerationUsagePolicy implements GenerationUsagePolicy {
   }): Promise<ReservationResult> {
     return {
       ok: true,
+      billingAccountId: null,
       reservationId: null,
       reservedCents: 0,
       entitlements: args.entitlements,
@@ -117,8 +123,9 @@ export class BillingGenerationUsagePolicy implements GenerationUsagePolicy {
 
   constructor(private readonly repository: UsageRepository) {}
 
-  async getEntitlements(args: { userId: string }): Promise<Entitlements | null> {
-    return await this.repository.getEntitlements(args)
+  async getEntitlements(args: { userId: string; workspaceId?: string; programmaticSubjectId?: string }): Promise<Entitlements | null> {
+    const personal = await this.repository.getEntitlements({ userId: args.userId })
+    return await getPayerEntitlements({ ...args, fallbackEntitlements: personal ?? undefined })
   }
 
   async ensureBudgetAvailable(args: {
@@ -126,8 +133,10 @@ export class BillingGenerationUsagePolicy implements GenerationUsagePolicy {
     idempotencyKey?: string | null
     minimumRequiredCents: number
     userId: string
+    workspaceId?: string
+    programmaticSubjectId?: string
   }) {
-    return await ensureBudgetAvailable(args)
+    return await ensurePayerBudgetAvailable(args)
   }
 
   async reserve(args: {
@@ -139,6 +148,8 @@ export class BillingGenerationUsagePolicy implements GenerationUsagePolicy {
     providerCostUsd: number
     requestFingerprint: string
     userId: string
+    workspaceId?: string
+    programmaticSubjectId?: string
   }): Promise<ReservationResult> {
     return await reserveProviderBudget(args)
   }

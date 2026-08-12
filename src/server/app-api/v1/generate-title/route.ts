@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getBillingProgrammaticSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { generateObject } from '@/server/ai/sdk'
 import { z } from 'zod'
@@ -28,9 +28,15 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
 
     const { auth } = context
+    const workspaceId = context.workspace.workspace.id
+    const programmaticSubjectId = getBillingProgrammaticSubjectId(context)
 
     const { chatUsagePolicy } = getOverlayServerContext()
-    const entitlements = await chatUsagePolicy.getEntitlements({ userId: auth.userId })
+    const entitlements = await chatUsagePolicy.getEntitlements({
+      programmaticSubjectId,
+      userId: auth.userId,
+      workspaceId,
+    })
     if (!entitlements || !canUsePaidBudgetFeatures(entitlements)) {
       return NextResponse.json({ title: null })
     }
@@ -46,7 +52,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       operationId: 'chat.generate-title',
       paid: true,
       requestFingerprint: context.requestFingerprint,
+      programmaticSubjectId,
       userId: auth.userId,
+      workspaceId,
     })
     if (!reservation.ok) {
       return NextResponse.json(reservation.failure.payload, { status: reservation.failure.statusCode })

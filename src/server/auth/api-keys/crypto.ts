@@ -27,7 +27,16 @@ function getApiKeyHashSecret(): string {
     throw new Error('API_KEY_HASH_SECRET is required for API key hashing in production')
   }
 
-  return process.env.INTERNAL_API_SECRET?.trim() || 'development-only-api-key-hash-secret'
+  // In development, fall back to INTERNAL_API_SECRET but never to a hardcoded
+  // string. This ensures local dev works without a dedicated secret while
+  // preventing a weak hardcoded secret from leaking to production.
+  const fallback = process.env.INTERNAL_API_SECRET?.trim()
+  if (!fallback) {
+    throw new Error(
+      'API_KEY_HASH_SECRET (or INTERNAL_API_SECRET as dev fallback) is required for API key hashing.',
+    )
+  }
+  return fallback
 }
 
 export function hashApiKey(apiKey: string): string {

@@ -1,6 +1,11 @@
 import 'server-only'
 
 import type { Entitlements } from '@/shared/app/app-contracts'
+import type {
+  UsageReconciliationEvidence,
+  UsageReconciliationResolution,
+} from '@/shared/billing/usage-reconciliation'
+import type { ResolvedBillingPayer } from '@/shared/billing/billing-payer'
 
 export type UsageSpendKind =
   | 'ask'
@@ -43,13 +48,56 @@ export type UsageReservationResult =
     }
   | {
       ok: false
-      code: 'insufficient_budget'
+      code: 'insufficient_budget' | 'spend_limit_exceeded'
       entitlements: Entitlements
       remainingCents: number
       requiredCents: number
     }
 
+export type UsageReconciliationQueueItem = {
+  createdAt: number
+  errorMessage?: string
+  kind: UsageSpendKind
+  modelId?: string
+  providerWorkCompleted: boolean
+  providerWorkStarted: boolean
+  reconciliationAttempts: number
+  reconciliationLastAttemptAt?: number
+  reservationId: string
+  reservedCents: number
+  updatedAt: number
+  userId: string
+}
+
+export type UsageReconciliationSweepResult = {
+  oldestReconciliationUpdatedAt?: number
+  pendingReconciliation: number
+  reconcileRequired: number
+  reconciliationQueueTruncated: boolean
+  released: number
+}
+
+export type BillingUsageOperationalReport = {
+  actualProviderCostCents: number
+  costCoveragePercent: number
+  meteredReservations: number
+  oldestReconciliationAgeMs: number
+  periodEnd: number
+  periodStart: number
+  realizedMarginPercent: number | null
+  retailCostCents: number
+  retailCredits: number
+  staleReconciliationReservations: number
+  reconciliationReservations: number
+}
+
 export interface UsageRepository {
+  getBillingAccountOperationalReport(args: {
+    billingAccountId: string
+    now?: number
+    periodStart: number
+    reconciliationSlaMs: number
+  }): Promise<BillingUsageOperationalReport>
   getEntitlements(args: { userId: string }): Promise<Entitlements | null>
   reserve(args: {
     entitlements: Entitlements
@@ -58,6 +106,18 @@ export interface UsageRepository {
     metadata?: Record<string, unknown>
     modelId?: string
     operationId: string
+    requestFingerprint: string
+    reservationId: string
+    reservedCents: number
+    userId: string
+  }): Promise<UsageReservationResult>
+  reserveWorkspace(args: {
+    expiresAt?: number
+    kind: UsageSpendKind
+    metadata?: Record<string, unknown>
+    modelId?: string
+    operationId: string
+    payer: ResolvedBillingPayer & { scope: 'workspace' }
     requestFingerprint: string
     reservationId: string
     reservedCents: number
@@ -84,6 +144,21 @@ export interface UsageRepository {
     reservationId: string
     userId: string
   }): Promise<{ status: UsageReservationStatus }>
+  listReconciliationQueue(args?: {
+    limit?: number
+    updatedBefore?: number
+  }): Promise<UsageReconciliationQueueItem[]>
+  resolveReconciliation(args: {
+    actualCostCents?: number
+    evidence: UsageReconciliationEvidence
+    reservationId: string
+    resolution: UsageReconciliationResolution
+    userId: string
+  }): Promise<{
+    finalizedCents?: number
+    idempotent: boolean
+    status: Extract<UsageReservationStatus, 'finalized' | 'released'>
+  }>
   recordBatch(args: {
     events: UsageEvent[]
     forceFreeTierLimits?: boolean
@@ -93,5 +168,5 @@ export interface UsageRepository {
   reconcileExpired(args?: {
     limit?: number
     now?: number
-  }): Promise<{ reconcileRequired: number; released: number }>
+  }): Promise<UsageReconciliationSweepResult>
 }

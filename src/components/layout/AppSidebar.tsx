@@ -3,8 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore, Suspense } from 'react'
-import { createPortal } from 'react-dom'
+import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore, Suspense } from 'react'
 import {
   CreditCard, FileText, House, LayoutDashboard, MessageSquare, ScrollText, User,
   ChevronUp, Loader2, Menu, X, Settings, ChevronLeft, ChevronRight, ShieldCheck,
@@ -22,6 +21,7 @@ import {
   SidebarShell,
   SidebarNav,
   SidebarSection,
+  FloatingMenu,
 } from '@overlay/ui/primitives'
 import {
   AgentsInlinePanel,
@@ -53,10 +53,16 @@ import {
 } from '@/shared/chat/collaboration-events'
 import { getLastChatForView } from '@/shared/chat/last-chat-by-view'
 import {
+  selectConversationForView,
+  type CollaborationChatView,
+} from '@/shared/chat/chat-view-navigation'
+import type { CachedConversation } from '@/shared/chat/chat-list-cache'
+import {
   getSidebarCollapsedSnapshot,
   setStoredSidebarCollapsed,
   subscribeToSidebarCollapsed,
 } from './sidebar/sidebarCollapsedStore'
+import { categorizeCollaborationUnreadNotifications } from '@/shared/chat/notification-badges'
 import { SidebarAccountMenu } from './sidebar/SidebarAccountMenu'
 import { ICON_COMPONENTS, toMentionCategory } from './sidebar/sidebarNavigation'
 import type { SidebarEntitlements } from './sidebar/SidebarUsageMeters'
@@ -184,6 +190,8 @@ export default function AppSidebar({
   )
 
   const [pendingNav, setPendingNav] = useState<{ href: string; fromPath: string } | null>(null)
+  const currentRouteKey = `${pathname}?${currentSearchParams.toString()}`
+  const [pendingSecondaryNav, setPendingSecondaryNav] = useState<{ id: string; fromRouteKey: string } | null>(null)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [mobileView, setMobileView] = useState<'nav' | 'panel'>('nav')
@@ -204,16 +212,12 @@ export default function AppSidebar({
     else setStoredSidebarCollapsed(next)
   }, [publicShowcase])
   const [chatPanelRefreshKey, setChatPanelRefreshKey] = useState(0)
-  const [collaborationUnreadCount, setCollaborationUnreadCount] = useState(0)
+  const [collaborationUnread, setCollaborationUnread] = useState({ dms: 0, channels: 0, total: 0 })
   const [projectsPanelRefreshKey, setProjectsPanelRefreshKey] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
-  const accountMenuPortalRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
-  const [accountMenuPosition, setAccountMenuPosition] = useState<{
-    left: number
-    bottom: number
-  } | null>(null)
+  const chatViewNavigationVersionRef = useRef(0)
   const sidebarActions = useMemo(
     () => appShell.sidebarActions.filter((action) => (
       publicShowcase || !user || allows(getSidebarActionAuthorizationRequirement(action.actionKey))
@@ -246,7 +250,6 @@ export default function AppSidebar({
   } = useAppSidebarActions({
     user,
     pathname,
-    searchParams: currentSearchParams,
     isFreeTier: sidebarIsFreeTier,
     requireAuth,
     onCloseMobileMenu: () => {
@@ -283,6 +286,9 @@ export default function AppSidebar({
 
   const effectivePendingHref =
     pendingNav && pathname === pendingNav.fromPath ? pendingNav.href : null
+  const effectivePendingSecondaryNavId = pendingSecondaryNav?.fromRouteKey === currentRouteKey
+    ? pendingSecondaryNav.id
+    : null
   const hideTemporaryChatChrome = temporaryChatUiHidden && (
     pathname.startsWith('/app/chat') ||
     (pathname.startsWith('/app/w/') && resolveWorkspaceSurface(pathname) === 'chat')
@@ -298,7 +304,10 @@ export default function AppSidebar({
   // Activity is its own page but stays under the Chats secondary panel, so the
   // subnavigation it was selected from remains visible beside it.
   const activityOpen = pathname.startsWith('/app/activity') || (canonicalWorkspaceRoute && workspaceSurface === 'activity')
-  const chatOpen = activityOpen || pathname.startsWith('/app/chat') || (canonicalWorkspaceRoute && workspaceSurface === 'chat')
+  // Archived is its own page but belongs to the Chats panel too, so selecting it
+  // keeps the same subnavigation beside it.
+  const archivedOpen = pathname.startsWith('/app/archived') || (canonicalWorkspaceRoute && workspaceSurface === 'archived')
+  const chatOpen = activityOpen || archivedOpen || pathname.startsWith('/app/chat') || (canonicalWorkspaceRoute && workspaceSurface === 'chat')
   const adminOpen = pathname.startsWith('/app/admin') || (canonicalWorkspaceRoute && workspaceSurface === 'admin')
   const showAdminNavigation = can('administration.access') && !publicShowcase && Boolean(user)
   const automationsOpen = pathname.startsWith('/app/automations') || (canonicalWorkspaceRoute && workspaceSurface === 'automations')
@@ -318,23 +327,43 @@ export default function AppSidebar({
   const chatViewParam = currentSearchParams.get('view')
   const chatsView = (() => {
     if (activityOpen) return 'activity'
+    if (archivedOpen) return 'archived'
     if (chatViewParam === 'dms') return 'dms'
     if (chatViewParam === 'channels') return 'channels'
     if (chatViewParam === 'all') return 'all'
     return 'personal'
   })()
-  const cumulativeChatUnread = totalUnread + collaborationUnreadCount
+  const shouldLoadCollaborationUnread = !publicShowcase && Boolean(user) && Boolean(activeWorkspaceId)
+  const cumulativeChatUnread = totalUnread + (shouldLoadCollaborationUnread ? collaborationUnread.total : 0)
+  const chatUnreadBadges: Record<(typeof chatsInlineItems)[number]['id'], number> = {
+    personal: totalUnread,
+    dms: shouldLoadCollaborationUnread ? collaborationUnread.dms : 0,
+    channels: shouldLoadCollaborationUnread ? collaborationUnread.channels : 0,
+    activity: cumulativeChatUnread,
+    // Archived chats are deliberately out of the unread count: they were put
+    // away, so surfacing a badge would pull attention back to them.
+    archived: 0,
+  }
 
   useEffect(() => {
     if (publicShowcase || !user || !activeWorkspaceId) {
-      setCollaborationUnreadCount(0)
       return
     }
     let cancelled = false
     const loadUnread = async () => {
       try {
         const result = await overlayAppClient.conversations.notifications({ unreadOnly: true, limit: 100 })
-        if (!cancelled) setCollaborationUnreadCount(Array.isArray(result.notifications) ? result.notifications.length : 0)
+        const notifications = Array.isArray(result.notifications) ? result.notifications : []
+        let conversations: CachedConversation[] = []
+        if (notifications.length > 0) {
+          try {
+            const page = await overlayAppClient.conversations.getPage<CachedConversation>({ view: 'all', limit: 100 })
+            conversations = page.data
+          } catch {
+            // Activity remains complete even when the conversation directory is briefly unavailable.
+          }
+        }
+        if (!cancelled) setCollaborationUnread(categorizeCollaborationUnreadNotifications(notifications, conversations))
       } catch {
         // The primary chat navigation stays usable while notification state retries.
       }
@@ -458,46 +487,6 @@ export default function AppSidebar({
   ])
 
   useEffect(() => {
-    if (!accountMenuOpen) return
-    function handleClick(e: MouseEvent) {
-      const target = e.target as Node
-      const insideDesktop = menuRef.current?.contains(target) ?? false
-      const insidePortal = accountMenuPortalRef.current?.contains(target) ?? false
-      const insideMobile = mobileMenuRef.current?.contains(target) ?? false
-      if (!insideDesktop && !insidePortal && !insideMobile) {
-        setAccountMenuOpen(false)
-      }
-    }
-    document.addEventListener('click', handleClick)
-    return () => document.removeEventListener('click', handleClick)
-  }, [accountMenuOpen])
-
-  useLayoutEffect(() => {
-    if (!accountMenuOpen || workspace) return
-    function updatePosition() {
-      const root = menuRef.current
-      if (!root) return
-      const rect = root.getBoundingClientRect()
-      const width = 256
-      const left = Math.min(
-        Math.max(8, rect.left),
-        Math.max(8, window.innerWidth - width - 8),
-      )
-      setAccountMenuPosition({
-        left,
-        bottom: Math.max(8, window.innerHeight - rect.top + 6),
-      })
-    }
-    updatePosition()
-    window.addEventListener('resize', updatePosition)
-    window.addEventListener('scroll', updatePosition, true)
-    return () => {
-      window.removeEventListener('resize', updatePosition)
-      window.removeEventListener('scroll', updatePosition, true)
-    }
-  }, [accountMenuOpen, workspace])
-
-  useEffect(() => {
     if (!mobileAccountOpen) return
     function handleClick(e: MouseEvent) {
       if (mobileAccountRef.current && !mobileAccountRef.current.contains(e.target as Node)) {
@@ -528,8 +517,8 @@ export default function AppSidebar({
   }
 
   const contextualAction = resolveSidebarActionForPath(
-    // Activity lives under the Chats secondary panel, so keep New chat + search.
-    activityOpen || chatsView === 'activity'
+    // Activity and Archived live under the Chats secondary panel, so keep New chat + search.
+    activityOpen || archivedOpen || chatsView === 'activity' || chatsView === 'archived'
       ? '/app/chat'
       : canonicalWorkspaceRoute
         ? `/app/${workspaceSurface}`
@@ -634,6 +623,10 @@ export default function AppSidebar({
     router.push(destination)
   }
 
+  function beginSecondaryNavigation(id: string) {
+    setPendingSecondaryNav({ id, fromRouteKey: currentRouteKey })
+  }
+
   function handleMobileNavSelect(item: (typeof navItems)[number]) {
     if (gateNavItem(item) !== 'ok' || !item.href) return
     const active = navItemActive(item)
@@ -708,29 +701,48 @@ export default function AppSidebar({
   const panelNav: SecondaryPanelNav | undefined = (() => {
     if (panelKind === 'chat') {
       const chatItems = (publicShowcase
-        ? chatsInlineItems.filter((item) => item.id !== 'activity')
-        : chatsInlineItems).map((item) => (
-          item.id === 'activity' ? { ...item, badgeCount: cumulativeChatUnread } : item
-        ))
+        ? chatsInlineItems.filter((item) => item.id !== 'activity' && item.id !== 'archived')
+        : chatsInlineItems).map((item) => ({ ...item, badgeCount: chatUnreadBadges[item.id] }))
       return {
         items: chatItems,
         activeId: chatsView,
-        onSelect: (next) => {
+        pendingId: effectivePendingSecondaryNavId,
+        onSelect: async (next) => {
           closeMobileDrawer()
-          if (next === 'activity') {
+          if (next === chatsView) return
+          beginSecondaryNavigation(next)
+          if (next === 'activity' || next === 'archived') {
+            const surface = next === 'activity' ? '/app/activity' : '/app/archived'
             router.push(activeWorkspaceId
-              ? buildWorkspaceHref(activeWorkspaceId, '/app/activity')
-              : '/app/activity')
+              ? buildWorkspaceHref(activeWorkspaceId, surface)
+              : surface)
             return
           }
           const baseHref = activeWorkspaceId
             ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
             : '/app/chat'
-          const lastChatId = getLastChatForView(activeWorkspaceId, next)
+          const navigationVersion = ++chatViewNavigationVersionRef.current
+          let conversationId: string | null = null
+          if (next === 'dms' || next === 'channels') {
+            try {
+              const page = await overlayAppClient.conversations.getPage<CachedConversation>({
+                limit: 24,
+                view: next as CollaborationChatView,
+              })
+              if (navigationVersion !== chatViewNavigationVersionRef.current) return
+              conversationId = selectConversationForView(
+                page.data,
+                getLastChatForView(activeWorkspaceId, next),
+              )?._id ?? null
+            } catch {
+              // Stay in the selected subview with its empty state. Reusing an
+              // unvalidated id here can mix a DM and channel after a failed fetch.
+            }
+          }
           router.push(`${baseHref}?${new URLSearchParams({
             ...(publicShowcase ? { showcase: '1' } : {}),
             view: next,
-            ...(lastChatId ? { id: lastChatId } : {}),
+            ...(conversationId ? { id: conversationId } : {}),
           }).toString()}`)
         },
       }
@@ -739,8 +751,15 @@ export default function AppSidebar({
       return {
         items: filesInlineItems,
         activeId: filesView,
+        pendingId: effectivePendingSecondaryNavId,
         onSelect: (next) => {
           closeMobileDrawer()
+          // With a file or folder open the category row is still "current", so a
+          // plain equality check swallowed the click and nothing happened. Selecting
+          // the category you are already in is how you get back out to its list.
+          const hasOpenItem = currentSearchParams.has('file') || currentSearchParams.has('folder')
+          if (next === filesView && !hasOpenItem) return
+          beginSecondaryNavigation(next)
           const params = new URLSearchParams(currentSearchParams.toString())
           if (publicShowcase) params.set('showcase', '1')
           if (next === 'all') params.delete('view')
@@ -756,8 +775,11 @@ export default function AppSidebar({
       return {
         items: availableToolsInlineItems,
         activeId: toolsView,
+        pendingId: effectivePendingSecondaryNavId,
         onSelect: (next) => {
           closeMobileDrawer()
+          if (next === toolsView) return
+          beginSecondaryNavigation(next)
           router.push(`/app/tools?${new URLSearchParams({
             ...(publicShowcase ? { showcase: '1' } : {}),
             view: next,
@@ -774,7 +796,11 @@ export default function AppSidebar({
           href: sectionHref ?? `/app/settings?section=${id}`,
         })),
         activeId: settingsSection,
-        onSelect: () => closeMobileDrawer(),
+        pendingId: effectivePendingSecondaryNavId,
+        onSelect: (next) => {
+          if (next !== settingsSection) beginSecondaryNavigation(next)
+          closeMobileDrawer()
+        },
       }
     }
     return undefined
@@ -804,6 +830,7 @@ export default function AppSidebar({
         ? renderChatPanel({
             refreshKey: chatPanelRefreshKey,
             onNavigate: closeMobileDrawer,
+            view: chatsView,
           })
         : null}
       {panelKind === 'files' || panelKind === 'notes' ? (
@@ -927,17 +954,20 @@ export default function AppSidebar({
     </Link>
   )
 
+  function closeAccountMenus() {
+    setAccountMenuOpen(false)
+    closeMobileDrawer()
+    window.dispatchEvent(new CustomEvent('overlay:account-menu-action'))
+  }
+
   const accountMenuContent = (
     <SidebarAccountMenu
       billingEnabled={billingEnabled}
       entitlements={entitlements}
       demoHref={!publicShowcase && user ? ROOT_SHOWCASE_DESTINATION : undefined}
-      onAccountClick={() => {
-        setAccountMenuOpen(false)
-        closeMobileDrawer()
-      }}
+      onAccountClick={closeAccountMenus}
       onSignOut={() => {
-        setAccountMenuOpen(false)
+        closeAccountMenus()
         void handleSignOut()
       }}
     />
@@ -951,6 +981,7 @@ export default function AppSidebar({
       icon: ShieldCheck,
       active: adminOpen,
       pending: effectivePendingHref === '/app/admin',
+      href: navItemDestination('/app/admin'),
       onSelect: () => {
         if (adminOpen) return
         setPendingNav({ href: '/app/admin', fromPath: pathname })
@@ -960,6 +991,9 @@ export default function AppSidebar({
   }
   navItems.forEach((item, navIdx) => {
     const shortcut = navIdx < 9 ? navIdx + 1 : null
+    const canOpenDestinationInNewTab = Boolean(item.href)
+      && !primaryNavActionByItemId.has(item.id)
+      && (!isGuestConfirmed || publicShowcase || item.href === '/app/chat')
     railItems.push({
       id: item.id,
       label: item.label,
@@ -967,6 +1001,7 @@ export default function AppSidebar({
       disabled: item.disabled,
       active: navItemActive(item),
       pending: Boolean(item.href && effectivePendingHref === item.href),
+      href: canOpenDestinationInNewTab && item.href ? navItemDestination(item.href) : undefined,
       badgeCount: item.href === '/app/chat' ? cumulativeChatUnread : 0,
       title: shortcut ? `${item.label} · ⌥${shortcut}` : item.label,
       dataTour: item.href === '/app/chat'
@@ -993,23 +1028,17 @@ export default function AppSidebar({
 
   const railFooterItems: PrimaryRailItem[] = showcaseRailFooterItems
 
-  const desktopAccountMenu = accountMenuOpen && !workspace && typeof document !== 'undefined'
-    ? createPortal(
-      <div
-        ref={accountMenuPortalRef}
-        className="overlay-fade-in fixed z-[10080] w-64 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
-        style={{
-          left: accountMenuPosition?.left ?? 8,
-          bottom: accountMenuPosition?.bottom ?? 8,
-          visibility: accountMenuPosition ? 'visible' : 'hidden',
-        }}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        {accountMenuContent}
-      </div>,
-      document.body,
-    )
-    : null
+  const desktopAccountMenu = !workspace ? (
+    <FloatingMenu
+      anchorRef={menuRef}
+      open={accountMenuOpen}
+      onOpenChange={setAccountMenuOpen}
+      side="top"
+      className="w-64"
+    >
+      {accountMenuContent}
+    </FloatingMenu>
+  ) : null
 
   const desktopAccountSlot = (
     <div ref={menuRef} className="relative">

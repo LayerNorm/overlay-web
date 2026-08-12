@@ -136,6 +136,8 @@ export async function prepareActTooling(params: {
   paid: boolean
   preloadTasks: ActToolPreloadTasks
   requestFingerprint: string
+  billingProgrammaticSubjectId?: string
+  workspaceId?: string
   requestedToolIds?: readonly ChatToolRequestId[]
   serverSecret: string
   turnId: string
@@ -200,21 +202,26 @@ export async function prepareActTooling(params: {
         forwardCookie: params.forwardCookie ?? undefined,
         includePaidOnlyOverlayTools: params.paid,
         memoryEnabled,
+        workspaceId: params.workspaceId,
         activeKnowledgeBaseIds: params.activeKnowledgeBaseIds,
       }),
     ),
     params.paid && capabilities.webSearch
       ? getGatewayPerplexitySearchTool(params.accessToken, params.effectiveModelId, {
           entitlements: params.entitlements,
+          programmaticSubjectId: params.billingProgrammaticSubjectId,
           requestFingerprint: params.requestFingerprint,
           userId: params.userId,
+          workspaceId: params.workspaceId,
         })
       : Promise.resolve(null),
     params.paid && capabilities.webSearch
       ? getGatewayParallelSearchTool(params.accessToken, params.effectiveModelId, {
           entitlements: params.entitlements,
+          programmaticSubjectId: params.billingProgrammaticSubjectId,
           requestFingerprint: params.requestFingerprint,
           userId: params.userId,
+          workspaceId: params.workspaceId,
         })
       : Promise.resolve(null),
   ])

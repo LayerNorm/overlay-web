@@ -15,6 +15,11 @@ export type {
   WorkspaceManagementItem,
   WorkspaceManagementResponse,
   WorkspaceManagementView,
+  WorkspaceBillingCheckoutInput,
+  WorkspaceBillingSummaryResponse,
+  WorkspaceBillingTopUpInput,
+  WorkspaceBillingVerificationInput,
+  WorkspaceBillingVerificationResponse,
 } from '@overlay/workspace-contracts'
 
 import type {
@@ -26,6 +31,11 @@ import type {
   WorkspaceInviteResponse,
   WorkspaceManagementResponse,
   WorkspaceManagementView,
+  WorkspaceBillingCheckoutInput,
+  WorkspaceBillingSummaryResponse,
+  WorkspaceBillingTopUpInput,
+  WorkspaceBillingVerificationInput,
+  WorkspaceBillingVerificationResponse,
   WorkspaceMemberMutationInput,
   WorkspaceMemberMutationResponse,
   WorkspaceOperationalMetrics,
@@ -44,7 +54,7 @@ export interface WorkspaceClient {
 export type WorkspaceLifecycleStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 export type WorkspaceSettingsTab =
-  WorkspaceManagementView
+  WorkspaceManagementView | 'billing'
 
 export interface WorkspaceManagementLoader {
   load(
@@ -55,6 +65,15 @@ export interface WorkspaceManagementLoader {
 }
 
 export interface WorkspaceManagementClient extends WorkspaceManagementLoader {
+  billing(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceBillingSummaryResponse>
+  initializeBilling(workspaceId: string): Promise<WorkspaceBillingSummaryResponse>
+  createBillingCheckout(workspaceId: string, input: WorkspaceBillingCheckoutInput): Promise<{ url: string | null }>
+  createBillingTopUp(workspaceId: string, input: WorkspaceBillingTopUpInput): Promise<{ url: string | null }>
+  createBillingPortal(workspaceId: string): Promise<{ url: string | null }>
+  verifyBillingCheckout(
+    workspaceId: string,
+    input: WorkspaceBillingVerificationInput,
+  ): Promise<WorkspaceBillingVerificationResponse>
   sharingPolicy(
     workspaceId: string,
     signal?: AbortSignal,

@@ -67,6 +67,69 @@ test('ChatTranscript renders normalized exchanges in contract order without wrap
   assert.equal(markup, '<span data-turn="turn-1">One</span><span data-turn="turn-2">Two</span>')
 })
 
+test('ChatTranscript inserts day dividers when consecutive exchanges fall on different days', () => {
+  const view: ChatTranscriptView = {
+    version: 1,
+    exchanges: [
+      {
+        id: 'turn-1',
+        turnId: 'turn-1',
+        index: 0,
+        mode: 'ask',
+        generationMode: 'text',
+        user: {
+          id: 'user-1',
+          text: 'Monday',
+          documentNames: [],
+          indexedAttachments: [],
+          images: [],
+          mentions: [],
+          replyThread: null,
+          createdAt: Date.parse('2026-08-01T12:00:00.000Z'),
+        },
+        responses: [],
+        selectedResponseIndex: -1,
+        selectedModelId: null,
+        status: 'idle',
+        media: null,
+      },
+      {
+        id: 'turn-2',
+        turnId: 'turn-2',
+        index: 1,
+        mode: 'ask',
+        generationMode: 'text',
+        user: {
+          id: 'user-2',
+          text: 'Tuesday',
+          documentNames: [],
+          indexedAttachments: [],
+          images: [],
+          mentions: [],
+          replyThread: null,
+          createdAt: Date.parse('2026-08-02T12:00:00.000Z'),
+        },
+        responses: [],
+        selectedResponseIndex: -1,
+        selectedModelId: null,
+        status: 'idle',
+        media: null,
+      },
+    ],
+  }
+  const markup = renderToStaticMarkup(
+    <ChatTranscript
+      view={view}
+      actions={{
+        renderExchange: (exchange) => <span data-turn={exchange.turnId}>{exchange.user.text}</span>,
+      }}
+    />,
+  )
+  assert.match(markup, /data-testid="chat-day-divider"/)
+  assert.match(markup, /data-turn="turn-1">Monday</)
+  assert.match(markup, /data-turn="turn-2">Tuesday</)
+})
+
 test('MediaExchange keeps platform-neutral image/video loading behavior', () => {
   const markup = renderToStaticMarkup(
     <MediaExchange

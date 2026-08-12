@@ -279,7 +279,7 @@ export function AccountPaidUsageCard({
         isLandingDark={dark}
       />
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Top-up credits remaining" value={formatCents(entitlements.topUpBalanceCents ?? 0)} />
+        <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Personal top-up credits" value={`${new Intl.NumberFormat('en-US').format((entitlements.topUpBalanceCents ?? 0) * 10)} credits`} />
         <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Storage" value={storageUsageLabel} />
       </div>
     </div>

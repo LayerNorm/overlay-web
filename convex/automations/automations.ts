@@ -51,6 +51,19 @@ const DEFAULT_SCHEDULE = SHARED_DEFAULT_SCHEDULE
 const MIN_INTERVAL_MINUTES = SHARED_MIN_INTERVAL_MINUTES
 const MAX_ENABLED_AUTOMATIONS = 25
 const STALE_AUTOMATION_RUN_MS = 15 * 60_000
+/**
+ * Per-user cap for claimDueRuns. Prevents a single user with many due
+ * automations from monopolizing the per-tick batch and starving other users.
+ * With MAX_ENABLED_AUTOMATIONS=25 and MIN_INTERVAL_MINUTES=15, a user can
+ * have at most ~2 runs due per minute in steady state, so 5 is a generous
+ * ceiling that still leaves room for burst catch-up without starving others.
+ */
+const MAX_RUNS_PER_USER_PER_TICK = 5
+/**
+ * Over-fetch factor so the round-robin has candidates from multiple users
+ * to choose from after the per-user cap is applied.
+ */
+const CLAIM_CANDIDATE_BATCH_SIZE = 100
 const AUTOMATION_POLICY_ERRORS = {
   intervalTooFrequent: 'automation_interval_too_frequent',
   paidPlanRequired: 'automation_paid_plan_required',
@@ -727,60 +740,98 @@ export const claimDueRuns = internalMutation({
   returns: v.array(v.id('automationRuns')),
   handler: async (ctx, args) => {
     const limit = clampInteger(args.limit ?? 25, 1, 100, 25)
+    // Over-fetch candidates so the per-user round-robin has multiple users
+    // to draw from after applying MAX_RUNS_PER_USER_PER_TICK. Without this,
+    // a single user with many due automations could fill the entire batch
+    // and starve every other user for that tick.
+    const candidateLimit = Math.min(CLAIM_CANDIDATE_BATCH_SIZE, limit * 4)
     const due = await ctx.db
       .query('automations')
       .withIndex('by_enabled_nextRunAt', (q) => q.eq('enabled', true).lte('nextRunAt', args.now))
-      .take(limit)
+      .take(candidateLimit)
 
-    const runIds: Array<Id<'automationRuns'>> = []
+    // Round-robin across users so no single user monopolizes the batch.
+    // Automations due earlier (lower nextRunAt) are prioritized within each
+    // user, but the cross-user selection is fair.
+    const perUserQueues = new Map<string, Doc<'automations'>[]>()
     for (const automation of due) {
       if (automation.deletedAt || automation.nextRunAt === undefined) continue
-      const scheduledFor = automation.nextRunAt
-      const now = Date.now()
-      const policyViolation = await getAutomationRunPolicyViolation(ctx, automation)
-      if (policyViolation) {
-        await ctx.db.patch(automation._id, {
-          enabled: false,
-          nextRunAt: undefined,
-          lastError: policyViolation,
-          updatedAt: now,
-        })
-        continue
-      }
-      const nextRunAt = computeNextRunAt(automation.schedule ?? DEFAULT_SCHEDULE, Math.max(args.now, scheduledFor))
+      const queue = perUserQueues.get(automation.userId)
+      if (queue) queue.push(automation)
+      else perUserQueues.set(automation.userId, [automation])
+    }
 
-      if ((automation.concurrencyPolicy ?? 'skip') === 'skip' && await hasQueuedOrRunningRun(ctx, automation._id, now)) {
-        await ctx.db.insert('automationRuns', {
+    const sortedUsers = [...perUserQueues.entries()].sort(
+      ([aUserId, aQueue], [bUserId, bQueue]) => {
+        const aEarliest = aQueue[0]!.nextRunAt!
+        const bEarliest = bQueue[0]!.nextRunAt!
+        if (aEarliest !== bEarliest) return aEarliest - bEarliest
+        return aUserId.localeCompare(bUserId)
+      },
+    )
+
+    const runIds: Array<Id<'automationRuns'>> = []
+    const claimedPerUser = new Map<string, number>()
+    let exhausted = false
+
+    while (runIds.length < limit && !exhausted) {
+      exhausted = true
+      for (const [userId, queue] of sortedUsers) {
+        if (runIds.length >= limit) break
+        const claimed = claimedPerUser.get(userId) ?? 0
+        if (claimed >= MAX_RUNS_PER_USER_PER_TICK) continue
+        if (queue.length === 0) continue
+
+        const automation = queue.shift()!
+        const scheduledFor = automation.nextRunAt!
+        const now = Date.now()
+        const policyViolation = await getAutomationRunPolicyViolation(ctx, automation)
+        if (policyViolation) {
+          await ctx.db.patch(automation._id, {
+            enabled: false,
+            nextRunAt: undefined,
+            lastError: policyViolation,
+            updatedAt: now,
+          })
+          continue
+        }
+        const nextRunAt = computeNextRunAt(automation.schedule ?? DEFAULT_SCHEDULE, Math.max(args.now, scheduledFor))
+
+        if ((automation.concurrencyPolicy ?? 'skip') === 'skip' && await hasQueuedOrRunningRun(ctx, automation._id, now)) {
+          await ctx.db.insert('automationRuns', {
+            automationId: automation._id,
+            userId: automation.userId,
+            status: 'skipped',
+            scheduledFor,
+            error: 'Skipped because a previous run is still queued or running.',
+            completedAt: now,
+            createdAt: now,
+            updatedAt: now,
+          })
+          await ctx.db.patch(automation._id, {
+            nextRunAt,
+            lastError: 'Skipped because a previous run is still queued or running.',
+            updatedAt: now,
+          })
+          continue
+        }
+
+        const runId = await ctx.db.insert('automationRuns', {
           automationId: automation._id,
           userId: automation.userId,
-          status: 'skipped',
+          status: 'queued',
           scheduledFor,
-          error: 'Skipped because a previous run is still queued or running.',
-          completedAt: now,
           createdAt: now,
           updatedAt: now,
         })
         await ctx.db.patch(automation._id, {
           nextRunAt,
-          lastError: 'Skipped because a previous run is still queued or running.',
           updatedAt: now,
         })
-        continue
+        runIds.push(runId)
+        claimedPerUser.set(userId, claimed + 1)
+        exhausted = false
       }
-
-      const runId = await ctx.db.insert('automationRuns', {
-        automationId: automation._id,
-        userId: automation.userId,
-        status: 'queued',
-        scheduledFor,
-        createdAt: now,
-        updatedAt: now,
-      })
-      await ctx.db.patch(automation._id, {
-        nextRunAt,
-        updatedAt: now,
-      })
-      runIds.push(runId)
     }
     return runIds
   },

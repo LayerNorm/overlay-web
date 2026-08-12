@@ -639,13 +639,15 @@ export async function createSession(session: AuthSession): Promise<void> {
   cookieStore.set(SESSION_COOKIE_NAME, signedCookie, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: 'strict',
     maxAge: SESSION_MAX_AGE,
     path: '/',
   })
 }
 
 const refreshInFlightByUserId = new Map<string, Promise<AuthSession | null>>()
+const refreshCooldownByUserId = new Map<string, number>()
+const REFRESH_COOLDOWN_MS = 30_000 // 30 seconds between refresh attempts per user
 
 async function rotateAccessTokenWithWorkOs(session: AuthSession): Promise<AuthSession | null> {
   try {
@@ -682,8 +684,18 @@ async function refreshAccessTokenDeduped(session: AuthSession): Promise<AuthSess
   if (existing) {
     return existing
   }
+  // Cooldown: if we just refreshed for this user, skip the refresh and return
+  // the current session. This prevents abuse via rapid sequential refresh
+  // requests that bypass BFF route-level rate limits (refresh happens during
+  // getSession, before the BFF applies rate limits).
+  const lastRefresh = refreshCooldownByUserId.get(key) ?? 0
+  const now = Date.now()
+  if (now - lastRefresh < REFRESH_COOLDOWN_MS) {
+    return session
+  }
   const promise = rotateAccessTokenWithWorkOs(session).finally(() => {
     refreshInFlightByUserId.delete(key)
+    refreshCooldownByUserId.set(key, Date.now())
   })
   refreshInFlightByUserId.set(key, promise)
   return promise

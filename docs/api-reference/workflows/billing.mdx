@@ -22,3 +22,82 @@ stripe listen --forward-to localhost:3000/api/webhooks/stripe
 ```
 
 When billing is disabled, pair `billing.provider="none"` with `capabilities.billing=false`.
+
+## Billing account compatibility
+
+Personal and workspace payment ownership is modeled by a billing account with an explicit `markup_25_v1` pricing version. This keeps the existing 25% markup and current personal subscriptions intact while making a workspace wallet possible without attributing shared usage to one member.
+
+Creating a personal billing account is idempotent and creates an empty budgeted balance. It does not create a Stripe customer, subscription, payment, allowance, or top-up. The personal-account backfill attaches every existing subscription, top-up, reservation, and usage row while preserving the user-keyed records as the authoritative enforcement and rollback path. New writes populate both identifiers and refresh canonical subscription and balance shadows.
+
+Before switching any read to the account-keyed balance, run the development backfill and require a zero-difference parity report:
+
+```bash
+npm run billing:backfill:personal-accounts -- --apply=true
+```
+
+The command defaults to development and requires both `--target=prod` and `--allow-prod=true` for production. Stripe verification is read-only and requires an environment-appropriate key. It fails unless the local active subscriptions and Stripe active subscriptions are the expected six exact matches by account link, subscription, customer, price, quantity, amount, and status:
+
+```bash
+npm run billing:verify:personal-subscriptions
+```
+
+The compatibility reads still use the personal legacy records. A parity report is a gate, not permission to switch reads automatically.
+
+## Workspace reservation foundation
+
+`workspaceWallets` is off by default. Activation requires the master flag plus a controlled rollout stage:
+
+```dotenv
+OVERLAY_FEATURE_WORKSPACE_WALLETS=1
+OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE=internal # off | internal | selected | general
+OVERLAY_WORKSPACE_BILLING_INTERNAL_WORKSPACE_IDS=workspace_internal
+OVERLAY_WORKSPACE_BILLING_SELECTED_WORKSPACE_IDS=workspace_design_partner
+```
+
+Internal workspaces stay eligible during later stages. `selected` adds the selected allowlist, and `general` enables every organization workspace. Non-selected workspaces retain personal compatibility. A selected organization workspace with a missing, empty, suspended, or mismatched account fails closed and never spends a member's personal balance. Every enabled hosted-cost entry point supplies its resource workspace. Shared human actions use a `member` subject, while agents, automations, knowledge indexing, and API keys use a stable `programmatic` subject.
+
+Workspace owners and admins use the authenticated `/api/v1/workspaces/:workspaceId/billing` API family to initialize a wallet, read credit usage, and open Stripe subscription, top-up, portal, or checkout-verification flows. Overlay creates one Stripe customer per workspace billing account. Stripe metadata binds payments to the account and workspace; the initiating admin is an audit actor, not the payment owner. Duplicate webhook deliveries are idempotent and older subscription events cannot overwrite newer account state.
+
+The Billing settings tab keeps recurring allowance and purchased top-up credits separate, shows usage as credits and percentages, and states that an empty wallet has no personal fallback. Owners/admins see actual provider cost, retail credits, realized margin, metering coverage, and reconciliation health. Members have a read-only view. Member contributions are a later phase; when added they may only create direct one-time workspace top-ups. Personal-wallet transfers are forbidden.
+
+Workspace reservations use the account-keyed balance and optionally a fixed-period subject limit. Subjects are either `member` for human-attributed spend or `programmatic` for shared agents, automations, and service callers. Reservation creation locks the workspace balance and subject limit in one transaction. Finalize, release, expiry, and evidence-based reconciliation update the workspace balance and subject counters together. Wallet creation grants no credits; funding remains an explicit later operation.
+
+The launch coverage gate lives in `src/server/billing/billable-feature-coverage.ts`. Shared conversations/agents, embeddings/search, browser/sandbox, hosted media/transcription, and automation/API provider calls are metered. Workflow runs additionally charge a conservative 20-step estimate at Vercel's Workflow Steps rate ($2.50 per 100,000 steps) with the same 25% markup. Functions, integrations, and MCP tools are bounded to 12 steps per agent turn and 50,000 result characters; file ingestion is bounded to 20 requests per hour and the account storage cap. Do not enable `workspaceWallets` in a deployment unless `npm run check:owner-funded-boundary` and the coverage test pass.
+
+Convex and PostgreSQL run the same workspace billing contract:
+
+```bash
+npm run test:workspace-billing-contract:postgres
+npm run test:workspace-billing-contract:convex
+```
+
+The contract covers empty-wallet hard stops, concurrent account/member limits, account/workspace spoof rejection, removed-member denial, allowance/top-up separation, actual-cost margin reporting, and reconciliation SLA visibility. The Stripe webhook suite separately proves duplicate event no-ops and stale-event ordering.
+
+## Production activation gate
+
+Deploy the Convex functions before the matching web release, then keep the rollout stage `off` until all of these checks pass against the same environment:
+
+1. The personal backfill reports balance parity and the read-only Stripe verifier finds exactly six unchanged active subscriptions.
+2. Both provider contract suites pass, along with `npm run check:owner-funded-boundary` and the billable-feature coverage test.
+3. `npm run billing:audit:reconciliation` reports no item older than the 15-minute SLA.
+4. An internal organization workspace is initialized and funded, then smoke-tested for shared chat, agents, files, tools, browser, sandbox, media, and automation usage.
+5. Its Billing tab shows actual provider cost, retail credits, realized margin, full cost coverage, and a healthy reconciliation queue.
+
+Advance only one stage at a time: `internal`, then `selected`, then `general`. The kill switch is the master flag or `stage=off`; either restores the personal compatibility path globally and should be used only as a deliberate rollback.
+
+## Reservation reconciliation
+
+The usage ledger automatically releases expired reservations only when provider work never started. Provider-started reservations are quarantined until authoritative evidence establishes whether to finalize the measured cost or release the reservation.
+
+Inspect the development queue without mutating it:
+
+```bash
+npm run billing:audit:reconciliation
+```
+
+The audit defaults to the development Convex deployment. Production inspection requires an explicit `--target=prod --allow-prod=true` invocation of the underlying script. Resolution is server-only, requires a non-empty evidence source, evidence reference, and reason, and is idempotent for exact replays. A conflicting second resolution fails closed.
+
+## Post-plan maintenance queue
+
+- [ ] Fix the unrelated on-prem Convex inventory mismatch in the existing chat and auth files.
+- [ ] Fix the unrelated conversation smoke-test index mismatch.

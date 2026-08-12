@@ -2,6 +2,21 @@ import { Fragment, type ReactNode } from 'react'
 import type { ChatTranscriptExchangeView, ChatTranscriptView } from '@overlay/chat-core'
 import { recordRender } from '../../lib/perf-debug'
 
+function dayKey(timestamp: number | undefined): string | null {
+  if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) return null
+  const date = new Date(timestamp)
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+}
+
+function dayLabel(timestamp: number): string {
+  return new Date(timestamp).toLocaleDateString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
 export interface ChatTranscriptPresentation {
   density: 'comfortable' | 'compact'
   actionVisibility: 'always' | 'hover'
@@ -68,9 +83,31 @@ export function ChatTranscript({
     ? { ...DEFAULT_CHAT_TRANSCRIPT_PRESENTATION, ...presentation }
     : DEFAULT_CHAT_TRANSCRIPT_PRESENTATION
 
-  return view.exchanges.map((exchange) => (
-    <Fragment key={exchange.id}>
-      {actions.renderExchange(exchange, resolvedPresentation)}
-    </Fragment>
-  ))
+  // Slack/room-style day dividers between personal-chat exchanges when the
+  // user turn carries a createdAt. Missing timestamps skip the divider.
+  return view.exchanges.map((exchange, index) => {
+    const previous = index > 0 ? view.exchanges[index - 1] : undefined
+    const currentKey = dayKey(exchange.user.createdAt)
+    const previousKey = dayKey(previous?.user.createdAt)
+    const showDayDivider = Boolean(
+      currentKey
+      && exchange.user.createdAt
+      && (!previous || !previousKey || previousKey !== currentKey),
+    )
+    return (
+      <Fragment key={exchange.id}>
+        {showDayDivider ? (
+          <div
+            className="flex items-center gap-3 py-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]"
+            data-testid="chat-day-divider"
+          >
+            <span className="h-px flex-1 bg-[var(--border)]" />
+            <span>{dayLabel(exchange.user.createdAt!)}</span>
+            <span className="h-px flex-1 bg-[var(--border)]" />
+          </div>
+        ) : null}
+        {actions.renderExchange(exchange, resolvedPresentation)}
+      </Fragment>
+    )
+  })
 }

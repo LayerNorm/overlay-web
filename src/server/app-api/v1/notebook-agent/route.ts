@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getBillingProgrammaticSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { ToolLoopAgent, isStepCount, tool, type ToolSet } from '@/server/ai/sdk'
 import { z } from 'zod'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -10,7 +10,6 @@ import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import {
   billableBudgetCentsFromProviderUsd,
   buildInsufficientCreditsPayload,
-  ensureBudgetAvailable,
   finalizeProviderBudgetReservation,
   getBudgetTotals,
   isPaidPlan,
@@ -195,10 +194,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   const { auth } = context
 
   const userId = auth.userId
+  const workspaceId = context.workspace.workspace.id
+  const mentionedAgent = rawMentions?.find((mention) => mention.type === 'agent')
+  const programmaticSubjectId = getBillingProgrammaticSubjectId(
+    context,
+    mentionedAgent ? `agent:${mentionedAgent.id}` : undefined,
+  )
   const serverContext = getOverlayServerContext()
   const generationUsagePolicy = serverContext.generationUsagePolicy
   const serverSecret = getInternalApiSecret()
-  const entitlements = await generationUsagePolicy.getEntitlements({ userId })
+  const entitlements = await generationUsagePolicy.getEntitlements({ programmaticSubjectId, userId, workspaceId })
   if (!entitlements) {
     return new Response(
       JSON.stringify({
@@ -226,10 +231,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   } else {
     const budget = getBudgetTotals(entitlements)
     if (budget.remainingCents <= 0 && isPremiumModel(effectiveModelId)) {
-      const autoTopUp = await ensureBudgetAvailable({
+      const autoTopUp = await generationUsagePolicy.ensureBudgetAvailable({
         userId,
         entitlements,
         minimumRequiredCents: 1,
+        programmaticSubjectId,
+        workspaceId,
       })
       if (autoTopUp.remainingCents <= 0) {
         return new Response(
@@ -240,7 +247,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
   }
 
-  const refreshedEntitlements = await generationUsagePolicy.getEntitlements({ userId })
+  const refreshedEntitlements = await generationUsagePolicy.getEntitlements({ programmaticSubjectId, userId, workspaceId })
   if (!refreshedEntitlements) {
     return new Response(
       JSON.stringify({ error: 'Unauthorized', message: 'Could not refresh subscription state.' }),
@@ -299,7 +306,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       kind: 'agent',
       modelId: effectiveModelId,
       operationId: 'agent.notebook',
+      programmaticSubjectId,
       requestFingerprint: context.requestFingerprint,
+      workspaceId,
     })
     if (!reservation.ok) {
       return new Response(

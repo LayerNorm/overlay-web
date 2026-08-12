@@ -105,12 +105,12 @@ export async function runKnowledgeCharacterizationContract(
     await backend.memories.remove({ memoryId: sourceIds.globalMemory, userId })
     await backend.files.removeFile({ fileId: sourceIds.globalFile, userId })
     const removedMemorySearch = await backend.search.hybridSearch({
-      billing: contractSearchBilling('removed-memory'),
+      billing: contractSearchBilling('removed-memory', userId),
       query: 'Silver Orchard pilot updates',
       userId,
     })
     const removedFileSearch = await backend.search.hybridSearch({
-      billing: contractSearchBilling('removed-file'),
+      billing: contractSearchBilling('removed-file', userId),
       query: 'Cedar Lantern deployment',
       userId,
     })
@@ -131,9 +131,10 @@ export async function runKnowledgeCharacterizationContract(
   }
 }
 
-function contractSearchBilling(label: string) {
+function contractSearchBilling(label: string, actorUserId: string) {
   const nonce = globalThis.crypto.randomUUID()
   return {
+    actorUserId,
     idempotencyKey: nonce,
     operationId: `knowledge.contract.${label}`,
     requestFingerprint: nonce,

@@ -417,6 +417,12 @@ Steps 2 and 3 can run in parallel after Step 1. Steps 4, 5, and 7 can run in par
 **Still pending before production rollout:**
 - Run the 24-hour no-drift observation with a scheduled automation after confirming how scheduled iterations should create and report individual `automation_runs` records.
 
+**Workspace billing:**
+- Every workflow act request carries `automationId` and `x-overlay-workspace-id`, so provider spend resolves to the workspace wallet under the stable `automation:{id}` programmatic subject.
+- Each execution separately meters a conservative 20 Workflow events at the documented `$0.02 / 1K events` provider rate and applies the canonical 25% markup. The charge is idempotent across workflow retries.
+- The model, search, browser, sandbox, media, and transcription calls made by the automation keep their own measured reservations; Workflow overhead is not folded into model usage.
+- `workspaceWallets` remains off by default. Do not enable it until the owner-funded boundary and billable-feature coverage gates pass for the deployment.
+
 ---
 
 ## Step 8 — Production rollout

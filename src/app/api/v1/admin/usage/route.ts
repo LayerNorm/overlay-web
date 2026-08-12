@@ -31,6 +31,15 @@ const adjustBudget: BffDomainService = async (request, context) => {
     }
     const amountCents = requiredNumber(context, 'amountCents')
     const userId = requiredString(context, 'userId')
+    const reason = optionalString(context.parsedJson.reason)
+    if (!reason) {
+      throw new Error('reason is required for budget adjustments')
+    }
+    // Cap adjustment magnitude to prevent catastrophic admin errors.
+    const MAX_ADJUSTMENT_CENTS = 1_000_000 // $10,000
+    if (Math.abs(amountCents) > MAX_ADJUSTMENT_CENTS) {
+      throw new Error(`amountCents must not exceed ±${MAX_ADJUSTMENT_CENTS} ($${MAX_ADJUSTMENT_CENTS / 100})`)
+    }
     const usage = await server.appData.repositories.billing.adjustAdministrativeBudget({ amountCents, userId })
     await server.auditService.record({
       action: 'administration.budget.adjust',
@@ -38,7 +47,7 @@ const adjustBudget: BffDomainService = async (request, context) => {
       actorType: context.auth.authType === 'api-key' ? 'api_key' : 'user',
       actorUserId: context.auth.userId,
       ipAddress: getClientIp(request),
-      metadata: { amountCents },
+      metadata: { amountCents, reason },
       outcome: 'success',
       requestId: request.headers.get('x-request-id') ?? undefined,
       resourceId: userId,
@@ -100,7 +109,7 @@ async function authorizationResponse(
     })
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
-  if (error instanceof Error && /required|non-zero|not found/.test(error.message)) {
+  if (error instanceof Error && /required|non-zero|not found|must not exceed/.test(error.message)) {
     return NextResponse.json({ error: error.message }, { status: 400 })
   }
   throw error

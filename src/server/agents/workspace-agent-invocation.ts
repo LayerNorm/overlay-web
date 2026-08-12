@@ -1,18 +1,87 @@
 import 'server-only'
 
 import { streamText } from 'ai'
-import type { Id } from '../../../convex/_generated/dataModel'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
-import { ActEntitlementService } from '@/server/conversations/ActEntitlementService'
+import {
+  ActConversationServiceError,
+  ActEntitlementService,
+} from '@/server/conversations/ActEntitlementService'
+import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
 import { resolveMentionFirstInvocations } from './mention-policy'
 
 export type WorkspaceAgentDelta = {
   agentPrincipalId: string
   agentName: string
   delta: string
+}
+
+export const WORKSPACE_AGENT_INVOCATION_REASON_CODES = [
+  'room_access_denied',
+  'not_a_collaboration_room',
+  'no_agent_participant',
+  'not_entitled',
+  'usage_limited',
+  'model_failed',
+  'empty_response',
+] as const
+
+export type WorkspaceAgentInvocationReasonCode =
+  typeof WORKSPACE_AGENT_INVOCATION_REASON_CODES[number]
+
+const USER_SAFE_MESSAGES: Record<WorkspaceAgentInvocationReasonCode, string> = {
+  room_access_denied: 'You do not have access to this conversation.',
+  not_a_collaboration_room: 'Agents can only be mentioned in collaboration rooms.',
+  no_agent_participant: 'No available agent participant could be resolved.',
+  not_entitled: 'This agent is not available on your current plan.',
+  usage_limited: 'Agent usage is temporarily limited. Try again later.',
+  model_failed: 'The agent could not generate a reply. Try again.',
+  empty_response: 'The agent returned an empty response. Try again.',
+}
+
+export class WorkspaceAgentInvocationError extends Error {
+  constructor(
+    readonly reasonCode: WorkspaceAgentInvocationReasonCode,
+    message = USER_SAFE_MESSAGES[reasonCode],
+  ) {
+    super(message)
+    this.name = 'WorkspaceAgentInvocationError'
+  }
+}
+
+async function loadAccessibleConversation(args: {
+  actorUserId: string
+  conversationId: string
+  workspaceId: string
+  collaboration: ConversationCollaborationRepository
+  messageId: string
+}): Promise<NonNullable<
+  Awaited<ReturnType<ConversationCollaborationRepository['getAccessibleConversation']>>
+>> {
+  try {
+    const conversation = await args.collaboration.getAccessibleConversation({
+      actorUserId: args.actorUserId,
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+    })
+    if (conversation) return conversation
+    logger.warn('[workspace-agent] room access denied', {
+      conversationId: args.conversationId,
+      reason: 'room_access_denied',
+      workspaceId: args.workspaceId,
+    })
+  } catch (error) {
+    logger.error('[workspace-agent] room access denied', {
+      conversationId: args.conversationId,
+      error,
+      messageId: args.messageId,
+      reason: 'room_access_denied',
+      workspaceId: args.workspaceId,
+    })
+  }
+  throw new WorkspaceAgentInvocationError('room_access_denied')
 }
 
 export async function invokeWorkspaceAgentsForHumanMessage(args: {
@@ -33,24 +102,38 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
   signal?: AbortSignal
 }): Promise<void> {
   const server = getOverlayServerContext()
-  const conversationId = args.conversationId as Id<'conversations'>
-  const [conversation, participants, history, directory] = await Promise.all([
-    server.appData.repositories.conversations.getConversationById({
-      conversationId, userId: args.actorUserId,
-    }),
-    server.appData.repositories.conversationCollaboration.listParticipants({
+  const collaboration = server.appData.repositories.conversationCollaboration
+  const conversation = await loadAccessibleConversation({
+    actorUserId: args.actorUserId,
+    collaboration,
+    conversationId: args.conversationId,
+    messageId: args.messageId,
+    workspaceId: args.workspaceId,
+  })
+  const [participants, history, directory] = await Promise.all([
+    collaboration.listParticipants({
       actorUserId: args.actorUserId, conversationId: args.conversationId, workspaceId: args.workspaceId,
     }),
-    server.appData.repositories.conversations.getConversationMessages({
-      conversationId, userId: args.actorUserId,
+    collaboration.listMessages({
+      actorUserId: args.actorUserId,
+      conversationId: args.conversationId,
+      limit: 100,
+      workspaceId: args.workspaceId,
     }),
     server.workspaceAgentService.list({ actorUserId: args.actorUserId, workspaceId: args.workspaceId }),
   ])
-  if (!conversation || (conversation.conversationType ?? 'personal') === 'personal') return
+  if ((conversation.conversationType ?? 'personal') === 'personal') {
+    logger.warn('[workspace-agent] room is not a collaboration room', {
+      conversationId: args.conversationId,
+      reason: 'not_a_collaboration_room',
+      workspaceId: args.workspaceId,
+    })
+    throw new WorkspaceAgentInvocationError('not_a_collaboration_room')
+  }
   const threadRoot = args.threadRootMessageId
     ? history.find((message) => message._id === args.threadRootMessageId)
     : undefined
-  const principalIds = resolveMentionFirstInvocations({
+  const resolvedPrincipalIds = resolveMentionFirstInvocations({
     authorKind: 'human',
     conversationType: conversation.conversationType ?? 'personal',
     participants: participants.map((participant) => ({
@@ -62,14 +145,52 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       ? threadRoot.authorPrincipalId
       : undefined,
   })
-  if (principalIds.length === 0) return
+  const principalIds = resolvedPrincipalIds
+  if (principalIds.length === 0) {
+    logger.warn('[workspace-agent] no agent participant resolved', {
+      conversationId: args.conversationId,
+      reason: 'no_agent_participant',
+      workspaceId: args.workspaceId,
+    })
+    throw new WorkspaceAgentInvocationError('no_agent_participant')
+  }
+  // Cap the number of agents that can be invoked per message to prevent
+  // cost amplification from mass-mentioning agents. Each agent gets its own
+  // budget reservation, so without a cap a user could mention many agents
+  // and consume significant tokens in a single message.
+  const MAX_AGENTS_PER_MESSAGE = 5
+  if (principalIds.length > MAX_AGENTS_PER_MESSAGE) {
+    logger.warn('[workspace-agent] too many agents mentioned, capping', {
+      conversationId: args.conversationId,
+      count: principalIds.length,
+      limit: MAX_AGENTS_PER_MESSAGE,
+      workspaceId: args.workspaceId,
+    })
+  }
+  const cappedPrincipalIds = principalIds.slice(0, MAX_AGENTS_PER_MESSAGE)
   const agentsByPrincipal = new Map(directory.agents.map((agent) => [agent.principalId, agent]))
-  for (const principalId of principalIds) {
+  let completedResponses = 0
+  let alreadyCompletedResponses = 0
+  let lastFailureReason: WorkspaceAgentInvocationReasonCode | undefined
+  for (const principalId of cappedPrincipalIds) {
     const agent = agentsByPrincipal.get(principalId)
-    if (!agent || agent.archivedAt) continue
+    if (!agent || agent.archivedAt) {
+      lastFailureReason = 'no_agent_participant'
+      logger.warn('[workspace-agent] mentioned agent is unavailable', {
+        conversationId: args.conversationId,
+        principalId,
+        reason: 'no_agent_participant',
+        workspaceId: args.workspaceId,
+      })
+      continue
+    }
     const invocationNonce = `agent:${args.messageId}:${agent.id}`
-    if (history.some((message) => message.clientNonce === invocationNonce)) continue
+    if (history.some((message) => message.clientNonce === invocationNonce)) {
+      alreadyCompletedResponses += 1
+      continue
+    }
     let reservationId: string | null = null
+    let failureReason: WorkspaceAgentInvocationReasonCode = 'model_failed'
     try {
       const entitlementService = new ActEntitlementService({
         repository: server.appData.repositories.conversations,
@@ -77,7 +198,9 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       })
       const { paid, runtimeEntitlements } = await entitlementService.gateModelAccess({
         effectiveModelId: agent.modelId,
+        programmaticSubjectId: `agent:${agent.id}`,
         userId: args.actorUserId,
+        workspaceId: args.workspaceId,
       })
       const estimatedInputTokens = Math.ceil(JSON.stringify(history.slice(-24)).length / 4) + 1_000
       const reservation = await server.chatUsagePolicy.reserveForAttempt({
@@ -95,12 +218,17 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
           'workspace-agent-invocation',
           invocationNonce,
         ),
+        programmaticSubjectId: `agent:${agent.id}`,
         userId: args.actorUserId,
+        workspaceId: args.workspaceId,
       })
       if (!reservation.ok) {
+        failureReason = 'usage_limited'
+        lastFailureReason = failureReason
         logger.warn('[workspace-agent] invocation skipped by usage policy', {
           agentId: agent.id,
           conversationId: args.conversationId,
+          reason: failureReason,
           statusCode: reservation.failure.statusCode,
         })
         continue
@@ -135,48 +263,62 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         ].join('\n'),
       })
       let streamed = ''
+      let streamFailed = false
       try {
         for await (const delta of result.textStream) {
           streamed += delta
           args.onDelta?.({ agentPrincipalId: agent.principalId, agentName: agent.name, delta })
         }
       } catch (streamError) {
+        streamFailed = true
+        failureReason = 'model_failed'
+        lastFailureReason = failureReason
         // A disconnect or timeout still leaves partial text worth keeping; an
         // empty result falls through to the release path below.
         logger.warn('[workspace-agent] stream ended early', {
           agentId: agent.id,
           error: streamError instanceof Error ? streamError.message : String(streamError),
+          reason: failureReason,
         })
       }
       const usage = await Promise.resolve(result.usage).catch((_error) => undefined)
       const content = streamed.trim()
       if (!content) {
+        failureReason = streamFailed ? 'model_failed' : 'empty_response'
+        lastFailureReason = failureReason
         await server.chatUsagePolicy.releaseReservation({
           reason: 'workspace_agent_empty_response',
           reservationId,
           userId: args.actorUserId,
         })
+        logger.warn('[workspace-agent] invocation produced no response', {
+          agentId: agent.id,
+          conversationId: args.conversationId,
+          reason: failureReason,
+        })
         reservationId = null
         continue
       }
-      const responseId = await server.appData.repositories.conversations.addMessage({
-        conversationId,
-        userId: args.actorUserId,
+      const responseId = await collaboration.addAgentMessage({
+        actorUserId: args.actorUserId,
+        conversationId: args.conversationId,
         workspaceId: args.workspaceId,
-        authorKind: 'agent',
         authorPrincipalId: agent.principalId,
         clientNonce: invocationNonce,
         threadRootMessageId: args.threadRootMessageId,
         turnId: `agent_${args.messageId}_${agent.id}`,
-        role: 'assistant',
-        mode: 'act',
         content,
-        contentType: 'text',
         modelId: agent.modelId,
         tokens: usageTokens(usage),
-        skipMemoryExtraction: true,
       })
-      if (!responseId) logger.warn('[workspace-agent] response was not persisted', { agentId: agent.id })
+      if (!responseId) {
+        failureReason = 'model_failed'
+        lastFailureReason = failureReason
+        logger.warn('[workspace-agent] response was not persisted', {
+          agentId: agent.id,
+          reason: failureReason,
+        })
+      } else completedResponses += 1
       const tokens = usageTokens(usage) ?? { input: 0, output: 0 }
       const recorded = await server.chatUsagePolicy.recordFinishedUsage({
         forceFreeTierLimits: !paid,
@@ -188,6 +330,9 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
       })
       reservationId = recorded.reservationId
     } catch (error) {
+      const isEntitlementError = error instanceof ActConversationServiceError
+      failureReason = isEntitlementError ? 'not_entitled' : failureReason
+      lastFailureReason = failureReason
       await server.chatUsagePolicy.releaseReservation({
         reason: 'workspace_agent_invocation_failed',
         reservationId,
@@ -198,9 +343,13 @@ export async function invokeWorkspaceAgentsForHumanMessage(args: {
         conversationId: args.conversationId,
         error,
         messageId: args.messageId,
+        reason: failureReason,
         workspaceId: args.workspaceId,
       })
     }
+  }
+  if (completedResponses === 0 && alreadyCompletedResponses === 0) {
+    throw new WorkspaceAgentInvocationError(lastFailureReason ?? 'model_failed')
   }
 }
 

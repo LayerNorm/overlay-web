@@ -5,8 +5,10 @@ import type { HybridSearchResult } from '@/shared/knowledge/hybrid-search'
 export type KnowledgeSearchArgs = {
   accessToken?: string
   billing: {
+    actorUserId: string
     idempotencyKey: string
     operationId: string
+    programmaticSubjectId?: string
     requestFingerprint: string
   }
   canonicalSourceIds?: string[]

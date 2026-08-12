@@ -61,6 +61,11 @@ export const OWNER_FUNDED_OPERATIONS = [
     method: 'POST',
     path: '/api/v1/knowledge/search',
   },
+  {
+    id: 'knowledge.knowledge-base-search',
+    method: 'POST',
+    path: '/api/v1/knowledge-bases/:knowledgeBaseId/search',
+  },
 ] as const
 
 export type OwnerFundedOperation = (typeof OWNER_FUNDED_OPERATIONS)[number]
@@ -79,9 +84,14 @@ export function getOwnerFundedOperation(
   method: string,
   pathname: string,
 ): OwnerFundedOperation | null {
-  return OWNER_FUNDED_OPERATION_BY_ROUTE.get(
+  const exact = OWNER_FUNDED_OPERATION_BY_ROUTE.get(
     `${method.toUpperCase()} ${pathname}`,
-  ) ?? null
+  )
+  if (exact) return exact
+  if (method.toUpperCase() === 'POST' && /^\/api\/v1\/knowledge-bases\/[^/]+\/search$/.test(pathname)) {
+    return OWNER_FUNDED_OPERATIONS.find((operation) => operation.id === 'knowledge.knowledge-base-search') ?? null
+  }
+  return null
 }
 
 export function ownerFundedOperationRequiresIdempotencyKey(

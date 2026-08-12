@@ -209,6 +209,16 @@ export function AutomationEditorPanel({
       onModelIdChange={(modelId) => updateDraft({ modelId })}
       onSave={() => void saveAutomation()}
       onTest={() => void testAutomation()}
+      renderFlow={draft.graph && draft.graph.nodes.length > 0
+        ? () => (
+          <AutomationRunViewer
+            graph={draft.graph!}
+            runs={runs}
+            workflowRunId={liveWorkflowRunId}
+            onGraphChange={(graph) => updateDraft({ graph })}
+          />
+        )
+        : undefined}
       renderInstructionsEditor={({ value, onChange }) => (
         <Suspense
           fallback={
@@ -224,16 +234,11 @@ export function AutomationEditorPanel({
         </Suspense>
       )}
       />
-      {draft.graph && draft.graph.nodes.length > 0 && (
-        <section className="mx-auto w-full max-w-3xl border-t border-[var(--border)] pt-6">
-          <AutomationRunViewer
-            graph={draft.graph}
-            runs={runs}
-            workflowRunId={liveWorkflowRunId}
-          />
-        </section>
-      )}
-      <section className="mx-auto w-full max-w-3xl border-t border-[var(--border)] pt-6">
+      {/* Matches the form's own `px-4` container above. Without the padding this
+          section ran to the window edges while the cards stayed inset, and the
+          border-t drew a full-width rule that nothing else in the page uses —
+          the cards already separate the sections. */}
+      <section className="mx-auto w-full max-w-4xl px-4">
         <div className="mb-3 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-semibold text-[var(--foreground)]">Run history</h2>

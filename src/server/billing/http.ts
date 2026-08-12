@@ -7,10 +7,19 @@ import { publicEnv } from '@/shared/env/public-env'
 import { DEFAULT_APP_URL, normalizeAppBaseUrl } from '@/shared/web/normalize-app-url'
 import { BillingCheckoutService } from './BillingCheckoutService'
 import { BillingCustomerService, BillingServiceError } from './BillingCustomerService'
+import { WorkspaceBillingService } from './WorkspaceBillingService'
 import type { BillingRepository } from './BillingRepository'
+import type { UsageRepository } from '@/server/usage/UsageRepository'
+import {
+  resolveWorkspaceBillingRollout,
+  workspaceBillingRolloutConfigFromEnv,
+} from '@/shared/billing/workspace-billing-rollout'
 
 const billingRepository = repositoryProxy<BillingRepository>(
   () => getOverlayServerContext().appData.repositories.billing,
+)
+const usageRepository = repositoryProxy<UsageRepository>(
+  () => getOverlayServerContext().appData.repositories.usage,
 )
 
 export const billingCustomerService = new BillingCustomerService({
@@ -22,6 +31,18 @@ export const billingCheckoutService = new BillingCheckoutService({
   baseUrl: getBillingBaseUrl,
   billingProvider: () => getOverlayServerContext().billing,
   lifecycleEvents: () => getOverlayServerContext().lifecycleEvents,
+})
+
+export const workspaceBillingService = new WorkspaceBillingService({
+  repository: billingRepository,
+  baseUrl: getBillingBaseUrl,
+  billingProvider: () => getOverlayServerContext().billing,
+  rollout: (workspaceId) => resolveWorkspaceBillingRollout(
+    workspaceBillingRolloutConfigFromEnv(process.env),
+    workspaceId,
+  ),
+  usage: usageRepository,
+  workspaces: repositoryProxy(() => getOverlayServerContext().workspaceService),
 })
 
 function getBillingBaseUrl(): string {

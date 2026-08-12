@@ -1,6 +1,8 @@
 export type {
   UsageEvent,
   UsageRepository,
+  UsageReconciliationQueueItem,
+  UsageReconciliationSweepResult,
   UsageReservationResult,
   UsageReservationStatus,
   UsageSpendKind,

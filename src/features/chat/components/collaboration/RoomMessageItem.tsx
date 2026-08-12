@@ -142,7 +142,6 @@ export function RoomMessageItem({
   highlighted = false,
   grouped = false,
 }: RoomMessageItemProps) {
-  const [editHistoryOpen, setEditHistoryOpen] = useState(false)
   const { mine } = message
   const isAgent = message.authorKind === 'agent' || message.authorKind === 'model'
   const timeLabel = new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -174,7 +173,7 @@ export function RoomMessageItem({
   /** Human and agent messages share the same safe GFM renderer. */
   const humanBody = message.text ? (
     <div className="text-[15px] leading-relaxed text-[var(--foreground)]">
-      <MarkdownMessage text={message.text} isStreaming={false} mentions={message.mentions} />
+      <MarkdownMessage text={message.text} isStreaming={false} />
     </div>
   ) : null
 
@@ -235,7 +234,7 @@ export function RoomMessageItem({
     <div className="mt-1 flex w-full gap-2">
       <Textarea
         autoFocus
-        rows={2}
+        rows={3}
         value={editingContent}
         onChange={(event) => onEditingContentChange(event.target.value)}
         onKeyDown={(event) => {
@@ -245,7 +244,7 @@ export function RoomMessageItem({
           }
           if (event.key === 'Escape') onCancelEdit()
         }}
-        className="min-h-12 max-h-32 flex-1 resize-y"
+        className="min-h-20 flex-1 resize-y"
       />
       <button
         type="button"
@@ -319,41 +318,6 @@ export function RoomMessageItem({
     </button>
   ) : null
 
-  const editHistory = message.editedAt ? (
-    <div className={`flex flex-col gap-1 ${mine ? 'items-end' : 'items-start'}`}>
-      <button
-        type="button"
-        onClick={() => setEditHistoryOpen((open) => !open)}
-        aria-expanded={editHistoryOpen}
-        className="text-[11px] text-[var(--muted-light)] transition-colors hover:text-[var(--foreground)] hover:underline"
-      >
-        edited
-      </button>
-      {editHistoryOpen ? (
-        <div
-          className="w-full max-w-md rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-2.5 text-left shadow-sm"
-          data-testid="message-edit-history"
-        >
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--muted)]">Previous versions</p>
-          {message.editHistory?.length ? (
-            <ol className="space-y-2">
-              {[...message.editHistory].reverse().map((version, index) => (
-                <li key={`${version.editedAt}-${index}`} className="border-t border-[var(--border)] pt-2 first:border-t-0 first:pt-0">
-                  <MarkdownMessage text={version.content} isStreaming={false} mentions={message.mentions} />
-                  <time className="mt-1 block text-[10px] text-[var(--muted-light)]">
-                    {new Date(version.editedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
-                  </time>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="text-xs text-[var(--muted)]">No previous version is available for this older edit.</p>
-          )}
-        </div>
-      ) : null}
-    </div>
-  ) : null
-
   const toolbar = (
     <RoomMessageToolbar
       alignEnd={mine}
@@ -388,7 +352,7 @@ export function RoomMessageItem({
           {attachments}
           {editing ? editor : message.text ? (
             <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
-              <MarkdownMessage text={message.text} isStreaming={false} mentions={message.mentions} />
+              <MarkdownMessage text={message.text} isStreaming={false} />
             </UserMessageBubble>
           ) : null}
           {message.delivery === 'failed' ? (
@@ -396,7 +360,6 @@ export function RoomMessageItem({
               Failed to send · Retry
             </button>
           ) : null}
-          {editHistory}
           {reactionRow}
           {threadEntry}
         </div>
@@ -418,6 +381,7 @@ export function RoomMessageItem({
             {message.authorName}
           </span>
           {!grouped ? <time className="shrink-0 text-[11px] text-[var(--muted-light)]">{timeLabel}</time> : null}
+          {message.editedAt ? <span className="text-[11px] text-[var(--muted-light)]">edited</span> : null}
           {pinned ? <Pin size={11} className="shrink-0 text-[var(--muted-light)]" /> : null}
         </div>
         {attachments}
@@ -448,7 +412,6 @@ export function RoomMessageItem({
         ) : (
           humanBody
         )}
-        {editHistory}
         {reactionRow}
         {threadEntry}
       </div>

@@ -17,6 +17,7 @@ import {
   UserPlus,
   Users,
   UsersRound,
+  WalletCards,
 } from 'lucide-react'
 import {
   Button,
@@ -46,6 +47,7 @@ import {
   InviteWorkspaceDialog,
   TeamMembersDialog,
 } from './WorkspaceManagementDialogs'
+import { WorkspaceBillingSection } from './WorkspaceBillingSection'
 
 export type WorkspaceManagementState =
   | { status: 'loading' }
@@ -107,6 +109,14 @@ const TABS: ReadonlyArray<{
     emptyTitle: 'Sharing policy',
     emptyDescription: 'Control how resources leave this workspace.',
     action: 'Update policy',
+  },
+  {
+    id: 'billing',
+    label: 'Billing',
+    icon: WalletCards,
+    emptyTitle: 'Workspace billing',
+    emptyDescription: 'Manage shared credits and usage.',
+    action: 'Manage billing',
   },
 ]
 
@@ -582,8 +592,10 @@ function unavailableActionTitle(tab: WorkspaceSettingsTab): string {
 
 export function WorkspaceSettingsPanel({
   client = workspaceManagementClient,
+  initialTab = 'people',
 }: {
   client?: WorkspaceManagementClient
+  initialTab?: WorkspaceSettingsTab
 }) {
   const {
     activeWorkspace,
@@ -591,7 +603,7 @@ export function WorkspaceSettingsPanel({
     error: workspaceError,
     refresh: refreshWorkspaces,
   } = useWorkspace()
-  const [activeTab, setActiveTab] = useState<WorkspaceSettingsTab>('people')
+  const [activeTab, setActiveTab] = useState<WorkspaceSettingsTab>(initialTab)
   const [state, setState] = useState<WorkspaceManagementState>({ status: 'loading' })
   const [policyState, setPolicyState] = useState<WorkspaceSharingPolicyState>({ status: 'loading' })
   const [policyBusy, setPolicyBusy] = useState(false)
@@ -652,7 +664,7 @@ export function WorkspaceSettingsPanel({
   }, [activeTab, activeWorkspace, client, refreshKey])
 
   useEffect(() => {
-    if (!activeWorkspace || activeTab === 'sharing') return
+    if (!activeWorkspace || activeTab === 'sharing' || activeTab === 'billing') return
     const controller = new AbortController()
     setState({ status: 'loading' })
     void client.load(activeWorkspace.id, activeTab, controller.signal)
@@ -750,7 +762,7 @@ export function WorkspaceSettingsPanel({
     )
   }
 
-  const showHeaderPrimaryAction = activeTab !== 'sharing'
+  const showHeaderPrimaryAction = activeTab !== 'sharing' && activeTab !== 'billing'
     && state.status === 'ready'
     && (
       (activeTab === 'teams' && state.currentRole !== 'guest')
@@ -813,7 +825,9 @@ export function WorkspaceSettingsPanel({
             {actionError}
           </div>
         ) : null}
-        {activeTab === 'sharing' ? (
+        {activeTab === 'billing' ? (
+          <WorkspaceBillingSection client={client} workspace={activeWorkspace} />
+        ) : activeTab === 'sharing' ? (
           <WorkspaceSharingPolicySection
             state={policyState}
             busy={policyBusy}

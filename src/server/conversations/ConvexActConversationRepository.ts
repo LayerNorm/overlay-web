@@ -154,6 +154,10 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async addMessage(args: {
+    billingAccountId?: string
+    billingActorUserId?: string
+    billingSpendSubjectId?: string
+    billingSpendSubjectKind?: 'member' | 'programmatic'
     conversationId: Id<'conversations'>
     content: string
     contentType: 'text' | 'image' | 'video'

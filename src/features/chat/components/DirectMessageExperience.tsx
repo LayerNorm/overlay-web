@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
+import { FloatingMenu, MenuItem } from '@overlay/ui/primitives'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { AttachmentPreviewDialog } from '@overlay/chat-react'
@@ -55,7 +56,6 @@ import { usePostgresConversationEvents } from './chat/usePostgresConversationEve
 import { RoomMessageItem, roomMessageDomId } from './collaboration/RoomMessageItem'
 import { ConvexRoomMessageSubscription } from './collaboration/ConvexRoomMessageSubscription'
 import { takePendingCollaborationMessage } from '../lib/pending-collaboration-message'
-import { dispatchCollaborationNotificationsChanged } from '@/shared/chat/collaboration-events'
 import {
   compareRoomMessageRecords,
   mergeRoomMessages,
@@ -175,9 +175,17 @@ export function DirectMessageExperience({
     && appDataCapabilities.provider === 'convex'
     && appDataCapabilities.requiresConvexClient
     && appDataCapabilities.supportsRealtime
-  const postgresLiveSyncEnabled = !showcase
-    && appDataCapabilities.provider === 'postgres'
+  const convexRoomSubscriptionEnabled = convexLiveSyncEnabled
+    && Boolean(authUser?.id && convexAccessToken && activeWorkspaceId)
+  // A Convex WebSocket subscription and BFF long-poll must never reconcile the
+  // same optimistic row concurrently: that produces a second visible swap
+  // after send. Long-poll remains the fallback until Convex auth is ready.
+  const roomEventSyncEnabled = !showcase
     && appDataCapabilities.supportsRealtime
+    && (
+      appDataCapabilities.provider === 'postgres'
+      || (appDataCapabilities.provider === 'convex' && !convexRoomSubscriptionEnabled)
+    )
   const router = useRouter()
   const [participants, setParticipants] = useState<ConversationParticipant[]>(
     showcase ? SHOWCASE_PARTICIPANTS : [],
@@ -195,6 +203,7 @@ export function DirectMessageExperience({
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const menuTriggerRef = useRef<HTMLButtonElement>(null)
   const [roomPanel, setRoomPanel] = useState<RoomPanelKind | null>(null)
   const [addPeopleOpen, setAddPeopleOpen] = useState(false)
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
@@ -297,6 +306,8 @@ export function DirectMessageExperience({
     closeSourcesPanel,
     openAttachmentPreview,
     openFilePreview,
+    panelPresentation,
+    setPanelPresentation,
     setAttachmentPreviewMode,
     sourcesPanel,
   } = useChatPanels()
@@ -330,7 +341,6 @@ export function DirectMessageExperience({
         createdAt: number
         eventSequence?: number
         editedAt?: number
-        editHistory?: Array<{ content: string; editedAt: number }>
         deletedAt?: number
         clientNonce?: string
         threadRootMessageId?: string
@@ -354,7 +364,6 @@ export function DirectMessageExperience({
             createdAt: number
             eventSequence?: number
             editedAt?: number
-            editHistory?: Array<{ content: string; editedAt: number }>
             deletedAt?: number
             clientNonce?: string
             threadRootMessageId?: string
@@ -396,7 +405,6 @@ export function DirectMessageExperience({
           createdAt: number
           eventSequence?: number
           editedAt?: number
-          editHistory?: Array<{ content: string; editedAt: number }>
           deletedAt?: number
           clientNonce?: string
           threadRootMessageId?: string
@@ -422,24 +430,43 @@ export function DirectMessageExperience({
     }
   }, [conversationId, hasMoreMessages, loadingOlderMessages, showcase])
 
+  const clearCollaborationNotifications = useCallback(async () => {
+    if (showcase) return
+    try {
+      const { notifications } = await overlayAppClient.conversations.notifications({
+        unreadOnly: true,
+        limit: 100,
+      })
+      const unreadIds = notifications
+        .filter((notification) => notification.conversationId === conversationId)
+        .map((notification) => notification.id)
+      if (unreadIds.length > 0) {
+        await overlayAppClient.conversations.markNotificationsRead(unreadIds)
+      }
+    } catch {
+      // Badge clear is best-effort; the room transcript still works.
+    }
+    window.dispatchEvent(new CustomEvent('overlay:collaboration-read', {
+      detail: { conversationId },
+    }))
+  }, [conversationId, showcase])
+
   const markVisibleRead = useCallback(async () => {
     if (showcase || document.visibilityState !== 'visible') return
-    const node = listRef.current
-    if (!node || node.scrollHeight - node.scrollTop - node.clientHeight > 96) return
     if (readMarkInFlightRef.current) return
     readMarkInFlightRef.current = true
     try {
-      await Promise.all([
-        overlayAppClient.conversations.updateParticipantState(conversationId, { markRead: true }),
-        overlayAppClient.conversations.markConversationNotificationsRead(conversationId),
-      ])
+      // Opening a room should clear unread immediately (Slack-style). Do not
+      // wait for the transcript to settle at the bottom — that race left
+      // badges stuck after the user switched into a DM or channel.
+      await overlayAppClient.conversations.updateParticipantState(conversationId, { markRead: true })
       setUnreadBoundarySequence(null)
       setNewMessageCount(0)
-      dispatchCollaborationNotificationsChanged()
+      await clearCollaborationNotifications()
     } finally {
       readMarkInFlightRef.current = false
     }
-  }, [conversationId, showcase])
+  }, [clearCollaborationNotifications, conversationId, showcase])
 
   const loadPresence = useCallback(async () => {
     const result = await overlayAppClient.conversations.presence(conversationId)
@@ -468,7 +495,7 @@ export function DirectMessageExperience({
 
   usePostgresConversationEvents({
     activeChatIdRef: activeConversationRef,
-    enabled: postgresLiveSyncEnabled,
+    enabled: roomEventSyncEnabled,
     hasActiveLocalStream: () => Object.keys(streamingAgentReplies).length > 0,
     loadChats: async () => {},
     onRemoteStop: () => {},
@@ -490,9 +517,10 @@ export function DirectMessageExperience({
       // decide whether its critical transcript can open.
       void Promise.allSettled([loadPresence(), loadCollaboration()])
       void Promise.all([loadParticipants(), loadMessages()])
-        .catch(() => {
-          if (!cancelled) setNotice('This conversation is unavailable.')
-        })
+        // A room can receive its transcript through the realtime transport
+        // while one of these initial BFF reads is transiently unavailable.
+        // Do not turn that recoverable race into a false access failure.
+        .catch(() => undefined)
         .finally(() => {
           if (!cancelled) setLoading(false)
         })
@@ -544,10 +572,24 @@ export function DirectMessageExperience({
     prependScrollRef.current = null
   }, [messages.length])
 
-  useEffect(() => {
+  // Pin to latest after the initial transcript paint (and when stick-to-bottom).
+  // Double rAF waits for layout of markdown/images so open-room no longer starts
+  // mid-history at the top of a long channel.
+  useLayoutEffect(() => {
+    if (loading) return
+    if (!stickToBottomRef.current) return
     const node = listRef.current
-    if (node && stickToBottomRef.current) node.scrollTop = node.scrollHeight
-  }, [messages.length])
+    if (!node) return
+    const pin = () => {
+      node.scrollTop = node.scrollHeight
+    }
+    pin()
+    const frame = window.requestAnimationFrame(() => {
+      pin()
+      window.requestAnimationFrame(pin)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [conversationId, loading, messages.length])
 
   // Restore a half-written message when the room reopens. Storage failures are
   // absorbed by the draft module, so private browsing simply starts empty.
@@ -597,6 +639,18 @@ export function DirectMessageExperience({
       counts.set(root, (counts.get(root) ?? 0) + 1)
     }
     return counts
+  }, [messages])
+
+  /** Latest reply per root for Slack-style thread teasers under the parent row. */
+  const threadTeasers = useMemo(() => {
+    const latest = new Map<string, OptimisticMessage>()
+    for (const message of messages) {
+      const root = message.threadRootMessageId
+      if (!root || message.deletedAt) continue
+      const existing = latest.get(root)
+      if (!existing || message.createdAt >= existing.createdAt) latest.set(root, message)
+    }
+    return latest
   }, [messages])
 
   const participantMentions = useMemo(() => participants.map((participant) => ({
@@ -792,7 +846,7 @@ export function DirectMessageExperience({
           ? { replyToTurnId: options.reply.replyToTurnId, replySnippet: options.reply.snippet }
           : {}),
       })
-      await loadMessages()
+      if (!convexRoomSubscriptionEnabled) await loadMessages()
       if (invokedAgents.length) {
         const humanMessageId = saved.messageId ?? messagesRef.current.find((message) => (
           message.clientNonce === clientNonce
@@ -809,6 +863,7 @@ export function DirectMessageExperience({
           })
         }
       }
+      void saved
     } catch {
       setMessages((current) => current.map((message) => (
         message.clientNonce === clientNonce ? { ...message, delivery: 'failed' } : message
@@ -853,7 +908,6 @@ export function DirectMessageExperience({
         mentionedPrincipalIds,
         ...(threadRootMessageId ? { threadRootMessageId } : {}),
       })
-      if (!response.ok) throw new Error(`Agent reply failed with status ${response.status}`)
       const reader = response.body?.getReader()
       if (!reader) return
       const decoder = new TextDecoder()
@@ -874,10 +928,6 @@ export function DirectMessageExperience({
           } catch {
             continue
           }
-          if (event.type === 'error') {
-            setNotice('The mentioned agent could not respond. Try again.')
-            continue
-          }
           if (event.type !== 'delta' || !event.delta) continue
           const principalId = event.agentPrincipalId ?? fallbackAgent?.principalId ?? 'agent'
           const next = (accumulated.get(principalId) ?? '') + event.delta
@@ -894,12 +944,10 @@ export function DirectMessageExperience({
         }
       }
     } catch {
-      // The reply may still be persisted server-side; the next live update
-      // picks it up, while the sender gets an actionable failure state.
-      setNotice('The mentioned agent could not respond. Try again.')
+      // The reply is still persisted server-side; the next poll picks it up.
     } finally {
       setStreamingAgentReplies({})
-      await loadMessages().catch(() => undefined)
+      if (!convexRoomSubscriptionEnabled) await loadMessages().catch(() => undefined)
     }
   }
 
@@ -1102,6 +1150,8 @@ export function DirectMessageExperience({
     attachmentPreviewMode,
     closeAttachmentPreview,
     closeSourcesPanel,
+    panelPresentation,
+    setPanelPresentation,
     setAttachmentPreviewMode,
     sourcesPanel,
     renderAttachmentViewer,
@@ -1109,14 +1159,20 @@ export function DirectMessageExperience({
 
   function renderMessage(message: OptimisticMessage, options?: { inThread?: boolean; grouped?: boolean }) {
     const author = participants.find((participant) => participant.principalId === message.authorPrincipalId)
+    const authorName = author?.displayName
+      ?? (message.authorKind === 'agent' || message.authorKind === 'model' ? 'Agent' : 'Someone')
     const view = toRoomMessageView({
       message,
       currentPrincipalId,
-      authorName: author?.displayName
-        ?? (message.authorKind === 'agent' || message.authorKind === 'model' ? 'Agent' : 'Someone'),
+      authorName,
       mentions: participantMentions,
       streaming: message.status === 'generating',
     })
+    const teaserMessage = options?.inThread ? null : threadTeasers.get(message.id) ?? null
+    const teaserAuthor = teaserMessage
+      ? participants.find((participant) => participant.principalId === teaserMessage.authorPrincipalId)?.displayName
+        ?? (teaserMessage.authorKind === 'agent' || teaserMessage.authorKind === 'model' ? 'Agent' : 'Someone')
+      : null
     return (
       <RoomMessageItem
         key={message.id}
@@ -1129,6 +1185,11 @@ export function DirectMessageExperience({
             reactedByCurrentPrincipal: reaction.reactedByCurrentPrincipal,
           }))}
         replyCount={options?.inThread ? 0 : replyCounts.get(message.id) ?? 0}
+        threadTeaser={teaserMessage && teaserAuthor ? {
+          authorName: teaserAuthor,
+          text: teaserMessage.content.trim().slice(0, 120),
+          createdAt: teaserMessage.createdAt,
+        } : null}
         pinned={pins.some((pin) => pin.messageId === message.id)}
         saved={savedMessages.some((row) => (
           row.conversationId === conversationId && row.messageId === message.id
@@ -1184,6 +1245,7 @@ export function DirectMessageExperience({
         }}
         reactions={[]}
         replyCount={0}
+        threadTeaser={null}
         pinned={false}
         saved={false}
         editing={false}
@@ -1275,7 +1337,7 @@ export function DirectMessageExperience({
 
   return (
     <>
-      {convexLiveSyncEnabled && authUser?.id && convexAccessToken && activeWorkspaceId ? (
+      {convexRoomSubscriptionEnabled && authUser?.id && convexAccessToken && activeWorkspaceId ? (
         <ConvexRoomMessageSubscription
           accessToken={convexAccessToken}
           actorUserId={authUser.id}
@@ -1378,6 +1440,7 @@ export function DirectMessageExperience({
                   {participants.length}
                 </button>
                 <button
+                  ref={menuTriggerRef}
                   type="button"
                   aria-label="Conversation options"
                   onClick={() => setMenuOpen((open) => !open)}
@@ -1385,27 +1448,40 @@ export function DirectMessageExperience({
                 >
                   <MoreHorizontal size={15} />
                 </button>
-                {menuOpen ? (
-                  <div className="absolute right-0 top-10 z-30 w-48 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-1 shadow-xl">
+                <FloatingMenu
+                  anchorRef={menuTriggerRef}
+                  open={menuOpen}
+                  onOpenChange={setMenuOpen}
+                  align="end"
+                  className="w-48 p-1"
+                >
                     <MenuButton
                       icon={currentParticipant?.notificationLevel === 'muted' ? Bell : BellOff}
                       label={currentParticipant?.notificationLevel === 'muted' ? 'Unmute' : 'Mute'}
-                      onClick={() => void updateState({
-                        notificationLevel: currentParticipant?.notificationLevel === 'muted' ? 'all' : 'muted',
-                      }, currentParticipant?.notificationLevel === 'muted' ? 'Notifications on' : 'Conversation muted')}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        void updateState({
+                          notificationLevel: currentParticipant?.notificationLevel === 'muted' ? 'all' : 'muted',
+                        }, currentParticipant?.notificationLevel === 'muted' ? 'Notifications on' : 'Conversation muted')
+                      }}
                     />
                     <MenuButton
                       icon={Bell}
                       label="Mark unread"
-                      onClick={() => void updateState({ markUnread: true }, 'Marked unread')}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        void updateState({ markUnread: true }, 'Marked unread')
+                      }}
                     />
                     <MenuButton
                       icon={Archive}
                       label="Archive"
-                      onClick={() => void updateState({ archived: true }, 'Conversation archived')}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        void updateState({ archived: true }, 'Conversation archived')
+                      }}
                     />
-                  </div>
-                ) : null}
+                </FloatingMenu>
               </div>
             )}
           />
@@ -1440,21 +1516,21 @@ export function DirectMessageExperience({
                 }}
                 className="h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4"
               >
-                <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-5 sm:gap-6">
+                <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col justify-end gap-1 sm:gap-1.5">
                   {hasMoreMessages ? (
                     <button
                       type="button"
                       onClick={() => void loadOlderMessages()}
                       disabled={loadingOlderMessages}
-                      className="mx-auto rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] disabled:opacity-60"
+                      className="mx-auto my-2 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] disabled:opacity-60"
                     >
                       {loadingOlderMessages ? 'Loading older messages…' : 'Load older messages'}
                     </button>
                   ) : null}
                   {loading ? (
-                    <div className="space-y-5" aria-label="Loading messages">
+                    <div className="space-y-3 py-4" aria-label="Loading messages">
                       {[0, 1, 2].map((row) => (
-                        <div key={row} className="h-16 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
+                        <div key={row} className="h-12 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
                       ))}
                     </div>
                   ) : mainMessages.length === 0 ? (
@@ -1666,13 +1742,13 @@ function MenuButton({
   onClick(): void
 }) {
   return (
-    <button
+    <MenuItem
       type="button"
       onClick={onClick}
-      className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+      className="h-8 rounded-md px-2"
     >
       <Icon size={13} />
       {label}
-    </button>
+    </MenuItem>
   )
 }

@@ -16,8 +16,10 @@ const BLOCK_CHAR_BUDGET = 9000
  */
 export async function buildAutoRetrievalBundle(args: {
   billing: {
+    actorUserId: string
     idempotencyKey: string
     operationId: string
+    programmaticSubjectId?: string
     requestFingerprint: string
   }
   userMessage: string
@@ -25,6 +27,7 @@ export async function buildAutoRetrievalBundle(args: {
   accessToken?: string
   projectId?: string
   includeMemories?: boolean
+  workspaceId?: string
 }): Promise<AutoRetrievalBundle> {
   const q = args.userMessage.trim()
   if (q.length < MIN_USER_CHARS) {
@@ -37,6 +40,7 @@ export async function buildAutoRetrievalBundle(args: {
       userId: args.userId,
       query: q.slice(0, MAX_QUERY_CHARS),
       projectId: args.projectId,
+      workspaceId: args.workspaceId,
       ...(args.accessToken ? { accessToken: args.accessToken } : {}),
       ...(args.includeMemories === false ? { sourceKind: 'file' as const } : {}),
       m: 10,
@@ -91,14 +95,17 @@ export function formatAutoRetrievalBundle(
  */
 export async function buildAutoRetrievalSystemExtension(args: {
   billing: {
+    actorUserId: string
     idempotencyKey: string
     operationId: string
+    programmaticSubjectId?: string
     requestFingerprint: string
   }
   userMessage: string
   userId: string
   accessToken?: string
   projectId?: string
+  workspaceId?: string
 }): Promise<string> {
   const { extension } = await buildAutoRetrievalBundle(args)
   return extension

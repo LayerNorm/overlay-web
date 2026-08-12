@@ -386,6 +386,24 @@ export async function ensureWorkspaceSandbox(params: {
       autoArchiveInterval: profile.autoArchiveMinutes,
       autoDeleteInterval: -1,
       volumes: [{ volumeId: volume.id, mountPath: WORKSPACE_MOUNT_PATH }] satisfies VolumeMount[],
+      // Restrict outbound network to package registries and common API endpoints.
+      // This prevents sandboxes from being used for cryptocurrency mining, port
+      // scanning internal networks, data exfiltration, or DDoS participation.
+      domainAllowList: [
+        'registry.npmjs.org',
+        'registry.yarnpkg.com',
+        '*.npmjs.org',
+        'pypi.org',
+        'files.pythonhosted.org',
+        'github.com',
+        'raw.githubusercontent.com',
+        'objects.githubusercontent.com',
+        'codeload.github.com',
+        'api.openai.com',
+        'api.anthropic.com',
+        'generativelanguage.googleapis.com',
+        'api.x.ai',
+      ].join(','),
     } satisfies CreateSandboxFromSnapshotParams
 
     try {
@@ -531,6 +549,8 @@ export async function refreshWorkspaceActivity(input: EnsuredDaytonaWorkspace): 
 }
 
 export async function accrueWorkspaceSpend(params: {
+  billingAccountId?: string
+  deferUsageCharge?: boolean
   repository: DaytonaWorkspaceRepository
   workspace: DaytonaWorkspaceRecord
   sandbox: Sandbox
@@ -538,11 +558,13 @@ export async function accrueWorkspaceSpend(params: {
   endedAt: number
   reason: DaytonaUsageReason
 }): Promise<
-  | { success: true; durationSeconds: number; costUsd: number; costCents: number }
+  | { success: true; durationSeconds: number; providerCostUsd: number; costUsd: number; costCents: number }
   | { success: false; skipped: 'missing_workspace' | 'stale_meter_window' }
   | null
 > {
   return await params.repository.accrueUsage({
+      billingAccountId: params.billingAccountId,
+      deferUsageCharge: params.deferUsageCharge,
       userId: params.workspace.userId,
       sandboxId: params.sandbox.id,
       tier: params.workspace.tier,

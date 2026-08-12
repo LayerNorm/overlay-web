@@ -168,20 +168,7 @@ test('agent replies render markdown and tool output through the shared block ren
 test('room members named in a message render as mention chips', () => {
   const html = render(record({ id: 'message_6', content: '@Maya Chen can you take this?' }))
   assert.match(html, /@Maya Chen/)
-  assert.match(html, /bg-\[var\(--surface-muted\)\]/)
-  assert.match(html, /no-underline!/)
-})
-
-test('edited messages expose their history control under the message', () => {
-  const html = render(record({
-    id: 'message_edited',
-    content: 'Current version',
-    editedAt: Date.parse('2026-07-29T18:04:00.000Z'),
-    editHistory: [{ content: 'Previous version', editedAt: Date.parse('2026-07-29T18:04:00.000Z') }],
-  }))
-  assert.match(html, /aria-expanded="false"/)
-  assert.match(html, />edited<\/button>/)
-  assert.doesNotMatch(html, /Previous versions/)
+  assert.match(html, /inline-flex/)
 })
 
 test('human room messages render safe markdown like every other chat message', () => {

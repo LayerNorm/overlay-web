@@ -79,6 +79,15 @@ export class StripeBillingProvider extends CoreStripeBillingProvider {
       getSubscriptionState: repository
         ? (userId) => repository.getSubscriptionByUserIdByServer({ userId }) as Promise<SubscriptionBillingState | null>
         : undefined,
+      getBillingAccountEntitlements: repository
+        ? async (billingAccountId) => {
+            const entitlements = await repository.getBillingAccountEntitlementsByServer({ billingAccountId })
+            return entitlements ? toCoreEntitlements(entitlements) : null
+          }
+        : undefined,
+      getBillingAccountSubscriptionState: repository
+        ? (billingAccountId) => repository.getBillingAccountSubscriptionByServer({ billingAccountId }) as Promise<SubscriptionBillingState | null>
+        : undefined,
       recordUsage: usageRepository
         ? (args: UsageArgs) => usageRepository.recordBatch({
             events: [{
@@ -103,6 +112,14 @@ export class StripeBillingProvider extends CoreStripeBillingProvider {
       topUpQuantityForAmountCents: getTopUpQuantityForCheckout,
       syncSubscriptionCustomer: repository
         ? (args) => repository.upsertSubscription({ ...args }).then(() => undefined)
+        : undefined,
+      syncBillingAccountCustomer: repository
+        ? (args) => repository.upsertBillingAccountSubscription({
+            ...args,
+            planKind: args.planKind ?? 'free',
+            planAmountCents: args.planAmountCents ?? 0,
+            status: args.status ?? 'active',
+          }).then(() => undefined)
         : undefined,
     })
 

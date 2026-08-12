@@ -785,8 +785,10 @@ export function OnboardingTour({
             <div style={{ position: 'absolute', top: spotlightRect.top, left: spotlightRect.left + spotlightRect.width, right: 0, height: spotlightRect.height, pointerEvents: 'auto' }} />
           </>
         )}
+        {/* When the target is missing, do not swallow clicks for the whole app —
+            that blocked invitation accept and other non-chat routes. */}
         {!spotlightRect && (
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'auto' }} />
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
         )}
       </div>
 

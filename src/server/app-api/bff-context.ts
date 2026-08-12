@@ -33,3 +33,22 @@ export function getAuthorizedResourceUserId(context: AppApiRouteContext): string
 export function getGrantedResources(_context: AppApiRouteContext): Array<{ ownerUserId: string; resourceId: string }> {
   return []
 }
+
+export function getBillingProgrammaticSubjectId(
+  context: AppApiRouteContext,
+  explicitResourceId?: string | null,
+): string | undefined {
+  const explicit = explicitResourceId?.trim()
+  if (explicit) return explicit
+  return context.auth.apiKeyId ? `api-key:${context.auth.apiKeyId}` : undefined
+}
+
+export function getTrustedAutomationBillingSubjectId(
+  context: AppApiRouteContext,
+): string | undefined {
+  if (context.auth.authType !== 'service') return undefined
+  const automationId = typeof context.parsedJson.automationId === 'string'
+    ? context.parsedJson.automationId.trim()
+    : ''
+  return automationId ? `automation:${automationId}` : undefined
+}

@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getBillingProgrammaticSubjectId, getTrustedAutomationBillingSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { handleRouteError } from '@/server/app-api/route-errors'
 import { readValidatedJson } from '@/server/app-api/validated-input'
 import { generateImage } from '@/server/ai/sdk'
@@ -29,6 +29,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const { prompt, modelId, aspectRatio, conversationId, turnId, imageUrl, temporaryChat } = bodyResult.data
 
     const { auth } = context
+    const workspaceId = context.workspace.workspace.id
+    const programmaticSubjectId = getBillingProgrammaticSubjectId(context, getTrustedAutomationBillingSubjectId(context))
 
 
     if (!prompt?.trim()) {
@@ -38,7 +40,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const { generationUsagePolicy } = getOverlayServerContext()
 
     // ── Subscription enforcement ──────────────────────────────────────────────
-    const entitlements = await generationUsagePolicy.getEntitlements({ userId: auth.userId })
+    const entitlements = await generationUsagePolicy.getEntitlements({ programmaticSubjectId, userId: auth.userId, workspaceId })
 
     if (!entitlements) {
       return NextResponse.json(
@@ -117,7 +119,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       kind: 'generation',
       modelId: modelId ?? 'image-fallback',
       operationId: 'media.generate-image',
+      programmaticSubjectId,
       requestFingerprint: context.requestFingerprint,
+      workspaceId,
     })
     if (!reservation.ok) {
       return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })
@@ -189,6 +193,18 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         )
       }
       const costCents = billableBudgetCentsFromProviderUsd(costDollars)
+      // Validate that the actual cost does not exceed the reserved amount by more
+      // than a small tolerance. If it does (e.g. pricing changed between reservation
+      // and finalization), mark for manual reconciliation instead of overcharging.
+      if (costDollars > maxProviderCostUsd * 1.1) {
+        logger.warn(`[GenerateImage] ⚠️  Actual cost $${costDollars.toFixed(4)} exceeds reserved max $${maxProviderCostUsd.toFixed(4)} by >10% — marking for reconcile`)
+        await generationUsagePolicy.markForReconcile({
+          userId: auth.userId,
+          reservationId: reservation.reservationId,
+          errorMessage: `cost_exceeds_reservation:actual=${costDollars},reserved=${maxProviderCostUsd}`,
+        }).catch((reconcileError) => logger.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
+        // Still finalize with the reserved amount to avoid overcharging
+      }
       logger.info(`[GenerateImage] 💰 Cost: model=${finalModelId} | provider=$${costDollars.toFixed(4)} billed=${costCents}¢`)
       if (costCents > 0 || reservation.reservationId) {
         try {
@@ -207,7 +223,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
             }],
           })
           if (recordResult) {
-            const updated = await generationUsagePolicy.getEntitlements({ userId: auth.userId })
+            const updated = await generationUsagePolicy.getEntitlements({ programmaticSubjectId, userId: auth.userId, workspaceId })
             if (updated) {
               const totalCents = updated.creditsTotal * 100
               const usedPct = totalCents > 0 ? ((updated.creditsUsed / totalCents) * 100).toFixed(2) : '0.00'

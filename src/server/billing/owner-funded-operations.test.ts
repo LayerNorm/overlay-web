@@ -26,6 +26,14 @@ test('owner-funded operation registry is exact and has unique routes and ids', (
     getOwnerFundedOperation('POST', '/api/v1/generate-image/other'),
     null,
   )
+  assert.equal(
+    getOwnerFundedOperation('POST', '/api/v1/knowledge-bases/kb_123/search')?.id,
+    'knowledge.knowledge-base-search',
+  )
+  assert.equal(
+    getOwnerFundedOperation('GET', '/api/v1/knowledge-bases/kb_123/search'),
+    null,
+  )
 })
 
 test('idempotency keys are required for owner-funded mutations but not reads', () => {

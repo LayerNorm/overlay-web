@@ -94,3 +94,9 @@ agent/memory/*
 .almanac/.ingest-*
 /.swc
 .workflow-data/
+
+# Security audit reports (local only, not committed)
+SECURITY_AUDIT_REPORT.md
+SECURITY_AUDIT_REPORT.html
+SECURITY_AUDIT_REPORT_FULL.md
+SECURITY_AUDIT_REPORT_ROUND2.md

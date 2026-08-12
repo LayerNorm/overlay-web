@@ -16,6 +16,7 @@ const MULTIPLAYER_FLAGS = [
   'channels',
   'agents',
   'resourceSharing',
+  'workspaceWallets',
 ] as const
 
 test('Phase 0 keeps every multiplayer surface disabled', () => {

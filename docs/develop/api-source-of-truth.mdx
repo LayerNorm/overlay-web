@@ -36,5 +36,12 @@ Desktop and Chrome can use the React DOM packages directly where practical. Mobi
 ## Collaboration message contracts
 
 - `POST /api/v1/conversations/message` returns the persisted `messageId`. Agent-invocation callers use that ID directly; transcript refetch state is not an identity source.
+- `POST /api/v1/conversations/agent-reply` loads collaboration-room metadata and history through `ConversationCollaborationRepository`, streams SSE deltas, and persists the completed assistant row through `addAgentMessage`. The repository must validate both the human actor's room access and the agent principal's active participation; owner-scoped personal-chat repositories are not valid for this path.
 - Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Both Convex and Postgres append the replaced body before an edit.
 - `PATCH /api/v1/conversations/notifications` accepts either `notificationIds` or `conversationId`. Opening a DM or channel uses `conversationId` so only that room's unread activity is cleared.
+
+## Workspace Billing
+
+Workspace billing is exposed only through authenticated `/api/v1/workspaces/:workspaceId/billing*` routes. The transport contract lives in `@overlay/workspace-contracts` and `WorkspacesClient` provides summary, initialize, subscription checkout, top-up, portal, and verification methods. Summary responses expose rollout eligibility, credit buckets, subscription status, and manager-only operational data but not the billing-account identifier. Route handlers resolve membership before invoking `WorkspaceBillingService`; only owners/admins can initialize, fund, subscribe, or open the portal. Clients never submit or select a billing-account identifier.
+
+Paid feature routes also never accept a billing-account identifier. The BFF resolves the authorized workspace and derives an API-key or resource subject; `BillingPayerResolver` chooses the account server-side. Convex hybrid search receives the already-resolved account only over the server-secret boundary, while Convex background indexing independently resolves the source workspace. The static owner-funded boundary check and `billable-feature-coverage.test.ts` are the source of truth for launch completeness.
