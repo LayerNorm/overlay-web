@@ -43,6 +43,13 @@ interface AutomationDoc {
   schedule?: { kind?: string }
 }
 
+interface KnowledgeBaseDoc {
+  id: string
+  title?: string
+  description?: string
+  kind?: string
+}
+
 interface ConversationDoc {
   _id: string
   title?: string
@@ -99,6 +106,17 @@ async function resolveOne(
         const en = a.enabled === false ? 'disabled' : 'enabled'
         const desc = a.description ? `desc="${a.description.slice(0, 80)}"` : ''
         return `- automation id=${a._id} name="${a.name || safeName}" — ${[en, sched, desc]
+          .filter(Boolean)
+          .join(', ')}`
+      }
+      case 'knowledge': {
+        const base = await getOverlayServerContext().knowledgeBaseService
+          .getKnowledgeBase({ knowledgeBaseId: m.id, userId })
+          .catch((_error) => null) as KnowledgeBaseDoc | null
+        if (!base) return `- knowledge base id=${m.id} name="${safeName}" — (not found)`
+        const kind = base.kind ? `${base.kind} knowledge base` : 'knowledge base'
+        const description = base.description ? `desc="${base.description.slice(0, 120)}"` : ''
+        return `- knowledge base id=${base.id} name="${base.title || safeName}" — ${[kind, description]
           .filter(Boolean)
           .join(', ')}`
       }
