@@ -328,8 +328,14 @@ export function createWebKnowledgeSurfaceAdapters(options: {
   const navigate = options.navigate ?? ((url) => window.location.assign(url))
   const navigation: FileNavigationAdapter = {
     open(node, navigationOptions) {
-      if (opensInDocumentEditor(node)) navigate(`/app/notes?id=${encodeURIComponent(node.id)}`, navigationOptions)
-      else navigate(`/app/files?file=${encodeURIComponent(node.id)}`, navigationOptions)
+      // KnowledgeSurfaceNode declares both `id` and `_id`, but the rows the API
+      // returns only carry `_id` — so `node.id` was undefined and this navigated
+      // to `/app/notes?id=undefined`, which 404s and renders blank. TypeScript
+      // could not catch it because the interface promises both fields and the
+      // surface casts on the way in. Every other caller keys off `_id`.
+      const nodeId = node._id ?? node.id
+      if (opensInDocumentEditor(node)) navigate(`/app/notes?id=${encodeURIComponent(nodeId)}`, navigationOptions)
+      else navigate(`/app/files?file=${encodeURIComponent(nodeId)}`, navigationOptions)
     },
   }
   const analytics: KnowledgeAnalyticsAdapter = {

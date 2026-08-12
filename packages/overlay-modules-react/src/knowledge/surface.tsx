@@ -411,9 +411,15 @@ export function SharedKnowledgeSurface({
   }, [activeTab, initialMemories, loadMemories])
 
   useEffect(() => {
-    if (initialFiles !== undefined || (activeTab !== 'files' && activeTab !== 'outputs')) return
+    if (activeTab !== 'files' && activeTab !== 'outputs') return
+    // `initialFiles` seeds the first paint so there is no spinner, but it must not
+    // suppress loading forever. It is a server snapshot taken when the route
+    // rendered: anything created afterwards — notably from the sidebar, which
+    // publishes its mutation while this surface is unmounted and navigating away —
+    // never reached this list, so a new note stayed invisible until a hard reload.
+    // Revalidate on mount and let the seeded rows cover the gap.
     void loadFiles()
-  }, [activeTab, initialFiles, loadFiles])
+  }, [activeTab, loadFiles])
 
   useEffect(() => {
     if (activeTab !== 'memories') return
